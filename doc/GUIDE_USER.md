@@ -223,7 +223,7 @@ Commands that act on a device take its `VID:PID` key as the first argument —
 ```bash
 # Device management
 trcc detect                                   # list connected devices
-trcc device select 1                          # pick the active device (1-based)
+trcc device state 0402:3922                   # identity, handshake + profile
 
 # Display
 trcc display send-image 0402:3922 image.png   # send an image to the LCD

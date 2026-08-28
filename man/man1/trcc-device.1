@@ -87,25 +87,6 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
-.SS select
-.PP
-\fBtrcc device select\fR \fIORDINAL\fR
-.PP
-Persist the active\-device selection by ordinal. Multi\-device hosts (e.g. two LCDs + one LED controller) need a way to point CLI commands at "the one I'm steering today". Resolves the ordinal against device list and stores the resulting key in AppSettings.active_device.
-.PP
-Arguments:
-.RS 4
-.TP
-\fBORDINAL\fR
-1\-based ordinal of the attached device to mark active (matches device list output)
-.RE
-.PP
-Options:
-.RS 4
-.TP
-\fB\-\-help\fR
-Show this command's help and exit.
-.RE
 .SS state
 .PP
 \fBtrcc device state\fR \fIKEY\fR

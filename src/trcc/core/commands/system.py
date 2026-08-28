@@ -256,7 +256,6 @@ class ControlCenterSnapshot(Query[ControlCenterSnapshotResult]):
             ok=True,
             language=a.language,
             temp_unit=a.temp_unit,
-            active_device=a.active_device,
             active_gpu=a.active_gpu,
             refresh_interval_s=a.refresh_interval_s,
             hdd_enabled=a.hdd_enabled,

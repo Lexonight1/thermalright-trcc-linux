@@ -52,7 +52,6 @@ from ..models import (
 from ..protocol import artwork_variant, mask_variant
 from ..registry import find_product
 from ..results import (
-    ActiveDeviceResult,
     BackgroundModeResult,
     BackgroundResult,
     BootAnimationResult,
@@ -2723,28 +2722,6 @@ class ResetDevice(Command[DisconnectResult]):
             ok=True, key=self.key,
             message=f"Reset {self.key} — caches cleared, theme dropped.",
         )
-
-@dataclass(frozen=True, slots=True)
-class SetActiveDevice(Command[ActiveDeviceResult]):
-    """Persist the user's currently-selected device key.
-
-    Used by multi-device UIs (CLI ``device select``, GUI sidebar
-    switch) to remember which device the user last steered.  Passing
-    ``None`` clears the selection.  No device-side effect — just app
-    state.  Callers resolve any ordinal-to-key mapping at their edge
-    before dispatch.
-    """
-    key: str | None
-
-    def execute(self, app: App) -> ActiveDeviceResult:
-        log.info("SetActiveDevice.execute: key=%r", self.key)
-        app.settings.set_active_device(self.key)
-        return ActiveDeviceResult(
-            ok=True, active_device=self.key,
-            message=("active device cleared" if self.key is None
-                     else f"active device set to {self.key}"),
-        )
-
 
 @dataclass(frozen=True, slots=True)
 class DeviceState(Query[DeviceStateResult]):

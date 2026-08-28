@@ -299,7 +299,6 @@ def snapshot(
     typer.echo(r.message)
     typer.echo(f"  language          {r.language}")
     typer.echo(f"  temp_unit         {r.temp_unit}")
-    typer.echo(f"  active_device     {r.active_device}")
     typer.echo(f"  active_gpu        {r.active_gpu}")
     typer.echo(f"  refresh_interval  {r.refresh_interval_s}s")
 

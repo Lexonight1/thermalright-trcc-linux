@@ -343,18 +343,6 @@ trcc device reset KEY
 |---|---|
 | `KEY` | -- |
 
-### `trcc device select`
-
-Persist the active-device selection by ordinal. Multi-device hosts (e.g. two LCDs + one LED controller) need a way to point CLI commands at "the one I'm steering today". Resolves the ordinal against `device list` and stores the resulting key in `AppSettings.active_device`.
-
-```bash
-trcc device select ORDINAL
-```
-
-| Argument | Description |
-|---|---|
-| `ORDINAL` | 1-based ordinal of the attached device to mark active (matches `device list` output) |
-
 ### `trcc device state`
 
 Show what a device IS — identity, connection, handshake geometry. `native_resolution` is what the product registry claims; `resolution` is what the panel answered at handshake. When they differ, the handshake wins and the difference is usually the thing worth reporting.

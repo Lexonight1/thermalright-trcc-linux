@@ -1178,9 +1178,14 @@ def test_composition_root_exemptions_all_still_exist() -> None:
 # it up only if it isn't"), ``ListWebThemes`` is an API listing.  The list is a
 # RATCHET, not a ban: it may not grow, and shrinking it must lower the baseline.
 KNOWN_SINGLE_CLIENT_COMMANDS: frozenset[str] = frozenset({
-    # Dispatched by NO ui — either dead, or a capability nothing exposes.
-    "CaptureScreencastFrame",   # dispatched by ScreencastDriver, a service task
-    "SendFrame",                # last UI caller went to SendScreencastFrame
+    # Dispatched by no UI, and CORRECTLY so — checked, not assumed.
+    # ``CaptureScreencastFrame`` is driven by ``ScreencastDriver``, a service
+    # task; ``SendFrame`` is a deliberate scripting/daemon affordance —
+    # ``ipc.py`` names it as the Command whose raw bytes survive JSON, and its
+    # own docstring says "useful for scripts and end-to-end smoke tests".
+    # Neither is a missing UI capability, so neither should be burned down.
+    "CaptureScreencastFrame",
+    "SendFrame",
     # gui only
     "AdvanceSlideshow", "CurrentFrame", "PreviewSize",
     "ResolveThemeDirectories", "SendScreencastFrame", "SetBackground",
@@ -1189,7 +1194,7 @@ KNOWN_SINGLE_CLIENT_COMMANDS: frozenset[str] = frozenset({
     "ListDevices",
     # cli only
     "EnsureConnected", "ExportOverlay", "InitializeLed", "RenderDcStandalone",
-    "ResetDevice", "RunQuickstart", "SendImage", "SetActiveDevice",
+    "ResetDevice", "RunQuickstart", "SendImage",
     # api only
     "ListWebThemes",
 })

@@ -44,7 +44,6 @@ class UiState:
     # Global format defaults for overlay elements
     time_format: int = 0                   # 0 = 24h, 1 = 12h
     date_format: int = 1                   # 1 = Y/M/D, 2 = D/M/Y, 3 = M/D, 4 = D/M
-    temp_unit: int = 0                     # 0 = Celsius, 1 = Fahrenheit
 
     # Recorded once on first run for upgrade hints
     install_method: str = ""               # pip / pipx / rpm / deb / pacman / pyinstaller
@@ -106,8 +105,8 @@ class UiStateStore:
         self.save()
 
     def set_format_pref(self, name: str, value: int) -> None:
-        """Set one of ``time_format`` / ``date_format`` / ``temp_unit``."""
-        if name not in {"time_format", "date_format", "temp_unit"}:
+        """Set one of ``time_format`` / ``date_format``."""
+        if name not in {"time_format", "date_format"}:
             log.debug("set_format_pref: ignoring unknown pref %r", name)
             return
         current = getattr(self._state, name)

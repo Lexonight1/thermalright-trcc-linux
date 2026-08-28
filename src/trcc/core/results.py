@@ -532,11 +532,6 @@ class RefreshIntervalResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
-class ActiveDeviceResult(Result):
-    active_device: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class PlatformInfoResult(Result):
     """Snapshot of identity + path + permission info for diagnostic UIs."""
     distro_name: str = ""
@@ -691,7 +686,6 @@ class ControlCenterSnapshotResult(Result):
     """AppSettings snapshot."""
     language: str = "en"
     temp_unit: str = "C"
-    active_device: str | None = None
     active_gpu: str | None = None
     refresh_interval_s: float = 2.0
     hdd_enabled: bool = False

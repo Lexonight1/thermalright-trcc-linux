@@ -369,7 +369,6 @@ def status(
     typer.echo("─ App ─────────────────────────────────────────")
     typer.echo(f"  language:         {app_snap.language}")
     typer.echo(f"  temp unit:        {app_snap.temp_unit}")
-    typer.echo(f"  active device:    {app_snap.active_device}")
     typer.echo(f"  active gpu:       {app_snap.active_gpu}")
     typer.echo(f"  refresh interval: {app_snap.refresh_interval_s}s")
 

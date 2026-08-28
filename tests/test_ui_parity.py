@@ -100,10 +100,6 @@ _CLI_ONLY: dict[str, str] = {
         "scoped: the API and GUI use LoadImage (shared); SendImage is a CLI "
         "raw-send variant"
     ),
-    "SetActiveDevice": (
-        "scoped: stateful multi-device 'active' selection is a CLI/GUI concept; "
-        "the API addresses devices by key per request (stateless)"
-    ),
     "ToggleVideo": (
         "scoped: verb sugar over PauseVideo (shared), which the API exposes "
         "directly"

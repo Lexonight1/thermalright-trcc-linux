@@ -47,7 +47,6 @@ class AppSettings:
     """Global user preferences."""
     language: str = "en"
     refresh_interval_s: float = 2.0
-    active_device: str | None = None
     autostart_configured: bool = False
     ui_theme: Literal["dark", "light", "system"] = "system"
     # Include HDD metrics (disk temp / activity / read / write) in sensor
@@ -127,12 +126,6 @@ class Settings:
         log.info("set_language: lang=%s", lang)
         with self._lock:
             self._app.language = lang
-            self._save()
-
-    def set_active_device(self, key: str | None) -> None:
-        log.info("set_active_device: key=%s", key)
-        with self._lock:
-            self._app.active_device = key
             self._save()
 
     def set_refresh_interval(self, seconds: float) -> None:
