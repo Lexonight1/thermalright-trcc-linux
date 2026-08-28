@@ -1060,6 +1060,229 @@ def test_theme_layout_literal_baseline_has_no_slack() -> None:
     )
 
 
+# ── A UI may not reach around the bus by IMPORTING an adapter ───────────────
+#
+# The reach ratchet above counts ``self._app.<attr>``.  It is blind to the other
+# way past the bus: importing a concrete adapter and calling it.  That is worse,
+# not milder — an attribute read at least goes through the App, while a direct
+# import bypasses it entirely and cannot be served by a daemon.  It hid
+# ``uc_about`` calling ``detect_installer`` while ``GetPlatformInfo`` already
+# carried ``install_method``.
+#
+# Composition roots are the legitimate exception and CLAUDE.md says so: "the
+# composition roots (CLI, GUI, API) wire concrete implementations".  Building
+# the App is exactly where a concrete ``QtRenderer`` or ``current_platform``
+# belongs.  Everything else in a UI must ask the bus.
+#
+# Keyed by (path, resolved target) rather than by FILE, because
+# ``ui/cli/main.py`` holds BOTH kinds: its root callback legitimately wires
+# ``configure_logging`` and ``current_platform``, and its ``api`` command
+# reaches ``get_lan_ip`` for a startup banner.  A file-level allowlist would
+# wave the second one through forever.
+
+#: Wiring a concrete implementation while building the App.  PERMANENT.
+_UI_ADAPTER_COMPOSITION_ROOTS: frozenset[tuple[str, str]] = frozenset({
+    ("trcc/ui/api/main.py", "trcc.adapters.render.qt"),
+    ("trcc/ui/qapp.py", "trcc.adapters.render.qt"),
+    ("trcc/ui/gui/__init__.py", "trcc.adapters.system"),
+    ("trcc/ui/cli/main.py", "trcc.adapters.system"),
+    ("trcc/ui/cli/main.py", "trcc.adapters.infra.logging"),
+})
+
+#: Real breaches, to burn down.  Delete an entry when its call site moves to the
+#: bus; a stale entry FAILS, so a fix cannot leave cruft that re-permits it.
+KNOWN_UI_ADAPTER_IMPORTS: frozenset[tuple[str, str]] = frozenset({
+    # ``GetPlatformInfo.install_method`` already answers this — the Command
+    # exists and the UI never switched.
+    ("trcc/ui/gui/uc_about.py", "trcc.adapters.diagnostics.install"),
+    # Sys-info panel config read straight from an infra adapter.
+    ("trcc/ui/gui/trcc_app.py", "trcc.adapters.infra.sysinfo_config"),
+    ("trcc/ui/gui/uc_system_info.py", "trcc.adapters.infra.sysinfo_config"),
+    # A startup banner ("API reachable at http://<ip>:<port>").  Defensible at
+    # a launch site, but it is still system information the ``Platform`` port
+    # could answer, so it stays visible rather than being called a root.
+    ("trcc/ui/cli/main.py", "trcc.adapters.infra.network"),
+})
+
+
+def _ui_adapter_imports() -> set[tuple[str, str]]:
+    """Every ``trcc.adapters`` import made from a UI, as (path, target)."""
+    found: set[tuple[str, str]] = set()
+    for path in (_SRC / "trcc" / "ui").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        rel = path.relative_to(_SRC).as_posix()
+        module = _module_name(path)
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                target = _resolve_import(node, module)
+                if target.startswith("trcc.adapters"):
+                    found.add((rel, target))
+    return found
+
+
+def test_no_new_ui_adapter_imports() -> None:
+    """A UI must not grow a new direct adapter import — ask the bus instead."""
+    allowed = _UI_ADAPTER_COMPOSITION_ROOTS | KNOWN_UI_ADAPTER_IMPORTS
+    new = _ui_adapter_imports() - allowed
+    assert not new, (
+        "UI imports an adapter directly, bypassing the Command bus — a "
+        "daemon-mode client cannot do this:\n"
+        + "\n".join(f"  {p} → {t}" for p, t in sorted(new))
+    )
+
+
+def test_ui_adapter_import_baseline_has_no_slack() -> None:
+    """A fixed breach must be removed from the list, locking the win in."""
+    stale = KNOWN_UI_ADAPTER_IMPORTS - _ui_adapter_imports()
+    assert not stale, (
+        "These UI adapter imports are gone — delete them from "
+        "KNOWN_UI_ADAPTER_IMPORTS:\n"
+        + "\n".join(f"  {p} → {t}" for p, t in sorted(stale))
+    )
+
+
+def test_composition_root_exemptions_all_still_exist() -> None:
+    """An exemption for an import that no longer exists is a hole.
+
+    Same rule as the quarantine list: a stale permanent exemption would
+    silently re-permit that (path, target) pair if the file ever imported it
+    again for a different, illegitimate reason.
+    """
+    stale = _UI_ADAPTER_COMPOSITION_ROOTS - _ui_adapter_imports()
+    assert not stale, (
+        "Composition-root exemptions that match no real import — remove "
+        "them:\n" + "\n".join(f"  {p} → {t}" for p, t in sorted(stale))
+    )
+
+
+# ── Every capability belongs to every UI ────────────────────────────────────
+#
+# The maintainer's mandate, and the reason the Command bus exists: "everything
+# gui can do the other ui's should be able to do too".  The original Windows app
+# was GUI-only, so a capability that lives in one UI is a capability the others
+# can never have.
+#
+# The reach ratchets above measure the OTHER half — a UI touching App internals.
+# Both can be green while a Command still has exactly one client, which is what
+# happened: five Commands were added to move logic out of the gui, and each was
+# wired only into the caller that prompted it.  Reach count fell; capability did
+# not spread.  This is that gap, made countable.
+#
+# **AST, never a regex.**  Matching the class NAME in UI source over-counts on 6
+# of 131: ``SendFrame`` appears in two UI trees and is dispatched by neither —
+# only mentioned in comments.  A reference is an ``ast.Name`` (``dispatch(Foo(…))``)
+# or an ``ast.alias`` (``from … import Foo``).
+#
+# Not every entry is a defect.  ``EnsureConnected`` is a CLI ergonomic ("bring
+# it up only if it isn't"), ``ListWebThemes`` is an API listing.  The list is a
+# RATCHET, not a ban: it may not grow, and shrinking it must lower the baseline.
+KNOWN_SINGLE_CLIENT_COMMANDS: frozenset[str] = frozenset({
+    # Dispatched by NO ui — either dead, or a capability nothing exposes.
+    "CaptureScreencastFrame",   # dispatched by ScreencastDriver, a service task
+    "SendFrame",                # last UI caller went to SendScreencastFrame
+    # gui only
+    "AdvanceSlideshow", "CurrentFrame", "PreviewSize",
+    "ResolveThemeDirectories", "SendScreencastFrame", "SetBackground",
+    "SetLedZoneSyncZones",
+    # qtgui only
+    "ListDevices",
+    # cli only
+    "EnsureConnected", "ExportOverlay", "InitializeLed", "RenderDcStandalone",
+    "ResetDevice", "RunQuickstart", "SendImage", "SetActiveDevice",
+    # api only
+    "ListWebThemes",
+})
+
+_UI_TREES = ("gui", "qtgui", "cli", "api")
+
+
+def _command_names() -> set[str]:
+    """Every ``Command`` / ``Query`` subclass name."""
+    names: set[str] = set()
+    for path in (_SRC / "trcc" / "core" / "commands").glob("*.py"):
+        if path.name in ("__init__.py", "_base.py", "_helpers.py"):
+            continue
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for base in node.bases:
+                inner = getattr(base, "value", base)
+                if getattr(inner, "id", "") in ("Command", "Query"):
+                    names.add(node.name)
+    return names
+
+
+def _clients_per_command() -> dict[str, set[str]]:
+    """Which UI trees actually REFERENCE each Command (AST, not text)."""
+    names = _command_names()
+    clients: dict[str, set[str]] = {n: set() for n in names}
+    for ui in _UI_TREES:
+        for path in (_SRC / "trcc" / "ui" / ui).rglob("*.py"):
+            if "__pycache__" in path.parts:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                seen = None
+                if isinstance(node, ast.Name):
+                    seen = node.id
+                elif isinstance(node, ast.alias):
+                    seen = node.name
+                if seen in clients:
+                    clients[seen].add(ui)
+    return clients
+
+
+def _single_client_commands() -> set[str]:
+    return {c for c, uis in _clients_per_command().items() if len(uis) <= 1}
+
+
+def test_no_new_single_client_commands() -> None:
+    """A new capability must reach more than one UI.
+
+    Adding a Command for one caller is how the gui stays special.  If it is
+    genuinely UI-shaped, add it to the list WITH a reason.
+    """
+    new = _single_client_commands() - KNOWN_SINGLE_CLIENT_COMMANDS
+    assert not new, (
+        "These Commands are reachable from at most one UI — every capability "
+        "should belong to every UI:\n"
+        + "\n".join(f"  {c}" for c in sorted(new))
+    )
+
+
+def test_single_client_baseline_has_no_slack() -> None:
+    """Wiring a Command into a second UI must lower the baseline."""
+    stale = KNOWN_SINGLE_CLIENT_COMMANDS - _single_client_commands()
+    assert not stale, (
+        "These Commands now reach 2+ UIs — remove them from "
+        "KNOWN_SINGLE_CLIENT_COMMANDS to lock the win in:\n"
+        + "\n".join(f"  {c}" for c in sorted(stale))
+    )
+
+
+def test_selftest_command_client_detector_ignores_mentions_in_comments() -> None:
+    """The reason this is an AST walk and not a regex.
+
+    ``SendFrame`` is named in two UI trees and dispatched by neither — the text
+    survives only in comments.  A regex scores it 2 and the ratchet would have
+    called it healthy.
+    """
+    clients = _clients_per_command()
+    assert clients["SendFrame"] == set(), (
+        "SendFrame is dispatched by a UI again — good, but update this "
+        "self-test, which exists to prove the detector ignores comments"
+    )
+    src = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in (_SRC / "trcc" / "ui").rglob("*.py")
+        if "__pycache__" not in p.parts
+    )
+    assert "SendFrame" in src, (
+        "the premise is gone: SendFrame is no longer even MENTIONED in the UI "
+        "trees, so this no longer demonstrates regex-vs-AST"
+    )
+
+
 # ── A str-enum in a Result: what actually breaks, and what does not ─────────
 #
 # ``LedStyle`` subclasses ``str``, so a Result field holding one arrives
