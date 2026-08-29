@@ -30,7 +30,14 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
 # ``Foo.cs:123`` / ``Foo.cs 123`` / ``Foo.cs L123`` — file and line together.
-_EXPLICIT = re.compile(r"([A-Za-z0-9_]+\.cs)[:\sL]*?(\d{2,5})(?:\s*[-–]\s*(\d{2,5}))?")
+# ``\d{1,5}``, not ``\d{2,5}``: a two-digit floor silently DROPPED every citation
+# into the first nine lines of a file.  Two existed — a class declaration at
+# ``UCScreenLED.cs:8`` and the wire component's entry point at
+# ``ReadWriteAsync.cs:5`` — and neither failed anything; they simply were not
+# citations, so one binary could not exceed 10/11 coverage no matter what was
+# written about it.  Measured before widening: exactly those two appear, and no
+# other text in the corpus becomes a citation.
+_EXPLICIT = re.compile(r"([A-Za-z0-9_]+\.cs)[:\sL]*?(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?")
 # Any .cs mention — binds the styles that name the file in a section header.
 _CSFILE = re.compile(r"([A-Za-z0-9_]+\.cs)")
 # ``(`:123`)`` / `` `:123-456` `` — line only, file from the nearest .cs above.

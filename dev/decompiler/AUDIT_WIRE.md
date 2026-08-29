@@ -158,12 +158,5 @@ not the bulk path.
 ## Gaps — what this does NOT establish
 
 - **SCSI**: absent. Native `USBLCD.exe`; needs disassembly, not decompilation.
-- **`Main` cannot be cited, and that is a tooling floor rather than a gap.**
-  The citation parser requires a line number of at least two digits
-  (`core/citations.py:33`, `\d{2,5}`), and the entry point is at line 5. It is
-  described above and was read; it simply cannot be expressed as a citation, so
-  this binary reads 10/11 = 90% and cannot reach 100% until that floor moves.
-  Widening it touches every doc in the corpus and belongs in its own change,
-  measured the way the other citation fixes were.
 - **Nothing here is glass-verified.** This is what the vendor's code does, not
   proof that our code matching it produces a correct picture on a panel.
