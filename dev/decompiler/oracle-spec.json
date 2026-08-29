@@ -313,7 +313,7 @@
   "families": {
     "hid2": {
       "wire": "hid",
-      "note": "0416:5302 DA-magic; frames from FormCZTV ImageTo565/Jpg",
+      "note": "0416:5302 DA-magic; frames from FormCZTV ImageTo565/Jpg | USBLCDNEW.dll DCReadWriteAsync.cs:491 ThreadSendDeviceDataH is the wire half for 0x0416:0x5302: OUT 0x02, 20-byte header, length LE at [16..19] plus 20 ROUNDED UP to a 512 multiple. Record carries shm[2]==54 -> Form1.cs:1114 branch: PM=shm[1], SUB=shm[0].",
       "handshake_init": {
         "len": 20,
         "magic": [
@@ -328,8 +328,18 @@
     },
     "hid3": {
       "wire": "hid",
-      "note": "0418:5303/4 ALi F5 \u2014 handshake/delivery not cleanly isolated in UCDevice; trace before trusting HidType3Protocol",
-      "status": "NEEDS_REVIEW"
+      "status": "MINED",
+      "note": "USBLCDNEW.dll DCReadWriteAsync.cs:663 ThreadSendDeviceDataALi drives the F5 protocol for 0x0416:0x5406 and 0418:5303/4. 1040-byte request (F5 00 01 00 BC FF B6 C8 + 1024 zeros); frame = 16-byte F5 01 header with length LE at [12..15] + payload, one write. Identity resp[0] in {54,101,102}; payload 153600 when 54 else 204800. Record -> Form1.cs:1079 branch: PM=shm[0]=resp[0]-1, SUB=shm[5]=resp[1].",
+      "valid_identity": [
+        54,
+        101,
+        102
+      ],
+      "length_field": [
+        12,
+        15
+      ],
+      "header": 16
     },
     "led": {
       "wire": "led",
@@ -338,26 +348,49 @@
     },
     "scsi": {
       "wire": "scsi",
-      "note": "share-memory bridge \u2192 USBLCD component, absent from this decompile",
+      "note": "NOT decompilable: the SCSI wire lives in USBLCD.exe / USBLCDNEW.exe, both NATIVE (no CLR directory). Needs disassembly, not decompilation. The managed component USBLCDNEW.dll contains no SCSI path.",
       "status": "NOT_IN_THIS_DECOMPILE"
     },
     "bulk": {
       "wire": "bulk",
-      "note": "share-memory bridge \u2192 USBLCD component, absent from this decompile",
-      "status": "NOT_IN_THIS_DECOMPILE"
+      "status": "MINED",
+      "note": "USBLCDNEW.dll DCReadWriteAsync.cs:271 ThreadSendDeviceData. VID/PID 0x87AD:0x70DB, OUT 0x01 IN 0x81. 64-byte handshake 12 34 56 78 with 01 at [56]; frame length LE at [60..63] plus 64, one transfer, ZLP when total % 512 == 0. Record -> Form1.cs:1044 branch: PM=shm[4]=resp[24], SUB=shm[1]=resp[36].",
+      "handshake_init": {
+        "len": 64,
+        "magic": [
+          18,
+          52,
+          86,
+          120
+        ]
+      },
+      "length_field": [
+        60,
+        63
+      ],
+      "header": 64,
+      "zlp_on_512_multiple": true
     },
     "ly": {
       "wire": "ly",
-      "note": "Trofeo Vision LY wire \u2014 not in this decompile",
-      "status": "NOT_IN_THIS_DECOMPILE"
+      "status": "MINED",
+      "note": "USBLCDNEW.dll DCReadWriteAsync.cs:859 ThreadSendDeviceDataLY (0x0416:0x5408, OUT 0x09) and :1121 LY1 (0x5409, OUT 0x02). PM=shm[4], SUB=shm[1] via Form1.cs:1044. LY: PM=64+resp[20] (resp[20]<=3 clamped to 1), SUB=1+resp[22]. LY1: PM=49+resp[20], SUB=resp[22]. LY pads the PACKET COUNT to a multiple of 4 then writes 4096 at a time; LY1's '% 1' padding is vendor dead code and never fires.",
+      "header": {
+        "ly": 64,
+        "ly1": 20
+      },
+      "packet_pad": {
+        "ly": 4,
+        "ly1": 1
+      }
     }
   },
   "coverage": {
     "hid2": "MINED",
-    "hid3": "NEEDS_REVIEW",
+    "hid3": "MINED",
     "led": "NEEDS_REVIEW",
     "scsi": "NOT_IN_THIS_DECOMPILE",
-    "bulk": "NOT_IN_THIS_DECOMPILE",
-    "ly": "NOT_IN_THIS_DECOMPILE"
+    "bulk": "MINED",
+    "ly": "MINED"
   }
 }

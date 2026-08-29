@@ -21,11 +21,16 @@ payload padding and identity parsing — real behavioural differences, documente
 at each site rather than unified, because 0416:5406 is a reporter's panel
 (#212) and changing what it sends is not something a mock can vouch for.
 
-Cited to the readable wire oracle: the ``USBLCDNEW`` decompile, whose
-``ThreadSendDeviceDataALi`` drives this protocol.  Note that oracle is the
-Jul-2025 build; the current release ships a newer ``USBLCDNEW.exe`` nobody has
-read, so these constants are faithful to the binary we *have*, not provably to
-the one that ships today.
+Cited to the wire oracle: ``ThreadSendDeviceDataALi`` in the ``USBLCDNEW``
+decompile, which drives this protocol.
+
+That oracle used to be the Jul-2025 build, and this docstring used to warn that
+"the current release ships a newer ``USBLCDNEW.exe`` nobody has read".  It has
+now been read — the managed component is ``USBLCDNEW.dll``, not the ``.exe``,
+which is native — and **every byte constant above is confirmed against it**:
+the 1040-byte request, the ``F5 00``/``F5 01`` headers, the length at [12:16],
+and the 204800 default.  The identity set was NOT confirmed; it was missing a
+value.  See ``VALID_IDENTITY``.
 """
 from __future__ import annotations
 
@@ -48,8 +53,27 @@ DATA_SIZE = 204800        # 320 * 320 * 2 — fixed RGB565 canvas
 INIT_SIZE = HEADER_SIZE + RESPONSE_SIZE   # 1040-byte handshake request
 
 # The identity byte the panel answers with, at ``resp[0]``.  Both classes derive
-# their model/FBL as ``resp[0] - 1`` (0x65 -> 100, 0x66 -> 101).
-VALID_IDENTITY = (0x65, 0x66)
+# their model/FBL as ``resp[0] - 1`` (0x36 -> 53, 0x65 -> 100, 0x66 -> 101).
+#
+# ``0x36`` (54) was missing.  ``ThreadSendDeviceDataALi`` accepts three
+# identities — ``if (array[0] == 54 || array[0] == 101 || array[0] == 102)``
+# (``DCReadWriteAsync.cs:759``) — and we rejected the first, so such a panel
+# never got past validation.  It is a panel we already model: ``resp[0] - 1``
+# is FBL 53, which ``FBL_PROFILES`` gives as 320x240.
+VALID_IDENTITY = (0x36, 0x65, 0x66)
+
+# Payload bytes per frame, by identity.  The vendor sizes its frame buffer from
+# the identity at handshake — ``num2 = 204800`` by default, ``153600`` when the
+# panel answered 54 (``DCReadWriteAsync.cs:776``) — and those are exactly
+# 320x320x2 and 320x240x2, the RGB565 canvases of FBL 100/101 and FBL 53.
+_PAYLOAD_BY_IDENTITY = {0x36: 153600}
+
+
+def payload_size(identity: int) -> int:
+    """Frame payload bytes for a panel answering *identity*."""
+    size = _PAYLOAD_BY_IDENTITY.get(identity, DATA_SIZE)
+    log.debug("f5.payload_size: identity=0x%02X -> %d bytes", identity, size)
+    return size
 
 
 def init_packet() -> bytes:

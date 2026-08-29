@@ -82,8 +82,8 @@ What differs:
 | handshake bytes | 64 | 20 | 16 | 16 | 16 |
 | reply buffer | 1024 | 512 | 1024 | 512 | **511** |
 | frame header | 64 | 20 | 16 | 64 | 20 |
-| length field | `[60..63]` LE | `[16..19]` LE | — | `[60..63]` LE | `[16..19]` LE |
-| write strategy | one transfer | 512-rounded | — | 4096 chunks | fill loop |
+| length field | `[60..63]` LE | `[16..19]` LE | `[12..15]` LE | `[60..63]` LE | `[16..19]` LE |
+| write strategy | one transfer | 512-rounded | one transfer | 4096 chunks | fill loop |
 
 - `ThreadSendDeviceData` (DCReadWriteAsync.cs:271) — the bulk wire. Handshake is
   64 bytes opening `12 34 56 78` with `01` at offset 56 (`:321`). Frame length is
@@ -94,8 +94,10 @@ What differs:
 - `ThreadSendDeviceDataH` (DCReadWriteAsync.cs:491) — 20-byte header, length at
   `[16..19]` plus 20, then **rounded UP to a 512 multiple** (`:624`) rather than
   terminated with a ZLP. Different solution to the same problem as the bulk ZLP.
-- `ThreadSendDeviceDataALi` (DCReadWriteAsync.cs:663) — 16-byte handshake, OUT
-  `0x02`, 1024-byte reply. Publishes a 16-byte record (`:805`).
+- `ThreadSendDeviceDataALi` (DCReadWriteAsync.cs:663) — the F5 protocol. A
+  1040-byte request (16-byte `F5 00 01 00 BC FF B6 C8 …` header + 1024 zeros,
+  `:716`), and a frame of a 16-byte `F5 01 …` header carrying the payload length
+  little-endian at `[12..15]` followed by the payload in ONE write (`:805`).
 - `ThreadSendDeviceDataLY` (DCReadWriteAsync.cs:859) — the only sender on OUT
   endpoint **`0x09`**. Splits the frame into `n` packets each carrying a 16-byte
   sub-header — total length at `+2..+5`, payload size at `+6..+7`, constant `1`
@@ -130,6 +132,14 @@ and the branch that `shm[2]==0x48 && shm[6]==0xDC` selects reads **PM from
 | LY (`:967`) | `{8,0,72,1,0,68,220,112,0}` then mutated | `64 + array[20]` | `1 + array[22]` |
 | LY1 (`:1220`) | `{0,0,72,1,0,0,220,112,0}` then mutated | `49 + array[20]` | `array[22]` |
 | H (`:583`) | `{0,0,54,0,0,220,220,220,0}` then mutated | `array[5]` | `array[5]` |
+| ALi (`:762`) | `[array[0]-1, array[10..13], array[1], 0xDD, 0xDC, len]` | — | — |
+
+ALi carries `shm[6]==0xDD && shm[7]==0xDC`, which selects the `Form1.cs:1079`
+branch instead: **PM is `shm[0]` = `array[0] - 1`, SUB is `shm[5]` = `array[1]`**.
+It accepts three identities — `array[0] in {54, 101, 102}` (`:759`) — and sizes
+its frame buffer from the first: `num2 = 153600` when the panel answered 54,
+otherwise the 204800 default (`:776`). Those are exactly 320x240x2 and
+320x320x2, the RGB565 canvases of FBL 53 and FBL 100/101.
 
 H carries `shm[2]==54`, so it takes the `Form1.cs:1114` branch instead, where PM
 is `shm[1]` and SUB is `shm[0]`. The bulk sender additionally takes its name from
@@ -148,10 +158,6 @@ not the bulk path.
 ## Gaps — what this does NOT establish
 
 - **SCSI**: absent. Native `USBLCD.exe`; needs disassembly, not decompilation.
-- **`ThreadSendDeviceDataALi`'s framing**: the handshake, endpoints and record
-  are cited above, but its length field and chunking were not traced to the same
-  depth as the other four. Treat the blank cells in the table as unread, not as
-  "no such field".
 - **`Main` cannot be cited, and that is a tooling floor rather than a gap.**
   The citation parser requires a line number of at least two digits
   (`core/citations.py:33`, `\d{2,5}`), and the entry point is at line 5. It is

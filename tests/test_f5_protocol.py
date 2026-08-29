@@ -71,7 +71,14 @@ def test_f5_constants_are_the_decompiled_values() -> None:
     assert _f5.RESPONSE_SIZE == 1024
     assert _f5.ACK_SIZE == 16
     assert _f5.INIT_SIZE == 1040
-    assert _f5.VALID_IDENTITY == (0x65, 0x66) == (101, 102)
+    assert _f5.VALID_IDENTITY == (0x36, 0x65, 0x66) == (54, 101, 102)
+    # ``ThreadSendDeviceDataALi`` gates on exactly these three
+    # (``DCReadWriteAsync.cs:759``) and sizes its frame buffer from the first of
+    # them (``:776``).  This row asserted ``(0x65, 0x66)`` until 2026-08-29 —
+    # anchored, correctly, to the decompile available at the time, which was the
+    # WRONG RELEASE.  Re-anchored to the release we port.
+    assert _f5.payload_size(0x36) == 320 * 240 * 2 == 153600
+    assert _f5.payload_size(0x65) == _f5.payload_size(0x66) == _f5.DATA_SIZE
 
 
 def test_init_packet_shape() -> None:
@@ -120,6 +127,29 @@ def test_connect_accepts_valid_identity(identity: int) -> None:
     assert result.resolution == (320, 320)
     assert transport.writes[0][0] == HidLcd._EP_WRITE == 0x02
     assert transport.writes[0][1] == _f5.init_packet()
+
+
+def test_identity_54_connects_and_takes_a_320x240_frame() -> None:
+    """The identity we used to reject, end to end.
+
+    ``ThreadSendDeviceDataALi`` accepts 54 alongside 101/102 and then sizes its
+    buffer at 153600 rather than 204800.  Both halves matter: accepting the
+    panel but still sending it 204800 bytes would be a worse bug than refusing
+    it, so this asserts the FRAME, not just the handshake.
+    """
+    transport = FakeBulkTransport()
+    transport.read_script = [_reply(54)]
+    dev = _device(transport)
+
+    result = dev.connect()
+
+    assert result.fbl == 53
+    assert result.resolution == (320, 240)
+
+    dev.send(bytes(320 * 240 * 2))
+    _, data = transport.writes[-1]
+    assert len(data) == 16 + 153600
+    assert int.from_bytes(data[12:16], "little") == 153600
 
 
 @pytest.mark.parametrize("bad", [0, 1, 100, 103, 200])

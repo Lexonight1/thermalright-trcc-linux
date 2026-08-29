@@ -384,8 +384,14 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         return _f5.init_packet()
 
     def _validate_response_type3(self, resp: bytes) -> bool:
-        """Type 3: resp[0] ∈ {0x65, 0x66} and len >= 14."""
-        return len(resp) >= 14 and resp[0] in (0x65, 0x66)
+        """Type 3: ``resp[0]`` is a known F5 identity and len >= 14.
+
+        Reads ``_f5.VALID_IDENTITY`` rather than respelling it.  The pair used to
+        be a literal here while the shared constant sat unused — the exact
+        duplication ``_f5`` exists to prevent — so widening the set there did not
+        widen it here.
+        """
+        return len(resp) >= 14 and resp[0] in _f5.VALID_IDENTITY
 
     def _parse_response_type3(self, resp: bytes) -> HandshakeResult:
         """Type 3: FBL = resp[0] - 1 (0x65→100, 0x66→101); serial at resp[10:14].
@@ -394,6 +400,9 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         """
         serial = resp[10:14].hex().upper()
         fbl = resp[0] - 1
+        # Sized from the identity at handshake, as the vendor does — a panel
+        # answering 0x36 takes a 320x240 canvas, not the 320x320 default.
+        self._f5_payload = _f5.payload_size(resp[0])
         self._profile = get_profile(fbl, fbl)
         return HandshakeResult(
             resolution=self._profile.resolution,
@@ -406,12 +415,13 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         )
 
     def _build_frame_type3(self, image_data: bytes) -> bytes:
-        """Type 3 frame: 16-byte prefix + exactly 204800 bytes data."""
-        prefix = _f5.frame_header()
-        if len(image_data) < _f5.DATA_SIZE:
-            payload = image_data + b'\x00' * (_f5.DATA_SIZE - len(image_data))
+        """Type 3 frame: 16-byte prefix + exactly this panel's payload size."""
+        size = getattr(self, "_f5_payload", _f5.DATA_SIZE)
+        prefix = _f5.frame_header(size)
+        if len(image_data) < size:
+            payload = image_data + b'\x00' * (size - len(image_data))
         else:
-            payload = image_data[:_f5.DATA_SIZE]
+            payload = image_data[:size]
         return prefix + payload
 
     # ── Type-dispatching helpers ──────────────────────────────────────
