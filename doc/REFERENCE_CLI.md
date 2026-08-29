@@ -17,7 +17,7 @@ trcc [OPTIONS] COMMAND [ARGS]...
 
 | Option | Description |
 |---|---|
-| `--verbose`, `-v` `VERBOSE` | Terminal log verbosity: -v shows INFO, -vv shows DEBUG. Without it the terminal stays quiet (warnings + errors only) and the log file keeps everything except the per-frame render detail, which one -v adds. |
+| `--verbose`, `-v` `VERBOSE` | Terminal log verbosity: -v INFO (major milestones), -vv DEBUG (granular state and variable values), -vvv TRACE (deep internals: raw payloads and per-frame detail). Without it the terminal stays quiet — warnings and errors only. The log file always keeps DEBUG regardless, so `trcc report` carries the evidence even when nobody passed a flag. |
 | `--version`, `-V` | Print the installed TRCC version and exit. |
 
 ## Contents

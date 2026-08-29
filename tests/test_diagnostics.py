@@ -28,7 +28,7 @@ from trcc.adapters.infra.logging import (
     tail_log,
     tail_log_actions,
 )
-from trcc.core.logs import PER_FRAME_ROOT, per_frame
+from trcc.core.logs import PER_FRAME_ROOT, TRACE, levels_for, per_frame, trace
 
 # =========================================================================
 # Logging adapter
@@ -791,3 +791,71 @@ def test_collect_powercap_returns_list() -> None:
     from trcc.adapters.diagnostics.debug_report import _collect_powercap
 
     assert isinstance(_collect_powercap(), list)
+
+
+# ── The verbosity ladder — the rule, gated ───────────────────────────────────
+#
+# This mapping used to live as an if-chain inside ``ui.cli.main._root`` and
+# NOTHING asserted it: ``per_frame=verbose > 0`` could have read ``>= 99`` and
+# the suite stayed green, because every test here calls ``configure_logging``
+# with explicit arguments and never asks what a ``-v`` count resolves to.
+# A rule nothing can call is a rule nothing can gate.
+
+
+@pytest.mark.parametrize("verbosity,terminal,file_level,per_frame", [
+    (0, logging.WARNING, logging.DEBUG, False),
+    (1, logging.INFO,    logging.DEBUG, False),
+    (2, logging.DEBUG,   logging.DEBUG, False),
+    (3, TRACE,           TRACE,         True),
+    (9, TRACE,           TRACE,         True),   # saturates, never inverts
+])
+def test_verbosity_ladder(verbosity: int, terminal: int,
+                          file_level: int, per_frame: bool) -> None:
+    """-v INFO, -vv DEBUG, -vvv TRACE; quiet by default."""
+    levels = levels_for(verbosity)
+    assert levels.terminal == terminal
+    assert levels.file == file_level
+    assert levels.per_frame is per_frame
+
+
+def test_the_file_never_loses_debug_however_quiet_the_terminal() -> None:
+    """The invariant the always-DEBUG rule exists to protect.
+
+    ``trcc report`` is the entire diagnosis for hardware we do not own.  A file
+    level that rose with a flag would mean a reporter who did not know the flag
+    sends a log with the evidence already discarded — which is the bug that rule
+    was written to fix.  The ladder governs the TERMINAL.
+    """
+    for verbosity in range(10):
+        levels = levels_for(verbosity)
+        assert levels.file <= logging.DEBUG, (
+            f"-{'v' * verbosity} would raise the file above DEBUG"
+        )
+
+
+def test_trace_is_below_debug_so_vvv_must_lower_the_file_too() -> None:
+    """Why ``-vvv`` is the one rung that touches the file.
+
+    TRACE sits BELOW debug, so a file pinned at DEBUG could never record a
+    TRACE line — the deepest detail would be visible on the terminal and absent
+    from the one artifact a report is read from.
+    """
+    assert TRACE < logging.DEBUG
+    assert levels_for(3).file == TRACE
+    assert logging.getLevelName(TRACE) == "TRACE"
+
+
+def test_trace_helper_emits_only_when_enabled(tmp_path: Path) -> None:
+    """``trace()`` is silent at DEBUG and lands at TRACE."""
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=logging.DEBUG, stderr_level=logging.CRITICAL)
+    logger = logging.getLogger("trcc.test.trace")
+    trace(logger, "deep internal %s", "payload")
+    logging.getLogger().handlers[0].flush()
+    assert "deep internal" not in log_file.read_text()
+
+    configure_logging(log_file, level=TRACE, stderr_level=logging.CRITICAL)
+    trace(logger, "deep internal %s", "payload")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    assert "deep internal payload" in log_file.read_text()

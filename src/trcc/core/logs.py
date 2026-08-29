@@ -32,7 +32,11 @@ always-DEBUG rule was written to fix.  Instead, per-frame lines log to a
 logger under one shared parent, and the parent's level is set once at
 configuration: INFO normally (so ``.debug()`` short-circuits in
 ``isEnabledFor`` and the record is never even constructed — which is where the
-saving comes from, not in the writing), DEBUG under ``-v``.
+saving comes from, not in the writing), DEBUG under ``-vvv``.
+
+That rung moved from ``-v`` to ``-vvv`` when the verbosity ladder was made the
+rule: the firehose is *deep internals*, not the *granular state* DEBUG means.
+See :func:`levels_for`, which is the one definition.
 
 Using it, in a module whose lines fire per frame::
 
@@ -48,6 +52,78 @@ emit through; core imports no adapter to provide it.
 from __future__ import annotations
 
 import logging
+from typing import NamedTuple
+
+# ── TRACE — the fourth rung of the verbosity ladder ─────────────────────────
+#
+# The ladder, and the ONLY definition of it:
+#
+#   (no flag)  terminal WARNING   silent unless something needs attention
+#   -v         terminal INFO      major milestones
+#   -vv        terminal DEBUG     granular state, variable values, loop steps
+#   -vvv       terminal TRACE     deep internals: raw payloads, thread hooks
+#
+# The FILE is not on this ladder.  It keeps DEBUG at every rung, because
+# ``trcc report`` is the whole diagnosis for hardware we do not own — a level
+# that rises with a flag means a reporter who did not know the flag sends a log
+# with the evidence already discarded.  That was the bug the always-DEBUG rule
+# was written to fix; the ladder governs the TERMINAL.  ``-vvv`` is the one rung
+# that also lowers the file, because TRACE sits *below* DEBUG and would
+# otherwise be unreachable in the artifact we read.
+#
+# stdlib has no TRACE, so it is registered here once.
+TRACE = 5
+logging.addLevelName(TRACE, "TRACE")
+
+
+def trace(logger: logging.Logger, msg: str, *args: object) -> None:
+    """Log at TRACE — deep internals, only ever seen under ``-vvv``."""
+    if logger.isEnabledFor(TRACE):
+        logger.log(TRACE, msg, *args)
+
+
+class Verbosity(NamedTuple):
+    """What one ``-v`` count means, everywhere."""
+
+    terminal: int
+    file: int
+    per_frame: bool
+
+
+def levels_for(verbosity: int) -> Verbosity:
+    """The ladder, resolved.  The ONE place ``-v`` counts become levels.
+
+    It is a function rather than a chain inside the CLI callback because a rule
+    nothing can call is a rule nothing can gate: the mapping lived in
+    ``ui/cli/main._root`` and no test asserted it, so ``per_frame=verbose > 0``
+    could have read ``>= 99`` and the suite would have stayed green.
+
+    The file floor is DEBUG at every rung — ``trcc report`` is the whole
+    diagnosis for hardware we do not own, and a file level that rises with a
+    flag means a reporter who did not know the flag sends a log with the
+    evidence already discarded.  ``-vvv`` is the sole rung that lowers it,
+    because TRACE sits BELOW debug and would otherwise never reach the artifact.
+    """
+    terminal = (
+        TRACE if verbosity >= 3
+        else logging.DEBUG if verbosity >= 2
+        else logging.INFO if verbosity == 1
+        else logging.WARNING
+    )
+    resolved = Verbosity(
+        terminal=terminal,
+        file=min(logging.DEBUG, terminal),
+        # The firehose: 92% of records and ~90% of the CPU regression since
+        # v9.9.2.  Under this ladder that is TRACE — deep internals — not the
+        # "granular state" DEBUG describes.
+        per_frame=verbosity >= 3,
+    )
+    logging.getLogger(__name__).debug(
+        "levels_for: -v x%d -> terminal=%s file=%s per_frame=%s",
+        verbosity, logging.getLevelName(resolved.terminal),
+        logging.getLevelName(resolved.file), resolved.per_frame,
+    )
+    return resolved
 
 log = logging.getLogger(__name__)
 

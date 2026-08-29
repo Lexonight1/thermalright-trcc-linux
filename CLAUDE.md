@@ -472,8 +472,38 @@ PYTHONPATH=src python3 dev/tools/logging_coverage.py --area ui   # one area
   technical impossibility, not a preference. `__init__`, `__enter__`,
   `__getitem__` and `__init_subclass__` are **not** exempt and are counted.
 
+### The verbosity ladder — the one definition
+
+| flag | terminal | what belongs there |
+|---|---|---|
+| *(none)* | `WARNING` | Silent. Nothing unless a command fails or needs attention. |
+| `-v` | `INFO` | Major milestones — "connected", "theme applied in 2.4s". |
+| `-vv` | `DEBUG` | Granular internal state: resolved values, branch decisions, loop steps. |
+| `-vvv` | `TRACE` | Deep internals — raw payloads, wire bytes, per-frame detail. |
+
+**The ladder governs the TERMINAL. The FILE keeps `DEBUG` at every rung.**
+`trcc report` is the entire diagnosis for hardware we do not own, so a file level
+that rose with a flag would mean a reporter who did not know the flag sends a log
+with the evidence already discarded. `-vvv` is the sole rung that also lowers the
+file, because `TRACE` sits **below** `DEBUG` and would otherwise never reach the
+one artifact we read.
+
+`TRACE` is not in stdlib; it is registered once in `core/logs.py` as level **5**,
+with a `trace(logger, msg, *args)` helper. **Never re-derive the mapping** — call
+`core.logs.levels_for(verbosity)`, which returns `(terminal, file, per_frame)`.
+It is a function precisely so it can be gated: the mapping used to be an if-chain
+inside `ui/cli/main._root` that no test touched, so `per_frame=verbose > 0` could
+have read `>= 99` and the suite would have stayed green.
+`tests/test_diagnostics.py` gates every rung and mutation-checks two ways to
+break it.
+
+Per-frame lines are `TRACE`-rung (`-vvv`), not `-v`: they are 92% of all records
+and ~90% of the CPU regression since v9.9.2, which is "deep internals", not the
+"granular state" `DEBUG` describes. Putting them on `-v` made the cheap rung
+expensive and buried the one-shot lines a report is actually read for.
+
 **The file always keeps DEBUG, at every verbosity — except the per-frame render
-path, which one `-v` adds.** It used to be `DEBUG if verbose else INFO`, so a
+path, which `-vvv` adds.** It used to be `DEBUG if verbose else INFO`, so a
 user who ran the app normally, hit a problem and sent a report shipped us a log
 with every DEBUG line already discarded — the branch decisions, the resolved
 values, the silent-skip reasons. Exactly what we needed, gone. That is still

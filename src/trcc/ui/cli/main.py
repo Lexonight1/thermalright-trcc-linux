@@ -531,10 +531,12 @@ def _version_callback(value: bool) -> None:
 def _root(
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True,
-        help="Terminal log verbosity: -v shows INFO, -vv shows DEBUG. "
-             "Without it the terminal stays quiet (warnings + errors only) "
-             "and the log file keeps everything except the per-frame render "
-             "detail, which one -v adds.",
+        help="Terminal log verbosity: -v INFO (major milestones), "
+             "-vv DEBUG (granular state and variable values), "
+             "-vvv TRACE (deep internals: raw payloads and per-frame detail). "
+             "Without it the terminal stays quiet — warnings and errors only. "
+             "The log file always keeps DEBUG regardless, so `trcc report` "
+             "carries the evidence even when nobody passed a flag.",
     ),
     version: bool = typer.Option(
         False, "--version", "-V",
@@ -567,42 +569,27 @@ def _root(
     """
     from ...adapters.infra.logging import configure_logging
     from ...adapters.system import current_platform
+    from ...core.logs import levels_for
 
     platform = current_platform()
     # Windows consoles default to cp1252 and crash on non-ASCII log
     # output — wrap stdout/stderr UTF-8 BEFORE configure_logging
     # attaches the StreamHandler.  No-op on other OSes.
     platform.configure_stdout()
-    # The file ALWAYS keeps DEBUG; only the terminal level rises per -v.
-    #
-    # This used to be ``DEBUG if verbose else INFO``, which meant a user who
-    # ran the app normally, hit a problem and sent `trcc report` shipped us a
-    # log with every DEBUG line already discarded — the branch decisions, the
-    # resolved values, the silent-skip reasons.  Exactly the lines the logging
-    # rules exist to produce, missing from the one artifact we diagnose from.
-    # They only appeared if the reporter already knew to pass -vv, and anyone
-    # who knew that rarely needed to file.
-    #
-    # Cost is bounded and already paid for: the rotating file is capped at
-    # 1 MB x 5 backups and the per-run `latest` at 10 MB, so per-frame DEBUG
-    # (video ticks run 30-90 lines/s) rolls over instead of growing without
-    # limit.  A capped 10 MB is cheap next to a round-trip asking someone to
-    # reproduce with a flag.
-    file_level = logging.DEBUG
-    stderr_level = (
-        logging.DEBUG if verbose >= 2
-        else logging.INFO if verbose == 1
-        else logging.WARNING
-    )
+    # The ladder lives in core.logs.levels_for — one definition, gated.
+    levels = levels_for(verbose)
     configure_logging(
         platform.paths().log_file(),
-        level=file_level,
-        stderr_level=stderr_level,
-        # Per-frame lines are 92%% of the records and ~90%% of the CPU
-        # regression since v9.9.2; the one-shot lines a report is actually
-        # read for are 0.6%%.  So the firehose is what -v buys, and the file
-        # still keeps DEBUG for everything else.  See core.logs.
-        per_frame=verbose > 0,
+        level=levels.file,
+        stderr_level=levels.terminal,
+        per_frame=levels.per_frame,
+    )
+    # Logged AFTER configuration, so it lands in every report: a reader can see
+    # which rung produced the file they are holding without asking.
+    logging.getLogger(__name__).info(
+        "verbosity: -v x%d -> terminal=%s file=%s per_frame=%s",
+        verbose, logging.getLevelName(levels.terminal),
+        logging.getLevelName(levels.file), levels.per_frame,
     )
 
 
