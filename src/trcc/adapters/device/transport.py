@@ -19,6 +19,7 @@ import usb.core
 import usb.util
 
 from ...core.errors import PermissionError_, TransportError
+from ...core.logs import per_frame
 from ...core.ports import BulkTransport, WriteBuffer
 from ._pyusb_find import find as usb_find
 
@@ -39,6 +40,11 @@ hidapi: Any = _hid_module
 PYUSB_AVAILABLE = True
 
 log = logging.getLogger(__name__)
+# ``write``/``read`` fire once per CHUNK of every frame — bulk_lcd sends a frame
+# as 16 KiB writes — so they log through the per-frame family and stay silent
+# until ``-vvv``.  Their FAILURE paths use ``log``: a USB error is rare, is the
+# whole diagnosis when a panel dies mid-session, and must survive every rung.
+frame_log = per_frame(__name__)
 
 
 DEFAULT_TIMEOUT_MS = 100
@@ -82,6 +88,8 @@ class PyUsbBulkTransport(BulkTransport):
         self._is_open = False
         self._ep_out: int | None = None
         self._ep_in: int | None = None
+        log.debug("PyUsbBulkTransport.__init__: %04x:%04x serial=%s",
+                  vid, pid, serial or "(any)")
 
     def open(self) -> bool:
         kwargs: dict[str, Any] = {'idVendor': self._vid, 'idProduct': self._pid}
@@ -222,6 +230,8 @@ class PyUsbBulkTransport(BulkTransport):
         self._detach_kernel_drivers()
 
     def close(self) -> None:
+        log.info("PyUsbBulkTransport.close: %04x:%04x (was_open=%s)",
+                 self._vid, self._pid, self._is_open)
         if self._device is not None:
             try:
                 usb.util.release_interface(self._device, USB_INTERFACE)
@@ -236,6 +246,7 @@ class PyUsbBulkTransport(BulkTransport):
 
     @property
     def is_open(self) -> bool:
+        frame_log.debug("PyUsbBulkTransport.is_open: %s", self._is_open)
         return self._is_open
 
     def _detect_endpoints(self) -> None:
@@ -256,36 +267,55 @@ class PyUsbBulkTransport(BulkTransport):
     def write(self, endpoint: int, data: WriteBuffer,
               timeout_ms: int = DEFAULT_TIMEOUT_MS) -> int:
         if not self._is_open or self._device is None:
+            log.warning("PyUsbBulkTransport.write: transport not open "
+                        "(%04x:%04x)", self._vid, self._pid)
             raise TransportError("Transport not open")
         ep = self._ep_out if self._ep_out is not None else endpoint
         try:
-            return self._device.write(ep, data, timeout=timeout_ms)
+            sent = self._device.write(ep, data, timeout=timeout_ms)
         except usb.core.USBError as e:
+            log.warning("PyUsbBulkTransport.write: ep=0x%02x %d byte(s) failed "
+                        "after %dms: %s", ep, len(data), timeout_ms, e)
             raise TransportError(f"USB write failed: {e}") from e
+        frame_log.debug("PyUsbBulkTransport.write: ep=0x%02x %d/%d byte(s)",
+                        ep, sent, len(data))
+        return sent
 
     def read(self, endpoint: int, length: int,
              timeout_ms: int = DEFAULT_TIMEOUT_MS) -> bytes:
         if not self._is_open or self._device is None:
+            log.warning("PyUsbBulkTransport.read: transport not open "
+                        "(%04x:%04x)", self._vid, self._pid)
             raise TransportError("Transport not open")
         ep = self._ep_in if self._ep_in is not None else endpoint
         try:
-            return bytes(self._device.read(ep, length, timeout=timeout_ms))
+            data = bytes(self._device.read(ep, length, timeout=timeout_ms))
         except usb.core.USBError as e:
+            log.warning("PyUsbBulkTransport.read: ep=0x%02x want %d byte(s), "
+                        "failed after %dms: %s", ep, length, timeout_ms, e)
             raise TransportError(f"USB read failed: {e}") from e
+        frame_log.debug("PyUsbBulkTransport.read: ep=0x%02x %d/%d byte(s)",
+                        ep, len(data), length)
+        return data
 
     @property
     def ep_out(self) -> int | None:
+        log.debug("PyUsbBulkTransport.ep_out: 0x%02x", self._ep_out or 0)
         return self._ep_out
 
     @property
     def ep_in(self) -> int | None:
+        log.debug("PyUsbBulkTransport.ep_in: 0x%02x", self._ep_in or 0)
         return self._ep_in
 
     def __enter__(self) -> PyUsbBulkTransport:
+        log.debug("PyUsbBulkTransport.__enter__: %04x:%04x",
+                  self._vid, self._pid)
         self.open()
         return self
 
     def __exit__(self, *exc: Any) -> None:
+        log.debug("__exit__: closing transport (exc=%s)", exc[0] if exc else None)
         self.close()
 
 
@@ -322,7 +352,11 @@ class _HidBinding(ABC):
 
     @classmethod
     def device_class(cls) -> Any | None:
-        return getattr(hidapi, cls.CLASS_ATTR, None) if HIDAPI_AVAILABLE else None
+        klass = getattr(hidapi, cls.CLASS_ATTR, None) if HIDAPI_AVAILABLE else None
+        log.debug("%s.device_class: hidapi=%s attr=%r -> %s",
+                  cls.__name__, HIDAPI_AVAILABLE, cls.CLASS_ATTR,
+                  "present" if klass else "absent")
+        return klass
 
     @classmethod
     def _require_class(cls) -> Any:
@@ -330,6 +364,8 @@ class _HidBinding(ABC):
         exists; this narrows for the type checker and guards direct use."""
         klass = cls.device_class()
         if klass is None:
+            log.warning("%s._require_class: hid module exposes no %r",
+                        cls.__name__, cls.CLASS_ATTR)
             raise ImportError(f"hid module exposes no {cls.CLASS_ATTR!r}")
         return klass
 
@@ -338,7 +374,10 @@ class _HidBinding(ABC):
         """The binding actually installed, or None."""
         for child in (_CythonHidBinding, _ApmortonHidBinding):
             if child.device_class() is not None:
+                log.info("_HidBinding.detect: using %s", child.__name__)
                 return child
+        log.warning("_HidBinding.detect: NO hid binding installed — "
+                    "HID panels cannot be opened (pip install hidapi)")
         return None
 
     @classmethod
@@ -350,7 +389,10 @@ class _HidBinding(ABC):
         by name so the tuple is correct whichever package is installed.
         """
         extra = getattr(hidapi, "HIDException", None) if HIDAPI_AVAILABLE else None
-        return (OSError, extra) if isinstance(extra, type) else (OSError,)
+        errors = (OSError, extra) if isinstance(extra, type) else (OSError,)
+        log.debug("%s.open_errors: %s", cls.__name__,
+                  [e.__name__ for e in errors])
+        return errors
 
     @classmethod
     @abstractmethod
@@ -368,6 +410,8 @@ class _CythonHidBinding(_HidBinding):
 
     @classmethod
     def open(cls, vid: int, pid: int, serial: str | None) -> Any:
+        log.info("_CythonHidBinding.open: %04x:%04x serial=%s",
+                 vid, pid, serial or "(any)")
         handle = cls._require_class()()        # ctor takes no useful args
         handle.open(vid, pid, serial)          # THE call the old code skipped
         handle.set_nonblocking(0)
@@ -381,6 +425,8 @@ class _ApmortonHidBinding(_HidBinding):
 
     @classmethod
     def open(cls, vid: int, pid: int, serial: str | None) -> Any:
+        log.info("_ApmortonHidBinding.open: %04x:%04x serial=%s",
+                 vid, pid, serial or "(any)")
         handle = cls._require_class()(vid=vid, pid=pid, serial=serial)
         handle.nonblocking = 0
         return handle
@@ -405,6 +451,8 @@ class HidApiTransport(BulkTransport):
         self._serial = serial
         self._device: Any = None
         self._is_open = False
+        log.debug("HidApiTransport.__init__: %04x:%04x serial=%s",
+                  vid, pid, serial or "(any)")
 
     def open(self) -> bool:
         binding = _HidBinding.detect()
@@ -430,6 +478,8 @@ class HidApiTransport(BulkTransport):
         return True
 
     def close(self) -> None:
+        log.info("HidApiTransport.close: %04x:%04x (was_open=%s)",
+                 self._vid, self._pid, self._is_open)
         if self._device is not None:
             try:
                 self._device.close()
@@ -440,26 +490,38 @@ class HidApiTransport(BulkTransport):
 
     @property
     def is_open(self) -> bool:
+        frame_log.debug("HidApiTransport.is_open: %s", self._is_open)
         return self._is_open
 
     def write(self, endpoint: int, data: WriteBuffer,
               timeout_ms: int = DEFAULT_TIMEOUT_MS) -> int:
         if not self._is_open or self._device is None:
+            log.warning("HidApiTransport.write: transport not open "
+                        "(%04x:%04x)", self._vid, self._pid)
             raise TransportError("Transport not open")
         # hidapi prepends a report ID byte (0x00 for default); bytes(data)
         # normalizes any buffer (incl. a memoryview slice) before concat.
-        return self._device.write(bytes([0x00]) + bytes(data))
+        sent = self._device.write(bytes([0x00]) + bytes(data))
+        frame_log.debug("HidApiTransport.write: %d byte(s) + report id -> %s",
+                        len(data), sent)
+        return sent
 
     def read(self, endpoint: int, length: int,
              timeout_ms: int = DEFAULT_TIMEOUT_MS) -> bytes:
         if not self._is_open or self._device is None:
+            log.warning("HidApiTransport.read: transport not open (%04x:%04x)",
+                        self._vid, self._pid)
             raise TransportError("Transport not open")
         data = self._device.read(length, timeout_ms)
+        frame_log.debug("HidApiTransport.read: want %d, got %d byte(s)",
+                        length, len(data) if data else 0)
         return bytes(data) if data else b''
 
     def __enter__(self) -> HidApiTransport:
+        log.debug("HidApiTransport.__enter__: %04x:%04x", self._vid, self._pid)
         self.open()
         return self
 
     def __exit__(self, *exc: Any) -> None:
+        log.debug("__exit__: closing transport (exc=%s)", exc[0] if exc else None)
         self.close()
