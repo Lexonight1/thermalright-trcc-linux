@@ -46,8 +46,15 @@ _RECURSION_RISK = frozenset({
 #: recurses forever.  Qualified by the enclosing class rather than by name
 #: alone — ``format`` is far too common a method name to exempt outright, and
 #: exempting it everywhere would hide real silent functions.
-_FORMATTER_HOOKS = frozenset({"format", "formatTime", "formatException"})
-_FORMATTER_BASES = ("Handler", "Formatter")
+#: ``filter`` belongs here for the same reason and was missing: ``logging``
+#: calls it on every EMITTED record, so a log call inside one emits a record,
+#: which runs the filters, which calls it again — proven by construction, not
+#: argued: a ``logging.Filter`` whose ``filter`` logs raises ``RecursionError``
+#: on the first record.  The ratchet was therefore demanding a log line in a
+#: function where one hangs the app.  Exactly one class in the tree is affected
+#: (``ClassContextFilter``), measured before widening the list.
+_FORMATTER_HOOKS = frozenset({"format", "formatTime", "formatException", "filter"})
+_FORMATTER_BASES = ("Handler", "Formatter", "Filter")
 
 
 def _class_bases_by_method(tree: ast.AST) -> dict[int, list[str]]:
