@@ -153,6 +153,11 @@ def _companion_files(root: Path) -> dict[str, Path]:
     return {p.name: p for p in root.rglob("*.cs")}
 
 
+def render(bmap: BranchMap) -> str:
+    """The branch map as committed — pure, so a test can diff it."""
+    return json.dumps(asdict(bmap), indent=2)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("decompile", nargs="?", type=Path, default=_DEFAULT)
@@ -164,7 +169,16 @@ def main() -> int:
         return 2
 
     bmap = build(args.decompile)
-    args.out.write_text(json.dumps(asdict(bmap), indent=2))
+    # Validate BEFORE writing.  This used to write first and check after, so a
+    # run with a broken target left a partial map on disk and still exited 1 —
+    # a corrupted committed artifact produced by the very run that reported the
+    # error.  Caught once by a diffstat, which is not a gate.
+    if missing := [r for r in bmap.not_mined if r.endswith("file not found")]:
+        print("FAIL — declared target(s) resolve to no file:", file=sys.stderr)
+        for r in missing:
+            print(f"  {r}", file=sys.stderr)
+        return 1
+    args.out.write_text(render(bmap))
     total = len(bmap.branches)
     print(f"wrote {args.out}  ({total} branches across "
           f"{len(bmap.per_method)} wire methods)\n")
@@ -174,14 +188,6 @@ def main() -> int:
     print("\n── not mined ──")
     for r in bmap.not_mined:
         print(f"  • {r}")
-    # A declared target that resolves to nothing is a BUG, not a note.  The wire
-    # target pointed at a 2.0.3 path for months and mapped zero branches while
-    # this list -- which nobody reads -- quietly said so.
-    if missing := [r for r in bmap.not_mined if r.endswith("file not found")]:
-        print("\nFAIL — declared target(s) resolve to no file:", file=sys.stderr)
-        for r in missing:
-            print(f"  {r}", file=sys.stderr)
-        return 1
     return 0
 
 
