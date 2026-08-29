@@ -91,22 +91,29 @@ def main() -> int:
                           f"({len(m['branches'])} branches)")
         return 0
 
-    pct = _report(ORACLE_PRODUCT, cf, cited)
     # Each binary is scored against ITS OWN methods and never pooled: the
     # application is several binaries, and one number over the union would move
     # the ported program's figure the moment a component is extracted, making it
-    # incomparable with every measurement recorded before.  ``--fail-under``
-    # gates the program we port; a component gets a floor when someone chooses
-    # one, after its real number is known rather than before.
+    # incomparable with every measurement recorded before.
+    scores = {ORACLE_PRODUCT: _report(ORACLE_PRODUCT, cf, cited)}
     for extra in sorted(DEC.glob("control-flow-*.json")):
         product = extra.name[len("control-flow-"):-len(".json")]
         print()
-        _report(product, json.loads(extra.read_text()), cited)
+        scores[product] = _report(product, json.loads(extra.read_text()), cited)
     print("\nCoverage = a method has >=1 line cited in an AUDIT_*.md / BEHAVIOR_*.md doc.")
-    if args.fail_under is not None and pct < args.fail_under:
-        print(f"\nFAIL — behaviour-bearing coverage {pct}% is below the "
-              f"--fail-under floor of {args.fail_under}%.  Either the audit "
-              f"lost citations, or new C# arrived unaudited.")
+
+    # The floor applies to EVERY binary, not just the ported program.  It used to
+    # gate only the latter, with the component excused "until its real number is
+    # known" — but an ungated number is one nothing defends: the wire audit could
+    # lose every citation it has and this would still exit 0.  Both binaries are
+    # above 95 today (96 and 100), so one floor covers both and CI is unchanged.
+    if args.fail_under is None:
+        return 0
+    if below := {k: v for k, v in scores.items() if v < args.fail_under}:
+        for product, pct in sorted(below.items()):
+            print(f"\nFAIL — {product} behaviour-bearing coverage {pct}% is below "
+                  f"the --fail-under floor of {args.fail_under}%.  Either the audit "
+                  f"lost citations, or new C# arrived unaudited.")
         return 1
     return 0
 
