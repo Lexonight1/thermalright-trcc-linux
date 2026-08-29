@@ -1,0 +1,741 @@
+{
+ "Examples/DCReadWriteAsync.cs": [
+  {
+   "name": "InitMemorySizeRGB",
+   "line": 68,
+   "branches": []
+  },
+  {
+   "name": "ReadShareMemoryRGB",
+   "line": 73,
+   "branches": []
+  },
+  {
+   "name": "WriteShareMemoryRGB",
+   "line": 81,
+   "branches": []
+  },
+  {
+   "name": "CloseShareMemoryRGB",
+   "line": 89,
+   "branches": []
+  },
+  {
+   "name": "StratDCReadWriteAsync",
+   "line": 94,
+   "branches": [
+    {
+     "kind": "if",
+     "line": 99,
+     "condition": "shareMemoryRGB == null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 116,
+     "condition": "val.Vid == 34733 && val.Pid == 28891",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 118,
+     "condition": "!val.Open(ref val2)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 129,
+     "condition": "!arrayDeviceOnline[j]",
+     "drivers": []
+    },
+    {
+     "kind": "elif",
+     "line": 146,
+     "condition": "val.Vid == 1046 && val.Pid == 21250",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 148,
+     "condition": "!val.Open(ref val2)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 159,
+     "condition": "!arrayDeviceOnline[k]",
+     "drivers": []
+    },
+    {
+     "kind": "elif",
+     "line": 176,
+     "condition": "val.Vid == 1046 && val.Pid == 21510",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 178,
+     "condition": "!val.Open(ref val2)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 189,
+     "condition": "!arrayDeviceOnline[l]",
+     "drivers": []
+    },
+    {
+     "kind": "elif",
+     "line": 206,
+     "condition": "val.Vid == 1046 && val.Pid == 21512",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 208,
+     "condition": "!val.Open(ref val2)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 219,
+     "condition": "!arrayDeviceOnline[m]",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 238,
+     "condition": "val.Vid != 1046 || val.Pid != 21513 || !val.Open(ref val2)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 249,
+     "condition": "!arrayDeviceOnline[n]",
+     "drivers": []
+    }
+   ]
+  },
+  {
+   "name": "ThreadSendDeviceData",
+   "line": 271,
+   "branches": [
+    {
+     "kind": "if",
+     "line": 306,
+     "condition": "val == null",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 312,
+     "condition": "(val is IUsbDevice)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 313,
+     "condition": "val3 != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 334,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 340,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 348,
+     "condition": "!val7.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 355,
+     "condition": "!val9.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 368,
+     "condition": "array[24] != 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 370,
+     "condition": "array[56] == 129",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 414,
+     "condition": "array3[0] == 170 && array3[1] == 187 && array3[2] == 204 && array3[3] == 221",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 421,
+     "condition": "array3[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 423,
+     "condition": "array3[0] != 0 || array3[1] != 1 || array3[2] != 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 439,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 443,
+     "condition": "num4 % 512 == 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 450,
+     "condition": "!val7.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 473,
+     "condition": "val != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 475,
+     "condition": "val.IsOpen",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 477,
+     "condition": "(val is IUsbDevice) ? va",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 478,
+     "condition": "val10 != null",
+     "drivers": []
+    }
+   ]
+  },
+  {
+   "name": "ThreadSendDeviceDataH",
+   "line": 491,
+   "branches": [
+    {
+     "kind": "if",
+     "line": 521,
+     "condition": "val == null",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 527,
+     "condition": "(val is IUsbDevice)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 528,
+     "condition": "val3 != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 546,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 552,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 559,
+     "condition": "!val7.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 567,
+     "condition": "!val9.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 580,
+     "condition": "array[0] == 218 && array[1] == 219 && array[2] == 220 && array[3] == 221 && array[12] == 1 && array[16] == 16",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 602,
+     "condition": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 609,
+     "condition": "array2[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 611,
+     "condition": "array2[0] == 0 && array2[1] == 1 && array2[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 624,
+     "condition": "(num4 % 512 != 0) ? 512",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 626,
+     "condition": "(int)val6 != 0 || num5 == 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 645,
+     "condition": "val != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 647,
+     "condition": "val.IsOpen",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 649,
+     "condition": "(val is IUsbDevice) ? va",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 650,
+     "condition": "val10 != null",
+     "drivers": []
+    }
+   ]
+  },
+  {
+   "name": "ThreadSendDeviceDataALi",
+   "line": 663,
+   "branches": [
+    {
+     "kind": "if",
+     "line": 700,
+     "condition": "val == null",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 706,
+     "condition": "(val is IUsbDevice)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 707,
+     "condition": "val3 != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 725,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 731,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 738,
+     "condition": "!val7.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 746,
+     "condition": "!val9.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 759,
+     "condition": "array[0] == 54 || array[0] == 101 || array[0] == 102",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 776,
+     "condition": "array[0] == 54",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 791,
+     "condition": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 798,
+     "condition": "array2[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 800,
+     "condition": "array2[0] == 0 && array2[1] == 1 && array2[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 817,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 823,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 841,
+     "condition": "val != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 843,
+     "condition": "val.IsOpen",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 845,
+     "condition": "(val is IUsbDevice) ? va",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 846,
+     "condition": "val10 != null",
+     "drivers": []
+    }
+   ]
+  },
+  {
+   "name": "ThreadSendDeviceDataLY",
+   "line": 859,
+   "branches": [
+    {
+     "kind": "if",
+     "line": 901,
+     "condition": "val == null",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 907,
+     "condition": "(val is IUsbDevice)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 908,
+     "condition": "val3 != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 926,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 932,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 939,
+     "condition": "!val7.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 947,
+     "condition": "!val9.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 960,
+     "condition": "array[0] == 3 && array[1] == byte.MaxValue && array[8] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 963,
+     "condition": "array[20] <= 3",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 986,
+     "condition": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 993,
+     "condition": "array2[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 995,
+     "condition": "array2[0] != 0 || array2[1] != 1 || array2[2] != 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1018,
+     "condition": "num7 == num9 - 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1054,
+     "condition": "num8 != 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1064,
+     "condition": "num4 >= 4096",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1067,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1076,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1086,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1103,
+     "condition": "val != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1105,
+     "condition": "val.IsOpen",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 1107,
+     "condition": "(val is IUsbDevice) ? va",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1108,
+     "condition": "val10 != null",
+     "drivers": []
+    }
+   ]
+  },
+  {
+   "name": "ThreadSendDeviceDataLY1",
+   "line": 1121,
+   "branches": [
+    {
+     "kind": "if",
+     "line": 1158,
+     "condition": "val == null",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 1164,
+     "condition": "(val is IUsbDevice)",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1165,
+     "condition": "val3 != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1183,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1189,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1196,
+     "condition": "!val7.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1204,
+     "condition": "!val9.IsCompleted",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1217,
+     "condition": "array[0] == 3 && array[1] == byte.MaxValue && array[8] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1240,
+     "condition": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1247,
+     "condition": "array2[2] == 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1249,
+     "condition": "array2[0] != 0 || array2[1] != 1 || array2[2] != 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1272,
+     "condition": "num7 == num9 - 1",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1308,
+     "condition": "num8 != 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1318,
+     "condition": "(int)val6 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1321,
+     "condition": "num11 == 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1328,
+     "condition": "flag",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1331,
+     "condition": "(int)val8 > 0",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1349,
+     "condition": "val != null",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1351,
+     "condition": "val.IsOpen",
+     "drivers": []
+    },
+    {
+     "kind": "ternary",
+     "line": 1353,
+     "condition": "(val is IUsbDevice) ? va",
+     "drivers": []
+    },
+    {
+     "kind": "if",
+     "line": 1354,
+     "condition": "val10 != null",
+     "drivers": []
+    }
+   ]
+  }
+ ],
+ "Examples/ReadWriteAsync.cs": [
+  {
+   "name": "Main",
+   "line": 5,
+   "branches": []
+  }
+ ],
+ "Properties/AssemblyInfo.cs": [],
+ "ThisAssembly.cs": []
+}

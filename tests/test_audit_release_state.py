@@ -36,11 +36,6 @@ from core.csharp import DECOMPILE_ROOT  # noqa: E402  # pyright: ignore[reportMi
 
 _DOCS = audit_release.docs()
 _TREES = audit_release.discover(DECOMPILE_ROOT.parent)
-_NEEDS_DECOMPILE = pytest.mark.skipif(
-    len(_TREES) < 2,
-    reason=f"needs two decompiles to compare; found {len(_TREES)} under "
-           f"{DECOMPILE_ROOT.parent}",
-)
 
 
 def test_audit_docs_exist() -> None:
@@ -76,7 +71,6 @@ def test_doc_names_no_release_outside_its_state_block(doc: Path) -> None:
     )
 
 
-@_NEEDS_DECOMPILE
 @pytest.mark.parametrize("doc", _DOCS, ids=lambda p: p.name)
 def test_citations_resolve_in_the_release_the_doc_addresses(doc: Path) -> None:
     """A doc claiming to address a release must actually land there.
@@ -89,12 +83,31 @@ def test_citations_resolve_in_the_release_the_doc_addresses(doc: Path) -> None:
     """
     state = audit_release.State.read(doc.read_text())
     assert state is not None
+    if not _TREES:
+        pytest.skip(f"no decompile under {DECOMPILE_ROOT.parent}")
     by_version = {t.version: t for t in _TREES}
     current = next((t for t in _TREES if t.path == DECOMPILE_ROOT), _TREES[-1])
     if state.addresses != current.version:
         pytest.skip(f"{doc.name} addresses {state.addresses}, not {current.version}")
 
-    fails = [f for f in audit_release.unresolved(doc, by_version[state.origin], current)
+    # The precondition is this doc's ORIGIN release, not a tree COUNT.  It used
+    # to be ``skipif(len(_TREES) < 2, "needs two decompiles to compare")``, which
+    # is a different claim and a misleading one: it reads as "add a decompile and
+    # these run", when adding any second decompile makes them FAIL with
+    # ``KeyError`` on the origin version.  What they need is the specific tree
+    # each doc was read from -- TRCC 2.0.3 -- which was deleted deliberately and
+    # must never be re-extracted.  So this reports UNRUNNABLE-and-why rather than
+    # a count, and it self-heals: after a future rebase ``origin`` becomes a
+    # release that IS on disk and the comparison runs again.
+    if (origin := by_version.get(state.origin)) is None:
+        pytest.skip(
+            f"{doc.name} was read from TRCC {state.origin}, which is not on disk "
+            f"under {DECOMPILE_ROOT.parent} (only {', '.join(t.label for t in _TREES)}). "
+            f"Comparing citations needs the origin release; TRCC 2.0.3 was deleted "
+            f"on purpose and is not to be re-extracted."
+        )
+
+    fails = [f for f in audit_release.unresolved(doc, origin, current)
              if audit_release._fail_key(f) not in state.known_bad]
     assert not fails, (
         f"{doc.name} says it addresses TRCC {current.release} but "

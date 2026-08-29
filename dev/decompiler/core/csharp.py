@@ -43,6 +43,18 @@ ORACLE_RELEASE = "2.1.6"
 # tree was NAMED 2.1.6 in the docs and said 2.0.3 inside; only this discriminates.
 ORACLE_VERSION = f"{ORACLE_RELEASE}.0"
 
+# The program we port, as the binary itself declares it (``AssemblyProduct``).
+#
+# The installer ships FOUR managed/native binaries and only one of them is TRCC:
+# ``USBLCDNEW.dll`` declares ``AssemblyProduct("USBLCDNEW")`` and its own
+# independent ``AssemblyVersion("2.3.0.0")``.  Discovery used to key a decompile
+# purely on "has a Properties/AssemblyInfo.cs", so decompiling the wire component
+# made it appear as a RELEASE -- "TRCC 2.3.0", a release that has never existed --
+# and every release-comparison tool would then diff a component against the
+# application.  A component version is data ABOUT a part, not an identity of the
+# whole, which is why this discriminates on product rather than on version.
+ORACLE_PRODUCT = "TRCC"
+
 # The decompile every miner reads.  ONE definition: the three readers each
 # spelled this differently (one of them hardcoded /home/ignorant), so when the
 # real tree was re-extracted they would have drifted apart.
@@ -103,6 +115,12 @@ def decompile_text(root: Path | None = None) -> str:
 # (Form1.cs:272)` looked like a citation into nothing.
 _SIGNATURE = r"\b(?:private|public|internal|protected)\s+(?:[\w<>\[\],\s]+?\s+)?"
 _DEFINITION_RE = re.compile(rf"{_SIGNATURE}(\w+)\s*\(")
+# Type declarations.  A class and its constructor share a name, so an anchor
+# that matches one matches the other -- which is why this exists; see
+# ``CSharpSource.types``.
+_TYPE_RE = re.compile(
+    r"^\s*(?:public|internal|private|protected|partial|sealed|abstract|static|\s)*"
+    r"\b(?:class|struct|enum|interface)\s+(\w+)", re.M)
 
 
 @dataclass(frozen=True)
@@ -144,6 +162,19 @@ class CSharpSource:
     def method_names(self) -> list[str]:
         """Every method defined in the file, in source order."""
         return _DEFINITION_RE.findall(self._text)
+
+    def types(self) -> set[str]:
+        """Every type declared here — classes, structs, enums, interfaces.
+
+        A citation anchored to one of these is NOT checkable as a method, even
+        though a same-named method exists: ``public FormLCD()`` is indexed as a
+        method spanning 35 lines, while prose saying "constructed only by
+        `FormLCD`" means the 5,000-line CLASS.  The anchor is genuinely
+        ambiguous and the text cannot tell which was meant, so the caller
+        declines to assert rather than resolving it to the constructor and
+        condemning every citation elsewhere in the class.
+        """
+        return set(_TYPE_RE.findall(self._text))
 
     def methods(self) -> list[Method]:
         """Every method with its body, in source order — overloads included.

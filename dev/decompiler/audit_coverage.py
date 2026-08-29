@@ -31,6 +31,7 @@ import json
 from pathlib import Path
 
 from core.citations import by_file, parse_all
+from core.csharp import ORACLE_PRODUCT
 from core.releases import BOILERPLATE as _BOILERPLATE
 
 DEC = Path(__file__).resolve().parent
@@ -38,6 +39,30 @@ _HUGE = 10**9
 
 def _is_covered(method: dict, nxt: int, lines: list[int]) -> bool:
     return any(method["line"] <= c < nxt for c in lines)
+
+
+def _report(product: str, cf: dict, cited: dict) -> int:
+    """Print one binary's coverage; return its behaviour-bearing percentage."""
+    tot_m = tot_c = bhv_m = bhv_c = 0
+    for rel, methods in cf.items():
+        base = rel.split("/")[-1]
+        lines = sorted(cited.get(base, set()))
+        starts = [m["line"] for m in methods]
+        cov = sum(
+            _is_covered(m, starts[i + 1] if i + 1 < len(starts) else _HUGE, lines)
+            for i, m in enumerate(methods)
+        )
+        tot_m += len(methods)
+        tot_c += cov
+        if base not in _BOILERPLATE:
+            bhv_m += len(methods)
+            bhv_c += cov
+    print(f"{product} — ALL methods:  {tot_c}/{tot_m} cited = "
+          f"{100 * tot_c // tot_m if tot_m else 0}%")
+    print(f"{product} — BEHAVIOUR:    {bhv_c}/{bhv_m} cited = "
+          f"{100 * bhv_c // bhv_m if bhv_m else 0}%  "
+          f"(excludes {tot_m - bhv_m} designer/boilerplate methods)")
+    return 100 * bhv_c // bhv_m if bhv_m else 0
 
 
 def main() -> int:
@@ -66,25 +91,18 @@ def main() -> int:
                           f"({len(m['branches'])} branches)")
         return 0
 
-    tot_m = tot_c = bhv_m = bhv_c = 0
-    for rel, methods in cf.items():
-        base = rel.split("/")[-1]
-        lines = sorted(cited.get(base, set()))
-        starts = [m["line"] for m in methods]
-        cov = sum(
-            _is_covered(m, starts[i + 1] if i + 1 < len(starts) else _HUGE, lines)
-            for i, m in enumerate(methods)
-        )
-        tot_m += len(methods)
-        tot_c += cov
-        if base not in _BOILERPLATE:
-            bhv_m += len(methods)
-            bhv_c += cov
-    print(f"ALL methods:            {tot_c}/{tot_m} cited = {100 * tot_c // tot_m}%")
-    print(f"BEHAVIOR-BEARING only:  {bhv_c}/{bhv_m} cited = {100 * bhv_c // bhv_m}%  "
-          f"(excludes {tot_m - bhv_m} designer/boilerplate methods)")
-    print("Coverage = a method has >=1 line cited in an AUDIT_*.md / BEHAVIOR_*.md doc.")
-    pct = 100 * bhv_c // bhv_m
+    pct = _report(ORACLE_PRODUCT, cf, cited)
+    # Each binary is scored against ITS OWN methods and never pooled: the
+    # application is several binaries, and one number over the union would move
+    # the ported program's figure the moment a component is extracted, making it
+    # incomparable with every measurement recorded before.  ``--fail-under``
+    # gates the program we port; a component gets a floor when someone chooses
+    # one, after its real number is known rather than before.
+    for extra in sorted(DEC.glob("control-flow-*.json")):
+        product = extra.name[len("control-flow-"):-len(".json")]
+        print()
+        _report(product, json.loads(extra.read_text()), cited)
+    print("\nCoverage = a method has >=1 line cited in an AUDIT_*.md / BEHAVIOR_*.md doc.")
     if args.fail_under is not None and pct < args.fail_under:
         print(f"\nFAIL — behaviour-bearing coverage {pct}% is below the "
               f"--fail-under floor of {args.fail_under}%.  Either the audit "

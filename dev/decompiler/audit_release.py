@@ -42,7 +42,7 @@ from pathlib import Path
 from core.citations import (
     Citation, Hit, documented, files_mentioned, parse, rewrite,
 )
-from core.csharp import DECOMPILE_ROOT, Method
+from core.csharp import DECOMPILE_ROOT, CSharpSource, Method
 from core.releases import BOILERPLATE, FilePair, Tree, discover
 
 DEC = Path(__file__).resolve().parent
@@ -121,6 +121,7 @@ class Locator:
     def __init__(self, source: Tree, target: Tree, also: frozenset[str]) -> None:
         self._source, self._target, self._also = source.files(), target.files(), also
         self._pairs: dict[str, FilePair] = {}
+        self._types: dict[str, set[str]] = {}
 
     def pair(self, filename: str) -> FilePair:
         if filename not in self._pairs:
@@ -137,10 +138,39 @@ class Locator:
         pair = self.pair(filename)
         return {m.name for m in pair.source.values()} | {m.name for m in pair.target.values()}
 
+    def types(self, filename: str) -> set[str]:
+        """Type names declared in *filename* — read from the target release."""
+        if filename not in self._types:
+            path = self._target.get(filename)
+            self._types[filename] = (
+                CSharpSource(path.read_text(errors="replace")).types() if path else set())
+        return self._types[filename]
+
+    def covers(self, filename: str, anchor: str, line: int) -> bool:
+        """Does a method named *anchor* in *filename* span *line*?"""
+        for (name, _), m in self.pair(filename).target.items():
+            if name == anchor and m.line <= line <= m.body_line + len(m.body.splitlines()) - 1:
+                return True
+        return False
+
     def is_method(self, hit: Hit | Citation) -> bool:
-        """Does this citation's anchor name a real method in a file it could be in?"""
-        return bool(hit.kind == "method" and hit.anchor
-                    and any(hit.anchor in self.names(f) for f in self._candidates(hit)))
+        """Does this citation's anchor name a real method in a file it could be in?
+
+        A TYPE name is not one, even though a same-named method exists: every
+        class with a constructor puts its own name in ``names()``.  Prose reading
+        "constructed only by `FormLCD` (`FormLCD.cs:4757`)" means the class, but
+        the anchor resolves to the constructor — 35 lines at 852 — so citations
+        anywhere else in the 5,000-line class were condemned as not landing.
+        The text cannot say which was meant, so this declines to assert, exactly
+        as it already does for a variable that is not a method at all.
+        Measured: 60 of 1,088 method-kind citations across 17 docs.
+        """
+        if hit.kind != "method" or not hit.anchor:
+            return False
+        cands = self._candidates(hit)
+        if any(hit.anchor in self.types(f) for f in cands):
+            return False
+        return any(hit.anchor in self.names(f) for f in cands)
 
     def find(self, hit: Hit | Citation, line: int) -> tuple[Method, Method] | None:
         """The (source, target) method pair this line sits in, if it is unchanged."""
@@ -239,7 +269,18 @@ def unresolved(doc: Path, source: Tree, target: Tree,
                 continue
             if path not in cache:
                 cache[path] = path.read_text(errors="replace").splitlines()
-            if cite.holds_in(cache[path], WINDOW):
+            # Two proxies for "this citation still points into its method", and a
+            # citation satisfying EITHER is anchored.  The window asks whether the
+            # method's name appears within WINDOW lines -- which a citation cites
+            # the signature satisfies, and one pointing deep into a long body
+            # cannot: `OnPaint` cited 200 lines past its signature reads as
+            # unresolved though it is squarely inside.  Spanning is the truer
+            # question but not sufficient alone, because a citation to a
+            # signature sits one line ABOVE the body.  Measured over the corpus:
+            # the union resolves 7 more citations and regresses none, since a
+            # union only ever adds passes.
+            if (cite.holds_in(cache[path], WINDOW)
+                    or where.covers(name, cite.anchor, cite.line)):
                 break
         else:
             bad.append(f"{cite.file}:{cite.line} `{cite.anchor}`")

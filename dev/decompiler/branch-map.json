@@ -1129,6 +1129,713 @@
       "guards": "new byte[512]"
     },
     {
+      "method": "StratDCReadWriteAsync",
+      "line": 99,
+      "kind": "if",
+      "on": "shareMemoryRGB == null",
+      "guards": "return"
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 116,
+      "kind": "if",
+      "on": "val.Vid == 34733 && val.Pid == 28891",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 118,
+      "kind": "if",
+      "on": "!val.Open(ref val2)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 129,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[j]",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 146,
+      "kind": "else-if",
+      "on": "val.Vid == 1046 && val.Pid == 21250",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 148,
+      "kind": "if",
+      "on": "!val.Open(ref val2)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 159,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[k]",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 176,
+      "kind": "else-if",
+      "on": "val.Vid == 1046 && val.Pid == 21510",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 178,
+      "kind": "if",
+      "on": "!val.Open(ref val2)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 189,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[l]",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 206,
+      "kind": "else-if",
+      "on": "val.Vid == 1046 && val.Pid == 21512",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 208,
+      "kind": "if",
+      "on": "!val.Open(ref val2)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 219,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[m]",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 238,
+      "kind": "if",
+      "on": "val.Vid != 1046 || val.Pid != 21513 || !val.Open(ref val2)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 249,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[n]",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 306,
+      "kind": "if",
+      "on": "val == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 313,
+      "kind": "if",
+      "on": "val3 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 334,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 340,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 348,
+      "kind": "if",
+      "on": "!val7.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 355,
+      "kind": "if",
+      "on": "!val9.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 368,
+      "kind": "if",
+      "on": "array[24] != 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 370,
+      "kind": "if",
+      "on": "array[56] == 129",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 414,
+      "kind": "if",
+      "on": "array3[0] == 170 && array3[1] == 187 && array3[2] == 204 && array3[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 421,
+      "kind": "if",
+      "on": "array3[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 423,
+      "kind": "if",
+      "on": "array3[0] != 0 || array3[1] != 1 || array3[2] != 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 439,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 443,
+      "kind": "if",
+      "on": "num4 % 512 == 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 450,
+      "kind": "if",
+      "on": "!val7.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 473,
+      "kind": "if",
+      "on": "val != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 475,
+      "kind": "if",
+      "on": "val.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 478,
+      "kind": "if",
+      "on": "val10 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 521,
+      "kind": "if",
+      "on": "val == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 528,
+      "kind": "if",
+      "on": "val3 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 546,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 552,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 559,
+      "kind": "if",
+      "on": "!val7.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 567,
+      "kind": "if",
+      "on": "!val9.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 580,
+      "kind": "if",
+      "on": "array[0] == 218 && array[1] == 219 && array[2] == 220 && array[3] == 221 && array[12] == 1 && array[16] == 16",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 602,
+      "kind": "if",
+      "on": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 609,
+      "kind": "if",
+      "on": "array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 611,
+      "kind": "if",
+      "on": "array2[0] == 0 && array2[1] == 1 && array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 626,
+      "kind": "if",
+      "on": "(int)val6 != 0 || num5 == 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 645,
+      "kind": "if",
+      "on": "val != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 647,
+      "kind": "if",
+      "on": "val.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 650,
+      "kind": "if",
+      "on": "val10 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 700,
+      "kind": "if",
+      "on": "val == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 707,
+      "kind": "if",
+      "on": "val3 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 725,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 731,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 738,
+      "kind": "if",
+      "on": "!val7.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 746,
+      "kind": "if",
+      "on": "!val9.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 759,
+      "kind": "if",
+      "on": "array[0] == 54 || array[0] == 101 || array[0] == 102",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 776,
+      "kind": "if",
+      "on": "array[0] == 54",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 791,
+      "kind": "if",
+      "on": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 798,
+      "kind": "if",
+      "on": "array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 800,
+      "kind": "if",
+      "on": "array2[0] == 0 && array2[1] == 1 && array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 817,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 823,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 841,
+      "kind": "if",
+      "on": "val != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 843,
+      "kind": "if",
+      "on": "val.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 846,
+      "kind": "if",
+      "on": "val10 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 901,
+      "kind": "if",
+      "on": "val == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 908,
+      "kind": "if",
+      "on": "val3 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 926,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 932,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 939,
+      "kind": "if",
+      "on": "!val7.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 947,
+      "kind": "if",
+      "on": "!val9.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 960,
+      "kind": "if",
+      "on": "array[0] == 3 && array[1] == byte.MaxValue && array[8] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 963,
+      "kind": "if",
+      "on": "array[20] <= 3",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 986,
+      "kind": "if",
+      "on": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 993,
+      "kind": "if",
+      "on": "array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 995,
+      "kind": "if",
+      "on": "array2[0] != 0 || array2[1] != 1 || array2[2] != 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1018,
+      "kind": "if",
+      "on": "num7 == num9 - 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1054,
+      "kind": "if",
+      "on": "num8 != 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1064,
+      "kind": "if",
+      "on": "num4 >= 4096",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1067,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1076,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1086,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1103,
+      "kind": "if",
+      "on": "val != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1105,
+      "kind": "if",
+      "on": "val.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY",
+      "line": 1108,
+      "kind": "if",
+      "on": "val10 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1158,
+      "kind": "if",
+      "on": "val == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1165,
+      "kind": "if",
+      "on": "val3 != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1183,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1189,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1196,
+      "kind": "if",
+      "on": "!val7.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1204,
+      "kind": "if",
+      "on": "!val9.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1217,
+      "kind": "if",
+      "on": "array[0] == 3 && array[1] == byte.MaxValue && array[8] == 1",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1240,
+      "kind": "if",
+      "on": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1247,
+      "kind": "if",
+      "on": "array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1249,
+      "kind": "if",
+      "on": "array2[0] != 0 || array2[1] != 1 || array2[2] != 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1272,
+      "kind": "if",
+      "on": "num7 == num9 - 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1308,
+      "kind": "if",
+      "on": "num8 != 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1318,
+      "kind": "if",
+      "on": "(int)val6 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1321,
+      "kind": "if",
+      "on": "num11 == 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1328,
+      "kind": "if",
+      "on": "flag",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1331,
+      "kind": "if",
+      "on": "(int)val8 > 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1349,
+      "kind": "if",
+      "on": "val != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1351,
+      "kind": "if",
+      "on": "val.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataLY1",
+      "line": 1354,
+      "kind": "if",
+      "on": "val10 != null",
+      "guards": ""
+    },
+    {
       "method": "SendHidVal",
       "line": 4377,
       "kind": "if",
@@ -1549,11 +2256,16 @@
     "UCDevice.cs::DeviceDataReceived2": 5,
     "UCDevice.cs::ThreadSendDeviceData1": 2,
     "UCDevice.cs::ThreadSendDeviceData2": 2,
+    "DCReadWriteAsync.cs::StratDCReadWriteAsync": 15,
+    "DCReadWriteAsync.cs::ThreadSendDeviceData": 17,
+    "DCReadWriteAsync.cs::ThreadSendDeviceDataH": 14,
+    "DCReadWriteAsync.cs::ThreadSendDeviceDataALi": 16,
+    "DCReadWriteAsync.cs::ThreadSendDeviceDataLY": 20,
+    "DCReadWriteAsync.cs::ThreadSendDeviceDataLY1": 19,
     "FormLED.cs::SendHidVal": 59
   },
   "not_mined": [
     "TRCC/UCDevice.cs::DeviceOnConnected2 \u2014 0 branches (body at L1336); confirm by hand",
-    "USBLCDNEW.decompiled.cs/USBLCDNEW.decompiled.cs \u2014 file not found",
     "USBLCD.exe.c (scsi/bulk/ly) \u2014 Ghidra C dump, not branch-mined here"
   ]
 }

@@ -21,12 +21,14 @@ import argparse
 import json
 import re
 import sys
+from functools import cache
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from core.csharp import CSharpSource, Method
 
 from core.csharp import DECOMPILE_ROOT as _DEFAULT
+from core.releases import discover
 
 # (relative-path, [wire-relevant methods]) — the decision points that shape the
 # wire.  Everything else in these 7000-line forms is UI noise we skip.
@@ -36,7 +38,14 @@ TARGETS: list[tuple[str, list[str]]] = [
     ("TRCC/UCDevice.cs",
      ["DeviceOnConnected2", "DeviceDataReceived2",
       "ThreadSendDeviceData1", "ThreadSendDeviceData2"]),
-    ("USBLCDNEW.decompiled.cs/USBLCDNEW.decompiled.cs", ["*"]),  # F5 type-3 wire
+    # The wire.  Named by BASENAME because it is not in the release tree at all
+    # -- it ships in the USBLCDNEW component, resolved through the companion-aware
+    # file map.  This entry used to read
+    # ``USBLCDNEW.decompiled.cs/USBLCDNEW.decompiled.cs``, the layout of the 2.0.3
+    # TRCCCAPEN install, and had resolved to NOTHING since the 2.1.6 cutover: the
+    # wire was silently absent from every branch map while the target sat here
+    # looking mined.
+    ("DCReadWriteAsync.cs", ["*"]),  # bulk / LY / LY1 / ALi senders + SHM bridge
     ("TRCC.LED/FormLED.cs", ["SendHidVal"]),
 ]
 
@@ -102,6 +111,10 @@ def build(decompile: Path) -> BranchMap:
     for rel, methods in TARGETS:
         path = decompile / rel
         if not path.exists():
+            # Fall back to the companion-aware map: a target may live in a
+            # component binary rather than the release tree.
+            path = _companion_files(decompile).get(Path(rel).name)
+        if path is None or not path.exists():
             bmap.not_mined.append(f"{rel} — file not found")
             continue
         src = CSharpSource.read(path)
@@ -131,6 +144,15 @@ def build(decompile: Path) -> BranchMap:
     return bmap
 
 
+@cache
+def _companion_files(root: Path) -> dict[str, Path]:
+    """Filename -> path across the release at *root* and its component binaries."""
+    for tree in discover(root.parent):
+        if tree.path == root:
+            return tree.files()
+    return {p.name: p for p in root.rglob("*.cs")}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("decompile", nargs="?", type=Path, default=_DEFAULT)
@@ -152,6 +174,14 @@ def main() -> int:
     print("\n── not mined ──")
     for r in bmap.not_mined:
         print(f"  • {r}")
+    # A declared target that resolves to nothing is a BUG, not a note.  The wire
+    # target pointed at a 2.0.3 path for months and mapped zero branches while
+    # this list -- which nobody reads -- quietly said so.
+    if missing := [r for r in bmap.not_mined if r.endswith("file not found")]:
+        print("\nFAIL — declared target(s) resolve to no file:", file=sys.stderr)
+        for r in missing:
+            print(f"  {r}", file=sys.stderr)
+        return 1
     return 0
 
 

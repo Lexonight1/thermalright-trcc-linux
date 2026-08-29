@@ -28,6 +28,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from core.csharp import DECOMPILE_ROOT as CS_ROOT
+from core.releases import binaries
 OUT_DIR = Path(__file__).resolve().parent
 OUT_JSON = OUT_DIR / "control-flow.json"
 OUT_MD = OUT_DIR / "CONTROL_FLOW.md"
@@ -172,16 +173,33 @@ def scan_file(path: Path) -> list[Method]:
     return methods
 
 
-def main() -> int:
+def _scan_tree(root: Path) -> tuple[dict[str, list[dict]], int, int]:
+    """Every method in the decompile rooted at *root*, and its totals.
+
+    Walks ``root`` directly rather than ``Tree.files()``: that map now spans a
+    release AND its component binaries so a citation can resolve across them,
+    which is exactly what a DENOMINATOR must not do.  Merging USBLCDNEW's
+    methods into TRCC.exe's would move the 96% and make it incomparable with
+    every figure ever recorded against it.  One map per binary, never merged.
+    """
     data: dict[str, list[dict]] = {}
     tot_m = tot_b = 0
-    for cs in sorted(CS_ROOT.rglob("*.cs")):
-        rel = str(cs.relative_to(CS_ROOT))
+    for cs in sorted(root.rglob("*.cs")):
         methods = scan_file(cs)
-        data[rel] = [asdict(m) for m in methods]
+        data[str(cs.relative_to(root))] = [asdict(m) for m in methods]
         tot_m += len(methods)
         tot_b += sum(len(m.branches) for m in methods)
+    return data, tot_m, tot_b
 
+
+def main() -> int:
+    for tree in binaries(CS_ROOT.parent):
+        part, m, b = _scan_tree(tree.path)
+        (OUT_DIR / f"control-flow-{tree.product}.json").write_text(
+            json.dumps(part, indent=1))
+        print(f"{tree.product}: {len(part)} files · {m} methods · {b} branches")
+
+    data, tot_m, tot_b = _scan_tree(CS_ROOT)
     OUT_JSON.write_text(json.dumps(data, indent=1))
 
     md = ["# C# control-flow map — every method, every branch\n",
