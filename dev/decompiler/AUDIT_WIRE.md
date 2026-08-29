@@ -115,16 +115,27 @@ be taken. It is LY's `% 4` packet-count alignment (`:1053`) copy-pasted with the
 4 changed to a 1, which makes it a no-op. **Any "+1" we carry for this wire is
 implementing a vendor typo, not a protocol requirement.**
 
-**Device identity is published to shared memory, and only bulk MEASURES it.**
-The bulk sender builds its 9-byte record from the handshake reply — `[array[32],
-array[36], 0x48, array[40], array[24], array[28], 0xDC, array[20], namelen]`
-followed by the UTF-8 name (`:373`), taking the name from reply bytes `48..51`
-when `array[56] == 0x81` and from the OS instance id otherwise (`:390`). It
-refuses the device outright when `array[24] == 0` (`:368`). **The other wires
-publish CONSTANTS**: H `{0,0,54,0,0,220,220,220,0}` (`:583`), LY
-`{8,0,72,1,0,68,220,112,0}` (`:967`), LY1 `{0,0,72,1,0,0,220,112,0}` (`:1220`).
-So for those panels the main assembly is reading a hardcoded descriptor, not
-something the hardware said.
+**Every wire MEASURES device identity; the array literals are only defaults.**
+Each sender declares a record with constant bytes and then overwrites the
+identity slots from the handshake reply on the following lines — reading the
+literal alone says the opposite of what the code does, which is a trap worth
+naming because this document made it. The main assembly picks a record apart at
+`Form1.cs:1044` / `:1079` / `:1114`, discriminating on the record's OWN bytes,
+and the branch that `shm[2]==0x48 && shm[6]==0xDC` selects reads **PM from
+`shm[4]` and SUB from `shm[1]`** (`Form1.cs:1071`).
+
+| wire | record | `shm[4]` = PM | `shm[1]` = SUB |
+|---|---|---|---|
+| bulk (`:373`) | `[array[32], array[36], 0x48, array[40], array[24], array[28], 0xDC, array[20], len]` | `array[24]` | `array[36]` |
+| LY (`:967`) | `{8,0,72,1,0,68,220,112,0}` then mutated | `64 + array[20]` | `1 + array[22]` |
+| LY1 (`:1220`) | `{0,0,72,1,0,0,220,112,0}` then mutated | `49 + array[20]` | `array[22]` |
+| H (`:583`) | `{0,0,54,0,0,220,220,220,0}` then mutated | `array[5]` | `array[5]` |
+
+H carries `shm[2]==54`, so it takes the `Form1.cs:1114` branch instead, where PM
+is `shm[1]` and SUB is `shm[0]`. The bulk sender additionally takes its name from
+reply bytes `48..51` when `array[56] == 0x81` and from the OS instance id
+otherwise (`:390`), and refuses the device outright when `array[24] == 0`
+(`:368`). LY clamps `array[20] <= 3` up to 1 before use (`:963`).
 
 **This confirms the bulk offsets our conformance test asserts.** `shm[1]` is
 `array[36]` and `shm[4]` is `array[24]`, visible directly in the record above.

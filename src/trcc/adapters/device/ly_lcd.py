@@ -148,7 +148,24 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             self._sub = raw_sub + 1
         else:
             raw_sub = resp[22] if len(resp) > 22 else 0
-            self._pm = 50 + resp[36]
+            # LY1 PM is ``49 + resp[20]``, not ``50 + resp[36]``.
+            #
+            # ``ThreadSendDeviceDataLY1`` (USBLCDNEW.dll, DCReadWriteAsync.cs:1220)
+            # fills its shared-memory record ``obj3[0] = 50 + array[36]``,
+            # ``obj3[1] = array[22]``, ``obj3[4] = 49 + array[20]`` — and the main
+            # assembly reads PM from slot **4**, not slot 0: the record carries
+            # ``shm[2]==0x48 && shm[6]==0xDC``, which selects the ``Form1.cs:1044``
+            # branch, whose call is ``FormCZTVInit(72, 2, …, shm[4], text, shm[1])``
+            # (``Form1.cs:1071``).  We had implemented slot 0's formula, so PM came
+            # from a different reply byte AND was one too high.
+            #
+            # Found by auditing the wire component directly; the mock encoded
+            # ``resp[36] = pm - 50`` to satisfy this line, so the geometry test
+            # agreed with the defect rather than catching it.
+            #
+            # NOT glass-verified — no LY1 panel here.  What is verified is that
+            # this now computes what the vendor computes.
+            self._pm = 49 + resp[20]
             self._sub = raw_sub
 
         fbl = pm_to_fbl(self._pm, self._sub)

@@ -3,8 +3,13 @@
 Two PID variants:
     0x5408 (LY)   — PM = 64 + resp[20]  (resp[20] clamped to ≥1 when ≤3)
                     SUB = resp[22] + 1
-    0x5409 (LY1)  — PM = 50 + resp[36]
+    0x5409 (LY1)  — PM = 49 + resp[20]
                     SUB = resp[22]
+
+Both read PM from resp[20]; they differ only in the constant added and in
+whether SUB gets +1.  Cited: ``DCReadWriteAsync.cs:967`` (LY) and ``:1220``
+(LY1), whose records the main assembly unpacks as PM=shm[4], SUB=shm[1]
+(``Form1.cs:1071``).
 
 Both variants resolve to FBL 192 (1920×462 widescreen JPEG) by default,
 disambiguated to (1280, 480) or (1920, 440) for PMs 68/69 via _FBL_192_BY_PM.
@@ -26,7 +31,7 @@ def _ly_response(*, resp20: int = 0, resp22: int = 0, resp36: int = 0,
     """Build an LY handshake response.
 
     Validator requires len >= 37 and resp[0]=3, resp[1]=0xFF, resp[8]=1.
-    PM extraction reads resp[20] (LY) or resp[36] (LY1); SUB reads resp[22].
+    Both variants read PM from resp[20] and SUB from resp[22].
     """
     resp = bytearray(size)
     resp[0] = 3
@@ -98,21 +103,25 @@ def test_ly_handshake_resolution_uses_fbl_192_disambiguation(
     assert device._profile.rotate is True
 
 
-# ── LY1 (0x5409): PM = 50 + resp[36] ────────────────────────────────
+# ── LY1 (0x5409): PM = 49 + resp[20] ────────────────────────────────
 
 
-@pytest.mark.parametrize("resp36,expected_pm,expected_resolution", [
-    (15, 65, (1920, 462)),    # 50+15=65 → FBL=192
-    (16, 66, (1920, 462)),    # 50+16=66 → FBL=192
-    (18, 68, (1280, 480)),    # 50+18=68 → FBL=192 → disambiguated
-    (19, 69, (1920, 440)),    # 50+19=69 → FBL=192 → disambiguated
+@pytest.mark.parametrize("resp20,expected_pm,expected_resolution", [
+    (16, 65, (1920, 462)),    # 49+16=65 → FBL=192
+    (17, 66, (1920, 462)),    # 49+17=66 → FBL=192
+    (19, 68, (1280, 480)),    # 49+19=68 → FBL=192 → disambiguated
+    (20, 69, (1920, 440)),    # 49+20=69 → FBL=192 → disambiguated
 ])
 def test_ly1_pm_extraction_and_resolution(
     fake_bulk: FakeBulkTransport,
-    resp36: int, expected_pm: int, expected_resolution: tuple[int, int],
+    resp20: int, expected_pm: int, expected_resolution: tuple[int, int],
 ) -> None:
-    """LY1 reads resp[36] (not resp[20]) and adds 50."""
-    fake_bulk.read_script.append(_ly_response(resp36=resp36))
+    """LY1 reads resp[20] and adds 49 — the vendor's ``obj3[4]``.
+
+    It used to read ``resp[36]`` and add 50, which is the vendor's ``obj3[0]``
+    — a slot the main assembly does not use as PM for this record shape.
+    """
+    fake_bulk.read_script.append(_ly_response(resp20=resp20))
     device = _make_ly(fake_bulk, pid=0x5409)
 
     result = device.connect()

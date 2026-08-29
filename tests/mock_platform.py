@@ -113,18 +113,24 @@ def ly_reply(pm: int, sub: int = 0, *, is_ly1: bool = False,
              size: int = 64) -> bytes:
     """LY / LY1 reply — header ``[0]=3 [1]=0xFF [8]=1``; PM/SUB inverted.
 
-    Mirrors ``LyLcd.connect``: the LY pid derives ``pm = 64 + [20]`` and
-    ``sub = [22] + 1``; LY1 derives ``pm = 50 + [36]`` and ``sub = [22]``.
-    We invert so ``connect()`` recovers the model's PM/SUB.  (For
-    ``pm - 64 <= 3`` the device clamps to ``pm = 65`` — its real behaviour,
-    mirrored faithfully.)
+    Inverted from the VENDOR's packing, not from our adapter.  Both wires read
+    PM from reply byte 20 and SUB from byte 22 (``DCReadWriteAsync.cs:967`` and
+    ``:1220``): LY publishes ``64 + [20]`` / ``1 + [22]``, LY1 publishes
+    ``49 + [20]`` / ``[22]``.  (For ``pm - 64 <= 3`` the device clamps to
+    ``pm = 65`` — its real behaviour, mirrored faithfully.)
+
+    This docstring used to say "Mirrors ``LyLcd.connect``", and it did: it
+    encoded ``resp[36] = pm - 50`` because that is what the adapter decoded,
+    so the geometry test confirmed the adapter against itself and agreed with a
+    defect for as long as it existed.  A harness that restates the
+    implementation cannot fail it — invert the ORACLE.
     """
     resp = bytearray(size)
     resp[0] = 3
     resp[1] = 0xFF
     resp[8] = 1
     if is_ly1:
-        resp[36] = max(0, pm - 50) & 0xFF
+        resp[20] = max(0, pm - 49) & 0xFF
         resp[22] = sub & 0xFF
     else:
         resp[20] = max(0, pm - 64) & 0xFF
