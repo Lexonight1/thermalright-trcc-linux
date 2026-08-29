@@ -181,6 +181,7 @@ class ListDisks(Query[DisksListResult]):
         try:
             import psutil  # type: ignore[import-untyped]
         except ImportError:
+            log.warning("ListDisks.execute: psutil unavailable — no disks enumerable")
             return DisksListResult(
                 ok=True, disks=[],
                 message="psutil not available — no disk enumeration",
@@ -188,6 +189,7 @@ class ListDisks(Query[DisksListResult]):
         try:
             partitions = psutil.disk_partitions(all=False)
         except (OSError, RuntimeError) as e:
+            log.warning("ListDisks.execute: enumeration failed: %s", e)
             return DisksListResult(
                 ok=False, disks=[],
                 message=f"disk enumeration failed: {e}",
@@ -196,6 +198,8 @@ class ListDisks(Query[DisksListResult]):
             disks.append(DiskEntry(
                 index=index, device=p.device, mountpoint=p.mountpoint,
             ))
+        log.debug("ListDisks.execute: %d disk(s): %s",
+                  len(disks), [d.device for d in disks])
         return DisksListResult(
             ok=True, disks=disks,
             message=f"{len(disks)} disk(s)",
@@ -217,6 +221,12 @@ class ListGpus(Query[GpusListResult]):
             GpuEntry(key=g.key, name=g.name, is_discrete=g.is_discrete)
             for g in sensors.gpus()
         ]
+        if not gpus:
+            log.warning("ListGpus.execute: enumerator exposed NO GPU — "
+                        "metrics keyed on the GPU slot will read zero")
+        else:
+            log.debug("ListGpus.execute: %d GPU(s): %s", len(gpus),
+                      [(g.key, g.is_discrete) for g in gpus])
         return GpusListResult(
             ok=True, gpus=gpus,
             message=f"{len(gpus)} GPU(s) detected",
@@ -238,6 +248,8 @@ class ListFans(Query[FansListResult]):
             FanEntry(key=f.key, name=f.name, rpm=f.rpm(), percent=f.percent())
             for f in sensors.fans()
         ]
+        log.debug("ListFans.execute: %d fan(s): %s", len(fans),
+                  [(f.key, f.rpm, f.percent) for f in fans])
         return FansListResult(
             ok=True, fans=fans,
             message=f"{len(fans)} fan(s) detected",
@@ -252,6 +264,10 @@ class ControlCenterSnapshot(Query[ControlCenterSnapshotResult]):
 
     def execute(self, app: App) -> ControlCenterSnapshotResult:
         a = app.settings.app
+        log.debug("ControlCenterSnapshot.execute: lang=%s unit=%s gpu=%s "
+                  "refresh=%ss hdd=%s",
+                  a.language, a.temp_unit, a.active_gpu,
+                  a.refresh_interval_s, a.hdd_enabled)
         return ControlCenterSnapshotResult(
             ok=True,
             language=a.language,
@@ -331,6 +347,20 @@ class ReadSensors(Query[SensorsResult]):
                 unit=unit,
                 label=d.label,
             ))
+        # The gap between descriptors and readings is where a metric goes
+        # missing, and it is normal (hdd_enabled=False drops every disk:* key)
+        # right up until it is not.  Counts at DEBUG; nothing surviving at all
+        # is a fault and says so with the keys that WERE discovered, so a
+        # reporter can spot the mismatch without another round-trip.
+        if descriptors and not readings:
+            log.warning("ReadSensors.execute: %d descriptor(s) discovered but "
+                        "NONE survived personalisation — discovered=%s",
+                        len(descriptors), [d.sensor_id for d in descriptors][:20])
+        else:
+            log.debug("ReadSensors.execute: %d descriptor(s) -> %d reading(s) "
+                      "(unit=%s hdd=%s), %d dropped",
+                      len(descriptors), len(readings), s.temp_unit,
+                      s.hdd_enabled, len(descriptors) - len(readings))
         return SensorsResult(
             ok=True,
             message=f"{len(readings)} sensor(s)",
@@ -381,6 +411,8 @@ class RunSetup(Command[SetupResult]):
         # a pre-install warning as a result).
         code = app.platform.setup(interactive=self.interactive)
         warnings = app.platform.check_permissions()
+        log.info("RunSetup.execute: exit=%d, %d permission warning(s): %s",
+                 code, len(warnings), warnings)
         return SetupResult(
             ok=code == 0,
             message=f"Setup completed with exit code {code}",
@@ -398,6 +430,9 @@ class RunHealthCheck(Query[HealthReportResult]):
 
     def execute(self, app: App) -> HealthReportResult:
         report = app.diagnostics.health()
+        log.info("RunHealthCheck.execute: %d check(s), %d fail, %d warn, worst=%s",
+                 len(report.checks), report.fail_count, report.warn_count,
+                 report.worst_severity)
         return HealthReportResult(
             ok=report.fail_count == 0,
             checks=_health_entries(report.checks),
@@ -414,6 +449,9 @@ class RunDoctor(Query[DoctorResultPayload]):
 
     def execute(self, app: App) -> DoctorResultPayload:
         doctor = app.diagnostics.doctor()
+        log.info("RunDoctor.execute: healthy=%s fail=%d warn=%d exit=%d",
+                 doctor.is_healthy, doctor.report.fail_count,
+                 doctor.report.warn_count, doctor.exit_code)
         return DoctorResultPayload(
             ok=doctor.is_healthy,
             checks=_health_entries(doctor.report.checks),
@@ -446,12 +484,16 @@ class GenerateDebugReport(Command[DebugReportPayload]):
                     rendered, self.output_path,
                 )
             except OSError as e:
+                log.warning("GenerateDebugReport.execute: write to %s failed: %s",
+                            self.output_path, e)
                 return DebugReportPayload(
                     ok=False, output_path=str(self.output_path),
                     rendered_text=rendered,
                     message=f"Generated report but write failed: {e}",
                 )
             out = str(written)
+        log.info("GenerateDebugReport.execute: %d char(s), %d log line(s), -> %s",
+                 len(rendered), self.log_tail_lines, out or "(in-memory)")
         return DebugReportPayload(
             ok=True, output_path=out, rendered_text=rendered,
             message=(f"Wrote debug report to {out}" if out
@@ -471,6 +513,9 @@ class RunQuickstart(Command[QuickstartResult]):
 
     def execute(self, app: App) -> QuickstartResult:
         report = app.quickstart.run_all()
+        log.info("RunQuickstart.execute: %d step(s), completed=%s, failed=%s",
+                 len(report.steps), report.completed_ok,
+                 report.failed_step.name if report.failed_step else None)
         steps = [
             QuickstartStepEntry(
                 name=s.name, status=s.status,
@@ -502,6 +547,8 @@ class GetFirstRunStatus(Query[FirstRunStatusResult]):
     """
 
     def execute(self, app: App) -> FirstRunStatusResult:
+        log.debug("GetFirstRunStatus.execute: first_run=%s marker=%s",
+                  app.first_run.is_first_run(), app.first_run.marker_path)
         return FirstRunStatusResult(
             ok=True,
             is_first_run=app.first_run.is_first_run(),
@@ -524,6 +571,8 @@ class MarkFirstRunDone(Command[FirstRunStatusResult]):
 
     def execute(self, app: App) -> FirstRunStatusResult:
         app.first_run.mark_completed()
+        log.info("MarkFirstRunDone.execute: marker written to %s",
+                 app.first_run.marker_path)
         return FirstRunStatusResult(
             ok=True, is_first_run=False,
             marker_path=str(app.first_run.marker_path),
@@ -548,11 +597,14 @@ class CheckForUpdate(Query[UpdateCheckResult]):
         try:
             latest = app.github_releases.latest()
         except HttpFetchError as e:
+            log.warning("CheckForUpdate.execute: fetch failed: %s", e)
             return UpdateCheckResult(
                 ok=False, local_version=local,
                 message=f"Update check failed: {e}",
             )
         available = is_newer(latest.version, local)
+        log.info("CheckForUpdate.execute: local=%s latest=%s -> available=%s",
+                 local, latest.version, available)
         msg = (
             f"Update available: {latest.tag} (you have {local})"
             if available
@@ -587,16 +639,21 @@ class RunUpgrade(Command[UpgradeResult]):
         # used to be a module table keyed on the probed string.
         pm = app.diagnostics.package_manager()
         if not pm:
+            log.warning("RunUpgrade.execute: no package manager detected — "
+                        "cannot self-upgrade on this system")
             return UpgradeResult(
                 ok=False, package_manager="",
                 message="No supported package manager detected on this system",
             )
         cmd = app.platform.upgrade_command()
         if not cmd:
+            log.warning("RunUpgrade.execute: package manager %r has no upgrade "
+                        "recipe", pm)
             return UpgradeResult(
                 ok=False, package_manager=pm,
                 message=f"No upgrade recipe for package manager {pm!r}",
             )
+        log.info("RunUpgrade.execute: pm=%s cmd=%s", pm, cmd)
         if self.dry_run:
             return UpgradeResult(
                 ok=True, package_manager=pm, command=list(cmd),
@@ -688,10 +745,16 @@ class ConfigureSlideshow(Command[SlideshowResult]):
 
     def execute(self, app: App) -> SlideshowResult:
         if self.interval_s is not None and self.interval_s < 1.0:
+            log.warning("ConfigureSlideshow.execute: %s rejected interval %.3fs "
+                        "(minimum 1s)", self.key, self.interval_s)
             return SlideshowResult(
                 ok=False, key=self.key,
                 message=(f"interval_s must be >= 1, got {self.interval_s}"),
             )
+        log.info("ConfigureSlideshow.execute: %s themes=%s interval=%ss",
+                 self.key,
+                 len(self.themes) if self.themes is not None else "(unchanged)",
+                 self.interval_s if self.interval_s is not None else "(unchanged)")
         app.settings.configure_slideshow(
             self.key,
             themes=list(self.themes) if self.themes is not None else None,
@@ -707,6 +770,7 @@ class SetSlideshow(Command[SlideshowResult]):
     enabled: bool
 
     def execute(self, app: App) -> SlideshowResult:
+        log.info("SetSlideshow.execute: %s enabled=%s", self.key, self.enabled)
         app.settings.set_slideshow_enabled(self.key, self.enabled)
         if self.enabled:
             app.slideshow.reset(self.key)
@@ -740,12 +804,17 @@ class KeepAliveLoop(Command[KeepaliveResult]):
         import time
 
         if self.count < 0:
+            log.warning("KeepAliveLoop.execute: %s rejected count=%d",
+                        self.key, self.count)
             return KeepaliveResult(
                 ok=False, key=self.key,
                 message=f"count must be >= 0, got {self.count}",
             )
         sender = app.senders.get(self.key)
         if sender is None or sender.last() is None:
+            log.warning("KeepAliveLoop.execute: %s has no cached frame "
+                        "(sender=%s) — render once before keepalive",
+                        self.key, "absent" if sender is None else "empty")
             return KeepaliveResult(
                 ok=False, key=self.key,
                 message=("No cached frame for keepalive — render at least "
@@ -788,6 +857,13 @@ class GetPlatformInfo(Query[PlatformInfoResult]):
     def execute(self, app: App) -> PlatformInfoResult:
         p = app.platform
         paths = p.paths()
+        # One-shot and pure gold in a report: which distro, how it was
+        # installed, and every path the app resolved to on THIS machine.
+        log.info("GetPlatformInfo.execute: distro=%s install=%s config=%s "
+                 "data=%s user=%s log=%s warnings=%s",
+                 p.distro_name(), p.install_method(), paths.config_dir(),
+                 paths.data_dir(), paths.user_content_dir(), paths.log_file(),
+                 p.check_permissions())
         return PlatformInfoResult(
             ok=True,
             message=f"Platform: {p.distro_name()}",
@@ -809,6 +885,7 @@ class GetAutostartStatus(Query[AutostartResult]):
         mgr = app.platform.autostart()
         enabled = mgr.is_enabled()
         path = _autostart_path(app)
+        log.debug("GetAutostartStatus.execute: enabled=%s path=%s", enabled, path)
         return AutostartResult(
             ok=True,
             message="enabled" if enabled else "disabled",
@@ -822,6 +899,8 @@ class EnableAutostart(Command[AutostartResult]):
     def execute(self, app: App) -> AutostartResult:
         mgr = app.platform.autostart()
         mgr.enable()
+        log.info("EnableAutostart.execute: now enabled=%s at %s",
+                 mgr.is_enabled(), _autostart_path(app))
         return AutostartResult(
             ok=True, message="autostart enabled",
             enabled=mgr.is_enabled(), path=_autostart_path(app),
@@ -834,6 +913,8 @@ class DisableAutostart(Command[AutostartResult]):
     def execute(self, app: App) -> AutostartResult:
         mgr = app.platform.autostart()
         mgr.disable()
+        log.info("DisableAutostart.execute: now enabled=%s at %s",
+                 mgr.is_enabled(), _autostart_path(app))
         return AutostartResult(
             ok=True, message="autostart disabled",
             enabled=mgr.is_enabled(), path=_autostart_path(app),
@@ -852,10 +933,12 @@ class SetTempUnit(Command[TempUnitResult]):
 
     def execute(self, app: App) -> TempUnitResult:
         if self.unit not in ("C", "F"):
+            log.warning("SetTempUnit.execute: rejected unit %r", self.unit)
             return TempUnitResult(
                 ok=False, unit=self.unit,
                 message=f"unit must be 'C' or 'F', got {self.unit!r}",
             )
+        log.info("SetTempUnit.execute: %s (global)", self.unit)
         app.settings.set_global_temp_unit(self.unit)   # type: ignore[arg-type]
         app.events.publish(TempUnitChanged(unit=self.unit))
         return TempUnitResult(
@@ -881,6 +964,8 @@ class ListLanguages(Query[LanguagesListResult]):
                 name=LANGUAGE_NAMES[code],
                 translated_keys=len(TRANSLATIONS.get(code, {})),
             ))
+        log.debug("ListLanguages.execute: %d language(s): %s", len(entries),
+                  [(e.code, e.translated_keys) for e in entries])
         return LanguagesListResult(
             ok=True, languages=entries,
             message=f"{len(entries)} language(s) registered",
@@ -900,16 +985,20 @@ class SetLanguage(Command[LanguageResult]):
         from ..i18n import LANGUAGE_NAMES
         lang = self.language.strip()
         if not lang:
+            log.warning("SetLanguage.execute: empty language code")
             return LanguageResult(
                 ok=False, language=self.language,
                 message="language code cannot be empty",
             )
         if lang not in LANGUAGE_NAMES:
+            log.warning("SetLanguage.execute: unknown code %r — known: %s",
+                        lang, sorted(LANGUAGE_NAMES))
             return LanguageResult(
                 ok=False, language=self.language,
                 message=(f"unknown language code {lang!r}; "
                          "use `system list-languages` to see supported codes"),
             )
+        log.info("SetLanguage.execute: %s (%s)", lang, LANGUAGE_NAMES[lang])
         app.settings.set_language(lang)
         app.events.publish(LanguageChanged(language=lang))
         return LanguageResult(
@@ -933,6 +1022,8 @@ class SetGpuDevice(Command[GpuDeviceResult]):
         # actually re-routes — the universal hop every UI shares.  Without
         # this the selection only persisted and primary_gpu() ignored it.
         app.platform.sensors().set_preferred_gpu(normalized)
+        log.info("SetGpuDevice.execute: active gpu -> %s",
+                 normalized or "(auto)")
         app.events.publish(GpuDeviceChanged(gpu_key=normalized))
         return GpuDeviceResult(
             ok=True, gpu_key=normalized,
