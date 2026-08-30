@@ -44,13 +44,23 @@ CacheKey = tuple[Any, ...]
 class BgMaskCache:
     """A byte-capped LRU of composed background+mask surfaces."""
 
-    __slots__ = ("_entries", "_max_bytes", "_nbytes")
+    __slots__ = ("_announced_eviction", "_declined", "_entries", "_max_bytes",
+                 "_nbytes")
 
     def __init__(self, max_bytes: int) -> None:
         log.debug("BgMaskCache: max_bytes=%d", max_bytes)
         self._entries: OrderedDict[CacheKey, tuple[Any, int]] = OrderedDict()
         self._max_bytes = max_bytes
         self._nbytes = 0
+        # Both notices below describe a STANDING property of this panel and its
+        # workload -- "the animation does not fit, so it composes every tick".
+        # They were plain INFO on a path that runs per frame, so on a panel big
+        # enough to trigger them (1600x720: a 128 MB budget against a working
+        # set several times that) they fired on EVERY composed frame, at the
+        # one level a report is read for.  Announced once each instead; the
+        # per-frame detail stays available at -vvv.
+        self._declined: int | None = None
+        self._announced_eviction = False
 
     # ── State ─────────────────────────────────────────────────────────
 
@@ -81,8 +91,8 @@ class BgMaskCache:
         """The surface cached under *key*, or None; a hit becomes most-recent."""
         entry = self._entries.get(key)
         if entry is None:
-            log.debug("BgMaskCache.get: MISS (%d entries, %d bytes)",
-                      len(self._entries), self._nbytes)
+            frame_log.debug("BgMaskCache.get: MISS (%d entries, %d bytes)",
+                            len(self._entries), self._nbytes)
             return None
         self._entries.move_to_end(key)
         frame_log.debug("BgMaskCache.get: HIT (%d entries, %d bytes)",
@@ -111,17 +121,24 @@ class BgMaskCache:
             self._nbytes -= previous[1]
         needed = max(nbytes, working_set_bytes or 0)
         if needed > self._max_bytes:
-            log.info(
-                "BgMaskCache.put: a working set of %d byte(s) does not fit "
-                "the %d-byte budget — not caching this workload at all, "
-                "since a cycle larger than the cache never hits.  This "
-                "device composes every tick.", needed, self._max_bytes,
-            )
+            if self._declined != needed:
+                self._declined = needed
+                log.info(
+                    "BgMaskCache.put: a working set of %d byte(s) does not fit "
+                    "the %d-byte budget — not caching this workload at all, "
+                    "since a cycle larger than the cache never hits.  This "
+                    "device composes every tick.", needed, self._max_bytes,
+                )
+            else:
+                frame_log.debug(
+                    "BgMaskCache.put: still over budget (%d > %d) — declined",
+                    needed, self._max_bytes,
+                )
             return
         self._entries[key] = (surface, nbytes)
         self._nbytes += nbytes
-        log.debug("BgMaskCache.put: stored %d byte(s) (%d entries, %d bytes)",
-                  nbytes, len(self._entries), self._nbytes)
+        frame_log.debug("BgMaskCache.put: stored %d byte(s) (%d entries, "
+                        "%d bytes)", nbytes, len(self._entries), self._nbytes)
         self._evict_to_cap()
 
     def _evict_to_cap(self) -> None:

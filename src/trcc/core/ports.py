@@ -1309,12 +1309,12 @@ class Renderer(ABC):
         src_w, src_h = self.surface_size(content.background)
         dst_w, dst_h = self.surface_size(canvas)
         if content.background_is_user:
-            log.debug("bg_fit: user background %dx%d composited as-is",
-                      src_w, src_h)
+            frame_log.debug("bg_fit: user background %dx%d composited as-is",
+                            src_w, src_h)
             return self.composite(canvas, content.background, position=(0, 0))
         if src_w <= dst_w + 2:
-            log.debug("bg_fit: program background %dx%d ≤ canvas %dx%d → "
-                      "native at (0, 0)", src_w, src_h, dst_w, dst_h)
+            frame_log.debug("bg_fit: program background %dx%d ≤ canvas %dx%d → "
+                            "native at (0, 0)", src_w, src_h, dst_w, dst_h)
             return self.composite(canvas, content.background, position=(0, 0))
         log.warning("bg_fit: program background %dx%d exceeds canvas %dx%d → "
                     "solid black (C# width test, no letterbox); bg not shown "

@@ -326,8 +326,8 @@ class DisplayService:
             and scene.frame_key == frame_key
             and scene.frame_bytes is not None
         ):
-            log.debug("build_frame %s: full-pipeline cache HIT (%d bytes)",
-                      info.key, len(scene.frame_bytes))
+            frame_log.debug("build_frame %s: full-pipeline cache HIT (%d bytes)",
+                            info.key, len(scene.frame_bytes))
             return scene.frame_bytes
 
         bg_surface, overlay_surface = self._resolve_bg_overlay(
@@ -885,7 +885,7 @@ class DisplayService:
         """
         s = self._settings.for_device(info.key)
         mode = s.background_mode
-        log.debug(
+        frame_log.debug(
             "_build_bg_mask: key=%s mode=%s mask_visible=%s mask_path=%s "
             "fit=%s playback=%s",
             info.key, mode, s.mask_visible, s.mask_path,
@@ -973,7 +973,7 @@ class DisplayService:
             mask = self._r.open_image(mask_source)
             mw, mh = self._r.surface_size(mask)
             position = s.mask_position or (0, 0)
-            log.debug(
+            frame_log.debug(
                 "build_bg_mask %s: mask %s (%dx%d) at top-left (%d, %d) "
                 "[visible=%s]",
                 info.key, mask_source, mw, mh, position[0], position[1],
@@ -988,7 +988,7 @@ class DisplayService:
             # very lookup ``_resolve_mask_source`` had just decided to skip.
             # It adds nothing either: reaching this branch with a visible
             # mask means the theme mask resolved to None. (#264)
-            log.debug(
+            frame_log.debug(
                 "build_bg_mask %s: no mask composited (visible=%s, "
                 "override=%r)",
                 info.key, s.mask_visible, s.mask_path,
@@ -1006,17 +1006,18 @@ class DisplayService:
         Order: per-device override → theme's bundled mask → None. Returns
         None when ``mask_visible`` is False so the caller skips the layer.
         """
-        log.debug(
+        frame_log.debug(
             "_resolve_mask_source: mask_visible=%s mask_path=%s",
             device_settings.mask_visible, device_settings.mask_path,
         )
         if not device_settings.mask_visible:
-            log.debug("_resolve_mask_source: mask_visible=False → None")
+            frame_log.debug("_resolve_mask_source: mask_visible=False → None")
             return None
         if device_settings.mask_path is not None:
             override = Path(device_settings.mask_path)
             if override.exists():
-                log.debug("_resolve_mask_source: using override %s", override)
+                frame_log.debug("_resolve_mask_source: using override %s",
+                                override)
                 return override
             log.warning(
                 "resolve_mask_source: override %s does not exist — "
@@ -1024,7 +1025,7 @@ class DisplayService:
                 override,
             )
         theme_mask = self._themes.mask_path(theme)
-        log.debug(
+        frame_log.debug(
             "resolve_mask_source: using theme bundled mask %s",
             theme_mask,
         )
@@ -1056,7 +1057,7 @@ class DisplayService:
         playback = self._media.playback(info.key)
         if playback is not None and playback.frames:
             payload: bytes | None = playback.current
-            log.debug(
+            frame_log.debug(
                 "resolve_background %s: video playback active "
                 "(%d frames, cursor=%d, %d encoded bytes)",
                 info.key, len(playback.frames), playback.cursor,

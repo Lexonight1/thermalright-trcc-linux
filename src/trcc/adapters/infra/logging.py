@@ -26,7 +26,7 @@ from collections import deque
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from ...core.logs import PER_FRAME_ROOT
+from ...core.logs import PER_FRAME_ROOT, levels_for
 
 log = logging.getLogger(__name__)
 
@@ -211,8 +211,13 @@ def configure_logging(
         log_file, latest_file, logging.getLevelName(level),
         max_bytes, backup_count, logging.getLevelName(stderr_level),
     )
-    log.info("configure_logging: per-frame logging %s",
-             "ON (-v)" if per_frame else "OFF (one -v enables it)")
+    # Do NOT spell the rung here as a literal.  It said "one -v enables it"
+    # long after the ladder moved the frame path to -vvv, so the one line a
+    # reporter reads to find the flag named the wrong flag.  ``levels_for`` is
+    # the single definition; ask it which rung is the first to turn this on.
+    log.info("configure_logging: per-frame logging %s (%s enables it)",
+             "ON" if per_frame else "OFF",
+             "-" + "v" * next(v for v in range(10) if levels_for(v).per_frame))
     if truncate_error is not None:
         # Deliberately loud: a latest-log that still holds a previous run is
         # exactly what makes a diagnosis read the wrong window.

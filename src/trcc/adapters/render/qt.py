@@ -90,7 +90,7 @@ def _ensure_qt_app() -> None:
 
 def _rgb_tuple_to_qcolor(color: tuple[int, ...]) -> QColor:
     """(r, g, b) or (r, g, b, a) → QColor."""
-    log.debug("_rgb_tuple_to_qcolor: color=%s", color)
+    frame_log.debug("_rgb_tuple_to_qcolor: color=%s", color)
     if len(color) == 3:
         return QColor(color[0], color[1], color[2])
     if len(color) == 4:
@@ -123,7 +123,7 @@ class QtRenderer(Renderer):
         return img
 
     def open_image(self, path: Path) -> Any:
-        log.debug("QtRenderer.open_image: %s", path)
+        frame_log.debug("QtRenderer.open_image: %s", path)
         img = QImage(str(path))
         if img.isNull():
             log.error("QtRenderer.open_image: QImage.isNull for %s", path)
@@ -139,8 +139,8 @@ class QtRenderer(Renderer):
     def surface_nbytes(self, surface: Any) -> int:
         """Qt reports its own buffer size — see Renderer.surface_nbytes."""
         nbytes = int(surface.sizeInBytes())
-        log.debug("surface_nbytes: %dx%d -> %d byte(s)",
-                  surface.width(), surface.height(), nbytes)
+        frame_log.debug("surface_nbytes: %dx%d -> %d byte(s)",
+                        surface.width(), surface.height(), nbytes)
         return nbytes
 
     # ── Compositing ───────────────────────────────────────────────────
@@ -386,7 +386,7 @@ class QtRenderer(Renderer):
 
     def decode_image(self, data: bytes) -> Any:
         """Decode JPEG/PNG bytes to an ARGB32 surface (see Renderer.decode_image)."""
-        log.debug("decode_image: %d byte(s)", len(data))
+        frame_log.debug("decode_image: %d byte(s)", len(data))
         qimg = QImage()
         if not qimg.loadFromData(data):
             raise ValueError(f"could not decode a {len(data)}-byte image")

@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 
 from ...core._safe import is_safe_zip_member
 from ...core.errors import ThemeError
+from ...core.logs import per_frame
 from ...core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
 from ...core.ports import ContentStore, SingleFileTheme
 from ...services import _dc as Dc
@@ -52,6 +53,8 @@ if TYPE_CHECKING:
 
 
 log = logging.getLogger(__name__)
+#: ``video_path`` is asked once per frame by the background resolver.
+frame_log = per_frame(__name__)
 
 
 # Distinct filename from legacy's `config.json` — next/'s JSON layout
@@ -636,7 +639,7 @@ class FileContentStore(ContentStore):
         theme).  SRP — caller doesn't have to inspect the suffix of
         whatever ``background_path`` returned.
         """
-        log.debug("video_path: theme=%s", theme.name)
+        frame_log.debug("video_path: theme=%s", theme.name)
         # A theme-local bundled video (Theme.mp4 / .mov / …) — including a
         # symlink SaveTheme drops in for a video background.
         for candidate in _VIDEO_CANDIDATES:

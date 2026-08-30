@@ -859,3 +859,228 @@ def test_trace_helper_emits_only_when_enabled(tmp_path: Path) -> None:
     for handler in logging.getLogger().handlers:
         handler.flush()
     assert "deep internal payload" in log_file.read_text()
+
+
+# =========================================================================
+# The frame path must not write a record per frame
+# =========================================================================
+#
+# The burn-down's ratchet (``test_logging_coverage``) counts SILENT functions
+# and only ever pushes that number down.  It cannot see the defect on the other
+# side of the same line: a function ON THE FRAME PATH that logs through the
+# ORDINARY logger writes a record EVERY frame.  The file floor is DEBUG at
+# every rung by design, so those records are written even with no ``-v`` — the
+# cost is paid and the one-shot lines a report is read for get scrolled out of
+# the 1 MB tail.  That shape was 82-90% of the CPU regression since v9.9.2.
+#
+# It is also easy to re-create while ADDING coverage, which is exactly how it
+# came back: measured 2026-08-30 on the real device, the static-theme path wrote
+# 4.00 records/frame and the advancing-video path 6.25, across 16 call sites.
+#
+# So this gate asserts the invariant rather than the instance: no call site may
+# emit at a rate that scales with the frame count.  A legitimately rare line is
+# free to fire — ``_log_cache_transition`` fires once per cache-state FLIP and
+# measured 0.005/frame — which is why the bar is a RATE, and why it reuses the
+# profiler's own definition of hot rather than inventing a second number.
+
+#: Same threshold ``dev/tools/frame_profile.py --hot`` uses.  A per-frame
+#: emitter sits at ~1.0; a once-per-transition line sits near zero.  Nothing
+#: real lands between, so the gap is where the bar goes.
+_PER_FRAME_RATE = 0.5
+
+
+def _records_by_site(log_file: Path, start: int) -> dict[str, int]:
+    """Count records appended after byte offset *start*, keyed by call site."""
+    counts: dict[str, int] = {}
+    with log_file.open("r", errors="replace") as fh:
+        fh.seek(start)
+        for line in fh:
+            m = re.match(r"^\S+ \w+\s+(\S+?):(\S+?):(\d+):", line)
+            if m is not None:
+                site = ":".join(m.groups())
+                counts[site] = counts.get(site, 0) + 1
+    return counts
+
+
+def _frame_path_rates(tmp_path: Path, *, starve_cache: bool,
+                      frames: int = 30) -> dict[str, float]:
+    """Records-per-frame, by call site, driving the REAL service chain.
+
+    ``starve_cache`` picks WHICH frame path runs, and both matter:
+
+    * ``True``  — a one-byte ``BgMaskCache`` so every frame MISSES and rebuilds.
+      That is the background/mask chain (``_resolve_background``,
+      ``_build_bg_mask``, ``decode_image``, ``open_image``, ``bg_fit`` …) where
+      11 of the 16 measured floods lived.
+    * ``False`` — a static theme with no playback, so after the first frame the
+      full-pipeline cache HITS every time.  That is the other path, and
+      ``build_frame``'s own cache-HIT line was one of the four floods on it.
+
+    A gate that drove only one of the two would be blind to half the tree —
+    which is exactly how the first version of this test passed with a live
+    flood in ``_resolve_background``.
+    """
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.adapters.theme.filesystem import FileContentStore
+    from trcc.core.models import Kind, ProductInfo, Theme, Wire
+    from trcc.core.protocol import get_profile
+    from trcc.services.bg_cache import BgMaskCache
+    from trcc.services.display import DisplayService
+    from trcc.services.media import MediaService, Playback
+    from trcc.services.overlay import OverlayService
+    from trcc.services.settings import Settings
+
+    from .conftest import FakePaths
+    from .test_video_playback import _encoded_frame
+
+    ladder = levels_for(0)                       # what a user runs: no -v
+    log_file = tmp_path / "trcc.log"
+    # ``level`` is the ROOT level and so the FILE's; ``stderr_level`` is the
+    # terminal's.  Passing the terminal level here would set the root to
+    # WARNING, suppress every DEBUG record, and make this pass no matter what
+    # the code does — the exact false negative this exists to catch.
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+
+    renderer = QtRenderer()
+    paths = FakePaths(tmp_path)
+    media = MediaService()
+    key = "0402:3922"
+    if starve_cache:
+        media._playbacks[key] = Playback(
+            frames=[_encoded_frame(v)
+                    for v in (0xFF000000, 0xFF404040, 0xFF808080)],
+            fps=15,
+        )
+    display = DisplayService(
+        renderer=renderer,
+        themes=FileContentStore(),
+        overlay=OverlayService(renderer),
+        settings=Settings(paths),
+        media=media,
+        paths=paths,
+    )
+    if starve_cache:
+        # A one-byte budget evicts on every put, so `get` MISSES every frame
+        # and the whole rebuild chain runs.  Seeded directly because the real
+        # 128 MB cap would need ~320 distinct 320x320 surfaces to force this.
+        display._bg_caches[key] = BgMaskCache(1)
+
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922, vendor="ALi Corp", product="LCD",
+        wire=Wire.SCSI, kind=Kind.LCD, device_type=1, fbl=100,
+        native_resolution=(320, 320), orientations=(0,),
+    )
+    theme = Theme(path=tmp_path / "theme", name="t",
+                  resolution=(320, 320), config={"elements": []})
+    profile = get_profile(100)
+
+    def render_once() -> None:
+        playback = media._playbacks.get(key)
+        if playback is not None:
+            playback.advance()
+        display.build_frame(info=info, theme=theme, sensors={},
+                            profile=profile)
+
+    for _ in range(5):            # warm-up: first-frame lines are one-shot
+        render_once()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    mark = log_file.stat().st_size
+    for _ in range(frames):
+        render_once()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    return {site: n / frames
+            for site, n in _records_by_site(log_file, mark).items()}
+
+
+@pytest.mark.parametrize("starve_cache", [True, False],
+                         ids=["bg-rebuild", "cache-hit"])
+def test_the_frame_path_writes_no_record_per_frame(
+    tmp_path: Path, starve_cache: bool,
+) -> None:
+    """Render repeatedly at DEFAULT verbosity; nothing may scale with frames."""
+    rates = _frame_path_rates(tmp_path, starve_cache=starve_cache)
+    floods = {s: r for s, r in rates.items() if r >= _PER_FRAME_RATE}
+    assert not floods, (
+        "these call sites write a record per rendered frame at DEFAULT "
+        "verbosity — move each onto core.logs.per_frame(__name__) so the "
+        "record is never constructed:\n"
+        + "\n".join(f"  {rate:.2f}/frame  {site}"
+                    for site, rate in sorted(floods.items(),
+                                             key=lambda kv: -kv[1]))
+    )
+
+
+@pytest.mark.parametrize("starve_cache", [True, False],
+                         ids=["bg-rebuild", "cache-hit"])
+def test_the_frame_path_gate_actually_reaches_the_render_chain(
+    tmp_path: Path, starve_cache: bool,
+) -> None:
+    """The gate above is only as good as the code it runs.
+
+    Its first version asserted "no floods" while driving a workload that went
+    entirely to cache after three frames, so it passed with a live flood in
+    ``_resolve_background``.  A green result meant nothing.  This pins that the
+    chain is genuinely exercised, so "no floods" is a finding and not silence.
+    """
+    rates = _frame_path_rates(tmp_path, starve_cache=starve_cache)
+    per_frame_logger = [s for s in rates if s.startswith(PER_FRAME_ROOT)]
+    assert not per_frame_logger, (
+        "per-frame records reached the FILE at default verbosity — the family "
+        f"is not silenced: {per_frame_logger}"
+    )
+    # Nothing asserts a specific line here: what matters is that the render ran
+    # and its per-frame chatter was suppressed rather than never produced.  If
+    # the chain stopped executing, the mutation test below stops failing and
+    # says so in one sentence.
+
+
+def test_the_frame_path_gate_can_actually_see_a_flood(tmp_path: Path) -> None:
+    """Mutation check: the rule must FAIL when a flood is present.
+
+    A gate that has never been broken on purpose is not known to guard
+    anything, and this repo has twice shipped one that guarded nothing.  This
+    reproduces the defect exactly — an ordinary logger called once per rendered
+    frame — and asserts the same rule catches it while leaving a genuinely rare
+    line alone.  If this stops failing-by-construction, the gate is dead.
+    """
+    ladder = levels_for(0)
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+
+    ordinary = logging.getLogger("trcc.services.pretend")
+    rare = logging.getLogger("trcc.services.pretend_rare")
+
+    frames = 40
+    mark = log_file.stat().st_size if log_file.exists() else 0
+    for i in range(frames):
+        ordinary.debug("pretend per-frame line %d", i)
+        if i == 0:
+            rare.debug("pretend once-per-transition line")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    rates = {s: n / frames
+             for s, n in _records_by_site(log_file, mark).items()}
+    flooding = [s for s, r in rates.items() if r >= _PER_FRAME_RATE]
+    quiet = [s for s, r in rates.items() if r < _PER_FRAME_RATE]
+
+    assert any("pretend:" in s for s in flooding), (
+        "the per-frame emitter was NOT caught — the gate is blind and every "
+        "pass it has ever reported is worthless"
+    )
+    assert any("pretend_rare:" in s for s in quiet), (
+        "the once-per-transition emitter was flagged as a flood — the bar is "
+        "too tight and the gate will fail on correct code"
+    )

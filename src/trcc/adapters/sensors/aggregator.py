@@ -325,11 +325,12 @@ class BaselineSensors(SensorEnumerator):
             age = time.monotonic() - self._last_poll
             fresh = bool(self._readings) and age < self._interval_s
         if fresh:
-            log.debug("_refresh_if_stale: cache %.2fs old < %.2fs interval",
-                      age, self._interval_s)
+            frame_log.debug("_refresh_if_stale: cache %.2fs old < %.2fs interval",
+                            age, self._interval_s)
             return
-        log.debug("_refresh_if_stale: cache %.2fs old >= %.2fs interval "
-                  "and no poll thread — polling inline", age, self._interval_s)
+        frame_log.debug("_refresh_if_stale: cache %.2fs old >= %.2fs interval "
+                        "and no poll thread — polling inline",
+                        age, self._interval_s)
         self._poll_once()
 
     # ── Polling ────────────────────────────────────────────────────

@@ -208,8 +208,8 @@ class DeviceSender(SendTask):
                     old_done.set()
                 self._waiter = (done, box)
         if superseded:
-            log.debug("DeviceSender %s: submit superseded a pending frame",
-                      self._device.key)
+            frame_log.debug("DeviceSender %s: submit superseded a pending frame",
+                            self._device.key)
         self._wake.set()
         if done is None:
             return True
