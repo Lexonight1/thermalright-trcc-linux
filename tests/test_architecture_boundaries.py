@@ -935,7 +935,14 @@ _APP_ATTRS = frozenset({"_app", "app", "_trcc"})
 KNOWN_APP_REACHES: dict[str, int] = {
     "ui/gui/lcd_handler.py": 1,
     "ui/gui/splash.py": 1,
-    "ui/gui/trcc_app.py": 11,
+    # 11 -> 9 on 2026-08-30: UCThemeMask stopped being handed a Paths port and
+    # a ContentStore.  It composed "which masks does this device have" out of
+    # both; ``ListMasks`` had answered that all along for cli/api/qtgui.  What
+    # unblocked it was completing the RESULT — ``FileEntry`` gained
+    # ``is_custom``, the one field the panel still needed and the Command had
+    # been discarding.  A UI reaches past the bus exactly when the Result is
+    # short a field.
+    "ui/gui/trcc_app.py": 9,
     "ui/qtgui/panels/led/_base.py": 1,
     "ui/qtgui/panels/led_panel.py": 1,
 }

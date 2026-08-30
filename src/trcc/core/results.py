@@ -806,10 +806,24 @@ class FileEntry:
     ``preview`` is the ``Theme.png`` tile (falling back to the ``01.png``
     overlay) resolved by ``ContentStore.discover_masks`` — carried here so every
     UI can render a thumbnail from the Command result, instead of re-deriving it
-    from the path (the gap that forced gui to call the service directly)."""
+    from the path (the gap that forced gui to call the service directly).
+
+    ``is_custom`` is here for the SAME reason, and was the field still missing
+    when that gap was half-closed: the store knows whether a mask is the user's
+    own upload or a catalog download, ``discover_masks`` returns it, and
+    ``ListMasks`` used to discard it.  Two places in the gui branch on it
+    (``uc_theme_mask`` draws a different thumbnail, ``lcd_handler`` treats the
+    selection differently), so without it on the Result that panel had to hold a
+    ``ContentStore`` and ask the store itself — which is an ``AttributeError``
+    the moment the App is an ``AppProxy``.
+
+    The rule the pair of them illustrates: **a UI reaches past the bus exactly
+    when the Result is missing a field it needs.**  Completing the Result is the
+    fix; enriching it is cheaper than every UI re-deriving the answer."""
     name: str
     path: str
     preview: str = ""
+    is_custom: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -1504,9 +1504,15 @@ class LCDHandler(BaseHandler):
             if web_dir:
                 self._w['theme_web'].set_web_directory(web_dir)
             self._w['theme_web'].set_resolution(f'{bw}x{bh}')
+            # Key and resolution BEFORE the directory, because
+            # ``set_mask_directory`` is the call that triggers the refresh and
+            # ``ListMasks`` needs both to resolve the per-SKU library.  The old
+            # order worked only because the panel read its user-mask dir from
+            # whatever resolution it happened to be holding.
+            self._w['theme_mask'].set_device_key(self._device_key)
+            self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
             if masks_dir:
                 self._w['theme_mask'].set_mask_directory(masks_dir)
-            self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
             self._w['image_cut'].set_resolution(bw, bh)
             self._w['video_cut'].set_resolution(bw, bh)
         else:

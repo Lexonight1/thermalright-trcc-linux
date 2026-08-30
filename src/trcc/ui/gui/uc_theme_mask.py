@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMenu
 
+from ...core.commands import ListMasks
 from ...core.models import (
     CLOUD_MASK_URLS,
     MaskItem,
@@ -24,7 +25,7 @@ from ...core.models import (
 from .base import BaseThumbnail, DownloadableThemeBrowser
 
 if TYPE_CHECKING:
-    from ...core.ports import ContentStore, Paths
+    from ...app import App
 
 log = logging.getLogger(__name__)
 
@@ -57,17 +58,17 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     mask_selected = Signal(object)
 
-    def __init__(self, parent=None, paths: Paths | None = None,
-                 store: ContentStore | None = None):
+    def __init__(self, parent=None, app: App | None = None):
         self.mask_directory = None
         self._resolution = ""
+        self._device_key = ""
         self._local_masks: set[str] = set()
         self._category = 'all'
-        # Paths port for resolving user-masks dir; trcc_app injects it.
-        self._paths = paths
-        # ContentStore port for mask discovery — same injection, same reason:
-        # the panel asks a port, it does not walk the filesystem itself.
-        self._store = store
+        # The App, for Command dispatch ONLY — the uc_about idiom.  This panel
+        # used to be handed a Paths port and a ContentStore and ask them
+        # directly; both are AttributeErrors the moment the App is an AppProxy,
+        # which is what stops the gui being a daemon client.
+        self._app = app
         super().__init__(parent)
 
     def _create_filter_buttons(self):
@@ -148,6 +149,17 @@ class UCThemeMask(DownloadableThemeBrowser):
             self.mask_directory.mkdir(parents=True, exist_ok=True)
         self.refresh_masks()
 
+    def set_device_key(self, key: str) -> None:
+        """The device whose mask libraries to list.
+
+        ``ListMasks`` resolves the per-SKU cloud library from this key, so a
+        cooler with its own artwork sees its own masks.  Without it the panel
+        could only name a resolution, and two coolers sharing a panel size would
+        show each other's libraries.
+        """
+        log.debug("set_device_key: %s", key)
+        self._device_key = key
+
     def set_resolution(self, resolution: str):
         """Set resolution for cloud downloads."""
         log.debug("set_resolution: %s", resolution)
@@ -160,16 +172,6 @@ class UCThemeMask(DownloadableThemeBrowser):
         parts = self._resolution.split('x')
         return (int(parts[0]), int(parts[1]))
 
-    def _user_masks_dir(self) -> Path:
-        """Get the user custom masks directory for current resolution."""
-        w, h = self._parse_resolution()
-        if self._paths is None:
-            raise RuntimeError(
-                "WebMaskBrowser was constructed without a Paths port — "
-                "trcc_app must inject one at build time."
-            )
-        return self._paths.user_mask_dir(w, h)
-
     def refresh_masks(self):
         """Reload masks from disk — only shows what exists per device resolution."""
         self._clear_grid()
@@ -178,22 +180,26 @@ class UCThemeMask(DownloadableThemeBrowser):
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)
 
-        # Store-level discovery — matches legacy convention exactly:
-        # user masks first, dedupe by name, accept Theme.png OR 01.png.
-        if self._store is None:
-            log.warning("refresh_masks: no ContentStore injected — no masks")
+        # ONE dispatch.  ``ListMasks`` scans both the per-SKU cloud library and
+        # the user mask dir, dedupes, and resolves each tile — the work this
+        # panel used to compose out of a Paths port and a ContentStore.  The
+        # cli, the api and qtgui's mask_browser have always called it.
+        if self._app is None:
+            log.warning("refresh_masks: no App injected — no masks")
             return
-        discovered = self._store.discover_masks(
-            cloud_masks_dir=self.mask_directory,
-            user_masks_dir=self._user_masks_dir(),
-        )
+        result = self._app.dispatch(ListMasks(
+            resolution=self._parse_resolution(), key=self._device_key,
+        ))
+        if not result.ok:
+            log.warning("refresh_masks: %s", result.message)
+            return
 
         masks: list[MaskItem] = []
-        for m in discovered:
+        for m in result.masks:
             masks.append(MaskItem(
                 name=m.name,
-                path=str(m.path) if m.path else None,
-                preview=str(m.preview_path) if m.preview_path else None,
+                path=m.path or None,
+                preview=m.preview or None,
                 is_local=True,
                 is_custom=m.is_custom,
             ))
@@ -203,10 +209,9 @@ class UCThemeMask(DownloadableThemeBrowser):
         if self._category != 'all':
             masks = [m for m in masks if m.name and m.name[-1:] == self._category]
 
-        log.info("uc_theme_mask.refresh_masks: %d mask(s), cat=%s, "
-                 "cloud_dir=%s user_dir=%s",
-                 len(masks), self._category, self.mask_directory,
-                 self._user_masks_dir())
+        log.info("uc_theme_mask.refresh_masks: %d mask(s), cat=%s, key=%s, "
+                 "scanned=%s", len(masks), self._category,
+                 self._device_key or "(none)", result.directory)
         self._populate_grid(masks)
 
     def _on_item_clicked(self, item_info: MaskItem):

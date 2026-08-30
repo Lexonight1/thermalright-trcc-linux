@@ -2337,3 +2337,39 @@ def test_delete_theme_works_on_a_headless_app(tmp_home: Path) -> None:
     assert result.ok is True, result.message
     assert result.invalidated == (_TEST_DEVICE_KEY,)
     assert not theme_path.exists()
+
+
+def test_list_masks_reports_which_masks_are_the_user_s_own(
+    app: App, tmp_home: Path,
+) -> None:
+    """``FileEntry.is_custom`` must survive the Command, not just the store.
+
+    The gui branches on it in two places — ``uc_theme_mask`` draws a different
+    thumbnail, ``lcd_handler`` treats the selection differently — so while
+    ``ListMasks`` discarded it, that panel had to hold a ``ContentStore`` and
+    ask the store itself.  That reach is an ``AttributeError`` the moment the
+    App is an ``AppProxy``, which is what stops the gui being a daemon client.
+
+    ``FileEntry`` already carried ``preview`` for exactly this reason, and its
+    docstring named the gap.  This pins the other half: enrich the Result, and
+    no UI has to re-derive the answer.
+    """
+    from trcc.core.commands import ListMasks, UploadCustomMask
+
+    src = tmp_home / "mine.png"
+    src.write_bytes(_png_bytes(red=0x44))
+    assert app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src)).ok
+
+    result = app.dispatch(
+        ListMasks(resolution=_TEST_RES, key=_TEST_DEVICE_KEY),
+    )
+    assert result.ok, result.message
+    assert result.masks, "the uploaded mask is not in the listing at all"
+
+    custom = [m for m in result.masks if m.is_custom]
+    assert custom, (
+        "no mask reports is_custom=True — the user's own upload is "
+        "indistinguishable from a catalog download, which is the field the "
+        "gui panel needs and used to reach the store for"
+    )
+    assert all(m.name for m in result.masks)

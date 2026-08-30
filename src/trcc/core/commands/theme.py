@@ -1577,6 +1577,9 @@ class ListMasks(Query[MasksListResult]):
                 name=m.name,
                 path=str(m.path),
                 preview=str(m.preview_path) if m.preview_path else "",
+                # The store already knows this; discarding it forced the gui
+                # panel to hold a ContentStore and ask again.
+                is_custom=m.is_custom,
             )
             for m in discovered
         ]
