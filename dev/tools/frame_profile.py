@@ -43,10 +43,13 @@ import pstats
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from _gui_drive import WARMUP, drive_gui
 from trcc._boot import trcc
 from trcc.adapters.infra.logging import configure_logging
+from trcc.adapters.system import current_platform
 from trcc.core.commands import (
     ConnectDevice,
     DiscoverDevices,
@@ -56,10 +59,6 @@ from trcc.core.commands import (
 )
 
 log = logging.getLogger(__name__)
-
-#: Frames rendered before the profiler is enabled, so filled caches are not
-#: what gets measured.  Shared by both arms so they exclude the same prefix.
-WARMUP = 20
 
 
 def profile(frames: int, video: Path | None) -> dict[tuple[str, int, str], float]:
@@ -121,75 +120,26 @@ def profile_gui(frames: int) -> dict[tuple[str, int, str], float]:
     The headless :func:`profile` measures the render path.  This adds what that
     path never touches — live widgets, the preview render, the sensor loop, the
     Qt event loop — and the burn-down needs it because ``ui`` is the largest
-    silent area (684 functions) and NONE of it appears in a headless run.
+    silent area (681 functions) and NONE of it appears in a headless run.
 
-    Driven, not awaited, for the reason ``glass_bench._run_gui_arm`` records: a
-    run whose length depends on whatever background the user last saved is not
-    a measurement.  A zero-interval timer drives ``RenderAndSend`` while every
-    GUI observer, preview update and repaint still runs.
-
-    Cannot go through ``trcc()`` — that builds a ``QtRenderer``, which creates a
-    ``QGuiApplication``, and ``run()`` then refuses to make a ``QApplication``.
+    The GUI bring-up and the driven pump live in :mod:`_gui_drive`, shared with
+    ``record_rate.py --gui``; the only part specific to this tool is starting
+    the profiler at the warm-up boundary.
     """
-    import os
-
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QApplication
-
-    from trcc.adapters.system import current_platform
-    from trcc.services.display import DisplayService
-    from trcc.ui.gui import run
-
     platform = current_platform()
     configure_logging(platform.paths().log_file(), level=logging.DEBUG,
                       stderr_level=logging.CRITICAL, per_frame=False)
 
     pr = cProfile.Profile()
-    counter = {"frames": 0}
-    real_build = DisplayService.build_frame
-
-    def counting_build(self, *a, **kw):
-        counter["frames"] += 1
-        return real_build(self, *a, **kw)
-
-    DisplayService.build_frame = counting_build   # type: ignore[method-assign]
-    state: dict = {}
-
-    def on_ready(window) -> None:
-        app = getattr(window, "_app", None)
-        if app is None:
-            raise SystemExit("no App on the window — unknown tree layout")
-        keys = list(getattr(app, "devices", {}))
-        if not keys:
-            raise SystemExit("GUI came up with no attached device")
-        key = keys[0]
-
-        def pump() -> None:
-            # Warm-up is excluded the same way the headless arm excludes it:
-            # caches fill first, so they are not what gets measured.
-            if counter["frames"] == WARMUP:
-                pr.enable()
-            if counter["frames"] >= WARMUP + frames:
-                pr.disable()
-                timer.stop()
-                qapp = QApplication.instance()
-                if qapp is not None:
-                    qapp.quit()
-                return
-            app.dispatch(RenderAndSend(key=key))
-
-        timer = QTimer()
-        timer.setInterval(0)
-        timer.timeout.connect(pump)
-        timer.start()
-        state["timer"] = timer          # keep it alive past this scope
-
-    run(platform, single_instance=False, ipc=False, force_exit=False,
-        on_ready=on_ready)
-    DisplayService.build_frame = real_build      # type: ignore[method-assign]
-    return _calls_per_frame(pr, frames)
+    # Stopped via on_done, BEFORE the window tears down — ``run()`` does not
+    # return until shutdown completes, and profiling that attributes the tray
+    # close, the metrics loop, the hotplug monitor and the disconnect to the
+    # frame path.
+    rendered = drive_gui(frames=frames, warmup=WARMUP,
+                         on_mark=pr.enable, on_done=pr.disable)
+    # Divide by what was actually rendered, not what was asked for: the event
+    # loop can process a tick or two after quit().
+    return _calls_per_frame(pr, rendered or frames)
 
 
 def main() -> int:

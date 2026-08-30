@@ -37,8 +37,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from _gui_drive import drive_gui
 from trcc._boot import trcc
 from trcc.adapters.infra.logging import configure_logging
 from trcc.core.commands import (
@@ -58,9 +60,12 @@ _RECORD = re.compile(r"^\S+ (\w+)\s+(\S+?):(\S+?):(\d+):")
 WARMUP = 20
 
 
-def measure(frames: int, video: Path | None) -> tuple[int, collections.Counter]:
-    """Render *frames* at DEFAULT verbosity; return (frames, records by site)."""
-    app = trcc()
+def _open_log() -> Path:
+    """Configure logging at DEFAULT verbosity into a dedicated file, and return it.
+
+    Shared by both drivers so neither can measure under a different ladder than
+    the other.
+    """
     ladder = levels_for(0)                      # what a user runs: no -v at all
     # A DEDICATED file, not the app's own.  Sharing it meant starting from a
     # byte offset into a log that prior runs had already grown near the 1 MB
@@ -80,6 +85,76 @@ def measure(frames: int, video: Path | None) -> tuple[int, collections.Counter]:
                       stderr_level=ladder.terminal,
                       per_frame=ladder.per_frame,
                       max_bytes=1_000_000_000, latest_max_bytes=1_000_000_000)
+    return log_file
+
+
+def _tally(log_file: Path, before: int, frames: int,
+           *, end: int | None = None) -> tuple[int, collections.Counter]:
+    """Count records in ``[before, end)``, keyed by call site.
+
+    ``end`` bounds the window explicitly for callers whose run keeps logging
+    after the measured frames stop (the GUI's teardown); the headless arm has
+    nothing after its last frame and reads to EOF.
+    """
+    after = log_file.stat().st_size if log_file.exists() else 0
+    if after < before or any(log_file.with_suffix(f".log.{i}").exists()
+                             for i in range(1, 6)):
+        raise SystemExit(
+            "the log ROTATED mid-measurement — every count below the mark is "
+            "lost and a 0.00 here would be a false pass, not a clean result")
+
+    stop = after if end is None else end
+    by_site: collections.Counter[str] = collections.Counter()
+    with log_file.open("r", errors="replace") as fh:
+        fh.seek(before)
+        while fh.tell() < stop:
+            line = fh.readline()
+            if not line:
+                break
+            m = _RECORD.match(line)
+            if m is not None:
+                level, module, func, lineno = m.groups()
+                by_site[f"{module}:{func}:{lineno} [{level}]"] += 1
+    return frames, by_site
+
+
+def measure_gui(frames: int) -> tuple[int, collections.Counter]:
+    """Records per frame inside the REAL GUI, at DEFAULT verbosity.
+
+    The headless arm cannot answer this: ``ui/`` never executes without a
+    window, and it is the largest silent area in the tree.  The GUI bring-up is
+    ``_gui_drive.drive_gui``, shared with ``frame_profile --gui``.
+    """
+    log_file = _open_log()
+    span = {"start": 0, "end": 0}
+
+    def _size() -> int:
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return log_file.stat().st_size if log_file.exists() else 0
+
+    def on_mark() -> None:
+        span["start"] = _size()
+
+    def on_done() -> None:
+        # Closed BEFORE the window tears down.  ``run()`` does not return until
+        # shutdown finishes, and shutdown is loud — the tray, the metrics loop,
+        # the hotplug monitor, the sender, the disconnect.  Measured once
+        # without this: 32 one-shot teardown records landed in the window and
+        # reported 0.16 records/frame for a GUI that is actually at 0.00.
+        span["end"] = _size()
+
+    rendered = drive_gui(frames=frames, on_mark=on_mark, on_done=on_done)
+    # Divide by what was actually rendered: the Qt event loop can process a
+    # tick or two after quit(), and a denominator you assumed is one that lies.
+    return _tally(log_file, span["start"], rendered or frames,
+                  end=span["end"])
+
+
+def measure(frames: int, video: Path | None) -> tuple[int, collections.Counter]:
+    """Render *frames* at DEFAULT verbosity; return (frames, records by site)."""
+    app = trcc()
+    log_file = _open_log()
 
     keys = [d.key for d in getattr(app.dispatch(DiscoverDevices()), "devices", [])]
     if not keys:
@@ -110,22 +185,7 @@ def measure(frames: int, video: Path | None) -> tuple[int, collections.Counter]:
     for _ in range(frames):
         tick()
 
-    after = log_file.stat().st_size if log_file.exists() else 0
-    if after < before or any(log_file.with_suffix(f".log.{i}").exists()
-                             for i in range(1, 6)):
-        raise SystemExit(
-            "the log ROTATED mid-measurement — every count below the mark is "
-            "lost and a 0.00 here would be a false pass, not a clean result")
-
-    by_site: collections.Counter[str] = collections.Counter()
-    with log_file.open("r", errors="replace") as fh:
-        fh.seek(before)
-        for line in fh:
-            m = _RECORD.match(line)
-            if m is not None:
-                level, module, func, lineno = m.groups()
-                by_site[f"{module}:{func}:{lineno} [{level}]"] += 1
-    return frames, by_site
+    return _tally(log_file, before, frames)
 
 
 def main() -> int:
@@ -134,11 +194,17 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--frames", type=int, default=200)
     ap.add_argument("--video", type=Path, default=None)
+    ap.add_argument("--gui", action="store_true",
+                    help="measure inside the REAL GUI, so ui/ counts at all")
     args = ap.parse_args()
 
-    frames, by_site = measure(args.frames, args.video)
+    if args.gui and args.video is not None:
+        raise SystemExit("--gui measures whatever the GUI has loaded; "
+                         "--video is for the headless arm")
+    frames, by_site = (measure_gui(args.frames) if args.gui
+                       else measure(args.frames, args.video))
     total = sum(by_site.values())
-    workload = "video" if args.video else "static theme"
+    workload = "GUI" if args.gui else ("video" if args.video else "static theme")
     print(f"# {total} record(s) over {frames} frames · {workload} · default -v")
     print(f"# {total / frames:.2f} records/frame  (target: 0.00)")
     for site, n in by_site.most_common():
