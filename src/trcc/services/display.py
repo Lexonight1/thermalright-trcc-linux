@@ -176,6 +176,9 @@ class DisplayService:
         # flood the log; transitions surface "froze on first frame"
         # regressions in one grep.
         self._cache_state: dict[str, tuple[bool, bool]] = {}
+        #: Devices whose profile came from a FALLBACK, so ``_resolve_profile``
+        #: announces each one once instead of once per frame.
+        self._profile_fallbacks: set[str] = set()
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
@@ -186,7 +189,11 @@ class DisplayService:
         """Portrait decision for the render path — see
         :func:`trcc.core.geometry.content_is_portrait` (the shared source, also
         used by ``SaveTheme`` so save + reload agree on orientation)."""
-        return content_is_portrait(theme, profile, s.mask_path, s.mask_visible)
+        portrait = content_is_portrait(theme, profile, s.mask_path,
+                                       s.mask_visible)
+        frame_log.debug("_content_is_portrait: %s (theme=%s mask=%s visible=%s)",
+                        portrait, theme.name, s.mask_path, s.mask_visible)
+        return portrait
 
     @staticmethod
     def _compose_geometry(
@@ -201,6 +208,11 @@ class DisplayService:
         tuple the call sites unpack.
         """
         plan = plan_orientation(profile, orientation, content_is_portrait)
+        frame_log.debug("_compose_geometry: %dx%d rotate=%s widescreen=%s @ %d° "
+                        "-> canvas=%s portrait=%s post_rotate=%d",
+                        profile.width, profile.height, profile.rotate,
+                        profile.widescreen, orientation, plan.canvas,
+                        plan.is_portrait_content, plan.post_rotate)
         return plan.canvas, plan.is_portrait_content, plan.post_rotate
 
     def composed_canvas_size(
@@ -1234,6 +1246,13 @@ class DisplayService:
         # them here is the explicit contract (same defence-in-depth
         # the mask_sig provides).
         bg_mode_sig = (s.background_mode, s.overlay_background)
+        # ``cursor=None`` on a video-backed theme IS the "LCD frozen on the
+        # first frame" bug — the key stays constant and every tick HITs — so
+        # the resolved cursor and where it came from are the diagnostic here.
+        frame_log.debug("_bg_mask_key: cursor=%s (playback=%s) size=%s "
+                        "bg_override=%s mask=%s mode=%s",
+                        cursor, pb is not None, visual_size, bg_override,
+                        mask_sig, bg_mode_sig)
         return (
             str(theme.path), bg_override, visual_size,
             cursor, mask_sig, bg_mode_sig,
@@ -1270,6 +1289,10 @@ class DisplayService:
         # Temp unit participates in the key so toggling °C ↔ °F via
         # SetTempUnit busts the overlay cache and the next render
         # picks up the new format-string + value-conversion path.
+        frame_log.debug("_overlay_key: %d sensor(s) %d clock field(s) "
+                        "%d user element(s) unit=%s size=%s",
+                        len(sensor_tuple), len(clock_tuple), len(user_sig),
+                        s.temp_unit, visual_size)
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
                 user_sig, s.temp_unit)
 
@@ -1346,9 +1369,8 @@ class DisplayService:
 
     # ── Helpers ───────────────────────────────────────────────────────
 
-    @staticmethod
     def _resolve_profile(
-        info: ProductInfo, override: DeviceProfile | None,
+        self, info: ProductInfo, override: DeviceProfile | None,
     ) -> DeviceProfile:
         """Pick the profile to drive frame building.
 
@@ -1357,10 +1379,30 @@ class DisplayService:
         behavior (native_resolution, RGB565, no rotation).
         """
         if override is not None:
+            frame_log.debug("_resolve_profile: %s -> handshake profile %dx%d",
+                            info.key, override.width, override.height)
             return override
+        # Both fallbacks sit on the frame path, so they announce themselves ONCE
+        # per device — the shape ``_log_cache_transition`` uses.  Per frame they
+        # would fill the 1 MB rotating file and scroll the handshake line out of
+        # the tail of every ``trcc report``, which is the one artifact we read
+        # for hardware we do not own.  Once each, they are diagnostic gold: a
+        # panel rendering off GUESSED geometry says so in the report.
+        first = info.key not in self._profile_fallbacks
+        self._profile_fallbacks.add(info.key)
         if info.fbl is not None:
-            return get_profile(info.fbl)
+            profile = get_profile(info.fbl)
+            if first:
+                log.info("_resolve_profile: %s has no handshake profile — "
+                         "falling back to registry FBL %s (%dx%d)",
+                         info.key, info.fbl, profile.width, profile.height)
+            return profile
         w, h = info.native_resolution
+        if first:
+            log.warning("_resolve_profile: %s has neither a handshake profile "
+                        "nor an FBL — synthesizing %dx%d RGB565, no rotation; "
+                        "wire geometry is a GUESS for this panel",
+                        info.key, w, h)
         return DeviceProfile(width=w, height=h, jpeg=False, rotate=False)
 
     def _encode_for_wire(self, surface: Any, profile: DeviceProfile) -> bytes:

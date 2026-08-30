@@ -522,9 +522,12 @@ class App:
     def display(self) -> DisplayService:
         """DisplayService for rendering.  Raises if no Renderer attached."""
         if self._display is None:
+            log.error("App.display: no Renderer attached — set_renderer() was "
+                      "never called, so every render path raises from here")
             raise RuntimeError(
                 "DisplayService unavailable — call App.set_renderer(...) first"
             )
+        frame_log.debug("App.display: %s", type(self._display).__name__)
         return self._display
 
     @property

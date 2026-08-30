@@ -29,11 +29,14 @@ from typing import Any, ClassVar
 
 from ...core.errors import DeviceNotFoundError, HandshakeError, TransportError
 from ...core.factory import Registry, Reject
+from ...core.logs import per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device, T
 from ...core.protocol import DeviceProfile
 
 log = logging.getLogger(__name__)
+#: ``profile`` is read once per frame by the render path.
+frame_log = per_frame(__name__)
 
 # The wire table.  A miss RAISES — unlike the OS table, an unregistered wire is
 # a defect (the product registry named a wire nothing implements), not something
@@ -93,6 +96,7 @@ class BaseDevice(Device[T]):
     @property
     def profile(self) -> DeviceProfile | None:
         """Handshake-derived profile; None pre-handshake (and for LED)."""
+        frame_log.debug("BaseDevice.profile: %s", self._profile)
         return self._profile
 
     # ── Connect — Template Method ────────────────────────────────────────

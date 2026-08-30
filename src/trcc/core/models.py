@@ -130,7 +130,10 @@ def oriented_resolution(
     ``GetWebBackgroundImageDirectory`` direction split), and the preview bezel.
     """
     w, h = native
-    return (h, w) if orientation in (90, 270) else (w, h)
+    out = (h, w) if orientation in (90, 270) else (w, h)
+    frame_log.debug("oriented_resolution: %dx%d @ %d° -> %dx%d",
+                    w, h, orientation, *out)
+    return out
 
 
 class FitMode(str, Enum):
@@ -308,7 +311,9 @@ class ProductInfo:
     @property
     def key(self) -> str:
         """Stable identifier: '0402:3922'."""
-        return f"{self.vid:04x}:{self.pid:04x}"
+        key = f"{self.vid:04x}:{self.pid:04x}"
+        frame_log.debug("ProductInfo.key: %s", key)
+        return key
 
     @property
     def capabilities(self) -> frozenset[Capability]:
@@ -484,10 +489,13 @@ class ThemeDir:
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
+        frame_log.debug("ThemeDir: %s", self.path)
 
     @property
     def bg(self) -> Path:
-        return self.path / self.BG
+        bg = self.path / self.BG
+        frame_log.debug("ThemeDir.bg: %s", bg)
+        return bg
 
     @property
     def mask(self) -> Path:

@@ -10,6 +10,7 @@ once per frame; ``OverlayService`` looks up by source name.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from datetime import datetime
 from typing import Literal
@@ -39,11 +40,28 @@ WEEKDAYS_BY_LANG: dict[str, list[str]] = {
 }
 
 
+@functools.cache
 def _weekday_names(language: str) -> list[str]:
-    """Resolve language → weekday name list, with fallback chain."""
-    return (WEEKDAYS_BY_LANG.get(language)
-            or WEEKDAYS_BY_LANG.get(language.split("_", 1)[0])
-            or WEEKDAYS_BY_LANG["en"])
+    """Resolve language → weekday name list, with fallback chain.
+
+    Cached because the render path asks once per frame while the answer only
+    changes when the user changes language.  Without it the unknown-language
+    WARNING below fires at frame rate and buries the rest of the report; once
+    per language it is the line that explains English weekdays on a non-English
+    install.  The single caller indexes the result and never mutates it, and the
+    uncached version already handed out the shared ``WEEKDAYS_BY_LANG`` list, so
+    nothing about aliasing changes.
+    """
+    base = language.split("_", 1)[0]
+    for rung, names in (("exact", WEEKDAYS_BY_LANG.get(language)),
+                        (f"base subtag {base!r}", WEEKDAYS_BY_LANG.get(base))):
+        if names is not None:
+            log.info("_weekday_names: %r matched on %s", language, rung)
+            return names
+    log.warning("_weekday_names: %r is not a known language and its base "
+                "subtag %r isn't either — weekdays fall back to English; "
+                "known: %s", language, base, sorted(WEEKDAYS_BY_LANG))
+    return WEEKDAYS_BY_LANG["en"]
 
 
 def _format_time(now: datetime, time_format: Literal["12h", "24h"]) -> str:
@@ -51,8 +69,11 @@ def _format_time(now: datetime, time_format: Literal["12h", "24h"]) -> str:
     if time_format == "12h":
         hour12 = now.hour % 12 or 12
         suffix = "AM" if now.hour < 12 else "PM"
-        return f"{hour12}:{now.minute:02d} {suffix}"
-    return f"{now.hour:02d}:{now.minute:02d}"
+        out = f"{hour12}:{now.minute:02d} {suffix}"
+    else:
+        out = f"{now.hour:02d}:{now.minute:02d}"
+    frame_log.debug("_format_time: %s -> %r", time_format, out)
+    return out
 
 
 # Legacy yyyy/MM/dd pattern → strftime translation.  Order matters: longer
@@ -70,6 +91,7 @@ def _translate_date_pattern(pattern: str) -> str:
     result = pattern
     for token, repl in _PATTERN_RULES:
         result = result.replace(token, repl)
+    frame_log.debug("_translate_date_pattern: %r -> %r", pattern, result)
     return result
 
 

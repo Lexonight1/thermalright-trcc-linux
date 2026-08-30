@@ -25,10 +25,13 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from .logs import per_frame
 from .models import Theme, oriented_resolution
 from .protocol import DeviceProfile
 
 log = logging.getLogger(__name__)
+#: ``plan_orientation`` answers once per composed frame.
+frame_log = per_frame(__name__)
 
 
 def content_is_portrait(
@@ -124,10 +127,21 @@ def plan_orientation(
     w, h = profile.resolution
     rotate_panel = profile.rotate and w != h and orientation in (90, 270)
     if rotate_panel and not content_is_portrait and not profile.widescreen:
+        frame_log.debug("plan_orientation: landscape-only content on rotate "
+                        "panel %dx%d @ %d° -> compose landscape, post_rotate=%d",
+                        w, h, orientation, orientation)
         return OrientationPlan((w, h), False, orientation)
     if rotate_panel:
+        frame_log.debug("plan_orientation: rotate panel %dx%d @ %d° "
+                        "(widescreen=%s) -> compose upright %dx%d, "
+                        "post_rotate=0, the wire owns rotation",
+                        w, h, orientation, profile.widescreen, h, w)
         return OrientationPlan((h, w), True, 0)
-    return OrientationPlan(oriented_resolution((w, h), orientation), False, 0)
+    plan = OrientationPlan(oriented_resolution((w, h), orientation), False, 0)
+    frame_log.debug("plan_orientation: %dx%d @ %d° rotate=%s -> canvas %dx%d, "
+                    "post_rotate=0", w, h, orientation, profile.rotate,
+                    *plan.canvas)
+    return plan
 
 
 def save_folder_resolution(

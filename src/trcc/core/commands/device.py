@@ -685,6 +685,9 @@ class RenderAndSend(Command[RenderResult]):
                 info=device.info, theme=theme, sensors=sensors,
                 profile=device.profile,
             )
+            frame_log.debug("RenderAndSend: %s theme=%r %d sensor(s) -> "
+                            "%d byte frame", self.key, theme.name,
+                            len(sensors), len(frame))
             # Per-tick hot path (metrics observer, video tick): fire-and-forget
             # so producers never block on USB.  A worker write failure surfaces
             # via the sender's on_failure → DeviceDisconnected (increment 9).

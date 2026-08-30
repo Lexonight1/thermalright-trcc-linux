@@ -108,6 +108,7 @@ class DeviceProfile:
 
     @property
     def resolution(self) -> tuple[int, int]:
+        frame_log.debug("DeviceProfile.resolution: %dx%d", self.width, self.height)
         return (self.width, self.height)
 
     @property

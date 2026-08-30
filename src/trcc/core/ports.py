@@ -218,7 +218,9 @@ class Device(ABC, Generic[T]):
 
     @property
     def is_connected(self) -> bool:
-        return self._handshake is not None
+        connected = self._handshake is not None
+        frame_log.debug("Device.is_connected: %s (%s)", connected, self.info.key)
+        return connected
 
     @property
     def is_led(self) -> bool:
@@ -227,6 +229,7 @@ class Device(ABC, Generic[T]):
 
     @property
     def key(self) -> str:
+        frame_log.debug("Device.key: %s", self.info.key)
         return self.info.key
 
     @property

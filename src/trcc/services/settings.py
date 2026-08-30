@@ -120,6 +120,9 @@ class Settings:
 
     @property
     def app(self) -> AppSettings:
+        frame_log.debug("Settings.app: lang=%s unit=%s gpu=%s",
+                        self._app.language, self._app.temp_unit,
+                        self._app.active_gpu)
         return self._app
 
     def set_language(self, lang: str) -> None:
