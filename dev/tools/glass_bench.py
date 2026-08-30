@@ -36,6 +36,15 @@ comments in this file rather than lessons to relearn:
     ONE build read 6.25 / 11.32 / 12.81 M/frame (+-34%%) -- useless for a 9%%
     effect.  At 1000 vs 3000 it is +-3%%.  An ffmpeg child inside the fixed part
     is the main variance source, so the static workload is the quieter one.
+4.  **A cold ``--against`` tree reads FALSELY CHEAP.**  With no ``__pycache__``
+    its first run compiles the whole tree; that run is ``lo``, so the
+    differential subtracts a cost only ``i_lo`` paid and the slope comes out
+    low.  Measured 2026-08-30: the second arm's rep1 read 1.192 / 1.387 / 1.203
+    M/frame against ~1.85 once warm -- enough to report "1.2x MORE EXPENSIVE"
+    for a change that added nothing to the frame path.  Two identical trees
+    reproduced it and swapping the arms moved the "regression" to the other
+    tree, which is what proved it was position and not code.
+    ``_warm_bytecode`` compiles both arms before either is measured.
 
 Hybrid P/E-core boxes report ``instructions:u`` per PMU (``cpu_atom`` /
 ``cpu_core``); both are summed here.  Validate with ``--selftest``, which checks
@@ -44,6 +53,7 @@ a synthetic workload scales linearly before you trust any app number.
 from __future__ import annotations
 
 import argparse
+import compileall
 import re
 import statistics
 import subprocess
@@ -52,6 +62,9 @@ import tempfile
 from pathlib import Path
 
 _RESULT = re.compile(r"RESULT requested=(\d+) sent=(\d+)")
+
+#: Repo root -- ``dev/tools/glass_bench.py`` is two levels down.
+_REPO = Path(__file__).resolve().parents[2]
 
 #: Performance cores, on a hybrid (P/E) Intel box.  Empty elsewhere.
 _PCORES = Path("/sys/devices/cpu_core/cpus")
@@ -113,9 +126,27 @@ def _perf_instructions(cmd: list[str], env_src: str | None) -> tuple[int, int, i
     return total, int(m.group(1)), int(m.group(2))
 
 
+def _warm_bytecode(src: str | None) -> None:
+    """Compile the tree to ``.pyc`` before it is measured -- instrument bug #4.
+
+    A fresh worktree has no ``__pycache__``, so its first run compiles the tree.
+    That run is the ``lo`` one and the differential subtracts it, hiding a cost
+    only ``i_lo`` paid and dragging the slope down.
+
+    ``src=None`` means the ambient tree (the ``--against``-less arm), and it is
+    warmed too rather than skipped: warming only ONE arm just moves the bias to
+    the other one, and the ambient tree is stale exactly when it matters -- a
+    ``git checkout`` that rewrites ``.py`` files invalidates its ``.pyc``.
+    """
+    tree = Path(src) if src else _REPO / "src"
+    print(f"  warming bytecode: {tree}")
+    compileall.compile_dir(str(tree), quiet=2, force=False)
+
+
 def _slope(src: str | None, lo: int, hi: int, video: Path | None,
            reps: int, label: str, gui: bool = False) -> float:
     """Median instructions/frame across *reps* differential pairs."""
+    _warm_bytecode(src)
     inner = [sys.executable, str(Path(__file__).resolve()), "--run", "0"]
     slopes: list[float] = []
     for rep in range(1, reps + 1):
