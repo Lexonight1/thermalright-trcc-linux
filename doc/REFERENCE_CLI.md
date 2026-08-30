@@ -1662,6 +1662,22 @@ trcc system upgrade [OPTIONS]
 
 Save / export / import themes.
 
+### `trcc theme cloud-downloaded`
+
+List the cloud themes actually DOWNLOADED for this device. `cloud-list` shows Thermalright's hosted catalog — what EXISTS. This shows what is on disk for the canvas, which is a different question and had no answer outside the REST API. The directory is REPORTED by the query rather than re-spelled from the resolution: a per-SKU panel reads `1600720l` while one whose variant archive has not landed falls back to the generic name.
+
+```bash
+trcc theme cloud-downloaded [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--resolution`, `-r` `RESOLUTION` | Canvas to list for (e.g. 320x320). Needed when the device isn't connected — a scan reports no canvas, only a handshake does. |
+
 ### `trcc theme cloud-list`
 
 List themes in Thermalright's hosted catalog.

@@ -1464,3 +1464,18 @@ def test_new_capability_routes_are_registered(api_client: TestClient) -> None:
         "/theme/export-overlay",                    # ExportOverlay
     ):
         assert route in schema, f"route not registered: {route}"
+
+
+def test_quickstart_route_returns_the_sequence(api_client: TestClient) -> None:
+    """``POST /system/quickstart`` — doctor then scan, as ONE answer.
+
+    /system/doctor and /devices each answer half; nothing returned the sequence,
+    so a REST client had to know the order and the stop-on-first-failure rule
+    itself.  Asserting the steps come back is the point: a 200 with no steps
+    would be the route existing without the capability.
+    """
+    resp = api_client.post("/system/quickstart")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("steps"), "quickstart returned no steps"
+    assert all("name" in s and "status" in s for s in body["steps"])

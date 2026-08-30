@@ -9,6 +9,7 @@ import typer
 from ...core.commands import (
     AddOverlayElement,
     DeleteTheme,
+    DeviceState,
     ExportConfig,
     ExportDcTheme,
     ExportOverlay,
@@ -17,6 +18,7 @@ from ...core.commands import (
     ImportTheme,
     ListCloudThemes,
     ListThemes,
+    ListWebThemes,
     LoadCloudTheme,
     LoadImage,
     SaveTheme,
@@ -287,6 +289,57 @@ def cloud_list(
         typer.echo("")
     for t in result.themes:
         typer.echo(f"  {t.id:6}  {t.category_name}")
+
+
+@app.command("cloud-downloaded")
+def cloud_downloaded(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    resolution: str | None = typer.Option(
+        None, "--resolution", "-r", metavar="WxH",
+        help="Canvas to list for (e.g. 320x320). Needed when the device "
+             "isn't connected — a scan reports no canvas, only a handshake does.",
+    ),
+) -> None:
+    """List the cloud themes actually DOWNLOADED for this device.
+
+    ``cloud-list`` shows Thermalright's hosted catalog — what EXISTS. This shows
+    what is on disk for the canvas, which is a different question and had no
+    answer outside the REST API.
+
+    The directory is REPORTED by the query rather than re-spelled from the
+    resolution: a per-SKU panel reads ``1600720l`` while one whose variant
+    archive has not landed falls back to the generic name.
+    """
+    log.info("cli theme cloud-downloaded: key=%s resolution=%s", key, resolution)
+    app_obj = get_app()
+    if resolution is not None:
+        try:
+            w_s, h_s = resolution.lower().split("x")
+            canvas = (int(w_s), int(h_s))
+        except ValueError:
+            raise typer.BadParameter(
+                f"--resolution must look like 320x320, got {resolution!r}",
+            ) from None
+    else:
+        # Only a handshake knows a device's canvas; DiscoverDevices reports
+        # vid/pid/path and nothing about the panel.
+        state = app_obj.dispatch(DeviceState(key=key))
+        canvas = state.resolution or state.native_resolution
+        if not canvas or canvas == (0, 0):
+            typer.echo(
+                f"No canvas known for {key} — connect it first, or pass "
+                "--resolution WxH to list a library without the hardware.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+    w, h = canvas
+    result = app_obj.dispatch(ListWebThemes(width=w, height=h, key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+    for e in result.entries:
+        typer.echo(f"  {e.id:8}  {e.category:10}"
+                   f"{'  (video)' if e.has_video else ''}")
 
 
 @app.command("cloud-load")

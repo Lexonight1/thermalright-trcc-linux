@@ -6,6 +6,28 @@ trcc\-theme \- Save / export / import themes
 .SH DESCRIPTION
 Save / export / import themes.
 .SH SUBCOMMANDS
+.SS cloud\-downloaded
+.PP
+\fBtrcc theme cloud\-downloaded\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+List the cloud themes actually DOWNLOADED for this device. cloud\-list shows Thermalright's hosted catalog  \-  what EXISTS. This shows what is on disk for the canvas, which is a different question and had no answer outside the REST API. The directory is REPORTED by the query rather than re\-spelled from the resolution: a per\-SKU panel reads 1600720l while one whose variant archive has not landed falls back to the generic name.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-resolution, \-r \fIRESOLUTION\fR\fR
+Canvas to list for (e.g. 320x320). Needed when the device isn't connected  \-  a scan reports no canvas, only a handshake does.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS cloud\-list
 .PP
 \fBtrcc theme cloud\-list\fR [\fIOPTIONS\fR]

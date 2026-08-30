@@ -164,25 +164,21 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "route one day"
     )),
 
-    # ── Known holes ───────────────────────────────────────────────────────
-    "ListWebThemes": (frozenset({"api"}), (
-        "gap: the API lists web masks; the CLI has cloud-list (ListCloudThemes) "
-        "for themes but no web-mask listing command"
-    )),
-    "RunQuickstart": (frozenset({"cli"}), (
-        "gap: CLI-only first-run onboarding; the API has piecemeal /theme/init "
-        "+ /devices with no single onboarding command -- the lifecycle drift "
-        "METHOD_UI names (target: a shared EnsureReady command)"
-    )),
-    # These answer "how should a window draw this?", so "every UI" plausibly
-    # means the two graphical ones -- but qtgui draws previews and browses
-    # themes and does NOT use them, which looks like a qtgui defect rather than
-    # a cli/api gap. Not traced yet, and deliberately not guessed at.
+    # ── Asked only by the UI that needs the answer ────────────────────────
+    # Recorded 2026-08-30 as "gap: qtgui answers this its own way", from an
+    # assumption. TRACED the same day, and the assumption was wrong BOTH times
+    # -- qtgui does not answer these differently, it does not ask them.
     "PreviewSize": (frozenset({"gui"}), (
-        "gap: qtgui draws previews and answers this its own way"
+        "scoped: qtgui does not ask -- preview_panel._refresh dispatches "
+        "BuildPreview and scales the surface to a fixed _PREVIEW_MAX, never "
+        "sizing per device. The gui needs this for its device-accurate bezel "
+        "(#136); the cockpit deliberately shows one fixed size"
     )),
     "ResolveThemeDirectories": (frozenset({"gui"}), (
-        "gap: qtgui browses themes and answers this its own way"
+        "scoped: qtgui never resolves directories -- local_theme_browser "
+        "dispatches ListThemes(resolution=...), asking for THEMES, and "
+        "_browser_base._target_resolution derives only a resolution. The gui's "
+        "browsers are path-driven and need the directories themselves"
     )),
 }
 

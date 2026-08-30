@@ -25,6 +25,7 @@ from ...core.commands import (
     ReadSensors,
     RunDoctor,
     RunHealthCheck,
+    RunQuickstart,
     RunSetup,
     RunUpgrade,
     SetHddEnabled,
@@ -43,6 +44,7 @@ from ...core.results import (
     HealthReportResult,
     LanguageResult,
     LanguagesListResult,
+    QuickstartResult,
     SensorsListResult,
     SensorsResult,
     SetupResult,
@@ -322,6 +324,22 @@ def doctor(request: Request) -> DoctorResultPayload:
     """Same as `/health` but adds an exit code + a rendered text view."""
     log.info("api GET /system/doctor")
     return request.app.state.trcc.dispatch(RunDoctor())
+
+
+@router.post("/quickstart")
+def quickstart(request: Request) -> QuickstartResult:
+    """Walk the new-user happy path — doctor, then scan — as one sequence.
+
+    ``/system/doctor`` and ``/devices`` each answer half. Nothing returned the
+    SEQUENCE, so a REST client onboarding a user had to know the order and the
+    stop-on-first-failure rule itself, and the CLI's `trcc quickstart` was the
+    only place that knowledge existed.
+
+    Runs no handshake of its own: the caller decides whether to connect the
+    first device found, which is a user confirmation and not ours to assume.
+    """
+    log.info("api POST /system/quickstart")
+    return request.app.state.trcc.dispatch(RunQuickstart())
 
 
 @router.post("/debug-report")
