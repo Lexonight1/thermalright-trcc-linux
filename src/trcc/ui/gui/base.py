@@ -28,10 +28,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.logs import per_frame
 from ..qt_periodic import PeriodicUpdater
 from .constants import Colors, Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
+#: The preview repaints and re-images once per rendered frame.
+frame_log = per_frame(__name__)
 
 
 
@@ -192,11 +195,17 @@ class ImageLabel(QLabel):
     def set_image(self, image, fast: bool = False):
         """Set image from QPixmap or QImage."""
         if image is None:
+            frame_log.debug("set_image: None — preview cleared")
             self.clear()
             return
 
         if isinstance(image, QPixmap):
-            if (image.width(), image.height()) != (self._width, self._height):
+            scaled = (image.width(), image.height()) != (self._width,
+                                                         self._height)
+            frame_log.debug("set_image: QPixmap %dx%d -> %dx%d (scaled=%s "
+                            "fast=%s)", image.width(), image.height(),
+                            self._width, self._height, scaled, fast)
+            if scaled:
                 mode = (Qt.TransformationMode.FastTransformation if fast
                         else Qt.TransformationMode.SmoothTransformation)
                 image = image.scaled(self._width, self._height,
@@ -205,7 +214,12 @@ class ImageLabel(QLabel):
             return
 
         if isinstance(image, QImage):
-            if (image.width(), image.height()) != (self._width, self._height):
+            scaled = (image.width(), image.height()) != (self._width,
+                                                         self._height)
+            frame_log.debug("set_image: QImage %dx%d -> %dx%d (scaled=%s "
+                            "fast=%s)", image.width(), image.height(),
+                            self._width, self._height, scaled, fast)
+            if scaled:
                 mode = (Qt.TransformationMode.FastTransformation if fast
                         else Qt.TransformationMode.SmoothTransformation)
                 image = image.scaled(
@@ -321,7 +335,15 @@ class _BgPaintFilter(QObject):
         self._pixmap = pixmap
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        # Logged on the Paint branch ONLY, and deliberately.  Qt calls this for
+        # EVERY event on the watched widget — mouse moves included — and every
+        # one but Paint falls straight through to ``return False``.  An entry
+        # line would be a firehose at -vvv reporting that nothing happened;
+        # this reports the repaint that did.
         if event.type() == QEvent.Type.Paint:
+            frame_log.debug("background repaint: %dx%d pixmap on %s",
+                            self._pixmap.width(), self._pixmap.height(),
+                            type(obj).__name__)
             painter = QPainter(obj)  # type: ignore[arg-type]
             painter.drawPixmap(0, 0, self._pixmap)
             painter.end()

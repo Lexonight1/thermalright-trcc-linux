@@ -36,8 +36,8 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: — an abstract method has no body, so it stops being countable, and the seven
 #: silent ones among them stopped being excuses).  LOWER THIS as coverage
 #: improves; never raise it.  Worst areas now:
-#: ui 684, adapters 420, services 124, core 105.
-MAX_SILENT = 1355
+#: ui 681, adapters 420, services 122, core 101.
+MAX_SILENT = 1346
 
 
 def test_logging_coverage_only_improves() -> None:

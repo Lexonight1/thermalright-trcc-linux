@@ -113,7 +113,10 @@ class DeviceProfile:
 
     @property
     def byte_order(self) -> str:
-        return ">" if self.big_endian else "<"
+        order = ">" if self.big_endian else "<"
+        frame_log.debug("DeviceProfile.byte_order: %s (big_endian=%s)",
+                        order, self.big_endian)
+        return order
 
 
 # =============================================================================
@@ -616,9 +619,19 @@ def wire_angle(
     (where content is never portrait, so it is a no-op in practice).
     """
     if profile.rotate:
-        return resolve_encode_angle(profile, orientation)
+        angle = resolve_encode_angle(profile, orientation)
+        frame_log.debug("wire_angle: rotate panel %dx%d @ %d° -> %d° "
+                        "(per-resolution encode base)",
+                        profile.width, profile.height, orientation, angle)
+        return angle
     if orientation and not portrait_content:
-        return (360 - orientation) % 360
+        angle = (360 - orientation) % 360
+        frame_log.debug("wire_angle: non-rotate panel %dx%d @ %d° -> %d° "
+                        "(user orientation only)",
+                        profile.width, profile.height, orientation, angle)
+        return angle
+    frame_log.debug("wire_angle: %dx%d @ %d° portrait=%s -> 0° (no rotation)",
+                    profile.width, profile.height, orientation, portrait_content)
     return 0
 
 

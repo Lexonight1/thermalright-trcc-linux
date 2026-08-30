@@ -1329,14 +1329,20 @@ class Renderer(ABC):
         frame, then JPEG or RGB565 per the profile.
         """
         if profile.encode_baseline:
+            frame_log.debug("encode_payload: hardware-mount baseline %d° "
+                            "pre-rotate", profile.encode_baseline)
             surface = self.rotate(surface, profile.encode_baseline)
         if profile.jpeg:
+            frame_log.debug("encode_payload: JPEG, max_size=%s",
+                            profile.max_frame_bytes)
             # max_frame_bytes drives encode_jpeg's shrink-quality loop, and is
             # the C#'s 450000 ceiling for EVERY JPEG panel — the test in
             # ImageToJpg carries no device condition.  It used to default to 0
             # (uncapped) with only LY setting it, which left every other JPEG
             # panel able to ship a frame the firmware silently discards (#251).
             return self.encode_jpeg(surface, max_size=profile.max_frame_bytes)
+        frame_log.debug("encode_payload: RGB565, byte order %s",
+                        profile.byte_order)
         return self.encode_rgb565(surface, profile.byte_order)
 
     # ── Fonts ─────────────────────────────────────────────────────────

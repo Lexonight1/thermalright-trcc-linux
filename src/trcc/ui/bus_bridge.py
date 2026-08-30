@@ -44,8 +44,11 @@ from ..core.events import (
     VideoStarted,
     VideoStopped,
 )
+from ..core.logs import per_frame
 
 log = logging.getLogger(__name__)
+#: Every bus event crosses this bridge, including the per-frame ones.
+frame_log = per_frame(__name__)
 
 
 class BusBridge(QObject):
@@ -131,6 +134,7 @@ class _SignalForwarder:
         self._event_name = event_name
 
     def __call__(self, event: Event) -> None:
+        frame_log.debug("forwarding %s to its Qt signal", self._event_name)
         self._signal.emit(event)
 
     def __repr__(self) -> str:

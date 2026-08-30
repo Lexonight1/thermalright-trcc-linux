@@ -499,7 +499,9 @@ class ThemeDir:
 
     @property
     def mask(self) -> Path:
-        return self.path / self.MASK
+        mask = self.path / self.MASK
+        frame_log.debug("ThemeDir.mask: %s", mask)
+        return mask
 
     @property
     def preview(self) -> Path:

@@ -544,6 +544,7 @@ class DisplayService:
         """
         bg_cache = self._bg_cache(info.key)
         bg_surface = bg_cache.get(bg_key)
+        bg_hit = bg_surface is not None
         if bg_surface is None:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
             nbytes = self._r.surface_nbytes(bg_surface)
@@ -556,12 +557,20 @@ class DisplayService:
             bg_cache.put(bg_key, bg_surface, nbytes,
                          working_set_bytes=frames * nbytes)
 
-        if scene is not None and scene.overlay_key == overlay_key:
-            overlay_surface = scene.overlay_surface
+        overlay_hit = scene is not None and scene.overlay_key == overlay_key
+        if overlay_hit:
+            overlay_surface = scene.overlay_surface   # type: ignore[union-attr]
         else:
             overlay_surface = self._build_overlay(
                 info, theme, sensors, visual_size, clock,
             )
+        # The two-layer decision the whole cache design exists for: a video
+        # theme's bg cycles and its overlay moves with the sensors, so the pair
+        # is what says whether a tick paid a dict lookup or a JPEG decode plus
+        # a fit plus a mask composite.
+        frame_log.debug("_resolve_bg_overlay %s: bg=%s overlay=%s (%dx%d)",
+                        info.key, "HIT" if bg_hit else "MISS",
+                        "HIT" if overlay_hit else "REBUILD", *visual_size)
         return bg_surface, overlay_surface
 
     def build_solid_color_frame(
@@ -1412,6 +1421,9 @@ class DisplayService:
         # (#137).  Delegates to the shared Renderer.encode_payload (increment
         # 2c): a fixed hardware-mount baseline (FW360 PM=6 → 180°) pre-rotates
         # the wire frame, then JPEG or RGB565 per the profile.
+        frame_log.debug("_encode_for_wire: %dx%d jpeg=%s baseline=%d°",
+                        profile.width, profile.height, profile.jpeg,
+                        profile.encode_baseline)
         return self._r.encode_payload(surface, profile)
 
 
