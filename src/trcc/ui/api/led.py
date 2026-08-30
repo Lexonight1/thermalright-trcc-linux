@@ -25,6 +25,7 @@ from ...core.commands import (
     SetLedZoneMode,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
+    SetLedZoneSyncZones,
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
@@ -63,6 +64,7 @@ from .schemas import (
     LedZoneSyncRequest,
     MemoryRatioRequest,
     WeekStartRequest,
+    ZoneSyncZonesRequest,
 )
 
 log = logging.getLogger(__name__)
@@ -272,6 +274,23 @@ def zone_sync(key: str, body: LedZoneSyncRequest,
             SetLedZoneSyncInterval(key=key, ticks=body.interval_ticks),
         )
         http_error_if_failed(ir)
+    return result
+
+
+@router.post("/zone-sync-zones")
+def zone_sync_zones(key: str, body: ZoneSyncZonesRequest,
+                    request: Request) -> LedColorsResult:
+    """Choose WHICH zones take part in the zone-sync carousel.
+
+    ``/zone-sync`` turns the carousel on and sets its interval; this says which
+    pages rotate in it — a choice that existed only in the gui.
+    """
+    log.info("api POST /devices/{key}/led/zone-sync-zones: key=%s zones=%s",
+             key, body.zones)
+    result = request.app.state.trcc.dispatch(
+        SetLedZoneSyncZones(key=key, zones=tuple(body.zones)),
+    )
+    http_error_if_failed(result)
     return result
 
 

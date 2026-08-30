@@ -1010,6 +1010,13 @@ METRICS = MetricCatalog(
 #: function-local import.
 SCREENCAST_TICK_S = 0.15
 
+#: How often the slideshow driver ASKS whether a rotation is due.  It is a poll
+#: interval, not the slideshow interval: ``AdvanceSlideshow`` owns due-ness and
+#: reads it from ``DeviceSettings.slideshow_interval_s``, so this only bounds
+#: how late a switch can be.  One second against a default 30-second slideshow
+#: is 3% late at worst, and the poll itself is a settings read.
+SLIDESHOW_POLL_S = 1.0
+
 
 # =========================================================================
 # Media formats — what a background file IS, and therefore how it plays

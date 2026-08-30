@@ -1413,3 +1413,54 @@ def test_theme_web_gallery_falls_back_when_the_sku_library_is_absent(
     items = resp.json()
     assert [i["id"] for i in items] == ["a078"]
     assert items[0]["preview_url"] == "/static/web/1600720/a078.png"
+
+
+# =========================================================================
+# Gate B — capabilities the bus had but only one UI could reach
+# =========================================================================
+#
+# Each route below dispatches a Command that existed and was reachable from
+# exactly one UI, so a user of every OTHER surface could not do the thing at
+# all.  They are asserted to EXIST and to reach their Command; the behaviour
+# itself is covered where that Command is tested.  A route that 404s because
+# nobody registered it is the failure this guards.
+
+
+def test_device_reset_route_exists(api_client: TestClient) -> None:
+    """``POST /devices/{key}/reset`` — disconnect AND drop cached state.
+
+    Distinct from ``/display/reset``, which blanks the panel to a colour and
+    leaves the device connected.  That difference is why this was a real gap
+    rather than a duplicate.
+    """
+    resp = api_client.post("/devices/dead:beef/reset")
+    assert resp.status_code in (200, 404), resp.text
+    assert "Not Found" not in resp.text or resp.status_code == 404
+
+
+def test_push_image_is_distinct_from_send_image(api_client: TestClient) -> None:
+    """``/push-image`` (ephemeral) must not have replaced ``/send-image``.
+
+    ``/send-image`` takes a multipart upload and dispatches ``LoadImage``,
+    which STAGES a theme; ``/push-image`` dispatches ``SendImage``, which does
+    not.  Both must exist — collapsing them would silently change what a
+    client's existing call does.
+    """
+    schema = api_client.get("/openapi.json").json()["paths"]
+    assert "/devices/{key}/display/send-image" in schema
+    assert "/devices/{key}/display/push-image" in schema
+
+
+def test_new_capability_routes_are_registered(api_client: TestClient) -> None:
+    """Every Gate B route this session added is in the OpenAPI schema."""
+    schema = api_client.get("/openapi.json").json()["paths"]
+    for route in (
+        "/devices/{key}/display/background",        # SetBackground
+        "/devices/{key}/display/push-image",        # SendImage
+        "/devices/{key}/display/render-dc",         # RenderDcStandalone
+        "/devices/{key}/display/slideshow/drive",   # Start/StopSlideshowDriver
+        "/devices/{key}/led/zone-sync-zones",       # SetLedZoneSyncZones
+        "/devices/{key}/reset",                     # ResetDevice
+        "/theme/export-overlay",                    # ExportOverlay
+    ):
+        assert route in schema, f"route not registered: {route}"

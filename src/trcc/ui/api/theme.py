@@ -28,6 +28,7 @@ from ...core.commands import (
     EnsureDataDownload,
     ExportConfig,
     ExportDcTheme,
+    ExportOverlay,
     ExportTheme,
     ImportConfig,
     ImportTheme,
@@ -57,6 +58,7 @@ from ._shared import (
 from .schemas import (
     CloudThemeLoadRequest,
     DeleteThemeRequest,
+    ExportOverlayRequest,
     ImportConfigResponse,
     ThemeDcExportRequest,
     ThemeExportRequest,
@@ -94,6 +96,24 @@ def save(body: ThemeSaveRequest, request: Request) -> ThemeResponse:
     result = request.app.state.trcc.dispatch(SaveTheme(key=body.key, name=name))
     http_error_if_failed(result)
     return to_theme_response(result)
+
+
+@router.post("/export-overlay")
+def export_overlay(body: ExportOverlayRequest,
+                   request: Request) -> ThemeExportResult:
+    """Copy a theme's overlay config file out to *output_path*.
+
+    The CLI has had ``theme export-overlay`` all along; REST could export the
+    theme archive and the DC, but not the overlay config on its own.
+    """
+    log.info("api POST /theme/export-overlay: key=%s theme=%s out=%s",
+             body.key, body.theme_name, body.output_path)
+    result = request.app.state.trcc.dispatch(ExportOverlay(
+        key=body.key, theme_name=body.theme_name,
+        output_path=Path(body.output_path),
+    ))
+    http_error_if_failed(result)
+    return result
 
 
 @router.post("/export")

@@ -789,17 +789,20 @@ class App:
     def stop_sender(self, key: str) -> None:
         """Stop + drop the send worker for *key* (idempotent).
 
-        Also drops the device's screencast driver, which lives in the same
-        scheduler under a NAMESPACED key.  Removing only the bare key would
-        leave a disconnected device being captured forever — the driver would
-        keep dispatching, and every frame would fail on a device that is no
-        longer attached.  The namespacing exists because the scheduler evicts
-        by key and would otherwise have killed this device's own sender; that
-        same namespacing is why the removal has to be explicit here.
+        Also drops the device's NAMESPACED drivers — screencast and slideshow —
+        which live in the same scheduler.  Removing only the bare key would
+        leave a disconnected device being captured or rotated forever: the
+        driver would keep dispatching, and every turn would fail on a device
+        that is no longer attached.  The namespacing exists because the
+        scheduler evicts by key and would otherwise have killed this device's
+        own sender; that same namespacing is why each removal has to be
+        explicit here, and why a NEW driver must be added to this list.
         """
-        from .services.screencast_driver import task_key
+        from .services.screencast_driver import task_key as screencast_task
+        from .services.slideshow_driver import task_key as slideshow_task
 
-        self._send_scheduler.remove(task_key(key))
+        self._send_scheduler.remove(screencast_task(key))
+        self._send_scheduler.remove(slideshow_task(key))
         sender = self.senders.pop(key, None)
         if sender is None:
             return

@@ -1182,136 +1182,22 @@ def test_composition_root_exemptions_all_still_exist() -> None:
     )
 
 
-# ── Every capability belongs to every UI ────────────────────────────────────
+# ── Every capability belongs to every UI → tests/test_ui_parity.py ─────────
 #
-# The maintainer's mandate, and the reason the Command bus exists: "everything
-# gui can do the other ui's should be able to do too".  The original Windows app
-# was GUI-only, so a capability that lives in one UI is a capability the others
-# can never have.
+# ``KNOWN_SINGLE_CLIENT_COMMANDS`` and its tests lived here from 2026-08-28 to
+# 2026-08-30.  They asked "which Commands does only one UI reach?", which is UI
+# PARITY and not a layer boundary — and ``test_ui_parity`` had been asking a
+# narrower version of the same question, with written reasons, since
+# 2026-07-12.  Two records of one rule drift, and these had: they shared 4 of 21
+# names, and one reason had gone false without anything failing.
 #
-# The reach ratchets above measure the OTHER half — a UI touching App internals.
-# Both can be green while a Command still has exactly one client, which is what
-# happened: five Commands were added to move logic out of the gui, and each was
-# wired only into the caller that prompted it.  Reach count fell; capability did
-# not spread.  This is that gap, made countable.
+# They are now ONE record — ``KNOWN_UI_ASYMMETRY`` — which stores the UI reach
+# per Command, derives single-client / CLI-only / API-only from it, and asserts
+# the recorded reach against reality so a reason cannot expire in silence.
 #
-# **AST, never a regex.**  Matching the class NAME in UI source over-counts on 6
-# of 131: ``SendFrame`` appears in two UI trees and is dispatched by neither —
-# only mentioned in comments.  A reference is an ``ast.Name`` (``dispatch(Foo(…))``)
-# or an ``ast.alias`` (``from … import Foo``).
-#
-# Not every entry is a defect.  ``EnsureConnected`` is a CLI ergonomic ("bring
-# it up only if it isn't"), ``ListWebThemes`` is an API listing.  The list is a
-# RATCHET, not a ban: it may not grow, and shrinking it must lower the baseline.
-KNOWN_SINGLE_CLIENT_COMMANDS: frozenset[str] = frozenset({
-    # Dispatched by no UI, and CORRECTLY so — checked, not assumed.
-    # ``CaptureScreencastFrame`` is driven by ``ScreencastDriver``, a service
-    # task; ``SendFrame`` is a deliberate scripting/daemon affordance —
-    # ``ipc.py`` names it as the Command whose raw bytes survive JSON, and its
-    # own docstring says "useful for scripts and end-to-end smoke tests".
-    # Neither is a missing UI capability, so neither should be burned down.
-    "CaptureScreencastFrame",
-    "SendFrame",
-    # gui only
-    "AdvanceSlideshow", "CurrentFrame", "PreviewSize",
-    "ResolveThemeDirectories", "SendScreencastFrame", "SetBackground",
-    "SetLedZoneSyncZones",
-    # qtgui only
-    "ListDevices",
-    # cli only
-    "EnsureConnected", "ExportOverlay", "InitializeLed", "RenderDcStandalone",
-    "ResetDevice", "RunQuickstart", "SendImage",
-    # api only
-    "ListWebThemes",
-})
-
-_UI_TREES = ("gui", "qtgui", "cli", "api")
-
-
-def _command_names() -> set[str]:
-    """Every ``Command`` / ``Query`` subclass name."""
-    names: set[str] = set()
-    for path in (_SRC / "trcc" / "core" / "commands").glob("*.py"):
-        if path.name in ("__init__.py", "_base.py", "_helpers.py"):
-            continue
-        for node in ast.parse(path.read_text(encoding="utf-8")).body:
-            if not isinstance(node, ast.ClassDef):
-                continue
-            for base in node.bases:
-                inner = getattr(base, "value", base)
-                if getattr(inner, "id", "") in ("Command", "Query"):
-                    names.add(node.name)
-    return names
-
-
-def _clients_per_command() -> dict[str, set[str]]:
-    """Which UI trees actually REFERENCE each Command (AST, not text)."""
-    names = _command_names()
-    clients: dict[str, set[str]] = {n: set() for n in names}
-    for ui in _UI_TREES:
-        for path in (_SRC / "trcc" / "ui" / ui).rglob("*.py"):
-            if "__pycache__" in path.parts:
-                continue
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                seen = None
-                if isinstance(node, ast.Name):
-                    seen = node.id
-                elif isinstance(node, ast.alias):
-                    seen = node.name
-                if seen in clients:
-                    clients[seen].add(ui)
-    return clients
-
-
-def _single_client_commands() -> set[str]:
-    return {c for c, uis in _clients_per_command().items() if len(uis) <= 1}
-
-
-def test_no_new_single_client_commands() -> None:
-    """A new capability must reach more than one UI.
-
-    Adding a Command for one caller is how the gui stays special.  If it is
-    genuinely UI-shaped, add it to the list WITH a reason.
-    """
-    new = _single_client_commands() - KNOWN_SINGLE_CLIENT_COMMANDS
-    assert not new, (
-        "These Commands are reachable from at most one UI — every capability "
-        "should belong to every UI:\n"
-        + "\n".join(f"  {c}" for c in sorted(new))
-    )
-
-
-def test_single_client_baseline_has_no_slack() -> None:
-    """Wiring a Command into a second UI must lower the baseline."""
-    stale = KNOWN_SINGLE_CLIENT_COMMANDS - _single_client_commands()
-    assert not stale, (
-        "These Commands now reach 2+ UIs — remove them from "
-        "KNOWN_SINGLE_CLIENT_COMMANDS to lock the win in:\n"
-        + "\n".join(f"  {c}" for c in sorted(stale))
-    )
-
-
-def test_selftest_command_client_detector_ignores_mentions_in_comments() -> None:
-    """The reason this is an AST walk and not a regex.
-
-    ``SendFrame`` is named in two UI trees and dispatched by neither — the text
-    survives only in comments.  A regex scores it 2 and the ratchet would have
-    called it healthy.
-    """
-    clients = _clients_per_command()
-    assert clients["SendFrame"] == set(), (
-        "SendFrame is dispatched by a UI again — good, but update this "
-        "self-test, which exists to prove the detector ignores comments"
-    )
-    src = "\n".join(
-        p.read_text(encoding="utf-8")
-        for p in (_SRC / "trcc" / "ui").rglob("*.py")
-        if "__pycache__" not in p.parts
-    )
-    assert "SendFrame" in src, (
-        "the premise is gone: SendFrame is no longer even MENTIONED in the UI "
-        "trees, so this no longer demonstrates regex-vs-AST"
-    )
+# This file keeps what it is named for: layer imports, OS sniffing, filesystem
+# I/O, gui reaches past dispatch, and Gate A (a UI importing an adapter, which
+# IS an import boundary).
 
 
 # ── A str-enum in a Result: what actually breaks, and what does not ─────────

@@ -28,6 +28,7 @@ from ...core.commands import (
     SetLedZoneMode,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
+    SetLedZoneSyncZones,
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
@@ -245,6 +246,25 @@ def zone_sync(
     dispatch_echo(SetLedZoneSync(key=key, enabled=parse_on_off(state)))
     if interval is not None:
         dispatch_echo(SetLedZoneSyncInterval(key=key, ticks=interval))
+
+
+@app.command("zone-sync-zones")
+def zone_sync_zones(
+    key: str = typer.Argument(..., help="LED device key"),
+    zones: str = typer.Argument(
+        ..., help="Comma-separated on/off per zone, e.g. 'on,off,on,on'",
+    ),
+) -> None:
+    """Choose WHICH zones take part in the zone-sync carousel.
+
+    ``zone-sync`` turns the carousel on and sets its interval; this says which
+    pages rotate in it.  Without this, that choice existed only in the gui.
+    """
+    log.info("cli led zone-sync-zones: key=%s zones=%s", key, zones)
+    flags = tuple(parse_on_off(z.strip()) for z in zones.split(",") if z.strip())
+    if not flags:
+        raise typer.BadParameter("give at least one zone, e.g. 'on,off,on'")
+    dispatch_echo(SetLedZoneSyncZones(key=key, zones=flags))
 
 
 @app.command("select-zone")

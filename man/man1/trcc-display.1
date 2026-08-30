@@ -28,6 +28,28 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS background
+.PP
+\fBtrcc display background\fR \fIKEY\fR \fIPATH\fR
+.PP
+Set a file as the device's persistent background override. Distinct from background\-mode, which picks WHAT fills the panel (theme / colour / transparent). This supplies the file itself, and it survives a theme change until cleared.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Image or video file to use as the background
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS background\-mode
 .PP
 \fBtrcc display background\-mode\fR \fIKEY\fR \fIMODE\fR
@@ -854,6 +876,28 @@ Device key, e.g. 0402:3922
 .PP
 Options:
 .RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS slideshow\-drive
+.PP
+\fBtrcc display slideshow\-drive\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Actually rotate the configured slideshow, until stopped. slideshow on and configure\-slideshow only PERSIST the slideshow. Nothing advanced it outside the gui  \-  the gui runs its own timer, so a slideshow set up here was saved, reported back correctly, and never switched a theme. This registers the driver that rotates it. Unlike slideshow\-run (a foreground demo loop over a directory), this uses the persisted config and returns immediately; the rotation continues in the background for as long as the app or daemon is alive.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-stop\fR
+Stop driving instead of starting
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

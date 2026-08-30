@@ -33,6 +33,7 @@ from ...core.commands import (
     SeekVideo,
     SendColor,
     SendImage,
+    SetBackground,
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
@@ -46,8 +47,10 @@ from ...core.commands import (
     SleepDevice,
     StartScreencast,
     StartScreencastDriver,
+    StartSlideshowDriver,
     StopScreencast,
     StopScreencastDriver,
+    StopSlideshowDriver,
     StopVideo,
     TickDisplay,
     ToggleVideo,
@@ -750,6 +753,53 @@ def slideshow(
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("background")
+def background(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    path: Path = typer.Argument(
+        ..., help="Image or video file to use as the background",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+) -> None:
+    """Set a file as the device's persistent background override.
+
+    Distinct from ``background-mode``, which picks WHAT fills the panel
+    (theme / colour / transparent).  This supplies the file itself, and it
+    survives a theme change until cleared.
+    """
+    log.info("cli display background: key=%s path=%s", key, path)
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    dispatch_echo(SetBackground(key=key, path=path))
+
+
+@app.command("slideshow-drive")
+def slideshow_drive(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    stop: bool = typer.Option(
+        False, "--stop", help="Stop driving instead of starting",
+    ),
+) -> None:
+    """Actually rotate the configured slideshow, until stopped.
+
+    ``slideshow on`` and ``configure-slideshow`` only PERSIST the slideshow.
+    Nothing advanced it outside the gui — the gui runs its own timer, so a
+    slideshow set up here was saved, reported back correctly, and never
+    switched a theme.  This registers the driver that rotates it.
+
+    Unlike ``slideshow-run`` (a foreground demo loop over a directory), this
+    uses the persisted config and returns immediately; the rotation continues
+    in the background for as long as the app or daemon is alive.
+    """
+    log.info("cli display slideshow-drive: key=%s stop=%s", key, stop)
+    app_obj = get_app()
+    if stop:
+        dispatch_echo(StopSlideshowDriver(key=key))
+        return
+    ensure_connected(app_obj, key)
+    dispatch_echo(StartSlideshowDriver(key=key))
 
 
 @app.command("configure-slideshow")

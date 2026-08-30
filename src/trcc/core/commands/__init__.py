@@ -126,6 +126,8 @@ from .system import (
     SetSlideshow,
     SetTempUnit,
     SetTimeFormat,
+    StartSlideshowDriver,
+    StopSlideshowDriver,
 )
 from .theme import (
     DeleteTheme,
@@ -272,8 +274,10 @@ __all__ = [
     "SleepDevice",
     "StartScreencast",
     "StartScreencastDriver",
+    "StartSlideshowDriver",
     "StopScreencast",
     "StopScreencastDriver",
+    "StopSlideshowDriver",
     "StopVideo",
     "TickDisplay",
     "ToggleLed",

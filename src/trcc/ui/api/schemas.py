@@ -224,6 +224,42 @@ class HddEnabledRequest(BaseModel):
     enabled: bool
 
 
+class BackgroundFileRequest(BaseModel):
+    """A file to use as the persistent background override."""
+    path: str
+
+
+class SendImageRequest(BaseModel):
+    """An image to show once, without staging it as a theme."""
+    path: str
+
+
+class RenderDcRequest(BaseModel):
+    """Render a .dc standalone — no device, so the size is explicit."""
+    dc_path: str
+    output_path: str
+    width: int = Field(..., gt=0)
+    height: int = Field(..., gt=0)
+
+
+class ExportOverlayRequest(BaseModel):
+    """Copy a theme's overlay config file out."""
+    key: str
+    theme_name: str
+    output_path: str
+
+
+class ZoneSyncZonesRequest(BaseModel):
+    """Which zones take part in the zone-sync carousel."""
+    zones: list[bool]
+
+
+class SlideshowDriveRequest(BaseModel):
+    """Start or stop the slideshow DRIVER — distinct from enabling the
+    slideshow, which only persists the setting."""
+    drive: bool = True
+
+
 class BackgroundModeRequest(BaseModel):
     mode: str = Field(..., pattern="^(theme|color|transparent)$")
 

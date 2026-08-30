@@ -38,9 +38,12 @@ from ...core.commands import (
     LoopVideo,
     PauseVideo,
     PlayVideo,
+    RenderDcStandalone,
     RestoreDeviceState,
     SeekVideo,
     SendColor,
+    SendImage,
+    SetBackground,
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
@@ -55,8 +58,10 @@ from ...core.commands import (
     SleepDevice,
     StartScreencast,
     StartScreencastDriver,
+    StartSlideshowDriver,
     StopScreencast,
     StopScreencastDriver,
+    StopSlideshowDriver,
     StopVideo,
     TickDisplay,
     UpdateOverlayElement,
@@ -67,6 +72,7 @@ from ...core.commands import (
 from ...core.models import MEDIA, MediaKind
 from ...core.results import (
     BackgroundModeResult,
+    BackgroundResult,
     BootAnimationResult,
     BrightnessResult,
     FitModeResult,
@@ -86,6 +92,7 @@ from ...core.results import (
     OverlayElementResult,
     OverlayResult,
     PauseVideoResult,
+    RenderDcResult,
     RenderResult,
     ScreencastResult,
     SeekVideoResult,
@@ -100,6 +107,7 @@ from ._shared import (
     to_theme_response,
 )
 from .schemas import (
+    BackgroundFileRequest,
     BackgroundModeRequest,
     BootAnimationRequest,
     BrightnessRequest,
@@ -122,9 +130,12 @@ from .schemas import (
     OverlayRequest,
     PauseVideoRequest,
     PlayVideoRequest,
+    RenderDcRequest,
     ScreencastStartRequest,
     SeekVideoRequest,
+    SendImageRequest,
     SlideshowConfigureRequest,
+    SlideshowDriveRequest,
     SlideshowToggleRequest,
     SplitModeRequest,
     ThemeRequest,
@@ -853,6 +864,82 @@ def slideshow_toggle(key: str, body: SlideshowToggleRequest,
     result = request.app.state.trcc.dispatch(
         SetSlideshow(key=key, enabled=body.enabled),
     )
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/background")
+def background(key: str, body: BackgroundFileRequest,
+               request: Request) -> BackgroundResult:
+    """Set a FILE as the device's persistent background override.
+
+    Distinct from ``/background-mode``, which picks what fills the panel
+    (theme / colour / transparent).  This supplies the file itself.
+    """
+    log.info("api POST /devices/{key}/display/background: key=%s path=%s",
+             key, body.path)
+    result = request.app.state.trcc.dispatch(
+        SetBackground(key=key, path=Path(body.path)),
+    )
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/push-image")
+def push_image(key: str, body: SendImageRequest,
+               request: Request) -> SendResult:
+    """Push a server-side image to the panel ONCE — nothing staged or persisted.
+
+    **Not** ``/send-image``, despite the names.  That route takes a multipart
+    upload and dispatches ``LoadImage``, which materialises a single-image theme
+    and updates ``DeviceSettings.current_theme``; its name predates the
+    distinction and is kept because renaming it would break clients.  This
+    dispatches ``SendImage``: open, resize, encode, send, once — the ephemeral
+    path the CLI has had all along and REST did not.
+    """
+    log.info("api POST /devices/{key}/display/push-image: key=%s path=%s",
+             key, body.path)
+    result = request.app.state.trcc.dispatch(
+        SendImage(key=key, path=Path(body.path)),
+    )
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/render-dc")
+def render_dc(body: RenderDcRequest, request: Request) -> RenderDcResult:
+    """Render a legacy DC config to an image with no device and no theme load.
+
+    A diagnostic: it answers "what does this .dc actually draw?" without
+    touching hardware, which is why it takes a size rather than a device key.
+    """
+    log.info("api POST /display/render-dc: dc=%s out=%s %dx%d",
+             body.dc_path, body.output_path, body.width, body.height)
+    result = request.app.state.trcc.dispatch(RenderDcStandalone(
+        dc_path=Path(body.dc_path), output_path=Path(body.output_path),
+        width=body.width, height=body.height,
+    ))
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/slideshow/drive")
+def slideshow_drive(key: str, body: SlideshowDriveRequest,
+                    request: Request) -> SlideshowResult:
+    """Start or stop actually ROTATING the configured slideshow.
+
+    ``POST /slideshow`` only persists the setting.  Nothing advanced it outside
+    the gui, which runs its own timer — so a slideshow configured over REST was
+    saved, reported back correctly, and never switched a theme.  This registers
+    the driver that rotates it.
+    """
+    log.info(
+        "api POST /devices/{key}/display/slideshow/drive: key=%s drive=%s",
+        key, body.drive,
+    )
+    cmd = (StartSlideshowDriver(key=key) if body.drive
+           else StopSlideshowDriver(key=key))
+    result = request.app.state.trcc.dispatch(cmd)
     http_error_if_failed(result)
     return result
 

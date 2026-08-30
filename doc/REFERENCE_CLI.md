@@ -372,6 +372,19 @@ trcc display apply-mask KEY PATH
 | `KEY` | Device key, e.g. 0402:3922 |
 | `PATH` | Image file path (png/jpg/jpeg/bmp/webp) |
 
+### `trcc display background`
+
+Set a file as the device's persistent background override. Distinct from `background-mode`, which picks WHAT fills the panel (theme / colour / transparent). This supplies the file itself, and it survives a theme change until cleared.
+
+```bash
+trcc display background KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Image or video file to use as the background |
+
 ### `trcc display background-mode`
 
 Pick what fills the LCD behind overlays.
@@ -873,6 +886,22 @@ trcc display slideshow KEY STATE
 | `KEY` | Device key, e.g. 0402:3922 |
 | `STATE` | 'on' / 'off' |
 
+### `trcc display slideshow-drive`
+
+Actually rotate the configured slideshow, until stopped. `slideshow on` and `configure-slideshow` only PERSIST the slideshow. Nothing advanced it outside the gui — the gui runs its own timer, so a slideshow set up here was saved, reported back correctly, and never switched a theme. This registers the driver that rotates it. Unlike `slideshow-run` (a foreground demo loop over a directory), this uses the persisted config and returns immediately; the rotation continues in the background for as long as the app or daemon is alive.
+
+```bash
+trcc display slideshow-drive [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--stop` | Stop driving instead of starting |
+
 ### `trcc display slideshow-run`
 
 Foreground slideshow over a directory of themes. Different from `slideshow` / `configure-slideshow` (which persist state). This is a one-shot loop: blocks until Ctrl-C, swaps to the next theme each tick. Useful for demos + smoke tests; the persisted flow is what production users want.
@@ -1355,6 +1384,19 @@ trcc led zone-sync [OPTIONS] KEY STATE
 | Option | Description |
 |---|---|
 | `--interval`, `-i` `INTERVAL` | Set ticks-per-rotation alongside the toggle |
+
+### `trcc led zone-sync-zones`
+
+Choose WHICH zones take part in the zone-sync carousel. `zone-sync` turns the carousel on and sets its interval; this says which pages rotate in it. Without this, that choice existed only in the gui.
+
+```bash
+trcc led zone-sync-zones KEY ZONES
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `ZONES` | Comma-separated on/off per zone, e.g. 'on,off,on,on' |
 
 ## `trcc system`
 

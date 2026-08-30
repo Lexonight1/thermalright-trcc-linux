@@ -19,7 +19,11 @@ from ..events import (
     TempUnitChanged,
     TimeFormatChanged,
 )
-from ..models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
+from ..models import (
+    MAX_REFRESH_INTERVAL_S,
+    MIN_REFRESH_INTERVAL_S,
+    SLIDESHOW_POLL_S,
+)
 from ..results import (
     AutostartResult,
     ControlCenterSnapshotResult,
@@ -728,6 +732,78 @@ class AdvanceSlideshow(Command[SlideshowAdvanceResult]):
         return SlideshowAdvanceResult(
             ok=True, key=self.key, theme_name=name, due=True, running=True,
             message=f"Next theme: {name}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StartSlideshowDriver(Command[SlideshowResult]):
+    """Rotate a configured slideshow on a cadence until stopped.
+
+    Without this, ``ConfigureSlideshow`` persists a slideshow that nothing ever
+    advances outside the gui: the gui runs its own ``QTimer``, and a slideshow
+    set up through the CLI or the REST API was saved, reported back correctly,
+    and never switched a theme.
+
+    Separate from ``ConfigureSlideshow`` for the reason
+    ``StartScreencastDriver`` is separate from ``StartScreencast`` — a gui
+    session already has a timer, so registering a driver there too would put two
+    rotators on one device. The clients without a timer ask explicitly.
+
+    Idempotent: the scheduler replaces a task registered under the same key.
+    """
+    key: str
+    interval_s: float = SLIDESHOW_POLL_S
+
+    def execute(self, app: App) -> SlideshowResult:
+        log.info("StartSlideshowDriver.execute: key=%s poll=%.3fs",
+                 self.key, self.interval_s)
+        s = app.settings.for_device(self.key)
+        if not s.slideshow_enabled or not s.slideshow_themes:
+            log.warning(
+                "StartSlideshowDriver: %s has no slideshow configured "
+                "(enabled=%s themes=%d) — configure one first",
+                self.key, s.slideshow_enabled, len(s.slideshow_themes),
+            )
+            return SlideshowResult(
+                ok=False, key=self.key,
+                enabled=s.slideshow_enabled,
+                interval_s=float(s.slideshow_interval_s),
+                themes=list(s.slideshow_themes),
+                message=(f"no slideshow configured on {self.key} — "
+                         "configure one before driving it"),
+            )
+
+        from ...services.slideshow_driver import SlideshowDriver
+
+        app.add_task(SlideshowDriver(app, self.key, self.interval_s))
+        return SlideshowResult(
+            ok=True, key=self.key, enabled=True,
+            interval_s=float(s.slideshow_interval_s),
+            themes=list(s.slideshow_themes),
+            message=f"driving slideshow on {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StopSlideshowDriver(Command[SlideshowResult]):
+    """Stop the cadence started by :class:`StartSlideshowDriver`.
+
+    Idempotent — removing a task that was never registered is a no-op, which
+    matters because a client may stop a slideshow it did not drive.
+    """
+    key: str
+
+    def execute(self, app: App) -> SlideshowResult:
+        log.info("StopSlideshowDriver.execute: key=%s", self.key)
+        from ...services.slideshow_driver import task_key
+
+        app.remove_task(task_key(self.key))
+        s = app.settings.for_device(self.key)
+        return SlideshowResult(
+            ok=True, key=self.key, enabled=s.slideshow_enabled,
+            interval_s=float(s.slideshow_interval_s),
+            themes=list(s.slideshow_themes),
+            message=f"stopped driving slideshow on {self.key}",
         )
 
 

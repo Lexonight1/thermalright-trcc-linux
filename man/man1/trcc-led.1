@@ -557,6 +557,28 @@ Set ticks\-per\-rotation alongside the toggle
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS zone\-sync\-zones
+.PP
+\fBtrcc led zone\-sync\-zones\fR \fIKEY\fR \fIZONES\fR
+.PP
+Choose WHICH zones take part in the zone\-sync carousel. zone\-sync turns the carousel on and sets its interval; this says which pages rotate in it. Without this, that choice existed only in the gui.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBZONES\fR
+Comma\-separated on/off per zone, e.g. 'on,off,on,on'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SH SEE ALSO
 \fBtrcc\fR(1)
 .SH REPORTING BUGS

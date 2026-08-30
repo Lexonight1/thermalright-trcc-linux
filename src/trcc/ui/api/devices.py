@@ -10,6 +10,7 @@ from ...core.commands import (
     DeviceConnectionIssues,
     DisconnectDevice,
     DiscoverDevices,
+    ResetDevice,
 )
 from ...core.results import DisconnectResult
 from ._shared import (
@@ -69,6 +70,20 @@ def connect(key: str, request: Request):
     log.info("api POST /devices/{key}/connect: key=%s", key)
     result = request.app.state.trcc.dispatch(ConnectDevice(key=key))
     http_error_if_failed(result)
+    return result
+
+
+@router.post("/{key}/reset")
+def reset(key: str, request: Request) -> DisconnectResult:
+    """Disconnect AND drop cached state, so the next connect starts clean.
+
+    Distinct from ``POST /devices/{key}/display/reset``, which blanks the panel
+    to a known colour and leaves the device connected.  This is the CLI's
+    ``device reset``, which had no REST equivalent.
+    """
+    log.info("api POST /devices/{key}/reset: key=%s", key)
+    result = request.app.state.trcc.dispatch(ResetDevice(key=key))
+    http_error_if_failed(result, status_code=404)
     return result
 
 
