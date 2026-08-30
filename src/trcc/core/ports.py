@@ -1114,6 +1114,23 @@ class ContentStore(ABC):
         """*theme*'s panel thumbnail — the browser tile, distinct from what
         the renderer ships to the LCD."""
 
+    @abstractmethod
+    def tile_path(self, theme_dir: Path) -> Path | None:
+        """Best tile image for a theme DIRECTORY, or None.
+
+        ``Theme.png`` → ``00.png`` → any ``*.png``.  Keyed on a directory
+        rather than a :class:`Theme` because listings ask it of paths they have
+        not loaded, and it falls back where :meth:`preview_path` does not — the
+        store owns which files can stand in for a tile, exactly as it owns which
+        files mark a theme dir.
+
+        NOTE the overlap with :meth:`preview_path`, which answers the same
+        question more narrowly and is NOT implemented in terms of this.  They
+        genuinely disagree for a theme with no ``Theme.png``: one returns None,
+        the other falls back.  Unifying them is a behaviour change to the GUI
+        grid, not a refactor, so it is recorded here rather than done quietly.
+        """
+
     # ── Whole units in and out ────────────────────────────────────────
 
     @abstractmethod
@@ -1143,6 +1160,35 @@ class ContentStore(ABC):
 
         *elements* REPLACES the theme's own layout when given: the caller
         passes what the device is actually showing.
+        """
+
+    @abstractmethod
+    def write_manifest(self, theme_dir: Path, manifest: dict) -> Path:
+        """Persist *manifest* as *theme_dir*'s reference manifest; return its path.
+
+        The caller owns the manifest as DOMAIN data — which background, which
+        mask, which elements.  How that becomes bytes on disk (the filename,
+        JSON, the encoding, the trailing newline) is the adapter's business and
+        the reason this takes a dict rather than a string.
+        """
+
+    @abstractmethod
+    def write_preview(self, theme_dir: Path, png: bytes) -> Path:
+        """Give *theme_dir* the grid tile the chooser shows; return its path.
+
+        ``Theme.png`` is the chooser's tile and is NEVER rendered to a device,
+        so a full composite is safe here in a way it would not be for a frame.
+        """
+
+    @abstractmethod
+    def copy_preview(self, src_theme_dir: Path, dst_theme_dir: Path) -> bool:
+        """Copy *src*'s grid tile to *dst*; False when *src* has none.
+
+        A pair rather than read-then-write because "does the source have a tile"
+        is the store's question, and answering it in the caller means a probe in
+        the caller.  Returning a bool rather than raising keeps it usable as the
+        best-effort fallback ``SaveTheme`` needs — a missing tile must never
+        fail a save.
         """
 
     @abstractmethod

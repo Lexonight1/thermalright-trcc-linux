@@ -795,7 +795,33 @@ KNOWN_FS_IO: dict[str, int] = {
     "trcc/core/_safe.py": 3,
     "trcc/core/commands/_helpers.py": 7,
     "trcc/core/commands/device.py": 13,
-    "trcc/core/commands/theme.py": 32,
+    # 32 -> 23.  The file was half-migrated in place: 23 calls already went
+    # through ``app.themes`` while 32 went around it.  What moved answered a
+    # STORAGE question — writing a theme's manifest and grid tile
+    # (``write_manifest`` / ``write_preview`` / ``copy_preview``) and choosing
+    # which image can stand in as a tile (``tile_path``, which had been a
+    # private helper in a Command module despite its own docstring calling
+    # itself "single source ... so every UI agrees").  Also gone: pre-resolving
+    # a path before ``is_under``, which resolves both sides itself, and
+    # ``DeleteTheme`` hand-rolling resolve+resolve+relative_to — the containment
+    # rule spelled twice, in the one place where getting it wrong deletes a
+    # user's files.
+    #
+    # The 23 that remain are NOT deferred work, they are the ones a port should
+    # not take:
+    #   * 4 ``.resolve()`` canonicalising a value, not reading content — the
+    #     path persisted to settings, a dedup key, the delete target.
+    #   * 3 guards on a path the USER typed at a CLI/API boundary
+    #     (``self.path.is_file()``).  Use-case input validation.
+    #   * 2 ``output_path.parent.mkdir`` creating the user's chosen export
+    #     destination, which is outside any store.
+    #   * 4 ``is_dir()`` theme guards.  ``is_theme_dir`` looks like the answer
+    #     but is STRICTER — it also requires a marker file — so substituting it
+    #     would make exports start failing on marker-less directories.  That may
+    #     well be a fix; it is not a refactor, so it is not smuggled in here.
+    #   * the rest read a user's own file to hand its bytes to the store, which
+    #     is the ingest boundary itself.
+    "trcc/core/commands/theme.py": 23,
     "trcc/core/libraries.py": 1,
     "trcc/core/toolchain.py": 2,
     "trcc/services/_dc.py": 3,

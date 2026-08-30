@@ -42,8 +42,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
 | [`BaseOS`](#baseos) | 12 | 16 | 8 |
 | [`Renderer`](#renderer) | 15 | 6 | 1 |
-| [`ContentStore`](#contentstore) | 22 | 0 | 1 |
 | [`Platform`](#platform) | 23 | 0 | 8 |
+| [`ContentStore`](#contentstore) | 26 | 0 | 1 |
 
 ---
 
@@ -615,41 +615,6 @@ to_raw_rgb24(surface: 'Any') -> RawFrame
 
 **Implementations (1):** `QtRenderer`
 
-## ContentStore
-
-`core/ports.py`
-
-Where themes, masks, backgrounds and capture configs are kept.
-
-**You implement (22):**
-
-```python
-background_path(theme: 'Theme') -> Path | None
-delete(directory: 'Path', name: 'str') -> Path
-discover_masks(cloud_masks_dir: 'Path | None' = None, user_masks_dir: 'Path | None' = None) -> builtins.list[DiscoveredMask]
-export(theme_path: 'Path', archive_path: 'Path') -> None
-export_dc(theme_dir: 'Path', output_path: 'Path', elements: 'list[dict] | None' = None) -> Path
-import_(archive_path: 'Path', into_dir: 'Path') -> Theme
-is_theme_dir(path: 'Path') -> bool
-list(directory: 'Path') -> builtins.list[Theme]
-list_web_previews(web_dir: 'Path') -> builtins.list[WebPreviewInfo]
-load(path: 'Path') -> Theme
-mask_path(theme: 'Theme') -> Path | None
-media_player_uri(theme: 'Theme') -> str | None
-preview_path(theme: 'Theme') -> Path | None
-resolve_ref(ref: 'str') -> Path | None
-screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None
-single_file_theme(source: 'Path', kind: 'str') -> AbstractContextManager[SingleFileTheme]
-stage(target: 'Path') -> AbstractContextManager[Path]
-store_background(data: 'bytes', ext: 'str', width: 'int', height: 'int') -> str
-store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None, name: 'str | None' = None) -> str
-store_media_player(uri: 'str') -> str
-store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
-video_path(theme: 'Theme') -> Path | None
-```
-
-**Implementations (1):** `FileContentStore`
-
 ## Platform
 
 `core/ports.py`
@@ -693,4 +658,43 @@ worker_thread_context() -> AbstractContextManager[None]
 ```
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
+
+## ContentStore
+
+`core/ports.py`
+
+Where themes, masks, backgrounds and capture configs are kept.
+
+**You implement (26):**
+
+```python
+background_path(theme: 'Theme') -> Path | None
+copy_preview(src_theme_dir: 'Path', dst_theme_dir: 'Path') -> bool
+delete(directory: 'Path', name: 'str') -> Path
+discover_masks(cloud_masks_dir: 'Path | None' = None, user_masks_dir: 'Path | None' = None) -> builtins.list[DiscoveredMask]
+export(theme_path: 'Path', archive_path: 'Path') -> None
+export_dc(theme_dir: 'Path', output_path: 'Path', elements: 'list[dict] | None' = None) -> Path
+import_(archive_path: 'Path', into_dir: 'Path') -> Theme
+is_theme_dir(path: 'Path') -> bool
+list(directory: 'Path') -> builtins.list[Theme]
+list_web_previews(web_dir: 'Path') -> builtins.list[WebPreviewInfo]
+load(path: 'Path') -> Theme
+mask_path(theme: 'Theme') -> Path | None
+media_player_uri(theme: 'Theme') -> str | None
+preview_path(theme: 'Theme') -> Path | None
+resolve_ref(ref: 'str') -> Path | None
+screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None
+single_file_theme(source: 'Path', kind: 'str') -> AbstractContextManager[SingleFileTheme]
+stage(target: 'Path') -> AbstractContextManager[Path]
+store_background(data: 'bytes', ext: 'str', width: 'int', height: 'int') -> str
+store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None, name: 'str | None' = None) -> str
+store_media_player(uri: 'str') -> str
+store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
+tile_path(theme_dir: 'Path') -> Path | None
+video_path(theme: 'Theme') -> Path | None
+write_manifest(theme_dir: 'Path', manifest: 'dict') -> Path
+write_preview(theme_dir: 'Path', png: 'bytes') -> Path
+```
+
+**Implementations (1):** `FileContentStore`
 

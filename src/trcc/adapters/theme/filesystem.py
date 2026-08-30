@@ -570,6 +570,37 @@ class FileContentStore(ContentStore):
         Dc.File(output_path).write(config)
         return output_path
 
+    def write_manifest(self, theme_dir: Path, manifest: dict) -> Path:
+        """Persist *manifest* as ``trcc.json`` — see ContentStore.write_manifest."""
+        out = ThemeDir(theme_dir).json
+        log.info("write_manifest: %s (bg=%s mask=%s elements=%d)",
+                 out, manifest.get("background"), manifest.get("mask"),
+                 len(manifest.get("elements") or []))
+        out.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        return out
+
+    def write_preview(self, theme_dir: Path, png: bytes) -> Path:
+        """Write the chooser tile — see ContentStore.write_preview."""
+        out = ThemeDir(theme_dir).preview
+        log.info("write_preview: %d byte(s) → %s", len(png), out)
+        out.write_bytes(png)
+        return out
+
+    def copy_preview(self, src_theme_dir: Path, dst_theme_dir: Path) -> bool:
+        """Copy one theme's tile to another — see ContentStore.copy_preview."""
+        src = ThemeDir(src_theme_dir).preview
+        if not src.is_file():
+            log.info("copy_preview: %s has no %s — nothing to copy",
+                     src_theme_dir, ThemeDir.PREVIEW)
+            return False
+        dst = ThemeDir(dst_theme_dir).preview
+        shutil.copy2(src, dst)
+        log.info("copy_preview: %s → %s", src, dst)
+        return True
+
     def delete(self, directory: Path, name: str) -> Path:
         """Delete the theme ``directory / name``.
 
@@ -700,6 +731,17 @@ class FileContentStore(ContentStore):
         log.debug("preview_path: theme=%s", theme.name)
         td = ThemeDir(theme.path)
         return td.preview if td.preview.exists() else None
+
+    def tile_path(self, theme_dir: Path) -> Path | None:
+        """Theme.png → 00.png → any *.png — see ContentStore.tile_path."""
+        for name in (ThemeDir.PREVIEW, ThemeDir.BG):
+            candidate = theme_dir / name
+            if candidate.is_file():
+                log.debug("tile_path: %s → %s", theme_dir, candidate)
+                return candidate
+        any_png = next(theme_dir.glob("*.png"), None)
+        log.debug("tile_path: %s → %s (fallback)", theme_dir, any_png)
+        return any_png
 
     def is_theme_dir(self, path: Path) -> bool:
         """True iff *path* is a directory carrying a theme config.

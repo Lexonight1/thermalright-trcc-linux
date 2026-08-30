@@ -23,6 +23,7 @@ from ..events import (
 )
 from ..geometry import content_is_portrait, save_folder_resolution
 from ..models import ThemeDir
+from ..ports import ContentStore
 from ..registry import find_product
 from ..results import (
     CloudCategoryEntry,
@@ -74,15 +75,16 @@ from ..models import MEDIA, MediaKind
 log = logging.getLogger(__name__)
 
 
-def _theme_preview(theme_dir: Path) -> str:
-    """Tile image for a theme dir: ``Theme.png`` → ``00.png`` → any ``*.png``
-    → ``""``.  Single source for the browser tile so every UI agrees."""
-    for name in (ThemeDir.PREVIEW, ThemeDir.BG):
-        candidate = theme_dir / name
-        if candidate.is_file():
-            return str(candidate)
-    any_png = next(theme_dir.glob("*.png"), None)
-    return str(any_png) if any_png is not None else ""
+def _theme_preview(themes: ContentStore, theme_dir: Path) -> str:
+    """Tile image for a theme dir, as a display string ("" when none).
+
+    The chain itself is ``ContentStore.tile_path`` — which files can stand in
+    for a tile is the store's knowledge, and answering it here meant a Command
+    module reaching for the filesystem to do it.  This wrapper survives only to
+    turn ``Path | None`` into the ``str`` the result DTO carries.
+    """
+    tile = themes.tile_path(theme_dir)
+    return str(tile) if tile is not None else ""
 
 
 def _cloud_preview(web_dir: Path | None, theme_id: str) -> str:
@@ -587,7 +589,7 @@ class SaveTheme(Command[ThemeResult]):
                 manifest = self._build_manifest(
                     app, staging, theme, device_settings, w, h,
                 )
-                self._write_manifest(staging, manifest)
+                self._write_manifest(app, staging, manifest)
                 self._write_thumbnail(app, staging, theme)
         except (OSError, ThemeError, TrccError) as e:
             return ThemeResult(
@@ -773,7 +775,6 @@ class SaveTheme(Command[ThemeResult]):
         ext = src.suffix.lower()
         is_video = MEDIA.kind_of(ext) is MediaKind.ANIMATED
         paths = app.platform.paths()
-        src_resolved = src.resolve()
 
         # Catalog asset → keep its existing web/{w}{h} ref; loose/custom asset →
         # copy it into the USER library first (deduped, native res) so its ref
@@ -793,7 +794,10 @@ class SaveTheme(Command[ThemeResult]):
         for root in (paths.user_background_dir(width, height),
                      app.libraries(self.key).cloud_theme_dir(width, height),
                      paths.cloud_theme_dir(width, height)):
-            if is_under(src_resolved, root):
+            # ``is_under`` resolves BOTH sides itself (the #261 symlink fix), so
+            # pre-resolving here only asked the filesystem the same question
+            # twice.
+            if is_under(src, root):
                 ref = f"web/{root.name}/{src.name}"
                 break
         else:
@@ -854,17 +858,12 @@ class SaveTheme(Command[ThemeResult]):
         return ref
 
     @staticmethod
-    def _write_manifest(target: Path, manifest: dict) -> None:
-        """Write the reference manifest as ``target/trcc.json``."""
-        import json
-
-        ThemeDir(target).json.write_text(
-            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+    def _write_manifest(app: App, target: Path, manifest: dict) -> None:
+        """Write the reference manifest into *target* through the store."""
+        out = app.themes.write_manifest(target, manifest)
         log.info(
             "SaveTheme: wrote manifest → %s (bg=%s mask=%s elements=%d)",
-            ThemeDir(target).json, manifest.get("background"),
+            out, manifest.get("background"),
             manifest.get("mask"), len(manifest.get("elements") or []),
         )
 
@@ -879,8 +878,6 @@ class SaveTheme(Command[ThemeResult]):
         to snapshot; a headless save falls back to the source theme's
         thumbnail.  Never raises — a thumbnail miss must not fail the save.
         """
-        import shutil
-
         device = app.devices.get(self.key)
         if device is not None:
             try:
@@ -894,20 +891,17 @@ class SaveTheme(Command[ThemeResult]):
                     info=device.info, theme=theme, sensors=sensors,
                     profile=device.profile,
                 )
-                ThemeDir(target).preview.write_bytes(
-                    app.renderer.encode_png(surface),
+                out = app.themes.write_preview(
+                    target, app.renderer.encode_png(surface),
                 )
-                log.info("SaveTheme: preview snapshot → %s", ThemeDir(target).preview)
+                log.info("SaveTheme: preview snapshot → %s", out)
                 return
             except Exception as e:
                 log.warning("SaveTheme: preview snapshot failed (%s) — "
                             "falling back to source thumbnail", e)
 
-        src = ThemeDir(theme.path).preview
-        if src.is_file():
-            shutil.copy2(src, ThemeDir(target).preview)
-            log.info("SaveTheme: copied source thumbnail → %s",
-                     ThemeDir(target).preview)
+        if app.themes.copy_preview(theme.path, target):
+            log.info("SaveTheme: copied source thumbnail from %s", theme.path)
         else:
             log.info("SaveTheme: no device + no source thumbnail — "
                      "saved without a grid tile")
@@ -1277,7 +1271,8 @@ class ListThemes(Query[ThemesListResult]):
 
         # Origin is location-derived (theme under user_data_dir → "user"), so
         # it is correct in directory mode too and replaces name heuristics.
-        user_root = paths.user_data_dir().resolve()
+        # Not pre-resolved: ``is_under`` resolves both sides itself.
+        user_root = paths.user_data_dir()
         seen_paths: set[Path] = set()
         entries: list[ThemeListEntry] = []
         for root in roots:
@@ -1289,7 +1284,7 @@ class ListThemes(Query[ThemesListResult]):
                 entries.append(ThemeListEntry(
                     name=theme.name, resolution=theme.resolution,
                     path=str(theme.path),
-                    preview=str(_theme_preview(theme.path)),
+                    preview=_theme_preview(app.themes, theme.path),
                     origin="user" if is_under(resolved, user_root) else "shipped",
                 ))
         target_str = "; ".join(str(r) for r in roots)
@@ -1405,14 +1400,15 @@ class DeleteTheme(Command[DeleteThemeResult]):
     def execute(self, app: App) -> DeleteThemeResult:
         log.info("DeleteTheme: path=%s", self.path)
         root = app.platform.paths().user_content_dir()
-        try:
-            target = self.path.resolve()
-            root_resolved = root.resolve()
-            target.relative_to(root_resolved)
-        except (OSError, ValueError) as e:
+        # ``is_under`` IS this check, and it is the hardened version: it resolves
+        # both sides and swallows the OSError, which is why #261 exists as a
+        # fixed bug rather than an open one.  Spelling it again here as
+        # resolve + resolve + relative_to was the same rule expressed twice, in
+        # the one place where getting it wrong deletes a user's files.
+        if not is_under(self.path, root):
             log.warning(
-                "DeleteTheme: refusing to delete %s — not under %s (%s)",
-                self.path, root, e,
+                "DeleteTheme: refusing to delete %s — not under %s",
+                self.path, root,
             )
             return DeleteThemeResult(
                 ok=False, theme_name=self.path.name, path=str(self.path),
@@ -1420,6 +1416,11 @@ class DeleteTheme(Command[DeleteThemeResult]):
                          f"not inside {root}"),
             )
 
+        # Still resolved: this is WHAT GETS DELETED, so it follows the symlink
+        # exactly as it always has.  Canonicalising the delete target is a
+        # different question from the containment check above, and quietly
+        # changing it would be a behaviour change smuggled into a refactor.
+        target = self.path.resolve()
         try:
             deleted = app.themes.delete(target.parent, target.name)
         except ThemeError as e:
