@@ -8,9 +8,48 @@ System\-level operations (setup, sensors, info).
 .SH SUBCOMMANDS
 .SS autostart
 .PP
-\fBtrcc system autostart\fR
-.PP
 Manage auto\-launch\-on\-login (XDG .desktop on Linux).
+.SS autostart disable
+.PP
+\fBtrcc system autostart disable\fR
+.PP
+Remove the autostart entry.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS autostart enable
+.PP
+\fBtrcc system autostart enable\fR
+.PP
+Install the autostart entry (per\-user, no sudo required).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS autostart refresh
+.PP
+\fBtrcc system autostart refresh\fR
+.PP
+Re\-render an existing entry so it picks up a new launch path. The repair for a moved install (#201): an entry written by an older install keeps its old Exec= forever. Does NOT enable autostart  \-  with no entry installed it reports so and changes nothing.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS autostart status
+.PP
+\fBtrcc system autostart status\fR
+.PP
+Show whether auto\-launch\-on\-login is enabled.
 .PP
 Options:
 .RS 4

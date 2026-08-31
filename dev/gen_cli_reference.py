@@ -29,6 +29,7 @@ from pathlib import Path
 import click
 import typer.main
 
+from _cli_tree import is_group as _is_group
 from trcc.ui.cli.main import app
 
 _DOC = Path(__file__).resolve().parents[1] / "doc" / "REFERENCE_CLI.md"
@@ -42,16 +43,6 @@ _KEY_NOTE = (
     "Commands that act on a device take its **`KEY`** — the USB `VID:PID` "
     "shown by `trcc detect`, e.g. `0402:3922` — as the first argument."
 )
-
-
-def _is_group(cmd: click.Command) -> bool:
-    """True for a command group.
-
-    Duck-typed on ``.commands`` rather than ``isinstance(cmd, click.Group)``:
-    Typer (>=0.13) vendors its own click, so the tree objects are not
-    instances of the installed click package's classes.
-    """
-    return getattr(cmd, "commands", None) is not None
 
 
 def _visible_params(
@@ -125,10 +116,21 @@ def _render_command(prog: str, cmd: click.Command, level: str) -> list[str]:
     return lines
 
 
-def _render_group(name: str, group: click.Group) -> list[str]:
-    """A group's section, with one subsection per subcommand."""
+def _render_group(name: str, group: click.Group, level: str = "##") -> list[str]:
+    """A group's section, with one subsection per subcommand.
+
+    Recurses, because a group can hold a group: ``trcc system autostart`` has
+    four subcommands.  This loop used to call ``_render_command`` on every
+    child unconditionally, so a nested group was rendered as though it were a
+    leaf — a heading, the group's help, and a bare synopsis — while the
+    commands underneath it appeared nowhere on the page.
+
+    Markdown has six heading levels, so nesting is free: the group's leaves sit
+    one level below it.
+    """
+    prog = f"trcc {name}"
     lines = [
-        f"## `trcc {name}`",
+        f"{level} `{prog}`",
         "",
         _text(group.help, f"The {name} command group."),
         "",
@@ -136,7 +138,10 @@ def _render_group(name: str, group: click.Group) -> list[str]:
     for sub_name, sub in sorted(group.commands.items()):
         if getattr(sub, "hidden", False):
             continue
-        lines += _render_command(f"trcc {name} {sub_name}", sub, "###")
+        if _is_group(sub):
+            lines += _render_group(f"{name} {sub_name}", sub, level + "#")
+        else:
+            lines += _render_command(f"{prog} {sub_name}", sub, level + "#")
     return lines
 
 

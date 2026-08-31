@@ -28,8 +28,17 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev"))
 
 import gen_cli_reference  # noqa: E402  # pyright: ignore[reportMissingImports]
+from _cli_tree import iter_leaves  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 _DOC_DIR = _ROOT / "doc"
+
+
+def _leaves() -> list[tuple[str, Any]]:
+    """Every runnable command in the live tree, as (invocation, command)."""
+    import typer.main
+
+    from trcc.ui.cli.main import app
+    return list(iter_leaves(typer.main.get_command(app)))
 
 
 # =========================================================================
@@ -51,27 +60,22 @@ def test_committed_cli_reference_is_current() -> None:
 
 
 def test_generated_reference_covers_every_command() -> None:
-    """Every non-hidden command appears — the old page documented ~1 in 3."""
-    import typer.main
+    """Every non-hidden command appears — the old page documented ~1 in 3.
 
-    from trcc.ui.cli.main import app
+    Walks the tree through ``iter_leaves`` rather than two hand-written loops.
+    The loops were the bug: they checked ``cli.commands`` then ``cmd.commands``
+    and stopped, so a group INSIDE a group was tested as though it were a
+    command.  ``trcc system autostart`` is one, and the string
+    ``\u0060trcc system autostart\u0060`` was on the page — as a mis-rendered leaf
+    heading — so this test passed while all four of its real subcommands were
+    undocumented.
 
+    A leaf is what a user can actually run to completion, which is why
+    ``iter_leaves`` never yields a group.
+    """
     page = gen_cli_reference.generate()
-    cli = typer.main.get_command(app)
-    missing: list[str] = []
-    for name, cmd in cli.commands.items():          # pyright: ignore[reportAttributeAccessIssue]
-        if getattr(cmd, "hidden", False):
-            continue
-        if gen_cli_reference._is_group(cmd):
-            for sub_name, sub in cmd.commands.items():
-                if not getattr(sub, "hidden", False) and (
-                    f"`trcc {name} {sub_name}`" not in page
-                ):
-                    missing.append(f"trcc {name} {sub_name}")
-        elif f"`trcc {name}`" not in page:
-            missing.append(f"trcc {name}")
+    missing = [path for path, _cmd in _leaves() if f"`{path}`" not in page]
     assert not missing, f"commands absent from the reference: {missing}"
-
 
 # =========================================================================
 # 2. Hand-written guides only name commands that exist

@@ -16,6 +16,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev"))
 
 import gen_manpages  # noqa: E402  # pyright: ignore[reportMissingImports]
+from _cli_tree import iter_leaves  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 _MAN_DIR = _ROOT / "man" / "man1"
 
@@ -30,6 +31,40 @@ def test_committed_manpages_are_current() -> None:
         assert target.read_text() == content, (
             f"{filename} is stale — run: PYTHONPATH=src python3 dev/gen_manpages.py"
         )
+
+
+def test_every_command_appears_in_its_group_page() -> None:
+    """A command a user can run must be findable in ``man``.
+
+    The reference-page half of this lives in
+    ``test_docs_cli_consistency::test_generated_reference_covers_every_command``.
+    Two artifacts, two generators, so two assertions — but ONE walk
+    (``iter_leaves``), because "what counts as a documentable command" is the
+    single fact both depend on, and it is exactly the fact that was wrong.
+
+    ``render_group_page`` used to emit every subcommand as a leaf without
+    asking whether it was itself a group, so ``trcc system autostart`` appeared
+    as a runnable command whose only option was ``--help`` — while its four
+    real subcommands appeared nowhere.  Running it prints a usage screen.
+    """
+    import typer.main
+
+    from trcc.ui.cli.main import app
+
+    pages = gen_manpages.generate()
+    missing: list[str] = []
+    for path, _cmd in iter_leaves(typer.main.get_command(app)):
+        parts = path.split()                      # ["trcc", group, ...leaf]
+        if len(parts) < 3:
+            continue                              # top-level: lives on trcc.1
+        page = pages.get(f"trcc-{parts[1]}.1", "")
+        # ``esc`` turns hyphens into ``\-``; compare on the escaped subpath.
+        subpath = gen_manpages.esc(" ".join(parts[2:]))
+        if f".SS {subpath}" not in page:
+            missing.append(path)
+    assert not missing, (
+        "commands absent from their group's man page: " + ", ".join(missing)
+    )
 
 
 def test_no_orphan_manpages() -> None:

@@ -24,6 +24,7 @@ from pathlib import Path
 import click
 import typer.main
 
+from _cli_tree import is_group as _is_group
 from trcc.__version__ import __version__
 from trcc.ui.cli.main import app
 
@@ -65,14 +66,6 @@ def esc(text: str | None) -> str:
     if flat[:1] in (".", "'"):
         flat = "\\&" + flat
     return flat
-
-
-def _is_group(cmd: click.Command) -> bool:
-    """True for a command group. Duck-typed on the ``.commands`` mapping rather
-    than ``isinstance(cmd, click.Group)`` because Typer (>=0.13) vendors its own
-    click as ``typer._click`` \\(em the tree objects are no longer instances of
-    the installed ``click`` package's classes."""
-    return getattr(cmd, "commands", None) is not None
 
 
 def _metavar(param: click.Argument) -> str:
@@ -161,6 +154,42 @@ def _short(cmd: click.Command, fallback: str) -> str:
     return " ".join(text.split()).split(". ")[0].rstrip(".")
 
 
+def _subcommand_lines(prog: str, group: click.Group, path: str) -> list[str]:
+    """``.SS`` entries for every subcommand under *group*, recursing into groups.
+
+    troff has ``.SS`` but no ``.SSS``, so a nested command is FLATTENED into a
+    qualified subsection name — ``.SS autostart status`` — rather than nested.
+    That keeps ``man trcc-system`` one page you can page through and search,
+    which is what a reader does, and it means a nested group needs no page of
+    its own.
+
+    This used to be a flat loop that rendered every child as a leaf.
+    ``trcc system autostart`` is a GROUP, so the page advertised it as a
+    runnable command whose only option was ``--help`` — running it prints a
+    usage screen — and hid the four commands that do run.
+    """
+    lines: list[str] = []
+    for sub_name, sub in sorted(group.commands.items()):
+        if getattr(sub, "hidden", False):
+            continue
+        qualified = f"{path} {sub_name}".strip()
+        if _is_group(sub):
+            lines.append(f".SS {esc(qualified)}")
+            lines.append(".PP")
+            lines.append(esc(sub.help) or esc(sub.short_help)
+                         or f"The {esc(sub_name)} command group.")
+            lines.extend(_subcommand_lines(prog, sub, qualified))
+            continue
+        lines.append(f".SS {esc(qualified)}")
+        lines.append(".PP")
+        lines.append(_synopsis(f"{prog} {qualified}", sub))
+        lines.append(".PP")
+        lines.append(esc(sub.help) or esc(sub.short_help) or "(no description)")
+        lines.extend(_arg_lines(sub))
+        lines.extend(_opt_lines(sub))
+    return lines
+
+
 def render_group_page(name: str, group: click.Group) -> str:
     """A full man page for one command group (e.g. ``trcc-display``)."""
     prog = f"trcc {name}"
@@ -174,16 +203,7 @@ def render_group_page(name: str, group: click.Group) -> str:
         esc(group.help) or f"The {esc(name)} command group.",
         ".SH SUBCOMMANDS",
     ]
-    for sub_name, sub in sorted(group.commands.items()):
-        if getattr(sub, "hidden", False):
-            continue
-        lines.append(f".SS {esc(sub_name)}")
-        lines.append(".PP")
-        lines.append(_synopsis(f"{prog} {sub_name}", sub))
-        lines.append(".PP")
-        lines.append(esc(sub.help) or esc(sub.short_help) or "(no description)")
-        lines.extend(_arg_lines(sub))
-        lines.extend(_opt_lines(sub))
+    lines.extend(_subcommand_lines(prog, group, ""))
     lines.append(".SH SEE ALSO")
     lines.append("\\fBtrcc\\fR(1)")
     lines.extend(_footer())

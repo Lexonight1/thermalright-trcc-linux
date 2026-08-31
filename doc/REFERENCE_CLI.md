@@ -1406,8 +1406,36 @@ System-level operations (setup, sensors, info).
 
 Manage auto-launch-on-login (XDG .desktop on Linux).
 
+#### `trcc system autostart disable`
+
+Remove the autostart entry.
+
 ```bash
-trcc system autostart
+trcc system autostart disable
+```
+
+#### `trcc system autostart enable`
+
+Install the autostart entry (per-user, no sudo required).
+
+```bash
+trcc system autostart enable
+```
+
+#### `trcc system autostart refresh`
+
+Re-render an existing entry so it picks up a new launch path. The repair for a moved install (#201): an entry written by an older install keeps its old `Exec=` forever. Does NOT enable autostart — with no entry installed it reports so and changes nothing.
+
+```bash
+trcc system autostart refresh
+```
+
+#### `trcc system autostart status`
+
+Show whether auto-launch-on-login is enabled.
+
+```bash
+trcc system autostart status
 ```
 
 ### `trcc system check-update`
