@@ -111,13 +111,22 @@ jobs:
           # (modern Fedora/Ubuntu ship only python3 by default). #157
           find "$PKG" -name "trcc*" -path "*/bin/*" -exec sed -i "1s|^#\!.*/python[0-9.]*|#!/usr/bin/python3|" {} +
 
-          # Bundle sounddevice + nvidia-ml-py (neither in Fedora repos).  The
-          # NVML reader is now a core Python dependency (#161); Fedora ships no
-          # python3-pynvml / nvidia-ml-py package to depend on, so vendor it
-          # into the payload so the pynvml import works out of the box.  It
-          # ships a single pynvml.py, plus a stray example.py (+ pyc) in the
-          # site-packages root that we drop so %files stays clean.
-          pip install --root="$PKG" --prefix=/usr --no-deps sounddevice nvidia-ml-py
+          # Bundle nvidia-ml-py ONLY.  The NVML reader is a core Python
+          # dependency (#161) and Fedora ships no python3-pynvml /
+          # nvidia-ml-py package to depend on, so vendor it into the payload
+          # so the pynvml import works out of the box.  It ships a single
+          # pynvml.py, plus a stray example.py (+ pyc) in the site-packages
+          # root that we drop so %files stays clean.
+          #
+          # sounddevice is NO LONGER vendored (2026-08-31).  Fedora now ships
+          # python3-sounddevice, and it owns the SAME paths this payload used
+          # to claim — sounddevice.py, _sounddevice.py, their __pycache__
+          # entries and the dist-info.  Two packages owning one file is an RPM
+          # file conflict, so installing the RPM FAILED for any user who
+          # already had python3-sounddevice for another reason.  We depend on
+          # it now; dev/tools/check_program_deps.py found this, and it is the
+          # only thing that could have.
+          pip install --root="$PKG" --prefix=/usr --no-deps nvidia-ml-py
           rm -f "$PKG"/usr/lib/python*/site-packages/example.py \
                 "$PKG"/usr/lib/python*/site-packages/__pycache__/example.*
 
@@ -164,6 +173,7 @@ jobs:
           Requires:   python3-uvicorn
           Requires:   python3-prompt-toolkit
           Requires:   portaudio
+          Requires:   python3-sounddevice
           Requires:   libusb1
           Requires:   sg3_utils
           Requires:   python3-hidapi
@@ -184,11 +194,6 @@ jobs:
           /usr/lib/systemd/system/trcc-quirk-fix.service
           ${SITELIB}/trcc/
           ${SITELIB}/trcc_linux-*.dist-info/
-          ${SITELIB}/sounddevice.py
-          ${SITELIB}/_sounddevice.py
-          ${SITELIB}/__pycache__/sounddevice.*
-          ${SITELIB}/__pycache__/_sounddevice.*
-          ${SITELIB}/sounddevice-*.dist-info/
           ${SITELIB}/pynvml.py
           ${SITELIB}/__pycache__/pynvml.*
           ${SITELIB}/nvidia_ml_py-*.dist-info/

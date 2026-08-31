@@ -135,7 +135,11 @@ DELIBERATELY_OPTIONAL: dict[str, str] = {
 
 # Packages the Fedora RPM vendors via pip instead of depending on.
 # Justified only while Fedora genuinely has no package.
-FEDORA_VENDORED = {"sounddevice", "nvidia-ml-py"}
+# ``sounddevice`` left this set on 2026-08-31: Fedora shipped
+# python3-sounddevice (0.5.3-2.fc44) and the RPM now depends on it.  Vendoring
+# it had become an RPM FILE CONFLICT, not merely redundant — the distro package
+# owns the same site-packages paths.
+FEDORA_VENDORED = {"nvidia-ml-py"}
 
 
 def pyproject_runtime_deps(include_win32: bool = False) -> list[str]:

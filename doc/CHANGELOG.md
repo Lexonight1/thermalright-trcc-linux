@@ -1,5 +1,49 @@
 # Changelog
 
+## v9.9.12
+
+**Fedora installs could fail outright, and that is fixed.** The RPM shipped its
+own copy of the `sounddevice` library. Fedora now ships one too — and both
+claimed the same files, which RPM refuses to allow. If you already had
+`python3-sounddevice` on your system for any reason, installing or upgrading
+TRCC failed with a file conflict. The package now depends on Fedora's copy
+instead of carrying its own.
+
+**Your cooler may have been telling you it was unsupported when it is not.**
+Panels reporting PM 66 — the ELITE VISION, LF14 and LD7 — printed a warning in
+the log asking you to file a bug report about a device that is fully
+catalogued. The picture was always correct; only the accusation was wrong.
+
+**The week-start setting had no effect.** On LC2 panels you can choose whether
+the week begins on Sunday or Monday, from the app, the terminal or the API. The
+choice was saved and reported back correctly, and the clock ignored it — it was
+never passed to the part that draws the display. It works now.
+
+**Auto-start can be repaired without turning it off and on again.** If TRCC was
+moved or reinstalled, the auto-start entry kept pointing at the old location and
+silently stopped working. `trcc system autostart refresh` re-points it. It will
+not switch auto-start on if you have it off.
+
+**New: `trcc system memory-slots`.** Prints your DIMMs — size, type, speed,
+manufacturer — and, on Linux, the memory timings the LC1-style panel displays.
+Useful to paste into a bug report about that panel, which previously had no way
+to show what it was reading.
+
+**Also in this release, for people driving TRCC from outside the app:** the
+autostart and system-status endpoints now report the same answers as the app
+itself rather than computing their own, and four `trcc system autostart`
+subcommands that existed but appeared in no documentation are now in `man` and
+the CLI reference.
+
+**Two fixes for hardware nobody here can test.** A panel that identifies itself
+as `0x36` was being rejected by the ALi/F5 wire even though the official app
+accepts it, and the LY1 variant (`0416:5409`) read its panel-model byte from
+the wrong slot. Both were read out of the official app's own code and both are
+covered by tests, but neither has run on the hardware it targets. If you own one
+of those coolers, we would be glad to hear whether this release changes
+anything.
+
+
 ## v9.9.11
 
 **Casting your screen to the cooler never worked, and now it does.**
