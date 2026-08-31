@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QWidget
 
-from .....core.led_models import LedDeviceSettings
+from .....core.commands import LedSnapshot
+from .....core.results import LedSnapshotResult
 
 log = logging.getLogger(__name__)
 
@@ -52,12 +53,18 @@ class LedTabBase(QWidget):
 
     # ── For subclasses ───────────────────────────────────────────────
 
-    def current_settings(self) -> LedDeviceSettings | None:
-        """Return the LedDeviceSettings for the current key, or None."""
+    def current_snapshot(self) -> LedSnapshotResult | None:
+        """The LED state for the current key, or None if no key is selected.
+
+        Asks the bus.  This used to return ``app.settings.for_led(key)`` — a
+        live domain object reached off the App, which raises under
+        TRCC_DAEMON=1 and which CLAUDE.md forbids a UI holding at all.
+        """
         key = self._key_provider()
         if not key:
             return None
-        return self._app.settings.for_led(key)
+        result = self._dispatch(LedSnapshot(key=key))
+        return result if result.ok else None
 
     def current_key(self) -> str:
         return self._key_provider()
@@ -67,11 +74,11 @@ class LedTabBase(QWidget):
 
     # ── Hook for refresh ─────────────────────────────────────────────
 
-    def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+    def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         """Re-render from a fresh settings snapshot.
 
         Default is a no-op; subclasses override to update widgets from
         persisted state (e.g. when the user switches device keys).
         """
         log.debug("refresh_from")
-        del settings
+        del snapshot

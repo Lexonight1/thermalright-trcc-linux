@@ -40,7 +40,7 @@ from .....core.commands import (
     SetMemoryRatio,
     SetWeekStart,
 )
-from .....core.led_models import LedDeviceSettings
+from .....core.results import LedSnapshotResult
 from ....presentation.led_panel import LedPanelModel
 from ._base import LedTabBase
 
@@ -142,40 +142,40 @@ class AdvancedTab(LedTabBase):
 
     # ── Public ────────────────────────────────────────────────────────
 
-    def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+    def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")
-        if settings is None:
+        if snapshot is None:
             return
 
         self._block_sources(True)
-        if settings.temp_source == "cpu":
+        if snapshot.temp_source == "cpu":
             self._temp_cpu.setChecked(True)
         else:
             self._temp_gpu.setChecked(True)
-        if settings.load_source == "cpu":
+        if snapshot.load_source == "cpu":
             self._load_cpu.setChecked(True)
         else:
             self._load_gpu.setChecked(True)
         self._block_sources(False)
 
         self._test_check.blockSignals(True)
-        self._test_check.setChecked(settings.test_mode)
+        self._test_check.setChecked(snapshot.test_mode)
         self._test_check.blockSignals(False)
 
         self._clock_24h.blockSignals(True)
-        self._clock_24h.setChecked(settings.clock_24h)
+        self._clock_24h.setChecked(snapshot.clock_24h)
         self._clock_24h.blockSignals(False)
 
         self._week_sunday.blockSignals(True)
-        self._week_sunday.setChecked(settings.week_sunday)
+        self._week_sunday.setChecked(snapshot.week_sunday)
         self._week_sunday.blockSignals(False)
 
         self._disk_index.blockSignals(True)
-        self._disk_index.setValue(settings.disk_index)
+        self._disk_index.setValue(snapshot.disk_index)
         self._disk_index.blockSignals(False)
 
         self._memory_ratio.blockSignals(True)
-        idx = self._memory_ratio.findData(settings.memory_ratio)
+        idx = self._memory_ratio.findData(snapshot.memory_ratio)
         self._memory_ratio.setCurrentIndex(idx if idx >= 0 else 1)   # default ×2
         self._memory_ratio.blockSignals(False)
 

@@ -13,6 +13,7 @@ Dispatches :class:`ToggleSegment` per click.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -23,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from .....core.commands import ToggleSegment
-from .....core.led_models import LedDeviceSettings
+from .....core.results import LedSnapshotResult
 from ._base import LedTabBase
 
 log = logging.getLogger(__name__)
@@ -71,13 +72,13 @@ class SegmentTab(LedTabBase):
 
     # ── Public ────────────────────────────────────────────────────────
 
-    def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+    def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")
-        if settings is None or not settings.segment_on:
+        if snapshot is None or not snapshot.segment_on:
             self._show_placeholder(True)
             return
         self._show_placeholder(False)
-        self._rebuild_checks(settings.segment_on)
+        self._rebuild_checks(snapshot.segment_on)
 
     def has_visible_content(self) -> bool:
         return not self._placeholder_visible
@@ -91,7 +92,9 @@ class SegmentTab(LedTabBase):
         if show:
             self._rebuild_checks([])
 
-    def _rebuild_checks(self, segment_on: list[bool]) -> None:
+    def _rebuild_checks(self, segment_on: Sequence[bool]) -> None:
+        # Sequence, not list: the mask arrives from ``LedSnapshotResult`` as a
+        # tuple (a Result is frozen), and this only ever reads it.
         if len(self._checks) != len(segment_on):
             # Wipe + rebuild — segment counts only change when the
             # connected device changes, so this is cheap.

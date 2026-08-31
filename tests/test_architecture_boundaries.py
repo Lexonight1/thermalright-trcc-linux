@@ -987,8 +987,12 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # port, and ``ensure_autostart`` takes the App and dispatches.  The
     # second of those was INVISIBLE to the old collector (rule 2).
     "ui/gui/trcc_app.py": 14,
-    "ui/qtgui/panels/led/_base.py": 1,
-    "ui/qtgui/panels/led_panel.py": 1,
+    # led/_base.py and led_panel.py reached ZERO on 2026-08-31: the six LED
+    # tabs take a ``LedSnapshotResult`` instead of a live ``LedDeviceSettings``.
+    # Same rule as UCThemeMask before them — the Result was short five fields
+    # (segment_on, clock_24h, week_sunday, memory_ratio, disk_index), and a
+    # panel holds a domain object exactly as long as the Result does not
+    # answer it.
 }
 
 #: The CLI/API reaches, each tagged with the same ``scoped:`` / ``gap:``

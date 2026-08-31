@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from .....core.commands import SetLedBrightness, SetLedColor, ToggleLed
-from .....core.led_models import PRESET_COLORS, LedDeviceSettings
+from .....core.led_models import PRESET_COLORS
+from .....core.results import LedSnapshotResult
 from ...color_wheel import ColorWheel
 from ._base import LedTabBase
 
@@ -133,15 +134,15 @@ class ColorTab(LedTabBase):
 
     # ── Public ────────────────────────────────────────────────────────
 
-    def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+    def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")
-        if settings is None:
+        if snapshot is None:
             return
-        self._set_color(*settings.color, emit_signals=False)
+        self._set_color(*snapshot.color, emit_signals=False)
         self._brightness.blockSignals(True)
-        self._brightness.setValue(settings.brightness)
+        self._brightness.setValue(snapshot.brightness)
         self._brightness.blockSignals(False)
-        self._brightness_label.setText(f"{settings.brightness}%")
+        self._brightness_label.setText(f"{snapshot.brightness}%")
 
     # ── Internals ─────────────────────────────────────────────────────
 

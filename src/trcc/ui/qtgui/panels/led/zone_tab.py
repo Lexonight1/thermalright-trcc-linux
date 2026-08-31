@@ -45,7 +45,8 @@ from .....core.commands import (
     SetLedZoneSyncInterval,
     ToggleLed,
 )
-from .....core.led_models import LedDeviceSettings, LEDMode
+from .....core.led_models import LEDMode
+from .....core.results import LedSnapshotResult
 from ._base import LedTabBase
 
 log = logging.getLogger(__name__)
@@ -216,32 +217,34 @@ class ZoneTab(LedTabBase):
 
     # ── Public ────────────────────────────────────────────────────────
 
-    def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+    def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")
-        if settings is None:
+        if snapshot is None:
             self._show_placeholder(True)
             return
-        zone_count = len(settings.zones)
+        zone_count = len(snapshot.zones)
         if zone_count <= 1:
             self._show_placeholder(True)
             self._rebuild_zone_rows(0)
             return
         self._show_placeholder(False)
         self._rebuild_zone_rows(zone_count)
-        for i, zone in enumerate(settings.zones):
+        for i, zone in enumerate(snapshot.zones):
             row = self._zone_widgets[i]
             row.set_color(*zone.color)
-            row.set_mode(zone.mode)
+            # ``LedZoneEntry.mode`` is the LEDMode NAME, and ``set_mode`` does
+            # ``findData(int(mode))`` — ``int("STATIC")`` is a ValueError.
+            row.set_mode(LEDMode[zone.mode])
             row.set_brightness(zone.brightness)
             row.set_enabled(zone.on, emit_signals=False)
-            row.set_active(i == settings.selected_zone)
+            row.set_active(i == snapshot.selected_zone)
 
         self._sync_check.blockSignals(True)
-        self._sync_check.setChecked(settings.zone_sync)
+        self._sync_check.setChecked(snapshot.zone_sync)
         self._sync_check.blockSignals(False)
 
         self._interval_spin.blockSignals(True)
-        self._interval_spin.setValue(settings.zone_sync_interval_ticks)
+        self._interval_spin.setValue(snapshot.zone_sync_interval_ticks)
         self._interval_spin.blockSignals(False)
 
     def has_visible_content(self) -> bool:

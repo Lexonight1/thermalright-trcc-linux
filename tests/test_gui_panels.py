@@ -871,15 +871,24 @@ def _led_key() -> str:
     return "0416:8001"
 
 
+def _snap(**fields):
+    """A ``LedSnapshotResult`` for the LED tab tests.
+
+    The six tabs take the RESULT now, not a live ``LedDeviceSettings``: reaching
+    ``app.settings.for_led`` raised under TRCC_DAEMON=1 and handed a UI a mutable
+    domain object.  Mutating ``settings`` and passing it here would no longer
+    exercise the path the panel takes.
+    """
+    from trcc.core.results import LedSnapshotResult
+    return LedSnapshotResult(ok=True, key=_led_key(), **fields)
+
+
 def test_led_color_tab_refresh(gui_app: App, qapp: object) -> None:
     """ColorTab.refresh_from updates RGB + brightness widgets in-place."""
     from trcc.ui.qtgui.panels.led import ColorTab
 
     tab = ColorTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.color = (10, 200, 60)
-    settings.brightness = 42
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(color=(10, 200, 60), brightness=42))
     assert tab._r.value() == 10
     assert tab._g.value() == 200
     assert tab._b.value() == 60
@@ -911,9 +920,7 @@ def test_led_mode_tab_selects_radio_for_persisted_mode(
     from trcc.ui.qtgui.panels.led import ModeTab
 
     tab = ModeTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.mode = LEDMode.RAINBOW
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(mode=LEDMode.RAINBOW.name))
     assert tab._radios[LEDMode.RAINBOW].isChecked()
     del qapp
 
@@ -925,9 +932,7 @@ def test_led_zone_tab_hides_for_single_zone(
     from trcc.ui.qtgui.panels.led import ZoneTab
 
     tab = ZoneTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.zones = []
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(zones=()))
     assert tab.has_visible_content() is False
     del qapp
 
@@ -936,18 +941,18 @@ def test_led_zone_tab_builds_rows_for_multi_zone(
     gui_app: App, qapp: object,
 ) -> None:
     """ZoneTab builds one row per zone when count > 1."""
-    from trcc.core.led_models import LedZoneSettings
+    from trcc.core.results import LedZoneEntry
     from trcc.ui.qtgui.panels.led import ZoneTab
 
     tab = ZoneTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.zones = [
-        LedZoneSettings(color=(255, 0, 0)),
-        LedZoneSettings(color=(0, 255, 0)),
-        LedZoneSettings(color=(0, 0, 255)),
-    ]
-    settings.selected_zone = 1
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(
+        zones=(
+            LedZoneEntry(color=(255, 0, 0)),
+            LedZoneEntry(color=(0, 255, 0)),
+            LedZoneEntry(color=(0, 0, 255)),
+        ),
+        selected_zone=1,
+    ))
     assert tab.has_visible_content() is True
     assert len(tab._zone_widgets) == 3
     del qapp
@@ -960,9 +965,7 @@ def test_led_segment_tab_hides_when_no_segments(
     from trcc.ui.qtgui.panels.led import SegmentTab
 
     tab = SegmentTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.segment_on = []
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(segment_on=()))
     assert tab.has_visible_content() is False
     del qapp
 
@@ -972,9 +975,7 @@ def test_led_segment_tab_builds_checks(gui_app: App, qapp: object) -> None:
     from trcc.ui.qtgui.panels.led import SegmentTab
 
     tab = SegmentTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.segment_on = [True, False, True, True, False]
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(segment_on=(True, False, True, True, False)))
     assert tab.has_visible_content() is True
     assert len(tab._checks) == 5
     assert tab._checks[0].isChecked() is True
@@ -989,13 +990,10 @@ def test_led_advanced_tab_refreshes_radio_state(
     from trcc.ui.qtgui.panels.led import AdvancedTab
 
     tab = AdvancedTab(gui_app, _led_key)
-    settings = gui_app.settings.for_led(_led_key())
-    settings.temp_source = "gpu"
-    settings.load_source = "cpu"
-    settings.test_mode = True
-    settings.clock_24h = False
-    settings.week_sunday = True
-    tab.refresh_from(settings)
+    tab.refresh_from(_snap(
+        temp_source="gpu", load_source="cpu", test_mode=True,
+        clock_24h=False, week_sunday=True,
+    ))
     assert tab._temp_gpu.isChecked()
     assert tab._load_cpu.isChecked()
     assert tab._test_check.isChecked()

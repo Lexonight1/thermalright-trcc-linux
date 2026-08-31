@@ -679,6 +679,20 @@ class LedSnapshotResult(Result):
     # crash under TRCC_DAEMON=1.  Tuples, because a Result is frozen.
     zones: tuple[LedZoneEntry, ...] = ()
     zone_sync_zones: tuple[bool, ...] = ()
+    # Segment-display + LC1/LF11 readout preferences.  Added 2026-08-31 for the
+    # same reason ``zones`` was: the qtgui tabs needed them, the Result did not
+    # carry them, so ``led_panel`` kept reaching ``app.settings.for_led`` — an
+    # AttributeError under TRCC_DAEMON=1.  A UI reaches past the bus exactly
+    # when the Result is short a field.
+    #
+    # ``segment_on`` is the per-segment mask, NOT a bool: ``segment_count``
+    # above is ``len()`` of it, so the Command already read this list and threw
+    # the contents away.  Tuple, because a Result is frozen.
+    segment_on: tuple[bool, ...] = ()
+    clock_24h: bool = True
+    week_sunday: bool = False
+    memory_ratio: int = 2
+    disk_index: int = 0
 
 
 @dataclass(frozen=True, slots=True)

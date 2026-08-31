@@ -27,7 +27,8 @@ from PySide6.QtWidgets import (
 )
 
 from .....core.commands import SetLedMode
-from .....core.led_models import LedDeviceSettings, LEDMode
+from .....core.led_models import LEDMode
+from .....core.results import LedSnapshotResult
 from ._base import LedTabBase
 
 log = logging.getLogger(__name__)
@@ -96,11 +97,15 @@ class ModeTab(LedTabBase):
 
     # ── Public ────────────────────────────────────────────────────────
 
-    def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+    def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")
-        if settings is None:
+        if snapshot is None:
             return
-        radio = self._radios.get(settings.mode)
+        # ``_radios`` is keyed by LEDMode and the Result carries the NAME, so
+        # ``.get(str)`` would return None and leave every radio unchecked —
+        # SILENTLY.  The panel would paint correctly and simply never reflect
+        # the saved mode, which is why this conversion has its own test.
+        radio = self._radios.get(LEDMode[snapshot.mode])
         if radio is not None:
             radio.blockSignals(True)
             radio.setChecked(True)

@@ -1039,5 +1039,10 @@ class LedSnapshot(Query[LedSnapshotResult]):
                 for z in s.zones
             ),
             zone_sync_zones=tuple(s.zone_sync_zones),
+            segment_on=tuple(s.segment_on),
+            clock_24h=s.clock_24h,
+            week_sunday=s.week_sunday,
+            memory_ratio=s.memory_ratio,
+            disk_index=s.disk_index,
             message=f"LED snapshot for {self.key}",
         )

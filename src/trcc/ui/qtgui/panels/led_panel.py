@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import DeviceState
+from ....core.commands import DeviceState, LedSnapshot
 from ....core.led_models import LEGACY_STYLE_ID, LedStyle
 from ...presentation.led_panel import led_panel_for
 from ..base import BasePanel
@@ -118,7 +118,10 @@ class LedPanel(BasePanel):
             self._set_optional_tabs_visible(zones=False, segments=False)
             self._advanced_tab.apply_panel(led_panel_for(1))   # plain default
             return
-        settings = self.app.settings.for_led(key)
+        # One Query, six tabs — instead of handing each of them a live
+        # ``LedDeviceSettings`` reached off the App (an AttributeError under
+        # TRCC_DAEMON=1, and a domain object a UI must not hold).
+        snapshot = self.dispatch(LedSnapshot(key=key))
         for tab in (
             self._color_tab,
             self._mode_tab,
@@ -126,7 +129,7 @@ class LedPanel(BasePanel):
             self._segment_tab,
             self._advanced_tab,
         ):
-            tab.refresh_from(settings)
+            tab.refresh_from(snapshot)
         # Zone + Segment tabs may have nothing to show — hide them
         # rather than confusing the user with empty editors.
         self._set_optional_tabs_visible(
