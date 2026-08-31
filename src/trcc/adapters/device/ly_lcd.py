@@ -6,7 +6,9 @@ Two PID variants on VID 0x0416:
 
 Handshake:   write 2048 bytes → read 512-byte response.
              Validation: resp[0]=3, resp[1]=0xFF, resp[8]=1.
-             PM = 64 + resp[20] (LY) or 50 + resp[36] (LY1).
+             PM  = 64 + resp[20] (LY, raw<=3 clamped to 1)
+                 = 49 + resp[20] (LY1)   -- same byte, different constant
+             SUB = resp[22] + 1 (LY) or resp[22] (LY1)
 Frame send:  payload → 512-byte chunks (16-byte header + 496 data),
              sent in 4096-byte USB writes, then 512-byte ACK read.
 
