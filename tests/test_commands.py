@@ -10,6 +10,7 @@ from trcc.core.commands import (
     ListMemorySlots,
     ReadSensors,
     RefreshAutostart,
+    SetDiskDevice,
 )
 
 
@@ -408,3 +409,59 @@ def test_list_memory_slots_maps_absent_fields_to_empty(fake_platform) -> None:
     assert slot.type == "DDR5"
     assert slot.tcas == "", "an unprobed timing must be empty, not 0"
     assert slot.manufacturer == ""
+
+
+def test_set_disk_device_pushes_the_choice_into_the_live_enumerator(
+    fake_platform,
+) -> None:
+    """The TWO-HOP: persist the choice AND re-route the metric.
+
+    This is the whole bug ``disk_index`` had. It was written by the gui, the
+    CLI and the API, saved to config.json, and reported back correctly by
+    ``LedSnapshotResult`` — and the metric ignored it, because nothing ever
+    told the live enumerator. ``SetGpuDevice``'s own comment names the same
+    failure: "Without this the selection only persisted and primary_gpu()
+    ignored it."
+
+    Asserting BOTH halves is the point. Checking only ``settings`` would pass
+    against the exact defect this Command exists to avoid.
+    """
+    app = App(fake_platform)
+    sensors = app.platform.sensors()
+
+    app.dispatch(SetDiskDevice(disk_key="hwmon:nvme:SERIAL_AAA:temp1"))
+
+    assert app.settings.app.active_disk == "hwmon:nvme:SERIAL_AAA:temp1"
+    assert sensors._preferred_disk_key == "hwmon:nvme:SERIAL_AAA:temp1", (
+        "the choice never reached the live enumerator — the metric will keep "
+        "showing the hottest drive, which is the bug this Command replaces"
+    )
+
+    app.dispatch(SetDiskDevice(disk_key=""))
+
+    assert app.settings.app.active_disk is None
+    assert sensors._preferred_disk_key is None
+
+
+def test_boot_seeds_the_disk_preference_from_settings(fake_platform) -> None:
+    """A choice made last run must apply on the next launch.
+
+    The composition root seeds the enumerator from ``settings.active_disk``,
+    beside the identical GPU line. Without it the setting persists and does
+    nothing until the user picks again.
+    """
+    app = App(fake_platform)
+    app.dispatch(SetDiskDevice(disk_key="hwmon:nvme:SERIAL_AAA:temp1"))
+
+    # The platform (and therefore its sensors) is a singleton the fixture
+    # shares, so the live preference must be CLEARED first — otherwise this
+    # passes on the value the dispatch above already pushed, and would keep
+    # passing with the seed deleted.  Verified by mutation: without this line
+    # the test is vacuous.
+    fake_platform.sensors()._preferred_disk_key = None
+
+    reborn = App(fake_platform)          # a fresh App over the same settings
+
+    assert reborn.platform.sensors()._preferred_disk_key == (
+        "hwmon:nvme:SERIAL_AAA:temp1"
+    ), "the persisted choice was not re-applied at boot"

@@ -9,7 +9,7 @@ from __future__ import annotations
 import builtins
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
@@ -449,18 +449,49 @@ class MemorySource(ABC):
         """Used fraction 0-100, or None."""
 
 
-class GpuSource(ABC):
-    """One GPU — NVIDIA/AMD/Intel/Apple, discrete or integrated."""
+class SensorSource(ABC):
+    """A sensor the OS can enumerate SEVERAL of, each one identifiable.
+
+    ``key`` + ``name`` were declared identically on :class:`GpuSource`,
+    :class:`FanSource`, :class:`DiskSource` and :class:`DramSource` — one
+    contract written four times.  They are also not an arbitrary pair: they mark
+    exactly the sources that come in PLURALS.  :class:`CpuSource` and
+    :class:`MemorySource` are singular and declare neither.
+
+    That line matters because plural is precisely what a user can CHOOSE
+    between.  So this ABC is the contract "an enumerable, identifiable sensor",
+    which is the same set a preference can be pinned to — and it is what gives
+    :func:`_resolve_preferred` a type bound instead of a per-family copy.
+
+    Each OS fills it the way it already fills the role ports; no adapter
+    changes, because every implementation already provides both members.
+
+    **This revisits ``feedback_one_shared_sensorsource_abc``, deliberately.**
+    That memo says "do not build a SensorSource ABC", but its reasoning was
+    CROSS-OS UNIFORMITY — met by the role ports, 28 implementations audited.
+    This exists for a different reason: one contract instead of four, and a
+    bound for generic selection code.
+    """
 
     @property
     @abstractmethod
     def key(self) -> str:
-        """Stable ID, e.g. 'nvidia:0', 'amd:0', 'intel:igpu'."""
+        """Stable, UNIQUE ID for this source.
+
+        Stable matters as much as unique: a persisted user choice is looked up
+        by this string on the next boot.  ``HwmonDisk`` learned that twice over
+        — it collided across two NVMe drives until 2026-08-31, and the obvious
+        fix (the hwmon directory name) is unique but renumbers between boots.
+        """
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """Human-readable model name."""
+        """Human-readable label."""
+
+
+class GpuSource(SensorSource):
+    """One GPU — NVIDIA/AMD/Intel/Apple, discrete or integrated."""
 
     @property
     @abstractmethod
@@ -496,18 +527,8 @@ class GpuSource(ABC):
         """VRAM total in MB, or None."""
 
 
-class FanSource(ABC):
+class FanSource(SensorSource):
     """One fan — may be role-mapped (cpu/gpu/sys1) or anonymous."""
-
-    @property
-    @abstractmethod
-    def key(self) -> str:
-        """Stable ID, e.g. 'cpu', 'gpu', 'sys1', 'hwmon:nct6798:fan1'."""
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Human-readable label."""
 
     @abstractmethod
     def rpm(self) -> int | None:
@@ -518,7 +539,7 @@ class FanSource(ABC):
         """Duty cycle 0-100, or None."""
 
 
-class DiskSource(ABC):
+class DiskSource(SensorSource):
     """One storage device's thermal sensor (NVMe / SATA SSD / HDD).
 
     Every OS reads drive temperature differently — Linux from hwmon
@@ -529,22 +550,12 @@ class DiskSource(ABC):
     hottest into ``disk:temp``.  Mirrors :class:`FanSource`.
     """
 
-    @property
-    @abstractmethod
-    def key(self) -> str:
-        """Stable ID, e.g. 'hwmon:nvme:temp1', 'nvme0'."""
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Human-readable label."""
-
     @abstractmethod
     def temp(self) -> float | None:
         """Current temperature in °C, or None."""
 
 
-class DramSource(ABC):
+class DramSource(SensorSource):
     """One memory module's SPD-hub thermal sensor.
 
     DDR5 DIMMs carry an integrated SPD-hub temperature sensor (Linux
@@ -553,16 +564,6 @@ class DramSource(ABC):
     ``DramSource`` list and the OS-neutral aggregator folds the hottest
     into ``memory:temp``.  Mirrors :class:`DiskSource`.
     """
-
-    @property
-    @abstractmethod
-    def key(self) -> str:
-        """Stable ID, e.g. 'hwmon:spd5118:hwmon2:temp1'."""
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Human-readable label."""
 
     @abstractmethod
     def temp(self) -> float | None:
@@ -598,6 +599,45 @@ def _safe(fn: Callable[[], float | None]) -> float:
         return 0.0
 
 
+_Preferred = TypeVar("_Preferred", bound=SensorSource)
+
+
+def _resolve_preferred(
+    sources: Sequence[_Preferred],
+    preferred_key: str | None,
+    warned_key: str | None,
+    kind: str,
+) -> tuple[_Preferred | None, str | None]:
+    """Resolve a pinned choice among interchangeable sensors.  PURE.
+
+    Returns ``(match, new_warn_state)``.  ``match is None`` means "no pin, or
+    the pinned source is gone — use the family default", which the CALLER
+    supplies, because the default genuinely differs: a GPU auto-picks
+    discrete-first (a property of the sources), a disk falls back to the hottest
+    (a property of the readings).
+
+    Pure on purpose.  Returning the new warn-state instead of mutating a named
+    attribute keeps the state where it belongs — on the instance, assigned at
+    the call site — and avoids passing an attribute NAME as a string, which is
+    the design this project rejects.
+
+    The warn-once dedupe is the part actually worth sharing: ``primary_gpu`` is
+    called every tick, so a stale preference would otherwise log an identical
+    line per poll.  Warn once per DISTINCT missing key; a key that comes back
+    re-arms the warning.
+    """
+    if preferred_key is None:
+        return None, warned_key
+    for source in sources:
+        if source.key == preferred_key:
+            return source, None          # present again — re-arm the warning
+    if warned_key != preferred_key:
+        log.warning("preferred %s %s not among %s — using the default",
+                    kind, preferred_key, [s.key for s in sources])
+        return None, preferred_key
+    return None, warned_key
+
+
 class SensorEnumerator(ABC):
     """OS-level sensor root.  Each OS has one implementation.
 
@@ -617,6 +657,11 @@ class SensorEnumerator(ABC):
     # otherwise one stale preference floods the log with identical lines.
     _warned_missing_gpu_key: str | None = None
 
+    # The user's disk choice — same contract as the GPU pair above, seeded at
+    # boot by the composition root from ``settings.active_disk``.
+    _preferred_disk_key: str | None = None
+    _warned_missing_disk_key: str | None = None
+
     # ── Structured access ───────────────────────────────────────────
     @abstractmethod
     def cpu(self) -> CpuSource: ...
@@ -632,6 +677,17 @@ class SensorEnumerator(ABC):
     def fans(self) -> list[FanSource]:
         """All detected fans.  Empty if none."""
 
+    @abstractmethod
+    def disks(self) -> list[DiskSource]:
+        """All detected drive thermal sensors.  Empty if none.
+
+        Added 2026-08-31, and its absence was the whole reason a user's disk
+        choice could never be honoured: disks existed only as a private field
+        on the concrete aggregator, so no Query could enumerate them and the
+        picker had to be sourced from a DIFFERENT list (psutil partitions, then
+        physical drives) than the one the metric comes from.
+        """
+
     def set_preferred_gpu(self, gpu_key: str | None) -> None:
         """Pin which GPU ``primary_gpu()`` returns (``''``/``None`` = auto)."""
         normalized = gpu_key or None
@@ -642,25 +698,56 @@ class SensorEnumerator(ABC):
         self._warned_missing_gpu_key = None
 
     def primary_gpu(self) -> GpuSource | None:
-        """The user-preferred GPU if one is set and still present, else the
-        first discrete GPU, else first integrated, else None."""
+        """The user-preferred GPU if set and still present, else the first
+        discrete GPU, else first integrated, else None.
+
+        The preference half is shared with :meth:`preferred_disk`; the DEFAULT
+        stays here because it is a property of the sources (discrete-first) and
+        needs no readings.
+        """
         gpus = self.gpus()
-        if self._preferred_gpu_key is not None:
-            for gpu in gpus:
-                if gpu.key == self._preferred_gpu_key:
-                    # Preferred is back — re-arm the warning for a future drop.
-                    self._warned_missing_gpu_key = None
-                    return gpu
-            # Runs every tick; warn once per distinct missing key (see field).
-            if self._warned_missing_gpu_key != self._preferred_gpu_key:
-                log.warning(
-                    "primary_gpu: preferred %s not among %s — auto-picking",
-                    self._preferred_gpu_key, [g.key for g in gpus])
-                self._warned_missing_gpu_key = self._preferred_gpu_key
+        match, self._warned_missing_gpu_key = _resolve_preferred(
+            gpus, self._preferred_gpu_key, self._warned_missing_gpu_key, "gpu",
+        )
+        if match is not None:
+            return match
         for gpu in gpus:
             if gpu.is_discrete:
                 return gpu
         return gpus[0] if gpus else None
+
+    def set_preferred_disk(self, disk_key: str | None) -> None:
+        """Pin which drive supplies ``disk_temp`` (``''``/``None`` = hottest)."""
+        normalized = disk_key or None
+        log.info("set_preferred_disk: %s -> %s",
+                 self._preferred_disk_key, normalized)
+        self._preferred_disk_key = normalized
+        self._warned_missing_disk_key = None
+
+    def preferred_disk(self) -> DiskSource | None:
+        """The pinned drive if still present, else ``None``.
+
+        **No family default here, unlike :meth:`primary_gpu` — and the asymmetry
+        is the data, not an oversight.**  A disk's default is "the hottest",
+        which is a property of the READINGS; the aggregator has just taken them
+        (and must keep taking all of them, because ``_read`` does per-source
+        failure bookkeeping every tick).  Answering "hottest" here would mean
+        reading every drive a second time.  So this answers only "did the user
+        pin one, and is it still here", and the aggregator applies its own
+        default.
+        """
+        match, self._warned_missing_disk_key = _resolve_preferred(
+            self.disks(), self._preferred_disk_key,
+            self._warned_missing_disk_key, "disk",
+        )
+        # Per-TICK: the aggregator calls this on every snapshot, so it belongs
+        # to the frame family (INFO by default, DEBUG under -vvv) rather than
+        # the ordinary logger — an ordinary .debug() here would write a record
+        # per frame, the defect the frame gate exists to catch.
+        frame_log.debug("preferred_disk: %s -> %s",
+                        self._preferred_disk_key or "(hottest)",
+                        match.key if match else None)
+        return match
 
     def snapshot(self) -> HardwareMetrics:
         """Typed metrics snapshot — one fresh object per tick, raw °C.

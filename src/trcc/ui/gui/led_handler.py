@@ -21,7 +21,7 @@ from ...core.commands import (
     LedSnapshot,
     SelectZone,
     SetClockFormat,
-    SetDiskIndex,
+    SetDiskDevice,
     SetLedBrightness,
     SetLedColor,
     SetLedLoadSource,
@@ -230,7 +230,7 @@ class LEDHandler(BaseHandler):
         p.clock_format_changed.connect(self._guard(self._on_clock_format_changed))
         p.week_start_changed.connect(self._guard(self._on_week_start_changed))
         p.temp_unit_changed.connect(self._guard(self._on_temp_unit_changed_slot))
-        p.disk_index_changed.connect(self._guard(self._on_disk_index_changed))
+        p.disk_key_changed.connect(self._guard(self._on_disk_key_changed))
         p.memory_ratio_changed.connect(self._guard(self._on_memory_ratio_changed))
         p.test_mode_changed.connect(self._guard(self._on_test_mode_changed))
         p.temp_source_changed.connect(self._guard(self._on_temp_source_changed))
@@ -341,11 +341,17 @@ class LEDHandler(BaseHandler):
         if callable(self._on_temp_unit_changed):
             self._on_temp_unit_changed(unit)
 
-    def _on_disk_index_changed(self, idx: int) -> None:
-        log.info("_on_disk_index_changed: idx=%s", idx)
-        self._dispatch(SetDiskIndex(
-            key=self._device_key, index=idx,
-        ))
+    def _on_disk_key_changed(self, key: str) -> None:
+        """Pin the drive that supplies ``disk_temp`` — app-wide, like the GPU.
+
+        Was ``SetDiskIndex``, a per-LED-device INDEX that nothing ever applied:
+        the aggregator collapsed every drive to the hottest and the index
+        addressed a different list entirely.  ``SetDiskDevice`` persists the
+        sensor KEY and pushes it into the live enumerator, which is the hop
+        whose absence was the bug.
+        """
+        log.info("_on_disk_key_changed: key=%s", key or "(hottest)")
+        self._dispatch(SetDiskDevice(disk_key=key))
 
     def _on_memory_ratio_changed(self, ratio: int) -> None:
         # DDR multiplier (1/2/4) straight from the GUI combo.

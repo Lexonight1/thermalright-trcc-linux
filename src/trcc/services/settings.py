@@ -72,6 +72,16 @@ class AppSettings:
     # None = let SensorEnumerator.primary_gpu() pick automatically.
     active_gpu: str | None = None
 
+    # User-selected drive for the ``disk_temp`` metric (a DiskSource key, e.g.
+    # 'hwmon:nvme:<serial>:temp1').  None = fall back to the hottest drive.
+    #
+    # APP-WIDE, like active_gpu, and the metrics model forces it:
+    # ``HardwareMetrics`` carries ONE disk_temp slot filled from one shared
+    # snapshot, so a per-device choice is unrepresentable.  TRCC 2.1.6 stores
+    # this per LED form; we cannot without changing the model, and say so
+    # rather than pretend the divergence is not there.
+    active_disk: str | None = None
+
 
 # =========================================================================
 # Settings — the service
@@ -209,6 +219,13 @@ class Settings:
         log.info("set_active_gpu: gpu_key=%s", gpu_key)
         with self._lock:
             self._app.active_gpu = gpu_key
+            self._save()
+
+    def set_active_disk(self, disk_key: str | None) -> None:
+        """Set the user-selected drive for disk_temp. None = hottest."""
+        log.info("set_active_disk: disk_key=%s", disk_key)
+        with self._lock:
+            self._app.active_disk = disk_key
             self._save()
 
     # ── DeviceSettings surface ────────────────────────────────────────

@@ -1005,7 +1005,10 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # for a key string so handlers can dispatch through the App without
     # holding device refs").  What remains is lifecycle + the screencast
     # RawFrame signature question, both deliberately out.
-    "ui/gui/trcc_app.py": 8,
+    # 8 -> 7 on 2026-08-31: the LED panel's disk dropdown is sourced from
+    # ``ListDiskSensors`` — the THERMAL list the metric actually comes
+    # from — so the panel is handed no Platform port at all.
+    "ui/gui/trcc_app.py": 7,
     # led/_base.py and led_panel.py reached ZERO on 2026-08-31: the six LED
     # tabs take a ``LedSnapshotResult`` instead of a live ``LedDeviceSettings``.
     # Same rule as UCThemeMask before them — the Result was short five fields

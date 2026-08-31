@@ -30,7 +30,10 @@ from ..results import (
     ControlCenterSnapshotResult,
     DateFormatResult,
     DebugReportPayload,
+    DiskDeviceResult,
     DiskEntry,
+    DiskSensorEntry,
+    DiskSensorsResult,
     DisksListResult,
     DoctorResultPayload,
     FanEntry,
@@ -204,6 +207,56 @@ class ListDisks(Query[DisksListResult]):
             ok=True, disks=disks,
             message=f"{len(disks)} disk(s)",
         )
+
+@dataclass(frozen=True, slots=True)
+class ListDiskSensors(Query[DiskSensorsResult]):
+    """Every drive thermal sensor, with its current reading and the active pick.
+
+    **This is the list a disk picker must show**, because it is the list the
+    ``disk_temp`` metric comes from.  ``ListDisks`` enumerates psutil
+    PARTITIONS and ``Platform.disk_info()`` enumerates PHYSICAL drives; on a
+    typical box those are three different lengths with no shared key, so a
+    picker fed by either cannot address what the LED displays.
+    """
+
+    def execute(self, app: App) -> DiskSensorsResult:
+        sensors = app.platform.sensors()
+        disks = [
+            DiskSensorEntry(key=d.key, name=d.name, temp=d.temp())
+            for d in sensors.disks()
+        ]
+        active = app.settings.app.active_disk
+        log.info("ListDiskSensors.execute: %d sensor(s), active=%s",
+                 len(disks), active or "(hottest)")
+        return DiskSensorsResult(
+            ok=True, disks=disks, active=active,
+            message=f"{len(disks)} disk sensor(s)",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetDiskDevice(Command[DiskDeviceResult]):
+    """Pin which drive supplies ``disk_temp`` (empty string = hottest).
+
+    Mirrors :class:`SetGpuDevice`, including the TWO-HOP that matters: persist
+    the choice AND push it into the live enumerator.  Omitting the second hop
+    is precisely the bug ``disk_index`` had — the value was saved, reported
+    back correctly, and the metric ignored it.
+    """
+    disk_key: str
+
+    def execute(self, app: App) -> DiskDeviceResult:
+        normalized: str | None = self.disk_key.strip() or None
+        app.settings.set_active_disk(normalized)
+        app.platform.sensors().set_preferred_disk(normalized)
+        log.info("SetDiskDevice.execute: active disk -> %s",
+                 normalized or "(hottest)")
+        return DiskDeviceResult(
+            ok=True, disk_key=normalized,
+            message=(f"disk_temp now follows {normalized}" if normalized
+                     else "disk_temp follows the hottest drive"),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ListMemorySlots(Query[MemorySlotsResult]):

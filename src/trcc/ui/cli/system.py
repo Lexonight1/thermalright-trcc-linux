@@ -19,6 +19,7 @@ from ...core.commands import (
     GetPaths,
     GetPlatformInfo,
     ListDisks,
+    ListDiskSensors,
     ListFans,
     ListFonts,
     ListGpus,
@@ -69,6 +70,22 @@ def sensors() -> None:
             f"  {reading.sensor_id}  {reading.value:.2f} {reading.unit}"
             f"  ({reading.category})"
         )
+
+
+@app.command("list-disk-sensors")
+def list_disk_sensors() -> None:
+    """List drive THERMAL sensors — the list disk_temp comes from.
+
+    Not the same as 'list-disks', which enumerates mounted partitions for
+    'led disk-index'.  Pick one of these with 'trcc config disk'.
+    """
+    log.info("cli system list-disk-sensors")
+    r = get_app().dispatch(ListDiskSensors())
+    typer.echo(f"{r.message}; active = {r.active or '(hottest)'}")
+    for d in r.disks:
+        mark = "*" if d.key == r.active else " "
+        temp = f"{d.temp:.1f}°C" if d.temp is not None else "NC"
+        typer.echo(f"  {mark} {d.key:<40} {d.name:<16} {temp}")
 
 
 @app.command("list-gpus")

@@ -18,6 +18,7 @@ from ...core.commands import (
     GetPlatformInfo,
     ListDevices,
     ListDisks,
+    ListDiskSensors,
     ListFans,
     ListFonts,
     ListGpus,
@@ -32,6 +33,7 @@ from ...core.commands import (
     RunQuickstart,
     RunSetup,
     RunUpgrade,
+    SetDiskDevice,
     SetHddEnabled,
 )
 from ...core.models import Kind
@@ -39,6 +41,8 @@ from ...core.results import (
     AutostartResult,
     ControlCenterSnapshotResult,
     DebugReportPayload,
+    DiskDeviceResult,
+    DiskSensorsResult,
     DisksListResult,
     DoctorResultPayload,
     FansListResult,
@@ -63,6 +67,7 @@ from .schemas import (
     AppStatusResponse,
     AutostartRequest,
     DebugReportRequest,
+    DiskDeviceRequest,
     HddEnabledRequest,
     UpgradeRequest,
 )
@@ -158,6 +163,20 @@ def info(request: Request) -> dict:
         "log_file": r.log_file,
         "permissions_warnings": r.permission_warnings,
     }
+
+
+@router.get("/disk-sensors")
+def list_disk_sensors(request: Request) -> DiskSensorsResult:
+    """Drive thermal sensors — the list ``disk_temp`` comes from."""
+    log.info("api GET /system/disk-sensors")
+    return request.app.state.trcc.dispatch(ListDiskSensors())
+
+
+@router.post("/disk-sensors/active")
+def set_active_disk(body: DiskDeviceRequest, request: Request) -> DiskDeviceResult:
+    """Pin which drive supplies ``disk_temp``.  Empty key = hottest."""
+    log.info("api POST /system/disk-sensors/active: key=%s", body.disk_key)
+    return request.app.state.trcc.dispatch(SetDiskDevice(disk_key=body.disk_key))
 
 
 @router.get("/gpus")

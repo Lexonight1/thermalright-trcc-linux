@@ -227,6 +227,18 @@ trcc config date-format FMT
 |---|---|
 | `FMT` | LCD date format, e.g. 'yyyy/MM/dd', 'dd.MM.yyyy', 'MM/dd/yyyy' |
 
+### `trcc config disk`
+
+Pick which drive supplies disk temperature. Empty string = hottest.
+
+```bash
+trcc config disk [KEY]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Disk sensor key (from 'trcc system list-disk-sensors') or '' to follow the hottest drive *(optional)* |
+
 ### `trcc config gpu`
 
 Pick the primary GPU for sensor overlays. Empty string = auto.
@@ -1555,6 +1567,14 @@ trcc system led-debug [OPTIONS] KEY
 | Option | Description |
 |---|---|
 | `--test-colors` | After handshake, enable the 4-color test cycle (Ctrl-C to stop). |
+
+### `trcc system list-disk-sensors`
+
+List drive THERMAL sensors — the list disk_temp comes from. Not the same as 'list-disks', which enumerates mounted partitions for 'led disk-index'. Pick one of these with 'trcc config disk'.
+
+```bash
+trcc system list-disk-sensors
+```
 
 ### `trcc system list-disks`
 

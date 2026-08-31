@@ -7,6 +7,7 @@ import typer
 
 from ...core.commands import (
     SetDateFormat,
+    SetDiskDevice,
     SetGpuDevice,
     SetLanguage,
     SetRefreshInterval,
@@ -42,6 +43,21 @@ def language(
     """Set the UI language."""
     log.info("cli config language: lang=%s", lang)
     result = get_app().dispatch(SetLanguage(language=lang))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("disk")
+def disk(
+    key: str = typer.Argument(
+        "", help="Disk sensor key (from 'trcc system list-disk-sensors') "
+                 "or '' to follow the hottest drive",
+    ),
+) -> None:
+    """Pick which drive supplies disk temperature.  Empty string = hottest."""
+    log.info("cli config disk: key=%s", key)
+    result = get_app().dispatch(SetDiskDevice(disk_key=key))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

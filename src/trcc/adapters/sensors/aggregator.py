@@ -225,6 +225,10 @@ class BaselineSensors(SensorEnumerator):
         log.debug("fans: count=%d", len(self._fans))
         return list(self._fans)
 
+    def disks(self) -> list[DiskSource]:
+        log.debug("disks: count=%d", len(self._disks))
+        return list(self._disks)
+
     # ── Flat dict view ─────────────────────────────────────────────
 
     def discover(self) -> list[SensorReading]:
@@ -426,12 +430,24 @@ class BaselineSensors(SensorEnumerator):
         # Disk temperature — one DiskSource per drive; the model carries a
         # single ``disk_temp`` slot, so collapse to the HOTTEST drive (the one
         # most likely to throttle), mirroring cpu_temp = hottest socket.
-        disk_temps = [
-            t for disk in self._disks
+        # EVERY disk is read every tick, deliberately: ``_read`` carries the
+        # per-source failure bookkeeping, so polling only the chosen drive would
+        # silently drop the others' diagnostics.  The choice is applied AFTER.
+        disk_temps = {
+            disk.key: t for disk in self._disks
             if (t := self._read(disk.temp, f"disk:{disk.key}:temp")) is not None
-        ]
+        }
         if disk_temps:
-            _store(r, "disk:temp", max(disk_temps))
+            # The user's pinned drive when present and readable, else the
+            # HOTTEST — the only rule until 2026-08-31, and still the default.
+            # ``preferred_disk()`` answers presence only; the fallback lives
+            # here because "hottest" is a property of THESE readings, which the
+            # port would otherwise have to take a second time.
+            chosen = self.preferred_disk()
+            _store(r, "disk:temp",
+                   disk_temps[chosen.key]
+                   if chosen is not None and chosen.key in disk_temps
+                   else max(disk_temps.values()))
 
         # DRAM temperature — one DramSource per DIMM; the model carries a single
         # ``mem_temp`` slot, so collapse to the HOTTEST module, mirroring disk.

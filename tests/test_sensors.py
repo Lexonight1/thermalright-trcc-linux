@@ -18,6 +18,9 @@ class FakeDisk(DiskSource):
 
     def __init__(self, key: str, temp: float | None, name: str = "Fake SSD") -> None:
         self._key, self._temp, self._name = key, temp, name
+        # Poll count — a pinned selection must not stop the OTHERS being read,
+        # because ``_read`` carries their per-source failure bookkeeping.
+        self.reads = 0
 
     @property
     def key(self) -> str:
@@ -28,6 +31,7 @@ class FakeDisk(DiskSource):
         return self._name
 
     def temp(self) -> float | None:
+        self.reads += 1
         return self._temp
 
 
@@ -906,3 +910,118 @@ def test_read_one_polls_instead_of_returning_none_forever() -> None:
     s, _ = _counting_sensors()
 
     assert s.read_one("cpu:temp") == 42.0
+
+
+# ── Disk SELECTION — the feature `disk_index` never delivered ────────
+#
+# NOTE ON SHAPE, because the obvious test is WRONG here: `read_all()` is
+# cache-gated (`_refresh_if_stale` re-polls only once `age >= interval_s`), so
+# looping `snapshot()` N times is ONE poll and therefore ONE call to
+# `preferred_disk()`.  A warn-once assertion written that way passes even with
+# the dedupe deleted.  So the dedupe is tested on `preferred_disk()` directly —
+# the unit that dedupes, called the way a live poll thread calls it — and the
+# SELECTION is tested through `snapshot()`, one poll per fresh enumerator.
+
+
+def _sensors_with_disks(*disks):
+    from trcc.adapters.sensors.aggregator import BaselineSensors
+    return BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+                           disks=list(disks))
+
+
+def test_disk_temp_is_the_hottest_when_nothing_is_pinned() -> None:
+    """The default is unchanged — that is the point of asserting it.
+
+    "Hottest" was the ONLY rule until 2026-08-31.  It is now the fallback, and
+    a fallback nobody tests is a fallback free to drift.
+    """
+    s = _sensors_with_disks(FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0))
+
+    assert s.snapshot().disk_temp == 58.0
+
+
+def test_a_pinned_disk_beats_a_hotter_one() -> None:
+    """THE feature, in one assertion.
+
+    Without it the panel shows whichever drive is hottest regardless of the
+    user's choice — which is what every release before this one did.
+    """
+    s = _sensors_with_disks(FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0))
+
+    s.set_preferred_disk("nvme0")
+
+    assert s.snapshot().disk_temp == 41.0, (
+        "the pinned drive must win over the hotter one"
+    )
+
+
+def test_a_vanished_pin_falls_back_to_the_hottest() -> None:
+    """An unplugged drive must not blank the metric."""
+    s = _sensors_with_disks(FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0))
+    s.set_preferred_disk("nvme_UNPLUGGED")
+
+    assert s.snapshot().disk_temp == 58.0
+
+
+def test_a_vanished_pin_warns_ONCE_across_many_polls(caplog) -> None:
+    """The dedupe, tested on the unit that dedupes.
+
+    ``MetricsLoop`` refreshes every ~2 s, so each refresh calls this once; an
+    un-deduped warning is a log line every two seconds, burying the one-shot
+    lines a ``trcc report`` is read for.
+
+    Driven directly rather than through ``snapshot()`` ON PURPOSE — the reading
+    cache would collapse N snapshots into one poll and this would pass with the
+    dedupe removed.
+    """
+    import logging
+    s = _sensors_with_disks(FakeDisk("nvme1", 58.0))
+    s.set_preferred_disk("nvme_UNPLUGGED")
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(5):
+            assert s.preferred_disk() is None
+
+    warned = [r for r in caplog.records if "nvme_UNPLUGGED" in r.getMessage()]
+    assert len(warned) == 1, (
+        f"expected ONE warning across five polls, got {len(warned)}"
+    )
+
+
+def test_a_pin_that_comes_back_re_arms_the_warning(caplog) -> None:
+    """A returning drive restores the reading AND re-arms the warning."""
+    import logging
+    present = FakeDisk("nvme0", 41.0)
+    s = _sensors_with_disks(FakeDisk("nvme1", 58.0))
+    s.set_preferred_disk("nvme0")
+
+    with caplog.at_level(logging.WARNING):
+        assert s.preferred_disk() is None          # absent -> warn (1)
+        s._disks.append(present)
+        assert s.preferred_disk() is present       # back -> no warn, re-armed
+        s._disks.remove(present)
+        assert s.preferred_disk() is None          # gone again -> warn (2)
+
+    warned = [r for r in caplog.records if "nvme0" in r.getMessage()]
+    assert len(warned) == 2, (
+        "a returning drive must re-arm the warning so its next disappearance "
+        f"is reported again — got {len(warned)}"
+    )
+
+
+def test_every_disk_is_still_polled_when_one_is_pinned() -> None:
+    """Pinning must not stop POLLING the others.
+
+    ``_read`` carries per-source failure bookkeeping, so reading only the
+    chosen drive would silently drop the other drives' diagnostics — which is
+    why the selection is applied AFTER the comprehension, not instead of it.
+    """
+    a, b = FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0)
+    s = _sensors_with_disks(a, b)
+    s.set_preferred_disk("nvme0")
+
+    s.snapshot()
+
+    assert a.reads >= 1 and b.reads >= 1, (
+        f"both drives must be polled; got nvme0={a.reads} nvme1={b.reads}"
+    )

@@ -627,3 +627,8 @@ class TimeFormatRequest(BaseModel):
 class DateFormatRequest(BaseModel):
     fmt: str = Field(..., min_length=1)
     key: str | None = None
+
+
+class DiskDeviceRequest(BaseModel):
+    """Body for ``POST /system/disk-sensors/active``."""
+    disk_key: str = ""

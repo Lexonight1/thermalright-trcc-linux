@@ -1118,11 +1118,8 @@ class TRCCApp(QMainWindow):
             app=self._app)
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
-        # Memory now goes through ``ListMemorySlots`` on the bus.  Disk stays a
-        # port callable until 4d repoints its dropdown at the thermal source
-        # list — see the panel's ``set_disk_fn`` docstring for why wiring a
-        # Query to it today would plumb a control that cannot work.
-        self.uc_led_control.set_disk_fn(self._app.platform.disk_info)
+        # Memory and disk both come off the bus now (``ListMemorySlots`` /
+        # ``ListDiskSensors``).  The panel is handed no Platform port at all.
 
         # Form1 buttons
         self.form1_close_btn = create_image_button(

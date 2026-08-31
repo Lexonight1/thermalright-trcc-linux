@@ -25,6 +25,25 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS disk
+.PP
+\fBtrcc config disk\fR [\fIKEY\fR]
+.PP
+Pick which drive supplies disk temperature. Empty string = hottest.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Disk sensor key (from 'trcc system list\-disk\-sensors') or '' to follow the hottest drive
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS gpu
 .PP
 \fBtrcc config gpu\fR [\fIKEY\fR]

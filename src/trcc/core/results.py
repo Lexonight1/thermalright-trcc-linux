@@ -701,6 +701,7 @@ class ControlCenterSnapshotResult(Result):
     language: str = "en"
     temp_unit: str = "C"
     active_gpu: str | None = None
+    active_disk: str | None = None
     refresh_interval_s: float = 2.0
     hdd_enabled: bool = False
 
@@ -857,6 +858,33 @@ class DiskEntry:
     index: int
     device: str
     mountpoint: str
+
+
+@dataclass(frozen=True, slots=True)
+class DiskSensorEntry:
+    """One drive's thermal sensor — the list a disk PICKER must show.
+
+    Mirrors :class:`GpuEntry`.  Deliberately not the partition list
+    (``ListDisks``) nor the physical-drive list (``Platform.disk_info``): those
+    are three different lists with three cardinalities and no shared key, and
+    the metric comes from THIS one.  A picker fed by either of the others
+    cannot address what the LED displays — which is exactly why ``disk_index``
+    never worked.
+    """
+    key: str = ""
+    name: str = ""
+    temp: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiskSensorsResult(Result):
+    disks: list[DiskSensorEntry] = field(default_factory=list)
+    active: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiskDeviceResult(Result):
+    disk_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

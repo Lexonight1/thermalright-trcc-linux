@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core.commands import ListMemorySlots
+from ...core.commands import ListDiskSensors, ListMemorySlots
 from ...core.i18n import tr
 from ...core.led_models import (
     LED_MODE_LABELS,
@@ -287,7 +287,7 @@ class UCLedControl(QWidget):
     # Temperature unit signal
     temp_unit_changed = Signal(str)          # "C" or "F"
     # Disk selector (LF11 style 10)
-    disk_index_changed = Signal(int)         # disk index (0-based)
+    disk_key_changed = Signal(str)           # DiskSource key ('' = hottest)
     # DDR multiplier (LC1 style 4)
     memory_ratio_changed = Signal(int)       # 1, 2, or 4
     # Test mode
@@ -334,22 +334,8 @@ class UCLedControl(QWidget):
         self._is_timer_24h = True
         self._is_week_sunday = False
 
-        self._get_disk_info = None
 
         self._setup_ui()
-
-    def set_disk_fn(self, get_disk_info) -> None:
-        """Inject the platform disk probe.
-
-        Memory moved to ``ListMemorySlots`` on the bus.  Disk has NOT: the
-        dropdown this fills is sourced from ``Platform.disk_info()`` (physical
-        drives), while the ``disk_index`` it writes addresses nothing at all —
-        the aggregator collapses every drive to the hottest.  Wiring a Query to
-        it now would plumb a control that cannot work; the fix repoints the
-        dropdown at the THERMAL source list, and that is planned as its own
-        increment (4d) with a prerequisite of its own.
-        """
-        self._get_disk_info = get_disk_info
 
     def _setup_ui(self):
         """Create all UI elements."""
@@ -1569,30 +1555,55 @@ class UCLedControl(QWidget):
         self._ddr_combo.blockSignals(False)
 
     def _populate_disk_identity(self) -> None:
-        """Populate disk selector dropdown (C# ucComboBoxC)."""
-        try:
-            if self._get_disk_info is None:
-                return
-            self._disk_slots = self._get_disk_info()
+        """Populate the disk selector from the THERMAL sensor list.
 
+        Sourced from ``ListDiskSensors``, which is the list ``disk_temp``
+        actually comes from — so what the user picks and what the panel shows
+        are the same list BY CONSTRUCTION.
+
+        This is the fix for a control that never worked.  The dropdown used to
+        be filled from ``Platform.disk_info()`` (physical drives) while the
+        index it emitted was interpreted against nothing at all, and a third
+        list (``ListDisks``, psutil partitions) fed the CLI's ``disk-index``.
+        Three lists, three cardinalities, no shared key.
+        """
+        log.info("_populate_disk_identity: app=%s", self._app is not None)
+        try:
+            if self._app is None:
+                log.warning("_populate_disk_identity: no bus — selector empty")
+                return
+            result = self._app.dispatch(ListDiskSensors())
+            self._disk_slots = result.disks
             self._disk_selector.blockSignals(True)
             self._disk_selector.clear()
-            for d in self._disk_slots:
-                name = d.get('name', d.get('model', '?'))
-                # C# shows name up to '(' character
+            for d in result.disks:
+                name = d.name or d.key
+                # C# shows the name up to '(' — keep that trim.
                 if '(' in name:
                     name = name[:name.index('(') - 1]
-                self._disk_selector.addItem(name)
+                self._disk_selector.addItem(name, d.key)
+            if result.active:
+                idx = self._disk_selector.findData(result.active)
+                if idx >= 0:
+                    self._disk_selector.setCurrentIndex(idx)
             self._disk_selector.blockSignals(False)
+            log.info("_populate_disk_identity: %d sensor(s), active=%s",
+                     len(result.disks), result.active or "(hottest)")
         except Exception as e:
-            # Disk probe surface is wide (subprocess + WMI + parser) — fall safe.
+            # Probe surface is wide (hwmon / WMI / SMC) — fall safe.
             log.debug("uc_led_control: disk identity populate failed: %s", e)
             self._disk_slots = []
 
     def _on_disk_selected(self, idx: int) -> None:
-        """Handle disk selector change — emit signal."""
-        log.debug("_on_disk_selected: idx=%s", idx)
-        self.disk_index_changed.emit(idx)
+        """Emit the chosen sensor KEY, not a positional index.
+
+        A key survives re-enumeration; an index into a discovered list does
+        not — which is why ``DiskSource.key`` was made stable and unique
+        before this control was wired.
+        """
+        key = self._disk_selector.itemData(idx) or ""
+        log.info("_on_disk_selected: idx=%s key=%s", idx, key)
+        self.disk_key_changed.emit(key)
 
     def update_lf11_disk_metrics(self, metrics: HardwareMetrics) -> None:
         """Update disk info labels (LF11 style 10, C# UCLEDHarddiskInfo)."""

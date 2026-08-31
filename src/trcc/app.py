@@ -279,6 +279,8 @@ class App:
         # Guarded so the common no-preference case never force-builds sensors.
         if self.settings.app.active_gpu:
             self.platform.sensors().set_preferred_gpu(self.settings.app.active_gpu)
+        if self.settings.app.active_disk:
+            self.platform.sensors().set_preferred_disk(self.settings.app.active_disk)
 
     def _persist_user_mask_dc(self, event: Any) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active
