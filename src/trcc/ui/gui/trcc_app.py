@@ -820,7 +820,7 @@ class TRCCApp(QMainWindow):
         is unchanged: each kind gets the same handler + panels it always did.
         """
         key = device.info.key
-        presentation = presentation_for(device.info)
+        presentation = presentation_for(device.info.kind)
         if presentation.kind is Kind.LED:
             log.info("LED handler added: %s", key)
             return LEDHandler(

@@ -145,17 +145,6 @@ class LCDHandler(BaseHandler):
     # ── Public API ───────────────────────────────────────────────────
 
     @property
-    def display(self) -> Any:
-        """Legacy alias for the underlying device.
-
-        Typed as ``Any`` so legacy attribute reads (``display.lcd_size``,
-        ``display.connected``, etc.) used elsewhere in the window keep
-        type-checking.  Phase 7 verification surfaces runtime gaps where
-        the next/ Device doesn't expose the legacy attribute name.
-        """
-        return self._device
-
-    @property
     def device_key(self) -> str:
         return self._device_key
 

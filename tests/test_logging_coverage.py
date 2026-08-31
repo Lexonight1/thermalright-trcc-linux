@@ -37,7 +37,7 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: silent ones among them stopped being excuses).  LOWER THIS as coverage
 #: improves; never raise it.  Worst areas now:
 #: ui 681, adapters 420, services 122, core 101.
-MAX_SILENT = 1345
+MAX_SILENT = 1344
 
 
 def test_logging_coverage_only_improves() -> None:

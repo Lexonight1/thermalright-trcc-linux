@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from ...core.models import Kind, ProductInfo
+from ...core.models import Kind
 
 log = logging.getLogger(__name__)
 
@@ -41,20 +41,27 @@ class DevicePresentation:
     shows_metric_gauges: bool
 
 
-def presentation_for(info: ProductInfo) -> DevicePresentation:
-    """Map a device's :class:`ProductInfo` to its presentation contract.
+def presentation_for(kind: Kind) -> DevicePresentation:
+    """Map a device :class:`Kind` to its presentation contract.
 
-    Keyed on ``info.kind`` (resolved from the vid/pid + handshake), so both
-    graphical UIs agree on what a device presents without re-deriving it.
+    Both graphical UIs agree on what a device presents without re-deriving it.
+
+    **Takes the Kind, not the whole ``ProductInfo``.**  It only ever consulted
+    ``info.kind``, and demanding the domain object meant a caller had to hold
+    one — which is what kept ``trcc_app`` reaching ``app.devices`` for a live
+    ``Device`` just to build a handler.  ``DeviceStateResult`` and
+    ``DeviceEntry`` both carry ``kind``, so the narrower signature is what lets
+    the composition root work from a Result instead.  It is also trivially
+    testable: no ``ProductInfo`` to construct.
     """
-    if info.kind is Kind.LED:
+    if kind is Kind.LED:
         log.info("presentation_for: %s → view=%s gauges=True (LED)",
-                 info.kind.name, VIEW_LED)
+                 kind.name, VIEW_LED)
         return DevicePresentation(
             kind=Kind.LED, view_name=VIEW_LED, shows_metric_gauges=True,
         )
     log.info("presentation_for: %s → view=%s gauges=False (LCD form)",
-             info.kind.name, VIEW_FORM)
+             kind.name, VIEW_FORM)
     return DevicePresentation(
         kind=Kind.LCD, view_name=VIEW_FORM, shows_metric_gauges=False,
     )

@@ -16,7 +16,7 @@ from trcc.ui.presentation.device_presentation import VIEW_FORM, VIEW_LED
 def test_presentation_matches_kind_for_every_registered_device() -> None:
     """Every device's presentation is derived from its row — never drifts."""
     for info in ALL_DEVICES.values():
-        p = presentation_for(info)
+        p = presentation_for(info.kind)
         assert p.kind is info.kind
         if info.kind is Kind.LED:
             assert p.view_name == VIEW_LED
@@ -29,7 +29,7 @@ def test_presentation_matches_kind_for_every_registered_device() -> None:
 def test_led_device_presents_led_view_with_gauges() -> None:
     info = find_product(0x0416, 0x8001)  # LED controller
     assert info is not None
-    assert presentation_for(info) == DevicePresentation(
+    assert presentation_for(info.kind) == DevicePresentation(
         kind=Kind.LED, view_name=VIEW_LED, shows_metric_gauges=True,
     )
 
@@ -37,6 +37,6 @@ def test_led_device_presents_led_view_with_gauges() -> None:
 def test_lcd_device_presents_form_view() -> None:
     info = find_product(0x0402, 0x3922)  # SCSI LCD (verified path)
     assert info is not None
-    assert presentation_for(info) == DevicePresentation(
+    assert presentation_for(info.kind) == DevicePresentation(
         kind=Kind.LCD, view_name=VIEW_FORM, shows_metric_gauges=False,
     )
