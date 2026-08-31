@@ -13,6 +13,7 @@ from ...core.commands import (
     DisableAutostart,
     EnableAutostart,
     GenerateDebugReport,
+    GetAutostartStatus,
     GetFirstRunStatus,
     GetPlatformInfo,
     ListDisks,
@@ -23,6 +24,7 @@ from ...core.commands import (
     ListSensors,
     MarkFirstRunDone,
     ReadSensors,
+    RefreshAutostart,
     RunDoctor,
     RunHealthCheck,
     RunQuickstart,
@@ -246,12 +248,13 @@ def app_status(request: Request) -> AppStatusResponse:
     """
     log.info("api GET /system/status")
     trcc = request.app.state.trcc
-    # App prefs via the bus, not .settings (#249).  NOTE: the ``trcc.platform``
-    # / ``trcc.devices`` reads below are still in-process-only, so this route
-    # remains daemon-unsafe as a whole — tracked separately; converting it
-    # needs an autostart-state + attached-device Command.
+    # App prefs via the bus, not .settings (#249).  The comment here used to
+    # say converting this route "needs an autostart-state + attached-device
+    # Command" — both already existed.  Autostart now goes through
+    # ``GetAutostartStatus``; the ``trcc.devices`` loop below is the last
+    # in-process read and ``ListDevices`` answers it.
     app_settings = trcc.dispatch(ControlCenterSnapshot())
-    autostart_enabled = trcc.platform.autostart().is_enabled()
+    autostart_enabled = trcc.dispatch(GetAutostartStatus()).enabled
 
     lcd_devices: list[AppStatusEntry] = []
     led_devices: list[AppStatusEntry] = []
@@ -286,12 +289,7 @@ def app_status(request: Request) -> AppStatusResponse:
 def autostart_status(request: Request) -> AutostartResult:
     """Snapshot the autostart entry — whether it's installed + its path."""
     log.info("api GET /system/autostart")
-    mgr = request.app.state.trcc.platform.autostart()
-    enabled = mgr.is_enabled()
-    return AutostartResult(
-        ok=True, enabled=enabled,
-        message="autostart enabled" if enabled else "autostart disabled",
-    )
+    return request.app.state.trcc.dispatch(GetAutostartStatus())
 
 
 @router.post("/autostart")
@@ -309,6 +307,18 @@ def set_autostart(body: AutostartRequest,
     command = EnableAutostart() if body.enabled else DisableAutostart()
     result = trcc.dispatch(command)
     return result
+
+
+@router.post("/autostart/refresh")
+def refresh_autostart(request: Request) -> AutostartResult:
+    """Re-render an existing autostart entry so it picks up a new launch path.
+
+    The repair for a moved install (#201).  Does NOT enable autostart — with
+    no entry installed it reports so and changes nothing, which is what
+    separates it from ``POST /system/autostart {"enabled": true}``.
+    """
+    log.info("api POST /system/autostart/refresh")
+    return request.app.state.trcc.dispatch(RefreshAutostart())
 
 
 @router.get("/health")

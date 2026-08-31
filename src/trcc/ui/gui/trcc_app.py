@@ -479,8 +479,9 @@ class TRCCApp(QMainWindow):
         if saved_unit_int == 1:
             self.uc_about._set_temp('F')
 
-        # Autostart — uc_about.ensure_autostart takes the AutostartManager
-        autostart_state = ensure_autostart(app.platform.autostart())
+        # Autostart — ensure_autostart dispatches; it used to be handed
+        # ``app.platform.autostart()``, which raises under TRCC_DAEMON=1.
+        autostart_state = ensure_autostart(app)
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
 
@@ -1095,8 +1096,8 @@ class TRCCApp(QMainWindow):
             if gpus_result.ok else []
         )
         self.uc_about = UCAbout(
-            parent=central, platform=self._app.platform,
-            gpu_list=gpu_list, app=self._app, ui_state=self._ui_state,
+            parent=central, gpu_list=gpu_list,
+            app=self._app, ui_state=self._ui_state,
         )
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)

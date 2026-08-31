@@ -37,45 +37,44 @@ from PySide6.QtWidgets import (
 )
 
 from ...core._version import parse_version
-from ...core.commands import ControlCenterSnapshot
+from ...core.commands import (
+    ControlCenterSnapshot,
+    DisableAutostart,
+    EnableAutostart,
+    GetAutostartStatus,
+    RefreshAutostart,
+)
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
 
 if TYPE_CHECKING:
     from ...app import App
-    from ...core.ports import Platform
     from ._ui_state import UiStateStore
 
 log = logging.getLogger(__name__)
 
 
-def ensure_autostart(autostart) -> bool:
-    """Auto-enable autostart on first launch; reflect current state otherwise.
+def ensure_autostart(app: App) -> bool:
+    """Auto-enable autostart on first launch; re-render it otherwise.
 
-    Takes the :class:`AutostartManager` from ``app.platform.autostart()``
-    so the helper doesn't need to import the concrete Platform.  The
-    "configured" first-run marker now lives on AutostartManager itself
-    (`refresh()` is idempotent), so we just call `enable()` once on
-    first launch and read `is_enabled()` thereafter.
+    GUI-launch policy, kept here deliberately rather than pushed into a
+    Command: qtgui's system panel reads and toggles autostart but has never
+    auto-enabled it, and moving this would hand it a behaviour it does not
+    have.  That is a product decision, not a refactor.
+
+    Three dispatches rather than a held ``AutostartManager`` — the port reach
+    it replaced (``app.platform.autostart()``) raised under ``TRCC_DAEMON=1``.
+    ``RefreshAutostart`` is the already-enabled branch: it re-renders an
+    existing entry so a moved install picks up a new ``Exec=`` (#201) without
+    the user toggling autostart off and on again.
     """
-    if not autostart.is_enabled():
-        # First launch: enable + refresh.  Idempotent across re-runs.
-        try:
-            autostart.enable()
-            autostart.refresh()
-        except Exception:
-            # Best-effort — read-only Platforms (sandboxes, CI) raise here.
-            log.debug("ensure_autostart: enable() failed", exc_info=True)
-    else:
-        # Already enabled — re-render so an existing .desktop picks up Exec
-        # changes (the restored `--resume` flag, #201) without the user
-        # having to toggle autostart off and on again.
-        try:
-            autostart.refresh()
-        except Exception:
-            log.debug("ensure_autostart: refresh() failed", exc_info=True)
-    return autostart.is_enabled()
+    if not app.dispatch(GetAutostartStatus()).enabled:
+        # First launch: install the entry.  Idempotent across re-runs.
+        log.info("ensure_autostart: no entry — enabling on first launch")
+        return app.dispatch(EnableAutostart()).enabled
+    log.info("ensure_autostart: entry present — refreshing Exec path")
+    return app.dispatch(RefreshAutostart()).enabled
 
 
 _GITHUB_LATEST = (
@@ -177,30 +176,29 @@ class UCAbout(BasePanel):
     _update_available = Signal(str, dict) # (version, {mgr: download_url})
     _upgrade_finished = Signal(bool)     # True=success, False=failure
 
-    def __init__(self, parent=None, platform: Platform | None = None,
+    def __init__(self, parent=None,
                  gpu_list: list[tuple[str, str]] | None = None,
                  app: App | None = None,
                  ui_state: UiStateStore | None = None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
 
-        self._platform = platform
         self._app = app              # next/ App for Command dispatch
         self._ui_state = ui_state    # GUI-only persisted prefs
         self._gpu_list = gpu_list or []
         self._lang_buttons: dict[str, QPushButton] = {}  # Legacy — populated by combo in trcc_app
         self._temp_mode = 'C'
-        autostart_mgr = platform.autostart() if platform else None
-        self._autostart = autostart_mgr.is_enabled() if autostart_mgr else False
         # Initial values pulled from App settings (per Cross-cutting setter audit)
         if app is not None:
             # One Query, three fields — and the same Query the control
             # centre uses, so the panel and the snapshot cannot disagree
             # about what the app settings are.
             cc = app.dispatch(ControlCenterSnapshot())
+            self._autostart = app.dispatch(GetAutostartStatus()).enabled
             self._read_hdd = cc.hdd_enabled
             self._refresh_interval = int(cc.refresh_interval_s)
             self._gpu_device = cc.active_gpu or ''
         else:
+            self._autostart = False
             self._read_hdd = False
             self._refresh_interval = 2
             self._gpu_device = ''
@@ -366,12 +364,10 @@ class UCAbout(BasePanel):
         """Toggle auto-start on login."""
         log.info("_on_startup_clicked")
         self._autostart = self.startup_btn.isChecked()
-        if self._platform:
-            autostart = self._platform.autostart()
-            if self._autostart:
-                autostart.enable()
-            else:
-                autostart.disable()
+        if self._app is not None:
+            self._app.dispatch(
+                EnableAutostart() if self._autostart else DisableAutostart()
+            )
         self.startup_changed.emit(self._autostart)
         self.invoke_delegate(self.CMD_STARTUP, self._autostart)
 

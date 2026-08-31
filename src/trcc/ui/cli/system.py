@@ -26,6 +26,7 @@ from ...core.commands import (
     ListSensors,
     MarkFirstRunDone,
     ReadSensors,
+    RefreshAutostart,
     RunDoctor,
     RunHealthCheck,
     RunSetup,
@@ -547,6 +548,21 @@ def autostart_disable() -> None:
     log.info("cli system autostart disable")
     r = get_app().dispatch(DisableAutostart())
     typer.echo(r.message)
+
+
+@autostart_app.command("refresh")
+def autostart_refresh() -> None:
+    """Re-render an existing entry so it picks up a new launch path.
+
+    The repair for a moved install (#201): an entry written by an older
+    install keeps its old ``Exec=`` forever.  Does NOT enable autostart —
+    with no entry installed it reports so and changes nothing.
+    """
+    log.info("cli system autostart refresh")
+    r = get_app().dispatch(RefreshAutostart())
+    typer.echo(r.message)
+    if r.path:
+        typer.echo(f"Path: {r.path}")
 
 
 @app.command("paths")

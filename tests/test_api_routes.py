@@ -169,6 +169,45 @@ def test_openapi_schema_loads(api_client: TestClient) -> None:
 
 
 # =========================================================================
+# autostart — the three routes now go through the Command bus
+#
+# No API test touched autostart at all before 2026-08-31, which is part of why
+# ``GET /system/autostart`` could read ``trcc.platform.autostart()`` directly
+# for as long as it did — reaching past the bus, dropping the ``path`` the
+# Command returns, and raising under TRCC_DAEMON=1.
+# =========================================================================
+
+
+def test_autostart_status_reports_disabled_by_default(api_client: TestClient) -> None:
+    """GET reports state via ``GetAutostartStatus`` — including ``path``."""
+    r = api_client.get("/system/autostart")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["enabled"] is False
+    assert "path" in body, "the Command carries path; the hand-rolled route did not"
+
+
+def test_autostart_enable_then_status_agrees(api_client: TestClient) -> None:
+    """POST and GET are the same answer — one Command, not two code paths."""
+    assert api_client.post("/system/autostart",
+                           json={"enabled": True}).json()["enabled"] is True
+    assert api_client.get("/system/autostart").json()["enabled"] is True
+
+
+def test_autostart_refresh_does_not_enable(api_client: TestClient) -> None:
+    """The route inherits the Command's contract: refresh never installs.
+
+    Mirrors ``test_autostart_refresh_never_enables`` at the Command level —
+    asserted here too because a route is free to dispatch the wrong Command.
+    """
+    r = api_client.post("/system/autostart/refresh")
+    assert r.status_code == 200
+    assert r.json()["enabled"] is False
+    assert api_client.get("/system/autostart").json()["enabled"] is False
+
+
+# =========================================================================
 # auth — token + pairing
 # =========================================================================
 

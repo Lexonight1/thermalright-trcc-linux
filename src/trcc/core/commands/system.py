@@ -997,6 +997,36 @@ class DisableAutostart(Command[AutostartResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class RefreshAutostart(Command[AutostartResult]):
+    """Re-render an existing autostart entry so it picks up a new launch path.
+
+    The repair for #201: an entry written by an older install keeps its old
+    ``Exec=`` forever, so the app autostarts from a path that may no longer
+    exist.  ``refresh()`` re-renders it IN PLACE and is a no-op when no entry
+    is installed — it never enables autostart the user did not ask for, which
+    is what separates it from :class:`EnableAutostart`.
+
+    Whether it does anything is per-OS and lives in the adapter: XDG
+    re-renders the ``.desktop``; the Windows Run key and the macOS plist need
+    no rebuild and no-op.  It exists as a Command because ``refresh()`` was
+    the one :class:`~trcc.core.ports.AutostartManager` method no Command
+    reached, so the only caller able to repair a stale entry was the gui,
+    holding the port directly.
+    """
+
+    def execute(self, app: App) -> AutostartResult:
+        mgr = app.platform.autostart()
+        mgr.refresh()
+        enabled = mgr.is_enabled()
+        log.info("RefreshAutostart.execute: enabled=%s at %s",
+                 enabled, _autostart_path(app))
+        return AutostartResult(
+            ok=True,
+            message="autostart refreshed" if enabled else "no autostart entry to refresh",
+            enabled=enabled, path=_autostart_path(app),
+        )
+
+@dataclass(frozen=True, slots=True)
 class SetTempUnit(Command[TempUnitResult]):
     """Set the global temperature unit ("C" or "F") and propagate to every device.
 

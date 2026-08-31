@@ -139,11 +139,20 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "GUI use the unified RestoreDeviceState (shared)"
     )),
 
-    # ── A surface that genuinely does not want it ─────────────────────────
-    "GetAutostartStatus": (frozenset({"cli", "qtgui"}), (
-        "scoped: desktop autostart is a CLI/desktop concern; the headless API "
-        "server does not manage the user's session autostart"
-    )),
+    # ``GetAutostartStatus`` sat here from 2026-07-12 to 2026-08-31, excused
+    # as "desktop autostart is a CLI/desktop concern; the headless API server
+    # does not manage the user's session autostart".  The API served BOTH
+    # ``GET`` and ``POST /system/autostart`` the whole time -- it managed
+    # autostart by reaching ``trcc.platform.autostart()`` past the bus, and
+    # dropped the ``path`` field the Command returns.
+    #
+    # ``test_recorded_ui_reach_matches_reality`` could not catch it: the
+    # recorded reach SET was accurate, and only the PROSE was false.  What
+    # finally exposed it was widening the reach collector in
+    # ``test_architecture_boundaries`` to see the API's own
+    # ``request.app.state.trcc`` idiom -- so the answer to "who checks the
+    # reasons?" turned out to be a gate one layer down, not a gate on prose.
+    # The entry is retired rather than reworded: all four UIs reach it now.
 
     # ── Listings each surface answers its own way ─────────────────────────
     "ListDevices": (frozenset({"qtgui"}), (

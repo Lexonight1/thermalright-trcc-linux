@@ -963,7 +963,12 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # cli/api: SEVEN sites, against a docstring that said "measured at zero".
     # Six have Commands that already exist; see the invariant test below.
     "ui/api/display.py": 1,          # platform.paths() — CodeQL barrier, #239
-    "ui/api/system.py": 3,           # autostart x2 -> GetAutostartStatus; devices -> ListDevices
+    # 3 -> 1 on 2026-08-31: both autostart reads now dispatch
+    # ``GetAutostartStatus``.  The record excused this Command from the API
+    # as "the headless API server does not manage the user's session
+    # autostart" while the API served two autostart routes by reaching the
+    # port.  Making the reason TRUE retired it.
+    "ui/api/system.py": 1,           # devices -> ListDevices
     "ui/api/trcc.py": 1,             # devices -> ListDevices
     "ui/cli/display.py": 1,          # devices -> DeviceState (dup of cli/theme.py)
     "ui/cli/theme.py": 1,            # devices -> DeviceState (dup of cli/display.py)
@@ -982,8 +987,11 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # been discarding.  A UI reaches past the bus exactly when the Result is
     # short a field.
     # 9 -> 16 on 2026-08-31 by rules 2+4 alone (app.platform x5, app.events,
-    # _app_local.cloud_themes).
-    "ui/gui/trcc_app.py": 16,
+    # _app_local.cloud_themes) — visibility, not regression.
+    # 16 -> 14 the same day: the About panel stopped being handed a Platform
+    # port, and ``ensure_autostart`` takes the App and dispatches.  The
+    # second of those was INVISIBLE to the old collector (rule 2).
+    "ui/gui/trcc_app.py": 14,
     "ui/qtgui/panels/led/_base.py": 1,
     "ui/qtgui/panels/led_panel.py": 1,
 }
@@ -1004,9 +1012,8 @@ CLI_API_REACH_EXCEPTIONS: dict[str, str] = {
         "Converting it needs its own review; GetPaths exists but returns str"
     ),
     "ui/api/system.py": (
-        "gap: :254 + :289 autostart -> GetAutostartStatus (exists); :258 "
-        "devices -> ListDevices (exists, DeviceEntry.kind == 'led' replaces "
-        "device.is_led)"
+        "gap: :258 devices -> ListDevices (exists; DeviceEntry.kind == 'led' "
+        "replaces device.is_led, verified across all 10 ALL_DEVICES rows)"
     ),
     "ui/api/trcc.py": (
         "gap: :74 devices -> ListDevices (exists) — LCD/LED counts for "

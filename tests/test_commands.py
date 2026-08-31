@@ -8,6 +8,7 @@ from trcc.core.commands import (
     GetAutostartStatus,
     GetPlatformInfo,
     ReadSensors,
+    RefreshAutostart,
 )
 
 
@@ -52,6 +53,34 @@ def test_autostart_enable_then_status_reports_enabled(fake_platform) -> None:
     app.dispatch(EnableAutostart())
     r = app.dispatch(GetAutostartStatus())
     assert r.enabled is True
+
+
+def test_autostart_refresh_never_enables(fake_platform) -> None:
+    """``RefreshAutostart`` re-renders an EXISTING entry — it never installs one.
+
+    That is the entire line between it and ``EnableAutostart``, and a
+    happy-path-only test would let the line move.  ``refresh()`` exists so a
+    moved install picks up a new ``Exec=`` (#201); if it could enable, every
+    launch would silently opt the user into autostart.
+    """
+    app = App(fake_platform)
+
+    r = app.dispatch(RefreshAutostart())
+
+    assert r.ok is True
+    assert r.enabled is False, "refresh installed an entry that was not there"
+    assert app.dispatch(GetAutostartStatus()).enabled is False
+
+
+def test_autostart_refresh_keeps_an_existing_entry(fake_platform) -> None:
+    """The other half: refreshing an installed entry leaves it installed."""
+    app = App(fake_platform)
+    app.dispatch(EnableAutostart())
+
+    r = app.dispatch(RefreshAutostart())
+
+    assert r.enabled is True
+    assert app.dispatch(GetAutostartStatus()).enabled is True
 
 
 def test_autostart_disable_clears_state(fake_platform) -> None:
