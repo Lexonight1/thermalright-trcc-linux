@@ -23,6 +23,7 @@ from ...core.commands import (
     ListFonts,
     ListGpus,
     ListLanguages,
+    ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
     ReadSensors,
@@ -106,6 +107,30 @@ def list_fonts() -> None:
     typer.echo(result.message)
     for name in result.fonts:
         typer.echo(f"  {name}")
+
+
+@app.command("memory-slots")
+def memory_slots() -> None:
+    """List DRAM slots — size/type/speed/manufacturer, plus timings on Linux.
+
+    Timings (tCAS/tRCD/tRP/tRAS/tRC/tRFC) come from SPD + the live memory
+    controller and are Linux-only today; other platforms show NC.  This is what
+    the LC1-style memory panel renders, and it is worth pasting into a bug
+    report about that panel.
+    """
+    log.info("cli system memory-slots")
+    r = get_app().dispatch(ListMemorySlots())
+    typer.echo(r.message)
+    for i, s_ in enumerate(r.slots):
+        typer.echo(
+            f"  [{i}] {s_.size or 'NC':>10}  {s_.type or 'NC':<6} "
+            f"{s_.speed or 'NC':<12} {s_.manufacturer or 'NC'}"
+        )
+        typer.echo(
+            f"       tCAS {s_.tcas or 'NC':<4} tRCD {s_.trcd or 'NC':<4} "
+            f"tRP {s_.trp or 'NC':<4} tRAS {s_.tras or 'NC':<4} "
+            f"tRC {s_.trc or 'NC':<4} tRFC {s_.trfc or 'NC'}"
+        )
 
 
 @app.command("list-disks")

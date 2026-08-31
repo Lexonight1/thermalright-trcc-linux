@@ -860,6 +860,49 @@ class DiskEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class MemorySlotEntry:
+    """One DRAM slot, flattened from ``Platform.memory_info()``.
+
+    Typed rather than the port's raw ``dict[str, str]`` so a UI gets a contract
+    instead of guessing key names, and so the answer survives the daemon socket.
+
+    **Every field is a string defaulting to ``""``, and that is deliberate.**
+    The port documents that an OS with no probe returns an empty list so a
+    caller's "NC" means *measured nothing* rather than *never asked*; the same
+    rule applies per FIELD, because the probes are genuinely heterogeneous:
+
+        Linux    dmidecode identity + SPD/IMC timings — the ONLY OS with timings
+        Windows  WMI Win32_PhysicalMemory identity, no timings
+        macOS    system_profiler SPMemoryDataType, no timings
+        BSD      sysctl hw.physmem — ONE "Total" entry, no per-DIMM SPD
+
+    So `tcas` is populated on Linux and empty everywhere else, and a consumer
+    renders "NC" for an empty field exactly as the gui panel already does.
+    """
+    # Identity — present on all four platforms
+    size: str = ""
+    type: str = ""
+    speed: str = ""
+    manufacturer: str = ""
+    part_number: str = ""
+    locator: str = ""
+    form_factor: str = ""
+    # DRAM timings — Linux only (dmidecode gives none of these; they come from
+    # the SPD/IMC enrichment).  The LC1-style memory panel reads exactly these.
+    tcas: str = ""
+    trcd: str = ""
+    trp: str = ""
+    tras: str = ""
+    trc: str = ""
+    trfc: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MemorySlotsResult(Result):
+    slots: list[MemorySlotEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class DisksListResult(Result):
     disks: list[DiskEntry] = field(default_factory=list)
 

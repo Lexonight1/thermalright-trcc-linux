@@ -329,7 +329,9 @@ class FakePlatform(Platform):
         return nullcontext()
 
     def memory_info(self) -> List[Dict[str, str]]:
-        return []
+        """Scriptable via ``platform.memory_slots`` — default empty, the
+        honest answer for a platform with no probe."""
+        return getattr(self, "memory_slots", [])
 
     def disk_partitions(self) -> List[tuple]:
         """Two partitions on one drive — the shape that matters.

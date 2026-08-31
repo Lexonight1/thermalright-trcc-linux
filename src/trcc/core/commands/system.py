@@ -1,6 +1,7 @@
 """Sensors, diagnostics, setup, config, snapshots, update, slideshow, platform Commands."""
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,8 @@ from ..results import (
     LanguageEntry,
     LanguageResult,
     LanguagesListResult,
+    MemorySlotEntry,
+    MemorySlotsResult,
     PathsResult,
     PlatformInfoResult,
     QuickstartResult,
@@ -201,6 +204,36 @@ class ListDisks(Query[DisksListResult]):
             ok=True, disks=disks,
             message=f"{len(disks)} disk(s)",
         )
+
+@dataclass(frozen=True, slots=True)
+class ListMemorySlots(Query[MemorySlotsResult]):
+    """Enumerate DRAM slots — identity on every OS, timings on Linux.
+
+    The LC1-style memory panel reads the six timing fields; the identity
+    fields answer "what DIMMs does this box have", which ``trcc report``
+    could not show at all before this existed.
+
+    Field availability is per-OS by nature (only Linux enriches with SPD/IMC
+    timings), so an absent value arrives as ``""`` and a UI renders "NC" —
+    the convention ``Platform.memory_info`` already documents for the whole
+    list.
+    """
+
+    def execute(self, app: App) -> MemorySlotsResult:
+        raw = app.platform.memory_info()
+        slots = [
+            MemorySlotEntry(**{
+                f.name: str(d.get(f.name, ""))
+                for f in dataclasses.fields(MemorySlotEntry)
+            })
+            for d in raw
+        ]
+        log.info("ListMemorySlots.execute: %d slot(s)", len(slots))
+        return MemorySlotsResult(
+            ok=True, slots=slots,
+            message=f"{len(slots)} memory slot(s)",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ListGpus(Query[GpusListResult]):

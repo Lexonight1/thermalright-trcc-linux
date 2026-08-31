@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.commands import ListMemorySlots
 from ...core.i18n import tr
 from ...core.led_models import (
     LED_MODE_LABELS,
@@ -301,8 +302,13 @@ class UCLedControl(QWidget):
     # above the UCScreenLED preview (Y=128) and mode buttons (Y=227).
     _DRAG_MAX_Y = 200
 
-    def __init__(self, parent=None, language: str = "en"):
+    def __init__(self, parent=None, language: str = "en", app=None):
         super().__init__(parent)
+        # ``app`` is the Command bus — the panel asks it for DRAM slots
+        # instead of being handed ``platform.memory_info``, which raises
+        # under TRCC_DAEMON=1.  Optional so the panel still constructs
+        # bare in tests.
+        self._app = app
         self.setFixedSize(PANEL_WIDTH, PANEL_HEIGHT)
 
         # Current app language — injected by the window (the composition root)
@@ -328,14 +334,21 @@ class UCLedControl(QWidget):
         self._is_timer_24h = True
         self._is_week_sunday = False
 
-        self._get_memory_info = None
         self._get_disk_info = None
 
         self._setup_ui()
 
-    def set_hardware_fns(self, get_memory_info, get_disk_info) -> None:
-        """Inject platform hardware callables (DI from ControllerBuilder)."""
-        self._get_memory_info = get_memory_info
+    def set_disk_fn(self, get_disk_info) -> None:
+        """Inject the platform disk probe.
+
+        Memory moved to ``ListMemorySlots`` on the bus.  Disk has NOT: the
+        dropdown this fills is sourced from ``Platform.disk_info()`` (physical
+        drives), while the ``disk_index`` it writes addresses nothing at all —
+        the aggregator collapses every drive to the hottest.  Wiring a Query to
+        it now would plumb a control that cannot work; the fix repoints the
+        dropdown at the THERMAL source list, and that is planned as its own
+        increment (4d) with a prerequisite of its own.
+        """
         self._get_disk_info = get_disk_info
 
     def _setup_ui(self):
@@ -1509,17 +1522,30 @@ class UCLedControl(QWidget):
             self._mem_labels[key].setText(text)
 
     def _populate_memory_identity(self) -> None:
-        """Populate memory timing labels from DRAM SPD info."""
+        """Populate memory timing labels from the DRAM slot snapshot.
+
+        Asks the bus.  This used to call a ``platform.memory_info`` callable
+        injected via ``set_hardware_fns`` — a Platform port handed into a
+        widget, which raises under TRCC_DAEMON=1.
+
+        The widget ids are ``mem_tcas`` … and the Result fields are ``tcas`` …,
+        so the prefix is stripped exactly as before.  An empty field still
+        renders "NC": only Linux enriches with SPD/IMC timings, and the port
+        documents that absence means *measured nothing*, not *never asked*.
+        """
+        log.info("_populate_memory_identity: app=%s", self._app is not None)
         try:
-            if self._get_memory_info is None:
+            if self._app is None:
+                log.warning("_populate_memory_identity: no bus — labels stay NC")
                 return
-            self._mem_slots = self._get_memory_info()
+            self._mem_slots = self._app.dispatch(ListMemorySlots()).slots
+            log.info("_populate_memory_identity: %d slot(s)", len(self._mem_slots))
             if self._mem_slots:
-                s = self._mem_slots[0]
+                slot = self._mem_slots[0]
                 for key in ('mem_tcas', 'mem_trcd', 'mem_trp',
                             'mem_tras', 'mem_trc', 'mem_trfc'):
                     field = key.replace('mem_t', 't').replace('mem_', '')
-                    val = s.get(field, '')
+                    val = getattr(slot, field, '')
                     self._mem_labels[key].setText(str(val) if val else "NC")
         except Exception as e:
             # Memory probe surface is wide (subprocess + WMI + parser) — fall safe.

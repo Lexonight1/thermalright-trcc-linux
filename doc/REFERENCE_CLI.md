@@ -1620,6 +1620,14 @@ Tell trcc the welcome flow has been completed.
 trcc system mark-setup-done
 ```
 
+### `trcc system memory-slots`
+
+List DRAM slots — size/type/speed/manufacturer, plus timings on Linux. Timings (tCAS/tRCD/tRP/tRAS/tRC/tRFC) come from SPD + the live memory controller and are Linux-only today; other platforms show NC. This is what the LC1-style memory panel renders, and it is worth pasting into a bug report about that panel.
+
+```bash
+trcc system memory-slots
+```
+
 ### `trcc system paths`
 
 Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`. With `--key` the answer is that device's: the resolution comes from its handshake (oriented) and the theme/cloud dirs name its per-SKU library, so the output points at the directories the app actually opens for it.

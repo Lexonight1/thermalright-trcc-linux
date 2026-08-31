@@ -328,6 +328,18 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS memory\-slots
+.PP
+\fBtrcc system memory\-slots\fR
+.PP
+List DRAM slots  \-  size/type/speed/manufacturer, plus timings on Linux. Timings (tCAS/tRCD/tRP/tRAS/tRC/tRFC) come from SPD + the live memory controller and are Linux\-only today; other platforms show NC. This is what the LC1\-style memory panel renders, and it is worth pasting into a bug report about that panel.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS paths
 .PP
 \fBtrcc system paths\fR [\fIOPTIONS\fR]

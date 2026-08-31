@@ -1115,13 +1115,15 @@ class TRCCApp(QMainWindow):
         # Language is injected (composition root) so the panel never reaches
         # into _boot for global settings.
         self.uc_led_control = UCLedControl(
-            central, self._app.dispatch(ControlCenterSnapshot()).language)
+            central, self._app.dispatch(ControlCenterSnapshot()).language,
+            app=self._app)
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
-        self.uc_led_control.set_hardware_fns(
-            self._app.platform.memory_info,
-            self._app.platform.disk_info,
-        )
+        # Memory now goes through ``ListMemorySlots`` on the bus.  Disk stays a
+        # port callable until 4d repoints its dropdown at the thermal source
+        # list — see the panel's ``set_disk_fn`` docstring for why wiring a
+        # Query to it today would plumb a control that cannot work.
+        self.uc_led_control.set_disk_fn(self._app.platform.disk_info)
 
         # Form1 buttons
         self.form1_close_btn = create_image_button(

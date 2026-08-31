@@ -7,6 +7,7 @@ from trcc.core.commands import (
     EnableAutostart,
     GetAutostartStatus,
     GetPlatformInfo,
+    ListMemorySlots,
     ReadSensors,
     RefreshAutostart,
 )
@@ -377,3 +378,33 @@ def test_start_screencast_still_accepts_an_lcd(fake_platform) -> None:
 
     assert result.ok is True, result.message
     assert app.settings.for_device(key).screencast_region == (1, 2, 64, 48, False)
+
+
+def test_list_memory_slots_maps_absent_fields_to_empty(fake_platform) -> None:
+    """A field the OS did not probe arrives as ``""`` — never a guess.
+
+    The four probes are genuinely heterogeneous: only Linux enriches with
+    SPD/IMC timings, so ``tcas`` is populated there and absent on Windows,
+    macOS and BSD.  ``Platform.memory_info``'s docstring makes absence mean
+    "measured nothing" rather than "never asked", and this Result keeps that
+    per FIELD — a UI renders "NC" for an empty one, which is exactly what the
+    LC1 memory panel does.
+
+    Asserting the EMPTY case rather than the populated one is deliberate: the
+    dev box is Linux and fills every timing, so a happy-path test would pass
+    while a Windows reporter silently got a fabricated zero.
+    """
+    fake_platform.memory_slots = [
+        {"size": "16 GiB", "type": "DDR5", "speed": "4800 MT/s"},
+    ]
+    app = App(fake_platform)
+
+    r = app.dispatch(ListMemorySlots())
+
+    assert r.ok
+    assert len(r.slots) == 1
+    slot = r.slots[0]
+    assert slot.size == "16 GiB"
+    assert slot.type == "DDR5"
+    assert slot.tcas == "", "an unprobed timing must be empty, not 0"
+    assert slot.manufacturer == ""

@@ -994,7 +994,12 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # 16 -> 14 the same day: the About panel stopped being handed a Platform
     # port, and ``ensure_autostart`` takes the App and dispatches.  The
     # second of those was INVISIBLE to the old collector (rule 2).
-    "ui/gui/trcc_app.py": 14,
+    # 14 -> 13 on 2026-08-31: the LED panel asks ``ListMemorySlots``
+    # instead of being handed ``platform.memory_info``.  The DISK half of
+    # that same injection deliberately stays: its dropdown is sourced from
+    # physical drives while the index it writes addresses nothing, so a
+    # Query there would plumb a dead control (increment 4d).
+    "ui/gui/trcc_app.py": 13,
     # led/_base.py and led_panel.py reached ZERO on 2026-08-31: the six LED
     # tabs take a ``LedSnapshotResult`` instead of a live ``LedDeviceSettings``.
     # Same rule as UCThemeMask before them — the Result was short five fields

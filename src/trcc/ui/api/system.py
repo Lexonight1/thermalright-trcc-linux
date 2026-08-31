@@ -22,6 +22,7 @@ from ...core.commands import (
     ListFonts,
     ListGpus,
     ListLanguages,
+    ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
     ReadSensors,
@@ -48,6 +49,7 @@ from ...core.results import (
     HealthReportResult,
     LanguageResult,
     LanguagesListResult,
+    MemorySlotsResult,
     QuickstartResult,
     SensorsListResult,
     SensorsResult,
@@ -288,6 +290,13 @@ def app_status(request: Request) -> AppStatusResponse:
                  f"lang={app_settings.language}, "
                  f"temp={app_settings.temp_unit}"),
     )
+
+
+@router.get("/memory-slots")
+def memory_slots(request: Request) -> MemorySlotsResult:
+    """DRAM slots — identity everywhere, timings on Linux (empty = not probed)."""
+    log.info("api GET /system/memory-slots")
+    return request.app.state.trcc.dispatch(ListMemorySlots())
 
 
 @router.get("/autostart")
