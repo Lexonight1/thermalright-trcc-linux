@@ -73,7 +73,7 @@ def handler(tmp_path: Path) -> tuple[Any, App, _CapturingPreview]:
     preview = _CapturingPreview()
     widgets = _Widgets({"preview": preview})
     h = LCDHandler(
-        app.devices[_KEY], widgets, lambda cb, *a, **k: _FakeTimer(),
+        _KEY, widgets, lambda cb, *a, **k: _FakeTimer(),
         tmp_path, app=app, lcd_idx=_KEY,
     )
     h._pm.ui_active = True

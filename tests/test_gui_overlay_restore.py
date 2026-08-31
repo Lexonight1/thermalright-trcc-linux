@@ -95,7 +95,7 @@ def handler(tmp_path: Path) -> tuple[Any, App, _Widget]:
     widgets = _Widgets()
     theme_setting = widgets["theme_setting"]
     h = LCDHandler(
-        app.devices[_KEY], widgets, lambda cb, *a, **k: _FakeTimer(),
+        _KEY, widgets, lambda cb, *a, **k: _FakeTimer(),
         tmp_path, app=app, lcd_idx=_KEY,
     )
     h._pm.ui_active = True
@@ -247,7 +247,7 @@ class _RealGridHandler:
 
         self.panel = UCThemeSetting()
         self.handler = LCDHandler(
-            app.devices[_KEY],
+            _KEY,
             {"theme_setting": self.panel, "preview": _Widget()},
             lambda cb, *a, **k: _FakeTimer(), root, app=app, lcd_idx=_KEY,
         )

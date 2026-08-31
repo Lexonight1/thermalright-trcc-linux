@@ -216,9 +216,9 @@ def two_handlers(tmp_path: Path) -> tuple[Any, Any, _FakeApp, _FakePreview]:
     def make_timer(callback: Any, *a: Any, **k: Any) -> _FakeTimer:
         return _FakeTimer()
 
-    handler_a = LCDHandler(app.devices[_KEY_A], widgets, make_timer, tmp_path,
+    handler_a = LCDHandler(_KEY_A, widgets, make_timer, tmp_path,
                            app=app, lcd_idx=_KEY_A)
-    handler_b = LCDHandler(app.devices[_KEY_B], widgets, make_timer, tmp_path,
+    handler_b = LCDHandler(_KEY_B, widgets, make_timer, tmp_path,
                            app=app, lcd_idx=_KEY_B)
     handler_b._pm.ui_active = True
     handler_a._pm.ui_active = False
@@ -392,7 +392,7 @@ def test_inactive_handler_never_writes_the_shared_theme_browser(
     app = _with_paths(_FakeApp(), tmp_path)
     app.devices[_KEY_A] = _FakeDevice(_KEY_A)
 
-    handler = LCDHandler(app.devices[_KEY_A], widgets,
+    handler = LCDHandler(_KEY_A, widgets,
                          lambda cb, *a, **k: _FakeTimer(), tmp_path,
                          app=app, lcd_idx=_KEY_A)
     handler._pm.ui_active = False
@@ -419,7 +419,7 @@ def test_active_handler_does_write_the_shared_theme_browser(
     app = _with_paths(_FakeApp(), tmp_path)
     app.devices[_KEY_B] = _FakeDevice(_KEY_B)
 
-    handler = LCDHandler(app.devices[_KEY_B], widgets,
+    handler = LCDHandler(_KEY_B, widgets,
                          lambda cb, *a, **k: _FakeTimer(), tmp_path,
                          app=app, lcd_idx=_KEY_B)
     handler._pm.ui_active = True

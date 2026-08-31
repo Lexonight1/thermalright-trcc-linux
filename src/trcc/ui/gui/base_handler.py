@@ -30,6 +30,18 @@ class BaseHandler:
         # device refs" — that is this change.  A UI holding a live ``Device``
         # is forbidden by CLAUDE.md and is an AttributeError under
         # TRCC_DAEMON=1, where ``app.devices`` does not exist.
+        if not isinstance(key, str):
+            # A runtime contract, because nothing else can enforce it: pyright
+            # is configured ``include = ["src"]`` so it never sees a test call
+            # site, and duck typing means a ``Device`` passed here works right
+            # up until something treats ``self._key`` as a string.  Eight test
+            # sites did exactly that when this parameter stopped being a
+            # Device — the suite stayed green because ``lcd_idx=`` happened to
+            # override the only field that was read.
+            raise TypeError(
+                f"BaseHandler takes a device KEY (str), got "
+                f"{type(key).__name__} — a UI must not hold a Device"
+            )
         self._key = key
         self._view = view
         log.info("BaseHandler.__init__: view=%r key=%s", view, key)

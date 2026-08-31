@@ -18,4 +18,4 @@ from trcc.ui.gui.led_handler import LEDHandler
 def test_led_handler_rejects_none_app() -> None:
     with pytest.raises(RuntimeError, match="App handle"):
         # device/panel are never reached — the app guard is first.
-        LEDHandler(object(), cast(Any, None), lambda *a, **k: None, app=None)
+        LEDHandler("0416:8001", cast(Any, None), lambda *a, **k: None, app=None)
