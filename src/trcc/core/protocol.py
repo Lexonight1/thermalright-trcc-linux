@@ -395,20 +395,31 @@ _FBL_224_BY_PM: dict[int, tuple[int, int]] = {
 
 # FBL 192 is shared by 3 resolutions — PM byte disambiguates.
 #
-# PM 1 and PM 65 are one branch in the C#, not two:
-# `pm == 65 || (pm == 1 && pmSub == 49)` (FormCZTV.cs:715).  PM 1 reaches
-# this table through _PM_SUB_TO_FBL[(1, 49)]; PM 65 is Trofeo Vision 9.16
-# (0416:5408, SUB=5).  Both are stated for the reason given above.
+# PM 1, 65 and 66 are ONE branch in the C#, not three:
 #
-# PM 66 is deliberately ABSENT.  The variant table names it (ELITE VISION /
-# LF14 / LD7) and _PM_TO_FBL_OVERRIDES routes it here on inherited
-# authority, but FormCZTV.cs has no `pm == 66` branch anywhere — the vendor
-# app never drives that byte, so 1920x462 would be OUR guess wearing a
-# catalogued row's clothing.  Omitting it is what lets the warning tell the
-# truth: we route PM 66 to this FBL and do not know its geometry.
+#     FormCZTV.cs:898
+#     else if (myDeviceMode == 2 && (pm == 65 || pm == 66 || (pm == 1 && pmSub == 49)))
+#     { isBiliPingmu = true; is1920x462 = true; fbl = 192; }
+#
+# PM 1 reaches this table through _PM_SUB_TO_FBL[(1, 49)]; PM 65 is Trofeo
+# Vision 9.16 (0416:5408, SUB=5); PM 66 is ELITE VISION / LF14 / LD7.
+#
+# PM 66 was deliberately ABSENT until 2026-08-31, on the stated grounds that
+# "FormCZTV.cs has no `pm == 66` branch anywhere".  It has exactly one — the
+# line above — and it treats 66 identically to 65.  The claim was made on
+# 2026-08-06, ten days before the real 2.1.6 decompile was extracted
+# (2026-08-16), so it was read from the 2.0.3 tree: a casualty of the
+# wrong-oracle-version era, not of carelessness.
+#
+# The cost was not wrong pixels — the fallback already returned 1920x462 —
+# but a WARNING telling the owner of a fully catalogued cooler that their
+# device is unknown and to file a bug.  That is precisely the failure the
+# warning was introduced to end ("a fully supported LC2JD or LF14 was told to
+# file a bug report about itself"), reproduced one row over.
 _FBL_192_BY_PM: dict[int, tuple[int, int]] = {
     1:  (1920, 462),
     65: (1920, 462),
+    66: (1920, 462),   # FormCZTV.cs:898 — same branch as 65
     68: (1280, 480),
     69: (1920, 440),
 }
