@@ -630,3 +630,43 @@ def test_set_led_mode_targets_selected_zones_pa120(
     assert zones[0].mode is LEDMode.BREATHING
     assert zones[2].mode is LEDMode.BREATHING
     assert zones[1].mode is not LEDMode.BREATHING   # untouched
+
+
+def test_render_led_forwards_week_sunday_to_the_renderer(
+    fake_platform: FakePlatform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The user's Sunday/Monday choice must REACH ``compute_mask``.
+
+    ``compute_mask`` has accepted ``week_sunday`` and used it all along —
+    ``led_segment.py`` shifts the weekday with
+    ``w = (py_wd + 1) % 7 if week_sunday else py_wd`` — but the only
+    production call site passed ``is_24h`` and ``memory_ratio`` and OMITTED
+    this one, so it silently took its ``False`` default forever.  The GUI, the
+    CLI (``trcc led week-start``) and the API all let the user set it; nothing
+    carried it to the renderer.
+
+    So this asserts the FORWARDING, not the shifting: re-testing the weekday
+    arithmetic would exercise code that was never broken and would still have
+    passed while the bug was live.
+    """
+    app = App(fake_platform)
+    _attach_and_connect(app, fake_platform, pm=16)
+    app.settings.for_led(_LED_KEY).week_sunday = True
+
+    seen: dict[str, object] = {}
+    # ``RenderLed.execute`` imports compute_mask INSIDE the function, so the
+    # patch target is the source module, not the command's namespace.
+    import trcc.services.led_segment as seg
+    real = seg.compute_mask
+
+    def spy(*args, **kw):
+        seen.update(kw)
+        return real(*args, **kw)
+
+    monkeypatch.setattr(seg, "compute_mask", spy)
+    app.dispatch(RenderLed(key=_LED_KEY, color=(255, 0, 0), phase=0))
+
+    assert seen.get("week_sunday") is True, (
+        "week_sunday never reached compute_mask — the LC2 clock ignores the "
+        f"user's week-start preference.  kwargs seen: {sorted(seen)}"
+    )

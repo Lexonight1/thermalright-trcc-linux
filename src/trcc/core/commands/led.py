@@ -328,6 +328,7 @@ class RenderLed(Command[LedColorsResult]):
                 style, display_metrics, phase=phase,
                 temp_unit=device_settings.temp_unit,
                 is_24h=(device_settings.time_format == "24h"),
+                week_sunday=effective_settings.week_sunday,
                 memory_ratio=effective_settings.memory_ratio,
             )
             segment_count = len(mask)
