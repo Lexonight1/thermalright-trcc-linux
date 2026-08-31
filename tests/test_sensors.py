@@ -262,9 +262,15 @@ def test_disk_temp_in_discover_catalog() -> None:
 # ── Linux hwmon disk discovery (nvme / drivetemp) ────────────────────
 
 
+def _mk(p: Path) -> Path:
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _hwmon_dir(root: Path, dirname: str, driver: str, *,
                temp1_milli: int | None = None,
-               temp1_label: str | None = None) -> hwmon.HwmonDevice:
+               temp1_label: str | None = None,
+               serial: str | None = None) -> hwmon.HwmonDevice:
     d = root / dirname
     d.mkdir()
     (d / "name").write_text(f"{driver}\n")
@@ -272,6 +278,11 @@ def _hwmon_dir(root: Path, dirname: str, driver: str, *,
         (d / "temp1_input").write_text(str(temp1_milli))
     if temp1_label is not None:
         (d / "temp1_label").write_text(f"{temp1_label}\n")
+    if serial is not None:
+        # NVMe publishes ``device/serial`` with trailing padding, as the real
+        # node does — the reader must strip it.
+        (d / "device").mkdir()
+        (d / "device" / "serial").write_text(f"{serial}     \n")
     return hwmon.HwmonDevice(d)
 
 
@@ -280,19 +291,74 @@ def test_discover_disk_temp_matches_nvme_and_drivetemp(tmp_path: Path) -> None:
     devices = [
         _hwmon_dir(tmp_path, "hwmon0", "coretemp", temp1_milli=45000),   # CPU
         _hwmon_dir(tmp_path, "hwmon1", "nvme", temp1_milli=35850,
-                   temp1_label="Composite"),
+                   temp1_label="Composite", serial="S73HNJ0XA10424V"),
         _hwmon_dir(tmp_path, "hwmon2", "drivetemp", temp1_milli=41000),  # SATA SSD
     ]
 
     disks = hwmon.discover_disk_temp(devices)
 
+    # The NVMe keys on its SERIAL (stable across boots); the SATA node publishes
+    # none, so it falls back to the hwmon dir name — unique, boot-unstable.
     assert {d.key for d in disks} == {
-        "hwmon:nvme:temp1", "hwmon:drivetemp:temp1",
+        "hwmon:nvme:S73HNJ0XA10424V:temp1", "hwmon:drivetemp:hwmon2:temp1",
     }
     by_key = {d.key: d for d in disks}
-    assert by_key["hwmon:nvme:temp1"].temp() == 35.85
-    assert by_key["hwmon:nvme:temp1"].name == "Composite"
-    assert by_key["hwmon:drivetemp:temp1"].temp() == 41.0
+    assert by_key["hwmon:nvme:S73HNJ0XA10424V:temp1"].temp() == 35.85
+    assert by_key["hwmon:nvme:S73HNJ0XA10424V:temp1"].name == "Composite"
+    assert by_key["hwmon:drivetemp:hwmon2:temp1"].temp() == 41.0
+
+
+def test_two_nvme_drives_get_distinct_keys(tmp_path: Path) -> None:
+    """THE bug this key format exists to fix.
+
+    ``HwmonDisk.key`` was ``hwmon:{driver}:temp1`` — driver only — so a box
+    with two NVMe drives produced ONE key for both.  ``HwmonDram`` ten lines
+    below in the same module had already been fixed for exactly this ("matched
+    DIMMs share a driver, so a driver-only key would collide across modules
+    and conflate their per-source read-failure bookkeeping"); disks had the
+    identical exposure and were missed.
+
+    The aggregator's only use of the key is
+    ``self._read(disk.temp, f"disk:{disk.key}:temp")``, so a collision merged
+    two drives' failure bookkeeping into one entry.  It also made a persisted
+    disk SELECTION impossible, which is why this lands before that feature.
+    """
+    devices = [
+        _hwmon_dir(tmp_path, "hwmon1", "nvme", temp1_milli=35850,
+                   temp1_label="Composite", serial="SERIAL_AAA"),
+        _hwmon_dir(tmp_path, "hwmon4", "nvme", temp1_milli=52000,
+                   temp1_label="Composite", serial="SERIAL_BBB"),
+    ]
+
+    disks = hwmon.discover_disk_temp(devices)
+
+    keys = {d.key for d in disks}
+    assert len(keys) == 2, f"two NVMe drives must not share a key — got {keys}"
+    assert keys == {
+        "hwmon:nvme:SERIAL_AAA:temp1", "hwmon:nvme:SERIAL_BBB:temp1",
+    }
+    # And the readings stay attached to the right drive.
+    by_key = {d.key: d.temp() for d in disks}
+    assert by_key["hwmon:nvme:SERIAL_AAA:temp1"] == 35.85
+    assert by_key["hwmon:nvme:SERIAL_BBB:temp1"] == 52.0
+
+
+def test_disk_key_is_stable_when_the_hwmon_number_moves(tmp_path: Path) -> None:
+    """A drive keeps its key when hwmon renumbers it — what persistence needs.
+
+    ``hwmonN`` ordering is not stable across boots, so keying on the directory
+    (the DRAM fix) gives uniqueness but not stability.  The serial gives both.
+    """
+    before = hwmon.discover_disk_temp([
+        _hwmon_dir(_mk(tmp_path / "boot1"), "hwmon3", "nvme",
+                   temp1_milli=35000, serial="SERIAL_AAA"),
+    ])
+    after = hwmon.discover_disk_temp([
+        _hwmon_dir(_mk(tmp_path / "boot2"), "hwmon7", "nvme",
+                   temp1_milli=35000, serial="SERIAL_AAA"),
+    ])
+
+    assert before[0].key == after[0].key == "hwmon:nvme:SERIAL_AAA:temp1"
 
 
 def test_discover_disk_temp_skips_node_without_temp1(tmp_path: Path) -> None:

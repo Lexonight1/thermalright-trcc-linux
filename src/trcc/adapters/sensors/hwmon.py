@@ -569,10 +569,40 @@ class HwmonDisk(DiskSource):
     def __init__(self, hwmon: HwmonDevice, label: str | None) -> None:
         self._hwmon = hwmon
         self._label = label or f"{hwmon.driver} disk"
+        self._ident = self._identity(hwmon)
+
+    @staticmethod
+    def _identity(hwmon: HwmonDevice) -> str:
+        """A per-DRIVE discriminator: the hardware serial, else the hwmon dir.
+
+        Two properties are wanted and they come from different places:
+
+        * **Unique** — required TODAY.  The key used to be
+          ``hwmon:{driver}:temp1``, so two NVMe drives produced the SAME key.
+          ``HwmonDram`` ten lines below already fixed exactly this for matched
+          DIMMs and says why: a driver-only key "would collide across modules
+          (and conflate their per-source read-failure bookkeeping)".  Disks had
+          the identical exposure and were missed.
+        * **Stable across boots** — required BEFORE a user's disk choice can be
+          persisted.  ``hwmonN`` numbering is not, so the DRAM fix alone is not
+          enough here; ``device/serial`` is.
+
+        NVMe exposes ``device/serial``.  Where it is absent (a ``drivetemp``
+        SATA node may not publish one) this falls back to the hwmon directory
+        name: unique, but boot-unstable — so a caller persisting a selection
+        must treat a key it can no longer find as "gone", not as an error.
+        """
+        serial = (_read_text(hwmon.path / "device" / "serial") or "").strip()
+        if serial:
+            log.debug("HwmonDisk._identity: %s -> serial", hwmon.path.name)
+            return serial
+        log.debug("HwmonDisk._identity: %s has no device/serial — using dir name",
+                  hwmon.path.name)
+        return hwmon.path.name
 
     @property
     def key(self) -> str:
-        return f"hwmon:{self._hwmon.driver}:temp1"
+        return f"hwmon:{self._hwmon.driver}:{self._ident}:temp1"
 
     @property
     def name(self) -> str:
