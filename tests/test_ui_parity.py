@@ -155,11 +155,15 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # The entry is retired rather than reworded: all four UIs reach it now.
 
     # ── Listings each surface answers its own way ─────────────────────────
-    "ListDevices": (frozenset({"qtgui"}), (
-        "scoped: the others use DiscoverDevices. NOT redundancy -- that probes "
-        "the bus and attaches what it finds, this reports what is already "
-        "attached, and it exists because reaching app.devices raises under "
-        "TRCC_DAEMON=1. It is part of the daemon-client fix"
+    "ListDevices": (frozenset({"api", "qtgui"}), (
+        "scoped: the CLI uses DiscoverDevices for `trcc device list`. NOT "
+        "redundancy -- that probes the bus and ATTACHES what it finds, this "
+        "reports what is already attached, and it exists because reaching "
+        "app.devices raises under TRCC_DAEMON=1. It is part of the "
+        "daemon-client fix. api joined 2026-08-31: GET /system/status and "
+        "GET /trcc/status report state, and a status route must not attach "
+        "hardware as a side effect -- which is the same distinction, seen "
+        "from the other end"
     )),
     "SetOverlayConfig": (frozenset({"api", "gui", "qtgui"}), (
         "scoped: the CLI edits overlays element-wise (Add/Update/Delete"

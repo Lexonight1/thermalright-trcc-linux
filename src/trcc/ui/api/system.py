@@ -16,6 +16,7 @@ from ...core.commands import (
     GetAutostartStatus,
     GetFirstRunStatus,
     GetPlatformInfo,
+    ListDevices,
     ListDisks,
     ListFans,
     ListFonts,
@@ -32,6 +33,7 @@ from ...core.commands import (
     RunUpgrade,
     SetHddEnabled,
 )
+from ...core.models import Kind
 from ...core.results import (
     AutostartResult,
     ControlCenterSnapshotResult,
@@ -251,20 +253,23 @@ def app_status(request: Request) -> AppStatusResponse:
     # App prefs via the bus, not .settings (#249).  The comment here used to
     # say converting this route "needs an autostart-state + attached-device
     # Command" — both already existed.  Autostart now goes through
-    # ``GetAutostartStatus``; the ``trcc.devices`` loop below is the last
-    # in-process read and ``ListDevices`` answers it.
+    # ``GetAutostartStatus``, and the device loop through ``ListDevices``.
+    # This route is daemon-safe end to end now.
     app_settings = trcc.dispatch(ControlCenterSnapshot())
     autostart_enabled = trcc.dispatch(GetAutostartStatus()).enabled
 
     lcd_devices: list[AppStatusEntry] = []
     led_devices: list[AppStatusEntry] = []
-    for device in trcc.devices.values():
+    # ``DeviceEntry.kind`` is ``device.info.kind.value``, and across all 10
+    # ``ALL_DEVICES`` rows ``Kind.LED`` <-> ``Wire.LED`` <-> the one ``Led``
+    # adapter — so this is a faithful stand-in for the old ``device.is_led``.
+    for entry_ in trcc.dispatch(ListDevices()).devices:
         entry = AppStatusEntry(
-            key=device.key,
-            product=device.info.product,
-            connected=device.is_connected,
+            key=entry_.key,
+            product=entry_.product,
+            connected=entry_.connected,
         )
-        if device.is_led:
+        if entry_.kind == Kind.LED.value:
             led_devices.append(entry)
         else:
             lcd_devices.append(entry)

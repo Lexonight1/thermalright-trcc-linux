@@ -17,6 +17,7 @@ import typer
 
 from ..._boot import trcc
 from ...app import App
+from ...core.commands import DeviceState
 from ...core.ports import Platform, Renderer
 
 log = logging.getLogger(__name__)
@@ -51,6 +52,34 @@ def ensure_connected(app: App, key: str) -> None:
     if not result.ok:
         typer.echo(result.message, err=True)
         raise typer.Exit(code=1)
+
+
+def resolution_for(key: str) -> tuple[int, int]:
+    """The device's panel resolution, or exit 1 telling the user to connect.
+
+    Collapses a block that ``cli/theme.py`` and ``cli/display.py`` carried
+    BYTE-IDENTICALLY for 11 of its 12 lines, error string included — they
+    differed only in the Command built on the last line.  Both reached
+    ``app.devices.get(key)`` and read ``.profile.resolution`` off a live
+    ``Device``, which CLAUDE.md forbids a UI holding and which raises under
+    ``TRCC_DAEMON=1``.
+
+    ``DeviceState`` answers it: an unattached key is ``ok=False``, and an
+    attached-but-un-handshaken one reports ``resolution=None`` — precisely the
+    two cases the old ``device is None or device.profile is None`` guard
+    covered, and the reason this returns rather than raising on its own.
+    """
+    result = get_app().dispatch(DeviceState(key=key))
+    log.info("resolution_for: key=%s ok=%s resolution=%s",
+             key, result.ok, result.resolution)
+    if not result.ok or result.resolution is None:
+        typer.echo(
+            f"Device {key} not connected — connect first so we know "
+            "the target resolution",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    return result.resolution
 
 
 def dispatch_echo(cmd: Any) -> Any:

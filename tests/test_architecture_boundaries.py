@@ -960,18 +960,13 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # daemon-unsafe reaches that the one-rule collector could not see.  Each
     # newly-visible file is annotated with who owns it.
     #
-    # cli/api: SEVEN sites, against a docstring that said "measured at zero".
-    # Six have Commands that already exist; see the invariant test below.
+    # cli/api: SEVEN sites appeared on 2026-08-31, against a docstring that
+    # said "measured at zero".  Six had Commands that already existed and are
+    # burned down the same day — autostart x2 -> GetAutostartStatus,
+    # devices x2 -> ListDevices, devices x2 -> DeviceState (one shared
+    # ``_ctx.resolution_for`` helper: the two CLI blocks were byte-identical
+    # for 11 of 12 lines).  ONE remains, and it is not debt:
     "ui/api/display.py": 1,          # platform.paths() — CodeQL barrier, #239
-    # 3 -> 1 on 2026-08-31: both autostart reads now dispatch
-    # ``GetAutostartStatus``.  The record excused this Command from the API
-    # as "the headless API server does not manage the user's session
-    # autostart" while the API served two autostart routes by reaching the
-    # port.  Making the reason TRUE retired it.
-    "ui/api/system.py": 1,           # devices -> ListDevices
-    "ui/api/trcc.py": 1,             # devices -> ListDevices
-    "ui/cli/display.py": 1,          # devices -> DeviceState (dup of cli/theme.py)
-    "ui/cli/theme.py": 1,            # devices -> DeviceState (dup of cli/display.py)
     # gui/qtgui lifecycle — deliberately OUT of burn-down.  A GUI running as a
     # daemon *client* must not own app lifecycle, and an event stream over a
     # socket is a different problem from a data read.
@@ -1002,31 +997,15 @@ KNOWN_APP_REACHES: dict[str, int] = {
 #: to leave it; it is a promise it is known.
 #:
 #: Seven appeared the moment the collector could see them, against a test that
-#: had asserted zero since it was written.  Six have Commands that already
-#: exist.  Per-file COUNTS live in ``KNOWN_APP_REACHES`` above, so the ratchet
-#: and its no-slack twin force these down; this dict holds the reasons.
+#: had asserted zero since it was written.  Six had Commands that already
+#: existed and were burned down the same day; this is the seventh.  Per-file
+#: COUNTS live in ``KNOWN_APP_REACHES`` above, so the ratchet and its no-slack
+#: twin force any future one down; this dict holds the reasons.
 CLI_API_REACH_EXCEPTIONS: dict[str, str] = {
     "ui/api/display.py": (
         "scoped: CodeQL py/path-injection sanitizer barrier (#239) — the "
         "trusted roots must come from the Paths port, not from Result strings. "
         "Converting it needs its own review; GetPaths exists but returns str"
-    ),
-    "ui/api/system.py": (
-        "gap: :258 devices -> ListDevices (exists; DeviceEntry.kind == 'led' "
-        "replaces device.is_led, verified across all 10 ALL_DEVICES rows)"
-    ),
-    "ui/api/trcc.py": (
-        "gap: :74 devices -> ListDevices (exists) — LCD/LED counts for "
-        "GET /trcc/status"
-    ),
-    "ui/cli/display.py": (
-        "gap: :600 devices -> DeviceState (exists). BYTE-IDENTICAL to "
-        "cli/theme.py:232 for 11 of 12 lines, error string included — the fix "
-        "is one _ctx helper, not two swaps"
-    ),
-    "ui/cli/theme.py": (
-        "gap: :232 devices -> DeviceState (exists). See cli/display.py — same "
-        "block, same error string"
     ),
 }
 

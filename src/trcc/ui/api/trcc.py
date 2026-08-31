@@ -23,6 +23,8 @@ import time
 
 from fastapi import APIRouter, Request
 
+from ...core.commands import ListDevices
+from ...core.models import Kind
 from .schemas import DaemonKillResponse, DaemonStatusResponse
 
 log = logging.getLogger(__name__)
@@ -71,9 +73,12 @@ def status(request: Request) -> DaemonStatusResponse:
             message="daemon not running",
         )
     trcc = request.app.state.trcc
-    devices = list(trcc.devices.values())
-    lcd_count = sum(1 for d in devices if not d.is_led)
-    led_count = sum(1 for d in devices if d.is_led)
+    # ``ListDevices`` rather than ``trcc.devices``: the latter is absent on the
+    # ``AppProxy`` a daemon-mode client holds, which is exactly what this route
+    # reports on.  ``kind`` carries the LCD/LED split (``Kind.LED``).
+    devices = trcc.dispatch(ListDevices()).devices
+    led_count = sum(1 for d in devices if d.kind == Kind.LED.value)
+    lcd_count = len(devices) - led_count
     uptime = int(time.monotonic() - _started_at) if _started_at else 0
     return DaemonStatusResponse(
         ok=True, running=True,

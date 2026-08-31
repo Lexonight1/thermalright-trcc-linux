@@ -66,6 +66,7 @@ from ._ctx import (
     ensure_connected,
     get_app,
     parse_on_off,
+    resolution_for,
 )
 
 log = logging.getLogger(__name__)
@@ -596,18 +597,7 @@ def list_masks(
     if directory is not None:
         result = get_app().dispatch(ListMasks(directory=directory))
     elif key:
-        app_obj = get_app()
-        device = app_obj.devices.get(key)
-        if device is None or device.profile is None:
-            typer.echo(
-                f"Device {key} not connected — connect first so we know "
-                "the target resolution",
-                err=True,
-            )
-            raise typer.Exit(code=1)
-        result = app_obj.dispatch(
-            ListMasks(resolution=device.profile.resolution, key=key),
-        )
+        result = get_app().dispatch(ListMasks(resolution=resolution_for(key), key=key))
     else:
         typer.echo("Provide a device key, or --dir DIRECTORY.", err=True)
         raise typer.Exit(code=1)
