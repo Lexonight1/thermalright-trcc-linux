@@ -331,6 +331,15 @@ class FakePlatform(Platform):
     def memory_info(self) -> List[Dict[str, str]]:
         return []
 
+    def disk_partitions(self) -> List[tuple]:
+        """Two partitions on one drive — the shape that matters.
+
+        Deliberately NOT one-per-drive: a physical disk supplies several
+        partitions, which is exactly why ``ListDisks`` and ``disk_info``
+        cannot index each other.
+        """
+        return [("/dev/fake0p1", "/"), ("/dev/fake0p2", "/home")]
+
     def disk_info(self) -> List[Dict[str, str]]:
         return []
 

@@ -140,6 +140,37 @@ class BaseOS(Platform):
     # alongside ``setup`` / ``check_permissions`` / ``distro_name`` and a new OS
     # is told about them at instantiation.
 
+    def disk_partitions(self) -> list[tuple[str, str]]:
+        """Mounted partitions via psutil — one answer for every OS.
+
+        psutil reports partitions identically everywhere we ship, so this is a
+        SHARED answer and lives here rather than four times over.  It sits in
+        the adapter layer because that is where a hardware probe belongs:
+        ``ListDisks`` used to ``import psutil`` inside
+        ``core/commands/system.py``, the only such import in ``core`` or
+        ``services``, which put a probe on the wrong side of the hexagon.
+
+        ``all=False`` keeps it to real mounted filesystems (no tmpfs / proc),
+        matching what the Command has always returned.  An unavailable or
+        failing psutil yields an empty list — the same "measured nothing"
+        convention ``memory_info`` and ``disk_info`` document.
+        """
+        try:
+            import psutil  # type: ignore[import-untyped]
+        except ImportError:
+            log.warning("%s.disk_partitions: psutil unavailable",
+                        type(self).__name__)
+            return []
+        try:
+            parts = psutil.disk_partitions(all=False)
+        except (OSError, RuntimeError):
+            log.exception("%s.disk_partitions: enumeration failed",
+                          type(self).__name__)
+            return []
+        log.debug("%s.disk_partitions: %d partition(s)",
+                  type(self).__name__, len(parts))
+        return [(p.device, p.mountpoint) for p in parts]
+
     def package_manager(self) -> str:
         """The system package manager, or "" when this OS has none of ours.
 

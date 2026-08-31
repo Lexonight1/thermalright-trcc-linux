@@ -46,12 +46,20 @@ _PRESENTATION_FORBIDDEN_PREFIXES = (
 )
 
 # Top-level packages the inner rings must never import: GUI toolkits, OS
-# bindings, USB stacks.  ``win32*`` (pywin32) is matched by prefix below.
+# bindings, USB stacks, HARDWARE PROBES.  ``win32*`` (pywin32) is matched by
+# prefix below.
+#
+# ``psutil`` joined 2026-08-31.  It had been absent while ``pynvml`` — the same
+# category, a hardware probe — was banned, and that gap is exactly how
+# ``ListDisks`` came to ``import psutil`` inside ``core/commands/system.py``:
+# the ONLY hardware probe imported anywhere in core or services, invisible to
+# the gate that exists to forbid precisely that.  ``Platform.disk_partitions()``
+# now carries it, with the shared body on ``BaseOS``.
 _BANNED_TOPLEVEL = frozenset({
     "PySide6", "PyQt5", "PyQt6", "shiboken6",
     "wmi", "winreg", "pythoncom", "pywintypes",
     "objc", "Foundation", "IOKit", "Quartz",
-    "dbus", "gi", "pynvml", "usb", "hid",
+    "dbus", "gi", "pynvml", "psutil", "usb", "hid",
 })
 
 # ── Ratchet allowlists — pre-existing breaches being burned down ─────────────

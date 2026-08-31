@@ -177,31 +177,24 @@ class ListFonts(Query[FontsListResult]):
 
 @dataclass(frozen=True, slots=True)
 class ListDisks(Query[DisksListResult]):
-    """Enumerate disks via psutil — used by SetDiskIndex callers."""
+    """Enumerate mounted PARTITIONS — used by SetDiskIndex callers.
+
+    Partitions, not drives: one physical disk supplies several, so this list
+    is longer than ``Platform.disk_info()``'s and the two share no key.
+
+    Reaches the filesystem through ``app.platform``.  It used to
+    ``import psutil`` in this module — the only hardware probe imported
+    anywhere in ``core`` or ``services``, and the hexagon says core consumes
+    the port instead.  The probe itself did not move far (``BaseOS`` carries
+    the one shared body); what changed is which side of the boundary it sits.
+    """
 
     def execute(self, app: App) -> DisksListResult:
-        del app
-        disks: list[DiskEntry] = []
-        try:
-            import psutil  # type: ignore[import-untyped]
-        except ImportError:
-            log.warning("ListDisks.execute: psutil unavailable — no disks enumerable")
-            return DisksListResult(
-                ok=True, disks=[],
-                message="psutil not available — no disk enumeration",
-            )
-        try:
-            partitions = psutil.disk_partitions(all=False)
-        except (OSError, RuntimeError) as e:
-            log.warning("ListDisks.execute: enumeration failed: %s", e)
-            return DisksListResult(
-                ok=False, disks=[],
-                message=f"disk enumeration failed: {e}",
-            )
-        for index, p in enumerate(partitions):
-            disks.append(DiskEntry(
-                index=index, device=p.device, mountpoint=p.mountpoint,
-            ))
+        partitions = app.platform.disk_partitions()
+        disks = [
+            DiskEntry(index=index, device=device, mountpoint=mountpoint)
+            for index, (device, mountpoint) in enumerate(partitions)
+        ]
         log.debug("ListDisks.execute: %d disk(s): %s",
                   len(disks), [d.device for d in disks])
         return DisksListResult(

@@ -1959,6 +1959,22 @@ class Platform(ABC):
         probe returns an empty list from its own body.
         """
 
+    @abstractmethod
+    def disk_partitions(self) -> list[tuple[str, str]]:
+        """Mounted partitions as ``(device, mountpoint)`` pairs.
+
+        A DIFFERENT question from :meth:`disk_info`, which reports PHYSICAL
+        drives: one drive supplies many partitions, so the two lists have
+        different lengths and no shared key.  ``ListDisks`` answers "which
+        mountpoints can `led disk-index` name"; ``disk_info`` answers "what
+        drives are attached, with model and health".
+
+        Cross-platform via psutil, so :class:`BaseOS` carries the shared body
+        and no OS overrides it today — but it is declared here, with no body,
+        because a Query must reach the filesystem through this port rather
+        than importing a probe into ``core``.
+        """
+
 
 # =========================================================================
 # Callable type aliases (infrastructure DI)
