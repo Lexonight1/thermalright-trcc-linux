@@ -908,33 +908,72 @@ def test_filesystem_io_baseline_has_no_slack() -> None:
     )
 
 
-# ── The gui must ask the bus, like every other UI ────────────────────────────
+# ── Every UI must ask the bus ────────────────────────────────────────────────
 #
 # ``AppProxy.__getattr__`` raises for everything except ``dispatch`` — "daemon
-# mode only exposes dispatch(cmd)".  So every ``self._app.<attr>`` in a UI is an
-# AttributeError under ``TRCC_DAEMON=1``, and that — not missing plumbing — is
-# what "GUI as a remote daemon client" being pending actually means.  Measured
-# against a real proxy: all 11 distinct attributes the two GUIs reach for raise.
-#
-# The CLI and API are already at ZERO; they dispatch Commands and read Results.
-# The Queries the GUIs need were all built for #249 and never adopted:
-# ``ControlCenterSnapshot``, ``LedSnapshot``, ``GetPaths``, ``DeviceState``,
-# ``VideoStatus``, ``BuildPreview``, ``LcdSnapshot``.
+# mode only exposes dispatch(cmd)".  So every read of an App attribute in a UI
+# is an AttributeError under ``TRCC_DAEMON=1``, and that — not missing plumbing
+# — is what "GUI as a remote daemon client" being pending actually means.
 #
 # This is a ratchet rather than a ban because burn-down leaks without one: the
 # session that first measured these added a NEW reach (``store=self._app.themes``)
 # while removing port-passing elsewhere in the same pass.
 #
-# ``dispatch`` is the whole point and is never counted.  Two reaches are
-# deliberately IN the baseline but out of scope for burn-down — ``splash``'s
-# ``discover_and_connect`` and ``closeEvent``'s ``close``.  They are app
-# LIFECYCLE, which a GUI running as a daemon *client* must not own; converting
-# them would be wrong, so they stay counted and stay put.
+# ── Why the collector has FOUR binding rules ─────────────────────────────────
+#
+# It used to have one — ``self.<app-attr>.x`` — and reported **13** against a
+# real **39**.  Worse, it made ``test_cli_and_api_never_reach_past_dispatch``
+# assert an invariant that was FALSE for both surfaces it names, and it left the
+# ``KNOWN_UI_ASYMMETRY`` reason excusing ``GetAutostartStatus`` from the API
+# ("the headless API server does not manage the user's session autostart")
+# unfalsifiable — the API answers that exact question by reaching
+# ``platform.autostart()``, and no gate in the suite could see it.
+#
+# Each rule below was added because the version before it MISSED something real.
+# Two intermediate counts (27, then 38) were produced and were both plausible:
+#
+#   1. ``self.<_app|app|_trcc>.x``  — the original.
+#   2. a parameter annotated ``App`` — ``trcc_app.py`` 381/382/383/410/441/483,
+#      where ``app`` is ``__init__``'s own parameter.
+#   3. ``x = <App factory>(...)``   — recovered ``ui/gui/__init__.py`` ENTIRELY
+#      and five of ``qtgui/app.py``'s eight (``app = build_qt_app(platform)``).
+#   4. ``x = self._app``            — ``trcc_app.py:1053``'s
+#      ``_app_local.cloud_themes`` inside a nested closure.
+#
+# The factories are ENUMERATED from their return annotations, never a hand-kept
+# list of names.  Discriminating by BINDING and not by attribute name is load
+# bearing: in ``ui/cli/*.py`` the name ``app`` is a module-level
+# ``typer.Typer(...)``, so a name-blocklist (``command`` / ``add_typer`` /
+# ``callback``) would silently break the day an App method is called ``command``.
+#
+# ``dispatch`` is the whole point and is never counted.
 _APP_ATTRS = frozenset({"_app", "app", "_trcc"})
 
+#: Functions whose return annotation is ``App`` — the only way a local name gets
+#: bound to one.  Gated by ``test_app_factories_still_return_app`` below, so this
+#: cannot rot into folklore.
+_APP_FACTORIES = frozenset({"trcc", "_build_local_app", "get_app", "build_qt_app"})
+
 KNOWN_APP_REACHES: dict[str, int] = {
-    "ui/gui/lcd_handler.py": 1,
-    "ui/gui/splash.py": 1,
+    # ── 2026-08-31: the collector gained rules 2-4 and the number went
+    # 13 -> 39.  NOT ground given back — zero new code; 26 pre-existing
+    # daemon-unsafe reaches that the one-rule collector could not see.  Each
+    # newly-visible file is annotated with who owns it.
+    #
+    # cli/api: SEVEN sites, against a docstring that said "measured at zero".
+    # Six have Commands that already exist; see the invariant test below.
+    "ui/api/display.py": 1,          # platform.paths() — CodeQL barrier, #239
+    "ui/api/system.py": 3,           # autostart x2 -> GetAutostartStatus; devices -> ListDevices
+    "ui/api/trcc.py": 1,             # devices -> ListDevices
+    "ui/cli/display.py": 1,          # devices -> DeviceState (dup of cli/theme.py)
+    "ui/cli/theme.py": 1,            # devices -> DeviceState (dup of cli/display.py)
+    # gui/qtgui lifecycle — deliberately OUT of burn-down.  A GUI running as a
+    # daemon *client* must not own app lifecycle, and an event stream over a
+    # socket is a different problem from a data read.
+    "ui/gui/__init__.py": 4,         # start_hotplug / metrics_loop / led_animation_loop / close
+    "ui/gui/lcd_handler.py": 1,      # .renderer — a Command-signature question
+    "ui/gui/splash.py": 1,           # discover_and_connect — lifecycle
+    "ui/qtgui/app.py": 8,            # events / first_run / platform + 5 lifecycle
     # 11 -> 9 on 2026-08-30: UCThemeMask stopped being handed a Paths port and
     # a ContentStore.  It composed "which masks does this device have" out of
     # both; ``ListMasks`` had answered that all along for cli/api/qtgui.  What
@@ -942,43 +981,180 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # ``is_custom``, the one field the panel still needed and the Command had
     # been discarding.  A UI reaches past the bus exactly when the Result is
     # short a field.
-    "ui/gui/trcc_app.py": 9,
+    # 9 -> 16 on 2026-08-31 by rules 2+4 alone (app.platform x5, app.events,
+    # _app_local.cloud_themes).
+    "ui/gui/trcc_app.py": 16,
     "ui/qtgui/panels/led/_base.py": 1,
     "ui/qtgui/panels/led_panel.py": 1,
 }
 
+#: The CLI/API reaches, each tagged with the same ``scoped:`` / ``gap:``
+#: convention ``KNOWN_UI_ASYMMETRY`` uses — ``scoped:`` is a deliberate
+#: decision, ``gap:`` is debt with a named answer.  A ``gap`` is not permission
+#: to leave it; it is a promise it is known.
+#:
+#: Seven appeared the moment the collector could see them, against a test that
+#: had asserted zero since it was written.  Six have Commands that already
+#: exist.  Per-file COUNTS live in ``KNOWN_APP_REACHES`` above, so the ratchet
+#: and its no-slack twin force these down; this dict holds the reasons.
+CLI_API_REACH_EXCEPTIONS: dict[str, str] = {
+    "ui/api/display.py": (
+        "scoped: CodeQL py/path-injection sanitizer barrier (#239) — the "
+        "trusted roots must come from the Paths port, not from Result strings. "
+        "Converting it needs its own review; GetPaths exists but returns str"
+    ),
+    "ui/api/system.py": (
+        "gap: :254 + :289 autostart -> GetAutostartStatus (exists); :258 "
+        "devices -> ListDevices (exists, DeviceEntry.kind == 'led' replaces "
+        "device.is_led)"
+    ),
+    "ui/api/trcc.py": (
+        "gap: :74 devices -> ListDevices (exists) — LCD/LED counts for "
+        "GET /trcc/status"
+    ),
+    "ui/cli/display.py": (
+        "gap: :600 devices -> DeviceState (exists). BYTE-IDENTICAL to "
+        "cli/theme.py:232 for 11 of 12 lines, error string included — the fix "
+        "is one _ctx helper, not two swaps"
+    ),
+    "ui/cli/theme.py": (
+        "gap: :232 devices -> DeviceState (exists). See cli/display.py — same "
+        "block, same error string"
+    ),
+}
 
-def _is_app_reach(node: ast.Attribute) -> bool:
-    """True if *node* reads an App attribute other than ``dispatch``.
 
-    Matches ``self._app.x`` / ``self.app.x`` / ``self._trcc.x``.  Grep cannot
-    do this job — the pattern that was tried first required a trailing dot and
-    a fixed service list, and undercounted 15 against 50 because
-    ``self._app.display`` passed as an ARGUMENT never matched.
-    """
-    value = node.value
+def _annotation_name(node: ast.expr | None) -> str | None:
+    """The bare name of an annotation — ``App``, ``\"App\"``, ``trcc.App``."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value.strip("'\"")
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _is_request_state_stash(node: ast.expr) -> bool:
+    """``request.app.state.trcc`` — how every FastAPI route reaches the App."""
     return (
-        isinstance(value, ast.Attribute)
-        and isinstance(value.value, ast.Name)
-        and value.value.id == "self"
-        and value.attr in _APP_ATTRS
-        and node.attr != "dispatch"
+        isinstance(node, ast.Attribute) and node.attr == "trcc"
+        and isinstance(node.value, ast.Attribute) and node.value.attr == "state"
+        and isinstance(node.value.value, ast.Attribute)
+        and node.value.value.attr == "app"
+        and isinstance(node.value.value.value, ast.Name)
+        and node.value.value.value.id == "request"
     )
 
 
-def _app_reach_counts() -> dict[str, int]:
-    counts: dict[str, int] = {}
+def _is_app_factory_call(node: ast.expr) -> bool:
+    """A call to one of the ``-> App`` factories."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id in _APP_FACTORIES
+    return isinstance(func, ast.Attribute) and func.attr in _APP_FACTORIES
+
+
+def _is_self_app(node: ast.expr) -> bool:
+    """``self._app`` / ``self.app`` / ``self._trcc``."""
+    return (
+        isinstance(node, ast.Attribute) and node.attr in _APP_ATTRS
+        and isinstance(node.value, ast.Name) and node.value.id == "self"
+    )
+
+
+class _AppReachVisitor(ast.NodeVisitor):
+    """Collect reads of an App attribute other than ``dispatch``.
+
+    Tracks, per scope, which local NAMES are bound to the App — by parameter
+    annotation, by assignment from an ``-> App`` factory, from the FastAPI
+    ``request.app.state.trcc`` stash, or by aliasing ``self._app``.  Nested
+    scopes inherit the enclosing binding, which is what catches the closure in
+    ``trcc_app.py:1053``.
+    """
+
+    def __init__(self) -> None:
+        self._scopes: list[set[str]] = [set()]
+        self.hits: list[tuple[int, str]] = []
+
+    def _visit_scope(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        args = node.args
+        bound = {
+            a.arg
+            for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+            if _annotation_name(a.annotation) == "App"
+        }
+        self._scopes.append(self._scopes[-1] | bound)
+        self.generic_visit(node)
+        self._scopes.pop()
+
+    visit_FunctionDef = _visit_scope
+    visit_AsyncFunctionDef = _visit_scope
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if (
+            len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and (
+                _is_request_state_stash(node.value)
+                or _is_app_factory_call(node.value)
+                or _is_self_app(node.value)
+            )
+        ):
+            self._scopes[-1].add(node.targets[0].id)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr != "dispatch":
+            value = node.value
+            if isinstance(value, ast.Name) and value.id in self._scopes[-1]:
+                self.hits.append((node.lineno, f"{value.id}.{node.attr}"))
+            elif _is_self_app(value):
+                self.hits.append((node.lineno, f"self.{value.attr}.{node.attr}"))
+            elif _is_request_state_stash(value) or _is_app_factory_call(value):
+                self.hits.append((node.lineno, f"<app>.{node.attr}"))
+        self.generic_visit(node)
+
+
+def _app_reaches() -> dict[str, list[tuple[int, str]]]:
+    """Every App reach in ``ui/``, by file, as ``(lineno, text)``."""
+    found: dict[str, list[tuple[int, str]]] = {}
     for path in (_SRC / "trcc" / "ui").rglob("*.py"):
         if "__pycache__" in path.parts:
             continue
-        rel = path.relative_to(_SRC / "trcc").as_posix()
-        n = sum(
-            1 for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-            if isinstance(node, ast.Attribute) and _is_app_reach(node)
-        )
-        if n:
-            counts[rel] = n
-    return counts
+        visitor = _AppReachVisitor()
+        visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
+        if visitor.hits:
+            found[path.relative_to(_SRC / "trcc").as_posix()] = visitor.hits
+    return found
+
+
+def _app_reach_counts() -> dict[str, int]:
+    return {f: len(hits) for f, hits in _app_reaches().items()}
+
+
+def test_app_factories_still_return_app() -> None:
+    """``_APP_FACTORIES`` must name functions that really are ``-> App``.
+
+    The list is the collector's only non-derived input.  If a factory is
+    renamed or its annotation changes, every local name it binds silently
+    stops counting — the exact failure rule 3 was added to fix.
+    """
+    actual = {
+        node.name
+        for path in (_SRC / "trcc").rglob("*.py")
+        if "__pycache__" not in path.parts
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _annotation_name(node.returns) == "App"
+    }
+    missing = _APP_FACTORIES - actual
+    assert not missing, (
+        "_APP_FACTORIES names functions that no longer return App — the "
+        f"collector is blind to whatever they bind: {sorted(missing)}"
+    )
 
 
 def test_no_new_ui_reaches_past_dispatch() -> None:
@@ -1004,18 +1180,61 @@ def test_ui_reach_baseline_has_no_slack() -> None:
     )
 
 
-def test_cli_and_api_never_reach_past_dispatch() -> None:
-    """The two UIs that are already clean must STAY clean.
+def test_cli_and_api_reach_only_the_recorded_exception() -> None:
+    """The two programmatic UIs ask the bus — bar what the record allows.
 
-    Not a ratchet — an invariant.  They were measured at zero, so there is no
-    baseline to burn down and any reach at all is a regression.
+    This test used to say "They were measured at zero, so there is no baseline
+    to burn down and any reach at all is a regression."  **They were never at
+    zero.**  It shared a collector that matched ``self.<app-attr>.x`` only,
+    while the API reaches through ``request.app.state.trcc`` and the CLI through
+    ``app_obj = get_app()`` — so it asserted an invariant it could not test, and
+    passed for every day it existed.
+
+    Seven sites appeared the moment the collector could see them.  It is still
+    an invariant, not a ratchet — just one with a written record instead of an
+    unexamined zero.  Counts are ratcheted by ``KNOWN_APP_REACHES``.
     """
-    counts = _app_reach_counts()
-    dirty = {f: n for f, n in counts.items()
-             if f.startswith(("ui/cli/", "ui/api/"))}
+    reaches = _app_reaches()
+    dirty = {
+        f: hits for f, hits in reaches.items()
+        if f.startswith(("ui/cli/", "ui/api/"))
+        and f not in CLI_API_REACH_EXCEPTIONS
+    }
     assert not dirty, (
-        "The CLI/API dispatch Commands and read Results — keep it that way:\n"
-        + "\n".join(f"  {f}: {n}" for f, n in dirty.items())
+        "The CLI/API dispatch Commands and read Results — keep it that way. "
+        "Every line below raises under TRCC_DAEMON=1:\n"
+        + "\n".join(
+            f"  {f}:{line}  {text}"
+            for f, hits in sorted(dirty.items()) for line, text in hits
+        )
+    )
+
+
+def test_every_cli_api_reason_is_tagged() -> None:
+    """``scoped:`` (a decision) or ``gap:`` (debt) — never untagged prose.
+
+    Same rule ``KNOWN_UI_ASYMMETRY`` carries, for the same reason: a reviewer
+    must be able to tell a deliberate exception from outstanding work without
+    re-deriving the judgement.
+    """
+    for name, reason in CLI_API_REACH_EXCEPTIONS.items():
+        assert reason.startswith(("scoped:", "gap:")), (
+            f"{name}: reason must start with 'scoped:' or 'gap:', got {reason!r}"
+        )
+
+
+def test_recorded_cli_api_exceptions_are_real() -> None:
+    """A recorded exception must still BE a reach, or the reason is fiction.
+
+    Same failure mode as ``KNOWN_UI_ASYMMETRY``: a decision nobody re-reads
+    expires silently.  If the barrier at ``api/display.py`` is ever converted,
+    this fails and the entry must go.
+    """
+    reaches = _app_reaches()
+    phantom = sorted(set(CLI_API_REACH_EXCEPTIONS) - set(reaches))
+    assert not phantom, (
+        "Recorded CLI/API exception no longer reaches past dispatch — delete "
+        f"the entry, the win is already made: {phantom}"
     )
 
 
