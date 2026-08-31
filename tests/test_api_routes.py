@@ -1309,16 +1309,27 @@ def _attach_sku_device(
     """
     from types import SimpleNamespace
 
+    from trcc.core.models import HandshakeResult
     from trcc.core.protocol import get_profile
     from trcc.core.registry import ALL_DEVICES
 
     vid, pid = (int(part, 16) for part in key.split(":"))
+    profile = get_profile(fbl, pm)
     info = ALL_DEVICES.get((vid, pid)) or SimpleNamespace(
-        key=key, native_resolution=get_profile(fbl, pm).resolution,
+        key=key, native_resolution=profile.resolution,
     )
     trcc.devices[key] = SimpleNamespace(   # type: ignore[assignment]
-        profile=get_profile(fbl, pm),
-        handshake=SimpleNamespace(sub_byte=sub, pm_byte=pm),
+        profile=profile,
+        # The REAL dataclass, not a namespace carrying two bytes.  The stub
+        # version omitted ``fbl`` — a field every HandshakeResult has — and got
+        # away with it only while nothing read it.  The moment ``DeviceState``
+        # started reporting the handshake-derived FBL, the stub raised
+        # AttributeError, which is the same lesson this helper's docstring
+        # already makes about ProductInfo.
+        handshake=HandshakeResult(
+            resolution=profile.resolution, model_id=fbl,
+            pm_byte=pm, sub_byte=sub, fbl=fbl,
+        ),
         info=info,
         is_connected=True,
         is_led=False,

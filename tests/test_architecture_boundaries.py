@@ -999,7 +999,13 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # that same injection deliberately stays: its dropdown is sourced from
     # physical drives while the index it writes addresses nothing, so a
     # Query there would plumb a dead control (increment 4d).
-    "ui/gui/trcc_app.py": 13,
+    # 13 -> 8 on 2026-08-31: all five ``.devices`` reaches gone.  The
+    # handlers take a device KEY and ask the bus — the swap
+    # ``BaseHandler.__init__`` had carried a TODO for ("Phase 5 swaps it
+    # for a key string so handlers can dispatch through the App without
+    # holding device refs").  What remains is lifecycle + the screencast
+    # RawFrame signature question, both deliberately out.
+    "ui/gui/trcc_app.py": 8,
     # led/_base.py and led_panel.py reached ZERO on 2026-08-31: the six LED
     # tabs take a ``LedSnapshotResult`` instead of a live ``LedDeviceSettings``.
     # Same rule as UCThemeMask before them — the Result was short five fields

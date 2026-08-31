@@ -49,7 +49,7 @@ from ..models import (
     Wire,
     oriented_resolution,
 )
-from ..protocol import artwork_variant, mask_variant
+from ..protocol import artwork_variant, mask_variant, pm_to_fbl
 from ..registry import find_product
 from ..results import (
     BackgroundModeResult,
@@ -2794,7 +2794,24 @@ class DeviceState(Query[DeviceStateResult]):
             encode_baseline=profile.encode_baseline if profile else None,
             pm_byte=handshake.pm_byte if handshake else None,
             sub_byte=handshake.sub_byte if handshake else None,
-            fbl=info.fbl if handshake else None,
-            led_style=getattr(info, "led_style", None),
+            # HANDSHAKE-derived, not the registry's.  Its ONE consumer
+            # (qtgui device_panel) prints it under a literal "Handshake"
+            # heading beside PM and SUB, so that is what it has always meant —
+            # while this filled it from ``info.fbl``.  They diverge exactly
+            # where it matters: the registry declares {72, 100, 192} across all
+            # ten rows, and real handshakes yield 58 (#228's Frozen Warframe SE)
+            # and 224.  ``pm_to_fbl`` is the same fallback the gui's own
+            # fingerprint line used before it moved onto this Query.
+            fbl=(
+                handshake.fbl if handshake and handshake.fbl is not None
+                else pm_to_fbl(handshake.pm_byte, handshake.sub_byte)
+                if handshake else None
+            ),
+            # ``.value``, matching the declared ``str | None`` and the way
+            # ``kind`` / ``wire`` are already flattened.  This stored the
+            # raw ``LedStyle`` enum while claiming to be a str — harmless
+            # in-process because LedStyle subclasses str, and a lie the
+            # moment a consumer keys a dict by the real enum.
+            led_style=(style.value if (style := info.led_style) else None),
             message=f"{info.product} ({info.wire.value})",
         )

@@ -39,6 +39,7 @@ from ...core.commands import (
     EnableOverlay,
     GetPaths,
     GetPlatformInfo,
+    ListDevices,
     ListGpus,
     SetBackground,
     SetGpuDevice,
@@ -539,10 +540,10 @@ class TRCCApp(QMainWindow):
         the initial fleet.
         """
         log.debug("_on_bus_device_connected: key=%s", event.key)
-        device = self._app.devices.get(event.key)
-        if device is None:
+        state = self._app.dispatch(DeviceState(key=event.key))
+        if not state.ok:
             return
-        self._add_handler(device)
+        self._add_handler(state)
         self._refresh_sidebar()
         self._configure_inactive_lcd(event.key)
 
@@ -728,8 +729,8 @@ class TRCCApp(QMainWindow):
         Called by the composition root once after the BootstrapWorker
         finishes.  Live mutations after this come through the BusBridge.
         """
-        for device in self._app.devices.values():
-            self._add_handler(device)
+        for entry in self._app.dispatch(ListDevices()).devices:
+            self._add_handler(self._app.dispatch(DeviceState(key=entry.key)))
         self._refresh_sidebar()
         # Restore last-active device or fall back to first LCD.
         target_key = self._ui_state.state.last_device_key
@@ -780,35 +781,34 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(key)
         if not isinstance(handler, LCDHandler) or handler.is_configured:
             return
-        device = self._app.devices.get(key)
-        if device is None or not device.is_connected or device.profile is None:
+        state = self._app.dispatch(DeviceState(key=key))
+        if not state.ok or not state.connected or state.resolution is None:
             return
-        w, h = device.profile.resolution
+        w, h = state.resolution
         if (w, h) == (0, 0):
             return
         log.info("configure_inactive_lcd: %s %dx%d", key, w, h)
-        handler.apply_device_config(device.info, w, h)
+        handler.apply_device_config(key, w, h)
         handler.set_inactive()
 
     # ── Handler lifecycle ───────────────────────────────────────────
 
-    def _add_handler(self, device: Any) -> None:
-        """Create a handler for one newly-attached device.
+    def _add_handler(self, state: Any) -> None:
+        """Create a handler for one attached device, from its ``DeviceState``.
 
-        next/'s ``Device`` exposes ``info`` (ProductInfo) and ``key``
-        (vid:pid).  ``info.key`` is the registry key the handler dict
-        is indexed by.
+        Takes the Result, not a live ``Device``: ``app.devices`` is absent on
+        the ``AppProxy`` a daemon-mode client holds, and a UI must not hold a
+        domain object at all.
         """
-        info = device.info
-        if info is None:
-            log.warning("_add_handler: device.info is None — skipping")
+        key = state.key
+        if not key:
+            log.warning("_add_handler: state has no key — skipping")
             return
-        key = info.key
         if key in self._handlers:
             return
-        self._handlers[key] = self._build_handler(device)
+        self._handlers[key] = self._build_handler(state)
 
-    def _build_handler(self, device: Any) -> BaseHandler:
+    def _build_handler(self, state: Any) -> BaseHandler:
         """Construct the handler for one device — the single build chokepoint.
 
         The device's ``ProductInfo`` (resolved from vid/pid + handshake) drives
@@ -819,12 +819,12 @@ class TRCCApp(QMainWindow):
         bug was exactly a missing ``app=`` on a divergent branch).  Presentation
         is unchanged: each kind gets the same handler + panels it always did.
         """
-        key = device.info.key
-        presentation = presentation_for(device.info.kind)
+        key = state.key
+        presentation = presentation_for(Kind(state.kind))
         if presentation.kind is Kind.LED:
             log.info("LED handler added: %s", key)
             return LEDHandler(
-                device, self.uc_led_control, self._on_temp_unit_changed,
+                key, self.uc_led_control, self._on_temp_unit_changed,
                 app=self._app,
             )
         widgets = {
@@ -840,7 +840,7 @@ class TRCCApp(QMainWindow):
         }
         log.info("LCD handler added: %s", key)
         return LCDHandler(
-            device, widgets, self._make_timer, self._data_dir,
+            key, widgets, self._make_timer, self._data_dir,
             is_visible_fn=self.is_app_visible,
             app=self._app, lcd_idx=key,
         )
@@ -920,27 +920,26 @@ class TRCCApp(QMainWindow):
         # domain settings, so it lives in UiStateStore not app.settings).
         self._ui_state.set_last_device_key(key)
 
-        device = self._app.devices.get(key)
+        state = self._app.dispatch(DeviceState(key=key))
         if isinstance(handler, LCDHandler):
-            if device is not None and device.is_connected:
-                profile = device.profile
-                if profile is not None:
-                    w, h = profile.resolution
+            if state.ok and state.connected:
+                if state.resolution is not None:
+                    w, h = state.resolution
                     if (w, h) == (0, 0):
                         log.debug("_activate_device: LCD %s no canvas yet — handshake", key)
-                        self._start_handshake(device)
+                        self._start_handshake(key)
                     elif not handler.is_configured:
                         log.debug("_activate_device: LCD %s first-time config %dx%d", key, w, h)
-                        handler.apply_device_config(device.info, w, h)
+                        handler.apply_device_config(key, w, h)
                         self._update_ldd_icon()
                     else:
                         log.debug("_activate_device: LCD %s reactivate %dx%d", key, w, h)
                         handler.reactivate(w, h)
                 else:
-                    self._start_handshake(device)
+                    self._start_handshake(key)
         elif isinstance(handler, LEDHandler) and not handler.active:
             log.debug("_activate_device: LED %s — showing", key)
-            handler.show(device.info if device is not None else None)
+            handler.show(key)
 
         self._show_view(handler.view_name)
 
@@ -1651,11 +1650,11 @@ class TRCCApp(QMainWindow):
             self.uc_preview.set_status("Handshake failed — replug device")
             return
 
-        live = self._app.devices.get(key)
-        if live is None or live.profile is None:
+        live = self._app.dispatch(DeviceState(key=key))
+        if not live.ok or live.resolution is None:
             self.uc_preview.set_status("Handshake failed — no profile")
             return
-        w, h = live.profile.resolution
+        w, h = live.resolution
         log.info("Handshake OK: %s -> %dx%d", key, w, h)
 
         # Sync sidebar from the enriched device.
@@ -1665,21 +1664,21 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             log.debug("_on_handshake_done: handler is_configured=%r", handler.is_configured)
             if not handler.is_configured:
-                handler.apply_device_config(live.info, w, h)
+                handler.apply_device_config(key, w, h)
                 self._update_ldd_icon()
                 if self._ui_state.state.show_info_module:
                     self.uc_info_module.setVisible(True)
             else:
                 log.debug("_on_handshake_done: skipping apply_device_config — already initialized")
 
-    def _sync_device_identity(self, device: Any) -> None:
-        """Propagate ``device.info.button_image`` to the sidebar widget.
+    def _sync_device_identity(self, state: Any) -> None:
+        """Propagate the resolved ``button_image`` to the sidebar widget.
 
-        next/'s ConnectDevice already enriches ``device.info`` through
-        the registry; this method handles the GUI-side view sync —
-        sidebar dict refresh + button image update.
+        Takes a ``DeviceStateResult``: ConnectDevice enriches the device
+        through the registry and ``DeviceState`` reports the result, so the
+        GUI never holds the ``Device`` to read one string off it.
         """
-        info = device.info
+        info = state
         btn_img = getattr(info, "button_image", "") or ""
         from ...core.registry import LCD_DEFAULT_BUTTON
         if not btn_img or btn_img == LCD_DEFAULT_BUTTON:

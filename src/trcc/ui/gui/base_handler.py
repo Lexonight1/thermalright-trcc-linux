@@ -24,23 +24,24 @@ class BaseHandler:
     keeps it satisfied can be swapped in.
     """
 
-    def __init__(self, device: Any, view: str) -> None:
-        # ``device`` is the next/ ``Device`` (HidLcd / ScsiLcd / Led / …)
-        # for now; Phase 5 swaps it for a key string so handlers can
-        # dispatch through the App without holding device refs.
-        self._device = device
+    def __init__(self, key: str, view: str) -> None:
+        # A KEY, not a Device.  This comment used to say "Phase 5 swaps it for
+        # a key string so handlers can dispatch through the App without holding
+        # device refs" — that is this change.  A UI holding a live ``Device``
+        # is forbidden by CLAUDE.md and is an AttributeError under
+        # TRCC_DAEMON=1, where ``app.devices`` does not exist.
+        self._key = key
         self._view = view
-        log.info("BaseHandler.__init__: view=%r device=%s",
-                 view, type(device).__name__)
+        log.info("BaseHandler.__init__: view=%r key=%s", view, key)
 
     @property
     def view_name(self) -> str:
         return self._view
 
     @property
-    def device(self) -> Any:
-        """The handler's device.  Typed as ``Any`` while Phase 5 lands."""
-        return self._device
+    def key(self) -> str:
+        """The device key (``vid:pid``) this handler drives."""
+        return self._key
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 

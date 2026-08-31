@@ -16,6 +16,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ...core.commands import (
+    DeviceState,
     EnableLedTestMode,
     LedSnapshot,
     SelectZone,
@@ -40,7 +41,8 @@ from .uc_led_control import UCLedControl
 
 if TYPE_CHECKING:
     from ...app import App
-    from ...core.models import ProductInfo
+
+from ...core.models import LedStyle
 
 log = logging.getLogger(__name__)
 
@@ -58,12 +60,12 @@ class LEDHandler(BaseHandler):
 
     def __init__(
         self,
-        device: Any,
+        key: str,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
         app: App | None = None,
     ) -> None:
-        super().__init__(device, 'led')
+        super().__init__(key, 'led')
         if app is None:
             raise RuntimeError(
                 "LEDHandler requires an App handle — the composition root must "
@@ -71,8 +73,8 @@ class LEDHandler(BaseHandler):
             )
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
-        # next/ Device + key (ProductInfo.key = "vid:pid")
-        self._device_key: str = device.info.key if device is not None else ''
+        # The device KEY ("vid:pid") — never the Device itself.
+        self._device_key: str = key or ''
         self._app: App = app
         self._active = False
         self._style: Any = None       # LedStyle enum
@@ -86,18 +88,25 @@ class LEDHandler(BaseHandler):
     def active(self) -> bool:
         return self._active
 
-    def show(self, info: ProductInfo | None) -> None:
-        """Activate handler — initialize panel + sync from settings."""
-        if info is None:
-            log.warning("LEDHandler.show: no ProductInfo — cannot activate")
+    def show(self, key: str) -> None:
+        """Activate handler — initialize panel + sync from settings.
+
+        Takes the device KEY and asks the bus.  ``DeviceState`` carries both
+        facts this needs — ``led_style`` and the handshake bytes — so the
+        handler no longer receives a ``ProductInfo`` it would have to be
+        handed a live ``Device`` to obtain.
+        """
+        log.info("LEDHandler.show: key=%s", key)
+        st = self._app.dispatch(DeviceState(key=key))
+        if not st.ok:
+            log.warning("LEDHandler.show: %s — cannot activate", st.message)
             return
-        led_style = getattr(info, 'led_style', None)
+        # The Result carries the style's VALUE; LED_STYLES is keyed by the enum.
+        led_style = LedStyle(st.led_style) if st.led_style else None
         if led_style is None:
             log.warning(
-                "LEDHandler.show: %s has no led_style — using a default",
-                info.key,
+                "LEDHandler.show: %s has no led_style — using a default", key,
             )
-            from ...core.models import LedStyle
             led_style = LedStyle.AX120
 
         self._style = led_style
@@ -109,12 +118,14 @@ class LEDHandler(BaseHandler):
             spec.zone_count,
             model=spec.model_name,
         )
-        # Dev aid: show the handshake as a copy-paste-ready mock_gui arg line so a
-        # reported device can be reproduced without hand-typing PM/SUB.
-        hs = getattr(self._device, "led_handshake", None)
+        # Dev aid: a copy-paste-ready mock_gui arg line so a reported device can
+        # be reproduced without hand-typing PM/SUB.  Reuses the Result fetched
+        # above — an attached LED reports its handshake bytes on ``DeviceState``
+        # (verified: pm_byte/sub_byte match led_handshake's pm/sub_type).
         fingerprint = (
-            f"device={self._device_key} pm={hs.pm} sub={hs.sub_type}"
-            if hs is not None else f"device={self._device_key}"
+            f"device={self._device_key} pm={st.pm_byte} sub={st.sub_byte}"
+            if st.ok and st.pm_byte is not None
+            else f"device={self._device_key}"
         )
         self._panel.set_device_fingerprint(fingerprint)
         self._sync_panel_from_settings()

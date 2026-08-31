@@ -61,7 +61,6 @@ from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
     from ...app import App
-    from ...core.models import ProductInfo
     from ...core.results import (
         LcdSnapshotResult,
         ThemeResult,
@@ -80,14 +79,15 @@ class LCDHandler(BaseHandler):
     """Per-LCD-device GUI handler, dispatching through next/'s App.
 
     Each LCD device gets its own handler.  The constructor signature
-    keeps the legacy positional shape so the window's ``LCDHandler(
-    device, widgets, make_timer, data_dir, is_visible_fn=…, app=…,
-    lcd_idx=…)`` call works unchanged.
+    takes the device KEY first, not a live ``Device`` — a UI must not
+    hold one (CLAUDE.md), and ``app.devices`` is absent under
+    TRCC_DAEMON=1.  Everything it needs about the device it asks the bus
+    for.
     """
 
     def __init__(
         self,
-        device: Any,
+        key: str,
         widgets: dict[str, Any],
         make_timer: Any,
         data_dir: Path,
@@ -95,7 +95,7 @@ class LCDHandler(BaseHandler):
         app: App | None = None,
         lcd_idx: Any = '',
     ) -> None:
-        super().__init__(device, 'form')
+        super().__init__(key, 'form')
         if app is None:
             raise RuntimeError(
                 "LCDHandler requires an App handle — composition root must pass one"
@@ -103,7 +103,7 @@ class LCDHandler(BaseHandler):
         self._app: App = app
         # ``lcd_idx`` carries the device key in the next/ port (legacy
         # passed an int index into Trcc._lcd_devices).
-        self._device_key: str = str(lcd_idx) if lcd_idx else device.info.key
+        self._device_key: str = str(lcd_idx) if lcd_idx else key
         self._w = widgets
         self._data_dir = data_dir
         self._is_visible = is_visible_fn or (lambda: True)
@@ -225,17 +225,17 @@ class LCDHandler(BaseHandler):
 
     # ── LCDDevice Config (C# ReadSystemConfiguration) ─────────────────
 
-    def apply_device_config(self, info: ProductInfo, w: int, h: int) -> None:
+    def apply_device_config(self, key: str, w: int, h: int) -> None:
         """First-time device setup + full widget refresh.
 
         ``info`` is a next/ ``ProductInfo``; its ``key`` ("vid:pid") is
         already the handler's ``_device_key``, set in __init__.
         """
-        self.log.info("apply_device_config: %s %dx%d", info.key, w, h)
+        self.log.info("apply_device_config: %s %dx%d", key, w, h)
         self._pm.ui_active = True
         self._pm.configured = True
         # Per-device child logger — tags handler logs with the key
-        self.log = logging.getLogger(f"{__name__}.{info.key}")
+        self.log = logging.getLogger(f"{__name__}.{key}")
         # First connect: load the persisted theme onto the device.
         self._refresh(w, h, first_load=True)
 
@@ -349,20 +349,22 @@ class LCDHandler(BaseHandler):
     def _update_device_info(self) -> None:
         """Populate the selectable fingerprint line for the active device.
 
-        Name · vid:pid · FBL/PM/SUB — the handshake bytes read straight from
-        ``device.handshake`` (same source as the qtgui device inspector), so a
-        user can copy the line into a bug report / porting note.  LED devices
-        have no LCD handshake; the profile-only fields still identify them.
-        """
-        from ...core.protocol import pm_to_fbl
+        Name · vid:pid · FBL/PM/SUB — from ``DeviceState``, the same Query the
+        qtgui inspector uses, so a user can copy the line into a bug report and
+        the two surfaces cannot disagree.  A device with no handshake yet
+        reports ``pm_byte=None`` and shows identity only.
 
-        info = self._device.info
-        parts = [info.product, info.key]
-        hs = self._device.handshake
-        if hs is not None:
-            fbl = hs.fbl if hs.fbl is not None else pm_to_fbl(
-                hs.pm_byte, hs.sub_byte)
-            parts += [f"FBL {fbl}", f"PM {hs.pm_byte}", f"SUB {hs.sub_byte}"]
+        The ``pm_to_fbl`` fallback that used to live here is gone: ``DeviceState``
+        now resolves the handshake-derived FBL itself, which is what both
+        readers meant all along.
+        """
+        st = self._app.dispatch(DeviceState(key=self._device_key))
+        if not st.ok:
+            self.log.warning("_update_device_info: %s", st.message)
+            return
+        parts = [st.product, st.key]
+        if st.pm_byte is not None:
+            parts += [f"FBL {st.fbl}", f"PM {st.pm_byte}", f"SUB {st.sub_byte}"]
         text = "  ·  ".join(parts)
         self.log.info("_update_device_info: %s", text)
         self._w['device_info_label'].setText(text)
