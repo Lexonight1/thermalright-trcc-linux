@@ -110,7 +110,10 @@ _SOURCES = [
 # `trcc <word>` optionally followed by a subcommand.  Options are excluded by
 # the character class, so `trcc report -o x` reads as `trcc report` and the
 # `-o` is checked separately by _flags_after.
-_INVOCATION = re.compile(r"\btrcc\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?")
+_INVOCATION = re.compile(
+    r"\btrcc\s+([a-z][a-z0-9-]*)"
+    r"(?:\s+([a-z][a-z0-9-]*))?"
+    r"(?:\s+([a-z][a-z0-9-]*))?")
 
 # A flag as written on a command line.  Requires a letter after the dashes so
 # a bare `--` separator and negative numbers are not read as options.
@@ -204,6 +207,43 @@ def _echoed_lines(text: str):
             yield number, match.group(1)
 
 
+def _cli_root() -> Any:
+    import typer.main
+
+    from trcc.ui.cli.main import app
+    return typer.main.get_command(app)
+
+
+def _resolve(root: Any, words: list[str]) -> tuple[Any, str, str | None]:
+    """Walk the Click tree as far as the words go: (command, shown, error).
+
+    Generic depth on purpose.  The previous version read exactly TWO words and
+    its own docstring recorded the consequence — "nesting deeper than `group
+    sub` is not validated, so `trcc system autostart enable` is checked as far
+    as `system autostart`".  `system autostart` is a real depth-3 group
+    (disable/enable/refresh/status), so a typo in that third word was invisible
+    to a gate whose entire job is catching exactly that.
+
+    Returns ``(None, shown, None)`` for a bare group, which prints help and is
+    therefore valid.  A word that is not a subcommand of a group is an error; a
+    word after a LEAF command is an argument, not a name, and stops the walk.
+    """
+    node, shown = root, ""
+    for word in words:
+        subs = getattr(node, "commands", None)
+        if not subs:
+            break                       # leaf reached — the rest are arguments
+        if word not in subs:
+            return None, shown, (
+                f"`trcc {shown} {word}`".replace("  ", " ")
+                + f" — no such {'subcommand of `' + shown + '`' if shown else 'command'}"
+            )
+        node, shown = subs[word], f"{shown} {word}".strip()
+    if getattr(node, "commands", None):
+        return None, shown, None        # bare group — prints help
+    return node, shown, None
+
+
 def _user_facing_lines(path: Path):
     """The lines of *path* that actually instruct a user."""
     text = path.read_text(encoding="utf-8")
@@ -226,30 +266,17 @@ def test_user_facing_text_only_names_real_commands(source: Path) -> None:
     invisible.  The promise a user relies on is that the whole line runs,
     not that its first word does.
     """
-    tops, groups = _command_tree()
+    root = _cli_root()
     offenders: list[str] = []
     for number, line in _user_facing_lines(source):
         for match in _INVOCATION.finditer(line):
-            name, sub = match.group(1), match.group(2)
-            if name in groups:
-                if sub is None:
-                    continue                    # bare group — prints help
-                if sub not in groups[name]:
-                    offenders.append(
-                        f"{source.name}:{number}: `trcc {name} {sub}` — "
-                        f"no such subcommand of `{name}`"
-                    )
-                    continue
-                cmd, shown = groups[name][sub], f"{name} {sub}"
-            elif name in tops:
-                # A top-level command takes no subcommand word, so whatever
-                # the regex swallowed as `sub` is an argument, not a name.
-                cmd, shown = tops[name], name
-            else:
-                offenders.append(
-                    f"{source.name}:{number}: `trcc {name}` — no such command"
-                )
+            words = [w for w in match.groups() if w]
+            cmd, shown, bad = _resolve(root, words)
+            if bad is not None:
+                offenders.append(f"{source.name}:{number}: {bad}")
                 continue
+            if cmd is None:
+                continue                        # bare group — prints help
             unknown = _flags_after(line, match.end()) - _accepted_flags(cmd)
             if unknown:
                 offenders.append(

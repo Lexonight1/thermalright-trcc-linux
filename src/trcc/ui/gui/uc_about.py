@@ -161,7 +161,6 @@ class UCAbout(BasePanel):
     Interactive elements are invisible overlays on the background image text.
     """
 
-    CMD_STARTUP = 0
     CMD_HDD_REFRESH = 16
     CMD_LANGUAGE = 32
     CMD_CLOSE = 255
@@ -169,7 +168,6 @@ class UCAbout(BasePanel):
     language_changed = Signal(str)       # lang suffix
     close_requested = Signal()
     temp_unit_changed = Signal(str)      # 'C' or 'F'
-    startup_changed = Signal(bool)       # auto-start enabled
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
@@ -368,8 +366,6 @@ class UCAbout(BasePanel):
             self._app.dispatch(
                 EnableAutostart() if self._autostart else DisableAutostart()
             )
-        self.startup_changed.emit(self._autostart)
-        self.invoke_delegate(self.CMD_STARTUP, self._autostart)
 
     # --- Temperature unit ---
 

@@ -845,8 +845,6 @@ class TRCCApp(QMainWindow):
             app=self._app, lcd_idx=key,
         )
 
-        self._refresh_sidebar()
-
     def _remove_handler(self, key: str) -> None:
         """Remove and clean up one device handler."""
         handler = self._handlers.pop(key, None)

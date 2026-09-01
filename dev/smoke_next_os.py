@@ -86,12 +86,19 @@ def _probe_sensor_imports() -> Section:
     for module, label in (
         ("trcc.adapters.sensors.aggregator", "SensorAggregator"),
         ("trcc.adapters.sensors.chain", "SensorChain"),
-        ("trcc.adapters.sensors.hwmon", "HwmonSensorSource"),
+        # Labels name what each module ACTUALLY exports.  They used to name
+        # HwmonSensorSource / WindowsSensorSource / MacOSSensorSource /
+        # BSDSensorSource — four classes that exist nowhere in the tree, left
+        # over from a per-OS ABC design that was never built (see
+        # feedback_one_shared_sensorsource_abc).  Nothing broke, because this
+        # probe only __import__s the module and the label is display text; but
+        # a reader chasing one of those names finds nothing.
+        ("trcc.adapters.sensors.hwmon", "hwmon sources"),
         ("trcc.adapters.sensors.psutil_sources", "psutil sources"),
-        ("trcc.adapters.sensors.nvml", "NvmlGpuSource"),
-        ("trcc.adapters.sensors.windows", "WindowsSensorSource"),
-        ("trcc.adapters.sensors.macos", "MacOSSensorSource"),
-        ("trcc.adapters.sensors.bsd", "BSDSensorSource"),
+        ("trcc.adapters.sensors.nvml", "NvidiaGpu"),
+        ("trcc.adapters.sensors.windows", "build_windows_sensors"),
+        ("trcc.adapters.sensors.macos", "SMC sources"),
+        ("trcc.adapters.sensors.bsd", "build_bsd_sensors"),
     ):
         try:
             __import__(module)

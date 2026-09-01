@@ -75,10 +75,23 @@ def test_no_orphan_manpages() -> None:
 
 
 def test_root_and_every_group_have_a_page() -> None:
+    import typer.main
+
+    from trcc.ui.cli.main import app
+
     pages = gen_manpages.generate()
     assert "trcc.1" in pages
-    for group in ("display", "led", "theme", "system", "device", "config"):
-        assert f"trcc-{group}.1" in pages
+    # DERIVED, not a list of six names.  A hardcoded tuple cannot notice a NEW
+    # root group — the one case where a page would be missing — so it asserted
+    # only that six known pages still exist, which they would.
+    cli = typer.main.get_command(app)
+    groups = sorted(
+        name for name, cmd in cli.commands.items()
+        if getattr(cmd, "commands", None) and not getattr(cmd, "hidden", False)
+    )
+    assert groups, "no command groups found — the CLI shape changed"
+    for group in groups:
+        assert f"trcc-{group}.1" in pages, f"no man page for group {group!r}"
 
 
 @pytest.mark.parametrize(
