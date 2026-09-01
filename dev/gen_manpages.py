@@ -114,13 +114,23 @@ def _arg_lines(cmd: click.Command) -> list[str]:
     return out
 
 
-def _opt_lines(cmd: click.Command) -> list[str]:
-    """Troff block describing a command's options (always includes --help)."""
+def _opt_entries(cmd: click.Command) -> list[str]:
+    """The ``.TP`` entries for a command's options (always includes --help).
+
+    Split from :func:`_opt_lines` so the ROOT page can render the same options
+    as a real ``.SH OPTIONS`` section.  It could not before: `_opt_lines` wraps
+    its entries in an indented ``Options:`` sub-block, which is right inside a
+    subcommand entry and wrong as a page-level section.
+    """
     _, opts = _visible_params(cmd)
-    out = [".PP", "Options:", ".RS 4"]
+    out: list[str] = []
     for opt in opts:
         flags = ", ".join(esc(o) for o in opt.opts)
-        if not opt.is_flag and opt.name:
+        # A COUNT option takes no value -- `-v` is repeated, not assigned -- so
+        # printing a metavar would tell a reader to type `trcc --verbose VERBOSE`.
+        # click reports count options as `is_flag=False`, which is why this needs
+        # its own test rather than riding on the flag check.
+        if not opt.is_flag and not getattr(opt, "count", False) and opt.name:
             flags += f" \\fI{esc(opt.name.upper())}\\fR"
         out.append(".TP")
         out.append(f"\\fB{flags}\\fR")
@@ -128,8 +138,12 @@ def _opt_lines(cmd: click.Command) -> list[str]:
     out.append(".TP")
     out.append("\\fB\\-\\-help\\fR")
     out.append("Show this command's help and exit.")
-    out.append(".RE")
     return out
+
+
+def _opt_lines(cmd: click.Command) -> list[str]:
+    """Indented ``Options:`` sub-block, for a subcommand entry."""
+    return [".PP", "Options:", ".RS 4", *_opt_entries(cmd), ".RE"]
 
 
 def _th(title: str) -> str:
@@ -224,6 +238,14 @@ def render_root_page(cli: click.Group, groups: list[str]) -> str:
         "Device commands under \\fBtrcc display\\fR, \\fBtrcc led\\fR and "
         "\\fBtrcc theme\\fR take the device \\fIKEY\\fR (its USB VID:PID, shown "
         "by \\fBtrcc detect\\fR \\(em e.g. 0402:3922) as their first argument.",
+        ".SH OPTIONS",
+        # The SYNOPSIS above has promised ``[OPTIONS]`` since this generator was
+        # written, and the page documented none of them -- so `--verbose` and
+        # the whole -v/-vv/-vvv ladder were invisible to anyone reading
+        # `man trcc`.  That ladder is how a reporter turns up per-tick and
+        # per-frame detail, and `trcc report` is the entire diagnosis for
+        # hardware we do not own.
+        *_opt_entries(cli),
         ".SH COMMANDS",
     ]
     for name, cmd in sorted(cli.commands.items()):

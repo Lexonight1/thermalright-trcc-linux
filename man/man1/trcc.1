@@ -7,6 +7,16 @@ trcc \- Thermalright LCD/LED cooler control for Linux
 TRCC  \-  Thermalright LCD/LED cooler control (clean\-slate build).
 .PP
 Device commands under \fBtrcc display\fR, \fBtrcc led\fR and \fBtrcc theme\fR take the device \fIKEY\fR (its USB VID:PID, shown by \fBtrcc detect\fR \(em e.g. 0402:3922) as their first argument.
+.SH OPTIONS
+.TP
+\fB\-\-verbose, \-v\fR
+Terminal log verbosity: \-v INFO (major milestones), \-vv DEBUG (granular state and variable values), \-vvv TRACE (deep internals: raw payloads and per\-frame detail). Without it the terminal stays quiet  \-  warnings and errors only. The log file always keeps DEBUG regardless, so trcc report carries the evidence even when nobody passed a flag.
+.TP
+\fB\-\-version, \-V\fR
+Print the installed TRCC version and exit.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
 .SH COMMANDS
 .TP
 \fBapi\fR
