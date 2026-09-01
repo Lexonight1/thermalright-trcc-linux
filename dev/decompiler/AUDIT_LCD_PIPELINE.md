@@ -19,7 +19,9 @@ these citations address, and is no longer on disk.
 - `TRCC.CZTV/FormCZTV.cs` — init, theme-frame prep, ImageToJpg/ImageTo565 (wire).
 - `TRCC.DCUserControl/UCScreenImage.cs` — GenerateImage (compose), SetMyUCScreenImage (preview), RotateImg/Hei/Bu.
 
-Encoder is selected at `FormCZTV.cs:2180`: **`myDeviceMode == 2 → ImageToJpg` (JPEG), else `ImageTo565` (RGB565)**. Every rotation is `RotateImg((BASE − directionB) mod 360)`; BASE = the panel's physical-mount offset.
+Encoder is selected at (`FormCZTV.cs:2801` `myDeviceMode == 2`) — re-read
+against 2.1.6, where the same guard repeats at `:2858`, `:3019`, `:3036`,
+`:3068`, `:3555`: **`myDeviceMode == 2 → ImageToJpg` (JPEG), else `ImageTo565` (RGB565)**. Every rotation is `RotateImg((BASE − directionB) mod 360)`; BASE = the panel's physical-mount offset.
 
 ## Master per-family table
 
@@ -35,15 +37,32 @@ Encoder is selected at `FormCZTV.cs:2180`: **`myDeviceMode == 2 → ImageToJpg` 
 
 ## Cross-cutting caveats (apply across families)
 
-1. **`fbl` is NOT the resolution key for JPEG panels** — fbl 224 = 854/960/800 (pm disambiguates), fbl 192 = 1920/1280 variants. Key on pm+sub. (`FormCZTV.cs:730/744/758`)
+1. **`fbl` is NOT the resolution key for JPEG panels** — one fbl spans several
+   resolutions and only `pm` (+`pmSub`) separates them. Read against 2.1.6
+   (`FormCZTV.cs:873-1001`), the full map is wider than this entry used to say:
+
+   | fbl | resolutions | pm |
+   |---|---|---|
+   | 192 | 1920x462 · 1920x440 · 1280x480 | 65/66 · 69 · 68 |
+   | 224 | 854x480 · 960x540 · 800x480 · 960x320 · 640x172 | 9/11 · 10/16 · 12 · 13/17/18 · 15 |
+
+   Anchored at (`FormCZTV.cs:917` `fbl = 192`) and (`FormCZTV.cs:947` `fbl = 224`).
+
+   Note 960 is itself ambiguous (960x540 AND 960x320), and `mySubMode = pmSub`
+   is set on exactly the fbl-192 branches — which is what "key on pm+sub" means.
 2. **The `.zt` animated-theme frame prep (`FormCZTV.cs:2311-2516`) only has branches for 320/240/480/640** — every widescreen (854…1920) falls through to the **320×240/240×320** default canvas, so animated widescreen themes are squeezed. Confirmed independently by 2 agents. (`FormCZTV.cs:2459/1826`)
 3. **Theme-frame prep + GenerateImage letterbox with BLACK fill**, aspect-preserving contain-fit; at 90/270 the DrawImage w/h args are **swapped** (`FormCZTV.cs:2511` `DrawImage(val, x, y, num29, num28)`) — a naive port that reuses the 0/180 arg order transposes the fit.
 4. **bg fill is a WIDTH TEST, not a flag** (`UCScreenImage.cs:824-834`): if `bitmapBGK.Width ≤ canvas.Width+2` draw the theme bg at native (0,0), **else draw `bitmapBGK1`** (a solid-black default resource `P<W><H>`, extracted & confirmed black). So a landscape 00.png on a portrait canvas → **black**, not letterbox. (This is why the official app shows black+text at 90° for shipped landscape themes.)
 5. **Overlay text is drawn UPRIGHT at raw element coords** (`UCScreenImage.cs:896-912`) — never rotated separately; the whole canvas rotates later in ImageToJpg. Any "rotate the whole composite" port makes text sideways = WRONG.
 6. **RGB565 byte order**: `is320x320` OR `myDeviceSPIMode==2` → **big-endian word**; else little-endian (consumer sites `FormCZTV.cs:2010`, `:4168` — the two branches are byte-identical). **Which devices get SPIMode 2 is stated once, in G3 below** — this line used to name fbl 51 and 53, and 53 is wrong. Don't restate it here.
-7. **Round-panel edge fill (480 only)**: `RotateImgHei` blacks the 1px ring (`UCScreenImage.cs:702-711`); `RotateImgBu` edge-replicates the middle band 160-320 (`:554-563`). On 320/240/360 all three primitives are pixel-identical to plain `RotateImg`. Used only in the JPEG square branch (pm≠3→Hei, pm==3→Bu, pm==6→Hei+180).
+7. **Round-panel edge fill (480 only)**: `RotateImgHei` blacks the 1px ring (`UCScreenImage.cs:702-711`); `RotateImgBu` edge-replicates the middle band 160-320 (`:715` in 2.1.6). On 320/240/360 all three primitives are pixel-identical to plain `RotateImg`. Used only in the JPEG square branch (pm≠3→Hei, pm==3→Bu, pm==6→Hei+180).
 8. **Preview is HALF SIZE for 640/1600/1920** (`UCScreenImage.cs:1758-1763` `DrawImage(myImage,0,0,W/2,H/2)`); mouse coords ×2 (`:1218-1221`).
-9. **Dynamic Island (灵动岛) is 1600×720 ONLY** (`UCScreenImage.cs:1208-1288`) — `myLddVal`∈{1,2,3} × directionB → per-angle resource; default myLddVal=2, cycles 1→2→3 (never 0), persisted in theme file. `buttonLDD.Show()` only for 1600×720.
+9. **Dynamic Island (灵动岛) is 1600×720 ONLY** — `myLddVal`∈{1,2,3} × directionB
+   → per-angle resource; default myLddVal=2, cycles 1→2→3 (never 0), persisted in
+   theme file. Declared at (`UCScreenImage.cs:78` `public int myLddVal`), used at `:1146`,
+   `:1166`, `:1553`, `:1573` (2.1.6). `buttonLDD.Show()` is **not in UCScreenImage.cs at
+   all** — it lives in `FormCZTV.cs` and `FormLCD.cs` (28 references each), which
+   is where to look for the 1600×720 gate.
 10. **Oversize guard**: JPEG ≥ 450000 bytes → drop frame, `myTempDeviceJpgYSL -= 5` (`FormCZTV.cs:2715-2719`).
 11. **ThemeML portrait/landscape sub-swap** (`pmSub<5` vs `≥5`) exists for **854/960/800 only** (`FormCZTV.cs:917-949`); 640, 1280, 1600, 1920 have a single fixed dir.
 12. **Header format split**: 64-byte `12345678` (320/480/240/640/800/854/960/1600/1920, len@[60..63]) vs 20-byte `DADBDCDD` (360/1280/320×240-default, len@[16..19]).
