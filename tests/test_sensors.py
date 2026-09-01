@@ -982,7 +982,15 @@ def test_a_vanished_pin_warns_ONCE_across_many_polls(caplog) -> None:
         for _ in range(5):
             assert s.preferred_disk() is None
 
-    warned = [r for r in caplog.records if "nvme_UNPLUGGED" in r.getMessage()]
+    # LEVEL, not just the substring: ``set_preferred_disk`` logs the pin at
+    # INFO before the block below, and that line contains the key too — so a
+    # substring-only filter counts it whenever the root logger happens to be
+    # at DEBUG.  ~15 tests in test_diagnostics.py call ``configure_logging``,
+    # which sets the root level and never restores it, so whether this test
+    # passed depended on what xdist scheduled into the same worker first.
+    warned = [r for r in caplog.records
+              if r.levelno == logging.WARNING
+              and "nvme_UNPLUGGED" in r.getMessage()]
     assert len(warned) == 1, (
         f"expected ONE warning across five polls, got {len(warned)}"
     )
@@ -1002,7 +1010,10 @@ def test_a_pin_that_comes_back_re_arms_the_warning(caplog) -> None:
         s._disks.remove(present)
         assert s.preferred_disk() is None          # gone again -> warn (2)
 
-    warned = [r for r in caplog.records if "nvme0" in r.getMessage()]
+    # Level-filtered for the same reason as the test above.
+    warned = [r for r in caplog.records
+              if r.levelno == logging.WARNING
+              and "nvme0" in r.getMessage()]
     assert len(warned) == 2, (
         "a returning drive must re-arm the warning so its next disappearance "
         f"is reported again — got {len(warned)}"
