@@ -236,7 +236,7 @@ Show this command's help and exit.
 .PP
 \fBtrcc system list\-disk\-sensors\fR
 .PP
-List drive THERMAL sensors  \-  the list disk_temp comes from. Not the same as 'list\-disks', which enumerates mounted partitions for 'led disk\-index'. Pick one of these with 'trcc config disk'.
+List drive THERMAL sensors  \-  the list disk_temp comes from. Not the same as 'list\-disks', which enumerates mounted partitions and shares no key with this list. Pick one of these with 'trcc config disk'.
 .PP
 Options:
 .RS 4
@@ -248,7 +248,7 @@ Show this command's help and exit.
 .PP
 \fBtrcc system list\-disks\fR
 .PP
-List disk partitions (for use with led disk\-index).
+List mounted partitions  \-  NOT the drive list disk_temp comes from.
 .PP
 Options:
 .RS 4

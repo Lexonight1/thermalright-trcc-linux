@@ -704,23 +704,14 @@ def test_led_memory_ratio(api_client: TestClient) -> None:
     assert body["ratio"] == 4
 
 
-def test_led_disk_index(api_client: TestClient) -> None:
-    resp = api_client.post(
-        "/devices/0416:8001/led/disk-index",
-        json={"index": 1},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is True
-    assert body["index"] == 1
-
-
-def test_led_disk_index_negative_rejected(api_client: TestClient) -> None:
-    resp = api_client.post(
-        "/devices/0416:8001/led/disk-index",
-        json={"index": -1},
-    )
-    assert resp.status_code == 422
+def test_led_disk_index_route_is_retired(api_client: TestClient) -> None:
+    """The inert route is gone and the working one still answers."""
+    assert api_client.post(
+        "/devices/0416:8001/led/disk-index", json={"index": 1},
+    ).status_code == 404
+    assert api_client.post(
+        "/system/disk-sensors/active", json={"disk_key": ""},
+    ).status_code == 200
 
 
 def test_system_hdd_enabled(api_client: TestClient) -> None:

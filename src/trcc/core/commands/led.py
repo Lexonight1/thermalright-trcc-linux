@@ -25,7 +25,6 @@ from ..led_models import (
 )
 from ..results import (
     ClockFormatResult,
-    DiskIndexResult,
     HddEnabledResult,
     LedColorsResult,
     LedModesListResult,
@@ -926,28 +925,6 @@ class SetMemoryRatio(Command[MemoryRatioResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class SetDiskIndex(Command[DiskIndexResult]):
-    """Pick which disk to surface read/write stats for."""
-    key: str
-    index: int
-
-    def execute(self, app: App) -> DiskIndexResult:
-        if (why := _not_an_led(app, self.key)) is not None:
-            return DiskIndexResult(ok=False, key=self.key,
-                                   index=self.index, message=why)
-        try:
-            app.settings.set_led_disk_index(self.key, self.index)
-        except ValueError as e:
-            return DiskIndexResult(
-                ok=False, key=self.key, index=self.index, message=str(e),
-            )
-        _publish_led_settings_changed(app, self.key)
-        return DiskIndexResult(
-            ok=True, key=self.key, index=self.index,
-            message=f"Disk index set to {self.index}",
-        )
-
-@dataclass(frozen=True, slots=True)
 class SetHddEnabled(Command[HddEnabledResult]):
     """Toggle HDD metrics inclusion in sensor broadcasts."""
     enabled: bool
@@ -1044,6 +1021,5 @@ class LedSnapshot(Query[LedSnapshotResult]):
             clock_24h=s.clock_24h,
             week_sunday=s.week_sunday,
             memory_ratio=s.memory_ratio,
-            disk_index=s.disk_index,
             message=f"LED snapshot for {self.key}",
         )

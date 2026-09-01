@@ -661,23 +661,21 @@ def test_led_memory_ratio_rejects_invalid(
     assert result.exit_code != 0
 
 
-def test_led_disk_index(cli_runner: CliRunner, cli_app) -> None:
+def test_led_disk_index_is_retired(cli_runner: CliRunner, cli_app) -> None:
+    """``led disk-index`` is gone; ``config disk`` is the working replacement.
+
+    It wrote a per-LED-device INDEX that nothing behavioural ever read — the
+    index addressed a psutil partition list while ``disk_temp`` came from the
+    thermal list.  Asserted rather than merely deleted so the command cannot
+    quietly return.
+    """
     del cli_app
-    result = cli_runner.invoke(
+    assert cli_runner.invoke(
         _app(), ["led", "disk-index", "0416:8001", "2"],
-    )
-    assert result.exit_code == 0
-    assert "2" in result.output
-
-
-def test_led_disk_index_negative_rejected(
-    cli_runner: CliRunner, cli_app,
-) -> None:
-    del cli_app
-    result = cli_runner.invoke(
-        _app(), ["led", "disk-index", "0416:8001", "-1"],
-    )
-    assert result.exit_code != 0
+    ).exit_code != 0
+    assert cli_runner.invoke(
+        _app(), ["config", "disk", "--help"],
+    ).exit_code == 0
 
 
 def test_system_hdd_enabled_on(cli_runner: CliRunner, cli_app) -> None:

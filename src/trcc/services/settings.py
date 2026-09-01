@@ -614,15 +614,6 @@ class Settings:
             self.for_led(key).memory_ratio = clamped
             self._save()
 
-    def set_led_disk_index(self, key: str, index: int) -> None:
-        """Pick which disk's read/write stats to surface on the LED."""
-        log.info("set_led_disk_index: key=%s index=%d", key, index)
-        if index < 0:
-            raise ValueError(f"disk_index must be >= 0, got {index}")
-        with self._lock:
-            self.for_led(key).disk_index = index
-            self._save()
-
     def set_hdd_enabled(self, enabled: bool) -> None:
         """Toggle HDD inclusion in sensor metrics broadcasts."""
         log.info("set_hdd_enabled: enabled=%s", enabled)

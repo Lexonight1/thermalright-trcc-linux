@@ -216,10 +216,6 @@ class MemoryRatioRequest(BaseModel):
     ratio: int          # DDR multiplier: 1, 2, or 4
 
 
-class DiskIndexRequest(BaseModel):
-    index: int = Field(..., ge=0)
-
-
 class HddEnabledRequest(BaseModel):
     enabled: bool
 

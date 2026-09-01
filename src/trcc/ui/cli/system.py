@@ -76,8 +76,8 @@ def sensors() -> None:
 def list_disk_sensors() -> None:
     """List drive THERMAL sensors — the list disk_temp comes from.
 
-    Not the same as 'list-disks', which enumerates mounted partitions for
-    'led disk-index'.  Pick one of these with 'trcc config disk'.
+    Not the same as 'list-disks', which enumerates mounted partitions and
+    shares no key with this list.  Pick one of these with 'trcc config disk'.
     """
     log.info("cli system list-disk-sensors")
     r = get_app().dispatch(ListDiskSensors())
@@ -152,7 +152,7 @@ def memory_slots() -> None:
 
 @app.command("list-disks")
 def list_disks() -> None:
-    """List disk partitions (for use with `led disk-index`)."""
+    """List mounted partitions — NOT the drive list `disk_temp` comes from."""
     log.info("cli system list-disks")
     result = get_app().dispatch(ListDisks())
     typer.echo(result.message)

@@ -12,7 +12,6 @@ from trcc.core.commands import (
     EnableLedTestMode,
     SelectZone,
     SetClockFormat,
-    SetDiskIndex,
     SetLedBrightness,
     SetLedColor,
     SetLedLoadSource,
@@ -200,7 +199,6 @@ _GATED: list = [
     (SetClockFormat, {"is_24h": False}),
     (SetWeekStart, {"sunday_first": True}),
     (SetMemoryRatio, {"ratio": 2}),
-    (SetDiskIndex, {"index": 1}),
 ]
 
 _GATED_IDS = [cmd.__name__ for cmd, _ in _GATED]

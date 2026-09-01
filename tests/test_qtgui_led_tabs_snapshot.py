@@ -7,7 +7,7 @@ The six tabs take a ``LedSnapshotResult`` instead of a live
 **The widget-level tests live in ``test_gui_panels.py``** (seven of them, one
 per tab, converted onto the Result in the same change).  They are NOT repeated
 here.  What is here is the half nothing covered: that the Command actually
-copies the five fields the tabs depend on.  A field the Command forgets is a
+copies the four fields the tabs depend on.  A field the Command forgets is a
 field the panel silently renders as its default, and the tabs can no longer
 reach ``settings`` to notice the difference.
 
@@ -25,7 +25,7 @@ from trcc.app import App
 from trcc.core.commands import LedSnapshot
 
 
-def test_the_five_added_fields_survive_the_round_trip(fake_platform) -> None:
+def test_the_four_added_fields_survive_the_round_trip(fake_platform) -> None:
     """Segment mask + the LC1/LF11/LC2 readout preferences reach the Result."""
     app = App(fake_platform)
     key = "0416:8001"
@@ -34,7 +34,6 @@ def test_the_five_added_fields_survive_the_round_trip(fake_platform) -> None:
     settings.clock_24h = False
     settings.week_sunday = True
     settings.memory_ratio = 4
-    settings.disk_index = 2
 
     r = app.dispatch(LedSnapshot(key=key))
 
@@ -42,5 +41,4 @@ def test_the_five_added_fields_survive_the_round_trip(fake_platform) -> None:
     assert r.clock_24h is False
     assert r.week_sunday is True
     assert r.memory_ratio == 4
-    assert r.disk_index == 2
     assert r.segment_count == 3, "segment_count must stay len(segment_on)"

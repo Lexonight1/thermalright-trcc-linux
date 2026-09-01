@@ -692,7 +692,6 @@ class LedSnapshotResult(Result):
     clock_24h: bool = True
     week_sunday: bool = False
     memory_ratio: int = 2
-    disk_index: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -771,12 +770,6 @@ class WeekStartResult(Result):
 class MemoryRatioResult(Result):
     key: str = ""
     ratio: int = 2          # DDR multiplier (1 / 2 / 4)
-
-
-@dataclass(frozen=True, slots=True)
-class DiskIndexResult(Result):
-    key: str = ""
-    index: int = 0
 
 
 @dataclass(frozen=True, slots=True)

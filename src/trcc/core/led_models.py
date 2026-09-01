@@ -97,11 +97,6 @@ class LedDeviceSettings:
     # as a DDR selector.  Default 2 (DDR effective rate).
     memory_ratio: int = 2
 
-    # Disk index — which physical disk to surface for read/write stats.
-    # 0 = system / primary disk; subsequent indices map to additional disks
-    # via psutil disk discovery.
-    disk_index: int = 0
-
 
 # =========================================================================
 # Transient runtime counters — NOT persisted

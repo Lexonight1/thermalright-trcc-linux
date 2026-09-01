@@ -2064,9 +2064,11 @@ class Platform(ABC):
 
         A DIFFERENT question from :meth:`disk_info`, which reports PHYSICAL
         drives: one drive supplies many partitions, so the two lists have
-        different lengths and no shared key.  ``ListDisks`` answers "which
-        mountpoints can `led disk-index` name"; ``disk_info`` answers "what
-        drives are attached, with model and health".
+        different lengths and no shared key.  ``ListDisks`` answers "what is
+        mounted where"; ``disk_info`` answers "what drives are attached, with
+        model and health".  Neither is the THERMAL list ``disk_temp`` comes
+        from — that is ``SensorEnumerator.disks()``, and confusing the three
+        is what kept a disk picker from ever working.
 
         Cross-platform via psutil, so :class:`BaseOS` carries the shared body
         and no OS overrides it today — but it is declared here, with no body,

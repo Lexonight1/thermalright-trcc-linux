@@ -1096,19 +1096,6 @@ trcc led color KEY COLOR
 | `KEY` | LED device key, e.g. 0416:8001 |
 | `COLOR` | Hex color (#rrggbb) |
 
-### `trcc led disk-index`
-
-Pick which disk's read/write stats to surface.
-
-```bash
-trcc led disk-index KEY INDEX
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | LED device key |
-| `INDEX` | Disk index (0-based) |
-
 ### `trcc led initialize`
 
 Connect + render one initial frame in a single dispatch. Convenience for boot scripts — equivalent to `device connect` followed by `led render`, but in one Command so the caller only inspects one Result. Use this on app start; use the individual commands for finer control.
@@ -1570,7 +1557,7 @@ trcc system led-debug [OPTIONS] KEY
 
 ### `trcc system list-disk-sensors`
 
-List drive THERMAL sensors — the list disk_temp comes from. Not the same as 'list-disks', which enumerates mounted partitions for 'led disk-index'. Pick one of these with 'trcc config disk'.
+List drive THERMAL sensors — the list disk_temp comes from. Not the same as 'list-disks', which enumerates mounted partitions and shares no key with this list. Pick one of these with 'trcc config disk'.
 
 ```bash
 trcc system list-disk-sensors
@@ -1578,7 +1565,7 @@ trcc system list-disk-sensors
 
 ### `trcc system list-disks`
 
-List disk partitions (for use with `led disk-index`).
+List mounted partitions — NOT the drive list `disk_temp` comes from.
 
 ```bash
 trcc system list-disks

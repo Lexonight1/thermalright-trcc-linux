@@ -285,9 +285,10 @@ def _apply_led_config(
     if isinstance(sun_first := led_cfg.get("is_week_sunday"), bool):
         settings.set_led_week_start(key, sun_first)
         log.info("[%s] led_week_sunday → %s", key, sun_first)
-    if isinstance(disk_idx := led_cfg.get("disk_index"), int):
-        settings.set_led_disk_index(key, disk_idx)
-        log.info("[%s] led_disk_index → %d", key, disk_idx)
+    # ``disk_index`` is deliberately NOT migrated: it addressed a psutil
+    # partition list while the metric came from the thermal list, so nothing
+    # ever applied it.  ``SetDiskDevice`` replaced it with a stable sensor KEY,
+    # which a legacy positional index cannot be translated into.
     if isinstance(mem_ratio := led_cfg.get("memory_ratio"), bool):
         settings.set_led_memory_ratio(key, mem_ratio)
         log.info("[%s] led_memory_ratio → %s", key, mem_ratio)

@@ -37,7 +37,10 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: silent ones among them stopped being excuses).  LOWER THIS as coverage
 #: improves; never raise it.  Worst areas now:
 #: ui 681, adapters 420, services 122, core 101.
-MAX_SILENT = 1344
+#: 1344 -> 1343 on 2026-09-01: retiring ``SetDiskIndex`` deleted its silent
+#: ``execute``.  A removal lowers this exactly as a fix does — the ratchet
+#: asserts BOTH directions, so ground given back is a failure either way.
+MAX_SILENT = 1343
 
 
 def test_logging_coverage_only_improves() -> None:

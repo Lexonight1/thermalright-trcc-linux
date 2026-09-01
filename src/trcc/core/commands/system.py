@@ -183,7 +183,7 @@ class ListFonts(Query[FontsListResult]):
 
 @dataclass(frozen=True, slots=True)
 class ListDisks(Query[DisksListResult]):
-    """Enumerate mounted PARTITIONS — used by SetDiskIndex callers.
+    """Enumerate mounted PARTITIONS — a filesystem view, not a sensor one.
 
     Partitions, not drives: one physical disk supplies several, so this list
     is longer than ``Platform.disk_info()``'s and the two share no key.

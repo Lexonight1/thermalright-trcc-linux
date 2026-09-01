@@ -16,7 +16,6 @@ from ...core.commands import (
     RenderLed,
     SelectZone,
     SetClockFormat,
-    SetDiskIndex,
     SetLedBrightness,
     SetLedColor,
     SetLedColors,
@@ -358,16 +357,6 @@ def memory_ratio(
     if ratio not in (1, 2, 4):
         raise typer.BadParameter(f"ratio must be 1, 2, or 4, got {ratio}")
     dispatch_echo(SetMemoryRatio(key=key, ratio=ratio))
-
-
-@app.command("disk-index")
-def disk_index(
-    key: str = typer.Argument(..., help="LED device key"),
-    index: int = typer.Argument(..., help="Disk index (0-based)"),
-) -> None:
-    """Pick which disk's read/write stats to surface."""
-    log.info("cli led disk-index: key=%s index=%s", key, index)
-    dispatch_echo(SetDiskIndex(key=key, index=index))
 
 
 @app.command("initialize")

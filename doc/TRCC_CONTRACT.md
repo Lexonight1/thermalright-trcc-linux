@@ -155,7 +155,7 @@ class LEDSnapshot:
     zone_sync: bool; zone_sync_interval: int
     selected_zone: int; segment_on: list[bool]
     clock_24h: bool; week_sunday: bool
-    memory_ratio: int; disk_index: int
+    memory_ratio: int
     test_mode: bool
 
 @dataclass(frozen=True)
@@ -319,7 +319,7 @@ class LEDCommands:
     def set_clock_format(self, led: int, is_24h: bool) -> OpResult
     def set_week_start(self, led: int, sunday: bool) -> OpResult
     def set_memory_ratio(self, led: int, ratio: int) -> OpResult
-    def set_disk_index(self, led: int, index: int) -> OpResult
+    def set_disk_device(self, disk_key: str) -> OpResult   # app-wide, not per-LED
     def set_test_mode(self, led: int, enabled: bool) -> OpResult
     def set_sensor_source(self, led: int, source: str) -> OpResult
 

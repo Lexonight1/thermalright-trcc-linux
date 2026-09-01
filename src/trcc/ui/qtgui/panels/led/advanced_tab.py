@@ -11,9 +11,16 @@ Settings here apply only when the relevant mode is active:
   these, but persisting them per-device means future LED styles that
   add a clock get the right prefs out of the box.
 
-Memory ratio + disk index live on this tab too because they're "set
-once and forget" — power users who want them changed will find them
+Memory ratio + the disk-sensor pin live on this tab too because they're
+"set once and forget" — power users who want them changed will find them
 here.
+
+The disk control is APP-WIDE, unlike everything else here: it pins which
+``DiskSource`` supplies ``disk_temp`` everywhere, so its state comes from
+``ListDiskSensors().active`` rather than from this device's LED snapshot.
+It replaced a per-LED-device ``disk_index`` spin box that nothing ever
+applied — the index addressed a psutil partition list while the metric came
+from the thermal list, three lists with no shared key.
 """
 from __future__ import annotations
 
@@ -27,14 +34,14 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QRadioButton,
-    QSpinBox,
     QVBoxLayout,
 )
 
 from .....core.commands import (
     EnableLedTestMode,
+    ListDiskSensors,
     SetClockFormat,
-    SetDiskIndex,
+    SetDiskDevice,
     SetLedLoadSource,
     SetLedTempSource,
     SetMemoryRatio,
@@ -121,20 +128,21 @@ class AdvancedTab(LedTabBase):
         # ── Memory + disk (segment devices) ──────────────────────────
         self._misc_box = misc_box = QGroupBox("Memory + disk (segment devices)", self)
         misc_form = QFormLayout(misc_box)
-        self._disk_index = QSpinBox(self)
-        self._disk_index.setRange(0, 31)
-        self._disk_index.setToolTip(
-            "Which physical disk to surface for read/write stats.  0 is "
-            "usually the system / primary drive.",
+        self._disk_selector = QComboBox(self)
+        self._disk_selector.setToolTip(
+            "Which drive supplies the disk temperature.  Sourced from the "
+            "THERMAL sensor list the reading actually comes from, so what "
+            "you pick and what is shown are the same list.  Applies "
+            "app-wide, not just to this device.",
         )
-        self._disk_index.editingFinished.connect(self._on_disk_index_changed)
+        self._disk_selector.currentIndexChanged.connect(self._on_disk_selected)
         self._memory_ratio = QComboBox(self)
         for mult in (1, 2, 4):
             self._memory_ratio.addItem(f"×{mult}", userData=mult)
         self._memory_ratio.currentIndexChanged.connect(
             self._on_memory_ratio_changed,
         )
-        misc_form.addRow("Disk index:", self._disk_index)
+        misc_form.addRow("Disk sensor:", self._disk_selector)
         misc_form.addRow("DDR multiplier:", self._memory_ratio)
         root.addWidget(misc_box)
 
@@ -170,10 +178,6 @@ class AdvancedTab(LedTabBase):
         self._week_sunday.setChecked(snapshot.week_sunday)
         self._week_sunday.blockSignals(False)
 
-        self._disk_index.blockSignals(True)
-        self._disk_index.setValue(snapshot.disk_index)
-        self._disk_index.blockSignals(False)
-
         self._memory_ratio.blockSignals(True)
         idx = self._memory_ratio.findData(snapshot.memory_ratio)
         self._memory_ratio.setCurrentIndex(idx if idx >= 0 else 1)   # default ×2
@@ -197,8 +201,47 @@ class AdvancedTab(LedTabBase):
         self._misc_box.setVisible(
             panel.show_memory_panel or panel.show_disk_panel,
         )
+        # Once per device switch, and only when the style shows it — the same
+        # trigger gui uses (``uc_led_control:1018``).  The list is hardware
+        # identity, not per-tick state, so it does not belong in refresh_from.
+        if panel.show_disk_panel:
+            self._populate_disk_sensors()
 
     # ── Internals ─────────────────────────────────────────────────────
+
+    def _populate_disk_sensors(self) -> None:
+        """Fill the picker from ``ListDiskSensors`` — the list the metric comes from.
+
+        Deliberately NOT ``Platform.disk_info()`` (physical drives) nor
+        ``ListDisks`` (mounted partitions): those are three lists with three
+        cardinalities and no shared key, and a picker fed by either of the
+        others cannot address what is displayed.  Going through the Query also
+        keeps this tab off every port but the bus.
+
+        Falls safe on any exception: the probe surface underneath is wide
+        (hwmon / WMI / SMC), and this runs on every device switch.
+        """
+        log.info("_populate_disk_sensors")
+        try:
+            result = self._dispatch(ListDiskSensors())
+            self._disk_selector.blockSignals(True)
+            self._disk_selector.clear()
+            for disk in result.disks:
+                name = disk.name or disk.key
+                # C# shows the name up to '(' — keep that trim.
+                if "(" in name:
+                    name = name[:name.index("(") - 1]
+                self._disk_selector.addItem(name, disk.key)
+            if result.active:
+                idx = self._disk_selector.findData(result.active)
+                if idx >= 0:
+                    self._disk_selector.setCurrentIndex(idx)
+            self._disk_selector.blockSignals(False)
+            log.info("_populate_disk_sensors: %d sensor(s), active=%s",
+                     len(result.disks), result.active or "(hottest)")
+        except Exception as e:
+            log.warning("_populate_disk_sensors: failed (%s) — picker empty", e)
+            self._disk_selector.blockSignals(False)
 
     def _block_sources(self, blocked: bool) -> None:
         for w in (
@@ -257,13 +300,18 @@ class AdvancedTab(LedTabBase):
         if key:
             self._dispatch(SetWeekStart(key=key, sunday_first=sunday_first))
 
-    def _on_disk_index_changed(self) -> None:
-        log.info("_on_disk_index_changed")
-        key = self.current_key()
-        if key:
-            self._dispatch(SetDiskIndex(
-                key=key, index=self._disk_index.value(),
-            ))
+    def _on_disk_selected(self, index: int) -> None:
+        """Emit the chosen sensor KEY, not a positional index.
+
+        A key survives re-enumeration; an index into a discovered list does
+        not — which is why ``DiskSource.key`` was made stable and unique
+        before this control existed.  ``SetDiskDevice`` is app-wide, so it
+        takes no device key.
+        """
+        disk_key = self._disk_selector.itemData(index) or ""
+        log.info("_on_disk_selected: index=%s key=%s",
+                 index, disk_key or "(hottest)")
+        self._dispatch(SetDiskDevice(disk_key=disk_key))
 
     def _on_memory_ratio_changed(self, index: int) -> None:
         ratio = self._memory_ratio.itemData(index)

@@ -13,7 +13,6 @@ from ...core.commands import (
     RenderLed,
     SelectZone,
     SetClockFormat,
-    SetDiskIndex,
     SetLedBrightness,
     SetLedColor,
     SetLedColors,
@@ -34,7 +33,6 @@ from ...core.commands import (
 from ...core.led_models import LEDMode
 from ...core.results import (
     ClockFormatResult,
-    DiskIndexResult,
     LedColorsResult,
     LedModesListResult,
     LedSnapshotResult,
@@ -47,7 +45,6 @@ from ._shared import (
 )
 from .schemas import (
     ClockFormatRequest,
-    DiskIndexRequest,
     LedBrightnessRequest,
     LedColorRequest,
     LedColorsRequest,
@@ -373,21 +370,6 @@ def memory_ratio(key: str, body: MemoryRatioRequest,
     )
     result = request.app.state.trcc.dispatch(
         SetMemoryRatio(key=key, ratio=body.ratio),
-    )
-    http_error_if_failed(result)
-    return result
-
-
-@router.post("/disk-index")
-def disk_index(key: str, body: DiskIndexRequest,
-               request: Request) -> DiskIndexResult:
-    """Pick which disk's read/write stats to surface."""
-    log.info(
-        "api POST /devices/{key}/led/disk-index: key=%s index=%s",
-        key, body.index,
-    )
-    result = request.app.state.trcc.dispatch(
-        SetDiskIndex(key=key, index=body.index),
     )
     http_error_if_failed(result)
     return result

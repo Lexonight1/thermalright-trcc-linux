@@ -229,7 +229,7 @@ def list_fonts(request: Request) -> FontsListResult:
 
 @router.get("/disks")
 def list_disks(request: Request) -> DisksListResult:
-    """List disk partitions for the LED disk-index selector."""
+    """List mounted partitions — NOT the drive list `disk_temp` comes from."""
     log.info("api GET /system/disks")
     result = request.app.state.trcc.dispatch(ListDisks())
     return result
