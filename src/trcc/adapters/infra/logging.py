@@ -144,8 +144,18 @@ def configure_logging(
     # Everything else still keeps DEBUG in the file, which is what a report is
     # read for.  Set explicitly in both directions so a second call can turn
     # the firehose back off as well as on.
+    #
+    # WARNING, not INFO, when silenced.  INFO silences only DEBUG, so a future
+    # ``frame_log.info(...)`` on a per-frame path would write a record EVERY
+    # frame and nothing would catch it -- not the family, not
+    # ``record_rate.py``, not the sensor-tick gate.  All 170 frame calls are
+    # ``.debug`` today, which made that hole empty by luck rather than by
+    # construction.  WARNING closes it while still letting a genuine per-frame
+    # warning through: a warning on the frame path is a problem, not noise, and
+    # the warn-once pattern (``BaselineSensors._read``) is what keeps one from
+    # flooding.
     logging.getLogger(PER_FRAME_ROOT).setLevel(
-        logging.DEBUG if per_frame else logging.INFO,
+        logging.DEBUG if per_frame else logging.WARNING,
     )
 
     # Drop any handlers we installed previously — leave foreign handlers

@@ -277,7 +277,7 @@ def test_per_frame_loggers_are_one_family(tmp_path: Path) -> None:
 
     for module in ("trcc.services.display", "trcc.adapters.render.qt",
                    "trcc.some.module.written.tomorrow"):
-        assert per_frame(module).getEffectiveLevel() == logging.INFO
+        assert per_frame(module).getEffectiveLevel() == logging.WARNING
         assert per_frame(module).name.startswith(PER_FRAME_ROOT)
 
 
@@ -1364,4 +1364,39 @@ def test_enumerator_members_use_their_recorded_logger() -> None:
         "the record AND its reason:\n  " + "\n  ".join(
             f"{n}: uses {u}, recorded {w}" for n, (u, w) in sorted(wrong.items())
         )
+    )
+
+
+def test_a_per_frame_info_line_is_silenced_too(tmp_path: Path) -> None:
+    """The family silences INFO as well as DEBUG, by construction.
+
+    It used to sit at INFO, which silences only DEBUG.  Every frame call is
+    ``.debug`` today, so the hole was empty -- but a future
+    ``frame_log.info(...)`` on a per-frame path would have written a record
+    EVERY frame with nothing to catch it: not the family, not
+    ``record_rate.py`` (which measures records, and would simply report the
+    higher number as fact), not the sensor-tick gate (which only checks WHICH
+    logger, not which level).
+
+    MUTATION CHECK: put ``logging.INFO`` back in ``configure_logging`` and this
+    fails while every other diagnostics test still passes -- which is precisely
+    how the hole stayed open.
+    """
+    log_file = tmp_path / "t.log"
+    configure_logging(log_file, level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL)
+
+    per_frame(__name__).info("frame info %d", 7)
+    per_frame(__name__).debug("frame debug %d", 8)
+    per_frame(__name__).warning("frame warning %d", 9)
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    text = log_file.read_text()
+    assert "frame info 7" not in text, "an INFO on the frame path reached the file"
+    assert "frame debug 8" not in text
+    # A per-frame WARNING still gets through: it is a problem, not chatter.
+    assert "frame warning 9" in text, (
+        "a genuine per-frame warning must still reach the file — silencing "
+        "those would hide the one line that says something is wrong"
     )
