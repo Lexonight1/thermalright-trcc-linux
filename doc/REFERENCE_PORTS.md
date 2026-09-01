@@ -18,7 +18,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ScreenCapture`](#screencapture) | 1 | 0 | 1 |
 | [`_HidBinding`](#_hidbinding) | 1 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
-| [`SensorSource`](#sensorsource) | 2 | 0 | 16 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 16 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
@@ -161,7 +161,7 @@ submit(resolution: 'tuple[int, int]', variant: 'str' = '', mask_variant: 'str' =
 
 **Implementations (2):** `SyncDataInstallRunner` · `ThreadDataInstallRunner`
 
-## SensorSource
+## IdentifiedSource
 
 `core/ports.py`
 

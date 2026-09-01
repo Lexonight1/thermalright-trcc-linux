@@ -449,7 +449,7 @@ class MemorySource(ABC):
         """Used fraction 0-100, or None."""
 
 
-class SensorSource(ABC):
+class IdentifiedSource(ABC):
     """A sensor the OS can enumerate SEVERAL of, each one identifiable.
 
     ``key`` + ``name`` were declared identically on :class:`GpuSource`,
@@ -466,11 +466,23 @@ class SensorSource(ABC):
     Each OS fills it the way it already fills the role ports; no adapter
     changes, because every implementation already provides both members.
 
-    **This revisits ``feedback_one_shared_sensorsource_abc``, deliberately.**
-    That memo says "do not build a SensorSource ABC", but its reasoning was
-    CROSS-OS UNIFORMITY — met by the role ports, 28 implementations audited.
-    This exists for a different reason: one contract instead of four, and a
-    bound for generic selection code.
+    **This overrides secondary finding #1 of
+    ``feedback_one_shared_sensorsource_abc`` — NOT its prohibition.**  That memo
+    forbids a ``SensorSource`` ABC over all FIVE role ports, because their
+    intersection is EMPTY: :class:`MemorySource` declares neither member, so the
+    supertype would be a marker interface.  That reasoning is untouched and
+    still stands.  This ABC spans the FOUR ports whose intersection is
+    ``{key, name}`` — which is the memo's own ``IdentifiedSource`` proposal, and
+    it carries the memo's own name so the two can never be mistaken for each
+    other.
+
+    Finding #1 weighed it as "saves ~8 trivial properties, adds a layer" and
+    judged it not worth it.  Two things it did not weigh: CLAUDE.md's own DRY
+    threshold — *"3+ duplicates = centralize"* — which is met at FOUR; and
+    :func:`_resolve_preferred`, which did not exist then, so nothing needed a
+    type bound.  Without a base the alternative is
+    ``TypeVar("_P", GpuSource, DiskSource)``, which must be EDITED to admit each
+    new family where a bound need not be.
     """
 
     @property
@@ -490,7 +502,7 @@ class SensorSource(ABC):
         """Human-readable label."""
 
 
-class GpuSource(SensorSource):
+class GpuSource(IdentifiedSource):
     """One GPU — NVIDIA/AMD/Intel/Apple, discrete or integrated."""
 
     @property
@@ -527,7 +539,7 @@ class GpuSource(SensorSource):
         """VRAM total in MB, or None."""
 
 
-class FanSource(SensorSource):
+class FanSource(IdentifiedSource):
     """One fan — may be role-mapped (cpu/gpu/sys1) or anonymous."""
 
     @abstractmethod
@@ -539,7 +551,7 @@ class FanSource(SensorSource):
         """Duty cycle 0-100, or None."""
 
 
-class DiskSource(SensorSource):
+class DiskSource(IdentifiedSource):
     """One storage device's thermal sensor (NVMe / SATA SSD / HDD).
 
     Every OS reads drive temperature differently — Linux from hwmon
@@ -555,7 +567,7 @@ class DiskSource(SensorSource):
         """Current temperature in °C, or None."""
 
 
-class DramSource(SensorSource):
+class DramSource(IdentifiedSource):
     """One memory module's SPD-hub thermal sensor.
 
     DDR5 DIMMs carry an integrated SPD-hub temperature sensor (Linux
@@ -599,7 +611,7 @@ def _safe(fn: Callable[[], float | None]) -> float:
         return 0.0
 
 
-_Preferred = TypeVar("_Preferred", bound=SensorSource)
+_Preferred = TypeVar("_Preferred", bound=IdentifiedSource)
 
 
 def _resolve_preferred(
