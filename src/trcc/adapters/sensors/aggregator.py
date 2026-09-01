@@ -197,7 +197,7 @@ class BaselineSensors(SensorEnumerator):
         DEBUG.  Issue #139 class.
         """
         try:
-            return fn()
+            value = fn()
         except Exception as e:
             if label in self._read_failures:
                 log.debug("sensor read %s still failing: %s", label, e)
@@ -206,34 +206,45 @@ class BaselineSensors(SensorEnumerator):
                 log.warning("sensor read %s failed (%s) — skipping this "
                             "reading; further failures at DEBUG", label, e)
             return None
+        # The ONE place that holds both the label and the reading, so it is the
+        # one place that can say what a sensor actually resolved to.  The 30
+        # per-source entry lines say only that a function ran; this says what it
+        # found, once, for all 31 reads a tick makes.  Outside the ``try`` on
+        # purpose: a logging fault must not be mistaken for a sensor fault.
+        frame_log.debug("%s = %s", label, value)
+        return value
 
     # ── Structured access ──────────────────────────────────────────
 
     def cpu(self) -> CpuSource:
-        log.debug("cpu: called")
+        frame_log.debug("cpu: called")
         return self._cpu
 
     def memory(self) -> MemorySource:
-        log.debug("memory: called")
+        frame_log.debug("memory: called")
         return self._memory
 
     def gpus(self) -> list[GpuSource]:
-        log.debug("gpus: count=%d", len(self._gpus))
+        frame_log.debug("gpus: count=%d", len(self._gpus))
         return list(self._gpus)
 
     def fans(self) -> list[FanSource]:
-        log.debug("fans: count=%d", len(self._fans))
+        frame_log.debug("fans: count=%d", len(self._fans))
         return list(self._fans)
 
     def disks(self) -> list[DiskSource]:
-        log.debug("disks: count=%d", len(self._disks))
+        frame_log.debug("disks: count=%d", len(self._disks))
         return list(self._disks)
 
     # ── Flat dict view ─────────────────────────────────────────────
 
     def discover(self) -> list[SensorReading]:
         """Return one SensorReading per normalized key with current values."""
-        log.info("discover: called")
+        # Entry line, no content — and `discover` is NOT one-shot: qtgui's
+        # SensorPickerWidget dispatches ReadSensors() on a 2-second QTimer.
+        # DEBUG, not INFO: the frame family sits at INFO by default, so an
+        # .info() here would still write a record every 2s.
+        frame_log.debug("discover: called")
         current = self.read_all()
         readings: list[SensorReading] = []
 
@@ -374,7 +385,7 @@ class BaselineSensors(SensorEnumerator):
                 self._stop.wait(self._interval_s)
 
     def _poll_once(self) -> None:
-        log.debug("_poll_once: called")
+        frame_log.debug("_poll_once: called")
         r: dict[str, float] = {}
 
         # CPU

@@ -18,9 +18,11 @@ import time
 
 import psutil  # pyright: ignore[reportMissingImports]
 
+from ...core.logs import per_frame
 from ...core.ports import CpuSource, MemorySource
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class PsutilCpu(CpuSource):
@@ -42,11 +44,11 @@ class PsutilCpu(CpuSource):
         return self._name
 
     def temp(self) -> float | None:
-        log.debug("temp: called")
+        frame_log.debug("temp: called")
         return None
 
     def usage(self) -> float | None:
-        log.debug("usage: warm=%s", self._warm)
+        frame_log.debug("usage: warm=%s", self._warm)
         # First call needs an interval to bootstrap the delta
         if not self._warm:
             self._warm = True
@@ -54,7 +56,7 @@ class PsutilCpu(CpuSource):
         return float(psutil.cpu_percent(interval=None))
 
     def freq(self) -> float | None:
-        log.debug("freq: called")
+        frame_log.debug("freq: called")
         try:
             freq = psutil.cpu_freq()
             return float(freq.current) if freq else None
@@ -62,7 +64,7 @@ class PsutilCpu(CpuSource):
             return None
 
     def power(self) -> float | None:
-        log.debug("power: called")
+        frame_log.debug("power: called")
         return None
 
 
@@ -70,28 +72,28 @@ class PsutilMemory(MemorySource):
     """RAM metrics from psutil.  Works on every OS."""
 
     def used(self) -> float | None:
-        log.debug("used: called")
+        frame_log.debug("used: called")
         try:
             return psutil.virtual_memory().used / (1024 * 1024)
         except (psutil.Error, AttributeError, OSError):
             return None
 
     def available(self) -> float | None:
-        log.debug("available: called")
+        frame_log.debug("available: called")
         try:
             return psutil.virtual_memory().available / (1024 * 1024)
         except (psutil.Error, AttributeError, OSError):
             return None
 
     def total(self) -> float | None:
-        log.debug("total: called")
+        frame_log.debug("total: called")
         try:
             return psutil.virtual_memory().total / (1024 * 1024)
         except (psutil.Error, AttributeError, OSError):
             return None
 
     def percent(self) -> float | None:
-        log.debug("percent: called")
+        frame_log.debug("percent: called")
         try:
             return float(psutil.virtual_memory().percent)
         except (psutil.Error, AttributeError, OSError):
@@ -113,7 +115,7 @@ class ComputedIo:
         self._net_prev: tuple | None = None
 
     def poll(self, readings: dict[str, float]) -> None:
-        log.debug("poll: called")
+        frame_log.debug("poll: called")
         now = time.monotonic()
         self._poll_disk(readings, now)
         self._poll_net(readings, now)

@@ -17,9 +17,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
+from ...core.logs import per_frame
 from ...core.ports import CpuSource, GpuSource, MemorySource
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class CpuSourceChain(CpuSource):
@@ -48,19 +50,19 @@ class CpuSourceChain(CpuSource):
         return self._sources[0].name
 
     def temp(self) -> float | None:
-        log.debug("CpuSourceChain.temp: called")
+        frame_log.debug("CpuSourceChain.temp: called")
         return _first_not_none(self._sources, "temp")
 
     def usage(self) -> float | None:
-        log.debug("CpuSourceChain.usage: called")
+        frame_log.debug("CpuSourceChain.usage: called")
         return _first_not_none(self._sources, "usage")
 
     def freq(self) -> float | None:
-        log.debug("CpuSourceChain.freq: called")
+        frame_log.debug("CpuSourceChain.freq: called")
         return _first_not_none(self._sources, "freq")
 
     def power(self) -> float | None:
-        log.debug("CpuSourceChain.power: called")
+        frame_log.debug("CpuSourceChain.power: called")
         return _first_not_none(self._sources, "power")
 
 
@@ -92,31 +94,31 @@ class GpuSourceChain(GpuSource):
         return self._sources[0].is_discrete
 
     def temp(self) -> float | None:
-        log.debug("GpuSourceChain.temp: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.temp: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "temp")
 
     def usage(self) -> float | None:
-        log.debug("GpuSourceChain.usage: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.usage: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "usage")
 
     def clock(self) -> float | None:
-        log.debug("GpuSourceChain.clock: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.clock: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "clock")
 
     def power(self) -> float | None:
-        log.debug("GpuSourceChain.power: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.power: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "power")
 
     def fan(self) -> float | None:
-        log.debug("GpuSourceChain.fan: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.fan: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "fan")
 
     def vram_used(self) -> float | None:
-        log.debug("GpuSourceChain.vram_used: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.vram_used: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "vram_used")
 
     def vram_total(self) -> float | None:
-        log.debug("GpuSourceChain.vram_total: key=%s", self._sources[0].key)
+        frame_log.debug("GpuSourceChain.vram_total: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "vram_total")
 
 
@@ -129,19 +131,19 @@ class MemorySourceChain(MemorySource):
         self._sources: list[MemorySource] = list(sources)
 
     def used(self) -> float | None:
-        log.debug("MemorySourceChain.used: called")
+        frame_log.debug("MemorySourceChain.used: called")
         return _first_not_none(self._sources, "used")
 
     def available(self) -> float | None:
-        log.debug("MemorySourceChain.available: called")
+        frame_log.debug("MemorySourceChain.available: called")
         return _first_not_none(self._sources, "available")
 
     def total(self) -> float | None:
-        log.debug("MemorySourceChain.total: called")
+        frame_log.debug("MemorySourceChain.total: called")
         return _first_not_none(self._sources, "total")
 
     def percent(self) -> float | None:
-        log.debug("MemorySourceChain.percent: called")
+        frame_log.debug("MemorySourceChain.percent: called")
         return _first_not_none(self._sources, "percent")
 
 

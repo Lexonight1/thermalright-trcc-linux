@@ -14,9 +14,11 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from ...core.logs import per_frame
 from ...core.ports import GpuSource
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 try:
@@ -230,7 +232,7 @@ class NvidiaGpu(GpuSource):
         return True
 
     def temp(self) -> float | None:
-        log.debug("temp: idx=%d", self._index)
+        frame_log.debug("temp: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -241,7 +243,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def usage(self) -> float | None:
-        log.debug("usage: idx=%d", self._index)
+        frame_log.debug("usage: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -251,7 +253,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def clock(self) -> float | None:
-        log.debug("clock: idx=%d", self._index)
+        frame_log.debug("clock: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -262,7 +264,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def power(self) -> float | None:
-        log.debug("power: idx=%d", self._index)
+        frame_log.debug("power: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -272,7 +274,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def fan(self) -> float | None:
-        log.debug("fan: idx=%d", self._index)
+        frame_log.debug("fan: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -282,7 +284,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def vram_used(self) -> float | None:
-        log.debug("vram_used: idx=%d", self._index)
+        frame_log.debug("vram_used: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -292,7 +294,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def vram_total(self) -> float | None:
-        log.debug("vram_total: idx=%d", self._index)
+        frame_log.debug("vram_total: idx=%d", self._index)
         if pynvml is None:
             return None
         try:

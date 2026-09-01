@@ -188,6 +188,48 @@ def measure(frames: int, video: Path | None) -> tuple[int, collections.Counter]:
     return _tally(log_file, before, frames)
 
 
+#: Ordinary-logger sites a sensor tick is ALLOWED to write, as ``module:func``.
+#: Not a count: a count target is machine-dependent, because a box with a
+#: failing sensor legitimately emits ``_read``'s first-failure warning.  Line
+#: numbers are excluded deliberately -- they move, the decision does not.
+SENSOR_ALLOWED = {
+    # The payload: the one line of the tick that carries resolved values, and
+    # exactly what a `trcc report` is read for.  It STAYS on the ordinary
+    # logger; everything else on the tick moved to the frame family.
+    "trcc.core.ports:BaselineSensors.snapshot",
+}
+
+
+def measure_sensors(ticks: int) -> tuple[int, collections.Counter]:
+    """Records per SENSOR TICK, at default verbosity.  Needs no device.
+
+    The render arms cannot see this path at all: ``--gui`` drives frames with a
+    zero-interval timer, so 200 of them finish INSIDE one 2-second sensor tick
+    and the tick's records never land in the measured window.  Measured on real
+    hardware, ``--gui`` reports 0.03 records/frame and ZERO sensor records while
+    the sensor path was writing 39 records per tick -- 73% of a real log.
+
+    ``read_all`` is cache-gated, so a loop over ``snapshot()`` polls ONCE and
+    reports a confident 1/N.  ``_interval_s = 0`` defeats that; without it this
+    tool measures nothing and says so cheerfully.
+    """
+    from trcc.adapters.system import current_platform
+
+    log_file = _open_log()
+    sensors = current_platform().sensors()
+    sensors._interval_s = 0
+    for _ in range(WARMUP):                     # discovery lines are one-shot
+        sensors.snapshot()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    before = log_file.stat().st_size if log_file.exists() else 0
+    for _ in range(ticks):
+        sensors.snapshot()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    return _tally(log_file, before, ticks)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -196,20 +238,46 @@ def main() -> int:
     ap.add_argument("--video", type=Path, default=None)
     ap.add_argument("--gui", action="store_true",
                     help="measure inside the REAL GUI, so ui/ counts at all")
+    ap.add_argument("--sensors", action="store_true",
+                    help="measure the SENSOR TICK, which the frame arms cannot "
+                         "see; needs no device")
     args = ap.parse_args()
 
     if args.gui and args.video is not None:
         raise SystemExit("--gui measures whatever the GUI has loaded; "
                          "--video is for the headless arm")
-    frames, by_site = (measure_gui(args.frames) if args.gui
-                       else measure(args.frames, args.video))
+    if args.sensors and (args.gui or args.video is not None):
+        raise SystemExit("--sensors measures the sensor tick, not a render "
+                         "workload; run it on its own")
+
+    if args.sensors:
+        units, by_site = measure_sensors(args.frames)
+        unit, workload = "tick", "sensor tick"
+        # Site-based, not count-based: the payload line is SUPPOSED to be here.
+        # ``module:func:lineno [LEVEL]`` -> ``module:func``; the line number
+        # moves whenever the file does, the decision does not.
+        offenders = {
+            site: n for site, n in by_site.items()
+            if ":".join(site.split(":")[:2]) not in SENSOR_ALLOWED
+        }
+        target = f"only {len(SENSOR_ALLOWED)} allowed site(s)"
+    else:
+        units, by_site = (measure_gui(args.frames) if args.gui
+                          else measure(args.frames, args.video))
+        unit = "frame"
+        workload = "GUI" if args.gui else ("video" if args.video else "static theme")
+        offenders = dict(by_site)
+        target = "0.00"
+
     total = sum(by_site.values())
-    workload = "GUI" if args.gui else ("video" if args.video else "static theme")
-    print(f"# {total} record(s) over {frames} frames · {workload} · default -v")
-    print(f"# {total / frames:.2f} records/frame  (target: 0.00)")
+    print(f"# {total} record(s) over {units} {unit}s · {workload} · default -v")
+    print(f"# {total / units:.2f} records/{unit}  (target: {target})")
     for site, n in by_site.most_common():
-        print(f"{n / frames:9.3f}  {site}")
-    return 0 if total == 0 else 1
+        mark = " " if site not in offenders else "!"
+        print(f"{mark}{n / units:9.3f}  {site}")
+    if offenders:
+        print(f"# {len(offenders)} site(s) marked ! are not allowed on this path")
+    return 0 if not offenders else 1
 
 
 if __name__ == "__main__":

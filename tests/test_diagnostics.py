@@ -1,6 +1,7 @@
 """Diagnostics — health checks, doctor, debug report bundle."""
 from __future__ import annotations
 
+import ast
 import logging
 import re
 from pathlib import Path
@@ -1083,4 +1084,284 @@ def test_the_frame_path_gate_can_actually_see_a_flood(tmp_path: Path) -> None:
     assert any("pretend_rare:" in s for s in quiet), (
         "the once-per-transition emitter was flagged as a flood — the bar is "
         "too tight and the gate will fail on correct code"
+    )
+
+
+# =========================================================================
+# The sensor tick's frame family — Gate A
+#
+# The render path has ``record_rate.py``; the SENSOR tick had nothing.  Its
+# blind spot was proven on real hardware: ``record_rate --gui`` reports 0.03
+# records/frame and ZERO sensor records, because 200 flat-out frames finish
+# inside one 2-second sensor tick.  A per-tick line on the ordinary logger is
+# therefore invisible to every gate that existed, and it wrote 39 records per
+# tick -- 73% of a real ``~/.trcc/trcc.log``.
+#
+# Static and AST-ONLY on purpose.  Importing the tree to find subclasses
+# EXECUTES the CLI's typer app and prints its help; and a dynamic check can
+# only see backends that run on THIS box, so it would never notice a new
+# Windows or macOS source logging on the wrong logger.
+# =========================================================================
+
+_ROLE_PORTS = frozenset({
+    "CpuSource", "MemorySource", "GpuSource", "FanSource",
+    "DiskSource", "DramSource",
+})
+_LOG_LEVELS = frozenset({
+    "debug", "info", "warning", "error", "exception", "critical",
+})
+_SRC = Path(__file__).resolve().parents[1] / "src" / "trcc"
+
+
+def _classes_by_file() -> dict[Path, list[ast.ClassDef]]:
+    out: dict[Path, list[ast.ClassDef]] = {}
+    for path in sorted(_SRC.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text())
+        except SyntaxError:                       # pragma: no cover - not our code
+            continue
+        found = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+        if found:
+            out[path] = found
+    return out
+
+
+def _role_implementations() -> dict[Path, list[ast.ClassDef]]:
+    """Every class deriving from a role port, transitively, across ALL of src.
+
+    Transitively because a future ``class FooCpu(PsutilCpu)`` is just as
+    per-tick as ``class FooCpu(CpuSource)``; scanned across all of ``src`` so
+    that an implementation appearing OUTSIDE ``adapters/sensors`` is caught
+    rather than silently unscanned.
+    """
+    by_file = _classes_by_file()
+    names = {c.name: c for cs in by_file.values() for c in cs}
+    role: set[str] = set(_ROLE_PORTS)
+    for _ in range(len(names) + 1):               # closure, bounded
+        grew = False
+        for name, cls in names.items():
+            if name in role:
+                continue
+            bases = {b.id for b in cls.bases if isinstance(b, ast.Name)}
+            if bases & role:
+                role.add(name)
+                grew = True
+        if not grew:
+            break
+    return {
+        path: [c for c in cs if c.name in role and c.name not in _ROLE_PORTS]
+        for path, cs in by_file.items()
+        if any(c.name in role and c.name not in _ROLE_PORTS for c in cs)
+    }
+
+
+def _log_calls(fn: ast.AST) -> list[tuple[int, str, bool]]:
+    """(lineno, logger object, conditional?) for every log call in *fn*.
+
+    Conditional means guarded by an ``If`` or an ``ExceptHandler`` -- a failure
+    or fallback branch, which carries the REASON and belongs on the ordinary
+    logger where a reporter's log keeps it.  Everything else counts as
+    unconditional, deliberately: a call inside a ``for`` or ``with`` in a
+    per-tick method runs per tick just as surely as one at the top.
+    """
+    parent: dict[int, ast.AST] = {}
+    for node in ast.walk(fn):
+        for child in ast.iter_child_nodes(node):
+            parent[id(child)] = node
+    out = []
+    for node in ast.walk(fn):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if node.func.attr not in _LOG_LEVELS:
+            continue
+        obj = getattr(node.func.value, "id", "")
+        if obj not in {"log", "frame_log"}:
+            continue
+        conditional, cur = False, node
+        while id(cur) in parent:
+            cur = parent[id(cur)]
+            if isinstance(cur, (ast.If, ast.ExceptHandler)):
+                conditional = True
+            if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                break
+        out.append((node.lineno, obj, conditional))
+    return out
+
+
+def _role_port_members() -> frozenset[str]:
+    """The role ports' abstract member NAMES, read from ``core/ports.py``.
+
+    These and only these are per-tick BY CONSTRUCTION: ``_poll_once`` calls
+    every one of them on every source, every tick.  A role implementation's
+    OTHER methods are not -- ``HwmonDisk._identity`` is a ``@staticmethod``
+    called once from ``__init__``, and its two lines (serial vs directory name)
+    are exactly the one-shot diagnostics a reporter's log is read for.  An
+    earlier draft of this gate scanned every method and failed on that line,
+    which is how the over-reach was found before it shipped.
+    """
+    tree = ast.parse((_SRC / "core" / "ports.py").read_text())
+    owners = _ROLE_PORTS | {"IdentifiedSource"}
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ClassDef) and node.name in owners):
+            continue
+        for fn in node.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any((isinstance(d, ast.Name) and d.id == "abstractmethod")
+                   or (isinstance(d, ast.Attribute) and d.attr == "abstractmethod")
+                   for d in fn.decorator_list):
+                names.add(fn.name)
+    assert names, "no abstract role members found — ports.py shape changed"
+    return frozenset(names)
+
+
+def test_role_port_reads_log_on_the_frame_family() -> None:
+    """A per-tick sensor read may not write through the ordinary logger.
+
+    ``_poll_once`` calls every role-port member of every source on every tick,
+    so these methods are per-tick BY CONSTRUCTION -- which is what makes this
+    derivable rather than a hand-kept list.
+
+    MUTATION CHECK: change any unconditional ``frame_log.debug`` in
+    ``adapters/sensors`` back to ``log.debug`` and this fails, naming it.
+    It is gated BOTH ways.  Moving a CONDITIONAL line onto the frame family
+    fails too: those carry the failure reason, and silencing them by default
+    would hide from a reporter's log exactly the line that explains why a
+    sensor read nothing.  A one-directional rule is one nobody re-reads.
+    """
+    members = _role_port_members()
+    offenders = []
+    for path, classes in _role_implementations().items():
+        for cls in classes:
+            for fn in [n for n in cls.body
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                       and n.name in members]:
+                for lineno, obj, conditional in _log_calls(fn):
+                    want = "log" if conditional else "frame_log"
+                    if obj != want:
+                        why = ("a FAILURE branch carries the reason and belongs "
+                               "on the ordinary logger, where a reporter's log "
+                               "keeps it" if conditional else
+                               "this runs EVERY tick")
+                        offenders.append(
+                            f"{path.relative_to(_SRC)}:{lineno} "
+                            f"{cls.name}.{fn.name} uses `{obj}`, want "
+                            f"`{want}` — {why}"
+                        )
+    assert not offenders, (
+        "per-tick sensor reads logging through the ordinary logger -- each of "
+        "these writes a record EVERY tick, and the file floor is DEBUG at every "
+        "verbosity:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_role_port_implementations_all_live_in_the_sensors_adapter() -> None:
+    """Scanned across all of ``src``, so one appearing elsewhere is caught.
+
+    Measured 2026-09-01: 28 implementations, 12 files, none outside.  Scoping
+    the scan to ``adapters/sensors`` would make a stray implementation
+    invisible to the gate above rather than failing it.
+    """
+    stray = [
+        str(path.relative_to(_SRC))
+        for path in _role_implementations()
+        if not str(path.relative_to(_SRC)).startswith("adapters/sensors/")
+    ]
+    assert not stray, (
+        "role-port implementations outside adapters/sensors -- either move "
+        f"them or widen this gate deliberately: {stray}"
+    )
+
+
+#: Which logger each ``BaselineSensors`` member may use, measured 2026-09-01.
+#:
+#: A RECORD, not a derivation, and deliberately so: deriving from
+#: ``SensorEnumerator.__abstractmethods__`` is WRONG, because that set mixes
+#: per-tick accessors with one-shot lifecycle (``start_polling``), so a derived
+#: gate would demand lifecycle methods move onto the frame family.
+#:
+#: Nor can the ``If``/``ExceptHandler`` heuristic used for role ports apply
+#: here: ``_refresh_if_stale``'s branches are conditional AND per-tick, while
+#: ``_read``'s are conditional and are FAILURE branches.  The two need opposite
+#: answers, so the split is judged per member and written down.
+_ENUMERATOR_LOGGERS: dict[str, frozenset[str]] = {
+    # Per-tick: called on every poll, so every line they emit is per-tick.
+    "cpu": frozenset({"frame_log"}),
+    "memory": frozenset({"frame_log"}),
+    "gpus": frozenset({"frame_log"}),
+    "fans": frozenset({"frame_log"}),
+    "disks": frozenset({"frame_log"}),
+    "read_all": frozenset({"frame_log"}),
+    "_refresh_if_stale": frozenset({"frame_log"}),
+    # Per-tick too, and NOT one-shot: qtgui's SensorPickerWidget dispatches
+    # ReadSensors() on a 2-second QTimer.
+    "discover": frozenset({"frame_log"}),
+    # Both, by design: the entry/value line is per-tick (frame), the
+    # first-failure warning is the diagnostic a reporter needs (ordinary).
+    "_read": frozenset({"frame_log", "log"}),
+    "_poll_once": frozenset({"frame_log", "log"}),
+    # Lifecycle: fires once per start/stop, so it belongs in the file always.
+    "__init__": frozenset({"log"}),
+    "start_polling": frozenset({"log"}),
+    "stop_polling": frozenset({"log"}),
+    "_poll_loop": frozenset({"log"}),
+    # DEAD, not lifecycle — recorded as such so the disposition is not lost:
+    # abstract on the port, one implementation, ZERO callers in src/.  Retire
+    # it, or wire the single-sensor Query it implies; do not quietly classify.
+    "read_one": frozenset({"log"}),
+    # An empty extension hook called EVERY TICK from _poll_once.  A stub today,
+    # so the ratchet exempts it and it logs nothing.  The moment an OS
+    # overrides it, THE RULE demands a line and this entry says which logger.
+    "_poll_extra": frozenset(),
+}
+
+
+def _enumerator_methods() -> dict[str, ast.FunctionDef]:
+    tree = ast.parse((_SRC / "adapters" / "sensors" / "aggregator.py").read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "BaselineSensors":
+            return {
+                fn.name: fn for fn in node.body
+                if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+    raise AssertionError("BaselineSensors not found — aggregator.py shape changed")
+
+
+def test_every_enumerator_member_is_classified() -> None:
+    """No member may be added without deciding whether it is per-tick.
+
+    ``_poll_extra`` is why this exists: an empty per-tick extension hook that an
+    earlier draft of the record missed entirely, covering 10 of 16 members.
+    """
+    actual = set(_enumerator_methods())
+    recorded = set(_ENUMERATOR_LOGGERS)
+    assert actual == recorded, (
+        f"unclassified members (decide per-tick vs lifecycle): "
+        f"{sorted(actual - recorded)}\n"
+        f"stale record entries (member gone): {sorted(recorded - actual)}"
+    )
+
+
+def test_enumerator_members_use_their_recorded_logger() -> None:
+    """Asserted BOTH ways, so the record cannot rot unnoticed.
+
+    MUTATION CHECK: swap ``frame_log`` for ``log`` in any per-tick member and
+    this fails; do the reverse in ``start_polling`` and it fails too. A
+    one-directional record is one nobody re-reads —
+    ``test_recorded_ui_reach_matches_reality`` exists for the same reason.
+    """
+    wrong = {}
+    for name, fn in _enumerator_methods().items():
+        used = frozenset(obj for _, obj, _ in _log_calls(fn))
+        want = _ENUMERATOR_LOGGERS[name]
+        if used != want:
+            wrong[name] = (sorted(used), sorted(want))
+    assert not wrong, (
+        "enumerator members no longer match the record — update the code, or "
+        "the record AND its reason:\n  " + "\n  ".join(
+            f"{n}: uses {u}, recorded {w}" for n, (u, w) in sorted(wrong.items())
+        )
     )
