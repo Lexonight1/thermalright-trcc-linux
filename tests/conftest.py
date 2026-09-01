@@ -7,6 +7,7 @@ touching USB / SG_IO / ioctl.
 from __future__ import annotations
 
 import inspect
+import logging
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -609,3 +610,46 @@ def cli_app(fake_platform):
     _ctx.get_app.cache_clear()
     _ctx._platform_override = None
     _ctx._renderer_override = None
+
+
+# =========================================================================
+# Global logging state — restored around every test
+# =========================================================================
+
+@pytest.fixture(autouse=True)
+def _logging_state_is_not_global() -> Iterator[None]:
+    """Undo what a test does to the ROOT logger, because it is shared.
+
+    ``configure_logging`` sets the root level, sets the per-frame family's
+    level, and attaches three handlers -- and nothing put it back.  Two things
+    call it during the suite: ``test_diagnostics`` directly (16 times), and
+    EVERY CLI test that invokes a real command, because the Typer root callback
+    configures logging (measured: one ``CliRunner().invoke`` leaves root at
+    DEBUG with 3 handlers).  That is 125 invocations across five files.
+
+    Any test scheduled after one of those in the same xdist worker inherited
+    DEBUG, which is not hypothetical: it made
+    ``test_a_vanished_pin_warns_ONCE_across_many_polls`` and its neighbour fail
+    roughly one run in two, because an INFO line they did not expect became
+    visible to ``caplog``.  Those two were hardened in `cb524768`; this closes
+    the vector so the next victim never appears.
+
+    Handlers a test opened are CLOSED, not merely detached: ``configure_logging``
+    drops its own tagged handlers without closing them, so a suite that
+    reconfigures 141 times leaks that many file descriptors.
+    """
+    from trcc.adapters.infra.logging import _HANDLER_TAG
+    from trcc.core.logs import PER_FRAME_ROOT
+
+    root = logging.getLogger()
+    frame = logging.getLogger(PER_FRAME_ROOT)
+    before = (root.level, frame.level, list(root.handlers))
+    try:
+        yield
+    finally:
+        for handler in root.handlers:
+            if handler not in before[2] and getattr(handler, _HANDLER_TAG, False):
+                handler.close()
+        root.handlers[:] = before[2]
+        root.setLevel(before[0])
+        frame.setLevel(before[1])
