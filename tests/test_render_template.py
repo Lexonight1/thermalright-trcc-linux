@@ -101,3 +101,56 @@ def test_build_frame_rotate_panel_transposes_canvas_for_portrait(r: QtRenderer) 
         portrait, RenderContent(bg, None), 90, content_is_portrait=True,
     )
     assert len(at90) == 240 * 320 * 2
+
+
+# ── encode_rgb565: the wire bytes, which nothing tested ─────────────────────
+#
+# Every ``encode_rgb565`` in ``tests/`` is a STUB on a fake renderer (conftest,
+# test_ipc_server, test_mask_rendering, test_overlay_clock, test_display_rotation,
+# test_boot_animation_command).  The real encoder — the one producing the bytes
+# that every RGB565 device receives — had no test at all.
+#
+# These assert the FORMAT, not merely today's output, so they characterise the
+# contract rather than pinning an implementation: pure red is 0xF800 in RGB565
+# because the packing is 5-6-5, and ``byte_order`` decides which half goes first.
+
+
+def _mixed(r: QtRenderer, w: int, h: int) -> object:
+    """A surface with two distinct colours, so a byte swap is observable."""
+    base = _fill(r, w, h, (255, 0, 0))                 # red   -> 0xF800
+    return r.composite(base, _fill(r, w // 2, h, (0, 0, 255)), (0, 0))  # blue -> 0x001F
+
+
+def test_encode_rgb565_packs_five_six_five(r: QtRenderer) -> None:
+    """Red is 0xF800 and blue 0x001F — the 5-6-5 packing, not a guess."""
+    data = r.encode_rgb565(_fill(r, 2, 1, (255, 0, 0)), byte_order=">")
+    assert data == b"\xf8\x00\xf8\x00", data.hex()
+
+    data = r.encode_rgb565(_fill(r, 2, 1, (0, 0, 255)), byte_order=">")
+    assert data == b"\x00\x1f\x00\x1f", data.hex()
+
+
+def test_encode_rgb565_byte_order_swaps_each_pixel(r: QtRenderer) -> None:
+    """``byte_order`` swaps the two halves of every 16-bit word, nothing else.
+
+    Asserted on a MIXED surface: on a uniform one whose two bytes happened to
+    be equal, a broken swap would pass.
+    """
+    surface = _mixed(r, 8, 4)
+    big = r.encode_rgb565(surface, byte_order=">")
+    little = r.encode_rgb565(surface, byte_order="<")
+
+    assert len(big) == len(little) == 8 * 4 * 2
+    assert big != little, "the surface must contain a pixel whose bytes differ"
+    assert big[0::2] == little[1::2]
+    assert big[1::2] == little[0::2]
+
+
+def test_encode_rgb565_length_is_two_bytes_per_pixel(r: QtRenderer) -> None:
+    """Row padding must be stripped: Qt pads scanlines to a 4-byte boundary.
+
+    A 3-wide surface is 6 bytes per row of pixel data but Qt allocates 8, so an
+    encoder that returned the raw buffer would hand the device 33% too much and
+    shear the image.
+    """
+    assert len(r.encode_rgb565(_fill(r, 3, 5, (255, 0, 0)), byte_order=">")) == 3 * 5 * 2

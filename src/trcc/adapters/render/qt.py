@@ -6,6 +6,7 @@ DI.  Encapsulates every Qt call; everything else stays framework-blind.
 """
 from __future__ import annotations
 
+import array
 import logging
 import sys
 from pathlib import Path
@@ -301,16 +302,22 @@ class QtRenderer(Renderer):
         else:
             data = b"".join(raw[y * bpl:y * bpl + w * 2] for y in range(h))
 
-        # Format_RGB16 is native-endian; swap if device expects the
-        # other byte order.
-        if byte_order == ">" and sys.byteorder == "little":
-            arr = bytearray(data)
-            arr[0::2], arr[1::2] = arr[1::2], arr[0::2]
-            return bytes(arr)
-        if byte_order == "<" and sys.byteorder == "big":
-            arr = bytearray(data)
-            arr[0::2], arr[1::2] = arr[1::2], arr[0::2]
-            return bytes(arr)
+        # Format_RGB16 is native-endian; swap if the device expects the other.
+        #
+        # ``array.byteswap()`` rather than the strided
+        # ``arr[0::2], arr[1::2] = arr[1::2], arr[0::2]`` this replaces: that
+        # walked a 204,800-byte frame FIVE times (bytearray copy, two strided
+        # slice reads, the assignment, bytes copy).  One C-level pass instead —
+        # measured 144.3us -> 85.7us per frame, byte-identical on random data.
+        # Profiled against an MP4 background (the only regime that renders
+        # continuously, ~16fps), this function was 17% of the render path and
+        # the swap was essentially all of its self-time.
+        native = ">" if sys.byteorder == "big" else "<"
+        if byte_order != native:
+            words = array.array("H")
+            words.frombytes(data)          # raises on odd length; RGB565 is 2B/px
+            words.byteswap()
+            return words.tobytes()
         return data
 
     def encode_jpeg(self, surface: Any, quality: int = 95,
