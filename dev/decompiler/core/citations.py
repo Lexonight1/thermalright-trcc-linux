@@ -58,7 +58,18 @@ _FENCED = re.compile(r"^\s*(\d{2,5}):(.*)$")
 _SUBJECT = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+\**`([A-Za-z_]\w*)\s*(?:\([^`]*\))?`")
 # Appositive — the citation first, the method named after it:
 # ``- `Form1.cs:319-357` — `OnPowerModeChanged`. …``
-_APPOSITIVE = re.compile(r"`[A-Za-z0-9_]+\.cs:[\d\s,-]+`[^`\w]{0,6}`([A-Za-z_]\w*)")
+#
+# The trailing ``(?!\w*\.cs)`` is load-bearing.  Without it, consecutive
+# citations bind to each other: ``declared at `FormCZTV.cs:506`,
+# `FormCZTV.cs:508`…`` matched the FIRST citation, skipped ``, ``, and captured
+# ``FormCZTV`` — the STEM OF THE NEXT CITATION'S FILENAME — as if it were a
+# method.  That anchor then never holds, so a citation that was EXACTLY right
+# (506/508/510 are the `_firstImages`/`_secondImages`/`_thirdImages`
+# declarations in 2.1.6) was reported broken.  Three of the six "broken"
+# citations in AUDIT_LCD_PIPELINE.md were this, not stale docs.  A capture
+# followed by ``.cs`` is a filename; it is never a subject.
+_APPOSITIVE = re.compile(
+    r"`[A-Za-z0-9_]+\.cs:[\d\s,-]+`[^`\w]{0,6}`([A-Za-z_]\w*)(?!\w*\.cs)")
 
 # C# keywords and other words that appear on every other line: as an anchor they
 # are satisfied by any tree, so they carry no evidence and are skipped.
