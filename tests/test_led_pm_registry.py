@@ -392,3 +392,78 @@ def test_led_connect_cache_fallback_preserves_magic_qube(
     assert hs is not None
     assert hs.style is LedStyle.MAGIC_QUBE
     assert hs.model_name == "MAGIC_QUBE"
+
+
+# ── ListLedStyles capability columns ─────────────────────────────────
+#
+# The Query had NO test at all, which is how it shipped telling users that a
+# 4-zone cooler has none: it derived ``zone_count`` from
+# ``len(SegmentDisplay.zone_led_map)``, and that map is ``None`` for every
+# style whose zones are not individually LED-mapped — 8 of the 12 registered
+# styles.  ``trcc led list-styles`` and ``GET /led/styles`` both print it.
+
+
+def _style_entries():
+    import tempfile
+
+    from trcc.app import App
+    from trcc.core.commands import ListLedStyles
+
+    from .conftest import FakePlatform
+
+    app = App(platform=FakePlatform(Path(tempfile.mkdtemp())))
+    return app.dispatch(ListLedStyles()).styles
+
+
+def test_reported_zone_count_is_the_styles_real_zone_count() -> None:
+    """Every row's ``zone_count`` is the number the GUI draws buttons from."""
+    from trcc.core.led_models import LED_STYLES
+    from trcc.core.models import LedStyle
+
+    for entry in _style_entries():
+        expected = LED_STYLES[LedStyle(entry.style)].zone_count
+        assert entry.zone_count == expected, (
+            f"{entry.style}: ListLedStyles says {entry.zone_count} zone(s), "
+            f"LedStyleSpec says {expected} — and the GUI renders its zone "
+            f"buttons from the latter"
+        )
+
+
+def test_no_multi_zone_style_is_reported_as_zoneless() -> None:
+    """The assertion the API test was missing.
+
+    ``test_api_routes`` checks only that SOME style reports 4 zones, which
+    passed on the two styles that happen to carry a ``zone_led_map`` while
+    eight others reported 0.  A floor over the whole set is what catches that.
+    """
+    from trcc.core.led_models import LED_STYLES
+    from trcc.core.models import LedStyle
+
+    zeroed = [
+        e.style for e in _style_entries()
+        if e.zone_count == 0 and LED_STYLES[LedStyle(e.style)].zone_count > 1
+    ]
+    assert not zeroed, (
+        f"reported as zoneless while the spec gives them zones: {zeroed}"
+    )
+
+
+def test_zone_led_map_agrees_with_the_declared_zone_count() -> None:
+    """Two sources for one number, pinned to agree.
+
+    ``zone_count`` now has ONE source (``LedStyleSpec``).  A display that also
+    carries a ``zone_led_map`` is a second description of the same fact, and
+    the only reason using one of them is safe is that they match — so that is
+    asserted rather than assumed.
+    """
+    from trcc.core.led_models import LED_STYLES
+    from trcc.services.led_segment import get_display
+
+    for style, spec in LED_STYLES.items():
+        display = get_display(style)
+        if display is None or display.zone_led_map is None:
+            continue
+        assert len(display.zone_led_map) == spec.zone_count, (
+            f"{style.value}: zone_led_map has {len(display.zone_led_map)} "
+            f"entries but LedStyleSpec declares {spec.zone_count} zones"
+        )

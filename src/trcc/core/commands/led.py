@@ -952,16 +952,28 @@ class ListLedStyles(Query[LedStylesListResult]):
         from ..led_protocol import _PM_REGISTRY
         styles = []
         for pm, entry in sorted(_PM_REGISTRY.items()):
-            # Capability columns come from the SegmentDisplay registry:
-            # mask_size = segment count, zone_led_map length = independent
-            # zones.  Non-segment styles (no display) report 0/0.
+            # The two capability columns come from DIFFERENT sources, and
+            # that is deliberate rather than an oversight:
+            #
+            # segment_count <- SegmentDisplay.mask_size, the size of the
+            #   per-element on/off mask.  It matches what the GUI preview
+            #   actually draws (``len(STYLE_POSITIONS[style_id])``) for 9 of
+            #   13 styles; ``LedStyleSpec.segment_count`` matches it for NONE,
+            #   so the live display is the better answer.
+            #
+            # zone_count <- LedStyleSpec.zone_count, because it is the number
+            #   the GUI renders zone buttons from
+            #   (``btn.setVisible(i < zone_count and zone_count > 1)``).  This
+            #   used to read ``len(zone_led_map)`` and reported **0 zones for
+            #   11 of 13 styles** — that map is None for every style whose
+            #   zones are not individually LED-mapped, so `trcc led
+            #   list-styles` and GET /led/styles told users a 4-zone cooler
+            #   had none.  Where a map DOES exist the two agree (pa120 4/4,
+            #   lf10 3/3), and a test pins that agreement so this stays one
+            #   answer with a second source checking it, not two answers.
             display = get_display(entry.style)
             segment_count = display.mask_size if display is not None else 0
-            zone_count = (
-                len(display.zone_led_map)
-                if display is not None and display.zone_led_map is not None
-                else 0
-            )
+            zone_count = LED_STYLES[entry.style].zone_count
             styles.append(LedStyleEntry(
                 style=entry.style.value,
                 model_name=entry.model_name,
@@ -970,6 +982,12 @@ class ListLedStyles(Query[LedStylesListResult]):
                 segment_count=segment_count,
                 zone_count=zone_count,
             ))
+        log.debug(
+            "ListLedStyles.execute: %d entry(ies), %d distinct style(s); "
+            "zones=%s",
+            len(styles), len({e.style for e in styles}),
+            {e.style: e.zone_count for e in styles},
+        )
         return LedStylesListResult(
             ok=True, styles=styles,
             message=f"{len(styles)} style entry(ies)",

@@ -46,7 +46,10 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: 1342 -> 1341 the same day: ``ResetDevice.execute`` likewise, when it stopped
 #: being a copy of DisconnectDevice and became a real disconnect-reconnect-
 #: restore cycle whose three steps each need to be readable in a report.
-MAX_SILENT = 1341
+#: 1341 -> 1340 on 2026-09-02: ``ListLedStyles.execute`` reported nothing while
+#: it was telling users an 8-of-12 wrong answer, so the line names the zone
+#: counts it resolved rather than that it ran.
+MAX_SILENT = 1340
 
 
 def test_logging_coverage_only_improves() -> None:
