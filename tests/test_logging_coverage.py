@@ -43,7 +43,10 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: 1343 -> 1342 on 2026-09-02: ``DisconnectDevice.execute`` got the entry log
 #: THE RULE requires, in the pass that gave it the shutdown blank.  It was the
 #: one device-release path that reported nothing about why it did what it did.
-MAX_SILENT = 1342
+#: 1342 -> 1341 the same day: ``ResetDevice.execute`` likewise, when it stopped
+#: being a copy of DisconnectDevice and became a real disconnect-reconnect-
+#: restore cycle whose three steps each need to be readable in a report.
+MAX_SILENT = 1341
 
 
 def test_logging_coverage_only_improves() -> None:

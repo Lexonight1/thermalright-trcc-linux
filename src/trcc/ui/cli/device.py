@@ -115,11 +115,14 @@ def disconnect(key: str = typer.Argument(...)) -> None:
 
 @app.command("reset")
 def reset(key: str = typer.Argument(...)) -> None:
-    """Disconnect + clear cached state for a device.
+    """Power-cycle a device: disconnect, reconnect, restore its display.
 
-    Use this when the LCD seems stuck — drops any cached frame, theme,
-    and runtime counters.  Re-running `connect` after this starts
-    completely fresh.
+    Use this when the LCD seems stuck.  The connection is torn down and
+    rebuilt and the persisted theme is put back, so the panel ends up
+    showing what it showed before — no second `connect` needed.
+
+    Not the same as blanking the panel to a known colour; that is
+    `trcc display reset`, which leaves the device connected.
     """
     log.info("cli device reset: key=%s", key)
     result = get_app().dispatch(ResetDevice(key=key))

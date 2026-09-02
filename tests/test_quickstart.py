@@ -39,13 +39,69 @@ def test_quickstart_every_step_has_hint_when_not_ok(_trcc_app) -> None:
             )
 
 
-def test_reset_device_when_attached(_trcc_app, fake_platform) -> None:
-    """ResetDevice after a successful attach clears state + reports ok."""
-    from trcc.core.commands import ResetDevice
+def test_reset_cycles_the_device_and_restores_its_display(tmp_path) -> None:
+    """Reset is a POWER-CYCLE: disconnect, reconnect, put the display back.
 
-    # Wire up a device manually via the App's machinery — FakePlatform
-    # has no real handshake but attach()/detach() round-trip cleanly.
+    It used to be ``DisconnectDevice`` byte for byte — same guard, same
+    ``app.detach``, same event, only the message differed — so ``trcc device
+    reset`` on a stuck panel left it dark AND disconnected, and the docstring
+    told the user to run ``connect`` themselves.
+
+    Two things must hold and BOTH are asserted, because asserting only the
+    first passes with the restore deleted: the device is ATTACHED again, and
+    its persisted theme is ACTIVE again.  ``app.detach`` pops
+    ``active_themes``, so a theme present afterwards can only have been put
+    back by the restore step.
+    """
+    import json
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice, ResetDevice
+
+    from .mock_platform import MockPlatform
+
+    key = "0402:3922"
+    app = App(MockPlatform(
+        [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}], tmp_path,
+    ), renderer=QtRenderer())
+    app.attach(0x0402, 0x3922)
+    assert app.dispatch(ConnectDevice(key=key)).ok
+
+    theme_dir = tmp_path / "persisted"
+    theme_dir.mkdir(parents=True)
+    (theme_dir / "trcc.json").write_text(json.dumps(
+        {"name": "persisted", "width": 320, "height": 320, "elements": []},
+    ), encoding="utf-8")
+    (theme_dir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    app.settings.set_current_theme(key, str(theme_dir.resolve()))
+
+    result = app.dispatch(ResetDevice(key=key))
+
+    assert result.ok, result.message
+    assert key in app.devices, (
+        "reset left the device detached — that is a disconnect, not a reset"
+    )
+    assert app.devices[key].is_connected
+    assert key in app.active_themes, (
+        "the device came back with no theme — detach pops active_themes, so "
+        "the restore step is the only thing that can put it back"
+    )
+    assert app.active_themes[key].name == "persisted"
+    assert "restored" in result.message
+
+
+def test_reset_reports_failure_when_the_device_does_not_come_back(
+    _trcc_app, fake_platform,
+) -> None:
+    """A device that cannot reconnect must NOT report a successful reset.
+
+    The old command could not fail this way — it only detached — so a reset
+    that left nothing attached still said ok.  Driven with a stub device that
+    ``FakePlatform`` cannot re-attach, which is exactly that case.
+    """
+    from trcc.core.commands import ResetDevice
     from trcc.core.models import Kind, ProductInfo, Wire
+
     info = ProductInfo(
         vid=0xdead, pid=0xbeef,
         vendor="Test", product="Stub",
@@ -53,20 +109,22 @@ def test_reset_device_when_attached(_trcc_app, fake_platform) -> None:
         native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),
     )
-    # Inject a fake device into app.devices directly so we can test the
-    # detach + state-clear path without a real handshake.
+
     class _StubDevice:
         def __init__(self, info: ProductInfo) -> None:
             self.info = info
             self.is_connected = False
             self.key = info.key
+
         def disconnect(self) -> None:
             self.is_connected = False
+
     _trcc_app.devices[info.key] = _StubDevice(info)  # type: ignore[assignment]
 
     result = _trcc_app.dispatch(ResetDevice(key="dead:beef"))
-    assert result.ok is True
-    assert "dead:beef" in result.message
+
+    assert result.ok is False
+    assert "did not come back" in result.message
     assert "dead:beef" not in _trcc_app.devices
 
 

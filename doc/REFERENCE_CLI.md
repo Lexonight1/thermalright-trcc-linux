@@ -345,7 +345,7 @@ trcc device list
 
 ### `trcc device reset`
 
-Disconnect + clear cached state for a device. Use this when the LCD seems stuck — drops any cached frame, theme, and runtime counters. Re-running `connect` after this starts completely fresh.
+Power-cycle a device: disconnect, reconnect, restore its display. Use this when the LCD seems stuck. The connection is torn down and rebuilt and the persisted theme is put back, so the panel ends up showing what it showed before — no second `connect` needed. Not the same as blanking the panel to a known colour; that is `trcc display reset`, which leaves the device connected.
 
 ```bash
 trcc device reset KEY

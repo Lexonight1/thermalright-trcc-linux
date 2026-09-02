@@ -2741,25 +2741,64 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
 
 @dataclass(frozen=True, slots=True)
 class ResetDevice(Command[DisconnectResult]):
-    """Disconnect + drop cached state for a device.
+    """Power-cycle one device: disconnect, reconnect, put its display back.
 
-    Equivalent of legacy's ``reset()`` — gives users a clean slate
-    without having to remember to call disconnect explicitly.  Re-runs
-    of ConnectDevice after this start with no cached frame or theme.
+    What a user means by "reset" when a panel is stuck — the connection is
+    torn down and rebuilt, then the persisted theme + background override are
+    restored, so the device ends up showing what it showed before rather than
+    sitting dark waiting for a second command.
+
+    **This is not legacy's ``reset()``.**  That sends a red test frame and
+    leaves the device connected, and it is ported faithfully elsewhere as
+    ``POST /devices/{key}/display/reset``.  This Command cited that lineage in
+    its docstring for the whole of the rebuild while doing something else, and
+    what it actually did was ``DisconnectDevice`` byte for byte — same guard,
+    same ``app.detach``, same event, differing only in the message string.  It
+    told the user "disconnect AND clear cached state" when ``disconnect``
+    already cleared exactly the same state, and then left a stuck panel dark
+    and disconnected, which is the opposite of what "reset" promises.
+
+    Composing the three Commands is what makes the name true and retires the
+    duplication without withdrawing a shipped CLI verb and REST route.
     """
     key: str
 
     def execute(self, app: App) -> DisconnectResult:
+        log.info("ResetDevice: key=%s", self.key)
         if self.key not in app.devices:
+            log.warning("ResetDevice %s: not attached", self.key)
             return DisconnectResult(
                 ok=False, key=self.key,
                 message=f"{self.key} is not attached — nothing to reset.",
             )
-        app.detach(self.key)
-        app.events.publish(DeviceDisconnected(key=self.key))
+        # ``RestoreDeviceState`` lives in ``theme.py``, which imports this
+        # module for ``PlayVideo`` — so it is imported here, not at module
+        # level, the same way ``SleepDevice`` reaches ``SetLedColors``.
+        from .theme import RestoreDeviceState
+
+        DisconnectDevice(key=self.key).execute(app)
+        connect = ConnectDevice(key=self.key).execute(app)
+        if not connect.ok:
+            # The device is DOWN and the user asked for it to come back.  Say
+            # so plainly rather than reporting a successful "reset" that left
+            # nothing attached.
+            log.warning("ResetDevice %s: reconnect failed — %s",
+                        self.key, connect.message)
+            return DisconnectResult(
+                ok=False, key=self.key,
+                message=(f"Reset {self.key}: disconnected, but it did not come "
+                         f"back — {connect.message}"),
+            )
+        # A device with nothing persisted has nothing to restore, and that is
+        # a normal answer, not a failed reset — the cycle still happened.
+        restore = RestoreDeviceState(key=self.key).execute(app)
+        log.info("ResetDevice %s: reconnected; restore ok=%s (%s)",
+                 self.key, restore.ok, restore.message)
+        detail = ("display restored" if restore.ok
+                  else f"nothing to restore — {restore.message}")
         return DisconnectResult(
             ok=True, key=self.key,
-            message=f"Reset {self.key} — caches cleared, theme dropped.",
+            message=f"Reset {self.key} — reconnected, {detail}.",
         )
 
 @dataclass(frozen=True, slots=True)

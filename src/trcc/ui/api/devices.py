@@ -75,11 +75,18 @@ def connect(key: str, request: Request):
 
 @router.post("/{key}/reset")
 def reset(key: str, request: Request) -> DisconnectResult:
-    """Disconnect AND drop cached state, so the next connect starts clean.
+    """Power-cycle the device: disconnect, reconnect, restore its display.
+
+    For a panel that is stuck — the connection is rebuilt and the persisted
+    theme + background are put back, so the device is left showing what it
+    showed before rather than disconnected.
 
     Distinct from ``POST /devices/{key}/display/reset``, which blanks the panel
     to a known colour and leaves the device connected.  This is the CLI's
     ``device reset``, which had no REST equivalent.
+
+    ``ok=False`` means the device did not come back; the message carries the
+    connect failure.
     """
     log.info("api POST /devices/{key}/reset: key=%s", key)
     result = request.app.state.trcc.dispatch(ResetDevice(key=key))
