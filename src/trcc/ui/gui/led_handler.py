@@ -114,7 +114,6 @@ class LEDHandler(BaseHandler):
         spec = LED_STYLES[led_style]
         self._panel.initialize(
             self._style_id_int,
-            spec.segment_count,
             spec.zone_count,
             model=spec.model_name,
         )

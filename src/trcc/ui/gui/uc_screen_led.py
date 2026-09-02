@@ -494,15 +494,22 @@ class UCScreenLED(QWidget):
         log.info("UCScreenLED.__init__: default style_id=1 leds=%d",
                  self._led_count)
 
-    def set_style(self, style_id: int, segment_count: int) -> None:
-        """Configure for a specific LED device style."""
-        log.info(
-            "UCScreenLED.set_style: %d -> %d segment_count=%d",
-            self._style_id, style_id, segment_count,
-        )
+    def set_style(self, style_id: int) -> None:
+        """Configure for a specific LED device style.
+
+        The element count is DERIVED from ``STYLE_POSITIONS`` — the
+        byte-for-byte port of legacy's per-product position arrays — and not
+        passed in.  It used to take a ``segment_count`` argument that this
+        method logged and then ignored, sourced from a
+        ``LedStyleSpec.segment_count`` that matched the real count for NONE of
+        the thirteen styles.  A parameter no caller can influence is a lie
+        about where the number comes from.
+        """
         self._style_id = style_id
         self._positions = STYLE_POSITIONS.get(style_id, _POS_1)
         self._led_count = len(self._positions)
+        log.info("UCScreenLED.set_style: %d -> %d, %d element(s)",
+                 self._style_id, style_id, self._led_count)
         self._colors = [(0, 0, 0)] * self._led_count
         from ...core.led_models import LED_DEFAULT_OFF
         off = LED_DEFAULT_OFF.get(style_id, frozenset())

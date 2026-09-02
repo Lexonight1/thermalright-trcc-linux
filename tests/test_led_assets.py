@@ -35,7 +35,7 @@ def test_multizone_panel_zone_buttons_render(style, qtbot) -> None:
     image — not the blank flat fallback."""
     spec = LED_STYLES[style]
     panel = _panel(qtbot)
-    panel.initialize(LEGACY_STYLE_ID[style], spec.segment_count,
+    panel.initialize(LEGACY_STYLE_ID[style],
                      spec.zone_count, model=spec.model_name)
 
     for i in range(spec.zone_count):
@@ -57,7 +57,7 @@ def test_singlezone_panel_hides_zone_buttons(style, qtbot) -> None:
     """A zero-zone style (LC2/LF13) shows no zone buttons or carousel."""
     spec = LED_STYLES[style]
     panel = _panel(qtbot)
-    panel.initialize(LEGACY_STYLE_ID[style], spec.segment_count,
+    panel.initialize(LEGACY_STYLE_ID[style],
                      spec.zone_count, model=spec.model_name)
 
     assert not any(b.isVisibleTo(panel) for b in panel._zone_buttons), \
@@ -74,7 +74,7 @@ def test_panel_sections_match_led_panel_model(style, qtbot) -> None:
     spec = LED_STYLES[style]
     sid = LEGACY_STYLE_ID[style]
     panel = _panel(qtbot)
-    panel.initialize(sid, spec.segment_count, spec.zone_count,
+    panel.initialize(sid, spec.zone_count,
                      model=spec.model_name)
     m = led_panel_for(sid)
 
@@ -98,7 +98,7 @@ def test_page_selector_buttons_are_metric_labeled(style, qtbot) -> None:
     sid = LEGACY_STYLE_ID[style]
     disp = led_display_for(sid)
     panel = _panel(qtbot)
-    panel.initialize(sid, spec.segment_count, spec.zone_count,
+    panel.initialize(sid, spec.zone_count,
                      model=spec.model_name)
 
     if disp.selector is LedSelector.PAGE:
@@ -116,7 +116,7 @@ def test_circulate_toggle_emits_full_enabled_mask(qtbot) -> None:
     spec = LED_STYLES[LedStyle.AX120]          # PAGE style, 4 metric pages
     sid = LEGACY_STYLE_ID[LedStyle.AX120]
     panel = _panel(qtbot)
-    panel.initialize(sid, spec.segment_count, spec.zone_count,
+    panel.initialize(sid, spec.zone_count,
                      model=spec.model_name)
 
     masks: list[list[bool]] = []
@@ -158,7 +158,7 @@ def test_carousel_and_interval_visibility_follow_selector(style, qtbot) -> None:
     sid = LEGACY_STYLE_ID[style]
     sel = led_display_for(sid).selector
     panel = _panel(qtbot)
-    panel.initialize(sid, spec.segment_count, spec.zone_count,
+    panel.initialize(sid, spec.zone_count,
                      model=spec.model_name)
 
     has_selector = sel is not LedSelector.NONE

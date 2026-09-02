@@ -927,14 +927,13 @@ class UCLedControl(QWidget):
     # Public API
     # ================================================================
 
-    def initialize(self, style_id: int, segment_count: int,
+    def initialize(self, style_id: int,
                    zone_count: int = 1,
                    model: str = '') -> None:
         """Configure for a specific LED device style.
 
         Args:
             style_id: LED device style (1-12).
-            segment_count: Number of LED segments.
             zone_count: Number of independent zones.
             model: Device model name (for PM-specific preview image).
         """
@@ -943,7 +942,7 @@ class UCLedControl(QWidget):
         self._model = model
 
         self._preview.setVisible(True)
-        self._preview.set_style(style_id, segment_count)
+        self._preview.set_style(style_id)
 
         # Load device preview background (PM-specific or style default)
         from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID, PmRegistry

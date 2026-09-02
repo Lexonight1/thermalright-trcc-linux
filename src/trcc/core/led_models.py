@@ -175,7 +175,7 @@ class LedStyleSpec:
     """LED-strip layout metadata + asset basenames for one style.
 
     Used by the legacy-style RGB-control panel:
-      * ``led_count`` / ``segment_count`` — sizing the preview + masks
+      * ``led_count`` — sizing the preview + masks
       * ``zone_count`` — how many zone buttons to show (1 = single-zone)
       * ``model_name`` — title-bar string ("AX120_DIGITAL")
       * ``preview_image`` — device-image asset for the preview pane
@@ -185,7 +185,6 @@ class LedStyleSpec:
         means "use the panel's flat fallback styling".
     """
     led_count: int
-    segment_count: int
     zone_count: int
     model_name: str
     preview_image: str
@@ -249,45 +248,45 @@ _ZONE_BTN_N: tuple[tuple[str, str], ...] = (
 
 
 LED_STYLES: dict[LedStyle, LedStyleSpec] = {
-    LedStyle.AX120: LedStyleSpec(30,  10, 4, "AX120_DIGITAL",
+    LedStyle.AX120: LedStyleSpec(30, 4, "AX120_DIGITAL",
                                  "led_preview_ax120", "led_bg_segment",
                                  zone_assets=_ZONE_BTN_MODE14),
-    LedStyle.PA120: LedStyleSpec(84,  18, 4, "PA120_DIGITAL",
+    LedStyle.PA120: LedStyleSpec(84, 4, "PA120_DIGITAL",
                                  "led_preview_pa120", "led_bg_segment_4zone",
                                  zone_assets=_ZONE_BTN_MODE14),
-    LedStyle.AK120: LedStyleSpec(64,  10, 2, "AK120_DIGITAL",
+    LedStyle.AK120: LedStyleSpec(64, 2, "AK120_DIGITAL",
                                  "led_preview_ak120", "led_bg_segment",
                                  zone_assets=_ZONE_BTN_MODE56),
-    LedStyle.LC1:   LedStyleSpec(31,  14, 3, "LC1",
+    LedStyle.LC1:   LedStyleSpec(31, 3, "LC1",
                                  "led_preview_lc1",   "led_bg_lc1",
                                  zone_assets=_ZONE_BTN_N),
-    LedStyle.LF8:   LedStyleSpec(93,  23, 2, "LF8",
+    LedStyle.LF8:   LedStyleSpec(93, 2, "LF8",
                                  "led_preview_lf8",   "led_bg_lf8",
                                  zone_assets=_ZONE_BTN_MODE56),
-    LedStyle.LF12:  LedStyleSpec(124, 72, 2, "LF12",
+    LedStyle.LF12:  LedStyleSpec(124, 2, "LF12",
                                  "led_preview_lf12",  "led_bg_lf12",
                                  zone_assets=_ZONE_BTN_MODE56),
-    LedStyle.LF10:  LedStyleSpec(116, 12, 3, "LF10",
+    LedStyle.LF10:  LedStyleSpec(116, 3, "LF10",
                                  "led_preview_lf10",  "led_bg_lf10",
                                  zone_assets=_ZONE_BTN_N),
-    LedStyle.CZ1:   LedStyleSpec(18,  13, 4, "CZ1",
+    LedStyle.CZ1:   LedStyleSpec(18, 4, "CZ1",
                                  "led_preview_cz1",   "led_bg_cz1",
                                  zone_assets=_ZONE_BTN_N),
-    LedStyle.LC2:   LedStyleSpec(61,  31, 0, "LC2",
+    LedStyle.LC2:   LedStyleSpec(61, 0, "LC2",
                                  "led_preview_lc2",   "led_bg_lc2"),
-    LedStyle.LF11:  LedStyleSpec(38,  17, 4, "LF11",
+    LedStyle.LF11:  LedStyleSpec(38, 4, "LF11",
                                  "led_preview_lf11",  "led_bg_lf11",
                                  zone_assets=_ZONE_BTN_N),
-    LedStyle.LF15:  LedStyleSpec(93,  72, 2, "LF15",
+    LedStyle.LF15:  LedStyleSpec(93, 2, "LF15",
                                  "led_preview_lf15",  "led_bg_lf15",
                                  zone_assets=_ZONE_BTN_MODE56),
-    LedStyle.LF13:  LedStyleSpec(62,  62, 0, "LF13",
+    LedStyle.LF13:  LedStyleSpec(62, 0, "LF13",
                                  "led_preview_lf13",  "led_bg_lf13"),
     # Magic Qube — 65 LEDs: two 7-seg digits (3 LEDs/segment, LED 0-41) + 4
     # corner metric indicators (42-49) + a 15-LED contour border (50-64).
     # Same 2-digit / 4-phase design as CZ1.  Reuses the generic segment assets
     # until dedicated art is added.
-    LedStyle.MAGIC_QUBE: LedStyleSpec(65, 14, 4, "MAGIC_QUBE",
+    LedStyle.MAGIC_QUBE: LedStyleSpec(65, 4, "MAGIC_QUBE",
                                       "led_preview_cz1", "led_bg_segment",
                                       zone_assets=_ZONE_BTN_N),
 }
