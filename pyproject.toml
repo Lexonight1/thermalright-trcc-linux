@@ -170,7 +170,15 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short -n auto"
 # pyusb 1.3.1 uses _pack_ in ctypes — deprecated in Python 3.14 (pyusb#535)
 # Remove once pyusb releases a fix with _layout_ = 'ms'
+# An unexplained warning is a defect nobody has read yet.  This was a COUNT in
+# the run summary until 2026-09-02 — "1 warning" that survived six clean runs,
+# appeared once, and turned out to be `configure_logging` leaking two file
+# descriptors on every reconfigure, surfacing whenever the GC happened to
+# finalise them.  A number you can scroll past is not a gate; an error is.
+# Filters apply in order and the LAST match wins, so the usb ignore below must
+# stay after "error".
 filterwarnings = [
+    "error",
     "ignore::DeprecationWarning:usb.*",
 ]
 

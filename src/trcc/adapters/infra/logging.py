@@ -160,9 +160,26 @@ def configure_logging(
 
     # Drop any handlers we installed previously — leave foreign handlers
     # (pytest's capture handler, e.g.) untouched.
+    #
+    # CLOSED, not merely detached.  Removing a FileHandler from the logger
+    # drops the last reference to it, and the OS file descriptor lives until
+    # the GC finalises the object — surfacing as
+    # ``PytestUnraisableExceptionWarning: Exception ignored in <_io.FileIO
+    # name='.../trcc.log' mode='ab'>`` at whatever unrelated moment that
+    # happens to be.  Every reconfigure leaked two descriptors (the rotating
+    # log and ``latest``), which matters for the daemon this loop exists to
+    # support: the comment above says it is here so a daemon can reconfigure
+    # without piling up duplicate handlers.
+    #
+    # Safe for all three of ours, verified rather than assumed:
+    # ``StreamHandler.close()`` does NOT close the underlying stream, so the
+    # stderr handler leaves stderr writable; ``Handler.close()`` is idempotent,
+    # so the test fixture that also closes them cannot double-free; and all
+    # three are attached to ``root`` alone, so nothing else is still using one.
     for handler in list(root.handlers):
         if getattr(handler, _HANDLER_TAG, False):
             root.removeHandler(handler)
+            handler.close()
 
     formatter = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT)
     context_filter = ClassContextFilter()
