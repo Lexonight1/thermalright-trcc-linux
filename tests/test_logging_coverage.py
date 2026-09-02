@@ -49,7 +49,10 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: 1341 -> 1340 on 2026-09-02: ``ListLedStyles.execute`` reported nothing while
 #: it was telling users an 8-of-12 wrong answer, so the line names the zone
 #: counts it resolved rather than that it ran.
-MAX_SILENT = 1340
+#: 1340 -> 1339 the same day: ``TRCCApp._create_i18n_overlays`` builds the whole
+#: About pane and the language picker and said nothing, so a report could not
+#: show which language the labels were rendered in.
+MAX_SILENT = 1339
 
 
 def test_logging_coverage_only_improves() -> None:

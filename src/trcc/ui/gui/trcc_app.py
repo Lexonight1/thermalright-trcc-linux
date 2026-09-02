@@ -41,6 +41,7 @@ from ...core.commands import (
     GetPlatformInfo,
     ListDevices,
     ListGpus,
+    ListLanguages,
     SetBackground,
     SetGpuDevice,
     SetHddEnabled,
@@ -54,6 +55,7 @@ from ...core.commands import (
 )
 from ...core.logs import per_frame
 from ...core.models import HardwareMetrics, Kind, ThemeDir
+from ...core.results import LanguageEntry
 from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
@@ -1286,7 +1288,6 @@ class TRCCApp(QMainWindow):
             GALLERY_TAB_H,
             GALLERY_TAB_Y,
             GALLERY_TITLE_POS,
-            LANGUAGE_NAMES,
             LOCAL_THEME_POS,
             MASK_DESC_POS,
             MASK_LOAD_POS,
@@ -1303,6 +1304,7 @@ class TRCCApp(QMainWindow):
             tr,
         )
         lang = self._app.dispatch(ControlCenterSnapshot()).language
+        log.info("_create_i18n_overlays: lang=%s", lang)
         self._i18n_labels: list[tuple[QLabel, str | None]] = []
 
         def _lbl(parent: QWidget, text: str, x: int, y: int, w: int, h: int,
@@ -1418,10 +1420,19 @@ class TRCCApp(QMainWindow):
 
         lang_combo = QComboBox(self.uc_about)
         lang_combo.setGeometry(297, 413, 200, 28)
-        def _by_display_name(code: str) -> str:
-            return LANGUAGE_NAMES[code]
-        for code in sorted(LANGUAGE_NAMES, key=_by_display_name):
-            lang_combo.addItem(LANGUAGE_NAMES[code], code)
+        # ASK, don't derive.  This used to iterate ``core.i18n.LANGUAGE_NAMES``
+        # itself — and ``ListLanguages``' docstring names this exact widget:
+        # "UIs use the returned list to populate language pickers".  qtgui
+        # dispatches it; the gui answering the same question for itself is a
+        # second source that nothing compares, which is how the LED capability
+        # columns ended up wrong in two directions.
+        languages = self._app.dispatch(ListLanguages()).languages
+
+        def _by_display_name(entry: LanguageEntry) -> str:
+            return entry.name
+
+        for entry in sorted(languages, key=_by_display_name):
+            lang_combo.addItem(entry.name, entry.code)
         idx = lang_combo.findData(lang)
         if idx >= 0:
             lang_combo.setCurrentIndex(idx)
