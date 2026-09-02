@@ -25,10 +25,23 @@ def test_gui_raises_systemexit_with_launch_code(monkeypatch: pytest.MonkeyPatch)
 def test_qtgui_raises_systemexit_with_launch_code(monkeypatch: pytest.MonkeyPatch) -> None:
     import trcc.ui.qtgui as qtgui_mod
     from trcc.ui.cli.main import qtgui
-    monkeypatch.setattr(qtgui_mod, "launch", lambda: 3)
+    seen: dict[str, object] = {}
+
+    def _fake_launch(**kw: object) -> int:
+        seen.update(kw)
+        return 3
+
+    # qtgui() always passes start_hidden= now, the same as gui() — the mock
+    # must accept it.
+    monkeypatch.setattr(qtgui_mod, "launch", _fake_launch)
     with pytest.raises(SystemExit) as exc:
         qtgui()
     assert exc.value.code == 3
+    # THE SENTINEL TRAP, pinned: a DIRECT call (console script / frozen exe)
+    # never goes through typer, so `resume` arrives as typer's OptionInfo —
+    # which is TRUTHY.  `resume is True` is what keeps a direct launch
+    # visible; a plain `if resume` would silently hide every window.
+    assert seen["start_hidden"] is False
 
 
 def test_gui_exit_survives_except_exception(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -41,7 +41,7 @@ Launch the legacy Windows\-style GUI (port in progress). Today's shell hosts the
 Ask the running daemon to shut down, return when its socket is gone.
 .TP
 \fBqtgui\fR
-Launch the Qt\-native GUI (clean\-slate, layout\-driven). This is the rebuild's GUI  \-  built up over G1\-G5 and used during development. See gui for the legacy Windows\-style port.
+Launch the Qt\-native GUI (clean\-slate, layout\-driven). This is the rebuild's GUI  \-  built up over G1\-G5 and used during development. See gui for the legacy Windows\-style port. \-\-resume starts hidden in the tray, the same as gui. Without it qtgui could not be autostarted sanely: it would pop a window on every login where the gui skin comes up quietly.
 .TP
 \fBquickstart\fR
 Guided first\-session flow for new users. Runs the doctor, scans for devices, and walks you through what to do next. Pass \-\-yes to also test\-connect to the first device found. Safe to re\-run any time.

@@ -118,13 +118,29 @@ def setup(
 
 
 @app.command("qtgui")
-def qtgui() -> None:
+def qtgui(
+    resume: bool = typer.Option(
+        False, "--resume", "--tray", "--minimized",
+        help=(
+            "Start hidden in the system tray instead of showing the window "
+            "— used by autostart on login."
+        ),
+    ),
+) -> None:
     """Launch the Qt-native GUI (clean-slate, layout-driven).
 
     This is the rebuild's GUI — built up over G1–G5 and used during
     development.  See ``gui`` for the legacy Windows-style port.
+
+    ``--resume`` starts hidden in the tray, the same as ``gui``.  Without it
+    qtgui could not be autostarted sanely: it would pop a window on every
+    login where the gui skin comes up quietly.
     """
-    log.info("cli qtgui")
+    # Same sentinel trap as gui() below: this is also a direct entry point,
+    # so `resume` can arrive as typer's OptionInfo (truthy!) rather than a
+    # bool.  `is True` means "the parsed flag", nothing else.
+    start_hidden = resume is True
+    log.info("cli qtgui: start_hidden=%s", start_hidden)
     from ..qtgui import launch
     # SystemExit (not typer.Exit): gui/qtgui are ALSO direct entry points
     # (trcc-gui/trcc-lcd scripts + the Windows trcc-gui.exe frozen __main__),
@@ -132,7 +148,7 @@ def qtgui() -> None:
     # that runner — raised here it escapes unhandled and the PyInstaller build
     # dies with "Failed to execute script" (#187).  SystemExit exits cleanly in
     # every context (frozen exe, console script, AND `python -m trcc qtgui`).
-    raise SystemExit(launch())
+    raise SystemExit(launch(start_hidden=start_hidden))
 
 
 @app.command("gui")

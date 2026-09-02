@@ -304,6 +304,7 @@ def run(
     on_ready: Callable[[MainWindow], None] | None = None,
     *,
     force_exit: bool = True,
+    start_hidden: bool = False,
 ) -> int:
     """Start the qtgui skin from an injected ``Platform``.  Returns the exit code.
 
@@ -344,7 +345,15 @@ def run(
     app.led_animation_loop.start()
 
     window = MainWindow(app)
-    window.show()
+    # ``--resume``: come up in the tray instead of popping a window on every
+    # login.  The gui skin has done this since #201; qtgui installs the SAME
+    # ``TrayController`` (above) and so could always have been restored from
+    # the tray — it simply had no way to START that way, which made it
+    # unusable as an autostart target.
+    if start_hidden:
+        log.info("run: --resume — starting hidden in the tray")
+    else:
+        window.show()
     auto_close(splash, after_ms=250)
 
     if on_ready is not None:
@@ -389,13 +398,15 @@ def launch(
     on_ready: Callable[[MainWindow], None] | None = None,
     *,
     force_exit: bool = True,
+    start_hidden: bool = False,
 ) -> int:
     """Back-compat entry — ``trcc qtgui`` and the direct entry points call this.
 
     Identical to :func:`run`; kept as the historical name until the CLI router
     dispatches ``run`` directly.
     """
-    return run(platform, on_ready, force_exit=force_exit)
+    return run(platform, on_ready, force_exit=force_exit,
+               start_hidden=start_hidden)
 
 
 # Silence unused-import warnings for QGuiApplication (kept for reference).

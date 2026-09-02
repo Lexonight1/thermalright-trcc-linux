@@ -117,11 +117,15 @@ trcc kill
 
 ### `trcc qtgui`
 
-Launch the Qt-native GUI (clean-slate, layout-driven). This is the rebuild's GUI — built up over G1–G5 and used during development. See `gui` for the legacy Windows-style port.
+Launch the Qt-native GUI (clean-slate, layout-driven). This is the rebuild's GUI — built up over G1–G5 and used during development. See `gui` for the legacy Windows-style port. `--resume` starts hidden in the tray, the same as `gui`. Without it qtgui could not be autostarted sanely: it would pop a window on every login where the gui skin comes up quietly.
 
 ```bash
-trcc qtgui
+trcc qtgui [OPTIONS]
 ```
+
+| Option | Description |
+|---|---|
+| `--resume`, `--tray`, `--minimized` | Start hidden in the system tray instead of showing the window — used by autostart on login. |
 
 ### `trcc quickstart`
 
