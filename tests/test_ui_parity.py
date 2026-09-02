@@ -15,64 +15,33 @@ recorded twice drifts, and this pair already had.
 """
 from __future__ import annotations
 
-import ast
+import sys
 from pathlib import Path
 
-import trcc.core.commands as _commands
-from trcc.core.commands._base import Command, Query
+_ROOT = Path(__file__).resolve().parents[1]
+_SRC = _ROOT / "src"
+sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
-_SRC = Path(__file__).resolve().parents[1] / "src"
+import ui_contract  # noqa: E402  # pyright: ignore[reportMissingImports]
 
-#: Every UI tree.  gui/qtgui reach Commands through interactive handlers rather
-#: than only top-level imports, which is why the collector below matches any
-#: reference and not just an ``ImportFrom``.
-_UI_TREES = ("gui", "qtgui", "cli", "api")
-
-
-def _all_command_names() -> set[str]:
-    """Every concrete Command subclass exported from ``trcc.core.commands``."""
-    return {
-        name
-        for name in dir(_commands)
-        if isinstance(obj := getattr(_commands, name), type)
-        and issubclass(obj, Command)
-        and obj not in (Command, Query)   # the bases themselves are not capabilities
-    }
+#: The collector lives in ``dev/tools/ui_contract.py`` and is imported, not
+#: restated.  It WAS written twice — once there over the AST, once here over the
+#: runtime classes — and the two had drifted apart by 34 commands before anyone
+#: compared them: the tool's copy could not see a Command handed to a dispatch
+#: helper (``dispatch_echo(SomeCommand())``), so it scored the CLI at 90 against
+#: a true 124, and printed a contract size smaller than the surface it measured.
+#: Same precedent as ``test_logging_coverage``: the tool owns the measurement,
+#: the test ratchets it.
 
 
 def _reach_by_command() -> dict[str, set[str]]:
-    """Which UI trees reach each Command, by AST — never by regex.
-
-    A reference is an ``ast.Name`` (``dispatch(Foo(...))``) or an ``ast.alias``
-    (``from ... import Foo``).  Matching the class NAME in UI source text
-    over-counts: ``SendFrame`` appears in two UI trees and is dispatched by
-    neither, only mentioned in comments.
-
-    This replaced a narrower collector that matched ``ImportFrom`` alone.  The
-    two were measured against each other before the swap and agreed exactly on
-    cli (120) and api (115) — the broader one is needed only because gui/qtgui
-    do not import everything they dispatch at module level.
-    """
-    names = _all_command_names()
-    reach: dict[str, set[str]] = {n: set() for n in names}
-    for ui in _UI_TREES:
-        for path in (_SRC / "trcc" / "ui" / ui).rglob("*.py"):
-            if "__pycache__" in path.parts:
-                continue
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                seen = None
-                if isinstance(node, ast.Name):
-                    seen = node.id
-                elif isinstance(node, ast.alias):
-                    seen = node.name
-                if seen in reach:
-                    reach[seen].add(ui)
-    return reach
+    """Which UI trees reach each Command.  One collector, one answer."""
+    return ui_contract.reach_by_command()
 
 
 def _commands_dispatched_by(package: str) -> set[str]:
-    """The Commands *package* reaches — one collector, one answer."""
-    return {c for c, uis in _reach_by_command().items() if package in uis}
+    """The Commands *package* reaches."""
+    return ui_contract.dispatched_by(package, _reach_by_command())
 
 
 # ── THE record of accepted UI-reach exceptions ──────────────────────────────

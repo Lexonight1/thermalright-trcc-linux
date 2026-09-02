@@ -17,6 +17,23 @@ It surfaces candidates; a human judges which are real holes vs. legitimate
 infrastructure (a GUI importing ``QtRenderer`` is fine; importing
 ``FileContentStore`` to compute data a Command should carry is a hole).
 
+**The contract is Commands *and* Queries.**  It read as 102 Commands until
+2026-09-02 while the true surface was 135, because the denominator matched only
+classes whose literal base was ``Command`` — every one of the 34 ``Query``
+subclasses inherits ``Query`` instead and was invisible, and the abstract
+``Query`` base was counted as a capability in their place.  The printed result
+was self-evidently impossible and shipped anyway: *"api dispatches 117
+command(s)"* against a *"102 Command"* contract.  Reads are half of what a UI
+does; a contract audit that cannot see them is measuring its own universe.
+
+**One collector, shared with the gate.**  ``reach_by_command`` is imported by
+``tests/test_ui_parity.py``, which ratchets the answer.  It used to be written
+twice — once here over the AST, once there over the runtime classes — and the
+two had already drifted apart by 34 commands, because this copy could not see
+past a dispatch helper (``dispatch_echo(SomeCommand())`` in the CLI,
+``_dispatch(cmd)`` in both GUIs' LED handlers) or into an ``IfExp``
+(``dispatch(Enable() if on else Disable())`` recorded neither branch).
+
 Usage::
     PYTHONPATH=src python3 dev/tools/ui_contract.py
 """
@@ -24,11 +41,16 @@ from __future__ import annotations
 
 import argparse
 import ast
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
 _SRC = _REPO / "src" / "trcc"
+
+# Runnable without PYTHONPATH=src — the contract is read from the live classes,
+# not re-derived from the AST, so the import has to resolve.
+sys.path.insert(0, str(_REPO / "src"))
 
 _UIS = {
     "cli": _SRC / "ui" / "cli",
@@ -37,25 +59,82 @@ _UIS = {
     "qtgui": _SRC / "ui" / "qtgui",
 }
 
+#: A floor, not a target — 135 today.  Guards the DENOMINATOR: a collector that
+#: silently returns little makes every UI look complete.  See
+#: ``project_a_measurement_that_names_its_own_universe``.
+_MIN_CONTRACT = 100
+
 # Colours
 _G, _Y, _R, _GREY, _B, _RST = (
     "\033[32m", "\033[33m", "\033[31m", "\033[90m", "\033[1m", "\033[0m",
 )
 
 
-def command_names() -> set[str]:
-    """Every ``Command`` subclass name — the contract's action surface."""
-    names: set[str] = set()
-    for path in (_SRC / "core" / "commands").glob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.ClassDef):
+def contract_classes() -> tuple[set[str], set[str]]:
+    """``(commands, queries)`` — the dispatchable surface, from the live classes.
+
+    Runtime introspection rather than an AST walk, because inheritance is the
+    question being asked and only the interpreter answers it reliably: ``Query``
+    subclasses ``Command``, so an AST match on the literal base name misses
+    every read.  It also sidesteps a collision the AST cannot see — two classes
+    named ``DeviceState`` exist (the Query, and a presentation dataclass).
+    """
+    import trcc.core.commands as commands
+    from trcc.core.commands._base import Command, Query
+
+    concrete = {
+        name
+        for name in dir(commands)
+        if isinstance(obj := getattr(commands, name), type)
+        and issubclass(obj, Command)
+        and obj not in (Command, Query)   # the bases themselves are not capabilities
+    }
+    if len(concrete) < _MIN_CONTRACT:
+        raise SystemExit(
+            f"contract collector returned {len(concrete)} classes, under the "
+            f"floor of {_MIN_CONTRACT} — trcc.core.commands exported nothing "
+            f"useful.  Every UI would score as complete against it."
+        )
+    queries = {n for n in concrete if issubclass(getattr(commands, n), Query)}
+    return concrete - queries, queries
+
+
+def reach_by_command() -> dict[str, set[str]]:
+    """Which UI trees reach each contract class, by AST — never by regex.
+
+    A reference is an ``ast.Name`` (``dispatch(Foo(...))``) or an ``ast.alias``
+    (``from ... import Foo``).  Deliberately broader than "an inline call in a
+    dispatch argument": a UI that hands a Command to a helper is still reaching
+    the capability, and matching only the inline shape undercounted the CLI by
+    34.  Matching the class NAME in UI source *text* would over-count the other
+    way — ``SendFrame`` appears in two UI trees and is dispatched by neither,
+    only mentioned in comments.
+    """
+    commands, queries = contract_classes()
+    reach: dict[str, set[str]] = {n: set() for n in commands | queries}
+    for ui, root in _UIS.items():
+        for path in root.rglob("*.py"):
+            if "__pycache__" in path.parts:
                 continue
-            for base in node.bases:
-                target = base.value if isinstance(base, ast.Subscript) else base
-                name = getattr(target, "id", getattr(target, "attr", ""))
-                if name == "Command":
-                    names.add(node.name)
-    return names
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                seen = None
+                if isinstance(node, ast.Name):
+                    seen = node.id
+                elif isinstance(node, ast.alias):
+                    seen = node.name
+                if seen in reach:
+                    reach[seen].add(ui)
+    if not any(reach.values()):
+        raise SystemExit(
+            f"reach collector found no Command referenced by any of "
+            f"{sorted(_UIS)} — the UI roots are wrong or empty."
+        )
+    return reach
+
+
+def dispatched_by(ui: str, reach: dict[str, set[str]]) -> set[str]:
+    """The contract classes *ui* reaches — one collector, one answer."""
+    return {name for name, uis in reach.items() if ui in uis}
 
 
 @dataclass(slots=True)
@@ -68,8 +147,8 @@ class UiSurface:
     adapter_imports: dict[str, str] = field(default_factory=dict)
 
 
-def scan_ui(name: str, root: Path) -> UiSurface:
-    surface = UiSurface(name=name)
+def scan_ui(name: str, root: Path, dispatched: set[str]) -> UiSurface:
+    surface = UiSurface(name=name, dispatched=dispatched)
     for path in sorted(root.rglob("*.py")):
         try:
             tree = ast.parse(path.read_text())
@@ -77,22 +156,8 @@ def scan_ui(name: str, root: Path) -> UiSurface:
             continue
         rel = path.relative_to(_SRC)
         for node in ast.walk(tree):
-            _record_dispatch(node, surface)
             _record_bypass(node, rel, surface)
     return surface
-
-
-def _record_dispatch(node: ast.AST, surface: UiSurface) -> None:
-    """``x.dispatch(SomeCommand(...))`` → record 'SomeCommand'."""
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "dispatch"
-        and node.args
-        and isinstance(node.args[0], ast.Call)
-        and isinstance(node.args[0].func, ast.Name)
-    ):
-        surface.dispatched.add(node.args[0].func.id)
 
 
 def _record_bypass(node: ast.AST, rel: Path, surface: UiSurface) -> None:
@@ -114,7 +179,7 @@ def _print_ui(surface: UiSurface) -> None:
     holes = len(svc) + len(adp)
     tone = _G if holes == 0 else (_Y if holes <= 4 else _R)
     print(f"{_B}{surface.name}{_RST}  "
-          f"dispatches {len(surface.dispatched)} command(s)  ·  "
+          f"reaches {len(surface.dispatched)} of the contract  ·  "
           f"{tone}{holes} contract bypass(es){_RST}")
     for symbol, where in sorted(svc.items()):
         print(f"    {_R}services{_RST}  {symbol:<28} {_GREY}{where}{_RST}")
@@ -131,11 +196,14 @@ def main() -> int:
                          "reaches past the Command bus for something new "
                          "fails the build, and fixing one lets you lower N.")
     args = ap.parse_args()
-    commands = command_names()
+    commands, queries = contract_classes()
+    reach = reach_by_command()
     print(f"{_B}Command-surface completeness audit{_RST}")
-    print(f"  contract = {len(commands)} Command(s) + read-only port properties\n")
+    print(f"  contract = {len(commands)} Command(s) + {len(queries)} Query(ies) "
+          f"= {len(commands) + len(queries)} + read-only port properties\n")
 
-    surfaces = [scan_ui(name, root) for name, root in _UIS.items() if root.is_dir()]
+    surfaces = [scan_ui(name, root, dispatched_by(name, reach))
+                for name, root in _UIS.items() if root.is_dir()]
     for surface in surfaces:
         _print_ui(surface)
 
