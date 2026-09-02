@@ -20,7 +20,7 @@ import pytest
 
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, SendColor
+from trcc.core.commands import ConnectDevice, DisconnectDevice, SendColor
 from trcc.core.events import FrameSent
 from trcc.core.models import Kind, ProductInfo, RawFrame, Wire
 from trcc.core.ports import Renderer
@@ -344,6 +344,110 @@ def test_sleep_device_blanks_lcd_with_black_frame(tmp_home: Path) -> None:
     assert result.ok, f"SleepDevice failed: {result.message}"
     assert result.bytes_sent > 0
     assert "#000000" in result.message   # composed SendColor(0,0,0)
+
+
+def test_disconnect_blanks_the_panel_before_dropping_it(
+    tmp_path: Path,
+) -> None:
+    """A user-initiated disconnect darkens the panel, like shutdown does (#143).
+
+    ``App.close`` has blanked on the way out since #143, but
+    ``DisconnectDevice`` — what ``trcc device disconnect``, ``DELETE
+    /devices/{key}`` and the qtgui Disconnect button all dispatch — dropped the
+    handle with the last frame still lit.
+
+    Driven on ``MockPlatform`` + a REAL ``QtRenderer`` rather than this module's
+    ``FakePlatform``/``RecordingRenderer``, because that renderer returns an
+    empty surface: a *red* frame encodes to 204,800 zero bytes under it, so an
+    all-black assertion there passes no matter what colour is sent.  Confirmed
+    by mutation — blanking with white had to fail this test, and on the stub
+    renderer it did not.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    from .mock_platform import MockPlatform
+
+    # A RAW RGB565 panel on purpose: black is then literally all-zero bytes.
+    # The 854x480 panel JPEG-encodes, and a black JPEG carries headers and
+    # entropy-coded data (11,862 bytes, 177 distinct values), so the assertion
+    # below would be untestable there.
+    key = "0402:3922"
+    app = App(
+        MockPlatform(
+            [{"type": "lcd", "vid": "0402", "pid": "3922",
+              "resolution": "320x320", "pm": 11, "sub": 5}],
+            tmp_path,
+        ),
+        renderer=QtRenderer(),
+    )
+    app.attach(0x0402, 0x3922)
+    assert app.dispatch(ConnectDevice(key=key)).ok
+
+    sent: list[bytes] = []
+    device = app.devices[key]
+    real_send = device.send
+    device.send = lambda frame, *a, **k: (          # type: ignore[method-assign]
+        sent.append(bytes(frame)), real_send(frame, *a, **k)
+    )[1]
+
+    # A non-black frame first, so "all zero" cannot be the device's resting
+    # state — the disconnect has to actively overwrite it.
+    assert app.dispatch(SendColor(key=key, r=255, g=0, b=0)).ok
+    assert set(sent[-1]) != {0}, "harness is not rendering colour"
+
+    result = app.dispatch(DisconnectDevice(key=key))
+
+    assert result.ok, result.message
+    assert len(sent) >= 2, "disconnect dropped the device without blanking it"
+    assert set(sent[-1]) == {0}, (
+        "the farewell frame is not all-zero — SleepDevice composes "
+        "SendColor(0, 0, 0), so every byte on the wire should be null"
+    )
+    assert key not in app.devices, "device was not detached"
+
+
+def test_sleep_device_without_a_renderer_answers_instead_of_raising(
+    tmp_path: Path,
+) -> None:
+    """SleepDevice's best-effort promise, kept for the renderer-less App.
+
+    ``App.display`` RAISES when no Renderer is attached, and blanking needs a
+    rendered frame — so this used to escape as a ``RuntimeError`` despite the
+    docstring promising ok=False.  ``App.close`` carried an ``except
+    Exception`` for exactly that, and the log line it emitted
+    (``close: SleepDevice raised for …``) was the evidence.  A connected device
+    on an App built for non-rendering work is a legitimate construction, so
+    "cannot blank" is an ANSWER.
+    """
+    from trcc.core.commands import SleepDevice
+
+    from .mock_platform import MockPlatform
+
+    key = "0402:3922"
+    app = App(MockPlatform(
+        [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}], tmp_path,
+    ))                                     # no renderer= on purpose
+    app.attach(0x0402, 0x3922)
+    assert app.dispatch(ConnectDevice(key=key)).ok
+
+    result = app.dispatch(SleepDevice(key=key))
+
+    assert not result.ok
+    assert "cannot blank" in result.message
+    assert result.connected, (
+        "the device IS connected — only the blank was impossible, and a "
+        "caller must be able to tell those apart"
+    )
+
+
+def test_disconnect_of_an_unattached_device_still_reports_cleanly(
+    tmp_home: Path,
+) -> None:
+    """The blank must never turn a no-op disconnect into a failure."""
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+    result = app.dispatch(DisconnectDevice(key="dead:beef"))
+    assert not result.ok
+    assert "Not attached" in result.message
 
 
 def test_sleep_device_not_connected_returns_false(tmp_home: Path) -> None:

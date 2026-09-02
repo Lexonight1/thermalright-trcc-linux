@@ -40,7 +40,10 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: 1344 -> 1343 on 2026-09-01: retiring ``SetDiskIndex`` deleted its silent
 #: ``execute``.  A removal lowers this exactly as a fix does — the ratchet
 #: asserts BOTH directions, so ground given back is a failure either way.
-MAX_SILENT = 1343
+#: 1343 -> 1342 on 2026-09-02: ``DisconnectDevice.execute`` got the entry log
+#: THE RULE requires, in the pass that gave it the shutdown blank.  It was the
+#: one device-release path that reported nothing about why it did what it did.
+MAX_SILENT = 1342
 
 
 def test_logging_coverage_only_improves() -> None:

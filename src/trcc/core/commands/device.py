@@ -434,11 +434,30 @@ class DisconnectDevice(Command[DisconnectResult]):
     key: str
 
     def execute(self, app: App) -> DisconnectResult:
+        log.info("DisconnectDevice: key=%s", self.key)
         if self.key not in app.devices:
+            log.warning("DisconnectDevice %s: not attached", self.key)
             return DisconnectResult(
                 ok=False, key=self.key,
                 message=f"Not attached: {self.key}",
             )
+        # Blank while the handle is still open.  ``App.close`` has sent this
+        # since #143 so a panel goes dark on shutdown instead of holding its
+        # last frame lit until the firmware idle-sleeps; a user-initiated
+        # disconnect leaves the device in exactly that state and was the one
+        # release path that did not.  Best-effort by contract — SleepDevice
+        # returns ok=False rather than raising — so the disconnect can never
+        # fail because the blank did.
+        #
+        # NOT hoisted into ``App.detach``: that also runs on ConnectDevice's
+        # quirk retry and on a failed handshake, where the panel must not be
+        # written to at all.  Hotplug removal never reaches either — it goes
+        # ``_on_device_detached`` -> ``_release_stale_device`` -> the transport
+        # — so an unplugged device is not asked to accept a farewell frame.
+        blank = SleepDevice(key=self.key).execute(app)
+        if not blank.ok:
+            log.debug("DisconnectDevice %s: blank skipped — %s",
+                      self.key, blank.message)
         app.detach(self.key)
         app.events.publish(DeviceDisconnected(key=self.key))
         return DisconnectResult(ok=True, key=self.key, message="Disconnected")
@@ -563,14 +582,31 @@ class SleepDevice(Command[SendResult]):
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               connected=False,
                               message=f"{self.key} not connected")
-        if device.is_led:
-            from .led import SetLedColors
-            result = SetLedColors(
-                key=self.key, colors=[(0, 0, 0)], global_on=False,
-            ).execute(app)
-            return SendResult(ok=result.ok, key=self.key, bytes_sent=0,
-                              message=result.message)
-        return SendColor(key=self.key, r=0, g=0, b=0).execute(app)
+        try:
+            if device.is_led:
+                from .led import SetLedColors
+                result = SetLedColors(
+                    key=self.key, colors=[(0, 0, 0)], global_on=False,
+                ).execute(app)
+                return SendResult(ok=result.ok, key=self.key, bytes_sent=0,
+                                  message=result.message)
+            return SendColor(key=self.key, r=0, g=0, b=0).execute(app)
+        except RuntimeError as e:
+            # An App with no Renderer: ``App.display`` raises rather than
+            # returning, and blanking needs a rendered frame.  Legitimate
+            # construction — the send-worker and IPC paths build an App for
+            # work that never renders — so it is an ANSWER, not a failure.
+            #
+            # This class of raise is why ``App.close`` wraps its own dispatch
+            # in ``except Exception``: the docstring above has promised
+            # best-effort since #143 and the code did not keep it, so the one
+            # caller that existed defended itself instead.  Keeping the promise
+            # here is what lets ``DisconnectDevice`` blank without growing a
+            # second copy of that guard.
+            log.info("SleepDevice %s: cannot blank — %s", self.key, e)
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              connected=True,
+                              message=f"cannot blank {self.key}: {e}")
 
 
 @dataclass(frozen=True, slots=True)
