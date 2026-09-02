@@ -49,6 +49,7 @@ from ...core.commands import (
     SetOrientation,
     SetOverlayConfig,
     SetSplitMode,
+    SleepDevice,
     StopVideo,
     ToggleVideo,
     UploadCustomMask,
@@ -1573,16 +1574,25 @@ class LCDHandler(BaseHandler):
         self._flash_timer.stop()
 
     def _cleanup_device(self) -> None:
-        """Release LCD resources via Commands."""
-        from ...core.commands import SendColor
+        """Blank the panel and release LCD resources via Commands."""
+        self.log.info("_cleanup_device: device_key=%s", self._device_key)
         self._app.dispatch(StopVideo(key=self._device_key))
         try:
-            # Best-effort black-frame so the screen visibly goes blank.
-            self._app.dispatch(SendColor(
-                key=self._device_key, r=0, g=0, b=0,
-            ))
+            # ``SleepDevice`` is the INTENT — "turn this screen off", the one
+            # Command ``App.close``, ``trcc display sleep`` and ``/sleep`` all
+            # dispatch — and it owns the not-connected guard this used to
+            # hand-roll in an ``except``.  ``SendColor`` is its MECHANISM, and
+            # dispatching it here made the gui the only surface reaching past
+            # the intent.  Wire output is unchanged: SleepDevice's LCD branch
+            # IS ``SendColor(0, 0, 0)``, verified byte-identical.
+            result = self._app.dispatch(SleepDevice(key=self._device_key))
+            if not result.ok:
+                self.log.debug("_cleanup_device: blank skipped — %s",
+                               result.message)
         except (OSError, RuntimeError) as e:
-            # USB I/O during teardown — log + move on.
-            self.log.debug("LCD teardown black-frame send failed: %s", e)
+            # A raw USB error leaking from below the transport port.  A
+            # ``TransportError`` is already turned into a Result inside the
+            # Command, so this is the last resort only: teardown must not raise.
+            self.log.debug("_cleanup_device: blank failed: %s", e)
         # App.detach is owned by app.close() in the window's closeEvent;
         # individual handler cleanup just releases timers + state.
