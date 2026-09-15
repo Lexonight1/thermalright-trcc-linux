@@ -272,3 +272,161 @@ def test_stop_clears_unavailable_so_a_fresh_session_retries() -> None:
     lhm.stop()         # clears the unavailable flag
     lhm.start()        # spawn allowed again
     assert len(spawn_calls) == 2
+
+
+# ── foreign LHM already running: consume it, never spawn our bundled copy ──
+#
+# The namespace-first reuse (test_reuses_existing_namespace_without_spawn)
+# only fires when the WMI probe HITS.  A user-installed / autostarted LHM
+# whose namespace missed the probe (still initializing, or WMI publishing
+# disabled) used to fall straight through to spawning our bundled, older
+# copy — two LibreHardwareMonitor instances.  These pin the process-gate that
+# stops that: "if LibreHardwareMonitor is already running, don't launch our
+# own old dated version."
+
+
+def test_foreign_process_running_does_not_spawn() -> None:
+    """Foreign LHM process alive + namespace probe miss → we must NOT spawn."""
+    spawned: list[str] = []
+    lhm = LhmSubprocess(
+        probe=lambda: None,                       # namespace not queryable yet
+        spawn=lambda: spawned.append("x") or _StubProcess(),
+        wait=lambda: object(),
+        process_running=lambda: True,             # a foreign LHM.exe is running
+    )
+    assert lhm.start() is None
+    assert spawned == [], (
+        "must not spawn the bundled LHM when a foreign one is already running"
+    )
+
+
+def test_foreign_process_scan_is_latched_after_first_detection() -> None:
+    """The process-table scan runs at most once — start() is a per-frame hot
+    path, so we must not psutil.process_iter on every poll."""
+    scan_calls = [0]
+
+    def scan() -> bool:
+        scan_calls[0] += 1
+        return True
+
+    lhm = LhmSubprocess(
+        probe=lambda: None,
+        spawn=lambda: _StubProcess(),
+        wait=lambda: object(),
+        process_running=scan,
+    )
+    lhm.start()
+    lhm.start()
+    lhm.start()
+    assert scan_calls[0] == 1, "process table must be scanned at most once"
+
+
+def test_foreign_namespace_registers_after_process_detected() -> None:
+    """Once the foreign LHM's WMI namespace comes up, the step-2 probe caches
+    it — and no spawn ever happened."""
+    handle = object()
+    probe_results: list[object | None] = [None, None, handle]
+    spawned: list[str] = []
+
+    def probe() -> object | None:
+        return probe_results.pop(0) if probe_results else handle
+
+    lhm = LhmSubprocess(
+        probe=probe,
+        spawn=lambda: spawned.append("x") or _StubProcess(),
+        wait=lambda: object(),
+        process_running=lambda: True,
+    )
+    assert lhm.start() is None       # foreign detected, latched, no spawn
+    assert lhm.start() is None       # namespace still pending
+    assert lhm.start() is handle     # namespace now up → cached via probe
+    assert spawned == [], "must never spawn while a foreign LHM is running"
+
+
+def test_stop_clears_foreign_latch_so_a_fresh_session_rescans() -> None:
+    scan_calls = [0]
+
+    def scan() -> bool:
+        scan_calls[0] += 1
+        return True
+
+    lhm = LhmSubprocess(
+        probe=lambda: None,
+        spawn=lambda: _StubProcess(),
+        wait=lambda: object(),
+        process_running=scan,
+    )
+    lhm.start()        # scan #1 → latched
+    lhm.start()        # latched — no rescan
+    lhm.stop()         # clears the latch
+    lhm.start()        # rescan allowed again
+    assert scan_calls[0] == 2
+
+
+def test_no_foreign_process_still_spawns_bundled() -> None:
+    """Regression guard: when NO foreign LHM runs, the bundled-spawn path is
+    unchanged (this is what makes TRCC work on a box with no LHM installed)."""
+    namespace = object()
+    lhm = LhmSubprocess(
+        probe=lambda: None,
+        spawn=lambda: _StubProcess(),
+        wait=lambda: namespace,
+        process_running=lambda: False,            # nothing foreign running
+    )
+    assert lhm.start() is namespace
+
+
+# ── _lhm_process_running: name matching via psutil (real module, faked iter) ──
+
+
+class _FakeProc:
+    def __init__(self, name: str) -> None:
+        self.info = {"name": name}
+
+
+def test_lhm_process_running_true_on_exact_name(monkeypatch) -> None:
+    import psutil
+
+    from trcc.adapters.sensors._lhm import _lhm_process_running
+    monkeypatch.setattr(
+        psutil, "process_iter",
+        lambda attrs=None: [
+            _FakeProc("explorer.exe"),
+            _FakeProc("LibreHardwareMonitor.exe"),
+        ],
+    )
+    assert _lhm_process_running() is True
+
+
+def test_lhm_process_running_matches_case_insensitively(monkeypatch) -> None:
+    import psutil
+
+    from trcc.adapters.sensors._lhm import _lhm_process_running
+    monkeypatch.setattr(
+        psutil, "process_iter",
+        lambda attrs=None: [_FakeProc("librehardwaremonitor.EXE")],
+    )
+    assert _lhm_process_running() is True
+
+
+def test_lhm_process_running_false_when_absent(monkeypatch) -> None:
+    import psutil
+
+    from trcc.adapters.sensors._lhm import _lhm_process_running
+    monkeypatch.setattr(
+        psutil, "process_iter",
+        lambda attrs=None: [_FakeProc("chrome.exe"), _FakeProc("python.exe")],
+    )
+    assert _lhm_process_running() is False
+
+
+def test_lhm_process_running_false_when_scan_raises(monkeypatch) -> None:
+    import psutil
+
+    from trcc.adapters.sensors._lhm import _lhm_process_running
+
+    def _boom(attrs=None):
+        raise RuntimeError("access denied")
+
+    monkeypatch.setattr(psutil, "process_iter", _boom)
+    assert _lhm_process_running() is False
