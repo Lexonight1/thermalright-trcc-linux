@@ -26,6 +26,7 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | Trofeo Vision 9.16 LCD | LY (0416:5408) | — | [Mr-Renegade](https://github.com/Mr-Renegade) |
 | Hyper Vision 360 | Bulk (87AD:70DB) | 480x480 | [Seryogaberkut](https://github.com/Seryogaberkut) |
 | Peerless Vision 360 | Bulk (87AD:70DB) | 480x480 | [Ziusz](https://github.com/Ziusz) |
+| Phantom Spirit 120 Vision EVO | Bulk (87AD:70DB) | 480x480 | [alan7383](https://github.com/alan7383) |
 
 ### LED + Segment Display (RGB Fan Control, Temperature Readout)
 
@@ -66,7 +67,6 @@ These have a full pixel LCD (240x240 to 1920x462) for custom themes, images, vid
 | Peerless Assassin 120 Vision | — |
 | Royal Lord 120 Vision | — |
 | Royal Knight 130 Vision | — |
-| Phantom Spirit 120 Vision | — |
 
 ### LED + Segment Display Products (Digital Series)
 
