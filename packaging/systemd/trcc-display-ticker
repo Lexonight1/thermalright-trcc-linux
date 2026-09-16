@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# trcc-display-ticker — device-detecting wrapper around `trcc display play`.
+#
+# Exists so trcc-display.service does not have to hardcode a VID:PID.  A
+# packaged unit naming one contributor's panel is useless to everybody else,
+# and `display play` requires an explicit device key.
+#
+# Override detection by setting TRCC_DEVICE=VVVV:PPPP in the environment —
+# trcc-display.service reads ~/.config/trcc/ticker.env for exactly this, which
+# is also how you pin one panel when several are attached.
+
+set -uo pipefail
+
+TRCC="${TRCC_BIN:-/usr/bin/trcc}"
+
+if [[ ! -x "$TRCC" ]]; then
+    # Fall back to PATH for pip/pipx installs, where trcc is under ~/.local/bin.
+    if command -v trcc >/dev/null 2>&1; then
+        TRCC="$(command -v trcc)"
+    else
+        echo "trcc-display-ticker: trcc not found (tried $TRCC and PATH)" >&2
+        exit 127
+    fi
+fi
+
+key="${TRCC_DEVICE:-}"
+
+if [[ -z "$key" ]]; then
+    # `trcc detect` prints rows like "  0416:5408  Winbond Trofeo Vision …".
+    key="$("$TRCC" detect 2>/dev/null \
+        | grep -oE '[0-9a-fA-F]{4}:[0-9a-fA-F]{4}' \
+        | head -1)"
+fi
+
+if [[ -z "$key" ]]; then
+    echo "trcc-display-ticker: no device detected — is it plugged in, and are" >&2
+    echo "                     the udev rules installed? (try: trcc doctor)"  >&2
+    # Non-zero so systemd's Restart= backs off and retries.  A missing device at
+    # login is normal: USB enumeration often lands after graphical-session.
+    exit 1
+fi
+
+echo "trcc-display-ticker: driving $key"
+exec "$TRCC" display play "$key"
