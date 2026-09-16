@@ -172,6 +172,7 @@ class QtScreenCapture(ScreenCapture):
             # Whole screen, then crop.  ``full`` stays a QPixmap so the crop
             # is one call whichever producer supplied it.
             full = self._run_tools((
+                ("spectacle", ["spectacle", "-b", "-n", "-o", "{out}"]),
                 ("gnome-screenshot", ["gnome-screenshot", "-f", "{out}"]),
             ), tmp_path)
             if full is None and self._qt_can_grab():
@@ -187,7 +188,7 @@ class QtScreenCapture(ScreenCapture):
                 return full.copy(QRect(x, y, w, h))
         finally:
             try:
-                Path(tmp_path).unlink()
+                Path(tmp_path).unlink(missing_ok=True)
             except OSError:
                 pass
 
@@ -202,6 +203,7 @@ class QtScreenCapture(ScreenCapture):
         the full chain drift apart, which is the defect this method exists to
         remove rather than repeat.
         """
+        import time
         for tool, template in attempts:
             if shutil.which(tool) is None:
                 log.debug("QtScreenCapture: %s not on PATH; skipping", tool)
@@ -220,6 +222,13 @@ class QtScreenCapture(ScreenCapture):
                 log.warning("QtScreenCapture: %s exited %d (stderr=%r)",
                             tool, result.returncode,
                             result.stderr[:200].decode("utf-8", "replace"))
+                continue
+            for _ in range(20):
+                if Path(tmp_path).exists() and Path(tmp_path).stat().st_size > 0:
+                    break
+                time.sleep(0.025)
+            if not Path(tmp_path).exists() or Path(tmp_path).stat().st_size == 0:
+                log.warning("QtScreenCapture: %s output file missing or empty", tool)
                 continue
             pix = QPixmap(tmp_path)
             if not pix.isNull():

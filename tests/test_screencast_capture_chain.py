@@ -142,6 +142,20 @@ def test_gnome_screenshot_grabs_full_and_is_cropped(
         "frame carries pixels from outside it")
 
 
+def test_spectacle_grabs_full_and_is_cropped(
+    cap: QtScreenCapture, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """KDE Wayland fallback: spectacle -b -n -o <file>."""
+    calls = _only("spectacle", monkeypatch, FULL)
+    frame = cap.grab_region(*REGION)
+
+    assert len(calls) == 1 and calls[0][0] == "spectacle"
+    assert "-b" in calls[0] and "-n" in calls[0] and "-o" in calls[0]
+    assert (frame.width, frame.height) == (REGION[2], REGION[3])
+    assert len(frame.data) == REGION[2] * REGION[3] * 3
+    assert _uniform(frame, INK)
+
+
 def test_region_tools_are_preferred_over_the_full_grab(
     cap: QtScreenCapture, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
