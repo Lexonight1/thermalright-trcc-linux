@@ -100,14 +100,14 @@ class UCVideoCut(QWidget):
     fit mode buttons, rotation, and Theme.zt export.
 
     Signals:
-        export_requested(int, int, int): (start_ms, end_ms, rotation) — the
+        export_requested(int, int, int, float, float, float, bool): (start_ms, end_ms, rotation, zoom, pan_x, pan_y, width_fit) — the
             window turns this into ``ExportVideoClip`` for the active
             device.  The panel does not know the device key or the canvas
             size, and does not need to: the Command resolves both.
         video_cut_done(str): Emitted with Theme.zt path on export, or '' on cancel.
     """
 
-    export_requested = Signal(int, int, int)
+    export_requested = Signal(int, int, int, float, float, float, bool)
     video_cut_done = Signal(str)
 
     def __init__(self, parent=None):
@@ -122,17 +122,19 @@ class UCVideoCut(QWidget):
         self._target_w = 0
         self._target_h = 0
         self._rotation = 0
-        # Which edge the preview fits to.  Display-only: the export is
-        # resized to the panel's exact pixels, so this never reached the
-        # encoder — it was carried into ``ExportWorker`` and never read.
         self._width_fit = True
+        self._zoom = 1.0
+        self._pan_x = 0.5
+        self._pan_y = 0.5
+        self._drag_last_x = 0
+        self._drag_last_y = 0
 
         # Timeline handles (pixel x positions)
         self._start_x = TIMELINE_X
         self._end_x = TIMELINE_X + TIMELINE_W
         self._start_ms = 0
         self._end_ms = 0
-        self._dragging = None  # 'start' or 'end'
+        self._dragging = None  # 'start', 'end', or 'preview'
 
         # Preview state
         self._preview_pixmap = None
@@ -257,13 +259,35 @@ class UCVideoCut(QWidget):
         p.end()
 
     # =========================================================================
-    # Mouse interaction (timeline handles)
+    # Mouse interaction (timeline handles, preview zoom & pan)
     # =========================================================================
+
+    def wheelEvent(self, event):
+        x, y = event.position().x(), event.position().y()
+        if PREVIEW_X <= x <= PREVIEW_X + PREVIEW_W and PREVIEW_Y <= y <= PREVIEW_Y + PREVIEW_H:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self._zoom = min(5.0, round(self._zoom + 0.15, 2))
+            elif delta < 0:
+                self._zoom = max(1.0, round(self._zoom - 0.15, 2))
+            log.debug("wheelEvent: delta=%d zoom=%.2f", delta, self._zoom)
+            self._seek_and_show(self._preview_pos_ms if self._previewing else self._start_ms)
+            event.accept()
+        else:
+            log.debug("wheelEvent: ignoring outside preview")
+            super().wheelEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             return
         x, y = event.position().x(), event.position().y()
+
+        # Check if click is on preview area (pan / drag to position crop)
+        if PREVIEW_X <= x <= PREVIEW_X + PREVIEW_W and PREVIEW_Y <= y <= PREVIEW_Y + PREVIEW_H:
+            self._dragging = 'preview'
+            self._drag_last_x = x
+            self._drag_last_y = y
+            return
 
         # Check if click is on timeline area
         if not (TIMELINE_Y <= y <= TIMELINE_Y + TIMELINE_H):
@@ -283,7 +307,19 @@ class UCVideoCut(QWidget):
     def mouseMoveEvent(self, event):
         if not self._dragging or self._duration_ms <= 0:
             return
-        x = event.position().x()
+        x, y = event.position().x(), event.position().y()
+
+        if self._dragging == 'preview':
+            dx = x - self._drag_last_x
+            dy = y - self._drag_last_y
+            self._drag_last_x = x
+            self._drag_last_y = y
+            sens = max(20.0, (self._zoom - 0.9) * 200.0)
+            self._pan_x = max(0.0, min(1.0, self._pan_x - dx / sens))
+            self._pan_y = max(0.0, min(1.0, self._pan_y - dy / sens))
+            self._seek_and_show(self._preview_pos_ms if self._previewing else self._start_ms)
+            return
+
         x = max(TIMELINE_X, min(TIMELINE_X + TIMELINE_W, x))
 
         if self._dragging == 'start':
@@ -394,6 +430,11 @@ class UCVideoCut(QWidget):
         if self._end_ms < self._duration_ms:
             self._end_x = self._ms_to_x(self._end_ms)
 
+        # Reset zoom and pan
+        self._zoom = 1.0
+        self._pan_x = 0.5
+        self._pan_y = 0.5
+
         # Update labels
         self._lbl_duration.setText(_format_time(self._duration_ms))
         self._lbl_start.setText(_format_time(self._start_ms))
@@ -444,12 +485,24 @@ class UCVideoCut(QWidget):
         if self._rotation:
             img = img.transformed(QTransform().rotate(self._rotation))
         w, h = img.width(), img.height()
-        scale = min(PREVIEW_W / w, PREVIEW_H / h)
-        new_w, new_h = int(w * scale), int(h * scale)
-        if new_w > 0 and new_h > 0:
+        if self._width_fit and self._zoom <= 1.0:
+            scale = min(PREVIEW_W / w, PREVIEW_H / h)
+            new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
             img = img.scaled(new_w, new_h,
                              Qt.AspectRatioMode.IgnoreAspectRatio,
                              Qt.TransformationMode.SmoothTransformation)
+        else:
+            base_scale = max(PREVIEW_W / w, PREVIEW_H / h)
+            scale = base_scale * self._zoom
+            new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
+            img = img.scaled(new_w, new_h,
+                             Qt.AspectRatioMode.IgnoreAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+            max_cx = max(0, new_w - PREVIEW_W)
+            max_cy = max(0, new_h - PREVIEW_H)
+            cx = int(max_cx * self._pan_x)
+            cy = int(max_cy * self._pan_y)
+            img = img.copy(cx, cy, min(new_w, PREVIEW_W), min(new_h, PREVIEW_H))
 
         self._preview_pixmap = QPixmap.fromImage(img)
         self._lbl_current.setText(_format_time(ms))
@@ -462,11 +515,17 @@ class UCVideoCut(QWidget):
     def _on_width_fit(self):
         log.debug("_on_width_fit: width_fit=True")
         self._width_fit = True
+        self._zoom = 1.0
+        self._pan_x = 0.5
+        self._pan_y = 0.5
         self._seek_and_show(self._start_ms)
 
     def _on_height_fit(self):
         log.debug("_on_height_fit: width_fit=False")
         self._width_fit = False
+        self._zoom = 1.0
+        self._pan_x = 0.5
+        self._pan_y = 0.5
         self._seek_and_show(self._start_ms)
 
     def _on_rotate(self):
@@ -506,9 +565,9 @@ class UCVideoCut(QWidget):
 
     def _on_export(self):
         """Ask the window to encode the current clip.  Does not encode."""
-        log.info("_on_export: video_path=%s start=%s end=%s rotation=%s",
+        log.info("_on_export: video_path=%s start=%s end=%s rotation=%s zoom=%s",
                  self._video_path, self._start_ms, self._end_ms,
-                 self._rotation)
+                 self._rotation, self._zoom)
         if self._is_processing or not self._video_path:
             log.debug("_on_export: busy=%s path=%s — ignored",
                       self._is_processing, self._video_path)
@@ -522,7 +581,9 @@ class UCVideoCut(QWidget):
         self._lbl_info.setText("Starting export...")
         self._lbl_info.setVisible(True)
         self.export_requested.emit(
-            self._start_ms, self._end_ms, self._rotation)
+            self._start_ms, self._end_ms, self._rotation,
+            self._zoom, self._pan_x, self._pan_y, self._width_fit,
+        )
 
     def export_refused(self, message):
         """The window's dispatch was refused before anything was queued."""
