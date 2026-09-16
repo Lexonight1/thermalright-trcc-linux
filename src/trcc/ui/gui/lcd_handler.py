@@ -1652,7 +1652,7 @@ class LCDHandler(BaseHandler):
     def _cleanup_device(self) -> None:
         """Blank the panel and release LCD resources via Commands."""
         self.log.info("_cleanup_device: device_key=%s", self._device_key)
-        self._app.dispatch(StopVideo(key=self._device_key))
+        self._app.dispatch(StopVideo(key=self._device_key, keep_override=True))
         try:
             # ``SleepDevice`` is the INTENT — "turn this screen off", the one
             # Command ``App.close``, ``trcc display sleep`` and ``/sleep`` all

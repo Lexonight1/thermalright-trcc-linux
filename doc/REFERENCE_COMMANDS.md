@@ -549,13 +549,14 @@ Stop the cadence started by :class:`StartScreencastDriver`.
 
 ### `StopVideo`
 
-Clear the device's playback override AND the persisted bg override.
+Clear the device's playback override AND optionally the persisted bg override.
 
 *Command* → `VideoResult`
 
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
+| `keep_override` | `bool` | no |
 
 ### `TickDisplay`
 
@@ -716,6 +717,10 @@ Encode a clip of *path* into a loose ``Theme.zt`` for *key*'s panel.
 | `start_ms` | `int` | no |
 | `end_ms` | `int | None` | no |
 | `rotation` | `int` | no |
+| `zoom` | `float` | no |
+| `pan_x` | `float` | no |
+| `pan_y` | `float` | no |
+| `width_fit` | `bool` | no |
 
 ### `ImportConfig`
 
