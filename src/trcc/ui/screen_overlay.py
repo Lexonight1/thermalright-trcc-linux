@@ -64,7 +64,7 @@ def is_wayland() -> bool:
     )
 
 
-_FALLBACK_TOOLS: tuple[str, ...] = ("grim", "gnome-screenshot", "scrot")
+_FALLBACK_TOOLS: tuple[str, ...] = ("grim", "spectacle", "gnome-screenshot", "scrot")
 
 
 def _has_tool(name: str) -> bool:
@@ -74,8 +74,10 @@ def _has_tool(name: str) -> bool:
 
 def _try_external_capture(tmp_path: str) -> QPixmap:
     """Run a fallback screenshot tool, return what it wrote (or null)."""
+    import time
     cmds = {
         "grim": ["grim", tmp_path],
+        "spectacle": ["spectacle", "-b", "-n", "-o", tmp_path],
         "gnome-screenshot": ["gnome-screenshot", "-f", tmp_path],
         "scrot": ["scrot", tmp_path],
     }
@@ -84,14 +86,18 @@ def _try_external_capture(tmp_path: str) -> QPixmap:
             log.debug("screen capture: %s not installed", tool)
             continue
         try:
-            result = subprocess.run(
+            subprocess.run(
                 cmds[tool], capture_output=True, timeout=5, check=False,
             )
         except subprocess.TimeoutExpired:
             log.warning("screen capture: %s timed out", tool)
             continue
-        if result.returncode != 0 or not Path(tmp_path).exists():
-            log.debug("screen capture: %s exited %d", tool, result.returncode)
+        for _ in range(20):
+            if Path(tmp_path).exists() and Path(tmp_path).stat().st_size > 0:
+                break
+            time.sleep(0.025)
+        if not Path(tmp_path).exists() or Path(tmp_path).stat().st_size == 0:
+            log.debug("screen capture: %s output file missing or empty", tool)
             continue
         pix = QPixmap(tmp_path)
         if not pix.isNull():
@@ -104,7 +110,7 @@ def grab_full_screen() -> QPixmap:
     """Capture the full primary screen, X11 + Wayland.
 
     Tries the Qt native path first (works on X11, sometimes blank on
-    Wayland).  Falls back to ``grim`` / ``gnome-screenshot`` / ``scrot``
+    Wayland).  Falls back to ``grim`` / ``spectacle`` / ``gnome-screenshot`` / ``scrot``
     in that order.  Returns a null pixmap if every option fails — the
     caller is responsible for surfacing that to the user.
     """
@@ -118,10 +124,11 @@ def grab_full_screen() -> QPixmap:
     fd, tmp_path = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     try:
+        Path(tmp_path).unlink(missing_ok=True)
         return _try_external_capture(tmp_path)
     finally:
         try:
-            Path(tmp_path).unlink()
+            Path(tmp_path).unlink(missing_ok=True)
         except OSError:
             pass
 

@@ -2216,14 +2216,16 @@ class TRCCApp(QMainWindow):
 
     def _on_video_export_requested(
         self, start_ms: int, end_ms: int, rotation: int,
+        zoom: float = 1.0, pan_x: float = 0.5, pan_y: float = 0.5,
+        width_fit: bool = True,
     ) -> None:
         """The trimmer asked for an encode — dispatch it for the active LCD.
 
         The panel owns the trim, the window owns the device.  ``ExportVideoClip``
         resolves the canvas itself, so nothing here has to know the panel size.
         """
-        log.info("_on_video_export_requested: start=%d end=%d rotation=%d",
-                 start_ms, end_ms, rotation)
+        log.info("_on_video_export_requested: start=%d end=%d rotation=%d zoom=%.2f pan=(%.2f,%.2f)",
+                 start_ms, end_ms, rotation, zoom, pan_x, pan_y)
         h = self._active_lcd()
         path = getattr(self.uc_video_cut, "_video_path", None)
         if h is None or not path:
@@ -2234,6 +2236,7 @@ class TRCCApp(QMainWindow):
         result = self._app.dispatch(ExportVideoClip(
             key=h.device_key, path=Path(path),
             start_ms=start_ms, end_ms=end_ms, rotation=rotation,
+            zoom=zoom, pan_x=pan_x, pan_y=pan_y, width_fit=width_fit,
         ))
         if not result.ok:
             log.warning("_on_video_export_requested: refused — %s",
@@ -2271,6 +2274,21 @@ class TRCCApp(QMainWindow):
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
+            import shutil
+            target_dir = (
+                Path(self._app.dispatch(GetPaths()).user_content_dir) / "backgrounds"
+            )
+            target_dir.mkdir(parents=True, exist_ok=True)
+            safe_key = h.device_key.replace(":", "_") or "default"
+            target = target_dir / f"{safe_key}.zt"
+            try:
+                shutil.copy2(zt_path, target)
+                final_path = target
+            except Exception as e:
+                log.warning("_on_video_cut_done: failed to copy %s to %s: %s",
+                            zt_path, target, e)
+                final_path = Path(zt_path)
+
             # ``SetBackground`` persists the .zt as the device's
             # background override (``DeviceSettings.background_path``)
             # THEN delegates to ``PlayVideo`` for the decode/animate
@@ -2279,7 +2297,7 @@ class TRCCApp(QMainWindow):
             # no override for ``SaveTheme`` to bake in, so a saved theme
             # lost the video and reloaded with a black background.
             result = self._app.dispatch(SetBackground(
-                key=h.device_key, path=Path(zt_path),
+                key=h.device_key, path=final_path,
             ))
             if result.ok:
                 self.uc_preview.set_playing(True)

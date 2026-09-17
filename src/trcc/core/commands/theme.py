@@ -2124,11 +2124,16 @@ class ExportVideoClip(Command[VideoExportResult]):
     start_ms: int = 0
     end_ms: int | None = None
     rotation: int = 0
+    zoom: float = 1.0
+    pan_x: float = 0.5
+    pan_y: float = 0.5
+    width_fit: bool = True
 
     def execute(self, app: App) -> VideoExportResult:
         log.info("ExportVideoClip.execute: key=%s path=%s start_ms=%d "
-                 "end_ms=%s rotation=%d", self.key, self.path, self.start_ms,
-                 self.end_ms, self.rotation)
+                 "end_ms=%s rotation=%d zoom=%.2f pan=(%.2f,%.2f) width_fit=%s",
+                 self.key, self.path, self.start_ms, self.end_ms,
+                 self.rotation, self.zoom, self.pan_x, self.pan_y, self.width_fit)
         if not self.path.is_file():
             log.warning("ExportVideoClip.execute: %s not found", self.path)
             return VideoExportResult(
@@ -2169,7 +2174,7 @@ class ExportVideoClip(Command[VideoExportResult]):
         # thread, when the caller could have been told at the call site.
         if end_ms <= self.start_ms:
             log.warning("ExportVideoClip.execute: empty range %d-%d ms",
-                        self.start_ms, end_ms)
+                self.start_ms, end_ms)
             return VideoExportResult(
                 ok=False, source=str(self.path),
                 message=(f"Invalid clip range {self.start_ms}-{end_ms} ms "
@@ -2201,6 +2206,10 @@ class ExportVideoClip(Command[VideoExportResult]):
             target_w=target_w,
             target_h=target_h,
             rotation=self.rotation,
+            zoom=self.zoom,
+            pan_x=self.pan_x,
+            pan_y=self.pan_y,
+            width_fit=self.width_fit,
         ))
         log.info("ExportVideoClip.execute: queued token=%s for %dx%d",
                  token, target_w, target_h)

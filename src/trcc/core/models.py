@@ -1241,6 +1241,10 @@ class VideoExportRequest:
     target_w: int
     target_h: int
     rotation: int = 0
+    zoom: float = 1.0
+    pan_x: float = 0.5
+    pan_y: float = 0.5
+    width_fit: bool = True
 
 
 # DC file (main_count, sub_count) → ``HardwareMetrics`` field name.

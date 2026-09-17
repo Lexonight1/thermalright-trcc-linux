@@ -151,6 +151,19 @@ class VideoExporter:
         elif req.rotation == 270:
             vf.append("transpose=2")
 
+        if not req.width_fit or req.zoom > 1.0:
+            tw = max(req.target_w, int(req.target_w * req.zoom))
+            th = max(req.target_h, int(req.target_h * req.zoom))
+            vf.append(
+                f"scale=w={tw}:h={th}:force_original_aspect_ratio=increase,"
+                f"crop={req.target_w}:{req.target_h}:(iw-{req.target_w})*{req.pan_x}:(ih-{req.target_h})*{req.pan_y}"
+            )
+        else:
+            vf.append(
+                f"scale=w={req.target_w}:h={req.target_h}:force_original_aspect_ratio=decrease,"
+                f"pad={req.target_w}:{req.target_h}:(ow-iw)/2:(oh-ih)/2"
+            )
+
         cmd: list[str] = [
             "ffmpeg",
             "-ss", f"{req.start_ms / 1000.0}",
@@ -158,7 +171,6 @@ class VideoExporter:
             "-i", str(req.source),
             "-y",
             "-r", str(ZT_FPS),
-            "-s", f"{req.target_w}x{req.target_h}",
         ]
         if vf:
             cmd.extend(["-vf", ",".join(vf)])
