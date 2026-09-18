@@ -11,7 +11,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@v11
         with:
           # Only auto-close issues explicitly waiting on the reporter — never
           # close fresh reports the maintainer simply hasn't read yet.
