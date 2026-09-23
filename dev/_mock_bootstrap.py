@@ -472,12 +472,27 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
         # Only the two OPENERS are scripted — ``BaseOS.open_transport`` and its
         # Wire→opener table are inherited from the real host platform, so the
         # mock exercises the production dispatch rather than a copy of it.
+        #
+        # That inheritance is the point AND the exposure: ``open_transport``
+        # calls ``opener(vid, pid, serial, unit)``, so an opener that does not
+        # match its signature is a TypeError on every connect.  #287 step 4
+        # added ``unit``, taught ``tests/mock_platform.py`` about it, and
+        # missed these two — every dev harness (mock_gui / mock_cli / mock_api /
+        # mock) died on ConnectDevice while the suite stayed green, because no
+        # test built a ``DevMockPlatform``.  ``tests/test_dev_mock_platform.py``
+        # now does.
+        #
+        # *unit* is accepted and not used to pick a script, for the reason
+        # ``tests/mock_platform.py`` gives: two units of one model are the SAME
+        # model, so they replay the same handshake.
         def _open_scsi(self, vid: int, pid: int,
-                       serial: str | None = None) -> ScsiTransport:
+                       serial: str | None = None,
+                       unit: str = "") -> ScsiTransport:
             return scripted_scsi_transport(by_key, vid, pid, self._reply_override)
 
         def _open_bulk(self, vid: int, pid: int,
-                       serial: str | None = None) -> BulkTransport:
+                       serial: str | None = None,
+                       unit: str = "") -> BulkTransport:
             return scripted_bulk_transport(by_key, vid, pid, self._reply_override)
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",
