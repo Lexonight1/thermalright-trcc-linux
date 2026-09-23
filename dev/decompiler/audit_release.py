@@ -42,7 +42,12 @@ from pathlib import Path
 from core.citations import (
     Citation, Hit, documented, files_mentioned, parse, rewrite,
 )
-from core.csharp import DECOMPILE_ROOT, CSharpSource, Method
+from core.csharp import (
+    DECOMPILE_ROOT,
+    CSharpSource,
+    Method,
+    release_of,
+)
 from core.releases import BOILERPLATE, FilePair, Tree, discover
 
 DEC = Path(__file__).resolve().parent
@@ -225,12 +230,20 @@ def restate_sizes(text: str, tree: Tree) -> str:
     return _DECLARED.sub(swap, text)
 
 
-def pending(doc: Path, source: Tree, target: Tree) -> list[str]:
+def pending(doc: Path, source: Tree | None, target: Tree) -> list[str] | None:
     """Methods this doc documents whose behaviour changed and was not re-read.
 
     The load-bearing number: it is what a reader must NOT trust, and it shrinks
     as re-audited entries land, so it is recomputed every run rather than stored.
+
+    ``None`` when *source* is absent -- the tree the doc was read from is not on
+    disk, so what changed since cannot be computed.  That is a THIRD state and
+    must not collapse into ``[]``: an empty list makes :func:`block` write "every
+    method it documents is byte-identical", a positive claim, into a doc nobody
+    checked.  Absent, empty and non-empty are three different sentences.
     """
+    if source is None:
+        return None
     subjects = documented(doc)
     changed: set[str] = set()
     for name in files_mentioned(doc) - BOILERPLATE:
@@ -287,23 +300,35 @@ def unresolved(doc: Path, source: Tree, target: Tree,
     return bad
 
 
-def block(state: State, stale: list[str], trees: dict[str, Tree]) -> str:
-    """The generated state block — the only place a release is named."""
-    origin, addresses = trees[state.origin], trees[state.addresses]
+def block(state: State, stale: list[str] | None,
+          trees: dict[str, Tree]) -> str:
+    """The generated state block — the only place a release is named.
+
+    ``stale is None`` means the origin tree is gone and the pending set could
+    not be computed; it gets its own sentence rather than borrowing the
+    byte-identical one, which would be a claim nobody verified.
+    """
+    del trees                       # release names derive from the versions
+    origin_rel = release_of(state.origin)
+    addresses_rel = release_of(state.addresses)
     if state.origin == state.addresses:
-        head = f"**Audited against TRCC {origin.release}.**"
+        head = f"**Audited against TRCC {origin_rel}.**"
     else:
-        head = (f"**Audited against TRCC {origin.release}; citations re-anchored "
-                f"to TRCC {addresses.release}.**")
-    if stale:
+        head = (f"**Audited against TRCC {origin_rel}; citations re-anchored "
+                f"to TRCC {addresses_rel}.**")
+    if stale is None:
+        tail = (f"\n> The TRCC {origin_rel} tree it was read from is not on "
+                f"disk, so what changed since cannot be computed — read every "
+                f"entry as unverified against TRCC {addresses_rel}.")
+    elif stale:
         names = ", ".join(f"`{n}`" for n in stale[:12])
         more = f" (+{len(stale) - 12} more)" if len(stale) > 12 else ""
         tail = (f"\n> {len(stale)} method(s) documented here changed in "
-                f"TRCC {addresses.release} and have NOT been re-read: {names}{more}"
-                f" — read those entries as TRCC {origin.release} history.")
+                f"TRCC {addresses_rel} and have NOT been re-read: {names}{more}"
+                f" — read those entries as TRCC {origin_rel} history.")
     else:
         tail = (f"\n> Every method it documents is byte-identical in "
-                f"TRCC {addresses.release}.")
+                f"TRCC {addresses_rel}.")
     return (
         BEGIN.format(origin=state.origin, addresses=state.addresses,
                      known_bad=";".join(state.known_bad) or "none") + " -->\n"
@@ -451,6 +476,7 @@ def main() -> int:
     print(f"{'doc':<32}{'origin':>8}{'addresses':>11}{'moved':>7}{'pending':>9}  state")
     print("-" * 78)
     stale_blocks, claims, broken, preexisting = [], [], [], []
+    unverifiable: list[tuple[str, str]] = []
     totals = Counter()
     for doc in docs():
         original = doc.read_text()
@@ -476,7 +502,11 @@ def main() -> int:
             moved = rb.moved
             state = State(state.origin, current.version, state.known_bad)
 
-        stale = pending(doc, by_version[state.origin], current)
+        # ``.get``: the origin tree is HISTORY and may be gone -- 20 docs were
+        # read from 2.0.3, deleted 2026-08-18, and this line raised KeyError on
+        # every run since.  ``pending`` answers None, which ``block`` renders as
+        # its own sentence rather than the byte-identical claim.
+        stale = pending(doc, by_version.get(state.origin), current)
         body = block(state, stale, by_version)
         text = stamped(body_text, body)
         if args.rebase:
@@ -488,11 +518,31 @@ def main() -> int:
         # still addressing an older one points elsewhere by design.  Exceptions
         # come from the RECORDED known-bad list, never recomputed.
         fails: list[str] = []
-        if state.addresses == current.version:
-            fails = [f for f in unresolved(doc, by_version[state.origin], current, text)
+        origin_tree = by_version.get(state.origin)
+        if state.addresses == current.version and origin_tree is not None:
+            # The excusal MUST come from the origin diff.  A citation into a
+            # method that changed since a human last read it is deliberately
+            # left at its old address and reported as pending instead, so
+            # sourcing this from anywhere else un-excuses exactly those.
+            # MEASURED: sourcing it from the anchoring tree instead reported
+            # BEHAVIOR_FORMLED.md's 11 citations as broken -- every one of them
+            # into a method its own block already lists as changed-and-not-re-read.
+            #
+            # So with the origin tree absent the invariant is UNCOMPUTABLE, and
+            # is skipped rather than run at the strictest reading: "we cannot
+            # tell" must not masquerade as "all of these are wrong".
+            fails = [f for f in unresolved(doc, origin_tree, current, text)
                      if _fail_key(f) not in state.known_bad]
         if fails:
             broken.append((doc.name, fails))
+        elif args.rebase and origin_tree is None:
+            # Uncomputable is not verified.  Without the origin tree the
+            # citation invariant above was SKIPPED, so writing here would
+            # persist a rebase nothing checked -- the exact move the comment
+            # above says had to be recovered from git once already.  Refuse the
+            # write and name the missing tree; re-extracting it is a decision,
+            # not a silent fallback.
+            unverifiable.append((doc.name, release_of(state.origin)))
         elif args.rebase:
             doc.write_text(text)
 
@@ -502,13 +552,21 @@ def main() -> int:
         if bad := _VERSION_ANY.findall(_STATE_RE.sub("", doc.read_text())):
             claims.append((doc.name, sorted(set(bad))))
         totals["moved"] += moved
-        totals["pending"] += len(stale)
-        print(f"{doc.name:<32}{by_version[state.origin].release:>8}"
-              f"{by_version[state.addresses].release:>11}{moved or '—':>7}"
-              f"{len(stale) or '—':>9}  "
+        totals["pending"] += 0 if stale is None else len(stale)
+        print(f"{doc.name:<32}{release_of(state.origin):>8}"
+              f"{release_of(state.addresses):>11}{moved or '—':>7}"
+              f"{('?' if stale is None else len(stale) or '—'):>9}  "
               f"{'re-anchored' if state.origin != state.addresses else 'as written'}")
     print("-" * 78)
     print(f"{'TOTAL':<32}{'':>8}{'':>11}{totals['moved']:>7}{totals['pending']:>9}")
+    if unverifiable:
+        missing = sorted({rel for _, rel in unverifiable})
+        print(f"\nNOT REBASED — {len(unverifiable)} doc(s) whose origin tree is "
+              f"not on disk ({', '.join(missing)}).\n  The citation invariant "
+              f"cannot be computed without it, and an unverified rebase is how "
+              f"one\n  got persisted before.  Extract that release, or re-read "
+              f"the docs against the\n  current one:\n    "
+              + "\n    ".join(n for n, _ in unverifiable))
 
     if args.worklist:
         oldest = min(trees, key=lambda t: t.version)

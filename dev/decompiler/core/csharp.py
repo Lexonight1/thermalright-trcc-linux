@@ -37,6 +37,19 @@ from pathlib import Path
 # been on disk since 2026-06-05 -- and the whole oracle suite ran GREEN against
 # the wrong program (measured: 163 passed).  A reporter (#224) was told his
 # hardware was equally broken on Windows on the strength of that reading.
+def release_of(version: str) -> str:
+    """The three-component release a human writes: ``2.1.8.2`` -> ``2.1.8``.
+
+    ONE definition.  It was written three times -- here, as ``Tree.release`` in
+    ``core/releases.py``, and a third copy added to ``audit_release`` while
+    fixing an unrelated crash -- which is the shape
+    ``feedback_one_fact_expressed_twice_will_drift`` describes.  Lives in this
+    module because it is the lowest layer: ``releases`` imports ``csharp``, not
+    the other way around.
+    """
+    return ".".join(version.split(".")[:3])
+
+
 # The ``AssemblyVersion`` the decompile must carry -- the tree's own statement of
 # what it is, as opposed to what its directory is named.  The old tree was NAMED
 # 2.1.6 in the docs and said 2.0.3 inside; only this discriminates.
@@ -53,7 +66,7 @@ ORACLE_VERSION = "2.1.8.2"
 # The release we port -- the marketing three-part version, which names the
 # installer and the decompile directory.  Derived, so there is still exactly ONE
 # spelling of the version in this file and changing releases is one line.
-ORACLE_RELEASE = ".".join(ORACLE_VERSION.split(".")[:3])
+ORACLE_RELEASE = release_of(ORACLE_VERSION)
 
 # The program we port, as the binary itself declares it (``AssemblyProduct``).
 #

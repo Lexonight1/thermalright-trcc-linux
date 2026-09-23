@@ -15,7 +15,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from core.csharp import ORACLE_PRODUCT, CSharpSource, Method
+from core.csharp import ORACLE_PRODUCT, CSharpSource, Method, release_of
 
 _ASSEMBLY_RE = re.compile(r'AssemblyVersion\("([\d.]+)"\)')
 _PRODUCT_RE = re.compile(r'AssemblyProduct\("([^"]*)"\)')
@@ -45,7 +45,7 @@ class Tree:
     @property
     def release(self) -> str:
         """The three-component release — what a human writes: 2.0.3.0 -> 2.0.3."""
-        return ".".join(self.version.split(".")[:3])
+        return release_of(self.version)
 
     @property
     def label(self) -> str:
