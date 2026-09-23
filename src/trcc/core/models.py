@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from .logs import per_frame
 
@@ -1582,6 +1582,34 @@ class PanelConfig:
     category_id: int
     name: str
     sensors: list[SensorBinding] = field(default_factory=list)
+
+    #: Category 0 is "custom" — see :data:`CATEGORY_IMAGES`, where it maps to
+    #: ``sysinfo_custom.png``.  Every other id is a fixed hardware family.
+    CUSTOM_CATEGORY: ClassVar[int] = 0
+
+    @classmethod
+    def custom(cls, name: str = "Custom", rows: int = 4) -> PanelConfig:
+        """A new, empty user panel — the ONE definition of what that means.
+
+        What a freshly added panel IS (category 0, four unbound rows labelled
+        "Sensor 1".."Sensor 4") is domain policy, not widget code.  It lived as
+        a literal inside ``ui/gui/uc_system_info.py`` because gui was the only
+        face that could add a panel; the moment a second face can, that
+        literal becomes a copy that drifts
+        ([[feedback_one_fact_expressed_twice_will_drift]]).
+
+        ``rows`` defaults to four because every entry in ``_SENSOR_FAMILIES``
+        has exactly four and the grid art has four slots — it is a parameter
+        so a caller can say so, not an invitation to vary it.
+        """
+        log.info("PanelConfig.custom: name=%r rows=%d category=%d",
+                 name, rows, cls.CUSTOM_CATEGORY)
+        return cls(
+            category_id=cls.CUSTOM_CATEGORY,
+            name=name,
+            sensors=[SensorBinding(f"Sensor {i + 1}", "", "")
+                     for i in range(rows)],
+        )
 
 
 @dataclass(slots=True)

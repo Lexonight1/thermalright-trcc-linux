@@ -588,16 +588,9 @@ class UCSystemInfo(QWidget):
         """Add a new custom panel."""
         log.info("UCSystemInfo._on_add_clicked: existing=%d",
                  len(self._dashboard))
-        new_panel = PanelConfig(
-            category_id=0, name="Custom",
-            sensors=[
-                SensorBinding("Sensor 1", "", ""),
-                SensorBinding("Sensor 2", "", ""),
-                SensorBinding("Sensor 3", "", ""),
-                SensorBinding("Sensor 4", "", ""),
-            ],
-        )
-        self._dashboard.append(new_panel)
+        # What a new panel IS lives on the model, not here — qtgui and the
+        # CLI add panels too, and three literals would be three drifts.
+        self._dashboard.append(PanelConfig.custom())
         self._save()
 
         # Navigate to the page where the new panel is

@@ -2635,18 +2635,165 @@ def test_an_unbound_row_says_so(gui_app: App, qtbot) -> None:
         category_id=0, name="Test",
         sensors=[SensorBinding(label="Row", sensor_id="", unit="")],
     )]
-    # redraw from the working layout
-    real = box.dispatch
-    from trcc.core.results import SensorDashboardResult
-
-    box.dispatch = lambda cmd: (                   # pyright: ignore[reportAttributeAccessIssue]
-        SensorDashboardResult(ok=True, panels=tuple(box._panels))
-        if type(cmd).__name__ == "GetSensorDashboard" else real(cmd))
-    box.refresh()
+    box._redraw()        # draw the WORKING layout — no bus round-trip
 
     child = box._tree.topLevelItem(0).child(0)     # pyright: ignore[reportOptionalMemberAccess]
     assert child is not None
     assert "unbound" in child.text(1)
+
+
+def _select_panel_header(box, index: int) -> None:
+    box._tree.setCurrentItem(box._tree.topLevelItem(index))
+
+
+def _select_row(box, panel: int, row: int) -> None:
+    box._tree.setCurrentItem(box._tree.topLevelItem(panel).child(row))
+
+
+def test_a_new_panel_is_the_models_definition_of_one(gui_app: App, qtbot) -> None:
+    """The ONE policy, pinned — not gui's literal and not qtgui's.
+
+    "A new panel is category 0, named Custom, with four unbound rows" is
+    domain policy.  It lived as a literal in ``ui/gui/uc_system_info.py``
+    while gui was the only face that could add one; this asserts the faces
+    now agree because they call the same factory, not because two literals
+    happen to match today.
+    """
+    from trcc.core.models import PanelConfig
+
+    box = _dashboard_box(gui_app, qtbot)
+    before = len(box._panels)
+    box._on_add_panel()
+
+    added = box._panels[-1]
+    assert len(box._panels) == before + 1
+    assert added == PanelConfig.custom()
+    assert added.category_id == PanelConfig.CUSTOM_CATEGORY
+    assert [b.label for b in added.sensors] == [
+        "Sensor 1", "Sensor 2", "Sensor 3", "Sensor 4",
+    ]
+    assert all(b.sensor_id == "" for b in added.sensors)
+
+
+def test_adding_a_panel_shows_it_without_persisting_it(
+    gui_app: App, qtbot,
+) -> None:
+    """Visible immediately, saved only on Save — the same contract as a bind.
+
+    This is why ``refresh`` was split: it re-reads the bus, so using it to
+    show the new panel would discard the very edit being drawn.
+    """
+    from trcc.core.commands import GetSensorDashboard
+
+    box = _dashboard_box(gui_app, qtbot)
+    persisted_before = len(gui_app.dispatch(GetSensorDashboard()).panels)
+
+    box._on_add_panel()
+
+    assert box._tree.topLevelItemCount() == len(box._panels)
+    assert box._tree.topLevelItem(len(box._panels) - 1).text(0) == "Custom"
+    assert len(gui_app.dispatch(GetSensorDashboard()).panels) == persisted_before
+    assert "unsaved" in box._status.text()
+
+    box._on_save()
+    assert len(gui_app.dispatch(GetSensorDashboard()).panels) == persisted_before + 1
+
+
+def test_deleting_resolves_a_selected_ROW_to_its_panel(
+    gui_app: App, qtbot,
+) -> None:
+    """Select a row, delete the panel it belongs to.
+
+    Requiring the header to be selected would be a second rule to learn.
+    Selecting a ROW is the case that distinguishes ``_selected_panel`` from
+    ``_selected_binding``; a test that selected the header would pass against
+    either.
+    """
+    box = _dashboard_box(gui_app, qtbot)
+    box._on_add_panel()
+    target = len(box._panels) - 1
+    _select_row(box, target, 2)
+
+    assert box._selected_binding() == (target, 2)
+    assert box._selected_panel() == target
+
+    box._on_delete_panel()
+    assert len(box._panels) == target
+    assert "Custom" not in [p.name for p in box._panels]
+
+
+def test_deleting_the_last_panel_is_refused(gui_app: App, qtbot) -> None:
+    """``SetSensorDashboard`` refuses an empty layout — say so before saving.
+
+    An empty layout makes the next read fall back to defaults: a wipe dressed
+    up as a write.  Surfacing it at delete time beats a refusal at save time,
+    by which point the user has lost the panel from the tree.
+    """
+    box = _dashboard_box(gui_app, qtbot)
+    box._panels = box._panels[:1]
+    box._redraw()
+    # _redraw CLEARS the selection, so without this the "nothing selected"
+    # branch fires first and the guard goes untested — it did, once.
+    _select_panel_header(box, 0)
+    assert box._selected_panel() == 0
+
+    box._on_delete_panel()
+
+    assert len(box._panels) == 1
+    assert "last panel" in box._status.text()
+
+
+def test_renaming_a_panel_takes_the_dialogs_answer(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """And a cancel or a blank name changes nothing."""
+    from trcc.ui.qtgui.panels.system import dashboard_box as mod
+
+    box = _dashboard_box(gui_app, qtbot)
+
+    def rename_with(value: str, ok: bool) -> None:
+        """Answer the dialog with *value* and re-select FIRST.
+
+        A successful rename calls ``_redraw``, which clears the tree and with
+        it the selection — so without re-selecting, every attempt after the
+        first returns early on "nothing selected" and the cancel/blank guards
+        below assert nothing.  They did: mutation D (dropping ``not ok or``)
+        passed against the first version of this test.
+        """
+        _select_panel_header(box, 0)
+        assert box._selected_panel() == 0
+        monkeypatch.setattr(mod.QInputDialog, "getText",
+                            staticmethod(lambda *a, **k: (value, ok)))
+        box._on_rename_panel()
+
+    rename_with("  Water loop  ", True)     # accepted, and stripped
+    assert box._panels[0].name == "Water loop"
+    assert box._tree.topLevelItem(0).text(0) == "Water loop"
+
+    rename_with("Discarded", False)         # cancelled — ok=False
+    assert box._panels[0].name == "Water loop"
+
+    rename_with("   ", True)                # accepted but blank
+    assert box._panels[0].name == "Water loop"
+
+
+def test_panel_verbs_refuse_politely_with_no_selection(
+    gui_app: App, qtbot,
+) -> None:
+    """No selection is a message, never a crash or a silent no-op."""
+    box = _dashboard_box(gui_app, qtbot)
+    box._tree.clearSelection()
+    box._tree.setCurrentItem(None)
+    assert box._selected_panel() is None
+
+    before = [p.name for p in box._panels]
+    box._on_delete_panel()
+    assert box._panels == box._panels and [p.name for p in box._panels] == before
+    assert "Select a panel" in box._status.text()
+
+    box._on_rename_panel()
+    assert [p.name for p in box._panels] == before
+    assert "Select a panel" in box._status.text()
 
 
 def test_saving_sends_the_whole_layout(gui_app: App, qtbot) -> None:
