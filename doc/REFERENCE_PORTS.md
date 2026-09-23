@@ -19,12 +19,12 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Query`](#query) | 1 | 0 | 39 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 3 |
 | [`UserInterface`](#userinterface) | 1 | 7 | 5 |
-| [`_HidBinding`](#_hidbinding) | 1 | 0 | 2 |
 | [`_QtUI`](#_qtui) | 1 | 1 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 17 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
+| [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
@@ -188,20 +188,6 @@ run() -> int
 
 **Implementations (5):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
 
-## _HidBinding
-
-`adapters/device/transport.py`
-
-One ``hid`` python binding.  Children differ only in how a handle is opened and put into blocking mode; everything downstream is shared.
-
-**You implement (1):**
-
-```python
-open(vid: 'int', pid: 'int', serial: 'str | None') -> Any
-```
-
-**Implementations (2):** `_ApmortonHidBinding` · `_CythonHidBinding`
-
 ## _QtUI
 
 `ui/_uis.py`
@@ -277,6 +263,21 @@ submit(token: 'str', request: 'VideoExportRequest') -> None
 ```
 
 **Implementations (2):** `SyncVideoExportRunner` · `ThreadVideoExportRunner`
+
+## _HidBinding
+
+`adapters/device/transport.py`
+
+One ``hid`` python binding.  Children differ only in how a handle is opened and put into blocking mode; everything downstream is shared.
+
+**You implement (2):**
+
+```python
+open(vid: 'int', pid: 'int', serial: 'str | None') -> Any
+open_path(path: 'bytes') -> Any
+```
+
+**Implementations (2):** `_ApmortonHidBinding` · `_CythonHidBinding`
 
 ## _MappingPort
 
@@ -690,7 +691,7 @@ _build_autostart() -> AutostartManager
 _build_hotplug() -> HotplugMonitor
 _build_sensors() -> SensorEnumerator
 _make_paths() -> Paths
-_open_scsi(vid: 'int', pid: 'int', serial: 'str | None' = None) -> ScsiTransport
+_open_scsi(vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '') -> ScsiTransport
 check_permissions() -> list[str]
 disk_info() -> list[dict[str, str]]
 distro_name() -> str
@@ -763,7 +764,7 @@ install_method() -> str
 memory_info() -> list[dict[str, str]]
 minimize_on_close() -> bool
 no_devices_hint() -> str
-open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None) -> Transport
+open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '') -> Transport
 package_manager() -> str
 packages() -> PackageManager
 paths() -> Paths

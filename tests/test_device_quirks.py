@@ -311,8 +311,8 @@ def test_the_quirk_transport_is_tried_only_after_the_ordinary_one_fails(
     # same scripted one the ordinary path uses.
     monkeypatch.setattr(
         "trcc.adapters.device.transport.HidApiTransport",
-        lambda vid, pid, serial=None: app.platform.open_transport(
-            Wire.HID, vid, pid),
+        lambda vid, pid, serial=None, unit="": app.platform.open_transport(
+            Wire.HID, vid, pid, serial, unit),
     )
     real_connect = HidLcd.connect
     attempts = []

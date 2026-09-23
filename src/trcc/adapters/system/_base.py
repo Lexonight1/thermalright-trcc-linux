@@ -50,6 +50,7 @@ from ...core.ports import (
 )
 from ...core.registry import ALL_DEVICES
 from ..device._pyusb_find import find as usb_find
+from ..device._pyusb_find import usb_path
 from ..device.transport import PyUsbBulkTransport
 
 if TYPE_CHECKING:
@@ -98,48 +99,6 @@ class BasePaths(Paths):
         return path
 
 
-def usb_path(dev: Any) -> str | None:
-    """Where this unit is PLUGGED IN, as a stable string — or ``None``.
-
-    Two identical coolers share a VID/PID and ship no serial, so nothing in
-    the USB descriptor tells them apart (#287).  What does is the topology:
-    they are in different ports.  ``usb_find(find_all=True)`` already yields
-    one object per physical unit and that object carries the answer; this
-    tree read ``iSerialNumber`` and ``bcdDevice`` off it and dropped the rest.
-
-    Format is the kernel's own USB topology name — ``1-14``, ``1-2.3`` —
-    because it is the one a user can check against ``lsusb -t`` and ``dmesg``
-    when a report says which panel did what.
-
-    **Port chain first, address second, and the difference matters.**  The
-    port chain is where the cable is: it survives a replug and a reboot, so it
-    can key persisted settings.  ``address`` is handed out by the host
-    controller and is reassigned on every replug — usable to tell two units
-    apart *right now*, never to remember which was which.  It is the fallback
-    only, spelled ``@`` so the two can never be confused on sight.
-
-    ``None`` is a real answer.  PyUSB sets ``bus`` / ``address`` /
-    ``port_number`` to ``None`` whenever the backend does not supply them
-    (``usb.core.Device.__init__``), so this is guarded on EVERY platform, not
-    just the ones we cannot test on.  A caller that gets ``None`` has learned
-    that this host cannot tell two identical units apart.
-    """
-    bus = getattr(dev, "bus", None)
-    if bus is None:
-        log.debug("usb_path: backend supplied no bus — not addressable")
-        return None
-    ports = getattr(dev, "port_numbers", None) or ()
-    if ports:
-        path = f"{int(bus)}-{'.'.join(str(int(p)) for p in ports)}"
-        log.debug("usb_path: %s (port chain — stable across replug)", path)
-        return path
-    address = getattr(dev, "address", None)
-    if address is None:
-        log.debug("usb_path: bus %s but no ports and no address", bus)
-        return None
-    path = f"{int(bus)}@{int(address)}"
-    log.debug("usb_path: %s (ADDRESS — changes on replug)", path)
-    return path
 
 
 def disambiguate(infos: list[DeviceInfo]) -> list[DeviceInfo]:
@@ -406,7 +365,7 @@ class BaseOS(Platform):
 
     def _transport_openers(
         self,
-    ) -> Mapping[Wire, Callable[[int, int, str | None], Transport]]:
+    ) -> Mapping[Wire, Callable[..., Transport]]:
         """Wire → the opener that serves it.  **Unlisted wires use bulk.**
 
         The same shape as ``_udev._WIRE_SUBSYSTEMS``: a per-``(OS, wire)`` fact
@@ -424,24 +383,30 @@ class BaseOS(Platform):
         return openers
 
     def open_transport(self, wire: Wire, vid: int, pid: int,
-                       serial: str | None = None) -> Transport:
-        """Return an unopened transport for *wire* — the port's one entry point."""
-        opener = self._transport_openers().get(wire, self._open_bulk)
-        log.info("%s.open_transport: wire=%s %04x:%04x serial=%r → %s",
-                 type(self).__name__, wire.value, vid, pid, serial,
-                 getattr(opener, "__name__", opener))
-        return opener(vid, pid, serial)
+                       serial: str | None = None,
+                       unit: str = "") -> Transport:
+        """Return an unopened transport for *wire* — the port's one entry point.
 
-    def _open_bulk(self, vid: int, pid: int,
-                   serial: str | None = None) -> Transport:
+        *unit* names WHICH of several identical devices to open (#287); empty
+        is "the only one of this model", which is every single-device user and
+        therefore the behaviour this signature had before the keyword existed.
+        """
+        opener = self._transport_openers().get(wire, self._open_bulk)
+        log.info("%s.open_transport: wire=%s %04x:%04x serial=%r unit=%s → %s",
+                 type(self).__name__, wire.value, vid, pid, serial,
+                 unit or "(only)", getattr(opener, "__name__", opener))
+        return opener(vid, pid, serial, unit)
+
+    def _open_bulk(self, vid: int, pid: int, serial: str | None = None,
+                   unit: str = "") -> Transport:
         """Open a bulk transport — identical on every OS (libusb)."""
-        log.debug("%s._open_bulk: %04x:%04x serial=%r",
-                  type(self).__name__, vid, pid, serial)
-        return PyUsbBulkTransport(vid, pid, serial)
+        log.debug("%s._open_bulk: %04x:%04x serial=%r unit=%s",
+                  type(self).__name__, vid, pid, serial, unit or "(only)")
+        return PyUsbBulkTransport(vid, pid, serial, unit)
 
     @abstractmethod
-    def _open_scsi(self, vid: int, pid: int,
-                   serial: str | None = None) -> ScsiTransport:
+    def _open_scsi(self, vid: int, pid: int, serial: str | None = None,
+                   unit: str = "") -> ScsiTransport:
         """Open this OS's native SCSI passthrough — the one divergent path."""
 
     def scan_devices(self) -> list[DeviceInfo]:

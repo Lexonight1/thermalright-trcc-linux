@@ -22,6 +22,7 @@ from ...core.errors import PermissionError_, TransportError
 from ...core.logs import per_frame
 from ...core.ports import BulkTransport, WriteBuffer
 from ._pyusb_find import find as usb_find
+from ._pyusb_find import find_unit
 
 # Optional hidapi backend (the [hid] extra)
 try:
@@ -103,26 +104,40 @@ class PyUsbBulkTransport(BulkTransport):
     """
 
     def __init__(self, vid: int, pid: int,
-                 serial: str | None = None) -> None:
+                 serial: str | None = None, unit: str = "") -> None:
         self._vid = vid
         self._pid = pid
         self._serial = serial
+        #: Which physical unit, when several of the model are plugged in
+        #: (#287).  Empty means "the only one", which is every normal user.
+        self._unit = unit
         self._device: Any = None
         self._is_open = False
         self._ep_out: int | None = None
         self._ep_in: int | None = None
-        log.debug("PyUsbBulkTransport.__init__: %04x:%04x serial=%s",
-                  vid, pid, serial or "(any)")
+        log.debug("PyUsbBulkTransport.__init__: %04x:%04x serial=%s unit=%s",
+                  vid, pid, serial or "(any)", unit or "(only)")
 
     def open(self) -> bool:
-        kwargs: dict[str, Any] = {'idVendor': self._vid, 'idProduct': self._pid}
-        if self._serial:
-            kwargs['serial_number'] = self._serial
-
-        self._device = usb_find(**kwargs)
-        if self._device is None:
-            log.error("USB device %04X:%04X not found", self._vid, self._pid)
-            return False
+        if self._unit:
+            # A named unit is never satisfied by "whichever one libusb lists
+            # first" — that is the bug (#287).  Missing means unplugged or
+            # moved, and opening the sibling would drive the wrong panel.
+            self._device = find_unit(self._vid, self._pid, self._unit)
+            if self._device is None:
+                log.error("USB device %04X:%04X not present at unit %s",
+                          self._vid, self._pid, self._unit)
+                return False
+        else:
+            kwargs: dict[str, Any] = {'idVendor': self._vid,
+                                      'idProduct': self._pid}
+            if self._serial:
+                kwargs['serial_number'] = self._serial
+            self._device = usb_find(**kwargs)
+            if self._device is None:
+                log.error("USB device %04X:%04X not found",
+                          self._vid, self._pid)
+                return False
 
         # 1. Detach kernel drivers from interfaces 0..3.  USB cooler
         # firmware presents multiple interfaces (vendor + HID + mass-
@@ -457,11 +472,64 @@ class _HidBinding(ABC):
         Raises one of :meth:`open_errors` when the device is absent or
         inaccessible."""
 
+    @classmethod
+    @abstractmethod
+    def open_path(cls, path: bytes) -> Any:
+        """Open the ONE handle at *path*, hidapi's own device identifier.
+
+        ``open(vid, pid, serial)`` takes whichever unit hidapi lists first,
+        which is why two identical panels both opened the same one (#287).
+        Both supported bindings can do this — MEASURED: cython-hidapi exposes
+        ``device().open_path``, apmorton's constructor takes ``path=`` — so
+        this is a real abstraction over two real APIs, not a hook for one.
+        """
+
+    @classmethod
+    def path_for_unit(cls, vid: int, pid: int, unit: str) -> bytes | None:
+        """hidapi's path for the *unit* USB port, or ``None``.
+
+        Shared: ``hid.enumerate`` is identical in both bindings, and the
+        entry it returns carries ``bus_type``/``path`` but NOT the USB
+        topology — so the two are matched through PyUSB, which does know the
+        port.  One interface's path is enough, since every interface of one
+        physical device hangs off the same port.
+        """
+        from ._pyusb_find import find_unit
+        if not unit or not HIDAPI_AVAILABLE:
+            return None
+        if find_unit(vid, pid, unit) is None:
+            log.warning("path_for_unit: %04x:%04x is not at unit %s",
+                        vid, pid, unit)
+            return None
+        entries = [e for e in hidapi.enumerate(vid, pid) if e.get("path")]
+        log.info("path_for_unit: %04x:%04x unit=%s -> %d hid interface(s)",
+                 vid, pid, unit, len(entries))
+        if len(entries) <= 1:
+            return entries[0]["path"] if entries else None
+        # More than one unit of this model is present, so the first entry is
+        # exactly the coin-flip this exists to avoid.  Ordering hid's
+        # enumeration against PyUSB's is not a mapping either library
+        # promises, so refuse rather than guess wrong half the time.
+        log.warning(
+            "path_for_unit: %d hid entries for %04x:%04x — cannot say which "
+            "is the unit at %s, so it is not used (#287)",
+            len(entries), vid, pid, unit,
+        )
+        return None
+
 
 class _CythonHidBinding(_HidBinding):
     """PyPI ``hidapi`` (cython-hidapi) — ``hid.device``."""
 
     CLASS_ATTR: ClassVar[str] = "device"
+
+    @classmethod
+    def open_path(cls, path: bytes) -> Any:
+        log.info("_CythonHidBinding.open_path: %r", path)
+        handle = cls._require_class()()        # ctor takes no useful args
+        handle.open_path(path)
+        handle.set_nonblocking(0)
+        return handle
 
     @classmethod
     def open(cls, vid: int, pid: int, serial: str | None) -> Any:
@@ -477,6 +545,13 @@ class _ApmortonHidBinding(_HidBinding):
     """PyPI ``hid`` (apmorton) — ``hid.Device``, opens in its constructor."""
 
     CLASS_ATTR: ClassVar[str] = "Device"
+
+    @classmethod
+    def open_path(cls, path: bytes) -> Any:
+        log.info("_ApmortonHidBinding.open_path: %r", path)
+        handle = cls._require_class()(path=path)
+        handle.nonblocking = 0
+        return handle
 
     @classmethod
     def open(cls, vid: int, pid: int, serial: str | None) -> Any:
@@ -495,7 +570,7 @@ class HidApiTransport(BulkTransport):
     """
 
     def __init__(self, vid: int, pid: int,
-                 serial: str | None = None) -> None:
+                 serial: str | None = None, unit: str = "") -> None:
         if not HIDAPI_AVAILABLE:
             raise ImportError(
                 "no hid binding installed — install EITHER python-hidapi or "
@@ -507,10 +582,12 @@ class HidApiTransport(BulkTransport):
         self._vid = vid
         self._pid = pid
         self._serial = serial
+        #: Which physical unit (#287); empty means "the only one".
+        self._unit = unit
         self._device: Any = None
         self._is_open = False
-        log.debug("HidApiTransport.__init__: %04x:%04x serial=%s",
-                  vid, pid, serial or "(any)")
+        log.debug("HidApiTransport.__init__: %04x:%04x serial=%s unit=%s",
+                  vid, pid, serial or "(any)", unit or "(only)")
 
     def open(self) -> bool:
         binding = _HidBinding.detect()
@@ -533,7 +610,11 @@ class HidApiTransport(BulkTransport):
         last: BaseException | None = None
         for attempt in range(1, _HID_OPEN_ATTEMPTS + 1):
             try:
-                self._device = binding.open(self._vid, self._pid, self._serial)
+                path = binding.path_for_unit(self._vid, self._pid, self._unit)
+                self._device = (
+                    binding.open_path(path) if path is not None
+                    else binding.open(self._vid, self._pid, self._serial)
+                )
                 if attempt > 1:
                     log.info("HidApiTransport.open: %04x:%04x opened on "
                              "attempt %d — the panel was re-enumerating",

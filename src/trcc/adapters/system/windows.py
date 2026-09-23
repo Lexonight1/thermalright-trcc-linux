@@ -375,9 +375,27 @@ class WindowsPlatform(BaseOS, key="win32"):
         from ._hotplug import WindowsHotplugMonitor
         return WindowsHotplugMonitor()
 
-    def _open_scsi(self, vid: int, pid: int,
-                  serial: str | None = None) -> ScsiTransport:
-        log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
+    def _open_scsi(self, vid: int, pid: int, serial: str | None = None,
+                  unit: str = "") -> ScsiTransport:
+        r"""Windows SCSI passthrough over a ``\\.\PhysicalDriveN`` handle.
+
+        *unit* is ACCEPTED AND NOT HONOURED, and says so out loud.  Picking a
+        specific one of two identical devices (#287) needs the Windows device
+        path — ``SetupDiGetDeviceInstanceId`` / ``USB\VID_xxxx&PID_xxxx\…``
+        — matched against the USB topology, and this is the one OS in the
+        matrix that cannot be verified here (``doc``: macOS/BSD are
+        reporter-only, Windows needs the VM).  Shipping an untested mapping
+        that silently opens the WRONG panel is worse than shipping the
+        current behaviour with a warning that names the limit.
+        """
+        log.info("open_scsi: %04x:%04x serial=%r unit=%s",
+                 vid, pid, serial, unit or "(only)")
+        if unit:
+            log.warning(
+                "open_scsi: Windows cannot yet target a specific unit — "
+                "opening the first %04x:%04x found, which may be the other "
+                "panel (#287)", vid, pid,
+            )
         path = _find_physical_drive(vid, pid)
         if path is None:
             raise TransportError(

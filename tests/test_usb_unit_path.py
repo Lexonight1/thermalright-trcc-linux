@@ -318,3 +318,107 @@ def test_device_key_mirrors_DeviceInfo_key(tmp_path) -> None:
     for info in _twins():
         device = app.attach(info.vid, info.pid, unit=info.unit)
         assert device.key == info.key
+
+
+# ── step 4: each Device opens ITS OWN unit ───────────────────────────────
+
+
+def test_find_unit_never_falls_back_to_a_sibling(monkeypatch) -> None:
+    """Asking for a named unit that is gone must return NOTHING.
+
+    "Whichever one libusb lists first" is the whole bug: opening the sibling
+    would drive the other panel while reporting success, which is worse than
+    failing to open at all.
+    """
+    from trcc.adapters.device import _pyusb_find
+
+    twins = [_Dev(bus=1, port_numbers=(13,), address=4),
+             _Dev(bus=1, port_numbers=(11,), address=3)]
+    monkeypatch.setattr(_pyusb_find, "find",
+                        lambda **kw: twins if kw.get("find_all") else twins[0])
+
+    assert _pyusb_find.find_unit(1, 2, "1-11") is twins[1]
+    assert _pyusb_find.find_unit(1, 2, "1-13") is twins[0]
+    assert _pyusb_find.find_unit(1, 2, "1-99") is None
+
+
+def test_an_empty_unit_is_not_a_match_all() -> None:
+    """``find_unit`` must never answer a "give me any" question.
+
+    Callers that mean "the only one of this model" call ``find`` directly, so
+    this cannot silently hand back an arbitrary device to a caller that asked
+    for a named one.
+    """
+    from trcc.adapters.device._pyusb_find import find_unit
+
+    assert find_unit(0x0402, 0x3922, "") is None
+
+
+def test_the_bulk_transport_carries_the_unit() -> None:
+    """And a transport built without one behaves exactly as it always has."""
+    from trcc.adapters.device.transport import PyUsbBulkTransport
+
+    assert PyUsbBulkTransport(1, 2, None, "1-13")._unit == "1-13"
+    assert PyUsbBulkTransport(1, 2)._unit == ""
+
+
+def test_open_transport_passes_the_unit_to_its_opener(tmp_path) -> None:
+    """The Platform port threads it through; ``_open_bulk`` receives it.
+
+    Driven on the REAL ``BaseOS.open_transport``, unbound: ``FakePlatform``
+    overrides ``open_transport`` wholesale and never reaches an opener, so a
+    test written against it would pass without exercising the table at all.
+    """
+    from trcc.adapters.system._base import BaseOS
+    from trcc.core.models import Wire
+
+    seen: dict = {}
+
+    class _Host:
+        def _open_bulk(self, vid, pid, serial=None, unit=""):
+            seen.update(vid=vid, pid=pid, serial=serial, unit=unit)
+            return object()
+
+        def _transport_openers(self):
+            return {}          # every unlisted wire falls through to bulk
+
+    BaseOS.open_transport(_Host(), Wire.BULK, 0x87AD, 0x70DB, None, "1-13")
+    assert seen == {"vid": 0x87AD, "pid": 0x70DB,
+                    "serial": None, "unit": "1-13"}
+    del tmp_path
+
+
+def test_attach_threads_the_unit_all_the_way_to_the_transport(tmp_path) -> None:
+    """THE joined-up test: ``App.attach(unit=…)`` reaches ``open_transport``.
+
+    Every layer below is unit-tested on its own and none would notice the
+    layer above it dropping the keyword.
+    """
+    seen: dict = {}
+    app = _twin_app(tmp_path)
+    real = app.platform.open_transport
+
+    def spy(wire, vid, pid, serial=None, unit=""):
+        seen.update(wire=wire, unit=unit)
+        return real(wire, vid, pid, serial)
+
+    app.platform.open_transport = spy          # type: ignore[assignment]
+    app.attach(0x87AD, 0x70DB, unit="1-11")
+    assert seen.get("unit") == "1-11"
+
+
+def test_both_hid_bindings_declare_open_path() -> None:
+    """MEASURED, not assumed: cython-hidapi has ``device().open_path`` and
+    apmorton's constructor takes ``path=``.  The ABC is a real abstraction
+    over two real APIs — if a future binding cannot do it, it fails loudly at
+    subclass definition rather than silently opening the wrong panel."""
+    from trcc.adapters.device.transport import (
+        _ApmortonHidBinding,
+        _CythonHidBinding,
+        _HidBinding,
+    )
+
+    assert "open_path" in _HidBinding.__abstractmethods__ or hasattr(
+        _HidBinding, "open_path")
+    for child in (_CythonHidBinding, _ApmortonHidBinding):
+        assert not getattr(child.open_path, "__isabstractmethod__", False), child

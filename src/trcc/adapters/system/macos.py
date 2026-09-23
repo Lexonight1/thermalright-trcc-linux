@@ -99,11 +99,12 @@ class MacOSPlatform(BaseOS, key="darwin"):
         from ._hotplug import PollingHotplugMonitor
         return PollingHotplugMonitor(scan=self._scan_vid_pid_set)
 
-    def _open_scsi(self, vid: int, pid: int,
-                  serial: str | None = None) -> ScsiTransport:
+    def _open_scsi(self, vid: int, pid: int, serial: str | None = None,
+                  unit: str = "") -> ScsiTransport:
         """SCSI via USB BOT over libusb — macOS has no kernel SCSI passthrough."""
-        log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
-        bulk = PyUsbBulkTransport(vid, pid, serial)
+        log.info("open_scsi: %04x:%04x serial=%r unit=%s",
+                 vid, pid, serial, unit or "(only)")
+        bulk = PyUsbBulkTransport(vid, pid, serial, unit)
         return UsbBotScsiTransport(bulk)
 
     def _scan_vid_pid_set(self) -> set[tuple[int, int]]:

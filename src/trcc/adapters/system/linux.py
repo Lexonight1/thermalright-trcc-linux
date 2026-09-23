@@ -124,8 +124,12 @@ class _SgIoHdr(ctypes.Structure):
 _SG_HDR_SIZE = ctypes.sizeof(_SgIoHdr)
 
 
-def _resolve_scsi_path(vid: int, pid: int) -> str | None:
+def _resolve_scsi_path(vid: int, pid: int,
+                       unit: str = "") -> str | None:
     """Walk sysfs to find /dev/sgN for a given VID:PID.
+
+    *unit* restricts the search to the device in one USB port, so two
+    identical coolers do not both resolve to the first one's node (#287).
 
     Pass 1: /sys/class/scsi_generic/sgN  (kernel `sg` module loaded)
     Pass 2: /sys/block/sdN               (sg not loaded — block fallback)
@@ -144,8 +148,8 @@ def _resolve_scsi_path(vid: int, pid: int) -> str | None:
             sysfs_device = entry / "device"
             if not sysfs_device.exists():
                 continue
-            found = _walk_sysfs_for_vid_pid(sysfs_device)
-            if found == (vid, pid):
+            found, usb_dir = _walk_sysfs_for_vid_pid(sysfs_device)
+            if found == (vid, pid) and (not unit or usb_dir == unit):
                 if name_prefix == "sd":
                     log.info("sg module not loaded — using block device /dev/%s",
                              entry.name)
@@ -153,8 +157,24 @@ def _resolve_scsi_path(vid: int, pid: int) -> str | None:
     return None
 
 
-def _walk_sysfs_for_vid_pid(start: Path) -> tuple[int, int] | None:
-    """Walk up sysfs parents until we find idVendor + idProduct files."""
+def _walk_sysfs_for_vid_pid(
+    start: Path,
+) -> tuple[tuple[int, int] | None, str]:
+    """``((vid, pid), usb_dir)`` for the USB device this node hangs off.
+
+    The second value is the ancestor directory's NAME, and it is free: the
+    kernel names a USB device directory by its topology — ``1-13.4`` — which
+    is character-for-character what :func:`usb_path` builds from PyUSB's
+    ``bus`` and ``port_numbers``.  That is why the format was chosen there
+    rather than invented, and it is what lets SCSI pick a specific unit
+    (#287) without a second lookup or a second identity scheme.
+
+    VERIFIED on the dev box: ``/sys/bus/usb/devices/1-13.4`` holds
+    ``idVendor=0402``, and ``sg0``'s device link resolves through
+    ``…/usb1/1-13/1-13.4/…``.
+
+    ``(None, "")`` when no USB ancestor is found within ten levels.
+    """
     log.debug("_walk_sysfs_for_vid_pid: start=%s", start)
     path = Path(start).resolve()
     for _ in range(10):
@@ -163,11 +183,11 @@ def _walk_sysfs_for_vid_pid(start: Path) -> tuple[int, int] | None:
         pid_file = path / "idProduct"
         if vid_file.exists() and pid_file.exists():
             try:
-                return (int(vid_file.read_text().strip(), 16),
-                        int(pid_file.read_text().strip(), 16))
+                return ((int(vid_file.read_text().strip(), 16),
+                         int(pid_file.read_text().strip(), 16)), path.name)
             except (OSError, ValueError):
-                return None
-    return None
+                return (None, "")
+    return (None, "")
 
 
 class LinuxScsiTransport(ScsiTransport):
@@ -577,16 +597,17 @@ class LinuxOS(BaseOS, key="linux"):
 
     # ── Transport factories ──────────────────────────────────────────
 
-    def _open_scsi(self, vid: int, pid: int,
-                  serial: str | None = None) -> ScsiTransport:
+    def _open_scsi(self, vid: int, pid: int, serial: str | None = None,
+                  unit: str = "") -> ScsiTransport:
         """Return an unopened SG_IO-backed SCSI transport.
 
         Resolves vid:pid → /dev/sgN via sysfs before building the
         transport.  Raises TransportError if the device isn't present
         as a SCSI generic or sd block device.
         """
-        log.info("LinuxOS.open_scsi: %04x:%04x serial=%r", vid, pid, serial)
-        path = _resolve_scsi_path(vid, pid)
+        log.info("LinuxOS.open_scsi: %04x:%04x serial=%r unit=%s",
+                 vid, pid, serial, unit or "(only)")
+        path = _resolve_scsi_path(vid, pid, unit)
         if path is None:
             log.error("LinuxOS.open_scsi: no /dev/sg* node for %04x:%04x",
                       vid, pid)

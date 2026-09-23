@@ -505,8 +505,15 @@ class MockPlatform(FakePlatform):
         return scan_device_infos(self._specs)
 
     def open_transport(self, wire: Wire, vid: int, pid: int,
-                       serial: str | None = None) -> Transport:
-        """Hand back the scripted transport for *wire* (see Platform.open_transport)."""
+                       serial: str | None = None,
+                       unit: str = "") -> Transport:
+        """Hand back the scripted transport for *wire* (see Platform.open_transport).
+
+        *unit* is accepted and not used to pick a script: two units of one
+        model are the SAME model, so they replay the same handshake.  What
+        #287 needed from the mock was two Devices under two keys, which
+        ``App.attach`` now provides.
+        """
         if wire is Wire.SCSI:
             return scripted_scsi_transport(
                 self._by_key, vid, pid, self._reply_override)

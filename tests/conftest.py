@@ -367,7 +367,11 @@ class FakePlatform(Platform):
     def screen_capture(self) -> ScreenCapture:
         return self.capture
 
-    def open_transport(self, wire, vid, pid, serial=None) -> Transport:
+    def open_transport(self, wire, vid, pid, serial=None,
+                       unit="") -> Transport:
+        # *unit* accepted and ignored: one fake transport per wire is the
+        # point of this double.  Tests that care WHICH unit was asked for
+        # spy on this method (see test_usb_unit_path).
         return self.scsi if wire is Wire.SCSI else self.bulk
 
     def scan_devices(self) -> List:

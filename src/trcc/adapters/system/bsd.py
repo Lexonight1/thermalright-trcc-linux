@@ -128,10 +128,11 @@ class BsdOS(BaseOS, key="bsd"):
             reason=f"no hotplug listener for {self.distro_name()}",
         )
 
-    def _open_scsi(self, vid: int, pid: int,
-                  serial: str | None = None) -> ScsiTransport:
-        log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
-        bulk = PyUsbBulkTransport(vid, pid, serial)
+    def _open_scsi(self, vid: int, pid: int, serial: str | None = None,
+                  unit: str = "") -> ScsiTransport:
+        log.info("open_scsi: %04x:%04x serial=%r unit=%s",
+                 vid, pid, serial, unit or "(only)")
+        bulk = PyUsbBulkTransport(vid, pid, serial, unit)
         return UsbBotScsiTransport(bulk)
 
     def setup(self, dry_run: bool = False) -> int:

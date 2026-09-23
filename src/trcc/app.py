@@ -647,12 +647,13 @@ class App:
             from .adapters.device.transport import HidApiTransport
             log.info("attach: %04x:%04x retrying on HID output reports (quirk)",
                      vid, pid)
-            transport = HidApiTransport(vid, pid)
+            transport = HidApiTransport(vid, pid, unit=unit)
         else:
             if quirks.hid_reports:
                 log.debug("attach: %04x:%04x has a HID output-report quirk, "
                           "trying the ordinary transport first", vid, pid)
-            transport = self.platform.open_transport(info.wire, vid, pid)
+            transport = self.platform.open_transport(
+                info.wire, vid, pid, unit=unit)
         device = cls(info, transport)
         # Hand down the OS-specific EACCES hint (resolved here, where Platform
         # is in scope) so the device's recovery tracker can surface it without

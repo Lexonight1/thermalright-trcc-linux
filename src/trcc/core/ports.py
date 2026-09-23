@@ -2314,8 +2314,14 @@ class Platform(ABC):
     # ── Transport factory — ONE method, wire-agnostic ─────────────────
     @abstractmethod
     def open_transport(self, wire: Wire, vid: int, pid: int,
-                       serial: str | None = None) -> Transport:
+                       serial: str | None = None,
+                       unit: str = "") -> Transport:
         """Return an unopened transport for *wire*.
+
+        *unit* names WHICH physical device to open when several of the same
+        model are plugged in — the USB port, as ``Platform.scan_devices``
+        resolved it (#287).  Empty means "the only one of this model", which
+        is what every caller meant before the keyword existed.
 
         **The port must not name a wire.**  It used to: separate
         ``open_bulk`` / ``open_scsi`` abstract methods meant every OS
