@@ -16,7 +16,7 @@ import logging
 import os
 import struct
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..core import toolchain
@@ -377,7 +377,9 @@ class Playback:
     and ``ByteToBitmap`` decodes one per timer tick, disposing the previous
     (FormCZTV.cs:2176).
     """
-    frames: list[bytes]
+    #: Out of the repr — this is the whole animation (45 MB encoded for the
+    #: 897-frame case above), and %s on a Playback is a log record.
+    frames: list[bytes] = field(repr=False)
     fps: int = _DEFAULT_FPS
     cursor: int = 0
     paused: bool = False

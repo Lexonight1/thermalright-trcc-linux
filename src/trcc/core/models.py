@@ -481,7 +481,10 @@ class HandshakeResult:
     pm_byte: int = 0
     sub_byte: int = 0
     fbl: int | None = None
-    raw_response: bytes = b""
+    #: Dropped from the repr: %s on this dataclass is a log record, and a
+    #: handshake reply rendered whole made one 230 KB.  Sites that want the
+    #: bytes log ``Blob(result.raw_response)`` explicitly.
+    raw_response: bytes = field(default=b"", repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,7 +495,7 @@ class LedHandshakeResult:
     style: LedStyle | None = None
     model_name: str = ""
     style_sub: int = 0
-    raw_response: bytes = b""
+    raw_response: bytes = field(default=b"", repr=False)
 
 
 # =========================================================================
@@ -503,7 +506,8 @@ class LedHandshakeResult:
 @dataclass(frozen=True, slots=True)
 class RawFrame:
     """Decoded video frame — RGB24 bytes.  Handed to Renderer."""
-    data: bytes
+    #: Out of the repr — a decoded RGB24 frame is megabytes.
+    data: bytes = field(repr=False)
     width: int
     height: int
 

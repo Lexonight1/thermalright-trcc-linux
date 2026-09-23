@@ -212,7 +212,8 @@ class Led(BaseBulkDevice, wire=Wire.LED):
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """The resolved style + model — an LED's whole identity."""
-        log.debug("_handshake_detail: result=%s", result)
+        log.debug("_handshake_detail: result=%s raw=%s",
+                  result, Blob(result.raw_response))
         if self._led_handshake is None:
             return ""
         style = self._led_handshake.style

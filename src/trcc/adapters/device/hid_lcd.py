@@ -107,7 +107,8 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """Which firmware variant answered — the two speak different packets."""
-        log.debug("_handshake_detail: result=%s", result)
+        log.debug("_handshake_detail: result=%s raw=%s",
+                  result, Blob(result.raw_response))
         return f" (type {self.info.device_type})"
 
     def _require_connected(self) -> None:

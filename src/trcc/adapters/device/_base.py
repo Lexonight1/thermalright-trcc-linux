@@ -171,7 +171,8 @@ class BaseDevice(Device[T]):
         encoding it picked, the PID variant, the LED style.  Returns a string
         that already carries its own leading space, or empty.
         """
-        log.debug("_handshake_detail: result=%s", result)
+        log.debug("_handshake_detail: result=%s raw=%s",
+                  result, Blob(result.raw_response))
         return ""
 
     def _open_transport(self) -> None:

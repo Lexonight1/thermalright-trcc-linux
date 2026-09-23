@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
@@ -477,7 +477,9 @@ class SendFrame(Command[SendResult]):
     """
     LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
-    data: bytes
+    #: Out of the repr — ``App.dispatch`` logs ``dispatch %r`` and this
+    #: is a whole wire frame.
+    data: bytes = field(repr=False)
 
     def execute(self, app: App) -> SendResult:
         log.debug("execute: app=%s", app)

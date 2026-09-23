@@ -13,7 +13,7 @@ import time
 import zlib
 
 from ...core.errors import TransportError
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, Wire
 from ...core.ports import ScsiTransport
 from ...core.protocol import get_profile
@@ -132,7 +132,8 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """SCSI reports one byte — call it FBL, since PM *is* FBL here."""
-        log.debug("_handshake_detail: result=%s", result)
+        log.debug("_handshake_detail: result=%s raw=%s",
+                  result, Blob(result.raw_response))
         return f" (FBL {result.fbl})"
 
     def _frame_size(self) -> tuple[int, int]:

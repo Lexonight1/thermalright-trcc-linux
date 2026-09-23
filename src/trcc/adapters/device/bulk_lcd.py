@@ -249,7 +249,8 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
         report we had: #262 and #203 turned out to share ``PM=11 SUB=5`` and
         nobody could see it, including me, until I read the C# catalog rule.
         """
-        log.debug("_handshake_detail: result=%s", result)
+        log.debug("_handshake_detail: result=%s raw=%s",
+                  result, Blob(result.raw_response))
         if self._profile is None:
             return ""
         encoder = " (JPEG)" if self._profile.jpeg else " (RGB565)"

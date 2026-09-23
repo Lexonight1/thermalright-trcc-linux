@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -132,7 +132,7 @@ class SceneCache:
     # Final wire-bytes cache — keyed on the full pipeline inputs so a
     # tick with no changes returns identical bytes without re-encoding.
     frame_key: tuple[Any, ...] | None = None
-    frame_bytes: bytes | None = None
+    frame_bytes: bytes | None = field(default=None, repr=False)
 
     # The final composited + rotated surface, captured just before the
     # wire encode.  The GUI preview reuses THIS instead of re-running the

@@ -130,7 +130,7 @@ class PreviewResult(Result):
     """
     key: str = ""
     surface: Any = None
-    image: bytes = b""
+    image: bytes = field(default=b"", repr=False)
     media_type: str = ""
     width: int = 0
     height: int = 0

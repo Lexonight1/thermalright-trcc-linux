@@ -196,3 +196,62 @@ def test_a_short_payload_stays_readable_as_itself() -> None:
     """For a device path the BYTES are the diagnosis; hex would be a downgrade."""
     assert str(Blob(b"/dev/hidraw0")) == "b'/dev/hidraw0'"
     assert str(Blob(b"")) == "b''"
+
+# ── the same defect one level up: a dataclass that carries a buffer ─────
+
+
+def _dataclasses_exposing_a_buffer() -> list[tuple[str, str, str]]:
+    """``(file, class, field)`` for every dataclass whose repr renders bytes."""
+    found: list[tuple[str, str, str]] = []
+    for path in sorted(_SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for cls in ast.walk(tree):
+            if not isinstance(cls, ast.ClassDef):
+                continue
+            decorators = [ast.unparse(d) for d in cls.decorator_list]
+            if not any("dataclass" in d for d in decorators):
+                continue
+            # A hand-written __repr__ (or repr=False on the whole class) owns
+            # the question itself -- Blob is exactly that case.
+            if "repr=False" in " ".join(decorators) or any(
+                isinstance(n, ast.FunctionDef) and n.name == "__repr__"
+                for n in cls.body
+            ) or any(
+                isinstance(n, ast.Assign)
+                and any(getattr(t, "id", "") == "__repr__" for t in n.targets)
+                for n in cls.body
+            ):
+                continue
+            for node in cls.body:
+                if not (isinstance(node, ast.AnnAssign)
+                        and isinstance(node.target, ast.Name)
+                        and _is_buffer_annotation(node.annotation)):
+                    continue
+                if node.value is not None and "repr=False" in ast.unparse(node.value):
+                    continue
+                found.append((str(path.relative_to(_SRC.parent)),
+                              cls.name, node.target.id))
+    return found
+
+
+def test_no_dataclass_renders_a_buffer_into_its_repr() -> None:
+    """``%s`` on an OBJECT is a log record too.
+
+    Found by Phase 2 of the fix above, not by reasoning: with every bytes
+    PARAMETER bounded, a driven run of the real mock GUI still produced a
+    **230 KB** record -- ``_handshake_detail: result=HandshakeResult(...)``,
+    whose generated repr embeds ``raw_response`` whole.  The annotation gate
+    cannot see it: the parameter is a ``HandshakeResult``, not ``bytes``.
+
+    Fixing the dataclass fixes every call site at once, present and future,
+    which is why this arm exists instead of eight more wrapped arguments.
+    ``SendFrame.data`` is the sharpest case -- ``App.dispatch`` logs
+    ``dispatch %r`` on every Command.
+    """
+    bad = _dataclasses_exposing_a_buffer()
+    assert not bad, (
+        "these dataclasses put a whole buffer in their repr, so ANY log call "
+        "that renders the object renders the payload.  Declare the field "
+        "``field(repr=False)`` and log ``Blob(x)`` where the bytes are wanted."
+        "\n  " + "\n  ".join(f"{f}:{c}.{fld}" for f, c, fld in bad)
+    )

@@ -143,6 +143,10 @@ class Blob:
         return (f"{len(self.data)} bytes, first {self.head}: "
                 f"{bytes(self.data[:self.head]).hex(' ')}")
 
+    #: ``%r`` has to be bounded as well, or the wrapper leaks the payload it
+    #: exists to bound the moment a caller reaches for repr.
+    __repr__ = __str__
+
 
 class Verbosity(NamedTuple):
     """What one ``-v`` count means, everywhere."""

@@ -204,7 +204,8 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """The PID picks the variant (LY vs LY1) — worth having on the record."""
-        log.debug("_handshake_detail: result=%s", result)
+        log.debug("_handshake_detail: result=%s raw=%s",
+                  result, Blob(result.raw_response))
         return f" (pid=0x{self.info.pid:04x})"
 
     def _prepare_frame(self, payload: bytes) -> bytes:
