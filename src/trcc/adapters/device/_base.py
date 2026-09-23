@@ -29,7 +29,7 @@ from typing import Any, ClassVar
 
 from ...core.errors import DeviceNotFoundError, HandshakeError, TransportError
 from ...core.factory import Registry, Reject
-from ...core.logs import per_frame, trace
+from ...core.logs import Blob, per_frame, trace
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device, T
 from ...core.protocol import DeviceProfile
@@ -149,7 +149,7 @@ class BaseDevice(Device[T]):
         there, and the logger is the SUBCLASS's module so a report still says
         which wire spoke.
         """
-        log.debug("_trace_reply: resp=%s", resp)
+        log.debug("_trace_reply: resp=%s", Blob(resp))
         trace(logging.getLogger(type(self).__module__),
               "%s raw handshake reply (%d bytes, first %d): %s",
               self.info.key, len(resp), min(len(resp), _TRACE_REPLY_BYTES),
@@ -200,7 +200,7 @@ class BaseDevice(Device[T]):
            reconnect-and-retry / consecutive-failure escalation every wire
            shares (``core.ports.Device``).
         """
-        frame_log.debug("send: payload=%s", payload)
+        frame_log.debug("send: payload=%s", Blob(payload))
         self._require_connected()
         frame = self._prepare_frame(payload)
         return self._send_with_recovery(partial(self._write_frame, frame))

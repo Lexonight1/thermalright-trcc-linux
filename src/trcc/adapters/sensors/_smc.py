@@ -33,7 +33,7 @@ import logging
 import struct
 from typing import Protocol
 
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 
 log = logging.getLogger(__name__)
 #: Per-tick readers — their records must never be CONSTRUCTED at
@@ -146,7 +146,7 @@ def _parse_smc_bytes(data_type: int, raw: bytes, size: int) -> float:
     Pure function — no ctypes I/O, no platform check.  ``raw`` is the
     leading ``size`` bytes from ``SMCKeyData_t.bytes``.
     """
-    log.debug("_parse_smc_bytes: data_type=%s raw=%s", data_type, raw)
+    log.debug("_parse_smc_bytes: data_type=%s raw=%s", data_type, Blob(raw))
     dt = _datatype_to_str(data_type).rstrip()
     body = bytes(raw[:size])
     if len(body) < 1:

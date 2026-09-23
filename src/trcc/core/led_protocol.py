@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from .logs import Blob
 from .models import LedStyle
 
 log = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ def is_fingerprint_header(header: bytes) -> bool:
     Magic Qube's ``DC DD AA 01``) as expected instead of logging it as an
     anomaly next to the standard ``DA DB DC DD`` magic.
     """
-    log.debug("is_fingerprint_header: header=%s", header)
+    log.debug("is_fingerprint_header: header=%s", Blob(header))
     return bytes(header[:4]) in _HEADER_OVERRIDES
 
 

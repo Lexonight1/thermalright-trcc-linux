@@ -37,7 +37,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any, NamedTuple
 
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.ports import CpuSource, GpuSource
 
 log = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ _SNAPSHOT_TTL_S = 0.1
 
 def _decode_cstr(blob: bytes) -> str:
     """Decode a fixed-length NUL-terminated C string (latin-1, lossless)."""
-    log.debug("_decode_cstr: blob=%s", blob)
+    log.debug("_decode_cstr: blob=%s", Blob(blob))
     return blob.split(b"\x00", 1)[0].decode("latin-1", errors="replace").strip()
 
 
@@ -100,7 +100,7 @@ class _Header(NamedTuple):
 
 def _parse_header(buf: bytes) -> _Header:
     """Decode the 44-byte header.  Raises ValueError on bad magic / short buffer."""
-    log.debug("_parse_header: buf=%s", buf)
+    log.debug("_parse_header: buf=%s", Blob(buf))
     if len(buf) < _HEADER_SIZE:
         raise ValueError(
             f"HWiNFO header too short: {len(buf)} < {_HEADER_SIZE}",
@@ -134,7 +134,7 @@ class _BytesMapping(_MappingPort):
     """Test seam — wraps a ``bytes`` buffer captured from a real MMF dump."""
 
     def __init__(self, data: bytes) -> None:
-        log.debug("__init__: data=%s", data)
+        log.debug("__init__: data=%s", Blob(data))
         self._data = data
 
     def read(self, offset: int, length: int) -> bytes:
@@ -554,7 +554,7 @@ def discover_hwinfo_gpus(
 
 def _snapshot_from_bytes(data: bytes) -> _Snapshot:
     """Build a snapshot from a raw MMF byte buffer — used by tests."""
-    log.debug("_snapshot_from_bytes: data=%s", data)
+    log.debug("_snapshot_from_bytes: data=%s", Blob(data))
     return _Snapshot(_BytesMapping(data))
 
 

@@ -25,7 +25,7 @@ from ...core.errors import (
     TransportError,
     UnsupportedOperationError,
 )
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
@@ -316,7 +316,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         #228) — the magic alone is enough to accept it; PM/SUB still parse from
         [5]/[4].
         """
-        log.debug("_validate_response_type2: resp=%s", resp)
+        log.debug("_validate_response_type2: resp=%s", Blob(resp))
         if not (len(resp) >= 6 and resp[0:4] == _TYPE2_MAGIC):
             return False
         if self._quirks.short_handshake:
@@ -338,7 +338,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         panels share: a 1280×480 Trofeo Vision answering PM=128 was transposed
         to 480×1280 and never displayed (#244/#268).
         """
-        log.debug("_parse_response_type2: resp=%s", resp)
+        log.debug("_parse_response_type2: resp=%s", Blob(resp))
         pm = resp[5]
         sub = resp[4]
         has_serial = len(resp) > 36 and resp[16] == 0x10
@@ -370,7 +370,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         fall back to ``info.native_resolution`` so smoke tests that build
         frames before connect() still produce a valid header.
         """
-        log.debug("_build_frame_type2: image_data=%s", image_data)
+        log.debug("_build_frame_type2: image_data=%s", Blob(image_data))
         is_jpeg = len(image_data) >= 2 and image_data[:2] == b'\xff\xd8'
         w, h = (self._profile.resolution if self._profile is not None
                 else self.info.native_resolution)
@@ -406,7 +406,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         duplication ``_f5`` exists to prevent — so widening the set there did not
         widen it here.
         """
-        log.debug("_validate_response_type3: resp=%s", resp)
+        log.debug("_validate_response_type3: resp=%s", Blob(resp))
         return len(resp) >= 14 and resp[0] in _f5.VALID_IDENTITY
 
     def _parse_response_type3(self, resp: bytes) -> HandshakeResult:
@@ -414,7 +414,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
 
         Geometry comes from the FBL via ``get_profile`` (PM=FBL for Type 3).
         """
-        log.debug("_parse_response_type3: resp=%s", resp)
+        log.debug("_parse_response_type3: resp=%s", Blob(resp))
         serial = resp[10:14].hex().upper()
         fbl = resp[0] - 1
         # Sized from the identity at handshake, as the vendor does — a panel
@@ -433,7 +433,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
 
     def _build_frame_type3(self, image_data: bytes) -> bytes:
         """Type 3 frame: 16-byte prefix + exactly this panel's payload size."""
-        log.debug("_build_frame_type3: image_data=%s", image_data)
+        log.debug("_build_frame_type3: image_data=%s", Blob(image_data))
         size = getattr(self, "_f5_payload", _f5.DATA_SIZE)
         prefix = _f5.frame_header(size)
         if len(image_data) < size:
@@ -457,13 +457,13 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
                 else _f5.RESPONSE_SIZE)
 
     def _validate_response(self, resp: bytes) -> bool:
-        log.debug("_validate_response: resp=%s", resp)
+        log.debug("_validate_response: resp=%s", Blob(resp))
         return (self._validate_response_type2(resp)
                 if self.info.device_type == 2
                 else self._validate_response_type3(resp))
 
     def _parse_response(self, resp: bytes) -> HandshakeResult:
-        log.debug("_parse_response: resp=%s", resp)
+        log.debug("_parse_response: resp=%s", Blob(resp))
         return (self._parse_response_type2(resp)
                 if self.info.device_type == 2
                 else self._parse_response_type3(resp))

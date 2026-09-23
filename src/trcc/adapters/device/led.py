@@ -31,6 +31,7 @@ from ...core.led_protocol import (
     resolve_model_name,
     resolve_pm,
 )
+from ...core.logs import Blob
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ._base import BaseBulkDevice
@@ -405,7 +406,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
 
     def _write_frame(self, frame: bytes) -> bool:
         """Stream the packet as 64-byte HID reports, zero-padding the last."""
-        log.debug("_write_frame: frame=%s", frame)
+        log.debug("_write_frame: frame=%s", Blob(frame))
         remaining = len(frame)
         offset = 0
         while remaining > 0:

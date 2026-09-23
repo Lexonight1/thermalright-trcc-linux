@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING
 
 from ...core._safe import is_safe_zip_member
 from ...core.errors import ThemeError
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
 from ...core.ports import ContentStore, SingleFileTheme
 from ...services import _dc as Dc
@@ -179,7 +179,7 @@ class FileContentStore(ContentStore):
         id keeps on-disk paths readable.  Identical bytes always hash to
         the same id — that is what gives the writers their auto-dedup.
         """
-        log.debug("_content_id: data=%s", data)
+        log.debug("_content_id: data=%s", Blob(data))
         return hashlib.sha256(data).hexdigest()[:16]
 
     @contextmanager

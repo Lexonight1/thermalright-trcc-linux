@@ -52,6 +52,7 @@ emit through; core imports no adapter to provide it.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import NamedTuple
 
 # ── TRACE — the fourth rung of the verbosity ladder ─────────────────────────
@@ -80,6 +81,67 @@ def trace(logger: logging.Logger, msg: str, *args: object) -> None:
     """Log at TRACE — deep internals, only ever seen under ``-vvv``."""
     if logger.isEnabledFor(TRACE):
         logger.log(TRACE, msg, *args)
+
+
+#: Leading bytes shown when a binary payload is rendered into a record.  Enough
+#: to recognise a magic number (``ff d8`` JPEG, ``da db dc dd`` a type-2 frame
+#: header) and no more; the whole point is that the size does not depend on the
+#: payload.
+BLOB_HEAD_BYTES = 16
+
+
+@dataclass(frozen=True, slots=True)
+class Blob:
+    """A binary payload rendered into a log record BOUNDED — size, then a head.
+
+    ``log.debug("...: %s", frame)`` on a display frame is not a log line, it is
+    a copy of the framebuffer.  ``%s`` on ``bytes`` is ``repr``, which escapes
+    every byte — measured at **2.87x** the payload on real frame data — so one
+    record costs:
+
+        320x240   rgb565      153,600 B  ->  0.45 MB   (measured in the wild)
+        1920x462  rgb565    1,774,080 B  ->  4.9  MB
+        1600x720  rgb565    2,304,000 B  ->  6.3  MB
+
+    The rotating file is 1 MB x 5.  On most panels **one frame record exceeds
+    the entire rotation budget**, so every frame rotates the log and nothing
+    one-shot survives in it.
+
+    That is not hypothetical.  Reporter #220 was asked for a scaling repro,
+    delivered two reports on 2026-09-21 — and **98% of every byte he uploaded
+    was eleven of these records**, spanning one second.  The
+    ``screen '...': devicePixelRatio=...`` line the whole request existed to
+    capture had rotated away before he ran ``trcc report``.  He also described
+    the symptom without knowing it: *"constantly writing to trcc.log through to
+    trcc.log.5, the whole time."*
+
+    The rule that every function gets a log line is worth keeping.  What it
+    cannot mean is that a function's ``bytes`` parameter goes into the record
+    whole: that discards the artifact the rule exists to protect.  Wrap it::
+
+        log.debug("_write_frame: frame=%s", Blob(frame))
+        # _write_frame: frame=153600 bytes, first 16: 18 04 ba 0c 17 14 d2 0a...
+
+    A payload that already fits the budget renders as itself, because for a
+    short one the bytes ARE the diagnosis and hex would be a downgrade — a HID
+    device path reads ``b'/dev/hidraw0'``, not ``12 bytes, first 12: 2f 64 65``.
+    So one wrapper serves every ``bytes`` argument, and no call site has to
+    judge whether its own payload is "big enough to bother"; that judgement is
+    what a reviewer gets wrong, and what a mechanical pass never makes at all.
+
+    Rendering is bounded and lazy — ``__str__`` runs only if a handler formats
+    the record, and it never touches more than :data:`BLOB_HEAD_BYTES`, so the
+    cost is O(1) in the payload rather than O(n).
+    """
+
+    data: bytes
+    head: int = BLOB_HEAD_BYTES
+
+    def __str__(self) -> str:
+        if len(self.data) <= self.head:
+            return repr(bytes(self.data))
+        return (f"{len(self.data)} bytes, first {self.head}: "
+                f"{bytes(self.data[:self.head]).hex(' ')}")
 
 
 class Verbosity(NamedTuple):

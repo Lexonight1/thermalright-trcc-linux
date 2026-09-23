@@ -18,7 +18,7 @@ from ...core.errors import (
     HandshakeError,
     TransportError,
 )
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import (
@@ -359,7 +359,7 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
         The ZLP is exempt: it is a zero-length delimiter, so there is no
         payload to come up short.
         """
-        log.debug("_write_frame: frame=%s", frame)
+        log.debug("_write_frame: frame=%s", Blob(frame))
         for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
             chunk = frame[offset:offset + _WRITE_CHUNK_SIZE]
             if self._transport.write(

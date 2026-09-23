@@ -254,7 +254,7 @@ class VideoExporter:
         jpegs: list[bytes],
         progress: ProgressCallback,
     ) -> None:
-        log.debug("_write_zt: output_path=%s jpegs=%s", output_path, jpegs)
+        log.debug("_write_zt: output_path=%s %d jpeg(s)", output_path, len(jpegs))
         progress(85, "Writing Theme.zt…")
         try:
             with output_path.open("wb") as f:

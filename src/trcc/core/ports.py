@@ -386,7 +386,8 @@ class Device(ABC, Generic[T]):
         the call site, so this base raise is defensive — no ``isinstance``
         needed.  Returns the number of frames uploaded.
         """
-        log.debug("send_boot_animation: frames=%s delays_ds=%s", frames, delays_ds)
+        log.debug("send_boot_animation: %d frame(s) delays_ds=%s",
+                  len(frames), delays_ds)
         raise UnsupportedOperationError(
             f"{self.key} does not support boot animation (SCSI-only)"
         )

@@ -29,6 +29,8 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...core.logs import Blob
+
 log = logging.getLogger(__name__)
 
 _BLOCK0_LEN = 128
@@ -101,7 +103,7 @@ def read_spd_block0(path: Path) -> bytes | None:
 
 def _u16(raw: bytes, off: int) -> int:
     """16-bit little-endian value at ``off``."""
-    log.debug("_u16: raw=%s off=%s", raw, off)
+    log.debug("_u16: raw=%s off=%s", Blob(raw), off)
     return raw[off] | (raw[off + 1] << 8)
 
 

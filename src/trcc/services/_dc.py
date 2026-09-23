@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
+from ..core.logs import Blob
 from ..core.models import DATE_FORMATS, METRICS, DisplaySource
 
 log = logging.getLogger(__name__)
@@ -312,7 +313,7 @@ class _Reader:
     __slots__ = ("data", "pos")
 
     def __init__(self, data: bytes, start: int) -> None:
-        log.debug("__init__: data=%s start=%s", data, start)
+        log.debug("__init__: data=%s start=%s", Blob(data), start)
         self.data = data
         self.pos = start
 

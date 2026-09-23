@@ -25,7 +25,7 @@ import struct
 from ...core.errors import (
     HandshakeError,
 )
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import (
@@ -249,7 +249,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
 
     def _write_frame(self, frame: bytes) -> bool:
         """4096-byte USB writes over the chunk buffer, then the 512-byte ACK."""
-        log.debug("_write_frame: frame=%s", frame)
+        log.debug("_write_frame: frame=%s", Blob(frame))
         total_bytes = len(frame)
         pos = 0
         while pos < total_bytes:

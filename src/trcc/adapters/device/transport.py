@@ -19,7 +19,7 @@ import usb.core
 import usb.util
 
 from ...core.errors import PermissionError_, TransportError
-from ...core.logs import per_frame
+from ...core.logs import Blob, per_frame
 from ...core.ports import BulkTransport, WriteBuffer
 from ._pyusb_find import find as usb_find
 from ._pyusb_find import find_unit
@@ -525,7 +525,7 @@ class _CythonHidBinding(_HidBinding):
 
     @classmethod
     def open_path(cls, path: bytes) -> Any:
-        log.info("_CythonHidBinding.open_path: %r", path)
+        log.info("_CythonHidBinding.open_path: %s", Blob(path))
         handle = cls._require_class()()        # ctor takes no useful args
         handle.open_path(path)
         handle.set_nonblocking(0)
@@ -548,7 +548,7 @@ class _ApmortonHidBinding(_HidBinding):
 
     @classmethod
     def open_path(cls, path: bytes) -> Any:
-        log.info("_ApmortonHidBinding.open_path: %r", path)
+        log.info("_ApmortonHidBinding.open_path: %s", Blob(path))
         handle = cls._require_class()(path=path)
         handle.nonblocking = 0
         return handle
