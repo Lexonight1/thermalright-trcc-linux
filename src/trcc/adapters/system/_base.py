@@ -28,6 +28,7 @@ import os
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -139,6 +140,53 @@ def usb_path(dev: Any) -> str | None:
     path = f"{int(bus)}@{int(address)}"
     log.debug("usb_path: %s (ADDRESS — changes on replug)", path)
     return path
+
+
+def disambiguate(infos: list[DeviceInfo]) -> list[DeviceInfo]:
+    """Give each unit a key of its own — but ONLY where one is needed.
+
+    ``key`` is the public identity: it names a device in 98 Commands, 115 API
+    routes and 87 CLI arguments, and it is the string ``trcc.json`` persists
+    per-device settings under.  Suffixing it unconditionally would orphan
+    every existing config and break every documented ``trcc … 0416:5302``, to
+    fix a problem almost nobody has.  So a VID/PID with ONE unit present is
+    left exactly as it has always been, and only a genuine collision — two of
+    the same cooler (#287) — earns a port suffix.
+
+    The consequence, stated rather than discovered: unplugging one of a pair
+    returns the survivor to the plain ``vid:pid``, and the settings it wrote
+    while disambiguated no longer match.  :meth:`Settings.for_device` is the
+    ONE lookup chokepoint and falls back to the plain key, so that case
+    degrades to "inherits the shared settings" instead of "loses them".
+
+    A colliding pair on a host that cannot supply a port (``path is None``)
+    is left collapsed and WARNED about, because the alternative — keying on
+    enumeration order — would hand two devices each other's settings the
+    first time they came up in a different order.
+    """
+    log.debug("disambiguate: %d device(s)", len(infos))
+    groups: dict[tuple[int, int], list[DeviceInfo]] = {}
+    for info in infos:
+        groups.setdefault((info.vid, info.pid), []).append(info)
+
+    out: list[DeviceInfo] = []
+    for (vid, pid), units in groups.items():
+        if len(units) == 1:
+            out.extend(units)
+            continue
+        if any(u.path is None for u in units):
+            log.warning(
+                "disambiguate: %d units of %04x:%04x but this host supplies "
+                "no USB port for at least one — they share the key %04x:%04x "
+                "and only one is usable (#287)",
+                len(units), vid, pid, vid, pid,
+            )
+            out.extend(units)
+            continue
+        log.info("disambiguate: %d units of %04x:%04x -> ports %s",
+                 len(units), vid, pid, [u.path for u in units])
+        out.extend(replace(u, unit=u.path or "") for u in units)
+    return out
 
 
 class BaseOS(Platform):
@@ -421,7 +469,7 @@ class BaseOS(Platform):
                          vid, pid, serial, bcd, usb_path(dev) or "(none)")
         log.info("%s.scan_devices: %d device(s) total",
                  type(self).__name__, len(found))
-        return found
+        return disambiguate(found)
 
     # ── Filesystem + memoised enumerators ────────────────────────────────
 

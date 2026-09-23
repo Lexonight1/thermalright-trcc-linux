@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
@@ -249,12 +250,43 @@ class Settings:
         frame_log.debug("for_device: key=%s", key)
         with self._lock:
             if key not in self._devices:
-                self._devices[key] = DeviceSettings(
-                    time_format=self._app.time_format,
-                    date_format=self._app.date_format,
-                    temp_unit=self._app.temp_unit,
-                )
+                self._devices[key] = self._seed_for(key)
             return self._devices[key]
+
+    def _seed_for(self, key: str) -> DeviceSettings:
+        """First-touch defaults for *key*, inheriting a plain-key ancestor.
+
+        A second identical cooler makes BOTH units' keys grow a port suffix
+        (``87ad:70db`` -> ``87ad:70db@1-13``, #287), and everything the user
+        had configured lives under the plain key.  Without this they would
+        both come up factory-fresh the moment the second one was plugged in —
+        the upgrade path, and the reason the suffix is safe to introduce at
+        all.
+
+        It runs in the other direction too: unplug one of a pair and the
+        survivor returns to the plain key, so what it wrote while
+        disambiguated stops matching.  That degrades to "inherits the shared
+        settings" rather than "loses them", which is the honest trade for
+        keeping the plain key stable for everyone who has one device.
+
+        A DEEP copy, not an alias and not ``dataclasses.replace``.  Two of
+        ``DeviceSettings``' 21 fields are lists — ``user_overlay_elements``
+        and ``slideshow_themes`` — and ``replace`` is shallow, so the twins
+        would share them: editing one unit's overlay would silently edit the
+        other's.  ``deepcopy`` also cannot drift when a third list field is
+        added, which an explicit field-by-field copy would.
+        """
+        base = key.split("@", 1)[0]
+        ancestor = self._devices.get(base) if base != key else None
+        if ancestor is not None:
+            log.info("_seed_for: %s inherits the settings of %s", key, base)
+            return deepcopy(ancestor)
+        log.info("_seed_for: %s is new — seeding from the global formats", key)
+        return DeviceSettings(
+            time_format=self._app.time_format,
+            date_format=self._app.date_format,
+            temp_unit=self._app.temp_unit,
+        )
 
     def seed_mount_orientation(self, key: str, portrait_mounted: bool) -> int:
         """First-boot only: start a portrait-MOUNTED panel at 90 degrees.

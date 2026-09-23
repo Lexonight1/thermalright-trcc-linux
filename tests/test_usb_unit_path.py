@@ -86,10 +86,10 @@ def test_it_survives_an_object_with_none_of_the_attributes() -> None:
 def test_the_scan_carries_the_path_onto_DeviceInfo(monkeypatch) -> None:
     """End to end through the real ``scan_devices``, with two twins.
 
-    Asserted on ``path`` and NOT on ``key``: the key is still ``vid:pid`` for
-    both at this step, deliberately.  A test that asserted distinct keys here
-    would be asserting a later increment's behaviour and would fail for the
-    right reason at the wrong time.
+    ``scan_devices`` both CARRIES the port (step 1) and hands the list to
+    ``disambiguate`` (step 2), so this is the one test that proves the two
+    halves are actually joined up — each is unit-tested on its own above and
+    below, and neither would notice if the scan stopped calling the other.
     """
     from trcc.adapters.system import _base
 
@@ -114,6 +114,126 @@ def test_the_scan_carries_the_path_onto_DeviceInfo(monkeypatch) -> None:
     assert len(infos) == 2, "both units must survive the scan"
     assert [i.path for i in infos] == ["1-13", "1-11"]
     assert len({i.path for i in infos}) == 2, "the units are distinguishable"
-    assert len({i.key for i in infos}) == 1, (
-        "key is still vid:pid at this step — by design, see the docstring"
+    assert sorted(i.key for i in infos) == [
+        f"{pair[0]:04x}:{pair[1]:04x}@1-11",
+        f"{pair[0]:04x}:{pair[1]:04x}@1-13",
+    ], "the scan must hand its result to disambiguate"
+
+
+# ── step 2: the key, and only where one is needed ────────────────────────
+
+
+def _info(vid: int, pid: int, path: str | None):
+    from trcc.core.models import DeviceInfo
+    return DeviceInfo(vid=vid, pid=pid, path=path)
+
+
+def test_one_unit_keeps_the_key_it_has_always_had() -> None:
+    """The whole reason the suffix is conditional.
+
+    ``key`` names a device in 98 Commands, 115 API routes and 87 CLI
+    arguments, and it is what ``trcc.json`` persists settings under.  A user
+    with one cooler must see the same string after this change as before, or
+    their config orphans and every documented command breaks.
+    """
+    from trcc.adapters.system._base import disambiguate
+
+    out = disambiguate([_info(0x0402, 0x3922, "1-13.4")])
+    assert [i.key for i in out] == ["0402:3922"]
+    assert out[0].unit == ""
+
+
+def test_two_of_the_same_model_get_their_port(caplog) -> None:
+    from trcc.adapters.system._base import disambiguate
+
+    out = disambiguate([_info(0x87AD, 0x70DB, "1-13"),
+                        _info(0x87AD, 0x70DB, "1-11")])
+    assert [i.key for i in out] == ["87ad:70db@1-13", "87ad:70db@1-11"]
+    assert len({i.key for i in out}) == 2
+
+
+def test_a_collision_does_not_rename_the_BYSTANDERS() -> None:
+    """Only the colliding pair is touched, not the rest of the fleet."""
+    from trcc.adapters.system._base import disambiguate
+
+    out = disambiguate([_info(0x87AD, 0x70DB, "1-13"),
+                        _info(0x87AD, 0x70DB, "1-11"),
+                        _info(0x0402, 0x3922, "1-13.4")])
+    assert sorted(i.key for i in out) == [
+        "0402:3922", "87ad:70db@1-11", "87ad:70db@1-13",
+    ]
+
+
+def test_a_host_with_no_port_info_collapses_LOUDLY(caplog) -> None:
+    """Keying on enumeration ORDER would be worse than not keying at all.
+
+    Two units that came up in a different order after a reboot would each
+    inherit the other's settings.  Collapsing is a visible failure; silently
+    swapping a user's configuration is not.
+    """
+    import logging
+
+    from trcc.adapters.system._base import disambiguate
+
+    with caplog.at_level(logging.WARNING, logger="trcc.adapters.system._base"):
+        out = disambiguate([_info(1, 2, None), _info(1, 2, None)])
+
+    assert [i.key for i in out] == ["0001:0002", "0001:0002"]
+    assert any("#287" in r.getMessage() for r in caplog.records), (
+        "a collapse the user cannot see is the bug, not the fix"
     )
+
+
+# ── step 2: settings survive the rename ──────────────────────────────────
+
+
+def _settings(tmp_path):
+    from trcc.services.settings import Settings
+
+    from .conftest import FakePaths
+    return Settings(FakePaths(tmp_path))
+
+
+def test_a_suffixed_key_inherits_the_plain_keys_settings(tmp_path) -> None:
+    """THE upgrade path — plug in a second cooler, keep your configuration."""
+    st = _settings(tmp_path)
+    st.for_device("87ad:70db").brightness = 42
+    st.for_device("87ad:70db").orientation = 270
+
+    for key in ("87ad:70db@1-13", "87ad:70db@1-11"):
+        seeded = st.for_device(key)
+        assert (seeded.brightness, seeded.orientation) == (42, 270), key
+
+
+def test_the_twins_then_DIVERGE(tmp_path) -> None:
+    """A shallow copy would make them share their lists.
+
+    ``DeviceSettings`` has 21 fields, two of them lists
+    (``user_overlay_elements``, ``slideshow_themes``).  With
+    ``dataclasses.replace`` both units point at the SAME list objects, so
+    editing one unit's overlay silently edits the other's.  MUTATION CHECK:
+    swap ``deepcopy`` for ``replace`` in ``Settings._seed_for`` and the list
+    assertions below fail while the scalar ones still pass — which is exactly
+    how this would have shipped unnoticed.
+    """
+    st = _settings(tmp_path)
+    st.for_device("87ad:70db").brightness = 42
+
+    a = st.for_device("87ad:70db@1-13")
+    b = st.for_device("87ad:70db@1-11")
+
+    a.brightness = 10
+    assert (a.brightness, b.brightness) == (10, 42)
+
+    a.slideshow_themes.append("only-on-A")
+    assert a.slideshow_themes is not b.slideshow_themes
+    assert b.slideshow_themes == []
+
+
+def test_a_brand_new_key_still_seeds_from_the_global_formats(tmp_path) -> None:
+    """No ancestor — the pre-existing behaviour, unchanged."""
+    st = _settings(tmp_path)
+    st.set_global_temp_unit("F")
+
+    fresh = st.for_device("dead:beef@1-9")
+    assert fresh.temp_unit == "F"

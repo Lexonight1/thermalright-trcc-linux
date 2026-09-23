@@ -400,11 +400,25 @@ class DeviceInfo:
     path: str | None = None
     serial: str | None = None
     bcd_device: int = 0
+    #: Set ONLY when another unit shares this VID/PID — see
+    #: :func:`trcc.adapters.system._base.disambiguate`.  Empty is the normal
+    #: case and keeps :attr:`key` at the plain ``vid:pid`` every config file,
+    #: CLI invocation and API route in the wild already uses.
+    unit: str = ""
 
     @property
     def key(self) -> str:
+        """The device's public identity — settings key, CLI arg, API path.
+
+        ``vid:pid`` unless a second unit of the same model is plugged in, in
+        which case the port is appended: ``87ad:70db@1-13`` (#287).  The
+        suffix is OPAQUE — compared, never parsed — and only ever appears
+        when it has to, so a user with one cooler sees the same string they
+        always have and their ``trcc.json`` keeps matching.
+        """
         frame_log.debug("key")
-        return f"{self.vid:04x}:{self.pid:04x}"
+        base = f"{self.vid:04x}:{self.pid:04x}"
+        return f"{base}@{self.unit}" if self.unit else base
 
     @property
     def quirks(self) -> DeviceQuirks:
