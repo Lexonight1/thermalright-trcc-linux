@@ -387,6 +387,12 @@ _PM_TO_FBL_OVERRIDES: dict[int, int] = {
     15:  224,   # 640x172 (disambiguated in _FBL_224_BY_PM)
     16:  224,   # 960x540 (disambiguated in _FBL_224_BY_PM)
     17:  224,   # 960x320 (disambiguated in _FBL_224_BY_PM)
+    18:  224,   # 960x320 — the C# treats (13 || 17 || 18) identically
+                # (FormCZTV.cs:986); 13 and 17 were catalogued and 18
+                # was not, so it alone fell back to 480x480.
+    20:  224,   # 854x480 — ADDED IN TRCC 2.1.8, which extended the 854x480
+                # branch from (pm 9 || 11) to (pm 9 || 11 || 20)
+                # (FormCZTV.cs:947).  Same panel family, same fbl.
     32:  100,   # 320x320
     50:  50,    # 320x240 (SPI mode 2)
     63:  114,   # 1600x720
@@ -415,6 +421,8 @@ _FBL_224_BY_PM: dict[int, tuple[int, int]] = {
     15: (640, 172),
     16: (960, 540),
     17: (960, 320),
+    18: (960, 320),   # sibling of 13/17 — FormCZTV.cs:986
+    20: (854, 480),   # joined 9/11 in TRCC 2.1.8 — FormCZTV.cs:947
 }
 
 

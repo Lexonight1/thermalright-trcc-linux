@@ -79,7 +79,12 @@ _RGB565_PMS: set[int] = {32}
 # on the bulk path and told maintainers to keep it that way.  That was read off
 # the 2.0.3 decompile, and 2.1.6 falsifies it. (#176/#169)
 _BULK_BASE_FBL = 72
-_BULK_KNOWN_PMS: frozenset[int] = frozenset({5, 7, 9, 10, 11, 12, 32, 64, 65})
+# 20 joined in TRCC 2.1.8: FormCZTV.cs:947 extended the 854x480 branch from
+# (pm 9 || 11) to (pm 9 || 11 || 20).  Without it here the guard sends the panel
+# to the 480x480 fallback -- `audit_devices --exhaustive-bulk` read
+# `pm=20 sub=0: ours=480x480  C#=854x480` before this line.
+_BULK_KNOWN_PMS: frozenset[int] = frozenset(
+    {5, 7, 9, 10, 11, 12, 18, 20, 32, 64, 65})
 
 
 # JPEG start-of-frame markers carry the image's real dimensions.  C4/C8/CC

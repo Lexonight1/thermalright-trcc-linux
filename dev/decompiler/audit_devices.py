@@ -115,6 +115,10 @@ CORPUS: tuple[Fingerprint, ...] = (
     # --- widescreen 854x480 portrait-mount (pm=11 sub=5, #203) ---------------
     Fingerprint("854x480 pm11 sub5 (#203)",            fbl=0,  pm=11, mode=2,
                 sub=5),
+    # TRCC 2.1.8 extended this branch from (pm 9 || 11) to (pm 9 || 11 || 20)
+    # — FormCZTV.cs:947.  In the corpus so the new panel is checked on every
+    # `--all`, not only by the exhaustive sweep, which is a tool and not a gate.
+    Fingerprint("854x480 pm20 (added in 2.1.8)",       fbl=0,  pm=20, mode=2),
     # --- widescreen 1600x720 via (pm=1, sub=48) ------------------------------
     Fingerprint("1600x720 pm1 sub48",                  fbl=0,  pm=1, mode=2,
                 sub=48),

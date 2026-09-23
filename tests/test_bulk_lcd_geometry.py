@@ -145,6 +145,17 @@ def _formcztv_bulk_resolution(pm: int) -> tuple[int, int]:
         5: (320, 240), 7: (640, 480), 32: (320, 320),
         64: (1600, 720), 65: (1920, 462),
         9: (854, 480), 10: (960, 540), 11: (854, 480), 12: (800, 480),
+        # TRCC 2.1.8 widened the 854x480 branch from (pm 9 || 11) to
+        # (pm 9 || 11 || 20) -- FormCZTV.cs:947.  Stated here by hand, from the
+        # decompile, because this table is deliberately an INDEPENDENT reading
+        # of the C# rather than a restatement of the catalog it checks.
+        20: (854, 480),
+        # The C# handles (13 || 17 || 18) in ONE branch — FormCZTV.cs:986,
+        # is960x320 + fbl 224.  18 is catalogued because TRCC 2.1.8 gave it
+        # three more artwork subs, and a catalogued fingerprint that diverges
+        # is a bug to fix rather than a row to record.  13 and 17 are NOT yet
+        # catalogued, which is an inconsistency this table now makes visible.
+        18: (960, 320),
     }
     return override.get(pm, (480, 480))
 

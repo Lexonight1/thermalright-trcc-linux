@@ -117,12 +117,6 @@ _KNOWN_DIVERGENCES: dict[tuple[int, int, str], str] = {
     # panel does not have.  Same root cause as the three rows above it,
     # and it was filed under MOUNT_3_OF_9 for as long as that existed.
     (17, 5, "mount"): BULK_PM_GAP,
-    (18, 0, "resolution"): BULK_PM_GAP,
-    (18, 0, "widescreen"): BULK_PM_GAP,
-    (18, 1, "resolution"): BULK_PM_GAP,
-    (18, 1, "widescreen"): BULK_PM_GAP,
-    (18, 2, "resolution"): BULK_PM_GAP,
-    (18, 2, "widescreen"): BULK_PM_GAP,
     (50, 0, "resolution"): BULK_PM_GAP,
     (50, 0, "encode"): BULK_PM_GAP,
     (63, 0, "resolution"): BULK_PM_GAP,
@@ -160,7 +154,7 @@ _KNOWN_DIVERGENCES: dict[tuple[int, int, str], str] = {
 # Ratchet, in the shape MAX_SILENT already proves works: this number only ever
 # goes DOWN.  Fixing a divergence means deleting its row and lowering this;
 # a NEW divergence fails the build outright rather than being appended.
-MAX_DIVERGENCES = 58
+MAX_DIVERGENCES = 52
 
 
 def _bulk_fingerprints() -> list[tuple[int, int]]:
