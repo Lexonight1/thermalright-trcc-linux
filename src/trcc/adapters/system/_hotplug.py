@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -752,6 +753,86 @@ def _parse_devd_event(message: str) -> tuple[str, str, str] | None:
 _POLL_INTERVAL_S = 1.0
 
 
+#: How much wall-clock time must go missing before we call it a sleep.
+#:
+#: Not tuned — reasoned.  The measurement below is IMMUNE to the process
+#: merely being starved of CPU (both clocks advance together then), so the
+#: only other thing that moves them apart is a wall-clock STEP, i.e. an NTP
+#: correction.  Those are sub-second in normal operation; five seconds sits
+#: well above that and well below any real sleep, which is measured in
+#: minutes.  A lid closed for ten seconds still staled the USB transport, so
+#: erring small is the right direction.
+_WAKE_GAP_S = 5.0
+
+
+class _ClockJumpWakeDetector:
+    """Publish :class:`SystemResumed` when the machine has clearly slept.
+
+    Linux learns this from logind's ``PrepareForSleep``
+    (:class:`_LinuxPowerListener`).  macOS has no such signal here and so
+    published ``SystemResumed`` NEVER — which is #283: "the display reverts
+    to its initial state and cannot be restored after waking from sleep",
+    the exact symptom #189 fixed on Linux by reconnecting every attached
+    device on resume.  The USB transport a device opened before the machine
+    slept is stale on wake; writes silently no-op and the panel stays blank
+    until a restart.
+
+    **Wall clock MINUS monotonic clock, not wall clock alone.**  Both stop
+    advancing while the machine is asleep — except the wall clock is read
+    back from the RTC on wake, so it "catches up" and the monotonic one does
+    not.  The gap between them is the sleep.  Taking the difference is what
+    makes this immune to the process simply being starved of CPU: under
+    starvation BOTH clocks advance together and the difference stays at
+    zero, where a naive "did wall time jump?" check would fire.
+
+    A backwards step yields a negative gap and is ignored — a clock
+    correction is not a wake.
+
+    Rides the caller's existing tick rather than owning a thread, which is
+    the same principle ``_LinuxPowerListener``'s docstring states: one
+    background thread per OS-event source.
+    """
+
+    def __init__(self, gap_s: float = _WAKE_GAP_S) -> None:
+        log.debug("_ClockJumpWakeDetector.__init__: gap_s=%.1f", gap_s)
+        self._gap_s = gap_s
+        self._bus: EventBus | None = None
+        self._wall = 0.0
+        self._mono = 0.0
+
+    def start(self, bus: EventBus) -> None:
+        """Prime the marks.  Without this the first tick reports a huge gap."""
+        log.info("_ClockJumpWakeDetector: watching for sleep (gap > %.1fs)",
+                 self._gap_s)
+        self._bus = bus
+        self._mark()
+
+    def stop(self) -> None:
+        log.debug("_ClockJumpWakeDetector.stop")
+        self._bus = None
+
+    def _mark(self) -> None:
+        """Record both clocks — the pair a later tick is measured against."""
+        self._wall = time.time()
+        self._mono = time.monotonic()
+        log.debug("_ClockJumpWakeDetector._mark: wall=%.1f mono=%.1f",
+                  self._wall, self._mono)
+
+    def tick(self) -> None:
+        """One observation.  Publishes at most one event per wake."""
+        if self._bus is None:
+            return
+        wall, mono = time.time(), time.monotonic()
+        gap = (wall - self._wall) - (mono - self._mono)
+        self._wall, self._mono = wall, mono
+        if gap <= self._gap_s:
+            log.debug("_ClockJumpWakeDetector.tick: gap=%.2fs — awake", gap)
+            return
+        log.info("_ClockJumpWakeDetector: %.0fs of wall time missing — the "
+                 "machine slept; publishing SystemResumed (#283)", gap)
+        self._bus.publish(SystemResumed())
+
+
 class PollingHotplugMonitor(HotplugMonitor):
     """Hotplug detection via periodic ``Platform.scan_devices()`` diff.
 
@@ -783,6 +864,10 @@ class PollingHotplugMonitor(HotplugMonitor):
         self._bus: EventBus | None = None
         self._known = _KNOWN_VID_PID
         self._last_seen: set[tuple[int, int]] = set()
+        # macOS has no logind, so resume was never announced and every
+        # attached panel stayed blank after a wake (#283).  Composed here
+        # rather than given its own thread — this loop already ticks.
+        self._wake = _ClockJumpWakeDetector()
 
     def start(self, bus: EventBus) -> None:
         if self._thread is not None:
@@ -796,6 +881,7 @@ class PollingHotplugMonitor(HotplugMonitor):
         except Exception:
             log.exception("PollingHotplugMonitor: initial scan failed")
             self._last_seen = set()
+        self._wake.start(bus)
         self._thread = threading.Thread(
             target=self._poll_loop, daemon=True, name="trcc-hotplug-poll",
         )
@@ -808,6 +894,7 @@ class PollingHotplugMonitor(HotplugMonitor):
         self._stop_event.set()
         self._thread.join(timeout=2.0)
         self._thread = None
+        self._wake.stop()
         self._bus = None
         log.info("PollingHotplugMonitor: stopped")
 
@@ -848,5 +935,9 @@ class PollingHotplugMonitor(HotplugMonitor):
     def _poll_loop(self) -> None:
         log.debug("_poll_loop")
         while not self._stop_event.is_set():
+            # Wake check FIRST: on resume the device list is what we want to
+            # re-read, and ConnectDevice reopens the stale transport that a
+            # diff alone would never notice — the panel is still "present".
+            self._wake.tick()
             self._tick()
             self._stop_event.wait(self._interval_s)
