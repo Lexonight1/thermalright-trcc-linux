@@ -64,7 +64,7 @@ from .core.ports import (
     SendTask,
     VideoExportRunner,
 )
-from .core.protocol import artwork_variant, mask_variant
+from .core.protocol import background_variant, mask_variant, theme_variant
 from .core.registry import find_product
 from .core.results import ConnectResult, Result
 from .services.audio import AudioCapture
@@ -545,12 +545,19 @@ class App:
         resolution = profile.resolution
         libs = DeviceLibraries(
             paths,
-            variant=artwork_variant(resolution, hs.sub_byte),
+            # Themes and backgrounds take the SAME letter today -- every rule
+            # the C# has for them agrees.  They are separate fields because the
+            # C# keeps separate directory families and 360x360 already
+            # disagrees (ThemeML360360m exists, GifDirectoryWeb360360m does
+            # not), so the seam has to exist before that rule can be added.
+            theme_variant=theme_variant(resolution, hs.sub_byte),
+            background_variant=background_variant(resolution, hs.sub_byte),
             mask_variant=mask_variant(resolution, hs.sub_byte, hs.pm_byte),
         )
-        log.debug("libraries: %s %dx%d sub=%d pm=%d → variant=%r mask=%r",
+        log.debug("libraries: %s %dx%d sub=%d pm=%d → theme=%r bg=%r mask=%r",
                   key, *resolution, hs.sub_byte, hs.pm_byte,
-                  libs.variant, libs.mask_variant)
+                  libs.theme_variant, libs.background_variant,
+                  libs.mask_variant)
         return libs
 
     def set_renderer(self, renderer: Renderer) -> None:

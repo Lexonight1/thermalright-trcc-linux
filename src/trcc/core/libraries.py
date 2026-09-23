@@ -40,26 +40,38 @@ class DeviceLibraries:
     lookups vary per SKU, and everything else a caller wants (user dirs, log
     file, config) is reached through :attr:`paths` unchanged.
 
-    ``variant`` / ``mask_variant`` are empty for every panel that has no
-    artwork of its own, which is nearly all of them -- so the default instance
-    resolves exactly what the bare ``Paths`` methods always did.
+    THREE suffixes, because the C# keeps three independent directory families
+    and they do NOT always agree.  For 1600x720 all three carry the same letter
+    (``ThemeML1600720l`` / ``GifDirectoryWeb1600720l`` /
+     ``GifDirectoryWebMB1600720l``), which is why one field served two of them
+    for so long.  360x360 breaks that: TRCC 2.1.8 added ``ThemeML360360m`` and
+    ``GifDirectoryWebMB360360m`` and NO ``GifDirectoryWeb360360m`` -- so a
+    single suffix would send the background installer after an archive that
+    does not exist.
+
+    All three are empty for every panel that has no artwork of its own, which
+    is nearly all of them -- so the default instance resolves exactly what the
+    bare ``Paths`` methods always did.
     """
 
     paths: Paths
-    variant: str = ""
+    theme_variant: str = ""
+    background_variant: str = ""
     mask_variant: str = ""
 
     def theme_dir(self, width: int, height: int) -> Path:
         """Stock themes for this device — its own library, else the generic."""
-        log.debug("theme_dir: %dx%d variant=%r", width, height, self.variant)
-        return self._resolve(self.paths.theme_dir(width, height), self.variant)
+        log.debug("theme_dir: %dx%d variant=%r",
+                  width, height, self.theme_variant)
+        return self._resolve(self.paths.theme_dir(width, height),
+                             self.theme_variant)
 
     def cloud_theme_dir(self, width: int, height: int) -> Path:
         """Cloud backgrounds for this device."""
         log.debug("cloud_theme_dir: %dx%d variant=%r",
-                  width, height, self.variant)
+                  width, height, self.background_variant)
         return self._resolve(
-            self.paths.cloud_theme_dir(width, height), self.variant)
+            self.paths.cloud_theme_dir(width, height), self.background_variant)
 
     def cloud_mask_dir(self, width: int, height: int) -> Path:
         """Cloud masks for this device — the one axis PM can also move."""

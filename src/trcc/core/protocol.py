@@ -756,20 +756,54 @@ def wire_angle(
 _VARIANT_RESOLUTIONS = frozenset({(1600, 720), (720, 1600)})
 _VARIANT_BY_SUB: dict[int, str] = {2: "u", 3: "l", 4: "u"}
 
+# The 360x360 "m" library, added in TRCC 2.1.8 — and it INVERTS the usual
+# shape.  Every other rule names the subs that get a suffix; this one names the
+# sub that does NOT (`FormCZTV.cs:1269`):
+#
+#     else if (is360x360) { if (pmSub == 1) ThemeML = "360360\";
+#                           else            ThemeML = "360360m\"; }
+#
+# `pmSub == 1` is the FAN LCD (`FormCZTV.cs:1021`, the same byte that sets
+# `isFanLcd`), so the fan panel keeps the original library and every other
+# 360x360 SKU moves.  Themes and masks only: `ThemeML360360m` and
+# `GifDirectoryWebMB360360m` exist, `GifDirectoryWeb360360m` does NOT, which is
+# why backgrounds resolve through their own function below.
+_M_VARIANT_RESOLUTION = (360, 360)
+_M_VARIANT_PLAIN_SUB = 1
 
-def artwork_variant(resolution: tuple[int, int], sub: int = 0) -> str:
-    """The theme/background library suffix for this panel: ``""``, ``u``, ``l``.
 
-    ``""`` means the unsuffixed library, which is every panel except the
-    1600x720 pair at SUB 2/3/4 — so passing a SUB we have no rule for is not a
-    guess, it is the C#'s own ``default:`` arm.
+def background_variant(resolution: tuple[int, int], sub: int = 0) -> str:
+    """The cloud-BACKGROUND library suffix: ``""``, ``u``, ``l``.
+
+    The 1600x720 rule and nothing else.  360x360 deliberately has no arm here:
+    the C# ships no ``GifDirectoryWeb360360m``, so returning ``"m"`` would send
+    the installer after an archive that does not exist.
     """
     if resolution not in _VARIANT_RESOLUTIONS:
         return ""
     variant = _VARIANT_BY_SUB.get(sub, "")
-    log.debug("artwork_variant: %dx%d sub=%d → %r",
+    log.debug("background_variant: %dx%d sub=%d → %r",
               resolution[0], resolution[1], sub, variant)
     return variant
+
+
+def theme_variant(resolution: tuple[int, int], sub: int = 0) -> str:
+    """The THEME library suffix: ``""``, ``u``, ``l``, ``m``.
+
+    The background rule plus the inverted 360x360 arm.  ``""`` means the
+    unsuffixed library, which is every panel with no rule — the C#'s own
+    ``default:`` arm, not a guess.
+    """
+    if resolution == _M_VARIANT_RESOLUTION:
+        variant = "" if sub == _M_VARIANT_PLAIN_SUB else "m"
+        log.debug("theme_variant: 360x360 sub=%d → %r", sub, variant)
+        return variant
+    return background_variant(resolution, sub)
+
+
+#: Kept as the old name so nothing that imported it breaks; it is the
+#: BACKGROUND rule, which is what it always computed.
+artwork_variant = background_variant
 
 
 def mask_variant(resolution: tuple[int, int], sub: int = 0, pm: int = 0) -> str:
@@ -783,4 +817,6 @@ def mask_variant(resolution: tuple[int, int], sub: int = 0, pm: int = 0) -> str:
     if resolution == (480, 480) and pm == 3:
         log.debug("mask_variant: 480x480 pm=3 → 'y'")
         return "y"
-    return artwork_variant(resolution, sub)
+    # Masks follow the THEME rule, not the background one: 360x360 has
+    # `GifDirectoryWebMB360360m` but no `GifDirectoryWeb360360m`.
+    return theme_variant(resolution, sub)
