@@ -341,7 +341,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         log.debug("_parse_response_type2: resp=%s", resp)
         pm = resp[5]
         sub = resp[4]
-        has_serial = len(resp) > 36 and resp[16] == 0x10
+        has_serial = len(resp) >= 36 and resp[16] == 0x10
         serial = resp[20:36].hex().upper() if has_serial else ""
         fbl = pm_to_fbl(pm, sub)
         # SUB reaches the profile, not just the FBL.  It selects the encode

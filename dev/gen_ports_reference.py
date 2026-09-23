@@ -112,6 +112,7 @@ def _all_classes() -> list[type]:
     return [
         obj for obj in gc.get_objects()
         if issubclass(type(obj), type)
+        and isinstance(getattr(obj, "__module__", ""), str)
         and getattr(obj, "__module__", "").startswith("trcc.")
     ]
 
