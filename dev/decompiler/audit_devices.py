@@ -347,9 +347,131 @@ def exhaustive_bulk() -> int:
     return 0
 
 
+#: The wire "mode" -- ``FormCZTVInit``'s SECOND argument.  ``AUDIT_DISCOVERY.md``
+#: cites it as ``1``=SPI, ``2``, ``3``=HID, ``10``, read off the shared-memory
+#: synthesis table (``Form1.cs:679-805``).
+#:
+#: It is NOT derivable from a ``trcc report``, and this is the whole reason the
+#: walk below refuses to pick one.  Measured against the hand-verified corpus:
+#: our registry declares ``fbl`` for ``0416:5408`` (LY) and ``0416:5406``, yet
+#: both are ``pm_driven=True, mode=2`` there -- so "the registry knows the fbl"
+#: does NOT imply the fbl-direct mode.  And mode decides the answer: pm=11
+#: sub=5 resolves 854x480 at mode 2 and falls through to the bare 240x320 at
+#: modes 1 and 3.  Guessing it manufactures a false "the C# has no branch".
+_MODES: tuple[int, ...] = (1, 2, 3)
+
+
+def walk(pm: int, sub: int, fbl: int, mode: int | None,
+         trace: bool) -> int:
+    """Walk ONE fingerprint through the C#, without inventing what we lack.
+
+    Three outcomes, and the difference between them is the point:
+
+    * the corpus carries this ``(pm, sub)`` -- walk it with the VERIFIED mode
+      and diff it; authoritative.
+    * it does not, and no ``--mode`` was given -- walk every mode and label the
+      rows CANDIDATES.  ``mode``/``fbl`` are per-SKU facts a report does not
+      carry, so a single answer here would be a guess wearing a verdict's
+      clothes.
+    * no mode resolves a geometry -- say so.  That is a real, citable answer
+      (``FormCZTVInit`` genuinely has no branch for this PM), not a failure.
+    """
+    match = [fp for fp in CORPUS if fp.pm == pm and fp.sub == sub]
+    if match:
+        print(f"\n{'=' * 60}\nCORPUS MATCH — verified mode, authoritative")
+        for fp in match:
+            row = audit(fp)
+            _print(row)
+            if trace:
+                _trace(fp)
+        return 0
+
+    modes = (mode,) if mode is not None else _MODES
+    label = ("the mode you passed — UNVERIFIED for this SKU"
+             if mode is not None else
+             "CANDIDATES — no corpus row carries this fingerprint, and a "
+             "report does not\n  carry mode/fbl.  These are what the C# WOULD "
+             "resolve per mode, not a verdict.")
+    print(f"\n{'=' * 60}\nNO CORPUS ROW for pm={pm} sub={sub}\n  {label}")
+
+    modelled = 0
+    for m in modes:
+        fp = Fingerprint(f"pm={pm} sub={sub} @ mode {m}",
+                         fbl=fbl, pm=pm, mode=m, sub=sub,
+                         pm_driven=(fbl == 0))
+        row = audit(fp)
+        _print(row)
+        if trace:
+            _trace(fp)
+        modelled += row.oracle_models
+
+    if not modelled:
+        print(f"\n  FormCZTVInit has NO branch for pm={pm} at any mode "
+              f"({', '.join(map(str, modes))}).")
+        print("  The C# falls through to its bare 240x320 default, so the "
+              "vendor app\n  resolves nothing for this panel here either — a "
+              "finding, not a gap in\n  this tool.  Where it DOES get its "
+              "geometry is FormCZTV.cs:682-821.")
+    return 0
+
+
+def summarise(pm: int, sub: int, fbl: int = 0) -> list[str]:
+    """Compact ours-vs-theirs lines for ONE fingerprint, for ``triage.py``.
+
+    Same decisions as :func:`walk` -- both go through ``CORPUS`` and
+    ``audit`` -- at the verbosity a reporter thread needs rather than the
+    auditor's full table.
+    """
+    match = [fp for fp in CORPUS if fp.pm == pm and fp.sub == sub]
+    if match:
+        row = audit(match[0])
+        if not row.oracle_models:
+            return [f"C# oracle: no FormCZTVInit branch (corpus row "
+                    f"{match[0].label!r})"]
+        verdict = "**DIFF — go read control-flow.json**" if row.diverges else "match"
+        return [
+            f"C# oracle [{match[0].label}, verified mode {match[0].mode}]",
+            f"    fbl  {row.their_fbl} vs ours {row.our_fbl}   "
+            f"res {_res(row.their_res)} vs ours {_res(row.our_res)}   "
+            f"wide {row.their_wide} vs ours {row.our_wide}   -> {verdict}",
+        ]
+    rows = [audit(Fingerprint(f"mode {m}", fbl=fbl, pm=pm, mode=m, sub=sub,
+                              pm_driven=(fbl == 0)))
+            for m in _MODES]
+    modelled = [r for r in rows if r.oracle_models]
+    if not modelled:
+        return [f"C# oracle: FormCZTVInit has NO branch for pm={pm} at any "
+                f"mode — the vendor app resolves this panel's geometry at "
+                f"FormCZTV.cs:682-821, which is NOT ported.",
+                f"    ours: fbl={rows[0].our_fbl} "
+                f"res={_res(rows[0].our_res)}"]
+    out = [f"C# oracle: pm={pm} sub={sub} is not in the corpus — CANDIDATES "
+           f"per mode (a report carries no mode/fbl):"]
+    out += [f"    mode {r.fp.mode}: C# {_res(r.their_res)} fbl={r.their_fbl}"
+            f"   vs ours {_res(r.our_res)} fbl={r.our_fbl}" for r in modelled]
+    return out
+
+
+def _trace(fp: Fingerprint) -> None:
+    """The line-cited walk through the C#, which the verdict table hides."""
+    st = form_cztv_init(fbl=fp.fbl, m=fp.mode, pm=fp.pm, pmSub=fp.sub)
+    print("  --- C# walk ---")
+    for line in st.trace:
+        print(f"  {line}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--pm", type=int, help="filter the corpus to this PM byte")
+    ap.add_argument("--pm", type=int, help="handshake PM byte")
+    ap.add_argument("--sub", type=int, default=0, help="handshake SUB byte")
+    ap.add_argument("--fbl", type=int, default=0,
+                    help="FBL the device reported, if it reports one at all "
+                         "(0 = the pm ladder derives it)")
+    ap.add_argument("--mode", type=int, choices=_MODES,
+                    help="FormCZTVInit's wire mode.  Omit it — a report does "
+                         "not carry one and every mode is walked instead")
+    ap.add_argument("--trace", action="store_true",
+                    help="print the line-cited walk through the C#")
     ap.add_argument("--all", action="store_true", help="audit the whole corpus")
     ap.add_argument("--exhaustive-bulk", action="store_true",
                     help="sweep the whole bulk PM space vs the C# (the wall)")
@@ -361,15 +483,23 @@ def main() -> int:
     if args.all:
         corpus = CORPUS
     elif args.pm is not None:
-        corpus = tuple(fp for fp in CORPUS if fp.pm == args.pm)
+        # A fingerprint the corpus does not carry used to be an ``ap.error``,
+        # which is how a REPORTER's device -- the only fingerprint that matters
+        # -- was the one the oracle refused.  #267 posts pm=58; the corpus has
+        # 19 hand-curated rows and 15 PMs, and 58 is not among them.
+        corpus = tuple(fp for fp in CORPUS
+                       if fp.pm == args.pm
+                       and (args.sub == 0 or fp.sub == args.sub))
         if not corpus:
-            ap.error(f"no corpus device with pm={args.pm}")
+            return walk(args.pm, args.sub, args.fbl, args.mode, args.trace)
     else:
-        ap.error("pass --pm N for one device family, or --all")
+        ap.error("pass --pm N (with --sub M) for one device, or --all")
 
     rows = [audit(fp) for fp in corpus]
     for row in rows:
         _print(row)
+        if args.trace:
+            _trace(row.fp)
 
     modelled = [r for r in rows if r.oracle_models]
     diffs = [r for r in modelled if r.diverges]

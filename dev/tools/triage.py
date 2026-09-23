@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Triage a GitHub issue: fetch it, read its report, resolve its device.
 
+    PYTHONPATH=src python3.12 dev/tools/triage.py --open         # the brief
     PYTHONPATH=src python3.12 dev/tools/triage.py 262
     PYTHONPATH=src python3.12 dev/tools/triage.py 262 244 267    # several
 
@@ -27,6 +28,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+# The C# oracle lives beside the audits, not in the shipping tree.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "decompiler"))
 
 from trcc.adapters.device.bulk_lcd import bulk_profile
 from trcc.core.registry import find_product
@@ -62,6 +65,11 @@ _KNOWN_FIXES = {
 
 
 _RAW = re.compile(r'"?raw"?[:=]\s*"?([0-9a-fA-F]{16,})"?')
+
+#: Whose reply counts as "answered".  Was a literal inside ``triage`` until the
+#: sweep needed the same answer -- two copies of who the maintainer is would
+#: disagree the first time one changed.
+_MAINTAINER = "Lexonight1"
 
 
 def scan_self_description(blob: bytes, resolution: tuple[int, int]) -> list[str]:
@@ -120,6 +128,120 @@ def _first(match: re.Match | None) -> str:
     return next((g for g in match.groups() if g), "?") if match else "?"
 
 
+def verdict(issue: dict) -> str:
+    """Who owes the next move on this issue.
+
+    ``NEVER ANSWERED`` is not "zero comments" -- it is "the maintainer has
+    never commented".  An issue with three replies from other users is still
+    unanswered, and counting comments would score it as handled.  The single
+    issue view read only the LAST comment, so a thread with no comments at all
+    printed no flag whatsoever: the most neglected shape was the one silently
+    unmarked.
+    """
+    comments = issue.get("comments") or []
+    if not any(c.get("author", {}).get("login") == _MAINTAINER
+               for c in comments):
+        return "NEVER ANSWERED"
+    if comments[-1].get("author", {}).get("login") != _MAINTAINER:
+        return "AWAITING US"
+    return "awaiting reporter"
+
+
+def code_evidence() -> dict[int, tuple[int, int]]:
+    """Issue number -> (files naming it, of which tests).  ONE grep, not 81.
+
+    The question the brief could never answer: *have we already fixed this?*
+    ``_KNOWN_FIXES`` answers it from a hand-written list of six commits, so it
+    is silent about every fix nobody remembered to add -- and silent entirely
+    when the reporter's version does not parse, which is most of them.
+
+    This asks the tree instead.  A test naming ``#N`` is a regression lock
+    somebody wrote FOR that report, which is the strongest cheap evidence that
+    it was addressed.  It is evidence, not proof: the code may name an issue it
+    only partially fixed (``#291`` was fixed for one skin of four and stayed
+    open), so the column is a prompt to go and look, never a verdict.
+    """
+    out: dict[int, tuple[int, int]] = {}
+    raw = _sh("grep", "-rnoE", "#[0-9]{2,4}", "--include=*.py",
+              "src", "tests", "dev")
+    seen: dict[int, set[str]] = {}
+    for line in raw.splitlines():
+        path, _, rest = line.partition(":")
+        num = rest.rpartition("#")[2]
+        if num.isdigit():
+            seen.setdefault(int(num), set()).add(path)
+    for num, files in seen.items():
+        out[num] = (len(files),
+                    sum(1 for f in files if f.startswith("tests/")))
+    return out
+
+
+def _age_days(stamp: str) -> int:
+    from datetime import datetime, timezone
+    try:
+        then = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return -1
+    return (datetime.now(timezone.utc) - then).days
+
+
+def sweep() -> int:
+    """Every open issue, grouped by who owes the next move.
+
+    ONE ``gh`` call, not one per issue: the per-issue triage downloads each
+    attached report, which is right for one issue and minutes of network for
+    eighty.  This is the standing brief -- "N open, M never answered" -- which
+    was hand-counted every session because nothing computed it.
+    """
+    raw = _sh("gh", "issue", "list", "--state", "open", "--limit", "300",
+              "--json", "number,title,author,comments,createdAt,labels")
+    if not raw:
+        print("could not list issues (is `gh` authenticated?)")
+        return 1
+    issues = json.loads(raw)
+    evidence = code_evidence()
+    groups: dict[str, list[dict]] = {}
+    for issue in issues:
+        groups.setdefault(verdict(issue), []).append(issue)
+
+    counts = "  ·  ".join(
+        f"{len(groups.get(v, []))} {v.lower()}"
+        for v in ("NEVER ANSWERED", "AWAITING US", "awaiting reporter"))
+    print(f"\n{len(issues)} open  ·  {counts}")
+    unreplied = groups.get("NEVER ANSWERED", []) + groups.get("AWAITING US", [])
+    with_test = [i for i in unreplied
+                 if evidence.get(i["number"], (0, 0))[1]]
+    print(f"{len(with_test)} of those {len(unreplied)} owe a reply AND already "
+          f"have a TEST naming them — look before you ask for a log")
+
+    for name in ("NEVER ANSWERED", "AWAITING US"):
+        rows = sorted(groups.get(name, []),
+                      key=lambda i: _age_days(i.get("createdAt", "")),
+                      reverse=True)
+        if not rows:
+            continue
+        print(f"\n{'=' * 78}\n{name}  ({len(rows)})")
+        for issue in rows:
+            comments = issue.get("comments") or []
+            who = (comments[-1].get("author", {}).get("login", "?")
+                   if comments else issue.get("author", {}).get("login", "?"))
+            labels = ",".join(sorted(
+                lbl["name"] for lbl in issue.get("labels", [])))[:22]
+            files, tests = evidence.get(issue["number"], (0, 0))
+            code = f"{files}f/{tests}t" if files else "  -  "
+            print(f"  #{issue['number']:<4} {_age_days(issue.get('createdAt', '')):>4}d  "
+                  f"{issue.get('title', '')[:38]:<38}  "
+                  f"{len(comments)}c  {code:<7} last:{who[:15]:<15} {labels}")
+
+    print(f"\n{'=' * 78}\n"
+          f"Nf/Mt = files / TESTS naming the issue.  A test means somebody "
+          f"already\nwrote a lock for this report -- check whether it shipped "
+          f"before asking for a log.\n"
+          f"One issue in full:  PYTHONPATH=src python3.12 "
+          f"dev/tools/triage.py <number>")
+    return 0
+
+
 def triage(number: int) -> None:
     issue = _issue(number)
     if not issue:
@@ -132,10 +254,13 @@ def triage(number: int) -> None:
     print(f"{issue.get('state', '?')}  ·  opened by {issue.get('author', {}).get('login', '?')}"
           f"  ·  {len(issue.get('comments', []))} comment(s)")
     last = issue.get("comments") or []
+    state = verdict(issue)
     if last:
         who = last[-1].get("author", {}).get("login", "?")
         print(f"last word: {who} @ {last[-1].get('createdAt', '')[:10]}"
-              f"{'   <-- AWAITING US' if who != 'Lexonight1' else ''}")
+              f"{'   <-- ' + state if state != 'awaiting reporter' else ''}")
+    else:
+        print(f"no comments at all   <-- {state}")
 
     for url in dict.fromkeys(_ATTACHMENT.findall(text)):
         print(f"\nattached report: {url.rsplit('/', 1)[-1]}")
@@ -165,6 +290,18 @@ def triage(number: int) -> None:
             note = f"{w}x{h}"
         flag = "   <-- PM=0: identified nothing" if pm_i == 0 else ""
         print(f"  handshake  PM={pm} SUB={sub}  {note}{flag}")
+        # Walk the SAME bytes through the C#.  Ours came from the shipping
+        # functions above; this is what the vendor's app decides for the
+        # identical fingerprint.  A divergence is a prompt to read
+        # ``control-flow.json`` -- the transcription has itself been wrong,
+        # inventing a 1280x480 mount and putting 1920x462 one SUB low, both
+        # recorded as divergences against our CORRECT code.
+        try:
+            from audit_devices import summarise
+            for line in summarise(pm_i, sub_i):
+                print(f"  {line}")
+        except Exception as e:
+            print(f"  C# oracle: unavailable ({e})")
     if not seen:
         print("  handshake  (NONE — ask for `trcc report -o report.txt`, attached)")
 
@@ -201,10 +338,13 @@ def triage(number: int) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    if not args:
         print(__doc__)
         return 1
-    for arg in sys.argv[1:]:
+    if "--open" in args:
+        return sweep()
+    for arg in args:
         triage(int(arg))
     return 0
 
