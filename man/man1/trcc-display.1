@@ -549,6 +549,25 @@ Flash duration in milliseconds
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS overlay\-list
+.PP
+\fBtrcc display overlay\-list\fR \fIKEY\fR
+.PP
+Show what is currently drawn on the device's screen. The read half of overlay. overlay\-update / overlay\-delete / overlay\-flash all take an element id, and until this existed the only source of one was the line overlay\-add printed when you created it  \-  so the ids were unrecoverable the moment the terminal scrolled.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS overlay\-render
 .PP
 \fBtrcc display overlay\-render\fR \fIDC_PATH\fR [\fIOPTIONS\fR]

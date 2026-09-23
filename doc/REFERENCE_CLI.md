@@ -725,6 +725,18 @@ trcc display overlay-flash [OPTIONS] KEY ELEMENT_ID
 |---|---|
 | `--duration`, `-d` `DURATION_MS` | Flash duration in milliseconds |
 
+### `trcc display overlay-list`
+
+Show what is currently drawn on the device's screen. The read half of overlay. `overlay-update` / `overlay-delete` / `overlay-flash` all take an element id, and until this existed the only source of one was the line `overlay-add` printed when you created it — so the ids were unrecoverable the moment the terminal scrolled.
+
+```bash
+trcc display overlay-list KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
 ### `trcc display overlay-render`
 
 Render a DC config to a PNG preview — no active device required. Mirrors legacy `trcc overlay` — composites every element from `config1.dc` onto a solid-black canvas at *width × height* and writes the result as PNG. Useful when iterating on a theme's metric positions without unplugging the device or sending frames.

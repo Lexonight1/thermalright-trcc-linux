@@ -43,6 +43,7 @@ from ...core.commands import (
     PlayVideo,
     ProbeVideoDuration,
     RenderDcStandalone,
+    ResolveOverlay,
     RestoreDeviceState,
     SeekVideo,
     SendColor,
@@ -94,6 +95,7 @@ from ...core.results import (
     OverlayConfigResult,
     OverlayElementDeleteResult,
     OverlayElementResult,
+    OverlayLayoutResult,
     OverlayResult,
     PauseVideoResult,
     RenderDcResult,
@@ -1162,6 +1164,21 @@ def overlay_flash(key: str, element_id: str,
     ))
     http_error_if_failed(result)
     return result
+
+
+@router.get("/overlay-elements")
+def overlay_layout(key: str, request: Request) -> OverlayLayoutResult:
+    """What is currently drawn on the device -- the read half of overlay.
+
+    Every other overlay route mutates.  Without this one a client could PUT a
+    whole layout but never see the one it was replacing, and the element ids
+    that PATCH / DELETE / flash take had no source but the client's own memory
+    of an earlier POST.  ``source`` names the winning layer and ``enabled`` the
+    device's toggle, so an empty list can be told apart from an overlay that is
+    simply switched off.
+    """
+    log.info("api GET /devices/{key}/display/overlay-elements: key=%s", key)
+    return request.app.state.trcc.dispatch(ResolveOverlay(key=key))
 
 
 @router.put("/overlay-elements")

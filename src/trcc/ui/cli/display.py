@@ -31,6 +31,7 @@ from ...core.commands import (
     PlayVideo,
     ProbeVideoDuration,
     RenderDcStandalone,
+    ResolveOverlay,
     RestoreDeviceState,
     RestoreLastTheme,
     SeekVideo,
@@ -727,6 +728,36 @@ def list_masks(
     typer.echo(result.message)
     for entry in result.masks:
         typer.echo(f"  {entry.name:30} {entry.path}")
+
+
+@app.command("overlay-list")
+def overlay_list(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Show what is currently drawn on the device's screen.
+
+    The read half of overlay.  ``overlay-update`` / ``overlay-delete`` /
+    ``overlay-flash`` all take an element id, and until this existed the only
+    source of one was the line ``overlay-add`` printed when you created it —
+    so the ids were unrecoverable the moment the terminal scrolled.
+    """
+    log.info("cli display overlay-list: key=%s", key)
+    result = get_app().dispatch(ResolveOverlay(key=key))
+    typer.echo(
+        f"{len(result.elements)} element(s) from the {result.source or 'theme'} "
+        f"layer, overlay {'on' if result.enabled else 'OFF'}"
+        + (f" — {result.theme_name}" if result.theme_name else ""),
+    )
+    for element in result.elements:
+        payload = (
+            repr(element.text) if element.type == "text"
+            else element.metric or element.source
+        )
+        typer.echo(
+            f"  {element.id:14} {element.type:6} "
+            f"({element.x:>4},{element.y:>4})  {payload}  "
+            f"size={element.size} {element.color}",
+        )
 
 
 @app.command("overlay-add")

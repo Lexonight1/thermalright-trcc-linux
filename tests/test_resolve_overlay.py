@@ -299,3 +299,71 @@ def test_every_entry_field_survives_the_round_trip_the_editor_makes() -> None:
             assert getattr(back, field.name) == getattr(entry, field.name), (
                 f"{entry.type} element lost {field.name!r} on the round trip"
             )
+
+
+# ── the two command-only faces can finally ask ───────────────────────────
+#
+# The docstring at the top of this file records that "cli/api could not ask
+# at all", and that stayed true for the Query's whole life: measured with
+# ``dev/tools/ui_contract.py``, ``ResolveOverlay`` reached gui and qtgui only.
+# It is the ONLY source of the element ids ``overlay-update`` /
+# ``overlay-delete`` / ``overlay-flash`` and their three API routes require,
+# so both faces could address an element only from their own memory of an
+# earlier add.  These drive the real CLI runner and the real FastAPI app.
+
+
+def _two_user_elements(app: App) -> list[str]:
+    from trcc.core.commands import AddOverlayElement
+
+    ids = []
+    for element in (
+        AddOverlayElement(key=_KEY, type="metric", metric="cpu:temp",
+                          x=74, y=200, size=24),
+        AddOverlayElement(key=_KEY, type="clock", source="time", x=10, y=10),
+    ):
+        result = app.dispatch(element)
+        assert result.ok and result.element is not None
+        ids.append(result.element.id)
+    return ids
+
+
+def test_the_cli_can_list_what_is_on_screen(
+    app: App, cli_runner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.ui.cli import display as cli_display
+    from trcc.ui.cli.main import app as cli
+
+    ids = _two_user_elements(app)
+    # ``overlay-list`` reads its App through the name bound in the command
+    # module, not through ``dispatch_echo``'s lookup in ``_ctx``.
+    monkeypatch.setattr(cli_display, "get_app", lambda: app)
+
+    result = cli_runner.invoke(cli, ["display", "overlay-list", _KEY])
+
+    assert result.exit_code == 0, result.output
+    assert "2 element(s) from the user layer" in result.output
+    for element_id in ids:
+        assert element_id in result.output, (
+            f"{element_id} is absent, so overlay-update/delete/flash still "
+            f"have no way to name that element"
+        )
+    assert "cpu:temp" in result.output
+
+
+def test_the_api_can_read_back_the_layout_it_writes(app: App) -> None:
+    from fastapi.testclient import TestClient
+
+    from trcc.ui.api.main import build_app
+
+    ids = _two_user_elements(app)
+    assert app.dispatch(EnableOverlay(key=_KEY, enabled=True)).ok
+
+    with TestClient(build_app(trcc=app)) as client:
+        response = client.get(f"/devices/{_KEY}/display/overlay-elements")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source"] == "user"
+    assert body["enabled"] is True
+    assert [e["id"] for e in body["elements"]] == ids
+    assert body["elements"][0]["metric"] == "cpu:temp"
