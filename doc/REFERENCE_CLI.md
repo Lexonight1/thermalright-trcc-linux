@@ -321,6 +321,18 @@ trcc config time-format FMT
 
 Discover and connect to TRCC devices.
 
+### `trcc device canvas`
+
+The panel's NATIVE pixels — the size to AUTHOR an asset for. Not the size to DRAW a preview at: that folds the user orientation and the active theme's composition, while a theme, a mask or a Theme.zt is authored at the panel's own pixels and the firmware mounts it. `source` says which answer this is — the handshake the panel gave, the scan, or the product registry — because when a panel comes out the wrong shape, WHICH source won is the diagnostic.
+
+```bash
+trcc device canvas KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
 ### `trcc device connect`
 
 Open USB transport and perform the wire-protocol handshake.
@@ -493,6 +505,7 @@ trcc display export-video [OPTIONS] KEY PATH
 | `--start`, `-s` `START_MS` | Clip start in milliseconds (default: 0). |
 | `--end`, `-e` `END_MS` | Clip end in milliseconds (default: the whole clip). |
 | `--rotation`, `-r` `ROTATION` | Rotation in degrees: 0 / 90 / 180 / 270. |
+| `--fit`, `-f` `FIT` | Fit the clip to the panel: 'width' / 'height' pin that axis and crop the overflow, 'stretch' fills both. Omit for the auto fit -- scale inside the panel, never crop. A .zt is encoded AT canvas size, so this is baked in. |
 | `--wait` | Follow progress until the encode finishes (default), or print the token and return. |
 
 ### `trcc display keepalive`
@@ -663,6 +676,7 @@ trcc display overlay-add [OPTIONS] KEY TYPE_
 | `--source` `SOURCE` | Clock source: time / weekday / date |
 | `--color` `COLOR` | -- |
 | `--size` `SIZE` | -- |
+| `--font` `FONT` | Font family, e.g. 'Microsoft YaHei' (list them with `trcc system list-fonts`); empty keeps the theme default |
 | `--bold` | -- |
 | `--italic` | -- |
 | `--show-unit` | Draw the metric's unit (°C/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art |
@@ -748,6 +762,7 @@ trcc display overlay-update [OPTIONS] KEY ELEMENT_ID
 | `--y` `Y` | -- |
 | `--color` `COLOR` | -- |
 | `--size` `SIZE` | -- |
+| `--font` `FONT` | Font family, e.g. 'Microsoft YaHei' (list them with `trcc system list-fonts`); omit to leave the typeface alone |
 | `--text` `TEXT` | -- |
 | `--metric` `METRIC` | -- |
 | `--format` `FMT` | -- |
@@ -1963,13 +1978,17 @@ trcc theme list [OPTIONS] [KEY]
 Duplicate the device's active theme directory under a new name.
 
 ```bash
-trcc theme save KEY NAME
+trcc theme save [OPTIONS] KEY NAME
 ```
 
 | Argument | Description |
 |---|---|
 | `KEY` | Device key whose active theme to save |
 | `NAME` | New theme name (directory under user_content_dir) |
+
+| Option | Description |
+|---|---|
+| `--overwrite` | Replace an existing theme of that name. The save stages and swaps, so a failed overwrite leaves the previous theme intact. |
 
 ## Files
 

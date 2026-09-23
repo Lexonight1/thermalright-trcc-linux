@@ -563,3 +563,54 @@ def as_working_layer(elements: Any) -> list[OverlayElement]:
     ]
     log.debug("as_working_layer: %d element(s)", len(out))
     return out
+
+
+def native_canvas(app: App, key: str) -> tuple[int, int, str]:
+    """The device's NATIVE canvas for *key*, and which source answered.
+
+    Native, never oriented: a ``.zt`` is authored for the panel's own pixels
+    and the firmware applies the mount rotation itself.  Rotating here as
+    well would encode the turn twice.  This is deliberately NOT
+    :class:`PreviewSize`, which folds the user orientation AND the composed
+    theme canvas because it answers a different question -- how big to DRAW a
+    preview.  Sizing an authored asset from that is how a preview and its
+    export come to disagree (#291).
+
+    Prefers an attached device's handshake profile, then its scanned
+    ``native_resolution``, then the product registry -- that last step is what
+    lets a user stage a video theme BEFORE plugging the cooler in.
+
+    ``(0, 0, "unknown")`` when nothing resolves.  The third element names the
+    arm that answered, because a reporter pasting "which size did it pick, and
+    why" is the whole diagnostic and the size alone cannot say.
+
+    ONE ladder.  It was written twice -- here (as ``_native_size``, for
+    ``LoadVideo`` + ``ExportVideoClip``) and in
+    ``ui/qtgui/panels/_browser_base.AssetBrowserPanel._target_resolution`` --
+    and the two gated differently: this arm accepts an ATTACHED device, that
+    one required a CONNECTED one, so a handshaken device that had since
+    dropped fell back to the registry in a browser and used its real panel
+    here.  They agree for a scanned device, because both answers come from the
+    registry; they disagree for a device that answered a handshake once.
+    """
+    device = app.devices.get(key)
+    if device is not None:
+        if device.profile is not None:
+            log.debug("native_canvas: %s from handshake profile", key)
+            return (*device.profile.resolution, "handshake")
+        if device.info.native_resolution != (0, 0):
+            log.debug("native_canvas: %s from scanned DeviceInfo", key)
+            return (*device.info.native_resolution, "scan")
+    try:
+        vid_s, pid_s = key.split(":")
+        vid = int(vid_s, 16)
+        pid = int(pid_s, 16)
+    except ValueError:
+        log.warning("native_canvas: %r is not a VID:PID key", key)
+        return (0, 0, "unknown")
+    product = find_product(vid, pid)
+    if product is None:
+        log.warning("native_canvas: %s is not in the product registry", key)
+        return (0, 0, "unknown")
+    log.debug("native_canvas: %s from the product registry", key)
+    return (*product.native_resolution, "registry")

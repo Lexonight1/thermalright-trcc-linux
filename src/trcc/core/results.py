@@ -1114,6 +1114,30 @@ class OverlayLayoutResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class DeviceCanvasResult(Result):
+    """The panel's NATIVE pixels, for authoring an asset to send it.
+
+    Deliberately NOT :class:`PreviewSizeResult`.  That one answers "how big
+    should I DRAW this preview" and folds the user orientation and the
+    composed theme canvas; this answers "what size do I AUTHOR for", which the
+    firmware then mounts itself.  Sizing an authored asset from the drawing
+    answer is how a preview and its export come to disagree (#291).
+
+    ``source`` names the arm that answered -- ``handshake`` / ``scan`` /
+    ``registry`` / ``unknown`` -- because "which size did it pick, and why" is
+    the whole diagnostic when a reporter's panel comes out the wrong shape,
+    and the size alone cannot say.
+
+    ``ok=False`` (with ``0x0`` and ``unknown``) means nothing resolved: not
+    attached, not scanned, not in the registry.
+    """
+    key: str = ""
+    width: int = 0
+    height: int = 0
+    source: str = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
 class PreviewSizeResult(Result):
     """The dims a UI should size its preview bezel and label to (#136).
 

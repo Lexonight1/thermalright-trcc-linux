@@ -7,12 +7,13 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import (
     ConnectDevice,
+    DeviceCanvas,
     DeviceConnectionIssues,
     DisconnectDevice,
     DiscoverDevices,
     ResetDevice,
 )
-from ...core.results import DisconnectResult
+from ...core.results import DeviceCanvasResult, DisconnectResult
 from ._shared import (
     http_error_if_failed,
     product_to_schema,
@@ -61,6 +62,22 @@ def device_detail(key: str, request: Request) -> ProductSchema:
         if product.key == key:
             return product_to_schema(product)
     raise HTTPException(status_code=404, detail=f"device {key} not found")
+
+
+@router.get("/{key}/canvas", response_model=DeviceCanvasResult)
+def device_canvas(key: str, request: Request) -> DeviceCanvasResult:
+    """The panel's NATIVE pixels — the size to AUTHOR an asset for.
+
+    Not the size to DRAW a preview at: that folds the user orientation and
+    the active theme's composition, while a theme, a mask or a Theme.zt is
+    authored at the panel's own pixels and the firmware mounts it.  ``source``
+    names which answer won — handshake, scan or the product registry — which
+    is the diagnostic when a panel comes out the wrong shape.
+    """
+    log.info("api GET /devices/{key}/canvas: key=%s", key)
+    result = request.app.state.trcc.dispatch(DeviceCanvas(key=key))
+    http_error_if_failed(result, 404)
+    return result
 
 
 @router.post("/{key}/connect", response_model=ConnectView)

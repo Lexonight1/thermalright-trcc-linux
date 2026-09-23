@@ -57,6 +57,7 @@ from ..results import (
     BrightnessResult,
     ConnectionIssuesResult,
     ConnectResult,
+    DeviceCanvasResult,
     DeviceEntry,
     DevicesListResult,
     DeviceStateResult,
@@ -97,6 +98,7 @@ from ._helpers import (
     _publish_if_disconnect,
     _require_connected_device,
     _resolve_mask_path,
+    native_canvas,
     resolve_overlay_layout,
 )
 
@@ -2495,6 +2497,42 @@ class FlashOverlayElement(Command[OverlayElementResult]):
             ok=False, key=self.key, element=None,
             message=f"Overlay element {self.element_id!r} not found",
         )
+
+@dataclass(frozen=True, slots=True)
+class DeviceCanvas(Query[DeviceCanvasResult]):
+    """The panel's NATIVE pixels — the size to AUTHOR an asset for.
+
+    The sibling of :class:`PreviewSize`, and the distinction is the whole
+    point: ``PreviewSize`` folds the user orientation and the composed theme
+    canvas because it answers "how big do I DRAW the preview".  This answers
+    "what size do I AUTHOR for", which the firmware mounts itself.  A trimmer
+    that sized its preview from the drawing answer would letterbox differently
+    from the ``.zt`` it ships — #291 through another door.
+
+    The ladder — handshake profile, then scanned ``native_resolution``, then
+    the product registry — was written twice before this Query existed, once
+    in the Command layer for ``LoadVideo`` / ``ExportVideoClip`` and once
+    inside a qtgui widget, and the two gated differently (attached vs
+    connected).  ``native_canvas`` is now the one implementation and this is
+    how a UI reaches it without importing core internals.
+    """
+    key: str
+
+    def execute(self, app: App) -> DeviceCanvasResult:
+        w, h, source = native_canvas(app, self.key)
+        log.debug("DeviceCanvas: key=%s -> %dx%d via %s",
+                  self.key, w, h, source)
+        if source == "unknown":
+            return DeviceCanvasResult(
+                ok=False, key=self.key, source=source,
+                message=(f"no canvas known for {self.key} — attach the "
+                         "device, or use a key in the product registry"),
+            )
+        return DeviceCanvasResult(
+            ok=True, key=self.key, width=w, height=h, source=source,
+            message=f"{w}x{h} native for {self.key} (from {source})",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class PreviewSize(Query[PreviewSizeResult]):

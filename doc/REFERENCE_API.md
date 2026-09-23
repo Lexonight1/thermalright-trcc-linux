@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**136 endpoints.**
+**137 endpoints.**
 
 ## Running it
 
@@ -28,6 +28,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `GET /devices` | `DiscoverResponse` | — |
 | `GET /devices/issues` | `ConnectionIssuesView` | Every device that failed to connect, and why. |
 | `GET /devices/{key}` | `ProductSchema` | Detail for one discovered device — 404 if not currently present. |
+| `GET /devices/{key}/canvas` | `DeviceCanvasResult` | The panel's NATIVE pixels — the size to AUTHOR an asset for. |
 | `POST /devices/{key}/connect` | `ConnectView` | Connect *key*.  Returns the full handshake — including the raw device response as hex, the field issue triage always asks for. |
 | `POST /devices/{key}/disconnect` | `DisconnectResult` | — |
 | `POST /devices/{key}/reset` | `DisconnectResult` | Power-cycle the device: disconnect, reconnect, restore its display. |
@@ -100,7 +101,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /theme/import-upload` | `ThemeImportResult` | Import a theme archive uploaded via multipart form-data. |
 | `POST /theme/init` | `EnsureDataDownloadResult` | Prefetch theme/web/mask archives for a resolution (idempotent). |
 | `GET /theme/list` | `ThemesListResult` | List themes for a device resolution. |
-| `POST /theme/save` | `ThemeResponse` | — |
+| `POST /theme/save` | `ThemeResponse` | Save the device's active theme, refusing a name collision at 409. |
 | `GET /theme/web` | `list` | Cloud-theme preview gallery for a resolution (e.g. ``320x320``). |
 | `GET /theme/{key}/config-download` | — | Stream a device's settings snapshot as a JSON download. |
 | `GET /theme/{key}/{theme_name}/download` | — | Stream a theme archive as a multipart download. |

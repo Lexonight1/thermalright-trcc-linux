@@ -25,7 +25,6 @@ from ..events import (
 from ..geometry import content_is_portrait, save_folder_resolution
 from ..models import ZT_MAX_DURATION_MS, FitMode, ThemeDir, VideoExportRequest
 from ..ports import ContentStore
-from ..registry import find_product
 from ..results import (
     CloudCategoryEntry,
     CloudThemeEntryResult,
@@ -57,6 +56,7 @@ from ._helpers import (
     _search_theme_by_name,
     as_working_layer,
     device_overlay_layout,
+    native_canvas,
     oriented_theme_path,
     overlay_elements_to_dc,
 )
@@ -2158,7 +2158,7 @@ class ExportVideoClip(Command[VideoExportResult]):
                          f"{', '.join(sorted(MEDIA.exts(MediaKind.ANIMATED)))}."),
             )
 
-        target_w, target_h = _native_size(app, self.key)
+        target_w, target_h, _ = native_canvas(app, self.key)
         if target_w == 0 or target_h == 0:
             log.warning("ExportVideoClip.execute: no canvas known for %s",
                         self.key)
@@ -2238,43 +2238,6 @@ class ExportVideoClip(Command[VideoExportResult]):
         )
 
 
-def _native_size(app: App, key: str) -> tuple[int, int]:
-    """The device's NATIVE canvas for *key*, or ``(0, 0)`` if unknowable.
-
-    Native, never oriented: a ``.zt`` is authored for the panel's own
-    pixels and the firmware applies the mount rotation itself.  Rotating
-    here as well would encode the turn twice.
-
-    Prefers an attached device's handshake profile, then its scanned
-    ``native_resolution``, then the product registry — that last step is
-    what lets a user stage a video theme BEFORE plugging the cooler in.
-
-    Shared by :class:`LoadVideo` and :class:`ExportVideoClip`, which want
-    the identical answer for the identical reason.
-    """
-    device = app.devices.get(key)
-    if device is not None:
-        if device.profile is not None:
-            log.debug("_native_size: %s from handshake profile", key)
-            return device.profile.resolution
-        if device.info.native_resolution != (0, 0):
-            log.debug("_native_size: %s from scanned DeviceInfo", key)
-            return device.info.native_resolution
-    try:
-        vid_s, pid_s = key.split(":")
-        vid = int(vid_s, 16)
-        pid = int(pid_s, 16)
-    except ValueError:
-        log.warning("_native_size: %r is not a VID:PID key", key)
-        return (0, 0)
-    product = find_product(vid, pid)
-    if product is None:
-        log.warning("_native_size: %s is not in the product registry", key)
-        return (0, 0)
-    log.debug("_native_size: %s from the product registry", key)
-    return product.native_resolution
-
-
 @dataclass(frozen=True, slots=True)
 class LoadVideo(Command[ThemeResult]):
     """Play a video on the LCD as a single-video theme.
@@ -2316,7 +2279,7 @@ class LoadVideo(Command[ThemeResult]):
                 ),
             )
 
-        target_w, target_h = _native_size(app, self.key)
+        target_w, target_h, _ = native_canvas(app, self.key)
         if target_w == 0 or target_h == 0:
             return ThemeResult(
                 ok=False, key=self.key,

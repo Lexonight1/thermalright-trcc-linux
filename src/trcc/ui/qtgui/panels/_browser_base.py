@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QLabel, QListWidget
 
-from ....core.commands import DeviceState
+from ....core.commands import DeviceCanvas
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 from ..device_selection import DeviceSelection
@@ -144,43 +144,23 @@ class AssetBrowserPanel(BasePanel):
     def _target_resolution(self, key: str) -> tuple[int, int] | None:
         """The canvas to author an asset for, or None with a status message.
 
-        Three sources in descending truthfulness: what the device reported at
-        handshake, its registry ``native_resolution``, and — before anything is
-        attached — the product registry keyed by the ``vid:pid`` string.  A
-        device that resolves to none of those can't be authored for, and the
-        status label says why rather than failing silently.
+        One dispatch.  This used to walk the ladder itself — handshake, then
+        the scanned ``native_resolution``, then ``find_product`` — which was
+        a SECOND copy of the one in the Command layer (``native_canvas``,
+        behind :class:`DeviceCanvas`) and it gated differently: this required
+        a CONNECTED device where the Command accepts an ATTACHED one, so a
+        panel that had answered a handshake and since dropped authored at its
+        registry size here and its real size there.  A widget reaching into
+        ``core.registry`` was also the import CLAUDE.md forbids outright.
         """
-        # ``DeviceState`` reports both, already flattened and daemon-safe.
-        # ``resolution`` is None until the device has answered a handshake,
-        # which is a DIFFERENT state from a 0x0 panel — so it is tested for
-        # None, not for truth.
-        state = self.dispatch(DeviceState(key=key))
-        if state.connected:
-            if state.resolution is not None:
-                return state.resolution
-            if state.native_resolution != (0, 0):
-                return state.native_resolution
-
-        try:
-            vid_s, pid_s = key.split(":")
-            vid = int(vid_s, 16)
-            pid = int(pid_s, 16)
-        except ValueError:
-            log.warning("_target_resolution: %r is not vid:pid shaped", key)
+        result = self.dispatch(DeviceCanvas(key=key))
+        if not result.ok:
+            log.warning("_target_resolution: no canvas for %s", key)
             self._status.setText(
-                f"Device key {key!r} isn't shaped like 'vid:pid'.",
+                f"No canvas known for {key} — connect the device first so we "
+                "know the target resolution.",
             )
             return None
-
-        from ....core.registry import find_product
-        product = find_product(vid, pid)
-        if product is None or product.native_resolution == (0, 0):
-            log.warning("_target_resolution: no registry canvas for %s", key)
-            self._status.setText(
-                f"No registry entry for {key} — connect the device first "
-                "so we know the target resolution.",
-            )
-            return None
-        log.debug("_target_resolution: %s → %s (registry)",
-                  key, product.native_resolution)
-        return product.native_resolution
+        log.debug("_target_resolution: %s → %dx%d (from %s)",
+                  key, result.width, result.height, result.source)
+        return (result.width, result.height)

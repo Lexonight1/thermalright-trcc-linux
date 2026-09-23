@@ -7,6 +7,7 @@ import typer
 
 from ...core.commands import (
     ConnectDevice,
+    DeviceCanvas,
     DeviceConnectionIssues,
     DeviceState,
     DisconnectDevice,
@@ -113,6 +114,30 @@ def state(
         # None means "not handshaken yet" — distinct from 0 / False.  Say so
         # rather than printing a value the device never gave us.
         typer.echo(f"{field:20} {'(not handshaken)' if value is None else value}")
+
+
+@app.command("canvas")
+def canvas(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """The panel's NATIVE pixels — the size to AUTHOR an asset for.
+
+    Not the size to DRAW a preview at: that folds the user orientation and
+    the active theme's composition, while a theme, a mask or a Theme.zt is
+    authored at the panel's own pixels and the firmware mounts it.
+
+    ``source`` says which answer this is — the handshake the panel gave, the
+    scan, or the product registry — because when a panel comes out the wrong
+    shape, WHICH source won is the diagnostic.
+    """
+    log.info("cli device canvas: key=%s", key)
+    result = get_app().dispatch(DeviceCanvas(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+    typer.echo(f"{'width':20} {result.width}")
+    typer.echo(f"{'height':20} {result.height}")
+    typer.echo(f"{'source':20} {result.source}")
 
 
 @app.command("disconnect")

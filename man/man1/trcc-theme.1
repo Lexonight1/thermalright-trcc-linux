@@ -305,7 +305,7 @@ Show this command's help and exit.
 .RE
 .SS save
 .PP
-\fBtrcc theme save\fR \fIKEY\fR \fINAME\fR
+\fBtrcc theme save\fR \fIKEY\fR \fINAME\fR [\fIOPTIONS\fR]
 .PP
 Duplicate the device's active theme directory under a new name.
 .PP
@@ -321,6 +321,9 @@ New theme name (directory under user_content_dir)
 .PP
 Options:
 .RS 4
+.TP
+\fB\-\-overwrite\fR
+Replace an existing theme of that name. The save stages and swaps, so a failed overwrite leaves the previous theme intact.
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

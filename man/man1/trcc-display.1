@@ -172,6 +172,9 @@ Clip end in milliseconds (default: the whole clip).
 \fB\-\-rotation, \-r \fIROTATION\fR\fR
 Rotation in degrees: 0 / 90 / 180 / 270.
 .TP
+\fB\-\-fit, \-f \fIFIT\fR\fR
+Fit the clip to the panel: 'width' / 'height' pin that axis and crop the overflow, 'stretch' fills both. Omit for the auto fit \-\- scale inside the panel, never crop. A .zt is encoded AT canvas size, so this is baked in.
+.TP
 \fB\-\-wait\fR
 Follow progress until the encode finishes (default), or print the token and return.
 .TP
@@ -459,6 +462,9 @@ Clock source: time / weekday / date
 \fB\-\-size \fISIZE\fR\fR
 (no description)
 .TP
+\fB\-\-font \fIFONT\fR\fR
+Font family, e.g. 'Microsoft YaHei' (list them with trcc system list\-fonts); empty keeps the theme default
+.TP
 \fB\-\-bold\fR
 (no description)
 .TP
@@ -601,6 +607,9 @@ Options:
 .TP
 \fB\-\-size \fISIZE\fR\fR
 (no description)
+.TP
+\fB\-\-font \fIFONT\fR\fR
+Font family, e.g. 'Microsoft YaHei' (list them with trcc system list\-fonts); omit to leave the typeface alone
 .TP
 \fB\-\-text \fITEXT\fR\fR
 (no description)
