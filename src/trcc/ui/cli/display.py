@@ -62,7 +62,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
-from ...core.models import MEDIA, MediaKind
+from ...core.models import MEDIA, FitMode, MediaKind
 from ._ctx import (
     dispatch_echo,
     emit_json,
@@ -312,6 +312,13 @@ def export_video(
         0, "--rotation", "-r",
         help="Rotation in degrees: 0 / 90 / 180 / 270.",
     ),
+    fit: FitMode = typer.Option(
+        None, "--fit", "-f",
+        help="Fit the clip to the panel: 'width' / 'height' pin that axis "
+             "and crop the overflow, 'stretch' fills both.  Omit for the "
+             "auto fit -- scale inside the panel, never crop.  A .zt is "
+             "encoded AT canvas size, so this is baked in.",
+    ),
     wait: bool = typer.Option(
         True, "--wait/--no-wait",
         help="Follow progress until the encode finishes (default), or "
@@ -359,7 +366,7 @@ def export_video(
 
     result = app_obj.dispatch(ExportVideoClip(
         key=key, path=path, start_ms=start_ms, end_ms=end_ms,
-        rotation=rotation,
+        rotation=rotation, fit_mode=fit,
     ))
     if not result.ok:
         typer.echo(result.message, err=True)
@@ -740,6 +747,10 @@ def overlay_add(
     ),
     color: str = typer.Option("#ffffff", "--color"),
     size: int = typer.Option(16, "--size"),
+    font: str = typer.Option(
+        "", "--font",
+        help="Font family, e.g. 'Microsoft YaHei' (list them with `trcc system list-fonts`); empty keeps the theme default",
+    ),
     bold: bool = typer.Option(False, "--bold"),
     italic: bool = typer.Option(False, "--italic"),
     show_unit: bool = typer.Option(
@@ -759,7 +770,7 @@ def overlay_add(
     )
     result = get_app().dispatch(AddOverlayElement(
         key=key, type=type_, x=x, y=y, text=text, metric=metric,
-        format=fmt, source=source, color=color, size=size,
+        format=fmt, source=source, color=color, size=size, font=font,
         bold=bold, italic=italic, show_unit=show_unit, element_id=element_id,
     ))
     typer.echo(result.message)
@@ -777,6 +788,10 @@ def overlay_update(
     y: int | None = typer.Option(None, "--y"),
     color: str | None = typer.Option(None, "--color"),
     size: int | None = typer.Option(None, "--size"),
+    font: str | None = typer.Option(
+        None, "--font",
+        help="Font family, e.g. 'Microsoft YaHei' (list them with `trcc system list-fonts`); omit to leave the typeface alone",
+    ),
     text: str | None = typer.Option(None, "--text"),
     metric: str | None = typer.Option(None, "--metric"),
     fmt: str | None = typer.Option(None, "--format"),
@@ -796,7 +811,7 @@ def overlay_update(
     )
     result = get_app().dispatch(UpdateOverlayElement(
         key=key, element_id=element_id,
-        x=x, y=y, color=color, size=size, text=text,
+        x=x, y=y, color=color, size=size, font=font, text=text,
         metric=metric, format=fmt, source=source,
         bold=bold, italic=italic, show_unit=show_unit,
     ))

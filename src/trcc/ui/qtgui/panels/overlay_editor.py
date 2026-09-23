@@ -45,6 +45,7 @@ from ....core.commands import (
     DeleteOverlayElement,
     FlashOverlayElement,
     LcdSnapshot,
+    ListFonts,
     ResolveOverlay,
     SetOverlayConfig,
     UpdateOverlayElement,
@@ -224,6 +225,7 @@ class OverlayEditorPanel(BasePanel):
             y=values["y"],
             color=values["color"],
             size=values["size"],
+            font=values["font"],
             bold=values["bold"],
             italic=values["italic"],
             text=values["text"],
@@ -262,7 +264,8 @@ class OverlayEditorPanel(BasePanel):
             key=key, element_id=eid,
             x=values["x"], y=values["y"],
             color=values["color"], size=values["size"],
-            bold=values["bold"], italic=values["italic"],
+            font=values["font"], bold=values["bold"],
+            italic=values["italic"],
             text=values["text"], metric=values["metric"],
             format=values["format"], show_unit=values["show_unit"],
             source=values["source"],
@@ -367,6 +370,17 @@ class _ElementDialog(QDialog):
         color_row.addStretch(1)
         self._color = "#ffffff"
 
+        self._font = QComboBox(self)
+        self._font.setEditable(True)
+        self._font.addItem("")
+        self._font.addItems(
+            self._panel.app.dispatch(ListFonts()).fonts,
+        )
+        self._font.setCurrentIndex(0)
+        self._font.setToolTip(
+            "Font family; leave empty to keep the theme's own typeface.",
+        )
+
         self._bold = QComboBox(self)
         self._bold.addItem("Regular", userData=False)
         self._bold.addItem("Bold", userData=True)
@@ -398,6 +412,7 @@ class _ElementDialog(QDialog):
         form.addRow("Y position:", self._y)
         form.addRow("Size (px):", self._size)
         form.addRow("Color:", color_row)
+        form.addRow("Font:", self._font)
         form.addRow("Weight:", self._bold)
         form.addRow("Slant:", self._italic)
         form.addRow("Text:", self._text)
@@ -433,6 +448,7 @@ class _ElementDialog(QDialog):
         self._size.setValue(element.size)
         self._color = element.color
         self._color_label.setText(element.color)
+        self._font.setCurrentText(element.font)
         self._bold.setCurrentIndex(1 if element.bold else 0)
         self._italic.setCurrentIndex(1 if element.italic else 0)
         self._text.setText(element.text)
@@ -524,6 +540,7 @@ class _ElementDialog(QDialog):
             "y":       int(self._y.value()),
             "size":    int(self._size.value()),
             "color":   self._color,
+            "font":    self._font.currentText().strip(),
             "bold":    bool(self._bold.currentData()),
             "italic":  bool(self._italic.currentData()),
             "text":    self._text.text(),

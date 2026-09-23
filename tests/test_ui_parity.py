@@ -239,9 +239,15 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     "ListDisks": (frozenset({"cli", "api"}), (
         "gap: enumerate mounted partitions; same shape"
     )),
-    "ListFonts": (frozenset({"cli", "api"}), (
-        "gap: font families the renderer can draw -- an overlay editor needs "
-        "exactly this"
+    "ListFonts": (frozenset({"cli", "api", "qtgui"}), (
+        "gap: ui/gui ALONE enumerates families its own way -- ColorPickerPanel "
+        "opens a QFontDialog, which asks Qt directly rather than the bus.  This "
+        "entry used to read 'an overlay editor needs exactly this', and it was "
+        "right: qtgui's element dialog adopted the Query when the family "
+        "control landed, which also closed the deeper hole the reason could "
+        "not see -- `font` reached the domain object, the Commands, Settings "
+        "and draw_text, and THREE of the four faces could not produce it.  "
+        "gui's own picker goes when ui/gui does"
     )),
     "ListWebThemes": (frozenset({"cli", "api"}), (
         "gap: downloaded cloud-theme previews for a resolution"

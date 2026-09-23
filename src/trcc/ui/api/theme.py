@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
 from ...core.commands import (
@@ -93,11 +93,44 @@ def _safe_basename(value: str) -> str:
     return name
 
 
-@router.post("/save", response_model=ThemeResponse)
-def save(body: ThemeSaveRequest, request: Request) -> ThemeResponse:
-    log.info("api POST /theme/save: key=%s name=%s", body.key, body.name)
+@router.post(
+    "/save",
+    response_model=ThemeResponse,
+    responses={409: {
+        "model": ThemeResponse,
+        "description": "A theme of that name exists — retry with "
+                       "`overwrite: true` to replace it.",
+    }},
+)
+def save(body: ThemeSaveRequest,
+         request: Request) -> ThemeResponse | JSONResponse:
+    """Save the device's active theme, refusing a name collision at 409.
+
+    A name collision is a NEGOTIATION, not an error: both GUIs dispatch,
+    read ``target_exists``, ask the user, and re-dispatch with
+    ``overwrite=True``.  ``http_error_if_failed`` would flatten that into
+    ``400 {"detail": "<message>"}`` and throw the flag away -- so the one
+    field ``ThemeResponse`` carries for this purpose never reached a REST
+    client, which was left doing exactly what its schema comment says it
+    should not: matching on the message text.
+
+    So the refusal keeps the SAME body as the success, at the status code
+    that means it (409 Conflict), using the ``JSONResponse`` idiom the
+    auth routes in ``main.py`` already use for a structured non-200.
+    """
+    log.info("api POST /theme/save: key=%s name=%s overwrite=%s",
+             body.key, body.name, body.overwrite)
     name = _safe_basename(body.name)
-    result = request.app.state.trcc.dispatch(SaveTheme(key=body.key, name=name))
+    result = request.app.state.trcc.dispatch(
+        SaveTheme(key=body.key, name=name, overwrite=body.overwrite),
+    )
+    if result.target_exists:
+        log.info("api POST /theme/save: %r exists — 409, client may retry "
+                 "with overwrite=true", name)
+        return JSONResponse(
+            status_code=409,
+            content=to_theme_response(result).model_dump(),
+        )
     http_error_if_failed(result)
     return to_theme_response(result)
 

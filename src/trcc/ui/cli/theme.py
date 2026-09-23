@@ -107,12 +107,24 @@ def save(
     name: str = typer.Argument(
         ..., help="New theme name (directory under user_content_dir)",
     ),
+    overwrite: bool = typer.Option(
+        False, "--overwrite",
+        help="Replace an existing theme of that name.  The save stages and "
+             "swaps, so a failed overwrite leaves the previous theme intact.",
+    ),
 ) -> None:
     """Duplicate the device's active theme directory under a new name."""
-    log.info("cli theme save: key=%s name=%s", key, name)
-    result = get_app().dispatch(SaveTheme(key=key, name=name))
+    log.info("cli theme save: key=%s name=%s overwrite=%s",
+             key, name, overwrite)
+    result = get_app().dispatch(
+        SaveTheme(key=key, name=name, overwrite=overwrite),
+    )
     typer.echo(result.message)
     if not result.ok:
+        # A name collision is the one refusal the user can act on, so say
+        # how -- the GUIs raise a confirm dialog here and the CLI cannot.
+        if result.target_exists:
+            typer.echo("Re-run with --overwrite to replace it.", err=True)
         raise typer.Exit(code=1)
 
 

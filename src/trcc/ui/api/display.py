@@ -401,12 +401,14 @@ def export_video(key: str, body: ExportVideoRequest,
     """
     log.info(
         "api POST /devices/{key}/display/export-video: key=%s path=%s "
-        "start_ms=%s end_ms=%s rotation=%s",
+        "start_ms=%s end_ms=%s rotation=%s fit_mode=%s",
         key, body.path, body.start_ms, body.end_ms, body.rotation,
+        body.fit_mode or "auto",
     )
     result = request.app.state.trcc.dispatch(ExportVideoClip(
         key=key, path=Path(body.path), start_ms=body.start_ms,
         end_ms=body.end_ms, rotation=body.rotation,
+        fit_mode=body.fit_mode,
     ))
     http_error_if_failed(result)
     return result
@@ -1098,10 +1100,11 @@ def overlay_add(key: str, body: OverlayElementAddRequest,
     )
     result = request.app.state.trcc.dispatch(AddOverlayElement(
         key=key, type=body.type, x=body.x, y=body.y,
-        color=body.color, size=body.size,
+        color=body.color, size=body.size, font=body.font,
         bold=body.bold, italic=body.italic,
         text=body.text, metric=body.metric, format=body.format,
-        source=body.source, element_id=body.element_id,
+        show_unit=body.show_unit, source=body.source,
+        element_id=body.element_id,
     ))
     http_error_if_failed(result)
     return result
@@ -1120,7 +1123,7 @@ def overlay_update(key: str, element_id: str,
     result = request.app.state.trcc.dispatch(UpdateOverlayElement(
         key=key, element_id=element_id,
         x=body.x, y=body.y, color=body.color, size=body.size,
-        bold=body.bold, italic=body.italic,
+        font=body.font, bold=body.bold, italic=body.italic,
         text=body.text, metric=body.metric, format=body.format,
         show_unit=body.show_unit, source=body.source,
     ))

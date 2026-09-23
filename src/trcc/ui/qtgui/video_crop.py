@@ -5,7 +5,7 @@ A modal :class:`QDialog` over the ``ExportVideoClip`` Command:
 * Frame preview (single ffmpeg seek per scrub).
 * Timeline with in/out handles + click-to-seek.
 * Time labels (current / duration / clip start / clip end).
-* Fit-width / fit-height / rotate / preview-play / export buttons.
+* Fit (auto / width / height / stretch), rotate, preview-play, export.
 * Progress bar fed by ``VideoExportProgress`` events.
 
 The dialog never blocks the GUI, and no longer owns a thread to
@@ -25,9 +25,10 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAction,
+    QActionGroup,
     QBrush,
     QColor,
     QImage,
@@ -47,13 +48,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core.commands import ExportVideoClip, ProbeVideoDuration
+from ...core.commands import DeviceCanvas, ExportVideoClip, ProbeVideoDuration
+from ...core.geometry import fit_rect_for_mode
 from ...core.models import (
     ZT_FPS as EXPORT_FPS,
 )
 from ...core.models import (
     ZT_MAX_DURATION_MS as MAX_DURATION_MS,
 )
+from ...core.models import FitMode
 
 if TYPE_CHECKING:
     from ...app import App
@@ -62,8 +65,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-_PREVIEW_W = 480
-_PREVIEW_H = 300
+#: The preview is sized to the PANEL's aspect (see ``_resize_preview``);
+#: these bound it.  It used to be the shape itself, so a 320x320 or a
+#: portrait 480x854 panel was previewed inside a fixed landscape rectangle.
+_PREVIEW_MAX_W = 480
+_PREVIEW_MAX_H = 300
 _TIMELINE_W = 480
 _TIMELINE_H = 22
 _HANDLE_W = 12
@@ -233,6 +239,11 @@ class VideoCropDialog(QDialog):
 
         self._app = app
         self._bus = bus
+        self._fit_mode: FitMode | None = None
+        #: The panel's NATIVE canvas, asked of the bus rather than derived
+        #: here.  ``(0, 0)`` means unknown, and the preview then falls back to
+        #: a plain contain-fit -- exactly what it did before it composed.
+        self._canvas: tuple[int, int] = (0, 0)
         self._key = key
         self._video_path: Path | None = None
         self._duration_ms = 0
@@ -249,6 +260,9 @@ class VideoCropDialog(QDialog):
         self._play_timer = QTimer(self)
         self._play_timer.timeout.connect(self._on_play_tick)
         self._build()
+        # Before any frame: the preview is shaped by the PANEL, so it must
+        # know the panel before it draws anything.
+        self._resolve_canvas()
         # Queued: the runner publishes from its worker thread, and a Qt
         # widget may only be touched on the main one.
         self._bus.video_export_progress.connect(
@@ -303,12 +317,39 @@ class VideoCropDialog(QDialog):
         self._play_action = QAction("Play", self)
         self._play_action.triggered.connect(self._toggle_play)
         toolbar.addAction(self._play_action)
+        toolbar.addSeparator()
+
+        # Four EXCLUSIVE actions rather than gui's two one-way buttons.  gui
+        # sets WIDTH or HEIGHT and can never get back to the auto fit, and
+        # neither skin could reach STRETCH at all -- the Command has carried
+        # all four states since #291.  QActionGroup owns the exclusivity, so
+        # there is no branch here to get wrong, and the checked action SHOWS
+        # the live mode, which momentary buttons cannot.
+        self._fit_group = QActionGroup(self)
+        self._fit_group.setExclusive(True)
+        for label, mode, tip in (
+            ("Auto", None, "Scale inside the panel — never crops"),
+            ("Fit width", FitMode.WIDTH,
+             "Pin the width to the panel; crop top/bottom overflow"),
+            ("Fit height", FitMode.HEIGHT,
+             "Pin the height to the panel; crop left/right overflow"),
+            ("Stretch", FitMode.STRETCH,
+             "Fill both axes, distorting the aspect"),
+        ):
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setToolTip(tip)
+            act.setData(mode)
+            act.setChecked(mode is None)
+            self._fit_group.addAction(act)
+            toolbar.addAction(act)
+        self._fit_group.triggered.connect(self._on_fit_changed)
 
         self._target_label = QLabel("Target: (load a video)", self)
         self._target_label.setStyleSheet("color: #aaa;")
 
         self._preview = QLabel(self)
-        self._preview.setFixedSize(_PREVIEW_W, _PREVIEW_H)
+        self._preview.setFixedSize(_PREVIEW_MAX_W, _PREVIEW_MAX_H)
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview.setStyleSheet(
             "background-color: #000; border: 1px solid #333;",
@@ -378,6 +419,65 @@ class VideoCropDialog(QDialog):
 
     # ── Frame preview (ffmpeg seek) ──────────────────────────────────
 
+    def _resolve_canvas(self) -> None:
+        """Ask the bus for the panel's native pixels, once per dialog.
+
+        NOT :class:`PreviewSize`: that folds the user orientation and the
+        composed theme canvas because it answers "how big do I DRAW this",
+        while a ``.zt`` is authored at the panel's own pixels and the firmware
+        mounts it.  Sizing the preview from the drawing answer is how a
+        preview and its export come to disagree (#291).
+        """
+        result = self._app.dispatch(DeviceCanvas(key=self._key))
+        if not result.ok:
+            log.warning("_resolve_canvas: no canvas for %s — preview will "
+                        "contain-fit without composing", self._key)
+            return
+        self._canvas = (result.width, result.height)
+        log.info("_resolve_canvas: %s -> %dx%d (from %s)",
+                 self._key, result.width, result.height, result.source)
+        self._resize_preview()
+
+    def _resize_preview(self) -> None:
+        """Shape the preview to the PANEL, bounded by the max box.
+
+        A fixed 480x300 label previewed a 320x320 or a portrait 480x854 panel
+        inside a landscape rectangle, so the user could not see the shape they
+        were authoring for.
+        """
+        pw, ph = self._canvas
+        if pw <= 0 or ph <= 0:
+            return
+        scale = min(_PREVIEW_MAX_W / pw, _PREVIEW_MAX_H / ph)
+        w, h = max(1, int(pw * scale)), max(1, int(ph * scale))
+        log.debug("_resize_preview: panel %dx%d -> label %dx%d", pw, ph, w, h)
+        self._preview.setFixedSize(w, h)
+
+    def _compose_for_panel(self, img: QImage) -> QImage:
+        """The frame as the PANEL will show it — the export's own geometry.
+
+        Through the SAME :func:`fit_rect_for_mode` the exporter uses, which is
+        what makes the fit choice visible BEFORE Export and why the two cannot
+        disagree.  The canvas clips, which is exactly how a forced axis crops.
+
+        Without a known panel there is nothing to compose onto, so the raw
+        frame comes back and the caller's contain-fit still applies.
+        """
+        pw, ph = self._canvas
+        if pw <= 0 or ph <= 0:
+            return img
+        rect = fit_rect_for_mode((img.width(), img.height()), (pw, ph),
+                                 self._fit_mode)
+        canvas = QImage(pw, ph, QImage.Format.Format_RGB32)
+        canvas.fill(Qt.GlobalColor.black)
+        painter = QPainter(canvas)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.drawImage(QRect(rect.x, rect.y, rect.width, rect.height), img)
+        painter.end()
+        log.debug("_compose_for_panel: mode=%s %s -> %dx%d canvas",
+                  self._fit_mode, rect, pw, ph)
+        return canvas
+
     def _seek_preview(self, ms: int) -> None:
         if self._video_path is None:
             return
@@ -403,8 +503,9 @@ class VideoCropDialog(QDialog):
             return
         if self._rotation:
             img = img.transformed(QTransform().rotate(self._rotation))
+        img = self._compose_for_panel(img)
         scaled = img.scaled(
-            _PREVIEW_W, _PREVIEW_H,
+            self._preview.width(), self._preview.height(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
@@ -421,6 +522,13 @@ class VideoCropDialog(QDialog):
     def _on_end_changed(self, ms: int) -> None:
         log.info("_on_end_changed: ms=%s", ms)
         self._end_label.setText(_format_ms(ms))
+
+    def _on_fit_changed(self, action: QAction) -> None:
+        """Re-render at the new fit so the choice is visible before Export."""
+        self._fit_mode = action.data()
+        log.info("_on_fit_changed: fit_mode=%s", self._fit_mode or "auto")
+        start, _ = self._timeline.clip_ms()
+        self._seek_preview(start)
 
     def _on_rotate(self) -> None:
         log.info("_on_rotate")
@@ -462,8 +570,8 @@ class VideoCropDialog(QDialog):
     # ── Export ───────────────────────────────────────────────────────
 
     def _on_export_clicked(self) -> None:
-        log.info("_on_export_clicked: key=%s rotation=%d",
-                 self._key, self._rotation)
+        log.info("_on_export_clicked: key=%s rotation=%d fit_mode=%s",
+                 self._key, self._rotation, self._fit_mode or "auto")
         if self._video_path is None:
             self._info.setText("Load a video first.")
             return
@@ -478,6 +586,7 @@ class VideoCropDialog(QDialog):
             start_ms=start,
             end_ms=end,
             rotation=self._rotation,
+            fit_mode=self._fit_mode,
         ))
         if not result.ok:
             # Every guard answers here, at the click, rather than arriving

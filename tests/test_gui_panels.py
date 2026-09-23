@@ -511,7 +511,7 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     panel = OverlayEditorPanel(gui_app, _bus(gui_app))
     sample = OverlayElement(
         id="el_x", type="metric", x=42, y=24, color="#a0b0c0",
-        size=20, bold=True, italic=False,
+        size=20, font="DejaVu Sans", bold=True, italic=False,
         metric="cpu:temp", format="{value:.0f}°C", show_unit=False,
     )
     dialog = _ElementDialog(panel, prefill=sample)
@@ -523,6 +523,7 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     assert out["size"] == 20
     assert out["bold"] is True
     assert out["metric"] == "cpu:temp"
+    assert out["font"] == "DejaVu Sans"     # the family control, not just bold
     assert out["show_unit"] is False        # button0 unit-switch round-trips
 
 

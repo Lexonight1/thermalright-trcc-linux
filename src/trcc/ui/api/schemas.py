@@ -17,6 +17,7 @@ from ...core.models import (
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
+    FitMode,
 )
 from ...core.results import ConnectionIssuesResult, ConnectResult
 
@@ -323,6 +324,8 @@ class OverlayElementSchema(BaseModel):
     y: int = 0
     color: str = OVERLAY_DEFAULT_COLOR
     size: int = OVERLAY_DEFAULT_SIZE
+    #: Font family; "" keeps the theme default (OverlayElement.font).
+    font: str = ""
     bold: bool = False
     italic: bool = False
     text: str = ""
@@ -338,6 +341,8 @@ class OverlayElementAddRequest(BaseModel):
     y: int = 0
     color: str = OVERLAY_DEFAULT_COLOR
     size: int = Field(OVERLAY_DEFAULT_SIZE, ge=1)
+    #: Font family; "" keeps the theme default (OverlayElement.font).
+    font: str = ""
     bold: bool = False
     italic: bool = False
     text: str = ""
@@ -353,6 +358,8 @@ class OverlayElementUpdateRequest(BaseModel):
     y: int | None = None
     color: str | None = None
     size: int | None = Field(None, ge=1)
+    #: Font family; ``None`` leaves the element's current typeface alone.
+    font: str | None = None
     bold: bool | None = None
     italic: bool | None = None
     text: str | None = None
@@ -482,6 +489,11 @@ class ThemeSaveRequest(BaseModel):
     """Save the device's active theme under a new name (basename only)."""
     key: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
+    #: Replace an existing theme of that name.  The save stages and swaps, so
+    #: an overwrite that fails leaves the previous theme intact -- which
+    #: delete-then-save, the only workaround a client had before this field,
+    #: does not.
+    overwrite: bool = False
 
 
 class ThemeExportRequest(BaseModel):
@@ -656,6 +668,12 @@ class ExportVideoRequest(BaseModel):
     #: ``None`` means "to the end of the source", probed server-side.
     end_ms: int | None = Field(None, ge=1)
     rotation: int = Field(0)
+    #: ``None`` is the auto fit -- scale inside the panel, never crop.
+    #: ``width`` / ``height`` pin that axis and crop the overflow (the C#
+    #: buttonTPJCW / buttonTPJCH arms); ``stretch`` fills both.  A ``.zt`` is
+    #: encoded AT canvas size, so this choice is baked in and the device's
+    #: render-time ``fit_mode`` cannot recover it afterwards.
+    fit_mode: FitMode | None = None
 
 
 # ── Control-center settings ──────────────────────────────────────────
