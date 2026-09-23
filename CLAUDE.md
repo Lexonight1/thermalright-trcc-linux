@@ -922,9 +922,22 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
   removed (`39516d47`). **PREVIEW rotation FIXED 2026-06-23 (`959b1648`, mock-verified
   "solved all the mess ups on rotation"):** `rotate=True` panels showed the preview
   image rotated by the device-mount 90° in an upright bezel (FBL 50 sideways /
-  FBL 192 upside-down). C#-grounded — the decompile's `RotateFlip` count is **0**, the
-  C# never rotates the preview image (composes on an orientation-sized canvas;
-  `SetMyUCScreenImage` FBL 50 @ angle 0 → 320×240 landscape control). Fix is
+  FBL 192 upside-down). C#-grounded — in **2.1.6** the decompile's `RotateFlip`
+  count was **0**, so the C# never rotated the preview image (composes on an
+  orientation-sized canvas; `SetMyUCScreenImage` FBL 50 @ angle 0 → 320×240
+  landscape control).
+  **RE-MEASURED against 2.1.8 on 2026-09-22: that count is now 6, and the claim
+  needs splitting.** The PREVIEW half still holds — all six are inside
+  `ImageToJpg` (`FormCZTV.cs:3665-4195`), the JPEG WIRE encoder, and
+  `ImageTo565` has none. What is new is a horizontal MIRROR on the wire at
+  `mySubMode == 0`, for `myDevicePingMu == 4` and for `is854x480 || is800x480`.
+  `RotateFlipType` 4/5/6/7 all carry FlipX — verified by decompiling
+  `System.Drawing.Common.dll`, not from memory. **Deliberately NOT implemented**:
+  all four open reporters on that family post SUB=5 (so would not mirror), no
+  reporter has ever described a mirrored image (18 keyword hits, every one
+  something else — a username, DPI maths, a colour wheel, distro mirrors), and
+  the evidence is a managed assembly postdating our release.
+  See [[project_2_1_8_mirrors_the_jpeg_wire]]. Fix is
   PREVIEW-ONLY: `build_frame` captures `preview_surface` BEFORE the device-rotate
   steps; `DisplayService._apply_post_processing` gained `device_rotate=False` for
   `build_preview_surface`. Wire untouched (the 150 geometry tests assert WIRE bytes
