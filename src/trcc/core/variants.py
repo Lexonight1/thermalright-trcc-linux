@@ -84,18 +84,21 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     3:   {None: _v('A1CORE VISION')},
     # sub 1 confirmed by Seryogaberkut (#274), sub 5 by Ziusz (#272) — both
     # working on real hardware, both reporting what the cooler is sold as.
-    4:   {1: _named('A1HYPER VISION', 'Hyper Vision 360'),
+    4:   {0: _v('A1LM32'),                                    # 2.1.8: +sub0
+          1: _named('A1HYPER VISION', 'Hyper Vision 360'),
           2: _v('A1RP130 VISION'), 3: _v('A1LM16SE'),
           4: _v('A1LF10V'),
           5: _named('A1LM19SE', 'Peerless Vision 360'),
-          6: _v('A1LF014')},   # 2.1.6: +sub6
+          6: _v('A1LF014'),    # 2.1.6: +sub6
+          7: _named('A1LM19SE', 'Peerless Vision 360')},       # 2.1.8: +sub7
     5:   {None: _v('A1Mjolnir VISION')},
     6:   {1: _v('frozen_warframe_ultra'), 2: _v('A1FROZEN VISION V2')},
     7:   {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
     9:   {0: _v('A1LC2JD'), 1: _v('A1LC2JD'), 2: _v('A1LC2JD'), 3: _v('A1LC2JD'),
           4: _v('A1LC2JD'), None: _v('A1LF19')},
     10:  {5: _v('A1LF16'), 6: _v('A1LF18'), 7: _v('A1LD6'), None: _v('A1LC3')},
-    11:  {6: _v('A1LD8'), None: _v('A1LF19')},
+    11:  {6: _v('A1LD8'), 7: _v('A1LCO7'),                   # 2.1.8: +sub7
+          None: _v('A1LF19')},
     12:  {None: _v('A1LF167')},
     13:  {None: _v('A1PC1')},
     14:  {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
@@ -105,8 +108,21 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     # CHANGED vs our prior table (sub2 was LC9 — LC9 is 0416:5302 pm59, not here).
     17:  {1: _v('A1PC1'), 2: _v('A1LC8'), 3: _v('A1LC10'), 5: _v('A1PC1'),
           None: _v('A1PC1')},
-    18:  {1: _v('A1LC8'), 2: _v('A1LC10'), None: _v('A1PC1')},   # 2.1.6: new pm
+    18:  {1: _v('A1LC8'), 2: _v('A1LC10'),                    # 2.1.6: new pm
+          5: _v('A1LC8'), 6: _v('A1LC10'), 7: _v('A1LC14'),   # 2.1.8: +sub5/6/7
+          None: _v('A1PC1')},
     19:  {None: _v('A1LF19')},                                   # 2.1.6: new pm
+    # ── TRCC 2.1.8 — three new PMs in ADDUserButton's case 257 ──────────
+    # 20 is also the new 854x480 geometry row (FormCZTV.cs:947); 21 and 22
+    # have NO FormCZTVInit branch, so they are artwork identities only and
+    # deliberately get no entry in the protocol tables.
+    20:  {6: _v('A1LD8'), None: _v('A1LF19')},                  # 2.1.8: new pm
+    21:  {1: _v('A1LCO1')},                                     # 2.1.8: new pm
+    22:  {1: _named('A1LM19SE', 'Peerless Vision 360'),         # 2.1.8: new pm
+          2: _v('A1RP130 VISION'), 3: _v('A1LM16SE'),
+          4: _v('A1LF10V'),
+          5: _named('A1LM19SE', 'Peerless Vision 360'),
+          6: _v('A1LF014'), 7: _v('A1LCO1')},
     32:  {0: _v('A1ELITE VISION'), 1: _v('A1FROZEN WARFRAME PRO'),
           None: _v('A1ELITE VISION')},
     50:  {None: _v('A1FROZEN WARFRAME')},
@@ -170,10 +186,12 @@ _VARIANT_REGISTRY: dict[
         50:  {None: _v('A1FROZEN WARFRAME')},
         51:  {None: _v('A1FROZEN WARFRAME')},
         52:  {None: _v('A1BA120 VISION')},
-        53:  {None: _v('A1LF20')},
+        53:  {1: _v('A1LCO3'), None: _v('A1LF20')},   # 2.1.8: +sub1
         54:  {2: _v('A1LC13'), None: _v('A1LC5')},   # 2.1.6: +sub2
         58:  {0: _v('A1FROZEN WARFRAME SE'), None: _v('A1LM26')},
-        59:  {0: _v('A1LC7'), 1: _v('A1LC7'), None: _v('A1LC9')},  # 2.1.6: new pm
+        59:  {0: _v('A1LC7'), 1: _v('A1LC7'),
+              4: _v('A1LC18'),                      # 2.1.8: +sub4
+              None: _v('A1LC9')},                   # 2.1.6: new pm
         60:  {None: _v('A1LC15')},                                 # 2.1.6: new pm
         100: {None: _v('A1FROZEN WARFRAME PRO')},
         101: {None: _v('A1ELITE VISION')},

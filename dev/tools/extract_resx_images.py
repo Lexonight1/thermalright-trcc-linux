@@ -9,8 +9,9 @@ from the PNG magic to the IEND chunk — no .NET deserializer needed.
 
 Reusable after every Thermalright update: re-decompile in project mode
 (``ilspycmd -p -o <dir> TRCC.exe``) to get the ``.resx``, then run this to
-pull any NEW model button images into both asset dirs (the colour ``ui/gui``
-copy + the ``assets/qtgui`` copy, which the qtgui loader greyscales at runtime).
+pull any NEW model button images into the colour ``ui/gui`` asset tree.  qtgui
+SHARES that tree and greyscales at load, so there is no second copy to write --
+``c0f60b68`` deleted the separate monochrome one, and this docstring outlived it.
 Model resource names are already English (``A1LC10`` …) so they map straight to
 ``button_image`` values in ``core/variants.py`` — no rename needed (that's
 ``rename_assets.py``'s job, for the Chinese-named chrome assets).
