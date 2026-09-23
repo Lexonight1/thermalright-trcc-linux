@@ -50,19 +50,73 @@ _ABSENT = pytest.mark.skipif(
 
 
 def test_oracle_release_is_one_constant() -> None:
-    """The release is stated once and everything else derives from it.
+    """The version is stated once and everything else derives from it.
 
-    ``ORACLE_VERSION`` is built from ``ORACLE_RELEASE`` and the default
-    ``DECOMPILE_ROOT`` embeds it, so switching releases is a one-line edit and
-    cannot leave a second spelling behind.  This asserts the derivation rather
-    than the literals: hardcoding ``"2.1.6.0"`` here would be a second spelling.
+    ``ORACLE_RELEASE`` is the first three components of ``ORACLE_VERSION`` and
+    the default ``DECOMPILE_ROOT`` embeds it, so switching releases is a
+    one-line edit and cannot leave a second spelling behind.  This asserts the
+    derivation rather than the literals: hardcoding ``"2.1.6.0"`` here would be
+    a second spelling.
+
+    The derivation used to run the OTHER way -- ``ORACLE_VERSION`` was
+    ``f"{ORACLE_RELEASE}.0"`` -- and this test asserted that.  The ``.0`` was
+    never a fact: TRCC 2.1.8 ships as ``2.1.8.2``, so the derived value was
+    ``2.1.8.0`` and ``test_decompile_on_disk_is_the_release_we_port`` would
+    have rejected the CORRECT tree, reporting the right oracle as the wrong
+    one.  The literal is now the four-part string the decompile actually
+    declares, which is what ``assembly_version`` compares.
     """
-    assert f"{ORACLE_RELEASE}.0" == ORACLE_VERSION
+    assert ".".join(ORACLE_VERSION.split(".")[:3]) == ORACLE_RELEASE
     if os.environ.get("TRCC_DECOMPILE"):
         pytest.skip("TRCC_DECOMPILE overrides the derived path by design")
     assert ORACLE_RELEASE in DECOMPILE_ROOT.name, (
         f"default DECOMPILE_ROOT should derive from ORACLE_RELEASE; "
         f"got {DECOMPILE_ROOT}")
+
+
+def test_the_release_is_derived_in_the_SOURCE_not_merely_equal() -> None:
+    """``ORACLE_RELEASE`` must be COMPUTED, not a second literal that agrees.
+
+    Comparing the two values cannot see this: hardcoding
+    ``ORACLE_RELEASE = "2.1.6"`` beside ``ORACLE_VERSION = "2.1.6.0"`` satisfies
+    every equality in this file while re-creating exactly the drift the module
+    docstring says is impossible -- the next release changes one and not the
+    other.  MEASURED: that mutation passed all five tests before this existed.
+
+    So this reads the SOURCE.  A string literal on the right-hand side is the
+    failure; any expression is the fix.
+    """
+    import ast
+
+    src = (_ROOT / "dev" / "decompiler" / "core" / "csharp.py").read_text()
+    assigned = [
+        node.value for node in ast.walk(ast.parse(src))
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "ORACLE_RELEASE"
+                for t in node.targets)
+    ]
+    assert len(assigned) == 1, (
+        f"expected exactly one ORACLE_RELEASE assignment, found {len(assigned)}")
+    assert not isinstance(assigned[0], ast.Constant), (
+        "ORACLE_RELEASE is assigned a literal — it must be DERIVED from "
+        "ORACLE_VERSION, or the two spellings drift the next time one of them "
+        "is edited alone.  That is the failure this whole file exists for.")
+
+
+@pytest.mark.parametrize("version", ["2.1.6.0", "2.1.8.2", "3.0.0.17"])
+def test_a_build_number_other_than_zero_is_expressible(version: str) -> None:
+    """A fourth component that is not ``.0`` must survive the derivation.
+
+    The regression this file's inversion exists to prevent.  Under the old
+    ``f"{release}.0"`` rule the build number could not be stated at all, so the
+    only way to point the oracle at TRCC 2.1.8 would have been to disable or
+    loosen the version check -- on the one gate that caught ten weeks of
+    reading the wrong program.
+    """
+    release = ".".join(version.split(".")[:3])
+    assert len(version.split(".")) == 4
+    assert version.startswith(release + ".")
+    assert f"TRCC_{release}_decompiled".count(release) == 1
 
 
 @_ABSENT

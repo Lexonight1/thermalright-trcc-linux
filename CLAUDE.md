@@ -209,22 +209,33 @@ video — so a single "online theme" click can chain `ApplyMask →
 LoadTheme → ApplyMask + PlayVideo`.  That's the flow shape, not a
 bug.  Don't call them "cloud themes" in code or analysis.
 
-## The C# oracle — we port TRCC **2.1.6**, and only 2.1.6
+## The C# oracle — we port ONE release, and the code says which
 
-**The release we port is TRCC 2.1.6 (`AssemblyVersion 2.1.6.0`).** Any statement
-about "what the C# does" is about 2.1.6. A reading from any other release is not
-evidence and must not reach a commit, a doc, or a reporter.
+**Do not spell the release here.** This heading named 2.1.6 until 2026-09-22 and
+would have gone stale the moment it moved — which is the exact failure the rest
+of this section is written about. The release is
+`ORACLE_VERSION` in `dev/decompiler/core/csharp.py`; read it there. Any statement
+about "what the C# does" is about that release, and a reading from any other one
+is not evidence and must not reach a commit, a doc, or a reporter.
 
 **One constant, and everything derives from it** — in
 `dev/decompiler/core/csharp.py`:
 
 | | |
 |---|---|
-| `ORACLE_RELEASE` | `"2.1.6"` — **the single source. Changing releases is this one line.** |
-| `ORACLE_VERSION` | derived: `f"{ORACLE_RELEASE}.0"` — the `AssemblyVersion` the tree must declare |
+| `ORACLE_VERSION` | the four-part `AssemblyVersion` the tree must declare — **the single source. Changing releases is this one line.** |
+| `ORACLE_RELEASE` | derived: the first three components, which name the installer and the decompile directory |
 | `DECOMPILE_ROOT` | derived: `~/Downloads/TRCC_{ORACLE_RELEASE}_decompiled` · override `TRCC_DECOMPILE` |
 | `assembly_version()` | reads the tree's OWN `AssemblyVersion` — never infers from the directory name |
-| Gated by | `tests/test_oracle_version.py` — wrong version **FAILS**, absent **skips**, right runs |
+| Gated by | `tests/test_oracle_version.py` — wrong version **FAILS**, absent **skips**, right runs; an AST check also proves `ORACLE_RELEASE` is DERIVED, since two literals that happen to agree pass every equality |
+
+**The derivation used to run the other way**, `ORACLE_VERSION = f"{ORACLE_RELEASE}.0"`,
+and that `.0` was never a fact — only a pattern (`2.0.3.0`, `2.1.6.0`). TRCC
+**2.1.8 ships as `2.1.8.2`**, so the derived value was `2.1.8.0` and the one gate
+that exists to catch a wrong oracle would have **rejected the correct tree**. The
+literal is now the full version, because that is what `assembly_version()`
+compares; the marketing three-part release is the inference, and an inference
+belongs at the derived end.
 
 **Never spell the release or the path a second time — import the constant.**
 Not in code, not in a doc header, not in a docstring. The version is a fact, and

@@ -1,404 +1,271 @@
 {
-  "decompile": "TRCC_2.1.6_decompiled",
+  "decompile": "TRCC_2.1.8_decompiled",
   "branches": [
     {
       "method": "FormCZTVInit",
-      "line": 865,
+      "line": 869,
       "kind": "if",
       "on": "pm == 5",
       "guards": "fbl ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 869,
+      "line": 873,
       "kind": "else-if",
       "on": "pm == 7 || pm == 14",
       "guards": "fbl ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 873,
+      "line": 877,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && pm == 32",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 878,
+      "line": 882,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && pm == 50",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 884,
+      "line": 888,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && (pm == 63 || pm == 64 || (pm == 1 && pmSub == 48))",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 898,
+      "line": 902,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && (pm == 65 || pm == 66 || (pm == 1 && pmSub == 49))",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 913,
+      "line": 917,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && pm == 69",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 928,
+      "line": 932,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && pm == 68",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 943,
+      "line": 947,
       "kind": "else-if",
-      "on": "myDeviceMode == 2 && (pm == 9 || pm == 11)",
+      "on": "myDeviceMode == 2 && (pm == 9 || pm == 11 || pm == 20)",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 957,
+      "line": 962,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && (pm == 10 || pm == 16)",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 972,
+      "line": 977,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && pm == 12",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 986,
+      "line": 991,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && (pm == 13 || pm == 17 || pm == 18)",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1001,
+      "line": 1006,
       "kind": "else-if",
       "on": "myDeviceMode == 2 && pm == 15",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1006,
+      "line": 1011,
+      "kind": "else-if",
+      "on": "myDeviceMode == 2 && pm == 4",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 1015,
       "kind": "if",
       "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 58",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1010,
+      "line": 1019,
       "kind": "else-if",
       "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 54",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1017,
+      "line": 1021,
+      "kind": "if",
+      "on": "pmSub == 1",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 1028,
+      "kind": "if",
+      "on": "pmSub != 4",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 1033,
       "kind": "else-if",
       "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 128",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1032,
+      "line": 1048,
       "kind": "else-if",
       "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 129",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1036,
+      "line": 1052,
       "kind": "else-if",
       "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 59",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1041,
+      "line": 1058,
       "kind": "else-if",
       "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 60",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1046,
+      "line": 1063,
       "kind": "if",
       "on": "myDeviceMode == 1 && fbl == 51",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1050,
+      "line": 1067,
       "kind": "else-if",
       "on": "myDeviceMode == 3 && fbl == 49",
       "guards": "myDeviceMode ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1060,
+      "line": 1077,
       "kind": "if",
       "on": "fbl == 100 || fbl == 101 || fbl == 102",
       "guards": "fbl ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1064,
+      "line": 1081,
       "kind": "if",
       "on": "fbl == 36 || fbl == 37",
       "guards": "fbl ="
     },
     {
       "method": "FormCZTVInit",
-      "line": 1154,
+      "line": 1171,
       "kind": "if",
       "on": "name != null",
       "guards": ""
     },
     {
       "method": "FormCZTVInit",
-      "line": 1163,
+      "line": 1180,
       "kind": "if",
       "on": "name != null",
       "guards": ""
     },
     {
       "method": "FormCZTVInit",
-      "line": 1187,
+      "line": 1204,
       "kind": "if",
       "on": "Form1.Language != 100",
       "guards": ""
     },
     {
       "method": "ImageToJpg",
-      "line": 3646,
+      "line": 3672,
       "kind": "if",
       "on": "!File.Exists(text)",
       "guards": ""
     },
     {
       "method": "ImageToJpg",
-      "line": 3657,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3658,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3659,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3660,
-      "kind": "arm",
-      "on": "270",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3661,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3664,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3665,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3666,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3667,
-      "kind": "arm",
-      "on": "270",
-      "guards": "RotateImgHei"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3668,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3671,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3672,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3673,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3674,
-      "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3675,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3678,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3679,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3680,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3681,
-      "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
       "line": 3682,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
+      "kind": "if",
+      "on": "is320x320 || is480x480",
+      "guards": "myDevicePingMu ="
     },
     {
       "method": "ImageToJpg",
-      "line": 3685,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3686,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3687,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
+      "line": 3684,
+      "kind": "if",
+      "on": "myDevicePingMu == 6 || mySubMode == 7",
+      "guards": "myDevicePingMu ="
     },
     {
       "method": "ImageToJpg",
       "line": 3688,
       "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
+      "on": "0",
+      "guards": "RotateImgHei"
     },
     {
       "method": "ImageToJpg",
       "line": 3689,
       "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3692,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3693,
-      "kind": "arm",
       "on": "90",
-      "guards": "RotateImg"
+      "guards": "RotateImgHei"
     },
     {
       "method": "ImageToJpg",
-      "line": 3694,
+      "line": 3690,
       "kind": "arm",
       "on": "180",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
-      "line": 3695,
+      "line": 3691,
       "kind": "arm",
       "on": "270",
-      "guards": "RotateImg"
+      "guards": "RotateImgHei"
     },
     {
       "method": "ImageToJpg",
-      "line": 3696,
+      "line": 3692,
       "kind": "arm",
       "on": "_",
-      "guards": "RotateImg"
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3695,
+      "kind": "else-if",
+      "on": "myDevicePingMu != 4 || mySubMode != 0",
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
@@ -412,21 +279,21 @@
       "line": 3700,
       "kind": "arm",
       "on": "90",
-      "guards": "RotateImg"
+      "guards": "RotateImgHei"
     },
     {
       "method": "ImageToJpg",
       "line": 3701,
       "kind": "arm",
       "on": "180",
-      "guards": "RotateImg"
+      "guards": "RotateImgHei"
     },
     {
       "method": "ImageToJpg",
       "line": 3702,
       "kind": "arm",
       "on": "270",
-      "guards": "RotateImg"
+      "guards": "RotateImgHei"
     },
     {
       "method": "ImageToJpg",
@@ -437,283 +304,164 @@
     },
     {
       "method": "ImageToJpg",
-      "line": 3706,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3707,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3708,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
       "line": 3709,
-      "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
+      "kind": "switch",
+      "on": "directionB",
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
-      "line": 3710,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3713,
-      "kind": "arm",
+      "line": 3711,
+      "kind": "case",
       "on": "0",
-      "guards": "RotateImg"
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
       "line": 3714,
-      "kind": "arm",
+      "kind": "case",
       "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3715,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3716,
-      "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
       "line": 3717,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
+      "kind": "case",
+      "on": "180",
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
       "line": 3720,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3721,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3722,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3723,
-      "kind": "arm",
+      "kind": "case",
       "on": "270",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3724,
-      "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3727,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3728,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
       "line": 3729,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
+      "kind": "else-if",
+      "on": "myDevicePingMu == 5",
+      "guards": "myDevicePingMu ="
     },
     {
       "method": "ImageToJpg",
-      "line": 3730,
+      "line": 3733,
       "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3731,
-      "kind": "arm",
-      "on": "_",
+      "on": "0",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3734,
       "kind": "arm",
-      "on": "0",
+      "on": "90",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3735,
       "kind": "arm",
-      "on": "90",
+      "on": "180",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3736,
       "kind": "arm",
-      "on": "180",
+      "on": "270",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3737,
       "kind": "arm",
-      "on": "270",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3738,
-      "kind": "arm",
       "on": "_",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
-      "line": 3741,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3742,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3743,
-      "kind": "arm",
-      "on": "180",
-      "guards": "RotateImg"
+      "line": 3740,
+      "kind": "else-if",
+      "on": "is1600x720",
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
       "line": 3744,
       "kind": "arm",
-      "on": "270",
+      "on": "0",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3745,
       "kind": "arm",
-      "on": "_",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3746,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3747,
+      "kind": "arm",
+      "on": "270",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3748,
       "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3749,
-      "kind": "arm",
-      "on": "90",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3750,
-      "kind": "arm",
-      "on": "180",
+      "on": "_",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3751,
       "kind": "arm",
-      "on": "270",
+      "on": "0",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
       "line": 3752,
       "kind": "arm",
-      "on": "_",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3755,
-      "kind": "arm",
-      "on": "0",
-      "guards": "RotateImg"
-    },
-    {
-      "method": "ImageToJpg",
-      "line": 3756,
-      "kind": "arm",
       "on": "90",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
-      "line": 3757,
+      "line": 3753,
       "kind": "arm",
       "on": "180",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
-      "line": 3758,
+      "line": 3754,
       "kind": "arm",
       "on": "270",
       "guards": "RotateImg"
     },
     {
       "method": "ImageToJpg",
-      "line": 3759,
+      "line": 3755,
       "kind": "arm",
       "on": "_",
       "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3758,
+      "kind": "else-if",
+      "on": "!is854x480 && !is800x480",
+      "guards": ""
     },
     {
       "method": "ImageToJpg",
@@ -787,343 +535,805 @@
     },
     {
       "method": "ImageToJpg",
+      "line": 3776,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3777,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
       "line": 3778,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3779,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3780,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3783,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3784,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3785,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3786,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3787,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3790,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3791,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3792,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3793,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3794,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3797,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3798,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3799,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3800,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3801,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3804,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3805,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3806,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3807,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3808,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3811,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3812,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3813,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3814,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3815,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3818,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3819,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3820,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3821,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3822,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3825,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3826,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3827,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3828,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3829,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3832,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3833,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3834,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3835,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3836,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3839,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3840,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3841,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3842,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3843,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3850,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3851,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3852,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3853,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3854,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3857,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3858,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3859,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3860,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3861,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3863,
+      "kind": "if",
+      "on": "mySubMode == 0",
+      "guards": ""
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 3871,
       "kind": "if",
       "on": "array.Length >= 450000",
       "guards": "return"
     },
     {
       "method": "ImageToJpg",
-      "line": 3783,
+      "line": 3876,
       "kind": "if",
       "on": "is480x480",
       "guards": "myDevicePingMu ="
     },
     {
       "method": "ImageToJpg",
-      "line": 3785,
+      "line": 3878,
       "kind": "if",
       "on": "myDevicePingMu == 100",
       "guards": "myDevicePingMu ="
     },
     {
       "method": "ImageToJpg",
-      "line": 3819,
+      "line": 3912,
       "kind": "else-if",
       "on": "is320x320",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3838,
+      "line": 3931,
       "kind": "else-if",
       "on": "is640x480",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3857,
+      "line": 3950,
       "kind": "else-if",
       "on": "is640x172",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3876,
+      "line": 3969,
       "kind": "else-if",
       "on": "is240x240",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3895,
+      "line": 3988,
       "kind": "else-if",
       "on": "is1600x720",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3914,
+      "line": 4007,
       "kind": "else-if",
       "on": "is800x480",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3933,
+      "line": 4026,
       "kind": "else-if",
       "on": "is854x480",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3952,
+      "line": 4045,
       "kind": "else-if",
       "on": "is960x540",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3971,
+      "line": 4064,
       "kind": "else-if",
       "on": "is960x320",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 3990,
+      "line": 4083,
       "kind": "else-if",
       "on": "is1920x462 || is1920x440",
       "guards": "new byte[64]"
     },
     {
       "method": "ImageToJpg",
-      "line": 4009,
+      "line": 4102,
       "kind": "else-if",
       "on": "is1280x480",
       "guards": ""
     },
     {
       "method": "ImageToJpg",
-      "line": 4011,
+      "line": 4104,
       "kind": "if",
       "on": "mySubMode <= 2",
       "guards": "new byte[20]"
     },
     {
       "method": "ImageToJpg",
-      "line": 4045,
+      "line": 4138,
       "kind": "else-if",
       "on": "is360x360",
       "guards": "new byte[20]"
     },
     {
       "method": "ImageToJpg",
-      "line": 4059,
+      "line": 4152,
       "kind": "else-if",
       "on": "myDevicePingMu == 5",
       "guards": "myDevicePingMu ="
     },
     {
       "method": "ImageTo565",
-      "line": 4112,
+      "line": 4205,
       "kind": "if",
       "on": "!File.Exists(text)",
       "guards": ""
     },
     {
       "method": "ImageTo565",
-      "line": 4123,
+      "line": 4216,
       "kind": "arm",
       "on": "0",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4124,
+      "line": 4217,
       "kind": "arm",
       "on": "90",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4125,
+      "line": 4218,
       "kind": "arm",
       "on": "180",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4126,
+      "line": 4219,
       "kind": "arm",
       "on": "270",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4127,
+      "line": 4220,
       "kind": "arm",
       "on": "_",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4130,
+      "line": 4223,
       "kind": "arm",
       "on": "0",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4131,
+      "line": 4224,
       "kind": "arm",
       "on": "90",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4132,
+      "line": 4225,
       "kind": "arm",
       "on": "180",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4133,
+      "line": 4226,
       "kind": "arm",
       "on": "270",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4134,
+      "line": 4227,
       "kind": "arm",
       "on": "_",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4137,
+      "line": 4230,
       "kind": "arm",
       "on": "0",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4138,
+      "line": 4231,
       "kind": "arm",
       "on": "90",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4139,
+      "line": 4232,
       "kind": "arm",
       "on": "180",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4140,
+      "line": 4233,
       "kind": "arm",
       "on": "270",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4141,
+      "line": 4234,
       "kind": "arm",
       "on": "_",
       "guards": "RotateImg"
     },
     {
       "method": "ImageTo565",
-      "line": 4161,
+      "line": 4237,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 4238,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 4239,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 4240,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 4241,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 4261,
       "kind": "if",
       "on": "is320x320 || myDeviceMode == 10",
       "guards": "myDeviceMode ="
     },
     {
       "method": "ImageTo565",
-      "line": 4168,
+      "line": 4268,
       "kind": "else-if",
       "on": "myDeviceSPIMode == 2",
       "guards": ""
     },
     {
       "method": "ImageTo565",
-      "line": 4185,
+      "line": 4285,
       "kind": "if",
       "on": "is640x172",
       "guards": "new byte[225280]"
     },
     {
       "method": "ImageTo565",
-      "line": 4194,
+      "line": 4294,
       "kind": "if",
       "on": "myDeviceMode == 1",
       "guards": "myDeviceMode ="
     },
     {
       "method": "ImageTo565",
-      "line": 4200,
+      "line": 4300,
       "kind": "else-if",
       "on": "myDeviceMode == 3",
       "guards": "myDeviceMode ="
     },
     {
       "method": "ImageTo565",
-      "line": 4218,
+      "line": 4318,
       "kind": "else-if",
       "on": "myDeviceMode == 4",
       "guards": "myDeviceMode ="
     },
     {
       "method": "ImageTo565",
-      "line": 4246,
+      "line": 4346,
       "kind": "else-if",
       "on": "myDeviceMode == 10",
       "guards": "myDeviceMode ="
     },
     {
       "method": "DeviceDataReceived2",
-      "line": 1377,
+      "line": 1491,
       "kind": "if",
       "on": "data.Length != 0 && device2 == device && data[1] == 218 && data[2] == 219 && data[3] == 220 && data[4] == 221 && data[13] == 1",
       "guards": ""
     },
     {
       "method": "DeviceDataReceived2",
-      "line": 1381,
+      "line": 1495,
       "kind": "if",
       "on": "val.DevicePath.Equals(device2.DevicePath)",
       "guards": ""
     },
     {
       "method": "DeviceDataReceived2",
-      "line": 1386,
+      "line": 1500,
       "kind": "if",
       "on": "data[17] == 16 && data.Length >= 37",
       "guards": ""
     },
     {
       "method": "DeviceDataReceived2",
-      "line": 1403,
+      "line": 1517,
       "kind": "if",
       "on": "data.Length == 0 || data[1] != 218 || data[2] != 219 || data[3] != 220 || data[4] != 221 || data[13] != 8",
       "guards": "return"
     },
     {
       "method": "DeviceDataReceived2",
-      "line": 1409,
+      "line": 1523,
       "kind": "if",
       "on": "device == hidList2[i]",
       "guards": ""
     },
     {
       "method": "ThreadSendDeviceData1",
-      "line": 1279,
+      "line": 1393,
       "kind": "if",
       "on": "isSendUsbThread0[num]",
       "guards": "return"
     },
     {
       "method": "ThreadSendDeviceData1",
-      "line": 1290,
+      "line": 1404,
       "kind": "if",
       "on": "num2 > 64",
       "guards": "new byte[64]"
     },
     {
       "method": "ThreadSendDeviceData2",
-      "line": 1432,
+      "line": 1546,
       "kind": "if",
       "on": "isSendUsbThread[num]",
       "guards": "return"
     },
     {
       "method": "ThreadSendDeviceData2",
-      "line": 1449,
+      "line": 1563,
       "kind": "if",
       "on": "num2 > 512",
       "guards": "new byte[512]"
@@ -2250,9 +2460,9 @@
     }
   ],
   "per_method": {
-    "FormCZTV.cs::FormCZTVInit": 26,
-    "FormCZTV.cs::ImageToJpg": 103,
-    "FormCZTV.cs::ImageTo565": 23,
+    "FormCZTV.cs::FormCZTVInit": 29,
+    "FormCZTV.cs::ImageToJpg": 125,
+    "FormCZTV.cs::ImageTo565": 28,
     "UCDevice.cs::DeviceDataReceived2": 5,
     "UCDevice.cs::ThreadSendDeviceData1": 2,
     "UCDevice.cs::ThreadSendDeviceData2": 2,
@@ -2265,7 +2475,7 @@
     "FormLED.cs::SendHidVal": 59
   },
   "not_mined": [
-    "TRCC/UCDevice.cs::DeviceOnConnected2 \u2014 0 branches (body at L1336); confirm by hand",
+    "TRCC/UCDevice.cs::DeviceOnConnected2 \u2014 0 branches (body at L1450); confirm by hand",
     "USBLCD.exe.c (scsi/bulk/ly) \u2014 Ghidra C dump, not branch-mined here"
   ]
 }

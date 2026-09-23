@@ -322,7 +322,7 @@ def exhaustive_bulk() -> int:
     straight in), so it is fully bench-decidable.
 
     It read ZERO on 2026-07-11 — against the 2.0.3 decompile, five weeks before
-    the real 2.1.6 was extracted.  Against 2.1.6 it reads **11**: the PMs
+    the real 2.1.6 was extracted.  Against 2.1.6 it read **11** and against 2.1.8 it reads **12** (pm 20, the new 854x480): the PMs
     2.1.6's ladder added (13, 14, 15, 16, 17, 18, 50, 63, 66, 68, 69) that
     ``_BULK_KNOWN_PMS`` does not list.  That is a known, latent divergence
     owned by ``BULK_PM_GAP`` in ``tests/test_csharp_conformance.py`` — this

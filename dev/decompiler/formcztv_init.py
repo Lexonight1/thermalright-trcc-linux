@@ -195,14 +195,21 @@ def form_cztv_init(
         st.mySubMode = pmSub
         st.hit(928, "mode==2 && pm==68 -> isBiliPingmu, is1280x480, fbl = 192")
         st.hit(933, f"  mySubMode = pmSub = {pmSub}")
-    elif m == 2 and pm in (9, 11):
+    elif m == 2 and pm in (9, 11, 20):
         st.isBiliPingmu = st.is854x480 = True
         st.fbl = 224
-        st.hit(943, "mode==2 && (pm==9||11) -> isBiliPingmu, is854x480, "
+        st.mySubMode = pmSub
+        st.hit(947, "mode==2 && (pm==9||11||20) -> isBiliPingmu, is854x480, "
                     "fbl = 224")
-        st.hit(943, "  NO mySubMode assignment — every sibling branch has one, "
-                    "this one does not, so it stays 0 and 854x480's "
-                    "`mySubMode == 2` rotation arm is UNREACHABLE")
+        st.hit(952, f"  mySubMode = pmSub = {pmSub}")
+        st.hit(952, "  ADDED IN 2.1.8.  Through 2.1.6 this branch had no "
+                    "mySubMode assignment while every sibling did, so it "
+                    "stayed 0 and 854x480's `mySubMode == 2` rotation arm "
+                    "(:3848, a 180 degree offset) was UNREACHABLE.  We "
+                    "recorded that omission on 2026-08-17; their binary is "
+                    "dated 2026-09-16.  pm 20 joined the same branch in the "
+                    "same release.  NOTE the 800x480 sibling below did NOT "
+                    "get the same fix, so its arm is still dead")
     elif m == 2 and pm in (10, 16):
         st.isBiliPingmu = st.is960x540 = True
         st.fbl = 224
@@ -213,8 +220,12 @@ def form_cztv_init(
     elif m == 2 and pm == 12:
         st.isBiliPingmu = st.is800x480 = True
         st.fbl = 224
-        st.hit(972, "mode==2 && pm==12 -> isBiliPingmu, is800x480, fbl = 224")
-        st.hit(972, "  NO mySubMode assignment — same dead arm as 854x480")
+        st.hit(977, "mode==2 && pm==12 -> isBiliPingmu, is800x480, fbl = 224")
+        st.hit(977, "  NO mySubMode assignment — it stays 0, so the "
+                    "`mySubMode == 2` arm at :3848 is UNREACHABLE for "
+                    "800x480.  MEASURED in 2.1.8: still absent here, while "
+                    "the 854x480 branch above GAINED it — so this is the one "
+                    "surviving dead arm, not a shared one")
     elif m == 2 and pm in (13, 17, 18):
         st.isBiliPingmu = st.is960x320 = True
         st.fbl = 224
@@ -225,8 +236,17 @@ def form_cztv_init(
     elif m == 2 and pm == 15:
         st.is640x172 = True
         st.fbl = 224
-        st.hit(1001, "mode==2 && pm==15 -> is640x172, fbl = 224 "
+        st.hit(1006, "mode==2 && pm==15 -> is640x172, fbl = 224 "
                      "(no preview window, no isBiliPingmu)")
+    elif m == 2 and pm == 4:
+        # NEW IN 2.1.8, and the only branch of its shape: it sets the mount and
+        # NOTHING else -- no resolution flag, no fbl -- so geometry still falls
+        # through to the bare 240x320 default while the per-SKU mount is
+        # recorded.  Transcribed as-is; what panel reports pm=4 is unknown.
+        st.mySubMode = pmSub
+        st.hit(1011, "mode==2 && pm==4 -> mySubMode only (no resolution, "
+                     "no fbl)")
+        st.hit(1013, f"  mySubMode = pmSub = {pmSub}")
     else:
         st.hit(865, f"  (no pm-ladder branch matched: pm={pm}, mode={m})")
 

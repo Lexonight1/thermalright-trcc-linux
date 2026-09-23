@@ -37,11 +37,23 @@ from pathlib import Path
 # been on disk since 2026-06-05 -- and the whole oracle suite ran GREEN against
 # the wrong program (measured: 163 passed).  A reporter (#224) was told his
 # hardware was equally broken on Windows on the strength of that reading.
-ORACLE_RELEASE = "2.1.6"
-# The ``AssemblyVersion`` literal the decompile must carry -- the tree's own
-# statement of what it is, as opposed to what its directory is named.  The old
-# tree was NAMED 2.1.6 in the docs and said 2.0.3 inside; only this discriminates.
-ORACLE_VERSION = f"{ORACLE_RELEASE}.0"
+# The ``AssemblyVersion`` the decompile must carry -- the tree's own statement of
+# what it is, as opposed to what its directory is named.  The old tree was NAMED
+# 2.1.6 in the docs and said 2.0.3 inside; only this discriminates.
+#
+# THE FULL FOUR-PART STRING IS THE LITERAL, and the three-part release is derived
+# from it, because this is the fact ``assembly_version`` actually compares.  It
+# used to run the other way -- ``ORACLE_VERSION = f"{ORACLE_RELEASE}.0"`` -- and
+# that ``.0`` was never a fact, only a pattern that happened to hold: the audit
+# docs record ``origin=2.0.3.0`` and this tree declares ``2.1.6.0``.  TRCC 2.1.8
+# ships as **2.1.8.2**, so the derivation produced ``2.1.8.0``, and the one gate
+# that exists to catch a wrong oracle would have rejected the RIGHT tree.  An
+# inference belongs at the derived end, never at the literal one.
+ORACLE_VERSION = "2.1.8.2"
+# The release we port -- the marketing three-part version, which names the
+# installer and the decompile directory.  Derived, so there is still exactly ONE
+# spelling of the version in this file and changing releases is one line.
+ORACLE_RELEASE = ".".join(ORACLE_VERSION.split(".")[:3])
 
 # The program we port, as the binary itself declares it (``AssemblyProduct``).
 #
