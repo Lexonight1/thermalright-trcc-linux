@@ -340,21 +340,6 @@ class MaskVisibilityResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
-class OrientedThemeTargetResult(Result):
-    """Which theme to reload after a rotation, and the catalog it came from.
-
-    ``target`` is empty when the active theme is already in the new catalog or
-    has no same-name variant there — the caller keeps what it has and the
-    render pipeline pixel-rotates.  ``catalog_size`` is carried because the one
-    caller reports it either way.
-    """
-
-    key: str = ""
-    target: str = ""
-    catalog_size: tuple[int, int] = (0, 0)
-
-
-@dataclass(frozen=True, slots=True)
 class ThemeExportResult(Result):
     theme_name: str = ""
     archive_path: str = ""

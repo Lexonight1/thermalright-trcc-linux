@@ -998,7 +998,7 @@ KNOWN_FS_IO: dict[str, int] = {
     "trcc/services/migration.py": 13,
     "trcc/services/overlay.py": 2,
     "trcc/services/settings.py": 4,
-    "trcc/services/theme_directories.py": 2,
+    "trcc/services/theme_directories.py": 1,
     # +2 on 2026-08-27, and NOT a regression: ``theme_directories`` moved INTO
     # services from ``ui/presentation`` so a core Query could call it, bringing
     # its two ``.exists()`` probes (the #136 portrait fallback, and the
@@ -1006,6 +1006,13 @@ KNOWN_FS_IO: dict[str, int] = {
     # the ``services/theme.py`` row that LEFT this table when it was re-homed
     # to an adapter: this ratchet counts the inner rings, so what it measures
     # moves when a file does.
+    # -1 on 2026-09-23: the same-name variant lookup was
+    # ``oriented_theme_reload_target``, a SECOND answer to the question
+    # ``oriented_theme_path`` already answers on ``OrientationChanged`` -- and
+    # a worse one (user-tree-first, and its callers reloaded with the default
+    # ``reset_overrides=True``, persist-clearing the user's overlay edits).
+    # Deleted with both its skin callers; the #136 portrait fallback is the
+    # one probe left.
     "trcc/services/video_export.py": 7,
 }
 
@@ -2050,12 +2057,17 @@ def test_path_home_baseline_has_no_slack() -> None:
 # calls `Other(...).execute(app)` directly skips all three, so an inner command
 # that fails leaves NOTHING in the log.  22 sites did that; they now dispatch.
 #
-# The 13 survivors are the ones whose caller already logs the inner outcome
+# The 12 survivors are the ones whose caller already logs the inner outcome
 # itself (`SleepDevice` failing is a benign "blank skipped" at DEBUG, and
 # routing it through the bus would turn that into a WARNING in every report).
-# Listed at their real count so a fourteenth fails.
+# Listed at their real count so a thirteenth fails.
+#
+# -1 on 2026-09-23: the thirteenth was `OrientedThemeTarget`, which called
+# `ResolveThemeDirectories(...).execute(app)` to answer a question the core
+# already answers on `OrientationChanged`.  Both its callers were Qt skins
+# re-deciding a rotation the App had just decided, so the Query went with them.
 KNOWN_DIRECT_EXECUTE: dict[str, int] = {
-    "trcc/core/commands/device.py": 6,
+    "trcc/core/commands/device.py": 5,
     "trcc/core/commands/theme.py": 7,
 }
 

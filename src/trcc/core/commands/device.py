@@ -71,7 +71,6 @@ from ..results import (
     MaskVisibilityResult,
     MediaPlayerResult,
     OrientationResult,
-    OrientedThemeTargetResult,
     OverlayBackgroundResult,
     OverlayConfigResult,
     OverlayElementDeleteResult,
@@ -2694,54 +2693,6 @@ class ResolveThemeDirectories(Query[ThemeDirectoriesResult]):
             masks_dir=str(dirs.masks_dir),
             portrait_fallback=dirs.portrait_fallback,
             message=f"theme directories for {self.key}",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class OrientedThemeTarget(Query[OrientedThemeTargetResult]):
-    """After a rotation swaps the catalog, which theme should be reloaded.
-
-    Folds together the two steps the GUI used to take — dispatch
-    ``ResolveThemeDirectories``, then call ``oriented_theme_reload_target``
-    with the paths that came back.  That split was deliberate (the service
-    function is shaped to accept a Result's string paths), but it leaves the
-    decision on the client, and the decision is a filesystem question: it asks
-    whether a same-name variant EXISTS in the new catalog.  A daemon-mode UI
-    would answer it against its own disk, where the theme library is not.
-
-    Empty ``target`` means keep the current theme — either it is already in the
-    new catalog, or no variant exists there (a custom theme, or the #136
-    portrait fallback).  The caller reports ``catalog_size`` either way, so it
-    travels with the answer rather than needing a second dispatch.
-    """
-    key: str
-    active_theme: Path
-
-    def execute(self, app: App) -> OrientedThemeTargetResult:
-        log.debug("OrientedThemeTarget: key=%s active=%s",
-                  self.key, self.active_theme)
-        from ...services.theme_directories import oriented_theme_reload_target
-
-        dirs = ResolveThemeDirectories(key=self.key).execute(app)
-        if not dirs.ok:
-            log.warning("OrientedThemeTarget: %s", dirs.message)
-            return OrientedThemeTargetResult(
-                ok=False, key=self.key, message=dirs.message,
-            )
-
-        target = oriented_theme_reload_target(
-            self.active_theme,
-            Path(dirs.user_theme_dir),
-            Path(dirs.theme_dir),
-        )
-        log.info("OrientedThemeTarget: %s in %dx%d -> %s",
-                 self.active_theme.name, *dirs.catalog_size, target)
-        return OrientedThemeTargetResult(
-            ok=True, key=self.key,
-            target=str(target) if target is not None else "",
-            catalog_size=dirs.catalog_size,
-            message=(f"reload {target.name}" if target is not None
-                     else "no oriented variant — keep current theme"),
         )
 
 

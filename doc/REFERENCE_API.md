@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**137 endpoints.**
+**138 endpoints.**
 
 ## Running it
 
@@ -55,6 +55,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/display/orientation` | `OrientationResult` | — |
 | `POST /devices/{key}/display/overlay` | `OverlayResult` | — |
 | `POST /devices/{key}/display/overlay-background` | `OverlayBackgroundResult` | Set the solid background color used when background-mode=color. |
+| `GET /devices/{key}/display/overlay-elements` | `OverlayLayoutResult` | What is currently drawn on the device -- the read half of overlay. |
 | `POST /devices/{key}/display/overlay-elements` | `OverlayElementResult` | Add a user-edited overlay element. |
 | `PUT /devices/{key}/display/overlay-elements` | `OverlayConfigResult` | Bulk replace the user-overlay element list. |
 | `DELETE /devices/{key}/display/overlay-elements/{element_id}` | `OverlayElementDeleteResult` | Remove an overlay element by id. |

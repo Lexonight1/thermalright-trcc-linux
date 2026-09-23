@@ -37,7 +37,6 @@ from ...core.commands import (
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
-    OrientedThemeTarget,
     PreviewSize,
     ResolveThemeDirectories,
     RestoreDeviceState,
@@ -1158,6 +1157,9 @@ class LCDHandler(BaseHandler):
         self._app.dispatch(SetOrientation(
             key=self._device_key, degrees=degrees,
         ))
+        # The re-root to the new orientation's catalog (#169 "not filling")
+        # already happened INSIDE that dispatch — see _adopt_reoriented_theme.
+        self._adopt_reoriented_theme()
         self._sync_rotation_state(degrees)
         ow, oh = self._pm.state.lcd_size
         self.log.info(
@@ -1165,51 +1167,53 @@ class LCDHandler(BaseHandler):
             degrees, ow, oh, self._pm.state.is_rotated,
         )
         self._sync_preview_size()   # composed orientation, portrait-theme aware (#136)
-        # _update_theme_directories switches the browser catalog to the new
-        # orientation dims + re-lists it, and auto-loads the first theme ONLY on
-        # first install (nothing active yet).  When a theme IS already active it
-        # returns False and leaves the OLD-orientation theme rendering — so reload
-        # the active theme's oriented variant here, or the device keeps a
-        # landscape bg letterboxed into the portrait buffer (#169 "not filling").
-        if not self._update_theme_directories():
-            self._reload_theme_for_orientation()
+        # Switches the browser catalog to the new orientation dims + re-lists
+        # it, and auto-loads the first theme ONLY on first install.
+        self._update_theme_directories()
 
-    def _reload_theme_for_orientation(self) -> None:
-        """Reload the ACTIVE theme from the just-switched orientation catalog.
+    def _adopt_reoriented_theme(self) -> None:
+        """Catch this View up with the theme the CORE just re-rooted.
 
-        A rotation swaps the browser catalog (``theme1600720`` ↔ ``theme7201600``)
-        but not the rendered theme; the C# re-authors the theme per orientation,
-        so the portrait catalog ships a genuine portrait ``00.png`` that fills the
-        720×1600 buffer.  Reloading the same-name variant from the new catalog
-        gives the same result — a filled, upright frame (#169).
+        ``SetOrientation`` publishes ``OrientationChanged``, which
+        ``App._on_orientation_changed`` handles by reloading the active theme
+        — plus the cloud background and the mask — from the new orientation's
+        catalog, each through the device's own artwork library.  Publication is
+        synchronous, so it has already run by the time ``set_rotation``
+        continues; nothing tells the View, so the cached path would keep
+        pointing at the old catalog (``trcc_app`` reads it for save/export).
 
-        Falls back to keeping the current theme when the new catalog has no
-        same-name variant (a user's custom theme, or the #136 portrait-fallback
-        where the local dir resolves back to landscape); there the render pipeline
-        pixel-rotates the landscape art so it is at least correctly oriented.
+        This panel used to RE-DECIDE that instead, dispatching a second
+        ``LoadTheme`` of its own.  Two costs, both measured: the second load
+        took the default ``reset_overrides=True`` and so persist-cleared the
+        overlay edits the core had just deliberately preserved, and its
+        resolver preferred the user tree over the shipped one, silently
+        swapping a shipped theme for a same-named saved theme.  It existed
+        because July's ``oriented_theme_path`` looked only in the generic
+        ``theme{w}{h}``, missing the per-SKU libraries #169's cooler uses;
+        ``0709ad5f`` taught the core resolver those libraries on 2026-08-23
+        and the workaround has been redundant since.
+
+        ``_restore_overlay_editor``, not ``_load_theme_overlay_config``: a
+        rotation re-roots the SAME theme, so the persisted overlay toggle is
+        the authority and must be shown, never replaced (#276).
         """
-        active = self._pm.state.current_theme_path
-        if active is None:
-            return
-        answer = self._app.dispatch(
-            OrientedThemeTarget(key=self._device_key, active_theme=active))
-        if not answer.ok:
-            self.log.warning(
-                "_reload_theme_for_orientation: %s", answer.message)
-            return
-        if not answer.target:
-            self.log.info(
-                "_reload_theme_for_orientation: no oriented variant of '%s' in the "
-                "%dx%d catalog — keeping current theme (pixel-rotate fallback)",
-                active.name, *answer.catalog_size,
+        snap = self._app.dispatch(LcdSnapshot(key=self._device_key))
+        current = (
+            Path(snap.current_theme) if snap.ok and snap.current_theme else None
+        )
+        if current == self._pm.state.current_theme_path:
+            self.log.debug(
+                "_adopt_reoriented_theme: %s unchanged at %s",
+                self._device_key, current,
             )
             return
         self.log.info(
-            "_reload_theme_for_orientation: reloading '%s' from the %dx%d catalog "
-            "→ %s", active.name, *answer.catalog_size, answer.target,
+            "_adopt_reoriented_theme: core re-rooted %s → %s",
+            self._pm.state.current_theme_path, current,
         )
-        self._select_theme_from_path(
-            Path(answer.target), persist=True, overlay_config=True)
+        self._pm.state.current_theme_path = current
+        if current is not None:
+            self._restore_overlay_editor(current)
 
     def set_split_mode(self, mode: int) -> None:
         self.log.info("set_split_mode: %d -> %d device=%s",
