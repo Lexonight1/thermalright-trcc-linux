@@ -5,7 +5,9 @@ Workflow:
 1.  Pick a device (the existing :class:`DevicePickerWidget`).
 2.  Click "Choose region…" — opens :class:`RegionSelectOverlay` which
     freezes the screen and lets the user drag a rectangle.
-3.  Pick an update interval (frames per second).
+3.  Pick an update interval (frames per second), and optionally tick
+    "Draw a spectrum from the microphone" — it applies at the next Start
+    and re-issues the session when toggled mid-cast.
 4.  Click Start — every tick the panel grabs the chosen region,
     encodes it for the device, and dispatches :class:`SendFrame`.
 5.  Stop ends the loop; the device keeps the last frame until the
@@ -114,6 +116,17 @@ class ScreencastPanel(BasePanel):
         fps_row.addWidget(self._fps, stretch=1)
         fps_row.addWidget(self._fps_label)
 
+        # ── Microphone ────────────────────────────────────────────────
+        # The last face that could not reach ``StartScreencast.audio``:
+        # gui has a mic button, cli has ``--audio``, api has ``body.audio``,
+        # and qtgui dispatched the field's default forever.
+        self._audio = QCheckBox("Draw a spectrum from the microphone", self)
+        self._audio.setToolTip(
+            "Overlays audio bars on the cast frame.  Needs "
+            "``sounddevice``; without it the cast runs without bars.",
+        )
+        self._audio.toggled.connect(self._on_audio_toggled)
+
         # ── Tips group ────────────────────────────────────────────────
         tips_box = QGroupBox("Tips", self)
         tips_layout = QVBoxLayout(tips_box)
@@ -155,6 +168,7 @@ class ScreencastPanel(BasePanel):
         form.addRow("Device:", self._picker)
         form.addRow("Region:", region_row)
         form.addRow("Update rate:", fps_row)
+        form.addRow("", self._audio)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
@@ -222,6 +236,35 @@ class ScreencastPanel(BasePanel):
         log.debug("_fps_interval_s")
         return max(0.033, 1.0 / max(_MIN_FPS, self._fps.value()))
 
+    # ── Microphone ───────────────────────────────────────────────────
+
+    def _on_audio_toggled(self, enabled: bool) -> None:
+        """Mic on/off, mid-cast included.
+
+        Re-issuing the session with the new flag is how the flag changes,
+        exactly as re-registering the driver is how the cadence changes
+        (:meth:`_on_fps_changed`).  The flag lives in ``screencast_region``'s
+        fifth element — the one persisted truth — so there is no second piece
+        of state to keep in step, and ``_sync_audio`` in the Command holds the
+        microphone open for exactly as long as some session wants it.
+
+        Off-session it is just the checkbox; :meth:`_on_start` reads it.
+        """
+        log.info("_on_audio_toggled: enabled=%s", enabled)
+        key = self._casting_key
+        if not key or self._region is None:
+            log.debug("_on_audio_toggled: no live session — the checkbox "
+                      "applies at the next Start")
+            return
+        x, y, w, h = self._region
+        result = self.dispatch(StartScreencast(
+            key=key, x=x, y=y, w=w, h=h, audio=enabled,
+        ))
+        if not result.ok:
+            log.warning("_on_audio_toggled: re-issue failed: %s",
+                        result.message)
+            self._status.setText(result.message)
+
     # ── Lifecycle ────────────────────────────────────────────────────
 
     def _on_start(self) -> None:
@@ -238,7 +281,9 @@ class ScreencastPanel(BasePanel):
             )
             return
         x, y, w, h = self._region
-        started = self.dispatch(StartScreencast(key=key, x=x, y=y, w=w, h=h))
+        started = self.dispatch(StartScreencast(
+            key=key, x=x, y=y, w=w, h=h, audio=self._audio.isChecked(),
+        ))
         if not started.ok:
             self._status.setText(started.message)
             return

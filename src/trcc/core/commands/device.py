@@ -1367,12 +1367,9 @@ class StartScreencast(Command[ScreencastResult]):
         )
         # The spectrum is drawn into the wire frame by every face now, so the
         # microphone belongs to the Command, not to whichever UI happened to
-        # subscribe.  ``start()`` answers False when ``sounddevice`` is absent
-        # and that is not an error — the cast runs without bars.
-        if self.audio and not app.audio.running:
-            started = app.audio.start()
-            log.info("StartScreencast.execute: audio capture started=%s "
-                     "(sounddevice present=%s)", started, started)
+        # subscribe.  Written AFTER the region, because the rule reads the
+        # persisted flags and this device's is one of them.
+        _sync_audio(app)
 
         app.events.publish(ScreencastStarted(
             key=self.key,
@@ -1670,6 +1667,35 @@ def _any_audio_session(app: App) -> bool:
     return False
 
 
+def _sync_audio(app: App) -> None:
+    """Hold the microphone exactly while some session still wants it.
+
+    Both screencast lifecycle Commands used to carry their own half of this
+    and neither was the whole rule.  ``StartScreencast`` only ever STARTED
+    (``if self.audio and not app.audio.running``), so re-issuing a live
+    session with ``audio=False`` — which is how every face turns the bars off
+    mid-cast (``trcc_app._on_screencast_audio_toggled``, qtgui's checkbox) —
+    persisted the new flag and left the microphone open.  The spectrum gate is
+    ``app.audio.running``, not that flag, so **the bars kept drawing after the
+    user turned them off**.  DRIVEN against a real ``App``: ``start x1,
+    stop x0`` across ``audio=True`` then ``audio=False``.
+
+    Demand is the persisted truth, so this is asked AFTER the region is
+    written and answers for every device at once — one microphone, many
+    panels.  ``start()`` answers False when ``sounddevice`` is absent and that
+    is not an error: the cast runs without bars.
+    """
+    wanted = _any_audio_session(app)
+    running = app.audio.running
+    log.info("_sync_audio: wanted=%s running=%s", wanted, running)
+    if wanted and not running:
+        log.info("_sync_audio: a session wants audio — starting capture")
+        app.audio.start()
+    elif running and not wanted:
+        log.info("_sync_audio: no session wants audio — stopping capture")
+        app.audio.stop()
+
+
 @dataclass(frozen=True, slots=True)
 class StopScreencast(Command[ScreencastResult]):
     """End the screen-capture session for a device.
@@ -1684,13 +1710,7 @@ class StopScreencast(Command[ScreencastResult]):
     def execute(self, app: App) -> ScreencastResult:
         log.info("StopScreencast.execute: key=%s", self.key)
         app.settings.set_screencast_region(self.key, None)
-        # One microphone, many possible panels: release it only once no OTHER
-        # device is still casting with audio, or stopping one screen would
-        # silence the bars on another.
-        if app.audio.running and not _any_audio_session(app):
-            log.info("StopScreencast.execute: last audio session — "
-                     "stopping capture")
-            app.audio.stop()
+        _sync_audio(app)
         app.events.publish(ScreencastStopped(key=self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=False,

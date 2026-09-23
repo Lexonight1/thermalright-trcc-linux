@@ -19,7 +19,7 @@ import pytest
 from trcc.app import App
 from trcc.core.led_models import LED_STYLES
 
-from .conftest import FakePlatform
+from .conftest import FakeMic, FakePlatform
 
 # =========================================================================
 # QApplication fixture — module-scoped so all GUI tests share it
@@ -1500,6 +1500,113 @@ def test_screencast_build_frame_returns_bytes(gui_app: App) -> None:
     assert isinstance(encoded, bytes)
     assert len(encoded) > 0
     del target_w, target_h
+
+
+@pytest.fixture
+def cast_app(fake_platform: FakePlatform, qapp: object) -> App:
+    """``gui_app`` with a SYNCHRONOUS send scheduler.
+
+    Not a style preference.  ``ConnectDevice`` registers the device with the
+    scheduler, and the default ``ThreadSendScheduler`` then publishes
+    ``FrameSent`` from its own thread — after the test has returned and Qt has
+    collected the ``BusBridge`` behind the subscription.  The bus prints
+    "EventBus handler failed for FrameSent / Signal source has been deleted"
+    for every late frame, which is noise that would sit on top of any REAL
+    failure in this file.  Measured: 0 such lines from the panels that never
+    connect, 1 from each that does.
+    """
+    del qapp                                # explicit dependency, no use
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.adapters.render.qt import QtRenderer
+
+    app = App(platform=fake_platform, renderer=QtRenderer(),
+              send_scheduler=SyncSendScheduler())
+    # And NEVER a real microphone: ``StartScreencast(audio=True)`` would open
+    # an ``sd.InputStream`` that outlives the test.  See ``FakeMic``.
+    app.audio = FakeMic()                   # type: ignore[assignment]
+    return app
+
+
+def _casting_panel(app: App):
+    """A ScreencastPanel over a CONNECTED device, region already chosen.
+
+    The panel's own guards return before dispatching without these two, so a
+    test that skips them asserts against a Command that was never built.
+    """
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
+
+    resp = bytearray(0xE100)
+    resp[0] = 100                       # FBL=100 -> 320x320
+    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+
+    panel = ScreencastPanel(app, _bus(app))
+    panel._picker.set_key("0402:3922")
+    panel._on_region_selected(0, 0, 200, 100)
+    return panel
+
+
+def _persisted_audio(app: App) -> bool | None:
+    """The audio flag as the CAPTURE PATH reads it — region[4], not a spy."""
+    region = app.settings.for_device("0402:3922").screencast_region
+    return None if region is None else region[4]
+
+
+def test_screencast_audio_checkbox_reaches_the_command(cast_app: App) -> None:
+    """qtgui was the last face that could not set ``StartScreencast.audio``.
+
+    gui has a mic button, the CLI has ``--audio``, the API has ``body.audio``,
+    and ``grep -ri audio src/trcc/ui/qtgui/`` returned ZERO lines — so the
+    field took its ``False`` default forever.  Asserted on the PERSISTED
+    truth, which is what the capture path actually reads, not on the Command
+    object: a kwarg that reaches a dataclass and no further is the shape
+    ``test_command_field_reach`` already covers structurally.
+    """
+    panel = _casting_panel(cast_app)
+    panel._audio.setChecked(True)
+    panel._on_start()
+
+    assert panel._casting_key == "0402:3922", panel._status.text()
+    assert _persisted_audio(cast_app) is True
+
+
+def test_screencast_audio_unchecked_stays_off(cast_app: App) -> None:
+    """The default, pinned — so the checkbox proves it is the thing deciding."""
+    panel = _casting_panel(cast_app)
+    assert panel._audio.isChecked() is False
+    panel._on_start()
+
+    assert panel._casting_key == "0402:3922", panel._status.text()
+    assert _persisted_audio(cast_app) is False
+
+
+def test_screencast_audio_toggles_mid_cast(cast_app: App) -> None:
+    """Toggling mid-cast re-issues the session, exactly as the FPS slider
+    re-registers the driver — the flag lives in ``screencast_region``, so
+    there is no second piece of state to keep in step."""
+    panel = _casting_panel(cast_app)
+    panel._on_start()
+    assert _persisted_audio(cast_app) is False
+
+    panel._audio.setChecked(True)           # fires toggled -> re-issue
+    assert _persisted_audio(cast_app) is True
+
+    panel._audio.setChecked(False)
+    assert _persisted_audio(cast_app) is False
+
+
+def test_screencast_audio_off_session_does_not_dispatch(
+    gui_app: App, qapp: object,
+) -> None:
+    """With no live cast the checkbox is just a checkbox — it must not
+    persist a region for a device that is not casting."""
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
+
+    panel = ScreencastPanel(gui_app, _bus(gui_app))
+    panel._audio.setChecked(True)
+    assert panel._casting_key is None
+    assert _persisted_audio(gui_app) is None
 
 
 def test_region_overlay_constructs(qapp: object) -> None:

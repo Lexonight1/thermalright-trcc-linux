@@ -26,7 +26,7 @@ from trcc.core.commands import (
 from trcc.core.models import SCREENCAST_TICK_S, RawFrame
 from trcc.services.screencast_driver import ScreencastDriver, task_key
 
-from .conftest import FakePlatform, _CliRenderer
+from .conftest import FakeMic, FakePlatform, _CliRenderer
 from .mock_platform import MockPlatform
 from .test_display_rotation import RecordingRenderer
 
@@ -521,3 +521,107 @@ def test_every_face_starts_at_the_same_cadence() -> None:
         f"qtgui starts at {screencast_panel._DEFAULT_FPS} fps, the rest at "
         f"{expected}")
     assert screencast_panel._MIN_FPS <= expected <= screencast_panel._MAX_FPS
+
+
+# ── the microphone ───────────────────────────────────────────────────
+#
+# One microphone, many panels.  Both lifecycle Commands used to carry HALF the
+# rule and neither carried the whole one: ``StartScreencast`` only ever
+# STARTED (``if self.audio and not app.audio.running``) and ``StopScreencast``
+# only ever stopped.  Re-issuing a live session with ``audio=False`` — which
+# is how every face turns the bars off mid-cast — therefore persisted the new
+# flag and left the microphone open, and the spectrum gate is
+# ``app.audio.running`` rather than that flag, so the bars kept drawing.
+#
+# MUTATION CHECK: make ``_sync_audio`` start-only again (drop its ``elif``)
+# and ``test_audio_off_mid_cast_releases_the_microphone`` must fail on the
+# stop count, not on ``running`` — a fake that never stops still reads
+# ``running=True``, so the counts are what prove nothing released it.
+
+
+@pytest.fixture
+def mic(app: App) -> FakeMic:
+    """Replace ``App.audio`` — a plain attribute (``app.py:216``).
+
+    Assigned HERE and not on ``_audio``: a probe that wrote ``app._audio``
+    silently measured the real ``AudioCapture`` instead and its reading
+    depended on whether the box running it had a microphone.
+    """
+    fake = FakeMic()
+    app.audio = fake        # type: ignore[assignment]
+    return fake
+
+
+def test_audio_off_mid_cast_releases_the_microphone(
+    app: App, mic: FakeMic,
+) -> None:
+    """THE regression — driven, with counts rather than a flag."""
+    assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+    assert (mic.running, mic.starts, mic.stops) == (True, 1, 0)
+
+    assert app.dispatch(StartScreencast(key=_KEY, audio=False, **_REGION)).ok
+    assert (mic.running, mic.starts, mic.stops) == (False, 1, 1), (
+        "re-issuing with audio=False left the microphone open — the spectrum "
+        "gate is app.audio.running, so the bars keep drawing after the user "
+        "turned them off"
+    )
+    assert app.settings.for_device(_KEY).screencast_region[4] is False
+
+
+def test_audio_on_mid_cast_opens_the_microphone(
+    app: App, mic: FakeMic,
+) -> None:
+    """And the other direction, which is how the bars are turned ON."""
+    assert app.dispatch(StartScreencast(key=_KEY, audio=False, **_REGION)).ok
+    assert (mic.running, mic.starts) == (False, 0)
+
+    assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+    assert (mic.running, mic.starts, mic.stops) == (True, 1, 0)
+
+
+def test_re_issuing_the_same_flag_does_not_churn_the_microphone(
+    app: App, mic: FakeMic,
+) -> None:
+    """Idempotent: the rule compares demand to state, it does not toggle."""
+    for _ in range(3):
+        assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+    assert (mic.running, mic.starts, mic.stops) == (True, 1, 0)
+
+
+def test_stopping_one_cast_keeps_the_microphone_for_another(
+    tmp_home: Path,
+) -> None:
+    """Two panels, one microphone — the reason demand is asked per FLEET.
+
+    ``_sync_audio`` reads every device's persisted flag, so turning the
+    second device's audio off must not silence the first one's bars.  The
+    one-device tests above pass equally well against a rule that asks only
+    about the device in hand; this is the one that does not.
+    """
+    other = "87ad:70db"
+    app = App(
+        platform=MockPlatform(
+            [{"vid": "0402", "pid": "3922", "fbl": 100},
+             {"vid": "87ad", "pid": "70db", "fbl": 100}],
+            tmp_home,
+        ),
+        send_scheduler=SyncSendScheduler(), renderer=_CliRenderer(),  # type: ignore[arg-type]
+    )
+    app.attach(0x0402, 0x3922)
+    app.attach(0x87AD, 0x70DB)
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    assert app.dispatch(ConnectDevice(key=other)).ok
+    mic = FakeMic()
+    app.audio = mic         # type: ignore[assignment]
+
+    assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+    assert app.dispatch(StartScreencast(key=other, audio=True, **_REGION)).ok
+    assert (mic.running, mic.starts, mic.stops) == (True, 1, 0)
+
+    assert app.dispatch(StartScreencast(key=other, audio=False, **_REGION)).ok
+    assert (mic.running, mic.stops) == (True, 0), (
+        "turning the second panel's audio off silenced the first panel's bars"
+    )
+
+    assert app.dispatch(StopScreencast(key=_KEY)).ok
+    assert (mic.running, mic.stops) == (False, 1)

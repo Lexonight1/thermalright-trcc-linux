@@ -138,9 +138,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("RunUpgrade", "gui"): (frozenset({"dry_run"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("StartScreencast", "qtgui"): (frozenset({"audio"}), (
-        "unclassified: measured 2026-09-22, not traced"
-    )),
     ("StartScreencastDriver", "api"): (frozenset({"interval_s"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
@@ -239,7 +236,15 @@ def test_every_record_is_tagged(pair: tuple[str, str]) -> None:
 #: without reading it -- the exact move the tag exists to prevent.  Caught by
 #: mutation while this file was being written; the one-sided version let it
 #: through silently.  Same two-sided idiom as ``test_god_classes``.
-UNCLASSIFIED = 22
+#: 22 -> 21 on 2026-09-23: ``("StartScreencast", "qtgui")`` / ``audio`` was
+#: TRACED by the ``ui/gui`` hand walk and closed.  It was a real gap -- gui had
+#: a mic button, cli ``--audio``, api ``body.audio``, and ``grep -ri audio
+#: src/trcc/ui/qtgui/`` returned ZERO lines -- and tracing it turned up a
+#: defect in the Command underneath: re-issuing a live session with
+#: ``audio=False`` persisted the flag and never released the microphone, so
+#: the bars kept drawing after every face turned them off.  See
+#: ``_sync_audio`` in ``core/commands/device.py``.
+UNCLASSIFIED = 21
 
 
 def test_the_unclassified_backlog_does_not_grow() -> None:
@@ -278,6 +283,5 @@ _RECORDED = frozenset({
     ("ListCloudThemes", "cli"), ("ListMasks", "api"), ("ListMasks", "gui"),
     ("ListMasks", "qtgui"), ("ListThemes", "gui"), ("ListThemes", "qtgui"),
     ("LoadVideo", "qtgui"), ("PlayVideo", "qtgui"), ("RunUpgrade", "gui"),
-    ("StartScreencast", "qtgui"), ("StartScreencastDriver", "api"),
-    ("StartScreencastDriver", "cli"),
+    ("StartScreencastDriver", "api"), ("StartScreencastDriver", "cli"),
 })

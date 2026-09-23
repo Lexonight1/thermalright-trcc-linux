@@ -317,6 +317,42 @@ class FakeScreenCapture(ScreenCapture):
         )
 
 
+class FakeMic:
+    """``App.audio`` without PortAudio — counts the lifecycle calls.
+
+    **Not a convenience.**  The real :class:`~trcc.services.audio.AudioCapture`
+    opens an ``sd.InputStream`` with a callback on a native thread, and a test
+    that dispatches ``StartScreencast(audio=True)`` against a real ``App``
+    leaves that stream open for the rest of the session.  Measured
+    2026-09-23: one such test killed an xdist worker with ``Fatal Python
+    error: Illegal instruction``, and the test that DIED was a different one
+    each run — whichever happened to follow it.  Assign this over
+    ``app.audio`` (a plain attribute, ``app.py:216``) in any test that turns
+    screencast audio on.
+
+    The counts are the point: a fake that never stops still reads
+    ``running=True``, so only ``starts``/``stops`` can prove that nothing
+    released the microphone.
+    """
+
+    def __init__(self) -> None:
+        self.running = False
+        self.starts = 0
+        self.stops = 0
+
+    def start(self) -> bool:
+        self.running = True
+        self.starts += 1
+        return True
+
+    def stop(self) -> None:
+        self.running = False
+        self.stops += 1
+
+    def get_spectrum(self) -> tuple[float, ...]:
+        return (0.0, 0.5, 1.0, 0.5)
+
+
 class FakePlatform(Platform):
     """Minimal Platform fake — bulk/scsi transports replayable from tests."""
 
