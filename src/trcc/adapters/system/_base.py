@@ -97,6 +97,50 @@ class BasePaths(Paths):
         return path
 
 
+def usb_path(dev: Any) -> str | None:
+    """Where this unit is PLUGGED IN, as a stable string — or ``None``.
+
+    Two identical coolers share a VID/PID and ship no serial, so nothing in
+    the USB descriptor tells them apart (#287).  What does is the topology:
+    they are in different ports.  ``usb_find(find_all=True)`` already yields
+    one object per physical unit and that object carries the answer; this
+    tree read ``iSerialNumber`` and ``bcdDevice`` off it and dropped the rest.
+
+    Format is the kernel's own USB topology name — ``1-14``, ``1-2.3`` —
+    because it is the one a user can check against ``lsusb -t`` and ``dmesg``
+    when a report says which panel did what.
+
+    **Port chain first, address second, and the difference matters.**  The
+    port chain is where the cable is: it survives a replug and a reboot, so it
+    can key persisted settings.  ``address`` is handed out by the host
+    controller and is reassigned on every replug — usable to tell two units
+    apart *right now*, never to remember which was which.  It is the fallback
+    only, spelled ``@`` so the two can never be confused on sight.
+
+    ``None`` is a real answer.  PyUSB sets ``bus`` / ``address`` /
+    ``port_number`` to ``None`` whenever the backend does not supply them
+    (``usb.core.Device.__init__``), so this is guarded on EVERY platform, not
+    just the ones we cannot test on.  A caller that gets ``None`` has learned
+    that this host cannot tell two identical units apart.
+    """
+    bus = getattr(dev, "bus", None)
+    if bus is None:
+        log.debug("usb_path: backend supplied no bus — not addressable")
+        return None
+    ports = getattr(dev, "port_numbers", None) or ()
+    if ports:
+        path = f"{int(bus)}-{'.'.join(str(int(p)) for p in ports)}"
+        log.debug("usb_path: %s (port chain — stable across replug)", path)
+        return path
+    address = getattr(dev, "address", None)
+    if address is None:
+        log.debug("usb_path: bus %s but no ports and no address", bus)
+        return None
+    path = f"{int(bus)}@{int(address)}"
+    log.debug("usb_path: %s (ADDRESS — changes on replug)", path)
+    return path
+
+
 class BaseOS(Platform):
     """Shared skeleton for every concrete OS :class:`Platform`.
 
@@ -372,9 +416,9 @@ class BaseOS(Platform):
                     serial = ""
                 bcd = int(getattr(dev, "bcdDevice", 0) or 0)
                 found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None,
-                                        bcd_device=bcd))
-                log.info("  found %04x:%04x serial=%r bcdDevice=%#06x",
-                         vid, pid, serial, bcd)
+                                        bcd_device=bcd, path=usb_path(dev)))
+                log.info("  found %04x:%04x serial=%r bcdDevice=%#06x path=%s",
+                         vid, pid, serial, bcd, usb_path(dev) or "(none)")
         log.info("%s.scan_devices: %d device(s) total",
                  type(self).__name__, len(found))
         return found
