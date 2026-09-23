@@ -612,7 +612,7 @@ class App:
     # ── Device lifecycle ──────────────────────────────────────────────
 
     def attach(self, vid: int, pid: int, *,
-               quirk_transport: bool = False) -> Device:
+               quirk_transport: bool = False, unit: str = "") -> Device:
         """Build and cache a Device for (vid, pid).  Does not connect.
 
         Resolves the right transport for the device's wire via the
@@ -663,6 +663,10 @@ class App:
         device.set_state_dir(self.platform.paths().config_dir())
         # Inject firmware-specific overrides resolved from the live fingerprint.
         device.set_quirks(quirks)
+        # WHICH of several identical units this is (#287).  Keyword with an
+        # empty default, so the 31 existing call sites keep meaning exactly
+        # what they meant: "the only one of this model".
+        device.set_unit(unit)
         self.devices[device.key] = device
         log.debug("App.attach: %s → %s", device.key, cls.__name__)
         return device

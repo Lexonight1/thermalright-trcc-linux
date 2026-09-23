@@ -280,10 +280,39 @@ class Device(ABC, Generic[T]):
         log.debug("is_led")
         return False
 
+    #: Which PHYSICAL unit this is, when more than one of the model is
+    #: plugged in.  Empty is the normal case — see :meth:`set_unit`.
+    _unit: str = ""
+
+    def set_unit(self, unit: str) -> None:
+        """Name WHICH of several identical units this object drives (#287).
+
+        Two of the same cooler share a VID/PID and ship no serial, so the
+        catalog's ``ProductInfo.key`` cannot tell them apart and both devices
+        landed in ``App.devices`` under one key — the second overwrote the
+        first.  ``Platform.scan_devices`` resolves the USB port and
+        ``disambiguate`` hands it out; the composition root passes it here,
+        the same way it passes quirks and the state dir.
+
+        Empty for every single-device user, which keeps :attr:`key` at the
+        plain ``vid:pid`` their config and commands already use.
+        """
+        self._unit = unit
+        log.info("Device %s: unit=%r", self.info.key, unit)
+
     @property
     def key(self) -> str:
-        frame_log.debug("Device.key: %s", self.info.key)
-        return self.info.key
+        """This DEVICE's identity — ``vid:pid``, or ``vid:pid@port`` (#287).
+
+        Mirrors :attr:`DeviceInfo.key` exactly, because the two are compared:
+        the scan produces the ``DeviceInfo`` and the composition root builds
+        the ``Device`` from it, and a user's settings are looked up under
+        whichever string reaches them.
+        """
+        base = self.info.key
+        key = f"{base}@{self._unit}" if self._unit else base
+        frame_log.debug("Device.key: %s", key)
+        return key
 
     @property
     def needs_keepalive(self) -> bool:

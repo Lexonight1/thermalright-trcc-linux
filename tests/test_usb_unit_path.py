@@ -237,3 +237,84 @@ def test_a_brand_new_key_still_seeds_from_the_global_formats(tmp_path) -> None:
 
     fresh = st.for_device("dead:beef@1-9")
     assert fresh.temp_unit == "F"
+
+
+# ── step 3: two units, two Device objects ────────────────────────────────
+
+
+def _twin_app(tmp_path):
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.app import App
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    spec = {"type": "lcd", "name": "HR10 2280 PRO", "vid": "87ad",
+            "pid": "70db", "pm": 72, "resolution": "480x480"}
+    return App(platform=MockPlatform([dict(spec), dict(spec)], tmp_path),
+               send_scheduler=SyncSendScheduler(),
+               renderer=_CliRenderer())      # type: ignore[arg-type]
+
+
+def _twins():
+    from trcc.adapters.system._base import disambiguate
+    return disambiguate([_info(0x87AD, 0x70DB, "1-13"),
+                         _info(0x87AD, 0x70DB, "1-11")])
+
+
+def test_the_scan_cache_no_longer_overwrites_itself(tmp_path) -> None:
+    """``remember_scan`` does ``_scanned[info.key] = info``.
+
+    It never needed changing — distinct keys from step 2 fixed it for free.
+    Pinned anyway, because the line is a silent overwrite: if a later change
+    made twins share a key again, nothing else in the suite would notice.
+    """
+    app = _twin_app(tmp_path)
+    app.remember_scan(_twins())
+    assert len(app._scanned) == 2
+
+
+def test_two_identical_units_become_two_devices(tmp_path) -> None:
+    """THE fix for #287's "in use by another process", at the object level."""
+    app = _twin_app(tmp_path)
+    for info in _twins():
+        app.attach(info.vid, info.pid, unit=info.unit)
+
+    assert sorted(app.devices) == ["87ad:70db@1-11", "87ad:70db@1-13"]
+    left = app.get("87ad:70db@1-13")
+    right = app.get("87ad:70db@1-11")
+    assert left is not right
+
+
+def test_one_device_still_attaches_under_the_plain_key(tmp_path) -> None:
+    """``unit`` is a keyword with an empty default precisely so the 31
+    existing ``attach`` call sites keep meaning "the only one of this model".
+    """
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.app import App
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    app = App(platform=MockPlatform([{"type": "lcd", "name": "one",
+                                      "vid": "0402", "pid": "3922", "pm": 32,
+                                      "fbl": 100, "resolution": "320x320"}],
+                                    tmp_path),
+              send_scheduler=SyncSendScheduler(),
+              renderer=_CliRenderer())        # type: ignore[arg-type]
+    app.attach(0x0402, 0x3922)
+    assert list(app.devices) == ["0402:3922"]
+
+
+def test_device_key_mirrors_DeviceInfo_key(tmp_path) -> None:
+    """The two are COMPARED, so they must agree by construction.
+
+    The scan produces the ``DeviceInfo``; the composition root builds the
+    ``Device``; a user's settings are looked up under whichever string
+    reaches them first.  Two formats that drifted apart would send one unit's
+    configuration to the other.
+    """
+    app = _twin_app(tmp_path)
+    for info in _twins():
+        device = app.attach(info.vid, info.pid, unit=info.unit)
+        assert device.key == info.key
