@@ -87,6 +87,87 @@ Persist the auto\-mapped bindings instead of only showing them.
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS dashboard\-add
+.PP
+\fBtrcc system dashboard\-add\fR [\fIOPTIONS\fR]
+.PP
+Add an empty custom panel to the sensor dashboard. Four unbound rows, ready for dashboard\-bind. What a new panel IS lives on the model, so this, the GUI and qtgui all add the same thing.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-name \fINAME\fR\fR
+Panel name.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS dashboard\-bind
+.PP
+\fBtrcc system dashboard\-bind\fR \fIINDEX\fR \fIROW\fR \fISENSOR_ID\fR
+.PP
+Bind one dashboard row to a sensor. The sensor must exist on this machine  \-  the GUIs bind by picking from a list and cannot name one that does not, so neither can this. The unit comes from the sensor rather than the caller, for the same reason.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBINDEX\fR
+Panel index from dashboard.
+.TP
+\fBROW\fR
+Row within the panel (0\-based).
+.TP
+\fBSENSOR_ID\fR
+Sensor id from list\-sensors.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS dashboard\-delete
+.PP
+\fBtrcc system dashboard\-delete\fR \fIINDEX\fR
+.PP
+Delete a panel from the sensor dashboard. Deleting the only panel is refused  \-  an empty layout would make the next read fall back to defaults, a wipe dressed up as a write.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBINDEX\fR
+Panel index from dashboard.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS dashboard\-rename
+.PP
+\fBtrcc system dashboard\-rename\fR \fIINDEX\fR \fINAME\fR
+.PP
+Rename a sensor\-dashboard panel.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBINDEX\fR
+Panel index from dashboard.
+.TP
+\fBNAME\fR
+The new panel name.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS debug\-report
 .PP
 \fBtrcc system debug\-report\fR [\fIOPTIONS\fR]

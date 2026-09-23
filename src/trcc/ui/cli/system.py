@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -37,8 +39,11 @@ from ...core.commands import (
     SetHddEnabled,
     SetSensorDashboard,
 )
-from ...core.models import AUTOSTART_TARGETS
+from ...core.models import AUTOSTART_TARGETS, PanelConfig, SensorBinding
 from ._ctx import emit_json, get_app
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 log = logging.getLogger(__name__)
 
@@ -218,8 +223,11 @@ def dashboard(
     log.info("cli system dashboard: save_auto_map=%s", auto_map)
     result = get_app().dispatch(GetSensorDashboard())
     typer.echo(result.message)
-    for panel in result.panels:
-        typer.echo(f"  [{panel.category_id}] {panel.name}")
+    for index, panel in enumerate(result.panels):
+        # The index is what ``dashboard-delete`` / ``-rename`` / ``-bind``
+        # take.  Names are NOT unique -- every added panel is called "Custom"
+        # until renamed -- so position is the only unambiguous handle.
+        typer.echo(f"  {index}  [{panel.category_id}] {panel.name}")
         for binding in panel.sensors:
             target = binding.sensor_id or "<unbound>"
             unit = f" [{binding.unit}]" if binding.unit else ""
@@ -229,6 +237,122 @@ def dashboard(
             SetSensorDashboard(panels=tuple(result.panels)),
         )
         typer.echo(written.message)
+
+
+@contextmanager
+def _dashboard_edit() -> Iterator[list[PanelConfig]]:
+    """Read the layout, let the caller edit it, write the WHOLE thing back.
+
+    ``SetSensorDashboard`` is a bulk verb, so every edit is the same three
+    steps and only the middle one differs.  A context manager rather than
+    four copies -- and the write is AFTER the ``yield``, so a
+    ``BadParameter`` raised while editing propagates and nothing is
+    persisted.
+
+    No empty-layout guard here on purpose: the Command itself refuses one,
+    and its refusal arrives as ``result.message`` plus a non-zero exit.
+    """
+    log.info("_dashboard_edit: reading layout")
+    trcc = get_app()
+    panels = list(trcc.dispatch(GetSensorDashboard()).panels)
+    yield panels
+    log.info("_dashboard_edit: writing %d panel(s)", len(panels))
+    result = trcc.dispatch(SetSensorDashboard(panels=tuple(panels)))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+def _panel_at(panels: list[PanelConfig], index: int) -> PanelConfig:
+    """The panel at *index*, or a usable error naming the valid range."""
+    log.debug("_panel_at: index=%d of %d", index, len(panels))
+    if not 0 <= index < len(panels):
+        raise typer.BadParameter(
+            f"no panel {index} — the layout has {len(panels)} "
+            f"(0..{len(panels) - 1}).  Run `trcc system dashboard` to list.",
+        )
+    return panels[index]
+
+
+@app.command("dashboard-add")
+def dashboard_add(
+    name: str = typer.Option("Custom", "--name", help="Panel name."),
+) -> None:
+    """Add an empty custom panel to the sensor dashboard.
+
+    Four unbound rows, ready for ``dashboard-bind``.  What a new panel IS
+    lives on the model, so this, the GUI and qtgui all add the same thing.
+    """
+    log.info("cli system dashboard-add: name=%r", name)
+    with _dashboard_edit() as panels:
+        panels.append(PanelConfig.custom(name))
+
+
+@app.command("dashboard-delete")
+def dashboard_delete(
+    index: int = typer.Argument(..., help="Panel index from `dashboard`."),
+) -> None:
+    """Delete a panel from the sensor dashboard.
+
+    Deleting the only panel is refused — an empty layout would make the next
+    read fall back to defaults, a wipe dressed up as a write.
+    """
+    log.info("cli system dashboard-delete: index=%d", index)
+    with _dashboard_edit() as panels:
+        removed = _panel_at(panels, index)
+        panels.remove(removed)
+        typer.echo(f"Removed [{removed.category_id}] {removed.name}")
+
+
+@app.command("dashboard-rename")
+def dashboard_rename(
+    index: int = typer.Argument(..., help="Panel index from `dashboard`."),
+    name: str = typer.Argument(..., help="The new panel name."),
+) -> None:
+    """Rename a sensor-dashboard panel."""
+    log.info("cli system dashboard-rename: index=%d name=%r", index, name)
+    if not (name := name.strip()):
+        raise typer.BadParameter("name must not be blank")
+    with _dashboard_edit() as panels:
+        panel = _panel_at(panels, index)
+        typer.echo(f"Renamed {panel.name!r} -> {name!r}")
+        panel.name = name
+
+
+@app.command("dashboard-bind")
+def dashboard_bind(
+    index: int = typer.Argument(..., help="Panel index from `dashboard`."),
+    row: int = typer.Argument(..., help="Row within the panel (0-based)."),
+    sensor_id: str = typer.Argument(..., help="Sensor id from `list-sensors`."),
+) -> None:
+    """Bind one dashboard row to a sensor.
+
+    The sensor must exist on this machine — the GUIs bind by picking from a
+    list and cannot name one that does not, so neither can this.  The unit
+    comes from the sensor rather than the caller, for the same reason.
+    """
+    log.info("cli system dashboard-bind: index=%d row=%d sensor=%s",
+             index, row, sensor_id)
+    known = {s.sensor_id: s for s in get_app().dispatch(ListSensors()).sensors}
+    if (sensor := known.get(sensor_id)) is None:
+        raise typer.BadParameter(
+            f"no sensor {sensor_id!r} on this machine — "
+            f"run `trcc system list-sensors` for the {len(known)} available",
+        )
+    with _dashboard_edit() as panels:
+        panel = _panel_at(panels, index)
+        if not 0 <= row < len(panel.sensors):
+            raise typer.BadParameter(
+                f"no row {row} in {panel.name!r} — it has "
+                f"{len(panel.sensors)} (0..{len(panel.sensors) - 1})",
+            )
+        binding = panel.sensors[row]
+        panel.sensors[row] = SensorBinding(
+            label=binding.label or sensor.label or sensor_id,
+            sensor_id=sensor_id,
+            unit=sensor.unit,
+        )
+        typer.echo(f"Bound {panel.name!r} row {row} -> {sensor_id}")
 
 
 @app.command("list-languages")

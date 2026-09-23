@@ -1526,6 +1526,57 @@ trcc system dashboard [OPTIONS]
 |---|---|
 | `--save-auto-map` | Persist the auto-mapped bindings instead of only showing them. |
 
+### `trcc system dashboard-add`
+
+Add an empty custom panel to the sensor dashboard. Four unbound rows, ready for `dashboard-bind`. What a new panel IS lives on the model, so this, the GUI and qtgui all add the same thing.
+
+```bash
+trcc system dashboard-add [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--name` `NAME` | Panel name. |
+
+### `trcc system dashboard-bind`
+
+Bind one dashboard row to a sensor. The sensor must exist on this machine — the GUIs bind by picking from a list and cannot name one that does not, so neither can this. The unit comes from the sensor rather than the caller, for the same reason.
+
+```bash
+trcc system dashboard-bind INDEX ROW SENSOR_ID
+```
+
+| Argument | Description |
+|---|---|
+| `INDEX` | Panel index from `dashboard`. |
+| `ROW` | Row within the panel (0-based). |
+| `SENSOR_ID` | Sensor id from `list-sensors`. |
+
+### `trcc system dashboard-delete`
+
+Delete a panel from the sensor dashboard. Deleting the only panel is refused — an empty layout would make the next read fall back to defaults, a wipe dressed up as a write.
+
+```bash
+trcc system dashboard-delete INDEX
+```
+
+| Argument | Description |
+|---|---|
+| `INDEX` | Panel index from `dashboard`. |
+
+### `trcc system dashboard-rename`
+
+Rename a sensor-dashboard panel.
+
+```bash
+trcc system dashboard-rename INDEX NAME
+```
+
+| Argument | Description |
+|---|---|
+| `INDEX` | Panel index from `dashboard`. |
+| `NAME` | The new panel name. |
+
 ### `trcc system debug-report`
 
 Generate a debug report bundle for GitHub issues.
