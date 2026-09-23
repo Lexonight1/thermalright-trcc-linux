@@ -1095,9 +1095,22 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
 9. Lint + test again
 10. Commit + push version bump to `main`
 11. `git tag v{version} && git push origin v{version}` (triggers CI + PyPI)
-12. `gh release create v{version} --target main --title "v{version}"`
-13. Verify the release landed — `gh run list` all green, and PyPI actually
-    serves the new version — BEFORE telling any reporter to upgrade.
+12. **Do NOT run `gh release create`.**  The tag push is the whole trigger:
+    `release.yml` builds the wheel + sdist and its `ncipollo/release-action`
+    step both CREATES the release and uploads them.  That step carries
+    `skipIfReleaseExists: true`, so a release you made by hand first makes
+    the WHOLE step no-op and the **wheel and sdist are never attached** —
+    while `windows.yml` / `macos.yml` still succeed, because they
+    `gh release upload` into whatever release exists.  A release missing only
+    its Python artifacts is the signature.  (Measured 2026-09-23: v9.10.0,
+    v9.10.1 and v9.10.2 are all titled *"Release vX"* — the action's wording,
+    not `gh`'s — so the workflow made all three and this step has never
+    actually run.  It stayed in the list for a year regardless.)
+13. Verify the release landed — `gh run list` all green, the release exists,
+    and it carries **`trcc_linux-{version}-py3-none-any.whl` + `.tar.gz`**
+    alongside the deb/rpm/pkg/exe/dmg (`gh release view v{version} --json
+    assets`), and PyPI actually serves the new version — BEFORE telling any
+    reporter to upgrade.
 14. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
     never announce an unconfirmed change as "the fix" (see
     `memory/feedback_fix_then_bump_then_reply.md`).  Upgrade commands must be

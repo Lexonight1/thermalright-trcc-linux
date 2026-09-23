@@ -92,7 +92,7 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         # whatever this field says.  On a 1280x480 Trofeo Vision it fetched
         # theme240320 and the browser then pointed there -- "locked at
         # 240x320" -- two minutes AFTER the handshake had correctly reported
-        # (1280, 480).  Five reporters: #244, #257, #267, #268, #300.
+        # (1280, 480).  Six reporters: #240, #244, #257, #267, #268, #300.
         #
         # Nothing downstream needs the guess.  `DiscoverDevices` skips a
         # (0, 0) row, `_resolve_resolution` returns None for it, the qtgui
