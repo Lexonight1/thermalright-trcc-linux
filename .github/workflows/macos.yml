@@ -40,7 +40,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          brew install libusb create-dmg sevenzip ffmpeg
+          brew install libusb create-dmg sevenzip ffmpeg dylibbundler
 
       - name: Install Python dependencies
         run: |
@@ -102,8 +102,17 @@ jobs:
           # user without Homebrew has (#219).  The toolchain tries 7z, 7zz,
           # 7za, 7zr, and the app puts this folder first on PATH when frozen.
           cp "$(which 7zz)" dist/TRCC.app/Contents/MacOS/7zz
-          # Bundle ffmpeg for video playback (LGPL, like C# app)
+          # Bundle ffmpeg for video playback (LGPL, like C# app).  Homebrew's
+          # ffmpeg is dynamic -- ~20 dylibs under /opt/homebrew -- so copy
+          # those in beside it and point it at them (#219).  Rewriting a
+          # load path breaks the signature, and Apple Silicon refuses to run
+          # an invalid one, so everything touched is ad-hoc re-signed.
           cp "$(which ffmpeg)" dist/TRCC.app/Contents/MacOS/ffmpeg
+          dylibbundler -od -b -x dist/TRCC.app/Contents/MacOS/ffmpeg \
+            -d dist/TRCC.app/Contents/Frameworks/ffmpeg/ \
+            -p @executable_path/../Frameworks/ffmpeg/
+          codesign --force -s - dist/TRCC.app/Contents/Frameworks/ffmpeg/*.dylib \
+            dist/TRCC.app/Contents/MacOS/ffmpeg
           # NOTE: no CLI symlink — macOS APFS is case-insensitive,
           # ln -sf TRCC .../trcc would DELETE the TRCC executable
 
@@ -181,16 +190,24 @@ jobs:
           # A tool copied out of Homebrew still loads its libraries FROM
           # Homebrew.  Bundled, it must link only the system -- or it cannot
           # start on the Mac of anyone who has not installed the same formula.
+          # The libraries bundled for ffmpeg are checked too: one of them
+          # reaching back into Homebrew fails the same way, one load later.
           fail=0
-          for bin in 7zz ffmpeg; do
-            deps="$(otool -L "dist/TRCC.app/Contents/MacOS/$bin" | tail -n +2)"
+          for bin in dist/TRCC.app/Contents/MacOS/7zz dist/TRCC.app/Contents/MacOS/ffmpeg \
+                     dist/TRCC.app/Contents/Frameworks/ffmpeg/*.dylib; do
+            deps="$(otool -L "$bin" | tail -n +2)"
             echo "== $bin"; echo "$deps"
             if echo "$deps" | grep -qE '/opt/homebrew|/usr/local/(Cellar|opt|lib)'; then
               echo "::error::$bin links Homebrew libraries — it will not start without Homebrew"
               fail=1
             fi
           done
-          exit $fail
+          [ "$fail" = 0 ] || exit 1
+          # Then RUN them with Homebrew's copies gone -- otool reads the load
+          # commands; only a launch proves the loader and signatures accept it.
+          brew uninstall --ignore-dependencies ffmpeg sevenzip
+          dist/TRCC.app/Contents/MacOS/7zz i > /dev/null && echo "7zz runs"
+          dist/TRCC.app/Contents/MacOS/ffmpeg -hide_banner -version > /dev/null && echo "ffmpeg runs"
 
       - name: Create DMG
         run: |
