@@ -25,7 +25,7 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from ...core.events import (
@@ -34,6 +34,7 @@ from ...core.events import (
     SystemResumed,
     SystemSuspending,
 )
+from ...core.models import format_device_key
 from ...core.ports import HotplugMonitor
 from ...core.registry import ALL_DEVICES
 
@@ -852,7 +853,7 @@ class PollingHotplugMonitor(HotplugMonitor):
 
     def __init__(
         self,
-        scan: Callable[[], set[tuple[int, int]]],
+        scan: Callable[[], Iterable[tuple[int, int, str]]],
         *,
         interval_s: float = _POLL_INTERVAL_S,
     ) -> None:
@@ -863,7 +864,8 @@ class PollingHotplugMonitor(HotplugMonitor):
         self._stop_event = threading.Event()
         self._bus: EventBus | None = None
         self._known = _KNOWN_VID_PID
-        self._last_seen: set[tuple[int, int]] = set()
+        # Units as ``(vid, pid, unit)``; the first two are the model.
+        self._last_seen: set[tuple[int, int, str]] = set()
         # macOS has no logind, so resume was never announced and every
         # attached panel stayed blank after a wake (#283).  Composed here
         # rather than given its own thread — this loop already ticks.
@@ -877,7 +879,7 @@ class PollingHotplugMonitor(HotplugMonitor):
         # Prime the snapshot so freshly-already-present devices don't
         # trigger spurious "attach" events on first tick.
         try:
-            self._last_seen = {vp for vp in self._scan() if vp in self._registry_set()}
+            self._last_seen = self._known_units()
         except Exception:
             log.exception("PollingHotplugMonitor: initial scan failed")
             self._last_seen = set()
@@ -911,26 +913,39 @@ class PollingHotplugMonitor(HotplugMonitor):
         log.debug("_registry_set")
         return {(int(vid, 16), int(pid, 16)) for vid, pid in self._known}
 
+    def _known_units(self) -> set[tuple[int, int, str]]:
+        """This scan's units whose model is in the registry."""
+        units = {u for u in self._scan() if u[:2] in self._registry_set()}
+        log.debug("_known_units: %d", len(units))
+        return units
+
     def _tick(self) -> None:
-        """One scan + diff + publish iteration."""
+        """One scan + diff + publish iteration.
+
+        Diffs UNITS but publishes one event per MODEL: the App reconciles every
+        unit of a model from a fresh scan, so a second twin arriving (which
+        re-keys the first) is one detach + one attach of that model, not a
+        per-unit event it would have to re-pair.  Removals go first, so the
+        App releases the old key before it connects the new ones.
+        """
         try:
-            current = {vp for vp in self._scan() if vp in self._registry_set()}
+            current = self._known_units()
         except Exception:
             log.exception("PollingHotplugMonitor: scan failed")
             return
-        added = current - self._last_seen
-        removed = self._last_seen - current
+        added = {u[:2] for u in current - self._last_seen}
+        removed = {u[:2] for u in self._last_seen - current}
         self._last_seen = current
         if self._bus is None:
             return
-        for vid, pid in added:
-            key = f"{vid:04x}:{pid:04x}"
-            log.info("Hotplug add: %s", key)
-            self._bus.publish(DeviceAttached(key=key, vid=vid, pid=pid))
-        for vid, pid in removed:
-            key = f"{vid:04x}:{pid:04x}"
+        for vid, pid in sorted(removed):
+            key = format_device_key(vid, pid)
             log.info("Hotplug remove: %s", key)
             self._bus.publish(DeviceDetached(key=key, vid=vid, pid=pid))
+        for vid, pid in sorted(added):
+            key = format_device_key(vid, pid)
+            log.info("Hotplug add: %s", key)
+            self._bus.publish(DeviceAttached(key=key, vid=vid, pid=pid))
 
     def _poll_loop(self) -> None:
         log.debug("_poll_loop")

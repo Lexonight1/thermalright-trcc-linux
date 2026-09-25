@@ -28,10 +28,11 @@ class _ScriptedScan:
         self._snapshots = list(snapshots)
         self._last: set[tuple[int, int]] = set()
 
-    def __call__(self) -> set[tuple[int, int]]:
+    def __call__(self) -> set[tuple[int, int, str]]:
+        """Scripted as ``(vid, pid)``; handed out as units with no port."""
         if self._snapshots:
             self._last = self._snapshots.pop(0)
-        return self._last
+        return {(vid, pid, "") for vid, pid in self._last}
 
 
 @pytest.fixture

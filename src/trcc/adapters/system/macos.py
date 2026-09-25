@@ -97,7 +97,7 @@ class MacOSPlatform(BaseOS, key="darwin"):
         """
         log.debug("_build_hotplug")
         from ._hotplug import PollingHotplugMonitor
-        return PollingHotplugMonitor(scan=self._scan_vid_pid_set)
+        return PollingHotplugMonitor(scan=self._scan_units)
 
     def _open_scsi(self, vid: int, pid: int, serial: str | None = None,
                   unit: str = "") -> ScsiTransport:
@@ -107,15 +107,21 @@ class MacOSPlatform(BaseOS, key="darwin"):
         bulk = PyUsbBulkTransport(vid, pid, serial, unit)
         return UsbBotScsiTransport(bulk)
 
-    def _scan_vid_pid_set(self) -> set[tuple[int, int]]:
-        """Snapshot of currently-attached registry vid:pid combos.
+    def _scan_units(self) -> set[tuple[int, int, str]]:
+        """Snapshot of attached units as ``(vid, pid, unit)``.
+
+        One entry per UNIT, not per model: a set of ``(vid, pid)`` collapsed
+        two identical coolers into one, so the second arriving or leaving
+        changed nothing and published nothing (#287).  ``unit`` comes from the
+        disambiguated scan, so it is empty unless a twin is present.
 
         Named method (not a lambda) so PollingHotplugMonitor's scan
         callable survives across stack frames + shows up in tracebacks
         with a real name.
         """
-        log.debug("_scan_vid_pid_set: called")
-        return {(d.vid, d.pid) for d in self.scan_devices()}
+        units = {(d.vid, d.pid, d.unit) for d in self.scan_devices()}
+        log.debug("_scan_units: %d unit(s)", len(units))
+        return units
 
     def setup(self, dry_run: bool = False) -> int:
         """Diagnose codesign / quarantine / privileges, print fix steps.

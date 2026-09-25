@@ -629,3 +629,93 @@ def test_the_report_probes_each_twin_on_its_own_unit(tmp_path) -> None:
     rows, error = _collect_devices(app.platform)
     assert (error, [r["key"] for r in rows]) == ("", _TWIN_KEYS)
     assert sorted(opened) == ["1-1", "1-2"]
+
+
+# ── hotplug: a twin arriving or leaving while TRCC runs (#287) ─────────────
+#
+# Every monitor publishes the plain ``vid:pid``.  A twin's unplug never matched
+# its ``@port`` entry (a corpse stayed attached) and a twin's plug connected
+# unit-less beside the first, which was never re-keyed.  The App now
+# reconciles the model from a fresh scan.  These drive the real handlers by
+# publishing the events a monitor publishes.
+
+_HR10 = {"type": "lcd", "name": "HR10", "vid": "87ad", "pid": "70db", "pm": 72}
+
+
+def _hotplug(app, cls) -> None:
+    from trcc.core.events import DeviceAttached, DeviceDetached
+
+    event = {"attach": DeviceAttached, "detach": DeviceDetached}[cls]
+    app.events.publish(event(key="87ad:70db", vid=0x87AD, pid=0x70DB))
+
+
+def _plug(app, n: int) -> None:
+    """Set the simulated fleet to ``n`` identical HR10s."""
+    from .mock_platform import DeviceSpec
+    app.platform._specs[:] = [DeviceSpec.parse(dict(_HR10)) for _ in range(n)]
+
+
+def _connected(app) -> list[str]:
+    return sorted(k for k, d in app.devices.items() if d.is_connected)
+
+
+def test_a_second_twin_arriving_rekeys_the_first_and_connects_both(tmp_path) -> None:
+    app = _twin_app(tmp_path)
+    _plug(app, 1)
+    app.discover_and_connect()
+    assert _connected(app) == ["87ad:70db"]
+
+    _plug(app, 2)
+    _hotplug(app, "attach")
+    assert sorted(app.devices) == _connected(app) == _TWIN_KEYS
+
+
+def test_one_twin_leaving_leaves_the_survivor_connected(tmp_path) -> None:
+    app = _twin_app(tmp_path)
+    app.discover_and_connect()
+    assert _connected(app) == _TWIN_KEYS
+
+    _plug(app, 1)
+    _hotplug(app, "detach")
+    assert sorted(app.devices) == _connected(app) == ["87ad:70db"]
+
+
+def test_a_single_cooler_unplug_and_replug_is_unchanged(tmp_path) -> None:
+    """#246 / #254: release on unplug, reconnect on replug — no twin involved."""
+    app = _twin_app(tmp_path)
+    _plug(app, 1)
+    app.discover_and_connect()
+
+    _plug(app, 0)
+    _hotplug(app, "detach")
+    assert app.devices == {}
+
+    _plug(app, 1)
+    _hotplug(app, "attach")
+    assert _connected(app) == ["87ad:70db"]
+
+
+def test_an_arrival_that_outruns_the_scan_still_connects(tmp_path) -> None:
+    """A lone cooler must not lose hotplug to a slow enumeration."""
+    app = _twin_app(tmp_path)
+    _plug(app, 0)
+    _hotplug(app, "attach")
+    assert _connected(app) == ["87ad:70db"]
+
+
+def test_polling_publishes_a_twin_arriving_as_one_model_change() -> None:
+    """A set of ``(vid, pid)`` hid the second twin entirely: no event at all."""
+    from trcc.adapters.system._hotplug import PollingHotplugMonitor
+    from trcc.core.events import DeviceAttached, DeviceDetached, EventBus
+
+    snaps = [{(0x87AD, 0x70DB, "")},
+             {(0x87AD, 0x70DB, "1-1"), (0x87AD, 0x70DB, "1-2")}]
+    monitor = PollingHotplugMonitor(scan=lambda: snaps[0])
+    bus, seen = EventBus(), []
+    bus.subscribe(DeviceAttached, seen.append)
+    bus.subscribe(DeviceDetached, seen.append)
+    monitor._bus = bus
+    monitor._last_seen = monitor._known_units()
+    snaps.pop(0)
+    monitor._tick()
+    assert [type(e).__name__ for e in seen] == ["DeviceDetached", "DeviceAttached"]

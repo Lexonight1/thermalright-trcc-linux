@@ -53,6 +53,7 @@ from .core.models import (
     Theme,
     format_device_key,
     oriented_resolution,
+    parse_device_key,
     quirks_for,
 )
 from .core.ports import (
@@ -368,40 +369,88 @@ class App:
         Without this the device stayed in ``self.devices`` holding a dead
         transport, so (a) its ``DeviceSender`` spun forever logging a write
         failure every ~150 ms, and (b) the replug's ``DeviceAttached`` hit the
-        "already connected" guard below and never reconnected — the panel only
+        "already connected" guard and never reconnected — the panel only
         recovered by restarting the process (#254, #246).
+
+        The fast path is unchanged.  A monitor publishes the plain ``vid:pid``,
+        which never names one of two identical coolers (#287) — so when units
+        of the model are still attached afterwards, the scan decides which one
+        left.  Only then: reconciling a lone cooler would rescan a device that
+        may still be mid-unplug and reconnect it.
         """
-        if event.key not in self.devices:
-            log.debug("_on_device_detached: %s not attached", event.key)
-            return
-        log.info("_on_device_detached: %s unplugged — stopping sender + "
-                 "releasing stale transport", event.key)
-        self._release_stale_device(event.key)
+        if event.key in self.devices:
+            log.info("_on_device_detached: %s unplugged — stopping sender + "
+                     "releasing stale transport", event.key)
+            self._release_stale_device(event.key)
+        if self._attached_units(event.vid, event.pid):
+            self._reconcile(event.vid, event.pid, fallback="")
+        else:
+            log.debug("_on_device_detached: %s — nothing left attached",
+                      event.key)
 
     def _on_device_attached(self, event: Any) -> None:
-        """Hotplug ``DeviceAttached`` → connect the device.
+        """Hotplug ``DeviceAttached`` → connect every unit of that model.
 
         Runs on the hotplug poll thread (same off-main-thread pattern the
         splash ``BootstrapWorker`` already uses for ``ConnectDevice``).  A
         genuinely-connected device is a no-op, so coldplug replays and
         duplicate adds stay idempotent.  On success ``ConnectDevice`` emits
         ``DeviceConnected``, which UIs already observe.
+
+        Reconciled through a scan rather than trusting ``event.key``: that is
+        the plain ``vid:pid``, and when a SECOND identical cooler arrives the
+        first must be re-keyed to its port and both connected (#287).
         """
-        existing = self.devices.get(event.key)
+        log.info("_on_device_attached: %s", event.key)
+        self._reconcile(event.vid, event.pid, fallback=event.key)
+
+    def _attached_units(self, vid: int, pid: int) -> list[str]:
+        """Keys in ``self.devices`` that are units of this model."""
+        keys = [k for k in self.devices if parse_device_key(k)[:2] == (vid, pid)]
+        log.debug("_attached_units: %04x:%04x -> %s", vid, pid, keys)
+        return keys
+
+    def _reconcile(self, vid: int, pid: int, *, fallback: str) -> None:
+        """Make ``self.devices`` match a fresh scan, for ONE model.
+
+        Releases every attached unit the scan no longer shows — gone, or
+        re-keyed because a twin arrived or left — then connects every scanned
+        unit that is not connected.  With one cooler that is exactly the old
+        attach path.  ``fallback`` is connected when the scan does not show the
+        model yet (an arrival can outrun enumeration), so a lone cooler never
+        loses hotplug to a slow scan; empty means "connect nothing".
+        """
+        scan = self.platform.scan_devices()
+        self.remember_scan(scan)
+        live = [i.key for i in scan if (i.vid, i.pid) == (vid, pid)]
+        if not live and fallback:
+            live = [fallback]
+        log.info("_reconcile: %04x:%04x live=%s attached=%s",
+                 vid, pid, live, self._attached_units(vid, pid))
+        for key in self._attached_units(vid, pid):
+            if key not in live:
+                log.info("_reconcile: %s no longer scanned — releasing", key)
+                self._release_stale_device(key)
+        for key in live:
+            self._connect_unit(key)
+
+    def _connect_unit(self, key: str) -> None:
+        """Connect one unit unless it already is; release a dead one first."""
+        existing = self.devices.get(key)
         if existing is not None and existing.is_connected:
-            log.debug("_on_device_attached: %s already connected", event.key)
+            log.debug("_connect_unit: %s already connected", key)
             return
         if existing is not None:
             # Present but DEAD: the detach event never arrived (coalesced or
             # dropped udev event, or a monitor that only reports adds).  The
             # entry is a corpse holding a stale transport, so tear it down
             # rather than bail — bailing here was the #254 / #246 bug.
-            log.info("_on_device_attached: %s present but not connected — "
-                     "releasing stale transport before reconnect", event.key)
-            self._release_stale_device(event.key)
-        log.info("_on_device_attached: connecting %s", event.key)
+            log.info("_connect_unit: %s present but not connected — "
+                     "releasing stale transport before reconnect", key)
+            self._release_stale_device(key)
+        log.info("_connect_unit: connecting %s", key)
         from .core.commands import ConnectDevice
-        self.dispatch(ConnectDevice(key=event.key))
+        self.dispatch(ConnectDevice(key=key))
 
     def _on_system_resumed(self, _event: Any) -> None:
         """``SystemResumed`` → reconnect every attached device after wake.
