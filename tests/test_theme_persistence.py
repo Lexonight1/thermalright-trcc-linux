@@ -2410,3 +2410,76 @@ def test_loadtheme_reports_its_theme_identity_from_one_place() -> None:
     assert {k.arg for k in inline[0].keywords} == {"ok", "key", "message"}, (
         "the one permitted direct construction is the arm with no theme; if "
         "it now carries theme_name/theme_path it should use _loaded instead")
+
+
+# ── #301 / #276: a saved theme reloads as SAVED — the round trip ────────────
+#
+# Every test above gates the WRITE half (what the manifest holds).  Both bugs
+# lived in the READ half: LoadTheme applied the saved theme's bundled catalog
+# mask, and ApplyMask replaced the working layer with the mask's own
+# config1.dc — so "Game" reloaded as the mask's stock set, and SaveTheme (which
+# ends by loading what it wrote) lost the user's edits the moment it returned.
+
+
+def _catalog_mask_with_layout(app: App) -> Path:
+    """A cloud mask folder with its OWN readable layout, like the real catalog."""
+    from trcc.services import _dc as Dc
+
+    mask = app.platform.paths().cloud_mask_dir(*_TEST_RES) / "000a"
+    mask.mkdir(parents=True)
+    (mask / "01.png").write_bytes(_png_bytes(red=0x70))
+    Dc.File(mask / "config1.dc").write({"elements": [
+        {"type": "text", "x": 5, "y": 5, "text": "MASK_STOCK", "color": "#ffffff",
+         "size": 12.0, "bold": False, "italic": False},
+    ]})
+    return mask
+
+
+def _texts(app: App) -> list[str]:
+    layer = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements or []
+    return [e.text for e in layer]
+
+
+def _edit_on_catalog_mask(app: App, tmp_home: Path) -> None:
+    from trcc.core.commands import ApplyMask, SetOverlayConfig
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
+    assert app.dispatch(ApplyMask(key=_TEST_DEVICE_KEY,
+                                  path=_catalog_mask_with_layout(app))).ok
+    assert _texts(app) == ["MASK_STOCK"]
+    app.dispatch(SetOverlayConfig(key=_TEST_DEVICE_KEY, elements=(
+        {"id": "u1", "type": "text", "x": 9, "y": 9, "color": "#ffffff",
+         "size": 14, "text": "MINE"},)))
+
+
+def test_a_saved_theme_reloads_with_its_own_layout_not_its_masks(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    from trcc.core.commands import LoadTheme, SaveTheme
+
+    _edit_on_catalog_mask(app, tmp_home)
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="Game"))
+    assert _texts(app) == ["MINE"], "saving must not swap the edits for the mask's"
+
+    other = _write_theme_with_real_pngs(tmp_home, "other")
+    app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=other))
+    app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=user_theme_dir / "Game"))
+    assert _texts(app) == ["MINE"]
+
+
+def test_a_hidden_mask_stays_hidden_through_save_and_reload(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    import json as _json
+
+    from trcc.core.commands import LoadTheme, SaveTheme, SetMaskVisible
+
+    _edit_on_catalog_mask(app, tmp_home)
+    app.dispatch(SetMaskVisible(key=_TEST_DEVICE_KEY, visible=False))
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="NoMask"))
+
+    manifest = _json.loads((user_theme_dir / "NoMask" / "trcc.json").read_text())
+    assert "mask" not in manifest
+    app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=user_theme_dir / "NoMask"))
+    assert app.settings.for_device(_TEST_DEVICE_KEY).mask_visible is False

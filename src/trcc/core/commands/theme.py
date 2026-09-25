@@ -296,6 +296,21 @@ class LoadTheme(Command[ThemeResult]):
                 if apply.ok:
                     log.info("LoadTheme: applied mask %s → %s (%s)",
                              embedded_mask, resolved_mask, theme.name)
+                    # ApplyMask adopts the MASK's config1.dc as the working
+                    # layer — right for a mask the user picks, wrong here.  A
+                    # theme that bundles a mask is a SAVED theme, and its
+                    # inline elements are already the final layout the user
+                    # saw (SaveTheme bakes user > mask > theme into them).  So
+                    # they win, or a saved "Game" reloads as the mask's stock
+                    # set, and the GUI editor (which reads the theme folder)
+                    # lists fields the screen does not draw (#301).  Only when
+                    # the theme HAS elements: a legacy config.json with an
+                    # empty ``dc`` keeps showing its mask's layout as before.
+                    if own := as_working_layer(theme.config.get("elements")):
+                        log.info("LoadTheme: %s keeps its own %d element(s) "
+                                 "over the bundled mask's layout",
+                                 theme.name, len(own))
+                        app.settings.set_user_overlay_elements(self.key, own)
                 else:
                     log.warning(
                         "LoadTheme: theme %s mask %s resolved to %s but "
@@ -856,7 +871,16 @@ class SaveTheme(Command[ThemeResult]):
         cloud mask's own ``config1.dc`` is not written here; the saved theme's
         overlay layout lives inline in its ``trcc.json`` (baked elements).
         ``DeviceSettings.mask_path`` (override) wins over the source theme's mask.
+
+        A HIDDEN mask is not saved: a saved theme is what the user saw.
+        ``LoadTheme`` deliberately never applies a stored ``mask_visible``
+        (legacy treats it as design metadata), so a hidden mask stored here
+        came back visible on every reload — and at once, since SaveTheme
+        ends by loading what it wrote (#276).
         """
+        if not s.mask_visible:
+            log.info("SaveTheme: mask is hidden — not saved with the theme")
+            return None
         src = self._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
         )
