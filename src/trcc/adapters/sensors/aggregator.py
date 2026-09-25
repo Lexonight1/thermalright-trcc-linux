@@ -44,7 +44,7 @@ from ...core.ports import (
 )
 from .hwmon import (
     HwmonCpu,
-    SpdClock,
+    MemoryClock,
     discover_amd_gpus,
     discover_disk_temp,
     discover_dram_temp,
@@ -187,7 +187,7 @@ class BaselineSensors(SensorEnumerator):
                  disks: list[DiskSource] | None = None,
                  dram: list[DramSource] | None = None,
                  board_temps: list[BoardTempSource] | None = None,
-                 spd_clock: SpdClock | None = None,
+                 memory_clock: MemoryClock | None = None,
                  thread_context: Callable[[], AbstractContextManager[None]]
                      = nullcontext) -> None:
         self._cpu = cpu or PsutilCpu()
@@ -197,7 +197,7 @@ class BaselineSensors(SensorEnumerator):
         self._disks: list[DiskSource] = disks or []
         self._dram: list[DramSource] = dram or []
         self._board: list[BoardTempSource] = board_temps or []
-        self._spd_clock = spd_clock
+        self._memory_clock = memory_clock
         # Per-thread OS setup the poll thread enters before touching OS
         # sensor APIs (Windows → COM apartment for WMI; others → no-op).
         # Injected as a narrow callable so this OS-neutral aggregator never
@@ -650,9 +650,9 @@ class BaselineSensors(SensorEnumerator):
             _store(r, "memory:temp", max(dram_temps))
 
         # Memory channel clock — static SPD nameplate (cached at construction).
-        if self._spd_clock is not None:
+        if self._memory_clock is not None:
             _store(r, "memory:clock",
-                   self._read(self._spd_clock.clock, "memory:clock"))
+                   self._read(self._memory_clock.clock, "memory:clock"))
 
         # IO + time
         try:
@@ -705,11 +705,11 @@ def build_linux_sensors() -> BaselineSensors:
     disks = discover_disk_temp(hwmon_devices)
     dram = discover_dram_temp(hwmon_devices)
     board_temps = discover_board_temps()
-    spd_clock = SpdClock()
-    log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d, disks=%d, dram=%d, "
-             "mem_clock=%s",
+    memory_clock = MemoryClock()
+    log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d, disks=%d, dram=%d "
+             "(mem_clock read on first poll)",
              "yes" if cpu.temp() is not None else "no",
-             len(gpus), len(fans), len(disks), len(dram), spd_clock.clock())
+             len(gpus), len(fans), len(disks), len(dram))
     return BaselineSensors(cpu=cpu, memory=PsutilMemory(),
                            gpus=gpus, fans=fans, disks=disks, dram=dram,
-                           board_temps=board_temps, spd_clock=spd_clock)
+                           board_temps=board_temps, memory_clock=memory_clock)

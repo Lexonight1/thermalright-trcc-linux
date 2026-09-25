@@ -716,23 +716,45 @@ def discover_dram_temp(devices: list[HwmonDevice]) -> list[DramSource]:
     return dram
 
 
-# ── Memory channel clock (DDR5 SPD, rootless one-shot) ───────────────
+# ── Memory channel clock (what the controller RUNS, read once) ────────
 
 
-class SpdClock:
-    """Memory channel clock (MHz) decoded once from the DDR5 SPD EEPROM.
+class MemoryClock:
+    """Memory channel clock in MHz — the speed the memory controller RUNS.
 
-    The clock is a static nameplate value, so it is read+decoded a single
-    time at construction and cached — ``clock()`` is then a cheap accessor the
-    aggregator can call every poll tick without touching sysfs.
+    Prefers dmidecode's ``Configured Memory Speed`` (MT/s ÷ 2, DDR), and falls
+    back to the DDR5 SPD nameplate.  It used to read ONLY the nameplate, which
+    is the JEDEC base profile — 4800 MT/s for every DDR5 stick by spec — so an
+    MC-3 on a machine running XMP 8000 showed 4800 (#279).  The Windows side
+    has always preferred the configured value (``ConfiguredClockSpeed``).
+
+    Read on the FIRST ``clock()`` and cached: the value is static, and the
+    dmidecode read goes through pkexec, which a CLI command that never shows
+    the RAM speed should not pay for.
     """
 
     def __init__(self) -> None:
-        from ..system.spd import read_spd_timings
-        timings = read_spd_timings()
-        self._mhz: float | None = float(timings.mhz) if timings else None
-        log.info("SpdClock: mhz=%s", self._mhz)
+        self._mhz: float | None = None
+        self._read = False
+        log.debug("MemoryClock: created (read deferred to first clock())")
 
     def clock(self) -> float | None:
         frame_log.debug("clock")
+        if not self._read:
+            self._read = True
+            self._mhz = self._resolve()
         return self._mhz
+
+    @staticmethod
+    def _resolve() -> float | None:
+        """Configured speed if dmidecode answers, else the SPD nameplate."""
+        from ..system.linux import configured_memory_mts
+        from ..system.spd import read_spd_timings
+        if (mts := configured_memory_mts()) is not None:
+            log.info("MemoryClock: %d MT/s configured -> %.0f MHz", mts, mts / 2)
+            return mts / 2
+        timings = read_spd_timings()
+        mhz = float(timings.mhz) if timings else None
+        log.info("MemoryClock: no configured speed readable -> SPD nameplate "
+                 "mhz=%s", mhz)
+        return mhz

@@ -1182,9 +1182,15 @@ def _prefer_configured_speed(slots: list[dict[str, str]]) -> None:
         slot["speed"] = configured
 
 
-def _linux_memory_info() -> list[dict[str, str]]:
-    """Get DRAM slot info via dmidecode; falls back to psutil for totals."""
-    log.debug("_linux_memory_info: called")
+def _dmi_memory_slots() -> list[dict[str, str]]:
+    """DRAM slots from ``dmidecode -t memory``, speed = what the IMC RUNS.
+
+    Only the dmidecode half of :func:`_linux_memory_info` — no SPD or
+    ``trcc-imc`` enrichment — so the memory clock sensor can read the
+    configured speed without a second privileged helper (#279).  Empty when
+    dmidecode is missing, refused or fails.
+    """
+    log.debug("_dmi_memory_slots: called")
     import subprocess
     slots: list[dict[str, str]] = []
     try:
@@ -1199,8 +1205,28 @@ def _linux_memory_info() -> list[dict[str, str]]:
                       result.returncode)
     except (OSError, subprocess.SubprocessError) as e:
         log.debug("dmidecode -t memory failed: %s", type(e).__name__)
-
     _prefer_configured_speed(slots)
+    return slots
+
+
+def configured_memory_mts() -> int | None:
+    """The memory speed the controller RUNS, in MT/s — or ``None`` if unknown.
+
+    The highest configured speed across populated slots (they run together).
+    ``None`` when dmidecode cannot be read, which is every host without our
+    polkit rule or root: the caller falls back to the SPD nameplate.
+    """
+    speeds = [int(n) for slot in _dmi_memory_slots()
+              if (n := slot.get("speed", "").split(" ")[0]).isdigit()]
+    mts = max(speeds, default=None)
+    log.info("configured_memory_mts: %s MT/s (from %d slot(s))", mts, len(speeds))
+    return mts
+
+
+def _linux_memory_info() -> list[dict[str, str]]:
+    """Get DRAM slot info via dmidecode; falls back to psutil for totals."""
+    log.debug("_linux_memory_info: called")
+    slots = _dmi_memory_slots()
     _enrich_with_spd_timings(slots)
     _enrich_with_live_imc_timings(slots)
 

@@ -551,11 +551,11 @@ def test_intel_gpu_temp_none_without_hwmon(tmp_path: Path) -> None:
     assert gpu.temp() is None
 
 
-# ── Memory channel clock — SpdClock → memory:clock → mem_clock ───────
+# ── Memory channel clock — MemoryClock → memory:clock → mem_clock ────
 
 
-class _FakeSpdClock:
-    """Stub for the cached SPD clock source (mhz)."""
+class _FakeMemoryClock:
+    """Stub for the cached memory clock source (mhz)."""
 
     def __init__(self, mhz: float | None) -> None:
         self._mhz = mhz
@@ -567,14 +567,14 @@ class _FakeSpdClock:
 def test_memory_clock_flows_to_snapshot() -> None:
     s = BaselineSensors(
         cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
-        spd_clock=_FakeSpdClock(2404.0),
+        memory_clock=_FakeMemoryClock(2404.0),
     )
 
     assert s.read_all()["memory:clock"] == 2404.0
     assert s.snapshot().mem_clock == 2404.0
 
 
-def test_memory_clock_absent_without_spd_clock() -> None:
+def test_memory_clock_absent_without_a_clock_source() -> None:
     s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
 
     assert "memory:clock" not in s.read_all()
@@ -1235,3 +1235,58 @@ def test_set_interval_clamps_to_the_floor_like_start_polling_does() -> None:
     s.set_interval(0.001)
 
     assert s._interval_s == MIN_REFRESH_INTERVAL_S
+
+
+# ── #279: the MC-3 shows the speed the memory RUNS, not its nameplate ──────
+
+
+def _memory_clock(monkeypatch, *, configured, spd_mhz=2404):
+    """A MemoryClock whose two sources are scripted; returns (clock, calls)."""
+    from types import SimpleNamespace
+
+    from trcc.adapters.sensors.hwmon import MemoryClock
+
+    calls: list[str] = []
+
+    def dmi():
+        calls.append("dmi")
+        return configured
+
+    monkeypatch.setattr("trcc.adapters.system.linux.configured_memory_mts", dmi)
+    monkeypatch.setattr("trcc.adapters.system.spd.read_spd_timings",
+                        lambda: SimpleNamespace(mhz=spd_mhz))
+    return MemoryClock(), calls
+
+
+def test_memory_clock_prefers_the_configured_speed(monkeypatch) -> None:
+    clock, _ = _memory_clock(monkeypatch, configured=8000)
+    assert clock.clock() == 4000.0              # 8000 MT/s, DDR -> 4000 MHz
+
+
+def test_memory_clock_falls_back_to_the_spd_nameplate(monkeypatch) -> None:
+    clock, _ = _memory_clock(monkeypatch, configured=None, spd_mhz=2404)
+    assert clock.clock() == 2404.0
+
+
+def test_memory_clock_reads_once_and_only_when_asked(monkeypatch) -> None:
+    """dmidecode goes through pkexec — not at construction, and not per tick."""
+    clock, calls = _memory_clock(monkeypatch, configured=8000)
+    assert calls == []
+    clock.clock()
+    clock.clock()
+    assert calls == ["dmi"]
+
+
+def test_the_mc3_panel_shows_the_configured_speed(monkeypatch) -> None:
+    """The number the reporter reads: LC1 phase 1 is mem_clock x memory_ratio."""
+    from trcc.core.models import HardwareMetrics
+    from trcc.services.led_segment import LC1Display
+
+    clock, _ = _memory_clock(monkeypatch, configured=8000)
+    shown = LC1Display().compute_mask(
+        HardwareMetrics(mem_clock=clock.clock() or 0.0), phase=1)
+
+    expected = [False] * LC1Display.mask_size
+    expected[LC1Display.MTNO] = True
+    LC1Display()._encode_4digit(8000, LC1Display.ALL_DIGITS, expected)
+    assert shown == expected
