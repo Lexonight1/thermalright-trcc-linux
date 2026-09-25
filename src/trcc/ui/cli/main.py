@@ -407,8 +407,8 @@ def status(
     app_snap = app_obj.dispatch(ControlCenterSnapshot())
     discovery = app_obj.dispatch(DiscoverDevices())
 
-    lcd_keys = [p.key for p in discovery.products if p.kind != Kind.LED]
-    led_keys = [p.key for p in discovery.products if p.kind == Kind.LED]
+    lcd_keys = [k for k, p in discovery.units() if p.kind != Kind.LED]
+    led_keys = [k for k, p in discovery.units() if p.kind == Kind.LED]
     lcd_snaps = [app_obj.dispatch(LcdSnapshot(key=k)) for k in lcd_keys]
     led_snaps = [app_obj.dispatch(LedSnapshot(key=k)) for k in led_keys]
 

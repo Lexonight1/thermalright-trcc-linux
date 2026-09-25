@@ -1095,24 +1095,23 @@ def resume(
     import time
 
     app_obj = get_app()
-    products: list = []
+    keys: list[str] = []
     for attempt in range(1, retries + 1):
         result = app_obj.dispatch(DiscoverDevices())
         if result.ok and result.products:
-            products = result.products
+            keys = [key for key, _ in result.units()]
             break
         typer.echo(
             f"Waiting for device... ({attempt}/{retries})", err=True,
         )
         time.sleep(2)
 
-    if not products:
+    if not keys:
         typer.echo("No compatible TRCC device detected.", err=True)
         raise typer.Exit(code=1)
 
     sent = 0
-    for product in products:
-        key = f"{product.vid:04x}:{product.pid:04x}"
+    for key in keys:
         connect_result = app_obj.dispatch(ConnectDevice(key=key))
         if not connect_result.ok:
             typer.echo(f"  [{key}] connect failed: {connect_result.message}",

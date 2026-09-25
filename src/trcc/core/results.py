@@ -5,6 +5,8 @@ render.  Every Command has one concrete Result type.
 """
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -24,6 +26,8 @@ from .models import (
     WebPreviewInfo,
 )
 
+log = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True, slots=True)
 class Result:
@@ -42,6 +46,16 @@ class DiscoverResult(Result):
     """
     products: list[ProductInfo] = field(default_factory=list)
     devices: list[DeviceInfo] = field(default_factory=list)
+
+    def units(self) -> Iterator[tuple[str, ProductInfo]]:
+        """``(key, product)`` per unit — the key a face must show and target.
+
+        ``product.key`` names the MODEL, so a face that listed or connected it
+        collapsed two identical coolers into one (#287).  Every face iterates
+        this instead of pairing the two lists itself.
+        """
+        log.debug("DiscoverResult.units: %d unit(s)", len(self.devices))
+        return zip((d.key for d in self.devices), self.products, strict=True)
 
 
 @dataclass(frozen=True, slots=True)

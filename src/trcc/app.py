@@ -980,13 +980,13 @@ class App:
         # coolers are one product and two units, and only the scan's key
         # carries the port that tells them apart (#287).  Iterating products
         # attached the same model twice, unit-less, into one Device.
-        for info, product in zip(result.devices, result.products, strict=True):
+        for key, product in result.units():
             _say(f"Connecting {product.vendor} {product.product}…")
-            connect = self.dispatch(ConnectDevice(key=info.key))
+            connect = self.dispatch(ConnectDevice(key=key))
             if not connect.ok:
                 log.warning(
                     "discover_and_connect: connect %s failed: %s",
-                    info.key, connect.message,
+                    key, connect.message,
                 )
         log.info(
             "discover_and_connect: %d product(s) discovered, %d attached",

@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ...core.errors import HandshakeError, TransportError
-from ...core.models import Kind, ProductInfo
+from ...core.models import Kind, ProductInfo, format_device_key
 from ...core.ports import Paths, Platform
 from ...core.registry import find_product
 from ...services.settings import resolve_config_path
@@ -245,7 +245,7 @@ def _collect_devices(
         # geometry.  Without this the report only has them if the connect-time
         # log line survived in the tail, which on a long session it never does.
         if product is not None:
-            handshake = _probe_handshake(platform, product)
+            handshake = _probe_handshake(platform, product, info.unit)
             if handshake is not None:
                 row.update({f"hs_{k}": v for k, v in handshake.items()})
         rows.append(row)
@@ -253,7 +253,7 @@ def _collect_devices(
 
 
 def _probe_handshake(
-    platform: Platform, product: ProductInfo,
+    platform: Platform, product: ProductInfo, unit: str = "",
 ) -> dict[str, str] | None:
     """Connect the device, capture its handshake bytes, then disconnect.
 
@@ -270,7 +270,7 @@ def _probe_handshake(
     failure.  A diagnostic must never abort the report, so every failure is
     swallowed into the fallback.
     """
-    key = f"{product.vid:04x}:{product.pid:04x}"
+    key = format_device_key(product.vid, product.pid, unit)
     log.info("_probe_handshake: %s wire=%s", key, product.wire.value)
     if product.kind is not Kind.LCD:
         log.info("_probe_handshake: %s is %s, not LCD — no frame handshake",
@@ -279,7 +279,10 @@ def _probe_handshake(
     device = None
     try:
         cls = DEVICES[product.wire]
-        transport = platform.open_transport(product.wire, product.vid, product.pid)
+        # The unit's OWN port: unit-less, both of two identical coolers
+        # probed the first one and the report showed one panel twice (#287).
+        transport = platform.open_transport(product.wire, product.vid,
+                                            product.pid, unit=unit)
         device = cls(product, transport)
         result = device.connect()
     except (OSError, HandshakeError, TransportError, RuntimeError) as e:

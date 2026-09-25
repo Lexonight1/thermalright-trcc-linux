@@ -58,9 +58,9 @@ def device_detail(key: str, request: Request) -> ProductSchema:
     """Detail for one discovered device — 404 if not currently present."""
     log.info("api GET /devices/%s", key)
     result = request.app.state.trcc.dispatch(DiscoverDevices())
-    for product in result.products:
-        if product.key == key:
-            return product_to_schema(product)
+    for unit_key, product in result.units():
+        if unit_key == key:
+            return product_to_schema(product, unit_key)
     raise HTTPException(status_code=404, detail=f"device {key} not found")
 
 

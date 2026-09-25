@@ -37,12 +37,15 @@ log = logging.getLogger(__name__)
 # =========================================================================
 
 
-def product_to_schema(p: ProductInfo) -> ProductSchema:
-    """Materialize ``ProductInfo.key`` — a derived property that stdlib
-    dataclass serialization would drop.  See :class:`ProductSchema`."""
-    log.debug("product_to_schema: p=%s", p)
+def product_to_schema(p: ProductInfo, key: str) -> ProductSchema:
+    """The HTTP view of one discovered UNIT: its product, under ``key``.
+
+    ``key`` is the unit's own (``vid:pid``, or ``vid:pid@port`` for one of two
+    identical coolers), never ``p.key``, which names the model and gave two
+    twins the same address (#287).  See :class:`ProductSchema`."""
+    log.debug("product_to_schema: key=%s p=%s", key, p)
     return ProductSchema(
-        key=p.key, vid=p.vid, pid=p.pid,
+        key=key, vid=p.vid, pid=p.pid,
         vendor=p.vendor, product=p.product,
         wire=p.wire.value, kind=p.kind.value,
         native_resolution=p.native_resolution,
@@ -54,7 +57,7 @@ def to_discover_response(result: DiscoverResult) -> DiscoverResponse:
     log.debug("to_discover_response: result=%s", result)
     return DiscoverResponse(
         ok=result.ok, message=result.message,
-        products=[product_to_schema(p) for p in result.products],
+        products=[product_to_schema(p, key) for key, p in result.units()],
     )
 
 

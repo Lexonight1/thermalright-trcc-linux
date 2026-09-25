@@ -92,13 +92,13 @@ class DevicePanel(BasePanel):
         log.info("_on_scan")
         result = self.dispatch(DiscoverDevices())
         self._list.clear()
-        for product in result.products:
+        for key, product in result.units():
             item = QListWidgetItem(
-                f"{product.key}  —  {product.vendor} {product.product}  "
+                f"{key}  —  {product.vendor} {product.product}  "
                 f"({product.wire.value}, {product.native_resolution[0]}×"
                 f"{product.native_resolution[1]})"
             )
-            item.setData(_USER_ROLE, product.key)
+            item.setData(_USER_ROLE, key)
             self._list.addItem(item)
         self._status.setText(result.message)
 

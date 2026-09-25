@@ -537,3 +537,95 @@ def test_the_mock_warns_on_different_specs_but_not_on_twins(tmp_path, caplog) ->
 
     MockPlatform([dict(twin), dict(twin, pm=64)], tmp_path).scan_devices()
     assert "DIFFERENT specs" in caplog.text
+
+
+# ── every face shows and targets the UNIT, not the model (#287) ──────────────
+#
+# ``product.key`` names the model, so each face that printed or connected it
+# gave two identical coolers the same address.  ``DiscoverResult.units()`` is
+# the one pairing of a unit's key with its product; these pin each face on it.
+
+_TWIN_KEYS = ["87ad:70db@1-1", "87ad:70db@1-2"]
+
+
+def test_discover_result_pairs_each_unit_with_its_product(tmp_path) -> None:
+    from trcc.core.commands import DiscoverDevices
+
+    result = _twin_app(tmp_path).dispatch(DiscoverDevices())
+    units = list(result.units())
+    assert [key for key, _ in units] == _TWIN_KEYS
+    assert {p.key for _, p in units} == {"87ad:70db"}
+
+
+def _cli_on_twins(tmp_path, cli_runner, args: list[str]) -> str:
+    """Run a CLI command against two identical coolers; return its output."""
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    spec = {"type": "lcd", "name": "HR10", "vid": "87ad", "pid": "70db", "pm": 72}
+    _ctx.set_platform(MockPlatform([dict(spec), dict(spec)], tmp_path))
+    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    try:
+        return cli_runner.invoke(cli, args).output
+    finally:
+        _ctx.get_app.cache_clear()
+        _ctx._platform_override = None
+        _ctx._renderer_override = None
+
+
+def test_cli_device_list_prints_each_twin_key(tmp_path, cli_runner) -> None:
+    out = _cli_on_twins(tmp_path, cli_runner, ["device", "list"])
+    assert all(key in out for key in _TWIN_KEYS), out
+
+
+def test_cli_display_resume_addresses_each_twin(tmp_path, cli_runner) -> None:
+    """The autostart path.  It built ``vid:pid`` by hand, so at boot one of two
+    identical coolers was resumed twice and the other left blank."""
+    out = _cli_on_twins(tmp_path, cli_runner,
+                        ["display", "resume", "--retries", "1"])
+    assert all(f"[{key}]" in out for key in _TWIN_KEYS), out
+
+
+def test_cli_status_snapshots_each_twin(tmp_path, cli_runner) -> None:
+    import json
+
+    out = _cli_on_twins(tmp_path, cli_runner, ["status", "--json"])
+    keys = [snap["key"] for snap in json.loads(out)["lcd_devices"]]
+    assert keys == _TWIN_KEYS
+
+
+def test_api_lists_and_finds_each_twin(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    from trcc.ui.api.main import build_app
+
+    with TestClient(build_app(trcc=_twin_app(tmp_path))) as client:
+        listed = [p["key"] for p in client.get("/devices").json()["products"]]
+        found = client.get("/devices/87ad:70db@1-2")
+    assert listed == _TWIN_KEYS
+    assert (found.status_code, found.json()["key"]) == (200, "87ad:70db@1-2")
+
+
+def test_qtgui_device_panel_lists_each_twin_key(tmp_path, qtbot) -> None:
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.panels.device_panel import DevicePanel
+
+    app = _twin_app(tmp_path)
+    panel = DevicePanel(app, BusBridge(app.events))
+    qtbot.addWidget(panel)
+    panel._on_scan()
+    keys = [panel._list.item(i).data(0x0100) for i in range(panel._list.count())]
+    assert keys == _TWIN_KEYS
+
+
+def test_the_report_probes_each_twin_on_its_own_unit(tmp_path) -> None:
+    from trcc.adapters.diagnostics.debug_report import _collect_devices
+
+    app = _twin_app(tmp_path)
+    opened = _opened_units(app)
+    rows, error = _collect_devices(app.platform)
+    assert (error, [r["key"] for r in rows]) == ("", _TWIN_KEYS)
+    assert sorted(opened) == ["1-1", "1-2"]
