@@ -626,9 +626,12 @@ def test_the_report_probes_each_twin_on_its_own_unit(tmp_path) -> None:
 
     app = _twin_app(tmp_path)
     opened = _opened_units(app)
+    powered: list[str] = []
+    app.platform.usb_power_state = (                  # type: ignore[method-assign]
+        lambda vid, pid, unit="": powered.append(unit))
     rows, error = _collect_devices(app.platform)
     assert (error, [r["key"] for r in rows]) == ("", _TWIN_KEYS)
-    assert sorted(opened) == ["1-1", "1-2"]
+    assert sorted(opened) == sorted(powered) == ["1-1", "1-2"]
 
 
 # ── hotplug: a twin arriving or leaving while TRCC runs (#287) ─────────────

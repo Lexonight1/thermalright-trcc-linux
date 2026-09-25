@@ -169,3 +169,46 @@ def test_the_report_shows_usb_power_for_each_device(tmp_path: Path) -> None:
     )
     assert "usb power: control=auto status=suspended" in out
     assert "remote_wakeup=yes" in out
+
+
+# ── each of two identical coolers reads ITS OWN power state (#287) ───────
+
+def _twin_sysfs(root: Path) -> None:
+    """Two identical coolers in different states, named as sysfs names them."""
+    for port, status in (("1-13", "suspended"), ("1-11", "active")):
+        dev = root / port
+        (dev / "power").mkdir(parents=True)
+        (dev / "idVendor").write_text("87ad\n")
+        (dev / "idProduct").write_text("70db\n")
+        (dev / "power" / "runtime_status").write_text(f"{status}\n")
+
+
+def test_each_twin_reads_its_own_sysfs_directory(
+    linux_platform, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _twin_sysfs(tmp_path)
+    monkeypatch.setattr("trcc.adapters.system.linux.Path", _rooted(tmp_path))
+    read = linux_platform.usb_power_state
+    assert read(0x87AD, 0x70DB, "1-13").runtime_status == "suspended"
+    assert read(0x87AD, 0x70DB, "1-11").runtime_status == "active"
+    assert read(0x87AD, 0x70DB) is not None          # unit-less: the first, as before
+
+
+def test_a_unit_is_never_a_path_it_did_not_come_from(
+    linux_platform, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A unit can arrive from a user-typed key and becomes part of a PATH."""
+    _twin_sysfs(tmp_path)
+    (tmp_path.parent / "idVendor").write_text("87ad\n")     # a lure one level up
+    (tmp_path.parent / "idProduct").write_text("70db\n")
+    monkeypatch.setattr("trcc.adapters.system.linux.Path", _rooted(tmp_path))
+    for unit in ("..", "../x", "1-13/..", "2@1", "/etc"):
+        assert linux_platform.usb_power_state(0x87AD, 0x70DB, unit) is None, unit
+
+
+def test_a_unit_that_is_not_plugged_in_is_unknowable(
+    linux_platform, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _twin_sysfs(tmp_path)
+    monkeypatch.setattr("trcc.adapters.system.linux.Path", _rooted(tmp_path))
+    assert linux_platform.usb_power_state(0x87AD, 0x70DB, "1-9") is None

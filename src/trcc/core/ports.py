@@ -2475,8 +2475,12 @@ class Platform(ABC):
     # macOS/BSD, so the interface is the entire substitute.
 
     @abstractmethod
-    def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
+    def usb_power_state(self, vid: int, pid: int,
+                        unit: str = "") -> UsbPowerState | None:
         """The device's USB runtime-power state, or ``None`` if unknowable.
+
+        ``unit`` names WHICH of two identical coolers (#287) — empty means the
+        only one of this model.  Unit-less, a twin read its sibling's state.
 
         Read-only.  TRCC never sets power policy — that is the udev rules'
         job (``adapters/system/_udev.py``); this only reports what the kernel

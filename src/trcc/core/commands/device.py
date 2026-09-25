@@ -160,7 +160,8 @@ class DiscoverDevices(Command[DiscoverResult]):
             devices=units,
         )
 
-def _suspended_panel_hints(app: App, vid: int, pid: int) -> list[str]:
+def _suspended_panel_hints(app: App, vid: int, pid: int,
+                           unit: str) -> list[str]:
     """Explain a failed handshake when the panel is merely ASLEEP.
 
     A USB-suspended panel and a dead one produce the identical error --
@@ -175,7 +176,7 @@ def _suspended_panel_hints(app: App, vid: int, pid: int) -> list[str]:
     a diagnostic must never become the thing that breaks the diagnosis.
     """
     try:
-        power = app.platform.usb_power_state(vid, pid)
+        power = app.platform.usb_power_state(vid, pid, unit)
     except Exception:
         log.exception("_suspended_panel_hints: usb_power_state raised")
         return []
@@ -273,7 +274,7 @@ class ConnectDevice(Command[ConnectResult]):
         except (HandshakeError, TransportError, ImportError, OSError) as e:
             app.detach(self.key)   # clears any prior issue for this key first
             hints = app.platform.check_permissions()
-            hints += _suspended_panel_hints(app, vid, pid)
+            hints += _suspended_panel_hints(app, vid, pid, unit)
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),

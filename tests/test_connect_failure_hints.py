@@ -97,7 +97,7 @@ def test_suspended_panel_explains_itself_instead_of_a_bare_timeout(
     app = App(fake_platform)
     monkeypatch.setattr(app.platform, "check_permissions", lambda: [])
     monkeypatch.setattr(app.platform, "usb_power_state",
-                        lambda vid, pid: _suspended())
+                        lambda vid, pid, unit="": _suspended())
     _failing_handshake(app, monkeypatch)
 
     result = app.dispatch(ConnectDevice(key="0416:5302"))
@@ -116,7 +116,7 @@ def test_an_awake_panel_gets_no_suspend_hint(
     """A genuinely broken device must not be excused as 'just asleep'."""
     app = App(fake_platform)
     monkeypatch.setattr(app.platform, "check_permissions", lambda: [])
-    monkeypatch.setattr(app.platform, "usb_power_state", lambda vid, pid: _awake())
+    monkeypatch.setattr(app.platform, "usb_power_state", lambda vid, pid, unit="": _awake())
     _failing_handshake(app, monkeypatch)
 
     result = app.dispatch(ConnectDevice(key="0416:5302"))
@@ -129,7 +129,7 @@ def test_diagnosis_never_breaks_the_diagnostic(
     fake_platform, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If reading power state raises, we lose the hint — never the error."""
-    def _boom(vid, pid):
+    def _boom(vid, pid, unit=""):
         raise OSError("sysfs went away")
 
     app = App(fake_platform)
@@ -150,7 +150,23 @@ def test_platforms_without_usb_power_are_silent(
     """Windows/macOS/BSD return None — no hint, no invented claim."""
     app = App(fake_platform)
     monkeypatch.setattr(app.platform, "check_permissions", lambda: [])
-    monkeypatch.setattr(app.platform, "usb_power_state", lambda vid, pid: None)
+    monkeypatch.setattr(app.platform, "usb_power_state", lambda vid, pid, unit="": None)
     _failing_handshake(app, monkeypatch)
 
     assert app.dispatch(ConnectDevice(key="0416:5302")).hints == []
+
+
+def test_a_twin_is_asked_about_its_own_power_state(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With two identical coolers, a failed connect must not describe the
+    OTHER one's sleep (#287)."""
+    asked: list[str] = []
+    app = App(fake_platform)
+    monkeypatch.setattr(app.platform, "check_permissions", lambda: [])
+    monkeypatch.setattr(app.platform, "usb_power_state",
+                        lambda vid, pid, unit="": asked.append(unit))
+    _failing_handshake(app, monkeypatch)
+
+    app.dispatch(ConnectDevice(key="0416:5302@1-2"))
+    assert asked == ["1-2"]

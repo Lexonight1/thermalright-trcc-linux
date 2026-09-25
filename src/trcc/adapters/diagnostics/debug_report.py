@@ -232,7 +232,7 @@ def _collect_devices(
         # identical in every log we have (#150) -- and remote_wakeup explains
         # why two panels of the same product behave differently: one that
         # cannot wake the host is never autosuspended at all.
-        power = platform.usb_power_state(info.vid, info.pid)
+        power = platform.usb_power_state(info.vid, info.pid, info.unit)
         if power is not None:
             row["power"] = (
                 f"control={power.control} status={power.runtime_status} "

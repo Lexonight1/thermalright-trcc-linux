@@ -16,6 +16,7 @@ import ctypes
 import errno
 import logging
 import os
+import re
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -703,8 +704,20 @@ class LinuxOS(BaseOS, key="linux"):
                         "defaulting to 'Linux'", e)
         return "Linux"
 
-    def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
+    #: A sysfs USB device directory is named by its PORT CHAIN (``1-13``,
+    #: ``1-2.3``) — the exact form ``usb_path`` gives a unit, measured 7/7 on
+    #: the dev box incl. two identical hubs.  A unit becomes part of a PATH
+    #: here and can arrive from a user-typed key, so anything else — ``../``,
+    #: or the ``bus@address`` fallback sysfs does not name — is refused.
+    _SYSFS_PORT = re.compile(r"\d+-\d+(?:\.\d+)*")
+
+    def usb_power_state(self, vid: int, pid: int,
+                        unit: str = "") -> UsbPowerState | None:
         """Read the kernel's runtime-PM view of this device from sysfs.
+
+        ``unit`` reads THAT cooler's own directory; unit-less, the first of
+        the model — which, with two identical coolers, was the wrong one half
+        the time (#287).
 
         Read-only.  Setting the policy is the udev rules' job (``_udev.py``);
         this reports what the kernel currently thinks so a timed-out handshake
@@ -717,11 +730,15 @@ class LinuxOS(BaseOS, key="linux"):
         panel (0402:3922, bmAttributes 0x80 → bit 5 clear → never suspends
         even at control=auto).
         """
-        log.debug("usb_power_state: %04x:%04x", vid, pid)
+        log.debug("usb_power_state: %04x:%04x unit=%r", vid, pid, unit)
         base = Path("/sys/bus/usb/devices")
         if not base.is_dir():
             return None
-        for dev in base.iterdir():
+        if unit and not self._SYSFS_PORT.fullmatch(unit):
+            log.debug("usb_power_state: unit %r is not a sysfs port — "
+                      "unknowable", unit)
+            return None
+        for dev in [base / unit] if unit else base.iterdir():
             try:
                 if (int((dev / "idVendor").read_text().strip(), 16) != vid
                         or int((dev / "idProduct").read_text().strip(), 16) != pid):

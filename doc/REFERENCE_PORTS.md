@@ -775,7 +775,7 @@ sensors() -> SensorEnumerator
 setup(dry_run: 'bool' = False) -> int
 software_install_hint(tool: 'str') -> str
 upgrade_command() -> tuple[str, ...]
-usb_power_state(vid: 'int', pid: 'int') -> UsbPowerState | None
+usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | None
 worker_thread_context() -> AbstractContextManager[None]
 ```
 

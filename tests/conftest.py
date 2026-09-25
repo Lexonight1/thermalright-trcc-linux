@@ -428,7 +428,8 @@ class FakePlatform(Platform):
     # question, this class stops instantiating with a ``TypeError`` naming it,
     # which is the same message a new OS's author gets, delivered to us first.
 
-    def usb_power_state(self, vid: int, pid: int) -> Optional[UsbPowerState]:
+    def usb_power_state(self, vid: int, pid: int,
+                        unit: str = "") -> Optional[UsbPowerState]:
         return None
 
     def packages(self) -> PackageManager:

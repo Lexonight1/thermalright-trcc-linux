@@ -237,15 +237,16 @@ class BaseOS(Platform):
         log.debug("%s.upgrade_command: none", type(self).__name__)
         return ()
 
-    def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
+    def usb_power_state(self, vid: int, pid: int,
+                        unit: str = "") -> UsbPowerState | None:
         """Not exposed by default — only Linux publishes runtime PM per device.
 
         An honest ``None`` beats a stub inventing a value: this exists so a
         timed-out handshake can be told apart from a SUSPENDED panel (#150),
         and a wrong answer would mislead exactly the debugging it serves.
         """
-        log.debug("%s.usb_power_state: not exposed on this OS (%04x:%04x)",
-                  type(self).__name__, vid, pid)
+        log.debug("%s.usb_power_state: not exposed on this OS (%04x:%04x "
+                  "unit=%r)", type(self).__name__, vid, pid, unit)
         return None
 
     def minimize_on_close(self) -> bool:
