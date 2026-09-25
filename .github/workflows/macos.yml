@@ -40,7 +40,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          brew install libusb create-dmg p7zip ffmpeg
+          brew install libusb create-dmg sevenzip ffmpeg
 
       - name: Install Python dependencies
         run: |
@@ -96,8 +96,12 @@ jobs:
 
       - name: Bundle dependencies
         run: |
-          # Bundle 7z for theme extraction (p7zip is LGPL, redistributable)
-          cp "$(which 7z)" dist/TRCC.app/Contents/MacOS/7z
+          # Bundle 7-Zip for theme extraction.  `7zz` from Homebrew's
+          # sevenzip is one real binary; p7zip's `7z` is a shell WRAPPER that
+          # execs Homebrew's own copy, so bundled it pointed at a path no
+          # user without Homebrew has (#219).  The toolchain tries 7z, 7zz,
+          # 7za, 7zr, and the app puts this folder first on PATH when frozen.
+          cp "$(which 7zz)" dist/TRCC.app/Contents/MacOS/7zz
           # Bundle ffmpeg for video playback (LGPL, like C# app)
           cp "$(which ffmpeg)" dist/TRCC.app/Contents/MacOS/ffmpeg
           # NOTE: no CLI symlink — macOS APFS is case-insensitive,
@@ -117,7 +121,7 @@ jobs:
           echo "Python: $(python3 --version)"
           echo "PyInstaller: $(python3 -c 'import PyInstaller; print(PyInstaller.__version__)')"
           echo "PySide6: $(python3 -c 'import PySide6; print(PySide6.__version__)')"
-          echo "7z: $(which 7z || echo 'not found')"
+          echo "7zz: $(which 7zz || echo 'not found')"
           echo "ffmpeg: $(which ffmpeg || echo 'not found')"
           echo "libusb: $(brew --prefix libusb)/lib/libusb-1.0.dylib"
 
@@ -144,7 +148,7 @@ jobs:
             find -L dist/TRCC.app -type f -perm +111 2>/dev/null | head -20
             missing+=("TRCC")
           fi
-          [ -f "dist/TRCC.app/Contents/MacOS/7z" ] && echo "  7z: OK" || missing+=("7z")
+          [ -f "dist/TRCC.app/Contents/MacOS/7zz" ] && echo "  7zz: OK" || missing+=("7zz")
           [ -f "dist/TRCC.app/Contents/MacOS/ffmpeg" ] && echo "  ffmpeg: OK" || missing+=("ffmpeg")
           # libusb could be in Frameworks (PyInstaller) or copied there by us
           if find -L dist/TRCC.app/Contents/Frameworks -name "libusb*" -type f 2>/dev/null | grep -q .; then
@@ -163,7 +167,7 @@ jobs:
         run: |
           # The #219 DMG was arm64-only and nothing noticed until an Intel user
           # could not launch it.  Every leg must produce ITS architecture.
-          for bin in TRCC 7z ffmpeg; do
+          for bin in TRCC 7zz ffmpeg; do
             info="$(file "dist/TRCC.app/Contents/MacOS/$bin")"
             echo "$info"
             case "$info" in
@@ -171,6 +175,22 @@ jobs:
               *) echo "::error::$bin is not ${{ matrix.arch }}"; exit 1 ;;
             esac
           done
+
+      - name: Verify bundled tools run without Homebrew
+        run: |
+          # A tool copied out of Homebrew still loads its libraries FROM
+          # Homebrew.  Bundled, it must link only the system -- or it cannot
+          # start on the Mac of anyone who has not installed the same formula.
+          fail=0
+          for bin in 7zz ffmpeg; do
+            deps="$(otool -L "dist/TRCC.app/Contents/MacOS/$bin" | tail -n +2)"
+            echo "== $bin"; echo "$deps"
+            if echo "$deps" | grep -qE '/opt/homebrew|/usr/local/(Cellar|opt|lib)'; then
+              echo "::error::$bin links Homebrew libraries — it will not start without Homebrew"
+              fail=1
+            fi
+          done
+          exit $fail
 
       - name: Create DMG
         run: |

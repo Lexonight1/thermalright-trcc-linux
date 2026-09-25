@@ -305,3 +305,53 @@ def test_queries_are_bounded() -> None:
     for call in source.split("subprocess.run(")[1:]:
         assert "timeout=" in call.split(")")[0] + ")", (
             "a subprocess.run in _packages.py has no timeout")
+
+
+# ── #219: a frozen app runs the tools it ships ──────────────────────────────
+
+
+def _frozen_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A frozen app folder holding only a bundled 7zz, and a bare PATH."""
+    import sys
+
+    app_dir = tmp_path / "TRCC.app" / "Contents" / "MacOS"
+    app_dir.mkdir(parents=True)
+    tool = app_dir / "7zz"
+    tool.write_text("#!/bin/sh\n")
+    tool.chmod(0o755)
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(app_dir / "TRCC"))
+    return app_dir
+
+
+def test_a_frozen_app_finds_the_7zip_it_bundles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Finder hands an app /usr/bin:/bin:/usr/sbin:/sbin; the DMG's own tools
+    were never on it, so they were never run (#219)."""
+    import shutil
+
+    from trcc._entry import put_bundled_tools_on_path
+    from trcc.core import toolchain
+
+    app_dir = _frozen_app(monkeypatch, tmp_path)
+    assert toolchain.resolve("7z") is None, "precondition: nothing on PATH"
+
+    assert put_bundled_tools_on_path() == str(app_dir)
+    assert toolchain.resolve("7z") == "7zz"
+    assert shutil.which("7zz") == str(app_dir / "7zz")
+
+
+def test_a_source_run_leaves_path_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    from trcc._entry import put_bundled_tools_on_path
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    before = os.environ.get("PATH")
+    assert put_bundled_tools_on_path() is None
+    assert os.environ.get("PATH") == before
