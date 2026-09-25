@@ -150,9 +150,44 @@ def test_play_video_loads_into_media_service(
     assert len(stub_media) == 1
     assert stub_media[0][0] == _KEY
     assert stub_media[0][1] == video_file
-    assert stub_media[0][2] == (320, 320)   # SCSI profile resolution
+    # A file picked from outside both trees is the USER's: native decode, so
+    # fit_mode has something to scale.  It decoded at canvas (320, 320) and
+    # played stretched with W/H inert until 2026-09-25 (#291).
+    assert stub_media[0][2] is None
     # Playback is now stored on the App
     assert connected_app.media.playback(_KEY) is not None
+
+
+def test_play_video_program_asset_keeps_canvas_size(
+    connected_app: App, stub_media: list,
+) -> None:
+    """Cloud/program videos under ``data_dir`` are pre-authored at the panel's
+    canvas, so they keep the canvas-size decode."""
+    cloud = connected_app.platform.paths().cloud_theme_dir(320, 320) / "a001.mp4"
+    cloud.parent.mkdir(parents=True, exist_ok=True)
+    cloud.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    assert connected_app.dispatch(PlayVideo(key=_KEY, path=cloud)).ok
+    assert stub_media[0][2] == (320, 320)
+
+
+@pytest.mark.parametrize(("where", "is_user"), [
+    ("data_dir/theme320320/Theme1/00.png", False),   # stock theme
+    ("data_dir/web/320320/a001.mp4", False),          # cloud background
+    ("data_dir/web/zt320320/000a/01.png", False),     # cloud mask
+    ("user_content_dir/data/theme320320/Mine/00.png", True),
+    ("elsewhere/Downloads/clip.mp4", True),           # picked, never copied
+    ("elsewhere/Pictures/wide.png", True),
+])
+def test_only_program_data_is_program_content(
+    fake_platform, tmp_path: Path, where: str, is_user: bool,
+) -> None:
+    """The ONE decision behind the decode size and the background fit rule."""
+    paths = fake_platform.paths()
+    root, _, rest = where.partition("/")
+    base = {"data_dir": paths.data_dir(), "user_content_dir": paths.user_content_dir(),
+            "elsewhere": tmp_path}[root]
+    assert paths.is_user_content(base / rest) is is_user
 
 
 def test_play_video_user_uploaded_asset_decodes_at_native(

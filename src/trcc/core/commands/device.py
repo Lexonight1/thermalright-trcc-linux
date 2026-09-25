@@ -1136,15 +1136,13 @@ class PlayVideo(Command[VideoResult]):
         orientation = app.settings.for_device(self.key).orientation
         canvas_size = oriented_resolution(canvas_size, orientation)
 
-        # User-made assets in ``user_content_dir`` (``~/.trcc-user/data/``)
-        # decode at NATIVE so the render pipeline's fit-mode (width /
-        # height / stretch) actually has something to scale.  Program /
-        # cloud assets under ``data_dir`` are pre-authored at the
-        # device's canvas resolution, so they keep the canvas-size
-        # decode (no rescale work for ffmpeg, and ``.zt`` is fixed-size
-        # by format).  Anything outside both trees (ad-hoc playback of
-        # an arbitrary file) defaults to canvas-size too — the user
-        # would need to save it as a theme first to get fit-mode.
+        # The user's videos decode at NATIVE so the render pipeline's
+        # fit-mode (width / height / stretch) actually has something to
+        # scale.  Program / cloud assets under ``data_dir`` are pre-authored
+        # at the device's canvas resolution, so they keep the canvas-size
+        # decode (no rescale work for ffmpeg, and ``.zt`` is fixed-size by
+        # format).  A file picked from anywhere else is the user's too — it
+        # used to decode at canvas size and play stretched (#291).
         #
         # ``Paths.is_user_content`` is the ONE place that question is
         # answered — the render path asks it too, to choose between

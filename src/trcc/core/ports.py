@@ -1262,14 +1262,23 @@ class Paths(ABC):
         asset both resolve outside the theme dir -- so the same file rendered
         or went black depending on which theme happened to be selected.
 
-        Rooted at :meth:`user_content_dir`, not :meth:`user_data_dir`, so
-        staged one-off content (``single-image/``, ``uploads/``) counts too.
-        Concrete on the ABC for the same reason :meth:`user_data_dir` is:
-        every OS roots user content the same way, only the root differs.
+        **Defined by what it is NOT: program content, under** :meth:`data_dir`.
+        That tree is the only one pre-scaled to the panel — stock themes, cloud
+        backgrounds and masks, all downloaded by the app.  Everything else is
+        the user's, including a file picked from ``~/Downloads`` that was never
+        copied into :meth:`user_content_dir`.  It used to be the other way
+        round ("user = under user_content_dir"), which filed such a file as
+        program content: a picked video decoded at canvas size, stretched, with
+        W/H doing nothing, and a picked photo wider than the panel went black
+        (#291).  Measured before the flip: every program root the port hands
+        out (``theme_dir``, ``cloud_theme_dir``, ``cloud_mask_dir`` and their
+        per-SKU siblings) derives from :meth:`data_dir`.
+        Concrete on the ABC: every OS roots program data the same way, only
+        the root differs.
         """
-        under = is_under(path, self.user_content_dir())
-        frame_log.debug("is_user_content: %s → %s", path, under)
-        return under
+        user = not is_under(path, self.data_dir())
+        frame_log.debug("is_user_content: %s → %s", path, user)
+        return user
 
     def theme_dir(self, width: int, height: int, variant: str = "") -> Path:
         """Themes shipped with the app or downloaded from GitHub releases.
