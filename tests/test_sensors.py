@@ -802,7 +802,7 @@ def _rapl_with(paths: list[Path]) -> hwmon._RaplCpuPower:
     """A _RaplCpuPower with discovery stubbed to *paths* (no sysfs)."""
     r = hwmon._RaplCpuPower.__new__(hwmon._RaplCpuPower)
     r._paths = paths
-    r._last = None
+    r._rate = hwmon._EnergyRate()
     r._lock = threading.Lock()
     # These tests pin a fixed path set — disable lazy re-discovery so an
     # empty stub stays empty regardless of the host's real RAPL nodes (#194).
@@ -1453,3 +1453,54 @@ def test_build_linux_sensors_offers_a_nouveau_gpu(
     s = aggregator.build_linux_sensors()
     assert [g.key for g in s.gpus()] == ["nouveau:0"]
     assert s.read_all()["gpu:primary:temp"] == 58.0
+
+
+# ── Intel GPU on xe (Arc) and i915: fan, clock, power (#236) ──────────
+
+
+def _intel_gpu(root: Path, driver: str, *, hwmon_files: dict[str, str],
+               card_files: dict[str, str]) -> hwmon.IntelGpu:
+    """An IntelGpu over a fake hwmon node and DRM card, laid out per the
+    kernel ABI docs (sysfs-driver-intel-{xe,i915}-hwmon, xe_gt_freq.c)."""
+    node, card = root / "hwmon8", root / "card0"
+    node.mkdir()
+    (node / "name").write_text(f"{driver}\n")
+    for name, value in {**hwmon_files, **card_files}.items():
+        path = (node if name in hwmon_files else card) / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    return hwmon.IntelGpu(0, hwmon.HwmonDevice(node), card, driver)
+
+
+def test_arc_fan_is_rpm_from_fan1_input(tmp_path: Path) -> None:
+    """xe has fan1_input and no pwm, so fan() was None on the reporter's
+    Arc Pro B70 while `sensors` read 796 RPM."""
+    gpu = _intel_gpu(tmp_path, "xe", hwmon_files={"fan1_input": "796"}, card_files={})
+    assert (gpu.fan_rpm(), gpu.fan()) == (796.0, None)
+
+
+@pytest.mark.parametrize(("driver", "path"), [
+    ("xe", "device/tile0/gt0/freq0/act_freq"),
+    ("i915", "gt_cur_freq_mhz"),
+])
+def test_intel_clock_reads_the_drivers_own_file(
+        tmp_path: Path, driver: str, path: str) -> None:
+    gpu = _intel_gpu(tmp_path, driver, hwmon_files={}, card_files={path: "2400"})
+    assert gpu.clock() == 2400.0
+
+
+@pytest.mark.parametrize("driver", ["xe", "i915"])
+def test_intel_power_comes_from_the_energy_counter(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, driver: str) -> None:
+    """Neither driver has power1_average; watts = Δenergy1_input / Δt.  The
+    first read seeds, a counter wrap is dropped rather than reported."""
+    gpu = _intel_gpu(tmp_path, driver, hwmon_files={"energy1_input": "1000000"},
+                     card_files={})
+    counter = tmp_path / "hwmon8" / "energy1_input"
+    times = iter([10.0, 12.0, 13.0])
+    monkeypatch.setattr(hwmon.time, "monotonic", lambda: next(times))
+    assert gpu.power() is None                     # baseline
+    counter.write_text("91000000")                 # +90 J over 2 s
+    assert gpu.power() == 45.0
+    counter.write_text("5")                        # wrapped
+    assert gpu.power() is None

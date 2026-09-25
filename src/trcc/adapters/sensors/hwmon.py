@@ -217,6 +217,38 @@ def scan_hwmon_devices() -> list[HwmonDevice]:
 # ── CPU package power (powercap RAPL energy counter) ────────────────
 
 
+class _EnergyRate:
+    """Watts from a monotonic microjoule counter: Δenergy / Δt.
+
+    The first reading seeds the baseline and answers None; a negative delta
+    is a counter wraparound and is dropped the same way.  RAPL's
+    ``energy_uj`` and the Intel GPU's ``energy1_input`` are both such
+    counters -- i915 and xe expose no ``power1_average`` at all -- so the
+    arithmetic lives here once.  Locked: the MetricsLoop poll thread and a
+    render tick may both read, and pairing one thread's ``now`` with the
+    other's baseline would report garbage watts.
+    """
+
+    __slots__ = ("_last", "_lock")
+
+    def __init__(self) -> None:
+        log.debug("_EnergyRate.__init__")
+        self._last: tuple[float, float] | None = None   # (microjoules, monotonic)
+        self._lock = threading.Lock()
+
+    def watts(self, microjoules: float) -> float | None:
+        with self._lock:
+            now = time.monotonic()
+            watts: float | None = None
+            if self._last is not None:
+                prev, then = self._last
+                if (dt := now - then) > 0 and (w := (microjoules - prev) / (dt * 1_000_000)) >= 0:
+                    watts = w
+            self._last = (microjoules, now)
+        frame_log.debug("_EnergyRate.watts: %s uJ -> %s W", microjoules, watts)
+        return watts
+
+
 class _RaplCpuPower:
     """CPU package power from the powercap RAPL ``energy_uj`` counter.
 
@@ -234,12 +266,12 @@ class _RaplCpuPower:
     ``prev`` and report garbage watts.
     """
 
-    __slots__ = ("_last", "_lock", "_next_rediscover", "_paths")
+    __slots__ = ("_lock", "_next_rediscover", "_paths", "_rate")
 
     def __init__(self) -> None:
         log.debug("__init__")
         self._paths = self._discover()
-        self._last: tuple[float, float] | None = None   # (sum_uj, monotonic)
+        self._rate = _EnergyRate()
         self._lock = threading.Lock()
         self._next_rediscover = 0.0
 
@@ -301,17 +333,7 @@ class _RaplCpuPower:
                 if val is None:
                     return None     # became unreadable — bail this tick
                 total += val
-            now = time.monotonic()
-            watts: float | None = None
-            if self._last is not None:
-                prev_energy, prev_time = self._last
-                dt = now - prev_time
-                if dt > 0:
-                    computed = (total - prev_energy) / (dt * 1_000_000)
-                    if computed >= 0:    # drop counter-wraparound ticks
-                        watts = computed
-            self._last = (total, now)
-            return watts
+            return self._rate.watts(total)
 
 
 # ── CPU temperature (composes PsutilCpu with a hwmon temp source) ───
@@ -489,6 +511,7 @@ class IntelGpu(GpuSource):
         self._hwmon = hwmon
         self._drm = drm_card
         self._driver = driver
+        self._energy = _EnergyRate()
 
     @property
     def key(self) -> str:
@@ -516,19 +539,34 @@ class IntelGpu(GpuSource):
         return self._hwmon.read_temp_labeled() if self._hwmon is not None else None
 
     def clock(self) -> float | None:
-        frame_log.debug("clock")
+        # i915 publishes the GT clock on the card; xe (Arc) per GT, where gt0
+        # is the render engine and act_freq the frequency PCODE actually
+        # granted (xe_gt_freq.c).  Reading only the i915 file left Arc at None.
+        frame_log.debug("clock: driver=%s", self._driver)
         if self._drm is None:
             return None
-        return _read_float(self._drm / "gt_cur_freq_mhz")
+        return _read_float(self._drm / (
+            "device/tile0/gt0/freq0/act_freq" if self._driver == "xe"
+            else "gt_cur_freq_mhz"))
 
     def power(self) -> float | None:
+        # Neither i915 nor xe has power1_average -- only the energy1_input
+        # microjoule counter -- so this read nothing on every Intel GPU (#236).
         frame_log.debug("power")
-        return self._hwmon.read_power(1) if self._hwmon is not None else None
+        if self._hwmon is None or (uj := _read_float(self._hwmon.attrs / "energy1_input")) is None:
+            return None
+        return self._energy.watts(uj)
 
     def fan(self) -> float | None:
         # Intel iGPUs don't have their own fan.  Arc discrete may.
         frame_log.debug("fan")
         return self._hwmon.read_pwm(1) if self._hwmon is not None else None
+
+    def fan_rpm(self) -> float | None:
+        # xe has fan1..3_input and no pwm, so fan() is None on Arc (#236).
+        frame_log.debug("fan_rpm")
+        rpm = self._hwmon.read_fan_rpm(1) if self._hwmon is not None else None
+        return float(rpm) if rpm is not None else None
 
 class NouveauGpu(GpuSource):
     """NVIDIA on the open-source nouveau driver -- hwmon only.
