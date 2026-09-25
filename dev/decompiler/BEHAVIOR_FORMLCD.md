@@ -1,8 +1,8 @@
 # BEHAVIOR — `TRCC.LCD/FormLCD.cs`, the shared-memory ultrawide host
 
-<!-- audit-state: origin=2.1.6.0 addresses=2.1.6.0 known-bad=none -->
-> **Audited against TRCC 2.1.6.**
-> Every method it documents is byte-identical in TRCC 2.1.6.
+<!-- audit-state: origin=2.1.6.0 addresses=2.1.8.2 known-bad=none -->
+> **Audited against TRCC 2.1.6; citations re-anchored to TRCC 2.1.8.**
+> 1 method(s) documented here changed in TRCC 2.1.8 and have NOT been re-read: `FormCZTVInit` — read those entries as TRCC 2.1.6 history.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 

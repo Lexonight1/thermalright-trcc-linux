@@ -1,8 +1,8 @@
 # AUDIT — the wire: bulk / H / ALi / LY / LY1 senders and the shared-memory bridge
 
-<!-- audit-state: origin=2.1.6.0 addresses=2.1.6.0 -->
-> **Audited against the release we port; every citation read from
-> `core.csharp.DECOMPILE_ROOT`'s companion binary, not re-anchored onto it.**
+<!-- audit-state: origin=2.1.6.0 addresses=2.1.8.2 known-bad=none -->
+> **Audited against TRCC 2.1.6; citations re-anchored to TRCC 2.1.8.**
+> Every method it documents is byte-identical in TRCC 2.1.8.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 

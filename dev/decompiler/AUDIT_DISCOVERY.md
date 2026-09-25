@@ -1,14 +1,14 @@
 # AUDIT — Device Discovery & Connection
 
-<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
-> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
-> 13 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `AddhidDeviceList`, `CheckDirectoryExist`, `DelegateUCAbout`, `DelegateUCDevice`, `DeviceDataReceived1`, `DeviceDataReceived2`, `DeviceOnConnected1`, `DeviceOnConnected2`, `InitializeComponent`, `KaijiQidong`, `Timer_Form_event`, `Timer_RGB_LCD_event` (+1 more) — read those entries as TRCC 2.0.3 history.
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.8.2 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.8.**
+> 13 method(s) documented here changed in TRCC 2.1.8 and have NOT been re-read: `AddhidDeviceList`, `CheckDirectoryExist`, `DelegateUCAbout`, `DelegateUCDevice`, `DeviceDataReceived1`, `DeviceDataReceived2`, `DeviceOnConnected1`, `DeviceOnConnected2`, `InitializeComponent`, `KaijiQidong`, `Timer_Form_event`, `Timer_RGB_LCD_event` (+1 more) — read those entries as TRCC 2.0.3 history.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 
 Sources (verbatim, line-cited):
 - `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC/Form1.cs` (2,200 lines)
-- `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC/UCDevice.cs` (1,747 lines)
+- `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC/UCDevice.cs` (1,861 lines)
 
 Every claim below quotes the exact source line(s). Where a value lives in a Form
 not in scope (`FormCZTV`, `FormLED`, `FormSystemInfo`, external `USBLCD*.exe`), it
@@ -123,7 +123,7 @@ Decimal→hex: 1046=`0x0416`, 1048=`0x0418`, 32769=`0x8001`, 21250=`0x5302`,
 
 The `ID` (1/2/3/4) is the routing key everywhere; the fifth kind, **ID `257`**
 (`USB_ID1_1 = 257`, `UCDevice.cs:48`), is the **shared-memory RGB LCD** added by
-`RGB_ADD_Device` (`UCDevice.cs:1620-1624`), not a HID device.
+`RGB_ADD_Device` (`UCDevice.cs:1734-1738`), not a HID device.
 
 **Caveat — ID 3 & 4 are enumerated but inert in these two files.** `Form1`
 `DelegateUCDevice` `case 1` only builds a Form for `info==1` (LED) and `info==2`
@@ -132,8 +132,8 @@ The `ID` (1/2/3/4) is the routing key everywhere; the fifth kind, **ID `257`**
 - `DelegateUCDevice` (`Form1.cs:1198-1200`) — the trailing branch of that chain
   tests that `info` is neither 3 nor 4 and then does nothing at all: the body is
   empty, so IDs 3 and 4 fall out of the routing with no Form and no side effect.
-- `SendDeviceData3` (`UCDevice.cs:1537-1539`) and `SendDeviceData4`
-  (`UCDevice.cs:1277-1279`) — both are empty method bodies.
+- `SendDeviceData3` (`UCDevice.cs:1651-1653`) and `SendDeviceData4`
+  (`UCDevice.cs:1391-1393`) — both are empty method bodies.
 
 ### 2.1 report-length constants
 - `USB_LEN0` (`UCDevice.cs:74-76`) — the short HID report length, **64**; declared
@@ -201,7 +201,7 @@ not data[0..3].**
 
 `data[13]==1` = handshake reply → device add; `data[13]==8` = runtime device
 data → routed as event `8193` with `data[9]` set to the list index
-(`UCDevice.cs:1111-1123`).
+(`UCDevice.cs:1225-1237`).
 
 ### 3.6 The device-add ACK + pm/sub extraction — `AddhidDeviceList`
 - `AddhidDeviceList` (`UCDevice.cs:813-853`) — builds a 14-byte acknowledgement
@@ -223,7 +223,7 @@ data → routed as event `8193` with `data[9]` set to the list index
 and the Form (`FormLEDInit((byte)data,…)` / `FormCZTVInit((byte)data,…)`).
 
 ### 3.7 device3 / device4 — no probe on connect
-`DeviceOnConnected3` (`UCDevice.cs:1499-1510`) and `DeviceOnConnected4`
+`DeviceOnConnected3` (`UCDevice.cs:1613-1624`) and `DeviceOnConnected4`
 (`1239-1250`) send **no** handshake bytes; they only post events `4098`/`4099`.
 `DeviceDataReceived3/4` (`1223-1233`, `1265-1275`) forward raw data as `8194`/`8195`.
 `AddhidDeviceList` for ID 4 sends the 14-byte ACK (the `ID == 4` branch above).
@@ -280,7 +280,7 @@ constants `USB_PACKED_Head=220 (0xDC)`, `USB_PACKED_Head1=221 (0xDD)`
 (`UCDevice.cs:50-52`). The 20-byte HID probe additionally leads with `218 219`
 (`0xDA 0xDB`).
 
-- `RGB_ADD_Device` (`UCDevice.cs:1620-1624`) — takes a pm byte defaulting to **50**
+- `RGB_ADD_Device` (`UCDevice.cs:1734-1738`) — takes a pm byte defaulting to **50**
   and a sub byte defaulting to **0**, calls `ADDUserButton` with the synthetic ID
   **257** and that pm/sub pair, and appends the new device's 1-based position
   (current `rgbList` count plus 1) to `rgbList`. It performs no I/O — the
@@ -330,7 +330,7 @@ Representative (verbatim mapping, `pm`):
 - **Multi-device**: every kind is a list (`hidList1..4`, `rgbList`,
   `formCZTVArray`); `formDeviceArray` interleaves them by ID block. Buttons in
   `myButtonList` are `Insert`ed at the block offset (`UCDevice.cs:730-747`).
-- **Disconnect**: `DeviceOnDisConnectedN` (`UCDevice.cs:1223`, `1066`, `1210`, `1252`)
+- **Disconnect**: `DeviceOnDisConnectedN` (`UCDevice.cs:1337`, `1066`, `1210`, `1252`)
   post events 0/1/2/3 → `DelhidDeviceList` (`UCDevice.cs:794-811`) removes any
   `!IsDeviceConnected` entry, deletes its button, and fires `delegate(0, ID, num)`
   → `Form1.DelegateUCDevice case 0` disposes the Form (`Form1.cs:1076-1147`).

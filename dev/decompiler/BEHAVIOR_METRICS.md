@@ -1,8 +1,8 @@
 # C# Oracle — Per-Method Behavioral Annotation: Metrics / Overlay-Element / Clock
 
-<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=FormSystemInfo.cs::UCXiTongXianShiSubTimer -->
-> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
-> 9 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `FormInitDc`, `GetSystemInfo`, `InitUCXiTongXianShiSub`, `InitializeComponent`, `OnPaint`, `SetSystemVal`, `UCSystemInfo`, `UCXiTongXianShiSub`, `UCXiTongXianShiSubTimer` — read those entries as TRCC 2.0.3 history.
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.8.2 known-bad=FormSystemInfo.cs::UCXiTongXianShiSubTimer -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.8.**
+> 8 method(s) documented here changed in TRCC 2.1.8 and have NOT been re-read: `FormInitDc`, `GetSystemInfo`, `InitUCXiTongXianShiSub`, `InitializeComponent`, `OnPaint`, `SetSystemVal`, `UCXiTongXianShiSub`, `UCXiTongXianShiSubTimer` — read those entries as TRCC 2.0.3 history.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 

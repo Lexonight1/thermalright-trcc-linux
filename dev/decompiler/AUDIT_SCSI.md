@@ -5,6 +5,10 @@
 > citations below are Ghidra function addresses in `USBLCD.exe`, not
 > file:line into a decompiled tree, so they are not re-anchorable by
 > `audit_release.py`.**
+> Re-measured when the oracle moved on 2026-09-25: the newer installer's
+> `USBLCD.exe` carries the same PE build date (2024-03-25) and byte-identical
+> `.text` / `.rdata` / `.data` sections.  Only the PE checksum and the appended
+> Authenticode signature differ, so every finding below still holds.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 

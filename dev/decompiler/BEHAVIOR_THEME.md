@@ -1,8 +1,8 @@
 # BEHAVIOR_THEME.md — per-method behavioral annotation (theme/mask/crop/preview UCs)
 
-<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
-> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
-> 19 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `GenerateImage`, `ImageBiliBianhuan`, `ImageBiliBianhuanUp`, `InitializeComponent`, `OnPaint`, `SetImage`, `SetMyUCScreenImage`, `SetThemeLocal`, `UCImageCut_MouseMove`, `UCScreenImage`, `UCScreenImage_KeyDown`, `UCScreenImage_MouseDown` (+7 more) — read those entries as TRCC 2.0.3 history.
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.8.2 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.8.**
+> 17 method(s) documented here changed in TRCC 2.1.8 and have NOT been re-read: `GenerateImage`, `ImageBiliBianhuan`, `ImageBiliBianhuanUp`, `InitializeComponent`, `OnPaint`, `SetImage`, `SetMyUCScreenImage`, `SetThemeLocal`, `UCImageCut_MouseMove`, `UCScreenImage`, `UCScreenImage_KeyDown`, `UCScreenImage_MouseDown` (+5 more) — read those entries as TRCC 2.0.3 history.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 

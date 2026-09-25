@@ -1,8 +1,8 @@
 # Audit — Theme / Mask / Image-Crop subsystem
 
-<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=UCThemeWeb.cs::UCThemeMask -->
-> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
-> 3 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `UCThemeLocal`, `buttonTPJCH_Click`, `buttonTPJCW_Click` — read those entries as TRCC 2.0.3 history.
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.8.2 known-bad=UCThemeWeb.cs::UCThemeMask -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.8.**
+> 4 method(s) documented here changed in TRCC 2.1.8 and have NOT been re-read: `ImageToJpg`, `UCThemeLocal`, `buttonTPJCH_Click`, `buttonTPJCW_Click` — read those entries as TRCC 2.0.3 history.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 
@@ -469,18 +469,18 @@ constraint. Caveat: decompiled C# (ILSpy-style) may reorder locals; the
 ## `MengBanSelect_Open` — user mask import (added 2026-08-22, read against 2.1.6)
 
 The heaviest dark method in the live path (27 branches). Full extent
-`FormCZTV.cs:5525-5729`.
+`FormCZTV.cs:5625-5829`.
 
 | step | behaviour | cite |
 |---|---|---|
-| 1 | `OpenFileDialog` filtered to **PNG only** — `Image(*.PNG)\|*.PNG` | `FormCZTV.cs:5536` |
-| 2 | target canvas resolved per panel, orientation-aware (`is1600x720` splits 1600×720 / 720×1600 on `directionB`) | `FormCZTV.cs:5546` |
-| 3 | aspect-preserving **contain fit**: width-led, then clamped if the derived height overflows | `FormCZTV.cs:5690` |
-| 4 | **never upscales** — an image smaller than the canvas on both axes keeps its native size | `FormCZTV.cs:5704` |
-| 5 | the SCALED bitmap is saved over `GifDirectory\01.png` — the active theme's mask file | `FormCZTV.cs:5715` |
-| 6 | round-tripped through `BitmapToByte`/`ByteToBitmap` to drop the file handle | `FormCZTV.cs:5716` |
-| 7 | installed as `bitmapMB`; `WvalMB`/`HvalMB` = size, `XvalMB`/`YvalMB` = **half** of each | `FormCZTV.cs:5719` |
-| 8 | the previous mask bitmap is disposed | `FormCZTV.cs:5723` |
+| 1 | `OpenFileDialog` filtered to **PNG only** — `Image(*.PNG)\|*.PNG` | `FormCZTV.cs:5636` |
+| 2 | target canvas resolved per panel, orientation-aware (`is1600x720` splits 1600×720 / 720×1600 on `directionB`) | `FormCZTV.cs:5646` |
+| 3 | aspect-preserving **contain fit**: width-led, then clamped if the derived height overflows | `FormCZTV.cs:5790` |
+| 4 | **never upscales** — an image smaller than the canvas on both axes keeps its native size | `FormCZTV.cs:5804` |
+| 5 | the SCALED bitmap is saved over `GifDirectory\01.png` — the active theme's mask file | `FormCZTV.cs:5815` |
+| 6 | round-tripped through `BitmapToByte`/`ByteToBitmap` to drop the file handle | `FormCZTV.cs:5816` |
+| 7 | installed as `bitmapMB`; `WvalMB`/`HvalMB` = size, `XvalMB`/`YvalMB` = **half** of each | `FormCZTV.cs:5819` |
+| 8 | the previous mask bitmap is disposed | `FormCZTV.cs:5823` |
 
 Step 7 is the one worth carrying: a freshly imported mask's position anchor
 defaults to the image's own **centre**, not to the origin and not to the

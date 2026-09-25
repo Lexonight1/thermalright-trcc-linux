@@ -32,6 +32,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "decompiler"))
 
 import audit_release  # noqa: E402  # pyright: ignore[reportMissingImports]
+from core.citations import walk  # noqa: E402  # pyright: ignore[reportMissingImports]
 from core.csharp import DECOMPILE_ROOT  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 _DOCS = audit_release.docs()
@@ -95,16 +96,17 @@ def test_citations_resolve_in_the_release_the_doc_addresses(doc: Path) -> None:
     # is a different claim and a misleading one: it reads as "add a decompile and
     # these run", when adding any second decompile makes them FAIL with
     # ``KeyError`` on the origin version.  What they need is the specific tree
-    # each doc was read from -- TRCC 2.0.3 -- which was deleted deliberately and
-    # must never be re-extracted.  So this reports UNRUNNABLE-and-why rather than
-    # a count, and it self-heals: after a future rebase ``origin`` becomes a
-    # release that IS on disk and the comparison runs again.
+    # each doc was read from.  ``origin`` is history and never moves, so a
+    # rebase does NOT make it self-heal: the 2.0.3 tree was deleted on
+    # 2026-08-18 and every one of these skipped until it was re-extracted as an
+    # origin-only tree on 2026-09-25 -- the rebase onto 2.1.8 cannot be verified
+    # without it.  Absent, this reports UNRUNNABLE-and-why rather than a count.
     if (origin := by_version.get(state.origin)) is None:
         pytest.skip(
             f"{doc.name} was read from TRCC {state.origin}, which is not on disk "
             f"under {DECOMPILE_ROOT.parent} (only {', '.join(t.label for t in _TREES)}). "
-            f"Comparing citations needs the origin release; TRCC 2.0.3 was deleted "
-            f"on purpose and is not to be re-extracted."
+            f"Comparing citations needs the origin release — decompile it to "
+            f"{DECOMPILE_ROOT.parent}/TRCC_<release>_decompiled."
         )
 
     fails = [f for f in audit_release.unresolved(doc, origin, current)
@@ -114,3 +116,43 @@ def test_citations_resolve_in_the_release_the_doc_addresses(doc: Path) -> None:
         f"{len(fails)} citation(s) into unchanged methods do not land there: "
         f"{', '.join(fails[:5])}"
     )
+
+
+def test_only_docs_citing_a_decompile_are_owned_by_the_tool() -> None:
+    """A native audit cites Ghidra addresses, not file:line, so the tool must leave it alone.
+
+    It used to restamp every doc, and on 2026-09-25 replaced AUDIT_SCSI.md's own
+    provenance note with "every method it documents is byte-identical" -- for a
+    binary the tool cannot read.  Pinned both ways: every owned doc cites
+    something, and every doc left out cites nothing.
+    """
+    corpus = sorted(p for p in list(audit_release.DEC.glob("AUDIT_*.md"))
+                    + list(audit_release.DEC.glob("BEHAVIOR_*.md"))
+                    if p.name != audit_release.INDEX)
+    left_out = [p.name for p in corpus if p not in _DOCS]
+    assert "AUDIT_SCSI.md" in left_out
+    assert all(audit_release.parse(p) for p in _DOCS)
+    assert not any(audit_release.parse(audit_release.DEC / n) for n in left_out)
+
+
+
+
+def test_a_citation_into_a_changed_method_refuses_to_move() -> None:
+    """The rebase moves a citation with ITS method, never with a neighbour.
+
+    `BEHAVIOR_FORMCZTV.md` cites `ReadSystemConfiguration` at 4642 -- its 2.0.3
+    address, left there because the method changed.  In the 2.1.6 tree that line
+    sits inside a different, unchanged method, and a "whatever spans the line"
+    fallback carried the citation along with it to 4742: nowhere, in any release.
+    Eleven citations moved that way on 2026-09-25 before this was caught.
+    """
+    by_release = {t.release: t for t in _TREES}
+    if not {"2.1.6", "2.1.8"} <= by_release.keys():
+        pytest.skip("needs the TRCC 2.1.6 and 2.1.8 decompiles on disk")
+    doc = audit_release.DEC / "BEHAVIOR_FORMCZTV.md"
+    rebase = audit_release.Rebase(audit_release.Locator(
+        by_release["2.1.6"], by_release["2.1.8"], {"FormCZTV.cs"}))
+    cite = next(h for _, hits in walk(doc, "- `ReadSystemConfiguration` "
+                                                   "(FormCZTV.cs:4642) — x\n")
+                for h in hits)
+    assert rebase.move(cite, 4642) is None

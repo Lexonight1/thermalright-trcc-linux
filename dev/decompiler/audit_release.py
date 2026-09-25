@@ -179,18 +179,17 @@ class Locator:
 
     def find(self, hit: Hit | Citation, line: int) -> tuple[Method, Method] | None:
         """The (source, target) method pair this line sits in, if it is unchanged."""
-        wanted = hit.anchor if hit.kind == "method" and hit.anchor else None
-        for name in self._candidates(hit):
-            if (found := self.pair(name).at(line, wanted)) is not None:
-                return found
-        # The citation names a method but no file has it spanning that line — it
-        # may still sit inside an unnamed neighbour, which is the ordinary case
-        # for a citation into the middle of a body.
-        if wanted:
-            for name in self._candidates(hit):
-                if (found := self.pair(name).at(line)) is not None:
-                    return found
-        return None
+        # A citation naming a REAL method moves only with that method.  There
+        # used to be a fallback to "whatever unchanged neighbour spans the line",
+        # and it moved exactly the citations that must stay put: one into a
+        # CHANGED method is left at its origin address, so on the next hop its
+        # number sits inside some other method and rode along with it --
+        # `ReadSystemConfiguration` 4642 -> 4742, nowhere (2026-09-25).  An
+        # anchor that is not a method (a type, a field) still takes the unnamed
+        # lookup, which is all it ever had.
+        wanted = hit.anchor if self.is_method(hit) else None
+        return next((found for name in self._candidates(hit)
+                     if (found := self.pair(name).at(line, wanted)) is not None), None)
 
 
 class Rebase:
@@ -425,8 +424,15 @@ def _fail_key(failure: str) -> str:
 
 
 def docs() -> list[Path]:
+    """Every audit doc this tool owns: the ones citing a decompiled file:line.
+
+    A NATIVE audit (Ghidra addresses into `USBLCD.exe`) cites none, so there is
+    nothing to move and nothing to verify.  Stamping it anyway replaced
+    AUDIT_SCSI.md's own provenance note with "every method is byte-identical",
+    a claim this tool cannot measure for a binary it cannot read (2026-09-25).
+    """
     return sorted(p for p in list(DEC.glob("AUDIT_*.md")) + list(DEC.glob("BEHAVIOR_*.md"))
-                  if p.name != INDEX)
+                  if p.name != INDEX and parse(p))
 
 
 def worklist(target: Tree, source: Tree) -> dict:

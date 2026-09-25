@@ -1,8 +1,8 @@
 # BEHAVIOR — Video subsystem, per-method grind
 
-<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
-> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
-> 13 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `FFmpeg_Video_Bmp`, `GetOneImage`, `InitializeComponent`, `LongToTimer`, `SetImage`, `Timer_event`, `UCBoFangQiKongZhi`, `UCVideoCut`, `UCVideoCut_LongToTimer`, `ZhuanMaPanDuan`, `buttonTPJCH_Click`, `buttonTPJCW_Click` (+1 more) — read those entries as TRCC 2.0.3 history.
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.8.2 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.8.**
+> 8 method(s) documented here changed in TRCC 2.1.8 and have NOT been re-read: `InitializeComponent`, `SetImage`, `Timer_event`, `UCBoFangQiKongZhi`, `UCVideoCut`, `ZhuanMaPanDuan`, `buttonTPJCH_Click`, `buttonTPJCW_Click` — read those entries as TRCC 2.0.3 history.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 

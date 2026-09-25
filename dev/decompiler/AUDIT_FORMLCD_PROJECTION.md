@@ -1,9 +1,8 @@
 # C# FormLCD Audit — the projection subsystem, and why it is dead in 2.1.6
 
-<!-- audit-state: origin=2.1.6.0 addresses=2.1.6.0 -->
-> **Audited against TRCC 2.1.6 — the release we port.**
-> First doc in this corpus whose origin IS its target: every citation below was
-> read from `core.csharp.DECOMPILE_ROOT`, not re-anchored onto it.
+<!-- audit-state: origin=2.1.6.0 addresses=2.1.8.2 known-bad=none -->
+> **Audited against TRCC 2.1.6; citations re-anchored to TRCC 2.1.8.**
+> Every method it documents is byte-identical in TRCC 2.1.8.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 
@@ -87,7 +86,7 @@ under different delegate commands from every other kind — `19`/`275` instead o
 `UCThemeSetting.cs:133` answers by showing the shortcut editor. It is offered
 in the picker (`UCThemeSetting.cs:208` → `UCXiTongXianShiAdd(5, 64)`, where 64
 is the initial icon size from `UCScrollC`) and it is written to the DC
-(`FormCZTV.cs:7163`, `FormCZTV.cs:7306`).
+(`FormCZTV.cs:7267`, `FormCZTV.cs:7410`).
 
 `LoadIconForPathOrName` (`UCXiTongXianShiSub.cs:~330-450`) really does resolve
 `myText` as a path:

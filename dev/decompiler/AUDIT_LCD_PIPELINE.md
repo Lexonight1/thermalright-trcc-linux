@@ -1,8 +1,8 @@
 # C# LCD Pipeline Audit — the device oracle, all 5 families
 
-<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=UCScreenImage.cs::RotateImgBu -->
-> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
-> Every method it documents is byte-identical in TRCC 2.1.6.
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.8.2 known-bad=UCScreenImage.cs::RotateImgBu -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.8.**
+> Every method it documents is byte-identical in TRCC 2.1.8.
 > [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
 <!-- /audit-state -->
 
@@ -19,9 +19,9 @@ these citations address, and is no longer on disk.
 - `TRCC.CZTV/FormCZTV.cs` — init, theme-frame prep, ImageToJpg/ImageTo565 (wire).
 - `TRCC.DCUserControl/UCScreenImage.cs` — GenerateImage (compose), SetMyUCScreenImage (preview), RotateImg/Hei/Bu.
 
-Encoder is selected at (`FormCZTV.cs:2801` `myDeviceMode == 2`) — re-read
-against 2.1.6, where the same guard repeats at `:2858`, `:3019`, `:3036`,
-`:3068`, `:3555`: **`myDeviceMode == 2 → ImageToJpg` (JPEG), else `ImageTo565` (RGB565)**. Every rotation is `RotateImg((BASE − directionB) mod 360)`; BASE = the panel's physical-mount offset.
+Encoder is selected at (`FormCZTV.cs:2825` `myDeviceMode == 2`) — re-read
+against 2.1.6, where the same guard repeats at `:2882`, `:3043`, `:3060`,
+`:3092`, `:3579`: **`myDeviceMode == 2 → ImageToJpg` (JPEG), else `ImageTo565` (RGB565)**. Every rotation is `RotateImg((BASE − directionB) mod 360)`; BASE = the panel's physical-mount offset.
 
 ## Master per-family table
 
@@ -50,11 +50,11 @@ against 2.1.6, where the same guard repeats at `:2858`, `:3019`, `:3036`,
 
    Note 960 is itself ambiguous (960x540 AND 960x320), and `mySubMode = pmSub`
    is set on exactly the fbl-192 branches — which is what "key on pm+sub" means.
-2. **The `.zt` animated-theme frame prep (`FormCZTV.cs:2311-2516`) only has branches for 320/240/480/640** — every widescreen (854…1920) falls through to the **320×240/240×320** default canvas, so animated widescreen themes are squeezed. Confirmed independently by 2 agents. (`FormCZTV.cs:2459/1826`)
-3. **Theme-frame prep + GenerateImage letterbox with BLACK fill**, aspect-preserving contain-fit; at 90/270 the DrawImage w/h args are **swapped** (`FormCZTV.cs:2511` `DrawImage(val, x, y, num29, num28)`) — a naive port that reuses the 0/180 arg order transposes the fit.
+2. **The `.zt` animated-theme frame prep (`FormCZTV.cs:2335-2540`) only has branches for 320/240/480/640** — every widescreen (854…1920) falls through to the **320×240/240×320** default canvas, so animated widescreen themes are squeezed. Confirmed independently by 2 agents. (`FormCZTV.cs:2483/1826`)
+3. **Theme-frame prep + GenerateImage letterbox with BLACK fill**, aspect-preserving contain-fit; at 90/270 the DrawImage w/h args are **swapped** (`FormCZTV.cs:2535` `DrawImage(val, x, y, num29, num28)`) — a naive port that reuses the 0/180 arg order transposes the fit.
 4. **bg fill is a WIDTH TEST, not a flag** (`UCScreenImage.cs:824-834`): if `bitmapBGK.Width ≤ canvas.Width+2` draw the theme bg at native (0,0), **else draw `bitmapBGK1`** (a solid-black default resource `P<W><H>`, extracted & confirmed black). So a landscape 00.png on a portrait canvas → **black**, not letterbox. (This is why the official app shows black+text at 90° for shipped landscape themes.)
 5. **Overlay text is drawn UPRIGHT at raw element coords** (`UCScreenImage.cs:896-912`) — never rotated separately; the whole canvas rotates later in ImageToJpg. Any "rotate the whole composite" port makes text sideways = WRONG.
-6. **RGB565 byte order**: `is320x320` OR `myDeviceSPIMode==2` → **big-endian word**; else little-endian (consumer sites `FormCZTV.cs:2010`, `:4168` — the two branches are byte-identical). **Which devices get SPIMode 2 is stated once, in G3 below** — this line used to name fbl 51 and 53, and 53 is wrong. Don't restate it here.
+6. **RGB565 byte order**: `is320x320` OR `myDeviceSPIMode==2` → **big-endian word**; else little-endian (consumer sites `FormCZTV.cs:2034`, `:4168` — the two branches are byte-identical). **Which devices get SPIMode 2 is stated once, in G3 below** — this line used to name fbl 51 and 53, and 53 is wrong. Don't restate it here.
 7. **Round-panel edge fill (480 only)**: `RotateImgHei` blacks the 1px ring (`UCScreenImage.cs:702-711`); `RotateImgBu` edge-replicates the middle band 160-320 (`:715` in 2.1.6). On 320/240/360 all three primitives are pixel-identical to plain `RotateImg`. Used only in the JPEG square branch (pm≠3→Hei, pm==3→Bu, pm==6→Hei+180).
 8. **Preview is HALF SIZE for 640/1600/1920** (`UCScreenImage.cs:1758-1763` `DrawImage(myImage,0,0,W/2,H/2)`); mouse coords ×2 (`:1218-1221`).
 9. **Dynamic Island (灵动岛) is 1600×720 ONLY** — `myLddVal`∈{1,2,3} × directionB
@@ -63,7 +63,7 @@ against 2.1.6, where the same guard repeats at `:2858`, `:3019`, `:3036`,
    `:1166`, `:1553`, `:1573` (2.1.6). `buttonLDD.Show()` is **not in UCScreenImage.cs at
    all** — it lives in `FormCZTV.cs` and `FormLCD.cs` (28 references each), which
    is where to look for the 1600×720 gate.
-10. **Oversize guard**: JPEG ≥ 450000 bytes → drop frame, `myTempDeviceJpgYSL -= 5` (`FormCZTV.cs:2715-2719`).
+10. **Oversize guard**: JPEG ≥ 450000 bytes → drop frame, `myTempDeviceJpgYSL -= 5` (`FormCZTV.cs:2739-2743`).
 11. **ThemeML portrait/landscape sub-swap** (`pmSub<5` vs `≥5`) exists for **854/960/800 only** (`FormCZTV.cs:917-949`); 640, 1280, 1600, 1920 have a single fixed dir.
 12. **Header format split**: 64-byte `12345678` (320/480/240/640/800/854/960/1600/1920, len@[60..63]) vs 20-byte `DADBDCDD` (360/1280/320×240-default, len@[16..19]).
 
@@ -82,7 +82,7 @@ evidence. Oracle-verified throughout; **none of this is glass-verified.**
 | G2 | ~~Mjolnir letterbox at 90°~~ | **CLOSED** — `bg_fit` implements the C# width test (`src_w <= dst_w + 2` → native at (0,0), else solid black, never letterboxed), and warns on the black branch. | `core/ports.py:1008-1032` vs `UCScreenImage.cs:824-834` |
 | G3 | **RGB565 byte order — SPIMode 2 is unmodelled** | **REAL, and the original row named the wrong FBLs.** The addressed release sets `myDeviceSPIMode = 2` at exactly three sites: `mode==1 && fbl==51` (`:1048`), `mode==3 && fbl==49` (`:1052`), `mode==2 && pm==50` (`:880`, which also forces `mode=3`, `fbl=50`). **FBL 53 is not among them.** Both consumer sites are byte-identical to the `is320x320` branch, i.e. SPIMode 2 ⇒ big-endian. We ship FBL 51 `big_endian=False`, have no FBL 49 at all, and label PM 50 "(SPI mode 2)" in `_PM_TO_FBL_OVERRIDES` while dropping the consequence. | `FormCZTV.cs:880,1048,1052`; consumers `:2010`, `:4168`; ours `core/protocol.py:118-147` |
 | G4 | **Round-480 edge fill (Hei/Bu) not implemented** | **OPEN** (cosmetic) — no implementation anywhere in `src/`. | `UCScreenImage.cs:702-758` |
-| G5 | **Widescreen animated-theme squeeze** | **DIVERGENT BY DESIGN** — the C# `.zt` prep branches only for 320/240/480/640, so widescreen falls to the 320×240 default canvas. We compose at the device canvas instead. Better, deliberate, and **not glass-verified for a widescreen `.zt`.** | `FormCZTV.cs:2311-2516` vs `services/display.py` |
+| G5 | **Widescreen animated-theme squeeze** | **DIVERGENT BY DESIGN** — the C# `.zt` prep branches only for 320/240/480/640, so widescreen falls to the 320×240 default canvas. We compose at the device canvas instead. Better, deliberate, and **not glass-verified for a widescreen `.zt`.** | `FormCZTV.cs:2335-2540` vs `services/display.py` |
 | G6 | **GPU→CPU power silent fallback** | **REAL.** The addressed release tries `"Total Graphics Power (TGP)"` → `"GPU Power"` → `"GPU ASIC Power"` and, if all three miss, assigns `GpuPower = CpuPower`. Ours returns `None`, so the field renders empty where the official app shows a number. (The original row cited `:944`; that is stale.) | `UCSystemInfo.cs:967-970` vs `adapters/sensors/_lhm.py:520-524` |
 | G7 | ~~LED global ×0.4 brightness cap~~ | **CLOSED** — `_COLOR_SCALE = 0.4` is applied. | `adapters/device/led.py:48` |
 | G8 | **Crop aspect thresholds are not verbatim** | **REAL (narrow).** The C# uses magic doubles that must not be recomputed: `is854x480` → **0.56206** (the true ratio is 0.5618, so the vendor's own constant is already an approximation) where ours is **0.5621**; and `1920x440` → **0.229166666**, a family absent from our `_ASPECT_RATIOS` entirely though `ENCODE_ROTATIONS` knows it. Images landing between the two values classify differently than the official app. | `UCImageCut.cs:433,476,625` vs `ui/gui/display_mode_panels.py:514-519` |
@@ -111,7 +111,7 @@ Audit each the same way (per-file agent, line-cited caveats, verify load-bearing
 ## `StartPipeline` — 2.1.6's frame pipeline (added 2026-08-22)
 
 **New in 2.1.6** (`worklist.json` lists it under `FormCZTV.cs` → `new`), and it
-is the shape of the whole render path in this release. `FormCZTV.cs:2730-2815`.
+is the shape of the whole render path in this release. `FormCZTV.cs:2754-2839`.
 
 Three `Task.Run` stages joined by three **bounded** queues:
 
@@ -122,9 +122,9 @@ shared `CancellationTokenSource` at `FormCZTV.cs:512`.
 
 | stage | does | cite |
 |---|---|---|
-| 1 | takes a decoded frame, installs it as `bitmapBGK` and **disposes the previous background**, then `SetUCStateTask1(directionB, UCXiTongXianShiSubArray, shanPingCount)` — compose the overlay elements at the current rotation | `FormCZTV.cs:2732` |
-| 2 | `SetUCStateTask2(frame)` | `FormCZTV.cs:2763` |
-| 3 | copies to `MyImageSet` + `Invalidate` (**preview**), then `myDeviceMode == 2 ? ImageToJpg : ImageTo565` (**wire**), then disposes | `FormCZTV.cs:2784` |
+| 1 | takes a decoded frame, installs it as `bitmapBGK` and **disposes the previous background**, then `SetUCStateTask1(directionB, UCXiTongXianShiSubArray, shanPingCount)` — compose the overlay elements at the current rotation | `FormCZTV.cs:2756` |
+| 2 | `SetUCStateTask2(frame)` | `FormCZTV.cs:2787` |
+| 3 | copies to `MyImageSet` + `Invalidate` (**preview**), then `myDeviceMode == 2 ? ImageToJpg : ImageTo565` (**wire**), then disposes | `FormCZTV.cs:2808` |
 
 Every stage disposes its input in a `finally`.
 
@@ -137,7 +137,7 @@ Every stage disposes its input in a `finally`.
    smarter cache, it is a queue that cannot grow.
 2. **Backpressure DROPS, it does not stall.** Stages 1 and 2 each test
    `if (_secondImages.Count < 2)` / `if (_thirdImages.Count < 2)` *before*
-   producing (`FormCZTV.cs:2738`, `FormCZTV.cs:2769`), so when the device is
+   producing (`FormCZTV.cs:2762`, `FormCZTV.cs:2793`), so when the device is
    slower than the source the pipeline sheds frames instead of blocking the
    decoder. A bounded queue alone would block; the explicit count test is what
    makes it lossy on purpose.
