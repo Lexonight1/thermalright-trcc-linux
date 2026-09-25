@@ -234,7 +234,7 @@ def test_wait_returns_none_on_timeout() -> None:
 
 def test_does_not_respawn_while_namespace_pending() -> None:
     """Spawn succeeded but the WMI namespace never registered — a second
-    start() must wait on the SAME process, not launch another LHM (#191)."""
+    start() must not launch another LHM (#191)."""
     spawned: list[_StubProcess] = []
 
     def _spawn() -> _StubProcess:
@@ -246,6 +246,52 @@ def test_does_not_respawn_while_namespace_pending() -> None:
     assert lhm.start() is None   # spawns once, namespace times out
     assert lhm.start() is None   # must NOT spawn again
     assert len(spawned) == 1, "must not spawn a second LibreHardwareMonitor"
+
+
+def test_a_namespace_that_never_registers_is_waited_on_once() -> None:
+    """Every LHM reading calls start(); re-waiting the 10 s timeout on each
+    blocked ~20 s inside sensor setup and ~90 s per poll (#191)."""
+    waits: list[int] = []
+    lhm = LhmSubprocess(probe=lambda: None, spawn=_StubProcess,
+                        wait=lambda: waits.append(1), process_running=lambda: False)
+    for _ in range(11):
+        assert lhm.start() is None
+    assert len(waits) == 1
+
+
+def test_a_late_namespace_is_still_picked_up_after_the_one_wait() -> None:
+    """Not waiting again must not mean giving up: the cheap probe still runs
+    on every call and returns the namespace once LHM registers it."""
+    ready: list[object] = []
+    lhm = LhmSubprocess(probe=lambda: ready[0] if ready else None,
+                        spawn=_StubProcess, wait=lambda: None,
+                        process_running=lambda: False)
+    assert lhm.start() is None
+    ready.append(handle := object())
+    assert lhm.start() is handle
+
+
+def test_concurrent_starts_spawn_one_lhm() -> None:
+    """Sensor setup and the poll thread call start() together; racing a slow
+    CreateProcess, four callers launched four LHM windows -- the reporter's
+    screenshot (#191).  Reproduced at 4 spawns before the lock."""
+    import threading
+
+    spawned: list[_StubProcess] = []
+
+    def _slow_spawn() -> _StubProcess:
+        threading.Event().wait(0.2)
+        spawned.append(proc := _StubProcess())
+        return proc
+
+    lhm = LhmSubprocess(probe=lambda: None, spawn=_slow_spawn, wait=lambda: None,
+                        process_running=lambda: False)
+    threads = [threading.Thread(target=lhm.start) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(spawned) == 1
 
 
 def test_does_not_retry_spawn_when_exe_missing() -> None:

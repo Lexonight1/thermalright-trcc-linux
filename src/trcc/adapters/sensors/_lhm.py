@@ -222,6 +222,7 @@ class LhmSubprocess:
 
     __slots__ = (
         "_foreign_lhm_running",
+        "_lock",
         "_namespace_handle",
         "_owned_process",
         "_probe",
@@ -255,6 +256,10 @@ class LhmSubprocess:
         # spawns our bundled copy, and lets the step-2 probe pick the foreign
         # namespace up when it registers.
         self._foreign_lhm_running = False
+        # start() decides, spawns and waits as ONE step: sensor build and the
+        # poll thread call it concurrently, and four callers racing a slow
+        # CreateProcess launched four LibreHardwareMonitor windows (#191).
+        self._lock = threading.Lock()
 
     @property
     def namespace(self) -> Any:
@@ -281,6 +286,12 @@ class LhmSubprocess:
         no LHM is present and the bundled exe is unavailable, or the LHM we
         wait on — ours or a foreign one — did not register within the timeout.
         """
+        frame_log.debug("LhmSubprocess.start: cached=%s", self._namespace_handle is not None)
+        with self._lock:
+            return self._start_locked()
+
+    def _start_locked(self) -> Any:
+        """:meth:`start`'s body; the caller holds ``_lock``."""
         if self._namespace_handle is not None:
             return self._namespace_handle
 
@@ -290,23 +301,15 @@ class LhmSubprocess:
             self._namespace_handle = existing
             return existing
 
-        # We already launched LHM — its WMI namespace just hasn't registered
-        # yet (or never will).  Wait on THAT process; never spawn a second
-        # copy.  This is the #191 fix: without it, a slow/failed namespace
-        # registration made every poll spawn another LibreHardwareMonitor.
-        if self._owned_process is not None:
-            self._namespace_handle = self._wait()
-            return self._namespace_handle
-
-        # A previous spawn found no bundled exe — don't retry it (or re-warn)
-        # on every poll.  Cleared by stop() so a fresh session can try again.
-        if self._unavailable:
-            return None
-
-        # A foreign LibreHardwareMonitor we already waited on and whose
-        # namespace is still not up — the step-2 probe above catches it the
-        # moment it registers.  Never spawn our bundled copy beside it.
-        if self._foreign_lhm_running:
+        # Already decided this session: we spawned LHM (never a second copy),
+        # a foreign one is running (never one beside it), or there is no
+        # bundled exe (never re-warn).  Each was waited on at most ONCE; the
+        # probe above picks the namespace up the moment it registers.  Waiting
+        # again here blocked every LHM read 10 s -- ~20 s inside sensor setup
+        # and ~90 s per poll when the namespace never came (#191).  Cleared by
+        # stop() so a fresh session can try again.
+        if self._owned_process is not None or self._foreign_lhm_running or self._unavailable:
+            log.debug("LhmSubprocess.start: namespace not up; already waited once")
             return None
 
         # Whose process do we wait on?  A running foreign LHM (WMI publisher
