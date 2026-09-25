@@ -1,5 +1,60 @@
 # Changelog
 
+## v9.10.3
+
+**Two identical coolers are two devices now.** Two units of the same model
+report the same USB identity, and TRCC told them apart by that identity alone.
+So it saw one device, and the second screen either stayed dark or fought the
+first for the connection with an "in use by another process" error. Each unit
+is now recognised by the port it is plugged into, and each one opens its own
+screen. Only models you own two of are affected. (#287)
+
+**Macs pick their screens back up after sleep.** On Linux, TRCC reconnects
+every display when the machine wakes, because the connection it held before
+sleeping has gone stale. macOS was never told the machine had woken, so the
+panel went back to its initial picture and stayed that way until TRCC was
+restarted. macOS now gets the same reconnect. (#283)
+
+**Rotating the screen keeps your overlay edits.** Turning a display in either
+graphical interface reloaded the theme twice, and the second reload threw away
+anything you had moved, restyled or added. It now reloads once and keeps your
+changes, the same as it always did from the command line.
+
+**Two more display models from TRCC 2.1.8 are recognised**, along with the new
+button images and theme artwork that release added. Before this, one of them
+warned about an unknown screen and drew at the wrong size.
+
+**The command line and the web API can list what is on the screen.** Moving,
+editing or deleting an overlay element needs its id, and until now the only
+place to find one was the line printed when you created it. `trcc display
+overlay-list` now shows every element with its id, and the web API has the
+same.
+
+**The sensor dashboard can be edited from the command line**: add, remove,
+rename and bind panels, as the graphical interface could already. The newer
+interface can now add, remove and rename panels too, instead of only rebinding
+them.
+
+**The font you pick for overlay text is kept everywhere.** The web API and the
+command line dropped it without saying so, and the newer interface had no way
+to choose one. The web API also ignored a request to hide an element's unit.
+
+**The newer interface can include your microphone in a screen mirror**, as
+the original interface could, and it now releases the microphone when the
+mirror stops.
+
+**A problem report no longer fills up with screen data.** Some log lines
+wrote an entire copy of the frame being sent, up to six megabytes each, so the
+log recycled itself within moments and a report came back holding nothing
+else. They now record the frame's size. This is what had stopped us
+diagnosing #220.
+
+**Under the hood**, a display-scaling setting that TRCC applied at every
+launch for seven months turned out to belong to an older version of the
+graphics toolkit and never did anything. It is removed, and nothing changes.
+The newer interface also sized its artwork from a different source than the
+rest of the app, and now uses the same one.
+
 ## v9.10.2
 
 **A screen bolted into its cooler sideways now starts upright on six more
