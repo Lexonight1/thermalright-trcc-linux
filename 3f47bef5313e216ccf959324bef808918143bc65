@@ -1,0 +1,19 @@
+The commit message above is a `git status` dump pasted by mistake.
+What this commit actually did:
+
+feat(oracle): rebase onto TRCC 2.1.8, whose AssemblyVersion is 2.1.8.2
+
+* dev/decompiler/core/csharp.py: ORACLE_VERSION = "2.1.8.2" is now the
+  single literal, and ORACLE_RELEASE is derived from its first three
+  components. The old derivation, f"{ORACLE_RELEASE}.0", would have
+  produced 2.1.8.0 and made the oracle gate reject the correct tree.
+* tests/test_oracle_version.py: asserts the new direction of that
+  derivation.
+* dev/decompiler/formcztv_init.py: 2.1.8's FormCZTV init. PM 20 joins
+  the mode==2 854x480 branch; that branch gains the mySubMode = pmSub
+  assignment it lacked through 2.1.6, and the 800x480 sibling still
+  lacks it. A new mode==2 && pm==4 branch sets the mount only. Line
+  anchors are re-numbered to 2.1.8.
+* dev/decompiler/{CONTROL_FLOW.md,control-flow.json,branch-map.json}:
+  regenerated against 2.1.8.
+* dev/decompiler/audit_devices.py, CLAUDE.md: the same facts, restated.
