@@ -45,6 +45,9 @@ def list_devices() -> None:
             f"  {key}  {product.vendor} {product.product}  "
             f"(wire={product.wire.value}, resolution={size})"
         )
+        if key in result.several_coolers:
+            typer.echo(f"      this USB id covers several coolers — "
+                       f"'trcc device connect {key}' names yours")
     typer.echo(
         "Resolutions above come from the catalog, not the panel.  "
         "Run 'trcc device connect <key>' to read the panel's own."

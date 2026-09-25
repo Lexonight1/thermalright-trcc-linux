@@ -36,9 +36,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ...core.errors import HandshakeError, TransportError
-from ...core.models import Kind, ProductInfo, format_device_key
+from ...core.models import DeviceInfo, Kind, ProductInfo, format_device_key
 from ...core.ports import Paths, Platform
 from ...core.registry import find_product
+from ...core.variants import get_variant_override
 from ...services.settings import resolve_config_path
 from ..device import DEVICES
 from ..infra.logging import log_chain, tail_log, tail_log_actions
@@ -248,8 +249,26 @@ def _collect_devices(
             handshake = _probe_handshake(platform, product, info.unit)
             if handshake is not None:
                 row.update({f"hs_{k}": v for k, v in handshake.items()})
+                row["product"] = _identified_name(info, product, handshake)
         rows.append(row)
     return rows, ""
+
+
+def _identified_name(info: DeviceInfo, product: ProductInfo,
+                     handshake: dict[str, str]) -> str:
+    """The cooler the handshake names, with the catalog's guess beside it.
+
+    One USB id covers many coolers, so the catalog name is often wrong -- the
+    report printed "GrandVision 360 AIO" directly above its own probe line
+    ``handshake: PM=4 SUB=5``, which identifies a Peerless Vision 360 (#272).
+    Resolved exactly as ConnectDevice resolves it: the variant override.
+    """
+    override = get_variant_override(info.vid, info.pid,
+                                    int(handshake["pm"]), int(handshake["sub"]))
+    name = override.display_name if override is not None else ""
+    log.info("_identified_name: %s pm=%s sub=%s -> %r", info.key,
+             handshake["pm"], handshake["sub"], name or product.product)
+    return f"{name} (catalog: {product.product})" if name else product.product
 
 
 def _probe_handshake(

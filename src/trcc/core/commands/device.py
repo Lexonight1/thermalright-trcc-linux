@@ -93,6 +93,7 @@ from ..results import (
     VideoResult,
     VideoStatusResult,
 )
+from ..variants import covers_several_coolers
 from ._base import Command, Query
 from ._helpers import (
     _element_to_entry,
@@ -160,6 +161,8 @@ class DiscoverDevices(Command[DiscoverResult]):
             message=f"{len(products)} device(s) found",
             products=products,
             devices=units,
+            several_coolers=[u.key for u in units
+                             if covers_several_coolers(u.vid, u.pid)],
         )
 
 def _connect_failure_hints(app: App, error: Exception, vid: int, pid: int,

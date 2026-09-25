@@ -68,3 +68,74 @@ def test_connect_renames_the_product_to_the_confirmed_variant(tmp_path) -> None:
 
     assert result.ok, result.message
     assert app.devices["87ad:70db"].info.product == "Peerless Vision 360"
+
+
+# ── #289 / #176 / #272: the name reaches every place a user reads it ────────
+
+
+def _app_with(tmp_path, **spec):
+    from pathlib import Path
+
+    from trcc.app import App
+
+    from .mock_platform import MockPlatform
+
+    return App(platform=MockPlatform([{"type": "lcd", **spec}], Path(tmp_path)))
+
+
+def test_an_ly_panel_is_looked_up_in_the_csharp_257_table() -> None:
+    """LY panels are device mode 2 in the C#: RGB_ADD_Device(pm, sub) ->
+    ADDUserButton(257, ...), the same PM table as bulk.  They were left out,
+    so no LY panel had a per-model button or name (#289)."""
+    override = get_variant_override(0x0416, 0x5408, 69, 2)
+    assert override is not None
+    assert (override.button_image, override.display_name) == (
+        "A1LD9", "Trofeo Vision 11.3 LCD")
+
+
+def test_connecting_the_113_inch_panel_names_it(tmp_path) -> None:
+    from trcc.core.commands import ConnectDevice
+
+    app = _app_with(tmp_path, vid="0416", pid="5408", pm=69, sub=2)
+    assert app.dispatch(ConnectDevice(key="0416:5408")).ok
+    assert app.devices["0416:5408"].info.product == "Trofeo Vision 11.3 LCD"
+
+
+def test_connecting_a_mjolnir_vision_names_it(tmp_path) -> None:
+    from trcc.core.commands import ConnectDevice
+
+    app = _app_with(tmp_path, vid="87ad", pid="70db", pm=5, sub=1)
+    assert app.dispatch(ConnectDevice(key="87ad:70db")).ok
+    assert app.devices["87ad:70db"].info.product == "Mjolnir Vision"
+
+
+def test_the_report_names_the_cooler_its_own_probe_identified(tmp_path) -> None:
+    """It printed "GrandVision 360 AIO" directly above ``PM=4 SUB=5`` (#272)."""
+    from trcc.adapters.diagnostics.debug_report import _collect_devices
+
+    app = _app_with(tmp_path, vid="87ad", pid="70db", pm=4, sub=5)
+    rows, _ = _collect_devices(app.platform)
+    assert rows[0]["product"] == "Peerless Vision 360 (catalog: GrandVision 360 AIO)"
+
+
+def test_device_list_says_which_cooler_it_cannot_know(tmp_path, cli_runner) -> None:
+    """No handshake, so no name -- say so for a shared USB id (#176)."""
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    _ctx.set_platform(MockPlatform([
+        {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 5, "sub": 1},
+        {"type": "lcd", "vid": "0416", "pid": "5406", "pm": 32},
+    ], tmp_path))
+    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    try:
+        out = cli_runner.invoke(cli, ["device", "list"]).output
+    finally:
+        _ctx.get_app.cache_clear()
+        _ctx._platform_override = None
+        _ctx._renderer_override = None
+    assert "'trcc device connect 87ad:70db' names yours" in out, out
+    assert "trcc device connect 0416:5406' names yours" not in out

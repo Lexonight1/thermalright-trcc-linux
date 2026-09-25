@@ -46,6 +46,10 @@ class DiscoverResult(Result):
     """
     products: list[ProductInfo] = field(default_factory=list)
     devices: list[DeviceInfo] = field(default_factory=list)
+    #: Keys whose USB id covers several coolers, told apart only by the
+    #: handshake this scan never does -- a face must not print the catalog
+    #: name for these as if it named the cooler (#176, #272).
+    several_coolers: list[str] = field(default_factory=list)
 
     def units(self) -> Iterator[tuple[str, ProductInfo]]:
         """``(key, product)`` per unit — the key a face must show and target.

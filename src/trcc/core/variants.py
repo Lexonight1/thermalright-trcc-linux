@@ -88,7 +88,7 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
           5: _named('A1LM19SE', 'Peerless Vision 360'),
           6: _v('A1LF014'),    # 2.1.6: +sub6
           7: _named('A1LM19SE', 'Peerless Vision 360')},       # 2.1.8: +sub7
-    5:   {None: _v('A1Mjolnir VISION')},
+    5:   {None: _named('A1Mjolnir VISION', 'Mjolnir Vision')},     # #176
     6:   {1: _v('frozen_warframe_ultra'), 2: _v('A1FROZEN VISION V2')},
     7:   {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
     9:   {0: _v('A1LC2JD'), 1: _v('A1LC2JD'), 2: _v('A1LC2JD'), 3: _v('A1LC2JD'),
@@ -141,7 +141,7 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     66:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'),
           3: _v('A1LD7'), 4: _v('A1LD7')},
     68:  {None: _v('A1LM24')},
-    69:  {2: _v('A1LD9')},
+    69:  {2: _named('A1LD9', 'Trofeo Vision 11.3 LCD')},         # #289
     100: {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'),
           None: _v('A1FROZEN WARFRAME PRO')},
     101: {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), None: _v('A1ELITE VISION')},
@@ -197,6 +197,13 @@ _VARIANT_REGISTRY: dict[
     (0x87AD, 0x70DB): _BULK_VARIANTS,
     (0x87CD, 0x70DB): _BULK_VARIANTS,
     (0x0402, 0x3922): _BULK_VARIANTS,
+    # LY (Trofeo Vision) panels are device mode 2 in the C# too: Form1's
+    # USBLCDNEW arm calls ``FormCZTVInit(72, 2, …)`` and then
+    # ``RGB_ADD_Device(pm, sub)`` → ADDUserButton(257, …), the same PM table,
+    # whatever the wire.  They were left out, so no LY panel had a per-model
+    # button or name — an 11.3" unit introduced itself as "9.16" (#289).
+    (0x0416, 0x5408): _BULK_VARIANTS,
+    (0x0416, 0x5409): _BULK_VARIANTS,
     # 0416:5406 (Elite Vision 360) has no PM table — a fixed 320x320 RGB565
     # canvas, handshaked as a HidLcd type-3 (F5) panel. (#212)
 }
@@ -240,6 +247,18 @@ def get_variant_override(
     return _resolve_variant(family, key, sub)
 
 
+def covers_several_coolers(vid: int, pid: int) -> bool:
+    """True when one USB id names several coolers, told apart only by handshake.
+
+    Then a name read off the catalog is a guess: ``trcc device list`` never
+    handshakes, so for these ids it must say which cooler it cannot know
+    (#176, #272) instead of printing one cooler's name as fact.
+    """
+    shared = (vid, pid) in _VARIANT_REGISTRY
+    log.debug("covers_several_coolers: %04x:%04x -> %s", vid, pid, shared)
+    return shared
+
+
 def get_button_image(
     vid: int, pid: int, key: int, sub: int = 0,
 ) -> str | None:
@@ -252,6 +271,7 @@ def get_button_image(
 
 __all__ = [
     "VariantOverride",
+    "covers_several_coolers",
     "get_button_image",
     "get_variant_override",
 ]
