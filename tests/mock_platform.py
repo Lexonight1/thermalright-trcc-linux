@@ -26,7 +26,7 @@ point them at these helpers).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from trcc.adapters.device import _f5
@@ -36,6 +36,7 @@ from trcc.adapters.device.hid_lcd import (
 )
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
+from trcc.adapters.system._base import disambiguate
 from trcc.core.models import DeviceInfo, ProductInfo, Wire
 from trcc.core.ports import (
     SensorEnumerator,
@@ -323,26 +324,28 @@ class DeviceSpec:
 def scan_device_infos(specs: list[DeviceSpec]) -> list[DeviceInfo]:
     """One ``DeviceInfo`` per spec that resolves in the registry.
 
-    A fleet is keyed by ``(vid, pid)``, so two rows sharing one USB identity
-    cannot both exist: the second is shadowed in ``by_key`` and only the first
-    ever answers a handshake.  That is easy to hit by accident — the widescreen
-    families all live behind ``87ad:70db`` — and silently gives you a fleet
-    that is not the one you wrote, so say so.  (To exercise several variants of
-    one vid:pid, click them in the dev console's variant panel, which pins each
-    reply as you go, rather than listing them here.)
+    Each spec sits on its own simulated port (``1-<n>``) and the result goes
+    through the REAL :func:`disambiguate`, exactly as a real scan does, so two
+    IDENTICAL specs are two identical coolers under ``vid:pid@1-<n>`` (#287).
+    Until 2026-09-25 the mock had no port and could not show that case at all.
+
+    Two DIFFERENT specs under one vid:pid are still a mistake: the fleet
+    scripts replies by ``(vid, pid)``, so the second never answers its own
+    handshake — the widescreen families all live behind ``87ad:70db`` and it is
+    easy to list two by accident.  That is warned about.  (To exercise several
+    variants of one vid:pid, click them in the dev console's variant panel,
+    which pins each reply as you go, rather than listing them here.)
     """
-    seen: dict[tuple[int, int], str] = {}
-    for spec in specs:
-        first = seen.get(spec.key)
-        if first is not None:
-            log.warning(
-                "mock scan: %04x:%04x listed twice (%r shadows %r) — a fleet "
-                "holds ONE spec per vid:pid; use the variant panel to switch "
-                "between them", spec.vid, spec.pid, first, spec.name)
-        else:
-            seen[spec.key] = spec.name
+    first: dict[tuple[int, int], DeviceSpec] = {}
     out: list[DeviceInfo] = []
-    for spec in specs:
+    for port, spec in enumerate(specs, start=1):
+        seen = first.setdefault(spec.key, spec)
+        if seen is not spec and replace(spec, name=seen.name) != seen:
+            log.warning(
+                "mock scan: %04x:%04x listed twice with DIFFERENT specs (%r "
+                "shadows %r) — replies are scripted per vid:pid; use the "
+                "variant panel to switch between them",
+                spec.vid, spec.pid, seen.name, spec.name)
         product = find_product(spec.vid, spec.pid)
         if product is None:
             log.warning(
@@ -351,10 +354,11 @@ def scan_device_infos(specs: list[DeviceSpec]) -> list[DeviceInfo]:
                 spec.vid, spec.pid, spec.name,
             )
             continue
-        out.append(DeviceInfo(vid=spec.vid, pid=spec.pid, bcd_device=spec.bcd))
-        log.info("mock scan: + %s [%04x:%04x] wire=%s bcdDevice=0x%04x",
-                 spec.name, spec.vid, spec.pid, product.wire.value, spec.bcd)
-    return out
+        out.append(DeviceInfo(vid=spec.vid, pid=spec.pid, bcd_device=spec.bcd,
+                              path=f"1-{port}"))
+        log.info("mock scan: + %s [%04x:%04x] port=1-%d wire=%s bcdDevice=0x%04x",
+                 spec.name, spec.vid, spec.pid, port, product.wire.value, spec.bcd)
+    return disambiguate(out)
 
 
 # Exact (pm, sub, fbl) the dev console pins for a vid:pid — bypasses the

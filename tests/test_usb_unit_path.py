@@ -422,3 +422,118 @@ def test_both_hid_bindings_declare_open_path() -> None:
         _HidBinding, "open_path")
     for child in (_CythonHidBinding, _ApmortonHidBinding):
         assert not getattr(child.open_path, "__isabstractmethod__", False), child
+
+
+# ── #287 reached from the entry the user touches ───────────────────────────
+#
+# Every test above calls ``attach(unit=…)`` directly, and all of them passed
+# while the fix was unreachable: ``ConnectDevice`` rejected ``vid:pid@unit``,
+# coldplug attached each twin unit-less, and v9.10.3 shipped announcing it
+# fixed.  These drive ``discover_and_connect`` and the Commands, which is what
+# a user's launch actually runs.
+
+
+def _opened_units(app) -> list[str]:
+    """Wrap ``open_transport`` and return the list it appends each unit to."""
+    units: list[str] = []
+    real = app.platform.open_transport
+
+    def spy(wire, vid, pid, serial=None, unit=""):
+        units.append(unit)
+        return real(wire, vid, pid, serial, unit)
+
+    app.platform.open_transport = spy          # type: ignore[assignment]
+    return units
+
+
+def test_coldplug_connects_each_twin_on_its_own_unit(tmp_path) -> None:
+    """THE #287 fix, end to end: two identical coolers at launch."""
+    app = _twin_app(tmp_path)
+    opened = _opened_units(app)
+
+    app.discover_and_connect()
+
+    assert sorted(app.devices) == ["87ad:70db@1-1", "87ad:70db@1-2"]
+    assert all(d.is_connected for d in app.devices.values())
+    assert sorted(opened) == ["1-1", "1-2"]
+
+
+def test_coldplug_keeps_the_plain_key_for_a_single_cooler(tmp_path) -> None:
+    """99% of users: one of each model, and the key they have always had."""
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.app import App
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    app = App(platform=MockPlatform([{"type": "lcd", "name": "one",
+                                      "vid": "87ad", "pid": "70db", "pm": 72,
+                                      "resolution": "480x480"}], tmp_path),
+              send_scheduler=SyncSendScheduler(),
+              renderer=_CliRenderer())      # type: ignore[arg-type]
+    app.discover_and_connect()
+    assert list(app.devices) == ["87ad:70db"]
+
+
+def test_a_twin_key_is_accepted_by_connect_and_orientation(tmp_path) -> None:
+    """Both Commands parsed ``vvvv:pppp`` only and called the twin invalid."""
+    from trcc.core.commands import ConnectDevice, SetOrientation
+
+    app = _twin_app(tmp_path)
+    connect = app.dispatch(ConnectDevice(key="87ad:70db@1-2"))
+    rotate = app.dispatch(SetOrientation(key="87ad:70db@1-2", degrees=90))
+
+    assert (connect.ok, rotate.ok) == (True, True), (connect.message, rotate.message)
+    assert "87ad:70db@1-2" in app.devices
+
+
+def test_a_twin_resolves_its_quirks_from_its_own_scan_entry(tmp_path) -> None:
+    """The scan caches a twin as ``vid:pid@unit``; a plain lookup missed it
+    and every twin got bcdDevice 0 — the wrong firmware's quirks."""
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.app import App
+    from trcc.core.models import quirks_for
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    spec = {"type": "lcd", "name": "Warframe SE", "vid": "0416", "pid": "5302",
+            "pm": 58, "bcd": "0407"}
+    app = App(platform=MockPlatform([dict(spec), dict(spec)], tmp_path),
+              send_scheduler=SyncSendScheduler(),
+              renderer=_CliRenderer())      # type: ignore[arg-type]
+    app.remember_scan(app.platform.scan_devices())
+
+    assert app._quirks_for(0x0416, 0x5302, "1-2") == quirks_for(0x0416, 0x5302, 0x0407)
+    assert quirks_for(0x0416, 0x5302, 0x0407) != quirks_for(0x0416, 0x5302, 0)
+
+
+def test_the_key_format_round_trips() -> None:
+    from trcc.core.models import format_device_key, parse_device_key
+
+    for vid, pid, unit in ((0x87AD, 0x70DB, ""), (0x87AD, 0x70DB, "1-2.3"),
+                           (0x0416, 0x5302, "3@7")):
+        assert parse_device_key(format_device_key(vid, pid, unit)) == (vid, pid, unit)
+
+
+def test_a_malformed_key_is_still_rejected() -> None:
+    import pytest
+
+    from trcc.core.models import parse_device_key
+
+    for bad in ("", "87ad", "87ad:zzzz", "87ad:70db:1", "@1-2"):
+        with pytest.raises(ValueError):
+            parse_device_key(bad)
+
+
+def test_the_mock_warns_on_different_specs_but_not_on_twins(tmp_path, caplog) -> None:
+    """Identical specs are two coolers; different ones under one vid:pid are a
+    fleet mistake, because replies are scripted per vid:pid."""
+    from .mock_platform import MockPlatform
+
+    twin = {"type": "lcd", "name": "a", "vid": "87ad", "pid": "70db", "pm": 72}
+    MockPlatform([dict(twin), dict(twin, name="b")], tmp_path).scan_devices()
+    assert "DIFFERENT specs" not in caplog.text
+
+    MockPlatform([dict(twin), dict(twin, pm=64)], tmp_path).scan_devices()
+    assert "DIFFERENT specs" in caplog.text

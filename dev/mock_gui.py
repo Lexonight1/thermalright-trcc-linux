@@ -279,8 +279,8 @@ def main() -> None:
             connected.append(_auto_connect(app, device_spec))
         else:
             # Same path for every device recovered from a ``--report`` file.
-            for spec in auto_specs:
-                connected.append(_auto_connect(app, spec))
+            for spec, unit in zip(auto_specs, _units_for(auto_specs), strict=True):
+                connected.append(_auto_connect(app, spec, unit))
             # ``--replay`` then re-runs the reporter's own action sequence
             # (SetOrientation / LoadTheme / ApplyMask …) through the same
             # universal Command bus, reproducing their on-screen state.
@@ -313,7 +313,25 @@ def main() -> None:
     ))
 
 
-def _auto_connect(app: Any, spec: dict) -> bool:
+def _units_for(specs: list[dict]) -> list[str]:
+    """The unit each spec connects as — empty unless two share a vid:pid.
+
+    Every spec sits on its own simulated port and goes through the REAL
+    ``disambiguate``, as a real scan does, so two identical entries in
+    ``devices.json`` present as two coolers (``vid:pid@1-1`` / ``@1-2``) instead
+    of one connected twice under the plain key (#287).
+    """
+    from trcc.adapters.system._base import disambiguate
+    from trcc.core.models import DeviceInfo
+    infos = disambiguate([
+        DeviceInfo(vid=int(str(s["vid"]), 16), pid=int(str(s["pid"]), 16),
+                   path=f"1-{port}")
+        for port, s in enumerate(specs, start=1)])
+    log.info("mock_gui._units_for: %s", [i.key for i in infos])
+    return [i.unit for i in infos]
+
+
+def _auto_connect(app: Any, spec: dict, unit: str = "") -> bool:
     """Connect a CLI ``device=`` spec immediately — the same way the dev
     variant panel does on a click: pin the handshake reply, then
     ``ConnectDevice`` (which self-attaches via ``find_product``).  So
@@ -324,7 +342,7 @@ def _auto_connect(app: Any, spec: dict) -> bool:
         log.warning("_auto_connect: platform has no set_active_reply — skip")
         return False
     from trcc.core.commands import ConnectDevice
-    from trcc.core.models import DeviceInfo
+    from trcc.core.models import DeviceInfo, format_device_key
     from trcc.core.protocol import pm_to_fbl
     vid = int(str(spec["vid"]), 16)
     pid = int(str(spec["pid"]), 16)
@@ -332,7 +350,7 @@ def _auto_connect(app: Any, spec: dict) -> bool:
     sub = int(spec.get("sub", 0))
     fbl = int(spec.get("fbl", pm_to_fbl(pm, sub)))
     bcd = int(str(spec.get("bcd", 0)), 16)
-    key = f"{vid:04x}:{pid:04x}"
+    key = format_device_key(vid, pid, unit)
     platform.set_active_reply(vid, pid, pm=pm, sub=sub, fbl=fbl)
     # Firmware quirks are resolved from what a SCAN remembered
     # (``App._quirks_for`` reads ``_scanned``), and the dev rule is that
@@ -341,7 +359,8 @@ def _auto_connect(app: Any, spec: dict) -> bool:
     # exactly how a quirk that broke four reporters' panels shipped unseen
     # (#244).  An explicit ``device=`` IS the statement "this device is
     # present", so remember its fingerprint before connecting.
-    app.remember_scan([DeviceInfo(vid=vid, pid=pid, bcd_device=bcd)])
+    app.remember_scan([DeviceInfo(vid=vid, pid=pid, bcd_device=bcd,
+                                  path=unit or None, unit=unit)])
     result = app.dispatch(ConnectDevice(key=key))
     ok = bool(getattr(result, "ok", False))
     log.info("mock_gui._auto_connect: %s pm=%d sub=%d fbl=%d bcd=0x%04x → ok=%s",

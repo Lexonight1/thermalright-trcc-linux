@@ -47,6 +47,7 @@ from ..models import (
     ThemeDir,
     Wire,
     oriented_resolution,
+    parse_device_key,
 )
 from ..protocol import artwork_variant, mask_variant, pm_to_fbl
 from ..registry import find_product
@@ -130,12 +131,13 @@ class DiscoverDevices(Command[DiscoverResult]):
         # Cache the fingerprints so ConnectDevice→attach can resolve per-device
         # firmware quirks (bcdDevice isn't in the static registry).  (#228)
         app.remember_scan(live)
-        products = []
+        products, units = [], []
         seen_resolutions: set[tuple[int, int]] = set()
         for info in live:
             product = find_product(info.vid, info.pid)
             if product is not None:
                 products.append(product)
+                units.append(info)
                 app.events.publish(DeviceDiscovered(
                     key=info.key, product_name=product.product,
                 ))
@@ -155,7 +157,7 @@ class DiscoverDevices(Command[DiscoverResult]):
             ok=True,
             message=f"{len(products)} device(s) found",
             products=products,
-            devices=live,
+            devices=units,
         )
 
 def _suspended_panel_hints(app: App, vid: int, pid: int) -> list[str]:
@@ -197,7 +199,8 @@ class ConnectDevice(Command[ConnectResult]):
     key: str
 
     def _handshake_with_quirk_retry(self, app: App, device: Device,
-                                    vid: int, pid: int) -> HandshakeResult:
+                                    vid: int, pid: int,
+                                    unit: str) -> HandshakeResult:
         """Handshake, retrying once on a firmware's overriding transport.
 
         The override goes SECOND, never first.  It is keyed on
@@ -219,7 +222,7 @@ class ConnectDevice(Command[ConnectResult]):
                      "retrying on the firmware's HID output-report transport",
                      self.key, e)
             app.detach(self.key)
-            retried = app.attach(vid, pid, quirk_transport=True)
+            retried = app.attach(vid, pid, quirk_transport=True, unit=unit)
             result = retried.connect()
             log.info("ConnectDevice %s: the quirk transport handshook where "
                      "the ordinary one did not", self.key)
@@ -227,16 +230,16 @@ class ConnectDevice(Command[ConnectResult]):
 
     def execute(self, app: App) -> ConnectResult:
         try:
-            vid_str, pid_str = self.key.split(":")
-            vid, pid = int(vid_str, 16), int(pid_str, 16)
+            vid, pid, unit = parse_device_key(self.key)
         except ValueError:
             return ConnectResult(
                 ok=False, key=self.key,
-                message=f"Invalid device key: {self.key!r} (expected 'vvvv:pppp')",
+                message=(f"Invalid device key: {self.key!r} "
+                         "(expected 'vvvv:pppp' or 'vvvv:pppp@unit')"),
             )
 
         try:
-            device = app.attach(vid, pid)
+            device = app.attach(vid, pid, unit=unit)
         except DeviceNotFoundError as e:
             hints = app.platform.check_permissions()
             app.events.publish(ErrorOccurred(message=str(e), kind="not_found",
@@ -264,7 +267,8 @@ class ConnectDevice(Command[ConnectResult]):
             return result
 
         try:
-            handshake = self._handshake_with_quirk_retry(app, device, vid, pid)
+            handshake = self._handshake_with_quirk_retry(app, device, vid, pid,
+                                                         unit)
             device = app.devices[self.key]      # the retry may have rebuilt it
         except (HandshakeError, TransportError, ImportError, OSError) as e:
             app.detach(self.key)   # clears any prior issue for this key first
@@ -1974,8 +1978,7 @@ class SetOrientation(Command[OrientationResult]):
     def execute(self, app: App) -> OrientationResult:
         log.debug("execute: app=%s", app)
         try:
-            vid_str, pid_str = self.key.split(":")
-            vid, pid = int(vid_str, 16), int(pid_str, 16)
+            vid, pid, _ = parse_device_key(self.key)
         except ValueError:
             return OrientationResult(
                 ok=False, key=self.key, degrees=self.degrees,

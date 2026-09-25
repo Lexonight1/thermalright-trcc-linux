@@ -339,8 +339,8 @@ class ProductInfo:
 
     @property
     def key(self) -> str:
-        """Stable identifier: '0402:3922'."""
-        key = f"{self.vid:04x}:{self.pid:04x}"
+        """Stable identifier: '0402:3922' — the MODEL, never a unit."""
+        key = format_device_key(self.vid, self.pid)
         frame_log.debug("ProductInfo.key: %s", key)
         return key
 
@@ -386,6 +386,33 @@ class DisplaySession:
     desktops: tuple[str, ...] = ()
 
 
+def format_device_key(vid: int, pid: int, unit: str = "") -> str:
+    """A device's public key: ``vid:pid``, or ``vid:pid@unit`` for a twin (#287).
+
+    The ONE place the format is written.  ``DeviceInfo.key``, ``Device.key``
+    and the scan-cache lookup all build it here, and :func:`parse_device_key`
+    is its exact inverse — the key is made in three places and read in six,
+    and a format spelled more than once is how one of them drifts.
+    """
+    frame_log.debug("format_device_key: %04x:%04x unit=%r", vid, pid, unit)
+    base = f"{vid:04x}:{pid:04x}"
+    return f"{base}@{unit}" if unit else base
+
+
+def parse_device_key(key: str) -> tuple[int, int, str]:
+    """``(vid, pid, unit)`` from a device key; raises ``ValueError`` if malformed.
+
+    The unit stays opaque — split off at ``@`` and handed back untouched,
+    never interpreted.  It used to be dropped by five ``key.split(":")`` sites,
+    each of which rejected ``87ad:70db@1-13`` as invalid, so a second identical
+    cooler could be scanned but never connected, rotated or sized (#287).
+    """
+    frame_log.debug("parse_device_key: %s", key)
+    ids, _, unit = key.partition("@")
+    vid, pid = ids.split(":")
+    return int(vid, 16), int(pid, 16), unit
+
+
 @dataclass(frozen=True, slots=True)
 class DeviceInfo:
     """Live device, produced by Platform.scan_devices().
@@ -412,13 +439,12 @@ class DeviceInfo:
 
         ``vid:pid`` unless a second unit of the same model is plugged in, in
         which case the port is appended: ``87ad:70db@1-13`` (#287).  The
-        suffix is OPAQUE — compared, never parsed — and only ever appears
-        when it has to, so a user with one cooler sees the same string they
-        always have and their ``trcc.json`` keeps matching.
+        suffix is OPAQUE — split off, never interpreted — and only ever
+        appears when it has to, so a user with one cooler sees the same
+        string they always have and their ``trcc.json`` keeps matching.
         """
         frame_log.debug("key")
-        base = f"{self.vid:04x}:{self.pid:04x}"
-        return f"{base}@{self.unit}" if self.unit else base
+        return format_device_key(self.vid, self.pid, self.unit)
 
     @property
     def quirks(self) -> DeviceQuirks:

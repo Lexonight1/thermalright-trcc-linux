@@ -21,6 +21,7 @@ from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
     VideoExportRequest,
+    format_device_key,
 )
 
 log = logging.getLogger(__name__)
@@ -309,8 +310,7 @@ class Device(ABC, Generic[T]):
         the ``Device`` from it, and a user's settings are looked up under
         whichever string reaches them.
         """
-        base = self.info.key
-        key = f"{base}@{self._unit}" if self._unit else base
+        key = format_device_key(self.info.vid, self.info.pid, self._unit)
         frame_log.debug("Device.key: %s", key)
         return key
 

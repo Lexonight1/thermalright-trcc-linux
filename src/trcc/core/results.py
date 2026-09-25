@@ -34,6 +34,12 @@ class Result:
 
 @dataclass(frozen=True, slots=True)
 class DiscoverResult(Result):
+    """What a scan recognised.  ``devices[i]`` is the UNIT of ``products[i]``.
+
+    Aligned by construction: ``products`` names the model, ``devices`` carries
+    the key that addresses THIS unit -- they differ only for two of the same
+    cooler, where the key gains ``@port`` and the product cannot (#287).
+    """
     products: list[ProductInfo] = field(default_factory=list)
     devices: list[DeviceInfo] = field(default_factory=list)
 

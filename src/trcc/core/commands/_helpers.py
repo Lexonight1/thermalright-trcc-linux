@@ -15,7 +15,13 @@ from ..events import (
     LedColorsChanged,
     LedSettingsChanged,
 )
-from ..models import Kind, OverlayElement, ThemeDir, oriented_resolution
+from ..models import (
+    Kind,
+    OverlayElement,
+    ThemeDir,
+    oriented_resolution,
+    parse_device_key,
+)
 from ..registry import find_product
 from ..results import (
     HealthCheckEntry,
@@ -280,9 +286,7 @@ def _resolve_resolution(app: App, key: str) -> tuple[int, int] | None:
         if device.info.native_resolution != (0, 0):
             return device.info.native_resolution
     try:
-        vid_s, pid_s = key.split(":")
-        vid = int(vid_s, 16)
-        pid = int(pid_s, 16)
+        vid, pid, _ = parse_device_key(key)
     except ValueError:
         return None
     product = find_product(vid, pid)
@@ -359,9 +363,7 @@ def _not_an_led(app: App, key: str) -> str | None:
     if device is not None:
         return None if device.is_led else refusal
     try:
-        vid_s, pid_s = key.split(":")
-        vid = int(vid_s, 16)
-        pid = int(pid_s, 16)
+        vid, pid, _ = parse_device_key(key)
     except ValueError:
         return None
     product = find_product(vid, pid)
@@ -602,9 +604,7 @@ def native_canvas(app: App, key: str) -> tuple[int, int, str]:
             log.debug("native_canvas: %s from scanned DeviceInfo", key)
             return (*device.info.native_resolution, "scan")
     try:
-        vid_s, pid_s = key.split(":")
-        vid = int(vid_s, 16)
-        pid = int(pid_s, 16)
+        vid, pid, _ = parse_device_key(key)
     except ValueError:
         log.warning("native_canvas: %r is not a VID:PID key", key)
         return (0, 0, "unknown")

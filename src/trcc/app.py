@@ -51,6 +51,7 @@ from .core.models import (
     DeviceQuirks,
     HardwareMetrics,
     Theme,
+    format_device_key,
     oriented_resolution,
     quirks_for,
 )
@@ -637,7 +638,7 @@ class App:
                 f"Unknown product: {vid:04x}:{pid:04x}"
             )
         cls = DEVICES[info.wire]
-        quirks = self._quirks_for(vid, pid)
+        quirks = self._quirks_for(vid, pid, unit)
         # Which transport a WIRE needs is the Platform's business — it owns the
         # Wire→opener table, so this no longer branches on Wire.SCSI.  What
         # remains is a FIRMWARE override: one revision accepts only HID output
@@ -679,7 +680,7 @@ class App:
         for info in infos:
             self._scanned[info.key] = info
 
-    def _quirks_for(self, vid: int, pid: int) -> DeviceQuirks:
+    def _quirks_for(self, vid: int, pid: int, unit: str = "") -> DeviceQuirks:
         """Resolve firmware quirks from the device's live fingerprint.
 
         Quirks are keyed on ``(vid, pid, bcdDevice)``, and bcdDevice comes off
@@ -702,7 +703,9 @@ class App:
         default, because a quirk lookup must never be the thing that breaks a
         connect.
         """
-        key = f"{vid:04x}:{pid:04x}"
+        # The scan caches a twin under ``vid:pid@unit`` (#287), so the lookup
+        # must build the SAME key or every twin misses and gets bcdDevice 0.
+        key = format_device_key(vid, pid, unit)
         if key not in self._scanned:
             log.debug("_quirks_for: %s not scanned — enumerating for its "
                       "fingerprint", key)
@@ -973,13 +976,17 @@ class App:
         self._coldplug_done = True
         _say("Discovering devices…")
         result = self.dispatch(DiscoverDevices())
-        for product in result.products:
+        # Connect each scanned UNIT, not each catalog product: two identical
+        # coolers are one product and two units, and only the scan's key
+        # carries the port that tells them apart (#287).  Iterating products
+        # attached the same model twice, unit-less, into one Device.
+        for info, product in zip(result.devices, result.products, strict=True):
             _say(f"Connecting {product.vendor} {product.product}…")
-            connect = self.dispatch(ConnectDevice(key=product.key))
+            connect = self.dispatch(ConnectDevice(key=info.key))
             if not connect.ok:
                 log.warning(
                     "discover_and_connect: connect %s failed: %s",
-                    product.key, connect.message,
+                    info.key, connect.message,
                 )
         log.info(
             "discover_and_connect: %d product(s) discovered, %d attached",
