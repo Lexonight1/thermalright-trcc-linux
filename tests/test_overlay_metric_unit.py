@@ -99,3 +99,26 @@ def test_hidden_unit_ignores_temp_unit() -> None:
         temp_unit="F",
     )
     assert rec.drawn[0][2] == "107"
+
+
+# ── GPUFAN with a duty percent only (#145) ─────────────────────────────
+
+
+def _fan_element(show_unit: bool) -> dict[str, Any]:
+    return {"type": "metric", "metric": "fan:gpu", "format": "{value:.0f} RPM",
+            "show_unit": show_unit, "x": 10, "y": 20, "color": "#ffffff", "size": 20}
+
+
+@pytest.mark.parametrize(("sensors", "show_unit", "text"), [
+    ({"fan:gpu": 999.0}, True, "999 RPM"),
+    ({"fan:gpu:percent": 30.0}, True, "30%"),       # never "30 RPM"
+    ({"fan:gpu:percent": 30.0}, False, "30"),
+])
+def test_gpu_fan_draws_the_unit_its_reading_has(
+        sensors: dict[str, float], show_unit: bool, text: str) -> None:
+    rec = _render(_fan_element(show_unit), sensors)
+    assert rec.drawn == [(10, 20, text, "#ffffff", 20, False, False)]
+
+
+def test_gpu_fan_with_no_reading_draws_nothing() -> None:
+    assert _render(_fan_element(True), {"cpu:temp": 40.0}).drawn == []

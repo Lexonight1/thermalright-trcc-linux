@@ -491,7 +491,8 @@ class Device(ABC, Generic[T]):
 #     cpu:temp  cpu:usage  cpu:freq  cpu:power
 #     gpu:primary:temp  gpu:0:temp  gpu:nvidia:0:temp
 #     memory:used  memory:percent
-#     fan:cpu:rpm  fan:gpu:percent
+#     fan:<key>:rpm  fan:<key>:percent
+#     fan:cpu  fan:gpu  fan:ssd  fan:sys2    (the four slots a theme shows)
 
 
 # A quantity method below that carries a BODY instead of ``@abstractmethod`` is
@@ -733,7 +734,19 @@ class GpuSource(IdentifiedSource, QuantitySource):
         """
 
     def fan(self) -> float | None:
-        """Fan speed 0-100.
+        """Fan duty 0-100 %.
+
+        ``None`` is the default and means this backend has no such
+        sensor.  A backend that can read it overrides this.
+        """
+
+    def fan_rpm(self) -> float | None:
+        """Fan speed in RPM -- what the Windows app shows as GPUFAN (#145).
+
+        A separate quantity from :meth:`fan`, not a unit flag on it: a driver
+        may expose either or both (NVML has RPM only from recent drivers,
+        amdgpu a PWM duty only on some boards), and a percent drawn beside
+        "RPM" is the bug this split exists to prevent.
 
         ``None`` is the default and means this backend has no such
         sensor.  A backend that can read it overrides this.
@@ -1076,32 +1089,14 @@ class SensorEnumerator(ABC):
             temp=value(f"gpu:{i}:temp", 0.0), usage=value(f"gpu:{i}:usage", 0.0),
             clock=value(f"gpu:{i}:clock", 0.0), power=value(f"gpu:{i}:power", 0.0),
         ) for i, g in enumerate(self.gpus())]
-        # Fan slots the DC can show (CPUFAN / GPUFAN / SSDFAN / FAN2).
-        # snapshot() populated every other field but never called self.fans(),
-        # so all four defaulted to 0.0 — every theme showed 0 RPM on every
-        # board (#145/#207).
-        #
-        # The GPU fan is the one slot we can identify with certainty: it belongs
-        # to the GPU the user already picked, so it FOLLOWS the GPU picker —
-        # ``primary_gpu().fan()`` (a duty-cycle percent, all the driver exposes;
-        # not RPM).  Linux has no ``fanN_label`` for the motherboard headers, so
-        # CPU/SSD/SYS2 fill from the device's still-spinning fans in discovery
-        # order (a 0-RPM header is an empty header, skipped).  The GPU's own
-        # hwmon fan (e.g. ``amdgpu``) is excluded from that pool so it is never
-        # double-counted as a case fan.
-        fan_gpu = value("gpu:primary:fan", 0.0)
-        # Same pool, same order, same "an empty header is 0 RPM" skip -- but
-        # read from the sample.  ``_store`` keeps a 0.0 (it omits only None),
-        # so the truthiness test still has to be applied here or a stopped
-        # header would take a fan slot.
-        pool = iter(
-            rpm for f in self.fans()
-            if "gpu" not in f.key.lower()
-            and (rpm := readings.get(f"fan:{f.key}:rpm"))
-        )
-        fan_cpu = next(pool, 0)
-        fan_ssd = next(pool, 0)
-        fan_sys2 = next(pool, 0)
+        # The four fan slots come from ``read_all`` like everything else --
+        # ``fan_slots`` computes them once, for the overlay AND this DTO.  A GPU
+        # fan with only a duty percent lands under ``fan:gpu:percent``, so here
+        # it is 0 RPM rather than a percent passed off as RPM (#145).
+        fan_cpu = value("fan:cpu", 0.0)
+        fan_gpu = value("fan:gpu", 0.0)
+        fan_ssd = value("fan:ssd", 0.0)
+        fan_sys2 = value("fan:sys2", 0.0)
         metrics = HardwareMetrics(
             cpu_temp=max((c.temp for c in cpus), default=0.0),
             cpu_percent=(sum(c.usage for c in cpus) / len(cpus)) if cpus else 0.0,
@@ -1137,6 +1132,37 @@ class SensorEnumerator(ABC):
             (fan_cpu, fan_gpu, fan_ssd, fan_sys2),
         )
         return metrics
+
+    def fan_slots(self, readings: dict[str, float]) -> dict[str, float]:
+        """The four fan slots a theme shows -- CPUFAN, GPUFAN, SSDFAN, FAN2.
+
+        ONE computation for both views.  It used to live inside
+        :meth:`snapshot` alone, so the GUI sidebar had values while every fan
+        element on the LCD asked ``read_all`` for ``fan:gpu`` and found no such
+        key: blank on every host, every tick (#145).
+
+        GPUFAN follows the GPU picker and, like the Windows app, is RPM.  A
+        driver that exposes only a duty cycle (old NVIDIA, some amdgpu boards)
+        fills ``fan:gpu:percent`` instead, which a renderer draws with "%" --
+        never a percent under an "RPM" label.  Linux has no ``fanN_label`` for
+        motherboard headers, so CPU/SSD/SYS2 fill from the still-spinning fans
+        in discovery order; a 0-RPM header is an empty header, and the GPU's
+        own hwmon fan is excluded so it is not counted twice.
+        """
+        slots: dict[str, float] = {}
+        if (rpm := readings.get("gpu:primary:fan_rpm")) is not None:
+            slots["fan:gpu"] = rpm
+        elif (duty := readings.get("gpu:primary:fan")) is not None:
+            slots["fan:gpu:percent"] = duty
+        pool = iter(
+            rpm for f in self.fans()
+            if "gpu" not in f.key.lower()
+            and (rpm := readings.get(f"fan:{f.key}:rpm"))
+        )
+        for key in ("fan:cpu", "fan:ssd", "fan:sys2"):
+            slots[key] = next(pool, 0.0)
+        frame_log.debug("fan_slots: %s", slots)
+        return slots
 
     # ── Flat dict view (for overlay lookups) ────────────────────────
     @abstractmethod

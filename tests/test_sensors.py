@@ -8,7 +8,7 @@ import pytest
 
 from trcc.adapters.sensors import hwmon
 from trcc.adapters.sensors.aggregator import BaselineSensors
-from trcc.core.models import MIN_REFRESH_INTERVAL_S
+from trcc.core.models import MIN_REFRESH_INTERVAL_S, percent_only
 from trcc.core.ports import CpuSource, DiskSource, DramSource, FanSource, GpuSource
 
 from .conftest import FakeCpu, FakeGpu, FakeMemory
@@ -196,16 +196,66 @@ def test_fans_absent_leaves_slots_zero() -> None:
 
 
 def test_gpu_fan_slot_follows_picked_gpu() -> None:
-    """The GPU fan slot reads the picked GPU's fan (a duty-cycle percent),
-    not a motherboard fan — it follows the GPU picker (#145/#207)."""
+    """GPUFAN is the picked GPU's fan in RPM, like the Windows app -- never a
+    motherboard fan, never its duty percent under "RPM" (#145/#207)."""
     s = BaselineSensors(
         cpu=FakeCpu(), memory=FakeMemory(), gpus=[FakeGpu(0)],
         fans=[FakeFan("fan1", 1200), FakeFan("fan2", 800)],
     )
     m = s.snapshot()
-    assert m.fan_gpu == 42.0                       # FakeGpu.fan() percent
+    assert m.fan_gpu == 1500.0                     # FakeGpu.fan_rpm()
     # motherboard fans fill cpu/ssd/sys2, never the gpu slot
     assert (m.fan_cpu, m.fan_ssd, m.fan_sys2) == (1200, 800, 0)
+
+
+def test_fan_slots_reach_the_overlay_readings() -> None:
+    """The LCD draws from ``read_all``, which had no fan slot keys at all: a
+    CPUFAN or GPUFAN element was blank on every host, every tick (#145)."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[FakeGpu(0)],
+        fans=[FakeFan("fan1", 1200), FakeFan("fan2", 800)],
+    )
+    r = s.read_all()
+    assert {k: r[k] for k in ("fan:cpu", "fan:gpu", "fan:ssd", "fan:sys2")} == {
+        "fan:cpu": 1200, "fan:gpu": 1500.0, "fan:ssd": 800, "fan:sys2": 0.0}
+    assert "fan:gpu:percent" not in r
+
+
+def test_gpu_fan_without_rpm_is_offered_as_a_percent() -> None:
+    """A driver with a duty cycle only (old NVIDIA, some amdgpu) fills the
+    percent slot; the RPM slot stays absent so nothing draws "42 RPM"."""
+    gpu = FakeGpu(0)
+    gpu.values["fan_rpm"] = None
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[gpu], fans=[])
+    r = s.read_all()
+    assert "fan:gpu" not in r
+    assert r["fan:gpu:percent"] == 42.0
+    assert s.snapshot().fan_gpu == 0.0
+
+
+@pytest.mark.parametrize(("readings", "expected"), [
+    ({"fan:gpu:percent": 30.0}, 30.0),                       # percent only
+    ({"fan:gpu": 999.0, "fan:gpu:percent": 30.0}, None),     # RPM wins
+    ({}, None),                                              # nothing
+])
+def test_percent_only(readings: dict[str, float], expected: float | None) -> None:
+    assert percent_only(readings, "fan:gpu") == expected
+
+
+def test_amdgpu_fan_reads_rpm_and_duty_separately(tmp_path: Path) -> None:
+    """``fan()`` used to return None whenever an RPM existed and the RPM was
+    never read at all; now each quantity comes from its own file."""
+    d = tmp_path / "hwmon3"
+    d.mkdir()
+    (d / "name").write_text("amdgpu\n")
+    (d / "fan1_input").write_text("1650")
+    (d / "pwm1").write_text("51")
+    gpu = hwmon.AmdGpu(0, hwmon.HwmonDevice(d), None)
+    assert gpu.fan_rpm() == 1650.0
+    assert gpu.fan() == 20.0                       # 51/255
+    (d / "fan1_input").unlink()
+    assert gpu.fan_rpm() is None
+    assert gpu.fan() == 20.0
 
 
 def test_gpu_hwmon_fan_excluded_from_device_pool() -> None:

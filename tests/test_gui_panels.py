@@ -409,6 +409,22 @@ def test_autostart_picker_shows_the_installed_target(
     assert box._autostart_target.currentData() == "qtgui"
 
 
+@pytest.mark.parametrize(("fan_gpu", "readings", "text"), [
+    (1000.0, {"fan:gpu": 1000.0}, "1000RPM"),
+    (0.0, {"fan:gpu:percent": 30.0}, "30.0%"),     # never "0.0RPM" or "30RPM"
+])
+def test_gui_gpufan_row_shows_the_unit_its_reading_has(
+        qtbot, fan_gpu: float, readings: dict[str, float], text: str) -> None:
+    """The ``ui/gui`` activity sidebar's GPUFAN row -- the #145 screenshot."""
+    from trcc.core.models import HardwareMetrics
+    from trcc.ui.gui.uc_activity_sidebar import SensorItem
+
+    item = SensorItem("fan", "gpu_fan", "GPUFAN", "RPM", "fan_gpu", "#ffffff")
+    qtbot.addWidget(item)
+    item.update_value(HardwareMetrics(fan_gpu=fan_gpu, readings=readings))
+    assert item.value_label.text() == text
+
+
 def test_activity_sidebar_emits_selection(gui_app: App) -> None:
     """Sidebar click → selected signal fires with the entry key.
 

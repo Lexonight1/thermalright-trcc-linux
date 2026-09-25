@@ -33,7 +33,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 1 | 3 |
-| [`GpuSource`](#gpusource) | 3 | 7 | 10 |
+| [`GpuSource`](#gpusource) | 3 | 8 | 10 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -46,7 +46,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`SensorEnumerator`](#sensorenumerator) | 11 | 6 | 1 |
+| [`SensorEnumerator`](#sensorenumerator) | 11 | 7 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 14 | 8 | 1 |
 | [`Platform`](#platform) | 25 | 0 | 8 |
@@ -434,7 +434,7 @@ key() -> str
 name() -> str
 ```
 
-**You inherit (7):** `clock` · `fan` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
+**You inherit (8):** `clock` · `fan` · `fan_rpm` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
 
 **Implementations (10):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
 
@@ -674,7 +674,7 @@ stop_polling() -> None
 unsupported() -> frozenset[str]
 ```
 
-**You inherit (6):** `preferred_disk` · `primary_gpu` · `set_interval` · `set_preferred_disk` · `set_preferred_gpu` · `snapshot`
+**You inherit (7):** `fan_slots` · `preferred_disk` · `primary_gpu` · `set_interval` · `set_preferred_disk` · `set_preferred_gpu` · `snapshot`
 
 **Implementations (1):** `BaselineSensors`
 

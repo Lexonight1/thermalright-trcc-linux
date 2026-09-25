@@ -6,7 +6,7 @@ the normalized keys overlays use:
     cpu:temp | cpu:usage | cpu:freq | cpu:power
     gpu:primary:temp | gpu:0:temp | gpu:nvidia:0:temp | gpu:amd:0:temp
     memory:used | memory:available | memory:total | memory:percent
-    fan:cpu:rpm | fan:gpu:percent | fan:<key>:rpm
+    fan:<key>:rpm | fan:<key>:percent | fan:{cpu,gpu,ssd,sys2}
     disk:temp | disk:read | disk:write | disk:activity
     net:up | net:down | net:total_up | net:total_down
     time:{hour,minute,second} | date:{year,month,day,dow}
@@ -137,6 +137,7 @@ def _gpu_reading_keys(prefix: str) -> list[tuple[str, str, str]]:
         (f"{prefix}:clock", "clock", "MHz"),
         (f"{prefix}:power", "power", "W"),
         (f"{prefix}:fan", "fan", "%"),
+        (f"{prefix}:fan_rpm", "fan", "RPM"),
         (f"{prefix}:vram_used", "gpu_memory", "MB"),
         (f"{prefix}:vram_total", "gpu_memory", "MB"),
     ]
@@ -588,6 +589,7 @@ class BaselineSensors(SensorEnumerator):
             clock = self._read(gpu.clock, f"gpu:{idx}:clock")
             power = self._read(gpu.power, f"gpu:{idx}:power")
             fan = self._read(gpu.fan, f"gpu:{idx}:fan")
+            fan_rpm = self._read(gpu.fan_rpm, f"gpu:{idx}:fan_rpm")
             vram_used = self._read(gpu.vram_used, f"gpu:{idx}:vram_used")
             vram_total = self._read(gpu.vram_total, f"gpu:{idx}:vram_total")
             for prefix in (f"gpu:{idx}", f"gpu:{gpu.key}"):
@@ -596,6 +598,7 @@ class BaselineSensors(SensorEnumerator):
                 _store(r, f"{prefix}:clock", clock)
                 _store(r, f"{prefix}:power", power)
                 _store(r, f"{prefix}:fan", fan)
+                _store(r, f"{prefix}:fan_rpm", fan_rpm)
                 _store(r, f"{prefix}:vram_used", vram_used)
                 _store(r, f"{prefix}:vram_total", vram_total)
             if gpu is primary:
@@ -604,6 +607,7 @@ class BaselineSensors(SensorEnumerator):
                 _store(r, "gpu:primary:clock", clock)
                 _store(r, "gpu:primary:power", power)
                 _store(r, "gpu:primary:fan", fan)
+                _store(r, "gpu:primary:fan_rpm", fan_rpm)
                 _store(r, "gpu:primary:vram_used", vram_used)
                 _store(r, "gpu:primary:vram_total", vram_total)
 
@@ -613,6 +617,7 @@ class BaselineSensors(SensorEnumerator):
                    self._read(fan.rpm, f"fan:{fan.key}:rpm"))
             _store(r, f"fan:{fan.key}:percent",
                    self._read(fan.percent, f"fan:{fan.key}:percent"))
+        r.update(self.fan_slots(r))
 
         # Disk temperature — one DiskSource per drive; the model carries a
         # single ``disk_temp`` slot, so collapse to the HOTTEST drive (the one

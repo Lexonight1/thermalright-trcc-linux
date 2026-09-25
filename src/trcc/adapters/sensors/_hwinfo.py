@@ -504,8 +504,10 @@ class HwinfoGpu(GpuSource):
         frame_log.debug("power")
         return self._find(TYPE_POWER, entry_name_contains="gpu power")
 
-    def fan(self) -> float | None:
-        frame_log.debug("fan")
+    def fan_rpm(self) -> float | None:
+        # TYPE_FAN is RPM.  No fan() here: which HWiNFO entry carries a GPU
+        # fan's duty percent is unverified, so none is claimed.
+        frame_log.debug("fan_rpm")
         return self._max(TYPE_FAN)
 
     def vram_used(self) -> float | None:

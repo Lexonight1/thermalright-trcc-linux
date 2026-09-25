@@ -12,10 +12,12 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ...core.models import (
+    METRICS,
     SENSOR_TO_OVERLAY,
     SENSORS,
     OverlayElementConfig,
     OverlayMode,
+    percent_only,
 )
 
 log = logging.getLogger(__name__)
@@ -90,16 +92,22 @@ class SensorItem(QFrame):
     def update_value(self, metrics):
         """Update displayed value from HardwareMetrics DTO."""
         log.debug("update_value")
-        if (value := getattr(metrics, self.metric_key, None)) is not None:
+        value = getattr(metrics, self.metric_key, None)
+        unit = self.unit
+        # A GPU fan with a duty percent only shows it as one (#145).
+        sensor_id = str(METRICS.get(self.metric_key, ""))
+        if (duty := percent_only(getattr(metrics, "readings", {}), sensor_id)) is not None:
+            value, unit = duty, "%"
+        if value is not None:
             if isinstance(value, float):
                 if value >= 1000:
-                    self.value_label.setText(f"{int(value)}{self.unit}")
+                    self.value_label.setText(f"{int(value)}{unit}")
                 else:
-                    self.value_label.setText(f"{value:.1f}{self.unit}")
+                    self.value_label.setText(f"{value:.1f}{unit}")
             else:
-                self.value_label.setText(f"{value}{self.unit}")
+                self.value_label.setText(f"{value}{unit}")
         else:
-            self.value_label.setText(f"--{self.unit}")
+            self.value_label.setText(f"--{unit}")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

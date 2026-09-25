@@ -261,7 +261,8 @@ class FakeGpu(GpuSource):
         self._vendor = vendor
         self.values = {
             "temp": 55.0, "usage": 30.0, "clock": 1800.0, "power": 180.0,
-            "fan": 42.0, "vram_used": 1024.0, "vram_total": 8192.0,
+            "fan": 42.0, "fan_rpm": 1500.0,
+            "vram_used": 1024.0, "vram_total": 8192.0,
         }
 
     @property
@@ -290,6 +291,9 @@ class FakeGpu(GpuSource):
 
     def fan(self) -> Optional[float]:
         return self.values["fan"]
+
+    def fan_rpm(self) -> Optional[float]:
+        return self.values["fan_rpm"]
 
     def vram_used(self) -> Optional[float]:
         return self.values["vram_used"]

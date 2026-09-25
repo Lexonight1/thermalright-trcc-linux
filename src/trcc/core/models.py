@@ -1145,6 +1145,21 @@ METRICS = MetricCatalog(
     aliases={(10000, 1): "fan:cpu"},
 )
 
+
+def percent_only(readings: Mapping[str, float], sensor_id: str) -> float | None:
+    """The duty percent of a fan slot that has no RPM, else ``None``.
+
+    GPUFAN is RPM, but a driver may expose only a duty cycle; the sensors then
+    fill ``fan:gpu:percent`` instead of ``fan:gpu`` (``SensorEnumerator.
+    fan_slots``).  Every face showing the slot asks this, so the one rule --
+    draw that value with "%", never under "RPM" (#145) -- lives once.
+    """
+    if sensor_id in readings:
+        return None
+    duty = readings.get(f"{sensor_id}:percent")
+    frame_log.debug("percent_only: %s -> %s", sensor_id, duty)
+    return duty
+
 #: Seconds between screencast frames — one cadence, so a headless cast moves
 #: at the same rate as one driven from the window.  Lives in core because both
 #: the driver (``services.screencast_driver``) and the Command that starts it

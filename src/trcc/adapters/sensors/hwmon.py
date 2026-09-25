@@ -451,12 +451,12 @@ class AmdGpu(GpuSource):
 
     def fan(self) -> float | None:
         frame_log.debug("fan")
+        return self._hwmon.read_pwm(1)
+
+    def fan_rpm(self) -> float | None:
+        frame_log.debug("fan_rpm")
         rpm = self._hwmon.read_fan_rpm(1)
-        if rpm is None:
-            # Try PWM duty cycle as a percentage fallback
-            return self._hwmon.read_pwm(1)
-        # Approximate %: amdgpu fan1_max isn't always exposed; skip rpm→%
-        return None
+        return float(rpm) if rpm is not None else None
 
     def vram_used(self) -> float | None:
         frame_log.debug("vram_used")

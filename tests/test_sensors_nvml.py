@@ -227,3 +227,30 @@ def test_nvml_init_state_logs_resolved_tuple(
 
     assert any("nvml_init_state:" in r.message and r.levelno == logging.DEBUG
                for r in caplog.records)
+
+
+# ── GPU fan: duty percent and RPM are separate quantities (#145) ──────
+
+
+class _FanPynvml:
+    """A pynvml exposing both fan calls; ``rpm=None`` is a pre-RPM driver."""
+
+    def __init__(self, rpm: int | None) -> None:
+        self._rpm = rpm
+
+    def nvmlDeviceGetFanSpeed(self, handle: object) -> int:
+        return 30
+
+    def nvmlDeviceGetFanSpeedRPM(self, handle: object) -> int:
+        if self._rpm is None:
+            raise _FakeNvmlError(13)    # NVML_ERROR_FUNCTION_NOT_FOUND
+        return self._rpm
+
+
+@pytest.mark.parametrize(("rpm", "expected"), [(1000, 1000.0), (None, None)])
+def test_nvidia_fan_rpm(monkeypatch: pytest.MonkeyPatch,
+                        rpm: int | None, expected: float | None) -> None:
+    monkeypatch.setattr(nvml, "pynvml", _FanPynvml(rpm))
+    gpu = nvml.NvidiaGpu(0, handle=object())
+    assert gpu.fan_rpm() == expected
+    assert gpu.fan() == 30.0

@@ -219,6 +219,21 @@ def test_lhm_discover_gpus_normalizes_vendor_keys() -> None:
     assert nvidia_gpu.is_discrete is True
 
 
+def test_lhm_gpu_fan_is_control_percent_and_fan_rpm() -> None:
+    """LHM's ``Fan`` type is RPM and ``Control`` the duty %; ``fan()`` used to
+    return the RPM under a 0-100 contract (#145)."""
+    ns = _FakeLhmNamespace([
+        _FakeLhmHardware(identifier="/gpu-nvidia/0", name="GeForce RTX 4090",
+                         hw_type="GpuNvidia", sensors=[
+                             _FakeLhmSensor(name="GPU Fan", sensor_type="Fan", value=1450.0),
+                             _FakeLhmSensor(name="GPU Fan", sensor_type="Control", value=38.0),
+                         ]),
+    ])
+    (gpu,) = discover_lhm_gpus(handle_factory=lambda: ns)
+    assert gpu.fan_rpm() == 1450.0
+    assert gpu.fan() == 38.0
+
+
 def test_lhm_discover_gpus_handles_missing_namespace() -> None:
     assert discover_lhm_gpus(handle_factory=lambda: None) == []
 

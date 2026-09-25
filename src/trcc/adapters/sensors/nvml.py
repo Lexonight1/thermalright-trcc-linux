@@ -286,6 +286,18 @@ class NvidiaGpu(GpuSource):
             log.debug("nvmlDeviceGetFanSpeed(%d) failed", self._index, exc_info=True)
             return None
 
+    def fan_rpm(self) -> float | None:
+        # Only recent drivers export nvmlDeviceGetFanSpeedRPM; older ones raise
+        # FunctionNotFound, and GPUFAN then falls back to the duty percent.
+        frame_log.debug("fan_rpm: idx=%d", self._index)
+        if pynvml is None:
+            return None
+        try:
+            return float(pynvml.nvmlDeviceGetFanSpeedRPM(self._handle))
+        except Exception:
+            log.debug("nvmlDeviceGetFanSpeedRPM(%d) failed", self._index, exc_info=True)
+            return None
+
     def vram_used(self) -> float | None:
         frame_log.debug("vram_used: idx=%d", self._index)
         if pynvml is None:

@@ -16,7 +16,7 @@ from typing import Any
 
 from ..core.errors import ThemeError
 from ..core.logs import per_frame
-from ..core.models import OverlayElement, ThemeDir, element_family
+from ..core.models import OverlayElement, ThemeDir, element_family, percent_only
 from ..core.ports import Renderer
 from . import _dc as Dc
 from ._clock import is_default_date_pattern, resolve_clock
@@ -375,6 +375,11 @@ class OverlayService:
     ) -> None:
         metric_id = str(element.get("metric", ""))
         value: float | None = sensors.get(metric_id)
+        fmt = str(element.get("format", "{value}"))
+        if value is None and (value := percent_only(sensors, metric_id)) is not None:
+            # A GPU fan whose driver gives a duty percent only: draw it as
+            # one, never as "30 RPM" (#145).
+            fmt = fmt.replace(" RPM", "%").replace("RPM", "%")
         if value is None:
             if metric_id in self._unsupported:
                 # Not a fault and not a slow tick: nothing on this host reads
@@ -395,7 +400,6 @@ class OverlayService:
                     list(sensors.keys())[:5],
                 )
             return
-        fmt = str(element.get("format", "{value}"))
         text = fmt.format(value=value)
         # ``show_unit`` mirrors the Windows unit-switch (myModeSub == 1): when
         # set, the unit glyph (°C / % / MHz / RPM) is drawn after the number;

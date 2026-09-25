@@ -70,6 +70,9 @@ class _StubGpu(GpuSource):
     def fan(self) -> float | None:
         return self._r.get("fan")
 
+    def fan_rpm(self) -> float | None:
+        return self._r.get("fan_rpm")
+
     def vram_used(self) -> float | None:
         return self._r.get("vram_used")
 
@@ -189,12 +192,13 @@ def test_gpu_chain_readings_cascade() -> None:
     chain = GpuSourceChain([
         _StubGpu(temp=65.0),
         _StubGpu(usage=88.0, power=320.0),
-        _StubGpu(fan=2400.0, vram_used=8192.0, vram_total=24576.0),
+        _StubGpu(fan=24.0, fan_rpm=2400.0, vram_used=8192.0, vram_total=24576.0),
     ])
     assert chain.temp() == 65.0
     assert chain.usage() == 88.0
     assert chain.power() == 320.0
-    assert chain.fan() == 2400.0
+    assert chain.fan() == 24.0
+    assert chain.fan_rpm() == 2400.0
     assert chain.vram_used() == 8192.0
     assert chain.vram_total() == 24576.0
 

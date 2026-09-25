@@ -171,6 +171,10 @@ class GpuSourceChain(GpuSource):
         frame_log.debug("GpuSourceChain.fan: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "fan")
 
+    def fan_rpm(self) -> float | None:
+        frame_log.debug("GpuSourceChain.fan_rpm: key=%s", self._sources[0].key)
+        return _first_not_none(self._sources, "fan_rpm")
+
     def vram_used(self) -> float | None:
         frame_log.debug("GpuSourceChain.vram_used: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "vram_used")

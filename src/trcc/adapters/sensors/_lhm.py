@@ -55,7 +55,8 @@ _TYPE_TEMP = "Temperature"
 _TYPE_LOAD = "Load"
 _TYPE_CLOCK = "Clock"
 _TYPE_POWER = "Power"
-_TYPE_FAN = "Fan"
+_TYPE_FAN = "Fan"                 # RPM
+_TYPE_CONTROL = "Control"         # fan duty, %
 _TYPE_SMALL_DATA = "SmallData"   # used for vram_used / vram_total in MB
 _TYPE_DATA = "Data"              # MemUsed/MemAvailable in GB
 
@@ -632,6 +633,13 @@ class LhmGpu(GpuSource):
 
     def fan(self) -> float | None:
         frame_log.debug("fan")
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
+            return None
+        return _max_value(_sensors_for(ns, row, _TYPE_CONTROL))
+
+    def fan_rpm(self) -> float | None:
+        frame_log.debug("fan_rpm")
         ns = self._handle_factory()
         if (row := self._row(ns)) is None:
             return None
