@@ -50,6 +50,7 @@ from .hwmon import (
     discover_dram_temp,
     discover_fans,
     discover_intel_gpus,
+    discover_nouveau_gpus,
     find_cpu_temp_device,
     scan_hwmon_devices,
 )
@@ -706,6 +707,7 @@ def build_linux_sensors() -> BaselineSensors:
     gpus.extend(discover_nvidia_gpus())
     gpus.extend(discover_amd_gpus(hwmon_devices))
     gpus.extend(discover_intel_gpus(hwmon_devices))
+    gpus.extend(discover_nouveau_gpus(hwmon_devices))
     fans = discover_fans(hwmon_devices)
     disks = discover_disk_temp(hwmon_devices)
     dram = discover_dram_temp(hwmon_devices)

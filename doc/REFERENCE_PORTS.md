@@ -21,7 +21,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`UserInterface`](#userinterface) | 1 | 7 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 1 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
-| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 17 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 18 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
@@ -32,8 +32,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Device`](#device) | 3 | 14 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
-| [`FanSource`](#fansource) | 3 | 1 | 3 |
-| [`GpuSource`](#gpusource) | 3 | 8 | 10 |
+| [`FanSource`](#fansource) | 3 | 2 | 3 |
+| [`GpuSource`](#gpusource) | 3 | 8 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -232,7 +232,7 @@ key() -> str
 name() -> str
 ```
 
-**Implementations (17):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
+**Implementations (18):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
 
 ## SingleFileTheme
 
@@ -416,7 +416,7 @@ name() -> str
 rpm() -> int | None
 ```
 
-**You inherit (1):** `percent`
+**You inherit (2):** `on_gpu` · `percent`
 
 **Implementations (3):** `HwmonFan` · `SmcFan` · `SysctlFan`
 
@@ -436,7 +436,7 @@ name() -> str
 
 **You inherit (8):** `clock` · `fan` · `fan_rpm` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
 
-**Implementations (10):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
+**Implementations (11):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
 
 ## HotplugMonitor
 

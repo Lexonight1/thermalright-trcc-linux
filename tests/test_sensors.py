@@ -258,18 +258,60 @@ def test_amdgpu_fan_reads_rpm_and_duty_separately(tmp_path: Path) -> None:
     assert gpu.fan() == 20.0
 
 
-def test_gpu_hwmon_fan_excluded_from_device_pool() -> None:
-    """A GPU's own hwmon fan (amdgpu) is never double-counted as a case fan:
-    the gpu slot comes from the GPU source, so 'gpu'-keyed headers are skipped
-    from the CPU/SSD/SYS2 pool."""
-    s = BaselineSensors(
-        cpu=FakeCpu(), memory=FakeMemory(), gpus=[],
-        fans=[FakeFan("hwmon:amdgpu:fan1", 1500),
-              FakeFan("hwmon:nct6798:fan1", 1000)],
-    )
+def _fan_node(root: Path, name: str, driver: str, rpm: int) -> hwmon.HwmonDevice:
+    d = root / name
+    d.mkdir()
+    (d / "name").write_text(f"{driver}\n")
+    (d / "fan1_input").write_text(str(rpm))
+    return hwmon.HwmonDevice(d)
+
+
+def test_gpu_hwmon_fans_excluded_from_device_pool(tmp_path: Path) -> None:
+    """A graphics card's own fan is never counted as a case fan.  The pool
+    skipped keys containing "gpu", which caught amdgpu and let nouveau's and
+    Intel Arc's (xe) fans fill CPUFAN; now each fan declares ``on_gpu``."""
+    devices = [
+        _fan_node(tmp_path, "hwmon1", "amdgpu", 1500),
+        _fan_node(tmp_path, "hwmon2", "nouveau", 1400),
+        _fan_node(tmp_path, "hwmon3", "xe", 1300),
+        _fan_node(tmp_path, "hwmon4", "nct6798", 1000),
+    ]
+    fans = hwmon.discover_fans(devices)
+    assert [f.on_gpu for f in fans] == [True, True, True, False]
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=fans)
     m = s.snapshot()
-    # amdgpu header skipped; only the nct header fills the first device slot.
     assert (m.fan_cpu, m.fan_ssd, m.fan_sys2) == (1000, 0, 0)
+
+
+def _nouveau_node(root: Path, **files: str) -> hwmon.HwmonDevice:
+    d = root / "hwmon5"
+    d.mkdir()
+    (d / "name").write_text("nouveau\n")
+    for name, value in files.items():
+        (d / name).write_text(value)
+    return hwmon.HwmonDevice(d)
+
+
+def test_nouveau_gpu_reads_the_drivers_own_units(tmp_path: Path) -> None:
+    """nouveau_hwmon.c: temp1 m°C, fan1 RPM, pwm1 ALREADY a percent (nvkm
+    clamps to 0-100 -- the shared /255 reader would show 30% as 12%), power1
+    µW in ``power1_input`` (there is no ``power1_average``)."""
+    node = _nouveau_node(tmp_path, temp1_input="61000", fan1_input="1320",
+                         pwm1="30", power1_input="87500000")
+    (gpu,) = hwmon.discover_nouveau_gpus([node])
+    assert (gpu.key, gpu.is_discrete) == ("nouveau:0", True)
+    assert (gpu.temp(), gpu.fan_rpm(), gpu.fan(), gpu.power()) == (61.0, 1320.0, 30.0, 87.5)
+
+
+def test_nouveau_gpu_declines_what_nouveau_never_exposes(tmp_path: Path) -> None:
+    """No usage, clock or VRAM -- declared, so ``unsupported()`` names them
+    rather than a 0 being shown; missing files read as None, never raise."""
+    (gpu,) = hwmon.discover_nouveau_gpus([_nouveau_node(tmp_path, temp1_input="50000")])
+    assert [q for q in ("usage", "clock", "vram_used", "vram_total") if gpu.provides(q)] == []
+    assert (gpu.temp(), gpu.fan_rpm(), gpu.fan(), gpu.power()) == (50.0, None, None, None)
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[gpu], fans=[])
+    assert {"gpu:primary:usage", "gpu:nouveau:0:clock"} <= s.unsupported()
+    assert s.read_all()["gpu:primary:temp"] == 50.0
 
 
 # ── Disk temperature — DiskSource → disk:temp → snapshot.disk_temp ───
@@ -1396,3 +1438,18 @@ def test_a_node_with_no_inputs_anywhere_is_wrapped_as_before(tmp_path: Path) -> 
     node.mkdir()
     dev = hwmon.HwmonDevice(node)
     assert (dev.attrs, dev.driver) == (node, "hwmon3")
+
+
+def test_build_linux_sensors_offers_a_nouveau_gpu(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The factory wires nouveau beside amdgpu and i915/xe.  Before, no backend
+    read it AND the board reader skipped the chip as GPU-owned, so a nouveau
+    card's temperature was shown nowhere."""
+    from trcc.adapters.sensors import aggregator
+
+    node = _nouveau_node(tmp_path, temp1_input="58000")
+    monkeypatch.setattr(aggregator, "scan_hwmon_devices", lambda: [node])
+    monkeypatch.setattr(aggregator, "discover_nvidia_gpus", lambda: [])
+    s = aggregator.build_linux_sensors()
+    assert [g.key for g in s.gpus()] == ["nouveau:0"]
+    assert s.read_all()["gpu:primary:temp"] == 58.0

@@ -781,6 +781,18 @@ class FanSource(IdentifiedSource, QuantitySource):
         sensor.  A backend that can read it overrides this.
         """
 
+    @property
+    def on_gpu(self) -> bool:
+        """True for a graphics card's own fan, which a GpuSource already reads.
+
+        Declared, not guessed from the key: the pool used to skip keys
+        containing "gpu", which caught ``hwmon:amdgpu:fan1`` and missed
+        ``hwmon:nouveau:fan1`` and ``hwmon:xe:fan1`` -- so those cards' fans
+        filled the CPUFAN slot.  False unless a backend knows better.
+        """
+        frame_log.debug("FanSource.on_gpu: %s -> False", self.key)
+        return False
+
 
 class DiskSource(IdentifiedSource):
     """One storage device's thermal sensor (NVMe / SATA SSD / HDD).
@@ -1156,7 +1168,7 @@ class SensorEnumerator(ABC):
             slots["fan:gpu:percent"] = duty
         pool = iter(
             rpm for f in self.fans()
-            if "gpu" not in f.key.lower()
+            if not f.on_gpu
             and (rpm := readings.get(f"fan:{f.key}:rpm"))
         )
         for key in ("fan:cpu", "fan:ssd", "fan:sys2"):

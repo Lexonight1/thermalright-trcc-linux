@@ -45,7 +45,9 @@ _RAPL_REDISCOVER_INTERVAL_S = 30.0
 
 _CPU_DRIVERS = ("coretemp", "k10temp", "zenpower")
 _AMD_DRIVER = "amdgpu"
+_NOUVEAU_DRIVER = "nouveau"
 _INTEL_DRIVERS = ("i915", "xe")
+_GPU_DRIVERS = (_AMD_DRIVER, _NOUVEAU_DRIVER, *_INTEL_DRIVERS)
 
 # Label-preference order for GPU package temperature.  A fixed
 # read_temp(1) assumes the die sensor lives at temp1_input, but that
@@ -528,6 +530,68 @@ class IntelGpu(GpuSource):
         frame_log.debug("fan")
         return self._hwmon.read_pwm(1) if self._hwmon is not None else None
 
+class NouveauGpu(GpuSource):
+    """NVIDIA on the open-source nouveau driver -- hwmon only.
+
+    Units are the driver's own (``drivers/gpu/drm/nouveau/nouveau_hwmon.c``):
+    temp1 in millidegrees, fan1 in RPM, **pwm1 already a percent** -- nvkm
+    clamps the duty to 0-100, so the shared 0-255 ``read_pwm`` would show 30%
+    as 12% -- and ``power1_input`` in µW, with no ``power1_average``.  Usage,
+    clock and VRAM are never exposed, so they stay un-overridden and
+    ``unsupported()`` names them.  GSP boards (Turing and later) register no
+    hwmon node at all today, so in practice this reads pre-Turing cards.
+    """
+
+    def __init__(self, index: int, hwmon: HwmonDevice) -> None:
+        log.debug("NouveauGpu.__init__: index=%s hwmon=%s", index, hwmon)
+        self._index = index
+        self._hwmon = hwmon
+
+    @property
+    def key(self) -> str:
+        frame_log.debug("NouveauGpu.key")
+        return f"nouveau:{self._index}"
+
+    @property
+    def name(self) -> str:
+        frame_log.debug("NouveauGpu.name")
+        return f"NVIDIA GPU {self._index} (nouveau)"
+
+    @property
+    def is_discrete(self) -> bool:
+        frame_log.debug("NouveauGpu.is_discrete")
+        return True
+
+    def temp(self) -> float | None:
+        frame_log.debug("NouveauGpu.temp")
+        return self._hwmon.read_temp(1)
+
+    def power(self) -> float | None:
+        frame_log.debug("NouveauGpu.power")
+        uw = _read_int(self._hwmon.attrs / "power1_input")
+        return uw / 1_000_000.0 if uw is not None else None
+
+    def fan(self) -> float | None:
+        frame_log.debug("NouveauGpu.fan")
+        duty = _read_int(self._hwmon.attrs / "pwm1")
+        return float(duty) if duty is not None else None
+
+    def fan_rpm(self) -> float | None:
+        frame_log.debug("NouveauGpu.fan_rpm")
+        rpm = self._hwmon.read_fan_rpm(1)
+        return float(rpm) if rpm is not None else None
+
+
+def discover_nouveau_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
+    """One NouveauGpu per ``nouveau`` hwmon node."""
+    gpus: list[GpuSource] = [
+        NouveauGpu(i, dev)
+        for i, dev in enumerate(d for d in devices if d.driver == _NOUVEAU_DRIVER)
+    ]
+    log.info("discover_nouveau_gpus: devices=%d -> %d gpu(s)", len(devices), len(gpus))
+    return gpus
+
+
 def discover_amd_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
     """Find amdgpu hwmon entries, link them to /sys/class/drm cards."""
     log.info("discover_amd_gpus: devices=%d", len(devices))
@@ -590,6 +654,11 @@ class HwmonFan(FanSource):
     def percent(self) -> float | None:
         frame_log.debug("percent")
         return self._hwmon.read_pwm(self._idx)
+
+    @property
+    def on_gpu(self) -> bool:
+        frame_log.debug("on_gpu: %s", self._hwmon.driver)
+        return self._hwmon.driver in _GPU_DRIVERS
 
 
 def discover_fans(devices: list[HwmonDevice]) -> list[FanSource]:
