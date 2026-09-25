@@ -1598,3 +1598,37 @@ def test_the_note_is_silent_in_daemon_mode(monkeypatch, capsys) -> None:
     _ctx.warn_blanking_panels()
     proxy.dispatch.assert_not_called()
     assert capsys.readouterr().err == ""
+
+
+def test_display_play_leaves_the_video_to_the_daemon(monkeypatch, cli_runner) -> None:
+    """Under TRCC_DAEMON=1 the daemon's VideoLoop ticks; ticking here too would
+    advance every frame twice (#249)."""
+    from functools import lru_cache
+    from unittest.mock import MagicMock
+
+    from trcc.proxy import AppProxy
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    proxy = MagicMock(spec=AppProxy)
+    sent: list[str] = []
+
+    def dispatch(cmd):
+        sent.append(type(cmd).__name__)
+        return MagicMock(ok=True, message="ok")
+
+    proxy.dispatch.side_effect = dispatch
+
+    @lru_cache(maxsize=1)
+    def fake_get_app():
+        return proxy
+
+    monkeypatch.setattr(_ctx, "get_app", fake_get_app)
+    import trcc.ui.cli.display as display_mod
+    monkeypatch.setattr(display_mod, "get_app", fake_get_app)
+
+    result = cli_runner.invoke(cli, ["display", "play", "0402:3922"])
+
+    assert result.exit_code == 0, result.output
+    assert "daemon is playing 0402:3922" in result.output
+    assert "TickDisplay" not in sent

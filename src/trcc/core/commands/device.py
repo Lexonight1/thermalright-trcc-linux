@@ -31,6 +31,7 @@ from ..events import (
     ScreencastStarted,
     ScreencastStopped,
     SplitModeChanged,
+    VideoAdvanced,
     VideoStarted,
     VideoStopped,
 )
@@ -855,6 +856,10 @@ class TickDisplay(Command[RenderResult]):
             playback.interval_ms, playback.paused,
         )
         result = app.dispatch(RenderAndSend(key=self.key))
+        app.events.publish(VideoAdvanced(
+            key=self.key, cursor=playback.cursor,
+            frame_count=playback.frame_count,
+        ))
         return replace(
             result,
             cursor=playback.cursor,

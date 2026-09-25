@@ -29,6 +29,7 @@ from ....core.commands import (
     ToggleVideo,
     VideoStatus,
 )
+from ....core.events import VideoAdvanced
 from ....core.models import MEDIA, MediaKind
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -97,6 +98,9 @@ class DisplayPanel(BasePanel):
         self._seek = QSlider(Qt.Orientation.Horizontal, self)
         self._seek.setEnabled(False)
         self._seek.sliderReleased.connect(self._on_seek_released)
+        # The core ticks the video (#249) and announces each frame, so the
+        # slider can follow it live instead of only on a manual refresh.
+        self._bus.video_advanced.connect(self._on_video_advanced)
         self._seek_label = QLabel("no video", self)
         self._refresh_video_btn = QPushButton("↻", self)
         self._refresh_video_btn.setToolTip("Refresh playback position")
@@ -237,7 +241,23 @@ class DisplayPanel(BasePanel):
         r = self.dispatch(VideoStatus(key=key))
         log.debug("_refresh_video_status: key=%s playing=%s cursor=%s/%s",
                   key, r.playing, r.cursor, r.frame_count)
-        total = r.frame_count or 0
+        self._show_position(r.cursor or 0, r.frame_count or 0)
+
+    def _on_video_advanced(self, event: VideoAdvanced) -> None:
+        """Follow the selected device's video frame by frame (per-frame: DEBUG).
+
+        Left alone while the user drags, or the thumb would be torn out of
+        their hand thirty times a second.
+        """
+        if event.key != self._picker.current_key() or self._seek.isSliderDown():
+            return
+        log.debug("_on_video_advanced: %s %d/%d",
+                  event.key, event.cursor, event.frame_count)
+        self._show_position(event.cursor, event.frame_count)
+
+    def _show_position(self, cursor: int, total: int) -> None:
+        """Put a playback position on the slider; ``total == 0`` is no video."""
+        log.debug("_show_position: %d/%d", cursor, total)
         if not total:
             self._seek.setEnabled(False)
             self._seek_label.setText("no video")
@@ -245,9 +265,9 @@ class DisplayPanel(BasePanel):
         self._seek.setEnabled(True)
         self._seek.blockSignals(True)
         self._seek.setRange(0, max(0, total - 1))
-        self._seek.setValue(r.cursor or 0)
+        self._seek.setValue(cursor)
         self._seek.blockSignals(False)
-        self._seek_label.setText(f"{(r.cursor or 0) + 1} / {total}")
+        self._seek_label.setText(f"{cursor + 1} / {total}")
 
     def _on_seek_released(self) -> None:
         """Jump on RELEASE, not on every drag step.

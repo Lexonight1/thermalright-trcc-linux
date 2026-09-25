@@ -84,6 +84,7 @@ from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
+from .services.video_loop import VideoLoop
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -270,6 +271,8 @@ class App:
         # slow sensor broadcast — breathing/colour-cycle/rainbow/carousel need
         # the C#-cadence to actually animate.  Same opt-in start as metrics_loop.
         self.led_animation_loop = LedAnimationLoop(self)
+        # The one video ticker (#249) — see services/video_loop.py.
+        self.video_loop = VideoLoop(self)
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -849,6 +852,7 @@ class App:
         self.start_hotplug()
         self.metrics_loop.start()
         self.led_animation_loop.start()
+        self.video_loop.start()
 
     def close(self) -> None:
         """Disconnect every attached device + stop background threads.
@@ -862,6 +866,7 @@ class App:
         log.info("close: devices=%d", len(self.devices))
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
+        self.video_loop.stop()
         self.stop_hotplug()
         # Blank every panel before releasing it so it goes dark on shutdown
         # instead of holding its last frame lit (#143).  Best-effort: the

@@ -149,6 +149,20 @@ class DataInstalled(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class VideoAdvanced(Event):
+    """Published by ``TickDisplay`` after a video moves to its next frame.
+
+    The position a UI shows (the progress bar) used to come back as the
+    RESULT of the UI's own tick.  The core ticks now (``VideoLoop``, #249), so
+    the position is announced instead — by the Command, whoever dispatched it.
+    Per-frame, like ``FrameSent``.
+    """
+    key: str
+    cursor: int
+    frame_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class VideoStarted(Event):
     """Published by ``PlayVideo`` after a playback is loaded.
 

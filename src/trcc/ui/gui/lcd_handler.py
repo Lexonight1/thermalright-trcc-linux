@@ -140,21 +140,16 @@ class LCDHandler(BaseHandler):
         self._pixmap_cache: dict[int, tuple[int, QPixmap]] = {}
         self._last_render_id: int | None = None
 
-        # Animation observability: log one INFO line at first tick (proves
-        # the QTimer fires) and on each silent-skip TRANSITION (so we see
-        # "device disconnected" once, not every 66 ms).  Per-tick stays
-        # DEBUG — flipping these on info-level when the timer starts is
-        # how we tell a "didn't fire" bug apart from a "fired but skipped"
-        # bug without reading the code.
-        self._animation_first_tick_logged: bool = False
-        self._animation_last_skip_reason: str | None = None
+        # Whether this device's video is playing (not paused).  The core's
+        # VideoLoop does the ticking (#249); this flag is the handler's view
+        # of it — "video owns the wire" and the preview's fast mode read it.
+        self._video_playing: bool = False
 
         # Thread-safe notifier for background data extraction → UI refresh
         self._data_notifier = _DataReadyNotifier()
         self._data_notifier.ready.connect(self._on_data_ready)
 
         # Timers (parent factory + signal wiring; lifetime owned here)
-        self._animation_timer: QTimer = make_timer(self._on_video_tick)
         self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
         self._flash_timer: QTimer = make_timer(
             self._on_flash_timeout, single_shot=True,
@@ -754,9 +749,7 @@ class LCDHandler(BaseHandler):
             "on_video_started: %s frames=%d interval=%dms",
             event.path, event.frame_count, event.interval_ms,
         )
-        self._start_animation_timer(
-            event.interval_ms, reason="video-started",
-        )
+        self._set_video_playing(True, reason="video-started")
         if self._pm.ui_active:
             self._w['preview'].set_playing(True)
             self._w['preview'].show_video_controls(True)
@@ -771,7 +764,7 @@ class LCDHandler(BaseHandler):
         if event.key != self._device_key:
             return
         self.log.info("on_video_stopped: device=%s", self._device_key)
-        self._stop_animation_timer(reason="video-stopped")
+        self._set_video_playing(False, reason="video-stopped")
         if self._pm.ui_active:
             self._w['preview'].set_playing(False)
             self._w['preview'].show_video_controls(False)
@@ -796,15 +789,10 @@ class LCDHandler(BaseHandler):
         self.log.info("play_pause: → playing=%s", playing)
         self._w['preview'].set_playing(playing)
         # Pause is a transient toggle on an EXISTING playback — no
-        # VideoStarted / VideoStopped is published.  Drive the Qt timer
-        # directly here through the same start/stop helpers so the
-        # observability hooks fire (entry log + first-tick reset).
-        if playing:
-            self._start_animation_timer(
-                self._video_interval_ms(), reason="play_pause-resume",
-            )
-        else:
-            self._stop_animation_timer(reason="play_pause-pause")
+        # VideoStarted / VideoStopped is published.  The core's VideoLoop
+        # already skips a paused playback; this keeps the handler's view in
+        # step, so metric refreshes redraw the paused frame.
+        self._set_video_playing(playing, reason="play_pause")
 
     def stop_video(self) -> None:
         self.log.info("stop_video: device=%s", self._device_key)
@@ -834,134 +822,30 @@ class LCDHandler(BaseHandler):
         self._app.dispatch(SetFitMode(key=self._device_key, mode=mode))
         # Re-render preview on the next FrameSent / tick
 
-    def _video_interval_ms(self) -> int:
-        """Return ms-per-frame for the active playback, 33 as fallback.
-
-        Only used by ``play_pause`` to resume an EXISTING paused
-        playback — load-new-video paths get the interval from the
-        ``VideoStarted`` event payload instead (DIP: don't query the
-        service if the event already carries the answer).
-        """
-        return self._pm.video_interval_ms(self._video_status().fps)
-
-    def _start_animation_timer(self, interval_ms: int, reason: str) -> None:
-        """Single entry point for starting the per-frame video timer.
-
-        Phase 4 collapses the previous three call sites (cloud theme
-        select, restore-last-theme, inactive-restore) onto a single
-        VideoStarted observer that routes here.  Centralising the start
-        site is the SRP win — it also lets the first-tick diagnostic be
-        reset in exactly one place.
-        """
-        self._animation_first_tick_logged = False
-        self._animation_last_skip_reason = None
-        self.log.info(
-            "_start_animation_timer: %dms (reason=%s) device=%s",
-            interval_ms, reason, self._device_key,
-        )
-        self._animation_timer.start(max(1, interval_ms))
-
-    def _stop_animation_timer(self, reason: str) -> None:
-        """Single entry point for stopping the per-frame video timer.
-
-        Idempotent: no log when already stopped.  Phase 4 routes the
-        VideoStopped observer here.
-        """
-        if not self._animation_timer.isActive():
+    def _set_video_playing(self, playing: bool, reason: str) -> None:
+        """Single entry point for the handler's "video is playing" view."""
+        if playing == self._video_playing:
             return
-        self.log.info(
-            "_stop_animation_timer: reason=%s device=%s",
-            reason, self._device_key,
-        )
-        self._animation_timer.stop()
-        self._animation_first_tick_logged = False
-        self._animation_last_skip_reason = None
+        self.log.info("_set_video_playing: %s -> %s (reason=%s) device=%s",
+                      self._video_playing, playing, reason, self._device_key)
+        self._video_playing = playing
 
-    def _on_video_tick(self) -> None:
-        """Timer callback: advance one video frame.
+    def on_video_advanced(self, event: Any) -> None:
+        """A frame advanced (``VideoAdvanced``) — move the progress bar.
 
-        next/ owns playback in :class:`MediaService`; ``RenderAndSend``
-        builds + encodes + sends the current cursor's frame.  Preview
-        widget refreshes via the ``FrameSent`` → ``rebuild_preview``
-        bridge — no per-tick image plumbing here.
-
-        Observability rule (CLAUDE.md "Logging coverage is mandatory"):
-        first tick of every animation logs at INFO; subsequent ticks at
-        DEBUG.  Silent-skip branches log at INFO on STATE TRANSITION
-        only — same skip reason in a row stays DEBUG so a disconnected
-        device doesn't spam 15 lines/s.
+        Per-frame, so DEBUG.  The core's VideoLoop does the ticking (#249);
+        the position used to come back as the result of this handler's own
+        timer.  MULTI-DISPLAY GATE — load-bearing: every LCDHandler shares ONE
+        preview/progress widget set, so only the active one may write to it.
         """
-        from ...core.commands import TickDisplay
-
-        if not self._animation_first_tick_logged:
-            self.log.info(
-                "_on_video_tick: first tick fired for %s",
-                self._device_key,
-            )
-            self._animation_first_tick_logged = True
-
-        # ONE Command does advance + render + send.  The cursor deliberately
-        # advances before the connected-check inside the Command, preserving
-        # the old order: an unplugged device's video keeps running so it
-        # resumes in sync rather than frozen where it dropped.
-        result = self._app.dispatch(TickDisplay(key=self._device_key))
-
-        if result.frame_count is None or result.cursor is None:
-            # Animation timer is firing but the playback was cleared —
-            # WARN once (state-transition); the timer should have been
-            # stopped when the playback was cleared.  TickDisplay sets the
-            # video fields as a set, so either being None means "no playback";
-            # testing both is what lets the type checker prove it too.
-            self.log.warning(
-                "_on_video_tick: timer firing but device %s has no playback — "
-                "stopping animation timer",
-                self._device_key,
-            )
-            self._stop_animation_timer(reason="playback-cleared")
+        if event.key != self._device_key:
             return
-
-        # MULTI-DISPLAY GATE — load-bearing.  Every LCDHandler shares ONE
-        # preview/progress widget set, so only the handler that owns the panel
-        # may write to it.  The DISPATCH above is deliberately NOT gated: a
-        # background device must keep ticking or its LCD freezes while another
-        # device owns the GUI (see ``set_inactive``).
+        self.log.debug("on_video_advanced: %d/%d", event.cursor, event.frame_count)
         if self._pm.ui_active:
-            percent = self._pm.progress_fraction(
-                result.cursor, result.frame_count,
-            )
+            percent = self._pm.progress_fraction(event.cursor, event.frame_count)
             self._w['preview'].set_progress(
-                percent, result.cursor, result.frame_count,
+                percent, event.cursor, event.frame_count,
             )
-
-        # ``connected is False`` — never falsiness: ``None`` means the Command
-        # failed before it looked the device up, which is not a disconnect.
-        if result.connected is False:
-            self._log_tick_skip(
-                reason="device-not-connected",
-                detail=f"device {self._device_key} not connected — skip send",
-            )
-            return
-
-        # Cleared on the happy path so a subsequent disconnect re-logs.
-        self._animation_last_skip_reason = None
-
-        if not result.ok:
-            # Render failure during animation playback is a real user-
-            # visible bug (frozen / stuttering LCD).  WARN, not DEBUG.
-            self.log.warning(
-                "_on_video_tick: render failed cursor=%d/%d — %s",
-                result.cursor, result.frame_count, result.message,
-            )
-
-    def _log_tick_skip(self, *, reason: str, detail: str) -> None:
-        """Log a per-tick skip at INFO on first occurrence of *reason*,
-        DEBUG on repeats — preserves the diagnostic value while keeping
-        per-frame noise out of the log."""
-        if reason != self._animation_last_skip_reason:
-            self.log.info("_on_video_tick: %s", detail)
-            self._animation_last_skip_reason = reason
-        else:
-            self.log.debug("_on_video_tick: %s", detail)
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 
@@ -1020,9 +904,7 @@ class LCDHandler(BaseHandler):
             self.log.debug("handle_frame: None surface — skip")
             return
         if self._pm.ui_active:
-            self._w['preview'].set_image(
-                image, fast=self._animation_timer.isActive(),
-            )
+            self._w['preview'].set_image(image, fast=self._video_playing)
         else:
             self.log.debug(
                 "handle_frame: dropped (ui_active=False, %s)", self._device_key,
@@ -1077,7 +959,7 @@ class LCDHandler(BaseHandler):
                 "rebuild_preview: no surface built (theme/device pre-load?)",
             )
             return
-        self._w['preview'].set_image(image, fast=self._animation_timer.isActive())
+        self._w['preview'].set_image(image, fast=self._video_playing)
 
     def update_preview(self, image: Any) -> None:
         """Display a frame that was already rendered and sent to the device."""
@@ -1229,8 +1111,8 @@ class LCDHandler(BaseHandler):
         """Handle background display toggle.
 
         Enabling "background" mode means "show the theme's static bg,
-        not the override video".  StopVideo handles the timer through
-        VideoStopped — no direct ``_animation_timer.stop()`` here.
+        not the override video".  StopVideo announces VideoStopped, which
+        clears the handler's playing flag — nothing to stop here.
         """
         self.log.info("on_background_toggle: enabled=%s device=%s",
                       enabled, self._device_key)
@@ -1389,14 +1271,14 @@ class LCDHandler(BaseHandler):
     def _render_and_send(self) -> None:
         """Render overlay + send to LCD, update preview.
 
-        Skipped while video playback owns the wire (the animation timer
-        loop dispatches its own ``RenderAndSend``).  Preview refresh
-        happens via the ``FrameSent`` → ``rebuild_preview`` bridge.
+        Skipped while video playback owns the wire (the core's VideoLoop
+        dispatches its own ``TickDisplay``).  Preview refresh happens via the
+        ``FrameSent`` → ``rebuild_preview`` bridge.
         """
         from ...core.commands import RenderAndSend
-        if self._animation_timer.isActive():
+        if self._video_playing:
             self.log.debug(
-                "_render_and_send: skipped — animation timer owns the wire",
+                "_render_and_send: skipped — video playback owns the wire",
             )
             return
         # One dispatch answers both questions.  The pre-check this replaces
@@ -1645,7 +1527,7 @@ class LCDHandler(BaseHandler):
 
     def deactivate(self) -> None:
         """Full pause — stop all timers (called from cleanup)."""
-        self._animation_timer.stop()
+        self._set_video_playing(False, reason="deactivate")
         self._slideshow_timer.stop()
         self._flash_timer.stop()
 

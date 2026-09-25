@@ -85,13 +85,11 @@ class BasePanel(QFrame):
     # ZERO callers and there were no show/hide hooks in the skin, while
     # ``ui/gui`` has gated on visibility all along (``trcc_app.py:342``).
     #
-    # This lives on the PANEL, not on ``PeriodicUpdater``, although the
-    # updater looks like the DRYer home: ``app.py:181`` holds
-    # ``self._video: dict[str, PeriodicUpdater]`` and video playback drives
-    # the PHYSICAL DEVICE.  Gating the updater itself would freeze a playing
+    # This lives on the PANEL, not on ``PeriodicUpdater``: an updater may
+    # drive the PHYSICAL DEVICE, and gating it on visibility would freeze a
     # panel whenever the window is hidden — worse than the waste it fixes.
-    # Those updaters are owned by the window, so a panel-level hook cannot
-    # reach them by construction.
+    # (Video was the case in point until 2026-09-25; the core's VideoLoop
+    # drives it now, #249, so no window-owned updater touches the wire.)
 
     def showEvent(self, event: object) -> None:
         log.debug("showEvent: %s back on screen", type(self).__name__)

@@ -127,7 +127,6 @@ def _make_window(*, divert: bool):
     win = MainWindow.__new__(MainWindow)
     win._tray = _FakeTray(divert=divert)      # type: ignore[attr-defined]
     win._ticker = _StopCounter()              # type: ignore[attr-defined]
-    win._video = {"0402:3922": _StopCounter()}  # type: ignore[attr-defined]
     return win
 
 
@@ -165,7 +164,6 @@ def test_qtgui_genuine_close_quits_the_event_loop(
         "returns, so App.close() (panel blank + device release) never runs"
     )
     assert win._ticker.stopped == 1              # type: ignore[attr-defined]
-    assert win._video["0402:3922"].stopped == 1  # type: ignore[attr-defined]
 
 
 def test_qtgui_close_to_tray_does_not_quit(

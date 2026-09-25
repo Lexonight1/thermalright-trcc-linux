@@ -97,7 +97,7 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: name that left the silent set.
 _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 
-MAX_SILENT = 341
+MAX_SILENT = 340
 
 
 def test_logging_coverage_only_improves() -> None:

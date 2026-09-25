@@ -440,6 +440,7 @@ class TRCCApp(QMainWindow):
         self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
         self._bus.video_started.connect(self._on_bus_video_started, type=qconn)
         self._bus.video_stopped.connect(self._on_bus_video_stopped, type=qconn)
+        self._bus.video_advanced.connect(self._on_bus_video_advanced, type=qconn)
         self._bus.video_export_progress.connect(
             self._on_bus_video_export_progress, type=qconn)
         self._bus.video_export_finished.connect(
@@ -601,6 +602,14 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.on_video_started(event)
+
+    def _on_bus_video_advanced(self, event: Any) -> None:
+        """Route a ``VideoAdvanced`` event to its device's handler (per-frame)."""
+        log.debug("_on_bus_video_advanced: key=%s cursor=%d/%d",
+                  event.key, event.cursor, event.frame_count)
+        handler = self._handlers.get(event.key)
+        if handler is not None:
+            handler.on_video_advanced(event)
 
     def _on_bus_video_stopped(self, event: Any) -> None:
         """Route a ``VideoStopped`` event to its device's handler."""

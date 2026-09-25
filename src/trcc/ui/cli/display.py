@@ -65,6 +65,7 @@ from ...core.commands import (
 )
 from ...core.models import MEDIA, FitMode, MediaKind
 from ._ctx import (
+    daemon_owns_the_panels,
     dispatch_echo,
     emit_json,
     ensure_connected,
@@ -586,6 +587,13 @@ def play(
     if not restore.ok:
         typer.echo(restore.message, err=True)
         raise typer.Exit(code=1)
+    if daemon_owns_the_panels(app_obj):
+        # The daemon runs the session loops: its VideoLoop paces video and its
+        # MetricsLoop refreshes the rest.  Ticking here as well would advance
+        # every video frame twice (#249).
+        log.info("cli display play: %s is driven by the daemon — not ticking", key)
+        typer.echo(f"The daemon is playing {key} — it keeps the panel updated.")
+        return
     if interval is not None:
         tick_s = interval
     else:

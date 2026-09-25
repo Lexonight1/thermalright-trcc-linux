@@ -1,18 +1,14 @@
-"""The multi-display gate inside the gui skin's video tick.
+"""The multi-display gate on the gui skin's shared video widgets.
 
 Every ``LCDHandler`` shares ONE preview/progress widget set, so only the
 handler that currently owns the panel may write to it — that is what
-``ui_active`` gates.  It deliberately does NOT gate the tick itself:
-``set_inactive`` keeps the per-device animation timer running "so the LCD keeps
-showing its theme while another device owns the GUI panel".
-
-Gate the wrong thing and every LCD you are not looking at freezes on screen
-while the focused one plays.  That invariant had no test at all — it was
-verified only by reading — which is why it is pinned here.
+``ui_active`` gates.  Video ticking is not the skin's any more: the core's
+``VideoLoop`` advances every playing device, focused or not (#249), and
+announces each frame as ``VideoAdvanced``, which is what these handlers draw.
 
 ``LCDHandler`` takes its widget dict and its timer factory as constructor args,
 so two handlers can share one fake widget set exactly as production does and
-``_on_video_tick`` can be driven directly: no QApplication, no real device.
+``on_video_advanced`` can be driven directly: no QApplication, no real device.
 """
 from __future__ import annotations
 
@@ -225,29 +221,25 @@ def two_handlers(tmp_path: Path) -> tuple[Any, Any, _FakeApp, _FakePreview]:
     return handler_a, handler_b, app, preview
 
 
-def test_background_device_still_ticks(two_handlers: Any) -> None:
-    """THE INVARIANT: an unfocused device keeps rendering, or its LCD freezes.
+def _advanced(key: str, cursor: int = 7, frame_count: int = 30) -> Any:
+    from trcc.core.events import VideoAdvanced
+    return VideoAdvanced(key=key, cursor=cursor, frame_count=frame_count)
 
-    If the dispatch is ever put behind ``ui_active``, every LCD except the one
-    on screen stops updating — the exact regression this change could cause.
-    """
-    handler_a, _, app, _ = two_handlers
 
-    handler_a._on_video_tick()
-
-    assert app._playbacks[_KEY_A].advanced == 1, "background video must advance"
-    assert ("TickDisplay", _KEY_A) in app.dispatched, (
-        "background device must still render — do not gate the dispatch"
-    )
+# The TICKING half of this gate moved to the core on 2026-09-25 (#249): the
+# ``VideoLoop`` advances every playing device, focused or not, and its tests
+# (tests/test_video_playback.py) pin "a background device keeps playing".
+# What stays in the skin is the DRAWING half — who may write the shared
+# progress widget — now driven by ``VideoAdvanced`` instead of a local timer.
 
 
 def test_background_device_never_writes_the_shared_progress_widget(
     two_handlers: Any,
 ) -> None:
-    """...but it must not touch the widget set another device owns."""
+    """A frame of a device that does not own the panel draws nothing."""
     handler_a, _, _, preview = two_handlers
 
-    handler_a._on_video_tick()
+    handler_a.on_video_advanced(_advanced(_KEY_A))
 
     assert preview.progress_calls == [], (
         "an inactive handler wrote the shared progress widget"
@@ -258,61 +250,32 @@ def test_active_device_does_write_the_shared_progress_widget(
     two_handlers: Any,
 ) -> None:
     """The gate lets exactly one handler through — the one owning the panel."""
-    _, handler_b, app, preview = two_handlers
+    _, handler_b, _, preview = two_handlers
 
-    handler_b._on_video_tick()
+    handler_b.on_video_advanced(_advanced(_KEY_B, cursor=7, frame_count=30))
 
     assert len(preview.progress_calls) == 1
     _percent, cursor, total = preview.progress_calls[0]
-    assert (cursor, total) == (app._playbacks[_KEY_B].cursor, 30)
+    assert (cursor, total) == (7, 30)
 
 
-def test_both_devices_tick_but_only_the_active_one_draws(
-    two_handlers: Any,
-) -> None:
-    """The combined shape, which is what a user actually sees on two panels."""
-    handler_a, handler_b, app, preview = two_handlers
+def test_a_handler_ignores_another_devices_frames(two_handlers: Any) -> None:
+    """Every handler hears every VideoAdvanced; each draws only its own."""
+    _, handler_b, _, preview = two_handlers
 
-    handler_a._on_video_tick()
-    handler_b._on_video_tick()
+    handler_b.on_video_advanced(_advanced(_KEY_A))
 
-    assert app._playbacks[_KEY_A].advanced == 1
-    assert app._playbacks[_KEY_B].advanced == 1
-    assert len(preview.progress_calls) == 1, "only the active device may draw"
+    assert preview.progress_calls == []
 
 
-def test_cleared_playback_stops_the_animation_timer(two_handlers: Any) -> None:
-    """No playback → the Result's video fields are None → stop ticking.
-
-    ``frame_count is None`` is how a UI tells "not a video" from "frame 0 of a
-    video"; the handler uses that transition to stop its own timer.
-    """
+def test_the_skin_no_longer_ticks_video_itself(two_handlers: Any) -> None:
+    """A second ticker plays a video at double speed — the core owns it."""
     handler_a, _, app, _ = two_handlers
-    # A tick only fires while the timer runs, and _stop_animation_timer is
-    # idempotent (early-returns when already stopped), so start it first.
-    handler_a._start_animation_timer(33, reason="test")
-    app._playbacks.pop(_KEY_A)
-
-    handler_a._on_video_tick()
-
-    assert handler_a._animation_timer.stopped == 1
-
-
-def test_disconnected_device_still_advances_its_cursor(
-    two_handlers: Any,
-) -> None:
-    """Advance happens BEFORE the connected-check, as it always did.
-
-    An unplugged device's video keeps running so it resumes in sync rather than
-    frozen where it dropped — preserved deliberately when the advance moved
-    into the Command.
-    """
-    handler_a, _, app, _ = two_handlers
-    app.devices[_KEY_A].is_connected = False
-
-    handler_a._on_video_tick()
-
-    assert app._playbacks[_KEY_A].advanced == 1
+    assert not hasattr(handler_a, "_on_video_tick")
+    assert not hasattr(handler_a, "_animation_timer")
+    handler_a.on_video_started(type("_E", (), {
+        "key": _KEY_A, "path": "v.mp4", "frame_count": 30, "interval_ms": 33})())
+    assert "TickDisplay" not in {name for name, _ in app.dispatched}
 
 
 # ── The shared THEME BROWSER, same gate, different widget set ────────────

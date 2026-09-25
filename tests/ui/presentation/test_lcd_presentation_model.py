@@ -100,15 +100,6 @@ def test_apply_rotation_portrait_swaps_lcd_size_and_flags() -> None:
 # ── Video math (B5) ───────────────────────────────────────────────────
 
 
-def test_video_interval_ms() -> None:
-    pm = LcdPresentationModel("87ad:70db")
-    assert pm.video_interval_ms(None) == 33      # no playback → 30fps fallback
-    assert pm.video_interval_ms(0) == 33          # fps 0 → 30fps fallback
-    assert pm.video_interval_ms(30) == 33
-    assert pm.video_interval_ms(60) == 16
-    assert pm.video_interval_ms(1000) == 1        # clamped to >= 1ms
-
-
 def test_seek_frame_clamps() -> None:
     pm = LcdPresentationModel("87ad:70db")
     assert pm.seek_frame(0.0, 100) == 0

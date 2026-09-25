@@ -547,6 +547,17 @@ class MediaService:
         frame_log.debug("playback: key=%s", device_key)
         return self._playbacks.get(device_key)
 
+    def playing(self) -> dict[str, Playback]:
+        """Every playback that should advance now: has frames, not paused.
+
+        A snapshot, so a caller on another thread can iterate it while a
+        Command loads or unloads a video.
+        """
+        live = {key: pb for key, pb in list(self._playbacks.items())
+                if pb.frames and not pb.paused}
+        frame_log.debug("playing: %s", sorted(live))
+        return live
+
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers."""
         had = self._playbacks.pop(device_key, None)

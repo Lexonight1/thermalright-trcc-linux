@@ -106,6 +106,11 @@ class BaseHandler:
                   self._view)
         del event
 
+    def on_video_advanced(self, event: Any) -> None:
+        """A video moved one frame — handlers that show progress override."""
+        log.debug("BaseHandler.on_video_advanced: view=%r dropped (base no-op)",
+                  type(self).__name__)
+
     def on_video_stopped(self, event: Any) -> None:
         """Domain event ``VideoStopped`` for this handler's device."""
         log.debug("BaseHandler.on_video_stopped: view=%r dropped (base no-op)",

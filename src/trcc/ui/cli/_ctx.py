@@ -101,6 +101,20 @@ def dispatch_echo(cmd: Any) -> Any:
     return result
 
 
+def daemon_owns_the_panels(app: Any) -> bool:
+    """True when ``app`` is the daemon's proxy — the daemon streams, not us.
+
+    Under ``TRCC_DAEMON=1`` the daemon holds every panel and runs the session
+    loops (metrics, LED, video), so a CLI command must not tick or warn as if
+    the panel stops when it exits.
+    """
+    from ...proxy import AppProxy
+
+    owned = isinstance(app, AppProxy)
+    log.debug("daemon_owns_the_panels: %s", owned)
+    return owned
+
+
 def warn_blanking_panels() -> None:
     """At CLI exit, name every panel that goes blank now this process stops.
 
@@ -112,13 +126,12 @@ def warn_blanking_panels() -> None:
     daemon owns the panel and keeps streaming after we exit.
     """
     from ...core.commands import ListDevices
-    from ...proxy import AppProxy
 
     if get_app.cache_info().currsize == 0:
         log.debug("warn_blanking_panels: no App was built — nothing to warn")
         return
     app = get_app()
-    if isinstance(app, AppProxy):
+    if daemon_owns_the_panels(app):
         log.debug("warn_blanking_panels: daemon mode — the daemon keeps streaming")
         return
     for entry in app.dispatch(ListDevices()).devices:

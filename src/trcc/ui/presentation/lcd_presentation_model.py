@@ -114,14 +114,8 @@ class LcdPresentationModel:
                  *self.state.lcd_size)
 
     # ── Video math (B5) ────────────────────────────────────────────────
-    # Pure per-tick arithmetic lifted off the handler's video path; the
-    # QTimer + MediaService playback stay in the View, which feeds primitives.
-
-    @staticmethod
-    def video_interval_ms(fps: float | None) -> int:
-        """ms-per-frame for a playback fps (None / 0 → 30 fps → 33 ms)."""
-        log.debug("video_interval_ms: fps=%s", fps)
-        return max(1, int(1000 / (fps or 30)))
+    # Pure per-frame arithmetic lifted off the handler's video path.  The
+    # pacing itself lives in the core's VideoLoop (#249).
 
     @staticmethod
     def seek_frame(percent: float, total: int) -> int:

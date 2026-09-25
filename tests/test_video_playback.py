@@ -1301,3 +1301,125 @@ def test_a_PAUSED_video_still_gets_the_reactive_render(
         "a paused video's overlay was not re-composited — nothing else is "
         "ticking this panel, so the metrics are frozen on the glass"
     )
+
+
+# ── VideoLoop: the one ticker, in the core (#249) ───────────────────────────
+#
+# A video advances one frame per TickDisplay.  The daemon had no ticker, so a
+# video loaded through it showed frame 0 forever; the GUIs each had their own,
+# and two on one device would play it at double speed.  These drive
+# ``VideoLoop.tick(now)`` with a scripted clock — no thread, no sleeping.
+
+
+class _LoopApp:
+    """What VideoLoop reads (the live playbacks) and does (dispatch)."""
+
+    def __init__(self, **playing: Any) -> None:
+        from types import SimpleNamespace
+
+        from trcc.core.results import RenderResult
+
+        self._playing = playing
+        self.media = SimpleNamespace(playing=lambda: dict(self._playing))
+        self.sent: list[str] = []
+        self.result = RenderResult(ok=True, cursor=1, frame_count=30)
+
+    def dispatch(self, cmd: Any) -> Any:
+        self.sent.append(cmd.key)
+        return self.result
+
+
+def _pb(fps: int = 10) -> Any:
+    from trcc.services.media import Playback
+    return Playback(frames=[b"f"] * 30, fps=fps)
+
+
+def _loop(app: Any) -> Any:
+    from trcc.services.video_loop import VideoLoop
+    return VideoLoop(app)                      # type: ignore[arg-type]
+
+
+def test_the_loop_ticks_every_playing_device_including_the_unfocused_one() -> None:
+    """Focus is a UI notion; a panel nobody is looking at must keep playing."""
+    app = _LoopApp(a=_pb(), b=_pb())
+    _loop(app).tick(now=0.0)
+    assert sorted(app.sent) == ["a", "b"]
+
+
+def test_the_loop_paces_each_video_at_its_own_rate() -> None:
+    app = _LoopApp(slow=_pb(fps=10), fast=_pb(fps=50))      # 100 ms / 20 ms
+    loop = _loop(app)
+    for step in range(11):                                   # 0 .. 100 ms
+        loop.tick(now=step * 0.01)
+    assert app.sent.count("fast") == 6                       # 0,20,40,60,80,100
+    assert app.sent.count("slow") == 2                       # 0,100
+
+
+def test_a_stall_does_not_fire_a_burst_of_frames() -> None:
+    app = _LoopApp(v=_pb(fps=10))
+    loop = _loop(app)
+    loop.tick(now=0.0)
+    loop.tick(now=5.0)                        # 50 frames late
+    loop.tick(now=5.0)
+    assert app.sent == ["v", "v"]             # one catch-up frame, not fifty
+
+
+def test_a_video_that_stops_playing_stops_being_ticked() -> None:
+    """Paused, stopped and detached all fall out of MediaService.playing()."""
+    app = _LoopApp(v=_pb())
+    loop = _loop(app)
+    loop.tick(now=0.0)
+    app._playing.clear()
+    loop.tick(now=1.0)
+    assert app.sent == ["v"]
+
+
+def test_media_playing_excludes_a_paused_or_empty_playback() -> None:
+    from trcc.services.media import MediaService, Playback
+
+    media = MediaService.__new__(MediaService)
+    paused = _pb()
+    paused.paused = True
+    media._playbacks = {"on": _pb(), "paused": paused,
+                        "empty": Playback(frames=[])}
+    assert sorted(media.playing()) == ["on"]
+
+
+def test_a_disconnected_panel_is_reported_once_not_per_frame(caplog) -> None:
+    from dataclasses import replace
+
+    app = _LoopApp(v=_pb(fps=50))
+    app.result = replace(app.result, connected=False)
+    loop = _loop(app)
+    with caplog.at_level(logging.WARNING, logger="trcc.services.video_loop"):
+        for step in range(5):
+            loop.tick(now=step * 0.02)
+    assert len(app.sent) == 5, "the cursor keeps moving while unplugged"
+    assert caplog.text.count("device not connected") == 1
+
+
+def test_the_real_tick_advances_and_announces_the_frame(fake_platform) -> None:
+    """End to end in a real App: the loop's TickDisplay moves the cursor and
+    publishes VideoAdvanced — the daemon case, with no UI anywhere."""
+    from trcc.core.events import VideoAdvanced
+
+    app = App(fake_platform)
+    seen: list[VideoAdvanced] = []
+    app.events.subscribe(VideoAdvanced, seen.append)
+    playback = _pb()
+    app.media._playbacks["0402:3922"] = playback
+
+    app.video_loop.tick(now=0.0)
+
+    assert playback.cursor == 1
+    assert [(e.key, e.cursor, e.frame_count) for e in seen] == [("0402:3922", 1, 30)]
+
+
+def test_the_session_starts_the_loop_and_close_stops_it(fake_platform) -> None:
+    app = App(fake_platform)
+    app.start_session()
+    try:
+        assert app.video_loop.is_running
+    finally:
+        app.close()
+    assert not app.video_loop.is_running

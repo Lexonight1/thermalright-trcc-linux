@@ -183,6 +183,12 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "(31e7fcb4 gave the API what the CLI always had); the GUIs own "
         "connection lifecycle in their per-device handlers"
     )),
+    "TickDisplay": (frozenset({"cli", "api"}), (
+        "scoped: the core ticks video in every session now (VideoLoop, #249) "
+        "and announces each frame as VideoAdvanced, which both GUIs observe. "
+        "cli `display play` and the stateless REST tick route still dispatch "
+        "it, because neither runs a session"
+    )),
     "DaemonStatus": (frozenset({"cli", "api"}), (
         "scoped: the GUIs build the App in-process and can HOST the IPC server, so "
         "they are the daemon rather than a client asking after one"
