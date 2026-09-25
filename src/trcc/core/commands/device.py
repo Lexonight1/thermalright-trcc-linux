@@ -10,6 +10,7 @@ from ..errors import (
     DeviceNotConnectedError,
     DeviceNotFoundError,
     HandshakeError,
+    PermissionError_,
     ThemeError,
     TransportError,
     TrccError,
@@ -161,6 +162,23 @@ class DiscoverDevices(Command[DiscoverResult]):
             devices=units,
         )
 
+def _connect_failure_hints(app: App, error: Exception, vid: int, pid: int,
+                           unit: str) -> list[str]:
+    """What to tell the user when a connect fails with *error*.
+
+    The OS's standing checks, then its advice for a REFUSED open -- the
+    transport says what was refused; why, and the fix, are per-OS (udev on
+    Linux, WinUSB on Windows, #173) -- then the sleeping-panel note (#150).
+    """
+    hints = app.platform.check_permissions()
+    if isinstance(error, PermissionError_):
+        hints.append(app.platform.permission_denied_hint())
+    hints += _suspended_panel_hints(app, vid, pid, unit)
+    log.info("_connect_failure_hints: %s -> %d hint(s)", type(error).__name__,
+             len(hints))
+    return hints
+
+
 def _suspended_panel_hints(app: App, vid: int, pid: int,
                            unit: str) -> list[str]:
     """Explain a failed handshake when the panel is merely ASLEEP.
@@ -274,8 +292,7 @@ class ConnectDevice(Command[ConnectResult]):
             device = app.devices[self.key]      # the retry may have rebuilt it
         except (HandshakeError, TransportError, ImportError, OSError) as e:
             app.detach(self.key)   # clears any prior issue for this key first
-            hints = app.platform.check_permissions()
-            hints += _suspended_panel_hints(app, vid, pid, unit)
+            hints = _connect_failure_hints(app, e, vid, pid, unit)
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),

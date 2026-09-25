@@ -36,8 +36,16 @@ class DeviceDisconnectedError(TransportError):
     """
 
 
-class PermissionError_(TrccError):
-    """Host OS denied access (missing udev rule, kernel driver, etc.)."""
+class PermissionError_(TransportError):
+    """Host OS denied access (missing udev rule, kernel driver, etc.).
+
+    A TransportError, because a denied open IS the transport failing.  It was
+    a sibling, so every ``except TransportError`` -- ConnectDevice, the send
+    paths, ``trcc report``'s probe -- let it escape: a permission-denied
+    device raised out of ``dispatch`` instead of failing with a hint (#173).
+    The advice itself is the Platform's (``permission_denied_hint``); the
+    transport that raises this states only what happened.
+    """
 
 
 class UnsupportedOperationError(TrccError):

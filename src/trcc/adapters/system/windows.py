@@ -444,7 +444,13 @@ class WindowsPlatform(BaseOS, key="win32"):
 
     def permission_denied_hint(self) -> str:
         log.debug("WindowsPlatform.permission_denied_hint: called")
-        return "install the WinUSB driver via 'trcc system setup'"
+        # WinUSB lets ONE program hold a device, and libusb reports "held by
+        # another program" as access denied -- so with autostart on, a running
+        # TRCC window or tray makes every CLI command fail exactly like a
+        # missing driver (#173).
+        return ("install the WinUSB driver via 'trcc system setup', and make "
+                "sure no other TRCC (window, tray or daemon) is running — "
+                "WinUSB lets only one program use the device")
 
     def no_devices_hint(self) -> str:
         log.debug("no_devices_hint: called")

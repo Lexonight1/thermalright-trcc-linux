@@ -170,3 +170,73 @@ def test_a_twin_is_asked_about_its_own_power_state(
 
     app.dispatch(ConnectDevice(key="0416:5302@1-2"))
     assert asked == ["1-2"]
+
+
+# ── #173: a denied open fails with the OS's advice, and never escapes ──────
+
+
+def _denied_app(tmp_path, platform_cls=None):
+    """A real App whose device transport refuses to open."""
+    from trcc.core.errors import PermissionError_
+
+    from .mock_platform import MockPlatform
+
+    platform = MockPlatform([{"type": "lcd", "vid": "87ad", "pid": "70db",
+                              "pm": 72}], tmp_path)
+    real = platform.open_transport
+
+    def opener(*a, **k):
+        transport = real(*a, **k)
+
+        def deny():
+            raise PermissionError_("USB access denied for 87AD:70DB")
+        transport.open = deny
+        return transport
+
+    platform.open_transport = opener           # type: ignore[method-assign]
+    return App(platform=platform)
+
+
+def test_a_denied_open_fails_the_connect_instead_of_raising(tmp_path) -> None:
+    """It raised out of dispatch: a traceback on the CLI, an unhandled error on
+    the GUI's splash / hotplug thread (#173)."""
+    app = _denied_app(tmp_path)
+    result = app.dispatch(ConnectDevice(key="87ad:70db"))
+    assert result.ok is False
+    assert "USB access denied for 87AD:70DB" in result.message
+    assert app.platform.permission_denied_hint() in result.hints
+
+
+def test_the_report_survives_a_denied_device(tmp_path) -> None:
+    """`trcc report` is how this gets diagnosed; it must not die on it."""
+    from trcc.adapters.diagnostics.debug_report import _collect_devices
+
+    app = _denied_app(tmp_path)
+    rows, error = _collect_devices(app.platform)
+    assert (error, [r["key"] for r in rows]) == ("", ["87ad:70db"])
+
+
+def test_windows_advice_names_winusb_and_the_one_program_rule() -> None:
+    from trcc.adapters.system.windows import WindowsPlatform
+
+    hint = WindowsPlatform.permission_denied_hint(object())   # type: ignore[arg-type]
+    assert "WinUSB" in hint and "no other TRCC" in hint
+    assert "udev" not in hint
+
+
+@pytest.mark.parametrize(("installed", "expected"), [
+    (False, "run 'trcc system setup' to install udev rules"),
+    (True, "udev rules are installed, so this is not permissions"),
+])
+def test_linux_advice_matches_whether_the_rules_are_installed(
+    monkeypatch, tmp_path, installed: bool, expected: str,
+) -> None:
+    """#267: told to install rules the report said were installed."""
+    from trcc.adapters.system import _udev
+    from trcc.adapters.system.linux import LinuxOS
+
+    rules = tmp_path / "99-trcc.rules"
+    if installed:
+        rules.write_text("# rules\n")
+    monkeypatch.setattr(_udev, "RULES_PATH", rules)
+    assert expected in LinuxOS.permission_denied_hint(object())  # type: ignore[arg-type]

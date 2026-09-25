@@ -899,8 +899,22 @@ class LinuxOS(BaseOS, key="linux"):
         return f"sudo dnf install {_EPEL} && {command}"
 
     def permission_denied_hint(self) -> str:
-        log.debug("LinuxOS.permission_denied_hint: called")
-        return "run 'trcc system setup' to install udev rules"
+        """Why an open was refused — told by whether OUR udev rules exist.
+
+        Only blames udev when the rules are actually missing: #267's report
+        read ``[OK] udev-rules installed`` while being told to install them,
+        which sends a user to fix something that is not broken.  (This lived
+        in the transport, on every OS, until #173.)
+        """
+        from ._udev import RULES_PATH
+        installed = RULES_PATH.is_file()
+        log.debug("LinuxOS.permission_denied_hint: rules %s installed=%s",
+                  RULES_PATH, installed)
+        if not installed:
+            return "run 'trcc system setup' to install udev rules"
+        return ("udev rules are installed, so this is not permissions — the "
+                "panel may be re-enumerating or held by another TRCC process "
+                "(a running trccd, or another TRCC window)")
 
     def no_devices_hint(self) -> str:
         log.debug("LinuxOS.no_devices_hint: called")

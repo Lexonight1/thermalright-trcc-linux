@@ -69,24 +69,8 @@ _RESET_SETTLE_S = 0.5
 _HID_OPEN_ATTEMPTS = 3
 _HID_OPEN_RETRY_S = 0.5
 
-#: Where ``LinuxOS.setup`` writes the rules.  Spelled ONCE in the tree --
-#: ``adapters/system/_udev.RULES_PATH`` -- and imported rather than restated,
-#: because a second spelling of this path has already been wrong once, and
-#: every correctly-installed system looked broken as a result.  (A gate now
-#: fails any user-facing text naming a rules file we do not write -- which is
-#: what caught this comment when it quoted the old name.)
-def _udev_rules_present() -> bool:
-    """True when the udev rules this error would blame are actually installed."""
-    try:
-        from ..system._udev import RULES_PATH
-    except ImportError:          # pragma: no cover - non-Linux
-        return False
-    present = RULES_PATH.is_file()
-    log.debug("_udev_rules_present: %s -> %s", RULES_PATH, present)
-    return present
-
 # Linux errno used by pyusb wraps over libusb.
-_ERRNO_EACCES = 13   # Permission denied — udev rules missing
+_ERRNO_EACCES = 13   # Permission denied
 _ERRNO_EBUSY = 16    # Interface claimed by another process
 
 
@@ -157,8 +141,7 @@ class PyUsbBulkTransport(BulkTransport):
         except usb.core.USBError as e:
             if e.errno == _ERRNO_EACCES:
                 raise PermissionError_(
-                    f"USB access denied for {self._vid:04X}:{self._pid:04X} — "
-                    "check udev rules or run 'trcc system setup'"
+                    f"USB access denied for {self._vid:04X}:{self._pid:04X}"
                 ) from e
             log.warning(
                 "%04X:%04X: set_configuration failed (%s) — "
@@ -629,19 +612,13 @@ class HidApiTransport(BulkTransport):
                     time.sleep(_HID_OPEN_RETRY_S)
         else:
             # hidapi reports "open failed" for absent, EACCES and a device
-            # mid-reboot alike.  Only name udev when the rules are actually
-            # missing -- #267's report says `[OK] udev-rules installed` while
-            # this message told him to install them, which sends a user to fix
-            # something that is not broken.
-            hint = ("device absent, or missing udev rules "
-                    "(run `trcc system setup`)"
-                    if not _udev_rules_present() else
-                    "udev rules ARE installed, so this is not permissions — "
-                    "the panel may be re-enumerating or held by another "
-                    "process (a running trccd, or another TRCC window)")
+            # mid-reboot alike, so this states what happened and nothing more.
+            # WHY is per-OS knowledge -- udev on Linux, WinUSB on Windows --
+            # and belongs to Platform.permission_denied_hint, which the caller
+            # adds (#173).  It used to name udev here, on every OS.
             raise PermissionError_(
                 f"cannot open HID device {self._vid:04x}:{self._pid:04x} "
-                f"({last}) after {_HID_OPEN_ATTEMPTS} attempts — {hint}"
+                f"({last}) after {_HID_OPEN_ATTEMPTS} attempts"
             ) from last
         self._is_open = True
         return True
