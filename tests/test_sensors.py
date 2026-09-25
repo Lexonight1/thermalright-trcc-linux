@@ -1290,3 +1290,59 @@ def test_the_mc3_panel_shows_the_configured_speed(monkeypatch) -> None:
     expected[LC1Display.MTNO] = True
     LC1Display()._encode_4digit(8000, LC1Display.ALL_DIGITS, expected)
     assert shown == expected
+
+
+# ── #282: drivers that keep their sensor files on hwmonN/device/ ────────────
+#
+# The reporter's sch5636 registers /sys/class/hwmon/hwmonN but leaves every
+# *_input -- and `name` -- on the platform device, i.e. hwmonN/device/.
+# `sensors` (and psutil) look there; our scanner did not, so the chip showed no
+# fans and was named "hwmon1".
+
+
+def _legacy_node(root: Path, name: str = "hwmon1") -> Path:
+    """A node shaped like the reporter's: bare, with everything under device/."""
+    node = root / name
+    dev = node / "device"
+    dev.mkdir(parents=True)
+    (dev / "name").write_text("sch5636\n")
+    (dev / "fan1_input").write_text("1514\n")
+    (dev / "fan3_input").write_text("1836\n")
+    (dev / "temp1_input").write_text("50000\n")
+    return node
+
+
+def test_a_legacy_node_reads_its_name_and_fans_from_device(tmp_path: Path) -> None:
+    dev = hwmon.HwmonDevice(_legacy_node(tmp_path))
+
+    assert dev.driver == "sch5636"
+    fans = hwmon.discover_fans([dev])
+    assert [f.rpm() for f in fans] == [1514, 1836]
+    assert dev.read_temp(1) == 50.0
+
+
+def test_a_modern_node_keeps_reading_itself_even_with_a_device_dir(
+    tmp_path: Path,
+) -> None:
+    """NVMe publishes inputs on the node AND device/serial -- stay on the node.
+
+    Pinned with a conflicting reading under device/ too: whenever the node has
+    its own inputs, the node wins.  (A mutation preferring device/ survived
+    until this line was added.)
+    """
+    node = tmp_path / "hwmon2"
+    (node / "device").mkdir(parents=True)
+    (node / "name").write_text("nvme\n")
+    (node / "temp1_input").write_text("41000\n")
+    (node / "device" / "serial").write_text("S123\n")
+    (node / "device" / "temp1_input").write_text("99000\n")
+
+    dev = hwmon.HwmonDevice(node)
+    assert (dev.attrs, dev.driver, dev.read_temp(1)) == (node, "nvme", 41.0)
+
+
+def test_a_node_with_no_inputs_anywhere_is_wrapped_as_before(tmp_path: Path) -> None:
+    node = tmp_path / "hwmon3"
+    node.mkdir()
+    dev = hwmon.HwmonDevice(node)
+    assert (dev.attrs, dev.driver) == (node, "hwmon3")

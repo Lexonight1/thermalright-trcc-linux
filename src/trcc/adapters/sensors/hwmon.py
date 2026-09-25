@@ -118,13 +118,21 @@ class HwmonDevice:
 
     def __init__(self, path: Path) -> None:
         log.debug("__init__: path=%s", path)
+        #: The hwmon NODE (``/sys/class/hwmon/hwmonN``) -- what the DRM-card
+        #: and NVMe-serial lookups walk from.
         self.path = path
-        self.driver = _read_text(path / "name") or path.name
+        #: Where this driver keeps its sensor files: the node itself, or its
+        #: ``device/`` for older drivers (sch5636 and kin), which register the
+        #: hwmon node but leave every ``*_input`` -- and ``name`` -- on the
+        #: platform device.  psutil falls back the same way; our scanner did
+        #: not, so such a chip showed no fans and was named "hwmon1" (#282).
+        self.attrs = _attribute_dir(path)
+        self.driver = _read_text(self.attrs / "name") or path.name
 
     def read_temp(self, idx: int = 1) -> float | None:
         """tempN_input reports millidegrees C."""
         frame_log.debug("read_temp: idx=%s", idx)
-        val = _read_int(self.path / f"temp{idx}_input")
+        val = _read_int(self.attrs / f"temp{idx}_input")
         return val / 1000.0 if val is not None else None
 
     def read_temp_labeled(
@@ -143,12 +151,12 @@ class HwmonDevice:
         """
         by_label: dict[str, int] = {}
         indices: list[int] = []
-        for input_path in self.path.glob("temp*_input"):
+        for input_path in self.attrs.glob("temp*_input"):
             idx = _channel_index(input_path.name, "temp")
             if idx is None:
                 continue
             indices.append(idx)
-            label = _read_text(self.path / f"temp{idx}_label")
+            label = _read_text(self.attrs / f"temp{idx}_label")
             if label is not None:
                 by_label[label.strip().lower()] = idx
         for want in prefer:
@@ -172,19 +180,28 @@ class HwmonDevice:
 
     def read_fan_rpm(self, idx: int = 1) -> int | None:
         frame_log.debug("read_fan_rpm: idx=%s", idx)
-        return _read_int(self.path / f"fan{idx}_input")
+        return _read_int(self.attrs / f"fan{idx}_input")
 
     def read_pwm(self, idx: int = 1) -> float | None:
         """pwmN reports 0-255 duty cycle; normalize to 0-100."""
         frame_log.debug("read_pwm: idx=%s", idx)
-        val = _read_int(self.path / f"pwm{idx}")
+        val = _read_int(self.attrs / f"pwm{idx}")
         return (val / 255.0 * 100.0) if val is not None else None
 
     def read_power(self, idx: int = 1) -> float | None:
         """powerN_average reports μW; return W."""
         frame_log.debug("read_power: idx=%s", idx)
-        val = _read_int(self.path / f"power{idx}_average")
+        val = _read_int(self.attrs / f"power{idx}_average")
         return val / 1_000_000.0 if val is not None else None
+
+
+def _attribute_dir(node: Path) -> Path:
+    """*node*, or ``node/device`` when only the latter holds sensor inputs."""
+    device = node / "device"
+    if not any(node.glob("*_input")) and any(device.glob("*_input")):
+        log.info("_attribute_dir: %s keeps its sensors in device/", node.name)
+        return device
+    return node
 
 
 def scan_hwmon_devices() -> list[HwmonDevice]:
@@ -423,7 +440,7 @@ class AmdGpu(GpuSource):
     def clock(self) -> float | None:
         # amdgpu freq1_input reports Hz in some kernels, MHz in others
         frame_log.debug("clock")
-        val = _read_int(self._hwmon.path / "freq1_input")
+        val = _read_int(self._hwmon.attrs / "freq1_input")
         if val is None:
             return None
         return val / 1_000_000.0 if val > 1_000_000 else float(val)
@@ -579,11 +596,11 @@ def discover_fans(devices: list[HwmonDevice]) -> list[FanSource]:
     log.info("discover_fans: devices=%d", len(devices))
     fans: list[FanSource] = []
     for dev in devices:
-        for fan_input in sorted(dev.path.glob("fan*_input")):
+        for fan_input in sorted(dev.attrs.glob("fan*_input")):
             idx = _channel_index(fan_input.name, "fan")
             if idx is None:
                 continue
-            label = _read_text(dev.path / f"fan{idx}_label")
+            label = _read_text(dev.attrs / f"fan{idx}_label")
             fans.append(HwmonFan(dev, idx, label))
     return fans
 
@@ -661,7 +678,7 @@ def discover_disk_temp(devices: list[HwmonDevice]) -> list[DiskSource]:
         if dev.read_temp(1) is None:
             log.debug("discover_disk_temp: %s has no temp1_input — skip", dev.driver)
             continue
-        label = _read_text(dev.path / "temp1_label")
+        label = _read_text(dev.attrs / "temp1_label")
         disks.append(HwmonDisk(dev, label))
     return disks
 
@@ -711,7 +728,7 @@ def discover_dram_temp(devices: list[HwmonDevice]) -> list[DramSource]:
         if dev.read_temp(1) is None:
             log.debug("discover_dram_temp: %s has no temp1_input — skip", dev.driver)
             continue
-        label = _read_text(dev.path / "temp1_label")
+        label = _read_text(dev.attrs / "temp1_label")
         dram.append(HwmonDram(dev, label))
     return dram
 
