@@ -11,8 +11,23 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build macOS app
-    runs-on: macos-latest
+    name: Build macOS app (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    # One DMG per architecture (#219).  Not universal2: the app bundles
+    # Homebrew's 7z, ffmpeg and libusb, and Homebrew ships each only for the
+    # host architecture -- a universal2 PyInstaller app would still carry
+    # arm64-only tools.  macos-15-intel is the LAST x86_64 image GitHub
+    # offers; it is retired in August 2027, and the Intel leg with it.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+            suffix: ""
+          - runner: macos-15-intel
+            arch: x86_64
+            suffix: "-intel"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -144,6 +159,19 @@ jobs:
           fi
           echo "PASSED — all dependencies bundled"
 
+      - name: Verify the app's architecture
+        run: |
+          # The #219 DMG was arm64-only and nothing noticed until an Intel user
+          # could not launch it.  Every leg must produce ITS architecture.
+          for bin in TRCC 7z ffmpeg; do
+            info="$(file "dist/TRCC.app/Contents/MacOS/$bin")"
+            echo "$info"
+            case "$info" in
+              *${{ matrix.arch }}*) ;;
+              *) echo "::error::$bin is not ${{ matrix.arch }}"; exit 1 ;;
+            esac
+          done
+
       - name: Create DMG
         run: |
           create-dmg \
@@ -154,18 +182,18 @@ jobs:
             --icon "TRCC.app" 150 185 \
             --app-drop-link 450 185 \
             --no-internet-enable \
-            "trcc-${{ steps.version.outputs.VERSION }}-macos.dmg" \
+            "trcc-${{ steps.version.outputs.VERSION }}-macos${{ matrix.suffix }}.dmg" \
             dist/TRCC.app
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
         with:
-          name: trcc-macos-dmg
-          path: trcc-${{ steps.version.outputs.VERSION }}-macos.dmg
+          name: trcc-macos${{ matrix.suffix }}-dmg
+          path: trcc-${{ steps.version.outputs.VERSION }}-macos${{ matrix.suffix }}.dmg
 
       - name: Create fixed-name alias for stable download URL
         if: startsWith(github.ref, 'refs/tags/v')
-        run: cp "trcc-${{ steps.version.outputs.VERSION }}-macos.dmg" trcc-latest-macos.dmg
+        run: cp "trcc-${{ steps.version.outputs.VERSION }}-macos${{ matrix.suffix }}.dmg" trcc-latest-macos${{ matrix.suffix }}.dmg
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -173,6 +201,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "$GITHUB_REF_NAME" \
-            "trcc-${{ steps.version.outputs.VERSION }}-macos.dmg" \
-            trcc-latest-macos.dmg \
+            "trcc-${{ steps.version.outputs.VERSION }}-macos${{ matrix.suffix }}.dmg" \
+            trcc-latest-macos${{ matrix.suffix }}.dmg \
             --clobber

@@ -31,7 +31,7 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
 | Clear Linux | — | [pip](#clear-linux) |
 | Windows 10/11 | [Installer](#windows-experimental) | — |
 | macOS 11+ (Apple Silicon) | [DMG](#macos-experimental) | — |
-| macOS 11+ (Intel) | — | [pipx](#macos-experimental) |
+| macOS 11+ (Intel) | [DMG](#macos-experimental) | [pipx](#macos-experimental) |
 | FreeBSD | — | [pip](#freebsd-experimental) |
 | Asahi Linux (Apple Silicon) | — | [pip](#asahi-linux-apple-silicon) |
 | Raspberry Pi / ARM SBCs | — | [pip](#raspberry-pi--arm-sbcs) |
@@ -781,9 +781,11 @@ trcc doctor
 
 Download [`trcc-latest-macos.dmg`](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-latest-macos.dmg) from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), open the DMG, and drag **TRCC** to Applications.
 
-> **Intel Macs:** the DMG is built for Apple Silicon (arm64) only — it won't run
-> on an Intel Mac. Install via [`pipx`](https://pipx.pypa.io) instead (confirmed
-> working on Intel Macs and Hackintosh):
+> **Intel Macs:** download
+> [`trcc-latest-macos-intel.dmg`](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-latest-macos-intel.dmg)
+> instead — the plain DMG is Apple Silicon (arm64) only.  The Intel DMG lasts
+> as long as GitHub offers an Intel build machine (until August 2027); `pipx`
+> works on Intel Macs and Hackintosh either way:
 >
 > ```bash
 > brew install pipx libusb p7zip ffmpeg
