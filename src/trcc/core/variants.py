@@ -32,8 +32,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from .models import PanelCutout
-
 log = logging.getLogger(__name__)
 
 
@@ -46,7 +44,6 @@ class VariantOverride:
     distinguishes them.
     """
     button_image: str = ""
-    panel_cutout: PanelCutout | None = None
     display_name: str = ""
 
 
@@ -131,13 +128,11 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     63:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
           3: _v('A1LM30'), 4: _v('A1RX1')},   # 2.1.6: +sub4
     # PM=64 SUB=3: Levita (new product) handshakes identically to LM30
-    # — same chipset, same wire bytes.  C# v2.1.4 doesn't have a Levita
-    # case yet so it labels the button "A1LM30"; we keep that label and
-    # attach a right-side panel_cutout because Levita is the variant
-    # users enable split_mode on.
+    # — same chipset, same wire bytes — so it keeps the "A1LM30" label.
+    # Its split-mode island is the C#'s SUB 3 rule in DisplayService, not a
+    # property of this row (#149).
     64:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
-          3: VariantOverride(button_image='A1LM30',
-                             panel_cutout=PanelCutout(x=1520, y=0, w=80, h=720)),
+          3: _v('A1LM30'),
           4: _v('A1RX1')},   # 2.1.6: +sub4
     # 2.1.6 ADDUserButton case 65 sub4: A1LD11 (was A1LD10 in our prior table).
     # (case 66's LD11 branch is dead code — `else if(sub<=4)` precedes it.)
@@ -256,7 +251,6 @@ def get_button_image(
 
 
 __all__ = [
-    "PanelCutout",
     "VariantOverride",
     "get_button_image",
     "get_variant_override",

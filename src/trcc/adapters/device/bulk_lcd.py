@@ -184,6 +184,7 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
         encode_base=rotation.base,
         encode_invert=rotation.invert,
         encode_pm_bases=base.encode_pm_bases,
+        sub=sub,
     )
 
 

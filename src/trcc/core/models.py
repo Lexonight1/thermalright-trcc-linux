@@ -289,20 +289,6 @@ class UsbPowerState:
 
 
 @dataclass(frozen=True, slots=True)
-class PanelCutout:
-    """Rectangular cutout on the panel (e.g. smartphone-display camera notch).
-
-    Hardware fact — registry data, not user preference.  Populated on a
-    ``VariantOverride`` when the panel has an obstructed region the
-    render pipeline should mask.
-    """
-    x: int
-    y: int
-    w: int
-    h: int
-
-
-@dataclass(frozen=True, slots=True)
 class ProductInfo:
     """One row in the hardware registry.
 
@@ -310,7 +296,7 @@ class ProductInfo:
     vendor/product strings, wire protocol, native resolution, supported
     rotations, LED style if applicable.
 
-    ``button_image`` / ``panel_cutout`` carry registry-default values;
+    ``button_image`` carries a registry-default value;
     ``ConnectDevice`` resolves a ``VariantOverride`` after handshake and
     swaps the field via ``dataclasses.replace`` when the device's
     PM/SUB fingerprint identifies a more specific variant.
@@ -335,7 +321,6 @@ class ProductInfo:
     volatile_frames: bool = False
     model: str = "CZTV"                 # GUI sidebar button-image lookup
     button_image: str = "A1CZTV"        # asset base name (no .png)
-    panel_cutout: PanelCutout | None = None  # set post-handshake
 
     @property
     def key(self) -> str:

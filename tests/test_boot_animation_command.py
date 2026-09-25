@@ -64,9 +64,6 @@ class _AnimRenderer(Renderer):
     def rotate(self, surface: Any, degrees: int) -> Any:
         return surface
 
-    def flip_horizontal(self, surface: Any) -> Any:
-        return surface
-
     def apply_brightness(self, surface: Any, percent: int) -> Any:
         return surface
 

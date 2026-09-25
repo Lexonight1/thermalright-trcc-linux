@@ -284,10 +284,9 @@ class ConnectDevice(Command[ConnectResult]):
 
         # Variant override: handshake reveals the PM/SUB fingerprint, which
         # disambiguates products sharing one (VID, PID).  Patch the device's
-        # ProductInfo with the resolved button_image / panel_cutout so the
-        # GUI sidebar shows the right product picture and the renderer
-        # masks any panel cutout.  Without this, every device falls back to
-        # the registry default (A1CZTV "ransom" button).
+        # ProductInfo with the resolved button_image so the GUI sidebar
+        # shows the right product picture.  Without this, every device falls
+        # back to the registry default (A1CZTV "ransom" button).
         from dataclasses import replace as _dc_replace
 
         from ..variants import get_variant_override
@@ -298,8 +297,6 @@ class ConnectDevice(Command[ConnectResult]):
             patch: dict[str, object] = {}
             if override.button_image:
                 patch["button_image"] = override.button_image
-            if override.panel_cutout is not None:
-                patch["panel_cutout"] = override.panel_cutout
             if override.display_name:
                 # The registry's ``product`` is one string for a USB id that
                 # covers dozens of coolers, so it names the wrong one for most

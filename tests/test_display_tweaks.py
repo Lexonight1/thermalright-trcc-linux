@@ -186,3 +186,69 @@ def test_display_tweaks_persist_across_app_restart(
     assert dev.fit_mode is FitMode.STRETCH
     assert dev.overlay_enabled is False
     assert dev.split_mode == 2
+
+
+# ── the Dynamic Island, rendered for real (#149) ───────────────────────────
+#
+# Every renderer fake in this suite stubbed ``flip_horizontal``, so the real
+# ``QImage.mirrored(horizontal=...)`` call — a keyword PySide6 rejects — never
+# ran, and every split-mode frame on a SUB 3 panel raised in the field.  These
+# render through the REAL QtRenderer on a mock Levita.
+
+
+def _levita(tmp_path: Path, sub: int):
+    """A connected 1600x720 panel (87ad:70db PM 64) showing a white image."""
+    from PySide6.QtGui import QColor, QImage  # type: ignore[import-not-found]
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import LoadImage
+
+    from .mock_platform import MockPlatform
+
+    spec = {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 64, "sub": sub}
+    levita = App(platform=MockPlatform([spec], tmp_path), renderer=QtRenderer())
+    levita.discover_and_connect()
+    image = QImage(1600, 720, QImage.Format.Format_RGB888)
+    image.fill(QColor(255, 255, 255))
+    image.save(str(tmp_path / "white.png"))
+    levita.dispatch(LoadImage(key="87ad:70db", path=tmp_path / "white.png"))
+    return levita
+
+
+def _island_assets(levita: App, mode: int) -> list[str]:
+    """Build one frame in split ``mode`` and return the island asset(s) loaded."""
+    loaded: list[str] = []
+    real = levita.display._load_split_asset
+
+    def spy(name: str):
+        loaded.append(name)
+        return real(name)
+
+    levita.display._load_split_asset = spy       # type: ignore[method-assign]
+    levita.dispatch(SetSplitMode(key="87ad:70db", mode=mode))
+    device = levita.devices["87ad:70db"]
+    frame = levita.display.build_frame(
+        info=device.info, theme=levita.active_themes["87ad:70db"],
+        sensors={}, profile=device.profile)
+    assert frame, f"split mode {mode} produced no frame"
+    return loaded
+
+
+@pytest.mark.parametrize("mode", [1, 2, 3])
+def test_every_split_mode_renders_on_a_sub3_panel(tmp_path: Path, mode: int) -> None:
+    """The freeze: each of these raised AttributeError, so nothing was sent."""
+    assert _island_assets(_levita(tmp_path, sub=3), mode)
+
+
+@pytest.mark.parametrize(("sub", "mode", "asset"), [
+    (3, 2, "split_overlay_b_180.png"),   # the C#'s SUB 3 arm: 180° round
+    (1, 2, "split_overlay_b.png"),       # any other SUB: as authored
+    (3, 1, "split_overlay_a.png"),       # only style 2 has the arm
+    (3, 3, "split_overlay_c.png"),
+])
+def test_the_island_asset_follows_the_csharp_sub3_rule(
+    tmp_path: Path, sub: int, mode: int, asset: str,
+) -> None:
+    """UCScreenImage.cs: ``myLddVal == 2 && myLddValSub == 3`` draws the 180°
+    asset at 0°; ``myLddValSub = pmSub`` (FormCZTV.cs:893).  It never mirrors."""
+    assert _island_assets(_levita(tmp_path, sub=sub), mode) == [asset]

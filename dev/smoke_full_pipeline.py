@@ -225,15 +225,17 @@ def _run_steps() -> list[_Step]:
     variant_step = _Step(label="VariantOverride lookup")
     try:
         # Frozen Warframe SCSI: PM=51 must resolve to A1FROZEN WARFRAME,
-        # PM=64 SUB=3 (Levita) must carry a panel_cutout.
+        # PM=64 SUB=3 (Levita) to its A1LM30 button.  (Its panel_cutout went
+        # with the island mirror it served — the island is DisplayService's
+        # SUB 3 rule now, #149.)
         bi = get_button_image(0x0402, 0x3922, 51, 0)
         levita = get_variant_override(0x0402, 0x3922, 64, 3)
         assert bi == "A1FROZEN WARFRAME", f"PM=51 got {bi!r}"
-        assert levita is not None and levita.panel_cutout is not None, (
-            "PM=64 SUB=3 (Levita) lost its panel_cutout"
+        assert levita is not None and levita.button_image == "A1LM30", (
+            f"PM=64 SUB=3 (Levita) resolved to {levita!r}"
         )
         variant_step.passed = True
-        variant_step.detail = f"PM=51→{bi}, Levita cutout present"
+        variant_step.detail = f"PM=51→{bi}, Levita→A1LM30"
     except Exception as e:
         variant_step.passed = False
         variant_step.detail = f"{type(e).__name__}: {e}"

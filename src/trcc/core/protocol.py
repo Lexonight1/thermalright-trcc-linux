@@ -64,6 +64,11 @@ class DeviceProfile:
     # its native landscape size, so ``resolution`` and the wire header are
     # unchanged.  (#262, #203)
     portrait_mounted: bool = False
+    # The handshake's raw SUB byte (the C#'s ``pmSub`` / ``myLddValSub``).  The
+    # derived answers above are what most consumers want; this is kept for the
+    # ones the C# keys on the byte itself — the Dynamic Island picks a
+    # 180°-offset asset on SUB 3 (UCScreenImage.cs, FormCZTV.cs:893).  (#149)
+    sub: int = 0
     # Resolved device-only encode rotation, applied to the WIRE frame only (not
     # the preview) in _encode_for_wire.  Resolved at handshake from
     # encode_pm_bases via resolve_encode_base() once the PM byte is known.  0 =
@@ -592,7 +597,8 @@ def get_profile(fbl: int, pm: int = 0, sub: int = 0) -> DeviceProfile:
         # where the PS140 lives), so the same panel on the other wire started
         # the owner at 0° and showed them a sideways picture.  That is #203 /
         # #262 again, arriving by a different door.
-        portrait_mounted=is_portrait_mounted(profile.resolution, sub))
+        portrait_mounted=is_portrait_mounted(profile.resolution, sub),
+        sub=sub)
 
 
 def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple[int, int]:

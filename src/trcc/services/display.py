@@ -83,25 +83,6 @@ def _is_widescreen_split(visual_size: tuple[int, int]) -> bool:
     return visual_size in _WIDESCREEN_SPLIT_RESOLUTIONS
 
 
-def _cutout_is_right_side(
-    info: ProductInfo, visual_size: tuple[int, int],
-) -> bool:
-    """True when the device's PanelCutout sits past the canvas midline.
-
-    Mirrors legacy ``RenderPipeline._cutout_is_right_side`` — the
-    Levita SKU has its camera cutout on the right side of the panel,
-    so the left-side split assets need a horizontal flip.  Devices
-    without a PanelCutout (or whose cutout is left-of-midline) keep
-    the assets as-authored.
-    """
-    log.debug("_cutout_is_right_side: info=%s visual_size=%s", info, visual_size)
-    cutout = info.panel_cutout
-    if cutout is None:
-        return False
-    w, _ = visual_size
-    return cutout.x + cutout.w // 2 > w // 2
-
-
 # =========================================================================
 # SceneCache — per-device layered cache
 # =========================================================================
@@ -184,7 +165,7 @@ class DisplayService:
         # Cache of loaded split-overlay surfaces keyed by
         # (style, rotation, mirrored).  Loaded lazily on first
         # widescreen render so non-Levita devices pay nothing.
-        self._split_cache: dict[tuple[int, int, bool], Any] = {}
+        self._split_cache: dict[str, Any] = {}
         # Per-device scene-cache hit/miss state — used to log INFO on
         # TRANSITION only (matches Phase-0's ``_log_tick_skip``
         # shape).  Per-tick HIT/MISS stays at DEBUG so 15 fps doesn't
@@ -353,14 +334,13 @@ class DisplayService:
         # Compose: bg+mask below, overlay on top
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
 
-        # Split-mode overlay (Dynamic Island) — Levita / 1600x720
-        # widescreen only.  Picks an asset by (split_mode, rotation),
-        # mirrors it horizontally when the panel's cutout sits on the
-        # right side (PanelCutout from the variant override).  No-op
-        # when split_mode==0 or the LCD isn't widescreen.
+        # Split-mode overlay (Dynamic Island) — 1600x720 widescreen only.
+        # Picks an asset by (split_mode, rotation, SUB byte), as the C# does.
+        # No-op when split_mode==0 or the LCD isn't widescreen.
         if s.split_mode and _is_widescreen_split(visual_size):
             surface = self._composite_split_overlay(
-                info, s.split_mode, s.orientation, visual_size, surface,
+                info, s.split_mode, s.orientation,
+                profile.sub if profile is not None else 0, surface,
             )
 
         # Brightness dim (before rotation — matches C# order)
@@ -1467,19 +1447,24 @@ class DisplayService:
         info: ProductInfo,
         split_mode: int,
         rotation: int,
-        visual_size: tuple[int, int],
+        sub: int,
         surface: Any,
     ) -> Any:
         """Composite the Dynamic Island PNG over ``surface`` (in place).
 
         Picks the asset by ``(split_mode, rotation)`` from
-        ``SPLIT_OVERLAY_MAP``.  Mirrors the asset horizontally when the
-        device's PanelCutout sits past the canvas midline (Levita's
-        cutout is on the right side; the assets are authored for the
-        left side).  Cached after first load so non-Levita devices
-        pay nothing and Levita devices only pay once per (style,
-        rotation, mirrored) tuple.
+        ``SPLIT_OVERLAY_MAP`` — with the C#'s one exception: style 2 on a
+        SUB 3 panel takes the asset 180° round (``UCScreenImage.cs``
+        ``myLddVal == 2 && myLddValSub == 3``; ``myLddValSub = pmSub``,
+        ``FormCZTV.cs:893``).  That panel's wire angle is 180° off its
+        siblings', and the C# compensates by choosing the island, never by
+        flipping it.  This tree used to MIRROR the asset instead, on a cutout
+        position we invented, through a ``QImage.mirrored`` keyword PySide6
+        rejects — so every split-mode frame on that panel raised and the
+        screen froze (#149).  Cached per asset, so each costs one load.
         """
+        if split_mode == 2 and sub == 3:
+            rotation = (rotation + 180) % 360
         asset_name = SPLIT_OVERLAY_MAP.get((split_mode, rotation))
         if asset_name is None:
             log.warning(
@@ -1487,20 +1472,14 @@ class DisplayService:
                 info.key, split_mode, rotation,
             )
             return surface
-        mirrored = _cutout_is_right_side(info, visual_size)
-        cache_key = (split_mode, rotation, mirrored)
-        overlay = self._split_cache.get(cache_key)
+        overlay = self._split_cache.get(asset_name)
         if overlay is None:
             overlay = self._load_split_asset(asset_name)
             if overlay is None:
                 return surface
-            if mirrored:
-                overlay = self._r.flip_horizontal(overlay)
-            self._split_cache[cache_key] = overlay
-            log.info(
-                "split overlay %s: cached (%s, mirrored=%s)",
-                info.key, asset_name, mirrored,
-            )
+            self._split_cache[asset_name] = overlay
+            log.info("split overlay %s: cached %s (style=%d sub=%d)",
+                     info.key, asset_name, split_mode, sub)
         try:
             return self._r.composite(surface, overlay, position=(0, 0))
         except (OSError, ValueError, RuntimeError) as e:

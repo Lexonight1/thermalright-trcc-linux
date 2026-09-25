@@ -48,7 +48,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 6 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
-| [`Renderer`](#renderer) | 15 | 8 | 1 |
+| [`Renderer`](#renderer) | 14 | 8 | 1 |
 | [`Platform`](#platform) | 25 | 0 | 8 |
 | [`ContentStore`](#contentstore) | 26 | 0 | 1 |
 
@@ -711,7 +711,7 @@ setup(dry_run: 'bool' = False) -> int
 
 Rendering backend.  Concrete: QtRenderer (adapters/render/qt.py).
 
-**You implement (15):**
+**You implement (14):**
 
 ```python
 apply_brightness(surface: 'Any', percent: 'int') -> Any
@@ -721,7 +721,6 @@ decode_image(data: 'bytes') -> Any
 draw_text(surface: 'Any', x: 'int', y: 'int', text: 'str', color: 'str', size: 'int', bold: 'bool' = False, italic: 'bool' = False, family: 'str' = '') -> None
 encode_jpeg(surface: 'Any', quality: 'int' = 95, max_size: 'int' = 0) -> bytes
 encode_rgb565(surface: 'Any', byte_order: 'str' = '>') -> bytes
-flip_horizontal(surface: 'Any') -> Any
 from_raw_rgb24(frame: 'RawFrame') -> Any
 open_image(path: 'Path') -> Any
 resize(surface: 'Any', width: 'int', height: 'int') -> Any

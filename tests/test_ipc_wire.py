@@ -34,7 +34,6 @@ from trcc.core.models import (
     HandshakeResult,
     HardwareMetrics,
     Kind,
-    PanelCutout,
     ProductInfo,
     Wire,
 )
@@ -294,13 +293,12 @@ def test_discover_result_with_products_roundtrips() -> None:
     """Regression guard (859634af): a NON-EMPTY ProductInfo must survive the
     wire.  The empty-lists case above never builds a ProductInfo, so it missed
     the bug where ``decode_result`` → ``get_type_hints(ProductInfo)`` raised
-    ``NameError`` on the TYPE_CHECKING-only ``PanelCutout`` annotation.  Any
-    non-empty products list triggers it; the explicit PanelCutout also asserts
-    the nested value survives."""
+    ``NameError`` on a TYPE_CHECKING-only annotation.  Any non-empty products
+    list triggers it.  (The ``PanelCutout`` it used to carry was removed with
+    the island mirror it served, #149.)"""
     product = ProductInfo(
         vid=0x0402, pid=0x3922, vendor="Acme", product="Test LCD",
         wire=Wire.SCSI, kind=Kind.LCD, native_resolution=(320, 320),
-        panel_cutout=PanelCutout(x=10, y=20, w=30, h=40),
     )
     result = DiscoverResult(
         ok=True, message="1 device",
@@ -315,7 +313,6 @@ def test_discover_result_with_products_roundtrips() -> None:
     assert (p.vid, p.pid, p.product) == (0x0402, 0x3922, "Test LCD")
     assert p.wire is Wire.SCSI and p.kind is Kind.LCD
     assert p.native_resolution == (320, 320)
-    assert p.panel_cutout == PanelCutout(x=10, y=20, w=30, h=40)
     assert len(rebuilt.devices) == 1
     assert (rebuilt.devices[0].vid, rebuilt.devices[0].pid) == (0x0402, 0x3922)
 
