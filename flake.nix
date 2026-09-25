@@ -67,6 +67,8 @@
             # modules-load
             install -Dm644 packaging/modprobe/trcc-sg.conf \
               $out/etc/modules-load.d/trcc-sg.conf
+            install -Dm644 packaging/modprobe/trcc-rapl.conf \
+              $out/etc/modules-load.d/trcc-rapl.conf
 
             # desktop entry
             install -Dm644 src/trcc/assets/trcc-linux.desktop \

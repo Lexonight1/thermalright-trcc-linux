@@ -133,6 +133,7 @@ jobs:
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/etc/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
           install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
           for m in /src/man/man1/*.1; do install -Dm644 "$m" "$PKG/usr/share/man/man1/$(basename "$m")"; done
           install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
@@ -186,6 +187,7 @@ jobs:
           /etc/udev/rules.d/99-trcc-lcd.rules
           /etc/modprobe.d/trcc-lcd.conf
           /etc/modules-load.d/trcc-sg.conf
+          /etc/modules-load.d/trcc-rapl.conf
           /usr/share/applications/trcc-linux.desktop
           %{_mandir}/man1/trcc*.1*
           /usr/share/icons/hicolor/*/apps/trcc.png
@@ -276,6 +278,7 @@ jobs:
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
           install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
           for m in /src/man/man1/*.1; do install -Dm644 "$m" "$PKG/usr/share/man/man1/$(basename "$m")"; done
           for size in 256 128 64 48 32 24 16; do
@@ -348,6 +351,7 @@ jobs:
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
           install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
           for m in /src/man/man1/*.1; do install -Dm644 "$m" "$PKG/usr/share/man/man1/$(basename "$m")"; done
           for size in 256 128 64 48 32 24 16; do
@@ -441,6 +445,7 @@ jobs:
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/usr/lib/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/usr/lib/modules-load.d/trcc-rapl.conf"
           install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
           for m in /src/man/man1/*.1; do install -Dm644 "$m" "$PKG/usr/share/man/man1/$(basename "$m")"; done
           for size in 256 128 64 48 32 24 16; do

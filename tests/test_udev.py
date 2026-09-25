@@ -172,3 +172,27 @@ def test_wire_subsystems_table_covers_every_wire() -> None:
     """Defensive: new Wire enum values require a subsystems entry."""
     for wire in Wire:
         assert wire in _WIRE_SUBSYSTEMS, f"Wire.{wire.name} missing from udev table"
+
+
+def test_packaged_setup_files_are_what_setup_writes() -> None:
+    """The deb/rpm/Arch/Nix packages ship packaging/'s copies of the host setup
+    files.  Kept "in step" by hand, they drifted: after 0416:5406 became HID the
+    packaged rules still granted it scsi_generic and no hidraw.  The tests above
+    check chosen lines; this checks the whole of every file."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev"))
+    import gen_packaging_setup  # pyright: ignore[reportMissingImports]
+
+    stale = [str(path) for path, content in gen_packaging_setup.generate().items()
+             if not path.exists() or path.read_text() != content]
+    assert not stale, (
+        f"stale packaged setup files {stale} — run: "
+        "PYTHONPATH=src python3 dev/gen_packaging_setup.py")
+    # And nothing packaged that setup no longer writes: an orphan would keep
+    # being installed by every package after the code stopped producing it.
+    packaging = Path(__file__).resolve().parents[1] / "packaging"
+    shipped = {*packaging.glob("udev/*"), *packaging.glob("modprobe/*")}
+    assert shipped == set(gen_packaging_setup.generate()), (
+        f"packaged files setup does not write: "
+        f"{sorted(map(str, shipped - set(gen_packaging_setup.generate())))}")

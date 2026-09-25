@@ -16,6 +16,8 @@ override_dh_auto_install:
 	# modules-load
 	install -Dm644 packaging/modprobe/trcc-sg.conf \
 		debian/trcc-linux/etc/modules-load.d/trcc-sg.conf
+	install -Dm644 packaging/modprobe/trcc-rapl.conf \
+		debian/trcc-linux/etc/modules-load.d/trcc-rapl.conf
 	# desktop entry + icons
 	install -Dm644 src/trcc/assets/trcc-linux.desktop \
 		debian/trcc-linux/usr/share/applications/trcc-linux.desktop

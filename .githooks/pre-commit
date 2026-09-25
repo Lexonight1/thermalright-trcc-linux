@@ -60,6 +60,21 @@ if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
     git add doc/REFERENCE_PORTS.md
 fi
 
+# ── Packaged setup files ───────────────────────────────────────────────
+# packaging/udev + packaging/modprobe are what the deb/rpm/Arch/Nix packages
+# install, generated from _udev.host_files() (dev/gen_packaging_setup.py).
+# Hand-kept, they drifted: 0416:5406 stayed SCSI in the packages for a month
+# after the code made it HID.  A new device or wire changes them, so the
+# trigger is the whole tree, like the port reference above.
+if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
+    echo "pre-commit: src changed — regenerating packaged setup files"
+    if ! PYTHONPATH=src python3 dev/gen_packaging_setup.py >/dev/null; then
+        echo "pre-commit: packaged setup generation FAILED (dev/gen_packaging_setup.py)" >&2
+        exit 1
+    fi
+    git add packaging/udev packaging/modprobe
+fi
+
 # ── Command reference ──────────────────────────────────────────────────
 # doc/REFERENCE_COMMANDS.md is generated from the live Command classes
 # (dev/gen_commands_reference.py).  It is the contract a third party builds

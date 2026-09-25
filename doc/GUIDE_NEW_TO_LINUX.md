@@ -56,26 +56,26 @@ Look for the `NAME=` line. Common ones:
 
 ## Step 3: Install TRCC
 
-Pick your distro and copy-paste **one line**. It auto-detects the latest version — no manual editing needed.
+Pick your distro and copy-paste **one line**. It always downloads the latest release — no manual editing needed.
 
 ### Arch / Manjaro / CachyOS / EndeavourOS
 ```bash
-curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*pkg.tar.zst' | xargs wget -c && sudo pacman -U trcc-linux-*.pkg.tar.zst
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest-any.pkg.tar.zst && sudo pacman -U trcc-linux-latest-any.pkg.tar.zst
 ```
 
 ### Fedora / Nobara
 ```bash
-curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*noarch.rpm' | xargs wget -c && sudo dnf install ./trcc-linux-*.rpm
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.noarch.rpm && sudo dnf install ./trcc-linux-latest.noarch.rpm
 ```
 
 ### Ubuntu (24.04+) / Debian 13+ / Pop!_OS / Linux Mint 22+
 ```bash
-curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*_all.deb' | head -1 | xargs wget -c && sudo apt install -y ./trcc-linux_*_all.deb
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest_all.deb && sudo apt install -y ./trcc-linux-latest_all.deb
 ```
 
 ### Ubuntu 22.04 / Debian 12 / Linux Mint 21 (legacy)
 ```bash
-curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*legacy_all.deb' | xargs wget -c && sudo apt install -y ./trcc-linux_*legacy_all.deb
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.legacy_all.deb && sudo apt install -y ./trcc-linux-latest.legacy_all.deb
 ```
 
 ### pip (any distro, if packages don't work)
@@ -221,9 +221,7 @@ Everything you could do on Windows works on Linux:
 | Check health | `trcc doctor` |
 | Set up permissions | `sudo trcc system setup` |
 | Generate bug report | `trcc report` |
-| Update (Arch) | `sudo pacman -U trcc-linux-*.pkg.tar.zst` |
-| Update (Fedora) | `sudo dnf install ./trcc-linux-*.rpm` |
-| Update (Ubuntu) | `sudo apt install ./trcc-linux_*.deb` |
+| Update (Arch / Fedora / Ubuntu) | re-run the Step 3 line for your distro — it always fetches the latest |
 | Update (pip) | `pip install --upgrade trcc-linux` |
 | Start API server | `trcc serve` |
 | Interactive shell | `trcc shell` |

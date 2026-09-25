@@ -64,6 +64,8 @@ package() {
     # modules-load (SCSI generic)
     install -Dm644 packaging/modprobe/trcc-sg.conf \
         "${pkgdir}/usr/lib/modules-load.d/trcc-sg.conf"
+    install -Dm644 packaging/modprobe/trcc-rapl.conf \
+        "${pkgdir}/usr/lib/modules-load.d/trcc-rapl.conf"
 
     # desktop entry + icons
     install -Dm644 src/trcc/assets/trcc-linux.desktop \

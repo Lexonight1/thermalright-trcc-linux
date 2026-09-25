@@ -694,9 +694,17 @@ sudo pacman -S python-pip sg3_utils python-pyside6 portaudio ffmpeg
 pip install trcc-linux
 exit
 
-# Set up udev on the HOST (requires temporary unlock)
+# Set up device access on the HOST (requires temporary unlock).
+# The app is installed inside the container, so the host can't run `trcc system setup`;
+# it installs the same files the Arch package does, straight from the repo.
 sudo steamos-readonly disable
-sudo trcc system setup
+base=https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/packaging
+sudo curl -fsSLo /etc/udev/rules.d/99-trcc-lcd.rules "$base/udev/99-trcc-lcd.rules"
+sudo curl -fsSLo /etc/modprobe.d/trcc-lcd.conf "$base/modprobe/trcc-lcd.conf"
+sudo curl -fsSLo /etc/modules-load.d/trcc-sg.conf "$base/modprobe/trcc-sg.conf"
+sudo curl -fsSLo /etc/modules-load.d/trcc-rapl.conf "$base/modprobe/trcc-rapl.conf"
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo modprobe sg; sudo modprobe intel_rapl_msr
 sudo steamos-readonly enable
 
 # Run

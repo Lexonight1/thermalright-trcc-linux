@@ -1,6 +1,7 @@
 packaging/udev/99-trcc-lcd.rules lib/udev/rules.d/
 packaging/modprobe/trcc-lcd.conf etc/modprobe.d/
 packaging/modprobe/trcc-sg.conf etc/modules-load.d/
+packaging/modprobe/trcc-rapl.conf etc/modules-load.d/
 src/trcc/assets/trcc-linux.desktop usr/share/applications/
 src/trcc/assets/icons/trcc_256x256.png usr/share/icons/hicolor/256x256/apps/trcc.png
 src/trcc/assets/icons/trcc_128x128.png usr/share/icons/hicolor/128x128/apps/trcc.png

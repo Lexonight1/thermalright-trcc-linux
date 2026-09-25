@@ -84,6 +84,8 @@ install -Dm644 packaging/modprobe/trcc-lcd.conf \
     %{buildroot}%{_modprobedir}/trcc-lcd.conf
 install -Dm644 packaging/modprobe/trcc-sg.conf \
     %{buildroot}%{_modulesloaddir}/trcc-sg.conf
+install -Dm644 packaging/modprobe/trcc-rapl.conf \
+    %{buildroot}%{_modulesloaddir}/trcc-rapl.conf
 install -Dm644 src/trcc/assets/trcc-linux.desktop \
     %{buildroot}%{_datadir}/applications/trcc-linux.desktop
 for size in 256 128 64 48 32 24 16; do
@@ -132,6 +134,7 @@ fi
 %{_udevrulesdir}/99-trcc-lcd.rules
 %{_modprobedir}/trcc-lcd.conf
 %{_modulesloaddir}/trcc-sg.conf
+%{_modulesloaddir}/trcc-rapl.conf
 %{_datadir}/applications/trcc-linux.desktop
 %{_datadir}/icons/hicolor/*/apps/trcc.png
 %{_datadir}/polkit-1/actions/com.github.lexonight1.trcc.policy
