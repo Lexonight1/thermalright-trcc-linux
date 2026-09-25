@@ -13,7 +13,7 @@ import typer
 
 from ...core.commands import DaemonStatus, EnsureDaemon, StopDaemon
 from . import config, device, display, led, system, theme
-from ._ctx import dumps_json, get_app
+from ._ctx import dumps_json, get_app, warn_blanking_panels
 
 log = logging.getLogger(__name__)
 
@@ -583,6 +583,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def _root(
+    ctx: typer.Context,
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True,
         help="Terminal log verbosity: -v INFO (major milestones), "
@@ -622,6 +623,9 @@ def _root(
     written either way.
     """
     log.debug("_root: verbose=%s version=%s", verbose, version)
+    # One exit hook for every subcommand: the only face that stops sending
+    # after one frame is this one, so it is the one that must say so (#228).
+    ctx.call_on_close(warn_blanking_panels)
     from ...adapters.infra.logging import ensure_configured
     from ...core.logs import levels_for
 

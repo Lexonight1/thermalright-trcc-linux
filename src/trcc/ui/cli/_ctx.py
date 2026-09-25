@@ -101,6 +101,36 @@ def dispatch_echo(cmd: Any) -> Any:
     return result
 
 
+def warn_blanking_panels() -> None:
+    """At CLI exit, name every panel that goes blank now this process stops.
+
+    Some firmware drops its image a moment after the last frame — a registry
+    fact or a firmware quirk, ``DeviceState.needs_keepalive``.  A one-shot
+    command such as ``trcc display color`` sends one frame and exits, so on
+    those panels it flashed and went blank with no word why (#228, #267).
+    Silent when the command never built an App, and in daemon mode, where the
+    daemon owns the panel and keeps streaming after we exit.
+    """
+    from ...core.commands import ListDevices
+    from ...proxy import AppProxy
+
+    if get_app.cache_info().currsize == 0:
+        log.debug("warn_blanking_panels: no App was built — nothing to warn")
+        return
+    app = get_app()
+    if isinstance(app, AppProxy):
+        log.debug("warn_blanking_panels: daemon mode — the daemon keeps streaming")
+        return
+    for entry in app.dispatch(ListDevices()).devices:
+        state = app.dispatch(DeviceState(key=entry.key))
+        if state.connected and state.needs_keepalive:
+            log.info("warn_blanking_panels: %s blanks when frames stop", entry.key)
+            typer.echo(
+                f"Note: {entry.key} goes blank when frames stop. To keep it "
+                f"showing, run `trcc display keepalive {entry.key}`, the GUI, "
+                "or `trcc daemon`.", err=True)
+
+
 def parse_on_off(state: str) -> bool:
     """Parse an ``on``/``off`` CLI argument to bool, or raise ``BadParameter``."""
     log.debug("parse_on_off: state=%s", state)

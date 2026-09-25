@@ -456,6 +456,9 @@ class DeviceStateResult(Result):
     # Live connection state.
     connected: bool = False
     is_led: bool = False
+    # The panel blanks when frames stop (a registry fact or a firmware quirk),
+    # so a face that exits after one frame must say so (#228, #267).
+    needs_keepalive: bool = False
     # Handshake-derived — None until the device has answered.
     resolution: tuple[int, int] | None = None
     pm_byte: int | None = None

@@ -1374,6 +1374,7 @@ def _attach_sku_device(
     )
     trcc.devices[key] = SimpleNamespace(   # type: ignore[assignment]
         profile=profile,
+        needs_keepalive=False,             # every Device answers it (#228)
         # The REAL dataclass, not a namespace carrying two bytes.  The stub
         # version omitted ``fbl`` — a field every HandshakeResult has — and got
         # away with it only while nothing read it.  The moment ``DeviceState``

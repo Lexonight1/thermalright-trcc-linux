@@ -3058,6 +3058,7 @@ class DeviceState(Query[DeviceStateResult]):
             native_resolution=info.native_resolution,
             connected=device.is_connected,
             is_led=device.is_led,
+            needs_keepalive=device.needs_keepalive,
             resolution=profile.resolution if profile else None,
             jpeg=profile.jpeg if profile else None,
             rotate=profile.rotate if profile else None,

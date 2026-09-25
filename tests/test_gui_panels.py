@@ -832,6 +832,7 @@ class _StubDevice:
         # window look broken when it reads what every real device has.
         self.profile = None
         self.handshake = None
+        self.needs_keepalive = False
 
     @property
     def is_led(self) -> bool:

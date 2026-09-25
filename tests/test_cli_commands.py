@@ -1524,3 +1524,77 @@ def test_metric_spec_still_rejects_garbage(spec: str) -> None:
 
     with pytest.raises(typer.BadParameter):
         _parse_metric_spec(spec)
+
+
+# ── #228 / #267: a one-shot command on a panel that blanks when frames stop ──
+
+
+def _cli_on(tmp_path, cli_runner, spec: dict, args: list[str]) -> str:
+    """Run the real CLI on one mock device; return stdout + stderr."""
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    _ctx.set_platform(MockPlatform([spec], tmp_path))
+    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    try:
+        result = cli_runner.invoke(cli, args)
+        return result.output + (result.stderr if result.stderr_bytes else "")
+    finally:
+        _ctx.get_app.cache_clear()
+        _ctx._platform_override = None
+        _ctx._renderer_override = None
+
+
+_WARFRAME_SE = {"type": "lcd", "name": "Warframe SE", "vid": "0416",
+                "pid": "5302", "pm": 58, "bcd": "0407"}
+
+
+def test_a_one_shot_on_a_blanking_panel_says_how_to_keep_it_lit(
+    tmp_path, cli_runner,
+) -> None:
+    out = _cli_on(tmp_path, cli_runner, _WARFRAME_SE,
+                  ["display", "color", "0416:5302", "ff0000"])
+    assert "0416:5302 goes blank when frames stop" in out, out
+    assert "trcc display keepalive 0416:5302" in out
+
+
+def test_a_panel_that_holds_its_image_gets_no_note(tmp_path, cli_runner) -> None:
+    spec = {"type": "lcd", "name": "LCD", "vid": "0402", "pid": "3922",
+            "pm": 32, "fbl": 100}
+    out = _cli_on(tmp_path, cli_runner, spec,
+                  ["display", "color", "0402:3922", "ff0000"])
+    assert "goes blank when frames stop" not in out, out
+
+
+def test_the_note_never_builds_an_app_a_command_did_not(capsys) -> None:
+    """``trcc --version`` must not open USB just to decide it has nothing to say."""
+    from trcc.ui.cli import _ctx
+
+    _ctx.get_app.cache_clear()
+    _ctx.warn_blanking_panels()
+    assert _ctx.get_app.cache_info().currsize == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_the_note_is_silent_in_daemon_mode(monkeypatch, capsys) -> None:
+    """The daemon owns the panel and keeps streaming after the CLI exits."""
+    from functools import lru_cache
+    from unittest.mock import MagicMock
+
+    from trcc.proxy import AppProxy
+    from trcc.ui.cli import _ctx
+
+    proxy = MagicMock(spec=AppProxy)
+
+    @lru_cache(maxsize=1)
+    def fake_get_app():
+        return proxy
+
+    fake_get_app()                                  # "a command built it"
+    monkeypatch.setattr(_ctx, "get_app", fake_get_app)
+    _ctx.warn_blanking_panels()
+    proxy.dispatch.assert_not_called()
+    assert capsys.readouterr().err == ""

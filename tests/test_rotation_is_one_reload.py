@@ -39,6 +39,7 @@ before this file was committed.
 """
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 from typing import Any
@@ -169,7 +170,9 @@ def test_cli_rotation_is_one_reload(
     # ``_ctx``, not the command module: ``set-orientation`` goes through
     # ``dispatch_echo``, which looks ``get_app`` up in its OWN module, so
     # patching the name bound in ``cli/display.py`` reaches nothing.
-    monkeypatch.setattr(_ctx, "get_app", lambda: rotatable)
+    # lru-cached like the real one: the CLI exit hook asks the cache whether
+    # a command built an App before it looks at any device.
+    monkeypatch.setattr(_ctx, "get_app", functools.lru_cache(maxsize=1)(lambda: rotatable))
 
     with _Rotation(rotatable) as rotation:
         result = cli_runner.invoke(
