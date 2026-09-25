@@ -16,6 +16,9 @@ disambiguated to (1280, 480) or (1920, 440) for PMs 68/69 via _FBL_192_BY_PM.
 """
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 import pytest
 
 from trcc.adapters.device.ly_lcd import LyLcd
@@ -317,3 +320,53 @@ def test_pm65_is_catalogued_not_guessed(caplog) -> None:
     assert [r for r in caplog.records if "UNKNOWN PM" in r.getMessage()], (
         "an uncatalogued PM must still warn — otherwise the test above passes "
         "because nothing warns at all")
+
+
+# ── #251: every ACK is timed, so a report can show what a freeze answers ────
+#
+# The reporter's panel froze for 10+ minutes while every send "succeeded", and
+# nothing recorded what the ACK looked like while it did.  The C# re-handshakes
+# when an ACK misses 100 ms; ours waits 1000 ms and ignores it.  Only the
+# first ACK and each crossing of that line log at INFO/WARNING -- the lines a
+# default `trcc report` keeps -- per-frame detail stays at -vvv.
+
+
+def _ack_ly(monkeypatch, fake_bulk, *latencies_ms: float) -> Any:
+    """An LY device whose ACK reads take the scripted latencies."""
+    from trcc.adapters.device import ly_lcd
+
+    clock: list[float] = []
+    for ms in latencies_ms:
+        clock += [0.0, ms / 1000]
+    ticks = iter(clock)
+    monkeypatch.setattr(ly_lcd.time, "monotonic", lambda: next(ticks))
+    fake_bulk.read = lambda ep, n, timeout_ms=100: bytes(range(16)) * 32  # type: ignore[method-assign]
+    return _make_ly(fake_bulk)
+
+
+def test_the_first_ack_is_the_reports_baseline(monkeypatch, fake_bulk, caplog) -> None:
+    ly = _ack_ly(monkeypatch, fake_bulk, 3.0, 4.0)
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        ly._write_frame(b"x" * 512)
+        ly._write_frame(b"x" * 512)
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines == ["LyLcd 0416:5408: first ACK 512 byte(s) in 3.0 ms "
+                     "[00 01 02 03 04 05 06 07]"]
+
+
+def test_a_slow_ack_warns_once_and_recovery_is_noted(monkeypatch, fake_bulk, caplog) -> None:
+    ly = _ack_ly(monkeypatch, fake_bulk, 3.0, 250.0, 300.0, 5.0)
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        for _ in range(4):
+            ly._write_frame(b"x" * 512)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "ACK took 250.0 ms, past the C#'s 100 ms" in warnings[0].getMessage()
+    assert "ACKs back under 100 ms (5.0 ms)" in caplog.records[-1].getMessage()
+
+
+def test_an_ack_record_never_carries_the_whole_buffer(monkeypatch, fake_bulk, caplog) -> None:
+    ly = _ack_ly(monkeypatch, fake_bulk, 250.0)
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        ly._write_frame(b"x" * 512)
+    assert all(len(r.getMessage()) < 200 for r in caplog.records)

@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import struct
+import time
 
 from ...core.errors import (
     HandshakeError,
@@ -54,6 +55,12 @@ _HANDSHAKE_READ_SIZE = 512
 _HANDSHAKE_TIMEOUT_MS = 1000
 _WRITE_TIMEOUT_MS = 5000
 _READ_TIMEOUT_MS = 1000
+#: The C#'s ACK read timeout (DCReadWriteAsync.cs ThreadSendDeviceDataLY:
+#: ``Read(first, 0, 512, 100, …)``).  A miss there tears the device down and
+#: re-handshakes; ours waits 1000 ms and never looks at the ACK.  Not adopted
+#: blind (Linux USB timing is unmeasured on a real LY panel, #251) -- it is the
+#: line an ACK is WARNED against, so a report shows when it is crossed.
+_CSHARP_ACK_TIMEOUT_MS = 100
 
 # NOTE: the JPEG size ceiling that used to live here as `_MAX_FRAME_BYTES =
 # 512 * 1024` is gone — `DeviceProfile.max_frame_bytes` now carries the C#'s
@@ -95,6 +102,9 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
         self._sub: int = 0
         # LY uses chunk header byte[8]=1, LY1 uses byte[8]=2
         self._chunk_cmd: int = 1 if info.pid == _PID_LY else 2
+        # ACK health, for #251's freeze: None until the first ACK is seen,
+        # then whether ACKs are currently slower than the C#'s timeout.
+        self._ack_slow: bool | None = None
 
     # ── Device ABC ────────────────────────────────────────────────────
 
@@ -263,6 +273,36 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
                 self._EP_WRITE, frame[pos:pos + write_size], _WRITE_TIMEOUT_MS,
             )
             pos += _USB_WRITE_SIZE
-        # ACK read
-        self._transport.read(self._EP_READ, _HANDSHAKE_READ_SIZE, _READ_TIMEOUT_MS)
+        # ACK read -- timed, because #251's freeze kept "succeeding" host-side
+        # and nothing recorded what the ACK looked like while it did.
+        started = time.monotonic()
+        ack = self._transport.read(self._EP_READ, _HANDSHAKE_READ_SIZE,
+                                   _READ_TIMEOUT_MS)
+        self._note_ack((time.monotonic() - started) * 1000, ack)
         return True
+
+    def _note_ack(self, ms: float, ack: bytes) -> None:
+        """Record an ACK so a report can show what a frozen panel answers.
+
+        Per frame at ``-vvv``; otherwise only the first ACK (the baseline) and
+        each change between within and beyond the C#'s 100 ms timeout -- the
+        lines a default ``trcc report`` log keeps.  First 8 bytes only: a
+        record must not grow with its payload.
+        """
+        head = ack[:8].hex(" ")
+        frame_log.debug("LyLcd %s: ACK %d byte(s) in %.1f ms [%s]",
+                        self.info.key, len(ack), ms, head)
+        slow = ms > _CSHARP_ACK_TIMEOUT_MS
+        if slow == self._ack_slow:
+            return
+        if self._ack_slow is None and not slow:
+            log.info("LyLcd %s: first ACK %d byte(s) in %.1f ms [%s]",
+                     self.info.key, len(ack), ms, head)
+        elif slow:
+            log.warning("LyLcd %s: ACK took %.1f ms, past the C#'s %d ms "
+                        "timeout (the C# would re-handshake here) [%s] (#251)",
+                        self.info.key, ms, _CSHARP_ACK_TIMEOUT_MS, head)
+        else:
+            log.info("LyLcd %s: ACKs back under %d ms (%.1f ms) [%s]",
+                     self.info.key, _CSHARP_ACK_TIMEOUT_MS, ms, head)
+        self._ack_slow = slow
