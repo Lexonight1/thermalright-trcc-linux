@@ -37,6 +37,7 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | Phantom Spirit 120 Digital EVO | HID (0416:8001) | [javisaman](https://github.com/javisaman), [Rizzzolo](https://github.com/Rizzzolo) |
 | HR10 2280 PRO Digital | HID (0416:8001) | [Lcstyle](https://github.com/Lcstyle) |
 | Magic Qube | HID (0416:8001) | [jphilipb](https://github.com/jphilipb) |
+| MC-3 DIGITAL (memory cooler) | HID (0416:8001) | [rjstanford-it](https://github.com/rjstanford-it) |
 
 ---
 

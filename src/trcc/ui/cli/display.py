@@ -63,6 +63,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...core.errors import TrccError
 from ...core.models import MEDIA, FitMode, MediaKind
 from ._ctx import (
     daemon_owns_the_panels,
@@ -71,6 +72,7 @@ from ._ctx import (
     ensure_connected,
     get_app,
     parse_on_off,
+    recover_or_exit,
     resolution_for,
 )
 
@@ -614,10 +616,15 @@ def play(
             # dispatch() only (#249).  The Result carries the cursor and the
             # per-frame interval, so the loop paces itself off the video when
             # one is playing and off the metrics interval otherwise.
-            result = app_obj.dispatch(TickDisplay(key=key))
+            try:
+                result = app_obj.dispatch(TickDisplay(key=key))
+            except TrccError as e:
+                recover_or_exit(app_obj, key, str(e))
+                continue
             if not result.ok:
-                typer.echo(f"  tick failed: {result.message}", err=True)
-                raise typer.Exit(code=1)
+                # A lost panel is reconnected, not the end of the command (#270).
+                recover_or_exit(app_obj, key, result.message)
+                continue
             if result.frame_count is not None:
                 typer.echo(
                     f"  sent {result.bytes_sent} bytes (theme={result.theme_name!r}"

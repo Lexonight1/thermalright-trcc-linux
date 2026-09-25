@@ -101,6 +101,60 @@ def dispatch_echo(cmd: Any) -> Any:
     return result
 
 
+#: Seconds between reconnect attempts: quick at first (a replug or a resume
+#: settles in a few seconds), then no more often than every 30 s.
+_RECONNECT_BACKOFF_S = (2.0, 4.0, 8.0, 16.0, 30.0)
+
+
+def recover_or_exit(app: Any, key: str, message: str) -> None:
+    """A play-loop tick failed: bring a LOST panel back, or stop on a real error.
+
+    ``trcc led play`` / ``display play`` exited 1 whenever a tick failed, so a
+    panel that went away over suspend/resume ended the command -- and under
+    systemd that was 1279 restarts in five hours (#270).  The daemon and the
+    GUIs reconnect after a resume; these loops now do too.  A failure while the
+    device is still connected (no theme, a bad argument) is a real error and
+    still exits, so reconnecting cannot hide it.
+    """
+    state = app.dispatch(DeviceState(key=key))
+    if state.ok and state.connected:
+        log.warning("recover_or_exit: %s still connected — real failure: %s",
+                    key, message)
+        typer.echo(f"  tick failed: {message}", err=True)
+        raise typer.Exit(code=1)
+    log.warning("recover_or_exit: %s lost (%s) — reconnecting", key, message)
+    typer.echo(f"  {key} stopped answering ({message}) — reconnecting…", err=True)
+    reconnect_until_back(app, key)
+
+
+def reconnect_until_back(app: Any, key: str) -> None:
+    """Rebuild *key*'s connection, retrying with backoff until it answers.
+
+    ``ResetDevice`` is the daemon's resume sequence as a Command (disconnect,
+    reconnect, put the display back); a device the recovery already DROPPED is
+    no longer attached, so ``ConnectDevice`` takes over.  Ctrl-C still stops.
+    """
+    import time
+
+    from ...core.commands import ConnectDevice, ResetDevice
+
+    attempt = 0
+    while True:
+        result = app.dispatch(ResetDevice(key=key))
+        if not result.ok:
+            result = app.dispatch(ConnectDevice(key=key))
+        if result.ok:
+            log.info("reconnect_until_back: %s back after %d attempt(s)",
+                     key, attempt + 1)
+            typer.echo(f"  {key} reconnected.", err=True)
+            return
+        wait = _RECONNECT_BACKOFF_S[min(attempt, len(_RECONNECT_BACKOFF_S) - 1)]
+        log.info("reconnect_until_back: %s attempt %d failed (%s) — next in %.0fs",
+                 key, attempt + 1, result.message, wait)
+        attempt += 1
+        time.sleep(wait)
+
+
 def daemon_owns_the_panels(app: Any) -> bool:
     """True when ``app`` is the daemon's proxy — the daemon streams, not us.
 

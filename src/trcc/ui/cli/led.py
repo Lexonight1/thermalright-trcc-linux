@@ -33,13 +33,16 @@ from ...core.commands import (
     ToggleLed,
     ToggleSegment,
 )
+from ...core.errors import TrccError
 from ...core.led_models import LEDMode
 from ._ctx import (
+    daemon_owns_the_panels,
     dispatch_echo,
     emit_json,
     ensure_connected,
     get_app,
     parse_on_off,
+    recover_or_exit,
 )
 
 log = logging.getLogger(__name__)
@@ -450,6 +453,12 @@ def play(
 
     app_obj = get_app()
     ensure_connected(app_obj, key)   # once, before the loop (not per tick)
+    if daemon_owns_the_panels(app_obj):
+        # The daemon's LedAnimationLoop animates it; ticking here as well would
+        # run every effect at double speed (the #249 shape, for LEDs).
+        log.info("cli led play: %s is animated by the daemon — not ticking", key)
+        typer.echo(f"The daemon is animating {key} — it keeps the LEDs updated.")
+        return
     if interval is not None:
         tick_s = interval
     else:
@@ -462,10 +471,16 @@ def play(
     typer.echo(f"Animating LED on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")
     try:
         while True:
-            result = app_obj.dispatch(RenderLed(key=key))
+            # A panel that goes away (suspend/resume, a replug) is reconnected,
+            # not the end of the command (#270).
+            try:
+                result = app_obj.dispatch(RenderLed(key=key))
+            except TrccError as e:
+                recover_or_exit(app_obj, key, str(e))
+                continue
             if not result.ok:
-                typer.echo(f"  tick failed: {result.message}", err=True)
-                raise typer.Exit(code=1)
+                recover_or_exit(app_obj, key, result.message)
+                continue
             time.sleep(tick_s)
     except KeyboardInterrupt:
         typer.echo("\nStopped.")

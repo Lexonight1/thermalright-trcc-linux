@@ -133,11 +133,8 @@ The following models are listed on [Thermalright's official download page](https
 | Burst Assassin 120 Vision | HID LCD or LED | Need tester |
 | Core Matrix VISION | HID LCD or LED | Need tester |
 | Core Vision | HID LCD or LED | Need tester |
-| Hyper Vision | HID LCD or LED | Need tester |
 | Levita Vision | HID LCD or LED | Need tester |
-| MC-3 DIGITAL | HID LCD or LED | Need tester |
 | Peerless Assassin 140 Digital | HID LCD or LED | Need tester |
-| Peerless Vision | HID LCD or LED | Need tester |
 | Phantom Spirit 120 Digital/Vision | HID LCD or LED | Need tester |
 | Rainbow Vision | HID LCD or LED | Need tester |
 | Royal Knight 130 Digital/Vision | HID LCD or LED | Need tester |

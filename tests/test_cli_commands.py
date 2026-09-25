@@ -1632,3 +1632,163 @@ def test_display_play_leaves_the_video_to_the_daemon(monkeypatch, cli_runner) ->
     assert result.exit_code == 0, result.output
     assert "daemon is playing 0402:3922" in result.output
     assert "TickDisplay" not in sent
+
+
+# ── #270: a play loop that loses its panel reconnects instead of exiting ────
+
+
+class _ScriptedApp:
+    """Answers each Command by name from a script; records what it was sent."""
+
+    def __init__(self, script: dict) -> None:
+        self.script = {k: list(v) for k, v in script.items()}
+        self.sent: list[str] = []
+
+    def dispatch(self, cmd):
+        from unittest.mock import MagicMock
+        name = type(cmd).__name__
+        self.sent.append(name)
+        answers = self.script.get(name)
+        answer = answers.pop(0) if answers and len(answers) > 1 else (
+            answers[0] if answers else MagicMock(ok=True, message="ok"))
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def _run_led_play(monkeypatch, cli_runner, app, ticks_before_stop: int = 1):
+    """Run `trcc led play` on *app*; stop after N successful tick sleeps."""
+    import time as time_mod
+    from functools import lru_cache
+
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli import led as led_mod
+    from trcc.ui.cli.main import app as cli
+
+    @lru_cache(maxsize=1)
+    def fake_get_app():
+        return app
+
+    monkeypatch.setattr(_ctx, "get_app", fake_get_app)
+    monkeypatch.setattr(led_mod, "get_app", fake_get_app)
+    monkeypatch.setattr(led_mod, "ensure_connected", lambda a, k: None)
+    sleeps: list[float] = []
+
+    def sleep(s):
+        sleeps.append(s)
+        if s == 0.5 and sleeps.count(0.5) >= ticks_before_stop:
+            raise KeyboardInterrupt
+    monkeypatch.setattr(time_mod, "sleep", sleep)
+    result = cli_runner.invoke(cli, ["led", "play", "0416:8001", "-i", "0.5"])
+    return result, sleeps
+
+
+def test_led_play_reconnects_a_lost_panel_and_keeps_going(monkeypatch, cli_runner) -> None:
+    from unittest.mock import MagicMock
+
+    from trcc.core.errors import DeviceNotConnectedError
+
+    app = _ScriptedApp({
+        "RenderLed": [DeviceNotConnectedError("0416:8001 not connected"),
+                      MagicMock(ok=True, message="ok")],
+        "DeviceState": [MagicMock(ok=True, connected=False)],
+        "ResetDevice": [MagicMock(ok=True, message="reset")],
+    })
+    result, _ = _run_led_play(monkeypatch, cli_runner, app)
+    assert result.exit_code == 0, result.output
+    assert "reconnected" in result.output
+    assert app.sent.count("RenderLed") == 2 and "ResetDevice" in app.sent
+
+
+def test_led_play_still_exits_on_a_real_error(monkeypatch, cli_runner) -> None:
+    """A failure while the panel is still connected is not a lost panel."""
+    from unittest.mock import MagicMock
+
+    app = _ScriptedApp({
+        # A second tick ends the loop, so a build that wrongly reconnects
+        # FAILS here (exit 0) instead of spinning forever.
+        "RenderLed": [MagicMock(ok=False, message="not an LED device"),
+                      KeyboardInterrupt()],
+        "DeviceState": [MagicMock(ok=True, connected=True)],
+    })
+    result, _ = _run_led_play(monkeypatch, cli_runner, app)
+    assert result.exit_code == 1
+    assert "ResetDevice" not in app.sent
+
+
+def test_reconnect_backs_off_and_caps(monkeypatch) -> None:
+    import time as time_mod
+    from unittest.mock import MagicMock
+
+    from trcc.ui.cli import _ctx
+
+    down = MagicMock(ok=False, message="no device")
+    app = _ScriptedApp({"ResetDevice": [down] * 7 + [MagicMock(ok=True)],
+                        "ConnectDevice": [down]})
+    sleeps: list[float] = []
+    monkeypatch.setattr(time_mod, "sleep", sleeps.append)
+    _ctx.reconnect_until_back(app, "0416:8001")
+    assert sleeps == [2.0, 4.0, 8.0, 16.0, 30.0, 30.0, 30.0]
+
+
+def test_led_play_leaves_the_leds_to_the_daemon(monkeypatch, cli_runner) -> None:
+    """The daemon's LedAnimationLoop animates them; a second ticker doubles
+    every effect's speed (the #249 shape, for LEDs)."""
+    from functools import lru_cache
+    from unittest.mock import MagicMock
+
+    from trcc.proxy import AppProxy
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli import led as led_mod
+    from trcc.ui.cli.main import app as cli
+
+    proxy = MagicMock(spec=AppProxy)
+    proxy.dispatch.return_value = MagicMock(ok=True, message="ok")
+
+    @lru_cache(maxsize=1)
+    def fake_get_app():
+        return proxy
+
+    monkeypatch.setattr(_ctx, "get_app", fake_get_app)
+    monkeypatch.setattr(led_mod, "get_app", fake_get_app)
+    monkeypatch.setattr(led_mod, "ensure_connected", lambda a, k: None)
+    result = cli_runner.invoke(cli, ["led", "play", "0416:8001"])
+    assert result.exit_code == 0 and "daemon is animating 0416:8001" in result.output
+    assert "RenderLed" not in {type(c.args[0]).__name__ for c in proxy.dispatch.call_args_list}
+
+
+def test_display_play_reconnects_a_lost_panel_too(monkeypatch, cli_runner) -> None:
+    import time as time_mod
+    from functools import lru_cache
+    from unittest.mock import MagicMock
+
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli import display as display_mod
+    from trcc.ui.cli.main import app as cli
+
+    app = _ScriptedApp({
+        "TickDisplay": [MagicMock(ok=False, message="device gone"),
+                        MagicMock(ok=True, frame_count=None, bytes_sent=1,
+                                  theme_name="t", message="ok")],
+        "DeviceState": [MagicMock(ok=True, connected=False)],
+        "ResetDevice": [MagicMock(ok=True, message="reset")],
+    })
+
+    @lru_cache(maxsize=1)
+    def fake_get_app():
+        return app
+
+    monkeypatch.setattr(_ctx, "get_app", fake_get_app)
+    monkeypatch.setattr(display_mod, "get_app", fake_get_app)
+    monkeypatch.setattr(display_mod, "ensure_connected", lambda a, k: None)
+    ticks: list[float] = []
+
+    def sleep(sec):
+        ticks.append(sec)
+        if sec == 0.5:
+            raise KeyboardInterrupt
+    monkeypatch.setattr(time_mod, "sleep", sleep)
+
+    result = cli_runner.invoke(cli, ["display", "play", "0402:3922", "-i", "0.5"])
+    assert result.exit_code == 0, result.output
+    assert "reconnected" in result.output and app.sent.count("TickDisplay") == 2
