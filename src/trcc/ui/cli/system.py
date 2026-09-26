@@ -718,11 +718,10 @@ def list_endpoints() -> None:
     output reflects what ``trcc api`` / ``trcc serve`` would serve.
     """
     log.info("cli system list-endpoints")
-    from ...ui.api.main import build_app
+    from ...ui.api.main import api_routes, build_app
 
-    api_app = build_app()
     rows: list[tuple[str, str]] = []
-    for route in api_app.routes:
+    for route in api_routes(build_app()):
         path = getattr(route, "path", "")
         methods = getattr(route, "methods", None) or set()
         for method in sorted(m for m in methods if m != "HEAD"):

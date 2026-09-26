@@ -64,11 +64,10 @@ def _summary(endpoint: object) -> str:
 def generate() -> str:
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
-    from trcc.ui.api.main import build_app
+    from trcc.ui.api.main import api_routes, build_app
 
-    api = build_app()
     rows: list[tuple[str, str, str, str, str]] = []   # tag, path, methods, resp, summary
-    for route in api.routes:
+    for route in api_routes(build_app()):
         if isinstance(route, APIRoute):
             methods = " ".join(sorted(m for m in route.methods
                                       if m not in ("HEAD", "OPTIONS")))

@@ -42,13 +42,13 @@ def test_every_served_route_appears_on_the_page() -> None:
     mount are framework furniture, not TRCC's surface, and are excluded by
     name rather than by a pattern that could quietly swallow a real route.
     """
-    from trcc.ui.api.main import build_app
+    from trcc.ui.api.main import api_routes, build_app
 
     framework = {"/openapi.json", "/redoc", "/docs", "/docs/oauth2-redirect",
                  "/static/web"}
     page = _DOC.read_text()
     missing = sorted(
-        path for route in build_app().routes
+        path for route in api_routes(build_app())
         if (path := getattr(route, "path", None))
         and path not in framework and path not in page
     )

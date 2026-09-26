@@ -248,5 +248,7 @@ def test_a_disconnect_does_not_disturb_the_other_client(
 
 def test_the_route_is_mounted_on_the_app(client) -> None:
     """A router nobody included is a feature nobody has."""
-    paths = {getattr(r, "path", "") for r in client.app.routes}
+    from trcc.ui.api.main import api_routes
+
+    paths = {getattr(r, "path", "") for r in api_routes(client.app)}
     assert "/events" in paths

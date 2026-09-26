@@ -37,6 +37,43 @@ if TYPE_CHECKING:
 from . import config, devices, display, events, led, system, theme
 from . import trcc as _trcc_router
 
+if TYPE_CHECKING:
+    from starlette.routing import BaseRoute
+
+#: Every router the API includes, in order -- the ONE list.  ``build_app``
+#: includes it and :func:`api_routes` walks it.  ``events`` is the observe half:
+#: dispatch and read were always here, the bus was not.
+ROUTERS = (
+    devices.router, display.router, display.meta_router, led.router,
+    led.meta_router, system.router, config.router, theme.router,
+    _trcc_router.router, events.router,
+)
+
+
+def api_routes(api: FastAPI) -> list[BaseRoute]:
+    """Every route *api* serves, on any FastAPI version.
+
+    FastAPI 0.141 stopped copying an included router's routes into
+    ``app.routes``; it keeps one placeholder per router instead, with no path.
+    ``trcc system list-endpoints`` walked that list and reported 7 of 140
+    endpoints, and the API reference lost the same routes.  Reading the
+    routers we included is version-proof -- an older FastAPI that still copies
+    them is de-duplicated, so nothing is listed twice.
+    """
+    seen: set[tuple[str, str, tuple[str, ...]]] = set()
+    routes: list[BaseRoute] = []
+    for route in [*api.routes, *(r for router in ROUTERS for r in router.routes)]:
+        path = getattr(route, "path", None)
+        if path is None:
+            continue
+        key = (type(route).__name__, path,
+               tuple(sorted(getattr(route, "methods", None) or ())))
+        if key not in seen:
+            seen.add(key)
+            routes.append(route)
+    log.debug("api_routes: %d route(s)", len(routes))
+    return routes
+
 log = logging.getLogger(__name__)
 
 
@@ -165,18 +202,8 @@ def build_app(trcc: App | None = None) -> FastAPI:
         log.info("API pair: remote device paired successfully")
         return {"success": True, "token": _api_token}
 
-    api.include_router(devices.router)
-    api.include_router(display.router)
-    api.include_router(display.meta_router)
-    api.include_router(led.router)
-    api.include_router(led.meta_router)
-    api.include_router(system.router)
-    api.include_router(config.router)
-    api.include_router(theme.router)
-    api.include_router(_trcc_router.router)
-    # The observe half: dispatch and read were always here,
-    # the bus was not.
-    api.include_router(events.router)
+    for router in ROUTERS:
+        api.include_router(router)
 
     # ── Static serving for cloud previews ───────────────────────────
     # Mount data/web so the /theme/web gallery's preview_url
