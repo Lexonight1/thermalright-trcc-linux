@@ -61,7 +61,12 @@ jobs:
       - name: Run tests with coverage
         env:
           QT_QPA_PLATFORM: offscreen
+        # pipefail: without it the step's status is tee's, which is always 0.
+        # Measured 2026-09-25: every run since at least v9.10.3 was green with
+        # 14-25 failing tests per Python -- including 3.10, where the GUI, API
+        # and daemon could not start at all -- and a pytest worker segfault.
         run: |
+          set -o pipefail
           pytest tests/ --cov=trcc --cov-report=term-missing --cov-branch --tb=short -q 2>&1 | tee pytest-output.txt
 
       - name: Upload test metrics
