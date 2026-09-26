@@ -65,9 +65,16 @@ jobs:
         # Measured 2026-09-25: every run since at least v9.10.3 was green with
         # 14-25 failing tests per Python -- including 3.10, where the GUI, API
         # and daemon could not start at all -- and a pytest worker segfault.
+        # Coverage on 3.12 only: branch tracing slows every test, the badge and
+        # the uploaded metrics read the 3.12 job alone, and 3.10/3.11 are here
+        # to prove the suite PASSES on them, not to measure it three times.
         run: |
           set -o pipefail
-          pytest tests/ --cov=trcc --cov-report=term-missing --cov-branch --tb=short -q 2>&1 | tee pytest-output.txt
+          cov=""
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            cov="--cov=trcc --cov-report=term-missing --cov-branch"
+          fi
+          pytest tests/ $cov --tb=short -q 2>&1 | tee pytest-output.txt
 
       - name: Upload test metrics
         if: matrix.python-version == '3.12'
