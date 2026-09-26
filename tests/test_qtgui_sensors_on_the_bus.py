@@ -58,7 +58,7 @@ class _Harness:
     """A real ``SystemPanel`` in a real stack, with every dispatch counted."""
 
     def __init__(self, qtbot, tmp_path: Path) -> None:
-        self.app = App(MockPlatform(_SPECS, tmp_path))
+        self.app = App(MockPlatform(_SPECS, tmp_path, host_sensors=False))
         self.counts: Counter[str] = Counter()
         real = self.app.dispatch
 

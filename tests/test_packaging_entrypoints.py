@@ -17,7 +17,12 @@ import re
 import sys
 from pathlib import Path
 
-import tomllib
+import pytest
+
+# ``tomllib`` is 3.11+; this reads pyproject, which does not change with the
+# Python running it, so 3.11 and 3.12 carry the gate and 3.10 skips cleanly
+# instead of erroring at collection.
+tomllib = pytest.importorskip("tomllib")
 
 _ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _ROOT / "pyproject.toml"

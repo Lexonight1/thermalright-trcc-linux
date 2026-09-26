@@ -774,6 +774,10 @@ def test_a_frozen_stream_is_reported_once(caplog, monkeypatch) -> None:
     time, so "no frame yet" cannot see this.  What is wrong is that it is the
     same frame, and the only symptom the user has is a frozen panel.
     """
+    # Availability is set, not inherited: it follows whether the HOST has the
+    # bindings, and on CI's clean venv (no dbus) this test read the fallback
+    # path and saw no stall at all.
+    monkeypatch.setattr(pw, "PIPEWIRE_AVAILABLE", True)
     frame = (4, 4, b"\x09" * 48)
     cap = _capture(_Session(running=True, frame=frame), _Fallback())
 

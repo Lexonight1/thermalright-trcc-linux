@@ -56,10 +56,13 @@ def _render_type(hint: object) -> str:
     """A readable spelling of a field's type, e.g. ``list[tuple[int, int, int]]``."""
     if hint is type(None):
         return "None"
-    if isinstance(hint, type):
-        return hint.__name__
     origin = typing.get_origin(hint)
     args = typing.get_args(hint)
+    # A generic before a plain class: on Python 3.10 ``isinstance(tuple[int],
+    # type)`` is True, so testing ``type`` first rendered ``tuple`` there and
+    # ``tuple[int, int, int]`` on 3.11+ -- one page, two answers.
+    if origin is None and isinstance(hint, type):
+        return hint.__name__
     if origin in (types.UnionType, typing.Union):
         return " | ".join(_render_type(a) for a in args)
     if origin is not None:

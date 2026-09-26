@@ -55,7 +55,7 @@ class _Ticking(BasePanel):
 
 def _stacked(qtbot, tmp_path: Path) -> tuple[App, QStackedWidget, list[_Ticking]]:
     """Two panels in a real stack — the widget qtgui actually uses."""
-    app = App(MockPlatform(_SPECS, tmp_path))
+    app = App(MockPlatform(_SPECS, tmp_path, host_sensors=False))
     bus = BusBridge(app.events)
     stack = QStackedWidget()
     panels = [_Ticking(app, bus), _Ticking(app, bus)]
@@ -163,7 +163,7 @@ def test_the_sensor_picker_stops_working_when_hidden(qtbot, tmp_path: Path) -> N
     from trcc.core.events import SensorsUpdated
     from trcc.ui.qtgui.sensor_picker import SensorPickerWidget
 
-    app = App(MockPlatform(_SPECS, tmp_path))
+    app = App(MockPlatform(_SPECS, tmp_path, host_sensors=False))
     try:
         bus = BusBridge(app.events)
         host = QWidget()

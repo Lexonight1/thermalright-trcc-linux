@@ -112,7 +112,11 @@ def _all_classes() -> list[type]:
     return [
         obj for obj in gc.get_objects()
         if issubclass(type(obj), type)
-        and getattr(obj, "__module__", "").startswith("trcc.")
+        # Not every class's ``__module__`` is a str: a newer dependency ships
+        # one whose is a descriptor, and ``.startswith`` on it crashed this
+        # generator -- and the pre-commit hook that runs it.
+        and isinstance(module := getattr(obj, "__module__", ""), str)
+        and module.startswith("trcc.")
     ]
 
 

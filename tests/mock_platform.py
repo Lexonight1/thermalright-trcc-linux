@@ -466,8 +466,14 @@ class MockPlatform(FakePlatform):
     a tmp dir for unit tests); it flows through ``FakePlatform`` → ``FakePaths``.
     """
 
-    def __init__(self, specs: list[dict], root: Path) -> None:
+    def __init__(self, specs: list[dict], root: Path, *,
+                 host_sensors: bool = True) -> None:
         super().__init__(root)
+        # The mock GUI wants THIS computer's metrics; a test asserting on a
+        # sensor row must not -- CI's VM has no CPU temperature sensor, so
+        # ``cpu:temp`` was never listed there and six qtgui tests failed on CI
+        # alone.  ``host_sensors=False`` hands back FakePlatform's fixed set.
+        self._host_sensors = host_sensors
         self._specs: list[DeviceSpec] = [DeviceSpec.parse(s) for s in specs]
         self._by_key: dict[tuple[int, int], DeviceSpec] = {
             s.key: s for s in self._specs
@@ -497,6 +503,8 @@ class MockPlatform(FakePlatform):
         ``FakePlatform`` hands to unit tests.  Built the same way the real
         ``LinuxOS.sensors`` builds it (``build_linux_sensors``).
         """
+        if not self._host_sensors:
+            return super().sensors()
         if self._sensors is None:
             from trcc.adapters.sensors.aggregator import build_linux_sensors
             log.info("MockPlatform.sensors: REAL host sensors (dev box)")
