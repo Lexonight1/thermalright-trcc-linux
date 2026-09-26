@@ -25,6 +25,13 @@ import os
 # user needs their real plugin.
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
+# CLI output is PLAIN text, on every machine.  Typer decides at import whether
+# to force colour, and forces it whenever ``GITHUB_ACTIONS`` is set -- so on CI,
+# and only there, ``--yes`` in captured help arrived split by escape codes and a
+# help test failed that passes everywhere else.  Typer's own switch, set here
+# for the same reason as the line above: before the first import.
+os.environ["_TYPER_FORCE_DISABLE_TERMINAL"] = "1"
+
 
 import inspect
 import ipaddress
@@ -906,3 +913,72 @@ def _logging_state_is_not_global() -> Iterator[None]:
         root.handlers[:] = before[2]
         root.setLevel(before[0])
         frame.setLevel(before[1])
+
+
+# =========================================================================
+# Background threads — a test that starts one stops it
+# =========================================================================
+
+#: Thread names this project starts (``trcc-send-<key>``, ``trcc-video``,
+#: ``trcc-metrics``, ``trcc-ipc-events``, ...) plus the sensor poller.  Threads
+#: a library starts (``AnyIO worker thread`` under FastAPI's TestClient) are
+#: not ours to stop and are not checked.
+_OUR_THREADS = ("trcc-", "sensor-poll")
+
+
+@pytest.fixture(autouse=True)
+def _no_background_thread_outlives_its_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Close every App a test built, then fail if its threads still run.
+
+    Measured 2026-09-25: **203 tests** left threads running -- sender workers,
+    IPC event readers, and three coldplug tests that each left a WHOLE session
+    (video, metrics and LED loops plus the sensor poller) alive in the worker.
+    Those loops publish and render from background threads while later tests
+    drive Qt on the main thread, and CI's pytest workers died with a segfault
+    inside Qt's event processing -- with exactly those three sessions in the
+    crash dump.  CI never failed on it, because the test step's exit code was
+    ``tee``'s.
+
+    Every App built during the test is closed here, which is what the process
+    exit a real UI performs would do.  A thread that survives THAT was started
+    by something the test itself must stop (an IPC client, a server), and the
+    test fails naming it.
+    """
+    import threading
+    import time
+
+    from trcc.app import App
+
+    built: list[App] = []
+    init = App.__init__
+
+    def recording_init(self: App, *args: Any, **kwargs: Any) -> None:
+        init(self, *args, **kwargs)
+        built.append(self)
+
+    monkeypatch.setattr(App, "__init__", recording_init)
+    before = {t.ident for t in threading.enumerate()}
+    # The REAL clock, taken now: tests script ``time.monotonic`` and their
+    # patch is still in place when this teardown runs.
+    clock = time.monotonic
+    yield
+    for app in built:
+        try:
+            app.close()
+        except Exception:
+            logging.getLogger(__name__).exception("closing a test's App raised")
+
+    def ours() -> list[threading.Thread]:
+        return [t for t in threading.enumerate()
+                if t.ident not in before and t.is_alive()
+                and t.name.startswith(_OUR_THREADS)]
+
+    deadline = clock() + 2.0
+    while (leaked := ours()) and clock() < deadline:
+        leaked[0].join(timeout=0.1)
+    assert not leaked, (
+        "this test left background threads running: "
+        f"{sorted(t.name for t in leaked)} -- stop what the test started "
+        "(close the client / server / App) before it returns")

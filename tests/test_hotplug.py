@@ -247,10 +247,17 @@ def test_linux_monitor_ignores_non_addremove_actions() -> None:
 def test_linux_monitor_skips_when_pyudev_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No pyudev installed → start() logs + returns; no thread spawned."""
+    """No pyudev installed → start() logs + returns; no udev thread.
+
+    D-Bus is stubbed as well.  Without pyudev the monitor still starts the
+    logind suspend/resume listener, and unstubbed that attached to the REAL
+    system bus on any host with dbus-python and left its thread running after
+    the test -- found by the thread guard in ``conftest``.
+    """
     from trcc.adapters.system import _hotplug as hotplug_mod
 
     monkeypatch.setattr(hotplug_mod, "_import_pyudev", lambda: None)
+    monkeypatch.setattr(hotplug_mod, "_import_dbus_glib", lambda: None)
 
     monitor = LinuxHotplugMonitor()
     monitor.start(EventBus())
