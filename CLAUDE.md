@@ -304,7 +304,7 @@ date. Detail: [[project_the_oracle_authority_is_asymmetric]].
 - **Wires**: each device adapter speaks its protocol — SCSI (LCD frames), HID (handshake/resolution), Bulk, LY, LED (RGB effects + segment displays). See "Two-Factory Chain" + the ABC tables below.
 - **Platform** (`core/ports.py` + `adapters/system/`): `Platform` ABC in core; per-OS subclass in `adapters/system/{linux,windows,macos,bsd}.py`, dispatched by `current_platform()` (`sys.platform`). DI'd everywhere as `app.platform`.
 - **Sensors** (`adapters/sensors/`): `SensorEnumerator` (ABC in `core/ports.py`) built per-OS by the aggregator (`adapters/sensors/aggregator.py`) — hwmon, LHM, SMC, sysctl, psutil, pynvml plugins, each self-guarding at runtime. `snapshot()` yields the typed `HardwareMetrics` every consumer observes.
-- **CI**: `release.yml` (Linux RPM/DEB/Arch), `windows.yml` (PyInstaller + Inno Setup), `macos.yml` (PyInstaller + create-dmg), plus `ci.yml`/`tests.yml`/`codeql.yml`.
+- **CI**: `release.yml` (Linux RPM/DEB/Arch), `windows.yml` (PyInstaller + Inno Setup), `macos.yml` (PyInstaller + create-dmg), plus `ci.yml` (lint, types, tests on 3.10-3.12 + a Windows subset), `codeql-analysis.yml` and `stale.yml`.
 - **On-demand download**: Theme/Web/Mask archives fetched from GitHub at runtime by `DataInstallService` (`services/data_install.py`) via the repo adapters (`adapters/repo/`: `github_releases.py`, `http.py`).
 
 ### Design Patterns (Used in This Project)
