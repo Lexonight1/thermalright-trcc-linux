@@ -19,9 +19,15 @@ genuinely differs.
 
 Register by naming the key in the class line, exactly as a wire adapter does::
 
-    class GuiUI(UserInterface, name="gui"): ...
+    class GuiUI(UserInterface, key="gui"): ...
 
-``name=None`` means "intermediate base, don't register".
+``key=None`` means "intermediate base, don't register".
+
+It is ``key=``, never ``name=``: on Python 3.10 ``ABCMeta.__new__`` takes a
+positional parameter called ``name``, so a class keyword of that name raised
+``TypeError`` and every face that starts a session -- gui, qtgui, api, daemon
+-- crashed on launch from v9.10.0 until 3.11 made those parameters
+positional-only.  Ubuntu 22.04 runs 3.10.
 
 **Placement is load-bearing, and it is gated.**  Concrete UI classes live in
 ``ui/_uis.py``, NOT inside ``ui/gui/`` or ``ui/qtgui/``.  Importing *any*
@@ -76,7 +82,7 @@ class UserInterface(ABC):
     """
 
     #: The registry key, set by ``__init_subclass__`` from the class line.
-    name: ClassVar[str] = ""
+    key: ClassVar[str] = ""
 
     #: Set by :meth:`start`.  Class-level defaults rather than an ``__init__``
     #: so a face writes only the constructor IT needs -- no ``super().__init__``
@@ -90,15 +96,15 @@ class UserInterface(ABC):
     #: skip it.
     needs_session: ClassVar[bool] = True
 
-    def __init_subclass__(cls, name: str | None = None, **kwargs: Any) -> None:
-        """Register the subclass under the ``name=`` it declares."""
+    def __init_subclass__(cls, key: str | None = None, **kwargs: Any) -> None:
+        """Register the subclass under the ``key=`` it declares."""
         super().__init_subclass__(**kwargs)
-        if name is None:
+        if key is None:
             log.debug("%s: intermediate UI base, not registered", cls.__name__)
             return
-        log.debug("%s: registering as UI %r", cls.__name__, name)
-        cls.name = name
-        UIS.register(name)(cls)
+        log.debug("%s: registering as UI %r", cls.__name__, key)
+        cls.key = key
+        UIS.register(key)(cls)
 
     # ── The universal start — Template Method ────────────────────────────
 

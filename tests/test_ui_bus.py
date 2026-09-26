@@ -28,7 +28,7 @@ def test_every_registered_face_is_a_userinterface() -> None:
         assert isinstance(cls, type) and issubclass(cls, UserInterface), (
             f"{name} -> {cls!r} is not a UserInterface"
         )
-        assert cls.name == name, f"{cls.__name__}.name={cls.name!r} != key {name!r}"
+        assert cls.key == name, f"{cls.__name__}.key={cls.key!r} != {name!r}"
         assert not getattr(cls, "__abstractmethods__", None), (
             f"{cls.__name__} is registered but still abstract: "
             f"{sorted(cls.__abstractmethods__)}"

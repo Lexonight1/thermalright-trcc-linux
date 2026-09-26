@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class ApiUI(UserInterface, name="api"):
+class ApiUI(UserInterface, key="api"):
     """The REST API — a headless server face.
 
     ``needs_session`` is **False**, which preserves today's behaviour exactly:
@@ -83,7 +83,7 @@ class ApiUI(UserInterface, name="api"):
         return 0
 
 
-class DaemonUI(UserInterface, name="daemon"):
+class DaemonUI(UserInterface, key="daemon"):
     """The background process that owns USB and serves every other face.
 
     A UI like the others -- "daemon should be a command that any ui can
@@ -200,7 +200,7 @@ class _QtUI(UserInterface):
         return qapp.exec()
 
 
-class GuiUI(_QtUI, name="gui"):
+class GuiUI(_QtUI, key="gui"):
     """The shipping GUI — legacy chrome, one window, single-instance."""
 
     def __init__(self, *, decorated: bool = False, start_hidden: bool = False,
@@ -289,7 +289,7 @@ class GuiUI(_QtUI, name="gui"):
             self._instance = None
 
 
-class QtGuiUI(_QtUI, name="qtgui"):
+class QtGuiUI(_QtUI, key="qtgui"):
     """The native-skin rebuild.  No single-instance lock — it never had one."""
 
     def __init__(self, *, start_hidden: bool = False,
@@ -335,7 +335,7 @@ class QtGuiUI(_QtUI, name="qtgui"):
         return self._exec()
 
 
-class CliUI(UserInterface, name="cli"):
+class CliUI(UserInterface, key="cli"):
     """The terminal face — and the router that launches the others.
 
     The CLI is both, which is why it was left out of the registry at first:
