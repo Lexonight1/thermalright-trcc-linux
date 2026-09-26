@@ -1558,7 +1558,10 @@ def test_a_one_shot_on_a_blanking_panel_says_how_to_keep_it_lit(
     out = _cli_on(tmp_path, cli_runner, _WARFRAME_SE,
                   ["display", "color", "0416:5302", "ff0000"])
     assert "0416:5302 goes blank when frames stop" in out, out
-    assert "trcc display keepalive 0416:5302" in out
+    # The daemon, not `display keepalive`: a new keepalive process holds the
+    # saved theme, not the frame this command sent (#267).
+    assert "export TRCC_DAEMON=1" in out, out
+    assert "display keepalive" not in out, out
 
 
 def test_a_panel_that_holds_its_image_gets_no_note(tmp_path, cli_runner) -> None:

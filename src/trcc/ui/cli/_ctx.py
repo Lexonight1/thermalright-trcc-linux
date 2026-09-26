@@ -192,10 +192,16 @@ def warn_blanking_panels() -> None:
         state = app.dispatch(DeviceState(key=entry.key))
         if state.connected and state.needs_keepalive:
             log.info("warn_blanking_panels: %s blanks when frames stop", entry.key)
+            # Not ``display keepalive``: a new process has no copy of the frame
+            # this one sent, so it holds the SAVED THEME instead.  A daemon keeps
+            # the frame -- measured on Bulk, LY and HID: it went on resending
+            # after the command exited (#267).
             typer.echo(
-                f"Note: {entry.key} goes blank when frames stop. To keep it "
-                f"showing, run `trcc display keepalive {entry.key}`, the GUI, "
-                "or `trcc daemon`.", err=True)
+                f"Note: {entry.key} goes blank when frames stop, and this "
+                "command has ended. To keep what you send on screen, run "
+                "`export TRCC_DAEMON=1` first: trcc commands then hand the panel "
+                "to a background daemon that keeps it showing. Or use the GUI.",
+                err=True)
 
 
 def parse_on_off(state: str) -> bool:

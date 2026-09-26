@@ -19,6 +19,7 @@ import dataclasses
 import logging
 import struct
 import time
+from pathlib import Path
 
 from ...core.errors import (
     HandshakeError,
@@ -30,7 +31,7 @@ from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
 from . import _f5
-from ._base import HANDSHAKE_TIMEOUT_MS, BaseBulkDevice
+from ._base import HANDSHAKE_TIMEOUT_MS, BaseBulkDevice, read_state, write_state
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -58,8 +59,48 @@ _DELAY_FRAME_TYPE2_S = 0.001
 # A streaming firmware reboots on the init packet, so we skip it and let the
 # panel finish its own boot before the first frame (#228 Frozen Warframe SE).
 _QUIRK_BOOT_SETTLE_S = 3.0
+# Units whose streaming probe got silence and whose ordinary handshake then
+# answered: not the firmware the quirk describes.  Remembered so later connects
+# skip the 3 s settle + 5 s read that silence costs (#267).
+_STREAMING_PROBE_FILE = "hid_streaming_probe.json"
 
 _DEFAULT_FRAME_TIMEOUT_MS = 100
+
+
+class _ProbeMemory:
+    """Whether a unit's streaming probe got silence, remembered across launches.
+
+    Silence followed by an ordinary handshake means the firmware fingerprint
+    belongs to a panel the quirk does not describe (a Trofeo Vision, #267), so
+    later connects skip the probe.  A hint, never an authority: the caller
+    forgets it when the ordinary handshake fails.  Without a state dir (a
+    device built outside the composition root) nothing is remembered.
+    """
+
+    def __init__(self, state_dir: Path | None, key: str) -> None:
+        log.debug("_ProbeMemory: state_dir=%s key=%s", state_dir, key)
+        self._path = None if state_dir is None else state_dir / _STREAMING_PROBE_FILE
+        self._key = key
+
+    def silent(self) -> bool:
+        silent = self._path is not None and read_state(self._path).get(self._key) == "silent"
+        log.info("HidLcd %s: streaming probe %s", self._key,
+                 "skipped — this unit answered the ordinary handshake before"
+                 if silent else "will run")
+        return silent
+
+    def remember(self, *, silent: bool) -> None:
+        if self._path is None:
+            log.debug("HidLcd %s: no state dir — nothing remembered", self._key)
+            return
+        state = read_state(self._path)
+        if silent:
+            state[self._key] = "silent"
+        else:
+            state.pop(self._key, None)
+        write_state(self._path, state)
+        log.info("HidLcd %s: streaming probe %s", self._key,
+                 "remembered as silent" if silent else "forgotten — will probe again")
 
 
 def _ceil_to_align(n: int, align: int = _USB_BULK_ALIGNMENT) -> int:
@@ -145,16 +186,26 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         told us nothing, so we fall through to the ordinary handshake rather
         than guess — see :meth:`_connect_streaming_firmware`.
         """
-        if self._quirks.skip_init:
+        memory = _ProbeMemory(self._state_dir, self.key)
+        probed = self._quirks.skip_init and not memory.silent()
+        if probed:
             if (result := self._connect_streaming_firmware()) is not None:
                 return result
             log.info("HidLcd %s: streaming firmware volunteered nothing — "
                      "falling through to the standard handshake",
                      self.info.key)
-        return self._handshake_retry(
-            self._build_init_packet(), self._response_size(),
-            self._validate_and_parse,
-        )
+        try:
+            result = self._handshake_retry(
+                self._build_init_packet(), self._response_size(),
+                self._validate_and_parse,
+            )
+        except HandshakeError:
+            if self._quirks.skip_init and not probed:
+                memory.remember(silent=False)   # probe again next time
+            raise
+        if probed:
+            memory.remember(silent=True)
+        return result
 
     def _validate_and_parse(self, resp: bytes) -> HandshakeResult:
         """Accept the reply or reject it as a retryable attempt."""

@@ -20,11 +20,13 @@ class can register its own children without importing its own package (a cycle).
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from abc import abstractmethod
 from collections.abc import Callable
 from functools import partial
+from pathlib import Path
 from typing import Any, ClassVar
 
 from ...core.errors import DeviceNotFoundError, HandshakeError, TransportError
@@ -56,6 +58,34 @@ DEVICES: Registry[Wire, type[Device]] = Registry(
 # settle before the init write, let the firmware answer, retry a bad exchange.
 HANDSHAKE_TIMEOUT_MS = 5000
 _HANDSHAKE_MAX_RETRIES = 3
+
+
+def read_state(path: Path) -> dict[str, Any]:
+    """A device's JSON state file, or ``{}`` when absent or unreadable.
+
+    State a device remembers across launches (the LED probe cache, the HID
+    streaming-probe answer) is a hint, never an authority: a missing or
+    corrupt file means "nothing remembered", not a failure.
+    """
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        log.debug("read_state: %s absent", path)
+        return {}
+    except (OSError, ValueError) as e:
+        log.debug("read_state: %s unreadable (%s) — starting fresh", path, e)
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def write_state(path: Path, state: dict[str, Any]) -> None:
+    """Persist *state* best-effort: a failed write is logged, never raised."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        log.debug("write_state: %s (%d entr(y/ies))", path, len(state))
+    except OSError as e:
+        log.warning("write_state: %s failed: %s: %s", path, type(e).__name__, e)
 _HANDSHAKE_RETRY_DELAY_S = 0.5
 _DELAY_PRE_INIT_S = 0.050
 _DELAY_POST_INIT_S = 0.200

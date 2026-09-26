@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from trcc.core.errors import HandshakeError
 from trcc.core.models import (
     DeviceInfo,
     DeviceQuirks,
@@ -149,6 +150,64 @@ def test_a_silent_quirked_panel_falls_through_to_the_standard_handshake(
     )
     assert result.pm_byte == 128 and result.sub_byte == 1
     assert transport.writes, "the fall-through must send the standard init packet"
+
+
+def _trofeo_reply() -> bytes:
+    """The full type-2 reply a 1280x480 Trofeo Vision gives (PM=128 SUB=1)."""
+    full = bytearray(512)
+    full[0:4] = b"\xda\xdb\xdc\xdd"
+    full[4], full[5], full[12] = 1, 128, 0x01
+    return bytes(full)
+
+
+def _trofeo(tmp_path, script: list[bytes], settles: list[float], monkeypatch):
+    """A 0x0407-fingerprint panel with a state dir; sleeps are recorded."""
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", settles.append)
+    transport = FakeBulkTransport()
+    transport.read_script = list(script)
+    dev = _make_type2(transport)
+    dev.set_quirks(quirks_for(*_WF_SE))
+    dev.set_state_dir(tmp_path)
+    return dev
+
+
+def test_a_unit_that_answered_the_ordinary_handshake_skips_the_probe_next_time(
+    tmp_path, monkeypatch,
+) -> None:
+    """Silence costs a 3 s settle + a 5 s read on EVERY connect -- 8 s per CLI
+    command in the #267 reporter's log.  Once this unit has proved it is not the
+    quirk's firmware, later connects go straight to the ordinary handshake."""
+    first: list[float] = []
+    assert _trofeo(tmp_path, [b"", _trofeo_reply()], first, monkeypatch
+                   ).connect().resolution == (1280, 480)
+    assert 3.0 in first, "the first connect must still probe"
+
+    later: list[float] = []
+    result = _trofeo(tmp_path, [_trofeo_reply()], later, monkeypatch).connect()
+    assert result.resolution == (1280, 480)
+    assert 3.0 not in later, "a remembered unit must not pay the probe again"
+
+
+def test_a_real_streaming_panel_is_never_remembered_silent(tmp_path, monkeypatch) -> None:
+    """The quirk's own firmware answers the probe, so nothing is recorded and
+    the next connect probes again."""
+    settles: list[float] = []
+    _trofeo(tmp_path, [_short_reply()], settles, monkeypatch).connect()
+    again: list[float] = []
+    assert _trofeo(tmp_path, [_short_reply()], again, monkeypatch
+                   ).connect().resolution == (240, 320)
+    assert 3.0 in again
+
+
+def test_a_remembered_unit_that_stops_answering_is_forgotten(tmp_path, monkeypatch) -> None:
+    """A memory is a hint: if the ordinary handshake fails (a real streaming
+    panel swapped onto that port), the next connect probes again."""
+    _trofeo(tmp_path, [b"", _trofeo_reply()], [], monkeypatch).connect()
+    with pytest.raises(HandshakeError):
+        _trofeo(tmp_path, [b""] * 8, [], monkeypatch).connect()
+    settles: list[float] = []
+    _trofeo(tmp_path, [b"", _trofeo_reply()], settles, monkeypatch).connect()
+    assert 3.0 in settles
 
 
 # ── Seam 5: keepalive ─────────────────────────────────────────────────

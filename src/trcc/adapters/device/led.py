@@ -13,7 +13,6 @@ applies only the FormLED hardware perceptual scale, never brightness:
 """
 from __future__ import annotations
 
-import json
 import logging
 import struct
 import threading
@@ -34,7 +33,7 @@ from ...core.led_protocol import (
 from ...core.logs import Blob
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
-from ._base import BaseBulkDevice
+from ._base import BaseBulkDevice, read_state, write_state
 
 log = logging.getLogger(__name__)
 
@@ -99,29 +98,13 @@ def _probe_cache_save(
     connect) calls this after a successful handshake so the next
     same-power-cycle restart skips the now-broken handshake step.
     """
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        cache: dict[str, dict[str, object]] = {}
-        if path.is_file():
-            try:
-                cache = json.loads(
-                    path.read_text(encoding="utf-8"),
-                )
-            except (OSError, ValueError):
-                log.debug("probe cache: corrupt at %s, rewriting fresh",
-                          path)
-                cache = {}
-        cache[_probe_cache_key(vid, pid, usb_path)] = {
-            "pm": pm, "sub": sub, "model_name": model_name,
-        }
-        path.write_text(
-            json.dumps(cache, indent=2) + "\n", encoding="utf-8",
-        )
-        log.info("probe cache: saved %04x:%04x pm=%d sub=%d → %s",
-                 vid, pid, pm, sub, path)
-    except OSError as e:
-        log.warning("probe cache: save failed for %04x:%04x: %s: %s",
-                    vid, pid, type(e).__name__, e)
+    cache = read_state(path)
+    cache[_probe_cache_key(vid, pid, usb_path)] = {
+        "pm": pm, "sub": sub, "model_name": model_name,
+    }
+    write_state(path, cache)
+    log.info("probe cache: saved %04x:%04x pm=%d sub=%d → %s",
+             vid, pid, pm, sub, path)
 
 
 def _probe_cache_load(
@@ -133,14 +116,7 @@ def _probe_cache_load(
     VID/PID-only key so a device that was originally cached without
     a bus path still resolves.
     """
-    try:
-        if not path.is_file():
-            return None
-        cache = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        log.debug("probe cache: load failed: %s: %s",
-                  type(e).__name__, e)
-        return None
+    cache = read_state(path)
     entry = cache.get(_probe_cache_key(vid, pid, usb_path))
     if entry is None and usb_path:
         entry = cache.get(_probe_cache_key(vid, pid))
