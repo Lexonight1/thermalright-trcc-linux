@@ -19,6 +19,7 @@ from trcc.adapters.diagnostics.doctor import (
     run_doctor,
 )
 from trcc.adapters.diagnostics.health import (
+    MIN_PYTHON,
     HealthCheckResult,
     check_gpu_sensors,
     check_log_writable,
@@ -555,6 +556,10 @@ def test_a_live_peer_keeps_its_run_so_we_append_to_latest(
          "sys.stdin.read()\n",
          str(tmp_path / "trcc.latest.log.run")],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+        # The child imports trcc: give it THIS process's import path, which
+        # pytest extended with src/ -- it failed wherever the package was not
+        # also installed (a checkout run without PYTHONPATH).
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
     ) as peer:
         try:
             assert peer.stdout is not None
@@ -1061,10 +1066,33 @@ def test_tail_log_actions_is_bounded_and_keeps_the_most_recent(
 # =========================================================================
 
 
-def test_python_version_check_passes_on_311_plus(fake_platform) -> None:
+@pytest.mark.parametrize(("version", "severity"), [
+    (MIN_PYTHON, "OK"),
+    ((MIN_PYTHON[0], MIN_PYTHON[1] + 2), "OK"),
+    ((MIN_PYTHON[0], MIN_PYTHON[1] - 1), "FAIL"),
+])
+def test_python_version_check_uses_the_one_minimum(
+    fake_platform, monkeypatch, version, severity,
+) -> None:
+    """It said FAIL on 3.10, the Python the package promises (#3.10 users)."""
+    from trcc.adapters.diagnostics import health
+
+    monkeypatch.setattr(health.sys, "version_info", (*version, 0, "final", 0))
     result = check_python_version(fake_platform)
-    assert result.severity == "OK"
-    assert "Python" in result.message
+    assert result.severity == severity, result.message
+
+
+def test_min_python_is_what_the_package_declares() -> None:
+    """One minimum: the doctor's constant and pyproject's requires-python.
+
+    A regex, not tomllib -- this must run on the oldest Python it describes.
+    """
+    import re
+
+    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+    declared = re.search(r'^requires-python\s*=\s*"([^"]+)"', pyproject, re.M)
+    assert declared is not None
+    assert declared.group(1) == f">={MIN_PYTHON[0]}.{MIN_PYTHON[1]}"
 
 
 def test_each_os_platform_answers_its_own_install_hint() -> None:

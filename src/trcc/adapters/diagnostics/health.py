@@ -101,18 +101,26 @@ def check_install_integrity() -> HealthCheckResult:
     )
 
 
+#: The oldest Python TRCC supports -- ``requires-python`` in ``pyproject.toml``,
+#: which ``tests/test_diagnostics.py`` holds equal to this.  The doctor said 3.11
+#: while the package promised 3.10, so every Ubuntu 22.04 user was told their
+#: supported Python FAILED and ``trcc quickstart`` stopped at the doctor.
+MIN_PYTHON = (3, 10)
+
+
 def check_python_version(platform: Platform) -> HealthCheckResult:
-    """Python ≥ 3.11 is the project minimum (match-statement + slots)."""
+    """The running Python meets :data:`MIN_PYTHON`."""
     log.info("check_python_version: called")
     major, minor = sys.version_info[:2]
-    if (major, minor) >= (3, 11):
+    if (major, minor) >= MIN_PYTHON:
         return HealthCheckResult(
             name="python-version", severity="OK",
             message=f"Python {major}.{minor}",
         )
     return HealthCheckResult(
         name="python-version", severity="FAIL",
-        message=f"Python {major}.{minor} is below the 3.11 minimum",
+        message=(f"Python {major}.{minor} is below the "
+                 f"{MIN_PYTHON[0]}.{MIN_PYTHON[1]} minimum"),
         fix_hint=platform.software_install_hint("python"),
     )
 

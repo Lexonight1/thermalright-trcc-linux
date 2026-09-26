@@ -8,7 +8,7 @@ features.  Both can coexist on the same machine.
 ## What you need
 
 * A Thermalright LCD or LED cooler with a USB cable to the PC.
-* Linux with Python 3.11 or newer.
+* Linux with Python 3.10 or newer.
 * The right USB permissions so non-root users can talk to the device.
   next/ installs udev rules for you on first run — see "First run"
   below.
