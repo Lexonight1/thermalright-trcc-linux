@@ -693,7 +693,7 @@ Copy a theme's overlay config file to ``output_path``.
 
 ### `ExportTheme`
 
-Zip a theme under ``user_theme_dir(w, h) / theme_name`` to an archive path.
+Export a theme under ``user_theme_dir(w, h) / theme_name`` to a file.
 
 *Command* → `ThemeExportResult`
 

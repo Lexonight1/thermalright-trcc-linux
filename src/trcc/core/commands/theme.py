@@ -1071,7 +1071,10 @@ class ImportConfig(Command[ImportConfigResult]):
 
 @dataclass(frozen=True, slots=True)
 class ExportTheme(Command[ThemeExportResult]):
-    """Zip a theme under ``user_theme_dir(w, h) / theme_name`` to an archive path.
+    """Export a theme under ``user_theme_dir(w, h) / theme_name`` to a file.
+
+    ``.tr`` writes the Windows app's own format, which Windows can import
+    (#272); any other name writes our zip, which keeps a video background.
 
     Device-scoped — resolution comes from the device the caller named via
     ``key``, matching legacy's ``dev.export_config(path)`` shape where the

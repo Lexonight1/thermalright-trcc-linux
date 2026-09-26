@@ -47,6 +47,7 @@ from ...core.logs import Blob, per_frame
 from ...core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
 from ...core.ports import ContentStore, SingleFileTheme
 from ...services import _dc as Dc
+from ...services import _tr as Tr
 
 if TYPE_CHECKING:
     from ...core.ports import Paths
@@ -807,7 +808,12 @@ class FileContentStore(ContentStore):
         return masks
 
     def export(self, theme_path: Path, archive_path: Path) -> None:
-        """Archive a theme as a self-contained, shareable zip.
+        """Archive a theme as a self-contained, shareable file.
+
+        ``.tr`` writes the Windows app's own format, so a Windows user can
+        import it (#272); it holds a still background or a Theme.zt, never an
+        mp4, exactly like a Windows export.  Anything else is our zip, which
+        keeps every file.
 
         A saved theme references its background/mask in the user library
         (Phase D), so a raw dir-zip would omit them.  Export DEREFERENCES:
@@ -823,6 +829,9 @@ class FileContentStore(ContentStore):
             raise ThemeError(f"Theme path is not a directory: {theme_path}")
 
         members = self._export_members(self.load(theme_path), theme_path)
+        if archive_path.suffix.lower() == ".tr":
+            self._export_tr(theme_path, members, archive_path)
+            return
         try:
             with zipfile.ZipFile(archive_path, "w",
                                  compression=zipfile.ZIP_DEFLATED) as zf:
@@ -837,6 +846,31 @@ class FileContentStore(ContentStore):
             ) from e
         log.info("Exported %s → %s (%d member(s): %s)",
                  theme_path, archive_path, len(members), sorted(members))
+
+    def _export_tr(self, theme_path: Path, members: dict[str, Path | bytes],
+                   archive_path: Path) -> None:
+        """Write *members* as a Windows ``.tr``.  A video background travels
+        as the theme's still ``00.png``, as the Windows export does."""
+        def read(name: str) -> bytes | None:
+            log.debug("_export_tr.read: %s", name)
+            source = members.get(name)
+            return source.read_bytes() if isinstance(source, Path) else source
+
+        still = ThemeDir(theme_path).bg
+        background = read(ThemeDir.BG) or (
+            still.read_bytes() if ThemeDir.ZT not in members and still.is_file() else None)
+        data = Tr.write(Tr.TrTheme(
+            config_dc=Dc.Writer().serialize(self._load_config(theme_path)),
+            mask_png=read(ThemeDir.MASK),
+            background_png=background,
+            theme_zt=read(ThemeDir.ZT),
+        ))
+        try:
+            archive_path.write_bytes(data)
+        except OSError as e:
+            raise ThemeError(f"Failed to write {archive_path}: {e}") from e
+        log.info("Exported %s → %s (Windows .tr, %d bytes)",
+                 theme_path, archive_path, len(data))
 
     def _export_members(
         self, theme: Theme, theme_path: Path,
@@ -899,24 +933,21 @@ class FileContentStore(ContentStore):
                 "(refusing to overwrite — choose a different name)",
             )
 
+        with archive_path.open("rb") as f:
+            windows = Tr.is_tr(f.read(4))
         into_dir.mkdir(parents=True)
         try:
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                skipped: list[str] = []
-                for info in zf.infolist():
-                    if not is_safe_zip_member(info.filename):
-                        skipped.append(info.filename)
-                        continue
-                    zf.extract(info, into_dir)
-                if skipped:
-                    log.warning(
-                        "FileContentStore.import_: skipped %d unsafe member(s) in %s: %s",
-                        len(skipped), archive_path, skipped,
-                    )
+            if windows:
+                self._import_tr(archive_path, into_dir)
+            else:
+                self._extract_zip(archive_path, into_dir)
+        except ThemeError:
+            shutil.rmtree(into_dir, ignore_errors=True)
+            raise
         except zipfile.BadZipFile as e:
             shutil.rmtree(into_dir, ignore_errors=True)
             raise ThemeError(
-                f"Not a valid zip archive: {archive_path}: {e}",
+                f"Not a Windows .tr theme or a zip archive: {archive_path}: {e}",
             ) from e
         except OSError as e:
             shutil.rmtree(into_dir, ignore_errors=True)
@@ -928,6 +959,33 @@ class FileContentStore(ContentStore):
             # Archive extracted but isn't a valid theme — clean up + re-raise.
             shutil.rmtree(into_dir, ignore_errors=True)
             raise
+
+    def _import_tr(self, archive_path: Path, into_dir: Path) -> None:
+        """Unpack a Windows ``.tr`` into the theme files it carries (#272)."""
+        theme = Tr.read(archive_path.read_bytes())
+        files = {ThemeDir.DC: theme.config_dc, ThemeDir.MASK: theme.mask_png,
+                 ThemeDir.BG: theme.background_png, ThemeDir.ZT: theme.theme_zt}
+        for name, data in files.items():
+            if data is not None:
+                (into_dir / name).write_bytes(data)
+        log.info("_import_tr: %s → %s (%s)", archive_path, into_dir,
+                 sorted(n for n, d in files.items() if d is not None))
+
+    def _extract_zip(self, archive_path: Path, into_dir: Path) -> None:
+        """Extract our own zip export, refusing zip-slip members."""
+        log.info("_extract_zip: %s → %s", archive_path, into_dir)
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            skipped: list[str] = []
+            for info in zf.infolist():
+                if not is_safe_zip_member(info.filename):
+                    skipped.append(info.filename)
+                    continue
+                zf.extract(info, into_dir)
+            if skipped:
+                log.warning(
+                    "FileContentStore.import_: skipped %d unsafe member(s) in %s: %s",
+                    len(skipped), archive_path, skipped,
+                )
 
     # ── internals ─────────────────────────────────────────────────────
 

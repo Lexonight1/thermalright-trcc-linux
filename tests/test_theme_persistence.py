@@ -105,7 +105,7 @@ def user_theme_dir(app: App) -> Path:
 
 def test_export_writes_zip_with_expected_members(tmp_home: Path) -> None:
     theme_dir = _write_self_contained_theme(tmp_home, "demo")
-    archive = tmp_home / "demo.tr"
+    archive = tmp_home / "demo.zip"
 
     FileContentStore().export(theme_dir, archive)
 
@@ -144,7 +144,7 @@ def test_export_self_contained_theme_produces_importable_archive(
     assert not (saved / "01.png").exists()
 
     # Export → archive must be self-contained, with refs stripped.
-    archive = tmp_home / "ref.tr"
+    archive = tmp_home / "ref.zip"
     app.themes.export(saved, archive)
     with zipfile.ZipFile(archive) as zf:
         names = set(zf.namelist())
@@ -164,7 +164,7 @@ def test_export_self_contained_theme_produces_importable_archive(
 
 def test_export_rejects_missing_source(tmp_home: Path) -> None:
     missing = tmp_home / "nope"
-    archive = tmp_home / "out.tr"
+    archive = tmp_home / "out.zip"
 
     with pytest.raises(ThemeError, match="does not exist"):
         FileContentStore().export(missing, archive)
@@ -175,7 +175,7 @@ def test_export_rejects_non_directory_source(tmp_home: Path) -> None:
     file_path.write_text("x")
 
     with pytest.raises(ThemeError, match="not a directory"):
-        FileContentStore().export(file_path, tmp_home / "out.tr")
+        FileContentStore().export(file_path, tmp_home / "out.zip")
 
 
 # NB: export no longer preserves arbitrary subdirectory files — Phase E
@@ -191,7 +191,7 @@ def test_export_rejects_non_directory_source(tmp_home: Path) -> None:
 
 def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
     source = _write_self_contained_theme(tmp_home / "src", "demo")
-    archive = tmp_home / "demo.tr"
+    archive = tmp_home / "demo.zip"
     FileContentStore().export(source, archive)
 
     target = tmp_home / "imported"
@@ -205,12 +205,12 @@ def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
 
 def test_import_rejects_missing_archive(tmp_home: Path) -> None:
     with pytest.raises(ThemeError, match="does not exist"):
-        FileContentStore().import_(tmp_home / "nope.tr", tmp_home / "out")
+        FileContentStore().import_(tmp_home / "nope.zip", tmp_home / "out")
 
 
 def test_import_rejects_existing_target(tmp_home: Path) -> None:
     source = _write_theme(tmp_home / "src", "demo")
-    archive = tmp_home / "demo.tr"
+    archive = tmp_home / "demo.zip"
     FileContentStore().export(source, archive)
 
     target = tmp_home / "already_there"
@@ -221,11 +221,11 @@ def test_import_rejects_existing_target(tmp_home: Path) -> None:
 
 
 def test_import_rejects_invalid_zip(tmp_home: Path) -> None:
-    bogus = tmp_home / "garbage.tr"
+    bogus = tmp_home / "garbage.zip"
     bogus.write_bytes(b"not a zip file")
     target = tmp_home / "out"
 
-    with pytest.raises(ThemeError, match="Not a valid zip"):
+    with pytest.raises(ThemeError, match="Not a Windows .tr theme or a zip archive"):
         FileContentStore().import_(bogus, target)
 
     # Failed extraction must clean up the half-created target.
@@ -234,7 +234,7 @@ def test_import_rejects_invalid_zip(tmp_home: Path) -> None:
 
 def test_import_skips_zip_slip_members(tmp_home: Path) -> None:
     """Members with ``..`` or absolute paths are filtered out silently."""
-    archive = tmp_home / "malicious.tr"
+    archive = tmp_home / "malicious.zip"
 
     # Build a zip with a valid file + a zip-slip attempt + an absolute path.
     # Also include a valid theme config so .load() succeeds.
@@ -263,7 +263,7 @@ def test_import_cleans_up_when_archive_has_no_theme_config(
     tmp_home: Path,
 ) -> None:
     """Archive that extracts but isn't a valid theme deletes the target."""
-    archive = tmp_home / "empty.tr"
+    archive = tmp_home / "empty.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("random.txt", b"not a theme")
 
@@ -1365,7 +1365,7 @@ def test_export_theme_command_writes_archive(
 ) -> None:
     user_theme_dir.mkdir(parents=True, exist_ok=True)
     _write_theme(user_theme_dir, "demo")
-    archive = tmp_home / "out.tr"
+    archive = tmp_home / "out.zip"
 
     result = app.dispatch(
         ExportTheme(
@@ -1384,7 +1384,7 @@ def test_export_theme_unknown_name_returns_failure(
     result = app.dispatch(
         ExportTheme(
             key=_TEST_DEVICE_KEY, theme_name="missing",
-            archive_path=tmp_home / "out.tr",
+            archive_path=tmp_home / "out.zip",
         ),
     )
 
@@ -1399,7 +1399,7 @@ def test_export_theme_rejects_unsafe_name(
     result = app.dispatch(
         ExportTheme(
             key=_TEST_DEVICE_KEY, theme_name=bad_name,
-            archive_path=tmp_home / "out.tr",
+            archive_path=tmp_home / "out.zip",
         ),
     )
 
@@ -1417,7 +1417,7 @@ def test_export_theme_publishes_event(
 
     app.dispatch(ExportTheme(
         key=_TEST_DEVICE_KEY, theme_name="demo",
-        archive_path=tmp_home / "out.tr",
+        archive_path=tmp_home / "out.zip",
     ))
 
     assert len(events) == 1
@@ -1433,7 +1433,7 @@ def test_import_theme_command_unpacks_archive(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "src_theme")
-    archive = tmp_home / "imported.tr"
+    archive = tmp_home / "imported.zip"
     FileContentStore().export(source, archive)
 
     result = app.dispatch(
@@ -1452,7 +1452,7 @@ def test_import_theme_command_defaults_name_to_archive_stem(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "src_theme")
-    archive = tmp_home / "snowflake.tr"
+    archive = tmp_home / "snowflake.zip"
     FileContentStore().export(source, archive)
 
     result = app.dispatch(ImportTheme(
@@ -1468,7 +1468,7 @@ def test_import_theme_unknown_archive_returns_failure(
 ) -> None:
     result = app.dispatch(
         ImportTheme(
-            key=_TEST_DEVICE_KEY, archive_path=tmp_home / "nope.tr", name="x",
+            key=_TEST_DEVICE_KEY, archive_path=tmp_home / "nope.zip", name="x",
         ),
     )
 
@@ -1480,7 +1480,7 @@ def test_import_theme_publishes_event(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "src")
-    archive = tmp_home / "src.tr"
+    archive = tmp_home / "src.zip"
     FileContentStore().export(source, archive)
     events: list[ThemeImported] = []
     app.events.subscribe(ThemeImported, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
@@ -2483,3 +2483,138 @@ def test_a_hidden_mask_stays_hidden_through_save_and_reload(
     assert "mask" not in manifest
     app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=user_theme_dir / "NoMask"))
     assert app.settings.for_device(_TEST_DEVICE_KEY).mask_visible is False
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Windows .tr — the C# format, not a zip (#272)
+# ─────────────────────────────────────────────────────────────────────
+#
+# The fixture is built by hand from buttonDaoChu_Click's field order
+# (FormCZTV.cs), NOT by our writer -- a fixture from our own codec would only
+# restate what we believe.  Its one element is copied from a real vendor
+# config1.dc: mode 4 (custom text) "CPU" at (160, 228), 微软雅黑 12pt.
+
+_PNG_END = b"IEND\xaeB`\x82"
+
+
+def _net_str(s: str) -> bytes:
+    """A .NET BinaryWriter string: 7-bit-encoded length, then UTF-8."""
+    raw, n, out = s.encode("utf-8"), len(s.encode("utf-8")), b""
+    while n >= 0x80:
+        out, n = out + bytes([n & 0x7F | 0x80]), n >> 7
+    return out + bytes([n]) + raw
+
+
+def _i32(*values: int) -> bytes:
+    import struct
+    return b"".join(struct.pack("<i", v) for v in values)
+
+
+def _windows_tr(*, mask: bytes | None, background: bytes | None = None,
+                zt_frames: list[bytes] | None = None) -> bytes:
+    """What the Windows app's Export writes, field by field."""
+    import struct
+    body = (b"\x01" + _i32(1)                                # myXtxx, count
+            + _i32(4, 0, 160, 228, 0, 0) + _net_str("微软雅黑")
+            + struct.pack("<f", 12.0) + bytes([0, 3, 0x86])  # style unit charset
+            + bytes([0xFF, 0x80, 0x80, 0x80]) + _net_str("CPU")
+            + b"\x01\x00" + _i32(0, 0, 0) + b"\x00"          # Bjxs Tpxs dir UI mode Ycbk
+            + _i32(0, 0, 320, 320) + b"\x01" + _i32(0, 0))   # Jp rect, Mbxs, XY MB
+    out = b"\xdd\xdc\xdd\xdc" + body + b"\xdc" * 10240
+    out += _i32(len(mask)) + mask if mask else _i32(0)
+    if background is not None:
+        return out + _i32(0, len(background)) + background
+    frames = zt_frames or []
+    return (out + _i32(len(frames)) + _i32(*range(0, 40 * len(frames), 40))
+            + b"".join(_i32(len(f)) + f for f in frames))
+
+
+def _tr_png(tag: bytes) -> bytes:
+    return b"\x89PNG\r\n\x1a\n" + tag + _PNG_END
+
+
+def test_import_windows_tr_with_a_still_background(tmp_home: Path) -> None:
+    """A Windows export used to fail as 'not a zip', so nothing happened."""
+    archive = tmp_home / "peerless.tr"
+    # BitmapToByte returns MemoryStream.GetBuffer(): zeros after the PNG.
+    archive.write_bytes(_windows_tr(mask=_tr_png(b"MASK") + bytes(300),
+                                    background=_tr_png(b"BG") + bytes(100)))
+    theme = FileContentStore().import_(archive, tmp_home / "out")
+
+    out = tmp_home / "out"
+    assert sorted(p.name for p in out.iterdir()) == ["00.png", "01.png", "config1.dc"]
+    assert (out / "01.png").read_bytes() == _tr_png(b"MASK")
+    assert (out / "00.png").read_bytes() == _tr_png(b"BG")
+    (element,) = theme.config["elements"]
+    assert (element["text"], element["x"], element["y"]) == ("CPU", 160, 228)
+    assert theme.config["mask_visible"] is True
+
+
+def test_import_windows_tr_with_an_animation(tmp_home: Path) -> None:
+    """A Theme.zt background travels as its frames; unpacked, it is Theme.zt
+    again -- 0xDC, frame count, timestamps, length-prefixed JPEGs."""
+    archive = tmp_home / "anim.tr"
+    frames = [b"\xff\xd8JPEG1\xff\xd9", b"\xff\xd8JPEG2\xff\xd9"]
+    archive.write_bytes(_windows_tr(mask=None, zt_frames=frames))
+    FileContentStore().import_(archive, tmp_home / "out")
+
+    out = tmp_home / "out"
+    assert sorted(p.name for p in out.iterdir()) == ["Theme.zt", "config1.dc"]
+    assert (out / "Theme.zt").read_bytes() == (
+        b"\xdc" + _i32(2, 0, 40) + b"".join(_i32(len(f)) + f for f in frames))
+
+
+def test_import_truncated_tr_fails_and_leaves_nothing(tmp_home: Path) -> None:
+    archive = tmp_home / "cut.tr"
+    archive.write_bytes(_windows_tr(mask=None, background=_tr_png(b"BG"))[:-3])
+    with pytest.raises(ThemeError, match="runs past"):
+        FileContentStore().import_(archive, tmp_home / "out")
+    assert not (tmp_home / "out").exists()
+
+
+def test_export_tr_writes_what_windows_imports(tmp_home: Path) -> None:
+    """Export to .tr is the Windows layout -- magic, config body, padding,
+    mask, still background -- and reads back to the same theme files."""
+    from trcc.services import _tr
+
+    theme_dir = _write_self_contained_theme(tmp_home, "demo")
+    archive = tmp_home / "demo.tr"
+    FileContentStore().export(theme_dir, archive)
+
+    from trcc.services import _dc
+
+    data = archive.read_bytes()
+    mask, bg = b"\x89PNG\r\n\x1a\nMASK", b"\x89PNG\r\n\x1a\nBG"
+    body = _dc.Writer().serialize(FileContentStore().load(theme_dir).config)[1:]
+    assert data == (b"\xdd\xdc\xdd\xdc" + body + b"\xdc" * 10240
+                    + _i32(len(mask)) + mask + _i32(0, len(bg)) + bg)
+    parts = _tr.read(data)
+    assert (parts.mask_png, parts.background_png) == (
+        b"\x89PNG\r\n\x1a\nMASK", b"\x89PNG\r\n\x1a\nBG")
+    FileContentStore().import_(archive, tmp_home / "back")
+    assert (tmp_home / "back" / "00.png").read_bytes() == b"\x89PNG\r\n\x1a\nBG"
+
+
+def test_export_tr_refuses_a_video_it_cannot_carry(tmp_home: Path) -> None:
+    """The format has no slot for an mp4.  With no still frame beside it the
+    export refuses and names .zip, instead of writing what Windows would
+    crash on (the C# writes nothing for the background in that case)."""
+    theme_dir = _write_self_contained_theme(tmp_home, "clip")
+    (theme_dir / "00.png").unlink()
+    (theme_dir / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    config = json.loads((theme_dir / "trcc.json").read_text())
+    (theme_dir / "trcc.json").write_text(json.dumps(config))
+    with pytest.raises(ThemeError, match=r"\.zip"):
+        FileContentStore().export(theme_dir, tmp_home / "clip.tr")
+
+
+def test_export_tr_carries_a_video_themes_still_frame(tmp_home: Path) -> None:
+    """A video theme keeps its first frame as 00.png; that is what a .tr
+    carries, as a Windows export of the same theme does."""
+    from trcc.services import _tr
+
+    theme_dir = _write_self_contained_theme(tmp_home, "clip")
+    (theme_dir / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    FileContentStore().export(theme_dir, tmp_home / "clip.tr")
+    parts = _tr.read((tmp_home / "clip.tr").read_bytes())
+    assert (parts.background_png, parts.theme_zt) == (b"\x89PNG\r\n\x1a\nBG", None)
