@@ -1089,7 +1089,8 @@ def test_min_python_is_what_the_package_declares() -> None:
     """
     import re
 
-    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+        encoding="utf-8")
     declared = re.search(r'^requires-python\s*=\s*"([^"]+)"', pyproject, re.M)
     assert declared is not None
     assert declared.group(1) == f">={MIN_PYTHON[0]}.{MIN_PYTHON[1]}"

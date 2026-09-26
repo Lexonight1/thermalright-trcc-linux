@@ -42,13 +42,13 @@ def generate() -> dict[Path, str]:
 
 def main(argv: list[str]) -> int:
     stale = [path for path, content in generate().items()
-             if not path.exists() or path.read_text() != content]
+             if not path.exists() or path.read_text(encoding="utf-8") != content]
     if "--check" in argv:
         for path in stale:
             print(f"stale: {path.relative_to(_ROOT)}")
         return 1 if stale else 0
     for path, content in generate().items():
-        path.write_text(content)
+        path.write_text(content, encoding="utf-8", newline="\n")
     print(f"wrote {len(generate())} packaging file(s), {len(stale)} changed")
     return 0
 

@@ -185,7 +185,7 @@ def test_packaged_setup_files_are_what_setup_writes() -> None:
     import gen_packaging_setup  # pyright: ignore[reportMissingImports]
 
     stale = [str(path) for path, content in gen_packaging_setup.generate().items()
-             if not path.exists() or path.read_text() != content]
+             if not path.exists() or path.read_text(encoding="utf-8") != content]
     assert not stale, (
         f"stale packaged setup files {stale} — run: "
         "PYTHONPATH=src python3 dev/gen_packaging_setup.py")

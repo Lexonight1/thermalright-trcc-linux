@@ -2479,7 +2479,7 @@ def test_a_hidden_mask_stays_hidden_through_save_and_reload(
     app.dispatch(SetMaskVisible(key=_TEST_DEVICE_KEY, visible=False))
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="NoMask"))
 
-    manifest = _json.loads((user_theme_dir / "NoMask" / "trcc.json").read_text())
+    manifest = _json.loads((user_theme_dir / "NoMask" / "trcc.json").read_text(encoding="utf-8"))
     assert "mask" not in manifest
     app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=user_theme_dir / "NoMask"))
     assert app.settings.for_device(_TEST_DEVICE_KEY).mask_visible is False
@@ -2602,8 +2602,8 @@ def test_export_tr_refuses_a_video_it_cannot_carry(tmp_home: Path) -> None:
     theme_dir = _write_self_contained_theme(tmp_home, "clip")
     (theme_dir / "00.png").unlink()
     (theme_dir / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
-    config = json.loads((theme_dir / "trcc.json").read_text())
-    (theme_dir / "trcc.json").write_text(json.dumps(config))
+    config = json.loads((theme_dir / "trcc.json").read_text(encoding="utf-8"))
+    (theme_dir / "trcc.json").write_text(json.dumps(config), encoding="utf-8")
     with pytest.raises(ThemeError, match=r"\.zip"):
         FileContentStore().export(theme_dir, tmp_home / "clip.tr")
 
