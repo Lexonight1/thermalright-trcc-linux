@@ -1,5 +1,96 @@
 # Changelog
 
+## v9.10.4
+
+**A correction first: v9.10.3 said two identical coolers were two devices.
+They were not.** The pieces shipped, but the step that connects a device never
+told it which port it was on, so two units of the same model still collapsed
+into one. That step is fixed now, and so is everything that depended on it:
+each unit connects on its own port, every interface lists and targets the unit
+rather than the model, plugging in or removing one twin leaves the other alone,
+and `trcc report` shows each unit's own USB power state. Only models you own
+two of are affected. (#287)
+
+**TRCC starts again on Python 3.10.** Since v9.10.0 the graphical
+interfaces, the web API and the background service crashed the moment they
+started on Python 3.10 -- the Python Ubuntu 22.04, Mint 21 and the legacy deb
+use. Our automated tests caught it on every run, but a mistake in how the
+test server read their results reported them as passing; that is fixed as
+well. They all start now. `trcc doctor` also stops telling Python 3.10 users their Python is
+too old: 3.10 is supported, and `trcc quickstart` no longer stops there.
+
+**`trcc system list-endpoints` lists every endpoint again.** With the FastAPI
+version installed today it showed 7 of about 140; the API itself was
+unaffected.
+
+**Fan readouts on the screen show a number.** A CPU, GPU, SSD or case fan
+element you added to the display drew nothing, on every machine; only the side
+panel had the values. They draw now. The GPU fan is shown in RPM, as the
+Windows app does, and as a percentage, labelled `%`, when the driver reports
+only that. (#145)
+
+**More GPUs report their sensors.** Cards on the open-source NVIDIA driver
+(nouveau) now show temperature, fan and power where the driver provides them
+(GTX 10-series and older; newer cards expose nothing on nouveau yet). Intel Arc
+cards now show their fan and clock, and Intel graphics power works on every
+Intel GPU, where before it never did. A graphics card's own fan no longer fills
+the CPU fan slot. (#236)
+
+**Windows themes can be imported, and ours can go to Windows.** A theme
+exported from the Windows app did nothing when imported, because its file is
+not the kind of archive we expected. It imports now. Exporting to a `.tr` file
+writes the Windows app's own format, so Windows can import it; like a Windows
+export, a video background travels as its still frame. Export to `.zip` keeps
+everything, including the video. (#272)
+
+**Mac downloads work without Homebrew, and Intel Macs have their own.** The
+7-Zip and ffmpeg inside the Mac app were never actually used, and the ffmpeg
+could not start on a Mac without Homebrew's copy installed. Both are now
+bundled so they run on their own, and there is a separate download for Intel
+Macs. (#219)
+
+**Windows starts promptly with LibreHardwareMonitor.** TRCC could launch
+several copies of it at once, and when its sensors never appeared, every read
+waited ten seconds again, holding up startup. It now starts one copy and waits
+for it once. (#191)
+
+**Saved themes come back as you saved them.** Reloading a saved theme could
+replace your overlay layout with the one from its mask, and a mask you had
+hidden came back. Both are fixed. (#301, #276)
+
+**Split mode no longer freezes one family of panels**, and shows the same
+picture as the Windows app on the others. (#149)
+
+**Video plays in every mode**, including the background service, where it
+stuck on the first frame; and two players can no longer run one video at double
+speed. (#249)
+
+**Smaller fixes**
+- The RAM speed on the screen is the speed the memory runs at, not the
+  number printed on the module. (#279)
+- Fans on boards whose driver keeps its sensors one folder down are read. (#282)
+- A background picked from anywhere on disk is scaled with your fit setting. (#291)
+- A permission error on a device explains what to do for your operating
+  system instead of crashing. (#173)
+- Coolers are named from what they report about themselves, in every place a
+  name is shown. (#272, #176, #289)
+- A long-running `trcc display play` or `trcc led play` reconnects a panel that
+  dropped off instead of exiting. (#270)
+- Panels that go blank when frames stop now say so when a one-shot command
+  ends, and point to `export TRCC_DAEMON=1`, which keeps the picture showing. A
+  panel sharing the Frozen Warframe SE's firmware no longer waits eight seconds
+  on every connect once it has shown it is a different panel. (#228, #267)
+- LY panels log how long each acknowledgement takes, so a report shows what a
+  frozen panel answered. (#251)
+
+**Packages set up devices the way `trcc system setup` does.** The deb, rpm and
+Arch packages installed an older copy of the device-access rules, in which one
+panel (0416:5406) was still set up as a different kind of device. They now
+ship exactly what setup writes, plus the CPU power module entry. The Steam Deck
+guide no longer runs a command that is not installed on the host, and the
+one-line installers in the new-to-Linux guide download a single, correct
+package; the Ubuntu 24.04 one could not work before. (#231, #181)
+
 ## v9.10.3
 
 **Two identical coolers are two devices now.** Two units of the same model
