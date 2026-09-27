@@ -663,16 +663,5 @@ class MacOSAutostart(AutostartManager):
             log.info("MacOSAutostart: disabled")
 
     def refresh(self) -> None:
-        """Re-render the plist when one is installed — see WindowsAutostart.
-
-        Was a no-op on the premise that the plist never changes between
-        sessions.  ``--resume`` changed it, and an existing LaunchAgent would
-        otherwise keep launching a visible window forever.
-        """
-        if not self._plist_path.exists():
-            log.debug("MacOSAutostart.refresh: no plist — nothing to refresh")
-            return
-        installed = self.installed_target()
-        log.info("MacOSAutostart.refresh: re-rendering %s (target=%s)",
-                 self._plist_path, installed)
-        self.enable(installed)
+        """Leave the LaunchAgent untouched on application startup."""
+        return
