@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from .._safe import is_safe_user_name, is_under
 from ..errors import (
+    DeviceNotConnectedError,
+    DeviceNotFoundError,
     HttpFetchError,
     ThemeError,
     TransportError,
@@ -52,6 +54,7 @@ from ._helpers import (
     _invalidate_scene,
     _json_default_tuple,
     _publish_if_disconnect,
+    _require_connected_device,
     _resolve_oriented_resolution,
     _search_theme_by_name,
     as_working_layer,
@@ -115,7 +118,7 @@ class LoadTheme(Command[ThemeResult]):
     # Explicit user theme switch (default) establishes the theme's own state
     # and DROPS the device's overrides — live overlay edits, the applied mask,
     # AND the cloud-background / video override — so the new theme starts
-    # clean from its bundled assets.  RestoreLastTheme passes
+    # clean from its bundled assets.  RestoreDeviceState passes
     # ``reset_overrides=False`` — a reconnect / restart / view-switch keep-
     # alive PRESERVES those overrides (all persisted in config.json) instead
     # of reverting to the theme's bundled layout/background.
@@ -155,7 +158,7 @@ class LoadTheme(Command[ThemeResult]):
             return ThemeResult(ok=False, key=self.key, message=str(e))
 
         # Persist the absolute path — names are display strings, paths
-        # are the stable reference RestoreLastTheme needs.
+        # are the stable reference RestoreDeviceState needs.
         app.settings.set_current_theme(self.key, str(theme.path.resolve()))
         # Set the new theme BEFORE StopVideo: StopVideo's VideoStopped
         # publish is handled synchronously by _DeviceRenderObserver, which
@@ -1653,129 +1656,100 @@ class ListMasks(Query[MasksListResult]):
             message=f"{len(entries)} mask(s) under {target}",
         )
 
-@dataclass(frozen=True, slots=True)
-class RestoreLastTheme(Command[ThemeResult]):
-    """Re-load the theme persisted in Settings for *key*.
-
-    Convenience wrapper around LoadTheme — looks up the last
-    ``current_theme`` for this device and re-dispatches LoadTheme so
-    the render pipeline catches up on connect or after a restart.
+def _restore_saved_theme(app: App, key: str) -> None:
+    """Load *key*'s persisted theme (``current_theme``), keeping its edits.
 
     ``current_theme`` is normally the theme's absolute path (written by
-    LoadTheme).  Legacy values can be bare theme names like
-    ``"image:00"`` or ``"Custom_Theme1"`` — those trigger a heuristic
-    search across the device's known theme roots so existing users
-    don't lose their last selection on upgrade.
+    LoadTheme), re-rooted to the device's CURRENT orientation: a non-square
+    panel restored at 90°/270° must load the portrait-catalog variant
+    (theme480854), not the stored landscape path (theme854480), or the
+    preview/dirs go portrait while the theme stays landscape (#136).  A user
+    save never overwrites the shipped theme of the same name, so the persisted
+    path is loaded EXACTLY — never re-resolved to a same-named user theme.
+
+    Legacy values can be bare names (``"image:00"``, ``"Custom_Theme1"``);
+    those are searched across the device's theme roots so an upgrade keeps
+    the user's last selection.  ``reset_overrides=False`` replays the
+    device's persisted overlay edits + mask instead of reverting to the
+    theme's bundled layout (that is an explicit-switch behaviour).
     """
-    USES_DEVICE: ClassVar[bool] = True
-    key: str
+    stored = app.settings.for_device(key).current_theme
+    if not stored:
+        log.info("_restore_saved_theme: %s has no persisted theme", key)
+        return
+    candidate = Path(stored)
+    path = (oriented_theme_path(app, key, candidate) if candidate.is_dir()
+            else _search_theme_by_name(app, key, stored))
+    if path is None:
+        log.warning("_restore_saved_theme: %s persisted theme %r not found in "
+                    "any known theme root", key, stored)
+        return
+    log.info("_restore_saved_theme: %s -> %s", key, path)
+    app.dispatch(LoadTheme(key=key, path=path, reset_overrides=False))
 
-    def execute(self, app: App) -> ThemeResult:
-        log.debug("execute: app=%s", app)
-        settings = app.settings.for_device(self.key)
-        stored = settings.current_theme
-        if not stored:
-            return ThemeResult(
-                ok=False, key=self.key,
-                message=f"No persisted theme for {self.key}",
-            )
 
-        # Absolute or already-resolvable path → use it directly, BUT re-rooted
-        # to the device's current orientation dir: a non-square panel restored
-        # at 90°/270° must load the portrait-catalog variant (theme480854), not
-        # the stored landscape path (theme854480), or the preview/dirs go
-        # portrait while the theme stays landscape (#136).  Orientation is
-        # already restored (``_restore_rotation``) before this runs.
-        # reset_overrides=False: a reconnect/restart restores the device's
-        # persisted overlay edits + last-applied mask, it does not revert to
-        # the theme's bundled layout (that's an explicit-switch behavior).
-        candidate = Path(stored)
-        if candidate.is_dir():
-            # Load EXACTLY the persisted path (re-rooted to the current
-            # orientation).  A user save never overwrites the shipped theme of
-            # the same name, so restore must NOT re-resolve a shipped pointer to
-            # the user one — it loads whatever the user last selected.
-            candidate = oriented_theme_path(app, self.key, candidate)
-            return app.dispatch(LoadTheme(
-                key=self.key, path=candidate, reset_overrides=False,
-            ))
+def _fallback_theme(app: App, key: str) -> Path | None:
+    """The theme a device with nothing saved shows: shipped ``Theme1``.
 
-        # Legacy bare-name value — search the known theme roots.
-        resolved = _search_theme_by_name(app, self.key, stored)
-        if resolved is None:
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=stored,
-                message=(f"Persisted theme {stored!r} not found in any "
-                         "known theme root for this device"),
-            )
-        return app.dispatch(LoadTheme(
-            key=self.key, path=resolved, reset_overrides=False,
-        ))
+    Named, not ``themes[0]``: the listing is a plain lexical sort, so Theme1
+    came first only because no shipped name sorts before it.  Shipped themes
+    are listed before the user's, so a same-named user save never wins.  The
+    first listed theme is the fallback's own fallback, for a catalog without
+    a Theme1.
+    Resolved at the device's ORIENTED resolution, so a rotated panel gets its
+    portrait catalog — the same one the theme browsers list.
+    """
+    resolution = _resolve_oriented_resolution(app, key)
+    if resolution is None:
+        log.warning("_fallback_theme: %s — cannot resolve a resolution", key)
+        return None
+    themes = ListThemes(resolution=resolution).execute(app).themes
+    first = next((t for t in themes if t.name == "Theme1"),
+                 themes[0] if themes else None)
+    log.info("_fallback_theme: %s %dx%d -> %s (%d listed)", key, *resolution,
+             first.path if first else None, len(themes))
+    return Path(first.path) if first else None
+
 
 @dataclass(frozen=True, slots=True)
 class RestoreDeviceState(Command[ThemeResult]):
-    """Ensure *key* has a renderable display state from persisted settings.
+    """Put *key*'s saved display back on the panel — the one restore Command.
 
-    The shared "make this device show something" path every UI dispatches at
-    its display-start entry — the GUI on connect, the CLI ``display play`` /
-    ``keepalive`` before their loop, the API ``restore-theme`` endpoint.
-    Idempotent: a no-op when a theme is already active (a daemon / GUI already
-    primed it), so it's safe to dispatch unconditionally at each entry.
+    Every "restore" in every UI is this: the CLI ``restore-theme`` / ``resume``
+    / ``play`` / ``keepalive``, the API ``restore-theme``, qtgui's button,
+    ``ResetDevice``, and the session's own prime on connect
+    (``App._prime``).  It used to be two — this and ``RestoreLastTheme`` —
+    and the UIs picked differently, so ``restore-theme`` reloaded in the CLI
+    and did nothing over the API.
 
-    Order (mirrors the GUI connect-restore, minus GUI-only widget restore):
-      1. Active theme already loaded → done.
-      2. ``RestoreLastTheme`` — the persisted theme + its mask + overlays +
-         bundled video (preserves the device's overrides).
-      3. No persisted theme → auto-load the first available theme
-         (``ListThemes`` → ``LoadTheme``), matching the GUI first-install
-         auto-load so a fresh device still shows something.
-      4. Replay the persisted ``background_path`` video override
-         (``PlayVideo``) so a cloud / user video resumes on top of the theme.
+    It ALWAYS restores: a user who asks gets their theme back, even over a
+    pushed image (the theme load releases the hold).  "Only if the panel is
+    blank" is the automatic caller's rule, and lives there (``App._prime``).
 
-    Steps 2-3 render + send an immediate first frame, which also leaves a
-    cached frame — so a keepalive resend has something to push (the terminal
-    "No cached frame — render at least once first" gap this closes). (#150)
+      1. The persisted theme, with its mask + overlay edits + bundled video.
+      2. Nothing persisted → the fallback theme (shipped ``Theme1``).
+      3. Replay the persisted ``background_path`` video over the theme.
+
+    Needs a CONNECTED device, and fails with the connect reason otherwise:
+    ``LoadTheme`` succeeds without one ("saved"), so without this check a
+    CLI loop primed by a restore ticked forever against nothing.
     """
     USES_DEVICE: ClassVar[bool] = True
     key: str
 
     def execute(self, app: App) -> ThemeResult:
         log.info("RestoreDeviceState: key=%s", self.key)
-        existing = app.active_themes.get(self.key)
-        if existing is not None:
-            log.info("RestoreDeviceState: %s already has an active theme — no-op",
-                     self.key)
-            return ThemeResult(ok=True, key=self.key, theme_name=existing.name,
-                               theme_path=str(existing.path),
-                               message="Display state already active")
-        # A push holds the panel until a THEME LOAD, whoever asks: ``/tick``
-        # self-primes with this on every poll and reloaded the theme over a
-        # push one poll later (#306).  One rule in core, no per-UI flag.
-        if self.key in app.held:
-            log.info("RestoreDeviceState: %s is held by a pushed frame — no-op",
-                     self.key)
-            return ThemeResult(ok=True, key=self.key,
-                               message="Held by a pushed frame")
+        try:
+            _require_connected_device(app, self.key)
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
+            log.warning("RestoreDeviceState: %s — %s", self.key, e)
+            return ThemeResult(ok=False, key=self.key, message=str(e))
 
-        # 2. Persisted theme (reset_overrides=False preserves overlay/mask edits).
-        app.dispatch(RestoreLastTheme(key=self.key))
-
-        # 3. Nothing persisted → first available theme (GUI first-install parity).
-        #    Resolve via the shared oriented resolver (device profile → native →
-        #    registry) so a rotate panel lists its portrait catalog, matching
-        #    where the GUI browser lists themes.
+        _restore_saved_theme(app, self.key)
         if app.active_themes.get(self.key) is None:
-            resolution = _resolve_oriented_resolution(app, self.key)
-            if resolution is None:
-                log.warning("RestoreDeviceState: %s — cannot resolve resolution "
-                            "to auto-load a theme", self.key)
-            else:
-                listing = ListThemes(resolution=resolution).execute(app)
-                if listing.themes:
-                    first = Path(listing.themes[0].path)
-                    log.info("RestoreDeviceState: %s no persisted theme — "
-                             "auto-loading first theme %s", self.key, first)
-                    LoadTheme(key=self.key, path=first).execute(app)
+            fallback = _fallback_theme(app, self.key)
+            if fallback is not None:
+                app.dispatch(LoadTheme(key=self.key, path=fallback))
 
         theme = app.active_themes.get(self.key)
         if theme is None:
@@ -1787,7 +1761,6 @@ class RestoreDeviceState(Command[ThemeResult]):
                          "or load a theme first"),
             )
 
-        # 4. Resume the persisted cloud / user video background over the theme.
         bg = app.settings.for_device(self.key).background_path
         if bg:
             log.info("RestoreDeviceState: %s replaying persisted background %s",

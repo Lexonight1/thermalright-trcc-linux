@@ -892,21 +892,17 @@ def tick(key: str, request: Request) -> RenderResult:
     polls this at AppSettings.refresh_interval_s or whatever cadence
     they like.  Uses the scene cache so ticks are cheap.
 
-    Self-primes and advances video the way the CLI ``display play`` loop does,
-    so a headless poller Just Works (#239): (1) ``RestoreDeviceState`` is
-    idempotent — a no-op once a theme is active, and while a push holds the
-    panel (a poll reloaded the theme over ``/send-image``) — so the first tick
-    can't fail "No active theme"; (2) ``TickDisplay`` advances a play-video override's
-    cursor before rendering, so successive ticks animate it.
+    Advances video the way the CLI ``display play`` loop does:
+    ``TickDisplay`` moves a play-video override's cursor before rendering, so
+    successive ticks animate it.
 
-    The restore stays HERE rather than inside ``TickDisplay``: a stateless
-    poller may arrive with nothing loaded, but the GUI's animation timer would
-    otherwise pay a restore 15-30 times a second.  Self-priming is this
-    route's concern; advancing is the Command's.
+    It no longer restores the saved theme on every poll (#239's self-prime).
+    The API runs a session now, like every UI, and the session primes a panel
+    when it connects (``App._prime``) — once, where a failing restore used to
+    cost 22 log records per POLL.  A push still holds the panel between ticks.
     """
     log.info("api POST /devices/{key}/display/tick: key=%s", key)
     app = request.app.state.trcc
-    app.dispatch(RestoreDeviceState(key=key))
     result = app.dispatch(TickDisplay(key=key))
     http_error_if_failed(result)
     return result
@@ -917,9 +913,9 @@ def tick(key: str, request: Request) -> RenderResult:
 def restore_theme(key: str, request: Request) -> ThemeResponse:
     """Restore the device's display state (persisted theme + background).
 
-    Dispatches the unified ``RestoreDeviceState`` — persisted theme, or the
-    first available theme when none is saved, then replays the persisted
-    background video — the same path the GUI/CLI use at their display entry.
+    Dispatches ``RestoreDeviceState`` — the persisted theme, or ``Theme1``
+    when none is saved, then the persisted background video — the same
+    Command every UI's restore dispatches.  Restores even over a pushed image.
     """
     log.info("api POST /devices/{key}/display/restore-theme: key=%s", key)
     result = request.app.state.trcc.dispatch(RestoreDeviceState(key=key))

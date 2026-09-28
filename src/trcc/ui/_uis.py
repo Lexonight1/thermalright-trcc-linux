@@ -49,16 +49,13 @@ log = logging.getLogger(__name__)
 class ApiUI(UserInterface, key="api"):
     """The REST API — a headless server face.
 
-    ``needs_session`` is **False**, which preserves today's behaviour exactly:
-    the API brings up no coldplug and no live loops (measured — it dispatches
-    neither ``start_session`` nor ``discover_and_connect`` anywhere).
-    ``App.start_session``'s own docstring calls that out as the #148
-    divergence, and flipping it here would change what the API does to USB on
-    startup.  That is a behavioural fix and belongs in its own increment where
-    it can be verified against a real fleet, not folded into a structural one.
+    It runs a session like every other long-lived UI: coldplug, hotplug, the
+    live loops, and the session prime that shows a panel's saved display on
+    connect.  It used to be the one exception (``needs_session = False``),
+    which is #148: a panel served by the API stayed blank until a caller
+    happened to poll ``/tick``, and ``/tick`` restored the theme on every poll
+    to make up for it.
     """
-
-    needs_session = False
 
     def __init__(self, *, host: str = "127.0.0.1", port: int = 8080) -> None:
         log.info("ApiUI.__init__: host=%s port=%d", host, port)

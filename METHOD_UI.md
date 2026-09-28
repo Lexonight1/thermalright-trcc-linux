@@ -65,36 +65,32 @@ These are the invariants every UI must honour at its entry points. They are the
 exact things that drift silently, because each UI reaches them by a different
 path:
 
-- **Before any wire command → `ensure_connected` (idempotent).** A stateless
-  process (a CLI invocation, an API request) holds no attached device; a wire
-  command dispatched cold fails "not attached". Every CLI wire command attaches
-  first via `cli/_ctx.ensure_connected`. (#150: `theme cloud-load` /
-  `display load-image` had skipped it.)
-
-  **The API does NOT — measured 2026-09-03, and this line used to claim it
-  did.** `api.main.run()` builds its App and serves immediately: no
-  `discover_and_connect`, no `start_hotplug`, so the server starts with zero
-  attached devices and a wire route answers `400 Not attached: <key>` until the
-  client POSTs `/devices/{key}/connect` itself. gui and qtgui attach at launch
-  through `discover_and_connect`, so the API is the ONE surface where a wire
-  command fails on a device that is plugged in — and the only long-lived UI
-  that never listens for hotplug either.
-
-  **Under `TRCC_DAEMON=1` this reverses**, which is what the old wording was
-  really describing: the daemon runs `start_hotplug()`, whose Linux coldplug
-  pass replays already-present devices as `DeviceAttached` and connects them,
-  so an API client of a daemon does find its devices attached. That coldplug
-  is **Linux-only** (`_hotplug.py` marks macOS/Windows/BSD an explicit TODO),
-  and `TRCC_DAEMON` is unset by default — so the gap is the default path on
-  every OS, and every path on the three without coldplug. `EnsureConnected` is idempotent
-  and already exists; whether the API should call it is an open product
-  decision, not an oversight to fix silently.
-- **At any display-start → `RestoreDeviceState` (idempotent).** Beginning to
-  *stream* (GUI connect, CLI `display play` / `keepalive`, API `restore-theme`)
-  must rehydrate the device's persisted display state — the theme, or the first
-  available theme, then the persisted background — because a fresh process's
-  in-memory `active_themes` is empty. One shared Command does it for all four.
-  (#150: the GUI did this on connect; the CLI streaming loops did not.)
+- **A Command that uses a device connects it — in `App.dispatch`, for every
+  UI.** A one-shot Command declares `USES_DEVICE`, and dispatch attempts
+  `EnsureConnected` first. It is an attempt, never a gate: the Command says what
+  a missing device means to it (`SendColor` fails, `LoadTheme` still saves the
+  choice), and a failed connect's recorded reason ("permission denied on
+  /dev/sg1") reaches its message. Per-tick Commands never connect — a panel
+  that is unplugged would be retried at frame rate. So a UI has no connect step
+  of its own; the one left is the CLI `slideshow-run` loop (P4d). (#150, and
+  before 2026-09-28 the CLI connected before 21 verbs, the API before 9 routes
+  and 6 not at all.)
+- **A session shows each panel's saved display — `App._prime`, once, in core.**
+  Every long-lived UI (daemon, gui, qtgui, API) runs `start_session`. From
+  then on a panel that connects, or whose themes finish installing, is
+  restored with `RestoreDeviceState` — unless it already shows a theme or is
+  held by a pushed frame. With nothing saved it shows **Theme1**. The handlers
+  are subscribed in `App.__init__`, so they run before any UI hears
+  `DeviceConnected`: a UI READS what is shown and never loads it. A one-shot
+  CLI has no session, so `trcc color` does not load a theme first.
+  (#148: each UI primed its own way and the API not at all, so `/tick`
+  restored on every poll.)
+- **`RestoreDeviceState` is the one restore, and it always restores.** Every
+  UI's "restore" verb dispatches it (CLI `restore-theme` / `resume`, API
+  `restore-theme`, qtgui's button), even over a push; so do the CLI `play` and
+  `keepalive` loops, whose fresh process is blank. It needs a connected device
+  and fails with the connect reason otherwise. "Only if blank" is the session
+  prime's rule, not the Command's.
 - **Per-tick handlers log at DEBUG; one-shot actions at INFO.** (See CLAUDE.md
   logging section — the same rule binds every UI.)
 

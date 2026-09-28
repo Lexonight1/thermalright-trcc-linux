@@ -39,7 +39,6 @@ from ...core.commands import (
     LoadTheme,
     PreviewSize,
     ResolveThemeDirectories,
-    RestoreDeviceState,
     SaveTheme,
     SendScreencastFrame,
     SetBrightness,
@@ -249,17 +248,15 @@ class LCDHandler(BaseHandler):
         self._pm.configured = True
         # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{key}")
-        # First connect: load the persisted theme onto the device.
-        self._refresh(w, h, first_load=True)
+        self._refresh(w, h)
 
     def reactivate(self, w: int, h: int) -> None:
         """Return to known device — device already configured from connect()."""
         self.log.info("reactivate: %dx%d", w, h)
         self._pm.ui_active = True
-        # Re-select: read what the device is already showing; do NOT re-load.
-        self._refresh(w, h, first_load=False)
+        self._refresh(w, h)
 
-    def _refresh(self, w: int, h: int, *, first_load: bool = False) -> None:
+    def _refresh(self, w: int, h: int) -> None:
         """Update widgets from the device's current persisted settings.
 
         ``first_load`` distinguishes the two callers: first connect
@@ -308,7 +305,7 @@ class LCDHandler(BaseHandler):
         self._w['video_cut'].set_resolution(w, h)
         self._w['theme_setting'].set_resolution(w, h)
 
-        auto_loaded = self._update_theme_directories()
+        self._update_theme_directories()
 
         self._restore_brightness(ds)
         self._restore_rotation(ds)
@@ -316,9 +313,7 @@ class LCDHandler(BaseHandler):
         self._restore_slideshow(ds)
         self._update_device_info()
 
-        if auto_loaded:
-            return
-        self._restore_theme_and_preview(first_load=first_load)
+        self._restore_theme_and_preview()
 
     def notify_data_ready(self) -> None:
         """Background install finished — re-list this device's grids.
@@ -336,8 +331,13 @@ class LCDHandler(BaseHandler):
         """Background data extraction finished — re-probe dirs and update UI."""
         log.info("_on_data_ready")
         self.log.info("_on_data_ready: refreshing dirs and theme lists")
-        auto_loaded = self._update_theme_directories(force=True)
-        self.log.info("_on_data_ready: done, auto_loaded=%s", auto_loaded)
+        self._update_theme_directories(force=True)
+        # The session primed this panel as the data landed (``App._prime``
+        # runs before any UI hears DataInstalled), so there is now a theme to
+        # show.  Only the active handler may write the shared preview.
+        self.log.info("_on_data_ready: done, active=%s", self._pm.ui_active)
+        if self._pm.ui_active:
+            self._restore_theme_and_preview()
 
     def _update_device_info(self) -> None:
         """Populate the selectable fingerprint line for the active device.
@@ -415,74 +415,33 @@ class LCDHandler(BaseHandler):
             self._slideshow_timer.stop()
             local.set_slideshow_state([], False, local.get_slideshow_interval())
 
-    def _restore_theme_and_preview(self, *, first_load: bool = False) -> None:
-        """Show the device's theme + overlay in the GUI.
+    def _restore_theme_and_preview(self) -> None:
+        """Show what the device is rendering — READ only, dispatching nothing.
 
-        On a re-select (``first_load=False``) this READS what the device is
-        already rendering — the cached current frame via
-        ``display.rendered_surface`` (``rebuild_preview``) plus the overlay
-        editor repopulated from the active theme — and dispatches NOTHING to
-        the device.  Re-loading there (the old behaviour) ran RestoreLastTheme
-        → LoadTheme → StopVideo, which cleared the user's cloud background +
-        overlay overrides and disturbed the running device just because the
-        GUI changed tabs.  Only first connect (``first_load=True``) loads the
-        persisted theme onto the device.
+        The cached current frame (``rebuild_preview``) plus the overlay editor
+        repopulated from the active theme.  Loading the saved theme is the
+        session's job (``App._prime``, on connect and when data lands), for
+        every UI: it used to be done here on first connect, and before that by
+        a gui-only first-install auto-load, while qtgui and the API each had
+        their own copy.  Re-loading here also ran LoadTheme → StopVideo, which
+        cleared the user's cloud background + overlay overrides just because
+        the GUI changed tabs.
         """
-        if not first_load:
-            current = self._lcd_settings().current_theme
-            if not current:
-                self._w['preview'].set_image(None)
-                return
-            self.log.info(
-                "_restore_theme_and_preview: re-select — reading current "
-                "frame for %s (theme=%s), no re-load", self._device_key,
-                current,
-            )
-            self._pm.state.current_theme_path = Path(current)
-            # Repopulate the overlay editor from the active theme (GUI only —
-            # no EnableOverlay / render / send to the device).  The toggle
-            # shows the DEVICE's persisted state, not "does this theme carry
-            # elements" — a sidebar switch must report what is on screen.
-            self._restore_overlay_editor(Path(current))
-            # Show what the device is already rendering — no re-render/send.
-            self.rebuild_preview()
-            return
-
-        # METHOD_UI.md's entry contract: display-start dispatches
-        # RestoreDeviceState, not the raw RestoreLastTheme.  It is a SUPERSET
-        # — the persisted theme, else the first available one, and then the
-        # persisted ``background_path`` video replayed on top.  gui wrote that
-        # override on every video pick (``SetBackground``) and never once read
-        # it back, so a user's cloud/user background was lost on every restart
-        # while cli and api both restored it.
-        #
-        # Idempotent, and reached only when ``_refresh``'s auto-load did NOT
-        # fire (``if auto_loaded: return`` above), so it cannot double-load.
-        result = self._app.dispatch(RestoreDeviceState(key=self._device_key))
-        if not result.ok:
-            self.log.info("_restore_theme_and_preview: no saved theme — %s",
-                          result.message)
+        current = self._lcd_settings().current_theme
+        if not current:
+            self.log.info("_restore_theme_and_preview: %s has no theme",
+                          self._device_key)
             self._w['preview'].set_image(None)
             return
-
         self.log.info(
-            "_restore_theme_and_preview: loaded %s from %s",
-            result.theme_name, result.theme_path,
+            "_restore_theme_and_preview: reading current frame for %s "
+            "(theme=%s), no re-load", self._device_key, current,
         )
-        # Restore the overlay grid from the theme's persisted config1.dc
-        # (or trcc.json).  Without this the overlay UI is empty on every
-        # restart even though the theme renders correctly on the device.
-        if result.theme_path:
-            self._restore_overlay_editor(Path(result.theme_path))
-        # Track the restored theme directory so deletion / re-renders
-        # can reference it.  For video-backed themes the VideoStarted
-        # observer (``on_video_started``) takes over animating; for
-        # static themes we refresh the preview here.
-        self._pm.state.current_theme_path = (
-            Path(result.theme_path) if result.theme_path else None
-        )
-        if not self._video_status().playing:
-            self.rebuild_preview()
+        self._pm.state.current_theme_path = Path(current)
+        # The toggle shows the DEVICE's persisted state, not "does this theme
+        # carry elements" — a sidebar switch must report what is on screen.
+        self._restore_overlay_editor(Path(current))
+        self.rebuild_preview()
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
     # _select_theme is gone — next/'s LoadTheme Command owns the whole
@@ -1374,11 +1333,8 @@ class LCDHandler(BaseHandler):
         delete) — re-dispatches ListThemes through the dir-resolution refresh."""
         self._update_theme_directories(force=True)
 
-    def _update_theme_directories(self, *, force: bool = False) -> bool:
+    def _update_theme_directories(self, *, force: bool = False) -> None:
         """Reload theme browser directories for the current resolution.
-
-        Returns True if a first-install auto-load happened (caller should
-        skip restore_last_theme to avoid a redundant double-load).
 
         Reads come from ``DeviceState`` (cached at connect / rotation),
         not the legacy ``self._device.X`` properties which next/'s
@@ -1402,11 +1358,8 @@ class LCDHandler(BaseHandler):
         dirs = self._app.dispatch(
             ResolveThemeDirectories(key=self._device_key))
         if not dirs.ok:
-            # False, not None: the return value means "a first-install
-            # auto-load happened", and an unresolvable device auto-loaded
-            # nothing.
             self.log.warning("_update_theme_directories: %s", dirs.message)
-            return False
+            return
         bw, bh = dirs.catalog_size
         theme_dir = Path(dirs.theme_dir)
         user_theme_dir = Path(dirs.user_theme_dir)
@@ -1429,7 +1382,7 @@ class LCDHandler(BaseHandler):
                 "active=%s) — skipping the browser rebuild",
                 self._device_key, bw, bh, self._pm.ui_active,
             )
-            return False
+            return
         self._dirs_signature = signature
 
         self.log.info(
@@ -1482,19 +1435,6 @@ class LCDHandler(BaseHandler):
                 "leaving the shared theme browser alone (writing it would "
                 "offer this device's %dx%d catalog to whichever panel IS "
                 "selected)", self._device_key, bw, bh)
-
-        # First-install auto-load: nothing rendered yet AND no saved theme →
-        # load the first listed theme (user-precedence already applied by
-        # ListThemes, so a user theme wins the auto-load too).
-        ds = self._lcd_settings()
-        if (self._pm.state.current_theme_path is None
-                and not ds.current_theme and themes):
-            first = themes[0]
-            self.log.info("Data ready: auto-loading first theme: %s", first.path)
-            self._select_theme_from_path(Path(first.path), persist=True,
-                                          overlay_config=True)
-            return True
-        return False
 
     @property
     def is_background_active(self) -> bool:

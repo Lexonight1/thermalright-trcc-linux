@@ -33,7 +33,6 @@ from ...core.commands import (
     RenderDcStandalone,
     ResolveOverlay,
     RestoreDeviceState,
-    RestoreLastTheme,
     SeekVideo,
     SendColor,
     SendImage,
@@ -575,10 +574,9 @@ def play(
     import time
 
     app_obj = get_app()
-    ensure_connected(app_obj, key)   # once, before the loop (not per tick)
     # Self-prime: a fresh CLI process holds no in-memory theme, so RenderAndSend
-    # would fail "No active theme".  Restore the device's persisted display
-    # state (theme + background) the way the GUI does on connect.  (#150)
+    # would fail "No active theme".  The restore also connects the device
+    # (USES_DEVICE) and fails with the reason when it cannot.  (#150)
     restore = app_obj.dispatch(RestoreDeviceState(key=key))
     if not restore.ok:
         typer.echo(restore.message, err=True)
@@ -1025,9 +1023,9 @@ def keepalive(
             f"(metric refresh every {metric_interval:.1f}s, Ctrl-C to stop)…"
         )
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     # Self-prime persisted display state so a rendered frame exists to resend
-    # — closes the "No cached frame — render at least once first" gap.  (#150)
+    # — closes the "No cached frame — render at least once first" gap.  The
+    # restore connects the device and fails with the reason.  (#150)
     restore = app_obj.dispatch(RestoreDeviceState(key=key))
     if not restore.ok:
         typer.echo(restore.message, err=True)
@@ -1073,9 +1071,9 @@ def overlay_background(
 def restore_theme(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
 ) -> None:
-    """Reload the device's persisted theme — convenience after restart."""
+    """Restore the device's saved display (theme + background; Theme1 if none)."""
     log.info("cli display restore-theme: key=%s", key)
-    dispatch_echo(RestoreLastTheme(key=key))
+    dispatch_echo(RestoreDeviceState(key=key))
 
 
 @app.command("resume")
@@ -1122,7 +1120,7 @@ def resume(
             typer.echo(f"  [{key}] connect failed: {connect_result.message}",
                        err=True)
             continue
-        theme_result = app_obj.dispatch(RestoreLastTheme(key=key))
+        theme_result = app_obj.dispatch(RestoreDeviceState(key=key))
         if not theme_result.ok:
             typer.echo(f"  [{key}] {theme_result.message}", err=True)
             continue
@@ -1302,7 +1300,6 @@ def screencast(
     import signal
 
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(StartScreencast(
         key=key, x=x, y=y, w=w, h=h, audio=audio,
     ))

@@ -2280,7 +2280,7 @@ class ApplyMask(Command[MaskApplyResult]):
         # the mask's own elements are parsed; a mask with no readable DC
         # leaves the layer empty and the render falls back exactly as before.
         # Safe on every caller: LoadTheme's internal ApplyMask runs after
-        # LoadTheme has already established the layer, and RestoreLastTheme
+        # LoadTheme has already established the layer, and RestoreDeviceState
         # never calls ApplyMask.
         # NO pre-clear.  The repopulate below REPLACES the layer wholesale
         # when the mask carries a layout, so clearing first buys nothing — and

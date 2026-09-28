@@ -12,7 +12,7 @@ the restore path asked for "don't persist", and the body logged the flag and
 then persisted anyway.
 
 These drive the real handler over a real App so the whole chain runs —
-``RestoreLastTheme`` → the overlay restore → ``Settings`` — rather than
+``RestoreDeviceState`` → the overlay restore → ``Settings`` — rather than
 asserting against a fake that would prove nothing about the seam.
 """
 from __future__ import annotations

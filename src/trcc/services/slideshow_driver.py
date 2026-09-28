@@ -25,7 +25,7 @@ key alongside the screencast one, or a disconnected device would keep rotating.
 **Why it resolves the name itself.**  ``AdvanceSlideshow`` deliberately returns
 a NAME and not a path — its docstring explains that a UI should resolve the name
 against whatever it is currently displaying before switching.  A driver has
-nothing displayed, so it resolves the same way ``RestoreLastTheme`` does, with
+nothing displayed, so it resolves the same way ``RestoreDeviceState`` does, with
 ``_search_theme_by_name`` across the device's theme roots.
 """
 from __future__ import annotations

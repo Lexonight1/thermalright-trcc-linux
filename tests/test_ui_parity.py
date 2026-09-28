@@ -105,17 +105,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: verb sugar over PauseVideo (shared), which the API exposes "
         "directly"
     )),
-    "RestoreLastTheme": (frozenset({"cli", "qtgui"}), (
-        "scoped: the CLI main connect path keeps the raw restore, and qtgui "
-        "exposes it as an explicit 'Restore last' button; the API and GUI "
-        "dispatch the unified RestoreDeviceState at display-start. "
-        "CORRECTED 2026-09-03: this reason claimed the GUI used "
-        "RestoreDeviceState while gui's ONLY site was the never-called "
-        "restore_inactive_state -- the recorded REACH was accurate, so "
-        "test_recorded_ui_reach_matches_reality passed while the prose beside "
-        "it was fiction. gui dispatches it for real now, which is what made "
-        "the reach change and this entry finally honest."
-    )),
 
     # ``GetAutostartStatus`` sat here from 2026-07-12 to 2026-08-31, excused
     # as "desktop autostart is a CLI/desktop concern; the headless API server

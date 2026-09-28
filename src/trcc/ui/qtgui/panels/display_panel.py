@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from ....core.commands import (
     LoadTheme,
     PlayVideo,
-    RestoreLastTheme,
+    RestoreDeviceState,
     SeekVideo,
     SetBackground,
     SetBrightness,
@@ -164,7 +164,7 @@ class DisplayPanel(BasePanel):
         if key is None:
             return
         log.info("_on_restore_last: key=%s", key)
-        result = self.dispatch(RestoreLastTheme(key=key))
+        result = self.dispatch(RestoreDeviceState(key=key))
         self._status.setText(result.message)
 
     def _on_brightness_slid(self, value: int) -> None:

@@ -55,7 +55,7 @@ def oriented_theme_path(
     ``degrees`` is the authoritative orientation; pass it from an
     ``OrientationChanged`` event (``App._on_orientation_changed``) where
     ``settings`` may not be updated yet.  Omit it (the restore path,
-    ``RestoreLastTheme``) to read the already-persisted ``settings`` value.
+    ``RestoreDeviceState``) to read the already-persisted ``settings`` value.
     Shared so connect-restore + runtime rotation resolve the oriented dir
     identically.
     """
@@ -459,7 +459,7 @@ def _search_theme_by_name(
 ) -> Path | None:
     """Locate a theme directory by name across this device's roots.
 
-    Used by RestoreLastTheme to recover legacy ``current_theme`` values
+    Used by RestoreDeviceState to recover legacy ``current_theme`` values
     (display names like ``"image:00"``, ``"Custom_Theme1"``) that
     pre-date persisting the absolute path.
 

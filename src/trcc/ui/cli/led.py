@@ -39,7 +39,6 @@ from ._ctx import (
     daemon_owns_the_panels,
     dispatch_echo,
     emit_json,
-    ensure_connected,
     get_app,
     parse_on_off,
     recover_or_exit,
@@ -450,7 +449,13 @@ def play(
     import time
 
     app_obj = get_app()
-    ensure_connected(app_obj, key)   # once, before the loop (not per tick)
+    # The first frame is the one-shot render: dispatch connects its device
+    # (USES_DEVICE) and the result says why when it cannot.  The per-tick
+    # RenderLed below never connects.
+    first = app_obj.dispatch(InitializeLed(key=key))
+    if not first.ok:
+        typer.echo(first.message, err=True)
+        raise typer.Exit(code=1)
     if daemon_owns_the_panels(app_obj):
         # The daemon's LedAnimationLoop animates it; ticking here as well would
         # run every effect at double speed (the #249 shape, for LEDs).

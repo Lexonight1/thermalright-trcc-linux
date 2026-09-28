@@ -22,7 +22,6 @@ from trcc.core.commands import (
     ConnectDevice,
     LoadImage,
     RenderAndSend,
-    RestoreDeviceState,
     SendColor,
     SendFrame,
     SendImage,
@@ -357,38 +356,21 @@ def test_every_one_shot_push_survives_the_next_sensor_tick(
     assert _KEY in app.held
 
 
-def test_a_tick_poller_does_not_reload_the_theme_over_a_push(
+def test_a_tick_poller_does_not_paint_over_a_push(
     app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``/tick`` self-primes with a restore on every request, so a push lasted
-    one poll — and while held, the render it then asked for answered 400."""
+    """``/tick`` restored the theme on every request, so a push lasted one
+    poll.  It dispatches only ``TickDisplay`` now — the session primes on
+    connect — and a tick of a held panel sends nothing.  (An EXPLICIT restore
+    does release the hold: ``test_restore_device_state``.)"""
     _push(app, tmp_path)
     sent = _wire(app, monkeypatch)
 
-    restore = app.dispatch(RestoreDeviceState(key=_KEY))
     tick = app.dispatch(TickDisplay(key=_KEY))
 
     assert sent == []
     assert _KEY not in app.active_themes
-    assert (restore.ok, restore.message) == (True, "Held by a pushed frame")
     assert (tick.ok, tick.message) == (True, "held by a pushed frame")
-
-
-def test_a_restore_respects_the_hold_and_a_theme_load_releases_it(
-    app: App, tmp_path: Path,
-) -> None:
-    """One rule for every UI — no flag a caller picks: restore never
-    overrides a push; loading a theme does."""
-    _push(app, tmp_path)
-
-    restored = app.dispatch(RestoreDeviceState(key=_KEY))
-    held_after_restore = _KEY in app.held
-    assert app.dispatch(LoadImage(key=_KEY, path=_png(tmp_path, "g.png", (0, 255, 0)))).ok
-
-    assert (restored.ok, restored.message) == (True, "Held by a pushed frame")
-    assert held_after_restore
-    assert _KEY in app.active_themes
-    assert _KEY not in app.held
 
 
 def test_a_slideshow_does_not_rotate_over_a_push(

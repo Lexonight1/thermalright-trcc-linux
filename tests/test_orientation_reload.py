@@ -70,11 +70,11 @@ def _data(app: App) -> Path:
     return app.platform.paths().data_dir()
 
 
-# ── oriented_theme_path — shared resolver (RestoreLastTheme + rotation) ──
+# ── oriented_theme_path — shared resolver (RestoreDeviceState + rotation) ──
 
 def test_oriented_theme_path_picks_portrait_for_rotated_degrees(app: App) -> None:
     """Landscape stored path + explicit 90/270 degrees → portrait variant
-    (the RestoreLastTheme connect-restore fix path)."""
+    (the RestoreDeviceState connect-restore fix path)."""
     from trcc.core.commands._helpers import oriented_theme_path
     land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
     port = _seed(_data(app) / "theme4801280" / _NAME, "00.png")
@@ -85,7 +85,7 @@ def test_oriented_theme_path_reads_settings_orientation_when_unset(
     app: App,
 ) -> None:
     """No explicit degrees → uses the device's persisted orientation, so
-    RestoreLastTheme (after _restore_rotation) picks the matching dir."""
+    RestoreDeviceState (after _restore_rotation) picks the matching dir."""
     from trcc.core.commands._helpers import oriented_theme_path
     land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
     port = _seed(_data(app) / "theme4801280" / _NAME, "00.png")
@@ -224,7 +224,7 @@ def test_rotation_theme_reload_preserves_user_overrides(
     PRESERVE the user's overlay/background/mask edits (reset_overrides=False),
     not drop them. The original C# rotates at the render layer and never resets
     on rotate; the old default=True persist-cleared them, so a connect/restart
-    lost the user's last preview before RestoreLastTheme could replay it."""
+    lost the user's last preview before RestoreDeviceState could replay it."""
     land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
     _seed(_data(app) / "theme4801280" / _NAME, "00.png")
     app.settings.set_current_theme(_KEY, str(land.resolve()))

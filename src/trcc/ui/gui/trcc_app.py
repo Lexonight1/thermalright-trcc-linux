@@ -743,8 +743,8 @@ class TRCCApp(QMainWindow):
         # Render EVERY connected LCD, not just the active one — on real hardware
         # every cooler's screen shows its content simultaneously, so the mock
         # must too (and a reporter's device only renders here if it's loaded).
-        # Configure the non-target LCDs first (full load incl. first-install
-        # auto-load → active_themes → renders + metrics), then mark them inactive
+        # The session already loaded each panel's saved display (``App._prime``);
+        # configure the non-target LCDs first, then mark them inactive
         # so they keep rendering to the wire without owning the shared preview.
         # The target activates LAST so its frame ends up in the shared widgets.
         for key in list(self._handlers):

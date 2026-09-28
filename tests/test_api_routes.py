@@ -1324,19 +1324,18 @@ def test_theme_list_finds_themes_in_dir(
 # =========================================================================
 
 
-def test_display_tick_restores_then_ticks(api_client: TestClient) -> None:
-    """``POST /display/tick`` self-primes, then dispatches the ANIMATION tick.
+def test_display_tick_dispatches_only_the_animation_tick(
+        api_client: TestClient) -> None:
+    """``POST /display/tick`` dispatches ``TickDisplay`` and nothing else.
 
-    The route had no coverage at all until the tick became a Command.  Two
-    things matter and both are easy to break:
-
-    * ``RestoreDeviceState`` stays HERE rather than inside ``TickDisplay`` — a
-      stateless poller may arrive with no theme loaded, but the GUI's animation
-      timer would otherwise pay a restore 15-30 times a second.
+    * No restore: it used to self-prime with ``RestoreDeviceState`` on EVERY
+      poll — a push lasted one poll, and a failing restore cost 22 log records
+      per request.  The API runs a session now, and the session primes a panel
+      on connect (``App._prime``), once.
     * the tick itself must be ``TickDisplay``; with ``RenderAndSend`` the
       cursor never moves and a polled video sits on frame 0 (#239).
     """
-    from trcc.core.commands import RestoreDeviceState, TickDisplay
+    from trcc.core.commands import TickDisplay
 
     trcc = api_client.app.state.trcc          # type: ignore[attr-defined]
     # Depth-tracked: a Command may dispatch others, and this pins what the
@@ -1365,9 +1364,8 @@ def test_display_tick_restores_then_ticks(api_client: TestClient) -> None:
     finally:
         trcc.dispatch = real_dispatch         # type: ignore[method-assign]
 
-    assert route_dispatched == [
-        RestoreDeviceState.__name__, TickDisplay.__name__,
-    ], f"expected restore-then-animation-tick, got {route_dispatched}"
+    assert route_dispatched == [TickDisplay.__name__], (
+        f"expected only the animation tick, got {route_dispatched}")
     # #239: RenderAndSend may be TickDisplay's child, but the route must not
     # choose it — with it the cursor never advances and a video sits on frame 0.
     assert "RenderAndSend" not in route_dispatched

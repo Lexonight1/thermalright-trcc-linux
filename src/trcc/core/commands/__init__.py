@@ -159,7 +159,6 @@ from .theme import (
     LoadVideo,
     ProbeVideoDuration,
     RestoreDeviceState,
-    RestoreLastTheme,
     SaveTheme,
     UploadCustomMask,
 )
@@ -245,7 +244,6 @@ __all__ = [
     "ResolveOverlay",
     "ResolveThemeDirectories",
     "RestoreDeviceState",
-    "RestoreLastTheme",
     "RunDoctor",
     "RunHealthCheck",
     "RunQuickstart",

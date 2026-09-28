@@ -1,18 +1,15 @@
-"""The gui skin's CONNECT-restore seam — the path with no coverage at all.
+"""The gui skin's CONNECT seam: the session loads, the handler reads.
 
 ``LCDHandler.apply_device_config`` -> ``_refresh`` ->
-``_restore_theme_and_preview(first_load=True)`` is what puts a theme on the
-panel when the app starts with a device attached.  Measured 2026-09-03: **no
-test drove either method.**  The nearest one
-(``test_gui_overlay_restore``) claims in its docstring to drive "the whole
-chain -- RestoreLastTheme -> the overlay restore -> Settings", but calls
-``_restore_overlay_editor`` directly and never reaches the restore itself.
+``_restore_theme_and_preview`` used to LOAD the saved theme on first connect
+(and a gui-only first-install auto-load before that), while qtgui, the API and
+the daemon each primed their own way or not at all (#148).  Loading is now the
+session's, once, for every UI (``App._prime``, run before any UI hears
+``DeviceConnected``); the handler only shows what the device is rendering.
 
-METHOD_UI.md's entry contract is "at any display-start -> RestoreDeviceState",
-which is FOUR steps: no-op if already active, ``RestoreLastTheme``, auto-load
-the first theme, then replay the persisted ``background_path`` video.  gui
-dispatches only the second, so a user's cloud/user video background never
-comes back after a restart -- cli and api both restore it.
+What must survive the move: a restart brings back the saved theme AND the
+cloud/user video background (``SetBackground`` persists ``background_path``,
+which gui once wrote on every pick and never read back).
 """
 from __future__ import annotations
 
@@ -116,52 +113,63 @@ def handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return h, app, decoded
 
 
-def test_connect_restore_replays_the_persisted_video_background(
+def test_a_session_restart_replays_the_saved_theme_and_video_background(
     handler, tmp_path: Path,
 ) -> None:
-    """A cloud/user video background must survive a restart.
-
-    ``SetBackground`` persists ``DeviceSettings.background_path`` and then
-    delegates to ``PlayVideo`` -- so the gui WRITES this value every time a
-    user picks a video.  Nothing in either GUI ever reads it back: the only
-    two mentions of ``background_path`` in ``ui/gui`` are comments.  cli and
-    api replay it through ``RestoreDeviceState`` step 4.
-
-    Fresh ``active_themes`` is the point -- that is what a restart looks like,
-    and it is what makes ``RestoreDeviceState`` do the work instead of
-    no-opping on an already-active theme.
-    """
+    """Fresh ``active_themes`` is what a restart looks like; the session's
+    prime brings back the theme and the video, and the handler shows it."""
     h, app, decoded = handler
     theme = _write_theme(app.platform.paths().theme_dir(*_RES), "Aurora")
     app.settings.set_current_theme(_KEY, str(theme.resolve()))
-
     video = tmp_path / "my_background.mp4"
     video.write_bytes(b"\x00\x00\x00\x18ftypmp42")      # magic only; decode is stubbed
     app.settings.set_background_path(_KEY, str(video))
     assert not app.active_themes, "fixture drift: a restart starts with none"
 
-    h._restore_theme_and_preview(first_load=True)
+    app.start_session()
+    try:
+        h._restore_theme_and_preview()
+        assert app.active_themes[_KEY].name == "Aurora"
+        assert video in decoded, "the saved video background was not replayed"
+        assert h._pm.state.current_theme_path == theme.resolve()
+    finally:
+        app.close()
 
-    assert video in decoded, (
-        "the persisted video background was never replayed on connect — the "
-        "user's background is lost on every restart, while cli and api "
-        "restore it"
-    )
 
-
-def test_connect_restore_still_loads_the_persisted_theme(handler) -> None:
-    """Characterisation: the behaviour that must NOT change.
-
-    Whatever the restore dispatches, a persisted theme still has to end up
-    active — this is the whole job of the connect path and the reason the
-    swap is confined to the ``first_load=True`` branch.
-    """
+def test_the_handler_restore_only_reads(handler) -> None:
+    """The handler loads NOTHING: re-loading here ran LoadTheme -> StopVideo
+    and wiped the user's background + overlay edits on a tab switch, and a
+    second loader beside the session's is the race P4b removed."""
     h, app, _decoded = handler
     theme = _write_theme(app.platform.paths().theme_dir(*_RES), "Aurora")
     app.settings.set_current_theme(_KEY, str(theme.resolve()))
 
-    h._restore_theme_and_preview(first_load=True)
+    h._restore_theme_and_preview()
 
-    assert app.active_themes.get(_KEY) is not None, (
-        "the connect restore no longer loads the persisted theme"
-    )
+    assert _KEY not in app.active_themes
+    assert h._pm.state.current_theme_path == theme.resolve()
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_themes_landing_show_the_primed_theme_on_the_active_panel_only(
+    handler, active: bool,
+) -> None:
+    """First install: the session primes Theme1 as the data lands, and the
+    ACTIVE handler shows it — the job gui's own first-install auto-load did.
+    An inactive handler must not write the preview every LCD shares."""
+    from trcc.core.events import DataInstalled
+
+    h, app, _decoded = handler
+    h._pm.ui_active = active
+    app.start_session()
+    try:
+        theme = _write_theme(app.platform.paths().theme_dir(*_RES), "Theme1")
+        app.events.publish(DataInstalled(resolution=_RES, ok=True))
+        assert app.active_themes[_KEY].name == "Theme1"
+
+        h._on_data_ready()
+
+        assert h._pm.state.current_theme_path == (
+            theme.resolve() if active else None)
+    finally:
+        app.close()

@@ -18,7 +18,7 @@ from trcc.core.commands import (
     ExportTheme,
     ImportTheme,
     LoadTheme,
-    RestoreLastTheme,
+    RestoreDeviceState,
     SaveTheme,
 )
 from trcc.core.errors import ThemeError
@@ -683,7 +683,7 @@ def test_explicit_load_clears_user_edits_restore_preserves(
     """Source-change semantics for the single overlay-layout model.
 
     An explicit ``LoadTheme`` (the user picking a theme) drops live edits so
-    the new theme shows its own layout.  ``RestoreLastTheme`` (reconnect /
+    the new theme shows its own layout.  ``RestoreDeviceState`` (reconnect /
     restart) re-runs LoadTheme with ``reset_overrides=False`` and must PRESERVE
     the persisted edits — legacy restored the saved overlay config on connect.
 
@@ -721,10 +721,10 @@ def test_explicit_load_clears_user_edits_restore_preserves(
     )
     before = list(app.settings.for_device(
         _TEST_DEVICE_KEY).user_overlay_elements)
-    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY))
     preserved = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
     assert "edit2" in [e.id for e in preserved], (
-        "RestoreLastTheme (reconnect) must keep the user's persisted edits"
+        "RestoreDeviceState (reconnect) must keep the user's persisted edits"
     )
     assert [e.id for e in preserved] == [e.id for e in before], (
         "a restore must leave the working layer exactly as it found it"
@@ -738,7 +738,7 @@ def test_restore_keeps_cloud_background_explicit_load_clears_it(
     background; an explicit LoadTheme reverts to the theme's bundled one.
 
     Reported 2026-06-05: switching to the System-Info tab reverted the chosen
-    background.  The view-switch ran RestoreLastTheme → LoadTheme → StopVideo,
+    background.  The view-switch ran RestoreDeviceState → LoadTheme → StopVideo,
     which cleared background_path.  StopVideo now runs only on an explicit load
     (reset_overrides=True).
     """
@@ -748,10 +748,10 @@ def test_restore_keeps_cloud_background_explicit_load_clears_it(
     app.settings.set_background_path(_TEST_DEVICE_KEY, "/some/cloud/a078.mp4")
 
     # Restore (reset_overrides=False) — the cloud background survives.
-    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY))
     assert (app.settings.for_device(_TEST_DEVICE_KEY).background_path
             == "/some/cloud/a078.mp4"), (
-        "RestoreLastTheme must NOT clear the user's cloud background"
+        "RestoreDeviceState must NOT clear the user's cloud background"
     )
 
     # Explicit load (default reset_overrides=True) reverts to the theme's bg.
@@ -1777,20 +1777,20 @@ def test_restore_loads_exact_stored_path_no_user_override(
     app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(shipped)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
-    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    assert app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY)).ok
     restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
     assert restored.resolve() == shipped.resolve()    # shipped stays, NOT overridden by the user theme
 
 
 def test_restore_keeps_shipped_when_no_user_shadow(app: App) -> None:
-    """No same-named user theme → RestoreLastTheme loads the stored shipped
+    """No same-named user theme → RestoreDeviceState loads the stored shipped
     theme unchanged (no regression)."""
     paths = app.platform.paths()
     shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Aurora")
     app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(shipped)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
-    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    assert app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY)).ok
     restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
     assert restored.resolve() == shipped.resolve()
 
@@ -1802,7 +1802,7 @@ def test_restore_keeps_user_theme_unchanged(app: App, user_theme_dir: Path) -> N
     app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(user)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(user.resolve()))
 
-    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    assert app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY)).ok
     restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
     assert restored.resolve() == user.resolve()
 
@@ -2110,14 +2110,14 @@ def test_restore_seeds_a_null_layer_but_never_an_emptied_one(
     assert theme_elements, "fixture must carry a layout to seed from"
 
     app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements = None
-    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY))
     seeded = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
     assert seeded is not None and len(seeded) == len(theme_elements), (
         "a null layer must be seeded from the theme on restore"
     )
 
     app.settings.set_user_overlay_elements(_TEST_DEVICE_KEY, [])
-    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY))
     assert app.settings.for_device(
         _TEST_DEVICE_KEY).user_overlay_elements == [], (
         "an emptied layer must survive a restore — seeding it would undo the "

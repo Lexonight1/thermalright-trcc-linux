@@ -1247,7 +1247,7 @@ class DisplayService:
             # Rendering is a READ.  ``PlayVideo`` is the single decoder — it
             # owns the decode-size policy (oriented canvas, native for user
             # assets), and every path that wants a video playing dispatches it
-            # (LoadTheme, SetBackground, LoadCloudTheme, RestoreLastTheme).
+            # (LoadTheme, SetBackground, LoadCloudTheme, RestoreDeviceState).
             #
             # This branch used to call ``load_video`` itself, which meant a
             # render could cost a full decode.  Two renders racing (the GUI

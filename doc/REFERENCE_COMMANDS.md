@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**144 total: 106 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**143 total: 105 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -847,17 +847,7 @@ How long is this video file, in milliseconds?
 
 ### `RestoreDeviceState`
 
-Ensure *key* has a renderable display state from persisted settings.
-
-*Command* → `ThemeResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-
-### `RestoreLastTheme`
-
-Re-load the theme persisted in Settings for *key*.
+Put *key*'s saved display back on the panel — the one restore Command.
 
 *Command* → `ThemeResult`
 

@@ -425,6 +425,22 @@ def test_start_screencast_still_accepts_an_lcd(fake_platform) -> None:
     assert app.settings.for_device(key).screencast_region == (1, 2, 64, 48, False)
 
 
+def test_keepalive_says_why_the_device_is_missing(fake_platform) -> None:
+    """A failed connect leaves no cached frame either, and the cache was
+    checked FIRST — so ``keepalive`` answered "No cached frame" and hid the
+    reason, which for hardware we do not own is the whole diagnosis."""
+    from trcc.core.commands import KeepAliveLoop
+
+    fake_platform.scsi.open = lambda: False
+    app = App(fake_platform)
+
+    result = app.dispatch(KeepAliveLoop(key="0402:3922", count=1))
+
+    assert result.ok is False
+    assert result.message == ("Not attached: 0402:3922 — Failed to open scsi "
+                              "transport for 0402:3922")
+
+
 def test_list_memory_slots_maps_absent_fields_to_empty(fake_platform) -> None:
     """A field the OS did not probe arrives as ``""`` — never a guess.
 

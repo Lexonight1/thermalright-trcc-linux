@@ -582,13 +582,16 @@ def test_display_snapshot(cli_runner: CliRunner, cli_app) -> None:
 def test_display_restore_theme_no_persisted(
     cli_runner: CliRunner, cli_app,
 ) -> None:
-    """``display restore-theme`` with nothing persisted exits non-zero."""
+    """``display restore-theme`` with nothing persisted AND nothing installed
+    exits non-zero — the Theme1 fallback has nothing to fall back to."""
     del cli_app
     result = cli_runner.invoke(
         _app(), ["display", "restore-theme", "0402:3922"],
     )
-    assert result.exit_code != 0
-    assert "No persisted theme" in result.output
+    assert result.exit_code == 1
+    assert result.output.splitlines()[-1] == (
+        "No theme available for this device — install themes or load a "
+        "theme first")
 
 
 def test_system_snapshot(cli_runner: CliRunner, cli_app) -> None:
@@ -1669,7 +1672,6 @@ def _run_led_play(monkeypatch, cli_runner, app, ticks_before_stop: int = 1):
 
     monkeypatch.setattr(_ctx, "get_app", fake_get_app)
     monkeypatch.setattr(led_mod, "get_app", fake_get_app)
-    monkeypatch.setattr(led_mod, "ensure_connected", lambda a, k: None)
     sleeps: list[float] = []
 
     def sleep(s):
@@ -1714,6 +1716,22 @@ def test_led_play_still_exits_on_a_real_error(monkeypatch, cli_runner) -> None:
     assert "ResetDevice" not in app.sent
 
 
+def test_led_play_exits_with_the_reason_when_the_first_frame_fails(
+        monkeypatch, cli_runner) -> None:
+    """The one-shot ``InitializeLed`` connects the device and carries the
+    connect reason; the loop never starts against an LED that is not there."""
+    from unittest.mock import MagicMock
+
+    app = _ScriptedApp({"InitializeLed": [MagicMock(
+        ok=False, message="Not attached: 0416:8001 — permission denied")]})
+    result, _ = _run_led_play(monkeypatch, cli_runner, app)
+    assert result.exit_code == 1
+    assert result.output.splitlines()[-1] == (
+        "Not attached: 0416:8001 — permission denied")
+    # ListDevices is the exit hook's blanking-panel check, not the loop.
+    assert app.sent[0] == "InitializeLed" and "RenderLed" not in app.sent
+
+
 def test_reconnect_backs_off_and_caps(monkeypatch) -> None:
     import time as time_mod
     from unittest.mock import MagicMock
@@ -1749,7 +1767,6 @@ def test_led_play_leaves_the_leds_to_the_daemon(monkeypatch, cli_runner) -> None
 
     monkeypatch.setattr(_ctx, "get_app", fake_get_app)
     monkeypatch.setattr(led_mod, "get_app", fake_get_app)
-    monkeypatch.setattr(led_mod, "ensure_connected", lambda a, k: None)
     result = cli_runner.invoke(cli, ["led", "play", "0416:8001"])
     assert result.exit_code == 0 and "daemon is animating 0416:8001" in result.output
     assert "RenderLed" not in {type(c.args[0]).__name__ for c in proxy.dispatch.call_args_list}

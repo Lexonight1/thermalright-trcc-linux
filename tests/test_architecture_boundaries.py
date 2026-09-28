@@ -2068,7 +2068,7 @@ def test_path_home_baseline_has_no_slack() -> None:
 # re-deciding a rotation the App had just decided, so the Query went with them.
 KNOWN_DIRECT_EXECUTE: dict[str, int] = {
     "trcc/core/commands/device.py": 5,
-    "trcc/core/commands/theme.py": 7,
+    "trcc/core/commands/theme.py": 6,
 }
 
 

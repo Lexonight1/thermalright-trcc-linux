@@ -287,10 +287,8 @@ def run(platform: Platform | None = None, *,
 
     Two things worth knowing about what the bus changed here:
 
-    * ``needs_session`` is **False**, which preserves the API's behaviour
-      exactly -- it brings up no coldplug and no live loops, as it never has.
-      (``App.start_session`` names that as the #148 divergence; fixing it is a
-      behavioural change that deserves its own verified increment.)
+    * It runs a session like every UI -- coldplug, hotplug, the live loops
+      and the connect prime -- ending the #148 exception.
     * ``App.close()`` now runs when serving ends, which it never did before.
       That is the intended direction: a panel left mid-stream holds its last
       frame and reads "USB communication lost" (#143).  Under

@@ -831,7 +831,7 @@ trcc display play-video [OPTIONS] KEY PATH
 
 ### `trcc display restore-theme`
 
-Reload the device's persisted theme — convenience after restart.
+Restore the device's saved display (theme + background; Theme1 if none).
 
 ```bash
 trcc display restore-theme KEY

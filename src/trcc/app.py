@@ -7,6 +7,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
@@ -22,8 +23,10 @@ from .core.errors import DeviceDisconnectedError, DeviceNotFoundError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
+    DataInstalled,
     DateFormatChanged,
     DeviceAttached,
+    DeviceConnected,
     DeviceDetached,
     DeviceDisconnected,
     ErrorOccurred,
@@ -333,6 +336,18 @@ class App:
         # discover the gui's splash worker already did, or a device that
         # failed to connect is retried and recorded twice.
         self._coldplug_done = False
+        # Session prime: inside a long-lived session (daemon / gui / qtgui /
+        # api) a panel that connects, or whose themes finish installing,
+        # shows its saved display — decided HERE, once, instead of by each UI
+        # (#148 was one UI missing its copy).  Subscribed in __init__ on
+        # purpose: the bus calls handlers in subscription order, so the panel
+        # is primed before any UI hears DeviceConnected, and no UI races it.
+        # A one-shot CLI never starts a session, so ``trcc color`` does not
+        # load a theme first.
+        self._session = False
+        self._prime_lock = threading.Lock()
+        self.events.subscribe(DeviceConnected, self._prime_all)
+        self.events.subscribe(DataInstalled, self._prime_all)
         # Seed the persisted GPU choice into the (singleton) enumerator so a
         # restart / CLI / API / daemon honours it, not just an in-session GUI
         # click — the composition root applies persisted state to the port.
@@ -522,7 +537,7 @@ class App:
         web_root = paths.data_dir() / "web"
 
         # Active theme → reload from the rotated-resolution theme dir.  Shared
-        # resolver with RestoreLastTheme so connect-restore + runtime rotation
+        # resolver with RestoreDeviceState so connect-restore + runtime rotation
         # agree on the oriented variant (#136).
         #
         # reset_overrides=False: a rotation re-roots the SAME theme to its
@@ -532,7 +547,7 @@ class App:
         # re-applied them.  Resetting here (the old default=True) PERSIST-CLEARED
         # user_overlay_elements + stopped video + reverted the cloud background —
         # so on a connect/restart the user's "last preview with changes" was lost
-        # before RestoreLastTheme could replay it.  Preserve them; the dedicated
+        # before RestoreDeviceState could replay it.  Preserve them; the dedicated
         # cloud-background + mask reload blocks below still re-resolve those two
         # to the oriented resolution.  (Catalog selection + encode are untouched,
         # so the hardware-verified widescreen behavior in #169 is unaffected.)
@@ -857,20 +872,59 @@ class App:
         Without this, a daemon on those three comes up owning USB with
         nothing connected until the user physically replugs.
 
+        It also switches on the session prime (:meth:`_prime`): from here on a
+        panel that connects, or whose themes finish installing, shows its saved
+        display.  Every UI used to do that its own way — the API not at all.
+
         Idempotent, like everything it calls: a repeat skips the coldplug and
         the loops early-return.  ``on_progress`` is forwarded to
         :meth:`discover_and_connect` for splash display.
         """
         log.info("start_session: coldplug_done=%s devices=%d",
                  self._coldplug_done, len(self.devices))
+        self._session = True
         if self._coldplug_done:
             log.info("start_session: coldplug already ran — skipping it")
         else:
             self.discover_and_connect(on_progress)
+        # The gui's splash coldplug ran before the session existed, so its
+        # connects primed nothing.  Idempotent for everything already primed.
+        self._prime_all()
         self.start_hotplug()
         self.metrics_loop.start()
         self.led_animation_loop.start()
         self.video_loop.start()
+
+    def _prime_all(self, _event: Any = None) -> None:
+        """Session-only: prime every attached panel (see :meth:`_prime`)."""
+        if not self._session:
+            frame_log.debug("_prime_all: no session — one-shot app, not priming")
+            return
+        log.info("_prime_all: %d device(s)", len(self.devices))
+        for key in list(self.devices):
+            self._prime(key)
+
+    def _prime(self, key: str) -> None:
+        """Show *key*'s saved display if the panel shows nothing.
+
+        The automatic restore, so it never overrides: a panel with an active
+        theme, or held by a pushed frame, is left alone.  The lock makes the
+        blank check and the restore one step — ``DataInstalled`` arrives on the
+        install worker while the coldplug primes on the caller's thread.
+        """
+        from .core.commands import RestoreDeviceState
+        with self._prime_lock:
+            device = self.devices.get(key)
+            if (device is None or not device.is_connected or device.is_led
+                    or key in self.active_themes or key in self.held):
+                log.debug("_prime: %s skipped (connected=%s led=%s active=%s "
+                          "held=%s)", key, device is not None
+                          and device.is_connected,
+                          device is not None and device.is_led,
+                          key in self.active_themes, key in self.held)
+                return
+            log.info("_prime: %s is blank — restoring its saved display", key)
+            self.dispatch(RestoreDeviceState(key=key))
 
     def close(self) -> None:
         """Disconnect every attached device + stop background threads.

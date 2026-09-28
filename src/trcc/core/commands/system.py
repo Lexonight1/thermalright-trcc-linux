@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from .._version import is_newer
 from ..errors import (
+    DeviceNotConnectedError,
     DeviceNotFoundError,
     HttpFetchError,
 )
@@ -75,6 +76,7 @@ from ._base import Command, Query
 from ._helpers import (
     _autostart_path,
     _health_entries,
+    _require_connected_device,
     _resolve_oriented_resolution,
     _slideshow_snapshot,
 )
@@ -1207,6 +1209,13 @@ class KeepAliveLoop(Command[KeepaliveResult]):
                 ok=False, key=self.key,
                 message=f"count must be >= 0, got {self.count}",
             )
+        # The device BEFORE the cache: a failed connect leaves no cache either,
+        # and "No cached frame" hid the reason ("permission denied …").
+        try:
+            _require_connected_device(app, self.key)
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
+            log.warning("KeepAliveLoop.execute: %s — %s", self.key, e)
+            return KeepaliveResult(ok=False, key=self.key, message=str(e))
         sender = app.senders.get(self.key)
         if sender is None or sender.last() is None:
             log.warning("KeepAliveLoop.execute: %s has no cached frame "
@@ -1216,15 +1225,6 @@ class KeepAliveLoop(Command[KeepaliveResult]):
                 ok=False, key=self.key,
                 message=("No cached frame for keepalive — render at least "
                          "once first"),
-            )
-        try:
-            device = app.get(self.key)
-        except DeviceNotFoundError as e:
-            return KeepaliveResult(ok=False, key=self.key, message=str(e))
-        if not device.is_connected:
-            return KeepaliveResult(
-                ok=False, key=self.key,
-                message=f"{self.key} not connected — dispatch ConnectDevice first",
             )
 
         if self.count >= 1:

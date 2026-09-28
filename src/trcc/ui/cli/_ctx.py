@@ -39,15 +39,13 @@ def emit_json(result: Any) -> None:
 
 
 def ensure_connected(app: App, key: str) -> None:
-    """Attach + handshake *key* if this stateless CLI process hasn't yet.
+    """Attach + handshake *key* before a loop whose Commands never connect.
 
-    Every CLI invocation is a fresh, non-daemon App holding no attached
-    devices, so a wire command (``color`` / ``play`` / ``load-theme`` / LED
-    ``render`` …) dispatched straight away would fail with "not connected".
-    ``EnsureConnected`` is idempotent — a no-op when a daemon/GUI already holds
-    the device — so this is safe before a single wire command and once before a
-    render/play loop.  Exits with the connect error on failure (a wire command
-    against an unattached device can do nothing useful).
+    A one-shot Command connects its own device (``USES_DEVICE``), so almost no
+    CLI verb needs this any more.  ``slideshow-run`` still does: its loop
+    dispatches ``LoadTheme``, which succeeds WITHOUT a device ("saved"), so
+    nothing else would stop it cycling themes against a panel that is not
+    there.  Exits with the connect error on failure.
     """
     log.debug("ensure_connected: app=%s key=%s", app, key)
     from ...core.commands import EnsureConnected
