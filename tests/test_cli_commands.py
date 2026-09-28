@@ -273,33 +273,28 @@ def test_display_load_image_auto_connects_then_sends(
 def test_theme_cloud_load_attaches_before_load(
     cli_runner: CliRunner, cli_app, monkeypatch,
 ) -> None:
-    """``theme cloud-load`` dispatches EnsureConnected before the wire load (#150).
+    """The device is attached by the time ``LoadCloudTheme`` runs (#150).
 
     The reporter's "Not attached: 0402:3922" was cloud-load skipping the
-    attach that display commands already do.  We spy the App's dispatch to
-    assert the attach lands first, short-circuiting the actual network
-    download at the LoadCloudTheme boundary.
+    attach that display commands did.  Connecting is now the dispatcher's job
+    for every UI (``USES_DEVICE``), so this asserts the OUTCOME at the
+    Command's boundary rather than which UI helper ran; the network download
+    is short-circuited there.
     """
     from trcc.core.commands import LoadCloudTheme
     from trcc.core.commands.theme import CloudThemeLoadResult
 
-    seen: list[str] = []
-    real_dispatch = cli_app.dispatch
+    attached_when_run: list[bool] = []
 
-    def spy(cmd):
-        seen.append(type(cmd).__name__)
-        if isinstance(cmd, LoadCloudTheme):
-            return CloudThemeLoadResult(
-                ok=True, key=cmd.key, theme_id=cmd.theme_id,
-                theme_path="", message="ok",
-            )
-        return real_dispatch(cmd)
+    def fake_execute(self, app):  # type: ignore[no-untyped-def]
+        attached_when_run.append(self.key in app.devices)
+        return CloudThemeLoadResult(ok=True, key=self.key,
+                                    theme_id=self.theme_id, theme_path="",
+                                    message="ok")
 
-    monkeypatch.setattr(cli_app, "dispatch", spy)
+    monkeypatch.setattr(LoadCloudTheme, "execute", fake_execute)
     cli_runner.invoke(_app(), ["theme", "cloud-load", "0402:3922", "a001"])
-
-    assert "EnsureConnected" in seen
-    assert seen.index("EnsureConnected") < seen.index("LoadCloudTheme")
+    assert attached_when_run == [True]
 
 
 def test_display_color_unknown_device_fails(cli_runner: CliRunner, cli_app) -> None:

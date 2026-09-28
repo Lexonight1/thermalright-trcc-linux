@@ -903,13 +903,15 @@ Enable / disable the 4-color diagnostic test cycle.
 
 ### `InitializeLed`
 
-Connect + render one initial LED frame in a single dispatch.
+Render ONE LED frame, connecting the device first — the one-shot render.
 
 *Command* → `LedColorsResult`
 
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
+| `color` | `tuple[int, int, int] | None` | no |
+| `phase` | `int` | no |
 
 ### `LedSnapshot`
 

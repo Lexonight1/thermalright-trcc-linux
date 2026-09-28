@@ -949,6 +949,31 @@ _OUR_THREADS = ("trcc-", "sensor-poll")
 
 
 @pytest.fixture(autouse=True)
+def _no_real_microphone_in_a_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refuse the real ``AudioCapture.start`` -- name the test instead of crashing.
+
+    A real one opens a PortAudio stream whose callback runs on a native
+    thread and outlives the App; the process later dies with ``Fatal Python
+    error: Illegal instruction`` in whichever test happens to be running.
+    That has now happened TWICE: 2026-09-23 (a screencast test), and
+    2026-09-26, when auto-connect let ``SaveTheme``'s reload of a screencast
+    theme reach ``_sync_audio`` in ``test_theme_persistence``.  The
+    :class:`FakeMic` docstring asked every author to remember; this does not
+    ask.  Assign ``FakeMic()`` over ``app.audio`` in a test that turns
+    screencast audio on.
+    """
+    from trcc.services.audio import AudioCapture
+
+    def _refuse(self: AudioCapture) -> bool:
+        raise AssertionError(
+            "a test started the REAL microphone (AudioCapture.start) -- its "
+            "PortAudio callback outlives the test and kills the worker later. "
+            "Assign conftest.FakeMic() over app.audio in this test.")
+
+    monkeypatch.setattr(AudioCapture, "start", _refuse)
+
+
+@pytest.fixture(autouse=True)
 def _no_background_thread_outlives_its_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:

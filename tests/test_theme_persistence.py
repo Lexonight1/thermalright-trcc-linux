@@ -26,7 +26,7 @@ from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
 from trcc.core.models import Theme
 from trcc.services.settings import Settings
 
-from .conftest import FakePlatform
+from .conftest import FakeMic, FakePlatform
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -1287,6 +1287,9 @@ def test_save_theme_references_screencast_region(
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.set_screencast_region(_TEST_DEVICE_KEY, (100, 50, 640, 480, True))
+    # SaveTheme connects the device and reloads the saved theme, which resumes
+    # its screencast -- audio on.  The real microphone would outlive the test.
+    app.audio = FakeMic()  # type: ignore[assignment]
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cast")).ok
     saved = user_theme_dir / "cast"

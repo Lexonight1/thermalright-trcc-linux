@@ -42,6 +42,14 @@ class Command(ABC, Generic[R_co]):
     """
 
     LOG_LEVEL: ClassVar[int] = logging.INFO
+    #: The Command acts on ``self.key``'s device, so ``App.dispatch`` connects
+    #: it first -- for every UI.  Each UI used to decide that for itself (the
+    #: CLI before 21 commands, the API before 9 routes, 6 routes not at all),
+    #: which is how a verb that worked in the CLI failed over the API.
+    #: One-shot Commands only: a per-tick one would retry a USB connect at
+    #: frame rate while a panel is unplugged; hotplug and the play loops own
+    #: reconnecting those.
+    USES_DEVICE: ClassVar[bool] = False
 
     @abstractmethod
     def execute(self, app: App) -> R_co: ...

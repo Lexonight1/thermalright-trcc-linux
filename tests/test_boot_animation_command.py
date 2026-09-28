@@ -157,12 +157,15 @@ def test_returns_error_for_unknown_key(
 def test_rejects_non_scsi_device(tmp_path: Path) -> None:
     """A HID device (0416:5302) must reject boot animation — SCSI-only feature.
 
-    Type-gate hits *before* the connected-check, so we don't need a fake
-    handshake — attach() alone is enough to trigger the bail-out.
+    ``UploadBootAnimation`` uses its device, so dispatch connects it first; the
+    mock scripts a HID handshake, and the type-gate refuses after it — as on
+    real hardware.
     """
-    platform = FakePlatform(tmp_path)
+    from tests.mock_platform import MockPlatform
+
+    platform = MockPlatform([{"vid": "0416", "pid": "5302", "pm": 128,
+                              "sub": 1}], tmp_path)
     app = App(platform=platform, renderer=_AnimRenderer())
-    app.attach(0x0416, 0x5302)              # HID Type 2 — not SCSI
 
     frames = _make_frames(tmp_path, 1)
     result = app.dispatch(UploadBootAnimation(

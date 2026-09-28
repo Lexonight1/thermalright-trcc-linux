@@ -385,13 +385,19 @@ def _led_key() -> str:
     return f"{p.vid:04x}:{p.pid:04x}"
 
 
-def test_start_screencast_refuses_an_led_controller(fake_platform) -> None:
-    """ok=False, and — the point — nothing persisted."""
+def test_start_screencast_refuses_an_led_controller(tmp_path) -> None:
+    """ok=False, and — the point — nothing persisted.
+
+    A connectable LED: ``StartScreencast`` uses its device, so dispatch
+    connects it first and the refusal comes after — as on real hardware.  A
+    fake that cannot handshake would fail at the connect instead.
+    """
+    from tests.mock_platform import MockPlatform
     from trcc.core.commands import StartScreencast
 
-    app = App(fake_platform)
-    key = _led_key()
-    app.attach(int(key[:4], 16), int(key[5:], 16))
+    app = App(MockPlatform([{"type": "led", "vid": "0416", "pid": "8001",
+                             "pm": 208}], tmp_path))
+    key = "0416:8001"
 
     result = app.dispatch(StartScreencast(key=key, x=0, y=0, w=320, h=320))
 

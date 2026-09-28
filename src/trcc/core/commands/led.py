@@ -41,9 +41,6 @@ from ._helpers import (
     _publish_if_disconnect,
     _publish_led_settings_changed,
 )
-from .device import (
-    ConnectDevice,
-)
 
 if TYPE_CHECKING:
     from ...app import App
@@ -57,6 +54,7 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class SetLedColors(Command[LedColorsResult]):
     """Set LED color array + on/off + brightness on a connected Led device."""
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     colors: list[tuple[int, int, int]]
     global_on: bool = True
@@ -117,30 +115,29 @@ class SetLedColors(Command[LedColorsResult]):
 
 @dataclass(frozen=True, slots=True)
 class InitializeLed(Command[LedColorsResult]):
-    """Connect + render one initial LED frame in a single dispatch.
+    """Render ONE LED frame, connecting the device first — the one-shot render.
 
-    Convenience for the LED boot path — equivalent to ``ConnectDevice``
-    followed by ``RenderLed``, but wrapped so headless callers (CLI
-    autorestore, daemon startup) don't have to chain two Commands and
-    handle the intermediate Result.  Failures at either step surface
-    as the LED Result so the caller only inspects one shape.
+    :class:`RenderLed` is the per-tick Command: the observer and the animation
+    loop fire it many times a second, so it must never attempt a connect.  A
+    user asking for one frame (``led initialize``, ``led render``,
+    ``POST /led/render``) is a different intent, and this is its Command:
+    ``USES_DEVICE`` has ``App.dispatch`` connect first, for every UI, and the
+    optional *color* / *phase* are ``RenderLed``'s diagnostic overrides.
 
-    Distinct from :class:`RenderLed` (assumes already-connected) and
-    :class:`ConnectDevice` (handshakes but doesn't render).  Use this
-    on app start; use the individual Commands when you need finer
-    control over each step.
+    It used to call ``ConnectDevice`` itself, re-handshaking even a connected
+    device, while ``led render`` and the API route asked their own UI to
+    connect and then dispatched ``RenderLed`` directly.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
+    color: tuple[int, int, int] | None = None    # None = use Settings.led.color
+    phase: int = 0
 
     def execute(self, app: App) -> LedColorsResult:
-        log.info("InitializeLed: key=%s", self.key)
-        connect_result = app.dispatch(ConnectDevice(key=self.key))
-        if not connect_result.ok:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[],
-                message=f"connect failed: {connect_result.message}",
-            )
-        return app.dispatch(RenderLed(key=self.key))
+        log.info("InitializeLed: key=%s color=%s phase=%s", self.key,
+                 self.color, self.phase)
+        return app.dispatch(RenderLed(key=self.key, color=self.color,
+                                      phase=self.phase))
 
 @dataclass(frozen=True, slots=True)
 class RenderLed(Command[LedColorsResult]):

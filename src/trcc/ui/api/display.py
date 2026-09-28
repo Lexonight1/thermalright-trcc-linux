@@ -9,7 +9,6 @@ from pathlib import Path
 
 from fastapi import (
     APIRouter,
-    Depends,
     File,
     Form,
     HTTPException,
@@ -110,7 +109,6 @@ from ...core.results import (
 )
 from ._shared import (
     admit_ws,
-    ensure_connected,
     http_error_if_failed,
     owned_path,
     staging_dir,
@@ -188,7 +186,7 @@ def set_brightness(key: str, body: BrightnessRequest,
     return result
 
 
-@router.post("/theme", response_model=ThemeResponse, dependencies=[Depends(ensure_connected)])
+@router.post("/theme", response_model=ThemeResponse)
 def load_theme(key: str, body: ThemeRequest,
                request: Request) -> ThemeResponse:
     log.info(
@@ -342,7 +340,7 @@ def set_split_mode(key: str, body: SplitModeRequest,
     return result
 
 
-@router.post("/play-video", dependencies=[Depends(ensure_connected)])
+@router.post("/play-video")
 def play_video(key: str, body: PlayVideoRequest,
                 request: Request) -> VideoResult:
     """Start a video playback override on the device."""
@@ -449,8 +447,7 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
     )
 
 
-@router.post("/send-image", response_model=ThemeResponse,
-             dependencies=[Depends(ensure_connected)])
+@router.post("/send-image", response_model=ThemeResponse)
 async def send_image(
     key: str,
     request: Request,
@@ -563,7 +560,7 @@ def preview(key: str, request: Request) -> Response:
     return Response(content=result.image, media_type=result.media_type)
 
 
-@router.post("/screencast/start", dependencies=[Depends(ensure_connected)])
+@router.post("/screencast/start")
 def screencast_start(key: str, body: ScreencastStartRequest,
                      request: Request) -> ScreencastResult:
     """Begin a screen-capture session for *key*.
@@ -622,6 +619,7 @@ def media_player(key: str, body: MediaPlayerRequest,
              key, body.uri)
     uri = body.uri.strip()
     if uri and "://" not in uri:   # a local file: confined like every read
+        log.debug("media-player: %r is a local file — confining it", uri)
         uri = str(owned_path(request, uri))
     result = request.app.state.trcc.dispatch(
         SetMediaPlayer(key=key, uri=uri),
@@ -630,7 +628,7 @@ def media_player(key: str, body: MediaPlayerRequest,
     return result
 
 
-@router.post("/boot-animation", dependencies=[Depends(ensure_connected)])
+@router.post("/boot-animation")
 def upload_boot_animation(key: str, body: BootAnimationRequest,
                           request: Request) -> BootAnimationResult:
     """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
@@ -843,7 +841,7 @@ async def create_theme(
     )
 
 
-@router.post("/color", dependencies=[Depends(ensure_connected)])
+@router.post("/color")
 def send_color(key: str, body: ColorRequest, request: Request) -> SendResult:
     """Push a solid-color frame to a connected LCD device."""
     log.info(
@@ -870,7 +868,7 @@ def sleep(key: str, request: Request) -> SendResult:
     return result
 
 
-@router.post("/reset", dependencies=[Depends(ensure_connected)])
+@router.post("/reset")
 def reset(key: str, request: Request) -> SendResult:
     """Reset the display — stop any active video, then send a solid red frame.
 

@@ -137,7 +137,6 @@ def color(
         raise typer.Exit(code=2)
     r, g, b = rgb
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(SendColor(key=key, r=r, g=g, b=b))
     typer.echo(result.message)
     if not result.ok:
@@ -185,7 +184,6 @@ def apply_mask(
     """Override the active theme's mask with a user-supplied image."""
     log.info("cli display apply-mask: key=%s path=%s", key, path)
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(ApplyMask(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -249,7 +247,6 @@ def load_image(
     # LoadImage → LoadTheme renders on the wire; attach the device first so a
     # fresh CLI process doesn't fail "not connected".  Idempotent.  (#150)
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(LoadImage(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -420,7 +417,6 @@ def load_theme(
     """Load a theme: parse, persist, render+send if device is connected."""
     log.info("cli display load-theme: key=%s path=%s", key, path)
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(LoadTheme(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -445,7 +441,6 @@ def play_video(
     """
     log.info("cli display play-video: key=%s path=%s fps=%s", key, path, fps)
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     # PlayVideo persists the background path itself — reaching for
     # app_obj.settings here crashed under TRCC_DAEMON=1, where AppProxy
     # exposes dispatch() only (#249).
@@ -553,7 +548,6 @@ def boot_anim(
     typer.echo(f"Uploading {len(frame_paths)} boot-animation frames to {key} "
                f"({delay_ds * 0.1:.1f}s each)…")
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(UploadBootAnimation(
         key=key, frame_paths=frame_paths, delays_ds=delays,
     ))
@@ -937,8 +931,6 @@ def background(
     survives a theme change until cleared.
     """
     log.info("cli display background: key=%s path=%s", key, path)
-    app_obj = get_app()
-    ensure_connected(app_obj, key)
     dispatch_echo(SetBackground(key=key, path=path))
 
 
@@ -961,11 +953,9 @@ def slideshow_drive(
     in the background for as long as the app or daemon is alive.
     """
     log.info("cli display slideshow-drive: key=%s stop=%s", key, stop)
-    app_obj = get_app()
     if stop:
         dispatch_echo(StopSlideshowDriver(key=key))
         return
-    ensure_connected(app_obj, key)
     dispatch_echo(StartSlideshowDriver(key=key))
 
 
@@ -1166,7 +1156,6 @@ def test(
     import time
 
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     sequence = (
         ("red",   (0xFF, 0x00, 0x00)),
         ("green", (0x00, 0xFF, 0x00)),
@@ -1195,7 +1184,6 @@ def sleep(
     """
     log.info("cli display sleep: key=%s", key)
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(SleepDevice(key=key))
     typer.echo(result.message)
     if not result.ok:
@@ -1247,7 +1235,6 @@ def send_image(
     """
     log.info("cli display send-image: key=%s path=%s", key, path)
     app_obj = get_app()
-    ensure_connected(app_obj, key)
     result = app_obj.dispatch(SendImage(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -1376,8 +1363,6 @@ def media_player(
     """
     log.info("cli display media-player: key=%s uri=%s", key, uri)
     app_obj = get_app()
-    if uri:
-        ensure_connected(app_obj, key)
     result = app_obj.dispatch(SetMediaPlayer(key=key, uri=uri))
     typer.echo(result.message)
     if not result.ok:

@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import (
     EnableLedTestMode,
+    InitializeLed,
     LedSnapshot,
     ListLedModes,
     ListLedStyles,
-    RenderLed,
     SelectZone,
     SetClockFormat,
     SetLedBrightness,
@@ -41,7 +41,6 @@ from ...core.results import (
     WeekStartResult,
 )
 from ._shared import (
-    ensure_connected,
     http_error_if_failed,
 )
 from .schemas import (
@@ -70,7 +69,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/devices/{key}/led", tags=["led"])
 
 
-@router.post("/colors", dependencies=[Depends(ensure_connected)])
+@router.post("/colors")
 def set_colors(key: str, body: LedColorsRequest,
                request: Request) -> LedColorsResult:
     log.info(
@@ -89,7 +88,7 @@ def set_colors(key: str, body: LedColorsRequest,
     return result
 
 
-@router.post("/render", dependencies=[Depends(ensure_connected)])
+@router.post("/render")
 def render(key: str, body: LedRenderRequest,
            request: Request) -> LedColorsResult:
     """One tick — engine reads Settings, advances counters, sends a frame."""
@@ -98,7 +97,7 @@ def render(key: str, body: LedRenderRequest,
         key, body.phase,
     )
     result = request.app.state.trcc.dispatch(
-        RenderLed(key=key, color=body.color, phase=body.phase),
+        InitializeLed(key=key, color=body.color, phase=body.phase),
     )
     http_error_if_failed(result)
     return result

@@ -786,8 +786,19 @@ class App:
         frame_log.debug("get: key=%s", key)
         device = self.devices.get(key)
         if device is None:
-            raise DeviceNotFoundError(f"Not attached: {key}")
+            # Say WHY when a connect was tried: "permission denied on
+            # /dev/sg1" is the whole diagnosis for hardware we do not own.
+            reason = self.connect_issue(key)
+            raise DeviceNotFoundError(
+                f"Not attached: {key}" + (f" — {reason}" if reason else ""))
         return device
+
+    def connect_issue(self, key: str) -> str:
+        """Why *key*'s last connect failed, or ``""`` -- for error messages."""
+        issue = self._connect_issues.get(key)
+        frame_log.debug("connect_issue: key=%s -> %s", key,
+                        issue.message if issue is not None else "none")
+        return issue.message if issue is not None else ""
 
     # ── Connect-issue model (queried via DeviceConnectionIssues) ─────────
 
@@ -880,7 +891,10 @@ class App:
         # Command swallows a mid-unplug send, and any unexpected error here
         # must not block device release below.
         from .core.commands import SleepDevice
-        for key in list(self.devices):
+        # Connected panels only: an unconnected one cannot take the black
+        # frame, and SleepDevice uses its device -- dispatching it would retry
+        # a failed connect (with its handshake retries) on the way out.
+        for key in [k for k, d in self.devices.items() if d.is_connected]:
             try:
                 self.dispatch(SleepDevice(key=key))
             except Exception:
@@ -1101,6 +1115,8 @@ class App:
         # report is read for.
         sink = frame_log if cmd.LOG_LEVEL <= logging.DEBUG else log
         sink.log(cmd.LOG_LEVEL, "dispatch %r", cmd)
+        if cmd.USES_DEVICE:
+            self._connect_for(cmd)
         result = cmd.execute(self)
         if not getattr(result, "ok", True):
             log.warning(
@@ -1116,6 +1132,24 @@ class App:
                 getattr(result, "message", ""),
             )
         return result
+
+
+    def _connect_for(self, cmd: Command[Any]) -> None:
+        """Bring *cmd*'s device up before it runs — the one place that decides.
+
+        An attempt, never a gate: the Command still runs and says what an
+        absent device means to IT — ``SendColor`` fails, ``LoadTheme`` still
+        saves the choice.  A failed connect is recorded, so the Command's "Not
+        attached" carries the reason.
+        """
+        key = getattr(cmd, "key", "")
+        device = self.devices.get(key)
+        if not key or (device is not None and device.is_connected):
+            return
+        from .core.commands import EnsureConnected
+        log.info("_connect_for: %s needs %s — connecting", type(cmd).__name__,
+                 key)
+        self.dispatch(EnsureConnected(key=key))
 
 
 # =========================================================================

@@ -99,33 +99,6 @@ def http_error_if_failed(result: Result, status_code: int = 400) -> None:
         raise HTTPException(status_code=status_code, detail=result.message)
 
 
-def ensure_connected(key: str, request: Request) -> None:
-    """Attach + handshake *key* before a route that touches the wire.
-
-    The API had no equivalent of the CLI's ``_ctx.ensure_connected``, so the
-    same intent behaved differently on the two surfaces:
-
-        trcc display color 0416:5302 ff0000      -> works
-        POST /devices/0416:5302/display/color    -> {"detail": "Not attached"}
-
-    ...until the client remembered to ``POST /connect`` first, which nothing
-    documented.  ``EnsureConnected`` is idempotent — a no-op when a daemon or
-    GUI already holds the device — so this costs an attached device nothing.
-
-    Applied per-ROUTE, never to the whole router.  Only 9 of the 63
-    device-scoped routes actually need a device: the rest are settings
-    mutations, and ``SetBrightness`` / ``SetOrientation`` / ``StopVideo`` /
-    ``RestoreDeviceState`` were each verified to answer ``ok=True`` with
-    nothing attached.  A router-wide dependency would have made all of them
-    start failing on a machine with no hardware.
-    """
-    from ...core.commands import EnsureConnected
-    log.info("ensure_connected: key=%s", key)
-    result = request.app.state.trcc.dispatch(EnsureConnected(key=key))
-    if not result.ok:
-        raise HTTPException(status_code=400, detail=result.message)
-
-
 def staging_dir(request: Request) -> Path:
     """The upload staging directory, created if absent.
 

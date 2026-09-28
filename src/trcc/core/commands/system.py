@@ -1191,6 +1191,7 @@ class KeepAliveLoop(Command[KeepaliveResult]):
     ``metric_interval_s`` is accepted for API compatibility but unused — the
     metrics observer already re-renders on its own cadence.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     count: int = 0
     interval_s: float = 0.150

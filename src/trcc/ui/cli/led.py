@@ -88,7 +88,6 @@ def set_colors(
         key, colors, brightness, off,
     )
     parsed = [_parse_hex_color(c) for c in colors]
-    ensure_connected(get_app(), key)
     dispatch_echo(SetLedColors(
         key=key, colors=parsed, global_on=not off, brightness=brightness,
     ))
@@ -111,8 +110,7 @@ def render(
     """
     log.info("cli led render: key=%s color=%s phase=%s", key, color, phase)
     override = _parse_hex_color(color) if color else None
-    ensure_connected(get_app(), key)
-    dispatch_echo(RenderLed(key=key, color=override, phase=phase))
+    dispatch_echo(InitializeLed(key=key, color=override, phase=phase))
 
 
 @app.command("mode")

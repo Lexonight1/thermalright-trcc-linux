@@ -567,6 +567,7 @@ class SendColor(Command[SendResult]):
     handshake-derived profile → DisplayService.build_solid_color_frame →
     Device.send.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     r: int
     g: int
@@ -634,6 +635,7 @@ class SleepDevice(Command[SendResult]):
     a device mid-unplug returns ``ok=False`` instead of raising, so it can
     never abort ``App.close`` mid-shutdown.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
 
     def execute(self, app: App) -> SendResult:
@@ -695,6 +697,7 @@ class SendImage(Command[SendResult]):
     per-device brightness + orientation + device-side rotation via
     ``DisplayService.build_image_frame``.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
 
@@ -1180,6 +1183,7 @@ class PlayVideo(Command[VideoResult]):
     ``info.native_resolution`` pre-handshake) so frames are pre-scaled
     for the wire.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
     fps: int = 15
@@ -1406,6 +1410,7 @@ class StartScreencast(Command[ScreencastResult]):
     a typo in CLI args is caught at dispatch time instead of being a
     silent no-op in the handler timer.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     x: int
     y: int
@@ -1510,6 +1515,7 @@ class StartScreencastDriver(Command[ScreencastResult]):
     qtgui panel has an fps slider, and hard-coding here would have silently
     ignored it.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     interval_s: float = SCREENCAST_TICK_S
 
@@ -1834,6 +1840,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
     continuous-streaming playback is a separate runtime feature.  Pass an empty
     ``uri`` to clear the source.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     uri: str
 
@@ -1899,6 +1906,7 @@ class SetBackground(Command[BackgroundResult]):
     Stops any prior video first so the new image isn't immediately
     overwritten by the next animation tick.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
 
@@ -1988,6 +1996,7 @@ class UploadBootAnimation(Command[BootAnimationResult]):
     deciseconds (10ths of a second); firmware caps at 25 ds (2.5 s).
     Defaults to 10 ds (1 s) for any frame without an explicit delay.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     frame_paths: list[Path]
     delays_ds: list[int]
@@ -2223,6 +2232,7 @@ class ApplyMask(Command[MaskApplyResult]):
     Stores the **resolved absolute file path** so subsequent renders
     aren't affected by ``os.chdir`` between calls.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
 

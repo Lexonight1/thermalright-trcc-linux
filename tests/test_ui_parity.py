@@ -87,9 +87,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     )),
 
     # ── Ergonomic composites -- both halves reachable separately ──────────
-    "InitializeLed": (frozenset({"cli"}), (
-        "scoped: the API initialises the LED via SendColor on connect/reset; "
-        "explicit init is a CLI setup step"
+    "InitializeLed": (frozenset({"cli", "api"}), (
+        "scoped: the ONE-SHOT LED render (2026-09-26) -- dispatch connects the "
+        "device (USES_DEVICE) and it renders one frame; cli `led initialize` / "
+        "`led render` and API `/led/render`.  The GUIs render LEDs per tick"
     )),
     "LoadVideo": (frozenset({"api", "cli", "qtgui"}), (
         "scoped: the API route landed 2026-09-08 — the old reason, that this "
@@ -178,10 +179,11 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: a hold/confirm LOOP, not a user capability -- the GUIs keep a "
         "device awake through their own render cadence"
     )),
-    "EnsureConnected": (frozenset({"cli", "api"}), (
-        "scoped: the attach-first PRECONDITION a wire command runs before itself "
-        "(31e7fcb4 gave the API what the CLI always had); the GUIs own "
-        "connection lifecycle in their per-device handlers"
+    "EnsureConnected": (frozenset({"cli"}), (
+        "gap: closes in P4b.  Since 2026-09-26 every one-shot Command connects "
+        "its own device in App.dispatch (USES_DEVICE), so no UI decides it.  "
+        "Only the five cli LOOPS still connect themselves -- display play, led "
+        "play, keepalive, screencast, slideshow-run -- until they run a session"
     )),
     "TickDisplay": (frozenset({"cli", "api"}), (
         "scoped: the core ticks video in every session now (VideoLoop, #249) "
@@ -261,8 +263,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "gap: set the LED colour array + on/off + brightness; the GUIs have LED "
         "panels but reach the capability another way"
     )),
-    "RenderLed": (frozenset({"cli", "api"}), (
-        "gap: compute and send one LED frame from settings + sensors"
+    "RenderLed": (frozenset({"cli"}), (
+        "scoped: the PER-TICK LED render -- it must never connect a device, so "
+        "a one-shot render is InitializeLed.  Only the cli `led play` loop "
+        "dispatches it directly; the observer and the animation loop in core"
     )),
     "SendColor": (frozenset({"cli", "api"}), (
         "gap: push a solid-colour frame to an LCD"

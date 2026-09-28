@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid4
 
 from .._safe import is_safe_user_name, is_under
@@ -109,6 +109,7 @@ class LoadTheme(Command[ThemeResult]):
     takes effect on next connect.  If no Renderer is attached to the
     App, the send step is skipped (parse + persist only).
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
     # Explicit user theme switch (default) establishes the theme's own state
@@ -167,7 +168,10 @@ class LoadTheme(Command[ThemeResult]):
         # (animated→static switches silently kept showing the old animation
         # until a second click finally cleared it).
         app.active_themes[self.key] = theme
-        app.held.discard(self.key)   # a theme load ends a push's hold (#306)
+        if self.key in app.held:     # a theme load ends a push's hold (#306)
+            log.info("LoadTheme: %s released from a pushed frame's hold",
+                     self.key)
+            app.held.discard(self.key)
         # Single source of truth for "stop the previous video + clear the
         # cloud-background override + invalidate the scene cache": ``StopVideo``
         # (publishes VideoStopped, clears background_path, unloads playback).
@@ -543,6 +547,7 @@ class SaveTheme(Command[ThemeResult]):
     target is removed and the original DeviceSettings are left
     untouched so the user can retry without losing state.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     name: str
     overwrite: bool = False
@@ -1524,6 +1529,7 @@ class UploadCustomMask(Command[MaskUploadResult]):
 
     Then dispatches ApplyMask so the new mask wires onto the device.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     source: Path
 
@@ -1661,6 +1667,7 @@ class RestoreLastTheme(Command[ThemeResult]):
     search across the device's known theme roots so existing users
     don't lose their last selection on upgrade.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
 
     def execute(self, app: App) -> ThemeResult:
@@ -1729,6 +1736,7 @@ class RestoreDeviceState(Command[ThemeResult]):
     cached frame — so a keepalive resend has something to push (the terminal
     "No cached frame — render at least once first" gap this closes). (#150)
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
 
     def execute(self, app: App) -> ThemeResult:
@@ -1957,6 +1965,7 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
          MediaService + DisplayService already use to render a video
          background on every tick.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     theme_id: str
 
@@ -2039,6 +2048,7 @@ class LoadImage(Command[ThemeResult]):
     Errors surface as structured Results.  Acceptable extensions:
     PNG / JPG / JPEG / BMP / WEBP.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
 
@@ -2296,6 +2306,7 @@ class LoadVideo(Command[ThemeResult]):
     The device must be attached (so we know its native resolution).
     Errors surface as structured Results — never exceptions to UIs.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     path: Path
     start_ms: int = 0

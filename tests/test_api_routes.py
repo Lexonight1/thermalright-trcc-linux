@@ -1947,3 +1947,24 @@ def test_a_tick_poller_leaves_a_pushed_image_on_the_panel(
     assert tick.status_code == 200
     assert tick.json()["message"] == "held by a pushed frame"
     assert _KEY not in app.active_themes
+
+
+def test_a_route_connects_the_device_itself(tmp_path: Path) -> None:
+    """The API decided "connect first" per route, and 6 routes did not -- so
+    ``/sleep`` and ``/media-player`` failed "Not attached" where the CLI
+    worked.  Now the Command connects, whichever face dispatched it."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.ui.api.main import build_app
+
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922"},
+                            {"type": "led", "vid": "0416", "pid": "8001",
+                             "pm": 208}], tmp_path), renderer=QtRenderer())
+    with loopback_client(build_app(trcc=app)) as client:
+        sleep = client.post("/devices/0402:3922/display/sleep")
+        led = client.post("/devices/0416:8001/led/render", json={"phase": 0})
+
+    assert (sleep.status_code, led.status_code) == (200, 200)
+    assert app.devices["0402:3922"].is_connected
+    assert app.devices["0416:8001"].is_connected

@@ -230,9 +230,11 @@ def _require_connected_device(app: App, key: str) -> Any:
         # log.  Warn with the key — the universal "acted before connect" trace.
         log.warning("%s: wire command dispatched before ConnectDevice — "
                     "device attached but not connected", key)
-        raise DeviceNotConnectedError(
-            f"{key} not connected — dispatch ConnectDevice first"
-        )
+        # The dispatcher already tried to connect a USES_DEVICE Command's
+        # device, so "dispatch ConnectDevice first" is no advice at all when it
+        # failed -- the recorded reason is ("permission denied on /dev/sg1").
+        reason = app.connect_issue(key) or "dispatch ConnectDevice first"
+        raise DeviceNotConnectedError(f"{key} not connected — {reason}")
     return device
 
 
@@ -395,7 +397,10 @@ def _publish_led_settings_changed(app: App, key: str) -> None:
     log.debug("_publish_led_settings_changed: key=%s", key)
     # A deliberate LED change ends a SetLedColors hold — released BEFORE the
     # publish, so the observer's re-render below is not skipped as held.
-    app.held.discard(key)
+    if key in app.held:
+        log.info("_publish_led_settings_changed: %s released from a "
+                 "SetLedColors hold", key)
+        app.held.discard(key)
     app.events.publish(LedColorsChanged(key=key, color_count=0))
     app.events.publish(LedSettingsChanged(key=key))
 
