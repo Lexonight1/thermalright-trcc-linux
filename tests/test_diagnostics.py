@@ -3025,3 +3025,51 @@ def test_handshake_scrape_survives_an_unreadable_segment(tmp_path: Path) -> None
     live.write_text("HidLcd handshake OK: PM=9\n", encoding="utf-8")
 
     assert len(_scrape_handshake_lines(live)) == 1
+
+
+def test_an_api_request_reaches_the_log_file(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``trcc api`` never wrote one request-time record to the file.
+
+    uvicorn's default ``log_config`` goes through ``dictConfig``, which CLOSES
+    every handler already attached — ours included — and leaves them on the
+    root logger, so nothing looks wrong.  Measured 2026-09-28: no log on the
+    dev box had ever held an ``api GET``/``POST`` line, and a reporter's
+    ``trcc report`` carried start-up only.
+
+    Real ``ApiUI.start`` → real ``uvicorn.run`` (which builds the ``Config``
+    where the handlers were closed); only ``Server.run`` is replaced, by one
+    request served through the app it was handed.
+    A ``/tick`` poller stays OFF INFO: at 1 Hz its lines rotated the diagnosis
+    out of the file within hours.
+    MUTATION CHECK: drop ``log_config=None`` from ``ApiUI.run``, or the
+    route's ``request.state.per_frame`` → this fails.
+    """
+    import uvicorn
+
+    from tests.conftest import FakePlatform, loopback_client
+    from trcc.ui._uis import ApiUI
+
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=logging.DEBUG)
+    served: list[int] = []
+
+    def serve_one_request(self: uvicorn.Server, sockets: object = None) -> None:
+        client = loopback_client(self.config.app)
+        served.append(client.get("/devices").status_code)
+        client.post("/devices/dead:beef/display/tick")
+        self.started = True        # uvicorn.run exits 3 without it
+
+    monkeypatch.setattr(uvicorn.Server, "run", serve_one_request)
+
+    assert ApiUI().start(FakePlatform(tmp_path)) == 0
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    assert served == [200]
+    lines = log_file.read_text(encoding="utf-8").splitlines()
+    assert [ln.split(": ", 1)[-1] for ln in lines
+            if ln.endswith("api GET /devices")] == ["api GET /devices"]
+    # TRCC's loggers only: the test's own client (httpx) logs every request.
+    assert [ln for ln in lines
+            if re.search(r" INFO +trcc\.", ln) and "/display/tick" in ln] == []

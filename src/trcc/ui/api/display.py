@@ -72,6 +72,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...core.logs import per_frame
 from ...core.models import MEDIA, MediaKind
 from ...core.results import (
     BackgroundModeResult,
@@ -154,6 +155,8 @@ from .schemas import (
 )
 
 log = logging.getLogger(__name__)
+#: ``/tick`` is a poller's route — once per frame, so the per-frame family.
+frame_log = per_frame(__name__)
 
 router = APIRouter(prefix="/devices/{key}/display", tags=["display"])
 
@@ -901,7 +904,8 @@ def tick(key: str, request: Request) -> RenderResult:
     when it connects (``App._prime``) — once, where a failing restore used to
     cost 22 log records per POLL.  A push still holds the panel between ticks.
     """
-    log.info("api POST /devices/{key}/display/tick: key=%s", key)
+    frame_log.debug("api POST /devices/{key}/display/tick: key=%s", key)
+    request.state.per_frame = True     # the request log keeps it off INFO
     app = request.app.state.trcc
     result = app.dispatch(TickDisplay(key=key))
     http_error_if_failed(result)

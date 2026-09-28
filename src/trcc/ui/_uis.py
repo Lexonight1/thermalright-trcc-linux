@@ -75,8 +75,15 @@ class ApiUI(UserInterface, key="api"):
         import uvicorn
 
         from .api.main import build_app
+        # log_config=None: uvicorn's default config goes through dictConfig,
+        # which CLOSES every handler already attached — ours included, while
+        # leaving them on the root logger.  Every record after this line was
+        # dropped, so no API request ever reached ``trcc report``'s file.
+        # access_log=False: each route logs its own entry (params sanitized);
+        # a second line per request would let a ``/tick`` poller rotate the
+        # diagnosis out of the file within hours.
         uvicorn.run(build_app(trcc=self._app), host=self.host, port=self.port,
-                    log_level="info")
+                    log_level="info", log_config=None, access_log=False)
         return 0
 
 

@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from ...__version__ import __version__
 from ...app import App
 from ...core.commands import GetPaths
+from ...core.logs import per_frame
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
@@ -76,6 +77,7 @@ def api_routes(api: FastAPI) -> list[BaseRoute]:
     return routes
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # ── Token + pairing state ────────────────────────────────────────────
@@ -132,15 +134,22 @@ def build_app(trcc: App | None = None) -> FastAPI:
     )
     api.state.trcc = trcc
 
-    # ── Request logging — every call gets one INFO line ─────────────
+    # ── Request logging — every call gets one line ──────────────────
+    # INFO, except a route that declares itself per-frame (a poller, like
+    # ``/tick``) — the way a Command declares LOG_LEVEL.  At INFO a 1 Hz poller
+    # rotated the diagnosis out of the file within hours; a FAILED dispatch
+    # still logs a WARNING from the bus.
     @api.middleware("http")
     async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
         start = time.monotonic()
         response = await call_next(request)
         ms = (time.monotonic() - start) * 1000
-        log.info("API %s %s → %d (%.0fms)",
-                 request.method, request.url.path,
-                 response.status_code, ms)
+        line = ("API %s %s → %d (%.0fms)", request.method, request.url.path,
+                response.status_code, ms)
+        if getattr(request.state, "per_frame", False):
+            frame_log.debug(*line)
+        else:
+            log.info(*line)
         return response
 
     # ── Token-auth middleware ───────────────────────────────────────

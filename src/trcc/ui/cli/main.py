@@ -305,6 +305,9 @@ def api(
         from ...adapters.infra.network import get_lan_ip
         lan_ip = get_lan_ip()
         typer.echo(f"API reachable at: http://{lan_ip}:{port}")
+    # uvicorn's own "running on" line now goes to the log like every other
+    # record, which the terminal shows only at -v — so say it here.
+    typer.echo(f"Serving on http://{host}:{port} (Ctrl-C to stop)")
     serve(host=host, port=port)
 
 
