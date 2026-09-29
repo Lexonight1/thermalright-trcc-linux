@@ -188,6 +188,9 @@ addopts = "-v --tb=short -n auto"
 # finalise them.  A number you can scroll past is not a gate; an error is.
 # Filters apply in order and the LAST match wins, so the usb ignore below must
 # stay after "error".
+markers = [
+    "expects_logging_error: the test drives a handler into handleError on purpose; tests/conftest.py then REQUIRES one",
+]
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning:usb.*",

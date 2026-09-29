@@ -243,10 +243,9 @@ def test_direct_entry_does_not_downgrade_an_explicit_verbosity() -> None:
     """
     import logging
 
-    from typer.testing import CliRunner
-
     import trcc.ui.gui as gui_mod
-    from trcc.ui.cli.main import app, gui
+    from trcc.adapters.infra.logging import ensure_configured
+    from trcc.ui.cli.main import gui
 
     def _stderr_level() -> int:
         # The ROOT level is DEBUG at EVERY rung by design — the file always
@@ -263,7 +262,11 @@ def test_direct_entry_does_not_downgrade_an_explicit_verbosity() -> None:
                     if getattr(h, _HANDLER_TAG, False)
                     and not isinstance(h, logging.FileHandler))
 
-    CliRunner().invoke(app, ["-vv", "version"])
+    # Exactly what the CLI's ``-vv`` does (``_root``).  Not through CliRunner:
+    # it binds the terminal handler to its own stderr and CLOSES that when the
+    # command returns, so every DEBUG line after it -- ``gui()``'s -- wrote to a
+    # closed stream (tests/conftest.py ``_no_logging_error_in_a_test``).
+    ensure_configured(2, force=True)
     assert _stderr_level() == logging.DEBUG, (
         "precondition: -vv puts stderr at DEBUG"
     )

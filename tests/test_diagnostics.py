@@ -798,6 +798,7 @@ def test_the_windows_run_claim_uses_the_non_blocking_mode(
         os.close(fd)
 
 
+@pytest.mark.expects_logging_error
 def test_a_lock_that_cannot_be_taken_never_raises_into_the_caller(
     tmp_path: Path,
 ) -> None:

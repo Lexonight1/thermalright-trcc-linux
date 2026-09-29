@@ -896,6 +896,62 @@ def cli_app(fake_platform):
 
 
 # =========================================================================
+# A log record that cannot be written fails the test it happened in
+# =========================================================================
+
+@pytest.fixture(autouse=True)
+def _no_logging_error_in_a_test(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Fail the test during which a handler could not write a record.
+
+    ``logging`` does not raise when a handler fails -- it prints
+    ``--- Logging error ---`` to stderr and carries on.  One such report, for
+    ``[%s] %s failed: %s``, appeared in one full run of about twelve on
+    2026-09-29 and never in CI: a stray line that named no test, so nothing
+    could be done with it.  This names it.
+
+    Defined BEFORE ``_logging_state_is_not_global`` and the thread guard, so
+    it is set up first and torn down LAST: its check covers their teardown too
+    -- the thread guard's ``App.close`` and the logging restore -- which is
+    where the suspect lives.  The original ``handleError`` still runs, so the
+    stderr report is kept.
+
+    A test that drives a handler into ``handleError`` ON PURPOSE is marked
+    ``expects_logging_error`` -- and must then produce one, so a marker left
+    behind after the behaviour changes fails instead of hiding nothing.
+    """
+    import sys
+    import threading
+
+    errors: list[str] = []
+    real = logging.Handler.handleError
+
+    def _record(self: logging.Handler, record: logging.LogRecord) -> None:
+        exc = sys.exc_info()[1]
+        try:
+            text = record.getMessage()
+        except Exception:                   # the failure may BE the formatting
+            text = f"{record.msg!r} % {record.args!r}"
+        errors.append(
+            f"{type(self).__name__} could not write {text!r} (logged at "
+            f"{record.pathname}:{record.lineno} on thread "
+            f"{threading.current_thread().name!r}): "
+            f"{type(exc).__name__}: {exc}")
+        real(self, record)
+
+    monkeypatch.setattr(logging.Handler, "handleError", _record)
+    yield
+    expected = request.node.get_closest_marker("expects_logging_error")
+    if expected is not None and not errors:
+        pytest.fail("marked expects_logging_error, but no log record failed "
+                    "to write -- remove the marker", pytrace=False)
+    if errors and expected is None:
+        pytest.fail("a log record could not be written during this test:\n  "
+                    + "\n  ".join(errors), pytrace=False)
+
+
+# =========================================================================
 # Global logging state — restored around every test
 # =========================================================================
 
