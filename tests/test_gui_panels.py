@@ -2105,20 +2105,20 @@ def test_screencast_does_not_lock_before_a_device_is_known(qtbot) -> None:
 # =========================================================================
 
 
-def _apply_slideshow(gui_app: App, qtbot, *, enabled: bool) -> list[str]:
-    """Drive the real panel's Apply and report the Commands it dispatched.
-
-    A behaviour gate, not a construction one: ``SetSlideshow`` persists the
-    flag and resets the clock but starts NO driver, so a panel that dispatches
-    only that saves a slideshow which reports itself enabled and never
-    switches a theme.  Nothing structural can see that -- the panel builds,
-    the Command succeeds, the setting reads back correctly.
-    """
+def _slideshow_panel(gui_app: App, qtbot):
     from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)                    # unparented top-levels leak
+    panel._key = lambda: "0402:3922"          # pyright: ignore[reportAttributeAccessIssue]
+    panel._picker.current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
+    return panel
 
+
+def test_the_slideshow_switch_is_one_command(gui_app: App, qtbot) -> None:
+    """Apply saves the list and flips the one switch; ``SetSlideshow`` is what
+    rotates, so the panel pairs no driver Command by hand any more."""
+    panel = _slideshow_panel(gui_app, qtbot)
     sent: list[str] = []
     real = panel.dispatch
 
@@ -2127,31 +2127,28 @@ def _apply_slideshow(gui_app: App, qtbot, *, enabled: bool) -> list[str]:
         return real(cmd)
 
     panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
-    panel._key = lambda: "0402:3922"          # pyright: ignore[reportAttributeAccessIssue]
-    idx = panel._slideshow_enabled.findData(enabled)
-    panel._slideshow_enabled.setCurrentIndex(idx)
+    panel._slideshow_enabled.setCurrentIndex(panel._slideshow_enabled.findData(True))
     panel._apply()
-    return sent
+
+    slideshow = [n for n in sent if "Slideshow" in n]
+    assert slideshow == ["ConfigureSlideshow", "SetSlideshow"], slideshow
 
 
-def test_enabling_the_slideshow_starts_the_driver(gui_app: App, qtbot) -> None:
-    sent = _apply_slideshow(gui_app, qtbot, enabled=True)
+def test_the_slideshow_controls_follow_another_ui(gui_app: App, qtbot) -> None:
+    """Switched on from the CLI, or off by the App when another source took
+    the panel: the controls show it without a "Load" click.
 
-    assert "SetSlideshow" in sent, "the panel stopped persisting the flag"
-    assert "StartSlideshowDriver" in sent, (
-        "the slideshow was enabled but nothing was asked to rotate it — this "
-        "is the bug cli and api already fixed (services/slideshow_driver)"
-    )
-    assert "StopSlideshowDriver" not in sent
+    MUTATION CHECK: drop the ``slideshow_changed`` connection.
+    """
+    from trcc.core.events import SlideshowChanged
 
+    panel = _slideshow_panel(gui_app, qtbot)
+    gui_app.events.publish(SlideshowChanged(
+        key="0402:3922", enabled=True, interval_s=42.0, themes=("A", "B")))
+    qtbot.waitUntil(lambda: panel._slideshow_enabled.currentData() is True)
 
-def test_disabling_the_slideshow_stops_the_driver(gui_app: App, qtbot) -> None:
-    sent = _apply_slideshow(gui_app, qtbot, enabled=False)
-
-    assert "StopSlideshowDriver" in sent, (
-        "turning the slideshow off left the driver rotating"
-    )
-    assert "StartSlideshowDriver" not in sent
+    assert panel._slideshow_interval.value() == 42.0
+    assert panel._slideshow_themes.toPlainText() == "A\nB"
 
 
 # =========================================================================

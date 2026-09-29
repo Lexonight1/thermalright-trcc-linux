@@ -942,53 +942,6 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
-.SS slideshow\-drive
-.PP
-\fBtrcc display slideshow\-drive\fR \fIKEY\fR [\fIOPTIONS\fR]
-.PP
-Actually rotate the configured slideshow, until stopped. slideshow on and configure\-slideshow only PERSIST the slideshow. Nothing advanced it outside the gui  \-  the gui runs its own timer, so a slideshow set up here was saved, reported back correctly, and never switched a theme. This registers the driver that rotates it. Unlike slideshow\-run (a foreground demo loop over a directory), this uses the persisted config and returns immediately; the rotation continues in the background for as long as the app or daemon is alive.
-.PP
-Arguments:
-.RS 4
-.TP
-\fBKEY\fR
-Device key, e.g. 0402:3922
-.RE
-.PP
-Options:
-.RS 4
-.TP
-\fB\-\-stop\fR
-Stop driving instead of starting
-.TP
-\fB\-\-help\fR
-Show this command's help and exit.
-.RE
-.SS slideshow\-run
-.PP
-\fBtrcc display slideshow\-run\fR \fIKEY\fR \fITHEMES_DIR\fR [\fIOPTIONS\fR]
-.PP
-Foreground slideshow over a directory of themes. Different from slideshow / configure\-slideshow (which persist state). This is a one\-shot loop: blocks until Ctrl\-C, swaps to the next theme each tick. Useful for demos + smoke tests; the persisted flow is what production users want.
-.PP
-Arguments:
-.RS 4
-.TP
-\fBKEY\fR
-Device key, e.g. 0402:3922
-.TP
-\fBTHEMES_DIR\fR
-Directory containing theme subdirectories
-.RE
-.PP
-Options:
-.RS 4
-.TP
-\fB\-\-interval, \-i \fIINTERVAL\fR\fR
-Seconds between theme switches (default: 30.0)
-.TP
-\fB\-\-help\fR
-Show this command's help and exit.
-.RE
 .SS snapshot
 .PP
 \fBtrcc display snapshot\fR \fIKEY\fR [\fIOPTIONS\fR]

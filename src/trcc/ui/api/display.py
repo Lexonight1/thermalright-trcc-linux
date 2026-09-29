@@ -60,9 +60,7 @@ from ...core.commands import (
     SetSplitMode,
     SleepDevice,
     StartScreencast,
-    StartSlideshowDriver,
     StopScreencast,
-    StopSlideshowDriver,
     StopVideo,
     TickDisplay,
     UpdateOverlayElement,
@@ -144,7 +142,6 @@ from .schemas import (
     ScreencastStartRequest,
     SeekVideoRequest,
     SlideshowConfigureRequest,
-    SlideshowDriveRequest,
     SlideshowToggleRequest,
     SplitModeRequest,
     ThemeRequest,
@@ -973,27 +970,6 @@ def render_dc(body: RenderDcRequest, request: Request) -> Response:
         ))
         http_error_if_failed(result)
         return Response(out.read_bytes(), media_type="image/png")
-
-
-@router.post("/slideshow/drive")
-def slideshow_drive(key: str, body: SlideshowDriveRequest,
-                    request: Request) -> SlideshowResult:
-    """Start or stop actually ROTATING the configured slideshow.
-
-    ``POST /slideshow`` only persists the setting.  Nothing advanced it outside
-    the gui, which runs its own timer — so a slideshow configured over REST was
-    saved, reported back correctly, and never switched a theme.  This registers
-    the driver that rotates it.
-    """
-    log.info(
-        "api POST /devices/{key}/display/slideshow/drive: key=%s drive=%s",
-        key, body.drive,
-    )
-    cmd = (StartSlideshowDriver(key=key) if body.drive
-           else StopSlideshowDriver(key=key))
-    result = request.app.state.trcc.dispatch(cmd)
-    http_error_if_failed(result)
-    return result
 
 
 @router.put("/slideshow")

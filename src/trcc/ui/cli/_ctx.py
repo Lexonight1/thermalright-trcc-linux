@@ -38,23 +38,6 @@ def emit_json(result: Any) -> None:
     typer.echo(dumps_json(dataclasses.asdict(result)))
 
 
-def ensure_connected(app: CommandBus, key: str) -> None:
-    """Attach + handshake *key* before a loop whose Commands never connect.
-
-    A one-shot Command connects its own device (``USES_DEVICE``), so almost no
-    CLI verb needs this any more.  ``slideshow-run`` still does: its loop
-    dispatches ``LoadTheme``, which succeeds WITHOUT a device ("saved"), so
-    nothing else would stop it cycling themes against a panel that is not
-    there.  Exits with the connect error on failure.
-    """
-    log.debug("ensure_connected: app=%s key=%s", app, key)
-    from ...core.commands import EnsureConnected
-    result = app.dispatch(EnsureConnected(key=key))
-    if not result.ok:
-        typer.echo(result.message, err=True)
-        raise typer.Exit(code=1)
-
-
 def resolution_for(key: str) -> tuple[int, int]:
     """The device's panel resolution, or exit 1 telling the user to connect.
 

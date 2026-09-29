@@ -132,9 +132,7 @@ from .system import (
     SetSlideshow,
     SetTempUnit,
     SetTimeFormat,
-    StartSlideshowDriver,
     StopDaemon,
-    StopSlideshowDriver,
 )
 from .theme import (
     DeleteTheme,
@@ -292,10 +290,8 @@ __all__ = [
     "SetWeekStart",
     "SleepDevice",
     "StartScreencast",
-    "StartSlideshowDriver",
     "StopDaemon",
     "StopScreencast",
-    "StopSlideshowDriver",
     "StopVideo",
     "TickDisplay",
     "ToggleLed",

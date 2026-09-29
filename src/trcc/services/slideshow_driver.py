@@ -31,10 +31,14 @@ nothing displayed, so it resolves the same way ``RestoreDeviceState`` does, with
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from ..core.logs import per_frame
 from ..core.models import SLIDESHOW_POLL_S
 from ._send_task import BaseSendTask
+
+if TYPE_CHECKING:
+    from ..app import App
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -50,6 +54,26 @@ class SlideshowDriver(BaseSendTask):
     KEY_PREFIX = "slideshow:"
     DEFAULT_INTERVAL_S = SLIDESHOW_POLL_S
 
+    def __init__(self, app: App, device_key: str,
+                 interval_s: float | None = None) -> None:
+        super().__init__(app, device_key, interval_s)
+        log.info("SlideshowDriver: %s — nothing shown by it yet", device_key)
+        # What THIS driver last put on the panel; None until its first load.
+        self._shown: tuple[object, ...] | None = None
+
+    def _panel(self) -> tuple[object, ...]:
+        """What the panel shows now: the theme, and any source over it.
+
+        The theme as ``current_theme`` -- the resolved path every ``LoadTheme``
+        persists, the same string its result reports -- so this is a settings
+        read, not a filesystem one.
+        """
+        s = self._app.settings.for_device(self._device_key)
+        frame_log.debug("SlideshowDriver._panel: %s theme=%s", self._device_key,
+                        s.current_theme)
+        return (s.current_theme, s.background_path, s.screencast_region,
+                s.media_player_uri)
+
     def run_once(self, now: float) -> float:
         """Rotate if due; return the seconds to wait before asking again.
 
@@ -58,14 +82,24 @@ class SlideshowDriver(BaseSendTask):
         that stops forever because one entry went missing is worse than one that
         skips it and tries the next tick.
         """
-        from ..core.commands import AdvanceSlideshow, LoadTheme
+        from ..core.commands import AdvanceSlideshow, LoadTheme, SetSlideshow
         from ..core.commands._helpers import _search_theme_by_name
+
+        if self._shown is not None and self._panel() != self._shown:
+            # Another theme, a background, a screencast or the media player took
+            # the panel -- from any UI.  One source at a time, as in the C#,
+            # where every other mode switches the slideshow off: it rotated
+            # over the user's pick within a second, measured.
+            log.info("SlideshowDriver: %s — the panel shows something the "
+                     "slideshow did not put there; switching it off",
+                     self._device_key)
+            self._app.dispatch(SetSlideshow(key=self._device_key, enabled=False))
+            return self._interval
 
         result = self._app.dispatch(AdvanceSlideshow(key=self._device_key))
         if not result.running:
-            # Configured off, or no themes. Keep polling rather than
-            # unregistering: the user may enable it again without restarting,
-            # and a settings read is cheap.
+            # On with no themes yet: keep polling, a ConfigureSlideshow may add
+            # them.  (Off removes this driver -- ``SetSlideshow``.)
             frame_log.debug("SlideshowDriver: %s not running", self._device_key)
             return self._interval
         if result.theme_name is None:
@@ -83,6 +117,13 @@ class SlideshowDriver(BaseSendTask):
             return self._interval
 
         load = self._app.dispatch(LoadTheme(key=self._device_key, path=path))
+        # The theme from THIS load's result, not the live panel: a pick from
+        # another UI can land while this load runs, and reading the panel
+        # afterwards recorded the user's theme as the slideshow's own
+        # (measured through a real daemon).  The sources over it are read
+        # live -- a bundled video or screencast is set BY this load.
+        self._shown = ((load.theme_path, *self._panel()[1:])
+                       if load.theme_path else None)
         log.info("SlideshowDriver: %s → %s (ok=%s)",
                  self._device_key, result.theme_name, load.ok)
         return self._interval

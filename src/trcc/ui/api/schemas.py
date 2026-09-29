@@ -272,12 +272,6 @@ class ZoneSyncZonesRequest(BaseModel):
     zones: list[bool]
 
 
-class SlideshowDriveRequest(BaseModel):
-    """Start or stop the slideshow DRIVER — distinct from enabling the
-    slideshow, which only persists the setting."""
-    drive: bool = True
-
-
 class BackgroundModeRequest(BaseModel):
     mode: str = Field(..., pattern="^(theme|color|transparent)$")
 

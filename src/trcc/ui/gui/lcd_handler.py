@@ -17,6 +17,7 @@ exist on the ``AppProxy`` a daemon-mode UI holds, #249).
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -24,7 +25,6 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QPixmap
 
 from ...core.commands import (
-    AdvanceSlideshow,
     ApplyMask,
     BuildPreview,
     CurrentFrame,
@@ -130,8 +130,8 @@ class LCDHandler(BaseHandler):
         # first-load gate, brightness/split/background state).  PM-refactor
         # increment 5 grows the decisions onto it; the handler keeps the Qt.
         self._pm = LcdPresentationModel(self._device_key)
-        # Slideshow cursor lives on ``app.slideshow`` (SlideshowService);
-        # don't duplicate state here (S1.1 audit).
+        # The slideshow is the App's: ``SetSlideshow`` drives it and the
+        # handler follows ``SlideshowChanged`` / ``ThemeLoaded``.
 
         # QPixmap cache keyed by frame index — avoids QImage→QPixmap
         # conversion on every video tick when the surface hasn't changed.
@@ -148,7 +148,6 @@ class LCDHandler(BaseHandler):
         self._data_notifier.ready.connect(self._on_data_ready)
 
         # Timers (parent factory + signal wiring; lifetime owned here)
-        self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
         self._flash_timer: QTimer = make_timer(
             self._on_flash_timeout, single_shot=True,
         )
@@ -392,27 +391,26 @@ class LCDHandler(BaseHandler):
         self._app.dispatch(SetSplitMode(key=self._device_key, mode=mode))
 
     def _restore_slideshow(self, ds: LcdSnapshotResult) -> None:
-        """Restore slideshow UI state from typed DeviceSettings.
+        """Show the saved slideshow in the local-theme panel — READ only.
 
-        ``SlideshowService`` owns the transient rotation cursor;
-        ``DeviceSettings.slideshow_*`` owns the persisted config
-        (themes / interval / enabled flag).  This slot just pushes
-        the persisted state into the legacy local-theme panel widgets
-        so the next ``_update_slideshow_state`` reads back what
-        ``ConfigureSlideshow`` / ``SetSlideshow`` saved.
+        It used to re-dispatch ``ConfigureSlideshow`` / ``SetSlideshow`` and
+        start this window's own timer; the App's session resumes a saved
+        slideshow now (``RestoreDeviceState``), for every UI.
         """
+        self._show_slideshow(ds.slideshow_themes, ds.slideshow_enabled,
+                             ds.slideshow_interval_s)
+
+    def _show_slideshow(self, themes: Sequence[str], enabled: bool,
+                        interval_s: float) -> None:
+        """Put a slideshow state into the shared local-theme widgets."""
+        self.log.info("_show_slideshow: enabled=%s themes=%d interval=%ss",
+                      enabled, len(themes), interval_s)
         local = self._w['theme_local']
-        if ds.slideshow_themes or ds.slideshow_enabled:
-            interval = max(1, int(ds.slideshow_interval_s))
-            # Public API on the panel (backed by its SlideshowModel) — no
-            # reaching into private attrs.
-            local.set_slideshow_state(
-                list(ds.slideshow_themes), ds.slideshow_enabled, interval,
-            )
-            self._update_slideshow_state()
-        else:
-            self._slideshow_timer.stop()
-            local.set_slideshow_state([], False, local.get_slideshow_interval())
+        interval = max(1, int(interval_s)) if themes or enabled \
+            else local.get_slideshow_interval()
+        # Public API on the panel (backed by its SlideshowModel) — no reaching
+        # into private attrs.
+        local.set_slideshow_state(list(themes), enabled, interval)
 
     def _restore_theme_and_preview(self) -> None:
         """Show what the device is rendering — READ only, dispatching nothing.
@@ -445,8 +443,8 @@ class LCDHandler(BaseHandler):
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
     # _select_theme is gone — next/'s LoadTheme Command owns the whole
     # build/cache/render/persist cycle.  Callers dispatch LoadTheme
-    # directly through _select_theme_from_path / select_cloud_theme /
-    # _on_slideshow_tick.
+    # directly through _select_theme_from_path / select_cloud_theme; the
+    # App's slideshow driver dispatches it for rotations.
 
     def select_theme_from_path(self, path: Path, persist: bool = True) -> None:
         """Public entry for theme selection by path (local theme clicks)."""
@@ -467,7 +465,6 @@ class LCDHandler(BaseHandler):
         if not path.exists():
             self.log.warning("_select_theme_from_path: path does not exist: %s", path)
             return
-        self._slideshow_timer.stop()
         self._app.dispatch(EnableOverlay(key=self._device_key, enabled=False))
 
         self._pm.background_active = False
@@ -522,7 +519,6 @@ class LCDHandler(BaseHandler):
         """
         self.log.info("select_cloud_theme: %s (video=%s)", theme_info.name,
                       getattr(theme_info, 'video', None))
-        self._slideshow_timer.stop()
         self._pm.background_active = False
         self._w['theme_setting'].background_panel.set_enabled(False)
         self._w['theme_setting'].screencast_panel.set_enabled(False)
@@ -1096,10 +1092,8 @@ class LCDHandler(BaseHandler):
             "_update_slideshow_state: enabled=%s themes=%d interval=%ss",
             enabled, len(themes), interval_s,
         )
-
-        # ConfigureSlideshow + SetSlideshow own persistence AND reset
-        # the SlideshowService cursor.  Dispatch BEFORE starting the
-        # Qt timer so the first tick reads a freshly-reset cursor.
+        # The panel's edit, saved; ``SetSlideshow`` is what rotates it -- the
+        # App's driver, not a timer in this window.
         from ...core.commands import ConfigureSlideshow, SetSlideshow
         self._app.dispatch(ConfigureSlideshow(
             key=self._device_key,
@@ -1110,77 +1104,30 @@ class LCDHandler(BaseHandler):
             key=self._device_key, enabled=enabled,
         ))
 
-        if enabled and themes:
-            self._slideshow_timer.start(interval_s * 1000)
-        else:
-            self._slideshow_timer.stop()
-
     def on_slideshow_delegate(self) -> None:
         """Handle slideshow toggle from local theme panel."""
         self.log.info("on_slideshow_delegate: device=%s", self._device_key)
         self._update_slideshow_state()
 
-    def _on_slideshow_tick(self) -> None:
-        """Auto-rotate to next theme — SlideshowService owns the cursor.
+    def on_slideshow_changed(self, event: Any) -> None:
+        """The saved slideshow changed — here, in another UI, or the App
+        switched it off because another source took the panel."""
+        self.log.info("on_slideshow_changed: %s enabled=%s active=%s",
+                      event.key, event.enabled, self._pm.ui_active)
+        if self._pm.ui_active:   # the local-theme widgets are shared
+            self._show_slideshow(event.themes, event.enabled, event.interval_s)
 
-        Pre-S1.1 this maintained a local ``self._slideshow_index``
-        counter that duplicated ``SlideshowService._state[key].cursor``
-        — two sources of truth for the same rotation position.  The
-        service cursor was reset by ConfigureSlideshow but never
-        advanced by anything, leaving daemon-mode / CLI / API rotation
-        broken: only the GUI's local counter moved.
+    def on_theme_loaded(self, event: Any) -> None:
+        """A theme was loaded on this device — by the slideshow, or any UI.
 
-        Post-S1.1 the GUI calls ``app.slideshow.advance(key, config)``
-        which returns the next theme NAME (or None when not yet due).
-        Single cursor across all surfaces.
+        Re-reads what the panel shows (``_restore_theme_and_preview``) so the
+        current theme and the overlay editor follow; the slideshow's rotations
+        used to update them from this window's own tick.
         """
-        local = self._w['theme_local']
-        themes = local.get_slideshow_themes()
-        if not themes:
-            self.log.warning(
-                "_on_slideshow_tick: themes list empty — stopping timer",
-            )
-            self._slideshow_timer.stop()
-            return
-        # The Command reads the PERSISTED config, which ``ConfigureSlideshow``
-        # / ``SetSlideshow`` already wrote from this same panel.  Rebuilding a
-        # SlideshowConfig here made the panel a second source for a fact
-        # settings owns — and put the only rotation driver inside this UI.
-        next_name = self._app.dispatch(
-            AdvanceSlideshow(key=self._device_key),
-        ).theme_name
-        if next_name is None:
-            # Within the interval window — the service decided not to
-            # rotate yet.  Qt timer will fire again at next interval.
-            return
-        # Resolve name → theme_info.  The slideshow stores names; the
-        # panel knows the path for each name.
-        theme_info = next(
-            (t for t in themes if t.name == next_name), None,
-        )
-        if theme_info is None:
-            self.log.warning(
-                "_on_slideshow_tick: service returned name %r but "
-                "the panel has no theme by that name — skipping",
-                next_name,
-            )
-            return
-        path = Path(theme_info.path)
-        self.log.info(
-            "_on_slideshow_tick: SlideshowService → %s (%s)",
-            next_name, path,
-        )
-        if path.exists():
-            self._app.dispatch(LoadTheme(
-                key=self._device_key, path=path,
-            ))
-            self._pm.state.current_theme_path = path
-            self._load_theme_overlay_config(path)
-        else:
-            self.log.warning(
-                "_on_slideshow_tick: theme path missing %s — skipping",
-                path,
-            )
+        self.log.info("on_theme_loaded: %s theme=%s active=%s",
+                      event.key, event.theme_name, self._pm.ui_active)
+        if self._pm.ui_active:
+            self._restore_theme_and_preview()
 
     # ── Rendering ──────────────────────────────────────────────────
 
@@ -1425,7 +1372,6 @@ class LCDHandler(BaseHandler):
     def deactivate(self) -> None:
         """Full pause — stop all timers (called from cleanup)."""
         self._set_video_playing(False, reason="deactivate")
-        self._slideshow_timer.stop()
         self._flash_timer.stop()
 
     def set_inactive(self) -> None:
@@ -1436,7 +1382,6 @@ class LCDHandler(BaseHandler):
         showing its theme while another device owns the GUI panel.
         """
         self._pm.ui_active = False
-        self._slideshow_timer.stop()
         self._flash_timer.stop()
 
     def _cleanup_device(self) -> None:

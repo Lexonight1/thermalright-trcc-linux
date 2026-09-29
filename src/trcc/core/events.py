@@ -267,6 +267,19 @@ class ThemeLoaded(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class SlideshowChanged(Event):
+    """A device's slideshow was configured, switched on or switched off.
+
+    By any UI, or by the driver ending it when another source took the panel,
+    so every UI's slideshow controls follow the one saved state.
+    """
+    key: str
+    enabled: bool
+    interval_s: float
+    themes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class LedColorsChanged(Event):
     key: str
     color_count: int

@@ -122,6 +122,47 @@ def test_gui_builds_a_handler_for_the_device(tmp_path: Path) -> None:
         app.close()
 
 
+def test_the_window_follows_what_another_ui_does(tmp_path: Path) -> None:
+    """A theme loaded and a slideshow switched from ANOTHER UI show in the window.
+
+    The vision's second question.  The gui followed neither: its slideshow
+    rotated from its own timer and updated itself from that tick, so once the
+    App rotates -- or the CLI loads a theme -- the window has to hear it.
+
+    MUTATION CHECK: drop the ``theme_loaded`` or ``slideshow_changed``
+    connection in ``TRCCApp``.
+    """
+    from PySide6.QtTest import QTest
+
+    from tests.conftest import renderable_theme
+    from trcc.core.commands import ConfigureSlideshow, LoadTheme, SetSlideshow
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = _app(tmp_path)
+    try:
+        assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        window = TRCCApp(app=app)
+        window.replay_initial_devices()
+        handler = window._handlers[_KEY]
+        assert handler._pm.ui_active, "fixture: the one panel should be the active one"
+        root = app.platform.paths().user_content_dir() / "data" / "theme320320"
+        theme = renderable_theme(root, "FromTheCli")
+
+        assert app.dispatch(LoadTheme(key=_KEY, path=theme)).ok
+        assert app.dispatch(ConfigureSlideshow(
+            key=_KEY, themes=("FromTheCli",), interval_s=60.0)).ok
+        assert app.dispatch(SetSlideshow(key=_KEY, enabled=True)).ok
+        QTest.qWait(300)
+        assert handler._pm.state.current_theme_path == theme
+        assert window.uc_theme_local.is_slideshow()
+
+        assert app.dispatch(SetSlideshow(key=_KEY, enabled=False)).ok
+        QTest.qWait(300)
+        assert not window.uc_theme_local.is_slideshow()
+    finally:
+        app.close()
+
+
 # ── qtgui (MainWindow) ────────────────────────────────────────────────────────
 
 

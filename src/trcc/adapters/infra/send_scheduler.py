@@ -75,8 +75,11 @@ class ThreadSendScheduler(SendScheduler):
         with self._lock:
             existing = self._threads.pop(task.key, None)
             if existing is not None:
-                log.warning("ThreadSendScheduler: replacing existing task %s",
-                            task.key)
+                # Replacing IS the contract (every driver Command is idempotent
+                # by it), so this is not a warning: re-issuing a screencast or a
+                # slideshow toggle wrote one into the report every time.
+                log.info("ThreadSendScheduler: replacing existing task %s",
+                         task.key)
                 existing.stop()
             worker = _TaskThread(task)
             self._threads[task.key] = worker

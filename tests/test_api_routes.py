@@ -1615,7 +1615,6 @@ def test_new_capability_routes_are_registered(api_client: TestClient) -> None:
     for route in (
         "/devices/{key}/display/background",        # SetBackground
         "/devices/{key}/display/render-dc",         # RenderDcStandalone
-        "/devices/{key}/display/slideshow/drive",   # Start/StopSlideshowDriver
         "/devices/{key}/led/zone-sync-zones",       # SetLedZoneSyncZones
         "/devices/{key}/reset",                     # ResetDevice
         "/theme/export-overlay",                    # ExportOverlay

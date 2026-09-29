@@ -49,9 +49,7 @@ from ...core.commands import (
     SetSplitMode,
     SleepDevice,
     StartScreencast,
-    StartSlideshowDriver,
     StopScreencast,
-    StopSlideshowDriver,
     StopVideo,
     TickDisplay,
     ToggleVideo,
@@ -66,7 +64,6 @@ from ._ctx import (
     daemon_owns_the_panels,
     dispatch_echo,
     emit_json,
-    ensure_connected,
     get_app,
     parse_on_off,
     recover_or_exit,
@@ -455,56 +452,6 @@ def stop_video(
     log.info("cli display stop-video: key=%s", key)
     result = get_app().dispatch(StopVideo(key=key))
     typer.echo(result.message)
-
-
-@app.command("slideshow-run")
-def slideshow_run(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
-    themes_dir: Path = typer.Argument(
-        ..., help="Directory containing theme subdirectories",
-        exists=True, file_okay=False, dir_okay=True,
-    ),
-    interval: float = typer.Option(
-        30.0, "--interval", "-i",
-        help="Seconds between theme switches (default: 30.0)",
-    ),
-) -> None:
-    """Foreground slideshow over a directory of themes.
-
-    Different from ``slideshow`` / ``configure-slideshow`` (which persist
-    state).  This is a one-shot loop: blocks until Ctrl-C, swaps to the
-    next theme each tick.  Useful for demos + smoke tests; the persisted
-    flow is what production users want.
-    """
-    log.info(
-        "cli display slideshow-run: key=%s themes_dir=%s interval=%s",
-        key, themes_dir, interval,
-    )
-    import time
-
-    app_obj = get_app()
-    ensure_connected(app_obj, key)   # once, before the slideshow loop
-    themes = sorted(p for p in themes_dir.iterdir() if p.is_dir())
-    if not themes:
-        typer.echo(f"No theme subdirectories under {themes_dir}", err=True)
-        raise typer.Exit(code=1)
-
-    interval_s = max(1.0, interval)
-    typer.echo(f"Slideshow on {key}: {len(themes)} themes, "
-               f"{interval_s:.1f}s between switches (Ctrl-C to stop)…")
-    idx = 0
-    try:
-        while True:
-            theme_path = themes[idx]
-            result = app_obj.dispatch(LoadTheme(key=key, path=theme_path))
-            if result.ok:
-                typer.echo(f"  → {theme_path.name}")
-            else:
-                typer.echo(f"  ! {theme_path.name}: {result.message}", err=True)
-            idx = (idx + 1) % len(themes)
-            time.sleep(interval_s)
-    except KeyboardInterrupt:
-        typer.echo("\nSlideshow stopped.")
 
 
 @app.command("boot-anim")
@@ -930,31 +877,6 @@ def background(
     """
     log.info("cli display background: key=%s path=%s", key, path)
     dispatch_echo(SetBackground(key=key, path=path))
-
-
-@app.command("slideshow-drive")
-def slideshow_drive(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
-    stop: bool = typer.Option(
-        False, "--stop", help="Stop driving instead of starting",
-    ),
-) -> None:
-    """Actually rotate the configured slideshow, until stopped.
-
-    ``slideshow on`` and ``configure-slideshow`` only PERSIST the slideshow.
-    Nothing advanced it outside the gui — the gui runs its own timer, so a
-    slideshow set up here was saved, reported back correctly, and never
-    switched a theme.  This registers the driver that rotates it.
-
-    Unlike ``slideshow-run`` (a foreground demo loop over a directory), this
-    uses the persisted config and returns immediately; the rotation continues
-    in the background for as long as the app or daemon is alive.
-    """
-    log.info("cli display slideshow-drive: key=%s stop=%s", key, stop)
-    if stop:
-        dispatch_echo(StopSlideshowDriver(key=key))
-        return
-    dispatch_echo(StartSlideshowDriver(key=key))
 
 
 @app.command("configure-slideshow")

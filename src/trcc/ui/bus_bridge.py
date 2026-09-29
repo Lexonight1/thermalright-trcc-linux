@@ -38,6 +38,7 @@ from ..core.events import (
     ScreencastStarted,
     ScreencastStopped,
     SensorsUpdated,
+    SlideshowChanged,
     SystemResumed,
     SystemSuspending,
     ThemeLoaded,
@@ -84,6 +85,7 @@ class BusBridge(QObject):
     video_export_finished = Signal(object)     # VideoExportFinished
     screencast_started = Signal(object)        # ScreencastStarted
     screencast_stopped = Signal(object)        # ScreencastStopped
+    slideshow_changed = Signal(object)         # SlideshowChanged
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
     data_installed = Signal(object)            # DataInstalled
@@ -116,6 +118,7 @@ class BusBridge(QObject):
             (VideoExportFinished, self.video_export_finished),
             (ScreencastStarted, self.screencast_started),
             (ScreencastStopped, self.screencast_stopped),
+            (SlideshowChanged, self.slideshow_changed),
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),
             (DataInstalled, self.data_installed),

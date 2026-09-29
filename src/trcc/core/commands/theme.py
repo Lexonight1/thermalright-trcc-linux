@@ -51,6 +51,7 @@ from ..results import (
 )
 from ._base import Command, Query
 from ._helpers import (
+    _drive_slideshow,
     _invalidate_scene,
     _json_default_tuple,
     _publish_if_disconnect,
@@ -1754,6 +1755,8 @@ class RestoreDeviceState(Command[ThemeResult]):
       1. The persisted theme, with its mask + overlay edits + bundled video.
       2. Nothing persisted → the fallback theme (shipped ``Theme1``).
       3. Replay the persisted ``background_path`` video over the theme.
+      4. A saved slideshow resumes rotating (it never did when the App
+         started, in any UI but the gui, whose own timer is gone).
 
     Needs a CONNECTED device, and fails with the connect reason otherwise:
     ``LoadTheme`` succeeds without one ("saved"), so without this check a
@@ -1788,6 +1791,7 @@ class RestoreDeviceState(Command[ThemeResult]):
                      self.key, bg)
             app.dispatch(PlayVideo(key=self.key, path=Path(bg)))
 
+        _drive_slideshow(app, self.key)
         return ThemeResult(
             ok=True, key=self.key, theme_name=theme.name,
             theme_path=str(theme.path),

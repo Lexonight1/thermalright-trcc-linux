@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**135 endpoints.**
+**134 endpoints.**
 
 ## Running it
 
@@ -75,7 +75,6 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/display/sleep` | `SendResult` | Blank the panel so it goes dark — the shutdown / turn-off action. |
 | `POST /devices/{key}/display/slideshow` | `SlideshowResult` | Turn the device's slideshow on / off. |
 | `PUT /devices/{key}/display/slideshow` | `SlideshowResult` | Set the theme list + interval for a device's slideshow. |
-| `POST /devices/{key}/display/slideshow/drive` | `SlideshowResult` | Start or stop actually ROTATING the configured slideshow. |
 | `GET /devices/{key}/display/snapshot` | `LcdSnapshotResult` | Return the persisted LCD state for one device. |
 | `POST /devices/{key}/display/split-mode` | `SplitModeResult` | — |
 | `POST /devices/{key}/display/stop-video` | `VideoResult` | Clear the video playback override on the device. |

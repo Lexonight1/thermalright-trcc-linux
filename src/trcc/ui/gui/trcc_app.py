@@ -320,6 +320,9 @@ class TRCCApp(QMainWindow):
         self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
         self._bus.video_started.connect(self._on_bus_video_started, type=qconn)
         self._bus.video_stopped.connect(self._on_bus_video_stopped, type=qconn)
+        self._bus.theme_loaded.connect(self._on_bus_theme_loaded, type=qconn)
+        self._bus.slideshow_changed.connect(
+            self._on_bus_slideshow_changed, type=qconn)
         self._bus.video_advanced.connect(self._on_bus_video_advanced, type=qconn)
         self._bus.video_export_progress.connect(
             self._on_bus_video_export_progress, type=qconn)
@@ -497,6 +500,22 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.on_video_stopped(event)
+
+    def _on_bus_theme_loaded(self, event: Any) -> None:
+        """Route a ``ThemeLoaded`` event to its LCD's handler."""
+        log.info("_on_bus_theme_loaded: key=%s theme=%s",
+                 event.key, event.theme_name)
+        handler = self._handlers.get(event.key)
+        if isinstance(handler, LCDHandler):
+            handler.on_theme_loaded(event)
+
+    def _on_bus_slideshow_changed(self, event: Any) -> None:
+        """Route a ``SlideshowChanged`` event to its LCD's handler."""
+        log.info("_on_bus_slideshow_changed: key=%s enabled=%s",
+                 event.key, event.enabled)
+        handler = self._handlers.get(event.key)
+        if isinstance(handler, LCDHandler):
+            handler.on_slideshow_changed(event)
 
     def _on_bus_sensors_updated(self, event: Any) -> None:
         """Sensors broadcast — observe the OS snapshot + fan out to widgets.

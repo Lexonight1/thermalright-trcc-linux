@@ -104,6 +104,7 @@ from ._helpers import (
     _rendered_surface,
     _require_connected_device,
     _resolve_mask_path,
+    _theme_directories,
     native_canvas,
     resolve_overlay_layout,
 )
@@ -2751,11 +2752,8 @@ class ResolveThemeDirectories(Query[ThemeDirectoriesResult]):
 
     def execute(self, app: App) -> ThemeDirectoriesResult:
         log.debug("ResolveThemeDirectories: key=%s", self.key)
-        from ...services.theme_directories import resolve_theme_directories
-
-        device = app.devices.get(self.key)
-        profile = device.profile if device is not None else None
-        if profile is None:
+        dirs = _theme_directories(app, self.key)
+        if dirs is None:
             log.warning(
                 "ResolveThemeDirectories: %s has no profile — cannot resolve "
                 "directories without a canvas size", self.key,
@@ -2765,14 +2763,6 @@ class ResolveThemeDirectories(Query[ThemeDirectoriesResult]):
                 message=f"no canvas for {self.key} — connect and handshake first",
             )
 
-        canvas = profile.resolution
-        orientation = app.settings.for_device(self.key).orientation
-        dirs = resolve_theme_directories(
-            app.libraries(self.key),
-            canvas_size=canvas,
-            lcd_size=oriented_resolution(canvas, orientation),
-            is_rotated=orientation in (90, 270),
-        )
         return ThemeDirectoriesResult(
             ok=True, key=self.key,
             catalog_size=dirs.catalog_size,

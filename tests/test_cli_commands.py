@@ -1844,7 +1844,6 @@ def test_display_play_reconnects_a_lost_panel_too(monkeypatch, cli_runner) -> No
 
     monkeypatch.setattr(_ctx, "get_app", fake_get_app)
     monkeypatch.setattr(display_mod, "get_app", fake_get_app)
-    monkeypatch.setattr(display_mod, "ensure_connected", lambda a, k: None)
     ticks: list[float] = []
 
     def sleep(sec):

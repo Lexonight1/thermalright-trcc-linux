@@ -14,6 +14,7 @@ from ..events import (
     DeviceDisconnected,
     LedColorsChanged,
     LedSettingsChanged,
+    SlideshowChanged,
 )
 from ..models import (
     Kind,
@@ -32,6 +33,7 @@ from ..results import (
 
 if TYPE_CHECKING:
     from ...app import App
+    from ...services.theme_directories import ThemeDirectories
 
 from ..logs import per_frame
 from ..models import MEDIA, MediaKind
@@ -454,6 +456,31 @@ def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:
     )
 
 
+def _theme_directories(app: App, key: str) -> ThemeDirectories | None:
+    """The theme browser's directories for *key*, the #136 portrait fallback
+    applied — or None before the device has a canvas (not handshaken).
+
+    One composition for the ``ResolveThemeDirectories`` Query and the name
+    search, so a name picked from the browser resolves where it was listed.
+    """
+    from ...services.theme_directories import resolve_theme_directories
+
+    device = app.devices.get(key)
+    profile = device.profile if device is not None else None
+    if profile is None:
+        log.debug("_theme_directories: %s has no canvas yet", key)
+        return None
+    orientation = app.settings.for_device(key).orientation
+    log.debug("_theme_directories: %s canvas=%s orientation=%s",
+              key, profile.resolution, orientation)
+    return resolve_theme_directories(
+        app.libraries(key),
+        canvas_size=profile.resolution,
+        lcd_size=oriented_resolution(profile.resolution, orientation),
+        is_rotated=orientation in (90, 270),
+    )
+
+
 def _search_theme_by_name(
     app: App, key: str, name: str,
 ) -> Path | None:
@@ -497,6 +524,14 @@ def _search_theme_by_name(
         candidates.append(paths.theme_dir(w, h) / name)
         candidates.append(paths.user_theme_dir(w, h) / name)
         candidates.append(paths.cloud_theme_dir(w, h) / name)
+    # The browser's own folders when the #136 fallback moved them: a turned
+    # panel with no portrait themes LISTS the landscape ones, and a slideshow
+    # picked from that list named themes this search could not find.
+    dirs = _theme_directories(app, key)
+    if dirs is not None and dirs.portrait_fallback:
+        log.debug("_search_theme_by_name: %s portrait fallback — also %s",
+                  key, dirs.theme_dir)
+        candidates += [dirs.theme_dir / name, dirs.user_theme_dir / name]
     # "image:foo" → single-image/foo (LoadImage layout).
     if name.startswith("image:"):
         candidates.append(
@@ -532,6 +567,36 @@ def _slideshow_snapshot(settings, key: str) -> SlideshowResult:
                  f"({len(s.slideshow_themes)} theme(s), "
                  f"every {s.slideshow_interval_s:.0f}s)"),
     )
+
+
+def _publish_slideshow(app: App, key: str) -> None:
+    """Tell every UI the slideshow's saved state, whoever changed it."""
+    s = app.settings.for_device(key)
+    log.info("_publish_slideshow: %s enabled=%s themes=%d interval=%ss",
+             key, s.slideshow_enabled, len(s.slideshow_themes),
+             s.slideshow_interval_s)
+    app.events.publish(SlideshowChanged(
+        key=key, enabled=s.slideshow_enabled,
+        interval_s=float(s.slideshow_interval_s),
+        themes=tuple(s.slideshow_themes),
+    ))
+
+
+def _drive_slideshow(app: App, key: str) -> None:
+    """Rotate *key*'s slideshow while it is switched on, and only then.
+
+    The one place that decides, for ``SetSlideshow`` and for the session's
+    restore: "on" and "rotating" used to be two switches every UI paired by
+    hand, and a saved slideshow never resumed when the App started.
+    """
+    from ...services.slideshow_driver import SlideshowDriver, task_key
+
+    if app.settings.for_device(key).slideshow_enabled:
+        log.info("_drive_slideshow: %s is on — driving it", key)
+        app.add_task(SlideshowDriver(app, key))
+    else:
+        log.info("_drive_slideshow: %s is off — not driving it", key)
+        app.remove_task(task_key(key))
 
 
 def _autostart_path(app: App) -> str:

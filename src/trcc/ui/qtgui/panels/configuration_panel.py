@@ -17,7 +17,10 @@ return ``ok=True`` with "no change" messages.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -48,12 +51,13 @@ from ....core.commands import (
     SetSplitMode,
     SetTempUnit,
     SetTimeFormat,
-    StartSlideshowDriver,
-    StopSlideshowDriver,
 )
 from ....core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+if TYPE_CHECKING:
+    from ....core.events import SlideshowChanged
 
 log = logging.getLogger(__name__)
 
@@ -192,6 +196,11 @@ class ConfigurationPanel(BasePanel):
         # ── Apply ──
         self._apply_btn = QPushButton("Apply all settings", self)
         self._apply_btn.clicked.connect(self._apply)
+        # The slideshow's controls follow its saved state, whoever changed it
+        # -- including the App switching it off when another source took over.
+        self._bus.slideshow_changed.connect(
+            self._on_slideshow_changed,
+            type=Qt.ConnectionType.QueuedConnection)
 
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
@@ -282,15 +291,25 @@ class ConfigurationPanel(BasePanel):
         r, g, b = snap.overlay_background
         self._bg_color = f"#{r:02x}{g:02x}{b:02x}"
         self._bg_color_label.setText(self._bg_color)
-        # Slideshow fields.
-        self._select_combo_by_data(
-            self._slideshow_enabled, snap.slideshow_enabled,
-        )
-        self._slideshow_interval.setValue(float(snap.slideshow_interval_s))
-        self._slideshow_themes.setPlainText(
-            "\n".join(snap.slideshow_themes),
-        )
+        self._show_slideshow(snap.slideshow_enabled, snap.slideshow_interval_s,
+                             snap.slideshow_themes)
         self._status.setText(f"Loaded settings for {key}.")
+
+    def _show_slideshow(self, enabled: bool, interval_s: float,
+                        themes: Sequence[str]) -> None:
+        """Put a saved slideshow state into the three slideshow controls."""
+        log.info("_show_slideshow: enabled=%s interval=%ss themes=%d",
+                 enabled, interval_s, len(themes))
+        self._select_combo_by_data(self._slideshow_enabled, enabled)
+        self._slideshow_interval.setValue(float(interval_s))
+        self._slideshow_themes.setPlainText("\n".join(themes))
+
+    def _on_slideshow_changed(self, event: SlideshowChanged) -> None:
+        showing = self._picker.current_key()
+        log.info("_on_slideshow_changed: key=%s enabled=%s (showing %s)",
+                 event.key, event.enabled, showing)
+        if event.key == showing:
+            self._show_slideshow(event.enabled, event.interval_s, event.themes)
 
     @staticmethod
     def _select_combo_by_data(combo: QComboBox, value) -> None:
@@ -352,22 +371,6 @@ class ConfigurationPanel(BasePanel):
         rotating = bool(self._slideshow_enabled.currentData())
         r7 = self.dispatch(SetSlideshow(key=key, enabled=rotating))
         messages.append(r7.message)
-
-        # ...and something has to actually ROTATE it.  ``SetSlideshow``
-        # persists the flag and resets the clock; it starts no driver, so a
-        # slideshow configured here was saved, reported back correctly and
-        # never switched a theme -- the same failure ``services/
-        # slideshow_driver`` was written for, which cli and api already fixed
-        # (``cli/display.py`` slideshow-drive, ``api/display.py`` /slideshow).
-        #
-        # The driver is dispatched HERE rather than from ``SetSlideshow`` on
-        # purpose: ``ui/gui`` rotates with its own ``QTimer``, so coupling the
-        # two would give that skin TWO rotators.
-        r8 = self.dispatch(
-            StartSlideshowDriver(key=key) if rotating
-            else StopSlideshowDriver(key=key)
-        )
-        messages.append(r8.message)
 
         self._status.setText("  |  ".join(messages))
 

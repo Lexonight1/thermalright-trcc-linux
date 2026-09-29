@@ -963,39 +963,6 @@ trcc display slideshow KEY STATE
 | `KEY` | Device key, e.g. 0402:3922 |
 | `STATE` | 'on' / 'off' |
 
-### `trcc display slideshow-drive`
-
-Actually rotate the configured slideshow, until stopped. `slideshow on` and `configure-slideshow` only PERSIST the slideshow. Nothing advanced it outside the gui — the gui runs its own timer, so a slideshow set up here was saved, reported back correctly, and never switched a theme. This registers the driver that rotates it. Unlike `slideshow-run` (a foreground demo loop over a directory), this uses the persisted config and returns immediately; the rotation continues in the background for as long as the app or daemon is alive.
-
-```bash
-trcc display slideshow-drive [OPTIONS] KEY
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | Device key, e.g. 0402:3922 |
-
-| Option | Description |
-|---|---|
-| `--stop` | Stop driving instead of starting |
-
-### `trcc display slideshow-run`
-
-Foreground slideshow over a directory of themes. Different from `slideshow` / `configure-slideshow` (which persist state). This is a one-shot loop: blocks until Ctrl-C, swaps to the next theme each tick. Useful for demos + smoke tests; the persisted flow is what production users want.
-
-```bash
-trcc display slideshow-run [OPTIONS] KEY THEMES_DIR
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | Device key, e.g. 0402:3922 |
-| `THEMES_DIR` | Directory containing theme subdirectories |
-
-| Option | Description |
-|---|---|
-| `--interval`, `-i` `INTERVAL` | Seconds between theme switches (default: 30.0) |
-
 ### `trcc display snapshot`
 
 Print the persisted LCD state for a device.

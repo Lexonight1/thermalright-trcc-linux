@@ -70,11 +70,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: ScreencastDriver turns it; every UI reaches the capability "
         "through StartScreencast / StopScreencast"
     )),
-    "AdvanceSlideshow": (frozenset({"gui"}), (
-        "scoped: SlideshowDriver turns it (2026-08-30), and the gui also drives "
-        "it from its own QTimer. Every UI reaches the capability through "
-        "Start/StopSlideshowDriver -- before that driver existed a slideshow "
-        "configured from the CLI or API was persisted and never rotated"
+    "AdvanceSlideshow": (frozenset(), (
+        "scoped: SlideshowDriver turns it; every UI reaches the capability "
+        "through SetSlideshow, which owns the driver (2026-09-29) -- the gui's "
+        "own QTimer that also turned it is gone"
     )),
     "SendFrame": (frozenset(), (
         "scoped: a deliberate scripting/daemon affordance -- ipc.py names it as "
@@ -169,11 +168,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: a hold/confirm LOOP, not a user capability -- the GUIs keep a "
         "device awake through their own render cadence"
     )),
-    "EnsureConnected": (frozenset({"cli"}), (
-        "gap: closes in P4b.  Since 2026-09-26 every one-shot Command connects "
-        "its own device in App.dispatch (USES_DEVICE), so no UI decides it.  "
-        "Only the five cli LOOPS still connect themselves -- display play, led "
-        "play, keepalive, screencast, slideshow-run -- until they run a session"
+    "EnsureConnected": (frozenset(), (
+        "scoped: the App's own connect-first -- App.dispatch runs it for every "
+        "USES_DEVICE Command, so no UI decides it.  The last UI caller, the "
+        "cli's slideshow-run loop, was deleted 2026-09-29"
     )),
     "TickDisplay": (frozenset({"cli", "api"}), (
         "scoped: the core ticks video in every session now (VideoLoop, #249) "
@@ -269,17 +267,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     )),
     "LoopVideo": (frozenset({"cli", "api"}), (
         "gap: toggle whether playback wraps or sticks at the last frame"
-    )),
-    "StartSlideshowDriver": (frozenset({"cli", "api", "qtgui"}), (
-        "gap: ui/gui ALONE still rotates from its own QTimer instead of the "
-        "shared driver.  qtgui adopted the driver 2026-09-15 -- its panel "
-        "already dispatched ConfigureSlideshow + SetSlideshow, which persist "
-        "the config and start nothing, so a slideshow set up there reported "
-        "itself enabled and never switched a theme.  gui is now the only "
-        "duplicated mechanism left, and it goes when ui/gui does"
-    )),
-    "StopSlideshowDriver": (frozenset({"cli", "api", "qtgui"}), (
-        "gap: the other half of the same pair -- ui/gui only"
     )),
     "SetMediaPlayer": (frozenset({"cli", "api"}), (
         "gap: set the device's media-player source URI"

@@ -268,18 +268,19 @@ def test_advance_slideshow_reads_the_persisted_config(fake_platform) -> None:
     The gui used to build a SlideshowConfig from its own panel, making the
     panel a second source for a fact ``ConfigureSlideshow`` already persists.
     """
+    # Held still: SetSlideshow starts the real driver, whose first tick
+    # would take the "first advance" this test is about.
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
     from trcc.core.commands import (
         AdvanceSlideshow,
         ConfigureSlideshow,
         SetSlideshow,
     )
-
-    app = App(fake_platform)
+    app = App(fake_platform, send_scheduler=SyncSendScheduler())
     key = "0402:3922"
     # Two Commands, deliberately: ConfigureSlideshow owns the list + interval,
-    # SetSlideshow owns the on/off.  The gui dispatches both, and starts its
-    # timer only when enabled — so reading ``slideshow_enabled`` here matches
-    # exactly when that timer would have been ticking.
+    # SetSlideshow owns the on/off -- and with it the driver that dispatches
+    # this Command.
     app.dispatch(ConfigureSlideshow(
         key=key, themes=("a", "b", "c"), interval_s=1.0,
     ))
@@ -313,13 +314,15 @@ def test_advance_slideshow_says_nothing_is_running(fake_platform) -> None:
 def test_advance_slideshow_holds_inside_the_interval(fake_platform) -> None:
     """A second tick inside the window does not rotate — ``due`` distinguishes
     "not yet" from "nothing configured", which a timer-driver needs."""
+    # Held still: SetSlideshow starts the real driver, whose first tick
+    # would take the "first advance" this test is about.
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
     from trcc.core.commands import (
         AdvanceSlideshow,
         ConfigureSlideshow,
         SetSlideshow,
     )
-
-    app = App(fake_platform)
+    app = App(fake_platform, send_scheduler=SyncSendScheduler())
     key = "0402:3922"
     app.dispatch(ConfigureSlideshow(
         key=key, themes=("a", "b"), interval_s=3600.0,
