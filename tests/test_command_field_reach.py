@@ -72,20 +72,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
         "process could (the trust-boundary pass).  The text comes back in the "
         "response body; ``trcc report -o`` still writes a file, locally"
     )),
-    ("StopVideo", "api"): (frozenset({"keep_override"}), (
-        "scoped: TRACED 2026-09-22.  The flag exists only to stop gui's own "
-        "_cleanup_device teardown wiping the persisted background (#271).  No "
-        "other face makes that call, App.close never dispatches StopVideo, and "
-        "App.detach already frees the decode -- so clearing the override is "
-        "the CORRECT behaviour for a user-initiated stop, which is the only "
-        "StopVideo these faces make"
-    )),
-    ("StopVideo", "cli"): (frozenset({"keep_override"}), (
-        "scoped: same as api -- a user-initiated stop must clear the override"
-    )),
-    ("StopVideo", "qtgui"): (frozenset({"keep_override"}), (
-        "scoped: same -- qtgui's only StopVideo is the Stop button"
-    )),
     ("BuildPreview", "api"): (frozenset({"sample_cols"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),

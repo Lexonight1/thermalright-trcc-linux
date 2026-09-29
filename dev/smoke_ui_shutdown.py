@@ -54,19 +54,22 @@ _CLOSE_LINE = "close: devices="
 class Skin:
     name: str
     argv: list[str]
-    # Proof THIS skin's UI is live.  Per-skin on purpose: a single hardcoded
-    # marker (qtgui's "MainWindow") silently matched gui too, because the
-    # latest-log used to carry a previous qtgui run — a false "booted" that
-    # only surfaced once the log became genuinely per-run.
+    # Proof THIS skin's UI is live: its Qt loop is running, which is also
+    # when the quit handlers are installed.  "Any trcc.ui.<skin> line" was
+    # used until 2026-09-29 and matched ~0.2 s into a ~3 s bring-up of the
+    # mock fleet, so the SIGTERM landed before the handlers existed and both
+    # skins "failed" on the harness's timing, not on their teardown.
     boot_marker: str
 
 
+_LOOP = "_exec: entering the Qt event loop"
+
 SKINS = (
     Skin("gui", ["dev/mock_gui.py", "-v", "-platform", "offscreen"],
-         boot_marker="trcc.ui.gui."),
+         boot_marker=_LOOP),
     Skin("qtgui", ["dev/mock.py", "--ui", "qtgui", "-v",
                    "-platform", "offscreen"],
-         boot_marker="trcc.ui.qtgui."),
+         boot_marker=_LOOP),
 )
 
 

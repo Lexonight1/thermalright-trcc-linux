@@ -163,6 +163,70 @@ def test_the_window_follows_what_another_ui_does(tmp_path: Path) -> None:
         app.close()
 
 
+def _spied(app: App) -> list[str]:
+    """Record the name of every Command the App is asked to run from here on."""
+    sent: list[str] = []
+    real = app.dispatch
+
+    def spy(cmd):
+        sent.append(type(cmd).__name__)
+        return real(cmd)
+    app.dispatch = spy                  # type: ignore[method-assign]
+    return sent
+
+
+def test_quitting_the_window_leaves_the_panels_to_the_app(tmp_path: Path) -> None:
+    """A window quitting blanked every panel itself -- as a daemon client, for
+    every other UI too.  The App blanks them when IT closes, exactly once.
+
+    MUTATION CHECK: restore the handler's ``SleepDevice`` teardown.
+    """
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = _app(tmp_path)
+    try:
+        assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        window = TRCCApp(app=app)
+        window.replay_initial_devices()
+        sent = _spied(app)
+
+        window.close()                  # offscreen: no tray, a real quit
+
+        assert not {"SleepDevice", "StopVideo", "SendColor"} & set(sent), sent
+        assert app.devices[_KEY].is_connected
+    finally:
+        app.close()
+    assert sent.count("SleepDevice") == 1, sent
+
+
+def test_a_disconnect_is_not_undone_by_the_window(tmp_path: Path) -> None:
+    """The window's teardown sent ``SleepDevice``, which connects its device
+    first -- so a disconnect from anywhere was reconnected by an open gui, which
+    then wrote brightness, orientation and split back into the App.  Measured.
+
+    MUTATION CHECK: restore the handler's ``SleepDevice`` teardown.
+    """
+    from PySide6.QtTest import QTest
+
+    from trcc.core.commands import DisconnectDevice
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = _app(tmp_path)
+    try:
+        assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        window = TRCCApp(app=app)
+        window.replay_initial_devices()
+        assert app.dispatch(DisconnectDevice(key=_KEY)).ok
+        sent = _spied(app)
+        QTest.qWait(500)
+
+        assert not {"EnsureConnected", "ConnectDevice"} & set(sent), sent
+        assert not (_KEY in app.devices and app.devices[_KEY].is_connected)
+        assert _KEY not in window._handlers
+    finally:
+        app.close()
+
+
 # ── qtgui (MainWindow) ────────────────────────────────────────────────────────
 
 

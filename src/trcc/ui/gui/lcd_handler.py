@@ -46,7 +46,6 @@ from ...core.commands import (
     SetOrientation,
     SetOverlayConfig,
     SetSplitMode,
-    SleepDevice,
     StopVideo,
     ToggleVideo,
     UploadCustomMask,
@@ -1363,11 +1362,18 @@ class LCDHandler(BaseHandler):
     # ── Lifecycle ──────────────────────────────────────────────────
 
     def cleanup(self) -> None:
-        """Stop timers and release device resources."""
+        """Release THIS window's timers and caches — never the panel.
+
+        It used to blank the panel too (``StopVideo`` + ``SleepDevice``).  As a
+        daemon client that put every panel to sleep for every other UI when one
+        window quit; and on a disconnect ``SleepDevice``, which connects its
+        device first, RECONNECTED the panel that had just gone -- measured.
+        Blanking belongs to whoever owns the panels: ``App.close()``.
+        """
+        self.log.info("cleanup: %s — timers and caches only", self._device_key)
         self.deactivate()
         self._pixmap_cache.clear()
         self._last_render_id = None
-        self._cleanup_device()
 
     def deactivate(self) -> None:
         """Full pause — stop all timers (called from cleanup)."""
@@ -1384,29 +1390,3 @@ class LCDHandler(BaseHandler):
         self._pm.ui_active = False
         self._flash_timer.stop()
 
-    def _cleanup_device(self) -> None:
-        """Blank the panel and release LCD resources via Commands."""
-        self.log.info("_cleanup_device: device_key=%s", self._device_key)
-        # Teardown, not "stop": unload playback but keep the persisted
-        # background — clearing it here wiped the user's chosen video from
-        # trcc.json on every GUI close and every disconnect (#271).
-        self._app.dispatch(StopVideo(key=self._device_key, keep_override=True))
-        try:
-            # ``SleepDevice`` is the INTENT — "turn this screen off", the one
-            # Command ``App.close``, ``trcc display sleep`` and ``/sleep`` all
-            # dispatch — and it owns the not-connected guard this used to
-            # hand-roll in an ``except``.  ``SendColor`` is its MECHANISM, and
-            # dispatching it here made the gui the only surface reaching past
-            # the intent.  Wire output is unchanged: SleepDevice's LCD branch
-            # IS ``SendColor(0, 0, 0)``, verified byte-identical.
-            result = self._app.dispatch(SleepDevice(key=self._device_key))
-            if not result.ok:
-                self.log.debug("_cleanup_device: blank skipped — %s",
-                               result.message)
-        except (OSError, RuntimeError) as e:
-            # A raw USB error leaking from below the transport port.  A
-            # ``TransportError`` is already turned into a Result inside the
-            # Command, so this is the last resort only: teardown must not raise.
-            self.log.debug("_cleanup_device: blank failed: %s", e)
-        # App.detach is owned by app.close() in the window's closeEvent;
-        # individual handler cleanup just releases timers + state.

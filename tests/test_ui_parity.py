@@ -198,6 +198,12 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: a terminal onboarding walk (doctor -> scan) whose whole output is "
         "CLI text; the GUIs have their own first-run flow"
     )),
+    "SleepDevice": (frozenset({"cli", "api"}), (
+        "gap: turn a panel off -- neither window offers it.  The gui's only "
+        "dispatch was its window TEARDOWN, which blanked the daemon's panels "
+        "for every UI and undid disconnects (removed 2026-09-29); App.close "
+        "blanks on shutdown"
+    )),
     "ResetDevice": (frozenset({"cli", "api"}), (
         "gap: power-cycle + restore. It sat in exactly this blind spot, which is "
         "why nobody noticed it was DisconnectDevice byte-for-byte for the "

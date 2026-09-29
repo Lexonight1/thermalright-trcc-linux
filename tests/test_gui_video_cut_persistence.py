@@ -78,10 +78,12 @@ def test_a_cut_video_becomes_the_background_as_delivered_and_survives_close(
         window.close()          # closeEvent -> every handler's cleanup()
         assert app.settings.for_device(_KEY).background_path == str(delivered), (
             "closing the GUI must not wipe the persisted background")
-        assert app.media.playback(_KEY) is None, (
-            "closing the GUI must still unload playback")
     finally:
         app.close()
+    # Playback is the App's: a window closing leaves it playing, and the App
+    # frees it when IT closes.
+    assert app.media.playback(_KEY) is None, "closing the App must unload playback"
+    assert app.settings.for_device(_KEY).background_path == str(delivered)
 
 
 # =========================================================================
