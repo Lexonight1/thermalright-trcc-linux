@@ -69,6 +69,7 @@ from .core.ports import (
     Renderer,
     SendScheduler,
     SendTask,
+    TlsIdentity,
     VideoExportRunner,
 )
 from .core.protocol import background_variant, mask_variant, theme_variant
@@ -267,6 +268,10 @@ class App(CommandBus):
         # diagnostics through this injected port (never importing the adapter).
         from .adapters.diagnostics.adapter import DiagnosticsAdapter
         self.diagnostics: Diagnostics = DiagnosticsAdapter(platform)
+        # TLS for the LAN API — ``ProvideApiTls`` reaches it through this port,
+        # so no UI imports the adapter or does network I/O of its own.
+        from .adapters.infra.tls import CryptographyTls
+        self.tls: TlsIdentity = CryptographyTls()
         # Quickstart — guided first-session orchestrator.  Sequences
         # doctor + scan with explicit step boundaries so any UI renders
         # the same flow.

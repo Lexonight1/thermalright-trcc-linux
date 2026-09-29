@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**138 total: 100 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1343,6 +1343,18 @@ Tell next/ the onboarding flow has been completed.
 *Command* → `FirstRunStatusResult`
 
 Takes no arguments.
+
+### `ProvideApiTls`
+
+The TLS files ``trcc api --tls`` serves, and the fingerprint to pin.
+
+*Command* → `ApiTlsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `bind_host` | `str` | no |
+| `cert` | `Path | None` | no |
+| `key` | `Path | None` | no |
 
 ### `ReadSensors`
 

@@ -1939,3 +1939,16 @@ def memory_form_factor(code: int | None) -> str:
     """SMBIOS form-factor code → module form factor (``"Unknown"`` if unmapped)."""
     log.debug("memory_form_factor: code=%s", code)
     return MEMORY_FORM_FACTOR.get(code or 0, "Unknown")
+
+
+# =========================================================================
+# TLS for the LAN API
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class TlsFiles:
+    """What the API serves over TLS, and what a client pins (SHA-256 of the cert)."""
+    cert: Path
+    key: Path
+    fingerprint: str

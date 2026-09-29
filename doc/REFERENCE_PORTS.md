@@ -6,12 +6,12 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-42 ports.
+43 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 3 | 2 |
-| [`Command`](#command) | 1 | 0 | 138 |
+| [`Command`](#command) | 1 | 0 | 139 |
 | [`CpuSource`](#cpusource) | 1 | 4 | 10 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 1 |
@@ -23,6 +23,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 18 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
+| [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
@@ -83,7 +84,7 @@ A user action.  Exactly one execute method; returns one Result.
 execute(app: 'App') -> R_co
 ```
 
-**Implementations (138):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BuildPreview` · `CaptureScreencastFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportConfig` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `FlashOverlayElement` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportConfig` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListSensors` · `ListThemes` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PreviewSize` · `ProbeVideoDuration` · `ReadSensors` · `RefreshAutostart` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRefreshInterval` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `ToggleLed` · `ToggleSegment` · `ToggleVideo` · `UpdateOverlayElement` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus`
+**Implementations (139):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BuildPreview` · `CaptureScreencastFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportConfig` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `FlashOverlayElement` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportConfig` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListSensors` · `ListThemes` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `ReadSensors` · `RefreshAutostart` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRefreshInterval` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `ToggleLed` · `ToggleSegment` · `ToggleVideo` · `UpdateOverlayElement` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus`
 
 ## CpuSource
 
@@ -249,6 +250,21 @@ install(source: 'Path', filename: 'str') -> Path
 ```
 
 **Implementations (1):** `FileSingleFileTheme`
+
+## TlsIdentity
+
+`core/ports.py`
+
+Port for the LAN API's TLS files.  Concrete: ``CryptographyTls`` (``adapters/infra/tls.py``).
+
+**You implement (2):**
+
+```python
+self_signed(directory: 'Path', bind_host: 'str') -> TlsFiles
+supplied(cert: 'Path', key: 'Path') -> TlsFiles
+```
+
+**Implementations (1):** `CryptographyTls`
 
 ## VideoExportRunner
 

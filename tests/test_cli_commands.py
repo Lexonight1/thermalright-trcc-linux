@@ -19,6 +19,7 @@ their own files with thread or timeout wrappers.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -1855,3 +1856,74 @@ def test_display_play_reconnects_a_lost_panel_too(monkeypatch, cli_runner) -> No
     result = cli_runner.invoke(cli, ["display", "play", "0402:3922", "-i", "0.5"])
     assert result.exit_code == 0, result.output
     assert "reconnected" in result.output and app.sent.count("TickDisplay") == 2
+
+
+# =========================================================================
+# trcc api --tls
+# =========================================================================
+
+
+def test_api_tls_serves_the_self_signed_pair_and_prints_its_fingerprint(
+    cli_runner: CliRunner, cli_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.ui.api import main as api_main
+
+    del cli_app
+    served: dict = {}
+    monkeypatch.setattr(api_main, "serve", lambda **kw: served.update(kw))
+
+    result = cli_runner.invoke(_app(), ["api", "--tls", "--port", "9443"])
+
+    assert result.exit_code == 0, result.output
+    files = served["tls"]
+    assert files is not None
+    assert Path(files.cert).is_file() and Path(files.key).is_file()
+    assert f"TLS certificate SHA-256: {files.fingerprint}" in result.output
+    assert "Serving on https://127.0.0.1:9443" in result.output
+
+
+def test_api_without_tls_is_plain_http(
+    cli_runner: CliRunner, cli_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.ui.api import main as api_main
+
+    del cli_app
+    served: dict = {}
+    monkeypatch.setattr(api_main, "serve", lambda **kw: served.update(kw))
+
+    result = cli_runner.invoke(_app(), ["api", "--port", "9080"])
+
+    assert result.exit_code == 0, result.output
+    assert served["tls"] is None
+    assert "Serving on http://127.0.0.1:9080" in result.output
+
+
+def test_api_refuses_a_certificate_without_its_key(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["api", "--tls-cert", str(tmp_path / "c.pem")])
+
+    assert result.exit_code == 2
+    assert "--tls-cert and --tls-key go together" in result.output
+
+
+def test_the_api_face_hands_its_tls_files_to_uvicorn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    import uvicorn
+
+    from trcc.core.results import ApiTlsResult
+    from trcc.ui._uis import ApiUI
+    from trcc.ui.api import main as api_main
+
+    ran: dict = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: ran.update(kw))
+    monkeypatch.setattr(api_main, "build_app", lambda trcc: object())
+
+    ApiUI(port=9443, tls=ApiTlsResult(
+        ok=True, cert=str(tmp_path / "c.pem"), key=str(tmp_path / "k.pem"),
+        fingerprint="AA")).run()
+
+    assert (ran["ssl_certfile"], ran["ssl_keyfile"]) == (
+        str(tmp_path / "c.pem"), str(tmp_path / "k.pem"))

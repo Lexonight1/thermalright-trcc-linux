@@ -61,6 +61,9 @@ trcc api [OPTIONS]
 | `--port`, `-p` `PORT` | Bind port |
 | `--token`, `-t` `TOKEN` | Persistent API token. When set, every request must carry `X-API-Token: <token>`. When omitted with --host 127.0.0.1, the API is unauth'd (loopback dev mode). Omitting it with any other --host is REJECTED — refusing to bind a public interface without auth. Use --token random:<n> to generate. |
 | `--pair` | Show a one-time 6-char pairing code in the terminal. Remote devices POST it to /pair to exchange for the API token. Requires --token. |
+| `--tls` | Serve HTTPS with a self-signed certificate, made once and kept in the config directory. Its SHA-256 fingerprint is printed so a client can pin it. |
+| `--tls-cert` `TLS_CERT` | Your own certificate (PEM). Needs --tls-key; implies --tls. |
+| `--tls-key` `TLS_KEY` | Your own private key (PEM). Needs --tls-cert; implies --tls. |
 
 ### `trcc daemon`
 
@@ -174,6 +177,9 @@ trcc serve [OPTIONS]
 | `--port`, `-p` `PORT` | Bind port |
 | `--token`, `-t` `TOKEN` | Same semantics as `trcc api --token` — see `trcc api --help`. |
 | `--pair` | Same semantics as `trcc api --pair` — see `trcc api --help`. |
+| `--tls` | Serve HTTPS with a self-signed certificate, made once and kept in the config directory. Its SHA-256 fingerprint is printed so a client can pin it. |
+| `--tls-cert` `TLS_CERT` | Your own certificate (PEM). Needs --tls-key; implies --tls. |
+| `--tls-key` `TLS_KEY` | Your own private key (PEM). Needs --tls-cert; implies --tls. |
 
 ### `trcc setup`
 

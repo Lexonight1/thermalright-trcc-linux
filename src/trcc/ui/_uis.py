@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from ..app import App
     from ..core.ports import Platform, Renderer
+    from ..core.results import ApiTlsResult
     from ..ipc import SingleInstance
 
     # ``TYPE_CHECKING`` only: these names cost NOTHING at runtime, so the
@@ -57,10 +58,13 @@ class ApiUI(UserInterface, key="api"):
     to make up for it.
     """
 
-    def __init__(self, *, host: str = "127.0.0.1", port: int = 8080) -> None:
-        log.info("ApiUI.__init__: host=%s port=%d", host, port)
+    def __init__(self, *, host: str = "127.0.0.1", port: int = 8080,
+                 tls: ApiTlsResult | None = None) -> None:
+        log.info("ApiUI.__init__: host=%s port=%d tls=%s", host, port,
+                 tls is not None)
         self.host = host
         self.port = port
+        self.tls = tls
 
     def compose(self, platform: Platform | None) -> App:
         """Headless composition: the API renders preview frames, has no widgets."""
@@ -82,8 +86,11 @@ class ApiUI(UserInterface, key="api"):
         # access_log=False: each route logs its own entry (params sanitized);
         # a second line per request would let a ``/tick`` poller rotate the
         # diagnosis out of the file within hours.
+        # ssl_* None is uvicorn's own "plain HTTP" — no branch needed here.
         uvicorn.run(build_app(trcc=self), host=self.host, port=self.port,
-                    log_level="info", log_config=None, access_log=False)
+                    log_level="info", log_config=None, access_log=False,
+                    ssl_certfile=self.tls and self.tls.cert,
+                    ssl_keyfile=self.tls and self.tls.key)
         return 0
 
 

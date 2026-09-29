@@ -1307,6 +1307,14 @@ class DebugReportPayload(Result):
     rendered_text: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class ApiTlsResult(Result):
+    """The files ``trcc api --tls`` serves.  Strings, so it crosses the socket."""
+    cert: str = ""
+    key: str = ""
+    fingerprint: str = ""
+
+
 # Update check + upgrade
 @dataclass(frozen=True, slots=True)
 class UpdateCheckResult(Result):

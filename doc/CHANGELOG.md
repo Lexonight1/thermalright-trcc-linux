@@ -18,6 +18,15 @@
 - **The `EnsureDaemon` command is removed** (for anyone scripting against the
   Python command bus).
 
+### Added
+
+- **HTTPS for the REST API: `trcc api --tls`.** The first start makes a
+  certificate and keeps it in the config directory. Every start prints its
+  SHA-256 fingerprint, so a phone app or Home Assistant can pin it; it stays the
+  same across restarts until it expires in ten years. Bring your own with
+  `--tls-cert` and `--tls-key`. Without `--tls` nothing changes. Adds the
+  `cryptography` package as a dependency.
+
 ## v9.10.4
 
 **A correction first: v9.10.3 said two identical coolers were two devices.

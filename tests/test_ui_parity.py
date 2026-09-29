@@ -186,6 +186,12 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     "StopDaemon": (frozenset({"cli", "api"}), (
         "scoped: same: closing the window ends the process that IS the daemon"
     )),
+    "ProvideApiTls": (frozenset({"cli"}), (
+        "scoped: it provisions the API server's TLS BEFORE the server starts, and "
+        "`trcc api` is the only thing that starts it -- an API client cannot ask a "
+        "server for the certificate it is already talking to it over, and no GUI "
+        "launches the API"
+    )),
     "RunDoctor": (frozenset({"cli", "api"}), (
         "scoped: renders a CLI-shaped summary AND an exit code; a GUI wants the "
         "health checks underneath, which is a different Command, not this "

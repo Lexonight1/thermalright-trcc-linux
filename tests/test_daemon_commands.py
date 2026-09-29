@@ -277,3 +277,40 @@ def test_exactly_these_commands_run_in_the_caller() -> None:
 
     assert marked == {"StopDaemon", "DaemonStatus", "RunSetup", "RunUpgrade",
                       "GenerateDebugReport"}
+
+
+
+def test_provide_api_tls_makes_the_pair_once_in_the_config_directory(
+    fake_platform,
+) -> None:
+    """Made once: a client pins the fingerprint, so a restart must not change it."""
+    from pathlib import Path
+
+    from trcc.core.commands import ProvideApiTls
+
+    app = App(fake_platform)
+    first = app.dispatch(ProvideApiTls(bind_host="0.0.0.0"))
+    second = app.dispatch(ProvideApiTls(bind_host="0.0.0.0"))
+
+    tls_dir = fake_platform.paths().config_dir() / "tls"
+    assert Path(first.cert).parent == tls_dir and Path(first.key).parent == tls_dir
+    assert second.fingerprint == first.fingerprint
+
+
+def test_provide_api_tls_serves_the_users_own_pair(fake_platform, tmp_path) -> None:
+    """Their files, at THEIR paths — never the self-signed pair in their place."""
+    import shutil
+    from pathlib import Path
+
+    from trcc.core.commands import ProvideApiTls
+
+    app = App(fake_platform)
+    made = app.dispatch(ProvideApiTls())
+    cert, key = tmp_path / "mine.crt", tmp_path / "mine.key"
+    shutil.copy(made.cert, cert)
+    shutil.copy(made.key, key)
+
+    theirs = app.dispatch(ProvideApiTls(cert=cert, key=key))
+
+    assert (Path(theirs.cert), Path(theirs.key)) == (cert, key)
+    assert theirs.fingerprint == made.fingerprint

@@ -32,6 +32,7 @@
             click
             typer
             fastapi
+            cryptography
             uvicorn
             python-multipart
             prompt-toolkit
@@ -95,7 +96,7 @@
         devShells.default = pkgs.mkShell {
           packages = [
             (python.withPackages (ps: with ps; [
-              pyside6 numpy psutil pyusb pyudev hidapi click typer fastapi uvicorn
+              pyside6 numpy psutil pyusb pyudev hidapi click typer fastapi cryptography uvicorn
               python-multipart prompt-toolkit sounddevice
               pytest pytest-cov pytest-xdist httpx nvidia-ml-py ruff
             ]))

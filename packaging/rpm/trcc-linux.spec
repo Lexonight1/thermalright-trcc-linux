@@ -27,6 +27,7 @@ Requires:       python3-hidapi
 Requires:       python3-click >= 7.0
 Requires:       python3-typer >= 0.9.0
 Requires:       python3-fastapi >= 0.100
+Requires:       python3-cryptography >= 3.4.8
 Requires:       python3-uvicorn >= 0.20
 # FastAPI's form/upload routes need python-multipart.  NOT python3-multipart:
 # on Fedora that is a different library (defnull's), which FastAPI rejects.

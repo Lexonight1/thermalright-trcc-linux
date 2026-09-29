@@ -35,6 +35,7 @@ from ...core.ports import CommandBus
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
+    from ...core.results import ApiTlsResult
 from . import config, devices, display, events, led, system, theme
 from . import trcc as _trcc_router
 from ._shared import is_loopback_client
@@ -287,7 +288,8 @@ def build_app(trcc: CommandBus | None = None) -> FastAPI:
 
 
 def run(platform: Platform | None = None, *,
-        host: str = "127.0.0.1", port: int = 8080) -> int:
+        host: str = "127.0.0.1", port: int = 8080,
+        tls: ApiTlsResult | None = None) -> int:
     """Serve the REST API from an injected ``Platform`` (blocking).  Exit code.
 
     A thin alias over the UI bus: the API is one face of the one app, so its
@@ -304,12 +306,14 @@ def run(platform: Platform | None = None, *,
       ``TRCC_DAEMON=1`` the App is an ``AppProxy``, whose ``close`` releases
       only this client's event stream and leaves the daemon's devices alone.
     """
-    log.info("api run: delegating to the UI bus (host=%s port=%d)", host, port)
+    log.info("api run: delegating to the UI bus (host=%s port=%d tls=%s)",
+             host, port, tls is not None)
     from .._uis import ApiUI
-    return ApiUI(host=host, port=port).start(platform)
+    return ApiUI(host=host, port=port, tls=tls).start(platform)
 
 
-def serve(host: str = "127.0.0.1", port: int = 8080) -> None:
+def serve(host: str = "127.0.0.1", port: int = 8080,
+          tls: ApiTlsResult | None = None) -> None:
     """Back-compat entry — serve on the host platform (blocking)."""
-    log.debug("serve: host=%s port=%s", host, port)
-    run(host=host, port=port)
+    log.debug("serve: host=%s port=%s tls=%s", host, port, tls is not None)
+    run(host=host, port=port, tls=tls)

@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
 from ...core.commands import DaemonStatus, StopDaemon
 from . import config, device, display, led, system, theme
 from ._ctx import dumps_json, get_app, warn_blanking_panels
+
+if TYPE_CHECKING:
+    from ...core.results import ApiTlsResult
 
 log = logging.getLogger(__name__)
 
@@ -243,6 +247,18 @@ def api(
             "token.  Requires --token."
         ),
     ),
+    tls: bool = typer.Option(
+        False, "--tls",
+        help=(
+            "Serve HTTPS with a self-signed certificate, made once and kept "
+            "in the config directory.  Its SHA-256 fingerprint is printed so "
+            "a client can pin it."
+        ),
+    ),
+    tls_cert: Path | None = typer.Option(
+        None, "--tls-cert", help="Your own certificate (PEM).  Needs --tls-key; implies --tls."),
+    tls_key: Path | None = typer.Option(
+        None, "--tls-key", help="Your own private key (PEM).  Needs --tls-cert; implies --tls."),
 ) -> None:
     """Launch the REST API (FastAPI + uvicorn).
 
@@ -301,15 +317,36 @@ def api(
         typer.echo(f"Pairing code: {code}  (POST /pair?code={code})")
         typer.echo("")
 
+    tls_files = _api_tls(host, tls, tls_cert, tls_key)
+    scheme = "https" if tls_files else "http"
     if host in ("0.0.0.0", "::"):
         from ...adapters.infra.network import get_lan_ip
         lan_ip = get_lan_ip()
-        typer.echo(f"API reachable at: http://{lan_ip}:{port}")
+        typer.echo(f"API reachable at: {scheme}://{lan_ip}:{port}")
+    if tls_files:
+        typer.echo(f"TLS certificate SHA-256: {tls_files.fingerprint}")
     # uvicorn's own "running on" line now goes to the log like every other
     # record, which the terminal shows only at -v — so say it here.
-    typer.echo(f"Serving on http://{host}:{port} (Ctrl-C to stop)")
-    serve(host=host, port=port)
+    typer.echo(f"Serving on {scheme}://{host}:{port} (Ctrl-C to stop)")
+    serve(host=host, port=port, tls=tls_files)
 
+
+def _api_tls(host: str, tls: bool, cert: Path | None,
+             key: Path | None) -> ApiTlsResult | None:
+    """The TLS files ``trcc api`` serves: the user's, a self-signed pair, or none.
+
+    ``--tls-cert`` and ``--tls-key`` come together or not at all; either one
+    means TLS.  The files come from ``ProvideApiTls`` — this UI never touches
+    the certificate or the network itself.
+    """
+    log.info("_api_tls: host=%s tls=%s cert=%s key=%s", host, tls, cert, key)
+    if (cert is None) != (key is None):
+        typer.echo("ERROR: --tls-cert and --tls-key go together.", err=True)
+        raise typer.Exit(code=2)
+    if not (tls or cert):
+        return None
+    from ...core.commands import ProvideApiTls
+    return get_app().dispatch(ProvideApiTls(bind_host=host, cert=cert, key=key))
 
 @app.command("serve")
 def serve(
@@ -323,6 +360,18 @@ def serve(
         False, "--pair",
         help="Same semantics as `trcc api --pair` — see `trcc api --help`.",
     ),
+    tls: bool = typer.Option(
+        False, "--tls",
+        help=(
+            "Serve HTTPS with a self-signed certificate, made once and kept "
+            "in the config directory.  Its SHA-256 fingerprint is printed so "
+            "a client can pin it."
+        ),
+    ),
+    tls_cert: Path | None = typer.Option(
+        None, "--tls-cert", help="Your own certificate (PEM).  Needs --tls-key; implies --tls."),
+    tls_key: Path | None = typer.Option(
+        None, "--tls-key", help="Your own private key (PEM).  Needs --tls-cert; implies --tls."),
 ) -> None:
     """Alias for ``trcc api`` — launches the REST API + uvicorn.
 
@@ -333,7 +382,8 @@ def serve(
         "cli serve: host=%s port=%s token_set=%s pair=%s",
         host, port, token is not None, pair,
     )
-    api(host=host, port=port, token=token, pair=pair)
+    api(host=host, port=port, token=token, pair=pair, tls=tls,
+        tls_cert=tls_cert, tls_key=tls_key)
 
 
 @app.command("daemon")

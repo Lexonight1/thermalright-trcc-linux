@@ -20,6 +20,7 @@ from .logs import per_frame
 from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
+    TlsFiles,
     VideoExportRequest,
     format_device_key,
 )
@@ -2059,6 +2060,26 @@ class Diagnostics(ABC):
 # =========================================================================
 # DataInstaller — fetch + extract per-resolution data archives
 # =========================================================================
+
+
+
+class TlsIdentity(ABC):
+    """Port for the LAN API's TLS files.  Concrete: ``CryptographyTls``
+    (``adapters/infra/tls.py``).
+
+    A self-signed certificate cannot be verified by name, so clients PIN its
+    fingerprint — which is why ``self_signed`` makes it ONCE and reuses it until
+    it expires.  Behind a port so the CLI dispatches ``ProvideApiTls`` instead
+    of importing the adapter, and never does network I/O of its own.
+    """
+
+    @abstractmethod
+    def self_signed(self, directory: Path, bind_host: str) -> TlsFiles:
+        """The pair in *directory*, made for every address this host answers on."""
+
+    @abstractmethod
+    def supplied(self, cert: Path, key: Path) -> TlsFiles:
+        """The user's own certificate and key, with the certificate's fingerprint."""
 
 
 class DataInstaller(ABC):

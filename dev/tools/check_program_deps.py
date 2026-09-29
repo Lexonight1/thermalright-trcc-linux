@@ -87,6 +87,8 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
     "click":            ("python-click", "python3-click", "python3-click"),
     "typer":            ("python-typer", "python3-typer", "python3-typer"),
     "fastapi":          ("python-fastapi", "python3-fastapi", "python3-fastapi"),
+    "cryptography":     ("python-cryptography", "python3-cryptography",
+                         "python3-cryptography"),
     "prompt_toolkit":   ("python-prompt_toolkit", "python3-prompt-toolkit",
                          "python3-prompt-toolkit"),
     # The DISTRO name of PyPI's python-multipart is python-python-multipart /

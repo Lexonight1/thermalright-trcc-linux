@@ -29,6 +29,7 @@ from ..models import (
     SensorBinding,
 )
 from ..results import (
+    ApiTlsResult,
     AutostartResult,
     ControlCenterSnapshotResult,
     DaemonResult,
@@ -794,6 +795,31 @@ class GenerateDebugReport(Command[DebugReportPayload]):
             ok=True, output_path=out, rendered_text=rendered,
             message=(f"Wrote debug report to {out}" if out
                      else "Generated debug report (in-memory)"),
+        )
+
+@dataclass(frozen=True, slots=True)
+class ProvideApiTls(Command[ApiTlsResult]):
+    """The TLS files ``trcc api --tls`` serves, and the fingerprint to pin.
+
+    The user's own pair when both paths are given, else the self-signed pair in
+    the config directory — made once, reused until it expires, so a client's
+    pin survives restarts.  A Command rather than a CLI import of the adapter:
+    a UI never does the network and file work itself.
+    """
+    bind_host: str = "127.0.0.1"
+    cert: Path | None = None
+    key: Path | None = None
+
+    def execute(self, app: App) -> ApiTlsResult:
+        files = (app.tls.supplied(self.cert, self.key)
+                 if self.cert is not None and self.key is not None
+                 else app.tls.self_signed(app.platform.paths().config_dir() / "tls",
+                                          self.bind_host))
+        log.info("ProvideApiTls.execute: %s (sha256 %s)", files.cert, files.fingerprint)
+        return ApiTlsResult(
+            ok=True, cert=str(files.cert), key=str(files.key),
+            fingerprint=files.fingerprint,
+            message=f"TLS certificate SHA-256: {files.fingerprint}",
         )
 
 @dataclass(frozen=True, slots=True)
