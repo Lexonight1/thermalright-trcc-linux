@@ -25,7 +25,6 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QWidget
 if TYPE_CHECKING:
     from ...core.models import HardwareMetrics
 
-from ...app import App
 from ...core.commands import GetSensorDashboard, SetSensorDashboard
 from ...core.models import (
     CATEGORY_COLORS,
@@ -33,6 +32,7 @@ from ...core.models import (
     PanelConfig,
     SensorBinding,
 )
+from ...core.ports import CommandBus
 from ..presentation.sensor_display import format_sensor_value
 from .assets import Assets
 from .base import set_background_pixmap
@@ -279,7 +279,7 @@ class UCSystemInfo(QWidget):
 
     panel_clicked = Signal(object)  # SystemInfoPanel
 
-    def __init__(self, app: App, parent=None):
+    def __init__(self, app: CommandBus, parent=None):
         super().__init__(parent)
         _, _, w, h = Layout.SYSINFO_PANEL
         self.setFixedSize(w, h)

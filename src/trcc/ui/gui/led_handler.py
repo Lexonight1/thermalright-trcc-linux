@@ -40,7 +40,7 @@ from .base_handler import BaseHandler
 from .uc_led_control import UCLedControl
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
 
 from ...core.models import LedStyle
 
@@ -63,7 +63,7 @@ class LEDHandler(BaseHandler):
         key: str,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
-        app: App | None = None,
+        app: CommandBus | None = None,
     ) -> None:
         super().__init__(key, 'led')
         if app is None:
@@ -75,7 +75,7 @@ class LEDHandler(BaseHandler):
         self._on_temp_unit_changed = on_temp_unit_changed
         # The device KEY ("vid:pid") — never the Device itself.
         self._device_key: str = key or ''
-        self._app: App = app
+        self._app: CommandBus = app
         self._active = False
         self._style: Any = None       # LedStyle enum
         self._style_id_int = 0        # legacy 1..12 for uc_led_control

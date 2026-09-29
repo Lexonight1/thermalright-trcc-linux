@@ -29,9 +29,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ...__version__ import __version__
-from ...app import App
 from ...core.commands import GetPaths
 from ...core.logs import per_frame
+from ...core.ports import CommandBus
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
@@ -117,7 +117,7 @@ def set_pairing_code(code: str | None) -> None:
              "set" if code else "cleared (pairing disabled)")
 
 
-def build_app(trcc: App | None = None) -> FastAPI:
+def build_app(trcc: CommandBus | None = None) -> FastAPI:
     """Build the FastAPI app.  Creates a default App if none passed."""
     if trcc is None:
         # Build through the canonical factory so the API server becomes

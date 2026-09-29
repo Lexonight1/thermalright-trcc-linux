@@ -39,10 +39,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...app import App
 from ...core.commands import ReadSensors
 from ...core.events import SensorsUpdated
 from ...core.models import SensorReading
+from ...core.ports import CommandBus
 from ..bus_bridge import BusBridge
 from ..presentation.sensor_display import apply_live_values
 
@@ -62,7 +62,7 @@ class SensorPickerWidget(QWidget):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge,
         parent: QWidget | None = None,
     ) -> None:

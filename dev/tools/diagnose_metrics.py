@@ -35,7 +35,7 @@ def _say(msg: str) -> None:
 
 
 def _summon(window, vid: int, pid: int, pm: int, sub: int) -> str:
-    from _mock_bootstrap import select_device, summon_variant
+    from _mock_bootstrap import app_behind, select_device, summon_variant
 
     from trcc.core.protocol import pm_to_fbl
 
@@ -43,7 +43,7 @@ def _summon(window, vid: int, pid: int, pm: int, sub: int) -> str:
     fbl = pm_to_fbl(pm, sub)
     _say(f"\n— summon {key} pm={pm} sub={sub} fbl={fbl} —")
     # The mock answers the handshake as this cooler; the app does the rest.
-    r = summon_variant(window._app, vid, pid, pm=pm, sub=sub, fbl=fbl)
+    r = summon_variant(app_behind(window), vid, pid, pm=pm, sub=sub, fbl=fbl)
     _say(f"connect ok={getattr(r, 'ok', None)}")
     select_device(window, key)
     h = window._handlers.get(key)

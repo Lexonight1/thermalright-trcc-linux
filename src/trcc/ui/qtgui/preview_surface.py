@@ -34,7 +34,7 @@ from ..qt_periodic import PeriodicUpdater
 from .assets import Assets
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
     from .device_selection import DeviceSelection
 
@@ -68,7 +68,7 @@ class PreviewSurface(QWidget):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge,
         selection: DeviceSelection,
         parent: QWidget | None = None,

@@ -33,6 +33,7 @@ frame_log = per_frame(__name__)
 WriteBuffer = bytes | bytearray | memoryview
 
 if TYPE_CHECKING:
+    from .commands._base import Command
     from .diagnostics import DoctorResult, GpuReaderState, HealthReport
     from .events import EventBus
     from .models import (
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
         Wire,
     )
     from .protocol import DeviceProfile
+    from .results import Result
 
 
 # =========================================================================
@@ -2807,3 +2809,31 @@ class VideoExportRunner(ABC):
     @abstractmethod
     def shutdown(self) -> None:
         """Stop the worker and drop anything still queued (app teardown)."""
+
+
+_R = TypeVar("_R", bound="Result")
+
+
+class CommandBus(ABC):
+    """What every UI talks to: send a Command, observe the bus.
+
+    ``App`` (in-process), ``AppProxy`` (a daemon's, over the socket) and every
+    ``UserInterface`` (which names itself on the way through, so the log says
+    which UI asked) are all one.  UI code holds a ``CommandBus``, never an
+    ``App``: dispatching and observing is all a UI may do, and the type checker
+    now says so instead of a convention.
+    """
+
+    @abstractmethod
+    def dispatch(self, cmd: Command[_R]) -> _R:
+        """Run *cmd* and return its typed Result."""
+
+    @property
+    @abstractmethod
+    def events(self) -> EventBus:
+        """The event bus to observe."""
+
+    @property
+    @abstractmethod
+    def remote(self) -> bool:
+        """True when a daemon runs the Commands, not this process."""

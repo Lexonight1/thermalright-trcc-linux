@@ -52,6 +52,9 @@ emit through; core imports no adapter to provide it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -210,3 +213,36 @@ def per_frame(module_name: str) -> logging.Logger:
     name = f"{PER_FRAME_ROOT}.{module_name.removeprefix('trcc.')}"
     log.debug("per_frame: %s → %s", module_name, name)
     return logging.getLogger(name)
+
+
+# ── Dispatch origin — which UI asked ─────────────────────────────────────
+#
+# Every UI dispatches through the same bus, so the bus's one log line could
+# not say WHO asked: a CLI ``color``, an API poll and the session's own
+# restore all read "dispatch …".  The UI that dispatches names itself here
+# (``UserInterface.dispatch`` passes its registry key), and ``App.dispatch``
+# prints it.  A context variable, not a parameter: a Command's own child
+# dispatches inherit it, and a background thread (hotplug, the loops) starts
+# with the default — so what core does on its own reads ``[core]``.
+
+_ORIGIN: ContextVar[str] = ContextVar("trcc_dispatch_origin", default="core")
+#: Both run on EVERY dispatch, per-tick ones included — the per-frame family.
+frame_log = per_frame(__name__)
+
+
+@contextmanager
+def dispatch_origin(key: str) -> Iterator[None]:
+    """Name the UI dispatching inside this block (``"api"``, ``"cli"``, …)."""
+    frame_log.debug("dispatch_origin: %s", key)
+    token = _ORIGIN.set(key)
+    try:
+        yield
+    finally:
+        _ORIGIN.reset(token)
+
+
+def current_origin() -> str:
+    """The UI the current dispatch came from, or ``"core"``."""
+    origin = _ORIGIN.get()
+    frame_log.debug("current_origin: %s", origin)
+    return origin

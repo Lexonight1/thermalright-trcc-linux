@@ -32,7 +32,7 @@ def lcd_app(tmp_path: Path) -> Iterator[App]:
 
     _ctx.set_platform(MockPlatform([_SPEC], tmp_path))
     _ctx.set_renderer(QtRenderer())
-    app = _ctx.get_app()
+    app = _ctx.compose_app()
     app.attach(0x87AD, 0x70DB)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     # SUB 5 = portrait-MOUNTED, so connect seeds 90 like the vendor app does.

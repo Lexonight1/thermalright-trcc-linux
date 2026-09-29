@@ -70,7 +70,8 @@ def _summon_and_check(window: Any, d: dict, snapshot: Any) -> Finding:
     from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.led_handler import LEDHandler
 
-    app = window._app
+    from _mock_bootstrap import app_behind
+    app = app_behind(window)
     vid, pid, pm, sub, fbl = d["vid"], d["pid"], d["pm"], d["sub"], d["fbl"]
     key = f"{vid:04x}:{pid:04x}"
     wire = d["protocol"]
@@ -150,7 +151,8 @@ def _run_audit(window: Any) -> None:
 
     from trcc.services.metrics_personalize import personalize_metrics
 
-    app = window._app
+    from _mock_bootstrap import app_behind
+    app = app_behind(window)
     s = app.settings.app
 
     # This audit checks PRESENTATION (connect / handler / canvas / metrics), not

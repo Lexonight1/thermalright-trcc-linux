@@ -35,8 +35,8 @@ from ..qt_periodic import PeriodicUpdater
 from .device_selection import DeviceSelection
 
 if TYPE_CHECKING:
-    from ...app import App
     from ...core.commands import Command
+    from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class BasePanel(QFrame):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge,
         parent: QWidget | None = None,
         *,
@@ -168,7 +168,7 @@ class BasePanel(QFrame):
         return self._selection
 
     @property
-    def app(self) -> App:
+    def app(self) -> CommandBus:
         log.debug("app")
         return self._app
 

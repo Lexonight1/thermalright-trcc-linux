@@ -40,6 +40,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
 
 import ui_contract  # noqa: E402  # pyright: ignore[reportMissingImports]
 
+from trcc.core.ports import CommandBus  # noqa: E402
+
 _GUARDED_TREES = ("trcc/core", "trcc/services")
 
 # The Presentation Model layer (``ui/presentation``) is the Qt-free precursor to
@@ -1122,9 +1124,19 @@ def test_filesystem_io_baseline_has_no_slack() -> None:
 # ``dispatch`` is the whole point and is never counted.
 _APP_ATTRS = frozenset({"_app", "app", "_trcc"})
 
-#: Functions whose return annotation is ``App`` — the only way a local name gets
-#: bound to one.  Gated by ``test_app_factories_still_return_app`` below, so this
-#: cannot rot into folklore.
+#: Annotations that bind a name to the bus: the ``App`` itself, or the
+#: ``CommandBus`` port UI code now holds instead (a ``UserInterface`` or an App).
+#: Tracking only ``App`` went blind the day the UIs were retyped to the port.
+_BUS_TYPES = frozenset({"App", "CommandBus"})
+
+#: What a UI may touch on the bus — DERIVED from the port, not listed here:
+#: ``dispatch``, ``events`` (observing is the other half of the bus) and
+#: ``remote``.  Anything else is App internals, absent on an ``AppProxy``.
+_PORT_MEMBERS = frozenset(CommandBus.__abstractmethods__)
+
+#: Functions whose return annotation is a bus type — the only way a local name
+#: gets bound to one.  Gated by ``test_app_factories_still_return_app`` below,
+#: so this cannot rot into folklore.
 _APP_FACTORIES = frozenset({"trcc", "_build_local_app", "get_app", "build_qt_app",
                             "compose"})
 
@@ -1145,7 +1157,12 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # holds one dispatches AND observes — so ``display export-video`` follows
     # a daemon-side encode from a terminal that is not doing the encoding.
     # Subscribing is half the bus, not a reach around it.
-    "ui/cli/display.py": 2,          # .events x2 — follow an export's progress
+    # 2026-09-28: cli 2 -> 0, and ui/gui/trcc_app.py + ui/qtgui/app.py 1 -> 0,
+    # ui/_base.py 2 -> 1 — all five were ``.events``.  Observing is now DECLARED
+    # on the ``CommandBus`` port the UIs hold, and the collector derives what a
+    # UI may touch from that port, so a subscription stops being a "reach".
+    # Measured before and after: 7 reaches -> 2, and the 5 that left were
+    # exactly the ``events`` reads, none hidden.
     # gui/qtgui lifecycle — deliberately OUT of burn-down.  A GUI running as a
     # daemon *client* must not own app lifecycle, and an event stream over a
     # socket is a different problem from a data read.
@@ -1181,7 +1198,7 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # only ``events`` (an event subscription, not a state read).  This is the
     # trade the row below buys: 2 reaches in ONE reviewable file instead of 5
     # scattered across two.
-    "ui/_base.py": 2,                # start_session / close, for every face
+    "ui/_base.py": 1,                # start_session, for every face
     "ui/gui/splash.py": 1,           # discover_and_connect — lifecycle
     # 2026-09-05: 5 -> 4.  The tray's ``minimize_on_close`` comes off
     # ``GetPlatformInfo``, the Query this file already dispatches ten lines
@@ -1189,7 +1206,6 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # 4 -> 3 the same day: ``app.first_run.is_first_run()`` picking the opening
     # panel was a STALE bypass, not a gap — ``GetFirstRunStatus`` exists and
     # this very file already dispatched it in ``_show_platform_info``.
-    "ui/qtgui/app.py": 1,            # events (subscription, not a state read)
     # 11 -> 9 on 2026-08-30: UCThemeMask stopped being handed a Paths port and
     # a ContentStore.  It composed "which masks does this device have" out of
     # both; ``ListMasks`` had answered that all along for cli/api/qtgui.  What
@@ -1240,7 +1256,6 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # picked yet.  cli and api could not pre-download at all until now.
     # What is left is ``services.AudioCapture`` (screencast), which belongs
     # with the RawFrame signature question, not here.
-    "ui/gui/trcc_app.py": 1,
     # led/_base.py and led_panel.py reached ZERO on 2026-08-31: the six LED
     # tabs take a ``LedSnapshotResult`` instead of a live ``LedDeviceSettings``.
     # Same rule as UCThemeMask before them — the Result was short four fields
@@ -1260,13 +1275,9 @@ KNOWN_APP_REACHES: dict[str, int] = {
 #: COUNTS live in ``KNOWN_APP_REACHES`` above, so the ratchet and its no-slack
 #: twin force any future one down; this dict holds the reasons.
 CLI_API_REACH_EXCEPTIONS: dict[str, str] = {
-    "ui/cli/display.py": (
-        "scoped: ``app.events`` is IMPLEMENTED on AppProxy (0729d7db), so "
-        "unlike every other row here this one does not raise in daemon mode "
-        "— it is how a terminal watches an encode happening inside the "
-        "daemon.  Observing is the other half of the bus; the invariant is "
-        "'do not read App STATE', and an event subscription is not state"
-    ),
+    # Empty since 2026-09-28: the one row was ``ui/cli/display.py``'s
+    # ``app.events`` — a subscription, which the ``CommandBus`` port now
+    # declares, so it is no longer a reach at all.
 }
 
 
@@ -1312,7 +1323,7 @@ def _is_self_app(node: ast.expr) -> bool:
 
 
 class _AppReachVisitor(ast.NodeVisitor):
-    """Collect reads of an App attribute other than ``dispatch``.
+    """Collect reads of a bus attribute the ``CommandBus`` port does not declare.
 
     Tracks, per scope, which local NAMES are bound to the App — by parameter
     annotation, by assignment from an ``-> App`` factory, from the FastAPI
@@ -1330,7 +1341,7 @@ class _AppReachVisitor(ast.NodeVisitor):
         bound = {
             a.arg
             for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
-            if _annotation_name(a.annotation) == "App"
+            if _annotation_name(a.annotation) in _BUS_TYPES
         }
         self._scopes.append(self._scopes[-1] | bound)
         self.generic_visit(node)
@@ -1353,7 +1364,7 @@ class _AppReachVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if node.attr != "dispatch":
+        if node.attr not in _PORT_MEMBERS:
             value = node.value
             if isinstance(value, ast.Name) and value.id in self._scopes[-1]:
                 self.hits.append((node.lineno, f"{value.id}.{node.attr}"))
@@ -1394,7 +1405,7 @@ def test_app_factories_still_return_app() -> None:
         if "__pycache__" not in path.parts
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and _annotation_name(node.returns) == "App"
+        and _annotation_name(node.returns) in _BUS_TYPES
     }
     missing = _APP_FACTORIES - actual
     assert not missing, (
@@ -2212,4 +2223,45 @@ def test_unbridged_events_do_not_grow() -> None:
     assert len(unbridged) >= MAX_UNBRIDGED_EVENTS, (
         f"only {len(unbridged)} unbridged — lower MAX_UNBRIDGED_EVENTS to "
         f"{len(unbridged)}"
+    )
+
+
+#: Where a UI uses its OWN App instead of handing itself on.  The daemon's
+#: socket server dispatches for its clients (their names ride the envelope);
+#: gui's splash runs the coldplug before any window exists.
+_UI_OWN_APP_USES = frozenset({("DaemonUI", "run"), ("GuiUI", "bring_up")})
+
+
+def test_every_ui_hands_itself_on_not_its_app() -> None:
+    """A UI hands its code ITSELF — the bus that names it — never ``self._app``.
+
+    ``UserInterface.dispatch`` is what writes ``[api] dispatch …``; a route or
+    window handed the raw App dispatched around it, and the log could not tell
+    a CLI command from an API poll.  Every one of the five did, until
+    2026-09-28.  Derived from the registry, so a new UI is gated the day it
+    registers.  Exact both ways: a use that goes away must leave the set.
+    """
+    import inspect
+    import textwrap
+
+    import trcc.ui._uis  # noqa: F401 — importing registers the UIs
+    from trcc.ui._base import UIS, UserInterface
+
+    classes = {
+        base for key in UIS for base in UIS[key].__mro__
+        if issubclass(base, UserInterface) and base is not UserInterface
+    }
+    found = {
+        (cls.__name__, fn.name)
+        for cls in classes
+        for fn in ast.parse(textwrap.dedent(inspect.getsource(cls))).body[0].body
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Attribute) and node.attr == "_app"
+        and isinstance(node.value, ast.Name) and node.value.id == "self"
+    }
+    assert found == _UI_OWN_APP_USES, (
+        f"hand the UI itself on (``self``), not ``self._app``: "
+        f"unexpected {sorted(found - _UI_OWN_APP_USES)}, "
+        f"gone {sorted(_UI_OWN_APP_USES - found)}"
     )

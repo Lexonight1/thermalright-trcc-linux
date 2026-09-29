@@ -835,7 +835,7 @@ def test_theme_delete_round_trip(
     would have used), delete via CLI."""
     del cli_app
     from trcc.ui.cli import _ctx
-    paths = _ctx.get_app().platform.paths()
+    paths = _ctx.compose_app().platform.paths()
     # Mirror what SaveTheme writes: per-resolution sub-tree under
     # user_content_dir.  CLI ``theme delete`` takes an absolute path
     # to match legacy's ``delete_theme(lcd, path)`` shape.
@@ -1570,12 +1570,35 @@ def test_a_panel_that_holds_its_image_gets_no_note(tmp_path, cli_runner) -> None
     assert "goes blank when frames stop" not in out, out
 
 
+@pytest.mark.parametrize("remote", [False, True])
+def test_the_cli_sees_a_daemon_through_its_ui(
+        tmp_path, monkeypatch, remote: bool) -> None:
+    """``get_app()`` hands the command bodies the CLI's UserInterface, which is
+    never an ``AppProxy`` — even when its App is.  ``isinstance(app, AppProxy)``
+    answered False there, and ``play`` would have ticked a daemon's panel a
+    second time (#249).  The UI forwards its App's ``remote`` instead.
+    MUTATION CHECK: restore the ``isinstance`` check → the True case fails.
+    """
+    from tests.conftest import FakePlatform
+    from trcc.app import App
+    from trcc.proxy import AppProxy
+    from trcc.ui._uis import CliUI
+    from trcc.ui.cli._ctx import daemon_owns_the_panels
+
+    bus = AppProxy() if remote else App(platform=FakePlatform(tmp_path))
+    monkeypatch.setattr(CliUI, "compose", lambda self, platform: bus)
+
+    assert daemon_owns_the_panels(CliUI()) is remote
+
+
 def test_the_note_never_builds_an_app_a_command_did_not(capsys) -> None:
     """``trcc --version`` must not open USB just to decide it has nothing to say."""
     from trcc.ui.cli import _ctx
 
     _ctx.get_app.cache_clear()
+    _ctx.compose_app.cache_clear()
     _ctx.warn_blanking_panels()
+    assert _ctx.compose_app.cache_info().currsize == 0   # no App — no USB
     assert _ctx.get_app.cache_info().currsize == 0
     assert capsys.readouterr().err == ""
 
@@ -1640,6 +1663,9 @@ def test_display_play_leaves_the_video_to_the_daemon(monkeypatch, cli_runner) ->
 
 class _ScriptedApp:
     """Answers each Command by name from a script; records what it was sent."""
+
+    #: An in-process bus (the ``CommandBus`` port): no daemon drives the panel.
+    remote = False
 
     def __init__(self, script: dict) -> None:
         self.script = {k: list(v) for k, v in script.items()}

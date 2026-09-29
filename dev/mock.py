@@ -72,7 +72,8 @@ def _run_qtgui() -> int:
 
     def _on_ready(window: object) -> None:
         import mock_gui
-        app = window._app  # type: ignore[attr-defined]
+        from _mock_bootstrap import app_behind
+        app = app_behind(window)
         for spec in specs:
             mock_gui._auto_connect(app, spec)
 

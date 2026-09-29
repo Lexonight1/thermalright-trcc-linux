@@ -39,7 +39,7 @@ def cli_app(tmp_home: Path) -> Iterator[App]:
     from trcc.ui.cli import _ctx
 
     _ctx.set_platform(FakePlatform(tmp_home))
-    yield _ctx.get_app()
+    yield _ctx.compose_app()
 
 
 def _cli():

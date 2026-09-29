@@ -25,7 +25,7 @@ from ..device_selection import DeviceSelection
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
-    from ....app import App
+    from ....core.ports import CommandBus
     from ...bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class AssetBrowserPanel(BasePanel):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge,
         parent: QWidget | None = None,
         *,

@@ -269,7 +269,8 @@ def main() -> None:
         # check neither needs nor should wait on.
         if not check:
             _mount_dev_console(window)
-        app = window._app
+        from _mock_bootstrap import app_behind
+        app = app_behind(window)
         # A CLI ``device=VID:PID pm=… sub=…`` means "show me THIS device" —
         # auto-connect it (the dev mock boots blank otherwise; scan_devices
         # returns []).  Mirrors the dev variant panel's click path.
@@ -414,7 +415,8 @@ def _mount_dev_console(window: Any) -> None:
     """
     import dev_console
     window._dev_console = dev_console.mount(window)
-    dev_console.ensure_all_data(window._app)
+    from _mock_bootstrap import app_behind
+    dev_console.ensure_all_data(app_behind(window))
 
 
 if __name__ == '__main__':

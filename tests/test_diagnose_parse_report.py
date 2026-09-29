@@ -203,6 +203,21 @@ def test_dispatch_sequence_reconstructs_display_actions(parse_dispatch_sequence)
     ]
 
 
+def test_a_tagged_report_replays_exactly_like_an_untagged_one(
+        parse_dispatch_sequence):
+    """Since 2026-09-28 the bus line names the UI: ``[gui] dispatch …``.
+
+    The tag goes BEFORE the word so this parser, which matches
+    ``dispatch Name(`` anywhere in a line, reads a new report exactly as it
+    reads an old one — ``mock_gui --replay`` would otherwise rebuild nothing.
+    This pins the PARSER against that shape; the shape the bus actually emits
+    is pinned by ``test_diagnostics::test_every_ui_names_itself_in_the_bus_line``.
+    """
+    tagged = _DISPATCH_LOG.replace(": dispatch ", ": [gui] dispatch ")
+    assert tagged != _DISPATCH_LOG
+    assert parse_dispatch_sequence(tagged) == parse_dispatch_sequence(_DISPATCH_LOG)
+
+
 def test_dispatch_sequence_preserves_kwargs_and_paths(parse_dispatch_sequence):
     seq = parse_dispatch_sequence(_DISPATCH_LOG)
     by_name = {e["command"]: e["kwargs"] for e in seq}

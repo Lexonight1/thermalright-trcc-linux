@@ -52,13 +52,13 @@ from .constants import Layout, Sizes, Styles
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ...app import App
+    from ...core.ports import CommandBus
     from ._ui_state import UiStateStore
 
 log = logging.getLogger(__name__)
 
 
-def ensure_autostart(app: App) -> bool:
+def ensure_autostart(app: CommandBus) -> bool:
     """Auto-enable autostart on first launch; re-render it otherwise.
 
     GUI-launch policy, kept here deliberately rather than pushed into a
@@ -81,7 +81,7 @@ def ensure_autostart(app: App) -> bool:
 
 
 def _get_install_info(
-    app: App | None, ui_state: UiStateStore | None = None,
+    app: CommandBus | None, ui_state: UiStateStore | None = None,
 ) -> tuple[str, str]:
     """Install method + distro from UiState; ask the bus on first call.
 
@@ -176,7 +176,7 @@ class UCAbout(BasePanel):
 
     def __init__(self, parent=None,
                  gpu_list: list[tuple[str, str]] | None = None,
-                 app: App | None = None,
+                 app: CommandBus | None = None,
                  ui_state: UiStateStore | None = None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
 

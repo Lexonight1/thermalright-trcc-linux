@@ -90,7 +90,7 @@ from .uc_theme_web import UCThemeWeb
 from .uc_video_cut import UCVideoCut
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
 
 from ...core.models import MEDIA, MediaKind
 
@@ -306,7 +306,7 @@ class TRCCApp(QMainWindow):
     """Main TRCC window — legacy chrome, next/ Commands underneath.
 
     Holds:
-      _app: App                         — universal command/event hub
+      _app: CommandBus                         — universal command/event hub
       _bus: BusBridge                   — Event → Qt signal bridge
       _ui_state: UiStateStore           — GUI-only persisted prefs
       _handlers: dict[str, BaseHandler] — keyed by ``device.info.key``
@@ -343,7 +343,7 @@ class TRCCApp(QMainWindow):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         platform: Platform,
         decorated: bool = False,
     ) -> None:

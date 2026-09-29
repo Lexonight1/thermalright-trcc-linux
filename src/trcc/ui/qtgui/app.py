@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...app import App
 from ...core.commands import (
     ControlCenterSnapshot,
     GetFirstRunStatus,
@@ -36,6 +35,7 @@ from ...core.commands import (
     RenderAndSend,
     VideoStatus,
 )
+from ...core.ports import CommandBus
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
@@ -75,7 +75,7 @@ log = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     """Top-level window: sidebar + stacked content + status bar."""
 
-    def __init__(self, app: App) -> None:
+    def __init__(self, app: CommandBus) -> None:
         super().__init__()
         self._app = app
         self._bus = BusBridge(app.events)
@@ -284,7 +284,7 @@ class MainWindow(QMainWindow):
         self._playing.discard(event.key)
 
     def _build_chrome(
-        self, app: App, sidebar: ActivitySidebar, content: QStackedWidget,
+        self, app: CommandBus, sidebar: ActivitySidebar, content: QStackedWidget,
     ) -> QWidget:
         """Assemble rail | preview | content, with the preview permanent.
 

@@ -606,6 +606,25 @@ def bootstrap(report_path: str | None = None,
 
 # ─── Summoning a variant (the mock's whole job) ──────────────────────────────
 
+def app_behind(window: Any) -> Any:
+    """The App a mock window dispatches on — the harness's one door to it.
+
+    The harness plays the HARDWARE: it scripts handshake replies on the
+    platform, plants scan results and prefetches data, so it needs App
+    internals that the ``CommandBus`` a window holds does not expose.  Since
+    2026-09-28 a window holds its ``UserInterface`` (its dispatches then log
+    the UI's name); a harness that built a window around a bare App still
+    holds that App.  One named function, so the next refactor of the UI
+    wiring breaks here and nowhere else — four harnesses reached
+    ``window._app`` by hand, and broke together when it changed.
+    """
+    from trcc.ui._base import UserInterface
+    bus = window._app
+    app = bus._app if isinstance(bus, UserInterface) else bus
+    log.debug("app_behind: %s -> %s", type(bus).__name__, type(app).__name__)
+    return app
+
+
 def summon_variant(app: Any, vid: int, pid: int, *,
                    pm: int, sub: int, fbl: int) -> Any:
     """Answer the handshake as this cooler, then swap it in on the bus.

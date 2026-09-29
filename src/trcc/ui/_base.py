@@ -43,12 +43,13 @@ than inventing a lazy second one.  ``tests/test_ui_bus.py`` gates it.
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from ..core.errors import UnknownUserInterfaceError
 from ..core.factory import Registry, Reject
-from ..core.logs import per_frame
+from ..core.logs import dispatch_origin, per_frame
+from ..core.ports import CommandBus
 
 if TYPE_CHECKING:
     from ..app import App
@@ -73,7 +74,7 @@ UIS: Registry[str, type[UserInterface]] = Registry(
 )
 
 
-class UserInterface(ABC):
+class UserInterface(CommandBus):
     """One face of the one app — CLI, API, GUI, qtgui, daemon.
 
     A UI owns **only** its own loop.  Everything around that loop — the
@@ -188,7 +189,18 @@ class UserInterface(ABC):
         """
         frame_log.debug("dispatch: %s via %s",
                         type(cmd).__name__, type(self).__name__)
-        return self._app.dispatch(cmd)
+        # The child names itself: its registry key rides the context into
+        # ``App.dispatch``, which prints ``[api] dispatch …`` — and into the
+        # daemon's log too, through ``AppProxy``.
+        with dispatch_origin(self.key):
+            return self._app.dispatch(cmd)
+
+    @property
+    def remote(self) -> bool:
+        """Whether a daemon runs this UI's Commands — its App's answer."""
+        remote = self._app.remote
+        log.debug("remote: %s -> %s", type(self).__name__, remote)
+        return remote
 
     @property
     def events(self) -> EventBus:

@@ -82,7 +82,7 @@ class ApiUI(UserInterface, key="api"):
         # access_log=False: each route logs its own entry (params sanitized);
         # a second line per request would let a ``/tick`` poller rotate the
         # diagnosis out of the file within hours.
-        uvicorn.run(build_app(trcc=self._app), host=self.host, port=self.port,
+        uvicorn.run(build_app(trcc=self), host=self.host, port=self.port,
                     log_level="info", log_config=None, access_log=False)
         return 0
 
@@ -265,7 +265,7 @@ class GuiUI(_QtUI, key="gui"):
             raise RuntimeError(
                 "GuiUI needs the host Platform it was started with: the "
                 "window's screen capture belongs to the window's session")
-        window = TRCCApp(app=self._app, platform=self._platform,
+        window = TRCCApp(app=self, platform=self._platform,
                          decorated=self.decorated)
         if self._instance is not None:
             # Fired from SingleInstance's accept thread; the Qt signal marshals
@@ -325,7 +325,7 @@ class QtGuiUI(_QtUI, key="qtgui"):
         from .qtgui.app import MainWindow
         from .qtgui.splash import auto_close
 
-        window = MainWindow(self._app)
+        window = MainWindow(self)
         if self.start_hidden:
             log.info("QtGuiUI.run: --resume — starting hidden in the tray")
         else:
@@ -340,42 +340,28 @@ class QtGuiUI(_QtUI, key="qtgui"):
 
 
 class CliUI(UserInterface, key="cli"):
-    """The terminal face — and the router that launches the others.
+    """The terminal face.  ``_ctx.get_app()`` returns one, so every CLI command
+    body dispatches through it and the log reads ``[cli] dispatch …``.
 
-    The CLI is both, which is why it was left out of the registry at first:
-    ``trcc gui`` is this process starting a DIFFERENT face, while
-    ``trcc device list`` is this face doing its own work.  Being the launcher
-    does not stop it being a UI, and leaving it out made "every UI is a
-    ``UserInterface``" false for the surface users touch most.
-
-    What kept it out was cost, and lazy composition removed it.  Measured,
-    ``trcc --help`` builds **zero** Apps in 65 ms; composing eagerly in
-    :meth:`start` would have added a platform scan plus a 111 ms
-    ``QtRenderer`` to every ``--help`` and every text command.  Now nothing is
-    composed until something dispatches, so joining the bus costs a ``--help``
-    exactly nothing.
+    The CLI does NOT run :meth:`start`: a one-shot command must leave its
+    frame on the panel, and ``start`` ends in ``App.close``, which sleeps every
+    connected panel — ``trcc color`` would blank the colour it just sent.
+    ``_entry`` hands argv straight to Typer, so :meth:`run` is unused.
 
     ``needs_session`` is **False**: a one-shot command must not pay for a
-    coldplug it will never use — ``App.start_session``'s own docstring says
-    one-shot scripts skip it.  A command that does need a device asks for one
-    explicitly through ``EnsureConnected``.
+    coldplug it will never use.  A Command that needs a device connects it
+    in ``App.dispatch`` (``USES_DEVICE``).
     """
 
     needs_session = False
 
     def compose(self, platform: Platform | None) -> App:
-        """The SAME lazy singleton the command bodies already use.
-
-        ``_ctx.get_app()`` is ``@lru_cache``'d and read by 113 command bodies.
-        Returning it here means this face and those bodies share ONE App
-        rather than composing a second one behind their backs — the bus is a
-        different door onto the same object, not a parallel world.
-        """
-        log.info("CliUI.compose: reusing the CLI's lazy App singleton")
-        from .cli._ctx import get_app, set_platform
+        """The CLI's App, from the overrides the tests and harnesses set."""
+        log.info("CliUI.compose: composing the CLI's App")
+        from .cli._ctx import compose_app, set_platform
         if platform is not None:
             set_platform(platform)
-        return get_app()
+        return compose_app()
 
     def run(self) -> int:
         """Parse argv and run one command.  Typer owns the exit code."""

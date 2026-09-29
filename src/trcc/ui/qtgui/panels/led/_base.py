@@ -23,8 +23,8 @@ from .....core.results import LedSnapshotResult
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from .....app import App
     from .....core.commands import Command
+    from .....core.ports import CommandBus
 
 
 KeyProvider = Callable[[], str]
@@ -42,7 +42,7 @@ class LedTabBase(QWidget):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         key_provider: KeyProvider,
         parent: QWidget | None = None,
     ) -> None:

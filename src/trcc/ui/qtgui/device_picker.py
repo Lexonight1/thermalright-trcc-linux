@@ -37,7 +37,7 @@ from ...core.commands import DiscoverDevices, ListDevices
 from .device_selection import DeviceSelection
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class DevicePickerWidget(QWidget):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge | None = None,
         *,
         kind_filter: str | None = None,

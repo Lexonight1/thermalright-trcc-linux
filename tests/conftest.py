@@ -888,8 +888,9 @@ def cli_app(fake_platform):
 
     _ctx.set_platform(fake_platform)
     _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
-    yield _ctx.get_app()
+    yield _ctx.compose_app()
     _ctx.get_app.cache_clear()
+    _ctx.compose_app.cache_clear()
     _ctx._platform_override = None
     _ctx._renderer_override = None
 

@@ -30,6 +30,8 @@ from . import ipc
 from .core.commands import Command, DiscoverDevices
 from .core.errors import DaemonUnavailableError, RemoteCommandError
 from .core.events import EventBus
+from .core.logs import current_origin
+from .core.ports import CommandBus
 from .core.results import Result
 
 log = logging.getLogger(__name__)
@@ -38,7 +40,7 @@ log = logging.getLogger(__name__)
 R = TypeVar("R", bound=Result)
 
 
-class AppProxy:
+class AppProxy(CommandBus):
     """Forwards every ``dispatch(cmd)`` call to a running daemon.
 
     Construction is cheap (no socket connection until the first
@@ -80,6 +82,10 @@ class AppProxy:
         now raise something with a NAME.
         """
         envelope = ipc.encode_command(cmd)
+        # Which UI asked, so the DAEMON's log names the client, not itself.
+        # Older daemons ignore the key (``decode_command`` reads only
+        # ``command`` + ``kwargs``).
+        envelope["origin"] = current_origin()
         try:
             response = ipc.one_shot_request(envelope, timeout=self._timeout)
         except OSError as e:
@@ -97,6 +103,12 @@ class AppProxy:
         log.debug("AppProxy.dispatch: %s -> %s",
                   type(cmd).__name__, type(result).__name__)
         return result  # type: ignore[return-value]   # caller's TypeVar binds the subclass
+
+    @property
+    def remote(self) -> bool:
+        """True: the daemon runs the Commands (the ``CommandBus`` port)."""
+        log.debug("AppProxy.remote: the daemon runs the Commands")
+        return True
 
     # ── The observe half ────────────────────────────────────────────────
 

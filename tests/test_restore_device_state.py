@@ -278,20 +278,28 @@ def test_the_api_runs_a_session(tmp_home: Path,
     """#148: the API was the one UI with no session, so a panel it served sat
     blank until something polled ``/tick`` (which then restored on every
     poll).  A panel that connects while the API serves shows its saved display.
+
+    A RESTART, like the reporter's: one App saves the theme, the API starts on
+    the same paths, and everything after is asked through the bus the routes
+    hold — ``has_active_theme`` is True only if the session primed the panel
+    (the saved theme is the only theme on disk; there is no Theme1 here).
     """
     import uvicorn
 
+    from trcc.core.commands import ListDevices
     from trcc.ui._uis import ApiUI
 
-    shown: list[str | None] = []
+    _save(App(platform=FakePlatform(tmp_home)), tmp_home)
+    shown: list[bool] = []
 
     def serve(asgi: Any, **_kw: Any) -> None:
-        app: App = asgi.state.trcc
-        _save(app, tmp_home)
-        app.dispatch(ConnectDevice(key=_KEY))
-        shown.append(t.name if (t := app.active_themes.get(_KEY)) else None)
+        bus = asgi.state.trcc
+        bus.dispatch(ConnectDevice(key=_KEY))
+        shown.extend(d.has_active_theme
+                     for d in bus.dispatch(ListDevices()).devices
+                     if d.key == _KEY)
 
     monkeypatch.setattr(uvicorn, "run", serve)
 
     assert ApiUI().start(FakePlatform(tmp_home)) == 0
-    assert shown == ["saved"]
+    assert shown == [True]

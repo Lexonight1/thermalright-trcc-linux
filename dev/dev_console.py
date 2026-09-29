@@ -201,7 +201,7 @@ class VariantPanel(QWidget):
 
     def _on_click(self, d: dict, btn: QPushButton,
                   _checked: bool = False) -> None:
-        from _mock_bootstrap import summon_variant
+        from _mock_bootstrap import app_behind, summon_variant
 
         w = self._window
         vid, pid, pm, sub, fbl = d["vid"], d["pid"], d["pm"], d["sub"], d["fbl"]
@@ -210,7 +210,7 @@ class VariantPanel(QWidget):
                  d["model"], key, pm, sub, fbl)
 
         # The click's whole job: this cooler is now the one plugged in.
-        result = summon_variant(w._app, vid, pid, pm=pm, sub=sub, fbl=fbl)
+        result = summon_variant(app_behind(w), vid, pid, pm=pm, sub=sub, fbl=fbl)
         if not getattr(result, "ok", False):
             w.uc_preview.set_status(f"variant {d['model']}: handshake failed")
             log.warning("VariantPanel: ConnectDevice failed for %s", key)
@@ -291,7 +291,8 @@ def mount(window):
     Guarded to a ``DevMockPlatform`` (``set_active_reply`` present).  The panel
     is a child widget, so the window keeps it alive.
     """
-    platform = window._app.platform
+    from _mock_bootstrap import app_behind
+    platform = app_behind(window).platform
     if not hasattr(platform, "set_active_reply"):
         log.info("VariantPanel.mount: not a mock fleet — skipped")
         return None

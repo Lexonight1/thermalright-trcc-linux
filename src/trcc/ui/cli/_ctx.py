@@ -18,7 +18,7 @@ import typer
 from ..._boot import trcc
 from ...app import App
 from ...core.commands import DeviceState
-from ...core.ports import Platform, Renderer
+from ...core.ports import CommandBus, Platform, Renderer
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def emit_json(result: Any) -> None:
     typer.echo(dumps_json(dataclasses.asdict(result)))
 
 
-def ensure_connected(app: App, key: str) -> None:
+def ensure_connected(app: CommandBus, key: str) -> None:
     """Attach + handshake *key* before a loop whose Commands never connect.
 
     A one-shot Command connects its own device (``USES_DEVICE``), so almost no
@@ -153,16 +153,17 @@ def reconnect_until_back(app: Any, key: str) -> None:
         time.sleep(wait)
 
 
-def daemon_owns_the_panels(app: Any) -> bool:
-    """True when ``app`` is the daemon's proxy — the daemon streams, not us.
+def daemon_owns_the_panels(app: CommandBus) -> bool:
+    """True when a daemon runs ``app``'s Commands — the daemon streams, not us.
 
     Under ``TRCC_DAEMON=1`` the daemon holds every panel and runs the session
     loops (metrics, LED, video), so a CLI command must not tick or warn as if
-    the panel stops when it exits.
+    the panel stops when it exits.  Asked of the bus (``remote``), not by
+    ``isinstance(app, AppProxy)``: the CLI holds its UserInterface now, which
+    is no proxy even when its App is, and the type check answered False —
+    ``play`` would have ticked a daemon's panel twice (#249).
     """
-    from ...proxy import AppProxy
-
-    owned = isinstance(app, AppProxy)
+    owned = app.remote
     log.debug("daemon_owns_the_panels: %s", owned)
     return owned
 
@@ -179,7 +180,7 @@ def warn_blanking_panels() -> None:
     """
     from ...core.commands import ListDevices
 
-    if get_app.cache_info().currsize == 0:
+    if compose_app.cache_info().currsize == 0:
         log.debug("warn_blanking_panels: no App was built — nothing to warn")
         return
     app = get_app()
@@ -221,6 +222,7 @@ def set_platform(platform: Platform) -> None:
     global _platform_override
     _platform_override = platform
     get_app.cache_clear()
+    compose_app.cache_clear()
 
 
 def set_renderer(renderer: Renderer) -> None:
@@ -229,15 +231,31 @@ def set_renderer(renderer: Renderer) -> None:
     global _renderer_override
     _renderer_override = renderer
     get_app.cache_clear()
+    compose_app.cache_clear()
 
 
 @lru_cache(maxsize=1)
-def get_app() -> App:
-    """Lazy App singleton used by every CLI command handler.
+def get_app() -> CommandBus:
+    """The CLI's bus — its ``UserInterface``, used by every command handler.
 
-    Returns an in-process ``App`` (default) or an ``AppProxy`` when
-    ``TRCC_DAEMON=1`` is set — UIs don't distinguish, both expose
-    ``dispatch(cmd) -> Result``.
+    The face, not the App, so each dispatch goes through the ABC and logs
+    ``[cli] dispatch …``.  Its App (in-process, or an ``AppProxy`` when
+    ``TRCC_DAEMON=1``) is composed on first dispatch, by :func:`compose_app`.
     """
     log.debug("get_app")
+    from .._uis import CliUI
+    return CliUI()
+
+
+@lru_cache(maxsize=1)
+def compose_app() -> App:
+    """The CLI process's ONE App, honouring the platform / renderer overrides.
+
+    Cached, like :func:`get_app` beside it: that is the bus the command bodies
+    dispatch on, this is the App behind it.  Tests that must set up App state
+    (attach a device, seed settings) take this — the same object the CLI
+    dispatches to, not a second one.
+    """
+    log.debug("compose_app: platform=%s renderer=%s",
+              _platform_override, _renderer_override)
     return trcc(platform=_platform_override, renderer=_renderer_override)

@@ -20,7 +20,7 @@ from ...core.models import MaskItem
 from .base import BaseThumbnail, DownloadableThemeBrowser
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     mask_selected = Signal(object)
 
-    def __init__(self, parent=None, app: App | None = None):
+    def __init__(self, parent=None, app: CommandBus | None = None):
         self.mask_directory = None
         self._resolution = ""
         self._device_key = ""

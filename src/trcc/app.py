@@ -48,7 +48,7 @@ from .core.events import (
 )
 from .core.led_models import LedRuntimeState
 from .core.libraries import DeviceLibraries
-from .core.logs import per_frame
+from .core.logs import current_origin, per_frame
 from .core.models import (
     DeviceInfo,
     DeviceQuirks,
@@ -60,6 +60,7 @@ from .core.models import (
     quirks_for,
 )
 from .core.ports import (
+    CommandBus,
     DataInstallRunner,
     Device,
     Diagnostics,
@@ -101,7 +102,7 @@ R = TypeVar("R", bound=Result)
 # =========================================================================
 
 
-class App:
+class App(CommandBus):
     """Application hub.
 
     * `platform` — the OS (Linux/Windows/macOS/BSD), DI'd at construction.
@@ -130,7 +131,7 @@ class App:
         # back via the DeviceConnectionIssues command (bus-pure, survives the
         # GUI not existing yet when the failure happened).
         self._connect_issues: dict[str, ConnectResult] = {}
-        self.events = EventBus()
+        self._events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = FileContentStore(platform.paths())
         self.media = MediaService()
@@ -926,6 +927,18 @@ class App:
             log.info("_prime: %s is blank — restoring its saved display", key)
             self.dispatch(RestoreDeviceState(key=key))
 
+    @property
+    def events(self) -> EventBus:
+        """The in-process event bus (the ``CommandBus`` port)."""
+        frame_log.debug("events: in-process bus")
+        return self._events
+
+    @property
+    def remote(self) -> bool:
+        """False: this process runs the Commands (the ``CommandBus`` port)."""
+        log.debug("remote: in-process App")
+        return False
+
     def close(self) -> None:
         """Disconnect every attached device + stop background threads.
 
@@ -1167,22 +1180,27 @@ class App:
         # per-frame family and are silenced with it, while one-shot dispatches
         # ("dispatch LoadTheme(...)") stay in every report, which is what a
         # report is read for.
+        # ``[origin]`` names the UI that asked (``UserInterface.dispatch``), or
+        # ``core`` for what the app does on its own.  It goes BEFORE the word:
+        # ``dev/tools/diagnose.py`` replays a report by matching
+        # ``dispatch Name(`` anywhere in the line, old reports and new.
+        origin = current_origin()
         sink = frame_log if cmd.LOG_LEVEL <= logging.DEBUG else log
-        sink.log(cmd.LOG_LEVEL, "dispatch %r", cmd)
+        sink.log(cmd.LOG_LEVEL, "[%s] dispatch %r", origin, cmd)
         if cmd.USES_DEVICE:
             self._connect_for(cmd)
         result = cmd.execute(self)
         if not getattr(result, "ok", True):
             log.warning(
-                "%s failed: %s",
-                type(cmd).__name__,
+                "[%s] %s failed: %s",
+                origin, type(cmd).__name__,
                 getattr(result, "message", "(no message)"),
             )
         else:
             sink.log(
                 cmd.LOG_LEVEL,
-                "%s ok: %s",
-                type(cmd).__name__,
+                "[%s] %s ok: %s",
+                origin, type(cmd).__name__,
                 getattr(result, "message", ""),
             )
         return result

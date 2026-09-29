@@ -32,8 +32,8 @@ from PySide6.QtWidgets import QGroupBox, QWidget
 from .....core.results import Result
 
 if TYPE_CHECKING:
-    from .....app import App
     from .....core.commands import Command
+    from .....core.ports import CommandBus
     from ....bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class SystemBox(QGroupBox):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge,
         parent: QWidget | None = None,
     ) -> None:

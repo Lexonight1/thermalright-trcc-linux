@@ -3073,3 +3073,112 @@ def test_an_api_request_reaches_the_log_file(
     # TRCC's loggers only: the test's own client (httpx) logs every request.
     assert [ln for ln in lines
             if re.search(r" INFO +trcc\.", ln) and "/display/tick" in ln] == []
+
+
+# ── Dispatch origin: the bus's one line names the UI that asked ──────────
+
+
+def _dispatch_lines(caplog: pytest.LogCaptureFixture, name: str) -> list[str]:
+    """Every ``… dispatch <name>(`` message the bus wrote, in order."""
+    return [r.getMessage() for r in caplog.records
+            if f"dispatch {name}(" in r.getMessage()]
+
+
+def _ui_keys() -> list[str]:
+    """Every registered UI — derived, so a new UI is covered the day it lands."""
+    import trcc.ui._uis  # noqa: F401  — importing registers them
+    from trcc.ui._base import UIS
+    return sorted(UIS)
+
+
+@pytest.mark.parametrize("key", _ui_keys())
+def test_every_ui_names_itself_in_the_bus_line(
+        key: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    """``[api] dispatch ListDevices()`` — the child passes its registry key.
+
+    Every UI dispatches through the same bus, so the bus's line could not say
+    who asked: a CLI command, an API poll and the session's own restore all
+    read ``dispatch …``.  ``UserInterface.dispatch`` now names the UI.
+    MUTATION CHECK: drop ``with dispatch_origin(self.key)`` → every UI fails.
+    """
+    from tests.conftest import FakePlatform
+    from trcc.app import App
+    from trcc.core.commands import ListDevices
+    from trcc.ui._base import UIS
+
+    cls = UIS[key]
+    app = App(platform=FakePlatform(tmp_path))
+    monkeypatch.setattr(cls, "compose", lambda self, platform: app)
+    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG, logger=PER_FRAME_ROOT)  # Queries log there
+
+    cls().dispatch(ListDevices())
+
+    assert _dispatch_lines(caplog, "ListDevices") == [
+        f"[{key}] dispatch ListDevices()"]
+
+
+def test_a_childs_dispatch_carries_the_ui_and_core_carries_core(
+        tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A Command's own dispatches inherit who asked; what nobody asked for —
+    a hotplug connect, a session restore on another thread — reads ``core``.
+    MUTATION CHECK: default the origin to anything but ``core`` → this fails.
+    """
+    from tests.conftest import FakePlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import ListDevices, SendColor
+    from trcc.core.logs import dispatch_origin
+
+    app = App(platform=FakePlatform(tmp_path), renderer=QtRenderer())
+    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG, logger=PER_FRAME_ROOT)  # Queries log there
+
+    with dispatch_origin("api"):
+        app.dispatch(SendColor(key="0402:3922", r=1, g=2, b=3))
+    app.dispatch(ListDevices())
+
+    # SendColor uses its device, so the bus connects it first — a CHILD.
+    assert _dispatch_lines(caplog, "EnsureConnected") == [
+        "[api] dispatch EnsureConnected(key='0402:3922')"]
+    assert _dispatch_lines(caplog, "ListDevices") == [
+        "[core] dispatch ListDevices()"]
+
+
+def test_the_daemon_logs_the_clients_name(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    """Over the socket the DAEMON writes the line, so the client's name rides
+    the envelope; a client too old to send one reads ``ipc``.
+    MUTATION CHECK: stop writing ``origin`` in ``AppProxy.dispatch``, or stop
+    restoring it in ``_dispatch_envelope`` → this fails.
+    """
+    from tests.conftest import FakePlatform
+    from trcc import ipc
+    from trcc.app import App
+    from trcc.core.commands import ListDevices
+    from trcc.core.logs import dispatch_origin
+    from trcc.proxy import AppProxy
+
+    server = ipc.IPCServer(App(platform=FakePlatform(tmp_path)))
+    sent: list[dict[str, Any]] = []
+
+    def over_the_socket(envelope: dict[str, Any], **_kw: Any) -> dict[str, Any]:
+        sent.append(envelope)
+        return server._dispatch_envelope(envelope)
+
+    monkeypatch.setattr(ipc, "one_shot_request", over_the_socket)
+    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG, logger=PER_FRAME_ROOT)  # Queries log there
+
+    with dispatch_origin("cli"):
+        AppProxy().dispatch(ListDevices())
+    AppProxy().dispatch(ListDevices())          # a client outside any UI
+    server._dispatch_envelope({"command": "ListDevices", "kwargs": {}})
+
+    assert [e.get("origin") for e in sent] == ["cli", "core"]
+    # ``[core]`` in the daemon's log is the DAEMON; an unnamed caller is ipc.
+    assert _dispatch_lines(caplog, "ListDevices") == [
+        "[cli] dispatch ListDevices()", "[ipc] dispatch ListDevices()",
+        "[ipc] dispatch ListDevices()"]

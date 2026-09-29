@@ -3,7 +3,7 @@
 Self-contained handler for a single LCD device.  Holds:
 
 * ``_device_key`` — vid:pid; ``app.devices[key]`` is the live Device
-* ``_app: App`` — universal command/event hub
+* ``_app: CommandBus`` — universal command/event hub
 * ``_pm.state: DeviceState`` — cached canvas / mask / theme info,
   refreshed on connect / orientation / theme-load events
 * ``_w`` — shared GUI widgets (preview, theme tabs, cuts, etc.)
@@ -58,7 +58,7 @@ from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
     from ...core.results import (
         LcdSnapshotResult,
         ThemeResult,
@@ -97,7 +97,7 @@ class LCDHandler(BaseHandler):
         make_timer: Any,
         data_dir: Path,
         is_visible_fn: Any = None,
-        app: App | None = None,
+        app: CommandBus | None = None,
         lcd_idx: Any = '',
     ) -> None:
         super().__init__(key, 'form')
@@ -105,7 +105,7 @@ class LCDHandler(BaseHandler):
             raise RuntimeError(
                 "LCDHandler requires an App handle — composition root must pass one"
             )
-        self._app: App = app
+        self._app: CommandBus = app
         # ``lcd_idx`` carries the device key in the next/ port (legacy
         # passed an int index into Trcc._lcd_devices).
         self._device_key: str = str(lcd_idx) if lcd_idx else key

@@ -63,7 +63,7 @@ from .core import results as _results_module
 from .core.commands import Command
 from .core.commands._base import Query
 from .core.events import Event
-from .core.logs import per_frame
+from .core.logs import dispatch_origin, per_frame
 from .core.results import Result
 
 if TYPE_CHECKING:
@@ -844,8 +844,15 @@ class IPCServer:
             return {"type": "Result", "ok": False,
                     "message": f"Decode error: {e}",
                     _ERROR_KEY: f"Decode error: {e}"}
+        # The CLIENT's origin (``[cli]``, ``[api]``…), so a daemon log names who
+        # asked.  ``ipc`` for a caller with no name: a client too old to send
+        # one, or one that dispatched outside any UI (it sends the default,
+        # ``core``) — ``[core]`` in the DAEMON's log means the daemon itself.
+        origin = envelope.get("origin")
         try:
-            result = self._app.dispatch(cmd)
+            with dispatch_origin(origin if origin not in (None, "", "core")
+                                 else "ipc"):
+                result = self._app.dispatch(cmd)
         except Exception as e:
             log.exception("Command %s raised", type(cmd).__name__)
             return {"type": "Result", "ok": False,

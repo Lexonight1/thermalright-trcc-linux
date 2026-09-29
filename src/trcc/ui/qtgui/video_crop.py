@@ -59,7 +59,7 @@ from ...core.models import (
 from ...core.models import FitMode
 
 if TYPE_CHECKING:
-    from ...app import App
+    from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
@@ -227,7 +227,7 @@ class VideoCropDialog(QDialog):
 
     def __init__(
         self,
-        app: App,
+        app: CommandBus,
         bus: BusBridge,
         key: str,
         parent: QWidget | None = None,
