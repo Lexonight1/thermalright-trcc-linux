@@ -80,14 +80,23 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
     "psutil":           ("python-psutil", "python3-psutil", "python3-psutil"),
     "pyusb":            ("python-pyusb", "python3-pyusb", "python3-usb"),
     "pyudev":           ("python-pyudev", "python3-pyudev", "python3-pyudev"),
-    "hidapi":           ("python-hidapi", "python3-hid", "python3-hidapi"),
+    # (arch, fedora, deb): Fedora's binding is python3-hidapi, and the deb ships
+    # apmorton's as python3-hid.  These two were SWAPPED until 2026-09-29, so the
+    # matrix printed NO for two packages that declare it.
+    "hidapi":           ("python-hidapi", "python3-hidapi", "python3-hid"),
     "click":            ("python-click", "python3-click", "python3-click"),
     "typer":            ("python-typer", "python3-typer", "python3-typer"),
     "fastapi":          ("python-fastapi", "python3-fastapi", "python3-fastapi"),
     "prompt_toolkit":   ("python-prompt_toolkit", "python3-prompt-toolkit",
                          "python3-prompt-toolkit"),
-    "python-multipart": ("python-multipart", "python3-multipart",
-                         "python3-multipart"),
+    # The DISTRO name of PyPI's python-multipart is python-python-multipart /
+    # python3-python-multipart.  The shorter "python-multipart" (Arch) and
+    # "python3-multipart" (Fedora; Debian 13+, Ubuntu 25.10+) are defnull's
+    # ``multipart`` -- a different library FastAPI rejects ("It seems you
+    # installed 'multipart' instead").  Mapped to the short names, this table
+    # blessed exactly that on Arch and could never see Fedora (2026-09-29).
+    "python-multipart": ("python-python-multipart", "python3-python-multipart",
+                         "python3-python-multipart"),
     "certifi":          ("python-certifi", "python3-certifi", "python3-certifi"),
     "nvidia-ml-py":     ("python-nvidia-ml-py", "python3-nvidia-ml-py",
                          "python3-pynvml"),
@@ -104,7 +113,7 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
 # check ("who provides pynvml?") cannot be fooled that way.
 _IMPORT_NAME = {
     "nvidia-ml-py": "pynvml",
-    "python-multipart": "multipart",
+    "python-multipart": "python_multipart",   # "multipart" is defnull's
     "PySide6": "PySide6",
     "prompt_toolkit": "prompt_toolkit",
 }
@@ -136,6 +145,13 @@ DELIBERATELY_OPTIONAL: dict[str, str] = {
         "shipped the apmorton binding for releases. Both are optdepends, and "
         "the no-binding warning names the package for each distro."
     ),
+    "certifi": (
+        "no code imports it. Its last user, data_repository.py (the #109 "
+        "macOS/Windows CERTIFICATE_VERIFY_FAILED fix), was removed in the "
+        "cutover, and UrllibHttpFetcher uses Python's default TLS context -- so "
+        "the deb and rpm need nothing from it. OPEN (2026-09-29): whether the "
+        "frozen macOS/Windows builds regressed #109 without it."
+    ),
     "nvidia-ml-py": (
         "pulls nvidia-utils (~938 MB) on Arch / libnvidia-ml1 from contrib on "
         "Debian -- an NVIDIA driver stack for every AMD and Intel owner (#216). "
@@ -150,6 +166,11 @@ DELIBERATELY_OPTIONAL: dict[str, str] = {
 # it had become an RPM FILE CONFLICT, not merely redundant — the distro package
 # owns the same site-packages paths.
 FEDORA_VENDORED = {"nvidia-ml-py"}
+
+# Hard deps the STANDARD deb bundles instead of declaring: its build step
+# ``pip install``s them into the payload (release.yml, "not in Ubuntu/Debian
+# repos").  Recorded so the matrix says "vendor" rather than a false NO.
+DEB_VENDORED = {"sounddevice"}
 
 
 def pyproject_runtime_deps(include_win32: bool = False) -> list[str]:
@@ -203,7 +224,10 @@ def deb_declared_depends() -> set[str]:
     for line in re.findall(r"^\s*Depends: (.+)$", text, re.M):
         if "pyside6" not in line:
             continue                     # the legacy deb — vendors instead
-        return {re.split(r"\s*\(", tok.strip())[0] for tok in line.split(",")}
+        # ``a | b (<< 0.1)`` is ONE requirement with alternatives; each
+        # alternative counts as declared.
+        return {re.split(r"\s*\(", alt.strip())[0]
+                for tok in line.split(",") for alt in tok.split("|")}
     return set()
 
 
@@ -1578,24 +1602,46 @@ def check_pip_resolved_targets() -> list[Finding]:
     return findings
 
 
-def report_matrix() -> None:
-    """Every hard dep x every target that can drift."""
-    deps = pyproject_runtime_deps(include_win32=True)
+def matrix_rows() -> list[tuple[str, str, str, str]]:
+    """Every mapped hard dep x every hand-declared target -- offline.
+
+    Each cell is ``yes`` (declared), ``vendor`` (bundled or unavailable, on
+    record), ``optional`` (not declared on purpose -- ``DELIBERATELY_OPTIONAL``
+    says why) or ``NO``.  A ``NO`` is a package that installs without a
+    dependency the app needs: ``python-multipart`` sat at NO for the rpm and
+    deb while nothing ran this, and ``trcc api`` could not start on a fresh
+    Fedora (2026-09-29).  ``tests/test_packaging_entrypoints.py`` fails on any.
+    """
     arch, deb, rpm = arch_declared_depends(), deb_declared_depends(), rpm_declared_requires()
-    print(f"{'dependency':18} {'arch':10} {'deb':10} {'rpm':10}  (hand-declared targets)")
-    print("-" * 62)
-    for dep in deps:
-        names = _PKG_NAMES.get(dep)
-        if names is None:
-            print(f"  {dep:16} {'(win32/unmapped — pip-resolved targets only)'}")
+
+    def cell(declared: bool, vendored: bool, dep: str) -> str:
+        if declared:
+            return "yes"
+        if vendored:
+            return "vendor"
+        return "optional" if dep in DELIBERATELY_OPTIONAL else "NO"
+
+    rows = []
+    for dep in pyproject_runtime_deps(include_win32=True):
+        if (names := _PKG_NAMES.get(dep)) is None:
             continue
         a, f, d = names
-        cells = (
-            "yes" if a in arch else ("vendor" if a in ARCH_UNAVAILABLE else "NO"),
-            "yes" if d in deb else "NO",
-            "yes" if f in rpm else ("vendor" if dep in FEDORA_VENDORED else "NO"),
-        )
-        print(f"  {dep:16} {cells[0]:10} {cells[1]:10} {cells[2]:10}")
+        rows.append((dep, cell(a in arch, a in ARCH_UNAVAILABLE, dep),
+                     cell(d in deb, dep in DEB_VENDORED, dep),
+                     cell(f in rpm, dep in FEDORA_VENDORED, dep)))
+    return rows
+
+
+def report_matrix() -> None:
+    """Every hard dep x every target that can drift."""
+    rows = {row[0]: row[1:] for row in matrix_rows()}
+    print(f"{'dependency':18} {'arch':10} {'deb':10} {'rpm':10}  (hand-declared targets)")
+    print("-" * 62)
+    for dep in pyproject_runtime_deps(include_win32=True):
+        if dep not in rows:
+            print(f"  {dep:16} {'(win32/unmapped — pip-resolved targets only)'}")
+            continue
+        print(f"  {dep:16} " + " ".join(f"{c:10}" for c in rows[dep]))
     print()
     print("pip-resolved targets (deps come from the wheel — cannot drift):")
     for name in pip_resolved_targets():

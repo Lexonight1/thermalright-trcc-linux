@@ -28,6 +28,9 @@ Requires:       python3-click >= 7.0
 Requires:       python3-typer >= 0.9.0
 Requires:       python3-fastapi >= 0.100
 Requires:       python3-uvicorn >= 0.20
+# FastAPI's form/upload routes need python-multipart.  NOT python3-multipart:
+# on Fedora that is a different library (defnull's), which FastAPI rejects.
+Requires:       python3-python-multipart
 Requires:       python3-prompt-toolkit >= 3.0.0
 Requires:       portaudio
 Requires:       sg3_utils

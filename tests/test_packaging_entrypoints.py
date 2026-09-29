@@ -323,3 +323,33 @@ def test_python_multipart_floor_is_at_or_above_the_import_rename() -> None:
         f"version whose module is named 'multipart' — FastAPI then refuses "
         f"every form route at import"
     )
+
+
+# ── Every hard dependency, declared by every hand-written package ───────
+
+
+def test_every_hard_dependency_is_declared_by_every_package() -> None:
+    """No package may install without a dependency the app needs.
+
+    ``python-multipart`` sat at NO for the rpm and the deb in the checker's
+    matrix, and the Arch package named ``python-multipart`` -- which on Arch
+    is defnull's ``multipart``, a different library FastAPI rejects.  Reproduced
+    2026-09-29 in clean Fedora 43 and Arch containers: ``trcc api`` could not
+    start.  The matrix is fully OFFLINE, yet the whole tool was exempted from
+    the suite as "online", so nothing failed.
+
+    A cell may be ``yes``, ``vendor`` or ``optional`` (each on record, with its
+    reason, in ``dev/tools/check_program_deps.py``); ``NO`` fails.
+    MUTATION CHECK: drop the rpm's ``python3-python-multipart``, or give Arch
+    back ``python-multipart`` → this fails.
+    """
+    from check_program_deps import matrix_rows
+
+    rows = matrix_rows()
+    assert {"python-multipart", "fastapi"} <= {r[0] for r in rows}  # sees them
+
+    missing = [(dep, target) for dep, *cells in rows
+               for target, cell in zip(("arch", "deb", "rpm"), cells, strict=True)
+               if cell == "NO"]
+
+    assert missing == []

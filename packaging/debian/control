@@ -29,6 +29,7 @@ Depends:
  python3-typer (>= 0.9.0),
  python3-fastapi (>= 0.100),
  python3-uvicorn (>= 0.20),
+ python3-python-multipart | python3-multipart (<< 0.1),
  python3-prompt-toolkit (>= 3.0.0),
  libportaudio2,
  libusb-1.0-0,
