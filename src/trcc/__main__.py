@@ -49,8 +49,11 @@ if sys.platform == 'win32':
             except (AttributeError, OSError, ValueError):
                 pass
 
+    # No log line in here, ever: this IS ``emit`` for every handler, the file
+    # handlers included.  One (e078aadd) re-entered the handler holding the
+    # msvcrt lock — ~9 s per record on Windows, v9.10.0 through v9.10.4.
+    # ``tests/test_logging_coverage.py::test_nothing_on_the_record_path_logs``.
     def _safe_stream_emit(self: logging.StreamHandler, record: logging.LogRecord) -> None:
-        log.debug("_safe_stream_emit: record=%s", record)
         try:
             msg = self.format(record)
             stream = self.stream

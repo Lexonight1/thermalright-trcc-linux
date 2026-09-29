@@ -141,38 +141,51 @@ _FORMATTER_BASES = frozenset({
 })
 
 
-def _class_bases_by_method(tree: ast.AST) -> dict[int, list[str]]:
-    """Map each method node to the base-class names of the class defining it."""
-    out: dict[int, list[str]] = {}
+def _record_path(tree: ast.AST) -> dict[int, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Every function ``logging`` runs while handling a record, by node id.
+
+    Two shapes, one qualifier (:data:`_FORMATTER_BASES`):
+
+    * a hook METHOD on a logging class -- ``class H(StreamHandler): def emit``;
+    * a function ATTACHED onto one -- ``logging.StreamHandler.emit = f``.
+
+    The second shape is not hypothetical.  ``__main__._safe_stream_emit`` is
+    attached that way on Windows; a rule that only looked inside class bodies
+    counted it as silent, a bulk pass (``e078aadd``) gave it a log line, and
+    every Windows record then re-entered the handler holding the msvcrt lock:
+    ~9 s per record, measured on the VM, shipped v9.10.0 through v9.10.4.
+    """
+    functions = {n.name: n for n in ast.walk(tree)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    on_path: dict[int, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
-        bases = [ast.unparse(b) for b in node.bases]
-        for child in node.body:
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                out[id(child)] = bases
-    return out
+        if isinstance(node, ast.ClassDef) and any(
+                ast.unparse(b) in _FORMATTER_BASES for b in node.bases):
+            on_path |= {id(c): c for c in node.body
+                        if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and c.name in _FORMATTER_HOOKS}
+        elif (isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+              and (fn := functions.get(node.value.id)) is not None
+              and any(isinstance(t, ast.Attribute)
+                      and t.attr in _FORMATTER_HOOKS
+                      and ast.unparse(t.value) in _FORMATTER_BASES
+                      for t in node.targets)):
+            on_path[id(fn)] = fn
+    return on_path
 
 
-def _exempt(fn: ast.FunctionDef | ast.AsyncFunctionDef,
-            bases: list[str]) -> bool:
+def _exempt(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """True if the rule does not apply to *fn* at all."""
-    if fn.name in _RECURSION_RISK or _is_stub(fn) or _is_abstract(fn):
-        return True
-    return fn.name in _FORMATTER_HOOKS and any(
-        b in _FORMATTER_BASES for b in bases
-    )
+    return fn.name in _RECURSION_RISK or _is_stub(fn) or _is_abstract(fn)
 
 
 def _countable(tree: ast.AST):
-    """Yield every function the rule applies to, with its class context."""
-    by_method = _class_bases_by_method(tree)
+    """Yield every function the rule applies to."""
+    on_path = _record_path(tree)
     for fn in ast.walk(tree):
-        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if _exempt(fn, by_method.get(id(fn), [])):
-            continue
-        yield fn
+        if (isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and id(fn) not in on_path and not _exempt(fn)):
+            yield fn
 
 
 def _receiver_is_logger(value: ast.expr) -> bool:
@@ -229,8 +242,8 @@ def _is_abstract(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     )
 
 
-def silent_functions(root: Path | None = None) -> list[str]:
-    """Every countable function with no log call, as ``path::name``.
+def _trees(root: Path | None):
+    """Yield ``(relative path, AST)`` for every parseable module under *root*.
 
     *root* exists so :func:`gate` can point the tool at a fixture — the same
     seam ``class_census.census`` and ``dup_bodies.clusters`` already take.  A
@@ -238,31 +251,35 @@ def silent_functions(root: Path | None = None) -> list[str]:
     known answer.
     """
     base = root or _SRC
-    out: list[str] = []
     for path in sorted(base.rglob("*.py")):
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            yield path.relative_to(base), ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
-        rel = path.relative_to(base)
-        for fn in _countable(tree):
-            if not _emits_log(fn):
-                out.append(f"{rel}::{fn.name}")
-    return out
+
+
+def silent_functions(root: Path | None = None) -> list[str]:
+    """Every countable function with no log call, as ``path::name``."""
+    return [f"{rel}::{fn.name}" for rel, tree in _trees(root)
+            for fn in _countable(tree) if not _emits_log(fn)]
 
 
 def countable_total(root: Path | None = None) -> int:
     """How many functions the rule applies to at all."""
-    base = root or _SRC
-    total = 0
-    for path in sorted(base.rglob("*.py")):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
-            continue
-        for _fn in _countable(tree):
-            total += 1
-    return total
+    return sum(1 for _rel, tree in _trees(root) for _fn in _countable(tree))
+
+
+def logging_on_the_record_path(root: Path | None = None) -> list[str]:
+    """Functions ``logging`` runs while handling a record that log themselves.
+
+    The exemption only stops the ratchet DEMANDING a log line there; this is
+    the half that forbids one.  Must be empty: a log call on the record path
+    re-enters the handler that is running it — recursion, or on Windows a
+    second ``msvcrt.locking`` on a lock this process holds, which retries for
+    ~9 s and raises.
+    """
+    return [f"{rel}::{fn.name}" for rel, tree in _trees(root)
+            for fn in _record_path(tree).values() if _emits_log(fn)]
 
 
 # =========================================================================
@@ -335,6 +352,21 @@ class LCDHandler(BaseHandler):
 
     def format(self, value):
         return str(value)
+
+
+def _attached_emit(self, record):
+    """Attached onto a logging class from outside: on the record path."""
+    log.debug("re-enters the handler running it")
+
+
+logging.StreamHandler.emit = _attached_emit
+
+
+def _attached_elsewhere(self, frame):
+    return frame
+
+
+Renderer.emit = _attached_elsewhere
 '''
 
 _FIXTURE_B = '''
@@ -353,6 +385,7 @@ def gate() -> int:
         (root / "b.py").write_text(_FIXTURE_B, encoding="utf-8")
         silent = {s.split("::")[-1] for s in silent_functions(root)}
         counted = countable_total(root)
+        logging_on_path = logging_on_the_record_path(root)
 
     checks.append(("a function that logs is NOT silent",
                    "speaks" not in silent))
@@ -376,12 +409,18 @@ def gate() -> int:
                    "format" in silent))
     checks.append(("a function in a SEPARATE module is found",
                    "elsewhere" in silent))
+    checks.append(("a function attached onto a NON-logging class is counted",
+                   "_attached_elsewhere" in silent))
+    checks.append(("a log line on the record path is reported — exactly the "
+                   "attached emit, not the silent Formatter.format",
+                   logging_on_path == ["a.py::_attached_emit"]))
     # Hand-counted from the rule: speaks, silent, via_self_attr,
-    # via_direct_call, looks_like_logging, LCDHandler.format, elsewhere.
-    # The five exempt are the abstract one, two stubs, __repr__, and
-    # Formatter.format.  (First draft said 8 — the gate caught the arithmetic,
+    # via_direct_call, looks_like_logging, LCDHandler.format,
+    # _attached_elsewhere, elsewhere.  The six exempt are the abstract one,
+    # two stubs, __repr__, Formatter.format and _attached_emit.  (A first
+    # draft said 8 before _attached_* existed — the gate caught the arithmetic,
     # which is the same service it did for function_census minutes earlier.)
-    checks.append(("countable_total excludes the exempt", counted == 7))
+    checks.append(("countable_total excludes the exempt", counted == 8))
 
     for label, ok in checks:
         print(f"  {'PASS' if ok else 'FAIL'}  {label}")

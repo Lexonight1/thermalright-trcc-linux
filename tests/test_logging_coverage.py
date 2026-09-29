@@ -212,6 +212,45 @@ def test_the_record_handling_path_is_exempt_on_a_logging_handler() -> None:
         )
 
 
+def test_nothing_on_the_record_path_logs() -> None:
+    """The exemption stops the ratchet DEMANDING a log line there; this forbids one.
+
+    Without this half, the only thing between a record-path function and a log
+    line was the ratchet's silence.  ``__main__._safe_stream_emit`` is attached
+    onto ``logging.StreamHandler.emit`` rather than defined in a handler class,
+    so the class-only exemption missed it, a bulk pass gave it a log line, and
+    every Windows record re-entered the handler holding the msvcrt lock —
+    ~9 s per record measured on the VM, v9.10.0 through v9.10.4.
+    """
+    assert logging_coverage.logging_on_the_record_path() == [], (
+        "a function logging runs WHILE HANDLING a record logs itself — the "
+        "record re-enters the handler running it (recursion, or on Windows a "
+        "second msvcrt lock this process already holds: ~9 s, then EDEADLK). "
+        "Remove the log line."
+    )
+
+
+def test_a_function_attached_onto_a_logging_class_is_on_the_record_path() -> None:
+    """``logging.StreamHandler.emit = f`` puts *f* on the path exactly as a method.
+
+    Attached onto anything else, it is an ordinary function and still counted.
+    """
+    countable = _countable_names('''
+def _safe_stream_emit(self, record):
+    self.stream.write(self.format(record))
+logging.StreamHandler.emit = _safe_stream_emit
+
+def _send(self, frame):
+    self._device.write(frame)
+DeviceSender.emit = _send
+''')
+
+    assert countable == {"_send"}, (
+        "an attached emit must be exempt like a handler method, and the "
+        "qualifier must still be the logging class it is attached onto"
+    )
+
+
 def test_the_exemption_does_not_reach_a_non_logging_handler() -> None:
     """``LCDHandler(BaseHandler)`` is a device handler, not a logging one.
 
