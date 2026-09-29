@@ -87,9 +87,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("EnableAutostart", "gui"): (frozenset({"target"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("EnsureDaemon", "api"): (frozenset({"timeout"}), (
-        "unclassified: measured 2026-09-22, not traced"
-    )),
     ("GetPaths", "api"): (frozenset({"resolution"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
@@ -245,7 +242,9 @@ def test_every_record_is_tagged(pair: tuple[str, str]) -> None:
 #: ``audio=False`` persisted the flag and never released the microphone, so
 #: the bars kept drawing after every face turned them off.  See
 #: ``_sync_audio`` in ``core/commands/device.py``.
-UNCLASSIFIED = 19
+#: 19 -> 18 on 2026-09-29: ``EnsureDaemon`` was DELETED (V5c: every dispatch finds or starts
+#: the App now), not traced — its ('EnsureDaemon', 'api') record went with it.
+UNCLASSIFIED = 18
 
 
 def test_the_unclassified_backlog_does_not_grow() -> None:
@@ -279,7 +278,7 @@ def _unclassified() -> list[tuple[str, str]]:
 _RECORDED = frozenset({
     ("BuildPreview", "api"), ("BuildPreview", "cli"), ("BuildPreview", "gui"),
     ("BuildPreview", "qtgui"), ("EnableAutostart", "gui"),
-    ("EnsureDaemon", "api"), ("GetPaths", "api"), ("ImportTheme", "gui"),
+    ("GetPaths", "api"), ("ImportTheme", "gui"),
     ("ImportTheme", "qtgui"), ("ListCloudThemes", "api"),
     ("ListCloudThemes", "cli"), ("ListMasks", "api"), ("ListMasks", "gui"),
     ("ListMasks", "qtgui"), ("ListThemes", "gui"), ("ListThemes", "qtgui"),

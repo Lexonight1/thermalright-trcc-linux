@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**134 endpoints.**
+**133 endpoints.**
 
 ## Running it
 
@@ -182,7 +182,6 @@ Interactive docs are served at `/docs` while the API is running.
 
 | Endpoint | Returns | Description |
 |---|---|---|
-| `POST /trcc/ensure` | `DaemonKillResponse` | Start the TRCC daemon if it is not already running. |
 | `POST /trcc/kill` | `DaemonKillResponse` | Stop the running TRCC daemon. |
 | `GET /trcc/status` | `DaemonStatusResponse` | Snapshot of the running daemon: pid, uptime, device counts. |
 

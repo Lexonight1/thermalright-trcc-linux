@@ -7,8 +7,6 @@ legacy parity with ``legacy/ui/api/trcc.py``.
 
 Endpoints:
 
-  POST /trcc/ensure  — start the daemon if it is not already running
-                       (idempotent; "is it up? no -- create it")
   POST /trcc/kill    — stop the running daemon (the API process exits
                        cleanly)
   GET  /trcc/status  — pid / uptime / device counts.  Reads directly
@@ -24,7 +22,6 @@ from fastapi import APIRouter, Request
 
 from ...core.commands import (
     DaemonStatus,
-    EnsureDaemon,
     ListDevices,
     StopDaemon,
 )
@@ -48,24 +45,6 @@ def kill(request: Request) -> DaemonKillResponse:
     """
     log.info("api POST /trcc/kill")
     result = request.app.state.trcc.dispatch(StopDaemon())
-    return DaemonKillResponse(ok=result.ok, message=result.message)
-
-
-@router.post("/ensure", response_model=DaemonKillResponse)
-def ensure(request: Request) -> DaemonKillResponse:
-    """Start the TRCC daemon if it is not already running.
-
-    *Is the daemon up?  No -- create it.  Yes -- nothing to do.*  Idempotent,
-    so a caller can issue it unconditionally at start-up rather than probing
-    first and racing between the probe and the spawn.
-
-    Why it matters beyond convenience: the daemon is the one process that owns
-    USB, polls the sensors and drives the render loop.  Every client that
-    talks to it instead of building its own ``App`` is one fewer sensor poll
-    and one fewer render pipeline for the same machine. (unified-UI contract)
-    """
-    log.info("api POST /trcc/ensure")
-    result = request.app.state.trcc.dispatch(EnsureDaemon())
     return DaemonKillResponse(ok=result.ok, message=result.message)
 
 

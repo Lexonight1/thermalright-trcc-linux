@@ -27,7 +27,6 @@ trcc [OPTIONS] COMMAND [ARGS]...
 - [`trcc daemon-status`](#trcc-daemon-status)
 - [`trcc detect`](#trcc-detect)
 - [`trcc doctor`](#trcc-doctor)
-- [`trcc ensure-daemon`](#trcc-ensure-daemon)
 - [`trcc gui`](#trcc-gui)
 - [`trcc kill`](#trcc-kill)
 - [`trcc qtgui`](#trcc-qtgui)
@@ -94,18 +93,6 @@ Alias for `trcc system doctor` — health checks.
 ```bash
 trcc doctor
 ```
-
-### `trcc ensure-daemon`
-
-Start the background daemon if it is not already running. *Is the daemon up? No — create it. Yes — nothing to do.* Idempotent, so a script can run it unconditionally before dispatching rather than probing first and racing between the probe and the spawn. Worth doing before a batch of commands: the daemon owns USB, the sensor poll and the render loop, so every client that talks to it does that work zero times instead of once each.
-
-```bash
-trcc ensure-daemon [OPTIONS]
-```
-
-| Option | Description |
-|---|---|
-| `--timeout` `TIMEOUT` | Seconds to wait for a spawned daemon. |
 
 ### `trcc gui`
 

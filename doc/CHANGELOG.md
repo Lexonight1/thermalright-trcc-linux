@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- **TRCC now runs as one background App that every window and command
+  shares.** Opening `trcc gui`, `trcc qtgui`, the API or any `trcc` command
+  finds the running App or starts it, and all of them control the same panels.
+  Closing a window no longer stops the panels; `trcc kill` does. Set
+  `TRCC_DAEMON=0` to keep the old behaviour, where each process drives the
+  panels itself. Windows is unchanged (Python there has no Unix sockets), and a
+  command run as root never starts or joins the shared App.
+- **`trcc ensure-daemon` is removed.** Every command and window now finds or
+  starts the App on its own, so there is nothing left for it to do.
+- **`POST /trcc/ensure` is removed from the REST API**, for the same reason: the
+  API server is itself a client of the App.
+- **The `EnsureDaemon` command is removed** (for anyone scripting against the
+  Python command bus).
+
 ## v9.10.4
 
 **A correction first: v9.10.3 said two identical coolers were two devices.

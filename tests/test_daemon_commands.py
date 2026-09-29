@@ -16,7 +16,7 @@ from __future__ import annotations
 import time
 
 from trcc.app import App
-from trcc.core.commands import DaemonStatus, EnsureDaemon, StopDaemon
+from trcc.core.commands import DaemonStatus, StopDaemon
 
 
 def test_status_reports_no_daemon_on_a_clean_runtime_dir(
@@ -56,24 +56,30 @@ def test_stopping_a_daemon_that_is_not_running_succeeds(
     assert not result.running
 
 
-def test_ensure_is_a_no_op_when_one_is_already_running(
+def test_finding_a_running_app_spawns_nothing(
     fake_platform, tmp_path, monkeypatch,
 ) -> None:
-    """Idempotence is what lets a UI dispatch it unconditionally at boot."""
+    """``ensure_daemon`` against an App already serving the socket: found,
+    nothing started.  Served here by a process NOT marked as the daemon -- the
+    shape that made ``DaemonStatus`` ask itself back until the timeout, then
+    "replace" the App and spawn a real one (fixed by ``here=True``)."""
     import threading
+    from unittest import mock
 
+    from trcc import daemon
     from trcc.ipc import IPCServer
 
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    app = App(fake_platform)
-    srv = IPCServer(app)
+    srv = IPCServer(App(fake_platform))
     srv.start()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        result = app.dispatch(EnsureDaemon(timeout=5.0))
-        assert result.ok
-        assert result.running
-        assert not result.spawned, "it spawned a SECOND daemon for one machine"
+        with mock.patch.object(daemon.subprocess, "Popen") as popen:
+            started = time.monotonic()
+            assert daemon.ensure_daemon(timeout=5.0)
+            elapsed = time.monotonic() - started
+        popen.assert_not_called()
+        assert elapsed < 4.0, f"took {elapsed:.1f}s — it asked itself back"
     finally:
         srv.shutdown()
 
@@ -87,7 +93,7 @@ def test_every_ui_can_reach_the_daemon_lifecycle(fake_platform) -> None:
     import ast
     import pathlib
 
-    for name in ("DaemonStatus", "EnsureDaemon", "StopDaemon"):
+    for name in ("DaemonStatus", "StopDaemon"):
         assert hasattr(
             __import__("trcc.core.commands", fromlist=[name]), name,
         ), f"{name} is not exported from the Command package"

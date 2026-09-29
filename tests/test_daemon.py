@@ -130,9 +130,9 @@ def test_an_older_running_app_is_replaced(
 
 
 def test_the_daemon_never_asks_itself(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``EnsureDaemon`` over the socket runs INSIDE the daemon.  Asking its own
-    socket would block on the request it is serving, time out, read as "too
-    old to say" -- and the daemon would stop itself.
+    """Anything inside the daemon that reaches ``ensure_daemon`` must not ask
+    its own socket: it would block on the request it is serving, time out,
+    read as "too old to say" -- and the daemon would stop itself.
 
     MUTATION CHECK: drop the ``is_this_process_the_daemon`` guard.
     """

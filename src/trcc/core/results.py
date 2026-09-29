@@ -220,9 +220,6 @@ class DaemonResult(Result):
     on.
     """
     running: bool = False
-    #: True when THIS call started it.  Lets a UI say "started the background
-    #: service" rather than "connected", which are different events to a user.
-    spawned: bool = False
     socket_path: str = ""
     #: The daemon's OWN pid and uptime — 0 when the answering process is not
     #: the daemon, which is honest rather than reporting the caller's.  They

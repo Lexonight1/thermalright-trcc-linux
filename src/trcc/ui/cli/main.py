@@ -11,7 +11,7 @@ from pathlib import Path
 
 import typer
 
-from ...core.commands import DaemonStatus, EnsureDaemon, StopDaemon
+from ...core.commands import DaemonStatus, StopDaemon
 from . import config, device, display, led, system, theme
 from ._ctx import dumps_json, get_app, warn_blanking_panels
 
@@ -349,28 +349,6 @@ def daemon() -> None:
     log.info("cli daemon")
     from ...daemon import run_daemon
     raise typer.Exit(code=run_daemon())
-
-
-@app.command("ensure-daemon")
-def ensure_daemon_cmd(
-    timeout: float = typer.Option(
-        10.0, "--timeout", help="Seconds to wait for a spawned daemon."),
-) -> None:
-    """Start the background daemon if it is not already running.
-
-    *Is the daemon up?  No — create it.  Yes — nothing to do.*  Idempotent, so
-    a script can run it unconditionally before dispatching rather than probing
-    first and racing between the probe and the spawn.
-
-    Worth doing before a batch of commands: the daemon owns USB, the sensor
-    poll and the render loop, so every client that talks to it does that work
-    zero times instead of once each.
-    """
-    log.info("cli ensure-daemon: timeout=%s", timeout)
-    result = get_app().dispatch(EnsureDaemon(timeout=timeout))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
 
 
 @app.command("kill")

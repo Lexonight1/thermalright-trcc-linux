@@ -657,54 +657,6 @@ class DaemonStatus(Query[DaemonResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class EnsureDaemon(Command[DaemonResult]):
-    """Guarantee a daemon is reachable, starting one if it is not.
-
-    The whole shape a UI wants at boot: *is the daemon up?  no -- create it;
-    yes -- talk to it.*  Idempotent, so every UI can dispatch it
-    unconditionally without checking first.
-
-    **This is the lever for CPU.**  Today each UI that starts builds its own
-    ``App``: its own sensor poll, its own render pipeline, its own USB
-    handles.  Two UIs open means two of everything for one machine.  One
-    daemon and N thin clients means the work happens once no matter how many
-    windows, terminals or REST callers are attached.
-
-    Not a ``Platform`` capability -- the daemon is this application's own
-    software, not an OS facility, so it lives on the bus with everything else.
-    """
-    timeout: float = 10.0
-
-    def execute(self, app: App) -> DaemonResult:
-        del app
-        from ...daemon import ensure_daemon
-        from ...ipc import daemon_running, socket_path
-
-        was_running = daemon_running()
-        log.info("EnsureDaemon.execute: running=%s — ensuring (timeout=%.1fs)",
-                 was_running, self.timeout)
-        # Through ensure_daemon even when one answers: it replaces an App
-        # older than this install.
-        started = ensure_daemon(timeout=self.timeout)
-        if was_running and started:
-            return DaemonResult(
-                ok=True, running=True, spawned=False,
-                socket_path=str(socket_path()),
-                message="Daemon already running",
-            )
-        if not started:
-            # A UI that silently carries on in-process here would double the
-            # hardware work and never say so.
-            log.warning("EnsureDaemon.execute: spawn did not come up within "
-                        "%.1fs", self.timeout)
-        return DaemonResult(
-            ok=started, running=started, spawned=started,
-            socket_path=str(socket_path()),
-            message=("Started the background daemon" if started
-                     else f"Daemon did not come up within {self.timeout:.0f}s"),
-        )
-
-@dataclass(frozen=True, slots=True)
 class StopDaemon(Command[DaemonResult]):
     """Ask a running daemon to shut down.
 

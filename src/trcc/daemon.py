@@ -137,8 +137,8 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
     if ipc.daemon_running():
         from .__version__ import __version__
         if is_this_process_the_daemon():
-            # EnsureDaemon dispatched over the socket runs HERE; asking our own
-            # socket would block on the request we are serving.
+            # Reached from inside the daemon: asking our own socket would
+            # block on the request we are serving.
             log.debug("ensure_daemon: this process is the daemon")
             return True
         theirs = _running_version()

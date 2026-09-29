@@ -183,9 +183,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: the GUIs build the App in-process and can HOST the IPC server, so "
         "they are the daemon rather than a client asking after one"
     )),
-    "EnsureDaemon": (frozenset({"cli", "api"}), (
-        "scoped: same: a GUI that hosts the App has no daemon to start"
-    )),
     "StopDaemon": (frozenset({"cli", "api"}), (
         "scoped: same: closing the window ends the process that IS the daemon"
     )),
