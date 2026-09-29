@@ -63,7 +63,6 @@ from ...core.commands import (
     StartScreencastDriver,
     StartSlideshowDriver,
     StopScreencast,
-    StopScreencastDriver,
     StopSlideshowDriver,
     StopVideo,
     TickDisplay,
@@ -603,7 +602,6 @@ def screencast_stop(key: str, request: Request) -> ScreencastResult:
     Idempotent — returns ``ok=True`` even when no session was running.
     """
     log.info("api POST /devices/{key}/display/screencast/stop: key=%s", key)
-    request.app.state.trcc.dispatch(StopScreencastDriver(key=key))
     result = request.app.state.trcc.dispatch(StopScreencast(key=key))
     http_error_if_failed(result)
     return result

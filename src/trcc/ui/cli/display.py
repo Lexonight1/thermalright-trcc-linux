@@ -52,7 +52,6 @@ from ...core.commands import (
     StartScreencastDriver,
     StartSlideshowDriver,
     StopScreencast,
-    StopScreencastDriver,
     StopSlideshowDriver,
     StopVideo,
     TickDisplay,
@@ -1326,7 +1325,6 @@ def screencast(
     while not stopped["flag"]:
         signal.pause()
 
-    app_obj.dispatch(StopScreencastDriver(key=key))
     stop_result = app_obj.dispatch(StopScreencast(key=key))
     typer.echo(stop_result.message)
     if not stop_result.ok:

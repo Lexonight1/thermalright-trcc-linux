@@ -1966,3 +1966,20 @@ def test_a_route_connects_the_device_itself(tmp_path: Path) -> None:
     assert (sleep.status_code, led.status_code) == (200, 200)
     assert app.devices["0402:3922"].is_connected
     assert app.devices["0416:8001"].is_connected
+
+
+def test_screencast_stop_is_one_command(
+        api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``POST /screencast/stop`` sends StopScreencast alone -- which ends the
+    capture driver too.  Every UI used to pair a StopScreencastDriver with it by
+    hand, and the CLI's ``stop-screencast`` did not."""
+    seen: list[str] = []
+    original = _bus_of(api_client).dispatch
+    monkeypatch.setattr(_bus_of(api_client), "dispatch",
+                        lambda cmd: (seen.append(type(cmd).__name__),
+                                     original(cmd))[1])
+
+    response = api_client.post("/devices/0402:3922/display/screencast/stop")
+
+    assert response.status_code == 200, response.text
+    assert seen == ["StopScreencast"]

@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**143 total: 105 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**142 total: 104 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -529,16 +529,6 @@ Drive ``CaptureScreencastFrame`` on a cadence until stopped.
 ### `StopScreencast`
 
 End the screen-capture session for a device.
-
-*Command* → `ScreencastResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-
-### `StopScreencastDriver`
-
-Stop the cadence started by :class:`StartScreencastDriver`.
 
 *Command* → `ScreencastResult`
 

@@ -49,7 +49,6 @@ from ....core.commands import (
     StartScreencast,
     StartScreencastDriver,
     StopScreencast,
-    StopScreencastDriver,
 )
 from ....core.geometry import lock_region_to_panel
 from ....core.models import SCREENCAST_TICK_S
@@ -311,7 +310,6 @@ class ScreencastPanel(BasePanel):
         log.info("_on_stop")
         key = self._casting_key
         if key:
-            self.dispatch(StopScreencastDriver(key=key))
             self.dispatch(StopScreencast(key=key))
         self._casting_key = None
         self._start_btn.setEnabled(True)

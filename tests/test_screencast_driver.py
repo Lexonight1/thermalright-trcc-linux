@@ -21,7 +21,6 @@ from trcc.core.commands import (
     StartScreencast,
     StartScreencastDriver,
     StopScreencast,
-    StopScreencastDriver,
 )
 from trcc.core.models import SCREENCAST_TICK_S, RawFrame
 from trcc.services.screencast_driver import ScreencastDriver, task_key
@@ -232,17 +231,31 @@ def test_each_tick_captures_one_frame(
     assert set(casting.platform.capture.regions) == {(10, 20, 64, 48)}
 
 
-def test_stopping_the_driver_stops_the_capture(
+def test_stopping_the_screencast_stops_its_driver(
     casting: App, scheduler: SyncSendScheduler,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """One Command ends the screencast AND its driver, for every UI.
+
+    The CLI's ``stop-screencast`` sent only StopScreencast; against a daemon the
+    driver kept ticking at 16 Hz, every tick a WARNING in the log file.
+    MUTATION CHECK: drop the task removal from StopScreencast → this fails.
+    """
     assert casting.dispatch(StartScreencastDriver(key=_KEY)).ok
     scheduler.tick(0.0)
-    assert casting.dispatch(StopScreencastDriver(key=_KEY)).ok
+    caplog.set_level(logging.WARNING)
 
+    assert casting.dispatch(StopScreencast(key=_KEY)).ok
     scheduler.tick(1.0)
     scheduler.tick(2.0)
 
+    assert task_key(_KEY) not in scheduler._tasks
     assert len(casting.platform.capture.regions) == 1
+    # The driver's symptom was THIS warning, every tick.  (A re-render after
+    # the stop can time out waiting on the synchronous test scheduler; that
+    # is this harness, not the driver.)
+    assert [r.getMessage() for r in caplog.records
+            if "CaptureScreencastFrame" in r.getMessage()] == []
 
 
 def test_disconnecting_stops_the_driver(
@@ -274,9 +287,9 @@ def test_driver_refuses_a_device_with_no_session(app: App) -> None:
     assert task_key(_KEY) not in app._send_scheduler._tasks   # type: ignore[attr-defined]
 
 
-def test_stopping_a_driver_that_never_ran_is_fine(app: App) -> None:
-    """A client may stop a session it did not drive."""
-    assert app.dispatch(StopScreencastDriver(key=_KEY)).ok
+def test_stopping_a_screencast_nobody_drove_is_fine(app: App) -> None:
+    """A client may stop a session it did not drive (gui drives its own)."""
+    assert app.dispatch(StopScreencast(key=_KEY)).ok
 
 
 def test_stop_screencast_leaves_no_region_for_the_driver(casting: App) -> None:

@@ -1599,6 +1599,21 @@ def test_the_cli_sees_a_daemon_through_its_ui(
     assert daemon_owns_the_panels(CliUI()) is remote
 
 
+def test_stop_screencast_is_one_command(cli_runner: CliRunner, cli_app) -> None:
+    """The same one Command as ``POST /screencast/stop``.  It used to leave the
+    daemon's capture driver ticking -- a WARNING at 16 Hz, forever."""
+    sent: list[str] = []
+    real = cli_app.dispatch
+    cli_app.dispatch = lambda cmd: (sent.append(type(cmd).__name__), real(cmd))[1]
+
+    result = cli_runner.invoke(_app(), ["display", "stop-screencast", "0402:3922"])
+
+    assert result.exit_code == 0, result.output
+    # ListDevices / DeviceState are the exit hook's blanking-panel check.
+    assert [c for c in sent if c not in {"ListDevices", "DeviceState"}] == [
+        "StopScreencast"]
+
+
 def test_the_note_never_builds_an_app_a_command_did_not(capsys) -> None:
     """``trcc --version`` must not open USB just to decide it has nothing to say."""
     from trcc.ui.cli import _ctx

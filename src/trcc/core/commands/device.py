@@ -1584,26 +1584,6 @@ class StartScreencastDriver(Command[ScreencastResult]):
 
 
 @dataclass(frozen=True, slots=True)
-class StopScreencastDriver(Command[ScreencastResult]):
-    """Stop the cadence started by :class:`StartScreencastDriver`.
-
-    Idempotent — removing a task that was never registered is a no-op, which
-    matters because a client may stop a session it did not drive.
-    """
-    key: str
-
-    def execute(self, app: App) -> ScreencastResult:
-        log.info("StopScreencastDriver.execute: key=%s", self.key)
-        from ...services.screencast_driver import task_key
-
-        app.remove_task(task_key(self.key))
-        return ScreencastResult(
-            ok=True, key=self.key,
-            message=f"stopped driving screencast on {self.key}",
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class SendScreencastFrame(Command[ScreencastResult]):
     """Encode one already-captured frame for the device and put it on the wire.
 
@@ -1846,11 +1826,20 @@ class StopScreencast(Command[ScreencastResult]):
     ``ok=True`` so scripts can use it as a defensive cleanup.  Publishes
     :class:`ScreencastStopped`; the GUI ``ScreencastHandler`` reacts by
     stopping its Qt capture timer + tearing down PipeWire/audio plumbing.
+
+    Also stops the capture DRIVER (``StartScreencastDriver``), for whoever
+    started it.  Each UI used to pair a ``StopScreencastDriver`` with this by
+    hand, and the CLI's ``stop-screencast`` did not -- against a daemon that
+    left the driver ticking at 16 Hz, each tick a WARNING ("no screencast
+    session") in the one log ``trcc report`` sends, forever.
     """
     key: str
 
     def execute(self, app: App) -> ScreencastResult:
-        log.info("StopScreencast.execute: key=%s", self.key)
+        log.info("StopScreencast.execute: key=%s — ending the session and "
+                 "its driver", self.key)
+        from ...services.screencast_driver import task_key
+        app.remove_task(task_key(self.key))
         app.settings.set_screencast_region(self.key, None)
         _sync_audio(app)
         app.events.publish(ScreencastStopped(key=self.key))

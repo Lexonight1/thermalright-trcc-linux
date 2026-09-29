@@ -68,7 +68,7 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Turned by a service task, so NO UI dispatches them ────────────────
     "CaptureScreencastFrame": (frozenset(), (
         "scoped: ScreencastDriver turns it; every UI reaches the capability "
-        "through Start/StopScreencastDriver"
+        "through StartScreencastDriver / StopScreencast"
     )),
     "AdvanceSlideshow": (frozenset({"gui"}), (
         "scoped: SlideshowDriver turns it (2026-08-30), and the gui also drives "
