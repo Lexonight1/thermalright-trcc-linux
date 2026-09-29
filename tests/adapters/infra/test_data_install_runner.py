@@ -32,18 +32,24 @@ from trcc.services.data_install import EnsureDataResult
 _SCSI = "0402:3922"          # the panel in #275 (Frozen Warframe)
 _SPECS = [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}]
 
-# Long enough that "did we wait for it?" is unambiguous, short enough that a
-# test which DOES wait still finishes.
-_SLOW_S = 1.0
-# A submit that returns in under this plainly did not run the install.
-_IMMEDIATE_S = 0.2
+#: How long a gated install waits before giving up.  NOT a threshold: it only
+#: bounds a hang.  An install run INLINE blocks its caller until this expires,
+#: so the order below reverses and the test fails — on any machine.
+_HANG_S = 10.0
 
 
-class _SlowService:
-    """An install that takes real time — stands in for a large download."""
+class _GatedService:
+    """An install that cannot finish until the test opens its gate.
 
-    def __init__(self, delay: float = _SLOW_S) -> None:
-        self.delay = delay
+    Stands in for a large download.  It used to ``sleep(1.0)`` while the test
+    asserted the caller returned within 0.2 s — a wall clock with a 2x margin
+    that a slow CI runner tripped (0.43 s on 3.10) with nothing wrong.  Now the
+    test asserts ORDER: the caller returned, THEN the install finished.
+    """
+
+    def __init__(self, order: list[str]) -> None:
+        self.order = order
+        self.gate = threading.Event()
         self.calls: list[tuple[int, int]] = []
         self.variants: list[tuple[str, str]] = []
 
@@ -51,7 +57,8 @@ class _SlowService:
                    mask_variant: str = "") -> EnsureDataResult:
         self.calls.append(resolution)
         self.variants.append((variant, mask_variant))
-        time.sleep(self.delay)
+        self.gate.wait(_HANG_S)
+        self.order.append("install finished")
         return EnsureDataResult(
             resolution=resolution, themes_ok=True, web_ok=True, masks_ok=True,
         )
@@ -95,20 +102,21 @@ def _listen(bus: EventBus) -> tuple[list[DataInstalled], threading.Event]:
 
 
 def test_submit_returns_before_a_slow_install_finishes() -> None:
+    """MUTATION CHECK: run the install inline in ``submit`` → this fails."""
     bus = EventBus()
-    service = _SlowService()
+    order: list[str] = []
+    service = _GatedService(order)
     runner = ThreadDataInstallRunner(service, bus)  # type: ignore[arg-type]
     seen, arrived = _listen(bus)
     try:
-        start = time.perf_counter()
         runner.submit((320, 240))
-        elapsed = time.perf_counter() - start
+        order.append("submit returned")
+        service.gate.set()
 
-        assert elapsed < _IMMEDIATE_S, (
-            f"submit blocked for {elapsed:.2f}s — the install is back on the "
-            "caller's thread, which is exactly the #275 startup hang"
-        )
-        assert arrived.wait(timeout=10.0), "install never completed"
+        assert arrived.wait(timeout=_HANG_S), "install never completed"
+        assert order == ["submit returned", "install finished"], (
+            "submit waited for the install — it is back on the caller's "
+            "thread, which is exactly the #275 startup hang")
         assert seen[0].resolution == (320, 240)
         assert seen[0].ok is True
     finally:
@@ -120,10 +128,13 @@ def test_connect_does_not_wait_for_the_download(tmp_path: Path) -> None:
 
     The GUI splash blocks on connect, so any time spent here is time the
     main window does not exist.
+    MUTATION CHECK: call ``app.data_install.ensure_all`` inline in
+    ``ConnectDevice`` (the #275 shape) → this fails.
     """
     app = App(MockPlatform(_SPECS, tmp_path))
-    service = _SlowService()
-    # BOTH seams point at the slow install: the runner (where the work belongs)
+    order: list[str] = []
+    service = _GatedService(order)
+    # BOTH seams point at the gated install: the runner (where the work belongs)
     # and app.data_install (where it used to happen inline).  Without the
     # second, conftest's noop ``ensure_all`` makes an inline call free and this
     # test passes even with the bug reintroduced -- verified by mutation.
@@ -132,16 +143,16 @@ def test_connect_does_not_wait_for_the_download(tmp_path: Path) -> None:
     app.data_install_runner = ThreadDataInstallRunner(
         service, app.events,                    # type: ignore[arg-type]
     )
+    _seen, arrived = _listen(app.events)
     try:
-        start = time.perf_counter()
         result = app.dispatch(ConnectDevice(key=_SCSI))
-        elapsed = time.perf_counter() - start
+        order.append("connect returned")
+        service.gate.set()
 
         assert result.ok is True
-        assert elapsed < _IMMEDIATE_S, (
-            f"ConnectDevice took {elapsed:.2f}s with a {_SLOW_S}s install — "
-            "connect is waiting on the download again (#275)"
-        )
+        assert arrived.wait(timeout=_HANG_S), "install never completed"
+        assert order == ["connect returned", "install finished"], (
+            "ConnectDevice waited for the download again (#275)")
     finally:
         app.close()
 
