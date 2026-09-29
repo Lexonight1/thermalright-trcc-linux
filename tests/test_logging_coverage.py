@@ -97,7 +97,10 @@ import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: name that left the silent set.
 _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 
-MAX_SILENT = 336
+#: 336 -> 335 on 2026-09-29: ``TRCCApp.is_app_visible`` was DELETED with the
+#: Windows minimise-on-close it existed to read (close now hides to the tray on
+#: every OS).  Diffing ``--list`` across the change: the only name that left.
+MAX_SILENT = 335
 
 
 def test_logging_coverage_only_improves() -> None:

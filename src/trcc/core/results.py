@@ -669,13 +669,6 @@ class PlatformInfoResult(Result):
     # what this Result already is, and the gui asking for it was reaching
     # ``app.platform`` — a crash under TRCC_DAEMON=1 (#249).
     no_devices_hint: str = ""
-    # Does closing the window hide to the tray instead of quitting?  A per-OS
-    # convention (macOS keeps the app running, Linux/Windows follow the tray),
-    # so it is platform identity like every field above — added here for the
-    # same reason ``no_devices_hint`` was, and closing the same reach: BOTH
-    # Qt skins read ``app.platform.minimize_on_close()`` directly, which is an
-    # AttributeError under TRCC_DAEMON=1.
-    minimize_on_close: bool = False
 
 
 # =========================================================================

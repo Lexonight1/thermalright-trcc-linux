@@ -471,16 +471,6 @@ class WindowsPlatform(BaseOS, key="win32"):
             "SCSI LCD panels need no driver."
         )
 
-    # ── GUI behaviour ─────────────────────────────────────────────────
-
-    def minimize_on_close(self) -> bool:
-        """Windows: minimize to taskbar (legacy TRCC parity).
-
-        Linux/macOS/BSD inherit the base False (hide-to-tray).
-        """
-        log.debug("minimize_on_close: called")
-        return True
-
     def configure_stdout(self) -> None:
         """Rewrap stdout / stderr as UTF-8 with ``errors='replace'``.
 

@@ -9,6 +9,8 @@ it as "Failed to execute script".  ``SystemExit`` (a ``BaseException``, not an
 """
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 
@@ -283,3 +285,49 @@ def test_direct_entry_does_not_downgrade_an_explicit_verbosity() -> None:
         "a direct-entry launch re-configured logging and threw away the "
         "user's -vv — stderr fell back to the default rung"
     )
+
+
+# =========================================================================
+# Closing the window hides to the tray — on every OS, every time
+# =========================================================================
+
+
+def test_closing_after_a_taskbar_restore_still_hides_to_the_tray(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Measured on the win11 VM: Windows MINIMISED on close behind a flag only
+    a tray restore cleared, so restore from the taskbar + close again QUIT the
+    app.  The C# oracle's close button just hides (``Form1.cs:784``).  Only
+    the tray's Exit may quit.  The offscreen platform has no tray, so the test
+    says there is one — what is under test is the decision, not Qt's tray."""
+    from PySide6.QtGui import QCloseEvent, QIcon
+    from PySide6.QtWidgets import QSystemTrayIcon, QWidget
+
+    from trcc.ui.qt_tray import TrayController
+
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable",
+                        staticmethod(lambda: True))
+    monkeypatch.setattr(QSystemTrayIcon, "isVisible", lambda self: True)
+
+    quits: list[int] = []
+
+    class Window(QWidget):
+        def closeEvent(self, event: QCloseEvent) -> None:
+            if tray.intercept_close(event):
+                return
+            quits.append(1)
+            event.accept()
+
+    window = Window()
+    qtbot.addWidget(window)
+    tray = TrayController(window, icon=QIcon())
+    tray.install()
+    window.show()
+
+    for _ in range(3):
+        window.close()                  # the user closes the window
+        assert quits == [] and not window.isVisible(), "a close quit the app"
+        window.showNormal()             # ...restores it from the TASKBAR
+
+    tray.request_quit()                 # only Exit quits
+    assert quits == [1]

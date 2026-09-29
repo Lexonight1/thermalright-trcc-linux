@@ -232,9 +232,6 @@ class TRCCApp(QMainWindow):
     def instance(cls) -> TRCCApp | None:
         return cls._instance
 
-    def is_app_visible(self) -> bool:
-        return self.isVisible() and not self._tray.minimized_to_taskbar
-
     def __init__(
         self,
         app: CommandBus,
@@ -249,7 +246,6 @@ class TRCCApp(QMainWindow):
         # ``app.platform`` here raised under TRCC_DAEMON=1, where the window
         # holds an AppProxy that exposes dispatch alone.
         platform_info = app.dispatch(GetPlatformInfo())
-        self._minimize_on_close = platform_info.minimize_on_close
         self._ui_state = UiStateStore(Path(platform_info.config_dir))
         # Observability state for the metrics fan-out — first call
         # after construction logs INFO, subsequent ticks DEBUG unless
@@ -269,13 +265,11 @@ class TRCCApp(QMainWindow):
         # settings.active_gpu) — no GUI-local hook needed.
         self._decorated = decorated
         self._drag_pos: Any = None
-        # System tray (shared TrayController): a window-close hides/minimises to
-        # the tray and keeps the LCD running; Exit quits.  Constructed here so
-        # ``is_app_visible`` can read its state; ``install()`` runs below.
+        # System tray (shared TrayController): a window-close hides to the
+        # tray and keeps the LCD running; Exit quits.  ``install()`` runs below.
         _tray_icon = Path(__file__).resolve().parents[2] / 'assets' / 'icons' / 'trcc.png'
         self._tray = TrayController(
-            self, minimize_on_close=self._minimize_on_close,
-            icon=QIcon(str(_tray_icon)) if _tray_icon.exists() else QIcon(),
+            self, icon=QIcon(str(_tray_icon)) if _tray_icon.exists() else QIcon(),
         )
         self._data_dir = Path(platform_info.user_content_dir)
 
@@ -380,10 +374,9 @@ class TRCCApp(QMainWindow):
         minimized state and brings the window to the front + focus.
         """
         log.info(
-            "_on_raise_requested: visible=%s minimized=%s tray=%s",
-            self.isVisible(), self.isMinimized(), self._tray.minimized_to_taskbar,
+            "_on_raise_requested: visible=%s minimized=%s",
+            self.isVisible(), self.isMinimized(),
         )
-        self._tray.clear_minimized()
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -548,7 +541,7 @@ class TRCCApp(QMainWindow):
 
         info_vis = self.uc_info_module.isVisible()
         sysinfo_vis = self.uc_system_info.isVisible()
-        sidebar_vis = self.is_app_visible() and self.uc_activity_sidebar.isVisible()
+        sidebar_vis = self.isVisible() and self.uc_activity_sidebar.isVisible()
         # INFO on first call after construction + on every visibility
         # state TRANSITION (panel opens or closes).  Per-tick stays
         # DEBUG so 2 s cadence doesn't flood.  Mirrors Phase 0's
@@ -741,7 +734,7 @@ class TRCCApp(QMainWindow):
         log.info("LCD handler added: %s", key)
         return LCDHandler(
             key, widgets, self._make_timer, self._data_dir,
-            is_visible_fn=self.is_app_visible,
+            is_visible_fn=self.isVisible,
             app=self._app, lcd_idx=key,
         )
 

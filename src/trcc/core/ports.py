@@ -2588,13 +2588,6 @@ class Platform(ABC):
     # ── GUI / hardware-probe convenience ──────────────────────────────
 
     @abstractmethod
-    def minimize_on_close(self) -> bool:
-        """True if the GUI should minimize-to-tray on close instead of hiding.
-
-        Windows expects minimize; Linux/macOS/BSD hide-to-tray.
-        """
-
-    @abstractmethod
     def configure_stdout(self) -> None:
         """Adjust the interpreter's stdout/stderr at startup if the OS
         needs it (Windows ↔ cp1252 console).

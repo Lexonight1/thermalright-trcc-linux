@@ -249,12 +249,6 @@ class BaseOS(Platform):
                   "unit=%r)", type(self).__name__, vid, pid, unit)
         return None
 
-    def minimize_on_close(self) -> bool:
-        """Hide-to-tray — Linux / macOS / BSD behaviour.  Windows overrides."""
-        log.debug("%s.minimize_on_close: False (hide to tray)",
-                  type(self).__name__)
-        return False
-
     def configure_stdout(self) -> None:
         """Nothing to do — this OS's console already speaks UTF-8.
 

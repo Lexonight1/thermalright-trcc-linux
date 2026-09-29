@@ -1,7 +1,7 @@
 """Shared system-tray behaviour for the Qt UIs (gui + qtgui).
 
 Both windows want the same tray: an icon with Show/Hide + Exit, click to toggle
-visibility, and a window-close that hides (or minimises) to the tray instead of
+visibility, and a window-close that hides to the tray instead of
 quitting — so the LCD keeps running — unless the user explicitly Exits.  This
 lived only in ``ui/gui/trcc_app.py``; extracted here so both skins share ONE
 implementation.
@@ -13,7 +13,7 @@ quit — the controller only decides *hide-to-tray vs. real-quit*.
 
 Usage::
 
-    self._tray = TrayController(self, minimize_on_close=..., icon=...)
+    self._tray = TrayController(self, icon=...)
     self._tray.install()
 
     def closeEvent(self, event):
@@ -40,23 +40,19 @@ class TrayController:
         self,
         window: QWidget,
         *,
-        minimize_on_close: bool,
         icon: QIcon,
         tooltip: str = "TRCC Linux",
     ) -> None:
         log.debug("__init__: window=%s", window)
         self._window = window
-        self._minimize_on_close = minimize_on_close
         self._icon = icon
         self._tooltip = tooltip
         self._force_quit = False
-        self._minimized_to_taskbar = False
         self._tray: QSystemTrayIcon | None = None
 
     def install(self) -> None:
         """Create the tray icon + Show/Hide + Exit menu, and show it."""
-        log.info("TrayController.install: minimize_on_close=%s",
-                 self._minimize_on_close)
+        log.info("TrayController.install: close hides to the tray")
         self._window.setWindowIcon(self._icon)
         tray = QSystemTrayIcon(self._icon, self._window)
         tray.setToolTip(self._tooltip)
@@ -70,18 +66,6 @@ class TrayController:
         tray.activated.connect(self._on_activated)
         tray.show()
         self._tray = tray
-
-    # ── State ─────────────────────────────────────────────────────────
-
-    @property
-    def minimized_to_taskbar(self) -> bool:
-        log.debug("minimized_to_taskbar")
-        return self._minimized_to_taskbar
-
-    def clear_minimized(self) -> None:
-        """Reset the minimised flag — call when raising from tray/taskbar."""
-        log.debug("clear_minimized")
-        self._minimized_to_taskbar = False
 
     # ── Actions ───────────────────────────────────────────────────────
 
@@ -99,7 +83,6 @@ class TrayController:
 
     def raise_window(self) -> None:
         log.info("TrayController.raise_window")
-        self._minimized_to_taskbar = False
         self._window.show()
         self._window.activateWindow()
         self._window.raise_()
@@ -123,26 +106,24 @@ class TrayController:
 
         Returns ``True`` when the close was diverted (the caller must return
         early); ``False`` when this is a genuine quit (the caller does its own
-        cleanup and accepts the event).  Mirrors gui's original ``closeEvent``.
+        cleanup and accepts the event).
+
+        Every OS hides — the C# oracle's own close button does exactly that
+        (``Form1.cs:784``).  Windows used to MINIMISE instead, behind a flag
+        only a tray restore cleared: restore from the taskbar, close again,
+        and the app quit (measured on the win11 VM).
         """
         if (
             not self._force_quit
             and self._tray is not None
             and self._tray.isSystemTrayAvailable()
             and self._tray.isVisible()
-            and not (self._minimize_on_close and self._minimized_to_taskbar)
         ):
             event.ignore()
-            if self._minimize_on_close:
-                log.info("TrayController.intercept_close: minimise to tray")
-                self._minimized_to_taskbar = True
-                self._window.showMinimized()
-            else:
-                log.info("TrayController.intercept_close: hide to tray")
-                self._window.hide()
+            log.info("TrayController.intercept_close: hide to tray")
+            self._window.hide()
             return True
         log.info("TrayController.intercept_close: real quit")
-        self._minimized_to_taskbar = False
         if self._tray is not None:
             self._tray.hide()
         return False

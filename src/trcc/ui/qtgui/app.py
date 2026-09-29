@@ -197,7 +197,6 @@ class MainWindow(QMainWindow):
             self,
             # The same Query ``_show_platform_info`` uses — asking the bus
             # instead of ``app.platform``, which an AppProxy does not have.
-            minimize_on_close=app.dispatch(GetPlatformInfo()).minimize_on_close,
             icon=icon,
         )
         self._tray.install()

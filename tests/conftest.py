@@ -463,9 +463,6 @@ class FakePlatform(Platform):
     def permission_denied_hint(self) -> str:
         return "fake platform: no USB permission"
 
-    def minimize_on_close(self) -> bool:
-        return False
-
     def configure_stdout(self) -> None:
         """Nothing to rewrap — the test runner's streams are already UTF-8."""
 

@@ -48,9 +48,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 7 | 1 |
-| [`BaseOS`](#baseos) | 12 | 18 | 8 |
+| [`BaseOS`](#baseos) | 12 | 17 | 8 |
 | [`Renderer`](#renderer) | 14 | 8 | 1 |
-| [`Platform`](#platform) | 25 | 0 | 8 |
+| [`Platform`](#platform) | 24 | 0 | 8 |
 | [`ContentStore`](#contentstore) | 26 | 0 | 1 |
 
 ---
@@ -718,7 +718,7 @@ permission_denied_hint() -> str
 setup(dry_run: 'bool' = False) -> int
 ```
 
-**You inherit (18):** `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
+**You inherit (17):** `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
@@ -757,7 +757,7 @@ to_raw_rgb24(surface: 'Any') -> RawFrame
 
 OS abstraction.  DI'd into App at startup.
 
-**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 18 of these 25, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
+**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 17 of these 24, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
 
 **Register by naming your key in the class line:**
 
@@ -765,7 +765,7 @@ OS abstraction.  DI'd into App at startup.
 class MyPlatform(BaseOS, key="myos"):
 ```
 
-**You implement (25):**
+**You implement (24):**
 
 ```python
 autostart() -> AutostartManager
@@ -778,7 +778,6 @@ distro_name() -> str
 hotplug() -> HotplugMonitor
 install_method() -> str
 memory_info() -> list[dict[str, str]]
-minimize_on_close() -> bool
 no_devices_hint() -> str
 open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '') -> Transport
 package_manager() -> str

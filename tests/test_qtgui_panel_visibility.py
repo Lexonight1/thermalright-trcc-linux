@@ -4,8 +4,8 @@ qtgui shows ONE panel at a time in a ``QStackedWidget`` (``app.py:102``), but
 its panels poll on plain ``QTimer``s that nothing ever stops:
 ``stop_periodic_updates`` had **zero callers** and there were no
 ``showEvent`` / ``hideEvent`` hooks anywhere in the skin.  ``ui/gui`` gates its
-work on visibility (``trcc_app.py:342`` — ``isVisible() and not
-minimized_to_taskbar``); qtgui did not gate at all.
+work on visibility (``TRCCApp.isVisible()``, passed to each handler as
+``is_visible_fn``); qtgui did not gate at all.
 
 **Measured 2026-09-19 on the mock fleet, switching only which panel is shown:**
 
