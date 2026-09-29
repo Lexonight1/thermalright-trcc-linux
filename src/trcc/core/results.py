@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
+    IN_PROCESS_ONLY,
     OVERLAY_DEFAULT_CLOCK_SOURCE,
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
@@ -143,8 +144,8 @@ class PreviewResult(Result):
     would be the same render three times.
 
     ``surface`` is the live Renderer surface (``QImage`` under ``QtRenderer``)
-    and is **in-process only** — ``ipc._to_wire`` drops it to ``None`` with a
-    warning, the same contract ``FrameSent.surface`` already has.  A daemon
+    and is **in-process only** — declared so, it never crosses IPC and the far
+    side reads ``None``, the same contract ``FrameSent.surface`` has.  A daemon
     client asks with ``encode="png"`` and reads :attr:`image` instead.
 
     ``ok=True`` with ``surface=None`` means "nothing to preview yet" (no theme
@@ -153,7 +154,7 @@ class PreviewResult(Result):
     a device that isn't attached or a render that raised.
     """
     key: str = ""
-    surface: Any = None
+    surface: Any = field(default=None, metadata=IN_PROCESS_ONLY)
     image: bytes = field(default=b"", repr=False)
     media_type: str = ""
     width: int = 0

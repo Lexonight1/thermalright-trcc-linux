@@ -284,8 +284,11 @@ def test_log_functions_stays_a_deliberate_allowlist() -> None:
     """Pinned so nobody widens it without meaning to."""
     # recurring_failure joined 2026-09-29 (#312): it emits on every call, so the
     # three sensor helpers it serves were never silent — the count went back to
-    # 340, not below it.
-    assert set(logging_coverage._LOG_FUNCTIONS) == {"trace", "recurring_failure"}, (
+    # 340, not below it.  recurring_warning joined the same day for the same
+    # reason: ``ipc._to_wire``'s one log line moved to it, and the count stayed
+    # at 336.
+    assert set(logging_coverage._LOG_FUNCTIONS) == {
+        "trace", "recurring_failure", "recurring_warning"}, (
         "adding a name here lowers the silent count without adding a log line "
         "anywhere — say why in the commit, and lower MAX_SILENT to match")
 

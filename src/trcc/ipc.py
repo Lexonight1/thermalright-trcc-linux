@@ -63,7 +63,8 @@ from .core import results as _results_module
 from .core.commands import Command
 from .core.commands._base import Query
 from .core.events import Event
-from .core.logs import dispatch_origin, per_frame
+from .core.logs import dispatch_origin, per_frame, recurring_warning
+from .core.models import IN_PROCESS_ONLY_KEY
 from .core.results import Result
 
 if TYPE_CHECKING:
@@ -182,17 +183,17 @@ def _to_wire(value: Any) -> Any:
         return {_BYTES_MARKER: base64.b64encode(value).decode("ascii")}
     if dataclasses.is_dataclass(value):
         return {f.name: _to_wire(getattr(value, f.name))
-                for f in dataclasses.fields(value)}
+                for f in dataclasses.fields(value)
+                if not f.metadata.get(IN_PROCESS_ONLY_KEY)}
     if isinstance(value, (list, tuple)):
         return [_to_wire(v) for v in value]
     if isinstance(value, dict):
         return {str(k): _to_wire(v) for k, v in value.items()}
-    # Unserializable at the JSON boundary (e.g. a renderer surface on an
-    # in-process-only event field like FrameSent.surface).  Warn loudly
-    # and drop to None rather than let json.dumps crash the whole call —
-    # the receiver treats None as "not available" (the preview re-renders).
-    log.warning("_to_wire: non-serializable %s dropped to None at IPC "
-                "boundary", type(value).__name__)
+    # Unserializable and NOT declared in-process only (``IN_PROCESS_ONLY``):
+    # a surprise.  Dropped to None rather than let json.dumps crash the call,
+    # and warned once per type -- this runs per frame.
+    recurring_warning(log, "_to_wire: non-serializable %s dropped to None at "
+                      "IPC boundary", type(value).__name__)
     return None
 
 

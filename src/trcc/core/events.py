@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .logs import per_frame
-from .models import HardwareMetrics, TempUnit
+from .models import IN_PROCESS_ONLY, HardwareMetrics, TempUnit
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -55,9 +55,9 @@ class FrameSent(Event):
     # went to the wire instead of re-rendering the whole pipeline a second
     # time (legacy's ``bus.publish('frame', …, Frame(native=img))`` shape).
     # In-process only: None on the pure-bytes send paths (SendFrame /
-    # SendColor / SendImage / keepalive) and would be None across IPC,
-    # where a remote client must fall back to a re-render.
-    surface: Any = None
+    # SendColor / SendImage / keepalive), and never sent across IPC, where a
+    # remote client falls back to a re-render.
+    surface: Any = field(default=None, metadata=IN_PROCESS_ONLY)
     # LED twin of ``surface``: an LED render has no image, it has per-LED
     # colors.  Carried on the SAME event so LED uses the SAME preview path as
     # LCD (one render → FrameSent → handle_frame → preview), not a parallel

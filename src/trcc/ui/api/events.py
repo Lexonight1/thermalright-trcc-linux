@@ -143,7 +143,7 @@ async def events_stream(ws: WebSocket, types: str = "*") -> None:
     configured (loopback dev mode) the parameter is accepted and not
     enforced, the same posture as the HTTP middleware.
 
-    Fields that cannot cross JSON are already dropped by ``_to_wire``:
+    Fields that cannot cross JSON are declared in-process only and never sent:
     ``FrameSent.surface`` and ``PreviewResult.surface`` are live renderer
     surfaces, and a client that wants pixels asks ``/preview/stream``.
     """

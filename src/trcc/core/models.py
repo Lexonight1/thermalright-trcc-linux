@@ -15,6 +15,14 @@ from .logs import per_frame
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
+# ── The IPC boundary ─────────────────────────────────────────────────────
+#: Field metadata for a value that exists only in this process -- a live
+#: renderer surface.  ``ipc`` leaves the field off the wire and the far side
+#: gets its default: declared, so it is not a surprise to warn about.  Warning
+#: per value wrote a WARNING for every frame a daemon client watched.
+IN_PROCESS_ONLY_KEY = "in_process_only"
+IN_PROCESS_ONLY: Mapping[str, bool] = MappingProxyType({IN_PROCESS_ONLY_KEY: True})
+
 # ── Autostart ────────────────────────────────────────────────────────────
 #: The UIs that can start with the computer, each mapped to the extra argv it
 #: needs.  ``gui``/``qtgui`` take ``--resume`` so an autostarted instance comes

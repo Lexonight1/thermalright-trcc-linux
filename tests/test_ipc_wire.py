@@ -47,6 +47,7 @@ from trcc.ipc import (
     COMMAND_TYPES,
     EVENT_TYPES,
     RESULT_TYPES,
+    _to_wire,
     decode_command,
     decode_event,
     decode_result,
@@ -465,17 +466,43 @@ def test_frame_sent_keeps_its_colours_as_tuples() -> None:
     assert rebuilt == event
 
 
-def test_a_live_surface_is_dropped_rather_than_crashing_the_stream() -> None:
-    """``FrameSent.surface`` is a renderer surface — unserializable by design.
-    It must become None, not raise: one un-encodable frame event cannot be
-    allowed to take down the subscription."""
+def test_a_live_surface_stays_in_its_process_quietly(caplog) -> None:
+    """``FrameSent.surface`` is a renderer surface, declared in-process only.
+
+    It is left off the wire (the far side reads the default, None) and nothing
+    is logged: it used to be dropped with a WARNING, one per frame a daemon
+    client watched -- 32 of 34 lines in a 2 s cast.
+
+    MUTATION CHECK: drop the ``IN_PROCESS_ONLY_KEY`` skip from ``_to_wire``.
+    """
+    import logging
+    caplog.set_level(logging.WARNING)
     event = FrameSent(key="0402:3922", bytes_sent=12, surface=object())
 
     envelope = encode_event(event)
     json.dumps(envelope)
 
-    assert envelope["fields"]["surface"] is None
+    assert "surface" not in envelope["fields"]
     assert decode_event(envelope).surface is None
+    assert caplog.records == [], [r.getMessage() for r in caplog.records]
+
+
+def test_an_undeclared_surprise_warns_once_not_per_frame(caplog) -> None:
+    """Anything unserializable that is NOT declared still becomes None and is
+    reported -- once per type, because this runs on every frame."""
+    import logging
+    from dataclasses import dataclass
+
+    @dataclass
+    class Carrier:
+        thing: object
+
+    caplog.set_level(logging.WARNING, logger="trcc.ipc")
+    for _ in range(5):
+        assert _to_wire(Carrier(thing=object())) == {"thing": None}
+
+    warned = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warned) == 1, [r.getMessage() for r in warned]
 
 
 def test_sensors_updated_carries_its_typed_snapshot() -> None:

@@ -49,7 +49,9 @@ _LOG_CALLS = frozenset({
 #: takes the logger first and emits on EVERY call — a traceback the first time,
 #: a per-frame line after (#312).  Three sensor helpers whose only log line it is
 #: counted as silent the day they stopped writing a traceback per poll.
-_LOG_FUNCTIONS = frozenset({"trace", "recurring_failure"})
+#: ``recurring_warning`` is its WARNING twin (2026-09-29): ``ipc._to_wire``
+#: runs per frame and warns once per type, then per-frame.
+_LOG_FUNCTIONS = frozenset({"trace", "recurring_failure", "recurring_warning"})
 
 #: Expressions that actually hold a ``logging.Logger``.  The METHOD NAME ALONE
 #: is not evidence — ``QMessageBox.warning(...)`` opens a modal dialog and
