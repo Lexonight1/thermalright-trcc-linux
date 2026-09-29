@@ -119,15 +119,39 @@ def uptime_s() -> int:
     return seconds
 
 
-def ensure_daemon(*, timeout: float = 10.0) -> bool:
-    """Make sure a daemon is reachable, spawning one if not.
+#: How long an older App gets to shut down when it is replaced: its close
+#: blanks and releases every panel (~5 s for a 10-panel fleet, measured).
+_REPLACE_TIMEOUT_S = 15.0
 
-    Returns True when the socket becomes reachable, False if the spawn
-    didn't come up within *timeout* seconds.  Idempotent — if a daemon
-    is already up this is a fast no-op.
+
+def ensure_daemon(*, timeout: float = 10.0) -> bool:
+    """Make sure a current daemon is reachable, spawning one if not.
+
+    A running daemon OLDER than this install -- or too old to say -- is
+    replaced: stopped, and this install's started, whose session restores what
+    the panels showed.  A NEWER one is kept (never downgrade) and warned
+    about.  Returns True when a daemon is reachable, False if the spawn didn't
+    come up within *timeout* seconds.
     """
     if ipc.daemon_running():
-        return True
+        from .__version__ import __version__
+        if is_this_process_the_daemon():
+            # EnsureDaemon dispatched over the socket runs HERE; asking our own
+            # socket would block on the request we are serving.
+            log.debug("ensure_daemon: this process is the daemon")
+            return True
+        theirs = _running_version()
+        if not _older(theirs, __version__):
+            if theirs != __version__:
+                log.warning("ensure_daemon: the running App is %s, newer than "
+                            "this %s — using it", theirs, __version__)
+            return True
+        log.info("ensure_daemon: the running App is %s, older than this %s — "
+                 "replacing it", theirs or "too old to say", __version__)
+        if not kill_daemon(timeout=_REPLACE_TIMEOUT_S):
+            log.warning("ensure_daemon: the old App did not stop within %.0fs "
+                        "— using it", _REPLACE_TIMEOUT_S)
+            return ipc.daemon_running()
 
     cmd = _daemon_spawn_cmd()
     log.info("Spawning next/ daemon: %s", " ".join(cmd))
@@ -189,14 +213,48 @@ def _install_signal_handlers(server: ipc.IPCServer) -> None:
     signal.signal(signal.SIGINT, _shutdown)
 
 
-def _daemon_spawn_cmd() -> list[str]:
-    """Argv that re-invokes this Python as the daemon entry point.
+def _running_version() -> str:
+    """The running daemon's version, asked over its socket.
 
-    Prefer the installed ``trcc`` console script when on PATH so the
-    daemon picks up the user's installed entry point; otherwise fall back
-    to ``python -m trcc daemon``.
+    ``""`` when it cannot say -- a daemon older than ``DaemonResult.version``
+    sends no such field, and one that does not answer is no better.
     """
-    log.debug("_daemon_spawn_cmd: called")
+    from .core.commands import DaemonStatus
+    from .proxy import AppProxy
+    proxy = AppProxy(timeout=5.0)
+    try:
+        version = proxy.dispatch(DaemonStatus()).version
+    except Exception as e:
+        log.warning("_running_version: the running App did not say (%s: %s)",
+                    type(e).__name__, e)
+        version = ""
+    finally:
+        proxy.close()
+    log.info("_running_version: %s", version or "unknown")
+    return version
+
+
+def _older(theirs: str, ours: str) -> bool:
+    """Whether version *theirs* is older than *ours* ("" is oldest)."""
+    import re
+    older = ([int(n) for n in re.findall(r"\d+", theirs)]
+             < [int(n) for n in re.findall(r"\d+", ours)])
+    log.debug("_older: %r < %r -> %s", theirs, ours, older)
+    return older
+
+
+def _daemon_spawn_cmd() -> list[str]:
+    """Argv that starts a daemon running THIS install's code.
+
+    The running interpreter, not the first ``trcc`` on PATH: with two installs
+    (pipx + a distro package), a UI could start a daemon of the other one --
+    and with a version check, replace it forever.  A frozen build (Windows,
+    macOS) has no ``-m``; it keeps the console-script lookup until the daemon
+    is verified there.
+    """
+    log.debug("_daemon_spawn_cmd: frozen=%s", getattr(sys, "frozen", False))
+    if not getattr(sys, "frozen", False):
+        return [sys.executable, "-m", "trcc", "daemon"]
     from shutil import which
     if (trcc_bin := which("trcc")) is not None:
         return [trcc_bin, "daemon"]

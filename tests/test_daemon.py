@@ -88,3 +88,76 @@ def test_run_daemon_injects_platform_and_renderer(
     assert rc == 0
     assert captured["platform"] is sentinel_platform
     assert captured["renderer"] is sentinel_renderer
+
+
+# ── A UI replaces an older running App (V3) ───────────────────────────────
+
+
+@pytest.mark.parametrize(("theirs", "replaced"), [
+    ("9.0.0", True),        # older: replaced
+    ("", True),             # too old to say (no ``version`` field): replaced
+    ("99.0.0", False),      # newer: kept -- never downgrade
+    (None, False),          # the same version: nothing to do
+])
+def test_an_older_running_app_is_replaced(
+    monkeypatch: pytest.MonkeyPatch, theirs: str | None, replaced: bool,
+) -> None:
+    """A UI that found an older App talked to stale code after an upgrade.
+
+    MUTATION CHECK: make ``_older`` always False.
+    """
+    from trcc.__version__ import __version__
+
+    running = {"up": True}
+    killed: list[float] = []
+    monkeypatch.setattr(ipc, "daemon_running", lambda: running["up"])
+    monkeypatch.setattr(ipc, "wait_for_daemon", lambda timeout: True)
+    monkeypatch.setattr(daemon, "is_this_process_the_daemon", lambda: False)
+    monkeypatch.setattr(daemon, "_running_version",
+                        lambda: __version__ if theirs is None else theirs)
+
+    def kill(*, timeout: float) -> bool:
+        killed.append(timeout)
+        running["up"] = False
+        return True
+    monkeypatch.setattr(daemon, "kill_daemon", kill)
+
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        assert daemon.ensure_daemon(timeout=0.1)
+
+    assert bool(killed) is replaced
+    assert popen.called is replaced
+
+
+def test_the_daemon_never_asks_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``EnsureDaemon`` over the socket runs INSIDE the daemon.  Asking its own
+    socket would block on the request it is serving, time out, read as "too
+    old to say" -- and the daemon would stop itself.
+
+    MUTATION CHECK: drop the ``is_this_process_the_daemon`` guard.
+    """
+    monkeypatch.setattr(ipc, "daemon_running", lambda: True)
+    monkeypatch.setattr(daemon, "is_this_process_the_daemon", lambda: True)
+
+    def must_not_ask() -> str:
+        raise AssertionError("the daemon asked itself its version")
+    monkeypatch.setattr(daemon, "_running_version", must_not_ask)
+    monkeypatch.setattr(daemon, "kill_daemon",
+                        lambda **_: pytest.fail("the daemon stopped itself"))
+
+    assert daemon.ensure_daemon(timeout=0.1)
+
+
+def test_a_ui_starts_a_daemon_of_its_own_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Not the first ``trcc`` on PATH: with two installs, a UI could start the
+    OTHER one's daemon -- and with a version check, replace it forever.
+
+    MUTATION CHECK: prefer ``which("trcc")`` again.
+    """
+    import sys
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/trcc")
+
+    assert daemon._daemon_spawn_cmd() == [sys.executable, "-m", "trcc", "daemon"]

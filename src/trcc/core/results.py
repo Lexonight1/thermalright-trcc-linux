@@ -230,6 +230,10 @@ class DaemonResult(Result):
     #: INSIDE the daemon: ``os.getpid()`` there IS the daemon.
     pid: int = 0
     uptime_seconds: int = 0
+    #: The answering process's ``__version__`` -- the daemon's, over the
+    #: socket.  ``""`` from a daemon older than this field, which a client
+    #: reads as "older" and replaces (``daemon.ensure_daemon``).
+    version: str = ""
 
 
 @dataclass(frozen=True, slots=True)

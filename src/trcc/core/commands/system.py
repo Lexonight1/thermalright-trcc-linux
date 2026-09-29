@@ -633,11 +633,13 @@ class DaemonStatus(Query[DaemonResult]):
         am_daemon = is_this_process_the_daemon()
         pid = os.getpid() if am_daemon else 0
         uptime = uptime_s()
+        from ...__version__ import __version__
         log.info("DaemonStatus.execute: running=%s am_daemon=%s pid=%d "
-                 "uptime=%ds socket=%s", running, am_daemon, pid, uptime, path)
+                 "uptime=%ds socket=%s version=%s", running, am_daemon, pid,
+                 uptime, path, __version__)
         return DaemonResult(
             ok=True, running=running, socket_path=str(path),
-            pid=pid, uptime_seconds=uptime,
+            pid=pid, uptime_seconds=uptime, version=__version__,
             message=("Daemon is running" if running
                      else "No daemon is running"),
         )
@@ -667,16 +669,17 @@ class EnsureDaemon(Command[DaemonResult]):
         from ...ipc import daemon_running, socket_path
 
         was_running = daemon_running()
-        if was_running:
-            log.info("EnsureDaemon.execute: already running — nothing to do")
+        log.info("EnsureDaemon.execute: running=%s — ensuring (timeout=%.1fs)",
+                 was_running, self.timeout)
+        # Through ensure_daemon even when one answers: it replaces an App
+        # older than this install.
+        started = ensure_daemon(timeout=self.timeout)
+        if was_running and started:
             return DaemonResult(
                 ok=True, running=True, spawned=False,
                 socket_path=str(socket_path()),
                 message="Daemon already running",
             )
-        log.info("EnsureDaemon.execute: no daemon — spawning one "
-                 "(timeout=%.1fs)", self.timeout)
-        started = ensure_daemon(timeout=self.timeout)
         if not started:
             # A UI that silently carries on in-process here would double the
             # hardware work and never say so.
