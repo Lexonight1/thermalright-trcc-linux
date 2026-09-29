@@ -40,8 +40,13 @@ import argparse
 import cProfile
 import logging
 import pstats
+import os
 import sys
 from pathlib import Path
+
+# In-process on purpose: this measures the App's work in THIS process, and the
+# production default would hand it a proxy to a daemon doing the work elsewhere.
+os.environ.setdefault("TRCC_DAEMON", "0")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))

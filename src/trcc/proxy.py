@@ -19,12 +19,14 @@ dispatch a Command (``DiscoverDevices`` / ``GetPlatformInfo`` /
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import socket
 import threading
 from collections.abc import Callable
-from typing import TypeVar
+from pathlib import Path
+from typing import TypeVar, cast
 
 from . import ipc
 from .core.commands import Command, DiscoverDevices
@@ -38,6 +40,31 @@ log = logging.getLogger(__name__)
 
 
 R = TypeVar("R", bound=Result)
+
+
+def _with_absolute_paths(cmd: Command[R]) -> Command[R]:
+    """*cmd* with every relative ``Path`` field made absolute HERE, in the caller.
+
+    The App resolves a relative path against ITS working directory, which is
+    not the user's: ``trcc report -o rel.txt`` run elsewhere wrote the file into
+    the App's directory and said "Wrote debug report to rel.txt" (measured).
+    22 of 139 Commands carry a Path field; resolving at the one boundary where
+    caller and App differ covers all of them, and every Command added later.
+    """
+    assert dataclasses.is_dataclass(cmd) and not isinstance(cmd, type)
+    changes: dict[str, object] = {}
+    for f in dataclasses.fields(cmd):
+        value = getattr(cmd, f.name)
+        fixed = (value.absolute() if isinstance(value, Path) and not value.is_absolute()
+                 else type(value)(p.absolute() if isinstance(p, Path)
+                                  and not p.is_absolute() else p for p in value)
+                 if isinstance(value, (tuple, list)) else value)
+        if fixed != value:
+            changes[f.name] = fixed
+    if not changes:
+        return cmd
+    log.info("_with_absolute_paths: %s %s", type(cmd).__name__, changes)
+    return cast("Command[R]", dataclasses.replace(cmd, **changes))
 
 
 class AppProxy(CommandBus):
@@ -81,7 +108,7 @@ class AppProxy(CommandBus):
         failure: a dead daemon already raised ``ConnectionRefusedError``.  Both
         now raise something with a NAME.
         """
-        envelope = ipc.encode_command(cmd)
+        envelope = ipc.encode_command(_with_absolute_paths(cmd))
         # Which UI asked, so the DAEMON's log names the client, not itself.
         # Older daemons ignore the key (``decode_command`` reads only
         # ``command`` + ``kwargs``).

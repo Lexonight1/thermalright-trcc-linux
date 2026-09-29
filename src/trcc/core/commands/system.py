@@ -616,16 +616,28 @@ class DaemonStatus(Query[DaemonResult]):
 
     Cheap: a connect-test against the socket, no dispatch.
     """
+    #: about the App process — through the App it started one to answer.
+    RUNS_IN_CALLER: ClassVar[bool] = True
+    #: Answer for the process that executes this, never ask another.  What
+    #: ``daemon.running_status`` sends: without it, a process serving the
+    #: socket that is not marked as THE daemon (a test, a gui hosting the
+    #: server) asked itself back, recursing until the timeout.
+    here: bool = False
 
     def execute(self, app: App) -> DaemonResult:
         del app
         import os
 
-        from ...daemon import is_this_process_the_daemon, uptime_s
+        from ...daemon import is_this_process_the_daemon, running_status, uptime_s
         from ...ipc import daemon_running, socket_path
 
         running = daemon_running()
         path = socket_path()
+        if (running and not self.here and not is_this_process_the_daemon()
+                and (theirs := running_status()) is not None):
+            log.info("DaemonStatus.execute: the running App answered for "
+                     "itself: pid=%d version=%s", theirs.pid, theirs.version)
+            return theirs
         # "A daemon is running" and "I am it" are different facts.  Reporting
         # the caller's pid for the daemon's sends an ops script to signal the
         # wrong process; 0 says "ask the daemon" and dispatching this over the
@@ -699,22 +711,27 @@ class StopDaemon(Command[DaemonResult]):
     Idempotent: no daemon is a successful outcome, not an error, because the
     caller's intent ("there should be no daemon") is already satisfied.
     """
+    #: about the App process — through the App it started one to stop it.
+    RUNS_IN_CALLER: ClassVar[bool] = True
     timeout: float = 5.0
 
     def execute(self, app: App) -> DaemonResult:
         del app
         from ...daemon import kill_daemon
-        from ...ipc import socket_path
+        from ...ipc import daemon_running, socket_path
 
-        log.info("StopDaemon.execute: timeout=%.1fs", self.timeout)
+        was_running = daemon_running()
+        log.info("StopDaemon.execute: timeout=%.1fs was_running=%s",
+                 self.timeout, was_running)
         stopped = kill_daemon(timeout=self.timeout)
         if not stopped:
             log.warning("StopDaemon.execute: daemon still reachable after "
                         "%.1fs", self.timeout)
         return DaemonResult(
             ok=stopped, running=not stopped, socket_path=str(socket_path()),
-            message=("No daemon is running" if stopped
-                     else f"Daemon still running after {self.timeout:.0f}s"),
+            message=(f"Daemon still running after {self.timeout:.0f}s"
+                     if not stopped else "TRCC App stopped" if was_running
+                     else "No TRCC App was running"),
         )
 
 @dataclass(frozen=True, slots=True)
@@ -724,6 +741,8 @@ class RunSetup(Command[SetupResult]):
     ``dry_run`` prints what would be done and changes nothing.  It was
     ``interactive`` (inverted) until 2026-09-10 — see ``Platform.setup``.
     """
+    #: ``sudo`` needs the user's terminal; the App has none.
+    RUNS_IN_CALLER: ClassVar[bool] = True
     dry_run: bool = False
 
     def execute(self, app: App) -> SetupResult:
@@ -795,6 +814,8 @@ class GenerateDebugReport(Command[DebugReportPayload]):
     the bundle is rendered into memory only — useful for the API to
     return the text body directly.
     """
+    #: reads only the host + the SHARED log, so it works while the App is hung.
+    RUNS_IN_CALLER: ClassVar[bool] = True
     output_path: Path | None = None
     log_tail_lines: int = 1000
 
@@ -952,6 +973,8 @@ class RunUpgrade(Command[UpgradeResult]):
     list per package manager.  ``dry_run=True`` returns the command
     without executing it so UIs can show the user what would run.
     """
+    #: ``sudo`` needs the user's terminal; and it outlasts the 30 s dispatch.
+    RUNS_IN_CALLER: ClassVar[bool] = True
     dry_run: bool = False
 
     def execute(self, app: App) -> UpgradeResult:

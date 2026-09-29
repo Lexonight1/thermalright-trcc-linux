@@ -57,9 +57,14 @@ import compileall
 import re
 import statistics
 import subprocess
+import os
 import sys
 import tempfile
 from pathlib import Path
+
+# In-process on purpose: this measures the App's work in THIS process, and the
+# production default would hand it a proxy to a daemon doing the work elsewhere.
+os.environ.setdefault("TRCC_DAEMON", "0")
 
 _RESULT = re.compile(r"RESULT requested=(\d+) sent=(\d+)")
 

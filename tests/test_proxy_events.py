@@ -226,3 +226,34 @@ def test_close_stops_this_clients_reader_thread(daemon) -> None:
     assert not proxy._stream_open
     assert not reader.is_alive(), "the reader thread outlived close()"
     assert proxy._reader is None
+
+
+def test_a_relative_path_crosses_the_socket_absolute(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    """The App resolves a relative path against ITS directory: ``trcc report -o
+    rel.txt`` run elsewhere landed in the App's (measured).  22 Commands carry
+    a Path; the proxy is the one boundary where caller and App differ."""
+    from pathlib import Path
+
+    from trcc import ipc
+    from trcc.core.commands import GenerateDebugReport, UploadBootAnimation
+    from trcc.core.errors import DaemonUnavailableError
+    from trcc.proxy import AppProxy
+
+    monkeypatch.chdir(tmp_path)
+    sent: list[dict] = []
+
+    def capture(envelope, timeout):
+        sent.append(envelope)
+        raise OSError("captured")
+    monkeypatch.setattr(ipc, "one_shot_request", capture)
+
+    for cmd in (GenerateDebugReport(output_path=Path("rel.txt")),
+                UploadBootAnimation(key="0402:3922", frame_paths=[
+                    Path("a.png"), Path("/abs/b.png")], delays_ds=[5, 5])):
+        with pytest.raises(DaemonUnavailableError):
+            AppProxy().dispatch(cmd)
+
+    assert sent[0]["kwargs"]["output_path"] == str(tmp_path / "rel.txt")
+    assert sent[1]["kwargs"]["frame_paths"] == [str(tmp_path / "a.png"), "/abs/b.png"]

@@ -32,6 +32,15 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 # for the same reason as the line above: before the first import.
 os.environ["_TYPER_FORCE_DISABLE_TERMINAL"] = "1"
 
+# Every test builds its App IN-PROCESS.  Production's default is the shared
+# App (``_boot.trcc`` finds or STARTS a daemon), so a test that reaches the
+# factory without this would spawn a real background process on the host's
+# real USB.  Measured before the default flipped: 2 tests reach it that way
+# (``test_docs_api_consistency``).  Assignment, not ``setdefault``, for the same
+# reason as the offscreen pin: a shell exporting TRCC_DAEMON=1 must not leak
+# in.  Tests of daemon mode set it themselves with ``monkeypatch``.
+os.environ["TRCC_DAEMON"] = "0"
+
 
 import inspect
 import ipaddress
@@ -607,6 +616,13 @@ def _home_is_never_the_real_one(
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    # Re-pinned PER TEST, not only at import: ``DaemonUI.compose`` pops
+    # TRCC_DAEMON (it must, #162), and so does test_ui_bus.  Pinned once, the
+    # first test to run a daemon compose in-process unpinned every later test
+    # in that worker — each then tried to start a real daemon, waited out the
+    # 10 s spawn timeout, and 5 CLI tests failed on the noise (measured when
+    # the default flipped to the shared App).
+    monkeypatch.setenv("TRCC_DAEMON", "0")
 
 
 @pytest.fixture

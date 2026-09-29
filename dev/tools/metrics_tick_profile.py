@@ -37,11 +37,16 @@ thread, so their totals are NOT additive with each other, only within a stage.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
 from collections import defaultdict
 from pathlib import Path
+
+# In-process on purpose: this measures the App's work in THIS process, and the
+# production default would hand it a proxy to a daemon doing the work elsewhere.
+os.environ.setdefault("TRCC_DAEMON", "0")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 

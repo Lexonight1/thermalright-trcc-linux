@@ -161,3 +161,72 @@ def test_a_ui_starts_a_daemon_of_its_own_install(
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/trcc")
 
     assert daemon._daemon_spawn_cmd() == [sys.executable, "-m", "trcc", "daemon"]
+
+
+# =========================================================================
+# The factory: the shared App by default, in-process only for a reason
+# =========================================================================
+
+
+@pytest.mark.parametrize(("env", "af_unix", "euid", "shared"), [
+    (None, True, 1000, True),     # the default — every UI is a remote control
+    ("1", True, 1000, True),
+    ("0", True, 1000, False),     # tests, dev mocks, profilers
+    (None, False, 1000, False),   # CPython on Windows has no AF_UNIX
+    (None, True, 0, False),       # root: the shared App lives in userland
+])
+def test_the_factory_uses_the_shared_app_unless_a_reason_says_otherwise(
+    monkeypatch: pytest.MonkeyPatch,
+    env: str | None, af_unix: bool, euid: int, shared: bool,
+) -> None:
+    """Root matters most: every install guide runs ``sudo trcc system setup``,
+    which dispatches — a shared root App would outlive it, holding USB."""
+    import socket
+
+    from trcc import _boot
+    from trcc.proxy import AppProxy
+
+    if env is None:
+        monkeypatch.delenv(_ENV_FLAG, raising=False)
+    else:
+        monkeypatch.setenv(_ENV_FLAG, env)
+    if not af_unix:
+        monkeypatch.delattr(socket, "AF_UNIX")
+    monkeypatch.setattr(os, "geteuid", lambda: euid)
+    started: list[bool] = []
+    monkeypatch.setattr(daemon, "ensure_daemon",
+                        lambda **kw: started.append(True) or True)
+    monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
+
+    app = _boot.trcc()
+
+    assert isinstance(app, AppProxy) is shared
+    assert bool(started) is shared, "a local App must not start a daemon"
+
+
+def test_a_shared_app_that_will_not_start_falls_back_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc import _boot
+
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(daemon, "ensure_daemon", lambda **kw: False)
+    monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
+
+    assert _boot.trcc() == "LOCAL"
+
+
+def test_the_app_starts_in_root_not_in_the_first_uis_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    """Inherited, the App would hold whatever directory the first UI ran from
+    for its whole life — and resolve anything relative against it."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    monkeypatch.setattr(ipc, "wait_for_daemon", lambda timeout: True)
+
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        daemon.ensure_daemon(timeout=0.1)
+
+    assert popen.call_args.kwargs["cwd"] == "/"

@@ -90,6 +90,9 @@ class UserInterface(CommandBus):
     #: to forget, which is the same reason registration is a class keyword.
     _composed: App | None = None
     _platform: Platform | None = None
+    #: The in-process App for ``RUNS_IN_CALLER`` Commands, when this face's own
+    #: App is the shared one.  Built on first need, never otherwise.
+    _in_caller: App | None = None
 
     #: Whether this UI needs the live session (coldplug + metrics + LED loops).
     #: False for the one-shot CLI, which must not pay for a coldplug it will
@@ -193,7 +196,8 @@ class UserInterface(CommandBus):
         # ``App.dispatch``, which prints ``[api] dispatch …`` — and into the
         # daemon's log too, through ``AppProxy``.
         with dispatch_origin(self.key):
-            return self._app.dispatch(cmd)
+            app = self._caller_app if cmd.RUNS_IN_CALLER else self._app
+            return app.dispatch(cmd)
 
     @property
     def remote(self) -> bool:
@@ -207,6 +211,25 @@ class UserInterface(CommandBus):
         """Observe — the other half of the bus, same object either mode."""
         log.debug("events: %s subscribing to the bus", type(self).__name__)
         return self._app.events
+
+    @property
+    def _caller_app(self) -> App:
+        """The App a ``RUNS_IN_CALLER`` Command runs on: always in THIS process.
+
+        Decided from ``_local_reason`` alone -- composing ``_app`` to ask it
+        would find or START the shared App, the very thing these Commands
+        must not do.  A face whose App is already in-process reuses it.
+        """
+        from .._boot import _build_local_app, _local_reason
+        if _local_reason() is not None:
+            log.debug("_caller_app: %s is in-process already",
+                      type(self).__name__)
+            return self._app
+        if self._in_caller is None:
+            log.info("_caller_app: %s building an in-process App for "
+                     "caller-side Commands", type(self).__name__)
+            self._in_caller = _build_local_app(platform=self._platform)
+        return self._in_caller
 
     @property
     def _app(self) -> App:

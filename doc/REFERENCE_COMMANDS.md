@@ -1183,7 +1183,9 @@ Is the background daemon running, and where is its socket?
 
 *Query* → `DaemonResult`
 
-Takes no arguments.
+| Field | Type | Required |
+|---|---|---|
+| `here` | `bool` | no |
 
 ### `DisableAutostart`
 

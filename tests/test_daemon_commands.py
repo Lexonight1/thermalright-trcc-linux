@@ -183,3 +183,91 @@ def test_uptime_is_zero_rather_than_invented_off_the_daemon(
     monkeypatch.setattr(daemon_mod, "_started_at", time.monotonic() - 42)
     assert daemon_mod.is_this_process_the_daemon()
     assert daemon_mod.uptime_s() >= 42
+
+
+# =========================================================================
+# RUNS_IN_CALLER — never find or START the shared App to run these
+# =========================================================================
+#
+# Measured before this existed, with the shared App the default: through a UI,
+# ``daemon-status`` STARTED an App to answer "running", ``kill`` did the same
+# to stop it, ``sudo`` (setup / upgrade) could not prompt inside the detached
+# App, and ``report`` failed after 37.6 s against a hung one.  The tests above
+# dispatch on an in-process App directly, so none of them could see it.
+
+
+def _shared_by_default(monkeypatch, fake_platform, tmp_path) -> list[str]:
+    """The production default (no TRCC_DAEMON, not root), a recorder on the one
+    function that starts an App, and the in-process App built on FakePlatform."""
+    import os
+
+    from trcc import _boot, daemon
+
+    monkeypatch.delenv("TRCC_DAEMON", raising=False)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    started: list[str] = []
+    monkeypatch.setattr(daemon, "ensure_daemon",
+                        lambda **kw: started.append("ensure_daemon") or False)
+    monkeypatch.setattr(_boot, "_build_local_app",
+                        lambda **kw: App(fake_platform))
+    return started
+
+
+def test_status_and_kill_through_a_ui_never_start_an_app(
+    fake_platform, tmp_path, monkeypatch,
+) -> None:
+    from trcc.core.commands import ListDevices
+    from trcc.ui._uis import CliUI
+
+    started = _shared_by_default(monkeypatch, fake_platform, tmp_path)
+    ui = CliUI()
+
+    status = ui.dispatch(DaemonStatus())
+    stopped = ui.dispatch(StopDaemon(timeout=1.0))
+
+    assert started == [], "asking about the App started one"
+    assert status.message == "No daemon is running"
+    assert stopped.message == "No TRCC App was running"
+    # The control: an ordinary Command through the SAME face does reach for
+    # the shared App -- so an empty recorder above is a fact, not a blind spot.
+    ui.dispatch(ListDevices())
+    assert started == ["ensure_daemon"]
+
+
+def test_stop_says_it_stopped_the_app(fake_platform, monkeypatch) -> None:
+    from trcc import daemon, ipc
+
+    monkeypatch.setattr(ipc, "daemon_running", lambda: True)
+    monkeypatch.setattr(daemon, "kill_daemon", lambda **kw: True)
+
+    assert App(fake_platform).dispatch(StopDaemon()).message == "TRCC App stopped"
+
+
+def test_status_from_the_caller_carries_the_apps_own_answer(
+    fake_platform, monkeypatch,
+) -> None:
+    """Its pid, uptime and version are facts only the App knows; the caller
+    must not report its own in their place."""
+    from trcc import daemon, ipc
+    from trcc.core.results import DaemonResult
+
+    monkeypatch.setattr(ipc, "daemon_running", lambda: True)
+    monkeypatch.setattr(daemon, "is_this_process_the_daemon", lambda: False)
+    monkeypatch.setattr(daemon, "running_status", lambda: DaemonResult(
+        ok=True, running=True, pid=4242, uptime_seconds=77, version="9.9.9"))
+
+    result = App(fake_platform).dispatch(DaemonStatus())
+
+    assert (result.pid, result.uptime_seconds, result.version) == (4242, 77, "9.9.9")
+
+
+def test_exactly_these_commands_run_in_the_caller() -> None:
+    """A new one is a decision to review, not an accident to discover."""
+    import trcc.core.commands as C
+
+    marked = {name for name in dir(C)
+              if getattr(getattr(C, name), "RUNS_IN_CALLER", False) is True}
+
+    assert marked == {"StopDaemon", "DaemonStatus", "RunSetup", "RunUpgrade",
+                      "GenerateDebugReport"}

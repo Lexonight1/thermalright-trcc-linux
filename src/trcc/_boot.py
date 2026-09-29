@@ -1,17 +1,18 @@
 """Canonical App factory — the only constructor UIs call.
 
-Routes to one of two backends based on the environment::
+Every UI is a remote control for ONE App process that owns the panels (see
+"The vision" in CLAUDE.md), so the default finds that App — or starts it —
+and hands back an ``AppProxy``.  A local, in-process ``App`` is built only for
+a stated reason:
 
-    TRCC_DAEMON unset     → real App, in-process
-    TRCC_DAEMON=1         → AppProxy, talks to daemon over Unix socket
-                                 (auto-spawns the daemon if not running)
+    TRCC_DAEMON=0            the caller asked (tests, dev mocks, profilers)
+    no AF_UNIX               CPython has no AF_UNIX on Windows, at any build
+    running as root          the shared App lives in userland: a root App
+                             would outlive ``sudo trcc system setup`` holding USB
+    the App failed to start  degrade to in-process rather than fail the UI
 
-On Windows < build 17063 ``AF_UNIX`` is not available; the factory
-silently falls back to in-process so the env var is safe to leave set
-on every OS.
-
-UIs hold the return value as ``App``; the proxy is structurally
-compatible (same ``dispatch(cmd) -> Result`` surface).
+UIs hold the return value as ``App``; the proxy is structurally compatible
+(the same ``dispatch(cmd) -> Result`` surface).
 """
 from __future__ import annotations
 
@@ -30,6 +31,17 @@ log = logging.getLogger(__name__)
 _ENV_FLAG = "TRCC_DAEMON"
 
 
+def _local_reason() -> str | None:
+    """Why this process must build its own App, or None to use the shared one."""
+    flag = os.environ.get(_ENV_FLAG, "1")
+    reason = (f"{_ENV_FLAG}={flag}" if flag != "1"
+              else "no AF_UNIX on this platform" if not hasattr(socket, "AF_UNIX")
+              else "running as root — the shared App lives in userland"
+              if os.geteuid() == 0 else None)
+    log.debug("_local_reason: %s", reason)
+    return reason
+
+
 def trcc(
     *,
     platform: Platform | None = None,
@@ -37,40 +49,23 @@ def trcc(
 ) -> App:
     """Return the App every UI should call ``dispatch`` on.
 
-    Three modes:
-
-      * ``TRCC_DAEMON=1`` + ``AF_UNIX`` available → ``AppProxy``
-        (auto-spawn daemon on first request).
-      * ``TRCC_DAEMON=1`` on a platform without ``AF_UNIX`` →
-        warn once and fall back to in-process.
-      * Default → in-process ``App`` built from ``platform`` /
-        ``renderer`` (auto-detected when omitted).
-
-    ``platform`` / ``renderer`` are ignored in proxy mode — the daemon
-    owns both.  Pass them when forcing in-process construction (tests,
-    composition roots).
+    The shared App (an ``AppProxy``, the App found or started by
+    ``daemon.ensure_daemon``) unless :func:`_local_reason` names a reason to
+    build one in-process from ``platform`` / ``renderer``.  Those two are
+    ignored for the proxy: the App owns its own.
     """
-    log.info("trcc: env_flag=%s platform=%s renderer=%s",
+    reason = _local_reason()
+    log.info("trcc: %s=%s platform=%s renderer=%s -> %s", _ENV_FLAG,
              os.environ.get(_ENV_FLAG), platform is not None,
-             renderer is not None)
-    if os.environ.get(_ENV_FLAG) == "1":
-        if not hasattr(socket, "AF_UNIX"):
-            log.warning(
-                "%s=1 ignored — AF_UNIX is unavailable on this platform; "
-                "falling back to in-process App", _ENV_FLAG,
-            )
-        else:
-            from . import daemon as _daemon_module
-            from .proxy import AppProxy
+             renderer is not None, reason or "the shared App")
+    if reason is None:
+        from . import daemon as _daemon_module
+        from .proxy import AppProxy
 
-            if not _daemon_module.ensure_daemon():
-                log.warning(
-                    "%s=1 set but daemon failed to start; falling back to "
-                    "in-process App", _ENV_FLAG,
-                )
-            else:
-                return cast("App", AppProxy())
-
+        if _daemon_module.ensure_daemon():
+            return cast("App", AppProxy())
+        log.warning("trcc: the shared App failed to start — falling back to "
+                    "an in-process App")
     return _build_local_app(platform=platform, renderer=renderer)
 
 

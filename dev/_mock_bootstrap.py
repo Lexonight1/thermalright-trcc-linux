@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +35,12 @@ if TYPE_CHECKING:
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / 'src'))
 sys.path.insert(0, str(_REPO_ROOT))
+
+# Dev mocks build their App IN-PROCESS on the scripted fleet.  The production
+# default is the shared App, which would find or START a real daemon on this
+# host's real USB and ignore the mock platform.  ``setdefault``: a harness that
+# means to test daemon mode (smoke_daemon_gui) sets TRCC_DAEMON=1 itself.
+os.environ.setdefault("TRCC_DAEMON", "0")
 
 
 # ─── Dev paths (every mock_* script writes here, not ~/.trcc) ────────────────

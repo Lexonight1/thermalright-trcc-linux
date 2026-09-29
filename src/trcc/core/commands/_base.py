@@ -50,6 +50,14 @@ class Command(ABC, Generic[R_co]):
     #: frame rate while a panel is unplugged; hotplug and the play loops own
     #: reconnecting those.
     USES_DEVICE: ClassVar[bool] = False
+    #: Runs in the CALLER's process, never the shared App's -- for every UI.
+    #: The App is a detached process with no terminal and its own working
+    #: directory, so a Command that is ABOUT that process (stop it, report
+    #: whether it runs), needs the user's terminal (``sudo``), or must work
+    #: while the App is hung (the debug report) cannot run inside it.  Measured
+    #: through the App: ``daemon-status`` STARTED one to answer, ``sudo`` could
+    #: not prompt, and ``report`` failed after 37.6 s against a hung App.
+    RUNS_IN_CALLER: ClassVar[bool] = False
 
     @abstractmethod
     def execute(self, app: App) -> R_co: ...

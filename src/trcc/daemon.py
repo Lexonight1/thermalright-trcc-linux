@@ -30,6 +30,7 @@ from . import ipc
 
 if TYPE_CHECKING:
     from .core.ports import Platform, Renderer
+    from .core.results import DaemonResult
 
 log = logging.getLogger(__name__)
 
@@ -160,9 +161,13 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
     # in-process via run_daemon → _build_local_app regardless (#162).
     from ._boot import _ENV_FLAG
     child_env = {k: v for k, v in os.environ.items() if k != _ENV_FLAG}
+    # cwd="/", as daemons do: otherwise the App inherits whatever directory the
+    # FIRST UI was started from — holding it open (an unmountable USB stick)
+    # and resolving anything relative against it for its whole life.
     subprocess.Popen(
         cmd,
         env=child_env,
+        cwd="/",
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -213,23 +218,34 @@ def _install_signal_handlers(server: ipc.IPCServer) -> None:
     signal.signal(signal.SIGINT, _shutdown)
 
 
-def _running_version() -> str:
-    """The running daemon's version, asked over its socket.
+def running_status() -> DaemonResult | None:
+    """The running App's OWN ``DaemonStatus`` -- executed there, over its socket.
 
-    ``""`` when it cannot say -- a daemon older than ``DaemonResult.version``
-    sends no such field, and one that does not answer is no better.
+    Its pid, uptime and version are facts only that process knows.  None when
+    it does not answer.  Straight through ``AppProxy``, never a UI's
+    ``dispatch``: ``DaemonStatus`` runs in the caller, and this is how the
+    caller gets the App's side.
     """
     from .core.commands import DaemonStatus
     from .proxy import AppProxy
     proxy = AppProxy(timeout=5.0)
     try:
-        version = proxy.dispatch(DaemonStatus()).version
+        status = proxy.dispatch(DaemonStatus(here=True))
     except Exception as e:
-        log.warning("_running_version: the running App did not say (%s: %s)",
+        log.warning("running_status: the running App did not answer (%s: %s)",
                     type(e).__name__, e)
-        version = ""
+        status = None
     finally:
         proxy.close()
+    log.info("running_status: %s", status)
+    return status
+
+
+def _running_version() -> str:
+    """The running daemon's version; ``""`` when it cannot say -- a daemon
+    older than ``DaemonResult.version`` sends no such field."""
+    status = running_status()
+    version = status.version if status is not None else ""
     log.info("_running_version: %s", version or "unknown")
     return version
 
