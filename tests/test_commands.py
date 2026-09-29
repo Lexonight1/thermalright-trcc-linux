@@ -74,6 +74,31 @@ def test_autostart_refresh_never_enables(fake_platform) -> None:
     assert app.dispatch(GetAutostartStatus()).enabled is False
 
 
+def test_an_autostart_choice_is_recorded_and_survives_a_restart(
+    fake_platform,
+) -> None:
+    """Enable AND Disable record that autostart was chosen — read back from
+    disk by a second App, because a write nobody reads back proves nothing."""
+    app = App(fake_platform)
+    assert app.dispatch(GetAutostartStatus()).configured is False
+
+    app.dispatch(DisableAutostart())
+
+    assert App(fake_platform).dispatch(GetAutostartStatus()).configured is True
+
+
+def test_enable_records_the_choice(fake_platform) -> None:
+    app = App(fake_platform)
+    assert app.dispatch(EnableAutostart()).configured is True
+    assert App(fake_platform).dispatch(GetAutostartStatus()).configured is True
+
+
+def test_a_rejected_enable_records_nothing(fake_platform) -> None:
+    app = App(fake_platform)
+    assert app.dispatch(EnableAutostart(target="nonsense")).ok is False
+    assert app.dispatch(GetAutostartStatus()).configured is False
+
+
 def test_autostart_refresh_keeps_an_existing_entry(fake_platform) -> None:
     """The other half: refreshing an installed entry leaves it installed."""
     app = App(fake_platform)

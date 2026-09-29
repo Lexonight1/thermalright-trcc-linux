@@ -628,6 +628,9 @@ class AutostartResult(Result):
     #: empty when autostart is off.  All four UIs ship; reporting only
     #: enabled/disabled cannot say which one login will bring up.
     target: str = ""
+    #: Whether autostart has ever been chosen, on OR off, from any UI.  The
+    #: gui's first-launch enable reads this, so a user's "off" stays off.
+    configured: bool = False
 
 
 @dataclass(frozen=True, slots=True)

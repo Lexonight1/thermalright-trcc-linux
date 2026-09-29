@@ -59,24 +59,24 @@ log = logging.getLogger(__name__)
 
 
 def ensure_autostart(app: CommandBus) -> bool:
-    """Auto-enable autostart on first launch; re-render it otherwise.
+    """Auto-enable autostart ONCE, on first launch; re-render it otherwise.
 
     GUI-launch policy, kept here deliberately rather than pushed into a
     Command: qtgui's system panel reads and toggles autostart but has never
     auto-enabled it, and moving this would hand it a behaviour it does not
     have.  That is a product decision, not a refactor.
 
-    Three dispatches rather than a held ``AutostartManager`` — the port reach
-    it replaced (``app.platform.autostart()``) raised under ``TRCC_DAEMON=1``.
-    ``RefreshAutostart`` is the already-enabled branch: it re-renders an
-    existing entry so a moved install picks up a new ``Exec=`` (#201) without
-    the user toggling autostart off and on again.
+    "First launch" is ``configured``, not ``enabled``: Enable and Disable both
+    record the choice, from any UI.  Keyed on ``enabled`` it turned a user's
+    "off" back on at every gui launch — a cutover regression; legacy and the
+    C# (a ``boot`` marker file, ``Form1.cs:290``) both enable once.
+    ``RefreshAutostart`` re-renders an existing entry so a moved install picks
+    up a new launch line (#201), and never creates one — so "off" stays off.
     """
-    if not app.dispatch(GetAutostartStatus()).enabled:
-        # First launch: install the entry.  Idempotent across re-runs.
-        log.info("ensure_autostart: no entry — enabling on first launch")
+    if not app.dispatch(GetAutostartStatus()).configured:
+        log.info("ensure_autostart: never configured — enabling on first launch")
         return app.dispatch(EnableAutostart()).enabled
-    log.info("ensure_autostart: entry present — refreshing Exec path")
+    log.info("ensure_autostart: configured — refreshing any existing entry")
     return app.dispatch(RefreshAutostart()).enabled
 
 

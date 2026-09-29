@@ -235,6 +235,20 @@ class Settings:
             self._app.active_disk = disk_key
             self._save()
 
+    def mark_autostart_configured(self) -> None:
+        """Record that autostart has been chosen, on or off.  One-way.
+
+        The gui enables autostart on first launch only while this is False.
+        Nothing set it after the cutover, so a user who turned autostart off
+        had it turned back on at every gui launch.
+        """
+        log.info("mark_autostart_configured: was=%s",
+                 self._app.autostart_configured)
+        with self._lock:
+            if not self._app.autostart_configured:
+                self._app.autostart_configured = True
+                self._save()
+
     # ── DeviceSettings surface ────────────────────────────────────────
 
     def for_device(self, key: str) -> DeviceSettings:

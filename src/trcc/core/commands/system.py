@@ -1240,13 +1240,14 @@ class GetAutostartStatus(Query[AutostartResult]):
         enabled = mgr.is_enabled()
         path = _autostart_path(app)
         target = mgr.installed_target() or ""
-        log.debug("GetAutostartStatus.execute: enabled=%s target=%s path=%s",
-                  enabled, target, path)
+        configured = app.settings.app.autostart_configured
+        log.debug("GetAutostartStatus.execute: enabled=%s target=%s path=%s "
+                  "configured=%s", enabled, target, path, configured)
         return AutostartResult(
             ok=True,
             message=(f"enabled ({target})" if enabled and target
                      else "enabled" if enabled else "disabled"),
-            enabled=enabled, path=path, target=target,
+            enabled=enabled, path=path, target=target, configured=configured,
         )
 
 @dataclass(frozen=True, slots=True)
@@ -1272,13 +1273,14 @@ class EnableAutostart(Command[AutostartResult]):
             )
         mgr = app.platform.autostart()
         mgr.enable(self.target)
+        app.settings.mark_autostart_configured()
         installed = mgr.installed_target() or ""
         log.info("EnableAutostart.execute: enabled=%s target=%s at %s",
                  mgr.is_enabled(), installed, _autostart_path(app))
         return AutostartResult(
             ok=True, message=f"autostart enabled ({installed or 'default'})",
             enabled=mgr.is_enabled(), path=_autostart_path(app),
-            target=installed,
+            target=installed, configured=True,
         )
 
 @dataclass(frozen=True, slots=True)
@@ -1288,11 +1290,13 @@ class DisableAutostart(Command[AutostartResult]):
     def execute(self, app: App) -> AutostartResult:
         mgr = app.platform.autostart()
         mgr.disable()
+        app.settings.mark_autostart_configured()
         log.info("DisableAutostart.execute: now enabled=%s at %s",
                  mgr.is_enabled(), _autostart_path(app))
         return AutostartResult(
             ok=True, message="autostart disabled",
             enabled=mgr.is_enabled(), path=_autostart_path(app),
+            configured=True,
         )
 
 @dataclass(frozen=True, slots=True)

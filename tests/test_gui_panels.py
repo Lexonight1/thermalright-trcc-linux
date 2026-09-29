@@ -956,6 +956,37 @@ def test_main_window_does_not_enable_autostart(gui_app: App) -> None:
     )
 
 
+def test_the_gui_enables_autostart_once_and_then_respects_off(
+    fake_platform: FakePlatform,
+) -> None:
+    """The regression: keyed on ``enabled``, the gui turned a user's "off"
+    back on at EVERY launch.  Each launch is a fresh App reading settings
+    back from disk, as a real relaunch is."""
+    from trcc.core.commands import DisableAutostart, GetAutostartStatus
+    from trcc.ui.gui.uc_about import ensure_autostart
+
+    assert ensure_autostart(App(fake_platform)) is True, "first launch enables"
+    App(fake_platform).dispatch(DisableAutostart())          # the user: off
+
+    relaunched = App(fake_platform)
+    assert ensure_autostart(relaunched) is False
+    assert relaunched.dispatch(GetAutostartStatus()).enabled is False, (
+        "the gui turned autostart back on after the user turned it off"
+    )
+
+
+def test_the_gui_respects_a_choice_made_in_another_ui_first(
+    fake_platform: FakePlatform,
+) -> None:
+    """Turned off from the CLI, API or qtgui before the gui ever ran."""
+    from trcc.core.commands import DisableAutostart
+    from trcc.ui.gui.uc_about import ensure_autostart
+
+    App(fake_platform).dispatch(DisableAutostart())
+
+    assert ensure_autostart(App(fake_platform)) is False
+
+
 # =========================================================================
 # GUI launcher entry point
 # =========================================================================
