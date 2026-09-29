@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from ...core.logs import per_frame
+from ...core.logs import per_frame, recurring_failure
 from ...core.ports import CpuSource, GpuSource, MemorySource
 
 log = logging.getLogger(__name__)
@@ -220,8 +220,8 @@ def _first_not_none(sources: Sequence[object], method: str) -> float | None:
         try:
             value = getattr(source, method)()
         except Exception:
-            log.debug("Chain source %r raised on %s()",
-                      type(source).__name__, method, exc_info=True)
+            recurring_failure(log, "Chain source %r raised on %s()",
+                      type(source).__name__, method)
             continue
         if value is not None:
             return value

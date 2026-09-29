@@ -21,7 +21,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from ...core.logs import per_frame
+from ...core.logs import per_frame, recurring_failure
 from ...core.ports import CpuSource
 
 log = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ class WmiAcpiCpu(CpuSource):
         try:
             zones = list(handle.MSAcpi_ThermalZoneTemperature())
         except Exception:
-            log.debug("MSAcpi temp read failed", exc_info=True)
+            recurring_failure(log, "MSAcpi temp read failed")
             return None
         hottest: float | None = None
         for zone in zones:

@@ -984,9 +984,15 @@ def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
     import shutil
     if hasattr(os, 'geteuid') and os.geteuid() == 0:
         return [binary, *args]
-    full_path = shutil.which(binary)
-    if full_path and Path(_POLKIT_POLICY).is_file() and shutil.which('pkexec'):
-        return ['pkexec', full_path, *args]
+    found = shutil.which(binary)
+    if found and Path(_POLKIT_POLICY).is_file() and shutil.which('pkexec'):
+        # The RESOLVED path: pkexec matches the policy's exec.path by exact
+        # string, and only newer pkexec resolves symlinks itself.  Resolving
+        # here means old and new pkexec both see the canonical path, which is
+        # what the policy declares (/usr/bin/ and /usr/sbin/ -- #312).
+        resolved = str(Path(found).resolve())
+        log.debug("_privileged_cmd: pkexec %s (found %s)", resolved, found)
+        return ['pkexec', resolved, *args]
     return [binary, *args]
 
 

@@ -246,3 +246,34 @@ def current_origin() -> str:
     origin = _ORIGIN.get()
     frame_log.debug("current_origin: %s", origin)
     return origin
+
+
+# ── A failure that repeats every poll ────────────────────────────────────
+#
+# A sensor read that fails once fails on every poll after it — a pynvml build
+# without ``nvmlDeviceGetFanSpeedRPM`` raises the same AttributeError at 1 Hz
+# per GPU.  Logging its traceback each time wrote ~6 lines per GPU per second
+# into the one file ``trcc report`` sends, rotating the diagnosis out of it
+# within hours (#312).  The traceback is logged ONCE; repeats go to the
+# per-frame family, silent unless ``-v``.
+
+_REPORTED: set[str] = set()
+_REPEATS: dict[str, logging.Logger] = {}
+
+
+def recurring_failure(log: logging.Logger, msg: str, *args: object) -> None:
+    """Log a per-poll failure: its traceback once, then per-frame only.
+
+    Call from the ``except`` block.  The formatted message is the key, so
+    ``nvmlDeviceGetFanSpeedRPM(0) failed`` and ``…(1) failed`` are reported
+    once each — one per function per GPU, which is what a report needs.
+    """
+    key = f"{log.name}:{msg % args if args else msg}"
+    if key in _REPORTED:
+        frame_log = _REPEATS.get(log.name) or _REPEATS.setdefault(
+            log.name, per_frame(log.name))
+        frame_log.debug(msg, *args)
+        return
+    _REPORTED.add(key)
+    log.debug(msg + " — traceback logged once; repeats go to the per-frame log",
+              *args, exc_info=True)

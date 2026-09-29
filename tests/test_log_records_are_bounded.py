@@ -51,6 +51,7 @@ and parameter.  Confirmed to fail before this file was committed.
 from __future__ import annotations
 
 import ast
+import logging
 from pathlib import Path
 
 import pytest
@@ -255,3 +256,59 @@ def test_no_dataclass_renders_a_buffer_into_its_repr() -> None:
         "``field(repr=False)`` and log ``Blob(x)`` where the bytes are wanted."
         "\n  " + "\n  ".join(f"{f}:{c}.{fld}" for f, c, fld in bad)
     )
+
+
+# ── A failure that repeats every poll logs its traceback ONCE (#312) ─────
+#
+# A pynvml build without ``nvmlDeviceGetFanSpeedRPM`` raised on every poll,
+# and each raise wrote a full traceback per GPU into the file — ~6 lines per
+# GPU per second, rotating the report away.  Readings still return None; only
+# the logging changed.
+
+
+def test_a_per_poll_failure_writes_its_traceback_once(
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    """MUTATION CHECK: give ``recurring_failure`` back ``exc_info=True`` on
+    every call, or route the nvml site back to ``log.debug(..., exc_info=True)``
+    → this fails."""
+    from types import SimpleNamespace
+
+    from trcc.adapters.sensors import nvml
+    from trcc.core import logs
+
+    monkeypatch.setattr(logs, "_REPORTED", set())
+    monkeypatch.setattr(nvml, "pynvml", SimpleNamespace())  # no FanSpeedRPM
+    gpu = nvml.NvidiaGpu(0, handle=object())
+    caplog.set_level(logging.DEBUG)
+
+    readings = [gpu.fan_rpm() for _ in range(5)]
+
+    assert readings == [None] * 5
+    tracebacks = [r for r in caplog.records if r.exc_info]
+    assert [r.getMessage() for r in tracebacks] == [
+        "nvmlDeviceGetFanSpeedRPM(0) failed — traceback logged once; repeats "
+        "go to the per-frame log"]
+
+
+#: Tracebacks the sensor adapters may still write — every one a ONE-SHOT probe
+#: (enumeration, a library load, a namespace check), where one traceback is the
+#: diagnosis.  A per-poll read must use ``core.logs.recurring_failure``.
+KNOWN_SENSOR_TRACEBACKS: dict[str, int] = {
+    "_lhm.py": 6, "_macos_hid.py": 2, "_msacpi.py": 1, "_powermetrics.py": 1,
+    "_smc.py": 1, "_sysctl.py": 1, "nvml.py": 3,
+}
+
+
+def test_sensor_tracebacks_are_the_known_one_shot_probes() -> None:
+    """Exact both ways: a new traceback in a sensor adapter needs its reason
+    (is it per-poll?), and one that goes away must leave the ledger."""
+    sensors = Path(__file__).resolve().parents[1] / "src/trcc/adapters/sensors"
+    found = {
+        path.name: n for path in sorted(sensors.glob("*.py"))
+        if (n := sum(1 for node in ast.walk(ast.parse(path.read_text(
+            encoding="utf-8")))
+            if isinstance(node, ast.keyword) and node.arg == "exc_info"
+            and isinstance(node.value, ast.Constant) and node.value.value))
+    }
+    assert found == KNOWN_SENSOR_TRACEBACKS

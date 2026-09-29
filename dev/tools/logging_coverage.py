@@ -44,7 +44,12 @@ _LOG_CALLS = frozenset({
 #: exists.  Without this set a function whose only log line is a TRACE line
 #: counted as SILENT — the ratchet demanding a log line from a function that
 #: already had one, and the only fix being to stop using the helper.
-_LOG_FUNCTIONS = frozenset({"trace"})
+#:
+#: ``core.logs.recurring_failure`` is the same shape for a per-poll failure: it
+#: takes the logger first and emits on EVERY call — a traceback the first time,
+#: a per-frame line after (#312).  Three sensor helpers whose only log line it is
+#: counted as silent the day they stopped writing a traceback per poll.
+_LOG_FUNCTIONS = frozenset({"trace", "recurring_failure"})
 
 #: Expressions that actually hold a ``logging.Logger``.  The METHOD NAME ALONE
 #: is not evidence — ``QMessageBox.warning(...)`` opens a modal dialog and

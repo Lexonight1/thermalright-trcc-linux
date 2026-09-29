@@ -14,7 +14,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from ...core.logs import per_frame
+from ...core.logs import per_frame, recurring_failure
 from ...core.ports import GpuSource
 
 log = logging.getLogger(__name__)
@@ -242,7 +242,7 @@ class NvidiaGpu(GpuSource):
             return float(pynvml.nvmlDeviceGetTemperature(
                 self._handle, pynvml.NVML_TEMPERATURE_GPU))
         except Exception:
-            log.debug("nvmlDeviceGetTemperature(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetTemperature(%d) failed", self._index)
             return None
 
     def usage(self) -> float | None:
@@ -252,7 +252,7 @@ class NvidiaGpu(GpuSource):
         try:
             return float(pynvml.nvmlDeviceGetUtilizationRates(self._handle).gpu)
         except Exception:
-            log.debug("nvmlDeviceGetUtilizationRates(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetUtilizationRates(%d) failed", self._index)
             return None
 
     def clock(self) -> float | None:
@@ -263,7 +263,7 @@ class NvidiaGpu(GpuSource):
             return float(pynvml.nvmlDeviceGetClockInfo(
                 self._handle, pynvml.NVML_CLOCK_GRAPHICS))
         except Exception:
-            log.debug("nvmlDeviceGetClockInfo(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetClockInfo(%d) failed", self._index)
             return None
 
     def power(self) -> float | None:
@@ -273,7 +273,7 @@ class NvidiaGpu(GpuSource):
         try:
             return pynvml.nvmlDeviceGetPowerUsage(self._handle) / 1000.0
         except Exception:
-            log.debug("nvmlDeviceGetPowerUsage(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetPowerUsage(%d) failed", self._index)
             return None
 
     def fan(self) -> float | None:
@@ -283,7 +283,7 @@ class NvidiaGpu(GpuSource):
         try:
             return float(pynvml.nvmlDeviceGetFanSpeed(self._handle))
         except Exception:
-            log.debug("nvmlDeviceGetFanSpeed(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetFanSpeed(%d) failed", self._index)
             return None
 
     def fan_rpm(self) -> float | None:
@@ -295,7 +295,7 @@ class NvidiaGpu(GpuSource):
         try:
             return float(pynvml.nvmlDeviceGetFanSpeedRPM(self._handle))
         except Exception:
-            log.debug("nvmlDeviceGetFanSpeedRPM(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetFanSpeedRPM(%d) failed", self._index)
             return None
 
     def vram_used(self) -> float | None:
@@ -305,7 +305,7 @@ class NvidiaGpu(GpuSource):
         try:
             return float(pynvml.nvmlDeviceGetMemoryInfo(self._handle).used) / (1024 * 1024)
         except Exception:
-            log.debug("nvmlDeviceGetMemoryInfo.used(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetMemoryInfo.used(%d) failed", self._index)
             return None
 
     def vram_total(self) -> float | None:
@@ -315,5 +315,5 @@ class NvidiaGpu(GpuSource):
         try:
             return float(pynvml.nvmlDeviceGetMemoryInfo(self._handle).total) / (1024 * 1024)
         except Exception:
-            log.debug("nvmlDeviceGetMemoryInfo.total(%d) failed", self._index, exc_info=True)
+            recurring_failure(log, "nvmlDeviceGetMemoryInfo.total(%d) failed", self._index)
             return None

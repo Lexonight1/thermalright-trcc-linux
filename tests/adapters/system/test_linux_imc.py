@@ -1,7 +1,12 @@
-"""Live IMC timing reader + override wiring in the Linux platform adapter."""
+"""Live IMC timing reader + override wiring in the Linux platform adapter,
+and the privileged-helper path every root-only probe goes through (#312)."""
 from __future__ import annotations
 
+import ast
+import shutil
 import subprocess
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import pytest
 
@@ -137,3 +142,67 @@ def test_enrich_noop_when_no_live(monkeypatch: pytest.MonkeyPatch) -> None:
     linux._enrich_with_live_imc_timings(slots)
 
     assert slots == [{"tcas": "40", "trfc": "709"}]
+
+
+# ── Privileged helpers and the polkit policy they need (#312) ────────────
+
+_POLICY = (Path(linux.__file__).resolve().parents[2] / "assets"
+           / "com.github.lexonight1.trcc.policy")
+_EXEC_PATH = "org.freedesktop.policykit.exec.path"
+
+
+def _policy_exec_paths() -> set[str]:
+    """Every program the shipped policy lets pkexec run password-free."""
+    return {a.text or "" for a in ET.parse(_POLICY).getroot().iter("annotate")
+            if a.get("key") == _EXEC_PATH}
+
+
+def _privileged_tools() -> set[str]:
+    """Every tool the adapter hands ``_privileged_cmd`` — derived, not listed."""
+    tree = ast.parse(Path(linux.__file__).read_text(encoding="utf-8"))
+    return {call.args[0].value for call in ast.walk(tree)
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+            and call.func.id == "_privileged_cmd" and call.args
+            and isinstance(call.args[0], ast.Constant)}
+
+
+def test_every_privileged_tool_is_declared_at_both_homes() -> None:
+    """pkexec needs an exact match between the tool's resolved path and an
+    ``exec.path`` — and that path is /usr/sbin/ on Debian and Ubuntu but
+    /usr/bin/ where /usr/sbin is a symlink (Arch, Fedora 42+).  The policy
+    named /usr/bin alone, so every Debian/Ubuntu launch asked for a password.
+    MUTATION CHECK: drop a ``-sbin`` action from the policy → this fails.
+    """
+    tools = _privileged_tools()
+    assert {"dmidecode", "smartctl"} <= tools     # the instrument sees them
+    paths = _policy_exec_paths()
+
+    missing = {f"{home}/{tool}" for tool in tools
+               for home in ("/usr/bin", "/usr/sbin")} - paths
+
+    assert missing == set()
+    assert linux._IMC_HELPER in paths             # called by absolute path
+
+
+def test_pkexec_is_handed_the_resolved_path(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Older pkexec compares the raw path it is given (no realpath), so a
+    PATH hit through a symlink (``/sbin`` -> ``/usr/sbin``) matched nothing.
+    MUTATION CHECK: pass ``shutil.which``'s result unresolved → this fails.
+    """
+    real = tmp_path / "usr" / "sbin" / "dmidecode"
+    real.parent.mkdir(parents=True)
+    real.write_text("")
+    link = tmp_path / "sbin" / "dmidecode"
+    link.parent.mkdir()
+    link.symlink_to(real)
+    policy = tmp_path / "trcc.policy"
+    policy.write_text("")
+    monkeypatch.setattr(linux.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(linux, "_POLKIT_POLICY", str(policy))
+    monkeypatch.setattr(shutil, "which", lambda name: str(
+        link if name == "dmidecode" else tmp_path / "pkexec"))
+
+    cmd = linux._privileged_cmd("dmidecode", ["-t", "memory"])
+
+    assert cmd == ["pkexec", str(real.resolve()), "-t", "memory"]

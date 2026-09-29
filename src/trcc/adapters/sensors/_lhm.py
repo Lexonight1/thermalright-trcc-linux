@@ -32,7 +32,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ...core.logs import per_frame
+from ...core.logs import per_frame, recurring_failure
 from ...core.ports import CpuSource, DiskSource, GpuSource
 
 log = logging.getLogger(__name__)
@@ -416,8 +416,8 @@ def _sensors_for(ns: Any, hw_row: Any, sensor_type: str) -> list[Any]:
         return [s for s in ns.Sensor(Parent=hw_row.Identifier)
                 if str(s.SensorType) == sensor_type]
     except Exception:
-        log.debug("LHM sensor query failed for %s/%s",
-                  hw_row.Identifier, sensor_type, exc_info=True)
+        recurring_failure(log, "LHM sensor query failed for %s/%s",
+                  hw_row.Identifier, sensor_type)
         return []
 
 

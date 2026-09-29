@@ -282,7 +282,10 @@ def test_an_arbitrary_bare_call_is_not_mistaken_for_logging() -> None:
 
 def test_log_functions_stays_a_deliberate_allowlist() -> None:
     """Pinned so nobody widens it without meaning to."""
-    assert set(logging_coverage._LOG_FUNCTIONS) == {"trace"}, (
+    # recurring_failure joined 2026-09-29 (#312): it emits on every call, so the
+    # three sensor helpers it serves were never silent — the count went back to
+    # 340, not below it.
+    assert set(logging_coverage._LOG_FUNCTIONS) == {"trace", "recurring_failure"}, (
         "adding a name here lowers the silent count without adding a log line "
         "anywhere — say why in the commit, and lower MAX_SILENT to match")
 

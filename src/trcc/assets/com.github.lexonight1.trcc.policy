@@ -6,6 +6,14 @@
   <vendor>TRCC Linux</vendor>
   <vendor_url>https://github.com/Lexonight1/thermalright-trcc-linux</vendor_url>
 
+  <!-- Each tool is declared at BOTH canonical homes.  pkexec matches
+       exec.path by exact string against the program's resolved path, and
+       where the tool lives depends on the distro: /usr/sbin/ on Debian and
+       Ubuntu (a real directory), /usr/bin/ where /usr/sbin is a symlink to
+       it (Arch, Fedora 42+).  With /usr/bin alone, every Debian/Ubuntu
+       launch asked for a password (#312).  TRCC resolves the path itself
+       before calling pkexec, so older pkexec (no realpath) matches too. -->
+
   <action id="com.github.lexonight1.trcc.dmidecode">
     <description>Read hardware information (SMBIOS/DMI)</description>
     <message>TRCC needs to read memory and motherboard information.</message>
@@ -18,6 +26,18 @@
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
+  <action id="com.github.lexonight1.trcc.dmidecode-sbin">
+    <description>Read hardware information (SMBIOS/DMI)</description>
+    <message>TRCC needs to read memory and motherboard information.</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/dmidecode</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
   <action id="com.github.lexonight1.trcc.smartctl">
     <description>Read disk health information (SMART)</description>
     <message>TRCC needs to read disk health status.</message>
@@ -27,6 +47,18 @@
       <allow_active>yes</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/smartctl</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="com.github.lexonight1.trcc.smartctl-sbin">
+    <description>Read disk health information (SMART)</description>
+    <message>TRCC needs to read disk health status.</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/smartctl</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
