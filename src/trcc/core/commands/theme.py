@@ -1711,6 +1711,22 @@ def _fallback_theme(app: App, key: str) -> Path | None:
     return Path(first.path) if first else None
 
 
+def _show_saved_theme(app: App, key: str) -> None:
+    """Load *key*'s saved theme, else the fallback (Theme1) — no background.
+
+    The THEME half of :class:`RestoreDeviceState`, shared with the background
+    Commands (``PlayVideo`` / ``SetBackground``), which put their own media on
+    top.  Replaying the saved background here too would decode the old video
+    just before the new one replaced it.
+    """
+    log.info("_show_saved_theme: %s", key)
+    _restore_saved_theme(app, key)
+    if app.active_themes.get(key) is None:
+        fallback = _fallback_theme(app, key)
+        if fallback is not None:
+            app.dispatch(LoadTheme(key=key, path=fallback))
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreDeviceState(Command[ThemeResult]):
     """Put *key*'s saved display back on the panel — the one restore Command.
@@ -1745,11 +1761,7 @@ class RestoreDeviceState(Command[ThemeResult]):
             log.warning("RestoreDeviceState: %s — %s", self.key, e)
             return ThemeResult(ok=False, key=self.key, message=str(e))
 
-        _restore_saved_theme(app, self.key)
-        if app.active_themes.get(self.key) is None:
-            fallback = _fallback_theme(app, self.key)
-            if fallback is not None:
-                app.dispatch(LoadTheme(key=self.key, path=fallback))
+        _show_saved_theme(app, self.key)
 
         theme = app.active_themes.get(self.key)
         if theme is None:

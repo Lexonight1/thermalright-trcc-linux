@@ -50,7 +50,7 @@ from trcc.services.media import (
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
 
-from .conftest import FakePaths, FakePlatform
+from .conftest import FakePaths, FakePlatform, show_a_theme
 
 
 def _encoded_frame(value: int, w: int = 320, h: int = 320) -> bytes:
@@ -99,7 +99,17 @@ def connected_app(app: App, monkeypatch: pytest.MonkeyPatch) -> App:
     platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
     result = app.dispatch(ConnectDevice(key=_KEY))
     assert result.ok, result.message
+    show_a_theme(app, _KEY)
     return app
+
+
+@pytest.fixture
+def ticking_app(connected_app: App) -> App:
+    """A connected panel with a theme AND a renderer -- a real tick renders."""
+    from trcc.adapters.render.qt import QtRenderer
+
+    connected_app.set_renderer(QtRenderer())
+    return connected_app
 
 
 @pytest.fixture
@@ -907,17 +917,17 @@ def _playback_for(app: App, video_file: Path) -> Playback:
 
 
 def test_tick_display_advances_the_cursor(
-    connected_app: App, stub_media: Any, video_file: Path,
+    ticking_app: App, stub_media: Any, video_file: Path,
 ) -> None:
     """The animation tick moves the cursor — this is what makes video play.
 
     Before this Command the advance lived in three UIs (GUI timer, CLI play
     loop, REST tick route); qtgui had no copy and so showed frame 0 forever.
     """
-    playback = _playback_for(connected_app, video_file)
+    playback = _playback_for(ticking_app, video_file)
     start = playback.cursor
 
-    connected_app.dispatch(TickDisplay(key=_KEY))
+    ticking_app.dispatch(TickDisplay(key=_KEY))
 
     assert playback.cursor != start, "TickDisplay must advance the playback"
 
@@ -955,7 +965,7 @@ def test_render_and_send_never_advances_the_cursor(
 
 
 def test_tick_display_reports_video_state_on_the_result(
-    connected_app: App, stub_media: Any, video_file: Path,
+    ticking_app: App, stub_media: Any, video_file: Path,
 ) -> None:
     """The Result carries cursor/frame_count/interval_ms.
 
@@ -963,9 +973,9 @@ def test_tick_display_reports_video_state_on_the_result(
     WITHOUT reaching for ``app.media`` — which is an AttributeError under
     TRCC_DAEMON=1, where the UI holds an AppProxy (#249).
     """
-    playback = _playback_for(connected_app, video_file)
+    playback = _playback_for(ticking_app, video_file)
 
-    result = connected_app.dispatch(TickDisplay(key=_KEY))
+    result = ticking_app.dispatch(TickDisplay(key=_KEY))
 
     assert result.frame_count == 3
     assert result.cursor == playback.cursor
@@ -973,14 +983,14 @@ def test_tick_display_reports_video_state_on_the_result(
 
 
 def test_tick_display_without_a_playback_reports_no_video(
-    connected_app: App,
+    ticking_app: App,
 ) -> None:
     """No playback → the video fields stay None, NOT zero.
 
     A UI needs to tell "this theme is not a video" from "frame 0 of a video":
     the gui stops its animation timer on exactly that transition.
     """
-    result = connected_app.dispatch(TickDisplay(key=_KEY))
+    result = ticking_app.dispatch(TickDisplay(key=_KEY))
 
     assert result.cursor is None
     assert result.frame_count is None
@@ -988,18 +998,18 @@ def test_tick_display_without_a_playback_reports_no_video(
 
 
 def test_tick_display_honours_pause(
-    connected_app: App, stub_media: Any, video_file: Path,
+    ticking_app: App, stub_media: Any, video_file: Path,
 ) -> None:
     """Paused playback holds its cursor — the guard lives in Playback.advance.
 
     The three UI copies each hand-rolled a ``not playback.paused`` check; they
     lose it here rather than move it, because the playback already self-guards.
     """
-    playback = _playback_for(connected_app, video_file)
+    playback = _playback_for(ticking_app, video_file)
     playback.pause(True)
     start = playback.cursor
 
-    connected_app.dispatch(TickDisplay(key=_KEY))
+    ticking_app.dispatch(TickDisplay(key=_KEY))
 
     assert playback.cursor == start
 
@@ -1458,3 +1468,135 @@ def test_the_session_starts_the_loop_and_close_stops_it(fake_platform) -> None:
     finally:
         app.close()
     assert not app.video_loop.is_running
+
+
+# ── A background on a panel with no theme (P4c) ──────────────────────
+#
+# PlayVideo and SetBackground fill the background slot the ACTIVE THEME
+# composes.  With no theme -- after a push (``display color`` drops it), or on
+# a panel nothing loaded one on -- both reported success and the render refused
+# every frame: 0 frames sent, and after a push not even a warning.  Measured
+# first by driving a real 145-frame theme video on the mock (2026-09-29).
+
+
+def _renderable_theme(root: Path, name: str) -> Path:
+    """A minimal theme the real renderer draws: a solid 320x320 ``00.png``."""
+    from PySide6.QtGui import QColor, QImage
+
+    theme = root / name
+    theme.mkdir(parents=True)
+    (theme / "trcc.json").write_text(
+        '{"name": "%s", "width": 320, "height": 320, "elements": []}' % name,
+        encoding="utf-8")
+    img = QImage(320, 320, QImage.Format.Format_RGB888)
+    img.fill(QColor(0, 64, 128))
+    assert img.save(str(theme / "00.png"))
+    return theme
+
+
+def _wire(app: App) -> list[int]:
+    """Every frame's size, as the device's sender receives it."""
+    sent: list[int] = []
+    sender = app.senders[_KEY]
+    real = sender.submit
+    sender.submit = lambda data, *a, **k: (   # type: ignore[method-assign]
+        sent.append(len(data)), real(data, *a, **k))[1]
+    return sent
+
+
+@pytest.fixture
+def themeless(connected_app: App, stub_media: list, tmp_home: Path) -> App:
+    """A connected panel with a real renderer and NO active theme."""
+    from trcc.adapters.render.qt import QtRenderer
+
+    connected_app.set_renderer(QtRenderer())
+    connected_app.active_themes.pop(_KEY)
+    return connected_app
+
+
+def test_a_video_on_a_panel_with_no_theme_plays_over_its_saved_one(
+        themeless: App, stub_media: list, video_file: Path,
+        tmp_home: Path) -> None:
+    """MUTATION CHECK: drop ``_theme_under_background`` from PlayVideo."""
+    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
+    sent = _wire(themeless)
+
+    result = themeless.dispatch(PlayVideo(key=_KEY, path=video_file))
+    ticks = [themeless.dispatch(TickDisplay(key=_KEY)) for _ in range(3)]
+
+    assert result.ok, result.message
+    assert themeless.active_themes[_KEY].name == "Saved"
+    assert [t.ok for t in ticks] == [True, True, True]
+    assert sent, "no frame reached the wire"
+
+
+def test_after_a_push_a_video_takes_the_panel_back(
+        themeless: App, stub_media: list, video_file: Path,
+        tmp_home: Path) -> None:
+    """``display color`` drops the theme and HOLDS the panel; a video then said
+    "playing" while every tick skipped as held -- silently, 0 frames."""
+    from trcc.core.commands import LoadTheme, SendColor
+
+    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    assert themeless.dispatch(LoadTheme(key=_KEY, path=saved)).ok
+    assert themeless.dispatch(SendColor(key=_KEY, r=255, g=0, b=0)).ok
+    assert _KEY in themeless.held and _KEY not in themeless.active_themes
+    sent = _wire(themeless)
+
+    result = themeless.dispatch(PlayVideo(key=_KEY, path=video_file))
+    tick = themeless.dispatch(TickDisplay(key=_KEY))
+
+    assert result.ok, result.message
+    assert _KEY not in themeless.held
+    assert (tick.ok, tick.message.startswith("Rendered")) == (True, True)
+    assert sent, "no frame reached the wire"
+
+
+def test_an_image_background_on_a_panel_with_no_theme_is_shown(
+        themeless: App, tmp_home: Path) -> None:
+    """Still images never pass through PlayVideo -- a rule there alone left
+    ``SetBackground(image)`` answering "set" with nothing drawn.
+    MUTATION CHECK: drop ``_theme_under_background`` from SetBackground."""
+    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
+    image = _renderable_theme(tmp_home / "bg", "Img") / "00.png"
+    sent = _wire(themeless)
+
+    result = themeless.dispatch(SetBackground(key=_KEY, path=image))
+    render = themeless.dispatch(RenderAndSend(key=_KEY))
+
+    assert result.ok, result.message
+    assert render.ok, render.message
+    assert sent, "no frame reached the wire"
+
+
+def test_the_saved_theme_comes_up_without_its_old_background(
+        themeless: App, stub_media: list, video_file: Path,
+        tmp_home: Path) -> None:
+    """Restoring through RestoreDeviceState would replay the OLD background
+    video just before the new one replaced it -- two decodes per play.
+    MUTATION CHECK: dispatch RestoreDeviceState in the rule instead."""
+    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
+    old = tmp_home / "old.mp4"
+    old.write_bytes(video_file.read_bytes())
+    themeless.settings.set_background_path(_KEY, str(old))
+
+    assert themeless.dispatch(PlayVideo(key=_KEY, path=video_file)).ok
+
+    assert [path for _key, path, _size in stub_media] == [video_file]
+
+
+def test_no_theme_installed_is_an_honest_failure(
+        themeless: App, stub_media: list, video_file: Path) -> None:
+    """Nothing saved and nothing installed (a fresh install, or 7z missing):
+    say so -- it used to answer "playing" and draw nothing."""
+    want = (f"{_KEY} has no theme to show a background on, and none is "
+            "installed — install themes, or use load-video / load-image to "
+            "show a file on its own")
+
+    video = themeless.dispatch(PlayVideo(key=_KEY, path=video_file))
+
+    assert (video.ok, video.message) == (False, want)
+    assert stub_media == []                     # nothing decoded for nothing

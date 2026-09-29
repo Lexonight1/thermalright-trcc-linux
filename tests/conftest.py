@@ -664,6 +664,23 @@ def assert_stub_matches(real: Callable[..., Any], stub: Callable[..., Any]) -> N
         )
 
 
+def show_a_theme(app: Any, key: str) -> None:
+    """Give connected panel *key* an active theme -- what every real panel has.
+
+    A background (``PlayVideo`` / ``SetBackground``) is the background OF a
+    theme.  On a panel with none they used to answer "playing" and draw
+    nothing; now they show the saved theme first, or refuse (P4c).  Tests
+    about decode, cursors or events set the panel up the realistic way with
+    this, instead of leaning on that old false success.  In-memory: nothing
+    is read from its folder.
+    """
+    from trcc.core.models import Theme
+
+    resolution = app.devices[key].profile.resolution
+    app.active_themes[key] = Theme(path=Path("/nonexistent/test-theme"),
+                                   name="Test", resolution=resolution)
+
+
 def loopback_client(api: Any) -> Any:
     """A FastAPI ``TestClient`` that arrives the way ``trcc api`` is reached.
 

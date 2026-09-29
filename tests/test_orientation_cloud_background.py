@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import pytest
 
+from tests.conftest import show_a_theme
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
@@ -59,6 +60,7 @@ def connected(
     app.attach(_VID, _PID)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     assert app.devices[_KEY].profile.resolution == (854, 480)
+    show_a_theme(app, _KEY)
 
     recorder = _RecordingCatalog(app)
     app.cloud_themes = cast(Any, recorder)

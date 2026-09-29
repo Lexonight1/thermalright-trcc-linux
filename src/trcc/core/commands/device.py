@@ -1168,6 +1168,37 @@ class RenderDcStandalone(Command[RenderDcResult]):
                      f"{self.output_path} ({self.width}x{self.height})"),
         )
 
+def _theme_under_background(app: App, key: str) -> str:
+    """A background is the background OF a theme: give *key* one if it has none.
+
+    ``PlayVideo`` and ``SetBackground`` fill the one background slot the
+    active theme composes (the media player and cloud videos arrive through
+    ``PlayVideo``).  With no theme -- after a push (``display color`` drops it),
+    or on a panel whose session never loaded one -- they reported success and
+    the render refused every frame: "No active theme", 0 frames sent, and
+    after a push not even a warning.  The C# has no theme-less state ("there
+    is always a folder"), and a restart shows the saved theme under the saved
+    background, so that is what the panel gets now too.  Loading the theme
+    also ends a push's hold.
+
+    Returns ``""`` once a theme is active, else why none could be shown.
+    """
+    if key in app.active_themes:
+        log.debug("_theme_under_background: %s has a theme", key)
+        return ""
+    from .theme import _show_saved_theme  # theme.py imports this module
+    log.info("_theme_under_background: %s has no theme — showing its saved "
+             "one under the background", key)
+    _show_saved_theme(app, key)
+    if key in app.active_themes:
+        return ""
+    log.warning("_theme_under_background: %s — no theme is installed to show "
+                "a background on", key)
+    return (f"{key} has no theme to show a background on, and none is "
+            "installed — install themes, or use load-video / load-image to "
+            "show a file on its own")
+
+
 @dataclass(frozen=True, slots=True)
 class PlayVideo(Command[VideoResult]):
     """Decode a video into a per-device playback override.
@@ -1223,6 +1254,9 @@ class PlayVideo(Command[VideoResult]):
                         self.key, e)
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
+        if why := _theme_under_background(app, self.key):
+            return VideoResult(ok=False, key=self.key, path=str(self.path),
+                               message=why)
 
         if device.profile is not None:
             canvas_size = device.profile.resolution
@@ -1930,6 +1964,9 @@ class SetBackground(Command[BackgroundResult]):
                 ok=False, key=self.key, path=str(self.path),
                 message=f"background path is not a regular file: {self.path}",
             )
+        if why := _theme_under_background(app, self.key):
+            return BackgroundResult(ok=False, key=self.key, path=str(self.path),
+                                    message=why)
 
         ext = self.path.suffix.lower()
         kind = MEDIA.kind_of(self.path)

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import show_a_theme
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
@@ -61,6 +62,7 @@ def test_a_cut_video_becomes_the_background_as_delivered_and_survives_close(
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        show_a_theme(app, _KEY)
         library = app.platform.paths().user_background_dir(320, 320)
         library.mkdir(parents=True)
         delivered = library / "0123456789abcdef.zt"
