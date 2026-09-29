@@ -288,6 +288,70 @@ the PE `TimeDateStamp`, which is why `TRCC.exe` reads "2061-12-05" and
 `USBLCDNEW.dll` "2092-03-15". Never cite a managed-assembly timestamp as a
 date. Detail: [[project_the_oracle_authority_is_asymmetric]].
 
+## The vision: one App, thin UIs — the yardstick for every change
+
+The maintainer's target (stated 2026-09-29). It outranks convenience in any one UI.
+
+**The picture.** One App process owns the panels: every device, every loop
+that sends to one (render, video, screencast, slideshow, keepalive), and all
+state. The gui, qtgui, CLI and API are remote controls for it. They can run at
+the same time, any of them can change a device, and each one follows what the
+others did. Starting any UI finds the running App or starts it. The App
+outlives every UI. When two UIs disagree, the last Command wins, like two
+remotes on one TV. In-process (tests, or an OS without local sockets) is the
+same App behind the same `CommandBus` port, so nothing below changes.
+
+**What the end user experiences — these are requirements, not nice-to-haves:**
+- **There is no daemon to know about.** No env flag, no second command to run
+  first. Open any UI and it works. The App starting is at most a splash line.
+- **Opening a UI changes nothing on the panel.** A UI attaches and shows what is
+  already playing. It never reloads, restarts or blanks it.
+- **Closing a window is not quitting.** Closing the window leaves the panel
+  playing. Quitting TRCC (tray "Exit", `trcc kill`) is a separate, explicit act,
+  and it is what puts the panels to sleep. Windows users expect exactly this
+  from a tray app.
+- **Every UI shows the same truth.** What is on the panel, whether a cast is
+  running, which theme is loaded: all UIs agree, because all of them read it
+  from the App.
+- **A failure shows where the user is looking.** An error from a Command
+  another UI sent still reaches the UI that is open. It is never only in a log.
+- **An upgrade does not strand the user.** A UI that finds an App from an older
+  version must restart it, keeping what the panels show, not talk to stale code.
+- **One report.** `trcc report` covers the App and every UI, whichever process
+  wrote the line.
+
+**A UI owns** its widgets and layout, view state (what is selected, which panel
+is open), turning input into Commands, and drawing what Queries and events
+report. **A UI never owns** a loop or timer that sends to a device, a copy of
+App state it treats as the truth, or a decision about what a device shows (what
+to restore, when to connect, which source wins). Those are Commands, and they
+run in the App. A UI timer may animate its own window; it never feeds a panel.
+
+**The test for any change — three questions:**
+1. *Would it work if this UI were another process?* Only the `CommandBus`
+   crosses the line: `dispatch`, `events`, `remote`. No `app.settings`, no
+   `app.platform`, no object shared by identity.
+2. *If another UI changed the same thing, would this one notice?* State comes
+   from events and Queries, never from what this UI last sent.
+3. *If this UI closed now, would the device keep doing what the user asked?*
+
+A change that fails one moves away from the vision, even if it fixes the bug in
+front of you. The fix goes in the App, where every UI gets it.
+
+**Why it is written down.** On 2026-09-29, two features were found working in
+one UI only, because that UI did the App's job itself. The gui ran its own
+screencast capture timer, so a saved screencast theme captured in the gui and
+nowhere else. And each UI paired start and stop Commands by hand; the CLI's
+stop forgot the capture driver, which then logged a WARNING on every tick
+against a daemon. Both were fixed by moving the work into one Command.
+
+**Existing violations are debt, not precedent.** Code older than this rule is
+moved into the App, never copied. One example: the gui's multi-LCD
+`set_inactive` keeps that window's animation timer running so a panel does not
+go dark. Status, and the investigation that comes first, live in
+`memory/project_one_app_many_uis.md`. Status belongs there, not here. Daemon
+Mode (below) is the mechanism this rests on.
+
 ## Architecture — Hexagonal (Ports & Adapters)
 
 ### Layer Map
@@ -311,8 +375,9 @@ date. Detail: [[project_the_oracle_authority_is_asymmetric]].
 - **Singleton**: ONE `Settings` per App (`services/settings.py`), constructed at
   `app.py:125` and reached as `app.settings` — there is no `conf` module and no
   module-level singleton. Widgets never store copies. **In daemon mode
-  `app.settings` raises** (`AppProxy` exposes `dispatch` only), so a UI that must
-  read or write settings dispatches a Command/Query instead.
+  `app.settings` raises** (`AppProxy` exposes only the `CommandBus` port:
+  `dispatch`, `events`, `remote`), so a UI that must read or write settings
+  dispatches a Command/Query instead.
 - **Factory Method**: one shared `Registry` (`core/factory.py`) per axis; subclasses
   name their own key in the class line and `__init_subclass__` registers them.
   See "Two-Registry Chain" below. There is no `abstract_factory.py`.
@@ -470,11 +535,12 @@ What `trcc()` returns depends on environment:
 | `TRCC_DAEMON=1` + `AF_UNIX` available | `AppProxy` | auto-spawns daemon via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
 | `TRCC_DAEMON=1` on Windows < 17063 | real `App` | silent in-process fallback (no `AF_UNIX`), no error |
 
-`AppProxy` (`proxy.py`) is a drop-in for **`App.dispatch(cmd)` only** — it
-serializes the Command, round-trips it, and returns the Result. Any *other*
-attribute access raises `AttributeError` ("daemon mode only exposes
-dispatch(cmd)") — to query App state remotely, send a Command, never reach for
-a field.
+`AppProxy` (`proxy.py`) implements the **`CommandBus` port and nothing else**:
+`dispatch(cmd)` serializes the Command, round-trips it, and returns the Result;
+`events` lazily opens a stream of the daemon's events and republishes them, as
+real `Event` instances, on a local bus; `remote` is `True`. Any *other*
+attribute access raises `AttributeError` — to query App state remotely, send a
+Command or Query, never reach for a field.
 
 ### Wire format
 
