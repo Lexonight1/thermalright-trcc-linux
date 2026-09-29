@@ -138,6 +138,36 @@ def test_the_socket_is_per_ui_flavour() -> None:
     assert os.environ["XDG_RUNTIME_DIR"] in str(_instance_socket_path("gui"))
 
 
+def test_without_xdg_runtime_dir_no_socket_goes_to_tmp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """``/tmp`` is shared by every account — another user could bind
+    ``/tmp/trcc.sock`` first and every TRCC UI would dispatch to THEIR process
+    — and systemd-tmpfiles ages it out under a running App.  macOS never sets
+    ``XDG_RUNTIME_DIR``, so this is every Mac session."""
+    from trcc import ipc
+
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    assert ipc.socket_path() == tmp_path / ".cache" / "trcc.sock"
+    assert _instance_socket_path("gui") == tmp_path / ".cache" / "trcc" / "gui.sock"
+    assert not str(ipc.socket_path()).startswith("/tmp/trcc")
+
+
+def test_with_xdg_runtime_dir_the_paths_are_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Byte-identical to every release so far, so a UI still finds an App
+    that an older install started."""
+    from trcc import ipc
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+
+    assert ipc.socket_path() == tmp_path / "trcc.sock"
+    assert _instance_socket_path("gui") == tmp_path / "trcc" / "gui.sock"
+
+
 def test_only_a_raise_request_raises() -> None:
     """A well-formed message that does NOT ask to raise must not raise.
 

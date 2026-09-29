@@ -23,7 +23,7 @@ Show this command's help and exit.
 Launch the REST API (FastAPI + uvicorn). Three operating modes: * trcc api  \-  loopback only (127.0.0.1), no auth. Dev default. * trcc api \-\-host 0.0.0.0 \-\-token <secret>  \-  public bind, token required on every request. Use a long random secret. * trcc api \-\-host 0.0.0.0 \-\-token <secret> \-\-pair  \-  same as above plus the pairing endpoint; a 6\-char code is shown so a remote app can fetch the token without out\-of\-band copy/paste. Refusal: \-\-host other than 127.0.0.1 / localhost without \-\-token exits 2  \-  would otherwise expose every endpoint to LAN.
 .TP
 \fBdaemon\fR
-Run the background daemon that owns USB + serves CLI/API clients. One process per user. Binds a Unix socket at $XDG_RUNTIME_DIR/trcc.sock and serves Commands until SIGTERM / SIGINT or a remote trcc kill. Sets TRCC_DAEMON=1 to route clients through this daemon.
+Run the background daemon that owns USB + serves CLI/API clients. One process per user. Binds a Unix socket at $XDG_RUNTIME_DIR/trcc.sock (~/.cache/trcc.sock where that is unset, e.g. macOS) and serves Commands until SIGTERM / SIGINT or a remote trcc kill. Sets TRCC_DAEMON=1 to route clients through this daemon.
 .TP
 \fBdaemon\-status\fR
 Report whether the background daemon socket is reachable. Replaces the previous top\-level status command, which conflated daemon reachability with app state. Use trcc status for the unified app + device snapshot.

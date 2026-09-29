@@ -341,7 +341,8 @@ def daemon() -> None:
     """Run the background daemon that owns USB + serves CLI/API clients.
 
     One process per user.  Binds a Unix socket at
-    ``$XDG_RUNTIME_DIR/trcc.sock`` and serves Commands until
+    ``$XDG_RUNTIME_DIR/trcc.sock`` (``~/.cache/trcc.sock`` where that is
+    unset, e.g. macOS) and serves Commands until
     SIGTERM / SIGINT or a remote ``trcc kill``.  Sets
     ``TRCC_DAEMON=1`` to route clients through this daemon.
     """

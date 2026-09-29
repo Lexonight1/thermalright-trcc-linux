@@ -101,11 +101,28 @@ _SUBSCRIBER_SEND_TIMEOUT_S = 0.5
 # =========================================================================
 
 
+def runtime_dir() -> Path:
+    """This user's base directory for every TRCC socket.
+
+    ``$XDG_RUNTIME_DIR``, else ``~/.cache`` — never ``/tmp``.  ``/tmp`` is
+    shared by every account, so another user could create ``/tmp/trcc.sock``
+    first and each TRCC UI would dispatch to THEIR process; and
+    systemd-tmpfiles ages ``/tmp`` out (10 days on Fedora), orphaning a
+    long-running App's socket.  No other account can create files in your home,
+    and nothing ages ``~/.cache``.  macOS never sets ``XDG_RUNTIME_DIR``, so
+    this fallback is every Mac session.
+    """
+    xdg = os.environ.get("XDG_RUNTIME_DIR")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    log.debug("runtime_dir: %s (%s)", base,
+              "XDG_RUNTIME_DIR" if xdg else "fallback")
+    return base
+
+
 def socket_path() -> Path:
-    """Return the canonical Unix-socket path for this user's next/ daemon."""
+    """Return the canonical Unix-socket path for this user's daemon."""
     log.debug("socket_path: called")
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
-    return Path(runtime) / _SOCK_NAME
+    return runtime_dir() / _SOCK_NAME
 
 
 def daemon_running() -> bool:
@@ -1069,12 +1086,7 @@ class SingleInstance:
 def _instance_socket_path(name: str) -> Path:
     """Per-UI socket path (one file per UI flavour)."""
     log.debug("_instance_socket_path: name=%s", name)
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime:
-        base = Path(runtime) / SingleInstance._DIR_NAME
-    else:
-        base = Path.home() / ".cache" / SingleInstance._DIR_NAME
-    return base / f"{name}.sock"
+    return runtime_dir() / SingleInstance._DIR_NAME / f"{name}.sock"
 
 
 def _msvcrt_acquire(name: str) -> Any | None:
