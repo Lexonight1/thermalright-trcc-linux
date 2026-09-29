@@ -1081,12 +1081,20 @@ def test_display_configure_slideshow(
 def test_display_keepalive_no_cached_frame(
     cli_runner: CliRunner, cli_app,
 ) -> None:
-    """``display keepalive --count 1`` exits non-zero when no frame cached."""
-    del cli_app
+    """With nothing cached and no theme installed, keepalive says so and exits
+    non-zero -- and the CLI sends ONE Command for it, like ``POST /keepalive``.
+
+    It used to send ``RestoreDeviceState`` first, which in daemon mode threw a
+    pushed image away (#267).  MUTATION CHECK: put that restore back → fails.
+    """
+    sent: list[str] = []
+    real = cli_app.dispatch
+    cli_app.dispatch = lambda cmd: (sent.append(type(cmd).__name__), real(cmd))[1]
     result = cli_runner.invoke(_app(), [
         "display", "keepalive", "0402:3922", "--count", "1",
     ])
-    assert result.exit_code != 0
+    assert result.exit_code == 1
+    assert sent[0] == "KeepAliveLoop"
 
 
 # =========================================================================

@@ -441,6 +441,59 @@ def test_keepalive_says_why_the_device_is_missing(fake_platform) -> None:
                               "transport for 0402:3922")
 
 
+def _keepalive_app(fake_platform) -> App:
+    from trcc.adapters.render.qt import QtRenderer
+    return App(fake_platform, renderer=QtRenderer())
+
+
+def test_keepalive_keeps_a_pushed_frame(fake_platform) -> None:
+    """``trcc display keepalive`` after ``display color`` threw the colour away
+    in daemon mode: the CLI restored the saved theme first, unconditionally
+    (#267).  A panel with a frame to resend keeps it -- and its hold.
+    MUTATION CHECK: restore in KeepAliveLoop whatever is cached → this fails.
+    """
+    from trcc.core.commands import KeepAliveLoop, SendColor
+
+    app = _keepalive_app(fake_platform)
+    assert app.dispatch(SendColor(key="0402:3922", r=255, g=0, b=0)).ok
+    pushed = app.senders["0402:3922"].last()
+
+    result = app.dispatch(KeepAliveLoop(key="0402:3922", count=1))
+
+    assert result.ok, result.message
+    assert "0402:3922" in app.held
+    assert app.senders["0402:3922"].last() == pushed
+
+
+def test_keepalive_shows_the_saved_display_when_nothing_is_cached(
+        fake_platform) -> None:
+    """A fresh process has nothing to resend: the saved display (here the
+    Theme1 fallback) is shown once and becomes the frame.
+    MUTATION CHECK: drop the restore from KeepAliveLoop → this fails."""
+    from tests.conftest import renderable_theme
+    from trcc.core.commands import KeepAliveLoop
+
+    app = _keepalive_app(fake_platform)
+    renderable_theme(app.platform.paths().theme_dir(320, 320), "Theme1")
+
+    result = app.dispatch(KeepAliveLoop(key="0402:3922", count=1))
+
+    assert result.ok, result.message
+    assert app.active_themes["0402:3922"].name == "Theme1"
+    assert app.senders["0402:3922"].last() is not None
+
+
+def test_keepalive_with_nothing_installed_says_so(fake_platform) -> None:
+    from trcc.core.commands import KeepAliveLoop
+
+    result = _keepalive_app(fake_platform).dispatch(
+        KeepAliveLoop(key="0402:3922", count=1))
+
+    assert (result.ok, result.message) == (
+        False, "No theme available for this device — install themes or load "
+               "a theme first")
+
+
 def test_list_memory_slots_maps_absent_fields_to_empty(fake_platform) -> None:
     """A field the OS did not probe arrives as ``""`` — never a guess.
 

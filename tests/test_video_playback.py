@@ -50,7 +50,7 @@ from trcc.services.media import (
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
 
-from .conftest import FakePaths, FakePlatform, show_a_theme
+from .conftest import FakePaths, FakePlatform, renderable_theme, show_a_theme
 
 
 def _encoded_frame(value: int, w: int = 320, h: int = 320) -> bytes:
@@ -1479,21 +1479,6 @@ def test_the_session_starts_the_loop_and_close_stops_it(fake_platform) -> None:
 # first by driving a real 145-frame theme video on the mock (2026-09-29).
 
 
-def _renderable_theme(root: Path, name: str) -> Path:
-    """A minimal theme the real renderer draws: a solid 320x320 ``00.png``."""
-    from PySide6.QtGui import QColor, QImage
-
-    theme = root / name
-    theme.mkdir(parents=True)
-    (theme / "trcc.json").write_text(
-        '{"name": "%s", "width": 320, "height": 320, "elements": []}' % name,
-        encoding="utf-8")
-    img = QImage(320, 320, QImage.Format.Format_RGB888)
-    img.fill(QColor(0, 64, 128))
-    assert img.save(str(theme / "00.png"))
-    return theme
-
-
 def _wire(app: App) -> list[int]:
     """Every frame's size, as the device's sender receives it."""
     sent: list[int] = []
@@ -1518,7 +1503,7 @@ def test_a_video_on_a_panel_with_no_theme_plays_over_its_saved_one(
         themeless: App, stub_media: list, video_file: Path,
         tmp_home: Path) -> None:
     """MUTATION CHECK: drop ``_theme_under_background`` from PlayVideo."""
-    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    saved = renderable_theme(tmp_home / "themes", "Saved")
     themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
     sent = _wire(themeless)
 
@@ -1538,7 +1523,7 @@ def test_after_a_push_a_video_takes_the_panel_back(
     "playing" while every tick skipped as held -- silently, 0 frames."""
     from trcc.core.commands import LoadTheme, SendColor
 
-    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    saved = renderable_theme(tmp_home / "themes", "Saved")
     assert themeless.dispatch(LoadTheme(key=_KEY, path=saved)).ok
     assert themeless.dispatch(SendColor(key=_KEY, r=255, g=0, b=0)).ok
     assert _KEY in themeless.held and _KEY not in themeless.active_themes
@@ -1558,9 +1543,9 @@ def test_an_image_background_on_a_panel_with_no_theme_is_shown(
     """Still images never pass through PlayVideo -- a rule there alone left
     ``SetBackground(image)`` answering "set" with nothing drawn.
     MUTATION CHECK: drop ``_theme_under_background`` from SetBackground."""
-    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    saved = renderable_theme(tmp_home / "themes", "Saved")
     themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
-    image = _renderable_theme(tmp_home / "bg", "Img") / "00.png"
+    image = renderable_theme(tmp_home / "bg", "Img") / "00.png"
     sent = _wire(themeless)
 
     result = themeless.dispatch(SetBackground(key=_KEY, path=image))
@@ -1577,7 +1562,7 @@ def test_the_saved_theme_comes_up_without_its_old_background(
     """Restoring through RestoreDeviceState would replay the OLD background
     video just before the new one replaced it -- two decodes per play.
     MUTATION CHECK: dispatch RestoreDeviceState in the rule instead."""
-    saved = _renderable_theme(tmp_home / "themes", "Saved")
+    saved = renderable_theme(tmp_home / "themes", "Saved")
     themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
     old = tmp_home / "old.mp4"
     old.write_bytes(video_file.read_bytes())

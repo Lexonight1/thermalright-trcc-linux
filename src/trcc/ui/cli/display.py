@@ -577,6 +577,8 @@ def play(
     # Self-prime: a fresh CLI process holds no in-memory theme, so RenderAndSend
     # would fail "No active theme".  The restore also connects the device
     # (USES_DEVICE) and fails with the reason when it cannot.  (#150)
+    # Unconditional on purpose, unlike keepalive: "play" asks for the SAVED
+    # display, so it replaces a push; keepalive keeps whatever is showing.
     restore = app_obj.dispatch(RestoreDeviceState(key=key))
     if not restore.ok:
         typer.echo(restore.message, err=True)
@@ -1023,13 +1025,8 @@ def keepalive(
             f"(metric refresh every {metric_interval:.1f}s, Ctrl-C to stop)…"
         )
     app_obj = get_app()
-    # Self-prime persisted display state so a rendered frame exists to resend
-    # — closes the "No cached frame — render at least once first" gap.  The
-    # restore connects the device and fails with the reason.  (#150)
-    restore = app_obj.dispatch(RestoreDeviceState(key=key))
-    if not restore.ok:
-        typer.echo(restore.message, err=True)
-        raise typer.Exit(code=1)
+    # One Command, like the API: KeepAliveLoop shows the saved display itself
+    # when there is nothing to resend, and keeps a push when there is (#267).
     result = app_obj.dispatch(KeepAliveLoop(
         key=key, count=count,
         interval_s=interval, metric_interval_s=metric_interval,

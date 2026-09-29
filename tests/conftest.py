@@ -664,6 +664,21 @@ def assert_stub_matches(real: Callable[..., Any], stub: Callable[..., Any]) -> N
         )
 
 
+def renderable_theme(root: Path, name: str) -> Path:
+    """A minimal theme the real renderer draws: a solid 320x320 ``00.png``."""
+    from PySide6.QtGui import QColor, QImage
+
+    theme = root / name
+    theme.mkdir(parents=True)
+    (theme / "trcc.json").write_text(
+        '{"name": "%s", "width": 320, "height": 320, "elements": []}' % name,
+        encoding="utf-8")
+    img = QImage(320, 320, QImage.Format.Format_RGB888)
+    img.fill(QColor(0, 64, 128))
+    assert img.save(str(theme / "00.png"))
+    return theme
+
+
 def show_a_theme(app: Any, key: str) -> None:
     """Give connected panel *key* an active theme -- what every real panel has.
 

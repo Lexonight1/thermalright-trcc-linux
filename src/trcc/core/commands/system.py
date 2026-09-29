@@ -80,6 +80,7 @@ from ._helpers import (
     _resolve_oriented_resolution,
     _slideshow_snapshot,
 )
+from .theme import RestoreDeviceState
 
 if TYPE_CHECKING:
     from ...app import App
@@ -1217,6 +1218,20 @@ class KeepAliveLoop(Command[KeepaliveResult]):
             log.warning("KeepAliveLoop.execute: %s — %s", self.key, e)
             return KeepaliveResult(ok=False, key=self.key, message=str(e))
         sender = app.senders.get(self.key)
+        if sender is None or sender.last() is None:
+            # Nothing to resend: show the saved display once, and resend THAT.
+            # A panel with a frame -- a push, a theme already showing -- is left
+            # alone.  The CLI used to restore unconditionally before this, and
+            # since RestoreDeviceState always restores, `trcc display keepalive`
+            # threw a pushed image away in daemon mode (#267).  Deciding here
+            # makes the CLI and the API the same one Command.
+            log.info("KeepAliveLoop.execute: %s has nothing to resend — "
+                     "showing its saved display first", self.key)
+            restore = app.dispatch(RestoreDeviceState(key=self.key))
+            if not restore.ok:
+                return KeepaliveResult(ok=False, key=self.key,
+                                       message=restore.message)
+            sender = app.senders.get(self.key)
         if sender is None or sender.last() is None:
             log.warning("KeepAliveLoop.execute: %s has no cached frame "
                         "(sender=%s) — render once before keepalive",

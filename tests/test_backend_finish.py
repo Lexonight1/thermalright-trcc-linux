@@ -265,8 +265,11 @@ def test_keepalive_loop_without_cached_frame(_trcc_app) -> None:
     from trcc.core.commands import KeepAliveLoop
 
     r = _trcc_app.dispatch(KeepAliveLoop(key="0402:3922", count=1))
-    assert r.ok is False
-    assert "no cached frame" in r.message.lower()
+    # Nothing cached now means "show the saved display first"; with no theme
+    # installed at all, that restore's reason is the honest answer (#267).
+    assert (r.ok, r.message) == (
+        False, "No theme available for this device — install themes or load "
+               "a theme first")
 
 
 def test_keepalive_loop_negative_count_rejected(_trcc_app) -> None:
