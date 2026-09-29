@@ -6,6 +6,9 @@ state-check cycle runs on the Linux dev box.
 """
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -14,6 +17,8 @@ import pytest
 from trcc.adapters.system._autostart import (
     NoopAutostart,
     WindowsAutostart,
+    WindowsTaskAutostart,
+    _render_task_xml,
 )
 
 # =========================================================================
@@ -174,29 +179,38 @@ def test_noop_autostart_always_disabled() -> None:
 # =========================================================================
 
 
-def test_resolve_command_falls_back_to_python_invocation(
-    monkeypatch: pytest.MonkeyPatch,
+def test_the_run_entry_uses_the_windowless_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When trcc isn't on PATH, we use ``python -m trcc gui``."""
+    """``pythonw.exe -m trcc``: python.exe and the pip trcc.exe launcher are
+    console programs, and a Run entry naming either opens a terminal at every
+    sign-in.  Never the PATH lookup ``launch_argv`` makes for Linux."""
     from trcc.adapters.system import _autostart
 
-    monkeypatch.setattr(_autostart.shutil, "which", lambda name: None)
-    cmd = _autostart._resolve_command()
-    assert "-m trcc gui" in cmd
+    (tmp_path / "python.exe").touch()
+    (tmp_path / "pythonw.exe").touch()
+    monkeypatch.setattr(_autostart.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(_autostart.shutil, "which", lambda name: "/opt/trcc.exe")
+
+    assert _autostart._resolve_command() == (
+        f'"{tmp_path / "pythonw.exe"}" -m trcc gui --resume')
+    assert _autostart._resolve_command("daemon") == (
+        f'"{tmp_path / "pythonw.exe"}" -m trcc daemon')
 
 
-def test_resolve_command_prefers_installed_console_script(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_missing_pythonw_falls_back_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from trcc.adapters.system import _autostart
 
-    fake_path = "/opt/trcc/bin/trcc"
-    monkeypatch.setattr(_autostart.shutil, "which",
-                        lambda name: fake_path if name == "trcc" else None)
-    cmd = _autostart._resolve_command()
-    # --resume: see the macOS twin.  Windows autostart popped a window on
-    # every login because #201's fix landed only on the XDG path.
-    assert cmd == f'"{fake_path}" gui --resume'
+    (tmp_path / "python.exe").touch()
+    monkeypatch.setattr(_autostart.sys, "executable", str(tmp_path / "python.exe"))
+
+    assert _autostart._resolve_command() == (
+        f'"{tmp_path / "python.exe"}" -m trcc gui --resume')
+    assert any("opens a console window at sign-in" in r.getMessage()
+               for r in caplog.records)
 
 
 # =========================================================================
@@ -310,3 +324,211 @@ def test_refresh_preserves_a_non_default_target() -> None:
     autostart.refresh()
 
     assert autostart.installed_target() == "daemon"
+
+
+# =========================================================================
+# WindowsTaskAutostart — the sign-in task the installer build needs
+# =========================================================================
+#
+# Measured on the win11 VM: the installer's exes are --uac-admin, and a Run
+# entry for one was present, the user signed in, and nothing started — Windows
+# blocks elevation in the sign-in path.  The C# oracle uses a task at the
+# highest run level (Form1.cs:271).
+
+
+_PROGRAM = Path(r"C:\Program Files\TRCC\trcc-gui.exe")
+
+
+class _FakeSchtasks:
+    """In-memory ``schtasks.exe``: keeps each task's XML as Windows returns it.
+
+    ``/query /xml`` hands back the whole document INCLUDING its
+    ``encoding="UTF-16"`` declaration, as the real one does — a parser that
+    cannot take that is a parser that fails on Windows.
+    """
+
+    def __init__(self, *, fail_create: bool = False) -> None:
+        self.tasks: dict[str, str] = {}
+        self.fail_create = fail_create
+
+    def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        def done(code: int, out: str = "", err: str = ""):
+            return subprocess.CompletedProcess(args, code, out, err)
+        match args:
+            case ["/create", "/tn", name, "/xml", path, "/f"]:
+                if self.fail_create:
+                    return done(1, err="ERROR: Access is denied.")
+                self.tasks[name] = Path(path).read_text(encoding="utf-16")
+                return done(0, "SUCCESS")
+            case ["/query", "/tn", name, "/xml"]:
+                if name not in self.tasks:
+                    return done(1, err="ERROR: The system cannot find the file specified.")
+                return done(0, self.tasks[name])
+            case ["/delete", "/tn", name, "/f"]:
+                return done(0 if self.tasks.pop(name, None) is not None else 1)
+        raise AssertionError(f"unexpected schtasks call: {args}")
+
+
+def _task_autostart(**kw: Any) -> tuple[WindowsTaskAutostart, _FakeSchtasks, _FakeWinreg]:
+    schtasks = kw.pop("schtasks", None) or _FakeSchtasks()
+    reg = _FakeWinreg()
+    legacy = WindowsAutostart(command='"C:\\py\\pythonw.exe" -m trcc gui --resume',
+                              registry=reg)
+    return (WindowsTaskAutostart(program=kw.pop("program", _PROGRAM),
+                                 run=schtasks, legacy=legacy),
+            schtasks, reg)
+
+
+def _run_key(reg: _FakeWinreg) -> dict[str, str]:
+    """The fake Run key's values — the LIVE dict, so a write lands.
+
+    ``.get(..., {})`` returned a throwaway dict until something had opened the
+    key, which made "the old entry is gone" pass without it ever existing.
+    """
+    return reg.store.setdefault(
+        ("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run"), {})
+
+
+def test_the_task_is_what_the_oracle_ends_up_with() -> None:
+    """Highest run level (no UAC prompt at sign-in), no 72 h kill, no battery
+    rule, one instance — the settings the C# rewrites into its task XML."""
+    import xml.etree.ElementTree as ET
+    xml = _render_task_xml(r"C:\A & B\trcc-gui.exe", "gui --resume", r"PC\me")
+    task = ET.fromstring(xml.split("?>", 1)[1])
+    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+
+    def text(path: str) -> str | None:
+        return task.findtext(path, None, ns)
+
+    assert text("t:Triggers/t:LogonTrigger/t:UserId") == r"PC\me"
+    assert text("t:Principals/t:Principal/t:RunLevel") == "HighestAvailable"
+    assert text("t:Principals/t:Principal/t:LogonType") == "InteractiveToken"
+    assert text("t:Settings/t:ExecutionTimeLimit") == "PT0S"
+    assert text("t:Settings/t:DisallowStartIfOnBatteries") == "false"
+    assert text("t:Settings/t:StopIfGoingOnBatteries") == "false"
+    assert text("t:Settings/t:MultipleInstancesPolicy") == "IgnoreNew"
+    assert text("t:Actions/t:Exec/t:Command") == r"C:\A & B\trcc-gui.exe"
+    assert text("t:Actions/t:Exec/t:Arguments") == "gui --resume"
+
+
+def test_enable_creates_the_task_and_removes_the_run_entry_it_replaces() -> None:
+    autostart, schtasks, reg = _task_autostart()
+    _run_key(reg)["TRCCNext"] = '"C:\\Program Files\\TRCC\\trcc.exe" gui --resume'
+
+    autostart.enable()
+
+    assert "TRCC Linux" in schtasks.tasks
+    assert autostart.is_enabled()
+    assert autostart.installed_target() == "gui"
+    assert "TRCCNext" not in _run_key(reg), "the dead Run entry was left behind"
+
+
+def test_is_enabled_false_before_enable() -> None:
+    autostart, _, _ = _task_autostart()
+    assert not autostart.is_enabled()
+    assert autostart.installed_target() is None
+
+
+def test_a_task_for_a_moved_install_reads_as_disabled() -> None:
+    """The gui re-enables what reads disabled, so the entry heals itself."""
+    autostart, schtasks, _ = _task_autostart()
+    autostart.enable()
+    moved, _, _ = _task_autostart(schtasks=schtasks,
+                                  program=Path(r"D:\TRCC\trcc-gui.exe"))
+    assert not moved.is_enabled()
+
+
+def test_disable_removes_the_task_and_the_run_entry() -> None:
+    autostart, schtasks, reg = _task_autostart()
+    autostart.enable()
+    _run_key(reg)["TRCCNext"] = "stale"
+
+    autostart.disable()
+
+    assert schtasks.tasks == {}
+    assert "TRCCNext" not in _run_key(reg)
+    assert not autostart.is_enabled()
+
+
+def test_a_failed_create_keeps_the_run_entry() -> None:
+    """Never strand a user: the old entry goes only once the task exists."""
+    autostart, _, reg = _task_autostart(schtasks=_FakeSchtasks(fail_create=True))
+    _run_key(reg)["TRCCNext"] = "old"
+
+    autostart.enable()
+
+    assert _run_key(reg)["TRCCNext"] == "old"
+    assert not autostart.is_enabled()
+
+
+def test_refresh_migrates_a_run_entry_to_a_task_for_the_same_target() -> None:
+    """An upgrade from the Run-key era: the old value IS the user's choice."""
+    autostart, schtasks, reg = _task_autostart()
+    _run_key(reg)["TRCCNext"] = '"C:\\Program Files\\TRCC\\trcc.exe" qtgui --resume'
+
+    autostart.refresh()
+
+    assert autostart.installed_target() == "qtgui"
+    assert autostart.is_enabled()
+    assert "TRCCNext" not in _run_key(reg)
+
+
+def test_refresh_does_not_enable_a_task_nobody_asked_for() -> None:
+    autostart, schtasks, _ = _task_autostart()
+    autostart.refresh()
+    assert schtasks.tasks == {}
+
+
+def test_refresh_keeps_the_installed_target() -> None:
+    autostart, _, _ = _task_autostart()
+    autostart.enable("daemon")
+    autostart.refresh()
+    assert autostart.installed_target() == "daemon"
+
+
+@pytest.mark.parametrize(("frozen", "kind"), [
+    (True, WindowsTaskAutostart), (False, WindowsAutostart)])
+def test_the_installer_build_gets_the_task_and_pip_the_run_key(
+    monkeypatch: pytest.MonkeyPatch, frozen: bool, kind: type,
+) -> None:
+    from trcc.adapters.system.windows import WindowsPlatform
+    monkeypatch.setattr(sys, "frozen", frozen, raising=False)
+    assert type(WindowsPlatform()._build_autostart()) is kind
+
+
+# =========================================================================
+# trcc-gui.exe — the windowed twin of trcc.exe takes its arguments
+# =========================================================================
+
+
+@pytest.mark.parametrize(("exe", "args", "dispatched"), [
+    ("trcc-gui.exe", [], ["gui"]),
+    ("trcc-gui.exe", ["--resume"], ["gui", "--resume"]),
+    ("trcc-gui.exe", ["qtgui", "--resume"], ["qtgui", "--resume"]),
+    ("trcc.exe", ["--version"], ["--version"]),
+])
+def test_the_frozen_entry_passes_its_arguments_on(
+    tmp_path: Path, exe: str, args: list[str], dispatched: list[str],
+) -> None:
+    """The sign-in task runs ``trcc-gui.exe --resume``.  ``__main__`` used to
+    call ``gui()`` directly, so ``--resume`` never arrived and the window
+    popped at every sign-in.  Run in a SUBPROCESS: ``__main__`` sets up
+    process-wide logging at import, which must not leak into this one."""
+    import json
+    import os
+    code = (
+        "import json, runpy, sys\n"
+        "import trcc._entry as e\n"
+        "e.main = lambda: print(json.dumps(sys.argv[1:])) or 0\n"
+        f"sys.executable = {str(tmp_path / exe)!r}\n"
+        f"sys.argv = ['x', *{args!r}]\n"
+        "runpy.run_module('trcc', run_name='__main__')\n"
+    )
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True,
+        timeout=60, env={**os.environ, "PYTHONPATH": src,
+                         "HOME": str(tmp_path)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == dispatched

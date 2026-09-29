@@ -45,7 +45,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SendTask`](#sendtask) | 4 | 0 | 3 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
-| [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
+| [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 7 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
@@ -647,7 +647,7 @@ is_enabled() -> bool
 refresh() -> None
 ```
 
-**Implementations (4):** `MacOSAutostart` · `NoopAutostart` · `WindowsAutostart` · `XdgDesktopAutostart`
+**Implementations (5):** `MacOSAutostart` · `NoopAutostart` · `WindowsAutostart` · `WindowsTaskAutostart` · `XdgDesktopAutostart`
 
 ## Diagnostics
 

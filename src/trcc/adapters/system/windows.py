@@ -366,9 +366,20 @@ class WindowsPlatform(BaseOS, key="win32"):
         return build_windows_sensors(thread_context=self.worker_thread_context)
 
     def _build_autostart(self) -> AutostartManager:
-        log.debug("_build_autostart")
-        from ._autostart import WindowsAutostart
-        return WindowsAutostart()
+        """A sign-in task for the installer build; the Run key for pip.
+
+        The installer's exes are ``--uac-admin`` and Windows blocks elevation
+        in the sign-in path, so only a task at the highest run level starts
+        them (measured on the VM).  A pip install is not elevated, and the Run
+        key starts it (also measured: 9.7.3 autostarted from it).
+        """
+        import sys
+
+        from ._autostart import WindowsAutostart, WindowsTaskAutostart
+        frozen = getattr(sys, "frozen", False)
+        log.info("_build_autostart: %s", "scheduled task (installer build)"
+                 if frozen else "Run key (pip install)")
+        return WindowsTaskAutostart() if frozen else WindowsAutostart()
 
     def _build_hotplug(self) -> HotplugMonitor:
         log.debug("_build_hotplug")
