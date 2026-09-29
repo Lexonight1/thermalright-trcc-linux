@@ -49,7 +49,6 @@ from ...core.commands import (
     SetSplitMode,
     SleepDevice,
     StartScreencast,
-    StartScreencastDriver,
     StartSlideshowDriver,
     StopScreencast,
     StopSlideshowDriver,
@@ -1285,8 +1284,7 @@ def screencast(
 ) -> None:
     """Stream a screen region to the LCD until interrupted.
 
-    Wraps :class:`StartScreencast` — the GUI ``ScreencastHandler``
-    subscriber drives the per-frame Qt capture timer.  Ctrl-C calls
+    Wraps :class:`StartScreencast`, which starts capturing.  Ctrl-C calls
     :class:`StopScreencast` for clean teardown.
     """
     log.info(
@@ -1301,16 +1299,6 @@ def screencast(
     ))
     typer.echo(result.message)
     if not result.ok:
-        raise typer.Exit(code=1)
-
-    # ``StartScreencast`` only publishes ``ScreencastStarted``; the GUI's
-    # handler is what subscribes and runs a timer.  Without a driver this
-    # command printed "Capturing on …" and then captured NOTHING for as long
-    # as you left it running.
-    drive = app_obj.dispatch(StartScreencastDriver(key=key))
-    if not drive.ok:
-        typer.echo(drive.message)
-        app_obj.dispatch(StopScreencast(key=key))
         raise typer.Exit(code=1)
 
     typer.echo(f"Capturing on {key} — Ctrl-C to stop.")

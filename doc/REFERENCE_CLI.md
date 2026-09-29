@@ -855,7 +855,7 @@ trcc display resume [OPTIONS]
 
 ### `trcc display screencast`
 
-Stream a screen region to the LCD until interrupted. Wraps `StartScreencast` — the GUI `ScreencastHandler` subscriber drives the per-frame Qt capture timer. Ctrl-C calls `StopScreencast` for clean teardown.
+Stream a screen region to the LCD until interrupted. Wraps `StartScreencast`, which starts capturing. Ctrl-C calls `StopScreencast` for clean teardown.
 
 ```bash
 trcc display screencast [OPTIONS] KEY X Y W H

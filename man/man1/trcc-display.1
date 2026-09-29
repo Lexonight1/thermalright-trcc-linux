@@ -761,7 +761,7 @@ Show this command's help and exit.
 .PP
 \fBtrcc display screencast\fR \fIKEY\fR \fIX\fR \fIY\fR \fIW\fR \fIH\fR [\fIOPTIONS\fR]
 .PP
-Stream a screen region to the LCD until interrupted. Wraps StartScreencast  \-  the GUI ScreencastHandler subscriber drives the per\-frame Qt capture timer. Ctrl\-C calls StopScreencast for clean teardown.
+Stream a screen region to the LCD until interrupted. Wraps StartScreencast, which starts capturing. Ctrl\-C calls StopScreencast for clean teardown.
 .PP
 Arguments:
 .RS 4

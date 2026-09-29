@@ -49,6 +49,12 @@ class _TaskThread:
 
     def stop(self, *, join_timeout: float = 2.0) -> None:
         self._stop.set()
+        if threading.current_thread() is self._thread:
+            # A task ending itself from inside ``run_once`` (the screencast
+            # driver finding its session gone).  Joining would raise "cannot
+            # join current thread"; the loop exits on the flag when it returns.
+            log.debug("stop: %s stopped from its own thread", self._task.key)
+            return
         self._task.wake()   # interrupt a long-idle wait so the join is prompt
         self._thread.join(timeout=join_timeout)
         if self._thread.is_alive():

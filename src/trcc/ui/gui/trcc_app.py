@@ -57,13 +57,11 @@ from ...core.commands import (
 )
 from ...core.logs import per_frame
 from ...core.models import (
-    SCREENCAST_TICK_S,
     FitMode,
     HardwareMetrics,
     Kind,
     ThemeDir,
 )
-from ...core.ports import CaptureNotReady, Platform, ScreenCapture
 from ...core.results import LanguageEntry
 from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
@@ -103,48 +101,25 @@ frame_log = per_frame(__name__)
 # =============================================================================
 
 class ScreencastHandler:
-    """Mediator for screencast (screen capture → LCD).
+    """The window's view of the screencast session — state for its buttons.
 
-    Lifecycle is bus-driven: the handler does NOT expose a public
-    ``toggle`` for callers — instead it subscribes to BusBridge's
-    ``screencast_started`` / ``screencast_stopped`` signals (mirrored
-    from :class:`ScreencastStarted` / :class:`ScreencastStopped`
-    events).  GUI / CLI / API / daemon callers all start a session by
-    dispatching :class:`StartScreencast` through :class:`App.dispatch`,
-    which keeps the Command bus authoritative for the lifecycle.
+    Capture itself belongs to the App: ``StartScreencast`` starts the core
+    driver and ``StopScreencast`` ends it, for every face.  This used to run
+    its own 150 ms capture timer, which made the gui the one face where a
+    saved screencast theme actually captured -- and would have been a second
+    capture loop on the wire once the Command started the driver.
 
-    Hot-path knobs that don't warrant a round-trip through the bus
-    (per-drag region updates, audio/border toggles, target LCD size)
-    stay as direct setters — they tune an already-running session.
-
-    When audio_enabled is True, captures microphone input and draws
-    a spectrum visualizer bar at the bottom of each screencast frame.
+    Lifecycle is bus-driven: ``ScreencastStarted`` / ``ScreencastStopped``
+    set the state.  The region and audio flag the user is editing stay as
+    direct setters, read when the window dispatches ``StartScreencast``.
     """
 
-    def __init__(self, parent: QWidget, on_frame: Any,
-                 capture: ScreenCapture):
-        self._on_frame = on_frame
-        # The desktop-capture PORT, injected.  This handler used to call
-        # ``ui/gui/screen_capture.grab_screen_region`` — a second copy of the
-        # adapter's own fallback chain, which had drifted: only the UI copy
-        # reached ``gnome-screenshot``, the one tool that works on GNOME and
-        # KDE Wayland.  One chain now, and the gui gets whatever backend the
-        # OS picked instead of its own.
-        self._capture = capture
+    def __init__(self) -> None:
+        log.info("ScreencastHandler.__init__")
         self._active = False
         self._x = self._y = self._w = self._h = 0
         self._border = True
-        self._lcd_w = 0
-        self._lcd_h = 0
-        self._capture_warn_logged = False
-        # The FLAG only.  The microphone itself belongs to the App now
-        # (``StartScreencast`` / ``StopScreencast``), because the spectrum is
-        # drawn into the wire frame for every face instead of into this
-        # window's capture.
         self._audio_enabled = False
-
-        self._timer = QTimer(parent)
-        self._timer.timeout.connect(self._tick)
 
     @property
     def active(self) -> bool:
@@ -166,7 +141,7 @@ class ScreencastHandler:
 
     def subscribe(self, bus: BusBridge) -> None:
         """Connect ``ScreencastStarted`` / ``ScreencastStopped`` events
-        to the local lifecycle hooks.
+        to the local state.
 
         Called by ``TRCCApp.__init__`` after the bridge is constructed.
         Separate from ``__init__`` so the handler can be built before the
@@ -182,21 +157,15 @@ class ScreencastHandler:
             type=Qt.ConnectionType.QueuedConnection,
         )
 
-    def set_lcd_size(self, w: int, h: int) -> None:
-        self._lcd_w = w
-        self._lcd_h = h
-
     def set_audio_enabled(self, enabled: bool) -> None:
         """Enable/disable microphone audio visualization on screencast."""
         log.info("ScreencastHandler.set_audio_enabled: enabled=%s", enabled)
         self._audio_enabled = enabled
 
     def stop(self) -> None:
-        """Emergency stop — used by system-suspend / window-close paths
-        that may race against the bus delivery.  Idempotent."""
-        log.info("ScreencastHandler.stop: emergency stop (active=%s)",
-                 self._active)
-        self._timer.stop()
+        """Mark the session over without a device to stop it on — the
+        system-suspend path when no LCD is active.  Idempotent."""
+        log.info("ScreencastHandler.stop: active=%s", self._active)
         self._active = False
 
     def set_params(self, x: int, y: int, w: int, h: int) -> None:
@@ -205,17 +174,8 @@ class ScreencastHandler:
     def set_border(self, visible: bool) -> None:
         self._border = visible
 
-    def cleanup(self) -> None:
-        self._timer.stop()
-        self._stop_capture()
-
     def _on_bus_screencast_started(self, event: Any) -> None:
-        """Bus subscriber — start the Qt capture timer for ``event.key``.
-
-        Daemon-mode hasn't moved screencast to a per-device dispatcher
-        yet, so a single handler still owns capture for the active LCD;
-        ``event.key`` is logged for trace and ignored for routing.
-        """
+        """Bus subscriber — a session began on ``event.key``."""
         log.info(
             "ScreencastHandler._on_bus_screencast_started: key=%s "
             "region=(%d,%d %dx%d) audio=%s",
@@ -225,77 +185,11 @@ class ScreencastHandler:
         self._audio_enabled = event.audio
         self._active = True
 
-        # The ONE cadence, not a literal beside it: this said 150 while the
-        # constant said 0.15, so the two would have drifted the moment either
-        # moved -- and the constant is the one grounded in the C# oracle.
-        self._timer.start(int(SCREENCAST_TICK_S * 1000))
-
     def _on_bus_screencast_stopped(self, event: Any) -> None:
-        """Bus subscriber — tear down the Qt capture timer.
-
-        Idempotent: safe to receive even if there was no active session
-        (e.g. CLI client stopping a session that never had a GUI side).
-        """
+        """Bus subscriber — the session ended (idempotent)."""
         log.info("ScreencastHandler._on_bus_screencast_stopped: key=%s",
                  event.key)
         self._active = False
-        self._timer.stop()
-        self._stop_capture()
-
-    def _stop_capture(self) -> None:
-        """Release the capture backend's session, if it holds one.
-
-        The portal backend keeps a consented stream open; dropping it on
-        screencast-stop means nothing keeps streaming a screen nobody is
-        showing, and the next start replays the stored token.  Stateless
-        links release nothing -- ``stop`` is a no-op on the port for them.
-        """
-        log.info("ScreencastHandler._stop_capture: releasing the session")
-        self._capture.stop()
-
-    def _tick(self) -> None:
-        if not self._active or self._w <= 0 or self._h <= 0 or not self._lcd_w or not self._lcd_h:
-            return
-        from PySide6.QtGui import QImage
-        from PySide6.QtGui import Qt as QtGui_Qt
-
-        # ONE call.  ``build_screen_capture`` hands back the portal backend
-        # wrapped around the Qt chain, so "PipeWire when the session is up,
-        # Qt until then" lives in the adapter -- where the CLI, the REST route
-        # and qtgui get it too.  This branch used to be here, inline, and that
-        # is why only the window had Wayland capture.
-        #
-        # The port raises OSError when every backend failed; it has already
-        # logged which ones it tried and why each declined.
-        try:
-            raw = self._capture.grab_region(
-                self._x, self._y, self._w, self._h)
-        except CaptureNotReady as e:
-            # Consent pending, or no first frame yet: drop this tick, quietly
-            # -- it fires seven times a second for up to thirty seconds.
-            frame_log.debug("Screencast: no frame yet — %s", e)
-            return
-        except OSError as e:
-            if not self._capture_warn_logged:
-                log.warning("Screencast: capture failed — %s", e)
-                self._capture_warn_logged = True
-            return
-        self._capture_warn_logged = False
-        # RawFrame is RGB24 with no row padding — the Qt path strips Qt's and
-        # the portal path strips GStreamer's — so width*3 is the true stride.
-        frame_img = QImage(raw.data, raw.width, raw.height,
-                           raw.width * 3, QImage.Format.Format_RGB888)
-
-        frame_img = frame_img.scaled(
-            self._lcd_w, self._lcd_h,
-            QtGui_Qt.AspectRatioMode.IgnoreAspectRatio,
-            QtGui_Qt.TransformationMode.SmoothTransformation)
-
-        # NO spectrum here.  ``SendScreencastFrame`` resolves the levels and
-        # ``build_screencast_frame`` draws them into the WIRE frame, so the
-        # bars reach the CLI, the API and qtgui too instead of only this
-        # window's capture.
-        self._on_frame(frame_img)
 
 
 # =============================================================================
@@ -344,13 +238,11 @@ class TRCCApp(QMainWindow):
     def __init__(
         self,
         app: CommandBus,
-        platform: Platform,
         decorated: bool = False,
     ) -> None:
         super().__init__()
         from trcc.__version__ import __version__
-        log.info("TRCC v%s starting (host platform %s)", __version__,
-                 type(platform).__name__)
+        log.info("TRCC v%s starting", __version__)
 
         self._app = app
         # One dispatch for every platform fact this window needs.  Reaching
@@ -405,18 +297,7 @@ class TRCCApp(QMainWindow):
         self._apply_dark_theme()
         self._setup_ui()
 
-        # Screencast handler.  Its capture source is the HOST Platform's --
-        # the one this window was started with -- never ``app.platform``:
-        # the screen being captured belongs to the session the window is in,
-        # which under TRCC_DAEMON=1 is not the session that owns USB (and
-        # ``AppProxy`` exposes ``dispatch`` alone).  ``Platform.screen_capture``
-        # is the port that says so.  Until 2026-09-18 the window imported the
-        # adapter composer directly for the same reason, bypassing that port.
-        capture = platform.screen_capture()
-        log.info("screencast capture source: %s from %s",
-                 type(capture).__name__, type(platform).__name__)
-        self._screencast = ScreencastHandler(
-            self, self._on_screencast_frame, capture=capture)
+        self._screencast = ScreencastHandler()
 
         # Connect widget signals
         self._connect_view_signals()
@@ -1859,10 +1740,6 @@ class TRCCApp(QMainWindow):
             # here would duplicate the call.
             h.deactivate()
             h.is_background_active = False
-            w, hw = h.lcd_size
-            # LCD scaling target stays a direct setter: it's a Qt-only
-            # render hint, not a session-lifecycle fact.
-            self._screencast.set_lcd_size(w, hw)
             x, y, sw, sh = self._screencast.params
             result = self._app.dispatch(StartScreencast(
                 key=h.device_key, x=x, y=y, w=sw, h=sh,
@@ -1925,12 +1802,6 @@ class TRCCApp(QMainWindow):
                 self.uc_preview.show_video_controls(False)
             if (last_path := h.current_theme_path):
                 h.select_theme_from_path(Path(last_path))
-
-    def _on_screencast_frame(self, image: Any) -> None:
-        log.debug("_on_screencast_frame")  # per frame, ~7 Hz
-        h = self._active_lcd()
-        if h:
-            h.on_screencast_frame(image)
 
     # ── File Dialogs ────────────────────────────────────────────────
 
@@ -2631,7 +2502,6 @@ class TRCCApp(QMainWindow):
         if self._tray.intercept_close(event):
             return
         # Genuine quit (Exit / force): the controller already hid the tray.
-        self._screencast.cleanup()
         for h in list(self._handlers.values()):
             h.cleanup()
         self.uc_system_info.stop_updates()

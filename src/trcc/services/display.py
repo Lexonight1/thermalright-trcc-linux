@@ -694,7 +694,7 @@ class DisplayService:
         #
         # It has to be published or the preview shows a DIFFERENT PICTURE from
         # the panel: the gui painted its preview straight from the raw grab
-        # (``lcd_handler.on_screencast_frame``), so once the wire frame gained
+        # (its old capture tick), so once the wire frame gained
         # the mask and the metrics, the LCD had them and the preview did not.
         self._remember_preview(info.key, surface)
 

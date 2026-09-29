@@ -932,6 +932,18 @@ def cli_app(fake_platform):
 # =========================================================================
 
 @pytest.fixture(autouse=True)
+def _fresh_once_only_log_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test starts with nothing reported yet.
+
+    ``recurring_warning`` / ``recurring_failure`` log a message once per
+    PROCESS; a worker runs many tests, so without this a warning another test
+    already triggered would be silent here -- an order-dependent pass or fail.
+    """
+    from trcc.core import logs
+    monkeypatch.setattr(logs, "_REPORTED", set())
+
+
+@pytest.fixture(autouse=True)
 def _no_logging_error_in_a_test(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:

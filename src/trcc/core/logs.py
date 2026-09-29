@@ -261,19 +261,39 @@ _REPORTED: set[str] = set()
 _REPEATS: dict[str, logging.Logger] = {}
 
 
-def recurring_failure(log: logging.Logger, msg: str, *args: object) -> None:
-    """Log a per-poll failure: its traceback once, then per-frame only.
+def _repeat(log: logging.Logger, msg: str, *args: object) -> bool:
+    """True when *msg* was reported before -- and then it goes per-frame.
 
-    Call from the ``except`` block.  The formatted message is the key, so
-    ``nvmlDeviceGetFanSpeedRPM(0) failed`` and ``…(1) failed`` are reported
-    once each — one per function per GPU, which is what a report needs.
+    The formatted message is the key, so ``nvmlDeviceGetFanSpeedRPM(0) failed``
+    and ``…(1) failed`` are reported once each.
     """
     key = f"{log.name}:{msg % args if args else msg}"
     if key in _REPORTED:
         frame_log = _REPEATS.get(log.name) or _REPEATS.setdefault(
             log.name, per_frame(log.name))
         frame_log.debug(msg, *args)
-        return
+        return True
     _REPORTED.add(key)
-    log.debug(msg + " — traceback logged once; repeats go to the per-frame log",
-              *args, exc_info=True)
+    return False
+
+
+def recurring_failure(log: logging.Logger, msg: str, *args: object) -> None:
+    """Log a per-poll failure: its traceback once, then per-frame only.
+
+    Call from the ``except`` block.  One report per function per GPU, which is
+    what a report needs.
+    """
+    if not _repeat(log, msg, *args):
+        log.debug(msg + " — traceback logged once; repeats go to the per-frame log",
+                  *args, exc_info=True)
+
+
+def recurring_warning(log: logging.Logger, msg: str, *args: object) -> None:
+    """A WARNING that a per-tick loop would repeat: once, then per-frame only.
+
+    A screencast whose capture broke fails the same way seven times a second;
+    as a WARNING each time it rotates the diagnosis out of the file ``trcc
+    report`` sends.
+    """
+    if not _repeat(log, msg, *args):
+        log.warning(msg + " — repeats go to the per-frame log", *args)

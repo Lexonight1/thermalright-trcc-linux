@@ -60,7 +60,6 @@ from ...core.commands import (
     SetSplitMode,
     SleepDevice,
     StartScreencast,
-    StartScreencastDriver,
     StartSlideshowDriver,
     StopScreencast,
     StopSlideshowDriver,
@@ -567,16 +566,8 @@ def screencast_start(key: str, body: ScreencastStartRequest,
                      request: Request) -> ScreencastResult:
     """Begin a screen-capture session for *key*.
 
-    Dispatches :class:`StartScreencast` — which validates region geometry,
-    stops any active video playback, and publishes
-    :class:`ScreencastStarted` — then :class:`StartScreencastDriver` to
-    actually capture.
-
-    That second dispatch is the whole feature for an API caller.  This
-    docstring used to end "the bus event still fires, just no consumer picks
-    it up", which was true and was the bug: the GUI's ``ScreencastHandler``
-    was the only subscriber that ran a capture timer, so a headless caller got
-    ``ok=True`` and an unchanged panel.
+    One :class:`StartScreencast`, which validates the region, stops any
+    video playback, and starts the capture driver.
     """
     log.info(
         "api POST /devices/{key}/display/screencast/start: key=%s "
@@ -590,8 +581,6 @@ def screencast_start(key: str, body: ScreencastStartRequest,
         ),
     )
     http_error_if_failed(result)
-    drive = request.app.state.trcc.dispatch(StartScreencastDriver(key=key))
-    http_error_if_failed(drive)
     return result
 
 

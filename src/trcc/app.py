@@ -10,6 +10,7 @@ import logging
 import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
+from functools import partial
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -48,7 +49,7 @@ from .core.events import (
 )
 from .core.led_models import LedRuntimeState
 from .core.libraries import DeviceLibraries
-from .core.logs import current_origin, per_frame
+from .core.logs import current_origin, per_frame, recurring_warning
 from .core.models import (
     DeviceInfo,
     DeviceQuirks,
@@ -1191,7 +1192,12 @@ class App(CommandBus):
             self._connect_for(cmd)
         result = cmd.execute(self)
         if not getattr(result, "ok", True):
-            log.warning(
+            # A per-tick Command that fails fails again next tick: warn once
+            # per distinct message, or a broken screencast writes seven
+            # WARNINGs a second into the file ``trcc report`` sends.
+            warn = (partial(recurring_warning, log) if sink is frame_log
+                    else log.warning)
+            warn(
                 "[%s] %s failed: %s",
                 origin, type(cmd).__name__,
                 getattr(result, "message", "(no message)"),

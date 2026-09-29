@@ -144,11 +144,20 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("RunUpgrade", "gui"): (frozenset({"dry_run"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("StartScreencastDriver", "api"): (frozenset({"interval_s"}), (
-        "unclassified: measured 2026-09-22, not traced"
+    ("StartScreencast", "api"): (frozenset({"interval_s"}), (
+        "scoped: traced 2026-09-29 -- interval_s is qtgui's fps slider, the "
+        "only rate control any face has; the rest take the C#-grounded "
+        "SCREENCAST_TICK_S default"
     )),
-    ("StartScreencastDriver", "cli"): (frozenset({"interval_s"}), (
-        "unclassified: measured 2026-09-22, not traced"
+    ("StartScreencast", "cli"): (frozenset({"interval_s"}), (
+        "scoped: traced 2026-09-29 -- interval_s is qtgui's fps slider, the "
+        "only rate control any face has; the rest take the C#-grounded "
+        "SCREENCAST_TICK_S default"
+    )),
+    ("StartScreencast", "gui"): (frozenset({"interval_s"}), (
+        "scoped: traced 2026-09-29 -- interval_s is qtgui's fps slider, the "
+        "only rate control any face has; the rest take the C#-grounded "
+        "SCREENCAST_TICK_S default"
     )),
 }
 
@@ -250,7 +259,7 @@ def test_every_record_is_tagged(pair: tuple[str, str]) -> None:
 #: ``audio=False`` persisted the flag and never released the microphone, so
 #: the bars kept drawing after every face turned them off.  See
 #: ``_sync_audio`` in ``core/commands/device.py``.
-UNCLASSIFIED = 21
+UNCLASSIFIED = 19
 
 
 def test_the_unclassified_backlog_does_not_grow() -> None:
@@ -289,5 +298,4 @@ _RECORDED = frozenset({
     ("ListCloudThemes", "cli"), ("ListMasks", "api"), ("ListMasks", "gui"),
     ("ListMasks", "qtgui"), ("ListThemes", "gui"), ("ListThemes", "qtgui"),
     ("LoadVideo", "qtgui"), ("PlayVideo", "qtgui"), ("RunUpgrade", "gui"),
-    ("StartScreencastDriver", "api"), ("StartScreencastDriver", "cli"),
 })

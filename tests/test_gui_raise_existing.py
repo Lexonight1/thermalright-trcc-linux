@@ -28,7 +28,7 @@ def test_raise_requested_runs_slot_on_main_thread(qtbot: object, tmp_path: Path)
     main_ident = threading.get_ident()
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
-        window = TRCCApp(app=app, platform=app.platform)
+        window = TRCCApp(app=app)
 
         # Probe connected with the SAME queued semantics as the real slot, so
         # it records the thread the marshalled slot actually runs on.

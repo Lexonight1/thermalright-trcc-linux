@@ -69,6 +69,7 @@ from .device import (
     SetMaskPosition,
     SetMediaPlayer,
     StartScreencast,
+    StopScreencast,
     StopVideo,
 )
 
@@ -392,6 +393,14 @@ class LoadTheme(Command[ThemeResult]):
         # Screencast-backed theme: resume the saved screen-capture region as
         # the display source (mutually exclusive with a video/image bg).
         region = app.themes.screencast_region(theme)
+        if region is None and (
+            app.settings.for_device(self.key).screencast_region is not None
+        ):
+            # A theme is a display source too: without this the capture ran
+            # on behind the theme just picked, the desktop under its mask.
+            log.info("LoadTheme: %s carries no screencast — ending the "
+                     "running one", theme.name)
+            app.dispatch(StopScreencast(key=self.key))
         if region is not None:
             x, y, w, h, audio = region
             log.info("LoadTheme: %s carries a screencast region %s — "

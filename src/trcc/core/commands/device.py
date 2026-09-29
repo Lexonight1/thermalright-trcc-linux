@@ -1425,24 +1425,23 @@ class StopVideo(Command[VideoResult]):
 
 @dataclass(frozen=True, slots=True)
 class StartScreencast(Command[ScreencastResult]):
-    """Begin a screen-capture session for a device.
+    """Begin a screen-capture session for a device, and drive it.
 
-    Mirrors :class:`PlayVideo` — the GUI ``ScreencastHandler`` is the
-    subscriber that actually runs the Qt capture timer; this Command
-    just publishes :class:`ScreencastStarted` so handler/CLI/API/daemon
-    callers all enter the same one-way event flow.
+    Persists the region as the device's display source, stops any video
+    playback so one source owns the wire, publishes :class:`ScreencastStarted`
+    and registers the capture driver.  The driver is part of the Command, not
+    a second one beside it: ``LoadTheme`` of a saved screencast theme and the
+    session's restore dispatch only this, and while the driver was separate
+    they answered "screencast started" and captured nothing -- in qtgui, the
+    CLI, the API and the daemon.  The gui ran its own timer and was the one
+    face that worked.
 
-    The Command itself is intentionally side-effect-light:
-      * it does NOT touch the wire (no SendFrame here — the handler's
-        per-frame tick drives that),
-      * it does NOT persist anything in :class:`DeviceSettings`
-        (screencast is a transient session, not a saved bg override),
-      * it stops any prior video playback so the override stack matches
-        what the user sees on the device.
+    Re-issuing replaces the driver (same scheduler key), which is how the
+    audio flag and ``interval_s`` change mid-cast.  ``interval_s`` defaults to
+    the C#-grounded cadence; qtgui's fps slider sets it.
 
     Validates region geometry — refuses zero-area or negative sizes so
-    a typo in CLI args is caught at dispatch time instead of being a
-    silent no-op in the handler timer.
+    a typo in CLI args is caught at dispatch time.
     """
     USES_DEVICE: ClassVar[bool] = True
     key: str
@@ -1451,11 +1450,14 @@ class StartScreencast(Command[ScreencastResult]):
     w: int
     h: int
     audio: bool = False
+    interval_s: float = SCREENCAST_TICK_S
 
     def execute(self, app: App) -> ScreencastResult:
         log.info(
-            "StartScreencast.execute: key=%s region=(%d,%d %dx%d) audio=%s",
+            "StartScreencast.execute: key=%s region=(%d,%d %dx%d) audio=%s "
+            "interval=%.3fs",
             self.key, self.x, self.y, self.w, self.h, self.audio,
+            self.interval_s,
         )
         if self.w <= 0 or self.h <= 0:
             log.warning(
@@ -1517,71 +1519,15 @@ class StartScreencast(Command[ScreencastResult]):
             x=self.x, y=self.y, w=self.w, h=self.h,
             audio=self.audio,
         ))
+        from ...services.screencast_driver import ScreencastDriver
+
+        app.add_task(ScreencastDriver(app, self.key, self.interval_s))
         return ScreencastResult(
             ok=True, key=self.key, active=True,
             x=self.x, y=self.y, w=self.w, h=self.h, audio=self.audio,
             message=(f"screencast started on {self.key} "
                      f"({self.w}x{self.h} @ {self.x},{self.y})"),
         )
-
-@dataclass(frozen=True, slots=True)
-class StartScreencastDriver(Command[ScreencastResult]):
-    """Drive ``CaptureScreencastFrame`` on a cadence until stopped.
-
-    Separate from ``StartScreencast`` on purpose.  ``StartScreencast`` only
-    publishes ``ScreencastStarted``, and the GUI's ``ScreencastHandler``
-    subscribes to it and runs its own 150 ms timer — so a GUI session already
-    has a driver.  Registering one there too would put TWO capture loops on the
-    same wire for anyone using the window.
-
-    So the driver is opt-in, and the clients without a timer of their own — the
-    CLI, the REST route, the daemon — ask for it explicitly.  That leaves two
-    drivers in the tree, which is honest rather than ideal: the end state is one
-    driver here and no timer in the GUI, and what blocks it is the GUI's audio
-    spectrum, which needs a ``Renderer`` rectangle primitive before it can move
-    out of the window.
-
-    Idempotent — the scheduler replaces a task registered under the same key.
-
-    ``interval_s`` defaults to the gui's own screencast cadence so a headless
-    cast moves at the same rate as one driven from the window.  It is a field
-    rather than a constant because a caller may already expose the rate: the
-    qtgui panel has an fps slider, and hard-coding here would have silently
-    ignored it.
-    """
-    USES_DEVICE: ClassVar[bool] = True
-    key: str
-    interval_s: float = SCREENCAST_TICK_S
-
-    def execute(self, app: App) -> ScreencastResult:
-        log.info("StartScreencastDriver.execute: key=%s interval=%.3fs",
-                 self.key, self.interval_s)
-        try:
-            app.get(self.key)
-        except DeviceNotFoundError as e:
-            log.warning("StartScreencastDriver: device %s not found: %s",
-                        self.key, e)
-            return ScreencastResult(ok=False, key=self.key, message=str(e))
-
-        if app.settings.for_device(self.key).screencast_region is None:
-            log.warning(
-                "StartScreencastDriver: %s has no screencast region — "
-                "dispatch StartScreencast first", self.key,
-            )
-            return ScreencastResult(
-                ok=False, key=self.key,
-                message=(f"no screencast session on {self.key} — "
-                         "start one before driving it"),
-            )
-
-        from ...services.screencast_driver import ScreencastDriver
-
-        app.add_task(ScreencastDriver(app, self.key, self.interval_s))
-        return ScreencastResult(
-            ok=True, key=self.key,
-            message=f"driving screencast on {self.key}",
-        )
-
 
 @dataclass(frozen=True, slots=True)
 class SendScreencastFrame(Command[ScreencastResult]):
@@ -1703,8 +1649,8 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
 
     Reads the region from ``screencast_region`` — set by ``StartScreencast`` —
     so "is a screencast running" has one home rather than a second flag.  No
-    region means no session: that is a skip, not an error, because a periodic
-    driver will dispatch this after the session has been stopped.
+    region means the session is over -- another source took the panel -- and
+    this ends it rather than failing on every tick.
 
     LOG_LEVEL is DEBUG: this fires ~7x a second.
     """
@@ -1725,13 +1671,18 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
 
         region = app.settings.for_device(self.key).screencast_region
         if region is None:
-            frame_log.debug(
-                "CaptureScreencastFrame: %s has no active session — skip",
-                self.key,
-            )
+            # Another source took the panel: ``SetBackground``, ``PlayVideo``
+            # and ``SetMediaPlayer`` clear the region in Settings, which keeps
+            # the display sources exclusive.  The session is over, so it ends
+            # properly here -- driver, capture, and the event the UIs' buttons
+            # follow -- once, instead of warning on every tick forever.
+            log.info("CaptureScreencastFrame: %s has no screencast region — "
+                     "another source took the panel; ending the session",
+                     self.key)
+            app.dispatch(StopScreencast(key=self.key))
             return ScreencastResult(
-                ok=False, key=self.key,
-                message=f"no screencast session on {self.key}",
+                ok=True, key=self.key,
+                message=f"no screencast session on {self.key} — ended",
             )
 
         x, y, w, h = region[0], region[1], region[2], region[3]
@@ -1756,8 +1707,9 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
             # under us (screen locked, portal revoked, grim uninstalled).  A
             # failed frame must not kill the driver that dispatched it, so
             # this reports rather than raises — the next tick tries again.
-            log.warning("CaptureScreencastFrame: capture failed for %s: %s: %s",
-                        self.key, type(e).__name__, e)
+            # Per tick: ``App.dispatch`` warns once per distinct message.
+            frame_log.debug("CaptureScreencastFrame: capture failed for %s: "
+                            "%s: %s", self.key, type(e).__name__, e)
             return ScreencastResult(
                 ok=False, key=self.key,
                 message=f"screencast capture failed: {type(e).__name__}: {e}",
@@ -1824,24 +1776,23 @@ class StopScreencast(Command[ScreencastResult]):
 
     Idempotent — calling on a device that has no active session returns
     ``ok=True`` so scripts can use it as a defensive cleanup.  Publishes
-    :class:`ScreencastStopped`; the GUI ``ScreencastHandler`` reacts by
-    stopping its Qt capture timer + tearing down PipeWire/audio plumbing.
+    :class:`ScreencastStopped` for the UIs' buttons.
 
-    Also stops the capture DRIVER (``StartScreencastDriver``), for whoever
-    started it.  Each UI used to pair a ``StopScreencastDriver`` with this by
-    hand, and the CLI's ``stop-screencast`` did not -- against a daemon that
-    left the driver ticking at 16 Hz, each tick a WARNING ("no screencast
-    session") in the one log ``trcc report`` sends, forever.
+    Ends everything :class:`StartScreencast` began: the driver, the persisted
+    region, the microphone, and the capture source's session -- a portal
+    stream stays open, streaming a screen nobody is showing, until ``stop``.
+    Only the gui used to release it, from its own capture timer.
     """
     key: str
 
     def execute(self, app: App) -> ScreencastResult:
-        log.info("StopScreencast.execute: key=%s — ending the session and "
-                 "its driver", self.key)
+        log.info("StopScreencast.execute: key=%s — ending the session, its "
+                 "driver and its capture", self.key)
         from ...services.screencast_driver import task_key
         app.remove_task(task_key(self.key))
         app.settings.set_screencast_region(self.key, None)
         _sync_audio(app)
+        app.platform.screen_capture().stop()
         app.events.publish(ScreencastStopped(key=self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=False,

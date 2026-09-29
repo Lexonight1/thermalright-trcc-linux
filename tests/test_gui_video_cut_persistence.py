@@ -67,7 +67,7 @@ def test_a_cut_video_becomes_the_background_as_delivered_and_survives_close(
         library.mkdir(parents=True)
         delivered = library / "0123456789abcdef.zt"
         delivered.write_bytes(b"ZT\x00kept-by-the-export")
-        window = TRCCApp(app=app, platform=app.platform)
+        window = TRCCApp(app=app)
         window.replay_initial_devices()
 
         window._on_video_cut_done(str(delivered))

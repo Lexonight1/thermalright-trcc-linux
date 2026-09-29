@@ -48,7 +48,7 @@ sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 import function_census  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 #: LOWER IT when a function comes off the list; never raise it.
-MAX_LONG_FUNCTIONS = 16
+MAX_LONG_FUNCTIONS = 15
 
 #: LOWER IT when a function comes off the list; never raise it.
 MAX_BRANCHY_FUNCTIONS = 8

@@ -362,8 +362,7 @@ class ConfigurationPanel(BasePanel):
         #
         # The driver is dispatched HERE rather than from ``SetSlideshow`` on
         # purpose: ``ui/gui`` rotates with its own ``QTimer``, so coupling the
-        # two would give that skin TWO rotators -- the trap
-        # ``StartScreencastDriver`` documents for screencast.
+        # two would give that skin TWO rotators.
         r8 = self.dispatch(
             StartSlideshowDriver(key=key) if rotating
             else StopSlideshowDriver(key=key)

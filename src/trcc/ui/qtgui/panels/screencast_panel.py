@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
 from ....core.commands import (
     DeviceState,
     StartScreencast,
-    StartScreencastDriver,
     StopScreencast,
 )
 from ....core.geometry import lock_region_to_panel
@@ -56,7 +55,7 @@ from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
 if TYPE_CHECKING:
-    pass
+    from ....core.results import ScreencastResult
 
 log = logging.getLogger(__name__)
 
@@ -223,12 +222,25 @@ class ScreencastPanel(BasePanel):
 
     def _on_fps_changed(self, value: int) -> None:
         log.info("_on_fps_changed: value=%s", value)
-        if self._casting_key:
-            # Re-registering replaces the task under the same key, so this is
-            # how the cadence changes mid-cast.
-            self.dispatch(StartScreencastDriver(
-                key=self._casting_key, interval_s=self._fps_interval_s(),
-            ))
+        if self._casting_key and self._region is not None:
+            # Re-issuing replaces the driver, so this is how the cadence
+            # changes mid-cast.
+            self._issue(self._casting_key, self._region)
+
+    def _issue(self, key: str,
+               region: tuple[int, int, int, int]) -> ScreencastResult:
+        """Start (or re-issue) the session with everything the panel holds.
+
+        One dispatch for Start, the fps slider and the mic checkbox, so a
+        re-issue for one of them cannot reset the others.
+        """
+        x, y, w, h = region
+        log.info("_issue: key=%s region=%s audio=%s fps=%s", key,
+                 region, self._audio.isChecked(), self._fps.value())
+        return self.dispatch(StartScreencast(
+            key=key, x=x, y=y, w=w, h=h, audio=self._audio.isChecked(),
+            interval_s=self._fps_interval_s(),
+        ))
 
     def _fps_interval_s(self) -> float:
         """The slider's fps as the driver's tick interval, in seconds."""
@@ -241,7 +253,7 @@ class ScreencastPanel(BasePanel):
         """Mic on/off, mid-cast included.
 
         Re-issuing the session with the new flag is how the flag changes,
-        exactly as re-registering the driver is how the cadence changes
+        exactly as re-issuing it is how the cadence changes
         (:meth:`_on_fps_changed`).  The flag lives in ``screencast_region``'s
         fifth element — the one persisted truth — so there is no second piece
         of state to keep in step, and ``_sync_audio`` in the Command holds the
@@ -255,10 +267,7 @@ class ScreencastPanel(BasePanel):
             log.debug("_on_audio_toggled: no live session — the checkbox "
                       "applies at the next Start")
             return
-        x, y, w, h = self._region
-        result = self.dispatch(StartScreencast(
-            key=key, x=x, y=y, w=w, h=h, audio=enabled,
-        ))
+        result = self._issue(key, self._region)
         if not result.ok:
             log.warning("_on_audio_toggled: re-issue failed: %s",
                         result.message)
@@ -279,23 +288,9 @@ class ScreencastPanel(BasePanel):
                 "Choose a region first — click 'Choose region…' above.",
             )
             return
-        x, y, w, h = self._region
-        started = self.dispatch(StartScreencast(
-            key=key, x=x, y=y, w=w, h=h, audio=self._audio.isChecked(),
-        ))
+        started = self._issue(key, self._region)
         if not started.ok:
             self._status.setText(started.message)
-            return
-        # The driver replaces this panel's own QTimer + capture chain.  It
-        # was a THIRD screencast driver in the tree, beside the gui skin's and
-        # the one core grew for headless clients, and the only one that never
-        # persisted its region — so nothing else could tell a cast was running.
-        driving = self.dispatch(StartScreencastDriver(
-            key=key, interval_s=self._fps_interval_s(),
-        ))
-        if not driving.ok:
-            self._status.setText(driving.message)
-            self.dispatch(StopScreencast(key=key))
             return
         self._casting_key = key
         self._start_btn.setEnabled(False)

@@ -261,12 +261,7 @@ class GuiUI(_QtUI, key="gui"):
         from ..core.commands import DeviceConnectionIssues
         from .gui.trcc_app import TRCCApp
 
-        if self._platform is None:
-            raise RuntimeError(
-                "GuiUI needs the host Platform it was started with: the "
-                "window's screen capture belongs to the window's session")
-        window = TRCCApp(app=self, platform=self._platform,
-                         decorated=self.decorated)
+        window = TRCCApp(app=self, decorated=self.decorated)
         if self._instance is not None:
             # Fired from SingleInstance's accept thread; the Qt signal marshals
             # it onto the GUI thread (a direct cross-thread QWidget call

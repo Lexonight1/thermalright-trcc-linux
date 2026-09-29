@@ -10,9 +10,8 @@ on GNOME, KDE and other Wayland compositors, where the X11 paths in
 capture backend is an adapter; it sat in the view layer because that is where
 somebody happened to be working when they fixed Wayland capture.  The cost was
 that only the GUI got the fix: the CLI, the REST route and qtgui had no
-Wayland capture at all, and ``StartScreencastDriver`` could not become the one
-capture loop because deleting the GUI's timer would have taken PipeWire with
-it.
+Wayland capture at all, and the core driver could not become the one capture
+loop because deleting the GUI's timer would have taken PipeWire with it.
 
 **Verified here; NOT verified end to end.**  The dev box is X11/XFCE and its
 ``xdg-desktop-portal`` is ``inactive (dead)`` and will not start, so the

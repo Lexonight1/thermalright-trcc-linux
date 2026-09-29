@@ -27,7 +27,7 @@ def test_zero_devices_shows_home_sysinfo_empty_state(tmp_path: Path) -> None:
 
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
-        window = TRCCApp(app=app, platform=app.platform)
+        window = TRCCApp(app=app)
         window.replay_initial_devices()
         assert not window._handlers, list(window._handlers)
         assert window.uc_system_info.isVisibleTo(window)
@@ -42,7 +42,7 @@ def test_one_device_shows_the_device_form_view(tmp_path: Path) -> None:
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
-        window = TRCCApp(app=app, platform=app.platform)
+        window = TRCCApp(app=app)
         window.replay_initial_devices()
         assert _KEY in window._handlers, list(window._handlers)
         assert window.form_container.isVisibleTo(window)
@@ -58,7 +58,7 @@ def test_no_devices_hint_is_sourced_from_the_platform_port(tmp_path: Path) -> No
     platform = MockPlatform([], tmp_path)
     app = App(platform, renderer=QtRenderer())
     try:
-        window = TRCCApp(app=app, platform=app.platform)
+        window = TRCCApp(app=app)
         assert window.uc_device.hint_label.text() == platform.no_devices_hint()
     finally:
         app.close()

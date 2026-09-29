@@ -68,7 +68,7 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Turned by a service task, so NO UI dispatches them ────────────────
     "CaptureScreencastFrame": (frozenset(), (
         "scoped: ScreencastDriver turns it; every UI reaches the capability "
-        "through StartScreencastDriver / StopScreencast"
+        "through StartScreencast / StopScreencast"
     )),
     "AdvanceSlideshow": (frozenset({"gui"}), (
         "scoped: SlideshowDriver turns it (2026-08-30), and the gui also drives "
@@ -81,9 +81,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "the Command whose raw bytes survive JSON, and its own docstring says "
         "'useful for scripts and end-to-end smoke tests'"
     )),
-    "SendScreencastFrame": (frozenset({"gui"}), (
-        "scoped: the frame-push half of the gui's own capture timer; cli/api use "
-        "ScreencastDriver, and Start/StopScreencast reach all four"
+    "SendScreencastFrame": (frozenset(), (
+        "scoped: the encode-and-send half of CaptureScreencastFrame, turned by "
+        "ScreencastDriver; the gui's own capture timer that pushed frames "
+        "through it is gone (2026-09-29)"
     )),
 
     # ── Ergonomic composites -- both halves reachable separately ──────────

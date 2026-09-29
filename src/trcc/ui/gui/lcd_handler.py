@@ -40,7 +40,6 @@ from ...core.commands import (
     PreviewSize,
     ResolveThemeDirectories,
     SaveTheme,
-    SendScreencastFrame,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
@@ -1085,48 +1084,6 @@ class LCDHandler(BaseHandler):
         self._w['preview'].set_status(
             f"Background: {'On' if enabled else 'Off'} ({kind})",
         )
-
-    def on_screencast_frame(self, image: Any) -> None:
-        """Handle a captured screencast frame — encode + send to the LCD.
-
-        Encoding to wire bytes runs through ``app.display.build_screencast_frame``
-        before the SendFrame dispatch.  Best-effort: if the device isn't
-        currently registered, drop silently — screencast outlives device
-        churn.
-        """
-        # Per-tick path; entry stays DEBUG.
-        #
-        # The preview is NOT painted here.  It used to be, straight from this
-        # raw grab — which is a DIFFERENT PICTURE from the one the panel gets:
-        # the wire frame carries the theme's mask and metric elements
-        # composited over the capture, and this image carries neither.  The
-        # panel showed them, the preview did not.
-        #
-        # ``SendScreencastFrame`` publishes ``FrameSent`` with the composited
-        # surface, exactly as ``RenderAndSend`` does, and the bus bridge hands
-        # it to ``handle_frame``.  One producer, one picture, and the preview
-        # agrees with the glass by construction rather than by two call sites
-        # being kept in step.
-        # The capture tick hands over a renderer SURFACE; the wire speaks
-        # ``RawFrame``.  Passing the surface straight through is what made
-        # every frame die on ``.data`` — the preview updated and the panel
-        # stayed blank.  The conversion is local toolkit work and stays here;
-        # everything after it (look up the device, encode for its panel, send)
-        # is one dispatch, which is also what makes it work in daemon mode.
-        # The conversion is local toolkit work — ``ui/gui`` IS the Qt adapter,
-        # and a module-level function keeps it out of ``app.renderer``, which
-        # an ``AppProxy`` does not have.  Reaching it there was the last thing
-        # in ``ui/`` that raised under TRCC_DAEMON=1: measured at 39
-        # AttributeErrors in ~7 seconds of a driven screencast, one per 150 ms
-        # tick.  Everything after it — look up the device, encode for its
-        # panel, send — is one dispatch, which is what makes it work remotely.
-        from ...adapters.render.qt import qimage_to_raw_rgb24
-        result = self._app.dispatch(SendScreencastFrame(
-            key=self._device_key,
-            frame=qimage_to_raw_rgb24(image),
-        ))
-        if not result.ok:
-            self.log.debug("on_screencast_frame: %s", result.message)
 
     # ── Slideshow / Carousel ───────────────────────────────────────
 

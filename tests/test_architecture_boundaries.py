@@ -1625,15 +1625,6 @@ KNOWN_UI_ADAPTER_IMPORTS: frozenset[tuple[str, str]] = frozenset({
     # a launch site, but it is still system information the ``Platform`` port
     # could answer, so it stays visible rather than being called a root.
     ("trcc/ui/cli/main.py", "trcc.adapters.infra.network"),
-    # 2026-09-08: ``qimage_to_raw_rgb24`` — the gui's screencast tick holds a
-    # QImage and ``SendScreencastFrame`` wants a RawFrame.  ``ui/gui`` IS the
-    # Qt adapter family, so reusing the Qt adapter's conversion is not a layer
-    # jump; reaching ``app.renderer`` for it WAS, and raised under
-    # TRCC_DAEMON=1 (39 AttributeErrors in ~7 s of driven screencast).
-    # Deliberately an import rather than a copy: duplicating the scanline
-    # stride handling would have scored BETTER here — this audit counts
-    # imports, not duplication — and been worse code.
-    ("trcc/ui/gui/lcd_handler.py", "trcc.adapters.render.qt"),
     # 2026-09-14 → 2026-09-18: ``trcc_app.py → trcc.adapters.screencast`` sat
     # here for the screencast CAPTURE source, with the right reason -- the
     # screen being captured belongs to the session the WINDOW is in, which
@@ -1642,7 +1633,10 @@ KNOWN_UI_ADAPTER_IMPORTS: frozenset[tuple[str, str]] = frozenset({
     # for that reason already existed: the gui launcher builds the host
     # Platform, the UI bus holds it, and ``Platform.screen_capture()`` on THAT
     # object is the window's own session.  The window now takes it there, and
-    # this row is gone.
+    # this row is gone.  (2026-09-29: the window captures nothing at all now --
+    # ``StartScreencast`` drives the App's capture loop for every face -- so the
+    # ``lcd_handler.py -> adapters.render.qt`` row for its frame conversion
+    # went too.)
 })
 
 

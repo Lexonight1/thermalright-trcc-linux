@@ -1,8 +1,9 @@
 """The screencast driver — what made CLI / API / daemon capture anything.
 
-``StartScreencast`` only publishes ``ScreencastStarted``, and the GUI's
+``StartScreencast`` used to only publish ``ScreencastStarted``, and the GUI's
 ``ScreencastHandler`` was the sole subscriber that ran a timer.  Every other
-client printed "Capturing on …" and captured nothing.
+client printed "Capturing on …" and captured nothing.  The Command now starts
+the driver itself, and the gui's timer is gone.
 """
 from __future__ import annotations
 
@@ -19,9 +20,9 @@ from trcc.core.commands import (
     ConnectDevice,
     SendScreencastFrame,
     StartScreencast,
-    StartScreencastDriver,
     StopScreencast,
 )
+from trcc.core.events import ScreencastStopped
 from trcc.core.models import SCREENCAST_TICK_S, RawFrame
 from trcc.services.screencast_driver import ScreencastDriver, task_key
 
@@ -128,17 +129,35 @@ def test_capture_grabs_the_region_the_session_declared(casting: App) -> None:
     assert casting.platform.capture.regions == [(10, 20, 64, 48)]
 
 
-def test_capture_without_a_session_is_a_skip_not_a_crash(app: App) -> None:
-    """A driver keeps dispatching briefly after the session is stopped.
+def test_a_tick_with_no_region_ends_the_session(
+    casting: App, scheduler: SyncSendScheduler,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Another source clearing the region ends the cast properly, once.
 
-    That race is normal, so "no region" must be an ok=False report rather than
-    an exception that would kill the scheduler thread.
+    ``SetBackground`` / ``PlayVideo`` / ``SetMediaPlayer`` keep the display
+    sources exclusive by clearing ``screencast_region`` in Settings.  The
+    driver used to go on ticking with nothing to capture: a WARNING every tick,
+    forever, and no ``ScreencastStopped`` for the UIs' buttons.
+
+    MUTATION CHECK: drop the ``StopScreencast`` dispatch from the no-region
+    branch and the task survives.
     """
-    result = app.dispatch(CaptureScreencastFrame(key=_KEY))
+    stopped: list[str] = []
+    casting.events.subscribe(ScreencastStopped, lambda e: stopped.append(e.key))
+    casting.settings.set_screencast_region(_KEY, None)   # what a source switch does
+    caplog.set_level(logging.WARNING)
 
-    assert result.ok is False
+    result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    scheduler.tick(1.0)
+
+    assert result.ok is True, result.message
     assert "no screencast session" in result.message
-    assert app.platform.capture.regions == []
+    assert task_key(_KEY) not in scheduler._tasks
+    assert stopped == [_KEY]
+    assert casting.platform.capture.regions == []
+    assert [r.getMessage() for r in caplog.records
+            if "CaptureScreencastFrame" in r.getMessage()] == []
 
 
 def test_a_failing_grab_does_not_raise(casting: App, monkeypatch) -> None:
@@ -213,7 +232,7 @@ def test_driving_does_not_evict_the_device_sender(
     casting.start_sender(_KEY)
     assert _KEY in scheduler._tasks
 
-    assert casting.dispatch(StartScreencastDriver(key=_KEY)).ok
+    assert casting.dispatch(StartScreencast(key=_KEY, **_REGION)).ok
 
     assert _KEY in scheduler._tasks, "the screencast driver evicted the sender"
     assert task_key(_KEY) in scheduler._tasks
@@ -222,8 +241,6 @@ def test_driving_does_not_evict_the_device_sender(
 def test_each_tick_captures_one_frame(
     casting: App, scheduler: SyncSendScheduler,
 ) -> None:
-    assert casting.dispatch(StartScreencastDriver(key=_KEY)).ok
-
     for tick in range(5):
         scheduler.tick(float(tick))
 
@@ -241,7 +258,6 @@ def test_stopping_the_screencast_stops_its_driver(
     driver kept ticking at 16 Hz, every tick a WARNING in the log file.
     MUTATION CHECK: drop the task removal from StopScreencast → this fails.
     """
-    assert casting.dispatch(StartScreencastDriver(key=_KEY)).ok
     scheduler.tick(0.0)
     caplog.set_level(logging.WARNING)
 
@@ -270,7 +286,6 @@ def test_disconnecting_stops_the_driver(
     and this fails.
     """
     casting.start_sender(_KEY)
-    assert casting.dispatch(StartScreencastDriver(key=_KEY)).ok
     assert task_key(_KEY) in scheduler._tasks
 
     casting.stop_sender(_KEY)
@@ -278,29 +293,62 @@ def test_disconnecting_stops_the_driver(
     assert task_key(_KEY) not in scheduler._tasks
 
 
-def test_driver_refuses_a_device_with_no_session(app: App) -> None:
-    """Driving nothing is a mistake worth naming, not a silent no-op."""
-    result = app.dispatch(StartScreencastDriver(key=_KEY))
+def test_starting_a_screencast_starts_its_driver(
+    app: App, scheduler: SyncSendScheduler,
+) -> None:
+    """One Command, and it captures — for every face, and for ``LoadTheme``.
 
-    assert result.ok is False
-    assert "no screencast session" in result.message
-    assert task_key(_KEY) not in app._send_scheduler._tasks   # type: ignore[attr-defined]
+    The driver used to be a second Command each UI paired by hand, so a saved
+    screencast theme (which dispatches only ``StartScreencast``) answered
+    "screencast started" and captured nothing outside the gui.
+
+    MUTATION CHECK: drop ``add_task`` from ``StartScreencast`` → no task.
+    """
+    assert app.dispatch(StartScreencast(key=_KEY, **_REGION)).ok
+    assert task_key(_KEY) in scheduler._tasks
+
+    scheduler.tick(0.0)
+    assert app.platform.capture.regions == [(10, 20, 64, 48)]
 
 
-def test_stopping_a_screencast_nobody_drove_is_fine(app: App) -> None:
-    """A client may stop a session it did not drive (gui drives its own)."""
+def test_a_refused_screencast_starts_no_driver(
+    app: App, scheduler: SyncSendScheduler,
+) -> None:
+    """A zero-area region is refused before anything is registered."""
+    assert not app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=0, h=10)).ok
+    assert task_key(_KEY) not in scheduler._tasks
+
+
+def test_stopping_a_screencast_nobody_started_is_fine(app: App) -> None:
+    """Idempotent: a script may stop defensively."""
     assert app.dispatch(StopScreencast(key=_KEY)).ok
 
 
-def test_stop_screencast_leaves_no_region_for_the_driver(casting: App) -> None:
-    """After StopScreencast the frame Command must decline.
+def test_stopping_releases_the_capture_source(casting: App) -> None:
+    """A portal stream stays open until ``stop``, streaming a screen nobody is
+    showing.  Only the gui's own timer used to release it; the Command now
+    does, for every face.
 
-    The region IS the session flag, so clearing it is what makes an in-flight
-    driver tick harmless.
+    MUTATION CHECK: drop the ``stop()`` call from ``StopScreencast``.
+    """
+    stops: list[int] = []
+    casting.platform.capture.stop = lambda: stops.append(1)   # type: ignore[method-assign]
+
+    assert casting.dispatch(StopScreencast(key=_KEY)).ok
+
+    assert stops == [1]
+
+
+def test_stop_screencast_leaves_no_region_for_the_driver(casting: App) -> None:
+    """After StopScreencast an in-flight driver tick grabs nothing.
+
+    The region IS the session flag, so clearing it is what makes that tick
+    harmless.
     """
     assert casting.dispatch(StopScreencast(key=_KEY)).ok
 
-    assert casting.dispatch(CaptureScreencastFrame(key=_KEY)).ok is False
+    casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    assert casting.platform.capture.regions == []
 
 
 # ── one producer owns the panel ──────────────────────────────────────
@@ -497,43 +545,175 @@ def test_the_screencast_cadence_matches_the_c_sharp_oracle() -> None:
         f"{1 / SCREENCAST_TICK_S:.1f} fps — the C# casts 4 x 15 ms = 16.7")
 
 
-def test_the_gui_takes_its_cadence_from_that_constant() -> None:
-    """The window must not restate the interval as a literal.
-
-    It did: ``self._timer.start(150)`` sat beside a constant reading 0.15, so
-    the two could only agree by coincidence and drifted the moment either
-    moved.  The Qt timer is in milliseconds, so the source must show the
-    conversion rather than a number.
-    """
-    import inspect
-
-    from trcc.ui.gui.trcc_app import ScreencastHandler
-
-    src = inspect.getsource(ScreencastHandler._on_bus_screencast_started)
-
-    assert "SCREENCAST_TICK_S" in src, src
-    assert "start(150" not in src, "the millisecond literal is back"
-
-
 def test_every_face_starts_at_the_same_cadence() -> None:
     """Four faces, one rate — and qtgui was the third place it was restated.
 
     gui had ``start(150)`` beside a 0.15 constant; qtgui had a slider
-    defaulting to a literal ``6``.  cli and api pass no interval at all, so
-    they take the Command's default.  Moving the constant to the oracle's
+    defaulting to a literal ``6``.  cli, api and gui pass no interval at all,
+    so they take the Command's default.  Moving the constant to the oracle's
     rate would have left qtgui alone at 6 fps.
     """
-    from trcc.core.commands import StartScreencastDriver
     from trcc.ui.qtgui.panels import screencast_panel
 
     expected = round(1.0 / SCREENCAST_TICK_S)
 
-    # cli and api dispatch with no interval; this is what they get.
-    assert StartScreencastDriver(key="0000:0000").interval_s == SCREENCAST_TICK_S
+    # cli, api and gui dispatch with no interval; this is what they get.
+    assert StartScreencast(key="0000:0000", x=0, y=0, w=1, h=1).interval_s \
+        == SCREENCAST_TICK_S
     assert expected == screencast_panel._DEFAULT_FPS, (
         f"qtgui starts at {screencast_panel._DEFAULT_FPS} fps, the rest at "
         f"{expected}")
     assert screencast_panel._MIN_FPS <= expected <= screencast_panel._MAX_FPS
+
+
+# ── one display source at a time ─────────────────────────────────────
+#
+# On the REAL threaded scheduler: case B has the driver end the session from
+# its own thread, and ``ThreadSendScheduler.remove`` used to join the thread
+# it was called from -- "cannot join current thread".
+
+
+def _wait_for(predicate, timeout: float = 3.0) -> bool:
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return predicate()
+
+
+@pytest.fixture
+def threaded(tmp_home: Path, monkeypatch: pytest.MonkeyPatch):
+    """A connected panel on the production scheduler, recording thread deaths."""
+    import threading
+
+    from trcc.adapters.render.qt import QtRenderer
+
+    deaths: list[str] = []
+    monkeypatch.setattr(threading, "excepthook",
+                        lambda a: deaths.append(repr(a.exc_value)))
+    a = App(platform=FakePlatform(tmp_home), renderer=QtRenderer())
+    resp = bytearray(0xE100)
+    resp[0] = 100
+    a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    assert a.dispatch(ConnectDevice(key=_KEY)).ok
+    stopped: list[str] = []
+    a.events.subscribe(ScreencastStopped, lambda e: stopped.append(e.key))
+    yield a, stopped, deaths
+    a.close()
+
+
+def _driving(app: App) -> bool:
+    return task_key(_KEY) in app._send_scheduler._threads   # type: ignore[attr-defined]
+
+
+def test_a_saved_screencast_theme_captures_without_the_gui(
+    threaded, tmp_home: Path,
+) -> None:
+    """Case C: ``LoadTheme`` of a screencast theme answered "screencast
+    started" and captured nothing in qtgui, the CLI, the API and the daemon.
+    """
+    from trcc.core.commands import LoadTheme, SaveTheme
+
+    from .conftest import renderable_theme
+
+    app, _stopped, deaths = threaded
+    plain = renderable_theme(tmp_home / "themes", "Plain")
+    assert app.dispatch(LoadTheme(key=_KEY, path=plain)).ok
+    assert app.dispatch(StartScreencast(key=_KEY, x=5, y=6, w=64, h=48)).ok
+    saved = app.dispatch(SaveTheme(key=_KEY, name="castme"))
+    assert saved.ok, saved.message
+    assert app.dispatch(StopScreencast(key=_KEY)).ok
+    grabs = len(app.platform.capture.regions)
+
+    loaded = app.dispatch(LoadTheme(key=_KEY, path=Path(saved.message.split(" at ", 1)[1])))
+
+    assert loaded.ok, loaded.message
+    assert _driving(app), "the theme started a session nothing drives"
+    assert _wait_for(lambda: len(app.platform.capture.regions) > grabs), \
+        "no frame was captured"
+    assert app.platform.capture.regions[-1] == (5, 6, 64, 48)
+    assert deaths == []
+
+
+def test_loading_a_plain_theme_ends_the_screencast(threaded, tmp_home: Path) -> None:
+    """Case A: the capture ran on behind the theme just picked.
+
+    MUTATION CHECK: drop the StopScreencast branch from ``LoadTheme``.
+    """
+    from trcc.core.commands import LoadTheme
+
+    from .conftest import renderable_theme
+
+    app, stopped, deaths = threaded
+    plain = renderable_theme(tmp_home / "themes", "Plain")
+    assert app.dispatch(LoadTheme(key=_KEY, path=plain)).ok
+    assert app.dispatch(StartScreencast(key=_KEY, **_REGION)).ok
+    assert _driving(app)
+
+    assert app.dispatch(LoadTheme(key=_KEY, path=plain)).ok
+
+    assert not _driving(app)
+    assert app.settings.for_device(_KEY).screencast_region is None
+    assert stopped == [_KEY]
+    assert deaths == []
+
+
+def test_a_background_ends_the_screencast_from_the_driver_thread(
+    threaded, tmp_home: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Case B: ``SetBackground`` cleared the region and left the driver
+    ticking, a WARNING every tick, with no stop event for the buttons.
+
+    MUTATION CHECK: drop the own-thread guard in ``_TaskThread.stop`` and the
+    driver thread dies on "cannot join current thread".
+    """
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.core.commands import SetBackground
+
+    from .conftest import show_a_theme
+
+    app, stopped, deaths = threaded
+    show_a_theme(app, _KEY)
+    image = tmp_home / "bg.png"
+    img = QImage(320, 320, QImage.Format.Format_RGB888)
+    img.fill(QColor(200, 0, 0))
+    assert img.save(str(image))
+    assert app.dispatch(StartScreencast(key=_KEY, **_REGION)).ok
+    caplog.set_level(logging.WARNING)
+
+    assert app.dispatch(SetBackground(key=_KEY, path=image)).ok
+
+    assert _wait_for(lambda: stopped == [_KEY]), "the session never ended"
+    assert _wait_for(lambda: not _driving(app))
+    assert deaths == []
+    assert [r.getMessage() for r in caplog.records
+            if "CaptureScreencastFrame" in r.getMessage()] == []
+
+
+def test_a_broken_capture_warns_once_not_every_tick(
+    casting: App, scheduler: SyncSendScheduler, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The gui's timer warned once; the core path warned twice per tick.
+
+    MUTATION CHECK: make ``App.dispatch`` use ``log.warning`` for every
+    failure again → five warnings.
+    """
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("grim is not installed")
+
+    monkeypatch.setattr(casting.platform.capture, "grab_region", boom)
+    caplog.set_level(logging.WARNING)
+
+    for tick in range(5):
+        scheduler.tick(float(tick))
+
+    loud = [r.getMessage() for r in caplog.records
+            if r.levelno >= logging.WARNING and "grim is not installed" in r.getMessage()]
+    assert len(loud) == 1, loud
 
 
 # ── the microphone ───────────────────────────────────────────────────

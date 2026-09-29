@@ -1067,10 +1067,11 @@ class StartSlideshowDriver(Command[SlideshowResult]):
     set up through the CLI or the REST API was saved, reported back correctly,
     and never switched a theme.
 
-    Separate from ``ConfigureSlideshow`` for the reason
-    ``StartScreencastDriver`` is separate from ``StartScreencast`` — a gui
-    session already has a timer, so registering a driver there too would put two
-    rotators on one device. The clients without a timer ask explicitly.
+    Separate from ``ConfigureSlideshow`` because a gui session already has a
+    timer, so registering a driver there too would put two rotators on one
+    device. The clients without a timer ask explicitly.  (Screencast had the
+    same split until ``StartScreencast`` took its driver over and the gui's
+    timer went; the slideshow has not had that done yet.)
 
     Idempotent: the scheduler replaces a task registered under the same key.
     """

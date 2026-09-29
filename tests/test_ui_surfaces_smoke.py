@@ -26,52 +26,38 @@ def _app(tmp_path: Path) -> App:
     return App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
 
 
-def test_the_window_captures_through_its_own_platform(tmp_path: Path) -> None:
-    """Under ``TRCC_DAEMON=1`` the window's session is not the daemon's, so
-    the screencast must read the screen through the Platform the window was
-    started with, never through ``app.platform``.  Two distinct platforms
-    here stand in for the two sessions; the capture the handler holds must be
-    the host's.
+def test_the_window_runs_no_capture_loop_of_its_own(tmp_path: Path) -> None:
+    """The one capture loop is the App's driver, started by ``StartScreencast``.
+
+    The window used to run its own 150 ms timer, which made it the one face
+    where a saved screencast theme captured -- and, once the Command started
+    the driver, would have been a second loop on the wire.  With the
+    scheduler held still, a started cast in an open window grabs NOTHING
+    until the App's driver ticks, and then exactly one frame.
+
+    MUTATION CHECK: give ``ScreencastHandler`` its timer back and frames
+    arrive while the scheduler is still.
     """
-    from trcc.ui.gui.trcc_app import TRCCApp
-    app = _app(tmp_path)
-    host = MockPlatform([], tmp_path / "host")
-    try:
-        window = TRCCApp(app=app, platform=host)
+    from PySide6.QtTest import QTest
 
-        assert window._screencast._capture is host.screen_capture()
-        assert window._screencast._capture is not app.platform.screen_capture()
-    finally:
-        app.close()
-
-
-def test_stopping_the_screencast_releases_the_capture_through_the_port(
-    tmp_path: Path,
-) -> None:
-    """The window calls ``stop`` on whatever capture it was handed -- the
-    port's method, not an attribute it checks for -- so a portal session is
-    closed when the cast ends and nothing keeps streaming a screen nobody is
-    showing.
-    """
-    from tests.conftest import FakeScreenCapture
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.core.commands import StartScreencast
     from trcc.ui.gui.trcc_app import TRCCApp
 
-    class _Recording(FakeScreenCapture):
-        def __init__(self) -> None:
-            super().__init__()
-            self.stops = 0
-
-        def stop(self) -> None:
-            self.stops += 1
-
-    app = _app(tmp_path)
-    host = MockPlatform([], tmp_path / "host")
-    host.capture = _Recording()
+    scheduler = SyncSendScheduler()
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer(),
+              send_scheduler=scheduler)
     try:
-        window = TRCCApp(app=app, platform=host)
-        window._screencast.cleanup()
+        assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        window = TRCCApp(app=app)
+        assert app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=32, h=32)).ok
+        QTest.qWait(300)
 
-        assert host.capture.stops == 1, "the window did not release its capture source"
+        assert window._screencast.active, "the window missed ScreencastStarted"
+        assert app.platform.capture.regions == [], (
+            "the window captured on its own — a second capture loop")
+        scheduler.tick(0.0)
+        assert app.platform.capture.regions == [(0, 0, 32, 32)]
     finally:
         app.close()
 
@@ -129,7 +115,7 @@ def test_gui_builds_a_handler_for_the_device(tmp_path: Path) -> None:
     app = _app(tmp_path)
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
-        window = TRCCApp(app=app, platform=app.platform)
+        window = TRCCApp(app=app)
         window.replay_initial_devices()
         assert _KEY in window._handlers, list(window._handlers)
     finally:
