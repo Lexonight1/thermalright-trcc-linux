@@ -92,7 +92,6 @@ class UCThemeSetting(BasePanel):
     overlay_changed = Signal(dict)
     background_changed = Signal(bool)
     screencast_changed = Signal(bool)
-    screencast_params_changed = Signal(int, int, int, int)  # x, y, w, h
     eyedropper_requested = Signal()  # launch eyedropper color picker
     capture_requested = Signal()     # launch screen capture
 
@@ -149,7 +148,6 @@ class UCThemeSetting(BasePanel):
         self.screencast_panel = ScreenCastPanel(self)
         self.screencast_panel.move(*Layout.SCREENCAST_PANEL)
         self.screencast_panel.mode_changed.connect(self._on_mode_changed)
-        self.screencast_panel.screencast_params_changed.connect(self._on_screencast_params)
         self.screencast_panel.capture_requested.connect(self.capture_requested.emit)
 
         self.video_panel = DisplayModePanel("video", ["VideoLoad"], self)
@@ -302,11 +300,6 @@ class UCThemeSetting(BasePanel):
             self.invoke_delegate(self.CMD_VIDEO_TOGGLE, enabled)
         elif mode_id == "mask":
             self.invoke_delegate(self.CMD_MASK_TOGGLE, enabled)
-
-    def _on_screencast_params(self, x, y, w, h):
-        """Forward screencast coordinate changes."""
-        log.info("_on_screencast_params: x=%s y=%s w=%s h=%s", x, y, w, h)
-        self.screencast_params_changed.emit(x, y, w, h)
 
     def _on_mask_position(self, x, y):
         """Forward mask position change to main app."""

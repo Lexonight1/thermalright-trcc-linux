@@ -41,6 +41,7 @@ from ...core.commands import (
     ExportVideoClip,
     GetPaths,
     GetPlatformInfo,
+    LcdSnapshot,
     ListDevices,
     ListGpus,
     ListLanguages,
@@ -94,102 +95,6 @@ from ...core.models import MEDIA, MediaKind
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
-
-
-# =============================================================================
-# Screencast Handler
-# =============================================================================
-
-class ScreencastHandler:
-    """The window's view of the screencast session — state for its buttons.
-
-    Capture itself belongs to the App: ``StartScreencast`` starts the core
-    driver and ``StopScreencast`` ends it, for every face.  This used to run
-    its own 150 ms capture timer, which made the gui the one face where a
-    saved screencast theme actually captured -- and would have been a second
-    capture loop on the wire once the Command started the driver.
-
-    Lifecycle is bus-driven: ``ScreencastStarted`` / ``ScreencastStopped``
-    set the state.  The region and audio flag the user is editing stay as
-    direct setters, read when the window dispatches ``StartScreencast``.
-    """
-
-    def __init__(self) -> None:
-        log.info("ScreencastHandler.__init__")
-        self._active = False
-        self._x = self._y = self._w = self._h = 0
-        self._border = True
-        self._audio_enabled = False
-
-    @property
-    def active(self) -> bool:
-        return self._active
-
-    @property
-    def audio_enabled(self) -> bool:
-        return self._audio_enabled
-
-    @property
-    def params(self) -> tuple[int, int, int, int]:
-        """Current region — ``(x, y, w, h)`` in screen pixels.
-
-        Read by ``TRCCApp._on_screencast_toggle`` so it can bundle the
-        currently configured panel coordinates into the dispatched
-        :class:`StartScreencast` Command.
-        """
-        return self._x, self._y, self._w, self._h
-
-    def subscribe(self, bus: BusBridge) -> None:
-        """Connect ``ScreencastStarted`` / ``ScreencastStopped`` events
-        to the local state.
-
-        Called by ``TRCCApp.__init__`` after the bridge is constructed.
-        Separate from ``__init__`` so the handler can be built before the
-        bus exists — same shape as ``LCDHandler.subscribe_to_bus``.
-        """
-        log.info("ScreencastHandler.subscribe: wiring bus screencast signals")
-        bus.screencast_started.connect(
-            self._on_bus_screencast_started,
-            type=Qt.ConnectionType.QueuedConnection,
-        )
-        bus.screencast_stopped.connect(
-            self._on_bus_screencast_stopped,
-            type=Qt.ConnectionType.QueuedConnection,
-        )
-
-    def set_audio_enabled(self, enabled: bool) -> None:
-        """Enable/disable microphone audio visualization on screencast."""
-        log.info("ScreencastHandler.set_audio_enabled: enabled=%s", enabled)
-        self._audio_enabled = enabled
-
-    def stop(self) -> None:
-        """Mark the session over without a device to stop it on — the
-        system-suspend path when no LCD is active.  Idempotent."""
-        log.info("ScreencastHandler.stop: active=%s", self._active)
-        self._active = False
-
-    def set_params(self, x: int, y: int, w: int, h: int) -> None:
-        self._x, self._y, self._w, self._h = x, y, w, h
-
-    def set_border(self, visible: bool) -> None:
-        self._border = visible
-
-    def _on_bus_screencast_started(self, event: Any) -> None:
-        """Bus subscriber — a session began on ``event.key``."""
-        log.info(
-            "ScreencastHandler._on_bus_screencast_started: key=%s "
-            "region=(%d,%d %dx%d) audio=%s",
-            event.key, event.x, event.y, event.w, event.h, event.audio,
-        )
-        self._x, self._y, self._w, self._h = event.x, event.y, event.w, event.h
-        self._audio_enabled = event.audio
-        self._active = True
-
-    def _on_bus_screencast_stopped(self, event: Any) -> None:
-        """Bus subscriber — the session ended (idempotent)."""
-        log.info("ScreencastHandler._on_bus_screencast_stopped: key=%s",
-                 event.key)
-        self._active = False
 
 
 # =============================================================================
@@ -291,8 +196,6 @@ class TRCCApp(QMainWindow):
         self._apply_dark_theme()
         self._setup_ui()
 
-        self._screencast = ScreencastHandler()
-
         # Connect widget signals
         self._connect_view_signals()
 
@@ -302,12 +205,11 @@ class TRCCApp(QMainWindow):
         #: Token of the export THIS window started, so a second
         #: client's export cannot drive this progress bar.
         self._video_export_token = ""
-        # Screencast lifecycle subscribes through the bus — TRCCApp keeps
-        # owning the handler, but Start/Stop now arrive as events so
-        # CLI / API / daemon callers drive screencast through the same
-        # Command bus as the GUI toggle.
-        self._screencast.subscribe(self._bus)
         qconn = Qt.ConnectionType.QueuedConnection
+        # A cast started or stopped by ANY UI -- the panel shows the selected
+        # device's, read from the App (``_show_cast``), never a copy of its own.
+        self._bus.screencast_started.connect(self._on_bus_cast_changed, type=qconn)
+        self._bus.screencast_stopped.connect(self._on_bus_cast_changed, type=qconn)
         self._bus.device_connected.connect(self._on_bus_device_connected, type=qconn)
         self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
@@ -866,6 +768,8 @@ class TRCCApp(QMainWindow):
             handler.show(key)
 
         self._show_view(handler.view_name)
+        if isinstance(handler, LCDHandler):
+            self._show_cast()
 
     # ── Timers ──────────────────────────────────────────────────────
 
@@ -1489,8 +1393,6 @@ class TRCCApp(QMainWindow):
             self._on_overlay_add_requested)
         self.uc_theme_setting.add_panel.element_added.connect(self._on_element_added)
         self.uc_theme_setting.overlay_grid.toggle_changed.connect(self._on_overlay_toggle)
-        self.uc_theme_setting.screencast_params_changed.connect(self._screencast.set_params)
-        self.uc_theme_setting.screencast_panel.border_toggled.connect(self._screencast.set_border)
         self.uc_theme_setting.screencast_panel.audio_toggled.connect(
             self._on_screencast_audio_toggled)
         self.uc_theme_setting.capture_requested.connect(self._on_capture_requested)
@@ -1741,12 +1643,46 @@ class TRCCApp(QMainWindow):
 
     # ── Background / Screencast / Video Toggles ─────────────────────
 
+    def _cast_region(self, key: str) -> tuple[int, int, int, int, bool] | None:
+        """*key*'s running cast ``(x, y, w, h, audio)`` from the App, or None.
+
+        Asked, never remembered: the window used to keep ONE casting flag and
+        region for every device, filled from any device's events, so a cast
+        another UI started on B made this window re-issue it on A.
+        """
+        snap = self._app.dispatch(LcdSnapshot(key=key))
+        region = snap.screencast_region if snap.ok else None
+        log.debug("_cast_region: %s -> %s", key, region)
+        return region
+
+    def _show_cast(self) -> None:
+        """Show the selected device's live cast in the panel, sending nothing.
+
+        Not casting leaves the fields as the user left them -- that is their
+        next region, view state this window owns.
+        """
+        key = self._active_key
+        region = self._cast_region(key) if key else None
+        log.info("_show_cast: %s -> %s", key, region)
+        if region is not None:
+            panel = self.uc_theme_setting.screencast_panel
+            x, y, w, h, audio = region
+            panel.set_values(x=x, y=y, w=w, h=h)
+            panel.set_audio(audio)
+
+    def _on_bus_cast_changed(self, event: Any) -> None:
+        """A cast started or stopped in any UI -- redraw if it is ours."""
+        log.info("_on_bus_cast_changed: %s %s (showing %s)",
+                 type(event).__name__, event.key, self._active_key)
+        if event.key == self._active_key:
+            self._show_cast()
+
     def _on_background_toggle(self, enabled: bool) -> None:
         log.info("_on_background_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if not h:
             return
-        if enabled and self._screencast.active:
+        if enabled and self._cast_region(h.device_key) is not None:
             # User flipped to the theme-bg panel while a screencast was
             # running — tear it down through the bus so daemon/CLI/API
             # observers see the same transition the GUI just made.
@@ -1766,10 +1702,10 @@ class TRCCApp(QMainWindow):
             # here would duplicate the call.
             h.deactivate()
             h.is_background_active = False
-            x, y, sw, sh = self._screencast.params
+            panel = self.uc_theme_setting.screencast_panel
+            x, y, sw, sh = panel.values()
             result = self._app.dispatch(StartScreencast(
-                key=h.device_key, x=x, y=y, w=sw, h=sh,
-                audio=self._screencast.audio_enabled,
+                key=h.device_key, x=x, y=y, w=sw, h=sh, audio=panel.audio_on,
             ))
             if not result.ok:
                 log.warning(
@@ -1793,17 +1729,19 @@ class TRCCApp(QMainWindow):
         that only this window could see, which is why a CLI or API screencast
         with ``audio=True`` never produced a bar.
 
-        Off-session it is just a flag; ``_on_screencast_toggle`` reads it when
-        the cast starts.
+        Off-session it is just the panel's button; ``_on_screencast_toggle``
+        reads it when the cast starts.  On-session it re-issues the SELECTED
+        device's own cast -- its live region, from the App -- so a cast another
+        UI started on a different device is never touched or copied.
         """
         log.info("_on_screencast_audio_toggled: enabled=%s", enabled)
-        self._screencast.set_audio_enabled(enabled)
         h = self._active_lcd()
-        if not (h and self._screencast.active):
-            log.debug("_on_screencast_audio_toggled: no live session — "
-                      "flag stored for the next start")
+        region = self._cast_region(h.device_key) if h else None
+        if h is None or region is None:
+            log.debug("_on_screencast_audio_toggled: no live session on the "
+                      "selected device — applies at the next start")
             return
-        x, y, w, sh = self._screencast.params
+        x, y, w, sh, _audio = region
         result = self._app.dispatch(StartScreencast(
             key=h.device_key, x=x, y=y, w=w, h=sh, audio=enabled,
         ))
@@ -1855,7 +1793,7 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if not path or not h:
             return
-        if self._screencast.active:
+        if self._cast_region(h.device_key) is not None:
             self._app.dispatch(StopScreencast(key=h.device_key))
         h.is_background_active = False
         # ``SetBackground`` persists the pick as the device's background

@@ -663,16 +663,20 @@ class ScreenCastPanel(DisplayModePanel):
 
         self._emit_params()
 
+    def values(self) -> tuple[int, int, int, int]:
+        """The region the fields show, ``(x, y, w, h)`` -- what Start sends.
+
+        The entries' ``QIntValidator(0, 9999)`` admits digits only, so an
+        empty field is the one non-number and reads as 0.
+        """
+        x, y, w, h = (int(e.text() or '0') for e in
+                      (self.entry_x, self.entry_y, self.entry_w, self.entry_h))
+        log.debug("values: x=%d y=%d w=%d h=%d", x, y, w, h)
+        return x, y, w, h
+
     def _emit_params(self):
         """Emit all four coordinate values."""
-        try:
-            x = int(self.entry_x.text() or '0')
-            y = int(self.entry_y.text() or '0')
-            w = int(self.entry_w.text() or '0')
-            h = int(self.entry_h.text() or '0')
-            self.screencast_params_changed.emit(x, y, w, h)
-        except ValueError:
-            pass
+        self.screencast_params_changed.emit(*self.values())
 
     def _get_aspect_ratio(self) -> float | None:
         """The panel's height/width, or ``None`` before a device is known.
@@ -742,6 +746,18 @@ class ScreenCastPanel(DisplayModePanel):
     def set_border_visible(self, visible):
         self._show_border = visible
         self._update_border_icon()
+
+    @property
+    def audio_on(self) -> bool:
+        """The mic button's state -- what Start sends as ``audio``."""
+        log.debug("audio_on: %s", self._audio_on)
+        return self._audio_on
+
+    def set_audio(self, on: bool) -> None:
+        """Show a cast's microphone state without emitting ``audio_toggled``."""
+        log.info("set_audio: %s -> %s", self._audio_on, on)
+        self._audio_on = on
+        self._update_audio_icon()
 
     def _on_audio_toggle(self):
         log.info("_on_audio_toggle")

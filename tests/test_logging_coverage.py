@@ -113,7 +113,11 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: 319 -> 318 on 2026-09-30: the gui's ``UCPreview.set_progress`` gained a
 #: per-frame line when the progress bar moved to frames.  Diffing ``--list``
 #: across the change: the only name that left, none joined.
-MAX_SILENT = 318
+#: 318 -> 313 on 2026-09-30: the gui's ``ScreencastHandler`` was DELETED -- a
+#: window-wide copy of the App's cast that re-issued B's cast on A.  Its five
+#: silent members left (``active``, ``audio_enabled``, ``params``,
+#: ``set_border``, ``set_params``); the panel's new ``audio_on`` got a line.
+MAX_SILENT = 313
 
 
 def test_logging_coverage_only_improves() -> None:

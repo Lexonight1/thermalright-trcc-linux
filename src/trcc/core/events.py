@@ -224,10 +224,10 @@ class ScreencastStarted(Event):
     """Published by ``StartScreencast`` after a screen-capture session is
     requested for a device.
 
-    Mirrors :class:`VideoStarted` semantics: the GUI ``ScreencastHandler``
-    subscribes through ``BusBridge`` and only starts its capture timer
-    when this event fires — so daemon/CLI/API callers can drive
-    screencast through the same Command bus as the GUI.
+    The capturing is the App's (``StartScreencast`` starts its driver).  This
+    is how every UI learns a device began casting, whichever UI started it:
+    both Qt skins follow it through ``BusBridge`` and re-read the device's
+    ``LcdSnapshot.screencast_region``.
 
     ``x, y, w, h`` is the screen region (pixels).  ``audio`` toggles the
     microphone spectrum visualiser overlay on each captured frame.
@@ -243,7 +243,7 @@ class ScreencastStarted(Event):
 @dataclass(frozen=True, slots=True)
 class ScreencastStopped(Event):
     """Published by ``StopScreencast`` after a device's capture session
-    is torn down.  ``ScreencastHandler`` stops its timer in response."""
+    is torn down.  Every UI follows it the way it follows ``ScreencastStarted``."""
     key: str
 
 

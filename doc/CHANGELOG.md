@@ -60,6 +60,12 @@
 
 ### Fixed
 
+- **With two screens, the gui's screencast controls act on the selected one.**
+  If a cast was running on one screen (started from any window, the CLI or the
+  API), turning the microphone on in the gui with the other screen selected
+  started a second cast there, copying the first one's region. The gui now
+  asks which screen is actually casting, and selecting a screen shows its own
+  cast's region and microphone setting.
 - **The gui's video progress bar works.** It sat at the start while a video
   played, dragging it did nothing (each new frame pulled it back), and its
   label counted frames. It now follows playback, a drag shows where you will

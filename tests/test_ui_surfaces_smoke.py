@@ -35,8 +35,9 @@ def test_the_window_runs_no_capture_loop_of_its_own(tmp_path: Path) -> None:
     scheduler held still, a started cast in an open window grabs NOTHING
     until the App's driver ticks, and then exactly one frame.
 
-    MUTATION CHECK: give ``ScreencastHandler`` its timer back and frames
-    arrive while the scheduler is still.
+    MUTATION CHECK: give the window a capture timer of its own (as its
+    ``ScreencastHandler`` once had) and frames arrive while the scheduler is
+    still.
     """
     from PySide6.QtTest import QTest
 
@@ -50,10 +51,12 @@ def test_the_window_runs_no_capture_loop_of_its_own(tmp_path: Path) -> None:
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
         window = TRCCApp(app=app)
+        window.replay_initial_devices()
         assert app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=32, h=32)).ok
         QTest.qWait(300)
 
-        assert window._screencast.active, "the window missed ScreencastStarted"
+        assert window.uc_theme_setting.screencast_panel.values() == (0, 0, 32, 32), (
+            "the window missed ScreencastStarted")
         assert app.platform.capture.regions == [], (
             "the window captured on its own — a second capture loop")
         scheduler.tick(0.0)
