@@ -457,9 +457,8 @@ class LoadTheme(Command[ThemeResult]):
             )
 
         # Media-player-backed theme: resume the saved source URI via the same
-        # Command every UI dispatches (restores the setting + plays a local
-        # source; a web URL is referenced — streaming playback is a runtime
-        # feature).
+        # Command every UI dispatches (restores the setting and plays the
+        # source: a local file, or a web URL as a live stream).
         media_uri = app.themes.media_player_uri(theme)
         if media_uri is not None:
             log.info("LoadTheme: %s carries a media-player source %r — "

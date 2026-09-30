@@ -1065,9 +1065,12 @@ class App(CommandBus):
         """
         from .services.screencast_driver import task_key as screencast_task
         from .services.slideshow_driver import task_key as slideshow_task
+        from .services.stream_driver import task_key as stream_task
 
         self._send_scheduler.remove(screencast_task(key))
         self._send_scheduler.remove(slideshow_task(key))
+        self._send_scheduler.remove(stream_task(key))
+        self.media.close_stream(key)
         sender = self.senders.pop(key, None)
         if sender is None:
             return
@@ -1402,6 +1405,8 @@ class _DeviceRenderObserver:
         """
         if self._app.settings.for_device(key).screencast_region is not None:
             return "screencast"
+        if self._app.media.stream(key) is not None:
+            return "stream"
         playback = self._app.media.playback(key)
         if playback is not None and not playback.paused:
             return "video"

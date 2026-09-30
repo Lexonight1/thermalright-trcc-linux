@@ -622,7 +622,7 @@ trcc display mask-visible KEY STATE
 
 ### `trcc display media-player`
 
-Set the media-player source — a local file or a web URL/stream. Wraps `SetMediaPlayer`: a local file plays through the video pipeline; a web URL is referenced (persisted so `theme save` captures it). An empty URI clears the source.
+Set the media-player source — a local file or a web URL/stream. Wraps `SetMediaPlayer`: a local file plays through the video pipeline; a web URL (http, https, rtsp) plays as a live stream. An empty URI clears the source.
 
 ```bash
 trcc display media-player KEY [URI]

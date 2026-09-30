@@ -70,6 +70,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: ScreencastDriver turns it; every UI reaches the capability "
         "through StartScreencast / StopScreencast"
     )),
+    "CaptureStreamFrame": (frozenset(), (
+        "scoped: StreamDriver turns it; every UI reaches the capability "
+        "through SetMediaPlayer with a web URL"
+    )),
     "AdvanceSlideshow": (frozenset(), (
         "scoped: SlideshowDriver turns it; every UI reaches the capability "
         "through SetSlideshow, which owns the driver (2026-09-29) -- the gui's "

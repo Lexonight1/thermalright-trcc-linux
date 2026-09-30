@@ -597,7 +597,7 @@ def media_player(key: str, body: MediaPlayerRequest,
     """Set the media-player source for *key* — a local file or a web URL/stream.
 
     Dispatches :class:`SetMediaPlayer`: a local file plays through the video
-    pipeline; a web URL is referenced (persisted so a theme save captures it).
+    pipeline; a web URL (http, https, rtsp) plays as a live stream.
     An empty ``uri`` clears the source.
     """
     log.info("api POST /devices/{key}/display/media-player: key=%s uri=%s",

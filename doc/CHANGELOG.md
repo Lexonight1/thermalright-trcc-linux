@@ -25,6 +25,13 @@
 
 ### Added
 
+- **The media player plays web videos and live streams.** Give it an http,
+  https or rtsp address (`trcc display media-player <key> <url>`, or the REST
+  API) and it plays on the panel at 16 frames a second, with your theme's
+  overlay on top, the same way a screen cast does; a video file on a web
+  server loops. It needs ffmpeg. Other kinds of address, such as `file://`,
+  are refused. Before, a web address was only noted down and nothing played,
+  and setting one could lose the background you had.
 - **HTTPS for the REST API: `trcc api --tls`.** The first start makes a
   certificate and keeps it in the config directory. Every start prints its
   SHA-256 fingerprint, so a phone app or Home Assistant can pin it; it stays the

@@ -1207,6 +1207,15 @@ def percent_only(readings: Mapping[str, float], sensor_id: str) -> float | None:
 #: against the oracle, and 2.5x slower than the app being ported.
 SCREENCAST_TICK_S = 0.06
 
+#: The media player's cadence for a web source: 62.5 ms, the C# player's own
+#: step (``UCBoFangQiKongZhi.cs:1129``, ``nowTimerVal += 62.5``) -- 16 fps.
+STREAM_TICK_S = 0.0625
+
+#: The URL schemes the media player will open.  An allow-list, not a deny-list:
+#: ``file:///…`` contains ``://`` too, and would read any local file past the
+#: API's path confinement, so everything not named here is refused.
+STREAM_SCHEMES: frozenset[str] = frozenset({"http", "https", "rtsp"})
+
 #: How often the slideshow driver ASKS whether a rotation is due.  It is a poll
 #: interval, not the slideshow interval: ``AdvanceSlideshow`` owns due-ness and
 #: reads it from ``DeviceSettings.slideshow_interval_s``, so this only bounds

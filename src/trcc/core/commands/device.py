@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from .. import toolchain
 from ..errors import (
     DeviceNotConnectedError,
     DeviceNotFoundError,
@@ -44,6 +45,8 @@ from ..models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     SCREENCAST_TICK_S,
+    STREAM_SCHEMES,
+    STREAM_TICK_S,
     FitMode,
     HandshakeResult,
     OverlayElement,
@@ -1731,6 +1734,55 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class CaptureStreamFrame(Command[ScreencastResult]):
+    """One tick of a web media source: its newest frame, onto the panel.
+
+    ``CaptureScreencastFrame``'s twin, with the stream reader in place of the
+    screen grab -- the same ``SendScreencastFrame`` composites it under the
+    theme.  Dispatched by ``StreamDriver`` every ``STREAM_TICK_S``.
+
+    It ends ITSELF when another source took the panel, as the screencast
+    does: the display sources are exclusive in Settings, so the moment
+    ``media_player_uri`` stops naming this stream's URL -- a theme, a video,
+    a cast, a clear -- the reader and the driver stop here, within a tick.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    key: str
+
+    def execute(self, app: App) -> ScreencastResult:
+        from ...services.stream_driver import task_key
+
+        reader = app.media.stream(self.key)
+        uri = app.settings.for_device(self.key).media_player_uri
+        if reader is None or uri != reader.url:
+            log.info("CaptureStreamFrame: %s's stream is no longer its source "
+                     "— ending it", self.key)
+            app.media.close_stream(self.key)
+            app.remove_task(task_key(self.key))
+            return ScreencastResult(ok=True, key=self.key,
+                                    message=f"stream on {self.key} ended")
+        if self.key in app.held:
+            frame_log.debug("CaptureStreamFrame: %s held by a pushed image",
+                            self.key)
+            return ScreencastResult(ok=True, key=self.key, message="held")
+        try:
+            frame = reader.latest()
+        except CaptureNotReady as e:
+            frame_log.debug("CaptureStreamFrame: %s", e)
+            return ScreencastResult(ok=True, key=self.key, message=str(e))
+        except OSError as e:
+            log.warning("CaptureStreamFrame: %s — ending the media player", e)
+            app.media.close_stream(self.key)
+            app.remove_task(task_key(self.key))
+            app.settings.set_media_player_uri(self.key, None)
+            _publish_background(app, self.key)
+            app.events.publish(ErrorOccurred(message=str(e), kind="video",
+                                             key=self.key))
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
+        return app.dispatch(SendScreencastFrame(key=self.key, frame=frame))
+
+
 def _any_audio_session(app: App) -> bool:
     """True while any device still has a screencast session wanting audio.
 
@@ -1816,9 +1868,9 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
     ``DeviceSettings.media_player_uri`` (mutually exclusive with the other
     display sources) so ``SaveTheme`` can bake it into a theme's ``media_player``
     ref.  A LOCAL file starts playback through the same :class:`PlayVideo`
-    pipeline; a web URL is referenced (persisted so a save captures it) — its
-    continuous-streaming playback is a separate runtime feature.  Pass an empty
-    ``uri`` to clear the source.
+    pipeline; a web URL (http, https, rtsp) plays as a live stream on the
+    screencast's chain (:meth:`_stream`).  Pass an empty ``uri`` to clear the
+    source.
 
     The source is recorded AFTER ``PlayVideo``: that Command writes the file as
     ``background_path``, and the display sources are exclusive, so recording
@@ -1849,15 +1901,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
                                      message=str(e))
 
         if "://" in uri:   # a web URL / stream
-            app.settings.set_media_player_uri(self.key, uri)
-            _publish_background(app, self.key)
-            log.info("SetMediaPlayer.execute: %r is a web URL — referenced "
-                     "(streaming playback is a runtime feature)", uri)
-            return MediaPlayerResult(
-                ok=True, key=self.key, uri=uri, playing=False,
-                message=(f"media-player source set to {uri} "
-                         "(referenced; streaming playback pending)"),
-            )
+            return self._stream(app, uri)
 
         local = Path(uri)   # a resource on the computer
         if not local.is_file():
@@ -1875,6 +1919,41 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
             message=(f"media-player playing {local.name}"
                      if play.ok else play.message),
         )
+
+    def _stream(self, app: App, uri: str) -> MediaPlayerResult:
+        """Play a web source live -- the screencast's chain, ffmpeg for eyes.
+
+        Only ``STREAM_SCHEMES``: ``file:///…`` has a ``://`` too, and would
+        read any local file past the API's path confinement.  Whatever played
+        before is stopped FIRST -- the URL used to be recorded over it while
+        it kept playing, and a restart then showed nothing.
+        """
+        from ...services.stream_driver import StreamDriver
+
+        scheme = uri.split("://", 1)[0].lower()
+        problem = (
+            f"only {', '.join(sorted(STREAM_SCHEMES))} sources can play, "
+            f"not {scheme}://" if scheme not in STREAM_SCHEMES
+            else "ffmpeg is not installed — it is what plays a web source"
+            if not toolchain.present("ffmpeg")
+            else "the panel has not reported its size yet"
+            if (profile := app.devices[self.key].profile) is None
+            else "")
+        if problem:
+            log.warning("SetMediaPlayer: %s refused %r: %s", self.key, uri,
+                        problem)
+            return MediaPlayerResult(ok=False, key=self.key, uri=uri,
+                                     message=problem)
+        assert profile is not None
+        app.dispatch(StopVideo(key=self.key))
+        app.settings.set_media_player_uri(self.key, uri)
+        app.media.open_stream(self.key, uri, profile.resolution,
+                              round(1 / STREAM_TICK_S))
+        app.add_task(StreamDriver(app, self.key))
+        _publish_background(app, self.key)
+        log.info("SetMediaPlayer: %s streaming %s", self.key, uri)
+        return MediaPlayerResult(ok=True, key=self.key, uri=uri, playing=True,
+                                 message=f"media-player streaming {uri}")
 
     def _clear(self, app: App) -> MediaPlayerResult:
         """End the media player: stop it, and the theme's own video resumes."""

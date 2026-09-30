@@ -575,9 +575,9 @@ class ScreencastResult(Result):
 @dataclass(frozen=True, slots=True)
 class MediaPlayerResult(Result):
     """Result of ``SetMediaPlayer`` — the media-player source (a local URI or a
-    web URL/stream).  ``playing`` is True when a local source started playback;
-    a web URL is referenced (persisted so a SaveTheme captures it) but its
-    streaming playback is a separate runtime feature.  ``uri`` echoes the source
+    web URL/stream).  ``playing`` is True when the source started: a local file
+    through the video pipeline, a web URL (http/https/rtsp) as a live stream.
+    ``uri`` echoes the source
     for a daemon/API client reading the response over the wire.
     """
     key: str = ""

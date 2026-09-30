@@ -570,7 +570,8 @@ class ScreencastStartRequest(BaseModel):
 class MediaPlayerRequest(BaseModel):
     """Body for ``POST /devices/{key}/display/media-player``."""
     uri: str = Field(
-        "", description="A local file path, or a web URL/stream. '' clears.",
+        "", description=("A local file path, or an http/https/rtsp URL played "
+                         "live. '' clears."),
     )
 
 

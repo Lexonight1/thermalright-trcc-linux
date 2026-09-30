@@ -23,6 +23,7 @@ from ..core import toolchain
 from ..core.errors import ThemeError
 from ..core.logs import per_frame
 from ..core.models import ZT_MAGIC
+from .media_stream import StreamReader
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -472,9 +473,14 @@ class MediaService:
     never interact with this class.
     """
 
+    #: The reader a web source gets.  A class attribute so a test swaps in a
+    #: fake without ffmpeg or a network (``tests/test_media_stream.py``).
+    stream_reader: type[StreamReader] = StreamReader
+
     def __init__(self) -> None:
         log.debug("__init__")
         self._playbacks: dict[str, Playback] = {}
+        self._streams: dict[str, StreamReader] = {}
 
     def load_video(self, device_key: str, path: Path,
                    size: tuple[int, int] | None,
@@ -558,8 +564,28 @@ class MediaService:
         frame_log.debug("playing: %s", sorted(live))
         return live
 
+    def open_stream(self, device_key: str, url: str,
+                    size: tuple[int, int], fps: int) -> StreamReader:
+        """Start reading *url* for *device_key*, replacing any stream it had."""
+        log.info("open_stream: %s <- %s (%dx%d @ %d fps)",
+                 device_key, url, *size, fps)
+        self.close_stream(device_key)
+        reader = self._streams[device_key] = self.stream_reader(url, size, fps)
+        return reader
+
+    def stream(self, device_key: str) -> StreamReader | None:
+        frame_log.debug("stream: key=%s", device_key)
+        return self._streams.get(device_key)
+
+    def close_stream(self, device_key: str) -> None:
+        """Stop *device_key*'s web source, if it has one (idempotent)."""
+        if (reader := self._streams.pop(device_key, None)) is not None:
+            log.info("close_stream: %s (%s)", device_key, reader.url)
+            reader.close()
+
     def unload(self, device_key: str) -> None:
-        """Drop a playback, freeing its frame buffers."""
+        """Drop a playback, freeing its frame buffers -- and end a stream."""
+        self.close_stream(device_key)
         had = self._playbacks.pop(device_key, None)
         if had is not None:
             log.info("unload: dropped %d-frame playback for %s",

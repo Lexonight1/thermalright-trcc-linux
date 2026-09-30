@@ -1237,7 +1237,7 @@ def media_player(
     """Set the media-player source — a local file or a web URL/stream.
 
     Wraps :class:`SetMediaPlayer`: a local file plays through the video
-    pipeline; a web URL is referenced (persisted so ``theme save`` captures it).
+    pipeline; a web URL (http, https, rtsp) plays as a live stream.
     An empty URI clears the source.
     """
     log.info("cli display media-player: key=%s uri=%s", key, uri)
