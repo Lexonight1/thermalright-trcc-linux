@@ -90,12 +90,16 @@ class MaskBrowser(AssetBrowserPanel):
         self._x = QSpinBox(position_box)
         self._x.setRange(0, 9999)
         self._x.setSuffix(" px")
-        self._x.editingFinished.connect(self._on_position_changed)
+        # Sent when a value is finished AND changed -- editingFinished also
+        # fired on a plain focus change, writing the position unchanged.
+        self._x.setKeyboardTracking(False)
+        self._x.valueChanged.connect(self._on_position_changed)
 
         self._y = QSpinBox(position_box)
         self._y.setRange(0, 9999)
         self._y.setSuffix(" px")
-        self._y.editingFinished.connect(self._on_position_changed)
+        self._y.setKeyboardTracking(False)
+        self._y.valueChanged.connect(self._on_position_changed)
 
         xy_row = QHBoxLayout()
         xy_row.addWidget(QLabel("X:", position_box))
@@ -144,6 +148,9 @@ class MaskBrowser(AssetBrowserPanel):
         )
 
         self.refresh()
+        # Position + visibility as the App holds them.  Loaded only on a
+        # device change, so the fields opened at 0,0 / visible.
+        self._sync_from_snapshot()
 
     # ── Public ────────────────────────────────────────────────────────
 

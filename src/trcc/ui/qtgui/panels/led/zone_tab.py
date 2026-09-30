@@ -92,7 +92,9 @@ class _ZoneRow(QWidget):
         self._brightness.setRange(0, 100)
         self._brightness.setValue(65)
         self._brightness.setSuffix("%")
-        self._brightness.editingFinished.connect(self._on_brightness_edited)
+        # Finished AND changed only -- editingFinished fired on focus alone.
+        self._brightness.setKeyboardTracking(False)
+        self._brightness.valueChanged.connect(self._on_brightness_edited)
 
         self._swatch = QLabel(self)
         self._swatch.setFixedSize(40, 22)
@@ -220,7 +222,8 @@ class ZoneTab(LedTabBase):
         self._interval_spin.setRange(1, 600)
         self._interval_spin.setValue(13)
         self._interval_spin.setSuffix(" ticks")
-        self._interval_spin.editingFinished.connect(self._on_interval_changed)
+        self._interval_spin.setKeyboardTracking(False)
+        self._interval_spin.valueChanged.connect(self._on_interval_changed)
         sync_form.addRow(self._sync_check)
         sync_form.addRow("Rotation interval:", self._interval_spin)
         # WHICH zones the carousel visits.  Without this mask it stays empty

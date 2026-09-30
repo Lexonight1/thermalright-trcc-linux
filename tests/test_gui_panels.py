@@ -3880,3 +3880,102 @@ def test_the_led_panel_reloads_on_settings_not_on_every_render(
 
     gui_app.events.publish(LedSettingsChanged(key="0416:8001"))
     qtbot.waitUntil(lambda: "LedSnapshot" in asked, timeout=2000)
+
+
+# =========================================================================
+# Q5: fields load on open, and only a finished CHANGE writes (2026-09-30)
+# =========================================================================
+
+
+def test_the_mask_browser_opens_on_the_apps_position_and_writes_only_changes(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It opened at 0,0 / visible (loaded only on a device change), and its
+    spinboxes wrote on editingFinished -- a plain focus change sent the
+    position unchanged."""
+    from trcc.core.commands import Query, SetMaskPosition, SetMaskVisible
+    from trcc.ui.qtgui import device_picker
+    from trcc.ui.qtgui.panels.mask_browser import MaskBrowser
+
+    gui_app.dispatch(SetMaskPosition(key=_KEY_Q3, x=12, y=34))
+    gui_app.dispatch(SetMaskVisible(key=_KEY_Q3, visible=False))
+    monkeypatch.setattr(device_picker.DevicePickerWidget, "current_key",
+                        lambda self: _KEY_Q3)
+    writes: list = []
+    real = gui_app.dispatch
+
+    def _record(command):
+        if not isinstance(command, Query):
+            writes.append(command)
+        return real(command)
+
+    monkeypatch.setattr(gui_app, "dispatch", _record)
+    panel = MaskBrowser(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    assert (panel._x.value(), panel._y.value(), panel._visible.isChecked()) == (
+        12, 34, False)
+
+    panel._x.editingFinished.emit()                   # focus moved, no change
+    assert writes == [], f"opening or a focus change wrote {writes}"
+    panel._x.setValue(40)                             # a finished change
+    assert writes == [SetMaskPosition(key=_KEY_Q3, x=40, y=34)], writes
+
+
+def test_the_zone_tab_interval_writes_only_a_change(gui_app: App, qtbot) -> None:
+    tab = _zone_tab_with(gui_app, qtbot, zones=3)
+    sent: list = []
+    real = tab._dispatch
+
+    def spy(command):
+        sent.append(type(command).__name__)
+        return real(command)
+
+    tab._dispatch = spy                               # pyright: ignore[reportAttributeAccessIssue]
+    tab._interval_spin.editingFinished.emit()         # focus moved, no change
+    assert sent == []
+    tab._interval_spin.setValue(tab._interval_spin.value() + 5)
+    assert sent == ["SetLedZoneSyncInterval"], sent
+
+    sent.clear()
+    row = tab._zone_widgets[0]._brightness            # a zone's own brightness
+    row.editingFinished.emit()
+    assert sent == []
+    row.setValue(row.value() - 10)
+    assert sent == ["SetLedZoneBrightness"], sent
+
+
+def test_the_device_panel_lists_devices_on_open_and_frames_cost_no_query(
+    make_window, qapp: object, tmp_path: Path, qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its list was empty until Scan, and its inspector re-queried DeviceState
+    on every sent frame -- a socket round trip per frame under a shared App."""
+    del qapp, make_window
+    from trcc.core.commands import ListDevices
+    from trcc.core.events import FrameSent
+    from trcc.ui.qtgui.panels.device_panel import DevicePanel
+
+    app = _two_device_app(tmp_path)
+    try:
+        keys = [d.key for d in app.dispatch(ListDevices()).devices]
+        panel = DevicePanel(app, _bus(app))
+        qtbot.addWidget(panel)
+        listed = [panel._list.item(i).data(0x0100) for i in range(panel._list.count())]
+        assert listed == keys, f"opened listing {listed}"
+
+        panel._list.setCurrentRow(0)
+        asked: list[str] = []
+        real = panel.dispatch
+
+        def spy(cmd):
+            asked.append(type(cmd).__name__)
+            return real(cmd)
+
+        panel.dispatch = spy                          # pyright: ignore[reportAttributeAccessIssue]
+        for n in (100, 200, 300):
+            app.events.publish(FrameSent(key=keys[0], bytes_sent=n))
+        qtbot.waitUntil(lambda: "300 bytes" in panel._inspector.text(),
+                        timeout=2000)
+        assert asked == [], f"a sent frame dispatched {asked}"
+    finally:
+        app.close()
