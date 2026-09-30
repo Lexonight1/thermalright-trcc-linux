@@ -86,6 +86,14 @@
   show what is set, follow changes made from any window or the command line,
   and apply each control as you change it; there are no Apply buttons. The
   clock and date format there now set the selected screen's clocks.
+- **A screencast carries on after the computer wakes from sleep.** The gui
+  stopped it when the computer went to sleep, and only on the screen that was
+  selected, so it had to be started again; the Windows app keeps it running.
+- **The Qt gui's GPU, HDD, screencast and LED pages show what is set.** The
+  GPU choice opened on the first GPU and switched to it on a press; the
+  screencast buttons did not show a cast started from another window or
+  another screen; the LED page reloaded on every animation frame, pulling
+  back a colour or brightness while you were picking it.
 - **Picking a screen in the Qt gui's device rail updates every page.** Most
   pages kept showing the previous screen.
 - **The Qt gui sends each frame to your screen once.** It ran a render loop

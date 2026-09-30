@@ -2166,13 +2166,12 @@ def test_linux_platform_module_has_no_linux_only_toplevel_imports() -> None:
 #: exactly 15 of 39, which reads as parity and is not — they share only 11.
 #:
 #: Ratcheted as a SET, not a count, because the count is the thing that lied.
-MISSING_IN_QTGUI = {
-    "ScreencastStarted",
-    "ScreencastStopped",
-    "SystemSuspending",
-    # 12 more left 2026-09-30 when qtgui's Configuration / Display / Status
-    # panels began following the App.  Screencast and suspend are next.
-}
+MISSING_IN_QTGUI: set[str] = set()
+# Emptied 2026-09-30.  12 left when qtgui's settings pages began following the
+# App; ScreencastStarted/Stopped when its screencast page did; SystemSuspending
+# because gui stopped observing it -- it stopped the active device's cast on
+# suspend, which the C# never does (Form1.cs:636 pauses and resumes) and which
+# threw the cast away, since StopScreencast clears its saved region.
 
 #: Event types ``BusBridge`` never forwards, so no Qt widget can observe them
 #: however much it wants to.  A missing WIRE, distinct from a capability that is

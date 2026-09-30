@@ -322,7 +322,6 @@ class TRCCApp(QMainWindow):
             self._on_bus_video_export_progress, type=qconn)
         self._bus.video_export_finished.connect(
             self._on_bus_video_export_finished, type=qconn)
-        self._bus.system_suspending.connect(self._on_bus_system_suspending, type=qconn)
         self._bus.data_installed.connect(self._on_bus_data_installed, type=qconn)
         self._bus.settings_changed.connect(self._on_bus_settings_changed, type=qconn)
         self._bus.app_settings_changed.connect(
@@ -622,22 +621,6 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(self._active_key)
         if handler is not None:
             handler.update_metrics(metrics)
-
-    def _on_bus_system_suspending(self, _event: Any) -> None:
-        """OS is about to suspend — stop the screencast pipeline.
-
-        Routed through ``StopScreencast`` for the active device when
-        possible so daemon/CLI/API observers see the same lifecycle
-        event the GUI just acted on.  Falls back to the local emergency
-        ``ScreencastHandler.stop`` when there's no active device handle
-        (suspend during a transient state shouldn't crash on no-handler).
-        """
-        log.info("_on_bus_system_suspending: stopping screencast")
-        h = self._active_lcd()
-        if h is not None and self._screencast.active:
-            self._app.dispatch(StopScreencast(key=h.device_key))
-        else:
-            self._screencast.stop()
 
     def notify_device_failures(self, failures: list[Any]) -> None:
         """Surface devices that were found but failed to connect.

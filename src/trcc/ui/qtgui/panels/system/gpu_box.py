@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtWidgets import QComboBox, QFormLayout, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QComboBox, QFormLayout, QLabel
 
-from .....core.commands import ListGpus, SetGpuDevice
+from .....core.commands import ControlCenterSnapshot, ListGpus, SetGpuDevice
 from ._base import SystemBox
 
 log = logging.getLogger(__name__)
@@ -23,20 +24,22 @@ class GpuBox(SystemBox):
     def _build_ui(self) -> None:
         log.debug("_build_ui")
         form = QFormLayout(self)
+        # Shows the ACTIVE GPU and switches when the user picks another.  It
+        # never selected the active one and sent its current row on a button
+        # press, so an untouched press switched to the first GPU listed.
         self._combo = QComboBox(self)
-        self._apply_btn = QPushButton("Use this GPU", self)
-        self._apply_btn.clicked.connect(self._on_apply)
-        row = QHBoxLayout()
-        row.addWidget(self._combo, stretch=1)
-        row.addWidget(self._apply_btn)
+        self._combo.activated.connect(self._on_pick)
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
-        form.addRow("GPU:", row)
+        form.addRow("GPU:", self._combo)
         form.addRow("", self._status)
+        self._bus.app_settings_changed.connect(
+            self._on_app_settings_changed,
+            type=Qt.ConnectionType.QueuedConnection)
         self._populate()
 
     def _populate(self) -> None:
-        """Fill the combo from ListGpus — self-healing on every call."""
+        """Fill the combo from ListGpus and show the active one."""
         log.debug("_populate")
         result = self.dispatch(ListGpus())
         self._combo.clear()
@@ -44,20 +47,30 @@ class GpuBox(SystemBox):
             log.info("_populate: no GPU reported — control disabled")
             self._combo.addItem("No GPU detected", userData=None)
             self._combo.setEnabled(False)
-            self._apply_btn.setEnabled(False)
             return
         log.info("_populate: %d GPU(s)", len(result.gpus))
         self._combo.setEnabled(True)
-        self._apply_btn.setEnabled(True)
         for gpu in result.gpus:
             tag = "discrete" if gpu.is_discrete else "integrated"
             self._combo.addItem(f"{gpu.name} ({tag})", userData=gpu.key)
+        self._show_active()
 
-    def _on_apply(self) -> None:
+    def _show_active(self) -> None:
+        """Select the GPU the App uses.  Sends nothing (``activated`` only)."""
+        active = self.dispatch(ControlCenterSnapshot()).active_gpu
+        index = self._combo.findData(active) if active else -1
+        log.info("_show_active: %s (row %d)", active or "auto", index)
+        if index >= 0:
+            self._combo.setCurrentIndex(index)
+
+    def _on_app_settings_changed(self, event: object) -> None:
+        log.debug("_on_app_settings_changed: %s", type(event).__name__)
+        self._show_active()
+
+    def _on_pick(self, _index: int) -> None:
         gpu_key = self._combo.currentData()
         if gpu_key is None:
-            log.debug("_on_apply: nothing selected")
+            log.debug("_on_pick: nothing selectable")
             return
-        log.info("_on_apply: gpu_key=%s", gpu_key)
-        r = self.dispatch(SetGpuDevice(gpu_key=str(gpu_key)))
-        self._status.setText(r.message)
+        log.info("_on_pick: gpu_key=%s", gpu_key)
+        self._status.setText(self.dispatch(SetGpuDevice(gpu_key=str(gpu_key))).message)

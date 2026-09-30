@@ -743,6 +743,9 @@ class LcdSnapshotResult(Result):
     time_format: str = "24h"
     date_format: str = ""
     temp_unit: str = "C"
+    #: The running screencast, ``(x, y, w, h, audio)``, or None when this
+    #: device is not casting -- ``StopScreencast`` clears it with the driver.
+    screencast_region: tuple[int, int, int, int, bool] | None = None
     # Slideshow config.  Absent until 2026-08-25, which made this Result
     # unable to answer its own docstring: the gui restoring slideshow state
     # had to keep reaching for ``settings.for_device`` — a crash under

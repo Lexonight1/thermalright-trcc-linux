@@ -1643,7 +1643,7 @@ def test_screencast_panel_start_without_region_is_a_no_op(
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._picker.set_key("0402:3922")
     panel._on_start()
-    assert panel._casting_key is None
+    assert panel._casting is False
     assert "region" in panel._status.text().lower()
 
 
@@ -1656,7 +1656,7 @@ def test_screencast_panel_start_without_key_is_a_no_op(
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._region = (0, 0, 200, 100)
     panel._on_start()
-    assert panel._casting_key is None
+    assert panel._casting is False
     assert "device" in panel._status.text().lower()
 
 
@@ -1758,7 +1758,7 @@ def test_screencast_audio_checkbox_reaches_the_command(cast_app: App) -> None:
     panel._audio.setChecked(True)
     panel._on_start()
 
-    assert panel._casting_key == "0402:3922", panel._status.text()
+    assert panel._casting is True, panel._status.text()
     assert _persisted_audio(cast_app) is True
 
 
@@ -1768,7 +1768,7 @@ def test_screencast_audio_unchecked_stays_off(cast_app: App) -> None:
     assert panel._audio.isChecked() is False
     panel._on_start()
 
-    assert panel._casting_key == "0402:3922", panel._status.text()
+    assert panel._casting is True, panel._status.text()
     assert _persisted_audio(cast_app) is False
 
 
@@ -1796,7 +1796,7 @@ def test_screencast_audio_off_session_does_not_dispatch(
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._audio.setChecked(True)
-    assert panel._casting_key is None
+    assert panel._casting is False
     assert _persisted_audio(gui_app) is None
 
 
@@ -3585,7 +3585,9 @@ def test_a_rail_pick_makes_every_device_panel_reload_for_that_device(
             return real(command)
 
         monkeypatch.setattr(app, "dispatch", _record)
-        window._panels["screencast"]._casting_key = keys[0]   # a cast running
+        # a cast running on the first device, as the App records it
+        app.settings.set_screencast_region(keys[0], (0, 0, 10, 10, False))
+        window._panels["screencast"]._show_state()
         window._sidebar.choose(keys[1])
 
         for_new = {name for name, key in asked if key == keys[1]}
@@ -3766,3 +3768,115 @@ def test_the_preview_wears_the_panel_s_bezel(qapp: object, tmp_path: Path) -> No
             )
     finally:
         app.close()
+
+
+# =========================================================================
+# qtgui follows the App: GPU, HDD, screencast, LED (Q4, 2026-09-30)
+# =========================================================================
+
+
+def test_the_gpu_box_shows_and_follows_the_active_gpu(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It never selected the active GPU and sent its current row on a button
+    press, so an untouched press switched to the first GPU listed."""
+    from trcc.core.commands import ListGpus
+    from trcc.core.events import GpuDeviceChanged
+    from trcc.core.results import GpuDeviceResult, GpuEntry, GpusListResult
+    from trcc.ui.qtgui.panels.system import GpuBox
+
+    gui_app.settings.set_active_gpu("amd:0")
+    real = gui_app.dispatch
+    sent: list[str] = []
+
+    def fake(cmd):
+        if isinstance(cmd, ListGpus):
+            return GpusListResult(ok=True, gpus=[
+                GpuEntry(key="nvidia:0", name="N", is_discrete=True),
+                GpuEntry(key="amd:0", name="A", is_discrete=True)])
+        if type(cmd).__name__ == "SetGpuDevice":
+            sent.append(cmd.gpu_key)
+            return GpuDeviceResult(ok=True, message="ok")
+        return real(cmd)
+
+    monkeypatch.setattr(gui_app, "dispatch", fake)
+    box = GpuBox(gui_app, _bus(gui_app))
+    qtbot.addWidget(box)
+    assert box._combo.currentData() == "amd:0", "opened on the wrong GPU"
+    assert sent == [], "opening the box switched the GPU"
+
+    gui_app.settings.set_active_gpu("nvidia:0")           # another UI
+    gui_app.events.publish(GpuDeviceChanged(gpu_key="nvidia:0"))
+    qtbot.waitUntil(lambda: box._combo.currentData() == "nvidia:0", timeout=2000)
+
+    amd = box._combo.findData("amd:0")
+    box._combo.setCurrentIndex(amd)
+    box._combo.activated.emit(amd)                        # the user's pick
+    assert sent == ["amd:0"]
+
+
+def test_the_hdd_switch_follows_another_ui(gui_app: App, qtbot) -> None:
+    from trcc.core.commands import SetHddEnabled
+    from trcc.ui.qtgui.panels.system import SensorsBox
+
+    assert gui_app.dispatch(SetHddEnabled(enabled=False)).ok
+    box = SensorsBox(gui_app, _bus(gui_app))
+    qtbot.addWidget(box)
+    assert box._hdd_check.isChecked() is False
+    assert gui_app.dispatch(SetHddEnabled(enabled=True)).ok
+    qtbot.waitUntil(box._hdd_check.isChecked, timeout=2000)
+
+
+def test_the_screencast_page_shows_the_selected_devices_cast(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its buttons described a local ``_casting_key``: a cast started or
+    stopped by another UI never showed, and after a device pick they still
+    described the first device.  Stop now stops the SELECTED device's cast."""
+    from trcc.core.events import ScreencastStarted
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
+
+    panel = ScreencastPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+    assert (panel._start_btn.isEnabled(), panel._stop_btn.isEnabled()) == (True, False)
+
+    gui_app.settings.set_screencast_region(_KEY_Q3, (10, 20, 300, 200, True))
+    gui_app.events.publish(ScreencastStarted(key=_KEY_Q3, x=10, y=20, w=300,
+                                             h=200, audio=True))
+    qtbot.waitUntil(panel._stop_btn.isEnabled, timeout=2000)
+    assert panel._audio.isChecked() and panel._region == (10, 20, 300, 200)
+
+    sent = _writes(panel)
+    panel._stop_btn.click()
+    assert [type(c).__name__ for c in sent] == ["StopScreencast"]
+    assert sent[0].key == _KEY_Q3
+    qtbot.waitUntil(panel._start_btn.isEnabled, timeout=2000)
+
+
+def test_the_led_panel_reloads_on_settings_not_on_every_render(
+    gui_app: App, qtbot,
+) -> None:
+    """It reloaded on LedColorsChanged, which every render publishes (~6.7/s
+    animated): three Queries a frame, and a pick pulled back mid-edit."""
+    from trcc.core.events import LedColorsChanged, LedSettingsChanged
+    from trcc.ui.qtgui.panels.led_panel import LedPanel
+
+    panel = LedPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    panel._picker.current_key = lambda: "0416:8001"   # pyright: ignore[reportAttributeAccessIssue]
+    asked: list[str] = []
+    real = panel.dispatch
+
+    def spy(cmd):
+        asked.append(type(cmd).__name__)
+        return real(cmd)
+
+    panel.dispatch = spy                              # pyright: ignore[reportAttributeAccessIssue]
+    for _ in range(5):
+        gui_app.events.publish(LedColorsChanged(key="0416:8001", color_count=30))
+    qtbot.wait(200)
+    assert "LedSnapshot" not in asked, "a render reloaded the panel"
+
+    gui_app.events.publish(LedSettingsChanged(key="0416:8001"))
+    qtbot.waitUntil(lambda: "LedSnapshot" in asked, timeout=2000)

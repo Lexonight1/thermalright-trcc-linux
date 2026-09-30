@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QCheckBox, QLabel, QListWidget, QListWidgetItem, QVBoxLayout
 
@@ -78,9 +79,17 @@ class SensorsBox(SystemBox):
         layout.addWidget(QLabel("Memory slots:", self))
         layout.addWidget(self._memory)
 
+        # The switch follows the App, whoever changed it (HddEnabledChanged).
+        self._bus.app_settings_changed.connect(
+            self._on_app_settings_changed,
+            type=Qt.ConnectionType.QueuedConnection)
         self.refresh_hdd()
         self.refresh_memory()
         self.refresh_live()
+
+    def _on_app_settings_changed(self, event: object) -> None:
+        log.debug("_on_app_settings_changed: %s", type(event).__name__)
+        self.refresh_hdd()
 
     def refresh_live(self) -> None:
         """Re-read the catalog AND show it.  The explicit path.

@@ -46,9 +46,11 @@ from PySide6.QtWidgets import (
 
 from ....core.commands import (
     DeviceState,
+    LcdSnapshot,
     StartScreencast,
     StopScreencast,
 )
+from ....core.events import ScreencastStarted, ScreencastStopped
 from ....core.geometry import lock_region_to_panel
 from ....core.models import SCREENCAST_TICK_S
 from ..base import BasePanel
@@ -76,10 +78,11 @@ class ScreencastPanel(BasePanel):
     def _setup_ui(self) -> None:
         log.debug("_setup_ui")
         self._region: tuple[int, int, int, int] | None = None
-        #: The device currently being cast, or None.  Replaces
-        #: ``self._timer.isActive()`` now that the cadence lives in the
-        #: driver rather than in this panel.
-        self._casting_key: str | None = None
+        #: Whether the SELECTED device is casting, as the App says
+        #: (``LcdSnapshot.screencast_region``).  It was a local
+        #: ``_casting_key``: another UI's start or stop never showed here, and
+        #: after picking another device the buttons still described the first.
+        self._casting = False
 
         # ── Device picker ─────────────────────────────────────────────
         self._picker = DevicePickerWidget(
@@ -125,20 +128,18 @@ class ScreencastPanel(BasePanel):
         self._audio.toggled.connect(self._on_audio_toggled)
 
         # ── Tips group ────────────────────────────────────────────────
+        # A tip, not a checkbox: the checkbox this was is read by nothing, so
+        # "recommended" was ticked and did not do anything.
         tips_box = QGroupBox("Tips", self)
         tips_layout = QVBoxLayout(tips_box)
-        self._transparent_hint = QCheckBox(
-            "Switch background mode to 'transparent' before starting "
-            "(recommended).",
+        tip = QLabel(
+            "Set the background mode to 'Transparent' on the Configuration "
+            "page before starting; otherwise the theme's background "
+            "composites under the screencast.",
             tips_box,
         )
-        self._transparent_hint.setChecked(True)
-        self._transparent_hint.setToolTip(
-            "Otherwise the theme's background composites under the "
-            "screencast and the result is muddy.  Change this on the "
-            "Configuration panel.",
-        )
-        tips_layout.addWidget(self._transparent_hint)
+        tip.setWordWrap(True)
+        tips_layout.addWidget(tip)
 
         # ── Start / Stop ──────────────────────────────────────────────
         self._start_btn = QPushButton("Start screencast", self)
@@ -175,6 +176,12 @@ class ScreencastPanel(BasePanel):
         root.addLayout(button_row)
         root.addWidget(self._status)
         root.addStretch(1)
+
+        qconn = Qt.ConnectionType.QueuedConnection
+        self._picker.key_changed.connect(self._on_key_changed)
+        for signal in (self._bus.screencast_started, self._bus.screencast_stopped):
+            signal.connect(self._on_cast_event, type=qconn)
+        self._show_state()
 
     # ── Region picking ───────────────────────────────────────────────
 
@@ -221,10 +228,11 @@ class ScreencastPanel(BasePanel):
 
     def _on_fps_changed(self, value: int) -> None:
         log.info("_on_fps_changed: value=%s", value)
-        if self._casting_key and self._region is not None:
+        key = self._picker.current_key()
+        if self._casting and key and self._region is not None:
             # Re-issuing replaces the driver, so this is how the cadence
             # changes mid-cast.
-            self._issue(self._casting_key, self._region)
+            self._issue(key, self._region)
 
     def _issue(self, key: str,
                region: tuple[int, int, int, int]) -> ScreencastResult:
@@ -261,8 +269,8 @@ class ScreencastPanel(BasePanel):
         Off-session it is just the checkbox; :meth:`_on_start` reads it.
         """
         log.info("_on_audio_toggled: enabled=%s", enabled)
-        key = self._casting_key
-        if not key or self._region is None:
+        key = self._picker.current_key()
+        if not self._casting or not key or self._region is None:
             log.debug("_on_audio_toggled: no live session — the checkbox "
                       "applies at the next Start")
             return
@@ -291,25 +299,47 @@ class ScreencastPanel(BasePanel):
         if not started.ok:
             self._status.setText(started.message)
             return
-        self._casting_key = key
-        self._start_btn.setEnabled(False)
-        self._stop_btn.setEnabled(True)
-        self._pick_btn.setEnabled(False)
-        self._status.setText(
-            f"Mirroring region to {key} at {self._fps.value()} fps.  "
-            "Click Stop to end.",
-        )
+        self._show_state()
 
     def _on_stop(self) -> None:
-        log.info("_on_stop")
-        key = self._casting_key
+        key = self._picker.current_key()
+        log.info("_on_stop: key=%s", key)
         if key:
             self.dispatch(StopScreencast(key=key))
-        self._casting_key = None
-        self._start_btn.setEnabled(True)
-        self._stop_btn.setEnabled(False)
-        self._pick_btn.setEnabled(True)
-        self._status.setText("Screencast stopped.")
+        self._show_state()
+
+    # ── Showing what the App holds ───────────────────────────────────
+
+    def _on_key_changed(self, key: str) -> None:
+        log.info("_on_key_changed: %s", key)
+        self._show_state()
+
+    def _on_cast_event(self, event: ScreencastStarted | ScreencastStopped) -> None:
+        if event.key == self._picker.current_key():
+            log.info("_on_cast_event: %s for %s", type(event).__name__, event.key)
+            self._show_state()
+
+    def _show_state(self) -> None:
+        """The selected device's cast, from any UI: buttons, region, mic.
+        Sends nothing -- the mic checkbox is set under blocked signals."""
+        key = self._picker.current_key()
+        snap = self.dispatch(LcdSnapshot(key=key)) if key else None
+        region = snap.screencast_region if snap is not None and snap.ok else None
+        self._casting = region is not None
+        log.info("_show_state: %s casting=%s region=%s", key, self._casting, region)
+        if region is not None:
+            x, y, w, h, audio = region
+            self._region = (x, y, w, h)
+            self._region_label.setText(f"{w}×{h} at ({x}, {y})")
+            self._audio.blockSignals(True)
+            self._audio.setChecked(bool(audio))
+            self._audio.blockSignals(False)
+            self._status.setText(f"Mirroring a region to {key}.  Click Stop to end.")
+        elif key:
+            self._status.setText("Not casting.  Choose a region, then Start.")
+        self._start_btn.setEnabled(not self._casting)
+        self._stop_btn.setEnabled(self._casting)
+        self._pick_btn.setEnabled(not self._casting)
 
     # ── Tick ─────────────────────────────────────────────────────────
 

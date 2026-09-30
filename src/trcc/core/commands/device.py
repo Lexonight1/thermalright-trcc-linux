@@ -3026,6 +3026,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             split_mode=s.split_mode,
             time_format="12h" if "%I" in clocks.get("time", "") else "24h",
             date_format=icu_date_pattern(clocks.get("date", "")),
+            screencast_region=s.screencast_region,
             temp_unit=s.temp_unit,
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,

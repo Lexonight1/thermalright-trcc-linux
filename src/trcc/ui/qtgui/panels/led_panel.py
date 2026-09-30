@@ -92,13 +92,16 @@ class LedPanel(BasePanel):
         root.addWidget(self._status_label)
         root.addWidget(self._tabs, stretch=1)
 
-        # Refresh whenever the LED settings change from elsewhere (CLI,
-        # API, another GUI).  QueuedConnection is the safe default —
-        # the event might fire from a background thread.
-        self._bus.led_colors_changed.connect(
+        # Refresh whenever the LED settings change, from any UI.  On the
+        # SETTINGS event -- it listened to LedColorsChanged, which every
+        # render publishes (~6.7/s animated), so three Queries ran per frame
+        # and a colour or brightness being picked was pulled back under the
+        # user.  QueuedConnection: the event may fire off the Qt thread.
+        self._bus.settings_changed.connect(
             self._on_led_settings_changed,
             type=Qt.ConnectionType.QueuedConnection,
         )
+        self._on_key_changed()          # show the selected device on open
 
     # ── Key plumbing ─────────────────────────────────────────────────
 
@@ -190,7 +193,8 @@ class LedPanel(BasePanel):
     # ── Bus subscription ─────────────────────────────────────────────
 
     def _on_led_settings_changed(self, event) -> None:
-        log.info("_on_led_settings_changed")
         if event.key != self._current_key():
             return
+        log.info("_on_led_settings_changed: %s for %s",
+                 type(event).__name__, event.key)
         self._refresh_all_tabs()
