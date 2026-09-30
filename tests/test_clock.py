@@ -5,100 +5,120 @@ from datetime import datetime
 
 import pytest
 
+from trcc.core.models import DATE_FORMATS, TIME_FORMATS, format_clock
 from trcc.services._clock import (
     WEEKDAYS_BY_LANG,
     _translate_date_pattern,
+    clock_text,
     compute_clock,
-    resolve_clock,
 )
 
 # Reference moment: Wednesday 2026-05-20 14:58:30 (weekday=2)
 _NOW = datetime(2026, 5, 20, 14, 58, 30)
 
 
-# ── resolve_clock ─────────────────────────────────────────────────────
+def _at(moment: datetime, language: str = "en") -> dict[str, str]:
+    return compute_clock(language, now=moment)
+
+
+# ── format_clock: the C# patterns (UCXiTongXianShiSub.cs:248-285) ──────
 
 
 def test_time_24h() -> None:
-    assert resolve_clock("time", time_format="24h", now=_NOW) == "14:58"
+    assert format_clock(TIME_FORMATS[0], _NOW) == "14:58"
 
 
-def test_time_12h_strips_leading_zero_and_appends_pm() -> None:
-    assert resolve_clock("time", time_format="12h", now=_NOW) == "2:58 PM"
+def test_time_12h_is_the_csharps_hh_mm_tt() -> None:
+    """``hh:mm tt``: leading zero kept, AM/PM appended."""
+    assert format_clock(TIME_FORMATS[1], _NOW) == "02:58 PM"
 
 
 def test_time_12h_midnight_renders_as_12() -> None:
-    midnight = datetime(2026, 5, 20, 0, 5)
-    assert resolve_clock("time", time_format="12h", now=midnight) == "12:05 AM"
+    assert format_clock(TIME_FORMATS[1], datetime(2026, 5, 20, 0, 5)) == "12:05 AM"
 
 
 def test_time_12h_noon_renders_as_12_pm() -> None:
-    noon = datetime(2026, 5, 20, 12, 0)
-    assert resolve_clock("time", time_format="12h", now=noon) == "12:00 PM"
+    assert format_clock(TIME_FORMATS[1], datetime(2026, 5, 20, 12, 0)) == "12:00 PM"
 
 
-def test_date_default_pattern() -> None:
-    assert resolve_clock("date", date_format="yyyy/MM/dd", now=_NOW) == "2026/05/20"
+def test_the_meridiem_ignores_the_process_locale(monkeypatch) -> None:
+    """The C# uses InvariantCulture; ``strftime``'s ``%p`` follows the locale
+    and is empty in some.  A 12h clock must still say AM/PM."""
+    import locale
+    try:
+        locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
+    except locale.Error:
+        pytest.skip("de_DE.UTF-8 not installed")
+    try:
+        assert format_clock(TIME_FORMATS[1], _NOW) == "02:58 PM"
+    finally:
+        locale.setlocale(locale.LC_TIME, "C")
 
 
-def test_date_alternative_pattern() -> None:
-    assert resolve_clock("date", date_format="dd/MM/yyyy", now=_NOW) == "20/05/2026"
+@pytest.mark.parametrize(("index", "text"), [
+    (0, "2026/05/20"), (1, "2026/05/20"), (2, "20/05/2026"),
+    (3, "05/20"), (4, "20/05"),
+])
+def test_every_csharp_date_format(index: int, text: str) -> None:
+    assert format_clock(DATE_FORMATS[index], _NOW) == text
 
 
-def test_date_short_pattern() -> None:
-    assert resolve_clock("date", date_format="MM/dd", now=_NOW) == "05/20"
+# ── clock_text: each element in its own pattern ───────────────────────
 
 
-def test_weekday_english_default() -> None:
-    # Wednesday → index 2 → "WED"
-    assert resolve_clock("weekday", language="en", now=_NOW) == "WED"
+def test_a_time_element_draws_in_its_own_pattern() -> None:
+    clock = _at(_NOW)
+    assert clock_text("time", TIME_FORMATS[1], clock) == "02:58 PM"
+    assert clock_text("time", TIME_FORMATS[0], clock) == "14:58"
 
 
-def test_weekday_german() -> None:
-    assert resolve_clock("weekday", language="de", now=_NOW) == "MI"
+def test_a_date_element_draws_in_its_own_pattern() -> None:
+    assert clock_text("date", "%d.%m.%Y", _at(_NOW)) == "20.05.2026"
+
+
+@pytest.mark.parametrize(("source", "text"), [("time", "14:58"),
+                                              ("date", "2026/05/20")])
+def test_an_element_with_no_pattern_draws_the_default(source: str, text: str) -> None:
+    """An older layout, or a 0xDD time element: no ``%`` pattern of its own."""
+    assert clock_text(source, "{value}", _at(_NOW)) == text
+
+
+def test_weekday_follows_the_language() -> None:
+    assert clock_text("weekday", "", _at(_NOW, "de")) == "MI"
 
 
 def test_weekday_unknown_falls_back_to_english() -> None:
-    assert resolve_clock("weekday", language="xx", now=_NOW) == "WED"
+    assert clock_text("weekday", "", _at(_NOW, "xx")) == "WED"
 
 
 def test_weekday_subtag_fallback() -> None:
     # "de_AT" (Austria) not in table — should fall back to "de"
-    assert resolve_clock("weekday", language="de_AT", now=_NOW) == "MI"
+    assert clock_text("weekday", "", _at(_NOW, "de_AT")) == "MI"
 
 
 def test_weekday_zh_TW_exact_match() -> None:
     # zh_TW is in the table — must use that, not fallback to zh
-    assert resolve_clock("weekday", language="zh_TW", now=_NOW) == "星期三"
+    assert clock_text("weekday", "", _at(_NOW, "zh_TW")) == "星期三"
 
 
-def test_unknown_source_raises() -> None:
-    with pytest.raises(ValueError, match="Unknown clock source"):
-        resolve_clock("year", now=_NOW)  # type: ignore[arg-type]
+def test_an_unknown_source_draws_nothing() -> None:
+    assert clock_text("year", "%Y", _at(_NOW)) == ""
 
 
-# ── compute_clock (one-shot dict) ─────────────────────────────────────
+# ── compute_clock: the frame's minute ─────────────────────────────────
 
 
-def test_compute_clock_returns_all_three() -> None:
-    result = compute_clock("24h", "yyyy/MM/dd", "en", now=_NOW)
-    assert result == {
-        "time": "14:58",
-        "date": "2026/05/20",
-        "weekday": "WED",
-    }
+def test_compute_clock_is_the_minute_and_the_weekday() -> None:
+    """To the minute: the dict is part of the overlay cache key, so seconds
+    would rebuild the frame every tick."""
+    assert _at(_NOW) == {"now": "2026-05-20T14:58:00", "weekday": "WED"}
 
 
-def test_compute_clock_uses_same_moment_for_all_three() -> None:
-    # Midnight rollover edge: 23:59:59.9 vs 00:00:00 — verifying
-    # all three sources share the same datetime, so no drift.
-    moment = datetime(2026, 5, 20, 23, 59, 59)
-    result = compute_clock("24h", "dd/MM/yyyy", "fr", now=moment)
-    assert result == {
-        "time": "23:59",
-        "date": "20/05/2026",
-        "weekday": "MER",
-    }
+def test_one_moment_serves_every_element() -> None:
+    # Midnight rollover edge: every element reads the same moment, no drift.
+    clock = _at(datetime(2026, 5, 20, 23, 59, 59), "fr")
+    assert (clock_text("time", "%H:%M", clock), clock_text("date", "%d/%m", clock),
+            clock["weekday"]) == ("23:59", "20/05", "MER")
 
 
 # ── pattern translator ────────────────────────────────────────────────

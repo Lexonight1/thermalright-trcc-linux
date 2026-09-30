@@ -27,7 +27,7 @@ from trcc.core.models import OverlayElement
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
 
-from .test_overlay_clock import _config, _DrawRecorder
+from .test_overlay_clock import _CLOCK, _config, _DrawRecorder
 
 
 class _FamilyRecorder(_DrawRecorder):
@@ -59,7 +59,7 @@ def test_each_element_type_carries_its_font(
         base,
         _config([{**element, "name": "Comic Sans MS"}]),
         sensors={"cpu:temp": 42.0},
-        clock={"time": "14:58", "date": "2026/05/20", "weekday": "WED"},
+        clock=_CLOCK,
     )
     assert rec.families == ["Comic Sans MS"], (
         f"{label} element: the renderer was handed {rec.families!r} — the "

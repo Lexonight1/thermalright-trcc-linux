@@ -120,6 +120,38 @@ def test_round_trip_clock_element(theme_dir: Path) -> None:
     assert sources == ["time", "weekday", "date"]
 
 
+@pytest.mark.parametrize(("source", "pattern"), [
+    ("time", "%H:%M"), ("time", "%I:%M %p"),
+    ("date", "%Y/%m/%d"), ("date", "%d/%m/%Y"), ("date", "%m/%d"),
+    ("date", "%d/%m"),
+])
+def test_a_clock_keeps_its_own_format_through_a_write(
+    theme_dir: Path, source: str, pattern: str,
+) -> None:
+    """Every format the C# can set survives write -> read.  The writer put 0
+    in every clock's myModeSub, so an export reset each clock to the first
+    format (the test above checks sources only, which is how it got by)."""
+    out = theme_dir / "config1.dc"
+    write_dc_from_theme_config(out, {"elements": [
+        {"type": "clock", "source": source, "format": pattern, "x": 1, "y": 2},
+    ]})
+    assert load_dc_as_theme_config(out)["elements"][0]["format"] == pattern
+
+
+@pytest.mark.parametrize("show_unit", [True, False])
+def test_a_metric_keeps_its_unit_switch_through_a_write(
+    theme_dir: Path, show_unit: bool,
+) -> None:
+    """The writer put 0 in every metric's myModeSub, which the reader turns
+    into show_unit=False: every exported metric lost its unit glyph."""
+    out = theme_dir / "config1.dc"
+    write_dc_from_theme_config(out, {"elements": [
+        {"type": "metric", "metric": "cpu:temp", "show_unit": show_unit,
+         "x": 1, "y": 2},
+    ]})
+    assert load_dc_as_theme_config(out)["elements"][0]["show_unit"] is show_unit
+
+
 def test_mask_visible_round_trips(theme_dir: Path) -> None:
     """``mask_visible`` survives a write→read cycle.
 

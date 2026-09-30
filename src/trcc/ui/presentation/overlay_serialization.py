@@ -21,7 +21,7 @@ App holds, and is gone.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from ...core.models import (
@@ -29,6 +29,7 @@ from ...core.models import (
     TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
+    format_index,
 )
 from ...core.results import OverlayElementEntry
 from ...services import _dc as Dc
@@ -37,18 +38,6 @@ log = logging.getLogger(__name__)
 
 
 _DEFAULT_FONT_NAME = "Microsoft YaHei"
-
-
-def _format_index(table: Mapping[int, str], fmt: str) -> int:
-    """The ``myModeSub`` whose pattern is *fmt*; 0 for one the table lacks.
-
-    Display only: the cell's format button starts there.  An element's own
-    pattern is never rewritten from it unless the user presses that button,
-    because an edit sends only the fields that changed.
-    """
-    index = next((i for i, f in table.items() if f == fmt), 0)
-    log.debug("_format_index: %r -> %d", fmt, index)
-    return index
 
 
 def entries_to_configs(
@@ -72,10 +61,10 @@ def entries_to_configs(
                 cfg.mode, cfg.text = OverlayMode.CUSTOM, e.text
             case "clock", "time":
                 cfg.mode = OverlayMode.TIME
-                cfg.mode_sub = _format_index(TIME_FORMATS, e.format)
+                cfg.mode_sub = format_index(TIME_FORMATS, e.format)
             case "clock", "date":
                 cfg.mode = OverlayMode.DATE
-                cfg.mode_sub = _format_index(DATE_FORMATS, e.format)
+                cfg.mode_sub = format_index(DATE_FORMATS, e.format)
             case "clock", "weekday":
                 cfg.mode = OverlayMode.WEEKDAY
             case "metric", _ if (hw := Dc.metric_to_hardware(e.metric)):

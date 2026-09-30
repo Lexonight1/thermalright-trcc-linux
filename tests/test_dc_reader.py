@@ -320,6 +320,44 @@ def _build_dc_with_trailer(*, show_unit: bool) -> bytes:
     return bytes(buf)
 
 
+def _font_record() -> bytes:
+    """One DC font record: empty name, 24 pt, regular, opaque white."""
+    return bytes([0]) + struct.pack("<f", 24.0) + bytes([0, 0, 0, 255, 255, 255, 255])
+
+
+def _build_dc_with_clock(*, date_idx: int, time_idx: int) -> bytes:
+    """A 0xDC buffer through its clock block: date, time and weekday on."""
+    buf = bytearray(_build_dc_with_trailer(show_unit=True))
+    buf.extend(bytes([1, 1, 1]))                        # master, date, time
+    buf.extend(struct.pack("<2i", date_idx, time_idx))  # the two myModeSub
+    buf.extend(struct.pack("<4i", 5, 6, 7, 8))          # date x,y  time x,y
+    buf.extend(_font_record() + _font_record())         # date font, time font
+    buf.append(1)                                       # weekday on
+    buf.extend(struct.pack("<2i", 9, 10))
+    buf.extend(_font_record())
+    return bytes(buf)
+
+
+@pytest.mark.parametrize(("time_idx", "pattern"), [(0, "%H:%M"),
+                                                    (1, "%I:%M %p"),
+                                                    (2, "%H:%M")])
+def test_a_0xdc_time_keeps_the_themes_own_format(
+    tmp_path: Path, time_idx: int, pattern: str,
+) -> None:
+    """The C# draws each clock element in its own myModeSub; the reader read
+    the 0xDC time index and dropped it ("time stays global")."""
+    f = tmp_path / "Clock" / "config1.dc"
+    f.parent.mkdir()
+    f.write_bytes(_build_dc_with_clock(date_idx=3, time_idx=time_idx))
+
+    clocks = {e["source"]: e for e in Dc.File(f).read()["elements"]
+              if e["type"] == "clock"}
+
+    assert clocks["time"]["format"] == pattern
+    assert clocks["date"]["format"] == "%m/%d"
+    assert (clocks["time"]["x"], clocks["time"]["y"]) == (7, 8)
+
+
 def test_a_0xdc_mask_that_bakes_its_unit_is_drawn_bare(tmp_path: Path) -> None:
     """``num8`` False → every metric VALUE draws the number without a unit.
 

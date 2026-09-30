@@ -5,6 +5,7 @@ import logging
 import uuid
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -1438,11 +1439,13 @@ CATEGORY_COLORS: dict[int, str] = {
 }
 
 
-# Time / date format tables (mirror legacy ``trcc.core.models.constants``).
+# Time / date patterns by the C#'s per-element ``myModeSub``
+# (UCXiTongXianShiSub.cs:248-285).  A clock element carries its OWN pattern;
+# these are the ones the Windows app can set, and the index a DC file stores.
 TIME_FORMATS: dict[int, str] = {
-    0: "%H:%M",  # 24-hour (14:58)
-    1: "%I:%M",  # 12-hour with leading zero (02:58); stripped at format time
-    2: "%H:%M",  # 24-hour (same as 0 in legacy)
+    0: "%H:%M",     # 24-hour (14:58)
+    1: "%I:%M %p",  # 12-hour, C# "hh:mm tt" (02:58 PM)
+    2: "%H:%M",     # 24-hour (same as 0 in the C#)
 }
 
 DATE_FORMATS: dict[int, str] = {
@@ -1452,6 +1455,29 @@ DATE_FORMATS: dict[int, str] = {
     3: "%m/%d",
     4: "%d/%m",
 }
+
+
+def format_index(table: Mapping[int, str], pattern: str) -> int:
+    """The ``myModeSub`` whose pattern is *pattern*; 0 for one the table lacks.
+
+    What a DC file can store and what the editor's format button shows.  A
+    pattern the C# cannot set (``%d.%m.%Y`` from the CLI) reads as 0.
+    """
+    index = next((i for i, f in table.items() if f == pattern), 0)
+    log.debug("format_index: %r -> %d", pattern, index)
+    return index
+
+
+def format_clock(pattern: str, moment: datetime) -> str:
+    """*moment* in a clock element's strftime *pattern*.
+
+    ``%p`` is always AM/PM: the C# formats with InvariantCulture, and
+    ``strftime``'s ``%p`` follows the process locale, which can be empty.
+    """
+    meridiem = "AM" if moment.hour < 12 else "PM"
+    text = moment.strftime(pattern.replace("%p", meridiem))
+    frame_log.debug("format_clock: %r -> %r", pattern, text)
+    return text
 
 
 WEEKDAYS_BY_LANG: dict[str, list[str]] = {
@@ -1493,16 +1519,11 @@ def format_metric(
     from datetime import datetime as _dt
 
     if metric == "date":
-        now = _dt.now()
-        fmt = DATE_FORMATS.get(date_format, DATE_FORMATS[0])
-        return now.strftime(fmt)
+        return format_clock(DATE_FORMATS.get(date_format, DATE_FORMATS[0]),
+                            _dt.now())
     if metric == "time":
-        now = _dt.now()
-        fmt = TIME_FORMATS.get(time_format, TIME_FORMATS[0])
-        result = now.strftime(fmt)
-        if time_format == 1:
-            result = result.lstrip("0")
-        return result
+        return format_clock(TIME_FORMATS.get(time_format, TIME_FORMATS[0]),
+                            _dt.now())
     if metric == "weekday":
         weekdays = (
             WEEKDAYS_BY_LANG.get(lang or "en")

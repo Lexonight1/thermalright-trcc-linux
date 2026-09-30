@@ -69,6 +69,11 @@
   selected stays, as there. Your current page is kept when you upgrade.
 - **The LED preview goes dark when the LEDs are switched off.** It kept
   showing them lit while the cooler was dark.
+- **Clocks show the format the theme was made with.** Themes designed with a
+  12-hour clock showed 24-hour. The 12-hour clock now reads `02:58 PM`, as in
+  the Windows app, and keeps its AM/PM on systems set to a language whose
+  locale has none. Exporting a theme keeps each clock's format and each
+  value's unit, which the export used to reset.
 - **An LED cooler's 12h/24h clock button works.** The cooler's clock ignored
   it and followed the LCD overlay's time format instead; each cooler now keeps
   its own, as in the Windows app.

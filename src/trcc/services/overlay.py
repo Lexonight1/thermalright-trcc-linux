@@ -19,7 +19,7 @@ from ..core.logs import per_frame
 from ..core.models import OverlayElement, ThemeDir, element_family, percent_only
 from ..core.ports import Renderer
 from . import _dc as Dc
-from ._clock import is_default_date_pattern, resolve_clock
+from ._clock import clock_text
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -283,10 +283,10 @@ class OverlayService:
         deliberately no separate user layer here; rendering theme + user as
         two stacked passes is what drew every edited element twice.
 
-        ``clock`` is a pre-resolved ``{"time": "14:58", "date": ...,
-        "weekday": ...}`` dict produced by DisplayService via
-        ``services._clock.compute_clock``.  When ``None``, clock
-        elements are skipped (e.g. test fixtures that don't care).
+        ``clock`` is ``services._clock.compute_clock``'s ``{"now": <the
+        frame's minute>, "weekday": ...}``; each time/date element draws that
+        moment in its own pattern.  When ``None``, clock elements are skipped
+        (e.g. test fixtures that don't care).
 
         ``temp_unit`` is "C" (default) or "F".  When "F",
         ``_draw_metric`` converts any temperature value
@@ -437,21 +437,10 @@ class OverlayService:
         source: str = "?",
     ) -> None:
         clock_source = str(element.get("source", ""))
-        # Date format reconciliation (universal — every UI renders through here):
-        #   * A DELIBERATE non-default theme pattern (e.g. "%m/%d") is honoured —
-        #     a theme designed for a specific date layout keeps it.
-        #   * A default-equivalent pattern ("%Y/%m/%d" ≡ "yyyy/MM/dd") means the
-        #     theme didn't customise the date, so the user's global date_format
-        #     pref wins (it's already baked into the precomputed dict, per
-        #     device).  Time/weekday always use the dict (localised weekday, 12h
-        #     handling).  ``"%" in fmt`` excludes the metric default "{value}".
-        # (#format-prefs)
-        elem_fmt = str(element.get("format", ""))
-        if (clock_source == "date" and "%" in elem_fmt
-                and not is_default_date_pattern(elem_fmt)):
-            text = resolve_clock("date", date_format=elem_fmt)
-        else:
-            text = clock.get(clock_source, "")
+        # The element's OWN pattern, as the C# draws each element's text from
+        # its own myModeSub (UCScreenImage.cs:1130).  There is no global
+        # format: a theme shows the format its elements were saved with.
+        text = clock_text(clock_source, str(element.get("format", "")), clock)
         if not text:
             log.warning(
                 "draw_clock %s: source %r unresolved — skipping "

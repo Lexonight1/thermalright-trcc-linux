@@ -281,17 +281,9 @@ class DisplayService:
             s.orientation, s.brightness,
         )
 
-        clock = compute_clock(
-            time_format=s.time_format,
-            date_format=s.date_format,
-            language=self._settings.app.language,
-        )
-        frame_log.debug(
-            "build_frame %s: clock=%s (time_format=%s date_format=%s lang=%s)",
-            info.key, sorted(clock.keys()),
-            s.time_format, s.date_format,
-            self._settings.app.language,
-        )
+        clock = compute_clock(language=self._settings.app.language)
+        frame_log.debug("build_frame %s: clock=%s (lang=%s)", info.key, clock,
+                        self._settings.app.language)
 
         scene = self._scenes.get(info.key)
         bg_key = self._bg_mask_key(info, theme, visual_size)
@@ -458,11 +450,7 @@ class DisplayService:
             self._content_is_portrait(theme, resolved_profile, s),
         )
 
-        clock = compute_clock(
-            time_format=s.time_format,
-            date_format=s.date_format,
-            language=self._settings.app.language,
-        )
+        clock = compute_clock(language=self._settings.app.language)
 
         # Same cache lookup as build_frame so a preview tick doesn't
         # invalidate it for the wire path.
@@ -671,11 +659,7 @@ class DisplayService:
 
         if theme is not None:
             surface = self._composite_mask(info, s, theme, surface)
-            clock = compute_clock(
-                time_format=s.time_format,
-                date_format=s.date_format,
-                language=self._settings.app.language,
-            )
+            clock = compute_clock(language=self._settings.app.language)
             overlay = self._build_overlay(
                 info, theme, sensors or {}, (target_w, target_h), clock)
             surface = self._r.composite(surface, overlay, position=(0, 0))

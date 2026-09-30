@@ -23,7 +23,13 @@ from typing import Any
 
 from ..core.errors import ThemeError
 from ..core.logs import Blob
-from ..core.models import DATE_FORMATS, METRICS, DisplaySource
+from ..core.models import (
+    DATE_FORMATS,
+    METRICS,
+    TIME_FORMATS,
+    DisplaySource,
+    format_index,
+)
 
 log = logging.getLogger(__name__)
 
@@ -589,13 +595,10 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         flag_clock_master = r.read_bool()
         flag_date = r.read_bool()
         flag_time = r.read_bool()
-        # The DC stores the date/time format the theme was DESIGNED for —
-        # honour it (legacy kept it as the element's mode_sub) instead of
-        # forcing the global yyyy/MM/dd default.  Date maps cleanly to a
-        # strftime pattern; time keeps the global path (its 12h handling is
-        # not a bare strftime — see resolve_clock).
+        # The DC stores the date and time format the theme was DESIGNED for,
+        # per element as the C#'s myModeSub -- each clock draws in its own.
         date_format_idx = r.read_int32()
-        time_format_idx = r.read_int32()  # noqa: F841 — time stays global
+        time_format_idx = r.read_int32()
         date_x = r.read_int32()
         date_y = r.read_int32()
         time_x = r.read_int32()
@@ -617,6 +620,8 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
             if flag_time:
                 elements.append({
                     "type": "clock", "source": "time",
+                    "format": TIME_FORMATS.get(time_format_idx,
+                                               TIME_FORMATS[0]),
                     "x": time_x, "y": time_y, **time_font,
                 })
             if flag_weekday:
@@ -738,7 +743,8 @@ def _build_dd_element(
                 return None
             return {**base, "type": "text", "text": custom_text}
         case 1:
-            return {**base, "type": "clock", "source": "time"}
+            return {**base, "type": "clock", "source": "time",
+                    "format": TIME_FORMATS.get(mode_sub, TIME_FORMATS[0])}
         case 2:
             return {**base, "type": "clock", "source": "weekday"}
         case 3:
@@ -820,15 +826,19 @@ def _element_to_legacy(
     if kind == "metric":
         sensor = str(element.get("metric", ""))
         main_c, sub_c = _sensor_to_hw().get(sensor, (0, 0))
-        return (_MODE_HARDWARE, 0, main_c, sub_c, "")
+        # mode_sub is the unit-switch the reader turns into show_unit; writing
+        # 0 dropped it, so every exported metric came back without its unit.
+        return (_MODE_HARDWARE, int(bool(element.get("show_unit", True))),
+                main_c, sub_c, "")
     if kind == "clock":
-        source = element.get("source", "time")
-        mode = {
-            "time": _MODE_TIME,
-            "weekday": _MODE_WEEKDAY,
-            "date": _MODE_DATE,
-        }.get(source, _MODE_TIME)
-        return (mode, 0, 0, 0, "")
+        mode, table = {
+            "time": (_MODE_TIME, TIME_FORMATS),
+            "weekday": (_MODE_WEEKDAY, {}),
+            "date": (_MODE_DATE, DATE_FORMATS),
+        }.get(element.get("source", "time"), (_MODE_TIME, TIME_FORMATS))
+        # The element's own format, as the C# writes myModeSub per element.
+        return (mode, format_index(table, str(element.get("format", ""))),
+                0, 0, "")
     return (_MODE_CUSTOM, 0, 0, 0, "")
 
 

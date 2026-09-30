@@ -1,16 +1,23 @@
 """OverlayService — clock element dispatch.
 
-Verifies that ``type: "clock"`` elements route to ``_draw_clock`` and
-resolve the right source from the pre-computed clock dict.
+Verifies that ``type: "clock"`` elements route to ``_draw_clock`` and draw
+the frame's moment in their OWN pattern, as the C# does per element.  The
+clock dict comes from the real producer, ``compute_clock``, so this file
+cannot drift from it the way hand-built ``{"time": "14:58"}`` dicts did.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from trcc.core.models import RawFrame
 from trcc.core.ports import Renderer
+from trcc.services._clock import compute_clock
 from trcc.services.overlay import OverlayService
+
+#: Wednesday 2026-05-20 14:58 — the frame's moment in every test here.
+_CLOCK = compute_clock("en", now=datetime(2026, 5, 20, 14, 58, 30))
 
 
 class _Surface:
@@ -95,23 +102,17 @@ def test_clock_element_renders_resolved_time() -> None:
             "color": "#ffaa00", "size": 32,
         }]),
         sensors={},
-        clock={"time": "14:58", "date": "2026/05/20", "weekday": "WED"},
+        clock=_CLOCK,
     )
 
     assert rec.drawn == [(10, 20, "14:58", "#ffaa00", 32, False, False)]
 
 
-def test_date_element_honours_its_own_format_over_the_global() -> None:
-    """A date element carrying the theme's strftime pattern renders with it.
-
-    The DC stores the format the theme was designed for (e.g. MM/dd); the
-    cutover discarded it and forced the global ``yyyy/MM/dd``.  Now the date
-    element carries ``"%m/%d"`` and the renderer resolves it live, ignoring
-    the (wrong-format) precomputed dict entry.  Reported with screenshots:
-    full ``2026/06/05`` where ``MM/dd`` was intended.
-    """
-    from datetime import datetime
-
+def test_date_element_draws_in_its_own_format() -> None:
+    """The DC stores the format the theme was designed for (e.g. MM/dd); the
+    cutover discarded it and forced ``yyyy/MM/dd`` — reported with
+    screenshots.  Every pattern draws as the element says, the default one
+    included: there is no global format to defer to."""
     rec = _DrawRecorder()
     service = OverlayService(rec)
     base = rec.create_surface(320, 320)
@@ -119,26 +120,34 @@ def test_date_element_honours_its_own_format_over_the_global() -> None:
     service.render(
         base,
         _config([
-            {"type": "clock", "source": "date", "format": "%m/%d",
-             "x": 0, "y": 0},
+            {"type": "clock", "source": "date", "format": "%m/%d", "x": 0, "y": 0},
+            {"type": "clock", "source": "date", "format": "%Y/%m/%d", "x": 0, "y": 30},
         ]),
         sensors={},
-        clock={"date": "2026/06/05"},
+        clock=_CLOCK,
     )
 
-    assert rec.drawn[0][2] == datetime.now().strftime("%m/%d")
-    assert rec.drawn[0][2] != "2026/06/05"
+    assert [d[2] for d in rec.drawn] == ["05/20", "2026/05/20"]
 
 
-def test_date_element_with_default_pattern_follows_global() -> None:
-    """A date element whose pattern is the DEFAULT ("%Y/%m/%d" ≡ yyyy/MM/dd) is
-    treated as uncustomised → it follows the user's global date_format (the
-    precomputed dict), so the settings-panel choice applies.
+def test_a_12h_time_element_draws_the_csharps_hh_mm_tt() -> None:
+    rec = _DrawRecorder()
+    service = OverlayService(rec)
+    base = rec.create_surface(320, 320)
 
-    The reconciliation of two reports: the sibling test keeps a DELIBERATE
-    pattern (%m/%d); this keeps the GLOBAL pref winning for the standard format
-    a user expects to control. (#format-prefs)
-    """
+    service.render(
+        base,
+        _config([{"type": "clock", "source": "time", "format": "%I:%M %p",
+                  "x": 0, "y": 0}]),
+        sensors={},
+        clock=_CLOCK,
+    )
+
+    assert rec.drawn[0][2] == "02:58 PM"
+
+
+def test_an_element_without_a_pattern_draws_the_default() -> None:
+    """No strftime pattern (the metric default "{value}", an older layout)."""
     rec = _DrawRecorder()
     service = OverlayService(rec)
     base = rec.create_surface(320, 320)
@@ -146,35 +155,13 @@ def test_date_element_with_default_pattern_follows_global() -> None:
     service.render(
         base,
         _config([
-            {"type": "clock", "source": "date", "format": "%Y/%m/%d",
-             "x": 0, "y": 0},
+            {"type": "clock", "source": "date", "format": "{value}", "x": 0, "y": 0},
         ]),
         sensors={},
-        clock={"date": "05/06/2026"},   # global pref (dd/MM/yyyy) already resolved
+        clock=_CLOCK,
     )
 
-    # Follows the global dict, NOT the element's default-equivalent pattern.
-    assert rec.drawn[0][2] == "05/06/2026"
-
-
-def test_date_element_without_pattern_uses_global_dict() -> None:
-    """No real strftime pattern (e.g. the metric default "{value}") → fall
-    back to the precomputed global clock dict, unchanged."""
-    rec = _DrawRecorder()
-    service = OverlayService(rec)
-    base = rec.create_surface(320, 320)
-
-    service.render(
-        base,
-        _config([
-            {"type": "clock", "source": "date", "format": "{value}",
-             "x": 0, "y": 0},
-        ]),
-        sensors={},
-        clock={"date": "2026/06/05"},
-    )
-
-    assert rec.drawn[0][2] == "2026/06/05"
+    assert rec.drawn[0][2] == "2026/05/20"
 
 
 def test_clock_element_renders_resolved_date_and_weekday() -> None:
@@ -189,7 +176,7 @@ def test_clock_element_renders_resolved_date_and_weekday() -> None:
             {"type": "clock", "source": "weekday", "x": 0, "y": 30},
         ]),
         sensors={},
-        clock={"time": "14:58", "date": "2026/05/20", "weekday": "WED"},
+        clock=_CLOCK,
     )
 
     texts = [d[2] for d in rec.drawn]
@@ -221,7 +208,7 @@ def test_clock_unknown_source_is_skipped_silently() -> None:
         base,
         _config([{"type": "clock", "source": "century", "x": 0, "y": 0}]),
         sensors={},
-        clock={"time": "14:58"},
+        clock=_CLOCK,
     )
 
     assert rec.drawn == []
@@ -241,7 +228,7 @@ def test_clock_element_does_not_consume_sensor_dict() -> None:
              "format": "{value:.0f}"},
         ]),
         sensors={"cpu_temp": 67.0},
-        clock={"time": "14:58"},
+        clock=_CLOCK,
     )
 
     texts = [d[2] for d in rec.drawn]
