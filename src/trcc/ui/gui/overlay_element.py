@@ -97,8 +97,13 @@ class OverlayElementWidget(QWidget):
         self.update()
 
     def set_selected(self, selected):
-        log.debug("OverlayElementWidget.set_selected: index=%d %s",
-                  self.index, selected)
+        # Logged on a CHANGE only: the grid re-applies every cell's state on
+        # each refill, which follows every change any UI makes, so an
+        # unconditional line wrote 42 of them per drag move, nearly all
+        # "index=N False" for empty cells.
+        if selected != self._selected:
+            log.debug("OverlayElementWidget.set_selected: index=%d %s → %s",
+                      self.index, self._selected, selected)
         self._selected = selected
         self.update()
 

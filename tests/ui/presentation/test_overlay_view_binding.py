@@ -50,3 +50,21 @@ def test_toggle_off_emits_and_keeps_the_elements(qtbot) -> None:
     assert panel.overlay_enabled is False
     assert len(panel.get_all_configs()) == 1, "off hides; it deletes nothing"
 
+
+def test_a_refill_that_changes_nothing_logs_nothing(qtbot, caplog) -> None:
+    """The grid refills after every change any UI makes; each cell used to
+    log its selection state every time — 42 lines per drag move."""
+    import logging
+
+    panel = OverlayGridPanel()
+    qtbot.addWidget(panel)
+    name = "trcc.ui.gui.overlay_element"
+    with caplog.at_level(logging.DEBUG, logger=name):
+        panel.load_configs([_cfg("a"), _cfg("b")])
+        panel.load_configs([_cfg("a"), _cfg("b")])
+        quiet = [r for r in caplog.records if "set_selected" in r.getMessage()]
+        panel.select_element(1)
+        loud = [r for r in caplog.records if "set_selected" in r.getMessage()]
+    assert quiet == [], "an unchanged selection still logged"
+    assert [r.getMessage() for r in loud] == [
+        "OverlayElementWidget.set_selected: index=1 False → True"]
