@@ -86,10 +86,14 @@ class OverlayGridPanel(QFrame):
         self._toggle_btn.clicked.connect(self._on_toggle)
 
     def _on_toggle(self, checked):
+        """The switch sends the switch (``EnableOverlay``) and nothing else.
+
+        It used to re-send the whole layout too, so flipping it overwrote
+        whatever another UI had edited with this grid's copy.
+        """
         log.debug("_on_toggle: overlay_enabled=%s→%s", self._model.enabled, checked)
         self._model.set_enabled(checked)
         self.toggle_changed.emit(checked)
-        self.elements_changed.emit()
 
     def _setup_cells(self):
         """Create 42 cell widgets in the 7x6 grid."""
@@ -212,9 +216,13 @@ class OverlayGridPanel(QFrame):
         The shape ``SetOverlayConfig`` accepts (id + flat font + type).  This
         is what edits dispatch; ``to_overlay_config`` (legacy keyed shape)
         stays for any local-state consumers.
+
+        The elements whether or not the overlay is on.  "Off" used to be
+        spelled as an empty list, the legacy renderer's convention; to
+        ``SetOverlayConfig`` an empty list means the user deleted every
+        element, so switching off, or editing while off, wiped the layout.
+        On/off is ``EnableOverlay``'s alone.
         """
-        if not self._model.enabled:
-            return []
         return configs_to_next_elements(self._model.all_configs())
 
     def load_from_overlay_config(self, overlay_config):

@@ -36,6 +36,15 @@
 - **Opening the gui no longer rewrites brightness, orientation or split mode**
   for each panel. It shows what the App has and changes nothing.
 
+### Fixed
+
+- **Switching the overlay off in the gui no longer deletes it.** The switch
+  also cleared every overlay element, and so did editing one element while the
+  overlay was off. The gui put them back only if you switched it on again in
+  the same window; switching on from the Qt gui, the CLI or the API showed an
+  empty overlay. Switching now only switches, and an edit keeps the other
+  elements.
+
 ## v9.10.4
 
 **A correction first: v9.10.3 said two identical coolers were two devices.
