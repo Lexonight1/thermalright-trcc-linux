@@ -199,7 +199,7 @@ def two_handlers(tmp_path: Path) -> tuple[Any, Any, _FakeApp, _FakePreview]:
 
 def _advanced(key: str, cursor: int = 7, frame_count: int = 30) -> Any:
     from trcc.core.events import VideoAdvanced
-    return VideoAdvanced(key=key, cursor=cursor, frame_count=frame_count)
+    return VideoAdvanced(key=key, cursor=cursor, frame_count=frame_count, fps=15)
 
 
 # The TICKING half of this gate moved to the core on 2026-09-25 (#249): the
@@ -230,9 +230,7 @@ def test_active_device_does_write_the_shared_progress_widget(
 
     handler_b.on_video_advanced(_advanced(_KEY_B, cursor=7, frame_count=30))
 
-    assert len(preview.progress_calls) == 1
-    _percent, cursor, total = preview.progress_calls[0]
-    assert (cursor, total) == (7, 30)
+    assert preview.progress_calls == [(7, 30, 15)]
 
 
 def test_a_handler_ignores_another_devices_frames(two_handlers: Any) -> None:

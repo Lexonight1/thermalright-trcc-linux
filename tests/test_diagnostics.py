@@ -1972,7 +1972,7 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     an incident held nothing but the tail of the send loop.
 
     This drives the body the GUI's ``_on_video_tick`` runs -- one
-    ``TickDisplay``, one ``progress_fraction`` -- on a real ``App`` over a fake
+    ``TickDisplay``, one ``playback_clock`` -- on a real ``App`` over a fake
     transport, so every layer beneath the Command is the shipping one.
 
     **Sends are forced synchronous, and that is load-bearing.**
@@ -1988,12 +1988,13 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     from trcc.core.commands import ConnectDevice, TickDisplay
     from trcc.core.models import Theme
     from trcc.services.media import Playback
-    from trcc.ui.presentation.lcd_presentation_model import LcdPresentationModel
+    from trcc.ui.presentation.video_clock import playback_clock
 
     from .conftest import FakePlatform
     from .test_video_playback import _encoded_frame
 
     key = "0402:3922"
+    _FPS = 15
     ladder = levels_for(0)                       # what a user runs: no -v
     log_file = tmp_path / "trcc.log"
     configure_logging(log_file, level=ladder.file,
@@ -2016,7 +2017,7 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     )
     app.media._playbacks[key] = Playback(   # pyright: ignore[reportPrivateUsage]
         frames=[_encoded_frame(v) for v in (0xFF000000, 0xFF404040, 0xFF808080)],
-        fps=15,
+        fps=_FPS,
     )
 
     # Force every submit to block until THIS frame is written -- see the
@@ -2032,8 +2033,7 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     def tick_once() -> None:
         """Exactly what ``LCDHandler._on_video_tick`` does for an active UI."""
         result = app.dispatch(TickDisplay(key=key))
-        LcdPresentationModel.progress_fraction(result.cursor or 0,
-                                               result.frame_count or 0)
+        playback_clock(result.cursor or 0, result.frame_count or 0, _FPS)
 
     for _ in range(5):            # warm-up: first-frame lines are one-shot
         tick_once()

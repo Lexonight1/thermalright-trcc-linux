@@ -1457,7 +1457,8 @@ def test_the_real_tick_advances_and_announces_the_frame(fake_platform) -> None:
     app.video_loop.tick(now=0.0)
 
     assert playback.cursor == 1
-    assert [(e.key, e.cursor, e.frame_count) for e in seen] == [("0402:3922", 1, 30)]
+    assert [(e.key, e.cursor, e.frame_count, e.fps) for e in seen] == [
+        ("0402:3922", 1, 30, 10)]
 
 
 def test_the_session_starts_the_loop_and_close_stops_it(fake_platform) -> None:

@@ -110,7 +110,10 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: its one use was the flash timer, gone with FlashOverlayElement (it drew
 #: nothing in any UI; the C# has no panel highlight).  Diffing ``--list``
 #: across the change: the only name that left.
-MAX_SILENT = 319
+#: 319 -> 318 on 2026-09-30: the gui's ``UCPreview.set_progress`` gained a
+#: per-frame line when the progress bar moved to frames.  Diffing ``--list``
+#: across the change: the only name that left, none joined.
+MAX_SILENT = 318
 
 
 def test_logging_coverage_only_improves() -> None:

@@ -939,7 +939,7 @@ class TickDisplay(Command[RenderResult]):
         result = app.dispatch(RenderAndSend(key=self.key))
         app.events.publish(VideoAdvanced(
             key=self.key, cursor=playback.cursor,
-            frame_count=playback.frame_count,
+            frame_count=playback.frame_count, fps=playback.fps,
         ))
         return replace(
             result,

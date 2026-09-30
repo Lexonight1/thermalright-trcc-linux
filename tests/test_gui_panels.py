@@ -2644,7 +2644,7 @@ def _display_panel(gui_app: App, qtbot):
     return panel
 
 
-def _stub_status(panel, *, cursor, frame_count):
+def _stub_status(panel, *, cursor, frame_count, fps=30):
     from trcc.core.results import VideoStatusResult
 
     real = panel.dispatch
@@ -2656,7 +2656,7 @@ def _stub_status(panel, *, cursor, frame_count):
         if name == "VideoStatus":
             return VideoStatusResult(
                 ok=True, key="0402:3922", playing=True,
-                cursor=cursor, frame_count=frame_count,
+                cursor=cursor, frame_count=frame_count, fps=fps,
             )
         return real(cmd)
 
@@ -2711,7 +2711,20 @@ def test_the_scrubber_shows_the_position(gui_app: App, qtbot) -> None:
     assert panel._seek.isEnabled() is True
     assert panel._seek.value() == 42
     assert panel._seek.maximum() == 299          # 0-based cursor
-    assert panel._seek_label.text() == "43 / 300"
+    assert panel._seek_label.text() == "00:00:01.400/00:00:10.000"   # 42 @ 30 fps
+
+
+def test_dragging_the_scrubber_moves_only_the_label(gui_app: App, qtbot) -> None:
+    """As the C# player's MouseMove: the label shows where a release lands."""
+    panel = _display_panel(gui_app, qtbot)
+    sent = _stub_status(panel, cursor=42, frame_count=300)
+    panel._refresh_video_status()
+    sent.clear()
+
+    panel._seek.sliderMoved.emit(90)
+
+    assert panel._seek_label.text() == "00:00:03.000/00:00:10.000"
+    assert [type(c).__name__ for c in sent] == [], "a drag dispatched something"
 
 
 def test_releasing_the_scrubber_seeks(gui_app: App, qtbot) -> None:

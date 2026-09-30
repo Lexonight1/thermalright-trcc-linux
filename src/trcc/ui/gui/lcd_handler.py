@@ -761,19 +761,17 @@ class LCDHandler(BaseHandler):
         self._w['preview'].set_playing(False)
         self._w['preview'].show_video_controls(False)
 
-    def seek(self, percent: float) -> None:
-        """Jump playback to ``percent`` (0.0-1.0) of total frames."""
+    def seek(self, frame: int) -> None:
+        """Jump playback to *frame* -- the slider counts frames, so no maths."""
         from ...core.commands import SeekVideo
         status = self._video_status()
         if not status.playing or not status.frame_count:
             self.log.warning(
-                "seek(%.3f): no playback bound for %s — dropped",
-                percent, self._device_key,
+                "seek(%d): no playback bound for %s — dropped",
+                frame, self._device_key,
             )
             return
-        total = status.frame_count
-        frame = self._pm.seek_frame(percent, total)
-        self.log.info("seek: percent=%.3f frame=%d/%d", percent, frame, total)
+        self.log.info("seek: frame=%d/%d", frame, status.frame_count)
         self._app.dispatch(SeekVideo(key=self._device_key, frame=frame))
 
     def set_video_fit_mode(self, mode: str) -> None:
@@ -801,9 +799,8 @@ class LCDHandler(BaseHandler):
             return
         self.log.debug("on_video_advanced: %d/%d", event.cursor, event.frame_count)
         if self._pm.ui_active:
-            percent = self._pm.progress_fraction(event.cursor, event.frame_count)
             self._w['preview'].set_progress(
-                percent, event.cursor, event.frame_count,
+                event.cursor, event.frame_count, event.fps,
             )
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────

@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ...core.logs import per_frame
 from .preview_geometry import (
     rotated_lcd_size,
 )
@@ -29,7 +28,6 @@ if TYPE_CHECKING:
     pass
 
 log = logging.getLogger(__name__)
-frame_log = per_frame(__name__)
 
 # Default brightness % before the user picks one (legacy default).
 _DEFAULT_BRIGHTNESS = 100
@@ -112,23 +110,6 @@ class LcdPresentationModel:
         log.info("apply_rotation: %s %d° → is_rotated=%s lcd_size=%dx%d",
                  self.device_key, degrees, self.state.is_rotated,
                  *self.state.lcd_size)
-
-    # ── Video math (B5) ────────────────────────────────────────────────
-    # Pure per-frame arithmetic lifted off the handler's video path.  The
-    # pacing itself lives in the core's VideoLoop (#249).
-
-    @staticmethod
-    def seek_frame(percent: float, total: int) -> int:
-        """Clamp a 0..1 seek fraction to a valid frame index in ``total``."""
-        log.debug("seek_frame: percent=%s total=%s", percent, total)
-        return max(0, min(total - 1, int(percent * total)))
-
-    @staticmethod
-    def progress_fraction(cursor: int, total: int) -> float:
-        """Playback progress as 0..1 (0.0 when there are no frames)."""
-        frame_log.debug("progress_fraction: cursor=%s total=%s",
-                        cursor, total)
-        return (cursor / total) if total else 0.0
 
     def apply_split_mode(
         self, app_mode: int, lcd_size: tuple[int, int],

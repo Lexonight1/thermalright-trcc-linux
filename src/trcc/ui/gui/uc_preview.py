@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSlider, QVBoxLayout
 
 from ...core.logs import per_frame
 from ..presentation.lcd_panel import lcd_panel_for
+from ..presentation.video_clock import playback_clock
 from .assets import Assets
 from .base import BasePanel, ImageLabel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -117,16 +118,20 @@ class UCPreview(BasePanel):
             "Width fit (letterbox/crop)", self._on_width_fit)
 
         # Time label
-        self.time_label = QLabel("00:00 / 00:00", self.progress_container)
+        self.time_label = QLabel(playback_clock(0, 0, 0), self.progress_container)
         self.time_label.setGeometry(*Layout.TIME_LABEL)
         self.time_label.setStyleSheet(Styles.STATUS_LABEL_OVER_IMAGE)
 
-        # Progress slider
+        # Progress slider -- in FRAMES, as qtgui's is.  A drag only moves the
+        # label; the seek goes on release, as the C#'s MouseUp does.
         self.progress_slider = QSlider(Qt.Orientation.Horizontal, self.progress_container)
         self.progress_slider.setGeometry(*Layout.PROGRESS_SLIDER)
-        self.progress_slider.setRange(0, 100)
+        self.progress_slider.setRange(0, 0)
         self.progress_slider.setStyleSheet(Styles.SLIDER)
-        self.progress_slider.sliderMoved.connect(self._on_seek)
+        self.progress_slider.sliderMoved.connect(self._on_seek_moved)
+        self.progress_slider.sliderReleased.connect(self._on_seek_released)
+        #: ``(frame_count, fps)`` of the video shown, for the drag label.
+        self._clock_basis = (0, 0)
 
         layout.addWidget(self.progress_container)
 
@@ -197,9 +202,15 @@ class UCPreview(BasePanel):
         log.debug("_on_width_fit")
         self.invoke_delegate(self.CMD_VIDEO_FIT_WIDTH)
 
-    def _on_seek(self, value):
-        log.debug("_on_seek: value=%s", value)
-        self.invoke_delegate(self.CMD_VIDEO_SEEK, value)
+    def _on_seek_moved(self, frame: int) -> None:
+        """Dragging: show where the release will land, seek nothing yet."""
+        frame_log.debug("_on_seek_moved: frame=%d", frame)
+        self.time_label.setText(playback_clock(frame, *self._clock_basis))
+
+    def _on_seek_released(self) -> None:
+        frame = self.progress_slider.value()
+        log.info("_on_seek_released: frame=%d of %d", frame, self._clock_basis[0])
+        self.invoke_delegate(self.CMD_VIDEO_SEEK, frame)
 
     def set_image(self, image, fast: bool = False):
         """Set preview image (QImage)."""
@@ -224,11 +235,20 @@ class UCPreview(BasePanel):
         else:
             self.play_btn.setText("⏸" if playing else "▶")
 
-    def set_progress(self, percent, current_time, total_time):
+    def set_progress(self, cursor: int, frame_count: int, fps: int) -> None:
+        """Show frame *cursor* of *frame_count* -- left alone while held, or
+        the thumb would be torn out of the user's hand every frame."""
+        if self.progress_slider.isSliderDown():
+            frame_log.debug("set_progress: %d/%d skipped, slider held",
+                            cursor, frame_count)
+            return
+        frame_log.debug("set_progress: %d/%d @ %d fps", cursor, frame_count, fps)
+        self._clock_basis = (frame_count, fps)
         self.progress_slider.blockSignals(True)
-        self.progress_slider.setValue(int(percent))
+        self.progress_slider.setRange(0, max(0, frame_count - 1))
+        self.progress_slider.setValue(cursor)
         self.progress_slider.blockSignals(False)
-        self.time_label.setText(f"{current_time} / {total_time}")
+        self.time_label.setText(playback_clock(cursor, frame_count, fps))
 
     def set_frame_image(self, pixmap_or_path):
         if isinstance(pixmap_or_path, str):

@@ -60,6 +60,11 @@
 
 ### Fixed
 
+- **The gui's video progress bar works.** It sat at the start while a video
+  played, dragging it did nothing (each new frame pulled it back), and its
+  label counted frames. It now follows playback, a drag shows where you will
+  land and seeks when you let go, and both the gui and the Qt gui show the
+  time as the Windows app does, e.g. `00:00:05.000/00:00:10.000`.
 - **`-vvv` no longer fills the log with errors for LED coolers.** Every LED
   update printed a "Logging error" traceback and its log line was lost (since
   v9.10.3). The line now records the bytes sent to the cooler.

@@ -152,10 +152,15 @@ class VideoAdvanced(Event):
     RESULT of the UI's own tick.  The core ticks now (``VideoLoop``, #249), so
     the position is announced instead — by the Command, whoever dispatched it.
     Per-frame, like ``FrameSent``.
+
+    ``fps`` is the playback's rate, so a UI turns a frame into a time from the
+    event alone -- one opened mid-playback included.  The same value
+    ``VideoStatusResult.fps`` reports.
     """
     key: str
     cursor: int
     frame_count: int
+    fps: int
 
 
 @dataclass(frozen=True, slots=True)

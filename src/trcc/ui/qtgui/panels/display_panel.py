@@ -33,6 +33,7 @@ from ....core.commands import (
 )
 from ....core.events import VideoAdvanced, VideoStarted, VideoStopped
 from ....core.models import MEDIA, MediaKind
+from ...presentation.video_clock import playback_clock
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -106,6 +107,9 @@ class DisplayPanel(BasePanel):
         self._seek = QSlider(Qt.Orientation.Horizontal, self)
         self._seek.setEnabled(False)
         self._seek.sliderReleased.connect(self._on_seek_released)
+        self._seek.sliderMoved.connect(self._on_seek_moved)
+        #: ``(frame_count, fps)`` of the video shown, for the drag label.
+        self._clock_basis = (0, 0)
         # The core ticks the video (#249) and announces each frame, so the
         # slider can follow it live instead of only on a manual refresh.
         self._bus.video_advanced.connect(self._on_video_advanced)
@@ -309,7 +313,7 @@ class DisplayPanel(BasePanel):
         r = self.dispatch(VideoStatus(key=key))
         log.debug("_refresh_video_status: key=%s playing=%s cursor=%s/%s",
                   key, r.playing, r.cursor, r.frame_count)
-        self._show_position(r.cursor or 0, r.frame_count or 0)
+        self._show_position(r.cursor or 0, r.frame_count or 0, r.fps or 0)
 
     def _on_video_advanced(self, event: VideoAdvanced) -> None:
         """Follow the selected device's video frame by frame (per-frame: DEBUG).
@@ -321,7 +325,7 @@ class DisplayPanel(BasePanel):
             return
         log.debug("_on_video_advanced: %s %d/%d",
                   event.key, event.cursor, event.frame_count)
-        self._show_position(event.cursor, event.frame_count)
+        self._show_position(event.cursor, event.frame_count, event.fps)
 
     def _on_video_state(self, event: VideoStarted | VideoStopped) -> None:
         """A video started or stopped somewhere — show the selected device's."""
@@ -330,9 +334,9 @@ class DisplayPanel(BasePanel):
         if event.key == self._picker.current_key():
             self._refresh_video_status()
 
-    def _show_position(self, cursor: int, total: int) -> None:
+    def _show_position(self, cursor: int, total: int, fps: int) -> None:
         """Put a playback position on the slider; ``total == 0`` is no video."""
-        log.debug("_show_position: %d/%d", cursor, total)
+        log.debug("_show_position: %d/%d @ %d fps", cursor, total, fps)
         if not total:
             self._seek.setEnabled(False)
             self._seek_label.setText("no video")
@@ -342,7 +346,13 @@ class DisplayPanel(BasePanel):
         self._seek.setRange(0, max(0, total - 1))
         self._seek.setValue(cursor)
         self._seek.blockSignals(False)
-        self._seek_label.setText(f"{cursor + 1} / {total}")
+        self._clock_basis = (total, fps)
+        self._seek_label.setText(playback_clock(cursor, total, fps))
+
+    def _on_seek_moved(self, frame: int) -> None:
+        """Dragging: show where the release will land, seek nothing yet."""
+        log.debug("_on_seek_moved: frame=%d", frame)
+        self._seek_label.setText(playback_clock(frame, *self._clock_basis))
 
     def _on_seek_released(self) -> None:
         """Jump on RELEASE, not on every drag step.
