@@ -123,6 +123,42 @@ def test_every_face_that_dispatches_carries_the_whole_vocabulary(
     )
 
 
+def test_the_gui_carries_the_whole_vocabulary_through_config_fields() -> None:
+    """The gate above skips the gui, and must not be read as a pass for it.
+
+    Since 2026-09-30 the gui sends one element edit at a time as
+    ``_send_edit(Command, element_id=..., **fields)`` with the fields from
+    ``config_fields(cell)`` -- a call that names no keyword, so the syntax
+    gate cannot see it.  This checks that path: the gui dispatches both
+    Commands through ``_send_edit``, and ``config_fields`` over every editor
+    mode can express the whole vocabulary.
+    """
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+    from trcc.ui.presentation.overlay_serialization import config_fields
+
+    source = (_UI_ROOT / "gui" / "uc_theme_setting.py").read_text()
+    sent_through = {
+        node.args[0].id
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_send_edit" and node.args
+        and isinstance(node.args[0], ast.Name)
+    }
+    assert {c.__name__ for c in _COMMANDS} <= sent_through, sent_through
+
+    cells = [OverlayElementConfig(mode=mode, main_count=0, sub_count=1)
+             for mode in (OverlayMode.CUSTOM, OverlayMode.TIME, OverlayMode.DATE,
+                          OverlayMode.WEEKDAY, OverlayMode.HARDWARE)]
+    carried: set[str] = set()
+    for cell in cells:
+        fields = config_fields(cell)
+        assert fields is not None, cell.mode
+        carried.update(fields)
+    for command in _COMMANDS:
+        missing = _vocabulary(command) - carried
+        assert not missing, f"the gui cannot express {sorted(missing)} on {command.__name__}"
+
+
 def test_at_least_two_faces_are_actually_measured() -> None:
     """The gate above SKIPS a face with no site, so prove it measures some.
 

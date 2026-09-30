@@ -223,16 +223,27 @@ class OverlayEditorPanel(BasePanel):
         dialog = _ElementDialog(self, prefill=current)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        values = dialog.values()
+        # Only what the user changed.  Every field used to go back: a value
+        # the dialog had clamped (size 256 -> 200) or one another UI changed
+        # while the dialog was open was written over without being touched.
+        changed = dialog.changed_values()
+        if changed.pop("type", None) is not None:
+            log.warning("_on_edit: %s — an element's type cannot be changed "
+                        "by an edit; the rest is applied", eid)
+        if not changed:
+            log.info("_on_edit: %s — nothing changed, nothing sent", eid)
+            self._status.setText("No change.")
+            return
+        # Every field named, None where untouched: the Command leaves a None
+        # field as it is, so only the changes are applied.
         result = self.dispatch(UpdateOverlayElement(
             key=key, element_id=eid,
-            x=values["x"], y=values["y"],
-            color=values["color"], size=values["size"],
-            font=values["font"], bold=values["bold"],
-            italic=values["italic"],
-            text=values["text"], metric=values["metric"],
-            format=values["format"], show_unit=values["show_unit"],
-            source=values["source"],
+            x=changed.get("x"), y=changed.get("y"),
+            color=changed.get("color"), size=changed.get("size"),
+            font=changed.get("font"), bold=changed.get("bold"),
+            italic=changed.get("italic"), text=changed.get("text"),
+            metric=changed.get("metric"), format=changed.get("format"),
+            show_unit=changed.get("show_unit"), source=changed.get("source"),
         ))
         self._status.setText(result.message)
         if result.ok:
@@ -383,6 +394,15 @@ class _ElementDialog(QDialog):
         if self._prefill is not None:
             self._apply_prefill(self._prefill)
         self._refresh_visibility()
+        #: What the dialog showed when it opened -- an edit sends what differs.
+        self._opened = self.values()
+
+    def changed_values(self) -> dict:
+        """The fields the user changed since the dialog opened."""
+        now = self.values()
+        changed = {k: v for k, v in now.items() if self._opened.get(k) != v}
+        log.debug("changed_values: %s", sorted(changed))
+        return changed
 
     def _apply_prefill(self, element) -> None:
         log.debug("_apply_prefill: element=%s", element)

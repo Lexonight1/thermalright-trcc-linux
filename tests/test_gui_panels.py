@@ -3979,3 +3979,43 @@ def test_the_device_panel_lists_devices_on_open_and_frames_cost_no_query(
         assert asked == [], f"a sent frame dispatched {asked}"
     finally:
         app.close()
+
+
+@pytest.mark.parametrize("user_moves_x", [False, True])
+def test_the_qtgui_edit_dialog_sends_only_what_the_user_changed(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch, user_moves_x: bool,
+) -> None:
+    """Every field used to go back on OK: a size the dialog clamped (256 ->
+    200) or a colour another UI changed while it was open was overwritten
+    without being touched.  Measured 2026-09-30: 3 of 9 element kinds
+    changed on an untouched OK."""
+    from PySide6.QtWidgets import QDialog
+
+    from trcc.core.commands import AddOverlayElement, UpdateOverlayElement
+    from trcc.ui.qtgui.panels import overlay_editor
+    from trcc.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
+
+    key = "0402:3922"
+    assert gui_app.dispatch(AddOverlayElement(
+        key=key, element_id="e", type="text", text="HERO", size=256, x=5)).ok
+    panel = OverlayEditorPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    panel._picker.set_key(key)
+    panel.refresh()
+    panel._list.setCurrentRow(0)
+
+    def _exec(dialog):
+        # another UI recolours the element while the dialog is open ...
+        assert gui_app.dispatch(UpdateOverlayElement(
+            key=key, element_id="e", color="#00ff00")).ok
+        if user_moves_x:                          # ... and the user moves it
+            dialog._x.setValue(40)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(overlay_editor._ElementDialog, "exec", _exec)
+    panel._on_edit()
+
+    element = gui_app.settings.for_device(key).user_overlay_elements[0]
+    assert (element.size, element.color) == (256, "#00ff00"), (
+        "an untouched field was written back")
+    assert element.x == (40 if user_moves_x else 5)
