@@ -45,6 +45,20 @@
   empty overlay. Switching now only switches, and an edit keeps the other
   elements.
 
+- **The gui now shows changes made from another window or the command line.**
+  Brightness, orientation, split mode, the overlay switch, the mask's
+  visibility and position, °C/°F, language, the refresh interval, HDD reading
+  and the GPU choice used to stay as the gui last saw them, even though the
+  App had changed. Theme and slideshow already followed. LED settings and the
+  Qt gui are not covered yet.
+- **Opening the gui shows the mask as it is.** The mask's visibility and
+  position showed as visible at 0,0 until something changed them.
+- **The theme on the panel is highlighted in the theme list**, when the gui
+  opens and whenever any window or command loads one; it stays highlighted
+  when the list is filtered or refreshed.
+- **The brightness button shows the selected panel's level** after switching
+  panels, instead of the previous panel's.
+
 ## v9.10.4
 
 **A correction first: v9.10.3 said two identical coolers were two devices.

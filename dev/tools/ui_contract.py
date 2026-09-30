@@ -450,21 +450,25 @@ def event_types() -> set[str]:
     return found
 
 
-def signal_to_event(bridge: Path | None = None) -> dict[str, str]:
-    """``{qt_signal_name: EventTypeName}`` read from ``BusBridge._wire``.
+def signal_to_event(bridge: Path | None = None) -> dict[str, set[str]]:
+    """``{qt_signal_name: {EventTypeName, ...}}`` read from ``BusBridge._wire``.
 
     Parsed from the pairing tuple rather than restated here: a second copy of
     this map would drift from the bridge the day a signal is added, and the
     drift would be silent -- the event would simply stop being counted.
+
+    A SET per signal: ``settings_changed`` carries every settings event.  One
+    name per signal kept only the last pair, so eleven bridged events read as
+    one and the other ten as missing wires.
     """
     tree = ast.parse((bridge or _BUS_BRIDGE).read_text(encoding="utf-8"))
-    out: dict[str, str] = {}
+    out: dict[str, set[str]] = {}
     for node in ast.walk(tree):
         # (SomeEvent, self.some_signal)
         if (isinstance(node, ast.Tuple) and len(node.elts) == 2
                 and isinstance(node.elts[0], ast.Name)
                 and isinstance(node.elts[1], ast.Attribute)):
-            out[node.elts[1].attr] = node.elts[0].id
+            out.setdefault(node.elts[1].attr, set()).add(node.elts[0].id)
     return out
 
 
@@ -479,16 +483,16 @@ def event_reach(uis: dict[str, Path] | None = None,
             if "__pycache__" in path.parts:
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                seen: str | None = None
+                seen: set[str] = set()
                 if isinstance(node, ast.Name) and node.id in known:
-                    seen = node.id
+                    seen = {node.id}
                 elif isinstance(node, ast.alias) and node.name in known:
-                    seen = node.name
+                    seen = {node.name}
                 elif isinstance(node, ast.Attribute) and node.attr in by_signal:
                     # ``self._bus.frame_sent`` -> FrameSent
                     seen = by_signal[node.attr]
-                if seen in reach:
-                    reach[seen].add(ui)
+                for name in seen & reach.keys():
+                    reach[name].add(ui)
     return reach
 
 
@@ -506,7 +510,7 @@ def unheard_split(
     A function rather than four lines inside the printer, so the split is a
     claim a gate can break instead of presentation nobody checks.
     """
-    bridged = set(signal_to_event(bridge).values())
+    bridged = set().union(*signal_to_event(bridge).values())
     unheard = {name for name, uis in reach.items() if not uis}
     return sorted(unheard - bridged), sorted(unheard & bridged)
 
@@ -656,6 +660,8 @@ class BusBridge:
             (FrameSent, self.frame_sent),
             (ThemeLoaded, self.theme_loaded),
             (ErrorOccurred, self.error_occurred),
+            (MaskApplied, self.settings_changed),
+            (OverlayChanged, self.settings_changed),
         )
 '''
 
@@ -678,6 +684,7 @@ from trcc.core.events import SensorsUpdated
 _FIXTURE_BY_SIGNAL = '''
 def wire(bridge):
     bridge.theme_loaded.connect(print)
+    bridge.settings_changed.connect(print)
 '''
 
 
@@ -835,9 +842,11 @@ def gate() -> int:
         un, dec = unheard_split(heard, bridge)
 
     checks.append(("the signal map is READ from the bridge, not listed",
-                   pairs == {"frame_sent": "FrameSent",
-                             "theme_loaded": "ThemeLoaded",
-                             "error_occurred": "ErrorOccurred"}))
+                   pairs == {"frame_sent": {"FrameSent"},
+                             "theme_loaded": {"ThemeLoaded"},
+                             "error_occurred": {"ErrorOccurred"},
+                             "settings_changed": {"MaskApplied",
+                                                  "OverlayChanged"}}))
     checks.append(("an Event reached by NAME, never imported, is observed",
                    heard.get("FrameSent") == {"named"}))
     checks.append(("an Event reached by IMPORT alone is observed",
@@ -846,6 +855,11 @@ def gate() -> int:
     # and the wrong number is entirely believable.
     checks.append(("an Event reached ONLY by its bridge signal is observed",
                    heard.get("ThemeLoaded") == {"signalled"}))
+    # One signal, many events: every event it carries is observed, not the
+    # last pair read.
+    checks.append(("every Event a shared signal carries is observed",
+                   heard.get("MaskApplied") == heard.get("OverlayChanged")
+                   == {"signalled"}))
     checks.append(("an Event reached by neither is NOT observed",
                    heard.get("ErrorOccurred") == set()))
     checks.append(("the observe contract clears its own floor",

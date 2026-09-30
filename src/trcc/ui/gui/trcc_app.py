@@ -62,7 +62,7 @@ from ...core.models import (
     Kind,
     ThemeDir,
 )
-from ...core.results import LanguageEntry
+from ...core.results import ControlCenterSnapshotResult, LanguageEntry
 from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
@@ -324,6 +324,9 @@ class TRCCApp(QMainWindow):
             self._on_bus_video_export_finished, type=qconn)
         self._bus.system_suspending.connect(self._on_bus_system_suspending, type=qconn)
         self._bus.data_installed.connect(self._on_bus_data_installed, type=qconn)
+        self._bus.settings_changed.connect(self._on_bus_settings_changed, type=qconn)
+        self._bus.app_settings_changed.connect(
+            self._on_bus_app_settings_changed, type=qconn)
         # Live errors → transient tray balloon (spam-safe; render/transport
         # errors can fire per-tick, so a dialog here would storm).
         self._bus.error_occurred.connect(self._on_bus_error, type=qconn)
@@ -340,15 +343,7 @@ class TRCCApp(QMainWindow):
         self._hs_notifier = _HandshakeNotifier(self)
         self._hs_notifier.done.connect(self._on_handshake_done)
 
-        # Restore temp unit from app settings.  Legacy widgets take int
-        # 0/1; next/'s AppSettings.temp_unit is a "C"/"F" literal.
-        saved_unit_int = (
-            1 if app.dispatch(ControlCenterSnapshot()).temp_unit == "F" else 0
-        )
-        self.uc_system_info.set_temp_unit(saved_unit_int)
-        self.uc_led_control.set_temp_unit(saved_unit_int)
-        if saved_unit_int == 1:
-            self.uc_about._set_temp('F')
+        self._show_app_settings(app.dispatch(ControlCenterSnapshot()))
 
         # Autostart — ensure_autostart dispatches; it used to be handed
         # ``app.platform.autostart()``, which raises under TRCC_DAEMON=1.
@@ -501,6 +496,58 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if isinstance(handler, LCDHandler):
             handler.on_theme_loaded(event)
+
+    def _on_bus_settings_changed(self, event: Any) -> None:
+        """A device setting changed — here, in another UI, or in the App.
+
+        The handler re-reads what the App holds rather than trusting what
+        this window last sent, so every open UI shows the same panel state.
+        """
+        log.info("_on_bus_settings_changed: %s key=%s",
+                 type(event).__name__, event.key)
+        handler = self._handlers.get(event.key)
+        if handler is not None:
+            handler.follow_app()
+            self._update_ldd_icon()
+
+    def _on_bus_app_settings_changed(self, event: Any) -> None:
+        """An app-wide setting changed — here, in another UI, or in the App."""
+        log.info("_on_bus_app_settings_changed: %s", type(event).__name__)
+        self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
+
+    def _show_app_settings(self, cc: ControlCenterSnapshotResult) -> None:
+        """Put the App's control-centre settings on the window — sends nothing.
+
+        At startup and after every change, from any UI, so the two cannot
+        differ.  The sensor and LED widgets take the legacy int (0 = C, 1 = F).
+        """
+        code = 1 if cc.temp_unit == "F" else 0
+        log.info("_show_app_settings: unit=%s language=%s gpu=%s refresh=%ss "
+                 "hdd=%s", cc.temp_unit, cc.language, cc.active_gpu,
+                 cc.refresh_interval_s, cc.hdd_enabled)
+        self.uc_about.show_app_settings(cc)
+        self.uc_system_info.set_temp_unit(code)
+        self.uc_led_control.set_temp_unit(code)
+        self._show_language(cc.language)
+
+    def _show_language(self, lang: str) -> None:
+        """Show the App's language in the picker and the translated labels.
+
+        What the gui's own language switch has always re-translated: the
+        i18n labels, the panel titles and the LED panel's localized
+        background.  The other panels take their language at startup only.
+        """
+        from ...core.i18n import tr
+        log.info("_show_language: %s", lang)
+        self._lang_combo.blockSignals(True)
+        self._lang_combo.setCurrentIndex(self._lang_combo.findData(lang))
+        self._lang_combo.blockSignals(False)
+        for label, key in self._i18n_labels:
+            if key is not None:
+                label.setText(tr(key, lang))
+        for panel, key in self._i18n_panel_tables:
+            panel.set_title(tr(key, lang))
+        self.uc_led_control.set_language(lang)
 
     def _on_bus_slideshow_changed(self, event: Any) -> None:
         """Route a ``SlideshowChanged`` event to its LCD's handler."""
@@ -826,6 +873,7 @@ class TRCCApp(QMainWindow):
                     else:
                         log.debug("_activate_device: LCD %s reactivate %dx%d", key, w, h)
                         handler.reactivate(w, h)
+                        self._update_ldd_icon()
                 else:
                     self._start_handshake(key)
         elif isinstance(handler, LEDHandler) and not handler.active:
@@ -1340,15 +1388,11 @@ class TRCCApp(QMainWindow):
             "QComboBox QAbstractItemView { background: #2A2A2A; color: white;"
             " selection-background-color: #3A3A3A; }")
         lang_combo.raise_()
+        self._lang_combo = lang_combo
 
         def _on_preview_lang(index: int) -> None:
-            new_lang = lang_combo.itemData(index)
-            for lbl, key in self._i18n_labels:
-                if key is not None:
-                    lbl.setText(tr(key, new_lang))
-            for panel, key in self._i18n_panel_tables:
-                panel.set_title(tr(key, new_lang))
-            self.uc_about._on_lang_clicked(new_lang)
+            # The labels change when the App says so (``_show_language``).
+            self.uc_about._on_lang_clicked(lang_combo.itemData(index))
 
         lang_combo.currentIndexChanged.connect(_on_preview_lang)
 
@@ -2347,19 +2391,10 @@ class TRCCApp(QMainWindow):
 
     def _on_temp_unit_changed(self, unit: str) -> None:
         log.debug("_on_temp_unit_changed: unit=%s", unit)
-        temp_unit = 1 if unit == 'F' else 0
-
-        # Persist via the unified command bus — CLI / API / GUI all
-        # route through the same SetTempUnit Command.  Command takes
-        # the literal "C" / "F" string, not the int code.
-        # SetTempUnit publishes ``TempUnitChanged`` and
-        # ``DeviceRenderObserver`` re-renders every connected LCD;
-        # no manual loop here (DRY: one re-render path).
+        # SetTempUnit publishes ``TempUnitChanged``: ``DeviceRenderObserver``
+        # re-renders every LCD, and ``_on_bus_app_settings_changed`` shows the
+        # unit here the same way it does for a change from another UI.
         self._app.dispatch(SetTempUnit(unit=unit))
-
-        # GUI-only widget updates
-        self.uc_system_info.set_temp_unit(temp_unit)
-        self.uc_led_control.set_temp_unit(temp_unit)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
     def _on_hdd_toggle_changed(self, on: bool) -> None:
@@ -2432,14 +2467,12 @@ class TRCCApp(QMainWindow):
 
     def _set_language(self, lang: str) -> None:
         log.debug("_set_language: %s", lang)
-        # SetLanguage propagates to every LCD overlay through the
-        # Command's execute(), same path as CLI/API.
+        # SetLanguage propagates to every LCD overlay through the Command's
+        # execute(), same path as CLI/API, and publishes LanguageChanged, which
+        # ``_show_language`` answers here as it does for another UI's change.
+        # It used to re-apply the settings and About backgrounds too; neither
+        # is localized, and each call grew ``_pixmap_refs``.
         self._app.dispatch(SetLanguage(language=lang))
-        # GUI-only follow-ups: re-render backgrounds + refresh About +
-        # LED-panel localized background.
-        self._apply_settings_backgrounds()
-        self.uc_about.sync_language()
-        self.uc_led_control.set_language(lang)
 
     def _on_help_clicked(self) -> None:
         log.info("_on_help_clicked")

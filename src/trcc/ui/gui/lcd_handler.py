@@ -304,9 +304,7 @@ class LCDHandler(BaseHandler):
 
         self._update_theme_directories()
 
-        self._restore_brightness(ds)
-        self._restore_rotation(ds)
-        self._restore_split_mode(ds, w, h)
+        self._show_settings(ds)
         self._restore_slideshow(ds)
         self._update_device_info()
 
@@ -367,6 +365,41 @@ class LCDHandler(BaseHandler):
     # event to every other UI, and a stale overwrite if one changed it
     # between the read and the write.  Opening a UI changes nothing.
 
+    def follow_app(self) -> None:
+        """Show a setting the App now holds, changed here or by another UI.
+
+        READ only, like the ``_restore_*`` it runs.  Not ``_refresh``: that
+        blanks the preview and re-lists the theme browser, which is for
+        becoming the active panel, not for a brightness change.
+        """
+        self.log.info("follow_app: %s active=%s",
+                      self._device_key, self._pm.ui_active)
+        if not self._pm.ui_active:   # the widgets are shared with the other LCDs
+            return
+        self._show_settings(self._lcd_settings())
+
+    def _show_settings(self, ds: LcdSnapshotResult) -> None:
+        """Put the App's settings for this panel on the shared widgets — READ only.
+
+        Opening the gui, switching to this panel and following another UI's
+        change all come through here, so the three cannot show different
+        things.  The mask fields were set only on a follow, so on open they
+        showed whatever the previous panel had left in them.
+        """
+        self.log.info(
+            "_show_settings: brightness=%d orientation=%d split=%d overlay=%s "
+            "mask visible=%s at %s", ds.brightness, ds.orientation,
+            ds.split_mode, ds.overlay_enabled, ds.mask_visible, ds.mask_position)
+        self._restore_brightness(ds)
+        self._restore_rotation(ds)
+        self._restore_split_mode(ds)
+        settings = self._w['theme_setting']
+        settings.set_overlay_enabled(ds.overlay_enabled)
+        self._pm.state.overlay_enabled = ds.overlay_enabled
+        settings.set_mask_visible(ds.mask_visible)
+        # None is the default place, which the render draws at (0, 0).
+        settings.set_mask_position(*(ds.mask_position or (0, 0)))
+
     def _restore_brightness(self, ds: LcdSnapshotResult) -> None:
         self._pm.brightness_level = ds.brightness
         self.log.info("Showing brightness: %d%%", self._pm.brightness_level)
@@ -382,10 +415,8 @@ class LCDHandler(BaseHandler):
         self._sync_preview_size()   # composed orientation, not pre-rotation (#136)
         self._update_theme_directories()
 
-    def _restore_split_mode(
-        self, ds: LcdSnapshotResult, w: int, h: int,
-    ) -> None:
-        self._pm.apply_split_mode(ds.split_mode, (w, h))
+    def _restore_split_mode(self, ds: LcdSnapshotResult) -> None:
+        self._pm.apply_split_mode(ds.split_mode, self._pm.state.canvas_size)
         self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s",
                        self._pm.split_mode, self._pm.ldd_is_split)
 
@@ -424,6 +455,7 @@ class LCDHandler(BaseHandler):
         the GUI changed tabs.
         """
         current = self._lcd_settings().current_theme
+        self._w['theme_local'].show_current_theme(Path(current) if current else None)
         if not current:
             self.log.info("_restore_theme_and_preview: %s has no theme",
                           self._device_key)

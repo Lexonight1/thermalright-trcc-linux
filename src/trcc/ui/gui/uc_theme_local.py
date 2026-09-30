@@ -13,6 +13,7 @@ Features:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
@@ -147,6 +148,7 @@ class UCThemeLocal(BaseThemeBrowser):
         # so the handler never reaches into private attrs.
         self._slideshow_model = SlideshowModel()
         self._all_themes = []   # Full unfiltered theme list
+        self._current_path: Path | None = None   # the theme on the panel
         log.info("UCThemeLocal.__init__: filter=%s slideshow=False",
                  self.MODE_ALL)
         super().__init__(parent)
@@ -279,6 +281,26 @@ class UCThemeLocal(BaseThemeBrowser):
 
         self._populate_grid(theme_dirs)
         self._apply_decorations()
+        self._highlight_current()
+
+    def show_current_theme(self, path: Path | None) -> None:
+        """Highlight the theme the panel is showing — sends nothing.
+
+        Remembered, because every re-list (a filter click, a rotation, a
+        theme saved) rebuilds the tiles and drops the highlight.
+        """
+        log.info("UCThemeLocal.show_current_theme: %s → %s",
+                 self._current_path, path)
+        self._current_path = path
+        self._highlight_current()
+
+    def _highlight_current(self) -> None:
+        current = next((w.item_info for w in self.item_widgets
+                        if isinstance(w, BaseThumbnail)
+                        and Path(w.item_info.path) == self._current_path), None)
+        log.debug("_highlight_current: %s → %s", self._current_path,
+                  current.name if current else None)
+        self._select_item(current)
 
     def _populate_grid(self, items: list):
         """Override to connect delete and slideshow signals on thumbnails."""

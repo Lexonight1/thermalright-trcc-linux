@@ -21,27 +21,38 @@ import logging
 from PySide6.QtCore import QObject, Signal, SignalInstance
 
 from ..core.events import (
+    BackgroundChanged,
     BrightnessChanged,
     DataInstalled,
+    DateFormatChanged,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
     ErrorOccurred,
     Event,
     EventBus,
+    FitModeChanged,
     FrameSent,
+    GpuDeviceChanged,
+    HddEnabledChanged,
+    LanguageChanged,
     LedColorsChanged,
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
     OrientationChanged,
+    OverlayChanged,
+    RefreshIntervalChanged,
     ScreencastStarted,
     ScreencastStopped,
     SensorsUpdated,
     SlideshowChanged,
+    SplitModeChanged,
     SystemResumed,
     SystemSuspending,
+    TempUnitChanged,
     ThemeLoaded,
+    TimeFormatChanged,
     VideoAdvanced,
     VideoExportFinished,
     VideoExportProgress,
@@ -53,7 +64,6 @@ from ..core.logs import per_frame
 log = logging.getLogger(__name__)
 #: Every bus event crosses this bridge, including the per-frame ones.
 frame_log = per_frame(__name__)
-
 
 class BusBridge(QObject):
     """Qt signals mirroring EventBus events.
@@ -89,6 +99,16 @@ class BusBridge(QObject):
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
     data_installed = Signal(object)            # DataInstalled
+    # An app-wide setting changed (the control centre: temperature unit,
+    # language, GPU, refresh interval, HDD); a window re-reads the snapshot.
+    app_settings_changed = Signal(object)
+    # A device's saved LCD settings changed — by this UI, another one, or the
+    # App.  One signal for all of them, so a window re-reads what the App now
+    # holds instead of keeping a slot per setting; every one carries ``key``.
+    # Not LED: ``LedColorsChanged`` is published by every render, and an LED
+    # panel cannot re-read on ``LedSettingsChanged`` until the App says which
+    # zone a colour edit targets.
+    settings_changed = Signal(object)
 
     def __init__(self, bus: EventBus) -> None:
         super().__init__()
@@ -122,6 +142,22 @@ class BusBridge(QObject):
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),
             (DataInstalled, self.data_installed),
+            (TempUnitChanged, self.app_settings_changed),
+            (LanguageChanged, self.app_settings_changed),
+            (GpuDeviceChanged, self.app_settings_changed),
+            (RefreshIntervalChanged, self.app_settings_changed),
+            (HddEnabledChanged, self.app_settings_changed),
+            (BrightnessChanged, self.settings_changed),
+            (OrientationChanged, self.settings_changed),
+            (SplitModeChanged, self.settings_changed),
+            (FitModeChanged, self.settings_changed),
+            (OverlayChanged, self.settings_changed),
+            (BackgroundChanged, self.settings_changed),
+            (MaskApplied, self.settings_changed),
+            (MaskPositionChanged, self.settings_changed),
+            (MaskVisibilityChanged, self.settings_changed),
+            (TimeFormatChanged, self.settings_changed),
+            (DateFormatChanged, self.settings_changed),
         )
         for event_type, signal in pairs:
             self._bus.subscribe(

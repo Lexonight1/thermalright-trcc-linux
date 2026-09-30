@@ -65,6 +65,10 @@ class BaseHandler:
         """Release device resources on shutdown.  Override in subclass."""
         log.info("BaseHandler.cleanup: view=%r (no-op base)", self._view)
 
+    def follow_app(self) -> None:
+        """Show the settings the App now holds.  Override per device kind."""
+        log.info("BaseHandler.follow_app: view=%r (no-op base)", self._view)
+
     # ── Tick + push ───────────────────────────────────────────────────
 
     def update_metrics(self, metrics: Any) -> None:

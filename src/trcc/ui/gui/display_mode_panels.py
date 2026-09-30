@@ -480,12 +480,17 @@ class MaskPanel(DisplayModePanel):
         if self._updating:
             return
         log.debug("_on_position_changed: x=%s y=%s", self.entry_x.text(), self.entry_y.text())
+        if (position := self._entered_position()) is not None:
+            self.mask_position_changed.emit(*position)
+
+    def _entered_position(self) -> tuple[int, int] | None:
+        """The X/Y the fields say, an empty field reading as 0; None mid-edit."""
         try:
-            x = int(self.entry_x.text() or '0')
-            y = int(self.entry_y.text() or '0')
-            self.mask_position_changed.emit(x, y)
+            return int(self.entry_x.text() or '0'), int(self.entry_y.text() or '0')
         except ValueError:
-            pass
+            log.debug("_entered_position: not a number yet (%r, %r)",
+                      self.entry_x.text(), self.entry_y.text())
+            return None
 
     def _on_eye_toggle(self):
         log.debug("_on_eye_toggle: mask_visible=%s→%s", self._mask_visible, not self._mask_visible)
@@ -509,7 +514,15 @@ class MaskPanel(DisplayModePanel):
             )
 
     def set_position(self, x: int, y: int):
-        """Set X/Y values without triggering events."""
+        """Set X/Y values without triggering events.
+
+        Left alone when the fields already mean it: the App echoes back every
+        position typed here, and rewriting a field the user is typing in turns
+        an emptied field into "0" under the cursor.
+        """
+        log.debug("set_position: (%d,%d) entered=%s", x, y, self._entered_position())
+        if self._entered_position() == (x, y):
+            return
         self._updating = True
         self.entry_x.setText(str(x))
         self.entry_y.setText(str(y))

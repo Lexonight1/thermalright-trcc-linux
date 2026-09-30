@@ -45,6 +45,7 @@ from ...core.commands import (
     RefreshAutostart,
 )
 from ...core.models import DEFAULT_REFRESH_INTERVAL_S
+from ...core.results import ControlCenterSnapshotResult
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
@@ -404,10 +405,37 @@ class UCAbout(BasePanel):
 
     def _set_temp(self, mode: str):
         """Toggle temperature unit (radio behavior)."""
+        log.info("_set_temp: %s", mode)
+        self.show_temp_unit(mode)
+        self.temp_unit_changed.emit(mode)
+
+    def show_app_settings(self, cc: ControlCenterSnapshotResult) -> None:
+        """Show the App's control-centre settings — sends nothing.
+
+        The HDD box and the refresh field emit only on a click and on
+        editing, so setting them is silent; the GPU picker emits on any
+        index change, so it is blocked while it is set.
+        """
+        log.info("show_app_settings: hdd=%s refresh=%ss gpu=%s unit=%s",
+                 cc.hdd_enabled, cc.refresh_interval_s, cc.active_gpu,
+                 cc.temp_unit)
+        self.show_temp_unit(cc.temp_unit)
+        self._read_hdd = cc.hdd_enabled
+        self.hdd_btn.setChecked(cc.hdd_enabled)
+        self._refresh_interval = int(cc.refresh_interval_s)
+        self.refresh_input.setText(str(self._refresh_interval))
+        self._gpu_device = cc.active_gpu or ''
+        if self._gpu_combo is not None:   # a picker only with two GPUs or more
+            self._gpu_combo.blockSignals(True)
+            self._gpu_combo.setCurrentIndex(self._gpu_combo.findData(self._gpu_device))
+            self._gpu_combo.blockSignals(False)
+
+    def show_temp_unit(self, mode: str) -> None:
+        """Show the App's temperature unit — sends nothing back."""
+        log.info("show_temp_unit: %s → %s", self._temp_mode, mode)
         self._temp_mode = mode
         self.celsius_btn.setChecked(mode == 'C')
         self.fahrenheit_btn.setChecked(mode == 'F')
-        self.temp_unit_changed.emit(mode)
 
     @property
     def temp_mode(self):
@@ -455,6 +483,7 @@ class UCAbout(BasePanel):
             # Single GPU or none — plain text label
             name = self._gpu_list[0][1] if self._gpu_list else 'No GPU detected'
             self._gpu_label = QLabel(name, self)
+            self._gpu_combo: QComboBox | None = None
             self._gpu_label.setGeometry(x, y, w, h)
             self._gpu_label.setStyleSheet(
                 "color: white; font-size: 10pt; background: transparent;"
@@ -480,6 +509,7 @@ class UCAbout(BasePanel):
 
     def _on_gpu_selected(self, index: int):
         """Handle GPU dropdown selection."""
+        assert self._gpu_combo is not None   # connected only to the picker
         gpu_key = self._gpu_combo.itemData(index)
         if gpu_key:
             log.info("GPU selected: %s", gpu_key)
