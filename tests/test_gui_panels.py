@@ -673,8 +673,172 @@ def test_configuration_panel_load_without_key(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
-    panel._load_from_snapshot()
+    panel._show_state()
     assert "pick a device" in panel._status.text().lower()
+
+
+_KEY_Q3 = "0402:3922"
+
+
+def _seed_non_defaults(app: App) -> None:
+    """A value different from every control's default, so a reset shows."""
+    from trcc.core.commands import (
+        EnableOverlay,
+        SetBackgroundMode,
+        SetBrightness,
+        SetFitMode,
+        SetLanguage,
+        SetOrientation,
+        SetRefreshInterval,
+        SetTempUnit,
+    )
+    for command in (SetFitMode(key=_KEY_Q3, mode="height"),
+                    EnableOverlay(key=_KEY_Q3, enabled=False),
+                    SetBackgroundMode(key=_KEY_Q3, mode="color"),
+                    SetBrightness(key=_KEY_Q3, percent=30),
+                    SetOrientation(key=_KEY_Q3, degrees=180),
+                    SetTempUnit(unit="F"), SetLanguage(language="de"),
+                    SetRefreshInterval(seconds=3.0)):
+        assert app.dispatch(command).ok, command
+
+
+def _on_device(panel) -> None:
+    """Point a bare panel's picker at the Q3 device and show it."""
+    panel._picker.current_key = lambda: _KEY_Q3   # pyright: ignore[reportAttributeAccessIssue]
+    panel._show_state() if hasattr(panel, "_show_state") else panel._on_refresh()
+
+
+def _writes(panel) -> list:
+    """Every non-Query Command the panel sends from here on."""
+    from trcc.core.commands import Query
+
+    sent: list = []
+    real = panel.dispatch
+
+    def spy(cmd):
+        if not isinstance(cmd, Query):
+            sent.append(cmd)
+        return real(cmd)
+
+    panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
+    return sent
+
+
+def test_the_configuration_panel_shows_what_the_app_holds(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On open it showed 9 of 9 settings wrong (widget defaults, measured
+    2026-09-30), and "Apply" wrote them back.  Recorded at the App, from
+    BEFORE construction: the panel's first show runs in its constructor."""
+    from trcc.core.commands import Query
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+
+    _seed_non_defaults(gui_app)
+    sent: list[str] = []
+    real = gui_app.dispatch
+
+    def _record(command: object) -> object:
+        if not isinstance(command, Query):
+            sent.append(type(command).__name__)
+        return real(command)
+
+    monkeypatch.setattr(gui_app, "dispatch", _record)
+    panel = ConfigurationPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+
+    shown = (panel._fit.currentData(), panel._overlay.currentData(),
+             panel._bg_mode.currentData(), panel._temp_unit.currentData(),
+             panel._language.currentData(), panel._refresh.value())
+    assert shown == ("height", False, "color", "F", "de", 3.0)
+    assert sent == [], f"showing the App's state wrote {sent}"
+
+
+def test_one_configuration_control_sends_its_one_command(
+    gui_app: App, qtbot,
+) -> None:
+    from trcc.core.commands import SetFitMode, SetRefreshInterval
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+
+    _seed_non_defaults(gui_app)
+    panel = ConfigurationPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+    sent = _writes(panel)
+
+    stretch = panel._fit.findData("stretch")
+    panel._fit.setCurrentIndex(stretch)
+    panel._fit.activated.emit(stretch)                    # the user's pick
+    panel._refresh.setValue(4.0)                          # typed + finished
+
+    assert sent == [SetFitMode(key=_KEY_Q3, mode="stretch"),
+                    SetRefreshInterval(seconds=4.0)], sent
+
+
+@pytest.mark.parametrize("panel_name", ["configuration", "display", "status"])
+def test_a_panel_follows_another_uis_change(
+    gui_app: App, qtbot, panel_name: str,
+) -> None:
+    """Another UI sets brightness / fit; the panel shows it, no click."""
+    from trcc.core.commands import SetBrightness, SetFitMode
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+    from trcc.ui.qtgui.panels.display_panel import DisplayPanel
+    from trcc.ui.qtgui.panels.status_panel import StatusPanel
+
+    cls = {"configuration": ConfigurationPanel, "display": DisplayPanel,
+           "status": StatusPanel}[panel_name]
+    panel = cls(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+
+    gui_app.dispatch(SetFitMode(key=_KEY_Q3, mode="height"))
+    gui_app.dispatch(SetBrightness(key=_KEY_Q3, percent=42))
+
+    shows = {
+        "configuration": lambda: panel._fit.currentData() == "height",
+        "display": lambda: panel._brightness.value() == 42,
+        "status": lambda: panel._brightness_label.text() == "42%",
+    }[panel_name]
+    qtbot.waitUntil(shows, timeout=2000)
+
+
+def test_a_background_change_reaches_other_windows(gui_app: App, qtbot) -> None:
+    """SetBackgroundMode / SetOverlayBackground published nothing, so no other
+    window could show the change.  Changed ALONE: any other event would make
+    the panel re-read everything and hide a missing publish."""
+    from trcc.core.commands import SetBackgroundMode, SetOverlayBackground
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+
+    panel = ConfigurationPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+
+    gui_app.dispatch(SetBackgroundMode(key=_KEY_Q3, mode="color"))
+    qtbot.waitUntil(lambda: panel._bg_mode.currentData() == "color", timeout=2000)
+    gui_app.dispatch(SetOverlayBackground(key=_KEY_Q3, color=(1, 2, 3)))
+    qtbot.waitUntil(lambda: panel._bg_color_label.text() == "#010203",
+                    timeout=2000)
+
+
+def test_the_display_panel_shows_and_sends_one_setting_at_a_time(
+    gui_app: App, qtbot,
+) -> None:
+    """Its Apply sent orientation AND brightness AND re-loaded the theme on
+    every press: 30% -> 100% and 180° -> 0° with nothing touched."""
+    from trcc.core.commands import SetBrightness
+    from trcc.ui.qtgui.panels.display_panel import DisplayPanel
+
+    _seed_non_defaults(gui_app)
+    panel = DisplayPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    sent = _writes(panel)
+    _on_device(panel)
+    panel._require_key = lambda: _KEY_Q3          # pyright: ignore[reportAttributeAccessIssue]
+    assert (panel._orientation.currentData(), panel._brightness.value()) == (180, 30)
+    assert sent == [], f"showing the App's state wrote {sent}"
+
+    panel._brightness.setValue(55)                # released at 55
+    assert sent == [SetBrightness(key=_KEY_Q3, percent=55)], sent
 
 
 def test_preview_panel_constructs(gui_app: App) -> None:
@@ -2187,8 +2351,8 @@ def _slideshow_panel(gui_app: App, qtbot):
 
 
 def test_the_slideshow_switch_is_one_command(gui_app: App, qtbot) -> None:
-    """Apply saves the list and flips the one switch; ``SetSlideshow`` is what
-    rotates, so the panel pairs no driver Command by hand any more."""
+    """The switch sends ``SetSlideshow`` alone -- it is what rotates, so the
+    panel pairs no driver Command by hand -- and Save sends the list alone."""
     panel = _slideshow_panel(gui_app, qtbot)
     sent: list[str] = []
     real = panel.dispatch
@@ -2198,11 +2362,15 @@ def test_the_slideshow_switch_is_one_command(gui_app: App, qtbot) -> None:
         return real(cmd)
 
     panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
-    panel._slideshow_enabled.setCurrentIndex(panel._slideshow_enabled.findData(True))
-    panel._apply()
+    on = panel._slideshow_enabled.findData(True)
+    panel._slideshow_enabled.setCurrentIndex(on)
+    panel._slideshow_enabled.activated.emit(on)          # the user's pick
+    assert sent == ["SetSlideshow"], sent
 
-    slideshow = [n for n in sent if "Slideshow" in n]
-    assert slideshow == ["ConfigureSlideshow", "SetSlideshow"], slideshow
+    sent.clear()
+    panel._slideshow_themes.setPlainText("A\nB")
+    panel._slideshow_save.click()
+    assert sent == ["ConfigureSlideshow"], sent
 
 
 def test_the_slideshow_controls_follow_another_ui(gui_app: App, qtbot) -> None:
@@ -2386,20 +2554,22 @@ def test_the_date_format_reaches_the_bus(gui_app: App, qtbot) -> None:
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    panel._date.setCurrentText("dd.MM.yyyy")
+    panel._picker.current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
 
-    sent: list[tuple[str, str]] = []
+    sent: list[tuple[str, str, str | None]] = []
     real = panel.dispatch
 
     def spy(cmd):
         if type(cmd).__name__ == "SetDateFormat":
-            sent.append((type(cmd).__name__, cmd.fmt))
+            sent.append((type(cmd).__name__, cmd.fmt, cmd.key))
         return real(cmd)
 
     panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
-    panel._apply_app_settings()
+    panel._date.setCurrentText("dd.MM.yyyy")
+    panel._date.lineEdit().editingFinished.emit()        # the user is done
+    panel._date.lineEdit().editingFinished.emit()        # a focus change
 
-    assert sent == [("SetDateFormat", "dd.MM.yyyy")], (
+    assert sent == [("SetDateFormat", "dd.MM.yyyy", "0402:3922")], (
         f"the typed pattern did not reach the bus intact: {sent}"
     )
 

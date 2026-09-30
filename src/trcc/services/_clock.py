@@ -71,6 +71,19 @@ _PATTERN_RULES: tuple[tuple[str, str], ...] = (
 )
 
 
+def icu_date_pattern(pattern: str) -> str:
+    """A strftime date pattern in the ``yyyy/MM/dd`` tokens UIs show and take.
+
+    The reverse of :func:`_translate_date_pattern`, from the same table, so
+    what a UI is shown it can send back unchanged.
+    """
+    result = pattern
+    for token, strf in _PATTERN_RULES:
+        result = result.replace(strf, token)
+    frame_log.debug("icu_date_pattern: %r -> %r", pattern, result)
+    return result
+
+
 def _translate_date_pattern(pattern: str) -> str:
     """Convert a ``yyyy/MM/dd``-style pattern to a strftime spec."""
     result = pattern

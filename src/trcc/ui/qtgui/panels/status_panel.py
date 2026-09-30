@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -116,6 +117,10 @@ class StatusPanel(BasePanel):
         self._bus.frame_sent.connect(self._on_frame_sent, type=qconn)
         self._bus.theme_loaded.connect(self._on_theme_loaded, type=qconn)
         self._bus.error_occurred.connect(self._on_error, type=qconn)
+        # The labels follow the App, whoever changed it -- they refreshed
+        # only on a device pick, so another UI's change never showed here.
+        self._bus.settings_changed.connect(self._on_device_event, type=qconn)
+        self._bus.app_settings_changed.connect(self._on_app_event, type=qconn)
 
         # Pull connect failures that fired before this panel subscribed —
         # the same DeviceConnectionIssues query every UI uses (bus-pure).
@@ -123,6 +128,7 @@ class StatusPanel(BasePanel):
             self._add_event(
                 f"ERROR    [connect] {format_device_error(issue)}",
             )
+        self._on_refresh()
 
     # ── Refresh ───────────────────────────────────────────────────────
 
@@ -153,6 +159,16 @@ class StatusPanel(BasePanel):
     # fields off a different Event type, so a single slot would have to branch
     # on the type it was handed — a logic table the signal already resolved.
 
+    def _on_device_event(self, event: Any) -> None:
+        if event.key == self._picker.current_key():
+            log.debug("_on_device_event: %s for %s", type(event).__name__,
+                      event.key)
+            self._on_refresh()
+
+    def _on_app_event(self, event: Any) -> None:
+        log.debug("_on_app_event: %s", type(event).__name__)
+        self._on_refresh()
+
     def _on_key_changed(self, key: str) -> None:
         """The window switched device — re-read this one's snapshot."""
         log.debug("_on_key_changed: key=%s", key)
@@ -176,6 +192,7 @@ class StatusPanel(BasePanel):
     def _on_theme_loaded(self, event: ThemeLoaded) -> None:
         log.debug("_on_theme_loaded: key=%s", event.key)
         self._add_event(f"THEME    {event.key}  {event.theme_name}")
+        self._on_device_event(event)
 
     def _on_error(self, event: ErrorOccurred) -> None:
         log.debug("_on_error: kind=%s", event.kind)

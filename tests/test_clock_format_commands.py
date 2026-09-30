@@ -84,7 +84,8 @@ def test_the_snapshot_reports_the_elements_format(app: App) -> None:
     """``LcdSnapshot`` is what the qtgui status panel and ``trcc`` print."""
     app.dispatch(SetTimeFormat(fmt="12h", key=_A))
     snap = app.dispatch(LcdSnapshot(key=_A))
-    assert (snap.time_format, snap.date_format) == ("12h", "%m/%d")
+    # In the tokens a UI shows and sends back (``yyyy/MM/dd``), not strftime.
+    assert (snap.time_format, snap.date_format) == ("12h", "MM/dd")
     assert app.dispatch(LcdSnapshot(key=_B)).time_format == "24h"
 
 

@@ -78,6 +78,16 @@
   selected stays, as there. Your current page is kept when you upgrade.
 - **The LED preview goes dark when the LEDs are switched off.** It kept
   showing them lit while the cooler was dark.
+- **The Qt gui's settings no longer reset things you did not touch.** Its
+  Configuration and Display pages opened showing defaults instead of your
+  settings, and their "Apply" buttons wrote those defaults back — one press
+  could switch the language to Arabic, °F to °C, a rotated screen back to 0°,
+  brightness to 100%, the overlay on, and empty your slideshow. The pages now
+  show what is set, follow changes made from any window or the command line,
+  and apply each control as you change it; there are no Apply buttons. The
+  clock and date format there now set the selected screen's clocks.
+- **Picking a screen in the Qt gui's device rail updates every page.** Most
+  pages kept showing the previous screen.
 - **The Qt gui sends each frame to your screen once.** It ran a render loop
   of its own beside the App's, so every frame went out twice while it was
   open — even when closed to the tray. Its preview also kept rendering once

@@ -33,7 +33,8 @@ way.
 
 MUTATION CHECK -- add ``self._app.dispatch(LoadTheme(key=..., path=...))`` after
 the ``SetOrientation`` in ``LCDHandler.set_rotation``, or
-``self.dispatch(LoadTheme(...))`` after the one in ``DisplayPanel._on_apply``,
+``self.dispatch(LoadTheme(...))`` after the one in
+``DisplayPanel._on_orientation_chosen``,
 and that face's test must fail on the load count.  Both were confirmed to fail
 before this file was committed.
 """
@@ -243,7 +244,7 @@ def test_gui_rotation_is_one_reload(
 
 
 def test_qtgui_rotation_is_one_reload(rotatable: App, qtbot: Any) -> None:
-    """qtgui's Display panel → ``_on_apply``."""
+    """qtgui's Display panel → its orientation combo."""
     from trcc.ui.bus_bridge import BusBridge
     from trcc.ui.qtgui.panels.display_panel import DisplayPanel
 
@@ -255,6 +256,6 @@ def test_qtgui_rotation_is_one_reload(rotatable: App, qtbot: Any) -> None:
     panel._orientation.setCurrentIndex(index)
 
     with _Rotation(rotatable) as rotation:
-        panel._on_apply()
+        panel._orientation.activated.emit(index)
 
     _assert_one_clean_reload(rotatable, rotation)

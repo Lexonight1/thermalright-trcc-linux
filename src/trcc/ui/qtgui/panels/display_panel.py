@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import (
+    LcdSnapshot,
     LoadTheme,
     PlayVideo,
     RestoreDeviceState,
@@ -47,15 +49,21 @@ class DisplayPanel(BasePanel):
             parent=self, selection=self._selection,
         )
 
+        # Each control sends its one Command when the USER changes it, and
+        # shows the App's value otherwise.  A batch "Apply" re-sent both
+        # without ever loading them: 30% -> 100% and 180° -> 0° on a press.
         self._orientation = QComboBox(self)
         for deg in (0, 90, 180, 270):
             self._orientation.addItem(f"{deg}°", userData=deg)
+        self._orientation.activated.connect(self._on_orientation_chosen)
 
         self._brightness = QSlider(Qt.Orientation.Horizontal, self)
         self._brightness.setRange(0, 100)
-        self._brightness.setValue(100)
-        self._brightness_label = QLabel("100%", self)
-        self._brightness.valueChanged.connect(self._on_brightness_slid)
+        # valueChanged on release / key step only, so a drag sends once.
+        self._brightness.setTracking(False)
+        self._brightness_label = QLabel("", self)
+        self._brightness.sliderMoved.connect(self._on_brightness_slid)
+        self._brightness.valueChanged.connect(self._on_brightness_chosen)
 
         brightness_row = QHBoxLayout()
         brightness_row.addWidget(self._brightness, stretch=1)
@@ -70,13 +78,13 @@ class DisplayPanel(BasePanel):
         theme_row.addWidget(self._theme_path, stretch=1)
         theme_row.addWidget(self._theme_browse)
 
-        self._apply_btn = QPushButton("Apply", self)
-        self._apply_btn.clicked.connect(self._on_apply)
+        self._load_btn = QPushButton("Load theme", self)
+        self._load_btn.clicked.connect(self._on_load_theme)
 
         self._restore_btn = QPushButton("Restore last theme", self)
         self._restore_btn.clicked.connect(self._on_restore_last)
 
-        # Background media — immediate actions (not part of the batch Apply).
+        # Background media — immediate actions.
         # ``SetBackground`` and ``PlayVideo`` are sisters: both write
         # ``DeviceSettings.background_path``, which the renderer consults
         # BEFORE the theme's own background, so they swap the picture and
@@ -134,13 +142,18 @@ class DisplayPanel(BasePanel):
 
         root = QVBoxLayout(self)
         root.addLayout(form)
-        root.addWidget(self._apply_btn)
+        root.addWidget(self._load_btn)
         root.addWidget(self._restore_btn)
         root.addWidget(QLabel("Background:", self))
         root.addLayout(video_row)
         root.addLayout(seek_row)
         root.addWidget(self._status)
         root.addStretch(1)
+
+        self._picker.key_changed.connect(self._on_key_changed)
+        self._bus.settings_changed.connect(
+            self._on_settings_changed, type=Qt.ConnectionType.QueuedConnection)
+        self._show_state()
 
     # ── Actions ───────────────────────────────────────────────────────
 
@@ -173,9 +186,59 @@ class DisplayPanel(BasePanel):
         self._status.setText(result.message)
 
     def _on_brightness_slid(self, value: int) -> None:
-        """Echo the slider position beside it.  Not the apply path."""
+        """Echo the slider position beside it while dragging."""
         log.debug("_on_brightness_slid: value=%s", value)
         self._brightness_label.setText(f"{value}%")
+
+    def _on_brightness_chosen(self, value: int) -> None:
+        self._on_brightness_slid(value)
+        key = self._require_key()
+        if key is None:
+            return
+        log.info("_on_brightness_chosen: key=%s %d%%", key, value)
+        self._status.setText(self.dispatch(
+            SetBrightness(key=key, percent=value)).message)
+
+    def _on_orientation_chosen(self, _index: int) -> None:
+        """No theme reload here: SetOrientation publishes OrientationChanged,
+        and ``App._on_orientation_changed`` re-roots the active theme (plus the
+        cloud background and mask) inside that dispatch, for every face."""
+        key = self._require_key()
+        if key is None:
+            return
+        degrees = int(self._orientation.currentData())
+        log.info("_on_orientation_chosen: key=%s %d°", key, degrees)
+        self._status.setText(self.dispatch(
+            SetOrientation(key=key, degrees=degrees)).message)
+
+    def _on_key_changed(self, key: str) -> None:
+        log.info("_on_key_changed: %s", key)
+        self._show_state()
+
+    def _on_settings_changed(self, event: Any) -> None:
+        if event.key == self._picker.current_key():
+            log.debug("_on_settings_changed: %s for %s",
+                      type(event).__name__, event.key)
+            self._show_state()
+
+    def _show_state(self) -> None:
+        """The device's orientation and brightness, as the App holds them.
+        Sends nothing: the combo fires on ``activated`` only, and the slider
+        is set under blocked signals."""
+        key = self._picker.current_key()
+        snap = self.dispatch(LcdSnapshot(key=key)) if key else None
+        if snap is None or not snap.ok:
+            log.debug("_show_state: nothing to show for %r", key)
+            return
+        log.info("_show_state: %s %d° %d%%", key, snap.orientation,
+                 snap.brightness)
+        index = self._orientation.findData(snap.orientation)
+        if index >= 0:
+            self._orientation.setCurrentIndex(index)
+        self._brightness.blockSignals(True)
+        self._brightness.setValue(snap.brightness)
+        self._brightness.blockSignals(False)
+        self._brightness_label.setText(f"{snap.brightness}%")
 
     def _on_set_background(self) -> None:
         """Override the background with a STILL IMAGE, keeping the theme.
@@ -296,36 +359,14 @@ class DisplayPanel(BasePanel):
         self._status.setText(result.message)
         self._refresh_video_status()
 
-    def _on_apply(self) -> None:
-        log.info("_on_apply")
+    def _on_load_theme(self) -> None:
+        """Load the chosen theme folder -- when the user asks, once."""
         key = self._require_key()
-        if key is None:
-            return
-
-        messages = []
-
-        r_orient = self.dispatch(SetOrientation(
-            key=key,
-            degrees=int(self._orientation.currentData()),
-        ))
-        messages.append(r_orient.message)
-        # No theme reload here: SetOrientation publishes OrientationChanged,
-        # and App._on_orientation_changed re-roots the active theme (plus the
-        # cloud background and mask) to the new orientation's catalog inside
-        # that dispatch, for every face.  This panel used to re-decide it and
-        # dispatch a second LoadTheme, which took the default
-        # reset_overrides=True and persist-cleared the user's overlay edits.
-
-        r_bright = self.dispatch(SetBrightness(
-            key=key, percent=self._brightness.value(),
-        ))
-        messages.append(r_bright.message)
-
         theme_path = self._theme_path.text().strip()
-        if theme_path:
-            r_theme = self.dispatch(LoadTheme(
-                key=key, path=Path(theme_path),
-            ))
-            messages.append(r_theme.message)
-
-        self._status.setText("  |  ".join(messages))
+        if key is None or not theme_path:
+            log.info("_on_load_theme: nothing to load (key=%s path=%r)",
+                     key, theme_path)
+            return
+        log.info("_on_load_theme: key=%s path=%s", key, theme_path)
+        self._status.setText(self.dispatch(
+            LoadTheme(key=key, path=Path(theme_path))).message)

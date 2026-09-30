@@ -2167,23 +2167,11 @@ def test_linux_platform_module_has_no_linux_only_toplevel_imports() -> None:
 #:
 #: Ratcheted as a SET, not a count, because the count is the thing that lied.
 MISSING_IN_QTGUI = {
-    "BrightnessChanged",
     "ScreencastStarted",
     "ScreencastStopped",
     "SystemSuspending",
-    # gui follows these since V4b (2026-09-29); qtgui's follow is the next
-    # commit, which must empty this block.
-    "BackgroundChanged",
-    "FitModeChanged",
-    "GpuDeviceChanged",
-    "HddEnabledChanged",
-    "LanguageChanged",
-    "LedSettingsChanged",
-    "OrientationChanged",
-    "OverlayChanged",
-    "RefreshIntervalChanged",
-    "SplitModeChanged",
-    "TempUnitChanged",
+    # 12 more left 2026-09-30 when qtgui's Configuration / Display / Status
+    # panels began following the App.  Screencast and suspend are next.
 }
 
 #: Event types ``BusBridge`` never forwards, so no Qt widget can observe them

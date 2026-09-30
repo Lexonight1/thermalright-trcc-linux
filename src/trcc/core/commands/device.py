@@ -2399,6 +2399,13 @@ class SetMaskVisible(Command[MaskVisibilityResult]):
                      f"for {self.key}"),
         )
 
+def _publish_background(app: App, key: str) -> None:
+    """Tell every UI (and the render observer) that *key*'s background changed."""
+    path = app.settings.for_device(key).background_path or ""
+    log.debug("_publish_background: %s path=%r", key, path)
+    app.events.publish(BackgroundChanged(key=key, path=path))
+
+
 @dataclass(frozen=True, slots=True)
 class SetBackgroundMode(Command[BackgroundModeResult]):
     """Pick what fills the LCD behind overlays.
@@ -2417,8 +2424,11 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
             return BackgroundModeResult(
                 ok=False, key=self.key, mode=self.mode, message=str(e),
             )
-        # Drop the scene cache so the next tick re-renders with the new bg.
+        # Drop the scene cache so the next tick re-renders with the new bg,
+        # and tell every UI -- this published nothing, so no other window
+        # could show the change.
         app.display.invalidate(self.key)
+        _publish_background(app, self.key)
         return BackgroundModeResult(
             ok=True, key=self.key, mode=self.mode,
             message=f"Background mode set to {self.mode}",
@@ -2439,6 +2449,7 @@ class SetOverlayBackground(Command[OverlayBackgroundResult]):
                 ok=False, key=self.key, color=self.color, message=str(e),
             )
         app.display.invalidate(self.key)
+        _publish_background(app, self.key)
         r, g, b = self.color
         return OverlayBackgroundResult(
             ok=True, key=self.key, color=self.color,
@@ -2991,6 +3002,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
     key: str
 
     def execute(self, app: App) -> LcdSnapshotResult:
+        from ...services._clock import icu_date_pattern
         from ._helpers import device_overlay_layout
 
         log.debug("execute: app=%s", app)
@@ -3013,7 +3025,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             fit_mode=s.fit_mode.value,
             split_mode=s.split_mode,
             time_format="12h" if "%I" in clocks.get("time", "") else "24h",
-            date_format=clocks.get("date", ""),
+            date_format=icu_date_pattern(clocks.get("date", "")),
             temp_unit=s.temp_unit,
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,

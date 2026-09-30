@@ -48,7 +48,9 @@ sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 import function_census  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 #: LOWER IT when a function comes off the list; never raise it.
-MAX_LONG_FUNCTIONS = 15
+#: 15 -> 14 on 2026-09-30: qtgui's ConfigurationPanel._setup_ui (150 -> 111
+#: lines) when its two Apply buttons gave way to one Command per control.
+MAX_LONG_FUNCTIONS = 14
 
 #: LOWER IT when a function comes off the list; never raise it.
 MAX_BRANCHY_FUNCTIONS = 8
