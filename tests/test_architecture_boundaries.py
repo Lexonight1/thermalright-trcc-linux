@@ -2179,6 +2179,7 @@ MISSING_IN_QTGUI = {
     "GpuDeviceChanged",
     "HddEnabledChanged",
     "LanguageChanged",
+    "LedSettingsChanged",
     "OrientationChanged",
     "OverlayChanged",
     "RefreshIntervalChanged",
@@ -2190,7 +2191,7 @@ MISSING_IN_QTGUI = {
 #: Event types ``BusBridge`` never forwards, so no Qt widget can observe them
 #: however much it wants to.  A missing WIRE, distinct from a capability that is
 #: offered and declined.  May not grow.
-MAX_UNBRIDGED_EVENTS = 6
+MAX_UNBRIDGED_EVENTS = 5
 
 
 def test_qtgui_observes_what_gui_observes() -> None:

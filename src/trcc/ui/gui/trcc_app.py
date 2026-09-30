@@ -503,8 +503,10 @@ class TRCCApp(QMainWindow):
         The handler re-reads what the App holds rather than trusting what
         this window last sent, so every open UI shows the same panel state.
         """
-        log.info("_on_bus_settings_changed: %s key=%s",
-                 type(event).__name__, event.key)
+        # DEBUG: an LED slider drag sends one per move, and the Command it
+        # answers is already logged at INFO by the App.
+        log.debug("_on_bus_settings_changed: %s key=%s",
+                  type(event).__name__, event.key)
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.follow_app()

@@ -36,6 +36,7 @@ from ...core.commands import (
     ToggleSegment,
 )
 from ...core.led_models import LED_STYLES, LEGACY_STYLE_ID
+from ...core.logs import per_frame
 from .base_handler import BaseHandler
 from .uc_led_control import UCLedControl
 
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
 from ...core.models import LedStyle
 
 log = logging.getLogger(__name__)
+#: A follow runs on every move of an LED slider.
+frame_log = per_frame(__name__)
 
 
 class LEDHandler(BaseHandler):
@@ -169,28 +172,30 @@ class LEDHandler(BaseHandler):
         """
         log.debug("LED: set_temp_unit %d (window-level Command handles propagation)", unit)
 
+    def follow_app(self) -> None:
+        """Show the LED settings the App now holds, changed here or elsewhere."""
+        frame_log.debug("LED: follow_app key=%s active=%s", self._device_key, self._active)
+        if self._active:   # inactive while an LCD owns the window; show() reloads
+            self._sync_panel_from_settings()
+
     # ── Internal — sync panel from persisted settings ────────────────
 
     def _sync_panel_from_settings(self) -> None:
-        """Populate the panel from ``app.settings.for_led(key)``."""
+        """Show the App's LED settings on the panel — READ only."""
         if self._app is None:
             return
         from ...core.led_models import LEDMode
 
         s = self._app.dispatch(LedSnapshot(key=self._device_key))
-        # Zone[0] for multi-zone, else the global mode/color/brightness.
-        # The snapshot spells a mode by NAME; the panel takes the IntEnum's
-        # number, so the lookup happens here rather than the Result carrying
-        # both and letting them drift.
-        if s.zones:
-            z = s.zones[0]
-            self._panel.load_zone_state(
-                0, LEDMode[z.mode].value, z.color, z.brightness, z.on,
-            )
-        else:
-            self._panel.load_zone_state(
-                0, LEDMode[s.mode].value, s.color, s.brightness, s.global_on,
-            )
+        frame_log.debug("_sync_panel_from_settings: %s", self._device_key)
+        # The GLOBAL values, for every style: FormLED shows them (FormLED.cs
+        # :1883-1897) and every control writes them, on a multi-zone cooler as
+        # well as its zones.  Zone 0 was shown before, which is not what an edit
+        # reaches once the zones are picked one by one.  The snapshot spells a
+        # mode by NAME; the panel takes the IntEnum's number.
+        self._panel.show_state(LEDMode[s.mode].value, s.color, s.brightness,
+                               s.global_on)
+        self._panel.show_prefs(s.clock_24h, s.week_sunday, s.memory_ratio)
         # Restore carousel mode + the saved per-page/zone enabled mask.  Page
         # styles never populate ``zones`` (their selector picks a metric page,
         # not a colour zone), so this must NOT gate on ``s.zones`` — it reads

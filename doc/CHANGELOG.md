@@ -73,8 +73,14 @@
   Brightness, orientation, split mode, the overlay switch, the mask's
   visibility and position, °C/°F, language, the refresh interval, HDD reading
   and the GPU choice used to stay as the gui last saw them, even though the
-  App had changed. Theme and slideshow already followed. LED settings and the
-  Qt gui are not covered yet.
+  App had changed. So do the LED controls: colour, effect, brightness, on/off,
+  the zone and page buttons, the clock format, the week start and the DDR
+  ratio. Theme and slideshow already followed. The Qt gui is not covered yet.
+- **The LED panel shows what the cooler is set to when the gui opens.** The
+  clock format, week start and DDR ratio showed their defaults; a PA120 or
+  LF10 edited one zone at a time showed its first zone's colour and
+  brightness. A slider or the colour wheel you are dragging is never moved
+  under you.
 - **Opening the gui shows the mask as it is.** The mask's visibility and
   position showed as visible at 0,0 until something changed them.
 - **The theme on the panel is highlighted in the theme list**, when the gui

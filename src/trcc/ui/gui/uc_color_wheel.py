@@ -113,6 +113,12 @@ class UCColorWheel(QWidget):
     # Public API
     # ----------------------------------------------------------------
 
+    @property
+    def is_dragging(self) -> bool:
+        """The user is holding the ring — a hue drag is in progress."""
+        log.debug("UCColorWheel.is_dragging: %s", self._dragging)
+        return self._dragging
+
     def set_hue(self, hue: int) -> None:
         """Set the current hue without emitting a signal."""
         log.debug("UCColorWheel.set_hue: %d -> %d", self._hue, hue % 360)

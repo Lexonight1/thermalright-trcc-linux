@@ -37,6 +37,7 @@ from ...core.led_models import (
     LED_SELECT_ALL_STYLES,
     PRESET_COLORS,
 )
+from ...core.logs import per_frame
 from ...core.models import HardwareMetrics
 from ..presentation.led_display import LedSelector, led_display_for
 from ..presentation.led_metrics_format import (
@@ -53,6 +54,16 @@ from .uc_color_wheel import UCColorWheel
 from .uc_screen_led import UCScreenLED
 
 log = logging.getLogger(__name__)
+#: A follow runs on every move of an LED slider; its lines are per-frame volume.
+frame_log = per_frame(__name__)
+
+
+def _set_quietly(widget: QSlider | QSpinBox, value: int) -> None:
+    """Set a slider or spinbox without it announcing the change."""
+    frame_log.debug("_set_quietly: %s → %d", type(widget).__name__, value)
+    widget.blockSignals(True)
+    widget.setValue(value)
+    widget.blockSignals(False)
 
 #: Values a widget carries so its slot is a named method rather than a closure
 #: over a loop variable — ``feedback_no_lambdas``.
@@ -1378,39 +1389,42 @@ class UCLedControl(QWidget):
         if text.isdigit() and int(text) > 0:
             self.carousel_interval_changed.emit(int(text))
 
-    def load_zone_state(self, zone_index: int, mode: int,
-                        color: tuple, brightness: int,
-                        on: bool = True):
-        """Load a zone's state into the UI controls."""
-        for slider in self._rgb_sliders:
-            slider.blockSignals(True)
-        for spinbox in self._rgb_spinboxes:
-            spinbox.blockSignals(True)
-        self._brightness_slider.blockSignals(True)
+    def show_state(self, mode: int, color: tuple[int, int, int],
+                   brightness: int, on: bool) -> None:
+        """Show the App's LED state — sends nothing.
 
-        r, g, b = color
-        self._rgb_sliders[0].setValue(r)
-        self._rgb_sliders[1].setValue(g)
-        self._rgb_sliders[2].setValue(b)
-        for i, val in enumerate([r, g, b]):
-            self._rgb_spinboxes[i].setValue(val)
-
-        self._brightness_slider.setValue(brightness)
-        self._brightness_label.setText(f"{brightness}%")
-
+        A control the user is holding is left alone: every move of a slider
+        or of the wheel is a Command, its change comes back to follow, and in
+        the shared App it can arrive after the next move and pull the control
+        back.  A brightness change still in its debounce is held the same way.
+        """
+        held = self._brightness_slider.isSliderDown() or self._brightness_debounce.isActive()
+        frame_log.debug("show_state: mode=%d color=%s brightness=%d on=%s (brightness "
+                  "held=%s, wheel held=%s)", mode, color, brightness, on, held,
+                  self._color_wheel.is_dragging)
+        for slider, spinbox, value in zip(self._rgb_sliders, self._rgb_spinboxes,
+                                          color, strict=True):
+            if not slider.isSliderDown():
+                _set_quietly(slider, value)
+            _set_quietly(spinbox, value)
+        if not held:
+            _set_quietly(self._brightness_slider, brightness)
+            self._brightness_label.setText(f"{brightness}%")
         for i, btn in enumerate(self._mode_buttons):
             btn.setChecked(i == mode)
         self._current_mode = mode
-
-        for slider in self._rgb_sliders:
-            slider.blockSignals(False)
-        for spinbox in self._rgb_spinboxes:
-            spinbox.blockSignals(False)
-        self._brightness_slider.blockSignals(False)
-
-        # Sync color wheel indicator + on/off button with zone state
-        self._sync_wheel_from_rgb(r, g, b)
+        self._preview.set_led_mode(mode)          # its decorations follow the mode
+        if not self._color_wheel.is_dragging:
+            self._sync_wheel_from_rgb(*color)
         self._color_wheel.set_onoff(1 if on else 0)
+
+    def show_prefs(self, clock_24h: bool, week_sunday: bool, memory_ratio: int) -> None:
+        """Show the App's clock format, week start and DDR ratio — sends nothing."""
+        frame_log.debug("show_prefs: 24h=%s sunday=%s ratio=%d",
+                  clock_24h, week_sunday, memory_ratio)
+        self._show_clock_format(clock_24h)
+        self._show_week_start(week_sunday)
+        self.set_memory_ratio(memory_ratio)
 
     def load_sync_state(self, enabled: bool, zones: list[bool],
                         interval_secs: int) -> None:
@@ -1443,16 +1457,26 @@ class UCLedControl(QWidget):
     # -- LC2 clock handlers --
 
     def _set_clock_format(self, is_24h: bool):
+        log.info("_set_clock_format: 24h=%s", is_24h)
+        self._show_clock_format(is_24h)
+        self.clock_format_changed.emit(is_24h)
+
+    def _show_clock_format(self, is_24h: bool) -> None:
+        log.debug("_show_clock_format: 24h=%s", is_24h)
         self._is_timer_24h = is_24h
         self._btn_24h.setChecked(is_24h)
         self._btn_12h.setChecked(not is_24h)
-        self.clock_format_changed.emit(is_24h)
 
     def _set_week_start(self, is_sunday: bool):
+        log.info("_set_week_start: sunday=%s", is_sunday)
+        self._show_week_start(is_sunday)
+        self.week_start_changed.emit(is_sunday)
+
+    def _show_week_start(self, is_sunday: bool) -> None:
+        log.debug("_show_week_start: sunday=%s", is_sunday)
         self._is_week_sunday = is_sunday
         self._btn_sun.setChecked(is_sunday)
         self._btn_mon.setChecked(not is_sunday)
-        self.week_start_changed.emit(is_sunday)
 
     def _on_mon_clicked(self) -> None:
         log.info("_on_mon_clicked")
@@ -1599,6 +1623,7 @@ class UCLedControl(QWidget):
 
     def set_memory_ratio(self, ratio: int) -> None:
         """Set DDR combo from saved state (without emitting signal)."""
+        log.debug("set_memory_ratio: %d", ratio)
         self._memory_ratio = ratio
         idx = {1: 0, 2: 1, 4: 2}.get(ratio, 1)
         self._ddr_combo.blockSignals(True)

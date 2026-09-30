@@ -37,6 +37,7 @@ from ..core.events import (
     HddEnabledChanged,
     LanguageChanged,
     LedColorsChanged,
+    LedSettingsChanged,
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
@@ -102,12 +103,10 @@ class BusBridge(QObject):
     # An app-wide setting changed (the control centre: temperature unit,
     # language, GPU, refresh interval, HDD); a window re-reads the snapshot.
     app_settings_changed = Signal(object)
-    # A device's saved LCD settings changed — by this UI, another one, or the
+    # A device's saved settings changed — by this UI, another one, or the
     # App.  One signal for all of them, so a window re-reads what the App now
     # holds instead of keeping a slot per setting; every one carries ``key``.
-    # Not LED: ``LedColorsChanged`` is published by every render, and an LED
-    # panel cannot re-read on ``LedSettingsChanged`` until the App says which
-    # zone a colour edit targets.
+    # Not ``LedColorsChanged``: every render publishes it.
     settings_changed = Signal(object)
 
     def __init__(self, bus: EventBus) -> None:
@@ -158,6 +157,7 @@ class BusBridge(QObject):
             (MaskVisibilityChanged, self.settings_changed),
             (TimeFormatChanged, self.settings_changed),
             (DateFormatChanged, self.settings_changed),
+            (LedSettingsChanged, self.settings_changed),
         )
         for event_type, signal in pairs:
             self._bus.subscribe(
