@@ -60,6 +60,13 @@
 
 ### Fixed
 
+- **The gui's background, screencast, video and mask switches show what the
+  screen is doing.** They showed everything off for every theme, and never
+  followed a cast or a video started from another window. Turning the
+  background off now removes it (black behind the overlay), as the Windows
+  app does; before, it changed nothing. Playing a file from the video panel no
+  longer switches the overlay off, and it now counts as the media player
+  everywhere.
 - **A video played with the media player is remembered as one.** Starting it
   from the command line or the API recorded it as a background video instead,
   so a saved theme lost it and a restart brought it back as a background.

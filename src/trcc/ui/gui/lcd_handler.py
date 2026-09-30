@@ -41,9 +41,11 @@ from ...core.commands import (
     ResolveOverlay,
     ResolveThemeDirectories,
     SaveTheme,
+    SetBackgroundMode,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
+    SetMediaPlayer,
     SetOrientation,
     SetSplitMode,
     StopVideo,
@@ -399,6 +401,7 @@ class LCDHandler(BaseHandler):
         self._show_overlay_layout()
         settings = self._w['theme_setting']
         settings.set_mask_visible(ds.mask_visible)
+        settings.show_sources(ds.display_source, ds.background_mode != "transparent")
         # None is the default place, which the render draws at (0, 0).
         settings.set_mask_position(*(ds.mask_position or (0, 0)))
 
@@ -509,7 +512,6 @@ class LCDHandler(BaseHandler):
             return
         self._app.dispatch(EnableOverlay(key=self._device_key, enabled=False))
 
-        self._pm.background_active = False
         # LoadTheme internally dispatches StopVideo (clears the previous
         # playback + cloud-bg override + publishes VideoStopped which
         # stops the timer via the bus_bridge observer) and, if the new
@@ -522,10 +524,6 @@ class LCDHandler(BaseHandler):
         # This panel used to clear it here by hand, which made the behaviour
         # the gui's rather than the Command's — every other UI switched
         # themes with the old mask still layered on.
-        self._w['theme_setting'].background_panel.set_enabled(False)
-        self._w['theme_setting'].screencast_panel.set_enabled(False)
-        self._w['theme_setting'].video_panel.set_enabled(False)
-
         # LoadTheme dispatches through the App — the Command owns the
         # theme info build, scene cache invalidation, and (if persist)
         # the per-device current_theme update in app.settings.
@@ -561,10 +559,6 @@ class LCDHandler(BaseHandler):
         """
         self.log.info("select_cloud_theme: %s (video=%s)", theme_info.name,
                       getattr(theme_info, 'video', None))
-        self._pm.background_active = False
-        self._w['theme_setting'].background_panel.set_enabled(False)
-        self._w['theme_setting'].screencast_panel.set_enabled(False)
-
         theme_id = getattr(theme_info, 'id', None) or theme_info.name
         if not theme_id:
             self.log.warning(
@@ -1017,23 +1011,26 @@ class LCDHandler(BaseHandler):
     # ── Background / Screencast Toggles ────────────────────────────
 
     def on_background_toggle(self, enabled: bool) -> None:
-        """Handle background display toggle.
+        """The background switch, as the C#'s: on draws one, off draws none.
 
-        Enabling "background" mode means "show the theme's static bg,
-        not the override video".  StopVideo announces VideoStopped, which
-        clears the handler's playing flag — nothing to stop here.
+        On also closes the media player (the C#'s ``ClosePlayer``); the window
+        ends a cast before calling this.  A theme's or a user's background
+        VIDEO is the background and keeps playing -- this used to ``StopVideo``
+        it.  The switch itself shows what the App then holds (``follow_app``).
         """
-        self.log.info("on_background_toggle: enabled=%s device=%s",
-                      enabled, self._device_key)
-        self._pm.background_active = enabled
-        if enabled:
-            self._app.dispatch(StopVideo(key=self._device_key))
-            self._w['preview'].set_playing(False)
-            self._w['preview'].show_video_controls(False)
-        kind = "video" if self._video_status().playing else "image"
-        self._w['preview'].set_status(
-            f"Background: {'On' if enabled else 'Off'} ({kind})",
-        )
+        ds = self._lcd_settings()
+        self.log.info("on_background_toggle: enabled=%s device=%s source=%s mode=%s",
+                      enabled, self._device_key, ds.display_source,
+                      ds.background_mode)
+        if not enabled:
+            self._app.dispatch(SetBackgroundMode(key=self._device_key,
+                                                 mode="transparent"))
+            return
+        if ds.display_source == "media":
+            self._app.dispatch(SetMediaPlayer(key=self._device_key, uri=""))
+        if ds.background_mode == "transparent":
+            self._app.dispatch(SetBackgroundMode(key=self._device_key,
+                                                 mode="theme"))
 
     # ── Slideshow / Carousel ───────────────────────────────────────
 
@@ -1263,14 +1260,6 @@ class LCDHandler(BaseHandler):
                 "leaving the shared theme browser alone (writing it would "
                 "offer this device's %dx%d catalog to whichever panel IS "
                 "selected)", self._device_key, bw, bh)
-
-    @property
-    def is_background_active(self) -> bool:
-        return self._pm.background_active
-
-    @is_background_active.setter
-    def is_background_active(self, value: bool) -> None:
-        self._pm.background_active = value
 
     @property
     def brightness_level(self) -> int:

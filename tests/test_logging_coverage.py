@@ -117,7 +117,11 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: window-wide copy of the App's cast that re-issued B's cast on A.  Its five
 #: silent members left (``active``, ``audio_enabled``, ``params``,
 #: ``set_border``, ``set_params``); the panel's new ``audio_on`` got a line.
-MAX_SILENT = 313
+#: 313 -> 310 on 2026-09-30: the gui's mode switches show App state.
+#: ``MaskPanel.set_mask_visible`` gained a line; ``LCDHandler``'s
+#: ``is_background_active`` getter + setter were DELETED -- a flag written in
+#: five places and read in none.  Diffing ``--list``: those 3 left, none joined.
+MAX_SILENT = 310
 
 
 def test_logging_coverage_only_improves() -> None:

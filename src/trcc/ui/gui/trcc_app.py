@@ -50,11 +50,11 @@ from ...core.commands import (
     SetHddEnabled,
     SetLanguage,
     SetMaskVisible,
+    SetMediaPlayer,
     SetRefreshInterval,
     SetTempUnit,
     StartScreencast,
     StopScreencast,
-    StopVideo,
 )
 from ...core.logs import per_frame
 from ...core.models import (
@@ -374,6 +374,7 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.on_video_started(event)
+        self._follow_sources(event.key)
 
     def _on_bus_video_advanced(self, event: Any) -> None:
         """Route a ``VideoAdvanced`` event to its device's handler (per-frame)."""
@@ -389,6 +390,7 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.on_video_stopped(event)
+        self._follow_sources(event.key)
 
     def _on_bus_theme_loaded(self, event: Any) -> None:
         """Route a ``ThemeLoaded`` event to its LCD's handler."""
@@ -397,6 +399,20 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if isinstance(handler, LCDHandler):
             handler.on_theme_loaded(event)
+        self._follow_sources(event.key)
+
+    def _follow_sources(self, key: str) -> None:
+        """A display source started, stopped or was replaced -- in any UI.
+
+        The mode switches show what the App holds (``LCDHandler.follow_app``
+        re-reads ``LcdSnapshot``; it draws only for the panel on screen).  A
+        theme load, a video and a cast are not settings events, so without
+        this the switches kept whatever this window last set.
+        """
+        handler = self._handlers.get(key)
+        log.debug("_follow_sources: %s -> %s", key, type(handler).__name__)
+        if isinstance(handler, LCDHandler):
+            handler.follow_app()
 
     def _on_bus_settings_changed(self, event: Any) -> None:
         """A device setting changed — here, in another UI, or in the App.
@@ -1676,6 +1692,7 @@ class TRCCApp(QMainWindow):
                  type(event).__name__, event.key, self._active_key)
         if event.key == self._active_key:
             self._show_cast()
+        self._follow_sources(event.key)
 
     def _on_background_toggle(self, enabled: bool) -> None:
         log.info("_on_background_toggle: enabled=%s", enabled)
@@ -1701,7 +1718,6 @@ class TRCCApp(QMainWindow):
             # playback (via its internal ``StopVideo``) — bundling that
             # here would duplicate the call.
             h.deactivate()
-            h.is_background_active = False
             panel = self.uc_theme_setting.screencast_panel
             x, y, sw, sh = panel.values()
             result = self._app.dispatch(StartScreencast(
@@ -1755,17 +1771,10 @@ class TRCCApp(QMainWindow):
         if not h:
             return
         if not enabled:
-            # Turning the "video" mode panel OFF — clear the override
-            # video, then re-load the persisted theme so the device
-            # shows the theme's bundled bg (image, or its own video).
-            # StopVideo's VideoStopped event already stops the timer
-            # through the bus_bridge observer chain.
-            if h.has_video_playback:
-                self._app.dispatch(StopVideo(key=h.device_key))
-                self.uc_preview.set_playing(False)
-                self.uc_preview.show_video_controls(False)
-            if (last_path := h.current_theme_path):
-                h.select_theme_from_path(Path(last_path))
+            # The video player OFF is the media player's Command, as every
+            # UI's: the App stops it and the theme's own video plays again.
+            # This window used to stop the video and reload the theme itself.
+            self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=""))
 
     # ── File Dialogs ────────────────────────────────────────────────
 
@@ -1793,27 +1802,14 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if not path or not h:
             return
-        if self._cast_region(h.device_key) is not None:
-            self._app.dispatch(StopScreencast(key=h.device_key))
-        h.is_background_active = False
-        # ``SetBackground`` persists the pick as the device's background
-        # override THEN delegates to ``PlayVideo`` (decode, populate
-        # MediaService playback, publish ``VideoStarted`` so the handler's
-        # timer observer takes over) — without the persist step a later
-        # ``SaveTheme`` has no override to bake in and the saved theme
-        # reloads without this video.  Overlay-off is part of "play
-        # arbitrary video" UX — disable through the Command bus so
-        # persistence + render chain stays in sync.
-        self._app.dispatch(EnableOverlay(key=h.device_key, enabled=False))
-        result = self._app.dispatch(SetBackground(
-            key=h.device_key, path=Path(path),
-        ))
-        if not result.ok:
-            self.uc_preview.set_status(f"Error: {result.message}")
-            return
-        self.uc_preview.set_playing(True)
-        self.uc_preview.show_video_controls(True)
-        self.uc_preview.set_status(f"Playing: {Path(path).name}")
+        # The media player's Command, as the CLI's and the API's: the App
+        # records it AS a media player (save, restore, every UI's switch) and
+        # ends a running cast itself.  This window used to play it as a
+        # background and switch the overlay off, which the C# never does.
+        result = self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=path))
+        self.uc_preview.set_status(
+            f"Playing: {Path(path).name}" if result.ok
+            else f"Error: {result.message}")
 
     def _video_picker_start_dir(self, h: Any) -> str:
         """Resolve the QFileDialog start directory for a video pick.

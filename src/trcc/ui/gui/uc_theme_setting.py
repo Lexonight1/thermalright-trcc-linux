@@ -348,6 +348,19 @@ class UCThemeSetting(BasePanel):
         """Update mask panel eye toggle state."""
         self.mask_panel.set_mask_visible(visible)
 
+    def show_sources(self, source: str, background_drawn: bool) -> None:
+        """Show which display source is on the panel, sending nothing.
+
+        The C#'s one UI-mode choice (``FormCZTV.ThemeSetting``): background,
+        screencast or video player, one at a time.  *source* is the App's
+        ``LcdSnapshot.display_source``; the background switch is also off
+        when no background is drawn (``background_mode == 'transparent'``).
+        """
+        log.info("show_sources: %s background_drawn=%s", source, background_drawn)
+        self.background_panel.set_enabled(source == "background" and background_drawn)
+        self.screencast_panel.set_enabled(source == "screencast")
+        self.video_panel.set_enabled(source == "media")
+
     def set_resolution(self, width: int, height: int):
         """Delegate resolution to screencast panel."""
         self.screencast_panel.set_resolution(width, height)

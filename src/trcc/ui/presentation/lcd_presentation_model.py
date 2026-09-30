@@ -80,7 +80,6 @@ class LcdPresentationModel:
         # (distinguishes first activation from a read-only re-select).
         self.configured = False
         # Per-device display state mirrored from DeviceSettings on restore.
-        self.background_active = False
         self.brightness_level = _DEFAULT_BRIGHTNESS
         self.split_mode = 0
         self.ldd_is_split = False

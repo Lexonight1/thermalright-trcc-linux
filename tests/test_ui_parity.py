@@ -285,8 +285,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     "LoopVideo": (frozenset({"cli", "api"}), (
         "gap: toggle whether playback wraps or sticks at the last frame"
     )),
-    "SetMediaPlayer": (frozenset({"cli", "api"}), (
-        "gap: set the device's media-player source URI"
+    "SetMediaPlayer": (frozenset({"cli", "api", "gui"}), (
+        "gap: qtgui has no media-player control.  The gui's video panel "
+        "dispatches it since 2026-09-30 -- it played the file as a background "
+        "and switched the overlay off, so the App never knew a media player ran"
     )),
     "UploadBootAnimation": (frozenset({"cli", "api"}), (
         "gap: upload a boot animation to a SCSI LCD's flash"

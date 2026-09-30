@@ -44,7 +44,6 @@ def test_activation_flag_defaults() -> None:
     pm = LcdPresentationModel("0402:3922")
     assert pm.ui_active is False
     assert pm.configured is False
-    assert pm.background_active is False
     assert pm.brightness_level == 100
     assert pm.split_mode == 0
     assert pm.ldd_is_split is False

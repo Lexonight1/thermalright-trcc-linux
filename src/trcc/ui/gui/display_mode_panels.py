@@ -529,9 +529,12 @@ class MaskPanel(DisplayModePanel):
         self._updating = False
 
     def set_mask_visible(self, visible: bool):
-        """Set eye toggle state."""
+        """Show ``mask_visible`` -- on the eye AND the switch, one fact both
+        dispatch (``SetMaskVisible``), as the C#'s one ``myMbxs``."""
+        log.debug("set_mask_visible: %s", visible)
         self._mask_visible = visible
         self._update_eye_icon()
+        self.set_enabled(visible)
 
     def apply_language(self, lang: str) -> None:
         """Update title label for current language."""
