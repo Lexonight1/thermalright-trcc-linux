@@ -231,9 +231,13 @@ class BaseDevice(Device[T]):
            reconnect-and-retry / consecutive-failure escalation every wire
            shares (``core.ports.Device``).
         """
-        frame_log.debug("send: payload=%s", Blob(payload))
         self._require_connected()
         frame = self._prepare_frame(payload)
+        # The FRAME, not the payload: an LED payload is a dataclass, and
+        # ``Blob`` renders bytes only — at -vvv every LED frame raised inside
+        # the logger and the record was lost.
+        frame_log.debug("send: %s -> frame=%s", type(payload).__name__,
+                        Blob(frame))
         return self._send_with_recovery(partial(self._write_frame, frame))
 
     @abstractmethod

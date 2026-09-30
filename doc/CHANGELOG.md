@@ -60,6 +60,9 @@
 
 ### Fixed
 
+- **`-vvv` no longer fills the log with errors for LED coolers.** Every LED
+  update printed a "Logging error" traceback and its log line was lost (since
+  v9.10.3). The line now records the bytes sent to the cooler.
 - **Plugging in a second identical LED cooler no longer resets both.** Both
   coolers came back in the default red at 65 %, losing the colour and
   brightness you had set. Each now starts from your settings and can then be

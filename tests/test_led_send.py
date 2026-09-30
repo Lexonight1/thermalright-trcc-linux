@@ -180,3 +180,25 @@ def test_remap_module_exports() -> None:
     assert "LED_REMAP_TABLES" in led_protocol.__all__
     assert "LED_REMAP_SUB_TABLES" in led_protocol.__all__
     assert remap_led_colors is led_protocol.remap_led_colors
+
+
+def test_the_per_frame_send_line_renders_an_led_frame(caplog) -> None:
+    """``-vvv`` turns the per-frame logger on; an LED send must survive it.
+
+    The line used to render the PAYLOAD through ``Blob``, which takes bytes;
+    an ``LedPayload`` is a dataclass, so every LED frame raised inside the
+    logger and the record was lost (shipped v9.10.3).  The suite keeps
+    ``trcc.frame`` at INFO, so nothing ever formatted it — this test does.
+    """
+    from trcc.core.logs import PER_FRAME_ROOT
+
+    led, _ = _connected_led(pm=1)
+    payload = LedPayload(colors=[(200, 0, 0)] * 30)
+    with caplog.at_level("DEBUG", logger=PER_FRAME_ROOT):
+        led.send(payload)
+
+    sends = [r.getMessage() for r in caplog.records
+             if r.getMessage().startswith("send: ")]
+    frame = led._prepare_frame(payload)       # pure: exactly what was written
+    assert sends == [f"send: LedPayload -> frame={len(frame)} bytes, "
+                     f"first 16: {frame[:16].hex(' ')}"]
