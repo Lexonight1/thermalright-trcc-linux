@@ -18,7 +18,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
@@ -118,6 +118,30 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
 _SCHEMA_VERSION = 5
+
+_S = TypeVar("_S")
+
+
+def _inherited(store: dict[str, _S], key: str) -> _S | None:
+    """A copy of the plain-key settings a twin's ``@port`` *key* starts from.
+
+    A second identical cooler makes BOTH units' keys grow a port suffix
+    (``87ad:70db`` -> ``87ad:70db@1-13``, #287), and everything the user had
+    configured lives under the plain key.  ``None`` when *key* is already
+    plain or nothing was stored under its plain form.
+
+    A DEEP copy, not an alias and not ``dataclasses.replace``: both settings
+    dataclasses carry lists (overlay elements, slideshow themes, LED zones),
+    and ``replace`` is shallow, so the twins would share them — editing one
+    unit would silently edit the other.  ``deepcopy`` also cannot drift when
+    another list field is added.
+    """
+    base = key.split("@", 1)[0]
+    if base == key or (ancestor := store.get(base)) is None:
+        log.debug("_inherited: %s has no plain-key ancestor", key)
+        return None
+    log.info("_inherited: %s inherits the settings of %s", key, base)
+    return deepcopy(ancestor)
 
 
 class Settings:
@@ -237,31 +261,19 @@ class Settings:
     def _seed_for(self, key: str) -> DeviceSettings:
         """First-touch defaults for *key*, inheriting a plain-key ancestor.
 
-        A second identical cooler makes BOTH units' keys grow a port suffix
-        (``87ad:70db`` -> ``87ad:70db@1-13``, #287), and everything the user
-        had configured lives under the plain key.  Without this they would
-        both come up factory-fresh the moment the second one was plugged in —
-        the upgrade path, and the reason the suffix is safe to introduce at
-        all.
+        Without the plain-key ancestor (``_inherited``) both units of a new
+        pair would come up factory-fresh the moment the second one was
+        plugged in — the upgrade path, and the reason the suffix is safe to
+        introduce at all.
 
         It runs in the other direction too: unplug one of a pair and the
         survivor returns to the plain key, so what it wrote while
         disambiguated stops matching.  That degrades to "inherits the shared
         settings" rather than "loses them", which is the honest trade for
         keeping the plain key stable for everyone who has one device.
-
-        A DEEP copy, not an alias and not ``dataclasses.replace``.  Two of
-        ``DeviceSettings``' 21 fields are lists — ``user_overlay_elements``
-        and ``slideshow_themes`` — and ``replace`` is shallow, so the twins
-        would share them: editing one unit's overlay would silently edit the
-        other's.  ``deepcopy`` also cannot drift when a third list field is
-        added, which an explicit field-by-field copy would.
         """
-        base = key.split("@", 1)[0]
-        ancestor = self._devices.get(base) if base != key else None
-        if ancestor is not None:
-            log.info("_seed_for: %s inherits the settings of %s", key, base)
-            return deepcopy(ancestor)
+        if (inherited := _inherited(self._devices, key)) is not None:
+            return inherited
         log.info("_seed_for: %s is new — seeding the global temperature unit",
                  key)
         return DeviceSettings(temp_unit=self._app.temp_unit)
@@ -458,11 +470,17 @@ class Settings:
     # ── LED-device settings ───────────────────────────────────────────
 
     def for_led(self, key: str) -> LedDeviceSettings:
-        """Return the LedDeviceSettings for *key*, defaulting on first touch."""
+        """Return the LedDeviceSettings for *key*, defaulting on first touch.
+
+        A twin cooler's ``@port`` key inherits the plain key, exactly as an
+        LCD's does in ``_seed_for`` — plugging in the second of a pair must
+        not reset both to factory colours.
+        """
         frame_log.debug("for_led: key=%s", key)
         with self._lock:
             if key not in self._led_devices:
-                self._led_devices[key] = LedDeviceSettings()
+                self._led_devices[key] = (_inherited(self._led_devices, key)
+                                          or LedDeviceSettings())
             return self._led_devices[key]
 
     def set_led_mode(self, key: str, mode: LEDMode) -> None:

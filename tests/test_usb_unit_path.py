@@ -239,6 +239,32 @@ def test_a_brand_new_key_still_seeds_from_the_global_formats(tmp_path) -> None:
     assert fresh.temp_unit == "F"
 
 
+def test_a_twin_LED_inherits_the_plain_keys_settings(tmp_path) -> None:
+    """Plugging in a second identical LED cooler must not reset both.
+
+    ``for_led`` had no plain-key fallback, so a user's blue at 30% came back
+    as the factory red at 65% on BOTH units the moment the twin arrived.
+    """
+    from trcc.core.led_models import LedZoneSettings
+
+    st = _settings(tmp_path)
+    st.set_led_color("0416:8001", (0, 0, 255))
+    st.set_led_brightness("0416:8001", 30)
+    st.for_led("0416:8001").zones.append(LedZoneSettings(brightness=5))
+
+    a, b = st.for_led("0416:8001@1-1"), st.for_led("0416:8001@1-2")
+    assert {(s.color, s.brightness) for s in (a, b)} == {((0, 0, 255), 30)}
+
+    a.zones[0].brightness = 90           # the twins then diverge, lists too
+    assert (a.zones[0].brightness, b.zones[0].brightness) == (90, 5)
+
+
+def test_a_brand_new_LED_key_still_gets_the_defaults(tmp_path) -> None:
+    from trcc.core.led_models import LedDeviceSettings
+
+    assert _settings(tmp_path).for_led("0416:8001@1-1") == LedDeviceSettings()
+
+
 # ── step 3: two units, two Device objects ────────────────────────────────
 
 
@@ -619,6 +645,19 @@ def test_qtgui_device_panel_lists_each_twin_key(tmp_path, qtbot) -> None:
     panel._on_scan()
     keys = [panel._list.item(i).data(0x0100) for i in range(panel._list.count())]
     assert keys == _TWIN_KEYS
+
+
+def test_the_gui_rail_tells_the_twins_apart(qtbot) -> None:
+    """Twins share one product picture; the tooltip names each key."""
+    from trcc.ui.gui.uc_device import UCDevice
+
+    panel = UCDevice()
+    qtbot.addWidget(panel)
+    panel.update_devices([{"name": "AX120", "path": k, "vid": 0x87AD,
+                           "pid": 0x70DB, "protocol": "scsi"}
+                          for k in _TWIN_KEYS])
+    assert [b.toolTip() for b in panel.device_buttons] == [
+        f"AX120 — {k}" for k in _TWIN_KEYS]
 
 
 def test_the_report_probes_each_twin_on_its_own_unit(tmp_path) -> None:

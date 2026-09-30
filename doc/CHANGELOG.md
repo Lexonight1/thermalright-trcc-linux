@@ -60,6 +60,12 @@
 
 ### Fixed
 
+- **Plugging in a second identical LED cooler no longer resets both.** Both
+  coolers came back in the default red at 65 %, losing the colour and
+  brightness you had set. Each now starts from your settings and can then be
+  set on its own, as two identical LCDs already did (#287). In the gui, hover
+  over a device button to see which USB port it is on, so two identical
+  coolers can be told apart.
 - **A rotated widescreen panel shows the rotated theme's own layout.** Since
   v9.10.0 (#276), rotating an 854x480, 1280x480, 1600x720 or similar panel
   kept the landscape overlay positions on the portrait screen, so elements sat

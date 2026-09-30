@@ -342,6 +342,8 @@ class UCDevice(BasePanel):
                 fallback_text=fallback,
             )
             btn.device_info = device  # type: ignore[attr-defined]
+            # Twin coolers share a picture; the key's @port tells them apart.
+            btn.setToolTip(f"{fallback} — {device.get('path', '')}")
             # Image buttons use the flat (border-less) icon style — give them a
             # checked-state accent border so the active device is unmistakable.
             # (Text-fallback buttons get their own :checked rule in base.py.)
