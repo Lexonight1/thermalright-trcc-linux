@@ -365,7 +365,11 @@ class RenderLed(Command[LedColorsResult]):
             mask = compute_mask(
                 style, display_metrics, phase=phase,
                 temp_unit=device_settings.temp_unit,
-                is_24h=(device_settings.time_format == "24h"),
+                # The LED's OWN clock format -- FormLED keeps isTimer24 per
+                # cooler (FormLED.cs:945, drawn at :3938).  This read the LCD
+                # overlay's time_format, so the cooler's own 12/24h button
+                # did nothing and the LCD's format command drove it instead.
+                is_24h=effective_settings.clock_24h,
                 week_sunday=effective_settings.week_sunday,
                 memory_ratio=effective_settings.memory_ratio,
             )

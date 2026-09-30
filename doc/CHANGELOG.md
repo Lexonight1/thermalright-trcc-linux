@@ -69,6 +69,9 @@
   selected stays, as there. Your current page is kept when you upgrade.
 - **The LED preview goes dark when the LEDs are switched off.** It kept
   showing them lit while the cooler was dark.
+- **An LED cooler's 12h/24h clock button works.** The cooler's clock ignored
+  it and followed the LCD overlay's time format instead; each cooler now keeps
+  its own, as in the Windows app.
 - **Switching the overlay off in the gui no longer deletes it.** The switch
   also cleared every overlay element, and so did editing one element while the
   overlay was off. The gui put them back only if you switched it on again in

@@ -40,6 +40,41 @@ def _app(tmp_path: Path) -> App:
     return App(platform=FakePlatform(tmp_path))
 
 
+
+def test_the_led_clock_draws_in_the_coolers_own_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FormLED keeps its own isTimer24 (FormLED.cs:945, drawn at :3938).
+
+    The render read the LCD overlay's ``time_format`` instead: the cooler's
+    own 12/24h button stored ``clock_24h`` and changed nothing, while the
+    LCD's ``SetTimeFormat`` changed the LED clock.  Both halves are pinned.
+    """
+    import trcc.services.led_segment as segment
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice, RenderLed, SetTimeFormat
+
+    drawn: list[bool] = []
+    real = segment.compute_mask
+
+    def _spy(*args, **kwargs):
+        drawn.append(kwargs["is_24h"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(segment, "compute_mask", _spy)
+    app = App(MockPlatform([{"type": "led", "vid": "0416", "pid": "8001",
+                             "pm": 1}], tmp_path), renderer=QtRenderer())
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+
+    assert app.dispatch(SetClockFormat(key=_KEY, is_24h=False)).ok
+    assert app.dispatch(SetTimeFormat(fmt="24h")).ok        # the LCD's, not this
+    drawn.clear()
+    assert app.dispatch(RenderLed(key=_KEY)).ok
+
+    assert drawn and drawn[-1] is False, (
+        f"the LED clock drew {drawn} after its own button chose 12h")
+
 # ── Mode ─────────────────────────────────────────────────────────────
 
 
