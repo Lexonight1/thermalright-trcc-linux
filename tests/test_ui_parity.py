@@ -124,6 +124,14 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Listings each surface answers its own way ─────────────────────────
     # ListDevices: retired 2026-09-25 -- the CLI reaches it too now, through
     # the exit hook that names panels which blank when frames stop (#228).
+    "RenderAndSend": (frozenset({"gui"}), (
+        "gap: no UI should send this -- the App's MetricsLoop renders every "
+        "panel and its render observer re-renders on each edit's event.  "
+        "qtgui's own ticker went 2026-09-30 (it doubled frames, 5 -> 10 in 5 s); "
+        "gui still re-renders by hand after its edits, 6 lcd_handler sites -- "
+        "one colour edit sends 2 RenderAndSend, measured.  Removing them empties "
+        "this entry"
+    )),
     "SetOverlayConfig": (frozenset({"api", "qtgui"}), (
         "scoped: every UI edits overlays element-wise (Add/Update/Delete"
         "OverlayElement, all four); the API adds a bulk replace, and qtgui's "

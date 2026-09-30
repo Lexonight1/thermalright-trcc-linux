@@ -230,13 +230,13 @@ def test_a_disconnect_is_not_undone_by_the_window(tmp_path: Path) -> None:
 # ── qtgui (MainWindow) ────────────────────────────────────────────────────────
 
 
-def test_qtgui_main_window_constructs_with_a_device(tmp_path: Path) -> None:
-    from trcc.ui.qtgui.app import MainWindow
-
+def test_qtgui_main_window_constructs_with_a_device(
+    tmp_path: Path, make_window,
+) -> None:
     app = _app(tmp_path)
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
-        window = MainWindow(app=app)
+        window = make_window(app)
         # The unified surface is live: the devices panel exists and the window
         # holds the same App that already has the connected device.
         assert "devices" in window._panels

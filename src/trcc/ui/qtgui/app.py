@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,13 +27,9 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import (
-    ControlCenterSnapshot,
     GetFirstRunStatus,
     GetPlatformInfo,
-    ListDevices,
     RefreshAutostart,
-    RenderAndSend,
-    VideoStatus,
 )
 from ...core.ports import CommandBus
 
@@ -44,9 +40,6 @@ from ...core.events import (
     DeviceDisconnected,
     ErrorOccurred,
     FrameSent,
-    ThemeLoaded,
-    VideoStarted,
-    VideoStopped,
 )
 from ..bus_bridge import BusBridge
 from ..qt_tray import TrayController
@@ -159,31 +152,13 @@ class MainWindow(QMainWindow):
         self._bus.device_connected.connect(self._on_connected, type=qconn)
         self._bus.device_disconnected.connect(self._on_disconnected, type=qconn)
         self._bus.frame_sent.connect(self._on_frame_sent, type=qconn)
-        self._bus.theme_loaded.connect(self._on_theme_loaded, type=qconn)
         self._bus.error_occurred.connect(self._on_error, type=qconn)
-        self._bus.video_started.connect(self._on_video_started, type=qconn)
-        self._bus.video_stopped.connect(self._on_video_stopped, type=qconn)
 
-        # Metrics ticker — dispatches RenderAndSend to every device with an
-        # active theme, at AppSettings.refresh_interval_s.  Started lazily when
-        # a theme gets loaded; stops when no active themes remain.
-        self._ticker = QTimer(self)
-        self._ticker.setSingleShot(False)
-        self._ticker.timeout.connect(self._on_tick)
-
-        # Devices whose video is playing.  The core's VideoLoop advances them
-        # at their own frame rate (#249); this skin only needs to know so the
-        # metrics ticker above does not render them a second time.
-        #
-        # Both are READ once here, not waited for: the session primed every
-        # connected panel before this window existed (``App._prime``), so the
-        # ThemeLoaded / VideoStarted events that drive them fired before
-        # anything here listened.  Later connects arrive while it does.
-        self._playing: set[str] = {
-            d.key for d in self._app.dispatch(ListDevices()).devices
-            if self._app.dispatch(VideoStatus(key=d.key)).playing}
-        log.info("__init__: session shows %d playing video(s)", len(self._playing))
-        self._ensure_ticker_running()
+        # No render loop here: the App's MetricsLoop renders every device at
+        # the refresh interval, and its VideoLoop plays videos.  This window
+        # ran a second RenderAndSend ticker beside them, doubling the frames
+        # sent to every panel (measured 2026-09-30: 5 -> 10 in 5 s at a 1 s
+        # refresh, shown or hidden).  A UI never owns a loop that feeds a panel.
 
         self._show_platform_info()
 
@@ -204,9 +179,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: Any) -> None:
         if self._tray.intercept_close(event):
             return
-        # Genuine quit: stop the metrics ticker; the core's loops (video
-        # included) are stopped by ``App.close``.
-        self._ticker.stop()
+        # Genuine quit.  The core's loops are stopped by ``App.close``.
         event.accept()
         # End the event loop so ``run``'s ``finally: app.close()`` actually
         # runs.  ``quitOnLastWindowClosed`` is False (hide-to-tray), so
@@ -251,36 +224,6 @@ class MainWindow(QMainWindow):
     def _on_error(self, event: ErrorOccurred) -> None:
         log.info("_on_error")
         self._status.showMessage(f"Error [{event.kind}]: {event.message}", 8000)
-
-    def _on_theme_loaded(self, event: ThemeLoaded) -> None:
-        """A theme got loaded on some device — make sure the ticker is running."""
-        log.info("_on_theme_loaded")
-        del event
-        self._ensure_ticker_running()
-
-    def _ensure_ticker_running(self) -> None:
-        """Start the QTimer if there are active themes; stop it otherwise."""
-        log.debug("_ensure_ticker_running")
-        if not any(d.has_active_theme
-                   for d in self._app.dispatch(ListDevices()).devices):
-            if self._ticker.isActive():
-                self._ticker.stop()
-            return
-        snap = self._app.dispatch(ControlCenterSnapshot())
-        interval_ms = max(100, int(snap.refresh_interval_s * 1000))
-        if not self._ticker.isActive() or self._ticker.interval() != interval_ms:
-            self._ticker.start(interval_ms)
-
-    def _on_video_started(self, event: VideoStarted) -> None:
-        """A video began on a device — the core ticks it; note it as playing."""
-        log.info("_on_video_started: key=%s interval_ms=%d frames=%d",
-                 event.key, event.interval_ms, event.frame_count)
-        self._playing.add(event.key)
-
-    def _on_video_stopped(self, event: VideoStopped) -> None:
-        """Video ended on a device — the metrics ticker renders it again."""
-        log.info("_on_video_stopped: key=%s", event.key)
-        self._playing.discard(event.key)
 
     def _build_chrome(
         self, app: CommandBus, sidebar: ActivitySidebar, content: QStackedWidget,
@@ -358,27 +301,6 @@ class MainWindow(QMainWindow):
         target = self._led_selection if kind == "led" else self._lcd_selection
         target.set_key(key)
 
-    def _on_tick(self) -> None:
-        """Fire one render+send for every device with an active theme.
-
-        Skips any device playing a video — the core's VideoLoop already
-        renders it at frame rate, and rendering it from both would double its
-        wire traffic.  Same rule the gui skin states as "video playback owns
-        the wire".
-        """
-        rendering = [d.key for d in self._app.dispatch(ListDevices()).devices
-                     if d.has_active_theme]
-        if not rendering:
-            self._ticker.stop()
-            return
-        for key in rendering:
-            if key in self._playing:
-                log.debug("_on_tick: %s is playing a video — skip", key)
-                continue
-            try:
-                self._app.dispatch(RenderAndSend(key=key))
-            except Exception as e:
-                log.exception("Tick failed for %s: %s", key, e)
 
 
 def run(

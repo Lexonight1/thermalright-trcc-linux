@@ -45,7 +45,48 @@ log = logging.getLogger(__name__)
 R = TypeVar("R", bound=Result)
 
 
-class BasePanel(QFrame):
+class TicksWhileShown:
+    """Periodic updates that run only while the widget is on screen.
+
+    qtgui stacks its panels (``app.py:102``), so all but one are hidden at
+    any moment, and the window itself hides to the tray on close.  A timer
+    that kept going there dispatched a full ``BuildPreview`` every second for
+    nobody: measured 2026-09-30 on the preview, 3 renders in 3 s after the
+    window closed, the same as while shown.
+
+    This lives on the WIDGET, not on ``PeriodicUpdater``, which the gui skin
+    shares without show/hide hooks.  No window-owned updater drives the
+    device (the core's loops do, #249), so pausing one never freezes a panel.
+    A widget that is not on screen when it starts waits for its first show.
+    """
+
+    _updates: PeriodicUpdater
+
+    if TYPE_CHECKING:
+        # Declared for the type checker only: defined for real it would come
+        # FIRST in the MRO and shadow the QWidget's own isVisible.
+        def isVisible(self) -> bool: ...
+
+    def _start_updates(self, interval_ms: int,
+                       callback: Callable[[], None]) -> None:
+        self._updates.start(interval_ms, callback)
+        if not self.isVisible():
+            log.debug("_start_updates: %s not on screen yet — waiting",
+                      type(self).__name__)
+            self._updates.suspend()
+
+    def showEvent(self, event: object) -> None:
+        log.debug("showEvent: %s back on screen", type(self).__name__)
+        super().showEvent(event)      # type: ignore[misc]
+        self._updates.resume()
+
+    def hideEvent(self, event: object) -> None:
+        log.debug("hideEvent: %s left the screen", type(self).__name__)
+        super().hideEvent(event)      # type: ignore[misc]
+        self._updates.suspend()
+
+
+class BasePanel(TicksWhileShown, QFrame):
     """Common QFrame substrate for every TRCC GUI panel.
 
     Subclasses receive ``app`` + ``bus`` via __init__, build their UI in
@@ -77,29 +118,6 @@ class BasePanel(QFrame):
         self._selection = selection or DeviceSelection(self)
         self._updates = PeriodicUpdater(self)
         self._setup_ui()
-
-    # ── Visibility ────────────────────────────────────────────────────
-    #
-    # qtgui stacks its panels (``app.py:102``), so all but one are hidden at
-    # any moment — and nothing stopped them.  ``stop_periodic_updates`` had
-    # ZERO callers and there were no show/hide hooks in the skin, while
-    # ``ui/gui`` has gated on visibility all along (``trcc_app.py:342``).
-    #
-    # This lives on the PANEL, not on ``PeriodicUpdater``: an updater may
-    # drive the PHYSICAL DEVICE, and gating it on visibility would freeze a
-    # panel whenever the window is hidden — worse than the waste it fixes.
-    # (Video was the case in point until 2026-09-25; the core's VideoLoop
-    # drives it now, #249, so no window-owned updater touches the wire.)
-
-    def showEvent(self, event: object) -> None:
-        log.debug("showEvent: %s back on screen", type(self).__name__)
-        super().showEvent(event)      # type: ignore[arg-type]
-        self._updates.resume()
-
-    def hideEvent(self, event: object) -> None:
-        log.debug("hideEvent: %s left the screen", type(self).__name__)
-        super().hideEvent(event)      # type: ignore[arg-type]
-        self._updates.suspend()
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Reject concrete subclasses that forget to implement _setup_ui."""
@@ -184,7 +202,7 @@ class BasePanel(QFrame):
     ) -> None:
         """Run *callback* every *interval_ms* on the Qt main thread."""
         log.debug("start_periodic_updates: interval_ms=%s callback=%s", interval_ms, callback)
-        self._updates.start(interval_ms, callback)
+        self._start_updates(interval_ms, callback)
 
     def stop_periodic_updates(self) -> None:
         """Stop the periodic update timer if running."""

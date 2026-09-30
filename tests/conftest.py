@@ -641,6 +641,35 @@ def fake_platform(tmp_home: Path) -> FakePlatform:
 
 
 @pytest.fixture
+def make_window() -> Iterator[Callable[[Any], Any]]:
+    """Build qtgui ``MainWindow``s that are DESTROYED at teardown.
+
+    Closing one only hides it to the tray, and a window a test never closes
+    lives on: measured 2026-09-30, 8 were still alive after
+    ``test_gui_panels.py``, each with its preview timer dispatching
+    ``BuildPreview`` into later tests' closed Apps -- the WARNING that failed
+    whichever test ran next.  ``deleteLater`` + flushing the deferred deletes
+    ends them for good.
+    """
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    from trcc.ui.qtgui.app import MainWindow
+
+    built: list[Any] = []
+
+    def make(app: Any) -> Any:
+        window = MainWindow(app)
+        built.append(window)
+        return window
+
+    yield make
+    for window in built:
+        window.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture
 def fake_bulk() -> FakeBulkTransport:
     return FakeBulkTransport()
 

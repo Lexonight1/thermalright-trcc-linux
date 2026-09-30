@@ -29,7 +29,7 @@ from ....core.commands import (
     ToggleVideo,
     VideoStatus,
 )
-from ....core.events import VideoAdvanced
+from ....core.events import VideoAdvanced, VideoStarted, VideoStopped
 from ....core.models import MEDIA, MediaKind
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -101,6 +101,11 @@ class DisplayPanel(BasePanel):
         # The core ticks the video (#249) and announces each frame, so the
         # slider can follow it live instead of only on a manual refresh.
         self._bus.video_advanced.connect(self._on_video_advanced)
+        # ...and its start and stop from ANY UI, so a stopped video does not
+        # leave the slider live at its last frame.
+        for signal in (self._bus.video_started, self._bus.video_stopped):
+            signal.connect(self._on_video_state,
+                           type=Qt.ConnectionType.QueuedConnection)
         self._seek_label = QLabel("no video", self)
         self._refresh_video_btn = QPushButton("↻", self)
         self._refresh_video_btn.setToolTip("Refresh playback position")
@@ -254,6 +259,13 @@ class DisplayPanel(BasePanel):
         log.debug("_on_video_advanced: %s %d/%d",
                   event.key, event.cursor, event.frame_count)
         self._show_position(event.cursor, event.frame_count)
+
+    def _on_video_state(self, event: VideoStarted | VideoStopped) -> None:
+        """A video started or stopped somewhere — show the selected device's."""
+        log.info("_on_video_state: %s %s (showing %s)", type(event).__name__,
+                 event.key, self._picker.current_key())
+        if event.key == self._picker.current_key():
+            self._refresh_video_status()
 
     def _show_position(self, cursor: int, total: int) -> None:
         """Put a playback position on the slider; ``total == 0`` is no video."""

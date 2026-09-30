@@ -88,8 +88,7 @@ def test_gui_direct_entry_shows_window(monkeypatch: pytest.MonkeyPatch) -> None:
 # runs — the metrics thread kept polling, the panel stayed lit and /dev/sgN
 # stayed held.  gui always called ``app.quit()`` here; qtgui did not.
 #
-# Exercised on an uninitialised instance (the pattern in
-# test_qtgui_video_ticker): closeEvent touches only _tray / _ticker / _video.
+# Exercised on an uninitialised instance: closeEvent touches only _tray.
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -115,20 +114,11 @@ class _FakeTray:
         return self._divert
 
 
-class _StopCounter:
-    def __init__(self) -> None:
-        self.stopped = 0
-
-    def stop(self) -> None:
-        self.stopped += 1
-
-
 def _make_window(*, divert: bool):
     from trcc.ui.qtgui.app import MainWindow
 
     win = MainWindow.__new__(MainWindow)
     win._tray = _FakeTray(divert=divert)      # type: ignore[attr-defined]
-    win._ticker = _StopCounter()              # type: ignore[attr-defined]
     return win
 
 
@@ -165,7 +155,6 @@ def test_qtgui_genuine_close_quits_the_event_loop(
         "a genuine close did not quit the event loop — qapp.exec() never "
         "returns, so App.close() (panel blank + device release) never runs"
     )
-    assert win._ticker.stopped == 1              # type: ignore[attr-defined]
 
 
 def test_qtgui_close_to_tray_does_not_quit(
@@ -185,7 +174,6 @@ def test_qtgui_close_to_tray_does_not_quit(
 
     assert quits == [], "a close diverted to the tray must NOT quit the app"
     assert event.accepted is False
-    assert win._ticker.stopped == 0              # type: ignore[attr-defined]
 
 
 # ── The console scripts skip typer's root callback (and its logging) ──────

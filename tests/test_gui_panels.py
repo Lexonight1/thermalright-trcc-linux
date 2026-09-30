@@ -806,11 +806,10 @@ def test_status_panel_records_events(gui_app: App) -> None:
 # =========================================================================
 
 
-def test_main_window_constructs_and_includes_panels(gui_app: App) -> None:
+def test_main_window_constructs_and_includes_panels(make_window, gui_app: App) -> None:
     """The top-level MainWindow constructs and embeds the three panels."""
-    from trcc.ui.qtgui.app import MainWindow
 
-    window = MainWindow(gui_app)
+    window = make_window(gui_app)
     assert window is not None
     assert window.windowTitle()           # non-empty title set
     # Status bar gets wired during init for platform info + events
@@ -866,54 +865,97 @@ def _spy_on_dispatch(app: App) -> list[str]:
     return seen
 
 
-def test_the_window_restores_nothing_itself(gui_app: App) -> None:
+def test_the_window_restores_nothing_itself(make_window, gui_app: App) -> None:
     """Loading the saved display is the SESSION's (``App._prime``), for every
     UI.  qtgui restored its coldplug fleet in ``__init__`` and each hotplug in
     ``_on_connected`` — a second loader, which on the hotplug thread raced the
     session's for the same panel."""
     from trcc.core.events import DeviceConnected
     from trcc.core.models import Wire
-    from trcc.ui.qtgui.app import MainWindow
 
     lcd = _StubDevice(Wire.SCSI)
     gui_app.devices[lcd.key] = lcd            # type: ignore[assignment]
     seen = _spy_on_dispatch(gui_app)
 
-    window = MainWindow(gui_app)
+    window = make_window(gui_app)
     window._on_connected(DeviceConnected(key=lcd.key, resolution=(320, 320)))
 
     assert not [s for s in seen if s.startswith("RestoreDeviceState:")]
 
 
-def test_the_window_reads_what_the_session_already_shows(
-        gui_app: App, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The session primed before this window existed, so the ThemeLoaded and
-    VideoStarted events that start the ticker and fill ``_playing`` fired
-    before anything here listened.  The window READS both once instead."""
-    from pathlib import Path
-    from types import SimpleNamespace
+def _record_dispatches(app: App, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every Command name *app* is asked to run from here on, in order."""
+    sent: list[str] = []
+    real = app.dispatch
 
+    def _record(command: object) -> object:
+        sent.append(type(command).__name__)
+        return real(command)
+
+    monkeypatch.setattr(app, "dispatch", _record)
+    return sent
+
+
+def _with_a_theme(app: App) -> None:
+    """A connected panel showing a theme -- what the window's ticker drove."""
+    from pathlib import Path
+
+    from trcc.core.commands import SetRefreshInterval
     from trcc.core.models import Theme, Wire
-    from trcc.ui.qtgui.app import MainWindow
 
     lcd = _StubDevice(Wire.SCSI)
-    gui_app.devices[lcd.key] = lcd            # type: ignore[assignment]
-    gui_app.active_themes[lcd.key] = Theme(
+    app.devices[lcd.key] = lcd            # type: ignore[assignment]
+    app.active_themes[lcd.key] = Theme(
         path=Path("/nonexistent/primed"), name="primed", resolution=(320, 320),
         config={"elements": []},
     )
-    playback = SimpleNamespace(cursor=0, frame_count=10, fps=15,
-                               paused=False, loop=True)
-    monkeypatch.setattr(gui_app.media, "playback",
-                        lambda key: playback if key == lcd.key else None)
-
-    window = MainWindow(gui_app)
-
-    assert window._ticker.isActive()
-    assert window._playing == {lcd.key}
+    assert app.dispatch(SetRefreshInterval(seconds=1.0)).ok   # the minimum
 
 
-def test_main_window_repairs_a_stale_autostart_entry(gui_app: App) -> None:
+def test_the_window_sends_nothing_to_the_panel(
+    make_window, gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The App's MetricsLoop renders every panel; the window only shows.
+
+    qtgui ran its own RenderAndSend ticker beside it, so every frame went to
+    the panel twice (measured 2026-09-30: 5 -> 10 in 5 s at a 1 s refresh,
+    shown or hidden).  No session runs here, so any render is the window's.
+    """
+    _with_a_theme(gui_app)
+    sent = _record_dispatches(gui_app, monkeypatch)
+
+    window = make_window(gui_app)
+    window.show()
+    qtbot.wait(2300)          # two ticks of the 1 s interval the ticker ran at
+
+    assert not {"RenderAndSend", "TickDisplay"} & set(sent), sent
+
+
+def test_the_preview_renders_only_while_the_window_is_on_screen(
+    make_window, gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closing qtgui hides it to the tray; its preview kept rendering a full
+    frame every second for nobody (3 in 3 s, measured), and a window never
+    shown did the same -- which is what 8 leaked test windows did into later
+    tests.  It waits for a show, and stops at a hide."""
+    _with_a_theme(gui_app)
+    sent = _record_dispatches(gui_app, monkeypatch)
+
+    window = make_window(gui_app)
+    qtbot.wait(1300)
+    assert sent.count("BuildPreview") == 0, "rendered before it was ever shown"
+
+    window.show()
+    qtbot.waitUntil(lambda: sent.count("BuildPreview") >= 2, timeout=3000)
+
+    window.hide()
+    qtbot.wait(100)
+    after_hide = sent.count("BuildPreview")
+    qtbot.wait(1300)
+    assert sent.count("BuildPreview") == after_hide, "rendered while hidden"
+
+
+def test_main_window_repairs_a_stale_autostart_entry(make_window, gui_app: App) -> None:
     """qtgui was the ONE ui that could not reach ``RefreshAutostart``.
 
     Measured: cli, api and gui each had a dispatch site; qtgui had zero.  So a
@@ -923,19 +965,18 @@ def test_main_window_repairs_a_stale_autostart_entry(gui_app: App) -> None:
     its own window's ``__init__``; this is that, the same Command.
     """
     from trcc.core.commands import EnableAutostart
-    from trcc.ui.qtgui.app import MainWindow
 
     mgr = gui_app.platform.autostart()
     gui_app.dispatch(EnableAutostart())
     mgr.command = "/moved/bin/trcc"               # the install moved
     assert mgr.installed_command != mgr.command, "fixture drift: not stale"
 
-    MainWindow(gui_app)
+    make_window(gui_app)
 
     assert mgr.installed_command == "/moved/bin/trcc"
 
 
-def test_main_window_does_not_enable_autostart(gui_app: App) -> None:
+def test_main_window_does_not_enable_autostart(make_window, gui_app: App) -> None:
     """...and must NOT pick up gui's first-launch auto-enable.
 
     That half is a documented product decision for gui alone —
@@ -944,9 +985,8 @@ def test_main_window_does_not_enable_autostart(gui_app: App) -> None:
     behaviour it does not have."  Refresh repairs what the user already chose;
     enable would choose FOR them.  Pinned so the distinction cannot erode.
     """
-    from trcc.ui.qtgui.app import MainWindow
 
-    MainWindow(gui_app)
+    make_window(gui_app)
 
     assert not gui_app.platform.autostart().is_enabled(), (
         "opening the qtgui window opted the user into autostart"
@@ -2451,6 +2491,28 @@ def _stub_status(panel, *, cursor, frame_count):
     return sent
 
 
+def test_a_video_stopped_elsewhere_disables_the_scrubber(gui_app: App, qtbot) -> None:
+    """The slider followed frame advances only, so a video stopped from any
+    UI left it live at its last frame.  Start and stop are followed now, for
+    the selected device and no other."""
+    from trcc.core.events import VideoStarted, VideoStopped
+
+    panel = _display_panel(gui_app, qtbot)
+    panel._picker.current_key = lambda: "0402:3922"  # pyright: ignore[reportAttributeAccessIssue]
+    _stub_status(panel, cursor=4, frame_count=30)
+    gui_app.events.publish(VideoStarted(key="0402:3922", path="/v.mp4",
+                                        interval_ms=33, frame_count=30))
+    qtbot.waitUntil(panel._seek.isEnabled, timeout=1000)
+
+    _stub_status(panel, cursor=0, frame_count=0)       # no playback any more
+    gui_app.events.publish(VideoStopped(key="87ad:70db"))   # another device
+    qtbot.wait(100)
+    assert panel._seek.isEnabled(), "another device's stop reached this one"
+
+    gui_app.events.publish(VideoStopped(key="0402:3922"))
+    qtbot.waitUntil(lambda: not panel._seek.isEnabled(), timeout=1000)
+
+
 def test_no_playback_disables_the_scrubber(gui_app: App, qtbot) -> None:
     """Absence is a normal answer, not a failure.
 
@@ -3189,7 +3251,7 @@ def _two_device_app(tmp_path: Path):
     return app
 
 
-def test_every_panel_agrees_on_the_selected_device(
+def test_every_panel_agrees_on_the_selected_device(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """Picking a device in one panel must be what every other panel edits.
@@ -3210,15 +3272,13 @@ def test_every_panel_agrees_on_the_selected_device(
     """
     del qapp
     from trcc.core.commands import ListDevices
-    from trcc.ui.qtgui.app import MainWindow
 
     app = _two_device_app(tmp_path)
     try:
         keys = [d.key for d in app.dispatch(ListDevices()).devices]
         assert len(keys) == 2, f"fixture must offer two devices, got {keys}"
 
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
         watched = ["preview", "overlay", "themes", "masks", "display"]
 
         # The user picks the SECOND device.  Through the RAIL: it is the one
@@ -3249,7 +3309,7 @@ def test_every_panel_agrees_on_the_selected_device(
         app.close()
 
 
-def test_the_led_panel_keeps_its_own_device_selection(
+def test_the_led_panel_keeps_its_own_device_selection(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """An LCD pick must not blank the LED panel.
@@ -3260,19 +3320,17 @@ def test_the_led_panel_keeps_its_own_device_selection(
     push a key the LED picker cannot show.
     """
     del qapp
-    from trcc.ui.qtgui.app import MainWindow
 
     app = _two_device_app(tmp_path)
     try:
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
         assert (window._panels["led"].selection
                 is not window._panels["preview"].selection)
     finally:
         app.close()
 
 
-def test_the_sidebar_lists_every_attached_device(
+def test_the_sidebar_lists_every_attached_device(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """The devices found are listed on the side, like ``ui/gui``.
@@ -3286,13 +3344,11 @@ def test_the_sidebar_lists_every_attached_device(
     """
     del qapp
     from trcc.core.commands import ListDevices
-    from trcc.ui.qtgui.app import MainWindow
 
     app = _two_device_app(tmp_path)
     try:
         keys = {d.key for d in app.dispatch(ListDevices()).devices}
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
         assert window._sidebar.device_keys() == keys, (
             f"rail lists {window._sidebar.device_keys()}, attached {keys}"
         )
@@ -3300,7 +3356,7 @@ def test_the_sidebar_lists_every_attached_device(
         app.close()
 
 
-def test_choosing_a_device_in_the_rail_drives_every_panel(
+def test_choosing_a_device_in_the_rail_drives_every_panel(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """Clicking the rail is what selects the device — as in ``ui/gui``.
@@ -3311,13 +3367,11 @@ def test_choosing_a_device_in_the_rail_drives_every_panel(
     """
     del qapp
     from trcc.core.commands import ListDevices
-    from trcc.ui.qtgui.app import MainWindow
 
     app = _two_device_app(tmp_path)
     try:
         keys = [d.key for d in app.dispatch(ListDevices()).devices]
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
 
         window._sidebar.choose(keys[1])
 
@@ -3333,7 +3387,7 @@ def test_choosing_a_device_in_the_rail_drives_every_panel(
         app.close()
 
 
-def test_choosing_an_lcd_on_the_rail_leaves_the_led_panel_alone(
+def test_choosing_an_lcd_on_the_rail_leaves_the_led_panel_alone(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """Rail choices route by ``DeviceEntry.kind``, in BOTH directions.
@@ -3349,7 +3403,6 @@ def test_choosing_an_lcd_on_the_rail_leaves_the_led_panel_alone(
     """
     del qapp
     from trcc.core.commands import ListDevices
-    from trcc.ui.qtgui.app import MainWindow
 
     app = _fleet_app(tmp_path, _MIXED_FLEET)
     try:
@@ -3360,8 +3413,7 @@ def test_choosing_an_lcd_on_the_rail_leaves_the_led_panel_alone(
             f"fleet must mix kinds: lcd={lcds} led={leds}"
         )
 
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
         led_panel = window._panels["led"]
         preview = window._panels["preview"]
 
@@ -3384,7 +3436,7 @@ def test_choosing_an_lcd_on_the_rail_leaves_the_led_panel_alone(
         app.close()
 
 
-def test_the_device_preview_is_always_on_screen(
+def test_the_device_preview_is_always_on_screen(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """The preview is chrome, not a destination.
@@ -3399,12 +3451,10 @@ def test_the_device_preview_is_always_on_screen(
     Asserted for EVERY destination, because "always" is the whole property.
     """
     del qapp
-    from trcc.ui.qtgui.app import MainWindow
 
     app = _two_device_app(tmp_path)
     try:
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
         surface = window._preview_surface
         for name in window._panels:
             window._sidebar.selected.emit(name)
@@ -3415,7 +3465,7 @@ def test_the_device_preview_is_always_on_screen(
         app.close()
 
 
-def test_the_preview_is_not_rendered_twice(
+def test_the_preview_is_not_rendered_twice(make_window,
     qapp: object, tmp_path: Path, qtbot,
 ) -> None:
     """One surface, not one per place that wants to show it.
@@ -3426,13 +3476,11 @@ def test_the_preview_is_not_rendered_twice(
     explicitly rules out.
     """
     del qapp
-    from trcc.ui.qtgui.app import MainWindow
     from trcc.ui.qtgui.preview_surface import PreviewSurface
 
     app = _two_device_app(tmp_path)
     try:
-        window = MainWindow(app)
-        qtbot.addWidget(window)
+        window = make_window(app)
         surfaces = window.findChildren(PreviewSurface)
         assert len(surfaces) == 1, (
             f"{len(surfaces)} preview surfaces in one window — each one "

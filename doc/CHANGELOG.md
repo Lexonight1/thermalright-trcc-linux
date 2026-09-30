@@ -78,6 +78,10 @@
   selected stays, as there. Your current page is kept when you upgrade.
 - **The LED preview goes dark when the LEDs are switched off.** It kept
   showing them lit while the cooler was dark.
+- **The Qt gui sends each frame to your screen once.** It ran a render loop
+  of its own beside the App's, so every frame went out twice while it was
+  open — even when closed to the tray. Its preview also kept rendering once
+  a second after the window was closed; it now pauses until you open it again.
 - **Clocks show the format the theme was made with.** Themes designed with a
   12-hour clock showed 24-hour. The 12-hour clock now reads `02:58 PM`, as in
   the Windows app, and keeps its AM/PM on systems set to a language whose

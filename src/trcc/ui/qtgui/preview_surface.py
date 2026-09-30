@@ -32,6 +32,7 @@ from ...core.logs import per_frame
 from ..presentation.lcd_panel import lcd_panel_for
 from ..qt_periodic import PeriodicUpdater
 from .assets import Assets
+from .base import TicksWhileShown
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
@@ -53,7 +54,7 @@ PREVIEW_MAX = 480
 FRAME_EDGE = 500
 
 
-class PreviewSurface(QWidget):
+class PreviewSurface(TicksWhileShown, QWidget):
     """Live render of the selected device, always on screen."""
 
     #: (width, height) of the render that just landed — the DEVICE's canvas,
@@ -99,7 +100,7 @@ class PreviewSurface(QWidget):
         self.set_placeholder("Pick a device on the left to see its output.")
 
         selection.changed.connect(self._on_device_changed)
-        self._updates.start(REFRESH_MS, self.refresh)
+        self._start_updates(REFRESH_MS, self.refresh)
         # A frame on the wire means state changed somewhere -- another UI, the
         # API, a driver -- so re-render rather than wait for the next tick.
         self._bus.frame_sent.connect(
