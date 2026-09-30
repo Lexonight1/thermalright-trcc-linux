@@ -309,6 +309,11 @@ def _render_all(root: Path, *, tweak: dict[str, Any] | None = None,
         s.mask_position = (7, 11)
         s.brightness = int(tweak.get("brightness", 100))
         s.overlay_enabled = not tweak.get("disable_overlay")
+        # Pinned, not defaulted: every fixture element sits at x=20, inside the
+        # Dynamic Island's 0..104 strip, so once the App's default became
+        # style 2 the island covered them on 1600x720 and "overlay off" moved
+        # nothing there.  Each arm must change ONE input.
+        s.split_mode = 0
 
         theme = themes[origin]
         if tweak.get("other_background"):

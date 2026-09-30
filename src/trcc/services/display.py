@@ -78,8 +78,12 @@ def _is_widescreen_split(visual_size: tuple[int, int]) -> bool:
     """True when ``visual_size`` is a widescreen panel that supports
     the Dynamic Island split overlay.  Gates ``_composite_split_overlay``
     so non-widescreen devices skip the load+composite entirely.
+
+    Per-frame logger: it ran only while ``split_mode`` was non-zero until the
+    default became 2, and from then on EVERY panel evaluates it every frame
+    (``test_diagnostics`` measured 1.00 record/frame at default verbosity).
     """
-    log.debug("_is_widescreen_split: visual_size=%s", visual_size)
+    frame_log.debug("_is_widescreen_split: visual_size=%s", visual_size)
     return visual_size in _WIDESCREEN_SPLIT_RESOLUTIONS
 
 

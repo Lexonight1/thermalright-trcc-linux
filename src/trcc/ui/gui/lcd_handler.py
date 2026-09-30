@@ -360,20 +360,21 @@ class LCDHandler(BaseHandler):
         self._w['device_info_label'].setText(text)
 
 
+    # The three ``_restore_*`` below are READ only, like ``_restore_slideshow``.
+    # Each used to write the value it had just read back to the App, so merely
+    # OPENING the gui sent SetBrightness / SetOrientation / SetSplitMode for
+    # every panel (measured: 6 for a 2-panel fleet; qtgui sent none) -- an
+    # event to every other UI, and a stale overwrite if one changed it
+    # between the read and the write.  Opening a UI changes nothing.
+
     def _restore_brightness(self, ds: LcdSnapshotResult) -> None:
         self._pm.brightness_level = ds.brightness
-        self.log.info("Restoring brightness: %d%%", self._pm.brightness_level)
-        self._app.dispatch(SetBrightness(
-            key=self._device_key, percent=self._pm.brightness_level,
-        ))
+        self.log.info("Showing brightness: %d%%", self._pm.brightness_level)
 
     def _restore_rotation(self, ds: LcdSnapshotResult) -> None:
         rotation_index = ds.orientation // 90
         rotation = rotation_index * 90
         self.log.debug("_restore_rotation: rotation=%d", rotation)
-        self._app.dispatch(SetOrientation(
-            key=self._device_key, degrees=rotation,
-        ))
         self._sync_rotation_state(rotation)
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
@@ -384,10 +385,9 @@ class LCDHandler(BaseHandler):
     def _restore_split_mode(
         self, ds: LcdSnapshotResult, w: int, h: int,
     ) -> None:
-        mode = self._pm.apply_split_mode(ds.split_mode, (w, h))
-        self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s mode=%d",
-                       self._pm.split_mode, self._pm.ldd_is_split, mode)
-        self._app.dispatch(SetSplitMode(key=self._device_key, mode=mode))
+        self._pm.apply_split_mode(ds.split_mode, (w, h))
+        self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s",
+                       self._pm.split_mode, self._pm.ldd_is_split)
 
     def _restore_slideshow(self, ds: LcdSnapshotResult) -> None:
         """Show the saved slideshow in the local-theme panel — READ only.

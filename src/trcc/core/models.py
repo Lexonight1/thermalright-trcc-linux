@@ -704,7 +704,12 @@ class DeviceSettings:
     # Split-mode (Dynamic Island) style for 1600×720 widescreen panels.
     # 0 = off (no split overlay), 1/2/3 = style A/B/C.  Ignored by
     # rendering on devices whose profile.resolution isn't widescreen.
-    split_mode: int = 0
+    # Default 2 until someone chooses: the C# starts at style 2
+    # (``FormLCD.cs:232`` ``myLddVal = 2``).  It was 0 here, and only the gui
+    # made it 2 -- by WRITING it on open -- so a panel driven by qtgui, the
+    # CLI or the API showed no Dynamic Island, and the gui overrode a chosen
+    # "off".  A saved value, 0 included, loads unchanged.
+    split_mode: int = 2
     # User-supplied mask path that overrides the active theme's mask.
     # None = use the theme's bundled mask (or no mask if the theme has none).
     mask_path: str | None = None

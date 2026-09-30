@@ -755,3 +755,19 @@ def test_read_sensors_declares_the_unit_its_values_are_in(fake_platform) -> None
     by_id = {r.sensor_id: r for r in app.dispatch(ReadSensors()).readings}
     assert by_id["cpu:temp"].value == 42.0
     assert by_id["cpu:temp"].unit == "°C"
+
+
+
+def test_split_mode_starts_at_style_2_and_a_chosen_off_survives_a_restart(
+    fake_platform,
+) -> None:
+    """The C# starts at style 2 (``FormLCD.cs:232``).  The App used to start at
+    0, and only the gui made it 2 -- by writing it on open.  0 stays "off"."""
+    from trcc.core.commands import SetSplitMode
+
+    key = "87ad:70db"
+    assert App(fake_platform).settings.for_device(key).split_mode == 2
+
+    App(fake_platform).dispatch(SetSplitMode(key=key, mode=0))
+
+    assert App(fake_platform).settings.for_device(key).split_mode == 0

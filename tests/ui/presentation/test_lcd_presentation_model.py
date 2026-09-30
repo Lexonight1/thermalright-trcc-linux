@@ -119,30 +119,27 @@ def test_progress_fraction() -> None:
 # ── Split-mode policy (B4) ────────────────────────────────────────────
 
 
-def test_apply_split_mode_split_capable_panel() -> None:
-    """A split-capable resolution: ldd_is_split True, dispatch the chosen mode."""
+def test_apply_split_mode_shows_the_apps_mode_on_a_split_capable_panel() -> None:
     pm = LcdPresentationModel("87ad:70db")
-    mode = pm.apply_split_mode(3, (1920, 462))      # a SPLIT_MODE resolution
+    pm.apply_split_mode(3, (1920, 462))              # a SPLIT_MODE resolution
     assert pm.ldd_is_split is True
     assert pm.split_mode == 3
-    assert mode == 3
 
 
-def test_apply_split_mode_defaults_to_two_when_unset() -> None:
+def test_apply_split_mode_shows_a_chosen_off_as_off() -> None:
+    """It used to turn 0 into 2 -- so a user who chose "off" in qtgui or the
+    CLI saw style 2 in the gui, which then WROTE 2 back over their choice."""
     pm = LcdPresentationModel("87ad:70db")
-    mode = pm.apply_split_mode(0, (1280, 480))       # persisted 0 → default 2
-    assert pm.split_mode == 2
+    pm.apply_split_mode(0, (1280, 480))
+    assert pm.split_mode == 0
     assert pm.ldd_is_split is True
-    assert mode == 2
 
 
-def test_apply_split_mode_non_split_panel_dispatches_zero() -> None:
-    """A non-split resolution: ldd_is_split False, dispatch mode 0."""
+def test_apply_split_mode_non_split_panel_has_no_editor() -> None:
     pm = LcdPresentationModel("0402:3922")
-    mode = pm.apply_split_mode(3, (320, 320))         # not a split resolution
+    pm.apply_split_mode(3, (320, 320))                # not a split resolution
     assert pm.ldd_is_split is False
-    assert pm.split_mode == 3                          # still recorded
-    assert mode == 0                                   # but 0 is sent
+    assert pm.split_mode == 3                          # shown as the App has it
 
 
 class _FakeComposer:

@@ -27,6 +27,15 @@
   `--tls-cert` and `--tls-key`. Without `--tls` nothing changes. Adds the
   `cryptography` package as a dependency.
 
+### Changed
+
+- **Widescreen (1600×720) panels show the Dynamic Island at style 2 until you
+  choose**, as the Windows app does. Before, only the Windows-style gui turned
+  it on, by rewriting the setting every time it opened; the Qt gui, the CLI and
+  the API left it off. A style you chose, "off" included, is kept.
+- **Opening the gui no longer rewrites brightness, orientation or split mode**
+  for each panel. It shows what the App has and changes nothing.
+
 ## v9.10.4
 
 **A correction first: v9.10.3 said two identical coolers were two devices.

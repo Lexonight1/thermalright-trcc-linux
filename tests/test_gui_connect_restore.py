@@ -173,3 +173,28 @@ def test_themes_landing_show_the_primed_theme_on_the_active_panel_only(
             theme.resolve() if active else None)
     finally:
         app.close()
+
+
+def test_connecting_a_panel_in_the_gui_writes_nothing_back(handler) -> None:
+    """Opening a UI changes nothing on the panel.  Measured through the App's
+    log before this: the gui sent SetBrightness / SetOrientation / SetSplitMode
+    for every panel on open (6 for 2 panels), qtgui none.  It must still SHOW
+    what the App has."""
+    from trcc.core.commands import SetBrightness, SetOrientation, SetSplitMode
+
+    h, app, _decoded = handler
+    app.dispatch(SetBrightness(key=_KEY, percent=37))
+    sent: list[str] = []
+    real = app.dispatch
+
+    def spy(cmd):
+        sent.append(type(cmd).__name__)
+        return real(cmd)
+    app.dispatch = spy  # type: ignore[method-assign]
+
+    h.apply_device_config(_KEY, *_RES)
+
+    writes = [n for n in sent if n in {c.__name__ for c in (
+        SetBrightness, SetOrientation, SetSplitMode)}]
+    assert writes == [], f"opening the panel wrote {writes}"
+    assert h._pm.brightness_level == 37

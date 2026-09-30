@@ -131,18 +131,16 @@ class LcdPresentationModel:
         return (cursor / total) if total else 0.0
 
     def apply_split_mode(
-        self, persisted_mode: int, lcd_size: tuple[int, int],
-    ) -> int:
-        """Resolve persisted split mode for a geometry; return the dispatch mode.
+        self, app_mode: int, lcd_size: tuple[int, int],
+    ) -> None:
+        """Show the App's split mode, and whether this panel has the editor.
 
-        Sets ``split_mode`` (default 2 when unset) and ``ldd_is_split`` (whether
-        this panel's resolution supports the split editor), and returns the mode
-        to send the device: the chosen mode on a split-capable panel, else 0.
+        READ only.  It used to default 0 to 2 and hand back a mode for the gui to
+        WRITE on open; the default now lives in ``DeviceSettings`` (2, as the C#
+        starts), so 0 here is a user's "off" and is shown as off.  The App's
+        render already ignores split mode on a panel that is not widescreen.
         """
-        self.split_mode = persisted_mode or 2
+        self.split_mode = app_mode
         self.ldd_is_split = lcd_size in SPLIT_MODE_RESOLUTIONS
-        dispatch_mode = self.split_mode if self.ldd_is_split else 0
-        log.info("apply_split_mode: %s persisted=%d size=%dx%d → split_mode=%d "
-                 "ldd_is_split=%s dispatch=%d", self.device_key, persisted_mode,
-                 *lcd_size, self.split_mode, self.ldd_is_split, dispatch_mode)
-        return dispatch_mode
+        log.info("apply_split_mode: %s mode=%d size=%dx%d ldd_is_split=%s",
+                 self.device_key, app_mode, *lcd_size, self.ldd_is_split)

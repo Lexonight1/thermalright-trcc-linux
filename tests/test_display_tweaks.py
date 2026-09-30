@@ -132,12 +132,12 @@ def test_set_split_mode_accepts_valid(app: App, mode: int) -> None:
 
 @pytest.mark.parametrize("bad", [-1, 4, 5, 99, 100])
 def test_set_split_mode_rejects_invalid(app: App, bad: int) -> None:
+    before = app.settings.for_device(_KEY).split_mode
     result = app.dispatch(SetSplitMode(key=_KEY, mode=bad))
 
     assert result.ok is False
     assert "0 (off), 1, 2, or 3" in result.message
-    # Default unchanged
-    assert app.settings.for_device(_KEY).split_mode == 0
+    assert app.settings.for_device(_KEY).split_mode == before   # unchanged
 
 
 def test_set_split_mode_message_when_disabled(app: App) -> None:
@@ -218,6 +218,10 @@ def _levita(tmp_path: Path, sub: int):
 def _island_assets(levita: App, mode: int) -> list[str]:
     """Build one frame in split ``mode`` and return the island asset(s) loaded."""
     loaded: list[str] = []
+    # Cold cache: the App starts at style 2, so the setup's frames may have
+    # loaded that asset already, and a warm cache would hide which one the
+    # mode selects.
+    levita.display._split_cache.clear()
     real = levita.display._load_split_asset
 
     def spy(name: str):
