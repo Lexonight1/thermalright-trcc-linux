@@ -116,7 +116,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/led/memory-ratio` | `MemoryRatioResult` | Set the DDR memory multiplier (1, 2, or 4). |
 | `POST /devices/{key}/led/mode` | `LedColorsResult` | — |
 | `POST /devices/{key}/led/render` | `LedColorsResult` | One tick — engine reads Settings, advances counters, sends a frame. |
-| `POST /devices/{key}/led/select-zone` | `LedColorsResult` | Pick the currently-active zone. |
+| `POST /devices/{key}/led/select-zone` | `LedColorsResult` | Select exactly this zone: the page a page-style cooler shows, or the one zone a PA120/LF10 edit reaches. |
 | `GET /devices/{key}/led/snapshot` | `LedSnapshotResult` | Return the persisted LED state for one device. |
 | `POST /devices/{key}/led/temp-source` | `LedColorsResult` | — |
 | `POST /devices/{key}/led/test-mode` | `LedColorsResult` | — |

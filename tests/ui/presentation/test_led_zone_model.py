@@ -71,14 +71,16 @@ def test_carousel_last_zone_cannot_be_disabled() -> None:
     assert m.enabled == [True, False, False, False]   # kept on
 
 
-def test_carousel_off_collapses_to_selected() -> None:
+def test_carousel_off_keeps_the_lowest_selected_page() -> None:
+    """FormLED ``buttonLB_Click`` (:2600) keeps the lowest selected page, and
+    so does the App's ``SetLedZoneSync``; the panel shows the same."""
     m = _model(4)
     m.click_zone(2)                   # radio-select zone 2
     m.toggle_carousel(True)
     m.click_zone(0)                   # multi-select adds zone 0 → [T,F,T,F]
     assert m.enabled == [True, False, True, False]
-    m.toggle_carousel(False)         # collapse back to the selected zone
-    assert m.enabled == [False, False, True, False]
+    m.toggle_carousel(False)
+    assert (m.enabled, m.selected) == ([True, False, False, False], 0)
 
 
 # ── select-all style (PA120/LF10, 2/7) — independent multi-select ─────────

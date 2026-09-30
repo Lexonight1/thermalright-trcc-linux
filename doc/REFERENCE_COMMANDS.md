@@ -924,7 +924,7 @@ Compute one LED frame from current settings + sensors and send it.
 
 ### `SelectZone`
 
-Pick the active zone (UI selection state).
+Select exactly this zone: the page a page-style cooler shows, or the one zone a PA120/LF10 edit reaches.
 
 *Command* → `LedColorsResult`
 

@@ -73,14 +73,30 @@ class LedDeviceSettings:
     # Multi-zone state (only populated for zone_count > 1)
     zones: list[LedZoneSettings] = field(default_factory=list)
 
-    # Zone-sync carousel (rotate the lit zone every N ticks)
+    # The zone/page selection — FormLED's ``LunBo1..4``, the ONE fact.  With
+    # the carousel (``zone_sync``) off it holds the picked page; on, the pages
+    # it rotates.  On a select-all style (PA120/LF10) it is the zones an edit
+    # reaches, and ``zone_sync`` means "every zone".  Empty = the first, as
+    # FormLED starts (``LunBo1 = true``).
     zone_sync: bool = False
     zone_sync_zones: list[bool] = field(default_factory=list)
     zone_sync_interval_ticks: int = 13     # ≈ 2 s at default ticker cadence
-    selected_zone: int = 0
 
     # Test mode — cycle through 4 reference colors
     test_mode: bool = False
+
+    @property
+    def selected_zone(self) -> int:
+        """The picked zone or page: the first in the mask, as FormLED shows
+        the first ``LunBoN`` (FormLED.cs:3540); 0 when none.
+
+        Derived, not stored.  It was a second field beside the mask, each
+        Command wrote one of the two, and the panel showed one page while the
+        cooler showed another.
+        """
+        zone = next((i for i, on in enumerate(self.zone_sync_zones) if on), 0)
+        frame_log.debug("selected_zone: %s → %d", self.zone_sync_zones, zone)
+        return zone
 
     # Sensor linkage (TEMP_LINKED / LOAD_LINKED choose source per global / zone)
     temp_source: SensorLink = "cpu"

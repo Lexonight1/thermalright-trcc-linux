@@ -160,7 +160,10 @@ class LedZoneModel:
             # off restores the zones the user had selected.
             pass
         elif not on:
-            # Page style: circulate off → collapse to the single selected page.
-            # (Circulate on leaves the current multi-select untouched.)
+            # Page style: circulate off keeps the LOWEST selected page, as
+            # ``SetLedZoneSync`` does in the App (FormLED ``buttonLB_Click``).
+            # Circulate on leaves the current multi-select untouched.
+            self._selected = next(
+                (j for j, e in enumerate(self._enabled) if e), 0)
             self._enabled = [j == self._selected for j in range(self._zone_count)]
         return ZoneEmit("carousel", on=on)

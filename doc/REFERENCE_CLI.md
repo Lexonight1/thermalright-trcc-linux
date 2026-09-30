@@ -1235,7 +1235,7 @@ trcc led render [OPTIONS] KEY
 
 ### `trcc led select-zone`
 
-Set the currently-selected zone (UI state).
+Select exactly this zone: the page a page-style cooler shows, or the one zone a PA120/LF10 edit reaches.
 
 ```bash
 trcc led select-zone KEY ZONE

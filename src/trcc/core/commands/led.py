@@ -207,14 +207,14 @@ class RenderLed(Command[LedColorsResult]):
     ) -> int:
         """Which metric PAGE a multi-page segment display shows (C# LunBo).
 
-        CPU temp / CPU % / GPU temp / GPU %, and so on.  The selector buttons
-        persist the choice as ``selected_zone``; with the page carousel on (and
-        not a select-all style) it rotates the enabled pages instead.
+        CPU temp / CPU % / GPU temp / GPU %, and so on.  With the carousel off
+        the page picked on the panel (``selected_zone``, the first in the mask);
+        on (and not a select-all style), the carousel rotates the mask's pages.
 
         Gated on the display actually having more than one page, NOT on
         ``zones`` being populated — which it never is for page-style devices.
-        That was the bug: selecting a metric set ``selected_zone`` and the
-        render ignored it and stayed on page 0.
+        That was the bug: selecting a metric page changed nothing and the
+        render stayed on page 0.
 
         **Advances ``runtime``** when the carousel is live and this is a loop
         tick.  Only the animation loop (``advance=True``) may: reactive
@@ -518,6 +518,19 @@ def _write_edit_zones(app: App, key: str, **fields: Any) -> list[int]:
     return zones
 
 
+def _style_of(app: App, key: str) -> LedStyle | None:
+    """The connected LED's resolved style, or None before its handshake."""
+    try:
+        device = app.get(key)
+    except DeviceNotFoundError:
+        log.debug("_style_of: %s is not attached", key)
+        return None
+    handshake = getattr(device, "led_handshake", None)
+    style = handshake.style if handshake is not None else None
+    log.debug("_style_of: %s → %s", key, style)
+    return style
+
+
 def _multi_zone_count(app: App, key: str) -> int | None:
     """Number of colour zones for a connected multi-zone LED, else None.
 
@@ -527,12 +540,7 @@ def _multi_zone_count(app: App, key: str) -> int | None:
     """
     log.debug("_multi_zone_count: app=%s key=%s", app, key)
     from ...services.led_segment import get_display
-    try:
-        device = app.get(key)
-    except DeviceNotFoundError:
-        return None
-    handshake = getattr(device, "led_handshake", None)
-    style = handshake.style if handshake is not None else None
+    style = _style_of(app, key)
     if style is None:
         return None
     display = get_display(style)
@@ -808,7 +816,12 @@ class SetLedZoneBrightness(Command[LedColorsResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetLedZoneSync(Command[LedColorsResult]):
-    """Enable/disable the zone-sync carousel for a device."""
+    """Enable/disable the zone-sync carousel for a device.
+
+    Switching it off on a page style keeps one page, the lowest selected, as
+    FormLED does (``buttonLB_Click``, :2600).  Not on a select-all style
+    (PA120/LF10), where it means "every zone" and the zones stay as picked.
+    """
     key: str
     enabled: bool
 
@@ -818,6 +831,11 @@ class SetLedZoneSync(Command[LedColorsResult]):
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
         app.settings.set_led_zone_sync(self.key, self.enabled)
+        if not self.enabled and not is_select_all(_style_of(app, self.key)):
+            s = app.settings.for_led(self.key)
+            first = s.selected_zone
+            app.settings.set_led_zone_sync_zones(
+                self.key, [i == first for i in range(len(s.zone_sync_zones))])
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         runtime.zone_sync_ticks = 0
         runtime.zone_sync_current = 0
@@ -878,21 +896,29 @@ class SetLedZoneSyncZones(Command[LedColorsResult]):
 
 @dataclass(frozen=True, slots=True)
 class SelectZone(Command[LedColorsResult]):
-    """Pick the active zone (UI selection state)."""
+    """Select exactly this zone: the page a page-style cooler shows, or the
+    one zone a PA120/LF10 edit reaches.
+
+    Sets the mask to that zone alone, as a FormLED zone click does with the
+    carousel off (:2812).  It used to set a separate ``selected_zone`` and
+    leave the mask, so the panel's buttons and the cooler disagreed.
+    """
     key: str
     zone: int
 
     def execute(self, app: App) -> LedColorsResult:
-        log.debug("execute: app=%s", app)
+        log.info("SelectZone %s: zone=%d", self.key, self.zone)
         if (why := _not_an_led(app, self.key)) is not None:
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
-        try:
-            app.settings.set_led_selected_zone(self.key, self.zone)
-        except ValueError as e:
+        if self.zone < 0:
             return LedColorsResult(
-                ok=False, key=self.key, colors=[], message=str(e),
+                ok=False, key=self.key, colors=[],
+                message=f"zone must be >= 0, got {self.zone}",
             )
+        size = max(len(app.settings.for_led(self.key).zone_sync_zones), self.zone + 1)
+        app.settings.set_led_zone_sync_zones(
+            self.key, [i == self.zone for i in range(size)])
         _publish_led_settings_changed(app, self.key)
         return LedColorsResult(
             ok=True, key=self.key, colors=[],

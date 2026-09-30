@@ -294,7 +294,8 @@ def zone_sync_zones(key: str, body: ZoneSyncZonesRequest,
 @router.post("/select-zone")
 def select_zone(key: str, body: LedSelectZoneRequest,
                 request: Request) -> LedColorsResult:
-    """Pick the currently-active zone."""
+    """Select exactly this zone: the page a page-style cooler shows, or the
+    one zone a PA120/LF10 edit reaches."""
     log.info(
         "api POST /devices/{key}/led/select-zone: key=%s zone=%s",
         key, body.zone,

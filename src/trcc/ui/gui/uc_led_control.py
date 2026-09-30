@@ -1364,12 +1364,11 @@ class UCLedControl(QWidget):
         else:
             self._carousel_interval.setVisible(carousel and self._zone_count > 1)
         self._sync_zone_buttons()
+        # The App decides what the mask becomes (``SetLedZoneSync`` keeps the
+        # lowest page when the carousel goes off); the panel used to decide it
+        # here and send it, a choice no other UI made.  An empty mask is the
+        # first page, as FormLED starts, so nothing needs seeding.
         self.carousel_changed.emit(carousel)
-        # toggle_carousel recomputed the enabled mask (on → keep current
-        # multi-select; off → collapse to the selected one); persist it so the
-        # carousel seeds with at least the selected page instead of an empty
-        # mask (which would leave it stuck on page 0).
-        self.carousel_zones_changed.emit(self._zones.enabled)
 
     def _on_carousel_interval_changed(self, text: str = ""):
         """Handle carousel interval input change (C# textBoxTimer_TextChanged)."""

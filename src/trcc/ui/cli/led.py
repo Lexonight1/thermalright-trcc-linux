@@ -273,7 +273,8 @@ def select_zone(
     key: str = typer.Argument(..., help="LED device key"),
     zone: int = typer.Argument(..., help="Zone index to select"),
 ) -> None:
-    """Set the currently-selected zone (UI state)."""
+    """Select exactly this zone: the page a page-style cooler shows, or the
+    one zone a PA120/LF10 edit reaches."""
     log.info("cli led select-zone: key=%s zone=%s", key, zone)
     dispatch_echo(SelectZone(key=key, zone=zone))
 

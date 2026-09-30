@@ -39,6 +39,10 @@
   matching API routes) reach the selected zones**, as the panel's controls do
   in the Windows app. With "select all" on, which is now how these coolers
   start, that is every zone.
+- **`trcc led select-zone` (and the API route) selects exactly that zone.** On
+  a cooler with metric pages it is the page shown; on a PA120 or LF10, colour,
+  effect and brightness then reach that zone alone. It did nothing on those
+  two before.
 
 ### Fixed
 
@@ -51,6 +55,11 @@
   app. Coolers you have already set up keep their selection.
 - **Switching a PA120 or LF10 off turns off the selected zones**, not always
   the whole cooler.
+- **LED coolers with metric pages show the page you picked.** Clicking a page
+  could leave other pages lit on the panel's buttons, a page chosen from the
+  command line or the API was not the one shown, and turning the rotation off
+  kept a different page from the Windows app. Now the lowest page you had
+  selected stays, as there. Your current page is kept when you upgrade.
 - **The LED preview goes dark when the LEDs are switched off.** It kept
   showing them lit while the cooler was dark.
 - **Switching the overlay off in the gui no longer deletes it.** The switch

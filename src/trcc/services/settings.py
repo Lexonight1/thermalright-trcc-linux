@@ -112,12 +112,15 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #   3                     a multi-zone LED (PA120/LF10) is driven by its zones
 #                         alone; up to 2 the global brightness and on/off were
 #                         applied on top.  ``_migrate_led`` folds them in.
+#   4                     an LED's selected zone/page is the first in its mask
+#                         (``zone_sync_zones``); ``selected_zone`` was a second,
+#                         stored field.  ``_migrate_led`` writes it into the mask.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 class Settings:
@@ -626,16 +629,6 @@ class Settings:
             self.for_led(key).zone_sync_zones = list(zones)
             self._save()
 
-    def set_led_selected_zone(self, key: str, zone: int) -> None:
-        """Pick the active zone — UIs use this when the user clicks a fan/strip."""
-        log.info("set_led_selected_zone: key=%s zone=%d", key, zone)
-        with self._lock:
-            settings = self.for_led(key)
-            if zone < 0:
-                raise ValueError(f"selected_zone must be >= 0, got {zone}")
-            settings.selected_zone = zone
-            self._save()
-
     def set_led_segment_on(self, key: str, index: int, on: bool) -> None:
         """Flip one segment on/off (segment-display devices only)."""
         log.info("set_led_segment_on: key=%s index=%d on=%s", key, index, on)
@@ -997,6 +990,11 @@ def _migrate_device(
 def _migrate_led(data: dict[str, Any], schema: int, key: str) -> dict[str, Any]:
     """Bring one persisted LED device dict up to :data:`_SCHEMA_VERSION`.
 
+    **v3 → v4 — the selection is the mask alone.**  A page-style cooler with
+    the carousel off showed its stored ``selected_zone``; the mask becomes that
+    page, so it shows the same page.  With the carousel on the mask is already
+    what rotates, and a multi-zone cooler never read ``selected_zone``.
+
     **v2 → v3 — a multi-zone device is driven by its zones alone.**  Up to v2
     the render multiplied a PA120/LF10's zones by the global brightness and
     switched them all off with the global switch; from v3 it uses the zones
@@ -1006,20 +1004,26 @@ def _migrate_led(data: dict[str, Any], schema: int, key: str) -> dict[str, Any]:
     of rounding reached 3).  A device without zones is not multi-zone, and
     unchanged.
     """
-    zones = data.get("zones")
-    if schema >= 3 or not isinstance(zones, list) or not zones:
-        return data
-    brightness = data.get("brightness", 65)
-    on = data.get("global_on", True)
+    zones: list[Any] = data["zones"] if isinstance(data.get("zones"), list) else []
+    zoned = bool(zones)
     out = dict(data)
-    out["zones"] = [
-        {**z, "brightness": round(z.get("brightness", 65) * brightness / 100),
-         "on": bool(z.get("on", True) and on)}
-        for z in zones if isinstance(z, dict)
-    ]
-    log.info("_migrate_led: %s schema %d→3 — folded global brightness %s%% and "
-             "switch %s into %d zone(s)", key, schema, brightness,
-             "on" if on else "off", len(out["zones"]))
+    if schema < 3 and zoned:
+        brightness = data.get("brightness", 65)
+        on = data.get("global_on", True)
+        out["zones"] = [
+            {**z, "brightness": round(z.get("brightness", 65) * brightness / 100),
+             "on": bool(z.get("on", True) and on)}
+            for z in zones if isinstance(z, dict)
+        ]
+        log.info("_migrate_led: %s schema %d→3 — folded global brightness %s%% "
+                 "and switch %s into %d zone(s)", key, schema, brightness,
+                 "on" if on else "off", len(out["zones"]))
+    if schema < 4 and not zoned and not data.get("zone_sync"):
+        page = data.get("selected_zone", 0)
+        mask = data.get("zone_sync_zones") or []
+        out["zone_sync_zones"] = [i == page for i in range(max(len(mask), page + 1))]
+        log.info("_migrate_led: %s schema %d→4 — page %d is now the mask %s",
+                 key, schema, page, out["zone_sync_zones"])
     return out
 
 

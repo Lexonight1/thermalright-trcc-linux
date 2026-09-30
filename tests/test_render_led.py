@@ -704,7 +704,7 @@ def _page(*, phase_count, zone_sync, advance, ticks, interval, current,
     settings = LedDeviceSettings()
     settings.zone_sync = zone_sync
     settings.zone_sync_interval_ticks = interval
-    settings.selected_zone = selected
+    settings.zone_sync_zones = [i == selected for i in range(selected + 1)]
     got = RenderLed(key="0416:8001", phase=phase, advance=advance)._metric_page(
         _FakeApp(), _FakeDisplay(phase_count), style, settings, runtime)
     return got, runtime
@@ -719,7 +719,7 @@ def test_single_page_display_keeps_the_commands_own_phase() -> None:
 
 
 def test_carousel_off_uses_the_button_the_user_pressed() -> None:
-    """`selected_zone` is what the selector buttons persist."""
+    """The page picked on the panel is the one in the mask."""
     page, _ = _page(phase_count=4, zone_sync=False, advance=True,
                     ticks=0, interval=1, current=5, selected=2)
     assert page == 2
