@@ -86,7 +86,6 @@ class ScreencastPanel(BasePanel):
             self.app, self._bus, kind_filter="lcd",
             parent=self, selection=self._selection,
         )
-        self._picker.key_changed.connect(self._on_key_changed)
 
         # ── Region picker ─────────────────────────────────────────────
         self._region_label = QLabel("No region selected.", self)
@@ -311,13 +310,6 @@ class ScreencastPanel(BasePanel):
         self._stop_btn.setEnabled(False)
         self._pick_btn.setEnabled(True)
         self._status.setText("Screencast stopped.")
-
-    def _on_key_changed(self, _key: str) -> None:
-        log.info("_on_key_changed: _key=%s", _key)
-        if self._casting_key:
-            # Changing device mid-screencast: stop cleanly so we never send to
-            # whichever device the user just deselected.
-            self._on_stop()
 
     # ── Tick ─────────────────────────────────────────────────────────
 

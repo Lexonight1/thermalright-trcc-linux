@@ -17,7 +17,6 @@ does not add a duplicate on top of the theme.
 """
 from __future__ import annotations
 
-import dataclasses
 import logging
 
 from PySide6.QtCore import Qt
@@ -47,7 +46,6 @@ from ....core.commands import (
     LcdSnapshot,
     ListFonts,
     ResolveOverlay,
-    SetOverlayConfig,
     UpdateOverlayElement,
 )
 from ..base import BasePanel
@@ -126,27 +124,11 @@ class OverlayEditorPanel(BasePanel):
         key = self._key()
         if key is None:
             return
-        # Single-layout model: the editable user layer IS the device's whole
-        # overlay layout.  If the user hasn't edited yet, adopt the active
-        # theme/mask layout into it so the rows shown are what renders and an
-        # incremental Add/Edit/Delete operates on the full layout (the render
-        # draws the user layer as a REPLACEMENT, not on top of the theme).
+        # What the device shows, read and never written: opening or
+        # switching to a device must not change it.  This used to adopt the
+        # theme's layout into the user layer here (a SetOverlayConfig on every
+        # refresh); ``LoadTheme`` adopts it itself, for every UI.
         layout = self.dispatch(ResolveOverlay(key=key))
-        # ``source`` names the WINNING layer, and that is why the seed guard
-        # reads it rather than testing the element list for truthiness.  The
-        # two states a truthiness test collapses are exactly the ones #276
-        # turned on: a user layer of ``[]`` means "the user emptied it" and
-        # must NOT be re-seeded, while no user layer at all reports "theme".
-        # Testing ``not elements`` re-seeded the emptied layer from the theme,
-        # so the last element a user deleted came straight back.
-        if layout.source != "user" and layout.elements:
-            log.info("refresh: adopting the active %s layout into the "
-                     "editable user layer for %s (%d element(s))",
-                     layout.source, key, len(layout.elements))
-            self.dispatch(SetOverlayConfig(
-                key=key, elements=tuple(self._entry_to_dict(e) for e in layout.elements),
-            ))
-            layout = self.dispatch(ResolveOverlay(key=key))
         self._list.clear()
         for element in layout.elements:
             text = self._format_element_row(element)
@@ -162,19 +144,6 @@ class OverlayEditorPanel(BasePanel):
             self._status.setText(
                 f"{len(layout.elements)} element(s) on {key}.",
             )
-
-    @staticmethod
-    def _entry_to_dict(entry) -> dict:
-        """``OverlayElementEntry`` -> the flat dict ``SetOverlayConfig`` takes.
-
-        ``asdict`` rather than a hand-written mapping: the two shapes already
-        agree, and a hand-written one is where a field goes missing silently —
-        ``font`` was added to ``to_dict`` once and not read back, so every
-        user element lost its font on restart.  Round-tripped in tests for
-        text, metric AND clock elements rather than only the one to hand.
-        """
-        log.debug("_entry_to_dict: entry=%s", entry)
-        return dataclasses.asdict(entry)
 
     @staticmethod
     def _format_element_row(element) -> str:

@@ -132,11 +132,11 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "one colour edit sends 2 RenderAndSend, measured.  Removing them empties "
         "this entry"
     )),
-    "SetOverlayConfig": (frozenset({"api", "qtgui"}), (
-        "scoped: every UI edits overlays element-wise (Add/Update/Delete"
-        "OverlayElement, all four); the API adds a bulk replace, and qtgui's "
-        "one use seeds the working layer when its editor opens -- the gui "
-        "left 2026-09-30, when its grid stopped re-sending the whole layout"
+    "SetOverlayConfig": (frozenset({"api"}), (
+        "scoped: a bulk replace for scripts; every UI edits overlays "
+        "element-wise (Add/Update/DeleteOverlayElement, all four).  The gui "
+        "left 2026-09-30 when its grid stopped re-sending the whole layout, "
+        "qtgui the same day when its editor stopped seeding the layer on open"
     )),
 
     # ── Cached vs rendered -- deliberately two questions ──────────────────

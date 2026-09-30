@@ -16,9 +16,9 @@ that:
 * picks up :class:`DeviceConnected` / :class:`DeviceDisconnected` events
   so the dropdown stays in sync when another UI scans for devices.
 
-Emits :sig:`key_changed(str)` whenever the user picks a different key
-(programmatic :meth:`set_key` calls don't emit, so panels can sync
-state without thrashing).
+Emits :sig:`key_changed(str)` whenever the key changes — picked here, or
+followed from the window's shared selection.  A direct :meth:`set_key` call
+does not emit.
 """
 from __future__ import annotations
 
@@ -106,7 +106,23 @@ class DevicePickerWidget(QWidget):
         else:
             selection.set_key(self.current_key())
         self.key_changed.connect(selection.set_key)
-        selection.changed.connect(self.set_key)
+        selection.changed.connect(self._follow_selection)
+
+    def _follow_selection(self, key: str) -> None:
+        """The window's selection moved — show it, and tell THIS panel.
+
+        ``set_key`` alone is silent, so a device chosen on the rail or in
+        another panel changed what this combo showed and nothing else: 9 of
+        11 device panels kept showing the previous device's state (measured
+        2026-09-30).  The emit reaches ``selection.set_key`` too, which
+        no-ops on the key it already holds, so the round trip cannot loop.
+        """
+        if key == self.current_key():
+            log.debug("_follow_selection: already showing %r", key)
+            return
+        log.info("_follow_selection: %r -> %r", self.current_key(), key)
+        self.set_key(key)
+        self.key_changed.emit(key)
 
     # ── Public API ───────────────────────────────────────────────────
 

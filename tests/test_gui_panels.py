@@ -543,48 +543,51 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     assert out["show_unit"] is False        # button0 unit-switch round-trips
 
 
-def test_overlay_editor_adopts_theme_layout_and_edits_in_place(
-    gui_app: App, tmp_path: object,
+def test_overlay_editor_shows_the_layout_and_writes_nothing_on_open(
+    gui_app: App, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """qtgui parity with the legacy GUI: the editor works on the ONE overlay
-    layout, seeded from the active theme, and edits replace in place.
-
-    Regression lock for the cutover's additive model: editing used to add a
-    duplicate on top of the theme.  Now opening the editor adopts the theme's
-    elements into the editable user layer and an edit mutates them in place —
-    one element in, one element out, moved.
-    """
+    """Opening the editor, or switching it to a device, reads that device's
+    layout and writes nothing.  It used to adopt the theme's layout into the
+    user layer with a SetOverlayConfig on every refresh -- which, once the
+    rail's selection reached it, would have fired on every device pick.
+    ``LoadTheme`` adopts the layout itself, for every UI.  An edit then
+    changes the listed element in place."""
     from pathlib import Path
 
-    from trcc.core.commands import UpdateOverlayElement
+    from trcc.core.commands import AddOverlayElement, Query, UpdateOverlayElement
     from trcc.core.models import Theme
     from trcc.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
 
     key = "0402:3922"
+    # A theme's layout with no user layer of its own: the state the editor
+    # used to "adopt" by writing it.  It must show it, and write nothing.
     gui_app.active_themes[key] = Theme(
-        path=Path(str(tmp_path)), name="t", resolution=(320, 320),
-        config={"overlay_enabled": True, "elements": [
-            {"type": "text", "x": 10, "y": 10, "text": "CPU",
-             "color": "#ffffff", "size": 16},
-        ]},
+        path=Path("/nonexistent/t"), name="t", resolution=(320, 320),
+        config={"elements": [{"type": "text", "text": "CPU", "x": 10, "y": 10}]},
     )
+    writes: list[str] = []
+    real = gui_app.dispatch
 
+    def _record(command: object) -> object:
+        if not isinstance(command, Query):
+            writes.append(type(command).__name__)
+        return real(command)
+
+    monkeypatch.setattr(gui_app, "dispatch", _record)
     panel = OverlayEditorPanel(gui_app, _bus(gui_app))
     panel._picker.set_key(key)
     panel.refresh()
 
-    # Opening adopted the theme's one element into the editable user layer.
-    user = gui_app.settings.for_device(key).user_overlay_elements
-    assert len(user) == 1, "editor must adopt the theme's layout, not start blank"
-    assert user[0].text == "CPU"
-    adopted_id = user[0].id
+    assert writes == [], f"opening the editor wrote {writes}"
+    assert panel._list.count() == 1
+    assert gui_app.settings.for_device(key).user_overlay_elements is None
 
-    # Editing moves it IN PLACE — still exactly one element, now relocated.
-    gui_app.dispatch(
-        UpdateOverlayElement(key=key, element_id=adopted_id, x=99, y=99),
-    )
+    assert gui_app.dispatch(AddOverlayElement(
+        key=key, element_id="cpu", type="text", text="CPU", x=10, y=10)).ok
+    assert gui_app.dispatch(
+        UpdateOverlayElement(key=key, element_id="cpu", x=99, y=99)).ok
     after = gui_app.settings.for_device(key).user_overlay_elements
-    assert len(after) == 1, "edit must replace in place, not duplicate"
+    assert after is not None and len(after) == 1, "edit must replace in place"
     assert (after[0].x, after[0].y) == (99, 99)
 
 
@@ -3383,6 +3386,44 @@ def test_choosing_a_device_in_the_rail_drives_every_panel(make_window,
             )
             picker = getattr(panel, "_picker", None)
             assert picker is None or picker.current_key() == keys[1]
+    finally:
+        app.close()
+
+
+def test_a_rail_pick_makes_every_device_panel_reload_for_that_device(
+    make_window, qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pointing a panel at the device is not enough -- it has to LOAD it.
+
+    ``set_key`` updated each panel's combo silently, so the panels that
+    reload on their picker's ``key_changed`` never heard a rail pick: 9 of 11
+    kept showing the previous device's state (measured 2026-09-30).  The
+    Queries each panel sends for the NEW device are the proof it reloaded.
+    """
+    del qapp
+    from trcc.core.commands import ListDevices
+
+    app = _two_device_app(tmp_path)
+    try:
+        keys = [d.key for d in app.dispatch(ListDevices()).devices]
+        window = make_window(app)
+        asked: list[tuple[str, str]] = []
+        real = app.dispatch
+
+        def _record(command: object) -> object:
+            asked.append((type(command).__name__, getattr(command, "key", "")))
+            return real(command)
+
+        monkeypatch.setattr(app, "dispatch", _record)
+        window._panels["screencast"]._casting_key = keys[0]   # a cast running
+        window._sidebar.choose(keys[1])
+
+        for_new = {name for name, key in asked if key == keys[1]}
+        # the theme browser (its canvas), the mask browser, the overlay editor
+        assert {"DeviceCanvas", "ListMasks", "ResolveOverlay"} <= for_new, (
+            f"panels did not reload for {keys[1]}: asked {sorted(for_new)}")
+        assert not {name for name, _ in asked} & {
+            "StopScreencast", "SetOverlayConfig"}, "a device pick wrote"
     finally:
         app.close()
 
