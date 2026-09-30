@@ -25,9 +25,11 @@ from ..core.errors import ConfigError
 from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
 from ..core.logs import per_frame
 from ..core.models import (
+    DATE_FORMATS,
     DEFAULT_REFRESH_INTERVAL_S,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
+    TIME_FORMATS,
     DeviceSettings,
     FitMode,
     OverlayElement,
@@ -61,15 +63,6 @@ class AppSettings:
     # unit across all devices. Per-device override still possible via the
     # per-device set_temp_unit() (used by tests / non-GUI consumers).
     temp_unit: TempUnit = "C"
-    # Global default clock formats — same cross-cutting pattern as
-    # ``temp_unit``.  Multi-LCD users expect ONE "24h" toggle that
-    # applies everywhere; ``Settings.set_global_time_format`` /
-    # ``set_global_date_format`` write here and fan out to every
-    # existing DeviceSettings.  ``Settings.for_device`` seeds new
-    # DeviceSettings instances from these globals.  Per-device
-    # override remains available via the per-device setters.
-    time_format: Literal["12h", "24h"] = "24h"
-    date_format: str = "yyyy/MM/dd"
     # User-selected primary GPU (e.g. 'nvidia:0', 'amd:0', or 'intel:igpu').
     # None = let SensorEnumerator.primary_gpu() pick automatically.
     active_gpu: str | None = None
@@ -115,12 +108,16 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #   4                     an LED's selected zone/page is the first in its mask
 #                         (``zone_sync_zones``); ``selected_zone`` was a second,
 #                         stored field.  ``_migrate_led`` writes it into the mask.
+#   5                     a clock's time/date format is its element's own, as
+#                         the C#'s myModeSub; up to 4 a device ``time_format``
+#                         / ``date_format`` drew over it.  ``_migrate_device``
+#                         writes a deliberate choice into the elements.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 
 class Settings:
@@ -193,40 +190,6 @@ class Settings:
             self._save()
             return tuple(self._devices)
 
-    def set_global_time_format(
-        self, fmt: Literal["12h", "24h"],
-    ) -> tuple[str, ...]:
-        """Set the global default clock format and propagate to every device.
-
-        Same lockstep shape as :meth:`set_global_temp_unit` — write
-        ``app.time_format`` then fan out to every existing
-        ``DeviceSettings.time_format``.  Returns the tuple of device
-        keys touched so the calling Command can publish per-device
-        events.
-        """
-        log.info("set_global_time_format: fmt=%s", fmt)
-        with self._lock:
-            self._app.time_format = fmt
-            for device_settings in self._devices.values():
-                device_settings.time_format = fmt
-            self._save()
-            return tuple(self._devices)
-
-    def set_global_date_format(self, fmt: str) -> tuple[str, ...]:
-        """Set the global default date pattern and propagate to every device.
-
-        Companion to :meth:`set_global_time_format`.  ``fmt`` is the
-        ICU-ish pattern (``yyyy/MM/dd``, ``dd/MM/yyyy``, etc.) that
-        ``DisplayService.compute_clock`` reads per render.
-        """
-        log.info("set_global_date_format: fmt=%s", fmt)
-        with self._lock:
-            self._app.date_format = fmt
-            for device_settings in self._devices.values():
-                device_settings.date_format = fmt
-            self._save()
-            return tuple(self._devices)
-
     def set_active_gpu(self, gpu_key: str | None) -> None:
         """Set the user-selected primary GPU. None = auto-pick."""
         log.info("set_active_gpu: gpu_key=%s", gpu_key)
@@ -260,12 +223,10 @@ class Settings:
     def for_device(self, key: str) -> DeviceSettings:
         """Return the DeviceSettings for *key*, creating defaults if absent.
 
-        A freshly-minted ``DeviceSettings`` inherits the global format
-        prefs (``app.time_format`` / ``app.date_format`` / ``app.temp_unit``)
-        so a newly-attached LCD picks up the user's chosen formats
-        instead of falling back to the dataclass's compile-time
-        defaults.  Existing devices keep whatever was persisted —
-        only first-touch is seeded.
+        A freshly-minted ``DeviceSettings`` inherits the global temperature
+        unit (``app.temp_unit``) so a newly-attached LCD shows the user's
+        unit.  Existing devices keep whatever was persisted — only
+        first-touch is seeded.
         """
         frame_log.debug("for_device: key=%s", key)
         with self._lock:
@@ -301,12 +262,9 @@ class Settings:
         if ancestor is not None:
             log.info("_seed_for: %s inherits the settings of %s", key, base)
             return deepcopy(ancestor)
-        log.info("_seed_for: %s is new — seeding from the global formats", key)
-        return DeviceSettings(
-            time_format=self._app.time_format,
-            date_format=self._app.date_format,
-            temp_unit=self._app.temp_unit,
-        )
+        log.info("_seed_for: %s is new — seeding the global temperature unit",
+                 key)
+        return DeviceSettings(temp_unit=self._app.temp_unit)
 
     def seed_mount_orientation(self, key: str, portrait_mounted: bool) -> int:
         """First-boot only: start a portrait-MOUNTED panel at 90 degrees.
@@ -341,8 +299,6 @@ class Settings:
             degrees = 90 if portrait_mounted else 0
             self._devices[key] = DeviceSettings(
                 orientation=degrees,
-                time_format=self._app.time_format,
-                date_format=self._app.date_format,
                 temp_unit=self._app.temp_unit,
             )
             if degrees:
@@ -376,17 +332,29 @@ class Settings:
             self.for_device(key).temp_unit = unit
             self._save()
 
-    def set_time_format(self, key: str, fmt: Literal["12h", "24h"]) -> None:
-        log.info("set_time_format: key=%s fmt=%s", key, fmt)
-        with self._lock:
-            self.for_device(key).time_format = fmt
-            self._save()
+    def set_clock_format(
+        self, key: str | None, source: str, pattern: str,
+    ) -> dict[str, int]:
+        """Give every *source* clock element *pattern* — on *key*, or on every
+        device when *key* is None.  Returns the elements changed, per device.
 
-    def set_date_format(self, key: str, fmt: str) -> None:
-        log.info("set_date_format: key=%s fmt=%s", key, fmt)
+        The format belongs to each element, as the C#'s myModeSub does; this
+        is the one "all of this device's time elements" edit the CLI and API
+        offer.  A device with no layout of its own yet is skipped: its theme's
+        layout is adopted on the next load and carries the theme's formats.
+        """
         with self._lock:
-            self.for_device(key).date_format = fmt
+            touched: dict[str, int] = {}
+            for k in ([key] if key else list(self._devices)):
+                clocks = [e for e in self.for_device(k).user_overlay_elements or ()
+                          if e.type == "clock" and e.source == source]
+                for element in clocks:
+                    element.format = pattern
+                touched[k] = len(clocks)
             self._save()
+        log.info("set_clock_format: key=%s %s -> %r on %s",
+                 key, source, pattern, touched)
+        return touched
 
     def set_overlay_enabled(self, key: str, enabled: bool) -> None:
         log.info("set_overlay_enabled: key=%s enabled=%s", key, enabled)
@@ -1005,7 +973,44 @@ def _migrate_device(
             "'no layout of its own' (v1 meaning); it will be seeded from the "
             "theme on the next restore", key, schema, _SCHEMA_VERSION,
         )
+    if schema < 5:
+        _fold_clock_formats(out, key)
     return out
+
+
+def _fold_clock_formats(data: dict[str, Any], key: str) -> None:
+    """v4 -> v5: a device's time/date format moves onto its clock elements.
+
+    Up to v4 the render drew EVERY time element in the device's
+    ``time_format`` and every date element with no pattern of its own, or
+    the default one, in its ``date_format``.  Only a DELIBERATE choice is
+    written in, so the panel looks the same after the upgrade: a device
+    left at the defaults keeps each element's own format, which is what the
+    C# draws.  A ``%I:%M`` a gui click saved before 12h meant ``hh:mm tt``
+    gets its AM/PM.
+    """
+    from ._clock import _translate_date_pattern
+
+    time_fmt = data.pop("time_format", "24h")
+    date_pattern = _translate_date_pattern(data.pop("date_format", "yyyy/MM/dd"))
+    elements = data.get("user_overlay_elements")
+    if not isinstance(elements, list):
+        return
+    changed = 0
+    for e in elements:
+        if not isinstance(e, dict) or e.get("type") != "clock":
+            continue
+        fmt = str(e.get("format", ""))
+        new = fmt
+        if e.get("source") == "time" and (time_fmt == "12h" or fmt == "%I:%M"):
+            new = TIME_FORMATS[1]
+        elif (e.get("source") == "date" and date_pattern != DATE_FORMATS[0]
+                and ("%" not in fmt or fmt == DATE_FORMATS[0])):
+            new = date_pattern
+        changed += new != fmt
+        e["format"] = new
+    log.info("_fold_clock_formats: %s time=%s date=%r -> %d clock element(s) "
+             "rewritten", key, time_fmt, date_pattern, changed)
 
 
 def _migrate_led(data: dict[str, Any], schema: int, key: str) -> dict[str, Any]:

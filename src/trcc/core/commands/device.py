@@ -2991,8 +2991,16 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
     key: str
 
     def execute(self, app: App) -> LcdSnapshotResult:
+        from ._helpers import device_overlay_layout
+
         log.debug("execute: app=%s", app)
         s = app.settings.for_device(self.key)
+        # The format is each clock element's own; report the first of each
+        # kind, which is what a one-clock theme shows.
+        clocks: dict[str, str] = {}
+        for e in device_overlay_layout(app, self.key):
+            if e.get("type") == "clock":
+                clocks.setdefault(str(e.get("source")), str(e.get("format", "")))
         return LcdSnapshotResult(
             ok=True, key=self.key,
             orientation=s.orientation,
@@ -3004,8 +3012,8 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             mask_position=s.mask_position,
             fit_mode=s.fit_mode.value,
             split_mode=s.split_mode,
-            time_format=s.time_format,
-            date_format=s.date_format,
+            time_format="12h" if "%I" in clocks.get("time", "") else "24h",
+            date_format=clocks.get("date", ""),
             temp_unit=s.temp_unit,
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,

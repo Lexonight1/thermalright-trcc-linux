@@ -696,8 +696,6 @@ class DeviceSettings:
     orientation: int = 0
     brightness: int = 100
     current_theme: str | None = None
-    time_format: Literal["12h", "24h"] = "24h"
-    date_format: str = "yyyy/MM/dd"
     temp_unit: TempUnit = "C"
     overlay_enabled: bool = True
     mask_position: tuple[int, int] | None = None

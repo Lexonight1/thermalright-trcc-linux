@@ -14,17 +14,17 @@ from ..errors import (
     HttpFetchError,
 )
 from ..events import (
-    DateFormatChanged,
     GpuDeviceChanged,
     LanguageChanged,
+    OverlayChanged,
     RefreshIntervalChanged,
     TempUnitChanged,
-    TimeFormatChanged,
 )
 from ..models import (
     AUTOSTART_TARGETS,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
+    TIME_FORMATS,
     PanelConfig,
     SensorBinding,
 )
@@ -90,15 +90,28 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _set_clock_format(app: App, key: str | None, source: str,
+                      pattern: str) -> str:
+    """Give *source* clocks *pattern*, re-render, tell every UI; the scope said."""
+    touched = app.settings.set_clock_format(key, source, pattern)
+    for k in touched:
+        app.display.invalidate(k)
+        app.events.publish(OverlayChanged(
+            key=k, enabled=app.settings.for_device(k).overlay_enabled,
+        ))
+    scope = f"{sum(touched.values())} {source} element(s) on {len(touched)} device(s)"
+    log.info("_set_clock_format: %r -> %s", pattern, scope)
+    return scope
+
+
 @dataclass(frozen=True, slots=True)
 class SetTimeFormat(Command[TimeFormatResult]):
-    """Set the LCD-overlay clock format (12h or 24h).
+    """Set every time element's clock to 12h or 24h — on ``key``, or on every
+    device when ``key`` is None.
 
-    ``key=None`` (the default) sets the global ``AppSettings.time_format``
-    and fans out to every device; a specific ``key`` sets just that
-    device (per-device override).  Either way one
-    :class:`TimeFormatChanged` is published per affected device so
-    ``DeviceRenderObserver`` re-renders immediately.
+    The format belongs to each element, as the C#'s myModeSub does
+    (UCXiTongXianShiSub.cs:248); this is the CLI/API's "all my clocks" edit.
+    A theme loaded later shows its own format.  Publishes ``OverlayChanged``.
 
     Distinct from :class:`SetClockFormat` (LED-segment LC2-style
     displays, which write ``led_clock_24h``).
@@ -114,16 +127,8 @@ class SetTimeFormat(Command[TimeFormatResult]):
                 ok=False, key=self.key or "", fmt=self.fmt,
                 message=f"fmt must be '12h' or '24h', got {self.fmt!r}",
             )
-        if self.key is None:
-            keys = app.settings.set_global_time_format(self.fmt)  # type: ignore[arg-type]
-            scope = f"global ({len(keys)} device(s))"
-        else:
-            app.settings.set_time_format(self.key, self.fmt)  # type: ignore[arg-type]
-            keys = [self.key]
-            scope = self.key
-        for key in keys:
-            app.display.invalidate(key)
-            app.events.publish(TimeFormatChanged(key=key, fmt=self.fmt))
+        scope = _set_clock_format(app, self.key, "time",
+                                  TIME_FORMATS[1 if self.fmt == "12h" else 0])
         return TimeFormatResult(
             ok=True, key=self.key or "", fmt=self.fmt,
             message=f"time format set to {self.fmt} for {scope}",
@@ -131,17 +136,18 @@ class SetTimeFormat(Command[TimeFormatResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetDateFormat(Command[DateFormatResult]):
-    """Set the LCD-overlay date pattern.
+    """Set every date element's pattern — on ``key``, or on every device.
 
-    ``key=None`` (the default) sets the global default + fans out to
-    every device; a specific ``key`` sets just that device.  Pattern
-    uses ICU-ish tokens (``yyyy/MM/dd``, ``dd.MM.yyyy``) translated by
-    ``_clock._translate_date_pattern`` to a Python strftime string.
+    Pattern uses ICU-ish tokens (``yyyy/MM/dd``, ``dd.MM.yyyy``) translated by
+    ``_clock._translate_date_pattern`` to the strftime pattern the element
+    carries.  Publishes ``OverlayChanged``.
     """
     fmt: str
     key: str | None = None
 
     def execute(self, app: App) -> DateFormatResult:
+        from ...services._clock import _translate_date_pattern
+
         log.info("SetDateFormat.execute: fmt=%r key=%s", self.fmt, self.key)
         if not self.fmt:
             log.warning("SetDateFormat.execute: empty fmt")
@@ -149,16 +155,8 @@ class SetDateFormat(Command[DateFormatResult]):
                 ok=False, key=self.key or "", fmt=self.fmt,
                 message="fmt must not be empty",
             )
-        if self.key is None:
-            keys = app.settings.set_global_date_format(self.fmt)
-            scope = f"global ({len(keys)} device(s))"
-        else:
-            app.settings.set_date_format(self.key, self.fmt)
-            keys = [self.key]
-            scope = self.key
-        for key in keys:
-            app.display.invalidate(key)
-            app.events.publish(DateFormatChanged(key=key, fmt=self.fmt))
+        scope = _set_clock_format(app, self.key, "date",
+                                  _translate_date_pattern(self.fmt))
         return DateFormatResult(
             ok=True, key=self.key or "", fmt=self.fmt,
             message=f"date format set to {self.fmt!r} for {scope}",

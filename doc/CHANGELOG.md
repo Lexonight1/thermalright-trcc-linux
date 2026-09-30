@@ -29,6 +29,15 @@
 
 ### Changed
 
+- **A clock's time and date format belongs to the clock, as in the Windows
+  app.** There used to be one 12h/24h and date setting that applied to every
+  clock on every screen and survived switching themes; now each clock keeps
+  its own, and a theme shows the format it was made with. The gui's format
+  button changes the selected clock only (it changed every screen). `trcc
+  config time-format` / `date-format` still set every clock at once; their
+  API routes can name one screen. Your current look is carried over when you
+  upgrade.
+
 - **Widescreen (1600×720) panels show the Dynamic Island at style 2 until you
   choose**, as the Windows app does. Before, only the Windows-style gui turned
   it on, by rewriting the setting every time it opened; the Qt gui, the CLI and

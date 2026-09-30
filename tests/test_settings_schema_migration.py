@@ -144,3 +144,77 @@ def test_a_corrupt_schema_value_is_treated_as_v1(tmp_path: Path) -> None:
     s = Settings(_Paths(tmp_path))
 
     assert s.for_device(_KEY).user_overlay_elements is None
+
+
+# ── v4 -> v5: the clock format moves onto each element ─────────────────────
+
+
+def _v4(tmp_path: Path, elements: list | None, **device: str) -> Settings:
+    _write_config(tmp_path, {
+        "schema": 4, "app": {"time_format": device.get("time_format", "24h")},
+        "led_devices": {},
+        "devices": {_KEY: {"user_overlay_elements": elements, **device}},
+    })
+    return Settings(_Paths(tmp_path))
+
+
+def _clock(eid: str, source: str, fmt: str) -> dict:
+    return {"id": eid, "type": "clock", "source": source, "format": fmt}
+
+
+def _formats(s: Settings) -> dict[str, str]:
+    return {e.id: e.format for e in s.for_device(_KEY).user_overlay_elements or ()}
+
+
+def test_a_device_set_to_12h_upgrades_into_its_time_elements(tmp_path: Path) -> None:
+    """Up to v4 every time element drew in the device's ``time_format``."""
+    s = _v4(tmp_path, [_clock("a", "time", "%H:%M"), _clock("b", "time", "{value}"),
+                       _clock("d", "date", "%Y/%m/%d")], time_format="12h")
+    assert _formats(s) == {"a": "%I:%M %p", "b": "%I:%M %p", "d": "%Y/%m/%d"}
+
+
+def test_a_custom_date_format_fills_the_date_elements_it_drew_on(
+    tmp_path: Path,
+) -> None:
+    """The old rule: the device pattern drew on a date element with no
+    pattern or the default one; a theme's deliberate ``%m/%d`` kept its own."""
+    s = _v4(tmp_path, [_clock("a", "date", "%Y/%m/%d"), _clock("b", "date", "{value}"),
+                       _clock("c", "date", "%m/%d")], date_format="dd/MM/yyyy")
+    assert _formats(s) == {"a": "%d/%m/%Y", "b": "%d/%m/%Y", "c": "%m/%d"}
+
+
+def test_the_defaults_leave_every_element_its_own_format(tmp_path: Path) -> None:
+    """Nobody chose anything, so nothing is written: a theme designed with a
+    12h clock keeps it, which is what the C# draws."""
+    s = _v4(tmp_path, [_clock("a", "time", "%I:%M %p"), _clock("b", "time", "%H:%M"),
+                       _clock("d", "date", "%m/%d")])
+    assert _formats(s) == {"a": "%I:%M %p", "b": "%H:%M", "d": "%m/%d"}
+
+
+def test_a_12h_saved_without_am_pm_gets_it(tmp_path: Path) -> None:
+    """A gui click saved ``%I:%M`` before 12h meant the C#'s ``hh:mm tt``."""
+    s = _v4(tmp_path, [_clock("a", "time", "%I:%M")])
+    assert _formats(s) == {"a": "%I:%M %p"}
+
+
+def test_a_device_with_no_layout_of_its_own_upgrades_cleanly(tmp_path: Path) -> None:
+    s = _v4(tmp_path, None, time_format="12h")
+    assert s.for_device(_KEY).user_overlay_elements is None
+
+
+def test_the_upgrade_is_saved_once_and_the_old_fields_are_gone(
+    tmp_path: Path,
+) -> None:
+    """Saved at v5 with the formats in the elements; a second start does not
+    re-apply the (now absent) device format over a later edit."""
+    s = _v4(tmp_path, [_clock("a", "time", "%H:%M")], time_format="12h")
+    s.set_overlay_enabled(_KEY, True)                        # any save
+    written = json.loads((tmp_path / "trcc.json").read_text(encoding="utf-8"))
+    device = written["devices"][_KEY]
+    assert written["schema"] == _SCHEMA_VERSION
+    assert "time_format" not in device and "date_format" not in device
+    assert "time_format" not in written["app"]
+    assert device["user_overlay_elements"][0]["format"] == "%I:%M %p"
+
+    s.set_clock_format(_KEY, "time", "%H:%M")                # a later edit
+    assert _formats(Settings(_Paths(tmp_path))) == {"a": "%H:%M"}

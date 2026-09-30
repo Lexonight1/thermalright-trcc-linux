@@ -95,7 +95,7 @@ def refresh_interval(
 def time_format(
     fmt: str = typer.Argument(..., help="LCD clock format: '12h' or '24h'"),
 ) -> None:
-    """Set the global LCD overlay clock format."""
+    """Set every LCD clock element to 12h or 24h, on every device."""
     log.info("cli config time-format: fmt=%s", fmt)
     result = get_app().dispatch(SetTimeFormat(fmt=fmt))
     typer.echo(result.message)
@@ -109,7 +109,7 @@ def date_format(
         ..., help="LCD date format, e.g. 'yyyy/MM/dd', 'dd.MM.yyyy', 'MM/dd/yyyy'",
     ),
 ) -> None:
-    """Set the global LCD overlay date format."""
+    """Set every LCD date element's pattern, on every device."""
     log.info("cli config date-format: fmt=%s", fmt)
     result = get_app().dispatch(SetDateFormat(fmt=fmt))
     typer.echo(result.message)

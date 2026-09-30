@@ -255,3 +255,33 @@ def test_reopening_shows_the_guis_own_edits(
 
     cpu = _grid(window).get_all_configs()[0]
     assert (cpu.id, cpu.x, cpu.y) == ("cpu", 90, 95)
+
+
+def test_the_format_button_changes_only_the_selected_clock(
+    window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The C# keeps the format per element (myModeSub).  The button used to
+    also send a key-less SetTimeFormat that rewrote every device."""
+    from trcc.core.models import OverlayMode
+
+    app = window._app
+    for eid, y in (("t1", 150), ("t2", 190)):
+        assert app.dispatch(AddOverlayElement(
+            key=_KEY, element_id=eid, type="clock", source="time",
+            format="%H:%M", x=5, y=y)).ok
+    qtbot.waitUntil(lambda: len(_cell_ids(window)) == 5)
+    sent: list[str] = []
+    real = app.dispatch
+
+    def _record(command: Any) -> Any:
+        sent.append(type(command).__name__)
+        return real(command)
+
+    monkeypatch.setattr(app, "dispatch", _record)
+    _grid(window).select_element(3)                           # t1
+    window.uc_theme_setting._on_format_changed(OverlayMode.TIME, 1)
+    qtbot.wait(100)
+
+    held = _held(window)
+    assert (held["t1"].format, held["t2"].format) == ("%I:%M %p", "%H:%M")
+    assert "SetTimeFormat" not in sent, sent

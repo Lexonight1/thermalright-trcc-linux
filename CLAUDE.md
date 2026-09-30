@@ -363,7 +363,7 @@ Mode (below) is the mechanism this rests on.
 - **Views** (`ui/gui/`): PySide6 GUI adapter. `TRCCApp` (`ui/gui/trcc_app.py`, thin shell) + `LCDHandler`/`LEDHandler` (one per device). `ui/qtgui/` is the in-progress native-skin rebuild.
 - **CLI** (`ui/cli/`): Typer CLI adapter (package). Thin wrappers that build Commands and `app.dispatch(...)` them.
 - **API** (`ui/api/`): FastAPI REST adapter (package). ~105 routes incl. WebSocket preview stream + cloud themes + export. Dispatches Commands on the App.
-- **Config** (`services/settings.py`): `Settings` — mutable app + per-device state (resolution, language, orientation, format prefs, mask/theme), persisted to **`trcc.json`** in `paths.config_dir()` (atomic tmp→fsync→rename, schema-versioned). Reached via `app.settings` in-process; **`AppProxy` refuses it**, so a daemon-mode UI dispatches a Command/Query instead.
+- **Config** (`services/settings.py`): `Settings` — mutable app + per-device state (resolution, language, orientation, temperature unit, mask/theme, each device's overlay layout), persisted to **`trcc.json`** in `paths.config_dir()` (atomic tmp→fsync→rename, schema-versioned). Reached via `app.settings` in-process; **`AppProxy` refuses it**, so a daemon-mode UI dispatches a Command/Query instead.
 - **Entry**: `trcc._entry:main` (console script / `python -m trcc`) → `ui/cli` → `_boot.trcc()` → `App` (composition root: `current_platform()` + `DEVICES[wire]`).
 - **Wires**: each device adapter speaks its protocol — SCSI (LCD frames), HID (handshake/resolution), Bulk, LY, LED (RGB effects + segment displays). See "Two-Factory Chain" + the ABC tables below.
 - **Platform** (`core/ports.py` + `adapters/system/`): `Platform` ABC in core; per-OS subclass in `adapters/system/{linux,windows,macos,bsd}.py`, dispatched by `current_platform()` (`sys.platform`). DI'd everywhere as `app.platform`.
@@ -446,7 +446,7 @@ Every piece of data has exactly ONE owner. Violations = bugs.
 | Locale + asset-suffix maps | `core/i18n.py` | `LOCALE_TO_LANG`, `ISO_TO_LEGACY` |
 | LED style catalog | `core/led_models.py` | `LED_STYLES` |
 | Device registries (VID/PID) | `core/registry.py` | `ALL_DEVICES` |
-| Mutable app state (user prefs) | `services/settings.py` → `Settings` | resolution, language, temp_unit, format prefs |
+| Mutable app state (user prefs) | `services/settings.py` → `Settings` | resolution, language, temp_unit, overlay layout (clock formats are per element) |
 | GUI asset resolution | `ui/gui/assets.py` → `Assets` | file lookup, `.png` auto-append, pixmap loading, localization |
 | Business logic | `services/` | image processing, overlay rendering, sensor polling |
 | View state (widget-local) | Each widget | button states, selection indices, animation counters |
@@ -1194,20 +1194,24 @@ the summary silently did not.  One list, or they disagree
 ([[feedback_one_fact_expressed_twice_will_drift]]).
 
 ## GUI Standards
-- **Overlay enabled**: `_load_theme_overlay_config()` must call `set_overlay_enabled(True)`
-- **Format prefs**: persisted on `Settings` (`set_global_time_format` /
-  `set_global_date_format` / `set_global_temp_unit`) and re-applied on theme load.
-  `conf.save_format_pref()` / `conf.apply_format_prefs()` were named here for a long
-  time and exist **nowhere** in the tree — there is no `conf` module (2026-09-08)
-- **Theme loads**: DC for layout, user prefs for formats (time_format, date_format, temp_unit)
-- **Signal chain** (traced 2026-09-08): format button → `_on_format_changed()` →
-  `_update_selected()` → `to_overlay_config()` → `invoke_delegate(CMD_OVERLAY_CHANGED)`
-  (`uc_theme_setting.py:208`) → `TRCCApp._on_settings_delegate` `case CMD_OVERLAY_CHANGED`
-  (`trcc_app.py:1790`, the `case` at `:1820`) → `LCDHandler.on_overlay_changed()` (`lcd_handler.py:954`) →
-  `dispatch(SetOverlayConfig(...))` (`:988`). The last two links used to read
-  `_on_overlay_changed()` → `render_overlay_and_preview()`; **neither exists**
+- **Overlay enabled**: a USER load (theme click, mask apply) switches the overlay
+  on when the loaded layout has elements, off when it has none
+  (`LCDHandler._adopt_loaded_overlay`); a reconnect only SHOWS the saved switch (#276)
+- **Clock formats are per element**: each clock element carries its own time/date
+  pattern, as the C#'s `myModeSub` (`UCXiTongXianShiSub.cs:248-285`) — there is **no
+  global time or date format**. A theme shows the formats it was saved with;
+  `SetTimeFormat` / `SetDateFormat` are the CLI/API edit of every time/date element on
+  a device. This file documented a global preference "re-applied on theme load" until
+  2026-09-30; the C# never had one. The temperature unit IS global (`SetTempUnit`)
+- **Theme loads**: the theme's layout, clock formats included; the user's temperature unit
+- **Signal chain** (2026-09-30): format button → `UCThemeSetting._on_format_changed()` →
+  `_update_selected()` → `_send_edit(UpdateOverlayElement, element_id=…, <changed
+  fields only>)` → `invoke_delegate(CMD_OVERLAY_CHANGED, <partial Command>)` →
+  `TRCCApp._on_settings_delegate` → `LCDHandler.on_overlay_edit()` adds the key and
+  dispatches. ONE element by id; the grid refills from `ResolveOverlay` on the
+  `OverlayChanged` that follows. It used to re-send the whole grid via `SetOverlayConfig`
 - **QPalette vs Stylesheet**: Never `setStyleSheet()` on ancestors — blocks palette backgrounds
-- **First-run**: No device config → overlay disabled. Theme click re-enables. Defaults: 24h, yyyy/MM/dd, Celsius.
+- **First-run**: No device config → overlay disabled. Theme click re-enables. Defaults: each theme's own clock formats, Celsius.
 - **First install auto-load**: `EnsureDataDownload` (`core/commands/theme.py`; there
   is no `EnsureDataCommand`) downloads + extracts in the background so the window
   opens without waiting on ~30 MB (#275). It publishes `DataInstalled`, which

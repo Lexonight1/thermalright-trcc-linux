@@ -890,14 +890,18 @@ def test_the_window_reads_what_the_session_already_shows(
     """The session primed before this window existed, so the ThemeLoaded and
     VideoStarted events that start the ticker and fill ``_playing`` fired
     before anything here listened.  The window READS both once instead."""
+    from pathlib import Path
     from types import SimpleNamespace
 
-    from trcc.core.models import Wire
+    from trcc.core.models import Theme, Wire
     from trcc.ui.qtgui.app import MainWindow
 
     lcd = _StubDevice(Wire.SCSI)
     gui_app.devices[lcd.key] = lcd            # type: ignore[assignment]
-    gui_app.active_themes[lcd.key] = object()  # type: ignore[assignment]
+    gui_app.active_themes[lcd.key] = Theme(
+        path=Path("/nonexistent/primed"), name="primed", resolution=(320, 320),
+        config={"elements": []},
+    )
     playback = SimpleNamespace(cursor=0, frame_count=10, fps=15,
                                paused=False, loop=True)
     monkeypatch.setattr(gui_app.media, "playback",

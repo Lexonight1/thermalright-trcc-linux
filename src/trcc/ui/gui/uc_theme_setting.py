@@ -94,22 +94,9 @@ class UCThemeSetting(BasePanel):
     screencast_changed = Signal(bool)
     screencast_params_changed = Signal(int, int, int, int)  # x, y, w, h
     eyedropper_requested = Signal()  # launch eyedropper color picker
-    # Per-format-pref change — emitted alongside UiState persistence
-    # so trcc_app can mirror the user's choice onto every connected
-    # device's DeviceSettings via SetTimeFormat / SetDateFormat
-    # Commands.  Without this, the UiState-side update never reaches
-    # DisplayService's compute_clock which reads from per-device
-    # DeviceSettings.{time,date}_format (default "24h" / "yyyy/MM/dd"
-    # forever).  ``kind`` is "time" / "date" / "temp_unit"; ``value``
-    # is the GUI's int code, translated to a literal by the slot.
-    format_pref_changed = Signal(str, int)
     capture_requested = Signal()     # launch screen capture
 
-    def __init__(self, parent=None, ui_state=None):
-        # ``ui_state`` is an optional :class:`UiStateStore` for persisting
-        # global format defaults (time / date / temp_unit).  trcc_app
-        # injects its store; legacy callers leave it ``None``.
-        self._ui_state = ui_state
+    def __init__(self, parent=None):
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
         self._setup_ui()
 
@@ -282,26 +269,11 @@ class UCThemeSetting(BasePanel):
 
     def _on_format_changed(self, mode, mode_sub):
         log.debug("_on_format_changed: mode=%s, mode_sub=%s", mode, mode_sub)
+        # The selected element's format and nothing else: the C# keeps it per
+        # element (myModeSub) with no global one.  This used to also set a
+        # global preference on EVERY device.  HARDWARE's button0 is the same
+        # per-element field, the unit switch.
         self._update_selected(require_mode=mode, mode_sub=mode_sub)
-        # Persist format preference so it carries across theme changes.
-        # Global format defaults are GUI-only state — stored in UiState,
-        # not app.settings.  ``_ui_state`` is injected by the window;
-        # if absent (e.g. legacy callers) we skip persistence.
-        #
-        # HARDWARE (button0) is the C# per-element unit-switch (show/hide the
-        # unit glyph) — it lives on the element as ``mode_sub`` (persisted just
-        # above via ``_update_selected``), NOT a global preference.  The global
-        # temperature unit (C/F) is owned by the About panel's celsius/
-        # fahrenheit radios (the C# buttonC/buttonF), so button0 must not write
-        # it here.
-        if self._ui_state is None:
-            return
-        if mode == OverlayMode.TIME:
-            self._ui_state.set_format_pref('time_format', mode_sub)
-            self.format_pref_changed.emit('time', mode_sub)
-        elif mode == OverlayMode.DATE:
-            self._ui_state.set_format_pref('date_format', mode_sub)
-            self.format_pref_changed.emit('date', mode_sub)
 
     def _on_text_changed(self, text):
         log.info("_on_text_changed: text=%s", text)

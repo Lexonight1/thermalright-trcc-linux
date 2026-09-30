@@ -1418,7 +1418,7 @@ Run the OS package-manager upgrade for trcc-linux.
 
 ### `SetDateFormat`
 
-Set the LCD-overlay date pattern.
+Set every date element's pattern — on ``key``, or on every device.
 
 *Command* → `DateFormatResult`
 
@@ -1500,7 +1500,7 @@ Set the global temperature unit ("C" or "F") and propagate to every device.
 
 ### `SetTimeFormat`
 
-Set the LCD-overlay clock format (12h or 24h).
+Set every time element's clock to 12h or 24h — on ``key``, or on every device when ``key`` is None.
 
 *Command* → `TimeFormatResult`
 

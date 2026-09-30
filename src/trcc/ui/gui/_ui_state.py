@@ -41,10 +41,6 @@ class UiState:
     # Info module above preview (4 mini sensor readouts)
     show_info_module: bool = False
 
-    # Global format defaults for overlay elements
-    time_format: int = 0                   # 0 = 24h, 1 = 12h
-    date_format: int = 1                   # 1 = Y/M/D, 2 = D/M/Y, 3 = M/D, 4 = D/M
-
     # Recorded once on first run for upgrade hints
     install_method: str = ""               # pip / pipx / rpm / deb / pacman / pyinstaller
     install_distro: str = ""               # fedora / arch / ubuntu / debian / …
@@ -107,17 +103,6 @@ class UiStateStore:
         self._state.show_info_module = on
         self.save()
 
-    def set_format_pref(self, name: str, value: int) -> None:
-        """Set one of ``time_format`` / ``date_format``."""
-        if name not in {"time_format", "date_format"}:
-            log.debug("set_format_pref: ignoring unknown pref %r", name)
-            return
-        current = getattr(self._state, name)
-        if current == value:
-            return
-        setattr(self._state, name, value)
-        self.save()
-
     def set_install_info(self, method: str, distro: str) -> None:
         if (
             self._state.install_method == method
@@ -137,14 +122,6 @@ class UiStateStore:
             "method": self._state.install_method,
             "distro": self._state.install_distro,
         }
-
-    # NOTE: the legacy ``apply_format_prefs`` (rewrite each element's date/time/
-    # temp format to the global default on theme load) was removed — format
-    # prefs are now resolved at RENDER, universally for every UI: time/date use
-    # the per-device precomputed clock dict and temp_unit converts in
-    # OverlayService, with a theme's deliberate non-default date pattern honoured
-    # (see services/overlay._draw_clock + _clock.is_default_date_pattern).  A GUI
-    # grid rewrite would only duplicate that core rule.
 
     @property
     def state(self) -> UiState:

@@ -2174,7 +2174,6 @@ MISSING_IN_QTGUI = {
     # gui follows these since V4b (2026-09-29); qtgui's follow is the next
     # commit, which must empty this block.
     "BackgroundChanged",
-    "DateFormatChanged",
     "FitModeChanged",
     "GpuDeviceChanged",
     "HddEnabledChanged",
@@ -2185,7 +2184,6 @@ MISSING_IN_QTGUI = {
     "RefreshIntervalChanged",
     "SplitModeChanged",
     "TempUnitChanged",
-    "TimeFormatChanged",
 }
 
 #: Event types ``BusBridge`` never forwards, so no Qt widget can observe them

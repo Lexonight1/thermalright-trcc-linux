@@ -738,6 +738,8 @@ class LcdSnapshotResult(Result):
     mask_position: tuple[int, int] | None = None
     fit_mode: str = "fit"
     split_mode: int = 0
+    #: The first time and date element's own format ("" with no date element);
+    #: the format belongs to each clock element, as the C#'s myModeSub.
     time_format: str = "24h"
     date_format: str = ""
     temp_unit: str = "C"

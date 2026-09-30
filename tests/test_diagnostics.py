@@ -1400,12 +1400,12 @@ def test_debug_report_carries_the_settings_the_app_actually_saved(
     platform = MockPlatform([], tmp_path)
     settings = Settings(platform.paths())
     settings.set_language("de")
-    settings.set_global_time_format("24h")
+    settings.set_global_temp_unit("F")
 
     section = _report_settings_section(platform)
 
     assert '"language": "de"' in section
-    assert '"time_format": "24h"' in section
+    assert '"temp_unit": "F"' in section
 
 
 def test_debug_report_reads_the_pre_cutover_config_when_it_is_the_live_one(

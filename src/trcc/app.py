@@ -25,7 +25,6 @@ from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
     DataInstalled,
-    DateFormatChanged,
     DeviceAttached,
     DeviceConnected,
     DeviceDetached,
@@ -43,7 +42,6 @@ from .core.events import (
     SplitModeChanged,
     SystemResumed,
     TempUnitChanged,
-    TimeFormatChanged,
     VideoStarted,
     VideoStopped,
 )
@@ -1287,14 +1285,6 @@ class _DeviceRenderObserver:
             # up the change on the very next render — UIs don't have
             # to loop over handlers and force a re-render themselves.
             TempUnitChanged,
-            # Per-device clock + date format changes — DisplayService
-            # reads DeviceSettings.{time_format,date_format} in
-            # compute_clock; the Command's invalidate already drops
-            # the scene cache, this just kicks the re-render so the
-            # user sees the change without waiting for the next
-            # sensor tick.
-            TimeFormatChanged,
-            DateFormatChanged,
             # Any LED settings mutation (mode, colour, selected metric
             # page/zone, carousel) — re-render the device + preview right
             # away instead of waiting for the next sensor tick.  RenderLed

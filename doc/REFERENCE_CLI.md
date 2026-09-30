@@ -228,7 +228,7 @@ App-global preferences: temp unit, language, GPU, refresh interval.
 
 ### `trcc config date-format`
 
-Set the global LCD overlay date format.
+Set every LCD date element's pattern, on every device.
 
 ```bash
 trcc config date-format FMT
@@ -300,7 +300,7 @@ trcc config temp-unit UNIT
 
 ### `trcc config time-format`
 
-Set the global LCD overlay clock format.
+Set every LCD clock element to 12h or 24h, on every device.
 
 ```bash
 trcc config time-format FMT

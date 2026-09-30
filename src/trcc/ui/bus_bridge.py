@@ -24,7 +24,6 @@ from ..core.events import (
     BackgroundChanged,
     BrightnessChanged,
     DataInstalled,
-    DateFormatChanged,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
@@ -53,7 +52,6 @@ from ..core.events import (
     SystemSuspending,
     TempUnitChanged,
     ThemeLoaded,
-    TimeFormatChanged,
     VideoAdvanced,
     VideoExportFinished,
     VideoExportProgress,
@@ -155,8 +153,6 @@ class BusBridge(QObject):
             (MaskApplied, self.settings_changed),
             (MaskPositionChanged, self.settings_changed),
             (MaskVisibilityChanged, self.settings_changed),
-            (TimeFormatChanged, self.settings_changed),
-            (DateFormatChanged, self.settings_changed),
             (LedSettingsChanged, self.settings_changed),
         )
         for event_type, signal in pairs:
