@@ -20,11 +20,21 @@ plus backward-compatible re-exports.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from functools import partial
+from typing import Any
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QStackedWidget
 
+from ...core.commands import (
+    AddOverlayElement,
+    Command,
+    DeleteOverlayElement,
+    UpdateOverlayElement,
+)
 from ...core.models import OverlayElementConfig, OverlayMode
+from ..presentation.overlay_serialization import config_fields
 from .base import BasePanel
 from .color_and_add_panels import AddElementPanel, ColorPickerPanel
 from .constants import Layout, Sizes
@@ -110,8 +120,8 @@ class UCThemeSetting(BasePanel):
         self.overlay_grid.move(*Layout.OVERLAY_GRID)
         self.overlay_grid.element_selected.connect(self._on_element_selected)
         self.overlay_grid.add_requested.connect(self._on_add_requested)
+        self.overlay_grid.element_added.connect(self._on_grid_element_added)
         self.overlay_grid.element_deleted.connect(self._on_element_deleted)
-        self.overlay_grid.elements_changed.connect(self._on_elements_changed)
 
         # Right panel stack — Color picker and Add element share this spot
         self.right_stack = QStackedWidget(self)
@@ -164,8 +174,15 @@ class UCThemeSetting(BasePanel):
 
     def _on_element_selected(self, index, config: OverlayElementConfig):
         """Element was clicked — show its properties in color panel."""
-        log.info("_on_element_selected: index=%s", index)
+        log.info("_on_element_selected: index=%s id=%s", index, config.id)
         self.right_stack.setCurrentWidget(self.color_panel)
+        self._show_element(config)
+
+    def _show_element(self, config: OverlayElementConfig) -> None:
+        """Put one element's properties on the side panel.  Sends nothing:
+        every setter here blocks or has no edit signal."""
+        log.debug("_show_element: %s %s at (%d, %d)", config.id,
+                  config.mode.name, config.x, config.y)
         self.color_panel.set_position(config.x, config.y)
         self.color_panel.set_color_hex(config.color)
         self.color_panel.set_font_display(config.font_name, config.font_size,
@@ -190,22 +207,27 @@ class UCThemeSetting(BasePanel):
         if cfg:
             self._on_element_selected(idx, cfg)
 
-    def _on_element_deleted(self, index):
-        """Element was deleted."""
-        log.info("_on_element_deleted: index=%s", index)
+    def _on_grid_element_added(self, config: OverlayElementConfig) -> None:
+        """A cell was added — the App gains that element, under the cell's id."""
+        fields = config_fields(config)
+        log.info("_on_grid_element_added: %s %s", config.id, config.mode.name)
+        if fields is not None:
+            self._send_edit(AddOverlayElement, element_id=config.id, **fields)
+
+    def _on_element_deleted(self, config: OverlayElementConfig) -> None:
+        """A cell was deleted — the App drops that element, by id."""
+        log.info("_on_element_deleted: %s", config.id)
         self.right_stack.setCurrentWidget(self.color_panel)
+        self._send_edit(DeleteOverlayElement, element_id=config.id)
 
-    def _on_elements_changed(self):
-        """Any change to elements list — notify parent via delegate.
+    def _send_edit(self, command: Callable[..., Command], **fields: Any) -> None:
+        """Hand ONE element edit to the window, which adds the device key.
 
-        Dispatches the next/ ``OverlayElement`` shape (id + flat font + type)
-        so ``SetOverlayConfig`` accepts it; the legacy keyed shape carried no
-        id and was rejected, so colour/font/drag edits never persisted.
+        The panel is shared by every LCD and knows no key; the active
+        handler does (``LCDHandler.on_overlay_edit``).
         """
-        elements = self.overlay_grid.to_next_elements()
-        log.info("_on_elements_changed: %d element(s) → CMD_OVERLAY_CHANGED",
-                 len(elements))
-        self.invoke_delegate(self.CMD_OVERLAY_CHANGED, elements)
+        log.info("_send_edit: %s %s", command.__name__, fields)
+        self.invoke_delegate(self.CMD_OVERLAY_CHANGED, partial(command, **fields))
 
     def _update_selected(self, require_mode: OverlayMode | None = None, **fields):
         """Update selected overlay element config fields and propagate.
@@ -225,6 +247,7 @@ class UCThemeSetting(BasePanel):
                      "%s skipped", cfg.mode.name, require_mode.name, fields)
             return
         before = {k: getattr(cfg, k, None) for k in fields}
+        was = config_fields(cfg) or {}
         for k, v in fields.items():
             setattr(cfg, k, v)
         # The transition the user actually wants to see in the log, e.g.
@@ -236,7 +259,13 @@ class UCThemeSetting(BasePanel):
             ", ".join(f"{k} {before[k]} → {v}" for k, v in fields.items()),
         )
         self.overlay_grid.update_element(idx, cfg)
-        self._on_elements_changed()
+        # Only what differs: a field this cell cannot represent (a format
+        # outside the table, bold AND italic) is never rewritten by an edit
+        # to something else.
+        changed = {k: v for k, v in (config_fields(cfg) or {}).items()
+                   if was.get(k) != v}
+        if changed:
+            self._send_edit(UpdateOverlayElement, element_id=cfg.id, **changed)
 
     def _on_color_changed(self, r, g, b):
         log.debug("_on_color_changed: r=%d, g=%d, b=%d", r, g, b)
@@ -336,13 +365,12 @@ class UCThemeSetting(BasePanel):
         return self.overlay_grid.get_all_configs()
 
     def load_configs(self, configs):
+        """Show a layout; a still-selected element re-shows its properties,
+        which another UI may just have changed."""
+        log.debug("load_configs: %d cell(s)", len(configs))
         self.overlay_grid.load_configs(configs)
-
-    def to_overlay_config(self):
-        return self.overlay_grid.to_overlay_config()
-
-    def load_from_overlay_config(self, overlay_config):
-        self.overlay_grid.load_from_overlay_config(overlay_config)
+        if (selected := self.overlay_grid.get_selected_config()) is not None:
+            self._show_element(selected)
 
     def set_overlay_enabled(self, enabled: bool):
         self.overlay_grid.set_overlay_enabled(enabled)

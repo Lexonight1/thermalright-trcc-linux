@@ -9,7 +9,9 @@ switched the overlay off got it switched back on at the next launch — issue
 
 The dead giveaway was ``_load_theme_overlay_config(theme_dir, persist=False)``:
 the restore path asked for "don't persist", and the body logged the flag and
-then persisted anyway.
+then persisted anyway.  The restore is ``_show_overlay_layout`` now, and the
+user-load path ``_adopt_loaded_overlay``; both read the layout the App holds
+(``ResolveOverlay``), so each test loads its theme into the App first.
 
 These drive the real handler over a real App so the whole chain runs —
 ``RestoreDeviceState`` → the overlay restore → ``Settings`` — rather than
@@ -25,7 +27,12 @@ import pytest
 
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, EnableOverlay
+from trcc.core.commands import (
+    ConnectDevice,
+    EnableOverlay,
+    LoadTheme,
+    ResolveOverlay,
+)
 
 from .mock_platform import MockPlatform
 
@@ -39,13 +46,13 @@ class _Widget:
 
     def __init__(self) -> None:
         self.overlay_enabled: list[bool] = []
-        self.loaded: list[dict[str, Any]] = []
+        self.loaded: list[list[Any]] = []
 
     def set_overlay_enabled(self, enabled: bool) -> None:
         self.overlay_enabled.append(enabled)
 
-    def load_from_overlay_config(self, config: dict[str, Any]) -> None:
-        self.loaded.append(config)
+    def load_configs(self, configs: list[Any]) -> None:
+        self.loaded.append(configs)
 
     def __getattr__(self, name: str) -> Any:
         def _noop(*a: Any, **k: Any) -> None:
@@ -84,6 +91,12 @@ def _theme_with_overlay(root: Path) -> Path:
     return theme
 
 
+def _loaded(app: App, theme: Path) -> Path:
+    """Load *theme* the way a user does, so the App holds its layout."""
+    assert app.dispatch(LoadTheme(key=_KEY, path=theme)).ok
+    return theme
+
+
 @pytest.fixture
 def handler(tmp_path: Path) -> tuple[Any, App, _Widget]:
     from trcc.ui.gui.lcd_handler import LCDHandler
@@ -111,10 +124,10 @@ def test_restore_keeps_the_overlay_off_the_user_switched_off(
     read as "→ overlay enabled".
     """
     h, app, theme_setting = handler
-    theme = _theme_with_overlay(tmp_path)
+    _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, False)
 
-    h._restore_overlay_editor(theme)
+    h._show_overlay_layout()
 
     assert app.settings.for_device(_KEY).overlay_enabled is False, (
         "an automatic restore overwrote the user's persisted overlay toggle"
@@ -131,13 +144,17 @@ def test_restore_still_shows_the_theme_layout_in_the_editor(
     """Not writing the toggle must not cost the user their populated grid —
     the editor is repopulated either way (that is what the restore is for)."""
     h, app, theme_setting = handler
-    theme = _theme_with_overlay(tmp_path)
+    _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, False)
 
-    h._restore_overlay_editor(theme)
+    h._show_overlay_layout()
 
     assert theme_setting.loaded, "restore left the overlay editor empty"
-    assert "custom_text" in theme_setting.loaded[-1]
+    cells = theme_setting.loaded[-1]
+    assert [c.text for c in cells] == ["CPU"]
+    # Each cell names the App's element, so an edit reaches THAT element.
+    assert [c.id for c in cells] == [
+        e.id for e in app.dispatch(ResolveOverlay(key=_KEY)).elements]
 
 
 def test_restore_keeps_the_overlay_on_when_the_user_left_it_on(
@@ -145,10 +162,10 @@ def test_restore_keeps_the_overlay_on_when_the_user_left_it_on(
 ) -> None:
     """The authority cuts both ways — restore reports on as faithfully as off."""
     h, app, theme_setting = handler
-    theme = _theme_with_overlay(tmp_path)
+    _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, True)
 
-    h._restore_overlay_editor(theme)
+    h._show_overlay_layout()
 
     assert app.settings.for_device(_KEY).overlay_enabled is True
     assert theme_setting.overlay_enabled == [True]
@@ -173,7 +190,7 @@ def test_restore_dispatches_no_command_at_all(
     from trcc.core.commands import Query
 
     h, app, _ = handler
-    theme = _theme_with_overlay(tmp_path)
+    _loaded(app, _theme_with_overlay(tmp_path))
     writes: list[str] = []
     real = app.dispatch
 
@@ -183,7 +200,7 @@ def test_restore_dispatches_no_command_at_all(
         return real(command)
 
     monkeypatch.setattr(app, "dispatch", _record)
-    h._restore_overlay_editor(theme)
+    h._show_overlay_layout()
 
     assert writes == [], (
         f"restore must not write device state, but dispatched {writes}"
@@ -202,10 +219,10 @@ def test_a_user_theme_click_still_establishes_the_toggle(
     here, those tests would pass against the bug.
     """
     h, app, theme_setting = handler
-    theme = _theme_with_overlay(tmp_path)
+    _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, False)
 
-    h._load_theme_overlay_config(theme)
+    h._adopt_loaded_overlay()
 
     assert app.settings.for_device(_KEY).overlay_enabled is True, (
         "a user-initiated theme load must adopt the theme's overlay"
@@ -220,13 +237,18 @@ def test_a_theme_with_no_layout_switches_the_overlay_off_on_a_click(
     h, app, theme_setting = handler
     bare = tmp_path / "BareTheme"
     bare.mkdir()
+    (bare / "trcc.json").write_text(json.dumps({
+        "name": "BareTheme", "width": 854, "height": 480, "elements": [],
+    }))
+    _loaded(app, bare)
     app.settings.set_overlay_enabled(_KEY, True)
 
-    h._load_theme_overlay_config(bare)
+    h._adopt_loaded_overlay()
 
     assert app.settings.for_device(_KEY).overlay_enabled is False
     assert theme_setting.overlay_enabled == [False]
-    assert theme_setting.loaded == [], "nothing to load, nothing loaded"
+    assert theme_setting.loaded == [[]], (
+        "the grid must show the empty layout, not keep the previous cells")
 
 
 # ── #276 second symptom: the last deleted element must stay deleted ───────
@@ -235,8 +257,8 @@ def test_a_theme_with_no_layout_switches_the_overlay_off_on_a_click(
 class _RealGridHandler:
     """Wires a real ``UCThemeSetting`` to a real ``LCDHandler``.
 
-    Drives the chain the reporter drives — grid delete → ``elements_changed``
-    → the panel's delegate → ``on_overlay_changed`` → ``SetOverlayConfig`` —
+    Drives the chain the reporter drives — grid delete → ``element_deleted``
+    → the panel's delegate → ``on_overlay_edit`` → ``DeleteOverlayElement`` —
     rather than calling the handler directly, because the bug lived in the hop
     between them.
     """
@@ -257,7 +279,7 @@ class _RealGridHandler:
     def _forward(self, cmd: int, info: Any, data: Any) -> None:
         from trcc.ui.gui.uc_theme_setting import UCThemeSetting
         if cmd == UCThemeSetting.CMD_OVERLAY_CHANGED:
-            self.handler.on_overlay_changed(info)
+            self.handler.on_overlay_edit(info)
 
 
 def _two_element_theme(root: Path) -> Path:
@@ -292,7 +314,7 @@ def test_deleting_the_last_overlay_element_makes_it_stay_gone(
     theme = _two_element_theme(tmp_path)
     assert app.dispatch(LoadTheme(key=_KEY, path=theme)).ok
     ui = _RealGridHandler(app, tmp_path)
-    ui.handler._load_theme_overlay_config(theme)
+    ui.handler._adopt_loaded_overlay()
 
     def drawn() -> int:
         s = app.settings.for_device(_KEY)
@@ -332,7 +354,7 @@ def test_emptying_the_layout_does_not_switch_the_overlay_on(
     theme = _theme_with_overlay(tmp_path)          # exactly one element
     assert app.dispatch(LoadTheme(key=_KEY, path=theme)).ok
     ui = _RealGridHandler(app, tmp_path)
-    ui.handler._load_theme_overlay_config(theme)
+    ui.handler._adopt_loaded_overlay()
     app.dispatch(EnableOverlay(key=_KEY, enabled=False))
     ui.handler._pm.state.overlay_enabled = False
 

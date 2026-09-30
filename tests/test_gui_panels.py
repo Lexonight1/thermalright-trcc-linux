@@ -588,58 +588,53 @@ def test_overlay_editor_adopts_theme_layout_and_edits_in_place(
     assert (after[0].x, after[0].y) == (99, 99)
 
 
-def test_overlay_grid_loads_metric_and_edits_persist(
+def test_overlay_grid_loads_metric_from_the_app_with_its_ids(
     gui_app: App, qapp: object,
 ) -> None:
-    """Legacy-style grid: metrics load (not dropped) and edits persist.
+    """Legacy-style grid: a metric element loads (not dropped), every cell
+    keeps the App's id.
 
-    Before the fix the grid mapped metrics by legacy name so next/-id
-    metrics (cpu:temp) were dropped on load (couldn't be dragged), and its
-    edit payload carried no id so SetOverlayConfig rejected it (colour/drag
-    never applied).  This drives the real widget + Command bus end to end.
+    Metrics were once dropped on load (mapped by legacy name, not ``cpu:temp``)
+    so they could not be dragged; and the grid once re-minted every id
+    positionally, so an id the CLI or API held stopped naming anything.
     """
-    from trcc.core.commands import SetOverlayConfig
+    from trcc.core.commands import AddOverlayElement, ResolveOverlay
+    from trcc.core.models import OverlayMode
     from trcc.ui.gui.overlay_grid import OverlayGridPanel
+    from trcc.ui.presentation.overlay_serialization import entries_to_configs
+
+    key = "0402:3922"
+    assert gui_app.dispatch(AddOverlayElement(
+        key=key, element_id="m1", type="metric", metric="cpu:temp",
+        x=74, y=250, color="#112233")).ok
+    assert gui_app.dispatch(AddOverlayElement(
+        key=key, element_id="t1", type="text", text="HI")).ok
 
     grid = OverlayGridPanel()
-    grid.set_overlay_enabled(True)
-    grid.load_from_overlay_config({
-        "cpu_temp": {"metric": "cpu:temp", "x": 74, "y": 250,
-                     "color": "#112233", "enabled": True,
-                     "font": {"size": 24}},
-        "custom_0": {"text": "HI", "x": 5, "y": 5, "color": "#abcdef",
-                     "enabled": True},
-    })
+    grid.load_configs(entries_to_configs(
+        gui_app.dispatch(ResolveOverlay(key=key)).elements))
 
-    # Metric element reached the editable grid (was dropped before the fix).
-    assert len(grid.get_all_configs()) == 2
-
-    # The edit dispatch shape is accepted, and the colour persists.
-    key = "0402:3922"
-    result = gui_app.dispatch(
-        SetOverlayConfig(key=key, elements=tuple(grid.to_next_elements())),
-    )
-    assert result.ok, result.message
-    stored = gui_app.settings.for_device(key).user_overlay_elements
-    metric = next(e for e in stored if e.type == "metric")
-    assert metric.metric == "cpu:temp"
+    cells = grid.get_all_configs()
+    assert [c.id for c in cells] == ["m1", "t1"]
+    metric = cells[0]
+    assert metric.mode is OverlayMode.HARDWARE
+    assert (metric.main_count, metric.sub_count) == (0, 1)
     assert metric.color == "#112233"
 
 
-def test_color_change_emits_list_payload_to_delegate(
+def test_color_change_sends_one_update_naming_the_element(
     gui_app: App, qapp: object,
 ) -> None:
-    """A colour edit must reach the delegate as a non-empty next/ element
-    LIST carrying the new colour.
+    """A colour edit reaches the delegate as ONE ``UpdateOverlayElement`` for
+    the selected element, carrying the colour and nothing else.
 
-    The delegate forwarder in trcc_app gates CMD_OVERLAY_CHANGED on
-    ``isinstance(info, (dict, list))``; when ``_on_elements_changed`` switched
-    to the list shape, a dict-only gate silently dropped the payload to ``{}``
-    so colour/drag never reached on_overlay_changed.  This drives the real
-    UCThemeSetting → delegate hop (the one a direct SetOverlayConfig test
-    bypasses).
+    It used to send the whole grid through ``SetOverlayConfig``, which
+    rewrote every other element in the grid's reduced shape and put back what
+    another UI had changed.  Drives the real UCThemeSetting → delegate hop.
     """
     del gui_app, qapp
+    from trcc.core.commands import UpdateOverlayElement
+    from trcc.core.models import OverlayElementConfig, OverlayMode
     from trcc.ui.gui.uc_theme_setting import UCThemeSetting
 
     panel = UCThemeSetting()
@@ -647,22 +642,20 @@ def test_color_change_emits_list_payload_to_delegate(
     panel.delegate.connect(lambda cmd, info, data: captured.append((cmd, info)))
 
     panel.set_overlay_enabled(True)
-    panel.load_from_overlay_config({
-        "custom_0": {"text": "HI", "x": 5, "y": 5, "color": "#ffffff",
-                     "enabled": True},
-    })
+    panel.load_configs([
+        OverlayElementConfig(id="t1", mode=OverlayMode.CUSTOM, text="HI",
+                             x=5, y=5, color="#ffffff"),
+    ])
     panel.overlay_grid.select_element(0)
     panel._on_color_changed(0x11, 0x22, 0x33)
 
-    overlay_emits = [
-        info for cmd, info in captured
-        if cmd == UCThemeSetting.CMD_OVERLAY_CHANGED
-    ]
-    assert overlay_emits, "colour change emitted no CMD_OVERLAY_CHANGED"
-    payload = overlay_emits[-1]
-    # Must be a LIST (the gate forwards list/dict; anything else → {} → dropped)
-    assert isinstance(payload, list) and payload, f"payload not a list: {payload!r}"
-    assert payload[0]["color"] == "#112233"
+    edits = [info for cmd, info in captured
+             if cmd == UCThemeSetting.CMD_OVERLAY_CHANGED]
+    assert len(edits) == 1, f"one colour change, {len(edits)} edits"
+    command = edits[0](key="0402:3922")
+    assert command == UpdateOverlayElement(
+        key="0402:3922", element_id="t1", color="#112233",
+    ), "only the changed field may be sent"
 
 
 def test_configuration_panel_constructs(gui_app: App) -> None:

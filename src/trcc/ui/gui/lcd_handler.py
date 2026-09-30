@@ -38,13 +38,13 @@ from ...core.commands import (
     LoadCloudTheme,
     LoadTheme,
     PreviewSize,
+    ResolveOverlay,
     ResolveThemeDirectories,
     SaveTheme,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
     SetOrientation,
-    SetOverlayConfig,
     SetSplitMode,
     StopVideo,
     ToggleVideo,
@@ -52,10 +52,13 @@ from ...core.commands import (
     VideoStatus,
 )
 from ..presentation.lcd_presentation_model import LcdPresentationModel
-from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
+from ..presentation.overlay_serialization import entries_to_configs
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ...core.commands import Command
     from ...core.ports import CommandBus
     from ...core.results import (
         LcdSnapshotResult,
@@ -393,9 +396,8 @@ class LCDHandler(BaseHandler):
         self._restore_brightness(ds)
         self._restore_rotation(ds)
         self._restore_split_mode(ds)
+        self._show_overlay_layout()
         settings = self._w['theme_setting']
-        settings.set_overlay_enabled(ds.overlay_enabled)
-        self._pm.state.overlay_enabled = ds.overlay_enabled
         settings.set_mask_visible(ds.mask_visible)
         # None is the default place, which the render draws at (0, 0).
         settings.set_mask_position(*(ds.mask_position or (0, 0)))
@@ -446,7 +448,7 @@ class LCDHandler(BaseHandler):
         """Show what the device is rendering — READ only, dispatching nothing.
 
         The cached current frame (``rebuild_preview``) plus the overlay editor
-        repopulated from the active theme.  Loading the saved theme is the
+        showing what the App holds for the panel.  Loading the saved theme is the
         session's job (``App._prime``, on connect and when data lands), for
         every UI: it used to be done here on first connect, and before that by
         a gui-only first-install auto-load, while qtgui and the API each had
@@ -468,7 +470,7 @@ class LCDHandler(BaseHandler):
         self._pm.state.current_theme_path = Path(current)
         # The toggle shows the DEVICE's persisted state, not "does this theme
         # carry elements" — a sidebar switch must report what is on screen.
-        self._restore_overlay_editor(Path(current))
+        self._show_overlay_layout()
         self.rebuild_preview()
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
@@ -524,8 +526,8 @@ class LCDHandler(BaseHandler):
         self._pm.state.current_theme_path = path if result.ok else None
         if result.ok:
             self._sync_preview_size()   # bezel matches portrait/landscape theme (#136)
-        if overlay_config:
-            self._load_theme_overlay_config(path)
+        if overlay_config and result.ok:
+            self._adopt_loaded_overlay()
 
         if not persist or not self._device_key:
             self.log.warning("_select_theme_from_path: not persisting (persist=%s, key=%s)",
@@ -582,8 +584,6 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
             return
         mask_dir = Path(mask_info.path)
-        # DC first — sets overlay resolution + element positions for this mask
-        self._load_theme_overlay_config(mask_dir)
         is_custom = getattr(mask_info, 'is_custom', False)
         if is_custom:
             r = self._app.dispatch(UploadCustomMask(
@@ -595,6 +595,7 @@ class LCDHandler(BaseHandler):
             ))
         if r.ok:
             self._w['preview'].set_status(r.message)
+            self._adopt_loaded_overlay()
         else:
             self._w['preview'].set_status(f"Mask failed: {r.message}")
 
@@ -636,81 +637,47 @@ class LCDHandler(BaseHandler):
 
     # ── DC File Loading ────────────────────────────────────────────
 
-    def _read_overlay_layout(self, theme_dir: Path) -> dict[str, dict[str, Any]]:
-        """The theme's persisted overlay layout, in the grid's shape.
+    def _show_overlay_layout(self) -> None:
+        """Put the overlay the App holds for this panel on the editor — READ only.
 
-        Reads only — ``trcc.json`` ``elements`` for saved themes,
-        ``config1.dc`` / legacy ``config.json`` for older/packaged ones (see
-        ``dc_as_legacy_overlay_config``).  Touches no widget and dispatches
-        nothing, so a caller that must NOT write device state can still ask
-        what the theme carries.
+        The grid and its switch, from ``ResolveOverlay``: the device's working
+        layer, which every UI edits, each element with its id.  The grid used
+        to be filled from the theme's FILES, so it never showed another UI's
+        edit and sent its stale copy back over it on the next change; it also
+        preferred ``trcc.json`` where the App reads ``config1.dc``.
+
+        Dispatches no Command, so a reconnect cannot decide the switch (#276):
+        ``DeviceSettings.overlay_enabled`` is the single authority.
         """
-        layout = dc_as_legacy_overlay_config(theme_dir)
-        self.log.info("_read_overlay_layout: dir=%s → %d element(s)",
-                      theme_dir, len(layout))
-        return layout
-
-    def _show_overlay_layout(
-        self, layout: dict[str, dict[str, Any]], enabled: bool,
-    ) -> None:
-        """Put a layout + toggle state on the grid.  GUI only.
-
-        Dispatches nothing and persists nothing — the two callers that DO
-        own device state (``_load_theme_overlay_config`` for a user-initiated
-        load, ``_restore_overlay_editor`` for a reconnect) decide that for
-        themselves.  Order matches the original: enable first, then load, so
-        the grid's model sees the toggle before the elements.
-        """
-        self.log.info("_show_overlay_layout: %d element(s) enabled=%s",
-                      len(layout), enabled)
-        self._w['theme_setting'].set_overlay_enabled(enabled)
-        if layout:
-            self._w['theme_setting'].load_from_overlay_config(layout)
-
-    def _restore_overlay_editor(self, theme_dir: Path) -> None:
-        """Show the persisted overlay state on reconnect — never write it.
-
-        An automatic restore must not DECIDE overlay-enabled.
-        ``DeviceSettings.overlay_enabled`` is the single authority (see the
-        ``build_overlay`` comment in ``services/display.py``) and the user set
-        it deliberately; deriving it from "does this theme carry elements"
-        overwrote that on every boot, so an overlay switched off came back on
-        at the next launch (#276).  ``_load_theme_overlay_config`` used to
-        take a ``persist`` flag meant to express exactly this, but the body
-        never read it — the restore path passed ``persist=False`` and got a
-        persisted ``EnableOverlay`` anyway.
-        """
-        self.log.info("_restore_overlay_editor: dir=%s", theme_dir)
-        enabled = self._lcd_settings().overlay_enabled
-        self._show_overlay_layout(self._read_overlay_layout(theme_dir), enabled)
-        self._pm.state.overlay_enabled = enabled
-
-    def _load_theme_overlay_config(self, theme_dir: Path) -> None:
-        """Adopt a theme's overlay layout as the device's live overlay.
-
-        For USER-INITIATED loads only — a theme click, a mask apply, a
-        slideshow advance.  The theme establishes both the layout and the
-        toggle (a theme with no layout switches the overlay off), which is
-        legacy's behaviour and the one the GUI standards document.  A
-        reconnect goes through ``_restore_overlay_editor`` instead, which
-        honours the persisted toggle rather than replacing it.
-
-        Not replayed through ``SetOverlayConfig``: that Command takes
-        next/-shape elements with ids, used by the editor when the user drops
-        a new element, not by a load.
-        """
-        layout = self._read_overlay_layout(theme_dir)
-        enabled = bool(layout)
+        layout = self._app.dispatch(ResolveOverlay(key=self._device_key))
         self.log.info(
-            "_load_theme_overlay_config: dir=%s → %d element(s), "
-            "overlay %s", theme_dir, len(layout),
-            "enabled" if enabled else "disabled (theme carries no layout)",
+            "_show_overlay_layout: %s → %d element(s) from the %s layer, "
+            "enabled=%s", self._device_key, len(layout.elements),
+            layout.source, layout.enabled,
         )
-        self._show_overlay_layout(layout, enabled)
+        settings = self._w['theme_setting']
+        settings.set_overlay_enabled(layout.enabled)
+        settings.load_configs(entries_to_configs(layout.elements))
+        self._pm.state.overlay_enabled = layout.enabled
+
+    def _adopt_loaded_overlay(self) -> None:
+        """After a USER load (theme click, mask apply) the switch follows it.
+
+        The load has already copied its layout into the device's working
+        layer.  A layout switches the overlay on and none switches it off —
+        legacy's behaviour and the one the GUI standards document.  A
+        reconnect goes through ``_show_overlay_layout`` alone, which honours
+        the persisted switch instead (#276).
+        """
+        enabled = bool(self._app.dispatch(
+            ResolveOverlay(key=self._device_key)).elements)
+        self.log.info("_adopt_loaded_overlay: %s → overlay %s",
+                      self._device_key,
+                      "enabled" if enabled else "disabled (no layout)")
         self._app.dispatch(EnableOverlay(
             key=self._device_key, enabled=enabled,
         ))
-        self._pm.state.overlay_enabled = enabled
+        self._show_overlay_layout()
         self._render_and_send()
 
     # ── Video lifecycle (bus_bridge observers) ─────────────────────
@@ -834,45 +801,29 @@ class LCDHandler(BaseHandler):
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 
-    def on_overlay_changed(self, element_data: dict | list) -> None:
-        """Forward overlay config change from settings panel.
+    def on_overlay_edit(self, edit: Callable[..., Command]) -> None:
+        """Dispatch one element edit from the editor, for this panel.
 
-        Accepts the next/ element LIST (the grid's current dispatch shape) or
-        the legacy keyed dict; the body normalizes both below.
+        *edit* is an Add/Update/DeleteOverlayElement waiting only for the
+        device key.  One element by id, never the whole grid: re-sending the
+        grid rewrote every other element in the grid's reduced shape and put
+        back whatever another UI had changed.
+
+        Editing an element implies wanting to see it, so an edit against a
+        switched-off overlay switches it on.  Deleting the LAST one implies
+        the opposite, so an edit that leaves nothing must not — that would
+        answer a "remove everything" by turning the overlay on.
         """
-        self.log.info("on_overlay_changed: %d elements",
-                      len(element_data) if element_data else 0)
-        if element_data is None:
-            self.log.warning("on_overlay_changed: no payload — nothing to do")
-            return
-        # An EMPTY list is a real edit: the user deleted the last element.
-        # This used to be dropped by a falsiness guard, so the deletion never
-        # reached the bus, the previous list stayed persisted, and the element
-        # came back — the second half of #276 ("whichever one I delete last
-        # still appears").  The sole dispatcher, ``_on_elements_changed``,
-        # always sends a real list, so the guard protected nothing.
-        #
-        # The same guard shape, one hop up in ``trcc_app``, had already caused
-        # exactly this bug once: gating on dict-only silently dropped every
-        # colour/drag edit.
-        # Apply overlay change via the Command bus.  EnableOverlay
-        # persists the toggle; SetOverlayConfig persists the element
-        # list.  next/ skips the legacy "is video playing" cache-update
-        # branch — the render service handles overlay refresh next tick.
-        # Editing an element implies wanting to see it, so an edit against a
-        # switched-off overlay switches it on.  Deleting the LAST one implies
-        # the opposite, so an empty payload must not — that would answer a
-        # "remove everything" by turning the overlay on.
-        if element_data and not self._pm.state.overlay_enabled:
+        command = edit(key=self._device_key)
+        self.log.info("on_overlay_edit: %s", command)
+        if not self._app.dispatch(command).ok:
+            return      # App.dispatch has logged the refusal at WARNING
+        if not self._pm.state.overlay_enabled and self._app.dispatch(
+                ResolveOverlay(key=self._device_key)).elements:
             self._app.dispatch(EnableOverlay(
                 key=self._device_key, enabled=True,
             ))
             self._pm.state.overlay_enabled = True
-        self._app.dispatch(SetOverlayConfig(
-            key=self._device_key,
-            elements=tuple(element_data.values())
-                if isinstance(element_data, dict) else tuple(element_data),
-        ))
         self._render_and_send()
 
     def handle_frame(self, image: Any) -> None:
@@ -966,25 +917,10 @@ class LCDHandler(BaseHandler):
             "update_metrics: %s readings=%d", self._device_key, len(readings),
         )
 
-    def flash_element(self, index: int) -> None:
-        """Flash/blink selected overlay element on preview."""
-        from ...core.commands import FlashOverlayElement, ResolveOverlay
-        # The overlay-element widgets are 1:1 (in order) with the EFFECTIVE
-        # layout on screen (user > mask > theme), so map the clicked index →
-        # that element's real id.  Every entry carries one: ResolveOverlay
-        # mints positional ids for a theme's own elements, which come from a
-        # DC parse and have none — the old bare-index fallback then named
-        # something FlashOverlayElement could never match (#150/#203).
-        elements = self._app.dispatch(
-            ResolveOverlay(key=self._device_key),
-        ).elements
-        # Out of range means the widget list and the layout have desynced —
-        # keep a name so the failure is one findable WARNING, not a crash.
-        element_id = (
-            elements[index].id if 0 <= index < len(elements) else str(index)
-        )
-        self.log.info("flash_element: index=%d → element_id=%s",
-                      index, element_id)
+    def flash_element(self, element_id: str) -> None:
+        """Flash/blink one overlay element on the preview, by its App id."""
+        from ...core.commands import FlashOverlayElement
+        self.log.info("flash_element: element_id=%s", element_id)
         self._app.dispatch(FlashOverlayElement(
             key=self._device_key, element_id=element_id, duration_ms=980,
         ))
@@ -1060,9 +996,9 @@ class LCDHandler(BaseHandler):
         ``0709ad5f`` taught the core resolver those libraries on 2026-08-23
         and the workaround has been redundant since.
 
-        ``_restore_overlay_editor``, not ``_load_theme_overlay_config``: a
-        rotation re-roots the SAME theme, so the persisted overlay toggle is
-        the authority and must be shown, never replaced (#276).
+        ``_show_overlay_layout``, not ``_adopt_loaded_overlay``: a rotation
+        re-roots the SAME theme, so the persisted overlay toggle is the
+        authority and must be shown, never replaced (#276).
         """
         snap = self._app.dispatch(LcdSnapshot(key=self._device_key))
         current = (
@@ -1080,7 +1016,7 @@ class LCDHandler(BaseHandler):
         )
         self._pm.state.current_theme_path = current
         if current is not None:
-            self._restore_overlay_editor(current)
+            self._show_overlay_layout()
 
     def set_split_mode(self, mode: int) -> None:
         self.log.info("set_split_mode: %d -> %d device=%s",

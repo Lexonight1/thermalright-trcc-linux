@@ -15,7 +15,7 @@ import logging
 from dataclasses import replace
 
 from ...core.logs import per_frame
-from ...core.models import OverlayElementConfig
+from ...core.models import OverlayElementConfig, new_overlay_id
 
 log = logging.getLogger(__name__)
 #: Per-tick readers — their records must never be CONSTRUCTED at
@@ -110,11 +110,18 @@ class OverlayModel:
     # ── Mutation ──────────────────────────────────────────────────────
 
     def add(self, config: OverlayElementConfig) -> bool:
-        """Append an element, selecting it.  No-op (``False``) when full."""
+        """Append a COPY of *config* as a new element with its own id, selecting it.
+
+        A copy because a caller may hand the same object twice (the sensor
+        sidebar keeps one per sensor), which put one object in two cells.
+        No-op (``False``) when full.
+        """
         if len(self._configs) >= MAX_ELEMENTS:
             log.debug("OverlayModel.add: at MAX_ELEMENTS=%d — refused", MAX_ELEMENTS)
             return False
-        self._configs.append(config)
+        self._configs.append(replace(config, id=new_overlay_id()))
+        log.debug("OverlayModel.add: %s as %s", config.mode.name,
+                  self._configs[-1].id)
         self._selected_index = len(self._configs) - 1
         return True
 
@@ -138,10 +145,21 @@ class OverlayModel:
         return True
 
     def load(self, configs: list[OverlayElementConfig]) -> None:
-        """Replace the list (copied, capped at ``MAX_ELEMENTS``); clear selection."""
+        """Replace the list (copied, capped at ``MAX_ELEMENTS``).
+
+        The selected element stays selected wherever it now sits, matched by
+        id: the grid reloads on every change any UI makes, including this
+        one's own drag, and clearing the selection there left the next move
+        with nothing to move.  One that is gone clears it.
+        """
         frame_log.debug("load: configs=%s", configs)
+        kept = self.selected_config
         self._configs = [replace(c) for c in configs[:MAX_ELEMENTS]]
-        self._selected_index = -1
+        self._selected_index = next(
+            (i for i, c in enumerate(self._configs)
+             if kept is not None and kept.id and c.id == kept.id),
+            -1,
+        )
 
     def clear(self) -> None:
         log.debug("clear")

@@ -820,8 +820,8 @@ def element_family(data: Mapping[str, Any]) -> str:
       the family arrives as ``name``;
     * ``OverlayElement.to_dict`` writes ``name``, while ``dataclasses.asdict``
       persists the dataclass FIELD name, ``font``;
-    * ``ui/presentation/overlay_serialization`` NESTS it under
-      ``font["name"]`` for the editor's keyed shape.
+    * the gui editor's old keyed shape NESTED it under ``font["name"]``;
+      that shape is gone, and the nested read stays for data written by it.
 
     ``from_dict`` and the render path each resolved this privately, with
     OPPOSITE precedence, and handed back different families for one input --
@@ -837,6 +837,18 @@ def element_family(data: Mapping[str, Any]) -> str:
     family = str(data.get("name") or nested or "")
     frame_log.debug("element_family: %r", family)
     return family
+
+
+def new_overlay_id() -> str:
+    """A fresh, unique overlay element id — THE one place ids are minted.
+
+    Every UI that creates an element and every Command that accepts one
+    without an id draws from here, so two producers cannot pick colliding
+    schemes (the gui's positional ``el_0..`` re-mint did exactly that).
+    """
+    element_id = f"el_{uuid.uuid4().hex[:8]}"
+    log.debug("new_overlay_id: %s", element_id)
+    return element_id
 
 
 @dataclass
@@ -916,7 +928,7 @@ class OverlayElement:
         """
         log.debug("from_dict: data=%s", data)
         return cls(
-            id=str(data.get("id") or "") or f"el_{uuid.uuid4().hex[:8]}",
+            id=str(data.get("id") or "") or new_overlay_id(),
             type=data.get("type", "text"),
             x=int(data.get("x", 0)),
             y=int(data.get("y", 0)),
@@ -1569,7 +1581,12 @@ class OverlayElementConfig:
     Distinct from next/'s native :class:`OverlayElement` (which uses
     string types like "text" / "metric" / "clock"); the editor
     converts back and forth at the bus boundary.
+
+    ``id`` is the App element this cell shows, so an edit names the element
+    it changes instead of re-sending the whole layout.  "" until the grid
+    adds the cell (``OverlayModel.add`` mints it).
     """
+    id: str = ""
     mode: OverlayMode = OverlayMode.TIME
     mode_sub: int = 0
     x: int = 100

@@ -50,6 +50,7 @@ from ..models import (
     RawFrame,
     ThemeDir,
     Wire,
+    new_overlay_id,
     oriented_resolution,
     parse_device_key,
 )
@@ -2477,8 +2478,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
                 message=f"Invalid element type {self.type!r} (expected "
                         "'text' / 'metric' / 'clock')",
             )
-        import uuid
-        eid = self.element_id or f"el_{uuid.uuid4().hex[:8]}"
+        eid = self.element_id or new_overlay_id()
         existing = {
             e.id for e in
             (app.settings.for_device(self.key).user_overlay_elements or ())

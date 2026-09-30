@@ -1749,13 +1749,8 @@ class TRCCApp(QMainWindow):
                 self._on_video_display_toggle(info)
             case UCThemeSetting.CMD_OVERLAY_CHANGED:
                 if h:
-                    # ``_on_elements_changed`` now dispatches the next/ element
-                    # LIST (id + flat font); ``on_overlay_changed`` accepts
-                    # list or dict.  Gating on dict-only here silently dropped
-                    # every edit (colour/drag) — the list fell to ``{}``.
-                    h.on_overlay_changed(
-                        info if isinstance(info, (dict, list)) else {},
-                    )
+                    # One element edit, waiting for this panel's key.
+                    h.on_overlay_edit(info)
 
     def _on_preview_delegate(self, cmd: Any, info: Any, data: Any) -> None:
         log.info("_on_preview_delegate")
@@ -2283,11 +2278,11 @@ class TRCCApp(QMainWindow):
                 key=h.device_key, enabled=enabled,
             ))
 
-    def _on_element_flash(self, index: int, config: dict) -> None:
-        log.info("_on_element_flash: index=%s", index)
+    def _on_element_flash(self, index: int, config: Any) -> None:
+        log.info("_on_element_flash: index=%s id=%s", index, config.id)
         h = self._active_lcd()
         if h:
-            h.flash_element(index)
+            h.flash_element(config.id)
 
     # ── Drag / Nudge ────────────────────────────────────────────────
 

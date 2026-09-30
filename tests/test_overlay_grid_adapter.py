@@ -1,17 +1,23 @@
-"""Grid ↔ next/ OverlayElement interchange — the colour/drag persist fix.
+"""Grid cell → App element fields — the colour/drag persist fix.
 
 The legacy-style overlay grid used to emit the legacy keyed shape (nested
-font, ``metric:"time"``, NO id), which ``SetOverlayConfig`` rejected — so
-colour/font/drag edits never persisted.  And it mapped metrics by legacy
-name (``cpu_temp``) while themes carry next/ ids (``cpu:temp``), so metric
-elements were dropped from the editable grid (you couldn't drag them).
-These lock both directions.
+font, ``metric:"time"``, NO id), which the bus rejected — so colour/font/drag
+edits never persisted.  And it mapped metrics by legacy name (``cpu_temp``)
+while themes carry next/ ids (``cpu:temp``), so metric elements were dropped
+from the editable grid (you couldn't drag them).  A cell now becomes the
+fields ``AddOverlayElement`` takes; these lock that mapping.
 """
 from __future__ import annotations
 
-from trcc.core.models import OverlayElement, OverlayElementConfig, OverlayMode
+from pathlib import Path
+
+from tests.conftest import FakePlatform
+from trcc.adapters.render.qt import QtRenderer
+from trcc.app import App
+from trcc.core.commands import AddOverlayElement
+from trcc.core.models import OverlayElementConfig, OverlayMode
 from trcc.services import _dc as Dc
-from trcc.ui.presentation.overlay_serialization import configs_to_next_elements
+from trcc.ui.presentation.overlay_serialization import config_fields
 
 
 def test_hardware_metric_accessors_round_trip() -> None:
@@ -23,8 +29,8 @@ def test_hardware_metric_accessors_round_trip() -> None:
     assert Dc.metric_to_hardware("not:a:sensor") is None
 
 
-def test_configs_convert_to_setoverlayconfig_ready_elements() -> None:
-    """Every converted element carries an id + valid type → accepted, and
+def test_cells_convert_to_fields_the_app_accepts(tmp_path: Path) -> None:
+    """Every converted cell is accepted by the real ``AddOverlayElement``, and
     colour/size/bold survive the conversion (the edit that 'did nothing')."""
     configs = [
         OverlayElementConfig(
@@ -38,16 +44,17 @@ def test_configs_convert_to_setoverlayconfig_ready_elements() -> None:
             mode=OverlayMode.DATE, mode_sub=3, x=1, y=2, color="#ffffff",
         ),
     ]
-    out = configs_to_next_elements(configs)
+    out = [config_fields(c) for c in configs]
+    assert None not in out
 
-    # SetOverlayConfig.execute guards: every element needs a non-empty id and
-    # a type in {text, metric, clock}.  Run each through the same from_dict.
-    for d in out:
-        el = OverlayElement.from_dict(d)
-        assert el.id, f"element has no id (SetOverlayConfig would reject): {d}"
-        assert el.type in ("text", "metric", "clock")
+    app = App(platform=FakePlatform(tmp_path))
+    app.set_renderer(QtRenderer())
+    for fields in out:
+        assert fields is not None
+        result = app.dispatch(AddOverlayElement(key="0402:3922", **fields))
+        assert result.ok, f"the App refused {fields}: {result.message}"
 
-    metric, text, date = out
+    metric, text, date = (f for f in out if f is not None)
     # Metric: mapped to the next/ id (not dropped), colour + bold preserved.
     assert metric["type"] == "metric"
     assert metric["metric"] == "cpu:temp"
@@ -69,4 +76,4 @@ def test_unmapped_hardware_is_skipped_not_crashed() -> None:
         OverlayElementConfig(mode=OverlayMode.HARDWARE,
                              main_count=9, sub_count=9, x=0, y=0),
     ]
-    assert configs_to_next_elements(configs) == []
+    assert [config_fields(c) for c in configs] == [None]

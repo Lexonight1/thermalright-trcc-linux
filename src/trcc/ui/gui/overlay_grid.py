@@ -1,7 +1,7 @@
 """Overlay grid panel — 7x6 grid of overlay elements.
 
 Matches Windows UCXiTongXianShi (472x430). Manages element configs,
-selection, add/delete, and serialization to overlay config format.
+selection and add/delete; each edit names its element by id.
 """
 from __future__ import annotations
 
@@ -13,11 +13,6 @@ from PySide6.QtWidgets import QFrame, QPushButton
 
 from ...core.models import OverlayElementConfig
 from ..presentation.overlay_model import OverlayModel
-from ..presentation.overlay_serialization import (
-    configs_to_next_elements,
-    configs_to_overlay_config,
-    overlay_config_to_configs,
-)
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Sizes, Styles
@@ -34,9 +29,9 @@ class OverlayGridPanel(QFrame):
     """
 
     element_selected = Signal(int, object)  # index, OverlayElementConfig
-    element_deleted = Signal(int)           # index
+    element_added = Signal(object)          # the new cell, id minted
+    element_deleted = Signal(object)        # the removed cell
     add_requested = Signal()
-    elements_changed = Signal()             # any add/delete/reorder
     toggle_changed = Signal(bool)           # overlay on/off
 
     MAX_ELEMENTS = 42
@@ -168,17 +163,19 @@ class OverlayGridPanel(QFrame):
         self._toggle_btn.blockSignals(False)
 
     def add_element(self, config):
-        """Add an element to the grid."""
+        """Add a copy of *config* as a new element, with its own id."""
+        log.debug("add_element: %s", config.mode.name)
         if self._model.add(config):
             self._refresh_cells()
-            self.elements_changed.emit()
+            self.element_added.emit(self._model.selected_config)
 
     def delete_element(self, index):
         """Delete element at index."""
+        log.debug("delete_element: index=%s", index)
+        removed = self._model.config_at(index)
         if self._model.delete(index):
             self._refresh_cells()
-            self.element_deleted.emit(index)
-            self.elements_changed.emit()
+            self.element_deleted.emit(removed)
 
     def update_element(self, index, config):
         """Update config for element at index."""
@@ -205,26 +202,3 @@ class OverlayGridPanel(QFrame):
     def clear_all(self):
         self._model.clear()
         self._refresh_cells()
-
-    def to_overlay_config(self):
-        """Convert to OverlayRenderer config format."""
-        return configs_to_overlay_config(self._model.all_configs(), self._model.enabled)
-
-    def to_next_elements(self) -> list[dict]:
-        """Grid → next/ ``OverlayElement`` dicts for the Command bus.
-
-        The shape ``SetOverlayConfig`` accepts (id + flat font + type).  This
-        is what edits dispatch; ``to_overlay_config`` (legacy keyed shape)
-        stays for any local-state consumers.
-
-        The elements whether or not the overlay is on.  "Off" used to be
-        spelled as an empty list, the legacy renderer's convention; to
-        ``SetOverlayConfig`` an empty list means the user deleted every
-        element, so switching off, or editing while off, wiped the layout.
-        On/off is ``EnableOverlay``'s alone.
-        """
-        return configs_to_next_elements(self._model.all_configs())
-
-    def load_from_overlay_config(self, overlay_config):
-        """Load from OverlayRenderer config format."""
-        self.load_configs(overlay_config_to_configs(overlay_config))

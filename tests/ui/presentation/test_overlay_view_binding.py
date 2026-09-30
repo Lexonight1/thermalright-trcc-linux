@@ -16,16 +16,31 @@ def _cfg(text: str) -> OverlayElementConfig:
     return OverlayElementConfig(mode=OverlayMode.CUSTOM, text=text, x=10, y=20)
 
 
-def test_add_element_emits_elements_changed_and_updates_model(qtbot) -> None:
+def test_add_element_emits_the_new_cell_with_its_id(qtbot) -> None:
     panel = OverlayGridPanel()
     qtbot.addWidget(panel)
-    with qtbot.waitSignal(panel.elements_changed, timeout=1000):
+    with qtbot.waitSignal(panel.element_added, timeout=1000) as sig:
         panel.add_element(_cfg("a"))
-    assert len(panel.get_all_configs()) == 1
-    assert panel.get_selected_config().text == "a"
+    (added,) = sig.args
+    assert added is panel.get_selected_config()
+    assert added.text == "a" and added.id, "the App needs an id to file it under"
 
 
-def test_toggle_off_emits_and_serializes_empty(qtbot) -> None:
+def test_delete_element_emits_the_removed_cell(qtbot) -> None:
+    """The removed cell, not its index: the id is what DeleteOverlayElement
+    takes, and the index no longer names anything once the cell is gone."""
+    panel = OverlayGridPanel()
+    qtbot.addWidget(panel)
+    panel.add_element(_cfg("a"))
+    panel.add_element(_cfg("b"))
+    first = panel.get_all_configs()[0]
+    with qtbot.waitSignal(panel.element_deleted, timeout=1000) as sig:
+        panel.delete_element(0)
+    assert sig.args == [first]
+    assert [c.text for c in panel.get_all_configs()] == ["b"]
+
+
+def test_toggle_off_emits_and_keeps_the_elements(qtbot) -> None:
     panel = OverlayGridPanel()
     qtbot.addWidget(panel)
     panel.add_element(_cfg("a"))
@@ -33,4 +48,5 @@ def test_toggle_off_emits_and_serializes_empty(qtbot) -> None:
         panel._on_toggle(False)        # simulate the toggle button click
     assert sig.args == [False]
     assert panel.overlay_enabled is False
-    assert panel.to_overlay_config() == {}      # disabled → renderer draws nothing
+    assert len(panel.get_all_configs()) == 1, "off hides; it deletes nothing"
+

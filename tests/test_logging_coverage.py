@@ -100,7 +100,13 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: 336 -> 335 on 2026-09-29: ``TRCCApp.is_app_visible`` was DELETED with the
 #: Windows minimise-on-close it existed to read (close now hides to the tray on
 #: every OS).  Diffing ``--list`` across the change: the only name that left.
-MAX_SILENT = 328
+#: 328 -> 320 on 2026-09-30: the gui overlay editor stopped reading the theme
+#: file and re-sending the whole grid.  Five silent functions were DELETED with
+#: that keyed-dict shape (``to_overlay_config`` and ``load_from_overlay_config``
+#: on the grid and on ``UCThemeSetting``, the grid's ``to_next_elements``); the
+#: grid's ``add_element`` / ``delete_element`` and ``UCThemeSetting.load_configs``
+#: gained a line.  Diffing ``--list`` across the change: those 8 left, none joined.
+MAX_SILENT = 320
 
 
 def test_logging_coverage_only_improves() -> None:

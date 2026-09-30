@@ -13,7 +13,6 @@ import pytest
 
 from trcc.core.errors import ThemeError
 from trcc.services import _dc as Dc
-from trcc.ui.presentation.overlay_serialization import dc_as_legacy_overlay_config
 
 
 def load_dc_as_theme_config(path):
@@ -301,113 +300,6 @@ def test_rotation_field_passes_through(tmp_path: Path) -> None:
     cfg = load_dc_as_theme_config(f)
 
     assert cfg["rotation"] == 180
-
-
-# =========================================================================
-# dc_as_legacy_overlay_config — legacy GUI shape (dict keyed by metric)
-# =========================================================================
-
-
-def test_legacy_overlay_returns_empty_when_no_dc(tmp_path: Path) -> None:
-    """A theme dir with no config1.dc yields an empty overlay config."""
-    assert dc_as_legacy_overlay_config(tmp_path) == {}
-
-
-def test_legacy_overlay_reads_trcc_json_elements(tmp_path: Path) -> None:
-    """A reference-manifest theme keeps its overlay layout in trcc.json's
-    ``elements`` (no config1.dc) — SaveTheme's new format.  The adapter
-    must surface it, else the GUI grid empties + overlay toggles off on
-    reload of a just-saved theme."""
-    import json
-    (tmp_path / "trcc.json").write_text(json.dumps({
-        "name": "t", "width": 320, "height": 320,
-        "elements": [
-            {"type": "clock", "source": "time", "x": 10, "y": 20,
-             "color": "#ffffff", "size": 24, "bold": False, "italic": False},
-            {"type": "text", "text": "HI", "x": 5, "y": 15,
-             "color": "#ff8800", "size": 18, "bold": True, "italic": False},
-        ],
-    }), encoding="utf-8")
-
-    cfg = dc_as_legacy_overlay_config(tmp_path)
-
-    assert set(cfg.keys()) == {"time", "custom_text"}
-    assert cfg["time"]["x"] == 10
-    assert cfg["time"]["metric"] == "time"
-    assert cfg["custom_text"]["text"] == "HI"
-
-
-def test_legacy_overlay_prefers_trcc_json_over_dc(tmp_path: Path) -> None:
-    """When both exist, trcc.json wins — matches FileContentStore._load_config."""
-    import json
-    (tmp_path / "trcc.json").write_text(json.dumps({
-        "elements": [{"type": "text", "text": "JSON", "x": 1, "y": 2,
-                      "color": "#fff", "size": 12,
-                      "bold": False, "italic": False}],
-    }), encoding="utf-8")
-    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
-        _build_dd_element(mode=4, x=9, y=9, custom_text=b"DC"),
-    ]))
-
-    cfg = dc_as_legacy_overlay_config(tmp_path)
-
-    assert cfg["custom_text"]["text"] == "JSON"
-
-
-def test_legacy_overlay_skips_corrupt_dc(tmp_path: Path) -> None:
-    """A DC with bad magic doesn't raise — just empty overlay."""
-    (tmp_path / "config1.dc").write_bytes(b"\xff\x00\x00")
-    assert dc_as_legacy_overlay_config(tmp_path) == {}
-
-
-def test_legacy_overlay_dd_clocks_keyed_by_source(tmp_path: Path) -> None:
-    """0xDD time/weekday/date elements key on their source name with the
-    legacy font dict + position fields the overlay grid expects."""
-    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
-        _build_dd_element(mode=1, x=10, y=20),
-        _build_dd_element(mode=2, x=30, y=40),
-        _build_dd_element(mode=3, x=50, y=60),
-    ]))
-
-    cfg = dc_as_legacy_overlay_config(tmp_path)
-
-    assert set(cfg.keys()) == {"time", "weekday", "date"}
-    assert cfg["time"]["x"] == 10
-    assert cfg["time"]["y"] == 20
-    assert cfg["time"]["metric"] == "time"
-    assert cfg["time"]["time_format"] == 0
-    assert cfg["date"]["date_format"] == 0
-    # Font dict is the legacy shape overlay_grid consumes.
-    assert "font" in cfg["time"]
-    assert {"name", "size", "style"} <= set(cfg["time"]["font"])
-
-
-def test_legacy_overlay_disambiguates_duplicates(tmp_path: Path) -> None:
-    """Two TIME elements get distinct keys ("time" then "time_1")."""
-    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
-        _build_dd_element(mode=1, x=10, y=20),
-        _build_dd_element(mode=1, x=30, y=40),
-    ]))
-
-    cfg = dc_as_legacy_overlay_config(tmp_path)
-
-    assert set(cfg.keys()) == {"time", "time_1"}
-    assert cfg["time"]["x"] == 10
-    assert cfg["time_1"]["x"] == 30
-
-
-def test_legacy_overlay_custom_text(tmp_path: Path) -> None:
-    """A 0xDD CUSTOM element surfaces as a custom_text entry with the
-    raw string preserved."""
-    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
-        _build_dd_element(mode=4, x=5, y=15, custom_text=b"GPU"),
-    ]))
-
-    cfg = dc_as_legacy_overlay_config(tmp_path)
-
-    assert list(cfg.keys()) == ["custom_text"]
-    assert cfg["custom_text"]["text"] == "GPU"
-    assert cfg["custom_text"]["x"] == 5
 
 
 def _build_dc_with_trailer(*, show_unit: bool) -> bytes:

@@ -217,61 +217,56 @@ def test_updating_another_field_leaves_the_font_alone(tmp_home: Path) -> None:
 def test_the_dispatch_serializer_carries_the_family(tmp_path: Path) -> None:
     """The family must survive the path a real edit actually takes.
 
-    THE live path is ``uc_theme_setting._on_elements_changed`` →
-    ``overlay_grid.to_next_elements()`` → ``configs_to_next_elements`` →
-    ``SetOverlayConfig``, and that serializer emitted no family key at all, so
-    every font the user picked was dropped at the dispatch boundary.
+    THE live path is the gui editor's cell → ``config_fields`` →
+    ``AddOverlayElement`` (a new cell) or ``UpdateOverlayElement`` (a font
+    pick on an existing one).  Its predecessor serializer emitted no family
+    key at all, so every font the user picked was dropped at the dispatch
+    boundary (#291).
 
-    The previous version of this test hand-BUILT the element dict for the
-    NESTED shape and asserted a reader could parse it -- in a docstring that
-    accused seven sibling tests of hand-building their fixtures.  It was
-    guarding a path with no production consumer: the nested shape is written
-    by ``configs_to_overlay_config``, whose only caller in the tree is another
-    test, and by ``_element_to_legacy_entry``, which loads the EDITOR.
-    Neither ever reaches the renderer.
-
-    So this drives the real serializer into the real Command and reads the
+    So this drives the real serializer into the real Commands and reads the
     family back off stored state -- the only version that could have failed
-    while @ocarinal was hitting the bug (#291).
+    while @ocarinal was hitting the bug.
 
-    MUTATION CHECK -- drop ``"name": cfg.font_name`` from
-    ``configs_to_next_elements`` and this must fail with ``''``.
+    MUTATION CHECK -- drop ``"font": cfg.font_name`` from ``config_fields``
+    and this must fail.
     """
+    from dataclasses import replace
+
     from tests.conftest import FakePlatform
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
-    from trcc.core.commands import SetOverlayConfig
+    from trcc.core.commands import AddOverlayElement, UpdateOverlayElement
     from trcc.core.models import (
         OverlayElementConfig,
         OverlayMode,
         element_family,
     )
-    from trcc.ui.presentation.overlay_serialization import (
-        configs_to_next_elements,
-    )
+    from trcc.ui.presentation.overlay_serialization import config_fields
 
-    picked = "Noto Sans CJK SC"
+    picked, repicked = "Noto Sans CJK SC", "DejaVu Serif"
     app = App(platform=FakePlatform(tmp_path))
     app.set_renderer(QtRenderer())
     key = "0402:3922"
+    cell = OverlayElementConfig(id="el_font", mode=OverlayMode.CUSTOM,
+                                text="hi", x=1, y=2, font_name=picked,
+                                font_size=20)
 
-    elements = configs_to_next_elements([
-        OverlayElementConfig(mode=OverlayMode.CUSTOM, text="hi", x=1, y=2,
-                             font_name=picked, font_size=20),
-    ])
-
-    # The dict the bus receives names the family...
-    assert elements[0]["name"] == picked
-    # ...and it survives the Command, so it outlives a restart.
-    assert app.dispatch(
-        SetOverlayConfig(key=key, elements=tuple(elements))).ok is True
+    fields = config_fields(cell)
+    assert fields is not None and fields["font"] == picked
+    assert app.dispatch(AddOverlayElement(
+        key=key, element_id=cell.id, **fields)).ok is True
     stored = app.settings.for_device(key).user_overlay_elements[0]
     assert stored.font == picked, (
-        "the font picked in the overlay editor never reached the device — "
-        "configs_to_next_elements emitted no family key"
-    )
+        "the font of a new overlay element never reached the device")
+
+    changed = config_fields(replace(cell, font_name=repicked))
+    assert changed is not None
+    assert app.dispatch(UpdateOverlayElement(
+        key=key, element_id=cell.id, font=changed["font"])).ok is True
+    stored = app.settings.for_device(key).user_overlay_elements[0]
+    assert stored.font == repicked, "a font pick on an existing element was lost"
     # ...and the renderer resolves it off that stored element.
-    assert element_family(stored.to_dict()) == picked
+    assert element_family(stored.to_dict()) == repicked
 
 
 def test_the_dc_flat_shape_still_wins_when_both_are_present() -> None:

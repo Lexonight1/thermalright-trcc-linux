@@ -124,9 +124,11 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Listings each surface answers its own way ─────────────────────────
     # ListDevices: retired 2026-09-25 -- the CLI reaches it too now, through
     # the exit hook that names panels which blank when frames stop (#228).
-    "SetOverlayConfig": (frozenset({"api", "gui", "qtgui"}), (
-        "scoped: the CLI edits overlays element-wise (Add/Update/Delete"
-        "OverlayElement, shared); the API adds a bulk SetOverlayConfig"
+    "SetOverlayConfig": (frozenset({"api", "qtgui"}), (
+        "scoped: every UI edits overlays element-wise (Add/Update/Delete"
+        "OverlayElement, all four); the API adds a bulk replace, and qtgui's "
+        "one use seeds the working layer when its editor opens -- the gui "
+        "left 2026-09-30, when its grid stopped re-sending the whole layout"
     )),
 
     # ── Cached vs rendered -- deliberately two questions ──────────────────

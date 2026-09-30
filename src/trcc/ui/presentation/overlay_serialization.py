@@ -1,37 +1,36 @@
-"""Overlay (de)serialization — toolkit-free, shared by every presentation.
+"""Overlay editor cells ↔ App overlay elements — toolkit-free, no Qt.
 
-Three shapes meet here, all converted with plain functions (no Qt):
+Two shapes meet here:
 
-* ``OverlayElementConfig`` — the editor's per-element dataclass
+* ``OverlayElementConfig`` — the gui editor's per-cell dataclass
   (:class:`trcc.core.models.OverlayElementConfig`), owned by
-  :class:`trcc.ui.presentation.overlay_model.OverlayModel`.
-* the **legacy renderer dict** — keyed by metric name, one entry per element
-  (``{"cpu_temp": {"x":…, "metric":"cpu:temp", "font":{…}}, …}``); what the
-  ported overlay editor reads/writes.
-* the **next/ ``OverlayElement`` dict** — flat ``id``/``size``/``bold`` +
-  ``type``/``metric``/``source``/``format``; what ``SetOverlayConfig`` consumes.
+  :class:`trcc.ui.presentation.overlay_model.OverlayModel`: the Windows
+  ``myMode`` / ``myModeSub`` / ``(main, sub)`` vocabulary.
+* the App's element — read as :class:`~trcc.core.results.OverlayElementEntry`
+  from ``ResolveOverlay``, written as the fields of ``AddOverlayElement`` /
+  ``UpdateOverlayElement``: ``type`` + ``metric``/``source``/``format``.
 
-Lives in ``ui/presentation`` (not ``ui/gui``) so the Qt-free Presentation
-Models can use it without a backwards dependency on a concrete GUI.  The
-``(main, sub)`` ↔ ``(sensor_id, format)`` mapping is reused from the DC codec
-(``services._dc``) so the editor never drifts from the reader.
+The cell carries the element's ``id``, so an edit names the one element it
+changes.  The editor once kept a third, keyed-dict shape read straight from
+the theme's files; it lost every id and showed the file instead of what the
+App holds, and is gone.
+
+``(main, sub)`` ↔ ``(sensor_id, format)`` is the DC codec's table
+(``services._dc``), so the editor never drifts from the reader.
 """
 from __future__ import annotations
 
 import logging
-import re
-from pathlib import Path
+from collections.abc import Iterable, Mapping
 from typing import Any
 
-from ...core._safe import load_json_or_default
-from ...core.errors import ThemeError
 from ...core.models import (
     DATE_FORMATS,
     TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
-    ThemeDir,
 )
+from ...core.results import OverlayElementEntry
 from ...services import _dc as Dc
 
 log = logging.getLogger(__name__)
@@ -40,344 +39,90 @@ log = logging.getLogger(__name__)
 _DEFAULT_FONT_NAME = "Microsoft YaHei"
 
 
-# =========================================================================
-# OverlayElementConfig  ↔  legacy renderer dict
-# =========================================================================
+def _format_index(table: Mapping[int, str], fmt: str) -> int:
+    """The ``myModeSub`` whose pattern is *fmt*; 0 for one the table lacks.
 
-
-#: The fallback id ``configs_to_overlay_config`` emits for a (main, sub) pair
-#: with no canonical DC name.
-_HW_FALLBACK = re.compile(r"^hw_(\d+)_(\d+)$")
-
-
-def _hardware_ids(metric: str) -> tuple[int, int] | None:
-    """``metric`` → ``(main, sub)`` for EVERY spelling we can write.
-
-    Two exist.  ``Dc.metric_to_hardware`` reads the canonical DC id
-    (``"cpu:temp"``), and ``hw_<main>_<sub>`` is our OWN fallback for a pair
-    with no canonical name — written by :func:`configs_to_overlay_config` and,
-    until 2026-09-10, unreadable here.  A theme carrying such a metric had the
-    element written out and then silently DROPPED on the way back in, so it
-    vanished from the editor grid.
-
-    MEASURED: of the 288 ``(main, sub)`` pairs in 0..23 x 0..11, **264 have no
-    canonical id**, so the fallback is the common case rather than the exotic
-    one.  A writer and a reader that disagree about their own encoding is the
-    bug; this is the one place that knows both.
+    Display only: the cell's format button starts there.  An element's own
+    pattern is never rewritten from it unless the user presses that button,
+    because an edit sends only the fields that changed.
     """
-    if (hw := Dc.metric_to_hardware(metric)) is not None:
-        log.debug("_hardware_ids: %r -> %s (canonical)", metric, hw)
-        return hw
-    if match := _HW_FALLBACK.match(metric):
-        ids = (int(match.group(1)), int(match.group(2)))
-        log.debug("_hardware_ids: %r -> %s (our own fallback id)", metric, ids)
-        return ids
-    log.debug("_hardware_ids: %r maps to no hardware pair", metric)
-    return None
+    index = next((i for i, f in table.items() if f == fmt), 0)
+    log.debug("_format_index: %r -> %d", fmt, index)
+    return index
 
 
-def configs_to_overlay_config(
-    configs: list[OverlayElementConfig], enabled: bool,
-) -> dict[str, dict[str, Any]]:
-    """Editor configs → legacy ``OverlayRenderer`` keyed dict.
-
-    Returns ``{}`` when overlay is disabled (the renderer draws nothing).
-    """
-    log.debug("configs_to_overlay_config: configs=%s enabled=%s", configs, enabled)
-    if not enabled:
-        return {}
-
-    overlay_config: dict[str, dict[str, Any]] = {}
-    for i, cfg in enumerate(configs):
-        entry: dict[str, Any] = {
-            "x": cfg.x,
-            "y": cfg.y,
-            "color": cfg.color,
-            "font": {
-                "size": cfg.font_size,
-                "style": "bold" if cfg.font_style == 1 else "regular",
-                "name": cfg.font_name,
-            },
-            "enabled": True,
-        }
-
-        if cfg.mode == OverlayMode.TIME:
-            entry["metric"] = "time"
-            entry["time_format"] = cfg.mode_sub
-            key = f"time_{i}"
-        elif cfg.mode == OverlayMode.DATE:
-            entry["metric"] = "date"
-            entry["date_format"] = cfg.mode_sub
-            key = f"date_{i}"
-        elif cfg.mode == OverlayMode.WEEKDAY:
-            entry["metric"] = "weekday"
-            key = f"weekday_{i}"
-        elif cfg.mode == OverlayMode.CUSTOM:
-            entry["text"] = cfg.text
-            key = f"custom_{i}"
-        elif cfg.mode == OverlayMode.HARDWARE:
-            # Emit the canonical DC id ("cpu:temp") — the same vocabulary the
-            # read side (``metric_to_hardware``) and the theme-DC parser use.
-            # ``HARDWARE_METRICS`` underscore names ("cpu_temp") would not
-            # round-trip: ``overlay_config_to_configs`` would drop the element.
-            hw = Dc.hardware_metric(cfg.main_count, cfg.sub_count)
-            entry["metric"] = (
-                hw[0] if hw is not None
-                else f"hw_{cfg.main_count}_{cfg.sub_count}"
-            )
-            # button0 unit-switch: mode_sub 1 → draw the unit glyph.
-            entry["show_unit"] = cfg.mode_sub == 1
-            key = f"hw_{cfg.main_count}_{cfg.sub_count}_{i}"
-        else:
-            continue
-
-        overlay_config[key] = entry
-
-    return overlay_config
-
-
-def overlay_config_to_configs(
-    overlay_config: dict[str, Any],
+def entries_to_configs(
+    entries: Iterable[OverlayElementEntry],
 ) -> list[OverlayElementConfig]:
-    """Legacy ``OverlayRenderer`` keyed dict → editor configs.
+    """App elements → editor cells, in order, each keeping its id.
 
-    Skips disabled / malformed entries.  Hardware metrics arrive as next/
-    ids ("cpu:temp"); ``Dc.metric_to_hardware`` maps them back to
-    ``(main, sub)`` so every metric element re-enters the grid (without it
-    they were silently dropped and could not be selected or dragged).
+    A metric the DC table cannot name has no ``(main, sub)`` to show in a
+    cell and is left out — safe, because the editor edits by id and so never
+    touches an element it does not show.
     """
     configs: list[OverlayElementConfig] = []
-    for _key, cfg in overlay_config.items():
-        if not isinstance(cfg, dict) or not cfg.get("enabled", True):
-            continue
-
-        font = cfg.get("font", {})
-        is_dict = isinstance(font, dict)
-        font_size = font.get("size", 36) if is_dict else 36
-        font_style = (1 if font.get("style") == "bold" else 0) if is_dict else 0
-        font_name = font.get("name", _DEFAULT_FONT_NAME) if is_dict else _DEFAULT_FONT_NAME
-
-        elem = OverlayElementConfig(
-            x=cfg.get("x", 100),
-            y=cfg.get("y", 100),
-            color=cfg.get("color", "#FFFFFF"),
-            font_size=font_size,
-            font_style=font_style,
-            font_name=font_name,
+    for e in entries:
+        cfg = OverlayElementConfig(
+            id=e.id, x=e.x, y=e.y, color=e.color,
+            font_name=e.font or _DEFAULT_FONT_NAME, font_size=e.size,
+            font_style=1 if e.bold else 2 if e.italic else 0,
         )
-
-        metric = cfg.get("metric", "")
-        if metric == "time":
-            elem.mode = OverlayMode.TIME
-            elem.mode_sub = cfg.get("time_format", 0)
-        elif metric == "date":
-            elem.mode = OverlayMode.DATE
-            elem.mode_sub = cfg.get("date_format", 0)
-        elif metric == "weekday":
-            elem.mode = OverlayMode.WEEKDAY
-        elif "text" in cfg:
-            elem.mode = OverlayMode.CUSTOM
-            elem.text = cfg["text"]
-        elif (hw := _hardware_ids(metric)) is not None:
-            elem.main_count, elem.sub_count = hw
-            elem.mode = OverlayMode.HARDWARE
-            # show_unit (button0) round-trips to mode_sub 1/0.
-            elem.mode_sub = 1 if cfg.get("show_unit", True) else 0
-        else:
-            log.warning(
-                "overlay_config_to_configs: unmapped metric %r — skipping element",
-                metric,
-            )
-            continue
-        configs.append(elem)
-
+        match e.type, e.source:
+            case "text", _:
+                cfg.mode, cfg.text = OverlayMode.CUSTOM, e.text
+            case "clock", "time":
+                cfg.mode = OverlayMode.TIME
+                cfg.mode_sub = _format_index(TIME_FORMATS, e.format)
+            case "clock", "date":
+                cfg.mode = OverlayMode.DATE
+                cfg.mode_sub = _format_index(DATE_FORMATS, e.format)
+            case "clock", "weekday":
+                cfg.mode = OverlayMode.WEEKDAY
+            case "metric", _ if (hw := Dc.metric_to_hardware(e.metric)):
+                cfg.mode = OverlayMode.HARDWARE
+                cfg.main_count, cfg.sub_count = hw
+                # button0, the C# unit-switch: 1 draws the unit glyph.
+                cfg.mode_sub = 1 if e.show_unit else 0
+            case _:
+                log.warning("entries_to_configs: %s %s (metric %r) has no "
+                            "editor cell — not shown", e.id, e.type, e.metric)
+                continue
+        configs.append(cfg)
+    log.debug("entries_to_configs: %d cell(s)", len(configs))
     return configs
 
 
-# =========================================================================
-# OverlayElementConfig  →  next/ OverlayElement dict (Command-bus shape)
-# =========================================================================
+def config_fields(cfg: OverlayElementConfig) -> dict[str, Any] | None:
+    """An editor cell → the element fields ``AddOverlayElement`` takes.
 
-
-def configs_to_next_elements(configs: list[Any]) -> list[dict[str, Any]]:
-    """Editor configs → next/ ``OverlayElement`` dicts for ``SetOverlayConfig``.
-
-    The shape ``OverlayElement.from_dict`` consumes: a stable ``id`` (grid
-    order — the whole layout is dispatched as one replacement, so positional
-    ids are sufficient and stable per dispatch), FLAT font fields
-    (``size``/``bold``/``italic``), and ``type`` + ``metric``/``source``/
-    ``format`` resolved per :class:`OverlayMode`.
-
-    Without it the grid emitted the legacy keyed shape (nested ``font``,
-    ``metric: "time"``, no ``id``), so ``SetOverlayConfig`` rejected every edit
-    — colour, font and drag never persisted.  ``(main, sub)`` →
-    ``(sensor_id, format)`` reuses the DC codec's table so the editor never
-    drifts from the reader.
+    ``UpdateOverlayElement`` takes the same names, so an edit sends the
+    subset that differs before and after.  ``None`` for a hardware pair the
+    DC table cannot name — there is no sensor to give the App.
     """
-    out: list[dict[str, Any]] = []
-    for i, cfg in enumerate(configs):
-        base: dict[str, Any] = {
-            "id": f"el_{i}",
-            "x": cfg.x, "y": cfg.y,
-            "color": cfg.color,
-            "size": cfg.font_size,
-            "bold": cfg.font_style == 1,
-            "italic": cfg.font_style == 2,
-            # The family the user picked in the font dialog.  THIS is the
-            # serializer the live edit path uses (``_on_elements_changed`` →
-            # ``to_next_elements`` → ``SetOverlayConfig``); it emitted no
-            # family at all, so every pick was dropped at the dispatch
-            # boundary and the renderer fell back to its default.  ``name``
-            # is the flat key ``element_family`` resolves and ``to_dict``
-            # writes back, so one key survives all four hops.  #291.
-            "name": cfg.font_name,
-        }
-        match cfg.mode:
-            case OverlayMode.CUSTOM:
-                out.append({**base, "type": "text", "text": cfg.text})
-            case OverlayMode.TIME:
-                out.append({**base, "type": "clock", "source": "time",
-                            "format": TIME_FORMATS.get(cfg.mode_sub,
-                                                       TIME_FORMATS[0])})
-            case OverlayMode.DATE:
-                out.append({**base, "type": "clock", "source": "date",
-                            "format": DATE_FORMATS.get(cfg.mode_sub,
-                                                       DATE_FORMATS[0])})
-            case OverlayMode.WEEKDAY:
-                out.append({**base, "type": "clock", "source": "weekday"})
-            case OverlayMode.HARDWARE:
-                entry = Dc.hardware_metric(cfg.main_count, cfg.sub_count)
-                if entry is None:
-                    log.warning("configs_to_next_elements: unmapped hardware "
-                                "(%s, %s) — skipping", cfg.main_count,
-                                cfg.sub_count)
-                    continue
-                sensor, fmt = entry
-                # ``mode_sub`` is the C# unit-switch (button0): 1 draws the unit
-                # glyph after the number, 0 the bare number.  Carry it as the
-                # domain ``show_unit`` so the toggle reaches the render.
-                out.append({**base, "type": "metric",
-                            "metric": sensor, "format": fmt,
-                            "show_unit": cfg.mode_sub == 1})
-            case _:
-                log.warning("configs_to_next_elements: unknown mode %s — "
-                            "skipping", cfg.mode)
-    log.debug("configs_to_next_elements: %d config(s) → %d next/ element(s)",
-              len(configs), len(out))
-    return out
-
-
-# =========================================================================
-# Theme directory  →  legacy renderer dict
-# =========================================================================
-
-
-def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
-    """Read a theme's overlay config and return the legacy ``overlay_grid``
-    dict shape.
-
-    Source preference matches ``FileContentStore._load_config``:
-
-      1. ``trcc.json`` -- next/-native; its ``elements`` list is the overlay
-         layout ``SaveTheme`` now writes (saved themes carry NO ``config1.dc``).
-      2. ``config1.dc`` -- binary, parsed via ``Dc.File.read()``
-      3. ``config.json`` (legacy) -- pass through the ``dc:`` sub-dict,
-         filtered by ``enabled``
-
-    Returns ``{}`` when none exist or all parse empty.
-    """
-    layout = ThemeDir(theme_dir)
-    raw_json = load_json_or_default(layout.json, None)
-    if isinstance(raw_json, dict):
-        overlay = _theme_config_to_overlay_dict(raw_json)
-        if overlay:
-            return overlay
-
-    dc_path = layout.dc
-    if dc_path.is_file():
-        try:
-            theme_config = Dc.File(dc_path).read()
-        except ThemeError as e:
-            log.warning(
-                "dc_as_legacy_overlay_config: %s skipped (%s)", dc_path, e,
-            )
-        else:
-            overlay = _theme_config_to_overlay_dict(theme_config)
-            if overlay:
-                return overlay
-
-    raw = load_json_or_default(layout.legacy_json, None)
-    if isinstance(raw, dict):
-        dc_dict = raw.get("dc")
-        if isinstance(dc_dict, dict):
-            return {
-                k: v for k, v in dc_dict.items()
-                if isinstance(v, dict) and v.get("enabled", True)
-            }
-
-    return {}
-
-
-def _theme_config_to_overlay_dict(
-    theme_config: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
-    log.debug("_theme_config_to_overlay_dict: theme_config=%s", theme_config)
-    overlay: dict[str, dict[str, Any]] = {}
-    counters: dict[str, int] = {}
-    for element in theme_config.get("elements", ()):
-        if not isinstance(element, dict):
-            continue
-        key, entry = _element_to_legacy_entry(element, counters)
-        if key is None or entry is None:
-            continue
-        overlay[key] = entry
-    return overlay
-
-
-def _element_to_legacy_entry(
-    element: dict[str, Any], counters: dict[str, int],
-) -> tuple[str | None, dict[str, Any] | None]:
-    log.debug("_element_to_legacy_entry: element=%s counters=%s", element, counters)
-    etype = element.get("type")
-    if etype not in ("text", "metric", "clock"):
-        return None, None
-    font = {
-        "name": element.get("name", _DEFAULT_FONT_NAME),
-        "size": int(element.get("size", 24)),
-        "style": "bold" if element.get("bold") else "regular",
+    base: dict[str, Any] = {
+        "x": cfg.x, "y": cfg.y, "color": cfg.color,
+        "size": cfg.font_size, "font": cfg.font_name,
+        "bold": cfg.font_style == 1, "italic": cfg.font_style == 2,
     }
-    entry: dict[str, Any] = {
-        "x": int(element.get("x", 0)),
-        "y": int(element.get("y", 0)),
-        "color": element.get("color", "#ffffff"),
-        "enabled": True,
-        "font": font,
-    }
-    if etype == "text":
-        entry["text"] = element.get("text", "")
-        return _take_key("custom_text", counters), entry
-    if etype == "clock":
-        source = element.get("source", "")
-        if source not in ("time", "date", "weekday"):
-            return None, None
-        entry["metric"] = source
-        if source == "time":
-            entry["time_format"] = 0
-        elif source == "date":
-            entry["date_format"] = 0
-        return _take_key(source, counters), entry
-    metric_id = element.get("metric", "")
-    if not metric_id:
-        return None, None
-    entry["metric"] = metric_id
-    # Carry the DC element's unit-switch (button0) so loading a mask restores
-    # the right toggle state; defaults to shown (the 89% majority) when absent.
-    entry["show_unit"] = bool(element.get("show_unit", True))
-    return _take_key(metric_id, counters), entry
-
-
-def _take_key(base: str, counters: dict[str, int]) -> str:
-    log.debug("_take_key: base=%s counters=%s", base, counters)
-    n = counters.get(base, 0)
-    counters[base] = n + 1
-    return base if n == 0 else f"{base}_{n}"
+    match cfg.mode:
+        case OverlayMode.CUSTOM:
+            fields = {**base, "type": "text", "text": cfg.text}
+        case OverlayMode.TIME:
+            fields = {**base, "type": "clock", "source": "time",
+                      "format": TIME_FORMATS.get(cfg.mode_sub, TIME_FORMATS[0])}
+        case OverlayMode.DATE:
+            fields = {**base, "type": "clock", "source": "date",
+                      "format": DATE_FORMATS.get(cfg.mode_sub, DATE_FORMATS[0])}
+        case OverlayMode.WEEKDAY:
+            fields = {**base, "type": "clock", "source": "weekday"}
+        case OverlayMode.HARDWARE if (
+                hw := Dc.hardware_metric(cfg.main_count, cfg.sub_count)):
+            sensor, fmt = hw
+            fields = {**base, "type": "metric", "metric": sensor,
+                      "format": fmt, "show_unit": cfg.mode_sub == 1}
+        case _:
+            log.warning("config_fields: %s cell (%s, %s) maps to no element",
+                        cfg.mode.name, cfg.main_count, cfg.sub_count)
+            return None
+    log.debug("config_fields: %s → %s", cfg.mode.name, fields["type"])
+    return fields

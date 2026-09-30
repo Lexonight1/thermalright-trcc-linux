@@ -5,6 +5,11 @@ drawing nothing.  To ``SetOverlayConfig`` an empty list means the user deleted
 every element, so switching off wiped the layout, and so did any edit made
 while it was off.  Another UI switching it back on found nothing to draw.
 
+The second half: the gui's editor shows and edits the layout the App holds —
+the grid follows every UI, each edit names ONE element by id, and nothing it
+cannot represent is rewritten.  It used to fill from the theme's files and
+re-send the whole grid, so it reverted other UIs' edits and re-minted every id.
+
 Drives the real window offscreen against the mock platform.  The theme is a
 real folder loaded the way a user loads one, so the gui's grid and the App
 start from the same layout, as they do on a real panel.
@@ -22,11 +27,13 @@ from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import (
+    AddOverlayElement,
     ConnectDevice,
     DeleteOverlayElement,
     EnableOverlay,
     LoadTheme,
     ResolveOverlay,
+    UpdateOverlayElement,
 )
 
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
@@ -74,8 +81,7 @@ def _grid(window: Any) -> Any:
 
 
 def _drawn(window: Any) -> list[str]:
-    """What the App holds for the panel, by text.  Not by id: a gui edit
-    re-mints every id positionally, which is a separate defect."""
+    """What the App holds for the panel, by text."""
     return [e.text for e in window._app.dispatch(ResolveOverlay(key=_KEY)).elements]
 
 
@@ -112,8 +118,7 @@ def test_an_edit_while_off_keeps_every_other_element(
 def test_the_switch_does_not_resend_the_layout_over_another_uis_edit(
     window: Any, qtbot: Any,
 ) -> None:
-    """The gui's grid does not follow a layout edit made elsewhere, so a
-    switch that re-sent the grid brought back what another UI deleted."""
+    """A switch that re-sent the grid brought back what another UI deleted."""
     assert window._app.dispatch(
         DeleteOverlayElement(key=_KEY, element_id="gpu")).ok
 
@@ -121,3 +126,132 @@ def test_the_switch_does_not_resend_the_layout_over_another_uis_edit(
     _switch(window, qtbot, on=True)
 
     assert _drawn(window) == ["CPU", "FAN"]
+
+
+# ── The editor shows and edits what the App holds ────────────────────────
+
+
+def _held(window: Any) -> dict[str, Any]:
+    """The App's elements for the panel, by id, in order."""
+    return {e.id: e for e in
+            window._app.dispatch(ResolveOverlay(key=_KEY)).elements}
+
+
+def _cell_ids(window: Any) -> list[str]:
+    return [c.id for c in _grid(window).get_all_configs()]
+
+
+def test_the_grid_follows_another_uis_move_and_delete(
+    window: Any, qtbot: Any,
+) -> None:
+    app = window._app
+    assert app.dispatch(UpdateOverlayElement(
+        key=_KEY, element_id="cpu", x=50)).ok
+    assert app.dispatch(DeleteOverlayElement(key=_KEY, element_id="gpu")).ok
+
+    qtbot.waitUntil(lambda: _cell_ids(window) == ["cpu", "fan"])
+    assert _grid(window).get_all_configs()[0].x == 50
+
+
+def test_a_gui_edit_changes_only_its_element_and_keeps_every_id(
+    window: Any, qtbot: Any,
+) -> None:
+    """Two elements the grid cannot represent, added by another UI: a time
+    pattern outside the table and bold AND italic.  Recolouring a different
+    element in the gui must leave both exactly as they were."""
+    app = window._app
+    assert app.dispatch(AddOverlayElement(
+        key=_KEY, element_id="clk", type="clock", source="time",
+        format="%H:%M:%S", x=5, y=200)).ok
+    assert app.dispatch(AddOverlayElement(
+        key=_KEY, element_id="bi", type="text", text="BI", bold=True,
+        italic=True, x=5, y=240)).ok
+    qtbot.waitUntil(lambda: len(_cell_ids(window)) == 5)
+
+    _grid(window).select_element(0)
+    window.uc_theme_setting._on_color_changed(0x11, 0x22, 0x33)
+    qtbot.wait(100)
+
+    held = _held(window)
+    assert list(held) == ["cpu", "gpu", "fan", "clk", "bi"], (
+        "a gui edit re-minted the ids another UI holds")
+    assert held["cpu"].color == "#112233"
+    assert held["clk"].format == "%H:%M:%S"
+    assert (held["bi"].bold, held["bi"].italic) == (True, True)
+    assert app.dispatch(UpdateOverlayElement(
+        key=_KEY, element_id="gpu", y=61)).ok, "the CLI's id stopped resolving"
+
+    # Moving the element that HOLDS the pattern the cell cannot represent:
+    # the move must not write the cell's stand-in pattern over it.
+    _grid(window).select_element(3)
+    window.uc_theme_setting._on_position_changed(8, 210)
+    qtbot.wait(100)
+    clk = _held(window)["clk"]
+    assert (clk.x, clk.y, clk.format) == (8, 210, "%H:%M:%S")
+
+
+def test_a_drag_keeps_moving_the_same_element_through_the_follow(
+    window: Any, qtbot: Any,
+) -> None:
+    """Every move reloads the grid (the App's echo of the gui's own edit);
+    the selection must survive it or the second move has nothing to move."""
+    _grid(window).select_element(1)                      # GPU at (10, 60)
+    window._on_drag_start(10, 60)
+    window._on_drag_move(30, 70)
+    qtbot.wait(100)
+    assert _grid(window).get_selected_config().id == "gpu"
+    window._on_drag_move(40, 80)
+    qtbot.wait(100)
+
+    held = _held(window)
+    assert (held["gpu"].x, held["gpu"].y) == (40, 80)
+    assert (held["cpu"].x, held["cpu"].y) == (10, 20), "the drag moved another"
+
+
+def test_the_side_panel_shows_another_uis_move_of_the_selected_element(
+    window: Any, qtbot: Any,
+) -> None:
+    _grid(window).select_element(0)
+    assert window._app.dispatch(UpdateOverlayElement(
+        key=_KEY, element_id="cpu", x=77, y=33)).ok
+
+    spin = window.uc_theme_setting.color_panel
+    qtbot.waitUntil(lambda: (spin.x_spin.value(), spin.y_spin.value()) == (77, 33))
+
+
+def test_a_click_flashes_the_element_by_its_own_id(
+    window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = window._app
+    real = app.dispatch
+    flashed: list[tuple[str, bool]] = []
+
+    def _record(command: Any) -> Any:
+        result = real(command)
+        if type(command).__name__ == "FlashOverlayElement":
+            flashed.append((command.element_id, result.ok))
+        return result
+
+    monkeypatch.setattr(app, "dispatch", _record)
+    _grid(window).select_element(2)
+
+    assert flashed == [("fan", True)]
+
+
+def test_reopening_shows_the_guis_own_edits(
+    window: Any, qtbot: Any,
+) -> None:
+    """The gui used to fill from the theme FILE, so its own edits vanished
+    the next time the window opened.  ``TRCCApp`` is a singleton and a real
+    close quits Qt, so this blanks the grid the way a fresh window starts and
+    runs the panel's own open path (``apply_device_config`` → ``_refresh``)."""
+    _grid(window).select_element(0)
+    window.uc_theme_setting._on_position_changed(90, 95)
+    qtbot.wait(100)
+
+    _grid(window).load_configs([])
+    window._handlers[_KEY].apply_device_config(_KEY, 320, 320)
+    qtbot.waitUntil(lambda: len(_cell_ids(window)) == len(_ELEMENTS))
+
+    cpu = _grid(window).get_all_configs()[0]
+    assert (cpu.id, cpu.x, cpu.y) == ("cpu", 90, 95)

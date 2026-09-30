@@ -75,6 +75,15 @@
   the same window; switching on from the Qt gui, the CLI or the API showed an
   empty overlay. Switching now only switches, and an edit keeps the other
   elements.
+- **The gui's overlay editor shows and keeps what the panel shows.** It was
+  filled from the theme's files, so it never showed an edit made from the Qt
+  gui, the CLI or the API, and any change in the gui put back what they had
+  moved or deleted. Its own edits also vanished the next time it opened, and
+  every edit renamed all the elements, so an element id used from the CLI or
+  the API stopped working. The editor now shows the panel's current layout,
+  follows changes from any window, and changes only the element you edit —
+  a custom time format or a bold italic label set elsewhere is no longer
+  rewritten when you move it.
 
 - **The gui now shows changes made from another window or the command line.**
   Brightness, orientation, split mode, the overlay switch, the mask's
