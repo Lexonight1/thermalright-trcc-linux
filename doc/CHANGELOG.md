@@ -60,6 +60,11 @@
 
 ### Fixed
 
+- **A video played with the media player is remembered as one.** Starting it
+  from the command line or the API recorded it as a background video instead,
+  so a saved theme lost it and a restart brought it back as a background.
+  Turning the media player off now stops it and lets a video theme's own video
+  play again, and every open window hears about each change.
 - **With two screens, the gui's screencast controls act on the selected one.**
   If a cast was running on one screen (started from any window, the CLI or the
   API), turning the microphone on in the gui with the other screen selected

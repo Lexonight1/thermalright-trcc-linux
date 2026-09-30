@@ -1794,7 +1794,8 @@ class RestoreDeviceState(Command[ThemeResult]):
 
       1. The persisted theme, with its mask + overlay edits + bundled video.
       2. Nothing persisted → the fallback theme (shipped ``Theme1``).
-      3. Replay the persisted ``background_path`` video over the theme.
+      3. Resume the media player, or replay the persisted ``background_path``
+         video, over the theme -- the sources are exclusive, so at most one.
       4. A saved slideshow resumes rotating (it never did when the App
          started, in any UI but the gui, whose own timer is gone).
 
@@ -1825,11 +1826,15 @@ class RestoreDeviceState(Command[ThemeResult]):
                          "or load a theme first"),
             )
 
-        bg = app.settings.for_device(self.key).background_path
-        if bg:
+        s = app.settings.for_device(self.key)
+        if s.media_player_uri:
+            log.info("RestoreDeviceState: %s resuming its media player %s",
+                     self.key, s.media_player_uri)
+            app.dispatch(SetMediaPlayer(key=self.key, uri=s.media_player_uri))
+        elif s.background_path:
             log.info("RestoreDeviceState: %s replaying persisted background %s",
-                     self.key, bg)
-            app.dispatch(PlayVideo(key=self.key, path=Path(bg)))
+                     self.key, s.background_path)
+            app.dispatch(PlayVideo(key=self.key, path=Path(s.background_path)))
 
         _drive_slideshow(app, self.key)
         return ThemeResult(

@@ -1586,3 +1586,128 @@ def test_no_theme_installed_is_an_honest_failure(
 
     assert (video.ok, video.message) == (False, want)
     assert stub_media == []                     # nothing decoded for nothing
+
+
+# ── The media player's record (item 1a, 2026-09-30) ──────────────────
+#
+# ``SetMediaPlayer`` recorded its source and THEN dispatched ``PlayVideo``,
+# which writes the file as ``background_path`` -- and the display sources are
+# exclusive, so the record was erased the moment playback began.  Driven:
+# ``media_player_uri = None, background_path = clip`` after every local media
+# player.  The save, the restore and every UI's video switch read it wrong.
+
+
+def _source(app: App) -> str:
+    from trcc.core.commands import LcdSnapshot
+    return app.dispatch(LcdSnapshot(key=_KEY)).display_source
+
+
+def _video_theme(app: App, tmp_path: Path) -> Path:
+    """Make the active theme a video theme: a folder with its own Theme.mp4."""
+    from trcc.core.models import Theme
+    folder = tmp_path / "VideoTheme"
+    folder.mkdir()
+    (folder / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    app.active_themes[_KEY] = Theme(path=folder, name="VideoTheme",
+                                     resolution=(320, 320))
+    return folder / "Theme.mp4"
+
+
+def test_a_local_media_player_is_recorded_as_one(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    from trcc.core.commands import SetMediaPlayer
+
+    assert connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file))).ok
+
+    s = connected_app.settings.for_device(_KEY)
+    assert (s.media_player_uri, s.background_path) == (str(video_file), None)
+    assert _source(connected_app) == "media"
+    assert connected_app.media.playback(_KEY) is not None
+
+
+def test_a_media_player_that_fails_to_play_records_nothing(
+    connected_app: App, video_file: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import SetMediaPlayer
+
+    def refuse(*_a: Any, **_k: Any) -> Any:
+        raise ThemeError("undecodable")
+    monkeypatch.setattr(MediaService, "load_video", refuse)
+
+    assert not connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file))).ok
+    assert connected_app.settings.for_device(_KEY).media_player_uri is None
+
+
+def test_stop_ends_the_media_player_and_teardown_keeps_it(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    from trcc.core.commands import SetMediaPlayer
+
+    connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file)))
+    connected_app.dispatch(StopVideo(key=_KEY, keep_override=True))
+    assert connected_app.settings.for_device(_KEY).media_player_uri == str(video_file)
+
+    connected_app.dispatch(StopVideo(key=_KEY))
+    assert connected_app.settings.for_device(_KEY).media_player_uri is None
+    assert _source(connected_app) == "background"
+
+
+def test_clearing_the_media_player_brings_back_the_theme_s_own_video(
+    connected_app: App, stub_media: list, video_file: Path, tmp_path: Path,
+) -> None:
+    """As the C#'s ClosePlayer -- and the App decides, not a UI reload."""
+    from trcc.core.commands import SetMediaPlayer
+    from trcc.core.events import BackgroundChanged
+
+    theme_video = _video_theme(connected_app, tmp_path)
+    connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file)))
+    heard: list[str] = []
+    connected_app.events.subscribe(BackgroundChanged, lambda e: heard.append(e.key))
+
+    assert connected_app.dispatch(SetMediaPlayer(key=_KEY, uri="")).ok
+
+    s = connected_app.settings.for_device(_KEY)
+    assert s.media_player_uri is None
+    assert [c[1] for c in stub_media][-1] == theme_video, "the theme's video did not resume"
+    assert _source(connected_app) == "background"
+    assert heard == [_KEY], "clearing was not announced"
+
+
+def test_clearing_with_no_media_player_leaves_a_background_video_alone(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    from trcc.core.commands import SetMediaPlayer
+
+    connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
+    connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=""))
+
+    assert connected_app.media.playback(_KEY) is not None
+    assert connected_app.settings.for_device(_KEY).background_path == str(video_file)
+
+
+def test_restore_resumes_the_media_player(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    """A restart must bring the media player back AS one, not as a background."""
+    from trcc.core.commands import RestoreDeviceState, SetMediaPlayer
+
+    connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file)))
+    connected_app.media.unload(_KEY)              # what a restart leaves
+
+    assert connected_app.dispatch(RestoreDeviceState(key=_KEY)).ok
+
+    assert connected_app.media.playback(_KEY) is not None
+    assert connected_app.settings.for_device(_KEY).media_player_uri == str(video_file)
+
+
+def test_a_web_source_is_announced(connected_app: App) -> None:
+    from trcc.core.commands import SetMediaPlayer
+    from trcc.core.events import BackgroundChanged
+
+    heard: list[str] = []
+    connected_app.events.subscribe(BackgroundChanged, lambda e: heard.append(e.key))
+    assert connected_app.dispatch(SetMediaPlayer(key=_KEY, uri="https://x.test/s")).ok
+
+    assert heard == [_KEY]
+    assert _source(connected_app) == "media"

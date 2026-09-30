@@ -746,6 +746,11 @@ class LcdSnapshotResult(Result):
     #: The running screencast, ``(x, y, w, h, audio)``, or None when this
     #: device is not casting -- ``StopScreencast`` clears it with the driver.
     screencast_region: tuple[int, int, int, int, bool] | None = None
+    #: Which display source is on the panel -- the C#'s one UI-mode choice
+    #: (background / screencast / video player, ``FormCZTV.ThemeSetting``).
+    #: Derived once, here, from the three exclusive settings, so every UI's
+    #: switches agree.  ``background_mode`` says whether a background is drawn.
+    display_source: Literal["background", "screencast", "media"] = "background"
     # Slideshow config.  Absent until 2026-08-25, which made this Result
     # unable to answer its own docstring: the gui restoring slideshow state
     # had to keep reaching for ``settings.for_device`` — a crash under

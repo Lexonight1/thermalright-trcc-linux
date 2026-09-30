@@ -1395,22 +1395,26 @@ class StopVideo(Command[VideoResult]):
     alone.  Teardown — GUI close, device disconnect — has no next render to
     rewind, and clearing there wiped the user's chosen background from
     ``trcc.json`` on every exit (#271).
+
+    The media player's source is the same kind of override and follows the
+    same rule: a stop ends it, a teardown keeps it for the next start.
     """
     key: str
     keep_override: bool = False
 
     def execute(self, app: App) -> VideoResult:
         had_playback = app.media.playback(self.key) is not None
-        had_override = (
-            app.settings.for_device(self.key).background_path is not None
-        )
+        s = app.settings.for_device(self.key)
+        had_override = (s.background_path is not None
+                        or s.media_player_uri is not None)
         app.media.unload(self.key)
         if had_override and not self.keep_override:
             log.info(
-                "StopVideo: clearing background_path override for %s",
-                self.key,
+                "StopVideo: clearing background_path / media-player override "
+                "for %s", self.key,
             )
             app.settings.set_background_path(self.key, None)
+            app.settings.set_media_player_uri(self.key, None)
         elif had_override:
             log.info(
                 "StopVideo: keeping background_path override for %s "
@@ -1815,6 +1819,17 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
     pipeline; a web URL is referenced (persisted so a save captures it) — its
     continuous-streaming playback is a separate runtime feature.  Pass an empty
     ``uri`` to clear the source.
+
+    The source is recorded AFTER ``PlayVideo``: that Command writes the file as
+    ``background_path``, and the display sources are exclusive, so recording
+    first let playback erase the record -- every local media player read as a
+    background video, to the save, the restore and every UI's switch.
+
+    Clearing ends it the way the C#'s ``ClosePlayer`` does: the playback stops
+    and a video theme's own video plays again -- the App decides, no UI
+    reloads a theme.  Not a theme reload: a theme SAVED with a media player
+    would resume it and turning it off would never stick.  Every change is
+    announced (``BackgroundChanged``) so every UI follows.
     """
     USES_DEVICE: ClassVar[bool] = True
     key: str
@@ -1824,11 +1839,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
         log.info("SetMediaPlayer.execute: key=%s uri=%r", self.key, self.uri)
         uri = self.uri.strip()
         if not uri:
-            app.settings.set_media_player_uri(self.key, None)
-            return MediaPlayerResult(
-                ok=True, key=self.key, uri="", playing=False,
-                message=f"media-player source cleared for {self.key}",
-            )
+            return self._clear(app)
         try:
             app.get(self.key)
         except DeviceNotFoundError as e:
@@ -1839,6 +1850,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
 
         if "://" in uri:   # a web URL / stream
             app.settings.set_media_player_uri(self.key, uri)
+            _publish_background(app, self.key)
             log.info("SetMediaPlayer.execute: %r is a web URL — referenced "
                      "(streaming playback is a runtime feature)", uri)
             return MediaPlayerResult(
@@ -1854,12 +1866,37 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
                 ok=False, key=self.key, uri=uri,
                 message=f"media-player source does not exist: {uri}",
             )
-        app.settings.set_media_player_uri(self.key, uri)
         play = app.dispatch(PlayVideo(key=self.key, path=local))
+        if play.ok:
+            app.settings.set_media_player_uri(self.key, uri)
+            _publish_background(app, self.key)
         return MediaPlayerResult(
             ok=play.ok, key=self.key, uri=uri, playing=play.ok,
             message=(f"media-player playing {local.name}"
                      if play.ok else play.message),
+        )
+
+    def _clear(self, app: App) -> MediaPlayerResult:
+        """End the media player: stop it, and the theme's own video resumes."""
+        if app.settings.for_device(self.key).media_player_uri is None:
+            log.info("SetMediaPlayer: %s has no media player — nothing to end",
+                     self.key)
+            return MediaPlayerResult(
+                ok=True, key=self.key, uri="", playing=False,
+                message=f"no media-player source on {self.key}",
+            )
+        log.info("SetMediaPlayer: ending %s's media player", self.key)
+        app.dispatch(StopVideo(key=self.key))
+        theme = app.active_themes.get(self.key)
+        video = app.themes.video_path(theme) if theme is not None else None
+        if video is not None:
+            log.info("SetMediaPlayer: %s's theme plays its own video %s again",
+                     self.key, video.name)
+            app.dispatch(PlayVideo(key=self.key, path=video))
+        _publish_background(app, self.key)
+        return MediaPlayerResult(
+            ok=True, key=self.key, uri="", playing=False,
+            message=f"media-player source cleared for {self.key}",
         )
 
 @dataclass(frozen=True, slots=True)
@@ -2986,6 +3023,9 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             time_format="12h" if "%I" in clocks.get("time", "") else "24h",
             date_format=icu_date_pattern(clocks.get("date", "")),
             screencast_region=s.screencast_region,
+            display_source=("screencast" if s.screencast_region is not None
+                            else "media" if s.media_player_uri
+                            else "background"),
             temp_unit=s.temp_unit,
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,
