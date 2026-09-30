@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from trcc.core.models import OverlayElement
 from trcc.services.settings import _SCHEMA_VERSION, Settings
 
@@ -74,10 +76,17 @@ def test_v1_populated_layer_is_carried_through(tmp_path: Path) -> None:
     assert [e.id for e in layer] == ["u1"]
 
 
-def test_v2_empty_layer_stays_empty(tmp_path: Path) -> None:
-    """Once stamped, ``[]`` means what it says — the user emptied it."""
+@pytest.mark.parametrize("schema", range(2, _SCHEMA_VERSION + 1))
+def test_v2_empty_layer_stays_empty(tmp_path: Path, schema: int) -> None:
+    """Once stamped, ``[]`` means what it says — the user emptied it.
+
+    EVERY schema from 2 on, literally.  This wrote ``_SCHEMA_VERSION`` — the
+    current version, not 2 — so when the LED work bumped it to 3 the test
+    moved with it and stopped testing v2, while the migration began rewriting
+    every released v2 config.
+    """
     _write_config(tmp_path, {
-        "schema": _SCHEMA_VERSION, "app": {}, "led_devices": {},
+        "schema": schema, "app": {}, "led_devices": {},
         "devices": {_KEY: {"user_overlay_elements": []}},
     })
 

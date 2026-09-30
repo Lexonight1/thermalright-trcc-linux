@@ -986,13 +986,19 @@ def _migrate_device(
     next save records it under v2.  A NON-empty list is already an established
     layout and is carried through untouched.
 
-    Returns the dict unchanged when it is already current, so a v2 config
-    costs one integer comparison.
+    Returns the dict unchanged when it is already current, so a current
+    config costs one integer comparison.
+
+    Each step is gated on the version that introduced it, NOT on "older than
+    current".  The v1 step was gated on ``schema < _SCHEMA_VERSION``, so the
+    LED bumps to 3 and 4 made it rewrite every released (v2) config too: an
+    overlay the user had emptied read as "no layout" and the theme's elements
+    came back on upgrade -- #276 again.
     """
     if schema >= _SCHEMA_VERSION:
         return data
     out = dict(data)
-    if out.get("user_overlay_elements") == []:
+    if schema < 2 and out.get("user_overlay_elements") == []:
         out["user_overlay_elements"] = None
         log.info(
             "_migrate_device: %s schema %d→%d — empty overlay layer read as "
