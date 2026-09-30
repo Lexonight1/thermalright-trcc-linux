@@ -285,3 +285,39 @@ def test_the_format_button_changes_only_the_selected_clock(
     held = _held(window)
     assert (held["t1"].format, held["t2"].format) == ("%I:%M %p", "%H:%M")
     assert "SetTimeFormat" not in sent, sent
+
+
+def test_a_gui_edit_renders_once_and_re_resolves_nothing(
+    window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The App's render observer renders on the edit's own event; the gui
+    rendered a second time by hand.  And its follow path re-ran the rotation
+    restore on every event -- a ResolveThemeDirectories + PreviewSize per
+    drag move.  Measured 2026-09-30: 2 renders + both Queries -> 1 render."""
+    app = window._app
+    _grid(window).select_element(0)
+    qtbot.wait(100)
+    sent: list[str] = []
+    real = app.dispatch
+
+    def _record(command: Any) -> Any:
+        sent.append(type(command).__name__)
+        return real(command)
+
+    monkeypatch.setattr(app, "dispatch", _record)
+    window.uc_theme_setting._on_color_changed(0x11, 0x22, 0x33)
+    qtbot.wait(200)
+
+    assert sent.count("RenderAndSend") == 1, sent
+    assert not {"ResolveThemeDirectories", "PreviewSize"} & set(sent), sent
+
+
+def test_the_gui_still_follows_an_orientation_change(
+    window: Any, qtbot: Any,
+) -> None:
+    """The rotation redo now runs only on a change -- a change must still run it."""
+    from trcc.core.commands import SetOrientation
+
+    assert window._app.dispatch(SetOrientation(key=_KEY, degrees=90)).ok
+    combo = window._handlers[_KEY]._w["rotation_combo"]
+    qtbot.waitUntil(lambda: combo.currentIndex() == 1, timeout=2000)   # 90°

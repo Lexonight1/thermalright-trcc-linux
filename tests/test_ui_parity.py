@@ -128,9 +128,9 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "gap: no UI should send this -- the App's MetricsLoop renders every "
         "panel and its render observer re-renders on each edit's event.  "
         "qtgui's own ticker went 2026-09-30 (it doubled frames, 5 -> 10 in 5 s); "
-        "gui still re-renders by hand after its edits, 6 lcd_handler sites -- "
-        "one colour edit sends 2 RenderAndSend, measured.  Removing them empties "
-        "this entry"
+        "gui's 4 hand renders after edits went the same day (one colour edit "
+        "sent 2, now 1); the last 2 are its flash click and flash timeout, "
+        "which go with FlashOverlayElement (it draws nothing anywhere)"
     )),
     "SetOverlayConfig": (frozenset({"api"}), (
         "scoped: a bulk replace for scripts; every UI edits overlays "

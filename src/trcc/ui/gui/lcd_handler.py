@@ -149,6 +149,10 @@ class LCDHandler(BaseHandler):
         self._data_notifier = _DataReadyNotifier()
         self._data_notifier.ready.connect(self._on_data_ready)
 
+        #: The orientation the shared widgets show for this panel; None until
+        #: it has taken them (``_refresh``), so the first restore always runs.
+        self._shown_rotation: int | None = None
+
         # Timers (parent factory + signal wiring; lifetime owned here)
         self._flash_timer: QTimer = make_timer(
             self._on_flash_timeout, single_shot=True,
@@ -298,6 +302,7 @@ class LCDHandler(BaseHandler):
         # in favour of dataclass attribute access (typed by pyright,
         # defaults baked into DeviceSettings itself).
         ds = self._lcd_settings()
+        self._shown_rotation = None     # this panel is (re)taking the widgets
 
         self._w['preview'].set_resolution(w, h)
         self._w['preview'].set_image(None)
@@ -407,9 +412,18 @@ class LCDHandler(BaseHandler):
         self.log.info("Showing brightness: %d%%", self._pm.brightness_level)
 
     def _restore_rotation(self, ds: LcdSnapshotResult) -> None:
+        """Show the orientation -- and redo the geometry work only when it
+        CHANGED.  ``follow_app`` runs this on every event, a drag move
+        included, and each run cost a ResolveThemeDirectories + PreviewSize
+        (two socket round trips under a shared App) for nothing."""
         rotation_index = ds.orientation // 90
         rotation = rotation_index * 90
+        if rotation == self._shown_rotation:
+            self.log.debug("_restore_rotation: still %d° — nothing to redo",
+                           rotation)
+            return
         self.log.debug("_restore_rotation: rotation=%d", rotation)
+        self._shown_rotation = rotation
         self._sync_rotation_state(rotation)
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
@@ -605,7 +619,6 @@ class LCDHandler(BaseHandler):
         self._app.dispatch(SetMaskPosition(
             key=self._device_key, x=x, y=y,
         ))
-        self._render_and_send()
 
     def save_theme(self, name: str, *, overwrite: bool = False) -> ThemeResult:
         self.log.info("save_theme: name=%s overwrite=%s", name, overwrite)
@@ -678,7 +691,6 @@ class LCDHandler(BaseHandler):
             key=self._device_key, enabled=enabled,
         ))
         self._show_overlay_layout()
-        self._render_and_send()
 
     # ── Video lifecycle (bus_bridge observers) ─────────────────────
 
@@ -824,7 +836,6 @@ class LCDHandler(BaseHandler):
                 key=self._device_key, enabled=True,
             ))
             self._pm.state.overlay_enabled = True
-        self._render_and_send()
 
     def handle_frame(self, image: Any) -> None:
         """Receive the rendered frame from ``FrameSent`` — show it directly.
@@ -1042,7 +1053,6 @@ class LCDHandler(BaseHandler):
             self._app.dispatch(StopVideo(key=self._device_key))
             self._w['preview'].set_playing(False)
             self._w['preview'].show_video_controls(False)
-        self._render_and_send()
         kind = "video" if self._video_status().playing else "image"
         self._w['preview'].set_status(
             f"Background: {'On' if enabled else 'Off'} ({kind})",
