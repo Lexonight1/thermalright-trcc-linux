@@ -101,17 +101,52 @@ def test_select_all_off_on_a_pa120_keeps_the_zones_picked(
     assert _mask(app) == (False, True, True, False)
 
 
+def _fresh(platform: FakePlatform, pm: int) -> App:
+    """Connected, not yet rendered: a multi-zone cooler has no zones yet —
+    the state for the seconds after connecting, when nothing animates it."""
+    app = App(platform)
+    _attach_and_connect(app, platform, pm=pm)
+    assert app.dispatch(LedSnapshot(key=_LED_KEY)).zones == ()
+    return app
+
+
 def test_selecting_a_pa120_zone_makes_an_edit_reach_only_it(
     fake_platform: FakePlatform,
 ) -> None:
-    app = _connected(fake_platform, _PA120)
-    app.dispatch(SetLedZoneSync(key=_LED_KEY, enabled=False))
+    """Select-all is on for a new cooler; with it on an edit reaches every
+    zone, so selecting one zone turns it off."""
+    app = _fresh(fake_platform, _PA120)
 
     app.dispatch(SelectZone(key=_LED_KEY, zone=3))
     app.dispatch(SetLedColor(key=_LED_KEY, color=(1, 2, 3)))
 
-    zones = app.dispatch(LedSnapshot(key=_LED_KEY)).zones
-    assert [z.color == (1, 2, 3) for z in zones] == [False, False, False, True]
+    snap = app.dispatch(LedSnapshot(key=_LED_KEY))
+    assert snap.zone_sync is False
+    assert [z.color == (1, 2, 3) for z in snap.zones] == [False, False, False, True]
+
+
+def test_select_all_turned_off_before_the_zones_exist_stays_off(
+    fake_platform: FakePlatform,
+) -> None:
+    """Creating the zones turns select-all on; it happened on the first edit,
+    AFTER the user had turned it off."""
+    app = _fresh(fake_platform, _PA120)
+
+    app.dispatch(SetLedZoneSync(key=_LED_KEY, enabled=False))
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(1, 2, 3)))
+
+    snap = app.dispatch(LedSnapshot(key=_LED_KEY))
+    assert snap.zone_sync is False
+    assert [z.color == (1, 2, 3) for z in snap.zones] == [True, False, False, False]
+
+
+def test_a_mask_set_before_the_zones_exist_is_kept(fake_platform: FakePlatform) -> None:
+    app = _fresh(fake_platform, _PA120)
+
+    app.dispatch(SetLedZoneSyncZones(key=_LED_KEY, zones=(False, True, False, False)))
+
+    assert _mask(app) == (False, True, False, False)
+    assert len(app.dispatch(LedSnapshot(key=_LED_KEY)).zones) == 4
 
 
 def test_a_negative_zone_is_refused(fake_platform: FakePlatform) -> None:

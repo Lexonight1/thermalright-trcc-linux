@@ -506,16 +506,31 @@ def _write_edit_zones(app: App, key: str, **fields: Any) -> list[int]:
     :2279, mode :2447 — and the device is driven by the zones alone.  The
     global value is what the controls show.
     """
-    zone_count = _multi_zone_count(app, key)
+    zone_count = _ensure_zones(app, key)
     if zone_count is None:
         log.debug("_write_edit_zones: %s is not multi-zone — global only", key)
         return []
-    app.settings.set_led_zone_count(key, zone_count)
     zones = _edit_zones(app.settings.for_led(key), zone_count)
     for i in zones:
         app.settings.set_led_zone(key, i, **fields)
     log.info("_write_edit_zones: %s %s → zone(s) %s", key, fields, zones)
     return zones
+
+
+def _ensure_zones(app: App, key: str) -> int | None:
+    """Create a multi-zone device's zones if they do not exist yet.
+
+    Every Command that reads or sets the zone selection calls this FIRST.
+    Creating the zones turns select-all on (FormLED's first run), so a choice
+    applied before they existed — select-all off sent in the seconds after
+    connecting, before the first render — was switched back on by the next
+    edit.  Returns the zone count, or None for a device without zones.
+    """
+    zone_count = _multi_zone_count(app, key)
+    if zone_count is not None:
+        app.settings.set_led_zone_count(key, zone_count)
+    log.debug("_ensure_zones: %s → %s", key, zone_count)
+    return zone_count
 
 
 def _style_of(app: App, key: str) -> LedStyle | None:
@@ -830,6 +845,7 @@ class SetLedZoneSync(Command[LedColorsResult]):
         if (why := _not_an_led(app, self.key)) is not None:
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
+        _ensure_zones(app, self.key)
         app.settings.set_led_zone_sync(self.key, self.enabled)
         if not self.enabled and not is_select_all(_style_of(app, self.key)):
             s = app.settings.for_led(self.key)
@@ -887,6 +903,7 @@ class SetLedZoneSyncZones(Command[LedColorsResult]):
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
         log.info("SetLedZoneSyncZones %s: zones=%s", self.key, list(self.zones))
+        _ensure_zones(app, self.key)
         app.settings.set_led_zone_sync_zones(self.key, list(self.zones))
         _publish_led_settings_changed(app, self.key)
         return LedColorsResult(
@@ -901,7 +918,9 @@ class SelectZone(Command[LedColorsResult]):
 
     Sets the mask to that zone alone, as a FormLED zone click does with the
     carousel off (:2812).  It used to set a separate ``selected_zone`` and
-    leave the mask, so the panel's buttons and the cooler disagreed.
+    leave the mask, so the panel's buttons and the cooler disagreed.  On a
+    select-all style it also turns select-all off: with it on, an edit
+    reaches every zone whatever the mask says.
     """
     key: str
     zone: int
@@ -916,6 +935,8 @@ class SelectZone(Command[LedColorsResult]):
                 ok=False, key=self.key, colors=[],
                 message=f"zone must be >= 0, got {self.zone}",
             )
+        if _ensure_zones(app, self.key) is not None:
+            app.settings.set_led_zone_sync(self.key, False)
         size = max(len(app.settings.for_led(self.key).zone_sync_zones), self.zone + 1)
         app.settings.set_led_zone_sync_zones(
             self.key, [i == self.zone for i in range(size)])

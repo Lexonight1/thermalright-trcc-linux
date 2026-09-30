@@ -40,9 +40,9 @@
   in the Windows app. With "select all" on, which is now how these coolers
   start, that is every zone.
 - **`trcc led select-zone` (and the API route) selects exactly that zone.** On
-  a cooler with metric pages it is the page shown; on a PA120 or LF10, colour,
-  effect and brightness then reach that zone alone. It did nothing on those
-  two before.
+  a cooler with metric pages it is the page shown; on a PA120 or LF10 it turns
+  "select all" off, so colour, effect and brightness then reach that zone
+  alone. It did nothing on those two before.
 
 ### Fixed
 
