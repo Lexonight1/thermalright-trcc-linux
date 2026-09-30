@@ -7,7 +7,7 @@ selects to animate, and that a tick re-renders them (a wire write).
 from __future__ import annotations
 
 from trcc.app import App
-from trcc.core.commands import SetLedMode, SetLedZoneSync
+from trcc.core.commands import SetLedMode, SetLedZoneMode, SetLedZoneSync
 from trcc.core.led_models import LEDMode
 
 from .conftest import FakePlatform, _CliRenderer
@@ -49,21 +49,35 @@ def test_tick_re_renders_animating_led(fake_platform: FakePlatform) -> None:
 
 
 def test_multi_zone_per_zone_effect_is_animated(fake_platform: FakePlatform) -> None:
-    """#193: a multi-zone device (PA120) with an effect set on its zones — and
-    "select all" (zone_sync) OFF — must still be ticked.
+    """#193: a multi-zone device (PA120) whose effect is on a ZONE while the
+    device-level ``mode`` is STATIC must still be ticked.
 
-    On a multi-zone style ``SetLedMode`` writes each selected ZONE's mode and
-    leaves the device-level ``mode`` at STATIC, so gating ``animating_keys`` on
-    ``s.mode`` alone left the device unticked → breathing/colour-cycle/rainbow
-    looked frozen while a solid colour worked.  The loop must see the zone modes.
+    Gating ``animating_keys`` on ``s.mode`` alone left such a device unticked
+    → breathing/colour-cycle/rainbow looked frozen while a solid colour
+    worked.  ``SetLedMode`` now writes the device-level mode too (as FormLED
+    does), so the state is built with the per-zone ``SetLedZoneMode`` — the
+    API's zone route — which is still how a zone and the device part ways.
     """
     app = _app(fake_platform, pm=16)   # PA120 — multi-zone (per-zone modes)
-    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.RAINBOW))
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.STATIC))   # creates the zones
+    app.dispatch(SetLedZoneMode(key=_LED_KEY, zone=1, mode=LEDMode.RAINBOW))
     s = app.settings.for_led(_LED_KEY)
-    assert s.mode is LEDMode.STATIC, "device-level mode stays STATIC on a zone style"
-    assert not s.zone_sync, "zone_sync (select-all) is off by default"
-    assert any(z.mode is LEDMode.RAINBOW for z in s.zones), "a zone carries the effect"
+    assert s.mode is LEDMode.STATIC, "the device-level mode is STATIC"
+    assert [z.mode for z in s.zones].count(LEDMode.RAINBOW) == 1, "one zone carries it"
     assert app.led_animation_loop.animating_keys() == [_LED_KEY]
+
+
+def test_a_still_pa120_with_select_all_on_is_not_animated(
+    fake_platform: FakePlatform,
+) -> None:
+    """Select-all is how a fresh PA120 starts (FormLED's first run).  On this
+    style it means "edit every zone" and rotates nothing, so a still device
+    must not be re-rendered every 150 ms."""
+    app = _app(fake_platform, pm=16)
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.STATIC))
+    assert app.settings.for_led(_LED_KEY).zone_sync
+
+    assert app.led_animation_loop.animating_keys() == []
 
 
 # ── #202: no redundant reactive render that hiccups the effect ───────

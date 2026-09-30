@@ -20,7 +20,7 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
-from ..core.led_models import LEDMode
+from ..core.led_models import LEDMode, is_select_all
 from ..core.logs import per_frame
 
 if TYPE_CHECKING:
@@ -83,11 +83,11 @@ class LedAnimationLoop:
     def animating_keys(self) -> list[str]:
         """Connected LED devices whose mode / carousel / test is moving.
 
-        A multi-zone style (PA120/LF10) stores its mode PER ZONE — ``SetLedMode``
-        writes ``zones[i].mode`` and leaves the device-level ``mode`` at STATIC.
-        So the gate must also look at the zone modes, or an effect set on
-        individual zones (with "select all"/``zone_sync`` off) would never tick
-        and stay frozen (#193).
+        A multi-zone style (PA120/LF10) is driven by its zones' modes, and a zone
+        can run an effect while the device-level ``mode`` is STATIC (the
+        per-zone ``SetLedZoneMode``, or a config from before ``SetLedMode``
+        wrote both).  So the gate must also look at the zone modes, or such an
+        effect would never tick and stay frozen (#193).
 
         A HELD device (``App.held`` — a one-shot ``SetLedColors``) is not
         animating: the loop would replace the pushed colours 150 ms later.
@@ -99,10 +99,17 @@ class LedAnimationLoop:
                 continue
             s = self._app.settings.for_led(key)
             zone_animating = any(z.mode in _ANIMATED_MODES for z in s.zones)
+            # ``zone_sync`` rotates the metric page on a page style; on a
+            # select-all style (PA120/LF10) it only means "edit every zone",
+            # which FormLED never animates (GetVal ignores it, :3458) and the
+            # render ignores too (``RenderLed._metric_page``).
+            handshake = getattr(device, "led_handshake", None)
+            rotating = s.zone_sync and not is_select_all(
+                handshake.style if handshake is not None else None)
             if (
                 s.mode in _ANIMATED_MODES
                 or zone_animating
-                or s.zone_sync
+                or rotating
                 or s.test_mode
             ):
                 keys.append(key)

@@ -956,7 +956,7 @@ Toggle HDD metrics inclusion in sensor broadcasts.
 
 ### `SetLedBrightness`
 
-Set the global LED brightness percent (0–100).
+Set the LED brightness percent (0–100): the global value, plus the zones the edit reaches on a multi-zone style (FormLED ``ucScrollWDelegate``).
 
 *Command* → `LedColorsResult`
 

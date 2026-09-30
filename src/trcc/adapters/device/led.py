@@ -426,13 +426,8 @@ class Led(BaseBulkDevice, wire=Wire.LED):
         # service (apply_brightness); the wire applies only the FormLED
         # hardware perceptual scale + the on/off mask, never brightness.
         body = bytearray(payload_len)
-        for i, (r, g, b) in enumerate(payload.colors):
-            on = payload.global_on and (
-                payload.is_on[i] if payload.is_on is not None else True
-            )
-            if on:
-                body[i * 3] = min(255, max(0, int(r * _COLOR_SCALE)))
-                body[i * 3 + 1] = min(255, max(0, int(g * _COLOR_SCALE)))
-                body[i * 3 + 2] = min(255, max(0, int(b * _COLOR_SCALE)))
-            # else: stays 0,0,0 (off)
+        for i, (r, g, b) in enumerate(payload.shown):   # an off LED is (0, 0, 0)
+            body[i * 3] = min(255, max(0, int(r * _COLOR_SCALE)))
+            body[i * 3 + 1] = min(255, max(0, int(g * _COLOR_SCALE)))
+            body[i * 3 + 2] = min(255, max(0, int(b * _COLOR_SCALE)))
         return header + bytes(body)

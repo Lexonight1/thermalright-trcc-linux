@@ -35,9 +35,24 @@
   the API left it off. A style you chose, "off" included, is kept.
 - **Opening the gui no longer rewrites brightness, orientation or split mode**
   for each panel. It shows what the App has and changes nothing.
+- **On a PA120 or LF10, `trcc led off` and `trcc led brightness` (and the
+  matching API routes) reach the selected zones**, as the panel's controls do
+  in the Windows app. With "select all" on, which is now how these coolers
+  start, that is every zone.
 
 ### Fixed
 
+- **PA120 and LF10 coolers reach full brightness.** The brightness setting was
+  multiplied by each zone's own 65 %, so 100 % showed at 65 % and a new cooler
+  started at about 42 %. They now follow their zones alone, as in the Windows
+  app. Your current look is carried over when you upgrade.
+- **On a PA120 or LF10, a colour, effect or brightness reaches every zone on a
+  new cooler**, not only the first: "select all" starts on, as in the Windows
+  app. Coolers you have already set up keep their selection.
+- **Switching a PA120 or LF10 off turns off the selected zones**, not always
+  the whole cooler.
+- **The LED preview goes dark when the LEDs are switched off.** It kept
+  showing them lit while the cooler was dark.
 - **Switching the overlay off in the gui no longer deletes it.** The switch
   also cleared every overlay element, and so did editing one element while the
   overlay was off. The gui put them back only if you switched it on again in

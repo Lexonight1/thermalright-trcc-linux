@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Literal
 
+from .logs import per_frame
 from .models import LedStyle
+
+frame_log = per_frame(__name__)
 
 # =========================================================================
 # LEDMode — the six color-cycling effects
@@ -158,6 +161,20 @@ class LedPayload:
     colors: list[tuple[int, int, int]]
     is_on: list[bool] | None = None
     global_on: bool = True
+
+    @property
+    def shown(self) -> list[tuple[int, int, int]]:
+        """What each LED shows: its colour where lit, black where off.
+
+        The one lit rule.  The wire sends it and the preview draws it, so the
+        two cannot disagree; the preview used to apply ``is_on`` but not
+        ``global_on``, and kept every LED lit after "off".
+        """
+        frame_log.debug("LedPayload.shown: %d LEDs, global_on=%s, mask=%s",
+                        len(self.colors), self.global_on, self.is_on is not None)
+        return [c if self.global_on and (self.is_on is None or self.is_on[i])
+                else (0, 0, 0)
+                for i, c in enumerate(self.colors)]
 
 
 # =========================================================================
@@ -335,6 +352,17 @@ ZONE_STYLE_ASSETS: dict[LedStyle, tuple[tuple[str, str], ...]] = {
 # same mode/color/brightness in one operation.  PA120 (style 2) and
 # LF10 (style 7).
 LED_SELECT_ALL_STYLES: frozenset[int] = frozenset({2, 7})
+
+
+def is_select_all(style: LedStyle | None) -> bool:
+    """PA120/LF10: the zone selector edits zones and rotates nothing.
+
+    By the LEGACY id: ``LedStyle`` values are names ("pa120"), so the
+    ``style.value in LED_SELECT_ALL_STYLES`` the render used was never true.
+    """
+    answer = style is not None and LEGACY_STYLE_ID.get(style) in LED_SELECT_ALL_STYLES
+    frame_log.debug("is_select_all: %s → %s", style, answer)
+    return answer
 
 # Preset color buttons in the LED panel (legacy C# FormLED ucColor1
 # preset bar).  Eight fixed positions; the panel renders these as

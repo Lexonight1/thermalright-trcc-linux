@@ -109,12 +109,15 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #                         back to the theme's.
 #   2                     it means "the layout is EMPTY — draw nothing".  The
 #                         no-layout state is now ``None``.
+#   3                     a multi-zone LED (PA120/LF10) is driven by its zones
+#                         alone; up to 2 the global brightness and on/off were
+#                         applied on top.  ``_migrate_led`` folds them in.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 class Settings:
@@ -556,6 +559,11 @@ class Settings:
                 settings.zones.extend(
                     LedZoneSettings() for _ in range(count - current)
                 )
+            if current == 0:
+                # A device's first zones start with select-all on, as FormLED's
+                # first run does (FormLED.cs:1966), so an edit reaches every zone
+                # rather than the first alone.
+                settings.zone_sync = True
             else:
                 settings.zones = settings.zones[:count]
             self._save()
@@ -863,7 +871,9 @@ class Settings:
                     _migrate_device(data, schema, key),
                 )
             for key, data in raw.get("led_devices", {}).items():
-                self._led_devices[key] = _led_settings_from_dict(data)
+                self._led_devices[key] = _led_settings_from_dict(
+                    _migrate_led(data, schema, key),
+                )
 
     def _save(self) -> None:
         """Atomic write: tmp file → fsync → rename."""
@@ -981,6 +991,35 @@ def _migrate_device(
             "'no layout of its own' (v1 meaning); it will be seeded from the "
             "theme on the next restore", key, schema, _SCHEMA_VERSION,
         )
+    return out
+
+
+def _migrate_led(data: dict[str, Any], schema: int, key: str) -> dict[str, Any]:
+    """Bring one persisted LED device dict up to :data:`_SCHEMA_VERSION`.
+
+    **v2 → v3 — a multi-zone device is driven by its zones alone.**  Up to v2
+    the render multiplied a PA120/LF10's zones by the global brightness and
+    switched them all off with the global switch; from v3 it uses the zones
+    only, as FormLED does.  Folding the global values into each zone keeps the
+    device showing what it showed: brightness is a whole percent, so a colour
+    can move by up to 2 of 255 (measured over every pair; truncating instead
+    of rounding reached 3).  A device without zones is not multi-zone, and
+    unchanged.
+    """
+    zones = data.get("zones")
+    if schema >= 3 or not isinstance(zones, list) or not zones:
+        return data
+    brightness = data.get("brightness", 65)
+    on = data.get("global_on", True)
+    out = dict(data)
+    out["zones"] = [
+        {**z, "brightness": round(z.get("brightness", 65) * brightness / 100),
+         "on": bool(z.get("on", True) and on)}
+        for z in zones if isinstance(z, dict)
+    ]
+    log.info("_migrate_led: %s schema %d→3 — folded global brightness %s%% and "
+             "switch %s into %d zone(s)", key, schema, brightness,
+             "on" if on else "off", len(out["zones"]))
     return out
 
 

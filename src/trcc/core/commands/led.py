@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..errors import (
     DeviceNotConnectedError,
@@ -17,11 +17,11 @@ from ..events import (
     LedColorsChanged,
 )
 from ..led_models import (
-    LED_SELECT_ALL_STYLES,
     LED_STYLES,
     LEDMode,
     LedPayload,
     LedRuntimeState,
+    is_select_all,
 )
 from ..results import (
     ClockFormatResult,
@@ -225,7 +225,7 @@ class RenderLed(Command[LedColorsResult]):
             log.debug("RenderLed %s: single-page display — phase=%d",
                       self.key, self.phase)
             return self.phase
-        if not settings.zone_sync or style.value in LED_SELECT_ALL_STYLES:
+        if not settings.zone_sync or is_select_all(style):
             log.debug("RenderLed %s: selected-zone phase=%d",
                       self.key, settings.selected_zone)
             return settings.selected_zone
@@ -309,6 +309,10 @@ class RenderLed(Command[LedColorsResult]):
             if explicit_color is not None else led_settings
         )
 
+        # A multi-zone style's device shows its zones alone (FormLED.cs:10958
+        # multiplies each zone by ITS brightness and on/off; ``SendHidVal``
+        # applies nothing global for styles 2/7).  Set below.
+        zoned = False
         display = get_display(style)
         if display is None:
             # Pure-RGB style (e.g. LF13): no segment digits — fill the panel's
@@ -375,6 +379,7 @@ class RenderLed(Command[LedColorsResult]):
             # — force that one colour on every LED at full brightness.
             if (zone_map is not None and effective_settings.zones
                     and explicit_color is None):
+                zoned = True
                 log.debug("RenderLed %s: multi-zone fill (%d zones)",
                           self.key, len(zone_map))
                 colors = app.led_effects.tick_multi_zone(
@@ -402,15 +407,17 @@ class RenderLed(Command[LedColorsResult]):
 
         # One writer: bake global brightness into the rendered signal so the
         # device wire and the GUI preview observe one identical colour list.
-        # (Per-zone brightness is already baked by tick_multi_zone; this is
-        # the global 0–100 % on top.)  Explicit-colour diagnostics force
-        # brightness=100 via effective_settings, so this is a no-op there.
-        colors = apply_brightness(colors, effective_settings.brightness)
+        # Not on a multi-zone style: tick_multi_zone has baked each zone's own
+        # brightness, and the global one is only what the panel shows.
+        # Explicit-colour diagnostics force brightness=100 via
+        # effective_settings, so this is a no-op there.
+        if not zoned:
+            colors = apply_brightness(colors, effective_settings.brightness)
 
         payload = LedPayload(
             colors=colors,
             is_on=mask or None,   # empty mask (pure-RGB) → None → wire lights all
-            global_on=effective_settings.global_on,
+            global_on=zoned or effective_settings.global_on,
         )
         try:
             ok = app.send(self.key, payload)
@@ -430,16 +437,11 @@ class RenderLed(Command[LedColorsResult]):
             ))
             # Same preview path as LCD: publish the rendered output on
             # FrameSent so the GUI preview shows exactly what went to the
-            # device.  ``colors`` is already brightness-baked above (the one
-            # writer), so the preview observes the same signal the wire does
-            # — the slider dims both.  Apply the on/off mask the device gets
-            # via is_on, else the preview colours EVERY segment and reads as
-            # "888".  Empty mask (pure-RGB styles) shows all.
-            shown = ([c if on else (0, 0, 0)
-                      for c, on in zip(colors, mask, strict=True)]
-                     if mask else colors)
+            # device — ``payload.shown``, the lit rule the wire itself sends,
+            # so the segment mask AND the off switch darken both.
             app.events.publish(FrameSent(
-                key=self.key, bytes_sent=len(colors), display_colors=shown,
+                key=self.key, bytes_sent=len(colors),
+                display_colors=payload.shown,
             ))
         rendered = (f"{sum(mask)}/{len(mask)} LEDs on" if mask
                     else f"{len(colors)} RGB LEDs")
@@ -454,11 +456,10 @@ class RenderLed(Command[LedColorsResult]):
 class SetLedMode(Command[LedColorsResult]):
     """Set the LED animation mode.
 
-    Global for ordinary devices; for a multi-zone style (PA120/LF10) the mode
-    applies to the *selected* zones (all when "select all"/``zone_sync`` is on,
-    else the ``zone_sync_zones`` mask) — the same per-zone path as
-    :class:`SetLedColor`.  Without this the mode/effect buttons did nothing on
-    a multi-zone device, because the render reads each zone's own mode (#192).
+    The global mode, plus the zones the edit reaches on a multi-zone style
+    (:func:`_write_edit_zones`).  Without the zones the mode buttons did
+    nothing on a multi-zone device, because the render reads each zone's own
+    mode (#192).
     """
     key: str
     mode: LEDMode
@@ -467,24 +468,9 @@ class SetLedMode(Command[LedColorsResult]):
         if (why := _not_an_led(app, self.key)) is not None:
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
-        zone_count = _multi_zone_count(app, self.key)
-        if zone_count is not None:
-            app.settings.set_led_zone_count(self.key, zone_count)
-            s = app.settings.for_led(self.key)
-            if s.zone_sync:
-                targets = list(range(zone_count))
-            else:
-                mask = s.zone_sync_zones
-                targets = [i for i in range(zone_count)
-                           if i < len(mask) and mask[i]]
-                if not targets:
-                    targets = [0]
-            for i in targets:
-                app.settings.set_led_zone(self.key, i, mode=self.mode)
-            log.info("SetLedMode %s: %s → zone(s) %s",
-                     self.key, self.mode.name, targets)
-        else:
-            app.settings.set_led_mode(self.key, self.mode)
+        log.info("SetLedMode %s: %s", self.key, self.mode.name)
+        app.settings.set_led_mode(self.key, self.mode)
+        _write_edit_zones(app, self.key, mode=self.mode)
         # Phase counters reset on mode change so animation restarts cleanly
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         runtime.breathe_phase = 0
@@ -496,6 +482,41 @@ class SetLedMode(Command[LedColorsResult]):
             ok=True, key=self.key, colors=[],
             message=f"LED mode set to {self.mode.name}",
         )
+
+def _edit_zones(settings: LedDeviceSettings, zone_count: int) -> list[int]:
+    """The zones a panel edit reaches on a multi-zone style — FormLED's rule.
+
+    Every zone with select-all on (``isLunBo``), else the multi-select mask
+    (``LunBo1..4``), FormLED.cs:2062.  Zone 0 when the mask is empty, which the
+    C# cannot reach: its last selected zone cannot be deselected.
+    """
+    mask = settings.zone_sync_zones
+    zones = (list(range(zone_count)) if settings.zone_sync
+             else [i for i in range(zone_count) if i < len(mask) and mask[i]] or [0])
+    log.debug("_edit_zones: select-all=%s mask=%s → %s",
+              settings.zone_sync, mask, zones)
+    return zones
+
+
+def _write_edit_zones(app: App, key: str, **fields: Any) -> list[int]:
+    """Copy a panel edit into the zones it reaches; none on other styles.
+
+    On a multi-zone style (PA120/LF10) every FormLED control writes the global
+    field AND the selected zones — colour :2057, on/off :2124, brightness
+    :2279, mode :2447 — and the device is driven by the zones alone.  The
+    global value is what the controls show.
+    """
+    zone_count = _multi_zone_count(app, key)
+    if zone_count is None:
+        log.debug("_write_edit_zones: %s is not multi-zone — global only", key)
+        return []
+    app.settings.set_led_zone_count(key, zone_count)
+    zones = _edit_zones(app.settings.for_led(key), zone_count)
+    for i in zones:
+        app.settings.set_led_zone(key, i, **fields)
+    log.info("_write_edit_zones: %s %s → zone(s) %s", key, fields, zones)
+    return zones
+
 
 def _multi_zone_count(app: App, key: str) -> int | None:
     """Number of colour zones for a connected multi-zone LED, else None.
@@ -524,11 +545,9 @@ def _multi_zone_count(app: App, key: str) -> int | None:
 class SetLedColor(Command[LedColorsResult]):
     """Set the LED colour.
 
-    For ordinary LED devices this is the global colour (STATIC / BREATHING /
-    COLORFUL).  For a multi-zone style (PA120/LF10) the colour applies to the
-    *selected* zones — every zone when "select all" (``zone_sync``) is on, else
-    the multi-select mask (``zone_sync_zones``) — mirroring the C#
-    ``ucColor1Delegate`` (gate ``nowLedStyle == 2 || 7``).  (#192)
+    The global colour (STATIC / BREATHING / COLORFUL), plus the zones the edit
+    reaches on a multi-zone style (:func:`_write_edit_zones`), as the C#
+    ``ucColor1Delegate`` does (gate ``nowLedStyle == 2 || 7``).  (#192)
     """
     key: str
     color: tuple[int, int, int]
@@ -544,38 +563,24 @@ class SetLedColor(Command[LedColorsResult]):
                     message=f"{label} out of range (0-255): {value}",
                 )
         r, g, b = self.color
-        zone_count = _multi_zone_count(app, self.key)
-        if zone_count is not None:
-            app.settings.set_led_zone_count(self.key, zone_count)
-            s = app.settings.for_led(self.key)
-            if s.zone_sync:
-                targets = list(range(zone_count))
-            else:
-                mask = s.zone_sync_zones
-                targets = [i for i in range(zone_count)
-                           if i < len(mask) and mask[i]]
-                if not targets:
-                    targets = [0]   # default selection (configure: zone 0)
-            for i in targets:
-                app.settings.set_led_zone(self.key, i, color=self.color)
-            log.info("SetLedColor %s: #%02x%02x%02x → zone(s) %s",
-                     self.key, r, g, b, targets)
-            _publish_led_settings_changed(app, self.key)
-            return LedColorsResult(
-                ok=True, key=self.key, colors=[self.color],
-                message=(f"Zone colour #{r:02x}{g:02x}{b:02x} "
-                         f"applied to {len(targets)} zone(s)"),
-            )
+        log.info("SetLedColor %s: #%02x%02x%02x", self.key, r, g, b)
         app.settings.set_led_color(self.key, self.color)
+        zones = _write_edit_zones(app, self.key, color=self.color)
         _publish_led_settings_changed(app, self.key)
         return LedColorsResult(
             ok=True, key=self.key, colors=[self.color],
-            message=f"LED color set to #{r:02x}{g:02x}{b:02x}",
+            message=(f"LED color set to #{r:02x}{g:02x}{b:02x}"
+                     + (f" on {len(zones)} zone(s)" if zones else "")),
         )
 
 @dataclass(frozen=True, slots=True)
 class SetLedBrightness(Command[LedColorsResult]):
-    """Set the global LED brightness percent (0–100)."""
+    """Set the LED brightness percent (0–100): the global value, plus the
+    zones the edit reaches on a multi-zone style (FormLED ``ucScrollWDelegate``).
+
+    Only the zones reached the device's colours before: a PA120 at 100 % shone
+    at its zones' 65 %, the global value multiplied on top.
+    """
     key: str
     percent: int
 
@@ -590,6 +595,7 @@ class SetLedBrightness(Command[LedColorsResult]):
                 message=f"brightness out of range (0-100): {self.percent}",
             )
         app.settings.set_led_brightness(self.key, self.percent)
+        _write_edit_zones(app, self.key, brightness=self.percent)
         _publish_led_settings_changed(app, self.key)
         return LedColorsResult(
             ok=True, key=self.key, colors=[],
@@ -659,8 +665,12 @@ class ToggleLed(Command[LedColorsResult]):
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
         if self.zone is None:
+            # The global switch, plus the zones the edit reaches on a
+            # multi-zone style (FormLED ``ucColor2Delegate``), whose device
+            # follows its zones alone.
             app.settings.set_led_global_on(self.key, self.on)
-            target = "global"
+            zones = _write_edit_zones(app, self.key, on=self.on)
+            target = f"zone(s) {zones}" if zones else "global"
         else:
             try:
                 app.settings.set_led_zone(self.key, self.zone, on=self.on)
