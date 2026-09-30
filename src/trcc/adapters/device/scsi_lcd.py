@@ -7,6 +7,7 @@ knows the SCSI CDB vocabulary the device expects.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import struct
 import time
@@ -121,6 +122,12 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         # reports e.g. FBL=102 surfaces its resolution from the profile,
         # not the registry's static native_resolution. SCSI uses PM=FBL.
         self._profile = get_profile(fbl, fbl)
+        # Windows FormCZTVInit switches mode-1/FBL-51 panels to SPIMode 2,
+        # whose RGB565 consumer uses big-endian packing.  FBL 51 is also used
+        # by HID Type-2 panels, so this transport-specific override belongs
+        # here rather than in the global FBL profile table.
+        if fbl == 51:
+            self._profile = dataclasses.replace(self._profile, big_endian=True)
         return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=fbl,
