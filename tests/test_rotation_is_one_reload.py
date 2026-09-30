@@ -153,9 +153,10 @@ def _assert_one_clean_reload(app: App, rotation: _Rotation) -> None:
         f"the same-named theme in the user tree is a different theme"
     )
     assert settings.current_theme == str(paths.theme_dir(480, 854) / _THEME)
-    assert [e.id for e in (settings.user_overlay_elements or ())] == ["keepme"], (
-        "the user's overlay edit did not survive the rotation"
-    )
+    # The layout is the rotated folder's own, as 2.1.8 reloads it
+    # (FormCZTV.cs:1927-1960): the landscape edit had landscape coordinates.
+    assert (settings.user_overlay_elements, settings.user_overlay_catalog) == (
+        [], "theme480854"), "the landscape layout was carried onto the portrait canvas"
 
 
 # ── the two command-only faces ──────────────────────────────────────────

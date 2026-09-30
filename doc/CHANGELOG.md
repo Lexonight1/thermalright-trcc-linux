@@ -46,6 +46,13 @@
 
 ### Fixed
 
+- **A rotated widescreen panel shows the rotated theme's own layout.** Since
+  v9.10.0 (#276), rotating an 854x480, 1280x480, 1600x720 or similar panel
+  kept the landscape overlay positions on the portrait screen, so elements sat
+  off the edge, and it stayed that way after a restart. Rotation now reloads
+  the rotated theme's layout, as the Windows app does; edits made before a
+  rotation are not carried over (the Windows app drops them too). Panels
+  already affected are fixed on their next start.
 - **PA120 and LF10 coolers reach full brightness.** The brightness setting was
   multiplied by each zone's own 65 %, so 100 % showed at 65 % and a new cooler
   started at about 42 %. They now follow their zones alone, as in the Windows

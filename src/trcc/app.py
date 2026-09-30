@@ -548,16 +548,20 @@ class App(CommandBus):
         # agree on the oriented variant (#136).
         #
         # reset_overrides=False: a rotation re-roots the SAME theme to its
-        # oriented variant — it is NOT an explicit theme switch.  The original
-        # C# app rotates at the render layer and NEVER drops the user's overlay/
-        # background/mask edits on rotate; legacy's startup restore likewise
-        # re-applied them.  Resetting here (the old default=True) PERSIST-CLEARED
-        # user_overlay_elements + stopped video + reverted the cloud background —
-        # so on a connect/restart the user's "last preview with changes" was lost
-        # before RestoreDeviceState could replay it.  Preserve them; the dedicated
-        # cloud-background + mask reload blocks below still re-resolve those two
-        # to the oriented resolution.  (Catalog selection + encode are untouched,
-        # so the hardware-verified widescreen behavior in #169 is unaffected.)
+        # oriented variant — it is NOT an explicit theme switch, so the video
+        # and the cloud background survive, and the blocks below re-resolve the
+        # background and mask to the oriented resolution.
+        #
+        # The overlay layout does NOT survive into another theme folder:
+        # LoadTheme takes the rotated folder's own layout
+        # (``_layer_laid_out_elsewhere``), as 2.1.8 does — ``UpDateUCComboBox1``
+        # recomputes ``ThemeML`` and reloads that folder's theme
+        # (FormCZTV.cs:1927-1960).  This comment used to say the C# "rotates at
+        # the render layer and NEVER drops the user's edits"; that reading
+        # dates from June, when every tool still read the 2.0.3 decompile, and
+        # once every theme load filled the layer (#276) it put a landscape
+        # layout on the portrait canvas for every user.  A restart at the same
+        # orientation stays in the same folder, so edits survive it.
         if s.current_theme:
             cur = Path(s.current_theme)
             cand = oriented_theme_path(self, key, cur, degrees=event.degrees)

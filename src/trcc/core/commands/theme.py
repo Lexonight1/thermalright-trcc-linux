@@ -106,6 +106,38 @@ def _cloud_preview(web_dir: Path | None, theme_id: str) -> str:
     return str(png) if png.is_file() else ""
 
 
+def _layer_laid_out_elsewhere(app: App, key: str, catalog: str) -> str | None:
+    """Why *key*'s working layer does not belong to theme folder *catalog*.
+
+    ``None`` when it does, or when there is no layer.  The C# keys every layout
+    by its theme folder (``ThemeML``: resolution and orientation) and a
+    rotation reloads the rotated folder's own theme (FormCZTV.cs:1927-1960);
+    a layer laid out in another folder has coordinates for another canvas.
+
+    A layer saved before the folder was recorded is judged by where it lies:
+    an element outside the device's canvas is the mark of the rotation bug
+    this rule fixes, and the one state that must not be kept.
+    """
+    dev = app.settings.for_device(key)
+    if dev.user_overlay_elements is None:
+        return None
+    if dev.user_overlay_catalog is not None:
+        answer = (None if dev.user_overlay_catalog == catalog
+                  else f"laid out in {dev.user_overlay_catalog}, not {catalog}")
+        log.debug("_layer_laid_out_elsewhere: %s → %s", key, answer)
+        return answer
+    canvas = _resolve_oriented_resolution(app, key)
+    if canvas is None:
+        log.debug("_layer_laid_out_elsewhere: %s has no canvas yet", key)
+        return None
+    w, h = canvas
+    outside = [e.id for e in dev.user_overlay_elements if e.x >= w or e.y >= h]
+    log.debug("_layer_laid_out_elsewhere: %s unrecorded, %d outside %dx%d",
+              key, len(outside), w, h)
+    return (f"an unrecorded layer with {len(outside)} element(s) outside "
+            f"{w}x{h}") if outside else None
+
+
 @dataclass(frozen=True, slots=True)
 class LoadTheme(Command[ThemeResult]):
     """Parse a theme, persist it, render the first frame, and send it.
@@ -228,14 +260,17 @@ class LoadTheme(Command[ThemeResult]):
         #
         # Still skipped on restore (reset_overrides=False): a reconnect must
         # keep the persisted edits, not overwrite them with the theme's.
-        if self.reset_overrides:
+        catalog = theme.path.parent.name
+        elsewhere = (None if self.reset_overrides
+                     else _layer_laid_out_elsewhere(app, self.key, catalog))
+        if self.reset_overrides or elsewhere:
             adopted = as_working_layer(theme.config.get("elements"))
             log.info(
                 "LoadTheme: adopting %s's %d overlay element(s) as the "
-                "working layer for %s (explicit theme switch)",
-                theme.name, len(adopted), self.key,
+                "working layer for %s (%s)", theme.name, len(adopted), self.key,
+                elsewhere or "explicit theme switch",
             )
-            app.settings.set_user_overlay_elements(self.key, adopted)
+            app.settings.set_user_overlay_elements(self.key, adopted, catalog)
         elif app.settings.for_device(self.key).user_overlay_elements is None:
             # Restore, and the working layer is empty — the state every
             # config written before the layer existed is in.  Seed it from the
@@ -257,7 +292,11 @@ class LoadTheme(Command[ThemeResult]):
                     "element(s) from %s for %s",
                     len(seeded), theme.name, self.key,
                 )
-                app.settings.set_user_overlay_elements(self.key, seeded)
+                app.settings.set_user_overlay_elements(self.key, seeded, catalog)
+        elif app.settings.for_device(self.key).user_overlay_catalog is None:
+            log.info("LoadTheme: %s's working layer fits — recording it as "
+                     "laid out in %s", self.key, catalog)
+            app.settings.set_user_overlay_catalog(self.key, catalog)
 
         # If device is attached + connected + Renderer available, send an
         # immediate first frame.  Otherwise the theme is saved for the
@@ -320,7 +359,8 @@ class LoadTheme(Command[ThemeResult]):
                         log.info("LoadTheme: %s keeps its own %d element(s) "
                                  "over the bundled mask's layout",
                                  theme.name, len(own))
-                        app.settings.set_user_overlay_elements(self.key, own)
+                        app.settings.set_user_overlay_elements(
+                            self.key, own, catalog)
                 else:
                     log.warning(
                         "LoadTheme: theme %s mask %s resolved to %s but "

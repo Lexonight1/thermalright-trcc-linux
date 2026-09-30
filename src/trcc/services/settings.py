@@ -765,12 +765,27 @@ class Settings:
 
     def set_user_overlay_elements(
         self, key: str, elements: list[OverlayElement],
+        catalog: str | None = None,
     ) -> None:
-        """Replace the user-overlay list wholesale (bulk SetOverlayConfig)."""
-        log.info("set_user_overlay_elements: key=%s count=%d",
-                 key, len(elements))
+        """Replace the user-overlay list wholesale.
+
+        *catalog* is the theme folder the layout belongs to, given when a
+        source's layout is adopted; an edit leaves the recorded one as it is.
+        """
+        log.info("set_user_overlay_elements: key=%s count=%d catalog=%s",
+                 key, len(elements), catalog)
         with self._lock:
-            self.for_device(key).user_overlay_elements = list(elements)
+            dev = self.for_device(key)
+            dev.user_overlay_elements = list(elements)
+            if catalog is not None:
+                dev.user_overlay_catalog = catalog
+            self._save()
+
+    def set_user_overlay_catalog(self, key: str, catalog: str) -> None:
+        """Record which theme folder the working layer belongs to."""
+        log.info("set_user_overlay_catalog: key=%s catalog=%s", key, catalog)
+        with self._lock:
+            self.for_device(key).user_overlay_catalog = catalog
             self._save()
 
     # ── Atomic snapshot / restore (used by ExportConfig/ImportConfig) ─

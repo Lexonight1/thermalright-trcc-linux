@@ -751,6 +751,12 @@ class DeviceSettings:
     # what made a deleted last element reappear (#276).  Config schema 2; a v1
     # config's ``[]`` is migrated to ``None`` (``settings._migrate_device``).
     user_overlay_elements: list[OverlayElement] | None = None
+    # The theme catalog folder that layer was laid out in (``theme854480``) —
+    # the C#'s ``ThemeML``, which keys every layout by resolution AND
+    # orientation.  A re-root into another folder (a rotation, or the same key
+    # on another panel) takes that folder's own layout, as the C# reload does.
+    # ``None``: not recorded, a config from before 2026-09-30.
+    user_overlay_catalog: str | None = None
     # Slideshow config — rotates through ``slideshow_themes`` every
     # ``slideshow_interval_s`` seconds while ``slideshow_enabled`` is true.
     # Cursor + timing live in SlideshowService (transient, not persisted).
