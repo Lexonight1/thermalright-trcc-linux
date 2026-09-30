@@ -106,7 +106,11 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: on the grid and on ``UCThemeSetting``, the grid's ``to_next_elements``); the
 #: grid's ``add_element`` / ``delete_element`` and ``UCThemeSetting.load_configs``
 #: gained a line.  Diffing ``--list`` across the change: those 8 left, none joined.
-MAX_SILENT = 320
+#: 320 -> 319 on 2026-09-30: the gui's ``TRCCApp._make_timer`` was DELETED --
+#: its one use was the flash timer, gone with FlashOverlayElement (it drew
+#: nothing in any UI; the C# has no panel highlight).  Diffing ``--list``
+#: across the change: the only name that left.
+MAX_SILENT = 319
 
 
 def test_logging_coverage_only_improves() -> None:

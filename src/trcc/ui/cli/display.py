@@ -19,7 +19,6 @@ from ...core.commands import (
     DiscoverDevices,
     EnableOverlay,
     ExportVideoClip,
-    FlashOverlayElement,
     KeepAliveLoop,
     LcdSnapshot,
     ListMasks,
@@ -817,28 +816,6 @@ def overlay_delete(
     result = get_app().dispatch(
         DeleteOverlayElement(key=key, element_id=element_id),
     )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
-
-
-@app.command("overlay-flash")
-def overlay_flash(
-    key: str = typer.Argument(...),
-    element_id: str = typer.Argument(...),
-    duration_ms: int = typer.Option(
-        1500, "--duration", "-d", min=100, max=10000,
-        help="Flash duration in milliseconds",
-    ),
-) -> None:
-    """Briefly highlight an overlay element in the GUI."""
-    log.info(
-        "cli display overlay-flash: key=%s element_id=%s duration_ms=%s",
-        key, element_id, duration_ms,
-    )
-    result = get_app().dispatch(FlashOverlayElement(
-        key=key, element_id=element_id, duration_ms=duration_ms,
-    ))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

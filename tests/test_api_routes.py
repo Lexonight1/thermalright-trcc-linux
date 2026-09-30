@@ -920,7 +920,7 @@ def test_overlay_delete_unknown(api_client: TestClient) -> None:
 
 
 def test_overlay_round_trip(api_client: TestClient) -> None:
-    """Add → update → flash → delete one element via the API."""
+    """Add → update → delete one element via the API."""
     add = api_client.post(
         "/devices/0402:3922/display/overlay-elements",
         json={"type": "text", "text": "hi", "element_id": "el_api"},
@@ -932,11 +932,6 @@ def test_overlay_round_trip(api_client: TestClient) -> None:
         json={"text": "bye"},
     )
     assert upd.status_code == 200
-    flash = api_client.post(
-        f"/devices/0402:3922/display/overlay-elements/{eid}/flash",
-        json={"duration_ms": 500},
-    )
-    assert flash.status_code == 200
     rm = api_client.delete(
         f"/devices/0402:3922/display/overlay-elements/{eid}",
     )

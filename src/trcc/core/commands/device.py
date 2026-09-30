@@ -2579,46 +2579,6 @@ class DeleteOverlayElement(Command[OverlayElementDeleteResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class FlashOverlayElement(Command[OverlayElementResult]):
-    """Briefly highlight one element so the user can locate it on screen.
-
-    Implementation note: the flash is a UI affordance, not a wire-level
-    blink.  The Command returns the element (with its current state) and
-    publishes an ``OverlayChanged`` event with ``flash_element_id`` set;
-    the GUI subscribes and animates a highlight box for ``duration_ms``.
-    Headless UIs that ignore the event get no visible effect — that's
-    correct (CLI/API users have nothing to flash *at*).
-    """
-    key: str
-    element_id: str
-    duration_ms: int = 1500
-
-    def execute(self, app: App) -> OverlayElementResult:
-        # Resolve against the EFFECTIVE layout on screen (user > mask >
-        # theme), not just the user layer — a mask/theme supplies the live
-        # elements while the user layer is empty, so a user-only lookup
-        # never matched them (the "element 'N' not found" flash bug).
-        # Same helper ResolveOverlay uses, so the id a UI was given there is
-        # the id looked up here.
-        log.debug("execute: app=%s", app)
-        for entry in resolve_overlay_layout(app, self.key).elements:
-            if entry.id == self.element_id:
-                app.events.publish(OverlayChanged(
-                    key=self.key, enabled=True,
-                    flash_element_id=self.element_id,
-                    flash_duration_ms=self.duration_ms,
-                ))
-                return OverlayElementResult(
-                    ok=True, key=self.key, element=entry,
-                    message=f"Flashing overlay element {self.element_id} "
-                            f"for {self.duration_ms}ms",
-                )
-        return OverlayElementResult(
-            ok=False, key=self.key, element=None,
-            message=f"Overlay element {self.element_id!r} not found",
-        )
-
-@dataclass(frozen=True, slots=True)
 class DeviceCanvas(Query[DeviceCanvasResult]):
     """The panel's NATIVE pixels — the size to AUTHOR an asset for.
 
@@ -2796,10 +2756,9 @@ class ResolveOverlay(Query[OverlayLayoutResult]):
     find out what a device is displaying.
 
     Every element comes back with an id, minted positionally where a theme
-    supplied none — see ``services.overlay.effective_overlay_layout``.  That
-    id is what :class:`FlashOverlayElement` and
-    :class:`UpdateOverlayElement` take, and both resolve through the same
-    helper, so an id handed to a UI here is addressable there.
+    supplied none — see ``services.overlay.effective_overlay_layout``.  The
+    working layer's ids are what :class:`UpdateOverlayElement` and
+    :class:`DeleteOverlayElement` take.
 
     Always ``ok=True``.  An empty layout is a normal answer, not a failure —
     a device with no theme loaded genuinely has nothing on screen, and

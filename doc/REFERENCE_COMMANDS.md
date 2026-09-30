@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**138 total: 100 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -183,18 +183,6 @@ Bring *key* up for a wire command only if it isn't already connected.
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
-
-### `FlashOverlayElement`
-
-Briefly highlight one element so the user can locate it on screen.
-
-*Command* → `OverlayElementResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-| `element_id` | `str` | yes |
-| `duration_ms` | `int` | no |
 
 ### `LcdSnapshot`
 

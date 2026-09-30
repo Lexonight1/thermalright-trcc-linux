@@ -701,23 +701,6 @@ trcc display overlay-delete KEY ELEMENT_ID
 | `KEY` | -- |
 | `ELEMENT_ID` | ID returned by overlay-add |
 
-### `trcc display overlay-flash`
-
-Briefly highlight an overlay element in the GUI.
-
-```bash
-trcc display overlay-flash [OPTIONS] KEY ELEMENT_ID
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | -- |
-| `ELEMENT_ID` | -- |
-
-| Option | Description |
-|---|---|
-| `--duration`, `-d` `DURATION_MS` | Flash duration in milliseconds |
-
 ### `trcc display overlay-list`
 
 Show what is currently drawn on the device's screen. The read half of overlay. `overlay-update` / `overlay-delete` / `overlay-flash` all take an element id, and until this existed the only source of one was the line `overlay-add` printed when you created it — so the ids were unrecoverable the moment the terminal scrolled.

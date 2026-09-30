@@ -28,7 +28,6 @@ from ...core.commands import (
     DeviceState,
     EnableOverlay,
     ExportVideoClip,
-    FlashOverlayElement,
     GetPaths,
     KeepAliveLoop,
     LcdSnapshot,
@@ -134,7 +133,6 @@ from .schemas import (
     OverlayConfigRequest,
     OverlayElementAddRequest,
     OverlayElementUpdateRequest,
-    OverlayFlashRequest,
     OverlayRequest,
     PauseVideoRequest,
     PlayVideoRequest,
@@ -1096,23 +1094,6 @@ def overlay_delete(key: str, element_id: str,
     result = request.app.state.trcc.dispatch(
         DeleteOverlayElement(key=key, element_id=element_id),
     )
-    http_error_if_failed(result)
-    return result
-
-
-@router.post("/overlay-elements/{element_id}/flash")
-def overlay_flash(key: str, element_id: str,
-                  body: OverlayFlashRequest,
-                  request: Request) -> OverlayElementResult:
-    """Briefly highlight an overlay element in the GUI."""
-    log.info(
-        "api POST /devices/{key}/display/overlay-elements/{element_id}/flash: "
-        "key=%s element_id=%s duration_ms=%s",
-        key, element_id, body.duration_ms,
-    )
-    result = request.app.state.trcc.dispatch(FlashOverlayElement(
-        key=key, element_id=element_id, duration_ms=body.duration_ms,
-    ))
     http_error_if_failed(result)
     return result
 

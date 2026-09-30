@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QRegularExpression as QRE
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPalette, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
@@ -765,7 +765,7 @@ class TRCCApp(QMainWindow):
         }
         log.info("LCD handler added: %s", key)
         return LCDHandler(
-            key, widgets, self._make_timer, self._data_dir,
+            key, widgets, self._data_dir,
             is_visible_fn=self.isVisible,
             app=self._app, lcd_idx=key,
         )
@@ -869,14 +869,6 @@ class TRCCApp(QMainWindow):
 
     # ── Timers ──────────────────────────────────────────────────────
 
-    def _make_timer(self, callback: Any, *, single_shot: bool = False) -> QTimer:
-        timer = QTimer(self)
-        if single_shot:
-            timer.setSingleShot(True)
-        timer.timeout.connect(callback)
-        return timer
-
-    # ── Dark theme ──────────────────────────────────────────────────
 
     def _apply_dark_theme(self) -> None:
         palette = self.palette()
@@ -1497,7 +1489,6 @@ class TRCCApp(QMainWindow):
             self._on_overlay_add_requested)
         self.uc_theme_setting.add_panel.element_added.connect(self._on_element_added)
         self.uc_theme_setting.overlay_grid.toggle_changed.connect(self._on_overlay_toggle)
-        self.uc_theme_setting.overlay_grid.element_selected.connect(self._on_element_flash)
         self.uc_theme_setting.screencast_params_changed.connect(self._screencast.set_params)
         self.uc_theme_setting.screencast_panel.border_toggled.connect(self._screencast.set_border)
         self.uc_theme_setting.screencast_panel.audio_toggled.connect(
@@ -2259,12 +2250,6 @@ class TRCCApp(QMainWindow):
             self._app.dispatch(EnableOverlay(
                 key=h.device_key, enabled=enabled,
             ))
-
-    def _on_element_flash(self, index: int, config: Any) -> None:
-        log.info("_on_element_flash: index=%s id=%s", index, config.id)
-        h = self._active_lcd()
-        if h:
-            h.flash_element(config.id)
 
     # ── Drag / Nudge ────────────────────────────────────────────────
 

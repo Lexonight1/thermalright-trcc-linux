@@ -219,25 +219,6 @@ def test_the_side_panel_shows_another_uis_move_of_the_selected_element(
     qtbot.waitUntil(lambda: (spin.x_spin.value(), spin.y_spin.value()) == (77, 33))
 
 
-def test_a_click_flashes_the_element_by_its_own_id(
-    window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = window._app
-    real = app.dispatch
-    flashed: list[tuple[str, bool]] = []
-
-    def _record(command: Any) -> Any:
-        result = real(command)
-        if type(command).__name__ == "FlashOverlayElement":
-            flashed.append((command.element_id, result.ok))
-        return result
-
-    monkeypatch.setattr(app, "dispatch", _record)
-    _grid(window).select_element(2)
-
-    assert flashed == [("fan", True)]
-
-
 def test_reopening_shows_the_guis_own_edits(
     window: Any, qtbot: Any,
 ) -> None:

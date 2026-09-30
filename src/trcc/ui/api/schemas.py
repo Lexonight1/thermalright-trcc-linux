@@ -356,10 +356,6 @@ class OverlayElementUpdateRequest(BaseModel):
     source: str | None = None
 
 
-class OverlayFlashRequest(BaseModel):
-    duration_ms: int = Field(1500, ge=100, le=10000)
-
-
 class OverlayConfigRequest(BaseModel):
     elements: list[OverlayElementSchema] = []
 

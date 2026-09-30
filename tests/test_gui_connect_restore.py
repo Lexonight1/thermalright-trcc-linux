@@ -47,16 +47,6 @@ class _Widgets(dict):
         return self[key]
 
 
-class _FakeTimer:
-    def isActive(self) -> bool:          # Qt API shape, not PEP 8's call
-        return False
-
-    def __getattr__(self, name: str) -> Any:
-        def _noop(*a: Any, **k: Any) -> None:
-            return None
-        return _noop
-
-
 def _jpeg(w: int, h: int) -> bytes:
     """One real solid JPEG — playbacks hold ENCODED frames."""
     from PySide6.QtCore import QBuffer, QByteArray
@@ -107,7 +97,7 @@ def handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(MediaService, "load_video", _fake_load)
 
-    h = LCDHandler(_KEY, _Widgets(), lambda cb, *a, **k: _FakeTimer(),
+    h = LCDHandler(_KEY, _Widgets(),
                    tmp_path, app=app, lcd_idx=_KEY)
     h._pm.ui_active = True
     return h, app, decoded

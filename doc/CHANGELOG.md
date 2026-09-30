@@ -17,6 +17,11 @@
   API server is itself a client of the App.
 - **The `EnsureDaemon` command is removed** (for anyone scripting against the
   Python command bus).
+- **"Flash an overlay element" is removed**: `trcc display overlay-flash`, the
+  API's `POST …/overlay-elements/{id}/flash`, the Qt gui's "Flash on screen"
+  button and the `FlashOverlayElement` command. It promised to highlight the
+  element but nothing ever drew the highlight, in any window. The Windows app
+  has no such highlight either; selecting an element marks it in the editor.
 
 ### Added
 

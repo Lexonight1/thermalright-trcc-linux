@@ -75,6 +75,12 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "through SetSlideshow, which owns the driver (2026-09-29) -- the gui's "
         "own QTimer that also turned it is gone"
     )),
+    "RenderAndSend": (frozenset(), (
+        "scoped: the App's MetricsLoop and render observer turn it; no UI "
+        "renders a panel itself.  qtgui's ticker went 2026-09-30 (it doubled "
+        "frames, 5 -> 10 in 5 s), then gui's hand renders (one colour edit sent "
+        "2, now 1) and its flash renders with FlashOverlayElement"
+    )),
     "SendFrame": (frozenset(), (
         "scoped: a deliberate scripting/daemon affordance -- ipc.py names it as "
         "the Command whose raw bytes survive JSON, and its own docstring says "
@@ -124,14 +130,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Listings each surface answers its own way ─────────────────────────
     # ListDevices: retired 2026-09-25 -- the CLI reaches it too now, through
     # the exit hook that names panels which blank when frames stop (#228).
-    "RenderAndSend": (frozenset({"gui"}), (
-        "gap: no UI should send this -- the App's MetricsLoop renders every "
-        "panel and its render observer re-renders on each edit's event.  "
-        "qtgui's own ticker went 2026-09-30 (it doubled frames, 5 -> 10 in 5 s); "
-        "gui's 4 hand renders after edits went the same day (one colour edit "
-        "sent 2, now 1); the last 2 are its flash click and flash timeout, "
-        "which go with FlashOverlayElement (it draws nothing anywhere)"
-    )),
     "SetOverlayConfig": (frozenset({"api"}), (
         "scoped: a bulk replace for scripts; every UI edits overlays "
         "element-wise (Add/Update/DeleteOverlayElement, all four).  The gui "

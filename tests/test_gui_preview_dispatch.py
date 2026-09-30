@@ -48,16 +48,6 @@ class _Widgets(dict):
         return self[key]
 
 
-class _FakeTimer:
-    def isActive(self) -> bool:      # Qt API shape, not PEP 8's call
-        return False
-
-    def __getattr__(self, name: str) -> Any:
-        def _noop(*a: Any, **k: Any) -> None:
-            return None
-        return _noop
-
-
 @pytest.fixture
 def handler(tmp_path: Path) -> tuple[Any, App, _CapturingPreview]:
     from trcc.ui.gui.lcd_handler import LCDHandler
@@ -73,7 +63,7 @@ def handler(tmp_path: Path) -> tuple[Any, App, _CapturingPreview]:
     preview = _CapturingPreview()
     widgets = _Widgets({"preview": preview})
     h = LCDHandler(
-        _KEY, widgets, lambda cb, *a, **k: _FakeTimer(),
+        _KEY, widgets,
         tmp_path, app=app, lcd_idx=_KEY,
     )
     h._pm.ui_active = True

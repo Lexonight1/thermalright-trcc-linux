@@ -226,7 +226,7 @@ def test_gui_rotation_is_one_reload(
     from trcc.ui.gui.lcd_handler import LCDHandler
 
     handler = LCDHandler(
-        _KEY, _Widgets(), lambda cb, *a, **k: _Stub(),
+        _KEY, _Widgets(),
         tmp_path, app=rotatable, lcd_idx=_KEY,
     )
     handler._pm.ui_active = True

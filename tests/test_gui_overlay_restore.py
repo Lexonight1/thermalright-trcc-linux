@@ -66,16 +66,6 @@ class _Widgets(dict):
         return self[key]
 
 
-class _FakeTimer:
-    def isActive(self) -> bool:      # Qt API shape, not PEP 8's call
-        return False
-
-    def __getattr__(self, name: str) -> Any:
-        def _noop(*a: Any, **k: Any) -> None:
-            return None
-        return _noop
-
-
 def _theme_with_overlay(root: Path) -> Path:
     """A saved theme whose ``trcc.json`` carries one overlay element."""
     theme = root / "MyVideoTheme"
@@ -108,7 +98,7 @@ def handler(tmp_path: Path) -> tuple[Any, App, _Widget]:
     widgets = _Widgets()
     theme_setting = widgets["theme_setting"]
     h = LCDHandler(
-        _KEY, widgets, lambda cb, *a, **k: _FakeTimer(),
+        _KEY, widgets,
         tmp_path, app=app, lcd_idx=_KEY,
     )
     h._pm.ui_active = True
@@ -271,7 +261,7 @@ class _RealGridHandler:
         self.handler = LCDHandler(
             _KEY,
             {"theme_setting": self.panel, "preview": _Widget()},
-            lambda cb, *a, **k: _FakeTimer(), root, app=app, lcd_idx=_KEY,
+            root, app=app, lcd_idx=_KEY,
         )
         self.handler._pm.ui_active = True
         self.panel.delegate.connect(self._forward)

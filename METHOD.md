@@ -86,10 +86,10 @@ would have sent.
 
 Every user action is **one Command**, dispatched identically by the GUI, CLI,
 and API. A UI translates its native input into that Command; it never owns
-domain logic. Example: Flash is one `FlashOverlayElement` Command — the GUI
-translates a click-index into the element id, the CLI and API name the id
-directly, and all three dispatch the same Command against the same
-`effective_overlay_elements`.
+domain logic. Example: moving an overlay element is one `UpdateOverlayElement`
+Command — the gui's grid and qtgui's editor carry the element's id from
+`ResolveOverlay`, the CLI and API name it directly, and all four dispatch the
+same Command.
 
 ## Anti-patterns — the ways this method breaks
 

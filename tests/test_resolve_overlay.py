@@ -6,9 +6,9 @@ all.
 
 The load-bearing case is a theme-supplied layout.  A theme's elements come
 from a ``config1.dc`` parse and carry NO id — every shipped theme is in
-that state — so "flash element 3" had nothing to name, and the id the GUI
+that state — so "element 3" had nothing to name, and the id the GUI
 invented (a bare index) matched nothing.  ``test_theme_layout_ids_are_``
-``flashable`` is that bug, reproduced against real parsed DC bytes.
+``come_with_ids`` is that bug, reproduced against real parsed DC bytes.
 """
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from trcc.app import App
 from trcc.core.commands import (
     ConnectDevice,
     EnableOverlay,
-    FlashOverlayElement,
     ResolveOverlay,
     SetOverlayConfig,
 )
@@ -63,11 +62,11 @@ def _load_theme(app: App, tmp_path: Path, elements: list[dict]) -> Theme:
 # ── The bug this Command exists to close ─────────────────────────────────
 
 
-def test_theme_layout_ids_are_flashable(app: App, tmp_path: Path) -> None:
+def test_theme_layout_elements_come_with_ids(app: App, tmp_path: Path) -> None:
     """A stock theme, nothing edited, no mask — the default state.
 
-    Before: the theme's elements had no id, the GUI fell back to the bare
-    index, and FlashOverlayElement answered "element '2' not found".
+    Before: the theme's elements had no id and a UI fell back to the bare
+    index, which named nothing.
     """
     _load_theme(app, tmp_path, _THEME_ELEMENTS)
 
@@ -76,13 +75,6 @@ def test_theme_layout_ids_are_flashable(app: App, tmp_path: Path) -> None:
     assert layout.ok
     assert layout.source == "theme"
     assert [e.id for e in layout.elements] == ["el_0", "el_1", "el_2"]
-
-    # The id handed out here must be the id looked up there.
-    for entry in layout.elements:
-        flashed = app.dispatch(FlashOverlayElement(
-            key=_KEY, element_id=entry.id,
-        ))
-        assert flashed.ok, flashed.message
 
 
 def test_ids_are_stable_across_calls(app: App, tmp_path: Path) -> None:
@@ -307,7 +299,7 @@ def test_every_entry_field_survives_the_round_trip_the_editor_makes() -> None:
 # at all", and that stayed true for the Query's whole life: measured with
 # ``dev/tools/ui_contract.py``, ``ResolveOverlay`` reached gui and qtgui only.
 # It is the ONLY source of the element ids ``overlay-update`` /
-# ``overlay-delete`` / ``overlay-flash`` and their three API routes require,
+# ``overlay-delete`` and their API routes require,
 # so both faces could address an element only from their own memory of an
 # earlier add.  These drive the real CLI runner and the real FastAPI app.
 
@@ -344,7 +336,7 @@ def test_the_cli_can_list_what_is_on_screen(
     assert "2 element(s) from the user layer" in result.output
     for element_id in ids:
         assert element_id in result.output, (
-            f"{element_id} is absent, so overlay-update/delete/flash still "
+            f"{element_id} is absent, so overlay-update/delete still "
             f"have no way to name that element"
         )
     assert "cpu:temp" in result.output

@@ -412,10 +412,8 @@ def resolve_overlay_layout(app: App, key: str) -> OverlayLayoutResult:
 
     The lookup half of :func:`services.overlay.effective_overlay_layout`:
     reads the device's three layers off the App once and hands the pure data
-    to the service.  Returns the finished Result so ``ResolveOverlay`` (which
-    reports an id to a UI) and ``FlashOverlayElement`` (which receives that
-    id back) cannot resolve differently — if they could, a highlight would
-    silently miss the element the user clicked.
+    to the service.  Returns the finished Result, so every reader of "what is
+    on screen" -- the Query, the snapshot's clock formats -- gets one answer.
 
     One settings read and one source computation serve both, which is why
     this returns the whole answer rather than just the elements.

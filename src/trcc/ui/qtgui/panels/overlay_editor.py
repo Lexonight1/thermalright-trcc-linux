@@ -5,8 +5,7 @@ User flow (designed for non-technical readers):
 * See a table of every user overlay element on that device.
 * "Add element…" opens a dialog: pick text / metric / clock, set
   position + color + size + extras, OK.
-* Double-click a row (or click Edit) to modify; Delete removes;
-  Flash briefly highlights the element on a connected device's screen.
+* Double-click a row (or click Edit) to modify; Delete removes.
 
 Single-layout model (matches the legacy GUI): the device renders ONE
 overlay layout (``resolve_overlay_elements``: user edits > applied mask
@@ -42,8 +41,6 @@ from PySide6.QtWidgets import (
 from ....core.commands import (
     AddOverlayElement,
     DeleteOverlayElement,
-    FlashOverlayElement,
-    LcdSnapshot,
     ListFonts,
     ResolveOverlay,
     UpdateOverlayElement,
@@ -89,11 +86,9 @@ class OverlayEditorPanel(BasePanel):
         self._edit_btn.clicked.connect(self._on_edit)
         self._delete_btn = QPushButton("Delete", self)
         self._delete_btn.clicked.connect(self._on_delete)
-        self._flash_btn = QPushButton("Flash on screen", self)
-        self._flash_btn.clicked.connect(self._on_flash)
 
         button_row = QHBoxLayout()
-        for btn in (self._add_btn, self._edit_btn, self._delete_btn, self._flash_btn):
+        for btn in (self._add_btn, self._edit_btn, self._delete_btn):
             button_row.addWidget(btn)
         button_row.addStretch(1)
 
@@ -264,25 +259,6 @@ class OverlayEditorPanel(BasePanel):
         self._status.setText(result.message)
         if result.ok:
             self.refresh()
-
-    def _on_flash(self) -> None:
-        log.info("_on_flash")
-        key = self._key()
-        eid = self._selected_id()
-        if key is None or eid is None:
-            return
-        # LcdSnapshot guard — flash only makes sense on a connected device.
-        snapshot = self.dispatch(LcdSnapshot(key=key))
-        if not snapshot.ok:
-            self._status.setText(
-                f"Connect to {key} first (Devices panel) before flashing.",
-            )
-            return
-        result = self.dispatch(FlashOverlayElement(
-            key=key, element_id=eid, duration_ms=1500,
-        ))
-        self._status.setText(result.message)
-
 
 # =========================================================================
 # Add/edit dialog

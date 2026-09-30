@@ -51,27 +51,6 @@ class _Widgets(dict):
         return self[key]
 
 
-class _FakeTimer:
-    def __init__(self) -> None:
-        self.stopped = 0
-        self._active = False
-
-    def start(self, ms: int) -> None:
-        self._active = True
-
-    def stop(self) -> None:
-        self.stopped += 1
-        self._active = False
-
-    def isActive(self) -> bool:      # Qt API shape, not PEP 8's call
-        return self._active
-
-    def __getattr__(self, name: str) -> Any:
-        def _noop(*a: Any, **k: Any) -> None:
-            return None
-        return _noop
-
-
 class _FakePlayback:
     def __init__(self, frames: int = 30, fps: int = 15) -> None:
         self.frames = [b"x"] * frames
@@ -209,12 +188,9 @@ def two_handlers(tmp_path: Path) -> tuple[Any, Any, _FakeApp, _FakePreview]:
         app.devices[key] = _FakeDevice(key)
         app._playbacks[key] = _FakePlayback()
 
-    def make_timer(callback: Any, *a: Any, **k: Any) -> _FakeTimer:
-        return _FakeTimer()
-
-    handler_a = LCDHandler(_KEY_A, widgets, make_timer, tmp_path,
+    handler_a = LCDHandler(_KEY_A, widgets, tmp_path,
                            app=app, lcd_idx=_KEY_A)
-    handler_b = LCDHandler(_KEY_B, widgets, make_timer, tmp_path,
+    handler_b = LCDHandler(_KEY_B, widgets, tmp_path,
                            app=app, lcd_idx=_KEY_B)
     handler_b._pm.ui_active = True
     handler_a._pm.ui_active = False
@@ -356,7 +332,7 @@ def test_inactive_handler_never_writes_the_shared_theme_browser(
     app.devices[_KEY_A] = _FakeDevice(_KEY_A)
 
     handler = LCDHandler(_KEY_A, widgets,
-                         lambda cb, *a, **k: _FakeTimer(), tmp_path,
+                         tmp_path,
                          app=app, lcd_idx=_KEY_A)
     handler._pm.ui_active = False
 
@@ -383,7 +359,7 @@ def test_active_handler_does_write_the_shared_theme_browser(
     app.devices[_KEY_B] = _FakeDevice(_KEY_B)
 
     handler = LCDHandler(_KEY_B, widgets,
-                         lambda cb, *a, **k: _FakeTimer(), tmp_path,
+                         tmp_path,
                          app=app, lcd_idx=_KEY_B)
     handler._pm.ui_active = True
 

@@ -21,7 +21,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QPixmap
 
 from ...core.commands import (
@@ -95,7 +95,6 @@ class LCDHandler(BaseHandler):
         self,
         key: str,
         widgets: dict[str, Any],
-        make_timer: Any,
         data_dir: Path,
         is_visible_fn: Any = None,
         app: CommandBus | None = None,
@@ -153,10 +152,6 @@ class LCDHandler(BaseHandler):
         #: it has taken them (``_refresh``), so the first restore always runs.
         self._shown_rotation: int | None = None
 
-        # Timers (parent factory + signal wiring; lifetime owned here)
-        self._flash_timer: QTimer = make_timer(
-            self._on_flash_timeout, single_shot=True,
-        )
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -928,21 +923,6 @@ class LCDHandler(BaseHandler):
             "update_metrics: %s readings=%d", self._device_key, len(readings),
         )
 
-    def flash_element(self, element_id: str) -> None:
-        """Flash/blink one overlay element on the preview, by its App id."""
-        from ...core.commands import FlashOverlayElement
-        self.log.info("flash_element: element_id=%s", element_id)
-        self._app.dispatch(FlashOverlayElement(
-            key=self._device_key, element_id=element_id, duration_ms=980,
-        ))
-        self._flash_timer.start(980)
-        self._render_and_send()
-
-    def _on_flash_timeout(self) -> None:
-        log.info("_on_flash_timeout")
-        self.log.debug("_on_flash_timeout: re-rendering")
-        self._render_and_send()
-
     # ── Display Settings ───────────────────────────────────────────
 
     def set_brightness(self, percent: int) -> None:
@@ -1108,36 +1088,6 @@ class LCDHandler(BaseHandler):
 
     # ── Rendering ──────────────────────────────────────────────────
 
-    def _render_and_send(self) -> None:
-        """Render overlay + send to LCD, update preview.
-
-        Skipped while video playback owns the wire (the core's VideoLoop
-        dispatches its own ``TickDisplay``).  Preview refresh happens via the
-        ``FrameSent`` → ``rebuild_preview`` bridge.
-        """
-        from ...core.commands import RenderAndSend
-        if self._video_playing:
-            self.log.debug(
-                "_render_and_send: skipped — video playback owns the wire",
-            )
-            return
-        # One dispatch answers both questions.  The pre-check this replaces
-        # existed to avoid a raised DeviceNotConnectedError; the Command
-        # reports it now, so asking the device first is a second round-trip
-        # for an answer the first one carries.
-        result = self._app.dispatch(RenderAndSend(key=self._device_key))
-        if result.connected is False:
-            self.log.debug(
-                "_render_and_send: device %s not connected — skip",
-                self._device_key,
-            )
-            return
-        if not result.ok:
-            # Static-theme render failure is user-visible.  WARN, not DEBUG.
-            self.log.warning(
-                "_render_and_send: %s render failed — %s",
-                self._device_key, result.message,
-            )
 
     def render_and_preview(self) -> Any:
         """Render overlay and update preview (no send)."""
@@ -1356,7 +1306,6 @@ class LCDHandler(BaseHandler):
     def deactivate(self) -> None:
         """Full pause — stop all timers (called from cleanup)."""
         self._set_video_playing(False, reason="deactivate")
-        self._flash_timer.stop()
 
     def set_inactive(self) -> None:
         """Soft pause for sidebar switch — keep video playing in background.
@@ -1366,5 +1315,4 @@ class LCDHandler(BaseHandler):
         showing its theme while another device owns the GUI panel.
         """
         self._pm.ui_active = False
-        self._flash_timer.stop()
 
