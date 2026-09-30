@@ -231,7 +231,12 @@ def test_a_theme_picked_by_hand_ends_the_slideshow(tmp_home: Path) -> None:
 
         assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled)
         assert _wait_for(lambda: not _driving(app))
-        assert heard[-1] is False, heard
+        # WAIT for the event: SetSlideshow saves "off" and removes the driver
+        # BEFORE it publishes, so both waits above can pass in that gap.  Read
+        # at once, this failed ~2 runs in 16 under load with ``[False, True]``
+        # -- the event not yet published, not a missing one (a 0.3 s sleep
+        # before the publish made it fail every time).
+        assert _wait_for(lambda: heard[-1] is False), heard
         import time
         time.sleep(1.5)
         assert _showing(app) == "Manual", "the rotation replaced the user's pick"
