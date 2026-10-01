@@ -64,9 +64,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from formcztv_init import form_cztv_init, resolution_of
 
-from trcc.adapters.device.bulk_lcd import _BULK_BASE_FBL, _BULK_KNOWN_PMS
+from trcc.adapters.device.bulk_lcd import bulk_profile
 from trcc.core.models import oriented_resolution
 from trcc.core.protocol import get_profile, pm_to_fbl
+
+
+# Resolutions where our ``widescreen`` and the C#'s ``isBiliPingmu`` are two
+# correct flags with two meanings (see ``Row._SEMANTIC_SPLIT``).  Public so
+# ``tests/test_csharp_conformance.py`` reads the same fact instead of a copy.
+WIDESCREEN_SEMANTIC_SPLIT: frozenset[tuple[int, int]] = frozenset({(640, 172)})
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,9 +197,8 @@ class Row:
     #:
     #: Two correct flags, two meanings, one axis.  Comparing them directly
     #: reported our shipping code as MISMATCH 1/19 for however long.
-    _SEMANTIC_SPLIT: ClassVar[frozenset[tuple[int, int]]] = frozenset({
-        (640, 172),
-    })
+    _SEMANTIC_SPLIT: ClassVar[frozenset[tuple[int, int]]] = (
+        WIDESCREEN_SEMANTIC_SPLIT)
 
     @property
     def wide_ok(self) -> bool:
@@ -308,14 +313,10 @@ def _print(row: Row) -> None:
 def _bulk_resolution(pm: int, sub: int) -> tuple[int, int]:
     """The resolution ``BulkLcd.connect()`` resolves for a (pm, sub).
 
-    Mirrors the adapter's branch exactly and imports the SHIPPING
-    ``_BULK_KNOWN_PMS`` — so this checks the real code path, never a copy of it.
+    Asks the SHIPPING ``bulk_profile`` — this used to mirror its branch, and a
+    mirror is a second implementation waiting to drift.
     """
-    if pm in _BULK_KNOWN_PMS or (pm == 1 and sub in (48, 49)):
-        fbl = pm_to_fbl(pm, sub)
-    else:
-        fbl = _BULK_BASE_FBL
-    return get_profile(fbl, pm).resolution
+    return bulk_profile(pm, sub)[1].resolution
 
 
 def exhaustive_bulk() -> int:
@@ -327,21 +328,29 @@ def exhaustive_bulk() -> int:
 
     It read ZERO on 2026-07-11 — against the 2.0.3 decompile, five weeks before
     the real 2.1.6 was extracted.  Against 2.1.6 it read **11** and against 2.1.8 it reads **12** (pm 20, the new 854x480): the PMs
-    2.1.6's ladder added (13, 14, 15, 16, 17, 18, 50, 63, 66, 68, 69) that
-    ``_BULK_KNOWN_PMS`` does not list.  That is a known, latent divergence
-    owned by ``BULK_PM_GAP`` in ``tests/test_csharp_conformance.py`` — this
-    tool measures it, it does not adjudicate it.  Read a CHANGE in the count as
-    the signal, not the count itself.
+    2.1.6's ladder added (13, 14, 15, 16, 17, 18, 50, 63, 66, 68, 69) that the
+    hand-written bulk allow-list did not.  Since that list became
+    ``in_pm_ladder`` (asked of the override tables themselves) it should read
+    only what the C# leaves unmodelled.  Read a CHANGE in the count as the
+    signal, not the count itself.
     """
     cases = [(pm, 0) for pm in range(256)] + [(1, 48), (1, 49)]
-    diverge = [
-        (pm, sub, _bulk_resolution(pm, sub), theirs)
-        for pm, sub in cases
-        if (theirs := resolution_of(form_cztv_init(fbl=72, m=2, pm=pm, pmSub=sub)))
-        != _bulk_resolution(pm, sub)
-    ]
+    diverge: list[tuple[int, int, tuple[int, int], tuple[int, int]]] = []
+    unmodelled: list[tuple[int, int, tuple[int, int]]] = []
+    for pm, sub in cases:
+        st = form_cztv_init(fbl=72, m=2, pm=pm, pmSub=sub)
+        ours = _bulk_resolution(pm, sub)
+        if not st.models_geometry:
+            # The C# sets no resolution flag: its 240x320 is the header
+            # constant, not a panel, so there is nothing to compare.
+            unmodelled.append((pm, sub, ours))
+        elif (theirs := resolution_of(st)) != ours:
+            diverge.append((pm, sub, ours, theirs))
     print(f"Exhaustive bulk sweep: {len(cases)} fingerprints "
           "(pm 0-255 + 1/48, 1/49) vs C# FormCZTVInit(72, 2, pm, sub)")
+    for pm, sub, ours in unmodelled:
+        print(f"  unmodelled pm={pm} sub={sub}: the C# sets no resolution flag "
+              f"(header constant 240x320); ours={_res(ours)}")
     if diverge:
         print(f"  {len(diverge)} DIVERGE from the C#:")
         for pm, sub, ours, theirs in diverge:
@@ -529,8 +538,8 @@ def main() -> int:
         print("  A mount-rule row now means a RESOLUTION gap, not a mount "
               "gap: `is_portrait_mounted` models all nine of the C#'s "
               "families, so a mismatch means the profile resolved to a "
-              "resolution the panel does not have (see BULK_PM_GAP in "
-              "tests/test_csharp_conformance.py).")
+              "resolution the panel does not have -- check the resolution "
+              "axis of tests/test_csharp_conformance.py first.")
     if gaps:
         print(f"oracle-gap: {len(gaps)} device(s) FormCZTVInit resolves no "
               "geometry for — they fell through to the 240x320 default.")

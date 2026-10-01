@@ -516,6 +516,20 @@ _SHARED_FBLS: dict[int, tuple[dict[int, tuple[int, int]], tuple[int, int]]] = {
 # =============================================================================
 
 
+def in_pm_ladder(pm: int, sub: int = 0) -> bool:
+    """Whether the C#'s ``FormCZTVInit`` pm ladder names this fingerprint.
+
+    The ladder IS the two override tables :func:`pm_to_fbl` reads, so this is
+    asked of them and never of a second list.  A mode-2 panel (bulk and LY,
+    ``FormCZTVInit(72, 2, pm, sub)`` at Form1.cs:1071) outside it stays on the
+    fbl 72 base.  The bulk wire kept a hand-written copy that had drifted to
+    11 of the ladder's 21 PMs, and LY kept none.
+    """
+    named = (pm, sub) in _PM_SUB_TO_FBL or pm in _PM_TO_FBL_OVERRIDES
+    log.debug("in_pm_ladder: pm=%d sub=%d → %s", pm, sub, named)
+    return named
+
+
 def pm_to_fbl(pm: int, sub: int = 0) -> int:
     """Map PM byte to FBL byte.
 

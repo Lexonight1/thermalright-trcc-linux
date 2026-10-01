@@ -18,7 +18,6 @@ slot is PM and which is SUB.  See doc/PROTOCOL_USBLCDNEW.md.
 """
 from __future__ import annotations
 
-import dataclasses
 import logging
 import struct
 import time
@@ -29,12 +28,8 @@ from ...core.errors import (
 from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
-from ...core.protocol import (
-    get_profile,
-    pm_to_fbl,
-    resolve_encode_rotation,
-)
 from ._base import BaseBulkDevice
+from .bulk_lcd import bulk_profile
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -182,26 +177,14 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             self._pm = 49 + resp[20]
             self._sub = raw_sub
 
-        fbl = pm_to_fbl(self._pm, self._sub)
-        # Resolve the wire rotation now that resolution, encoder and SUB are
-        # all known, so the render path reads a value and branches on nothing.
-        # The C# varies the base by SUB in six families (its ``mySubMode``
-        # arms); 1920x462 — this wire's panel — takes base 0 at SUB 2/3/4 and
-        # base 180 everywhere else.
-        base = get_profile(fbl, self._pm)
-        rotation = resolve_encode_rotation(
-            base.resolution, base.jpeg, self._sub)
-        log.info(
-            "LyLcd %s: %dx%d jpeg=%s raw resp[22]=%d → sub=%d → encode "
-            "base %d° invert=%s",
-            self.info.key, base.width, base.height, base.jpeg, raw_sub,
-            self._sub, rotation.base, rotation.invert)
-
-        self._profile = dataclasses.replace(
-            base,
-            encode_base=rotation.base,
-            encode_invert=rotation.invert,
-        )
+        # The C# hands LY to the SAME call as bulk -- FormCZTVInit(72, 2, pm,
+        # sub) at Form1.cs:1071 -- so LY resolves through the same function.
+        # It used to carry its own copy, which echoed an unknown PM as an FBL
+        # (PM 70 → FBL 70 → 320x320 RGB565 where the C# says 480x480 JPEG)
+        # and never set the portrait mount.
+        log.info("LyLcd %s: raw resp[20]=%d resp[22]=%d → PM=%d SUB=%d",
+                 self.info.key, resp[20], raw_sub, self._pm, self._sub)
+        fbl, self._profile = bulk_profile(self._pm, self._sub, self.info.key)
 
         return HandshakeResult(
             resolution=self._profile.resolution,

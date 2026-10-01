@@ -216,7 +216,7 @@ def variant_resolution(wire: Wire, pm: int, sub: int) -> tuple[int, int]:
     Bulk is the reason this function exists.  Resolving it as
     ``get_profile(pm_to_fbl(pm, sub), pm)`` — which is what this module used
     to do — disagrees with the shipping path for every square bulk cooler:
-    :func:`bulk_profile` diverts any PM outside ``_BULK_KNOWN_PMS`` to the
+    :func:`bulk_profile` diverts any PM outside ``in_pm_ladder`` to the
     480x480 base *precisely so* an unknown PM is not echoed into
     ``get_profile`` as a bogus FBL.  Skipping it mocked GRAND VISION, CORE
     VISION, HYPER VISION and PA120 at 320x320 while the app drove them at
@@ -288,12 +288,11 @@ def _fingerprint_is_catalogued(wire: Wire, pm: int, sub: int) -> bool:
     bulk is the one wire with its own fallback (unknown PM → FBL 72), so it is
     asked its own question.
     """
-    from trcc.adapters.device.bulk_lcd import _BULK_KNOWN_PMS
     from trcc.core.models import Wire as _W
-    from trcc.core.protocol import FBL_PROFILES, pm_to_fbl
+    from trcc.core.protocol import FBL_PROFILES, in_pm_ladder, pm_to_fbl
 
     if wire is _W.BULK:
-        return pm in _BULK_KNOWN_PMS or (pm == 1 and sub in (48, 49))
+        return in_pm_ladder(pm, sub)
     return pm_to_fbl(pm, sub) in FBL_PROFILES
 
 

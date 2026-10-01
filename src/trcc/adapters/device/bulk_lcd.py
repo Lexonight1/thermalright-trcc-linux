@@ -11,6 +11,7 @@ Frame send:  64-byte header + payload (JPEG or raw RGB565),
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import struct
 
@@ -24,7 +25,7 @@ from ...core.ports import BulkTransport
 from ...core.protocol import (
     DeviceProfile,
     get_profile,
-    is_portrait_mounted,
+    in_pm_ladder,
     pm_to_fbl,
     resolve_encode_base,
     resolve_encode_rotation,
@@ -52,39 +53,19 @@ _HANDSHAKE_TIMEOUT_MS = 1000
 _WRITE_TIMEOUT_MS = 5000
 _WRITE_CHUNK_SIZE = 16 * 1024
 
-# PM values that use raw RGB565 (cmd=3); everything else uses JPEG (cmd=2).
-_RGB565_PMS: set[int] = {32}
+# PMs the C# moves off mode 2, so they encode RGB565 (cmd=3); every other PM
+# encodes JPEG (cmd=2).  FormCZTVInit: pm 32 → mode 4 (:873), pm 50 → mode 3
+# with SPI mode 2 (:878), and every encode site is `myDeviceMode == 2 ?
+# ImageToJpg : ImageTo565`.
+_RGB565_PMS: frozenset[int] = frozenset({32, 50})
 
 # Bulk base FBL is 72 (480x480, hardcoded by USBLCDNew.exe).  The C# resolves
-# every bulk panel through ``FormCZTVInit(fbl=72, m=2, pm, pmSub)``
-# (``FormCZTV.cs:858``, reached from the one proven call site ``Form1.cs:1071``)
-# — base 480x480, overridden for the PM values its ladder handles.  This set is
-# NINE of them:
-#     pm 5 → 50 (320x240)     pm 7 → 64 (640x480)
-#     pm 32 → 100 (320x320)   pm 64 → 114 (1600x720)
-#     pm 65 → 192 (1920x462)  pm∈{9,11} → 224 (854x480)
-#     pm 10 → 224 (960x540)   pm 12 → 224 (800x480)
-# (PM=1 with SUB 48/49 is handled by the separate SUB guard in ``connect()``.)
-#
-# TRCC 2.1.6's ladder handles TWENTY.  The eleven we do not map — 13, 14, 15,
-# 16, 17, 18, 50, 63, 66, 68, 69 — stay on the 480x480 base, and each one is a
-# KNOWN, MEASURED divergence owned by ``BULK_PM_GAP`` in
-# ``tests/test_csharp_conformance.py``, which sweeps all 258 fingerprints
-# against the oracle and ratchets the count.  Latent, not live: every bulk
-# fingerprint observed across all issues is PM 4, 5, 7, 11, 32 or 64.
-#
-# Widening this set is a device-identification behaviour change and belongs
-# with that gate.  What must not happen again is a justification invented
-# locally: this comment used to claim ``FormCZTVInit`` "never maps" those PMs
-# on the bulk path and told maintainers to keep it that way.  That was read off
-# the 2.0.3 decompile, and 2.1.6 falsifies it. (#176/#169)
+# every bulk AND LY panel through ``FormCZTVInit(fbl=72, m=2, pm, pmSub)``
+# (``FormCZTV.cs:858``, from the one call site ``Form1.cs:1071``) — base
+# 480x480, overridden for the PMs its ladder names (``in_pm_ladder``).
+# Any other PM stays on the base; echoing it as an FBL is #176.  This used to be
+# a hand-written set that had drifted to 11 of the ladder's 21 PMs.
 _BULK_BASE_FBL = 72
-# 20 joined in TRCC 2.1.8: FormCZTV.cs:947 extended the 854x480 branch from
-# (pm 9 || 11) to (pm 9 || 11 || 20).  Without it here the guard sends the panel
-# to the 480x480 fallback -- `audit_devices --exhaustive-bulk` read
-# `pm=20 sub=0: ours=480x480  C#=854x480` before this line.
-_BULK_KNOWN_PMS: frozenset[int] = frozenset(
-    {5, 7, 9, 10, 11, 12, 18, 20, 32, 64, 65})
 
 
 # JPEG start-of-frame markers carry the image's real dimensions.  C4/C8/CC
@@ -123,69 +104,46 @@ def jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
 
 
 def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]:
-    """Resolve a bulk handshake's PM/SUB bytes to its ``(FBL, profile)``.
+    """Resolve a mode-2 handshake's PM/SUB bytes to its ``(FBL, profile)``.
 
-    The one implementation of the bulk fingerprint → geometry rules, shared by
-    the wire path (:meth:`BulkLcd.connect`) and the bench auditor
-    (``dev/decompiler/audit_rotation.py``).  It is a pure function of the two
-    handshake bytes precisely so an auditor can resolve a device with no USB.
+    The one implementation of the C#'s ``FormCZTVInit(72, 2, pm, sub)``, which
+    serves BOTH wires that reach it: :meth:`BulkLcd.connect` and
+    :meth:`LyLcd.connect` (``Form1.cs:1071`` makes the one call for both), plus
+    the bench auditor (``dev/decompiler/audit_rotation.py``).  It is a pure
+    function of the two handshake bytes so an auditor can resolve a device
+    with no USB.
 
-    Keep it that way: a hand-copy of these rules in the auditor drifted — it
-    dropped the ``_BULK_KNOWN_PMS`` guard below and invented a phantom FBL 6,
+    Keep it that way: LY carried a second copy that echoed an unknown PM as an
+    FBL and never set the portrait mount, and a hand-copy in the auditor
+    dropped the ``in_pm_ladder`` guard below and invented a phantom FBL 6,
     which then reported our (reporter-confirmed, #137) FW360 Ultra rotation as
     a 180° bug.  An oracle that re-implements the thing it audits proves
     nothing about the code that ships.
     """
-    # Resolution comes from the FBL tables (mirrors legacy ``_bulk_resolution``).
-    # Unknown bulk PMs stay on the 480x480 base rather than letting pm_to_fbl
-    # echo the PM into get_profile as a bogus FBL (C# parity, #169).
-    if pm in _BULK_KNOWN_PMS or (pm == 1 and sub in (48, 49)):
+    if in_pm_ladder(pm, sub):
         fbl = pm_to_fbl(pm, sub)
     else:
-        log.info(
-            "BulkLcd %s: PM=%d SUB=%d not a known bulk model — "
-            "defaulting to FBL %d (480x480)", key, pm, sub, _BULK_BASE_FBL,
-        )
+        log.info("bulk_profile %s: PM=%d SUB=%d is not in the C# pm ladder — "
+                 "FBL %d (480x480), as FormCZTVInit leaves it", key, pm, sub,
+                 _BULK_BASE_FBL)
         fbl = _BULK_BASE_FBL
-    base = get_profile(fbl, pm)
-    # Resolve the device-only encode baseline now that PM is known — e.g. the
-    # FW360 Ultra (PM=6) mounts 180° rotated and needs its wire frame
-    # pre-rotated so it reads upright on the glass. (#137)
+    # get_profile spends the SUB byte on the mount and the catalog rotation.
+    base = get_profile(fbl, pm, sub)
+    # The FW360 Ultra (PM=6) mounts 180° rotated: a device-only baseline. (#137)
     encode_baseline = resolve_encode_base(base, pm)
-    if encode_baseline:
-        log.info("BulkLcd %s: PM=%d encode baseline %d° (wire-only)",
-                 key, pm, encode_baseline)
-    # The Bulk-specific override: USBLCDNew uses JPEG (cmd=2) for every PM
-    # except 32, which forces RGB565 (cmd=3).  It has to be settled BEFORE the
-    # rotation is resolved, because the two C# switches disagree on the same
-    # resolution — 320x240 is base 0 under ImageToJpg and base 90 under
-    # ImageTo565 — so resolving from ``base.jpeg`` (the FBL_PROFILES default)
-    # would answer for the wrong encoder on every PM this line overrides.
+    # The encoder is the PM's, not the FBL table's default, and it must be
+    # settled BEFORE the rotation is resolved: the two C# switches disagree on
+    # the same resolution (320x240 is base 0 under ImageToJpg, 90 under
+    # ImageTo565).
     jpeg = pm not in _RGB565_PMS
-    # Resolve the wire rotation now that resolution, encoder and SUB are all
-    # known, so the render path reads a value and branches on nothing.  The C#
-    # varies the base by SUB in six families (its ``mySubMode`` arms).
-    rotation = resolve_encode_rotation((base.width, base.height), jpeg, sub)
-    log.info("BulkLcd %s: %dx%d jpeg=%s sub=%d → encode base %d° invert=%s",
-             key, base.width, base.height, jpeg, sub,
-             rotation.base, rotation.invert)
-    return fbl, DeviceProfile(
-        width=base.width, height=base.height,
-        jpeg=jpeg,
-        big_endian=base.big_endian, rotate=base.rotate,
-        widescreen=base.widescreen,
-        # The SUB byte also says how the panel is MOUNTED: on three
-        # resolutions a sub of 5+ means it is turned portrait in its cooler,
-        # so its content catalog is the transposed one from orientation 0.
-        # (#262, #203 — both PM=11 SUB=5 on 854x480.)
-        portrait_mounted=is_portrait_mounted(
-            (base.width, base.height), sub),
-        encode_baseline=encode_baseline,
-        encode_base=rotation.base,
-        encode_invert=rotation.invert,
-        encode_pm_bases=base.encode_pm_bases,
-        sub=sub,
-    )
+    rotation = resolve_encode_rotation(base.resolution, jpeg, sub)
+    log.info("bulk_profile %s: PM=%d SUB=%d → FBL %d %dx%d jpeg=%s encode "
+             "base %d° invert=%s baseline %d° mounted=%s", key, pm, sub, fbl,
+             base.width, base.height, jpeg, rotation.base, rotation.invert,
+             encode_baseline, base.portrait_mounted)
+    return fbl, dataclasses.replace(
+        base, jpeg=jpeg, encode_baseline=encode_baseline,
+        encode_base=rotation.base, encode_invert=rotation.invert)
 
 
 class BulkLcd(BaseBulkDevice, wire=Wire.BULK):

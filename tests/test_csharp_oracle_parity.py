@@ -212,8 +212,11 @@ _CSHARP_BULK_FINGERPRINTS: tuple[tuple[str, tuple[int, int]], ...] = (
     # branch applies, and satoru8 confirmed it upright on the panel (#137).
     ("FW360 Ultra",         (6, 0)),
     ("Mjolnir",             (5, 1)),
-    # Unknown bulk PM → stays on the 480x480 base, never echoes PM as FBL (#176).
-    ("GrandVision 360",     (50, 0)),
+    # Unknown bulk PM → stays on the 480x480 base, never echoes PM as FBL
+    # (#176).  PM 1 SUB 1 is the GrandVision 360's real handshake; this row
+    # read (50, 0) under that name, but PM 50 is in the C# ladder (SPI mode 3)
+    # and the PM-50 panel on record is a SCSI Frozen Warframe.
+    ("GrandVision 360",     (1, 1)),
     ("widescreen 854x480",  (11, 5)),
     ("widescreen 960x540",  (10, 0)),
     ("bulk 1600x720",       (1, 48)),
@@ -229,7 +232,7 @@ def test_bulk_wire_angle_matches_the_csharp(
 
     Resolves through the SHIPPING ``bulk_profile`` — never a copy of it.  A
     hand-rolled copy in ``dev/decompiler/audit_rotation.py`` dropped the
-    ``_BULK_KNOWN_PMS`` guard, invented a phantom FBL 6, and reported this very
+    ``in_pm_ladder`` guard, invented a phantom FBL 6, and reported this very
     device as a 180° bug.  An oracle that re-implements the code it audits
     proves nothing about what ships.
     """

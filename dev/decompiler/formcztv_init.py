@@ -128,6 +128,18 @@ class CztvState:
             return (320, 240)
         return (240, 320)
 
+    @property
+    def models_geometry(self) -> bool:
+        """Did ``FormCZTVInit`` resolve a panel, or leave the header default?
+
+        With no resolution flag set (and not the pm 5 branch), ``resolution``
+        is the 20-byte header's hardcoded 240x320 (FormCZTV.cs:4205 writes
+        ``240, 0, 64, 1``) -- a WIRE CONSTANT, not a panel size, so nothing
+        can be compared to it.
+        """
+        return (self.myDevicePingMu == 5
+                or any(getattr(self, flag) for flag, _ in _FLAG_RESOLUTIONS))
+
 
 # Flag -> geometry, in the order the C# header table tests them.
 _FLAG_RESOLUTIONS: tuple[tuple[str, tuple[int, int]], ...] = (

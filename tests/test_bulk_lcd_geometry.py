@@ -9,12 +9,21 @@ USBLCDNew protocol: PM byte at ``resp[24]``, SUB at ``resp[36]``.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from trcc.adapters.device.bulk_lcd import BulkLcd
 from trcc.core.models import Kind, ProductInfo, Wire
 
 from .conftest import FakeBulkTransport
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
+
+from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    form_cztv_init,
+)
 
 # ── Synthetic handshake response ──────────────────────────────────────
 
@@ -61,22 +70,13 @@ def _make_bulk(transport: FakeBulkTransport, *,
     (10, (960, 540), 224),   # pm 10 → is960x540
     (12, (800, 480), 224),   # pm 12 → is800x480
     (65, (1920, 462), 192),  # pm 65 → is1920x462
-    # ── KNOWN LATENT DIVERGENCE from 2.1.6 — our behaviour, NOT C# parity ──
-    # These three rows pin what our code DOES today.  TRCC 2.1.6 maps all of
-    # them in the FormCZTVInit ladder (FormCZTV.cs:858) — pm 50 → SPIMode=2 +
-    # mode 3 + fbl 50, pm 13 → is960x320, pm 63 → is1600x720 — and we keep
-    # them on the 480x480 base because _BULK_KNOWN_PMS is short.
-    #
-    # The reason lives in exactly ONE place: BULK_PM_GAP in
-    # tests/test_csharp_conformance.py, which measures the whole
-    # 258-fingerprint sweep against the oracle and ratchets it.  Do not
-    # restate it here.  The comment that used to sit on these rows did, and
-    # got it wrong — it asserted "FormCZTVInit has NO case 50", read off the
-    # 2.0.3 decompile, and told the next maintainer to preserve the gap as
-    # though it were parity.
-    (50, (480, 480), 72),
-    (13, (480, 480), 72),
-    (63, (480, 480), 72),
+    # PMs the bulk wire used to keep on the 480x480 base because its own
+    # allow-list was short; they resolve as the C#'s ladder does now
+    # (``in_pm_ladder`` asks the override tables themselves).  pm 50 → SPI
+    # mode 3 + fbl 50, pm 13 → is960x320, pm 63 → is1600x720.
+    (50, (320, 240), 50),
+    (13, (960, 320), 224),
+    (63, (1600, 720), 114),
     # PM unknown to the bulk FBL table → C# FormCZTVInit (myDeviceMode==2)
     # default FBL=72 (480×480).  NOT the PM echoed as a bogus FBL. (#169)
     (200, (480, 480), 72),
@@ -135,47 +135,32 @@ def test_pm1_known_sub_still_overrides(
     assert device.connect().resolution == expected
 
 
-def _formcztv_bulk_resolution(pm: int) -> tuple[int, int]:
-    """The resolution the C# ``FormCZTVInit(72, 2, pm, 0)`` yields — the spec.
-
-    Independent statement of the C# rule (the ``switch(pm)`` + ``m==2`` branches);
-    the test asserts the real ``BulkLcd`` handshake matches it for every PM.
-    """
-    override = {
-        5: (320, 240), 7: (640, 480), 32: (320, 320),
-        64: (1600, 720), 65: (1920, 462),
-        9: (854, 480), 10: (960, 540), 11: (854, 480), 12: (800, 480),
-        # TRCC 2.1.8 widened the 854x480 branch from (pm 9 || 11) to
-        # (pm 9 || 11 || 20) -- FormCZTV.cs:947.  Stated here by hand, from the
-        # decompile, because this table is deliberately an INDEPENDENT reading
-        # of the C# rather than a restatement of the catalog it checks.
-        20: (854, 480),
-        # The C# handles (13 || 17 || 18) in ONE branch — FormCZTV.cs:986,
-        # is960x320 + fbl 224.  18 is catalogued because TRCC 2.1.8 gave it
-        # three more artwork subs, and a catalogued fingerprint that diverges
-        # is a bug to fix rather than a row to record.  13 and 17 are NOT yet
-        # catalogued, which is an inconsistency this table now makes visible.
-        18: (960, 320),
-    }
-    return override.get(pm, (480, 480))
-
-
 @pytest.mark.parametrize("pm", range(1, 71))
 def test_bulk_resolution_matches_formcztvinit_over_full_pm_space(
     fake_bulk: FakeBulkTransport, pm: int,
 ) -> None:
     """The wall: EVERY bulk PM resolves exactly as the C# FormCZTVInit(72,2,pm,0).
 
+    The expectation is the emulator (``dev/decompiler/formcztv_init.py``), a
+    transcription of the C# — it used to be a hand table here, a third copy of
+    the ladder that pinned the same short allow-list the code had.
+
     The bulk path is 100% FormCZTVInit (the C# passes the PM straight in), so
     it's fully bench-decidable — every bulk panel the C# supports resolves
     correctly before anyone plugs one in.  This sweep is the guard against a
-    poll-byte PM re-accreting into ``_BULK_KNOWN_PMS`` (the #176 root cause). (#176)
+    poll-byte PM echoing past ``in_pm_ladder`` (the #176 root cause). (#176)
     """
     fake_bulk.read_script.append(_bulk_response(pm))
     result = _make_bulk(fake_bulk).connect()
-    expected = _formcztv_bulk_resolution(pm)
-    assert result.resolution == expected, (
-        f"PM={pm}: bulk resolved {result.resolution}, C# FormCZTVInit says {expected}"
+    st = form_cztv_init(72, m=2, pm=pm)
+    if not st.models_geometry:
+        # pm 50 alone: the C# sets no resolution flag, so its 240x320 is the
+        # header constant, not a panel size.  Ours is the FBL 50 profile.
+        assert pm == 50, f"PM={pm}: the C# resolves no panel"
+        return
+    assert result.resolution == st.resolution, (
+        f"PM={pm}: bulk resolved {result.resolution}, C# FormCZTVInit says "
+        f"{st.resolution}"
     )
 
 
@@ -202,23 +187,24 @@ def test_pm_resolves_encode_baseline(
 # ── Bulk-specific JPEG/RGB565 override ───────────────────────────────
 
 
+@pytest.mark.parametrize("pm", [32, 50])
 def test_pm_32_uses_rgb565_overriding_profile_jpeg(
-    fake_bulk: FakeBulkTransport,
+    fake_bulk: FakeBulkTransport, pm: int,
 ) -> None:
-    """PM=32 forces RGB565 — Bulk's specific exception to its JPEG default."""
-    fake_bulk.read_script.append(_bulk_response(pm=32))
+    """The PMs the C# moves off mode 2 encode RGB565: pm 32 (mode 4), pm 50 (mode 3)."""
+    fake_bulk.read_script.append(_bulk_response(pm=pm))
     device = _make_bulk(fake_bulk)
     device.connect()
 
     assert device._profile is not None
-    assert device._profile.jpeg is False, "PM=32 must produce profile.jpeg=False"
+    assert device._profile.jpeg is False, f"PM={pm} must produce profile.jpeg=False"
 
 
-@pytest.mark.parametrize("pm", [5, 7, 9, 10, 50, 64, 65, 100, 200])
+@pytest.mark.parametrize("pm", [5, 7, 9, 10, 64, 65, 100, 200])
 def test_non_pm32_uses_jpeg(
     fake_bulk: FakeBulkTransport, pm: int,
 ) -> None:
-    """Every PM except 32 uses JPEG (Bulk default). Spans known + unknown PMs."""
+    """Every PM the C# keeps in mode 2 uses JPEG. Spans known + unknown PMs."""
     fake_bulk.read_script.append(_bulk_response(pm=pm))
     device = _make_bulk(fake_bulk)
     device.connect()
