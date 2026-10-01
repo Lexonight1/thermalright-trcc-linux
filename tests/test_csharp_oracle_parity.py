@@ -62,6 +62,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler
 from encode_reference import (  # pyright: ignore[reportMissingImports]
     csharp_encode_angles,
 )
+from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    form_cztv_init,
+)
 
 # The resolutions this file checks a wire angle for.  The ANGLES come from the
 # oracle; only the list of panels to sweep lives here.
@@ -231,8 +234,10 @@ def test_bulk_wire_angle_matches_the_csharp(
     """
     pm, sub = fingerprint
     fbl, profile = bulk_profile(pm, sub)
+    # Form1.cs:1071 — the bulk class enters FormCZTVInit at fbl 72, mode 2.
+    my_sub_mode = form_cztv_init(72, m=2, pm=pm, pmSub=sub).mySubMode
     expected = csharp_encode_angles(
-        profile.resolution, jpeg=profile.jpeg, pm=pm, sub=sub)
+        profile.resolution, jpeg=profile.jpeg, pm=pm, my_sub_mode=my_sub_mode)
     for orientation, want in expected.items():
         got = (wire_angle(profile, orientation, portrait_content=False)
                + profile.encode_baseline) % 360
@@ -341,7 +346,9 @@ def test_fbl_59_wire_angle_follows_the_sub_arm(sub: int) -> None:
     profile = get_profile(59, 59, sub)
     got = {deg: resolve_encode_angle(profile, deg) for deg in (0, 90, 180, 270)}
     assert got == _CSHARP_640x172_RGB565[sub]
-    assert got == csharp_encode_angles((640, 172), jpeg=False, sub=sub)
+    my_sub_mode = form_cztv_init(59, m=3, pm=100, pmSub=sub).mySubMode
+    assert got == csharp_encode_angles(
+        (640, 172), jpeg=False, my_sub_mode=my_sub_mode)
 
 
 def test_the_176x320_panel_is_dual_orientation_not_just_a_size() -> None:
@@ -390,12 +397,13 @@ def test_the_176x320_panel_is_dual_orientation_not_just_a_size() -> None:
 #     manufactures a divergence out of two different quantities -- the same
 #     category error as widescreen vs isBiliPingmu.
 #   mount -- always; it is a pure function of the SUB byte.
-#   encode -- NOT compared.  The C# picks JPEG vs RGB565 on `myDeviceMode == 2`
-#     (all four call sites), and `get_profile` has no mode axis, so fbl 59
-#     ships jpeg=True for its mode-2 route while mode 3 would encode 565.
-#     That simplification is pinned deliberately by
-#     `test_fbl_59_is_the_same_panel_as_the_pm_15_route`; asserting it here
-#     would contradict that test rather than find anything.
+#   encode -- NOT compared YET, and that is now a gap, not a choice.  The C#
+#     picks JPEG vs RGB565 on `myDeviceMode == 2` (all four call sites).  The
+#     old excuse -- fbl 59 shipping jpeg=True -- is gone: it ships RGB565 since
+#     438ac584.  What the gap hides, measured 2026-10-01: in 2.1.8 fbl 54 at
+#     SUB 4 (CORE VISION) stays mode 3 and encodes RGB565, while we send JPEG
+#     at every SUB -- and SUB 4 is not even in the list swept below.  See
+#     memory/project_2_1_8_encoder_arms_unported.md.
 
 
 def _mode3_fingerprints() -> list[tuple[int, int]]:

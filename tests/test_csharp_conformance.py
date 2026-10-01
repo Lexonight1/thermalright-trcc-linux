@@ -62,7 +62,10 @@ from trcc.core.variants import _BULK_VARIANTS
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
 from encode_reference import (  # pyright: ignore[reportMissingImports]
-    csharp_encode_angles,
+    NOT_PORTED_NO_GLASS,
+    NOT_PORTED_SUB3_GLASS_MIXED,
+    Arm,
+    csharp_encode,
 )
 from formcztv_init import (  # pyright: ignore[reportMissingImports]
     form_cztv_init,
@@ -111,7 +114,6 @@ _KNOWN_DIVERGENCES: dict[tuple[int, int, str], str] = {
     (17, 3, "widescreen"): BULK_PM_GAP,
     (17, 5, "resolution"): BULK_PM_GAP,
     (17, 5, "widescreen"): BULK_PM_GAP,
-    (17, 5, "encode"): BULK_PM_GAP,
     # NOT a mount-rule gap: `_BULK_KNOWN_PMS` has no 17, so bulk_profile
     # falls back to 480x480 and no mount table can match a resolution the
     # panel does not have.  Same root cause as the three rows above it,
@@ -149,12 +151,33 @@ _KNOWN_DIVERGENCES: dict[tuple[int, int, str], str] = {
     (68, 0, "widescreen"): BULK_PM_GAP,
     (69, 2, "resolution"): BULK_PM_GAP,
     (69, 2, "widescreen"): BULK_PM_GAP,
+    # The C#'s own encoder changed under these two; we do not resolve the
+    # panel at all, so the resolution gap is still the root cause.
+    (66, 2, "encode"): BULK_PM_GAP,
+    (66, 3, "encode"): BULK_PM_GAP,
+    # Newer-release encoder arms our port does not follow.  The reason is the
+    # label the oracle puts on the arm itself; the test below holds them equal.
+    (4, 0, "encode"): NOT_PORTED_NO_GLASS,      # square FlipX mirror
+    (4, 7, "encode"): NOT_PORTED_NO_GLASS,      # square SUB 7 offset
+    (9, 0, "encode"): NOT_PORTED_NO_GLASS,      # 854x480 FlipX mirror
+    (9, 2, "encode"): NOT_PORTED_NO_GLASS,      # 854x480 SUB 2 arm
+    (11, 0, "encode"): NOT_PORTED_NO_GLASS,     # 854x480 FlipX mirror
+    (12, 0, "encode"): NOT_PORTED_NO_GLASS,     # 800x480: mirrors at EVERY sub
+    (18, 5, "encode"): NOT_PORTED_NO_GLASS,     # 960x320 SUB 5 → 0
+    (18, 6, "encode"): NOT_PORTED_NO_GLASS,     # 960x320 SUB 6 → 0
+    (20, 0, "encode"): NOT_PORTED_NO_GLASS,     # 854x480 FlipX mirror
+    (65, 3, "encode"): NOT_PORTED_SUB3_GLASS_MIXED,
 }
 
 # Ratchet, in the shape MAX_SILENT already proves works: this number only ever
 # goes DOWN.  Fixing a divergence means deleting its row and lowering this;
 # a NEW divergence fails the build outright rather than being appended.
-MAX_DIVERGENCES = 52
+#
+# Raised 52 → 63 on 2026-10-01, the one kind of rise the ratchet allows: the
+# INSTRUMENT went from blind to seeing, our code did not change.  The oracle's
+# ImageToJpg arms were a release older than the emulator feeding them, so
+# eleven differences were invisible; one 2.1.6-era row was paid by the same fix.
+MAX_DIVERGENCES = 63
 
 
 def _bulk_fingerprints() -> list[tuple[int, int]]:
@@ -171,22 +194,31 @@ def _bulk_fingerprints() -> list[tuple[int, int]]:
     return out
 
 
+def _csharp_arm(pm: int, sub: int) -> Arm:
+    """The ``ImageToJpg``/``ImageTo565`` arm the C# takes for this fingerprint."""
+    st = form_cztv_init(_BULK_START_FBL, m=_BULK_MODE, pm=pm, pmSub=sub)
+    _, profile = bulk_profile(pm, sub)
+    return csharp_encode(
+        st.resolution, jpeg=profile.jpeg, pm=pm, my_sub_mode=st.mySubMode)
+
+
 def _compare(pm: int, sub: int) -> dict[str, tuple[object, object]]:
     """Every axis for one fingerprint → {axis: (theirs, ours)} where they differ."""
     st = form_cztv_init(_BULK_START_FBL, m=_BULK_MODE, pm=pm, pmSub=sub)
     _, profile = bulk_profile(pm, sub)
 
-    theirs_angles = csharp_encode_angles(
-        st.resolution, jpeg=profile.jpeg, pm=pm, sub=st.mySubMode)
-    ours_angles = {
+    arm = _csharp_arm(pm, sub)
+    # The arm's mirror is part of what it sends; we never mirror.
+    theirs_encode = (arm.angles, arm.mirror)
+    ours_encode = ({
         o: (wire_angle(profile, o, portrait_content=False)
             + profile.encode_baseline) % 360
         for o in _ANGLES
-    }
+    }, False)
     pairs: dict[str, tuple[object, object]] = {
         "resolution": (st.resolution, profile.resolution),
         "widescreen": (st.isBiliPingmu, profile.widescreen),
-        "encode": (theirs_angles, ours_angles),
+        "encode": (theirs_encode, ours_encode),
         "mount": (st.themeDirection == 90,
                   is_portrait_mounted(profile.resolution, sub)),
     }
@@ -195,12 +227,12 @@ def _compare(pm: int, sub: int) -> dict[str, tuple[object, object]]:
 
 @pytest.mark.parametrize(("pm", "sub"), _bulk_fingerprints())
 def test_bulk_fingerprint_matches_the_csharp(pm: int, sub: int) -> None:
-    """Our shipping code must answer what TRCC 2.1.6 answers, or say why not."""
+    """Our shipping code must answer what the C# answers, or say why not."""
     for axis, (theirs, ours) in _compare(pm, sub).items():
         assert (pm, sub, axis) in _KNOWN_DIVERGENCES, (
             f"NEW divergence — bulk pm={pm} sub={sub} axis={axis}: "
             f"the C# says {theirs!r}, we say {ours!r}.  Either our code "
-            f"drifted from TRCC 2.1.6, or this is a deliberate difference "
+            f"drifted from the C#, or this is a deliberate difference "
             f"that belongs in _KNOWN_DIVERGENCES with its reason and the "
             f"evidence it is not user-visible."
         )
@@ -222,6 +254,19 @@ def test_a_fixed_divergence_is_removed_from_the_allowlist(
     )
 
 
+@pytest.mark.parametrize(("pm", "sub"), sorted(
+    (pm, sub) for (pm, sub, axis), reason in _KNOWN_DIVERGENCES.items()
+    if axis == "encode" and reason != BULK_PM_GAP))
+def test_a_not_ported_row_cites_the_arm_it_excuses(pm: int, sub: int) -> None:
+    """A row may not excuse an arm the oracle does not label as not ported.
+
+    The reason lives twice — on the oracle's arm and on this row — so the two
+    are held equal rather than trusted to agree.
+    """
+    assert _KNOWN_DIVERGENCES[(pm, sub, "encode")] == _csharp_arm(
+        pm, sub).not_ported, (pm, sub)
+
+
 def test_the_allowlist_is_not_silently_empty() -> None:
     """Guard the guard: an emptied list makes every assertion above vacuous."""
     assert _KNOWN_DIVERGENCES, "the allow-list is empty — the gate guards nothing"
@@ -230,7 +275,8 @@ def test_the_allowlist_is_not_silently_empty() -> None:
         f"{MAX_DIVERGENCES}.  A NEW divergence is a bug to fix, not a row to add."
     )
     assert len(_bulk_fingerprints()) > 40, "the corpus collapsed"
-    assert set(_KNOWN_DIVERGENCES.values()) == {BULK_PM_GAP}, (
+    assert set(_KNOWN_DIVERGENCES.values()) == {
+        BULK_PM_GAP, NOT_PORTED_NO_GLASS, NOT_PORTED_SUB3_GLASS_MIXED}, (
         "a divergence has a cause outside the documented root cause — "
         "name it, or it is not understood.  MOUNT_3_OF_9 was the second "
         "and is PAID: is_portrait_mounted now models the C#'s nine."

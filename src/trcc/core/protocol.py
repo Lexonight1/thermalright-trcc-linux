@@ -271,8 +271,12 @@ class EncodeRotation:
 
 # (width, height, jpeg) → the C# rotation for that panel.
 #
-# Source: TRCC 2.1.6, TRCC.CZTV/FormCZTV.cs — ``ImageToJpg`` (the jpeg=True
-# rows) and ``ImageTo565`` (the jpeg=False rows).  The encoder is part of the
+# Source: TRCC.CZTV/FormCZTV.cs — ``ImageToJpg`` (the jpeg=True rows, as of
+# TRCC 2.1.6) and ``ImageTo565`` (the jpeg=False rows, as of 2.1.8).  The newer
+# ``ImageToJpg`` arms are NOT followed — 960x320 SUB 5/6, 1920x462/440 SUB 3,
+# square SUB 7, 854/800 SUB 2 and the FlipX mirrors — each labelled
+# ``not_ported`` with its evidence in ``dev/decompiler/encode_reference.py``,
+# which is what the parity tests read.  The encoder is part of the
 # key because the two switches disagree on the same resolution: 320×240 is
 # base 0 under JPEG (the ``myDevicePingMu == 5`` Mjolnir arm) and base 90 under
 # RGB565 (the default arm), and 640×172 is base 0 under JPEG and base 270 under

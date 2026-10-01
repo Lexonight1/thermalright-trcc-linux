@@ -1,14 +1,10 @@
 """C# encode-rotation oracle — the ``directionB`` switches, transcribed.
 
-Source: ``TRCC.CZTV/FormCZTV.cs`` — ``ImageToJpg`` transcribed from
-**TRCC 2.1.6**, ``ImageTo565`` re-transcribed from **2.1.8**.  The 2.1.8
-``ImageToJpg`` changed arms this file does not carry yet (square SUB 7,
-1280x480 SUB 7, 1920x462/440) — see
-``memory/project_2_1_8_encoder_arms_unported.md``.  Verify the tree before
+Source: ``TRCC.CZTV/FormCZTV.cs`` ``ImageToJpg`` and ``ImageTo565`` of the
+release named by ``core.csharp.ORACLE_VERSION``.  Verify the tree before
 trusting a citation::
 
-    grep -rh AssemblyVersion ~/Downloads/TRCC_2.1.6_decompiled/Properties/*.cs
-    # -> [assembly: AssemblyVersion("2.1.6.0")]
+    grep -rh AssemblyVersion "$TRCC_DECOMPILE"/Properties/*.cs
 
 **This file stores the switch arms LITERALLY** — one ``directionB -> angle``
 map per arm, exactly the ``RotateImg`` argument the C# passes — and not the
@@ -18,44 +14,40 @@ it audits can only catch typos, never a wrong model.  Stated as arms, it also
 catches the sign error that shipped for months (854x480 counts UP with the
 display angle; every other family counts down).
 
-The previous revision of this file was transcribed from a decompile that
-predated the 2.1.6 installer by four months.  It had no SUB term at all, and
-its 360x360 row was wrong in a way that put a permanent ``xfail`` on correct
-shipping code.  See ``memory/project_csharp_oracle_was_the_wrong_version.md``.
+**Input is ``mySubMode``, never the handshake SUB byte.**  The switch tests
+``mySubMode``, which ``FormCZTVInit`` derives from the SUB byte on some
+branches and leaves at 0 on others.  That derivation is
+``formcztv_init.form_cztv_init``'s job alone.  This file used to carry a second,
+coarser copy of it, and the conformance gate fed it the emulator's already
+derived value, so 854x480's ``mySubMode`` was zeroed a second time and the gate
+compared against a release older than the one it named.
+
+**Arms our port deliberately does not follow** carry ``not_ported`` — the reason,
+on the row, so a test that finds a difference reads the excuse from the oracle
+instead of from a second list.  See
+``memory/project_2_1_8_encoder_arms_unported.md`` for the evidence.
 
 PURE — no I/O, no framework.  Lives in ``dev/`` because it is a reference for
 auditing, never shipped logic; nothing in ``src/trcc`` may import it.
 """
 from __future__ import annotations
 
-# ── mySubMode: DERIVED from the handshake SUB byte, not equal to it ─────────
-#
-# ``FormCZTVInit`` assigns ``mySubMode = pmSub`` on the branches that set
-# 1920x462 (pm 65/66, pm1+sub49), 1920x440 (pm 69), 1280x480 (pm 68, and the
-# mode-3 fbl-128 branch), 960x540 (pm 10/16), 960x320 (pm 13/17/18) and,
-# since 2.1.8, 640x172 on the mode-3 fbl-59 branch.
-#
-# It does NOT assign it for **854x480** (pm 9/11) or **800x480** (pm 12) —
-# every sibling branch does, those two do not — so it stays 0 for them and
-# their ``mySubMode == 2`` arm is unreachable.  1600x720 is assigned nowhere in
-# ``FormCZTVInit`` either (that branch sets ``myLddValSub``); it gets one later
-# from ``SetThemeInfo_ThemeML``, which is called with the handshake ``pmSub``
-# and assigns only for 2, 3 and 4.
-#
-# Encoding that here rather than in the arms below keeps the arms a literal
-# transcription: the arms say what the switch tests, this says what can reach
-# them.
-_NEVER_ASSIGNED = frozenset({(854, 480), (800, 480)})
+from collections.abc import Callable
+from typing import NamedTuple
 
-
-def csharp_my_sub_mode(resolution: tuple[int, int], sub: int) -> int:
-    """``mySubMode`` for a panel that handshook with this SUB byte."""
-    if resolution in _NEVER_ASSIGNED:
-        return 0
-    if resolution == (1600, 720):
-        return sub if sub in (2, 3, 4) else 0
-    return sub
-
+# ── Why an arm is not ported — read by the parity tests ────────────────────
+NOT_PORTED_NO_GLASS = (
+    "a managed-assembly arm newer than the release this port was built on, "
+    "on a fingerprint no reporter has posted: no glass to confirm it, and "
+    "agreement with the managed app is not independent evidence "
+    "(project_the_oracle_authority_is_asymmetric)"
+)
+NOT_PORTED_SUB3_GLASS_MIXED = (
+    "1920x462/440 SUB 3 (LD7, LY PM 65) moved from 0 to 180.  Three reporters "
+    "own it and their glass disagrees: #101 and #129 'work fine' at wire 0, "
+    "#256 said wire 180 was correct on v9.0.2 and wire 0 'looks fine' on "
+    "v9.9.7.  Held until #256 answers on real glass"
+)
 
 # ── The arms, as literal directionB -> RotateImg(angle) maps ────────────────
 _A = {0: 0, 90: 270, 180: 180, 270: 90}      # the common "counts down" arm
@@ -65,85 +57,127 @@ _D = {0: 0, 90: 90, 180: 180, 270: 270}      # counts UP — 854/800 only
 _E = {0: 180, 90: 270, 180: 0, 270: 90}      # counts up, offset — 854/800 alt
 _F = {0: 270, 90: 180, 180: 90, 270: 0}      # ImageTo565 640x172
 
-# One arm table row: (resolution(s), arm when the mySubMode guard holds,
-# guard, arm otherwise).  Both switches are a list of these, in C# order.
-_Arm = tuple[frozenset[tuple[int, int]], dict[int, int],
-             frozenset[int] | None, dict[int, int]]
 
-# ImageToJpg, in the C#'s own branch order.
-_JPG_ARMS: tuple[_Arm, ...] = (
-    # `is320x320 || is480x480`.  The `myDevicePingMu == 6` sub-branch (arm _B)
-    # is the FW360 mount offset and is handled by `pm`, below, not by SUB.
-    (frozenset({(320, 320), (480, 480)}), _A, None, _A),
-    # `is1600x720`: mySubMode == 3
-    (frozenset({(1600, 720)}), _A, frozenset({3}), _B),
-    # `is854x480 || is800x480`: mySubMode == 2 (unreachable — see above)
-    (frozenset({(854, 480), (800, 480)}), _E, frozenset({2}), _D),
-    # `is1280x480`: mySubMode == 2
-    (frozenset({(1280, 480)}), _C, frozenset({2}), _A),
-    # `is960x320`: mySubMode < 5
-    (frozenset({(960, 320)}), _A, frozenset({0, 1, 2, 3, 4}), _B),
-    # `is960x540`: mySubMode == 5 || mySubMode == 7
-    (frozenset({(960, 540)}), _B, frozenset({5, 7}), _A),
-    # `is1920x462 || is1920x440`: mySubMode < 2 || mySubMode > 4
-    (frozenset({(1920, 462), (1920, 440)}), _A, frozenset({2, 3, 4}), _B),
+class Arm(NamedTuple):
+    """One branch of a ``directionB`` switch.
+
+    ``resolutions`` is ``None`` for a branch the C# tests before any resolution
+    guard.  ``guard(myDevicePingMu, mySubMode)`` says whether it is taken.
+    ``mirror`` is a ``RotateFlip(...FlipX)`` — GDI+ rotates clockwise for both
+    ``RotateTransform`` (inside ``RotateImg``) and ``RotateFlipType``, so a
+    mirror arm is its rotation in ``angles`` plus a horizontal flip.
+    """
+    resolutions: frozenset[tuple[int, int]] | None
+    guard: Callable[[int, int], bool]
+    angles: dict[int, int]
+    mirror: bool = False
+    not_ported: str | None = None
+
+
+def _res(*resolutions: tuple[int, int]) -> frozenset[tuple[int, int]]:
+    return frozenset(resolutions)
+
+
+def _always(pm: int, sub: int) -> bool:
+    return True
+
+
+_SQUARE = _res((320, 320), (480, 480))
+_WIDE_1920 = _res((1920, 462), (1920, 440))
+_WIDE_854 = _res((854, 480), (800, 480))
+
+# ImageToJpg, in the C#'s own branch order.  First match wins.
+_JPG_ARMS: tuple[Arm, ...] = (
+    # `is320x320 || is480x480`: `pm == 6 || mySubMode == 7` → offset.  PM 6 is
+    # the FW360 mount, which our port applies as `encode_baseline`, a separate
+    # rotation an auditor adds before comparing.  mySubMode is only ever
+    # assigned for a square on the mode-2 pm 4 branch.
+    Arm(_SQUARE, lambda pm, sub: pm == 6, _B),
+    Arm(_SQUARE, lambda pm, sub: sub == 7, _B, not_ported=NOT_PORTED_NO_GLASS),
+    # `else if (pm != 4 || mySubMode != 0)` → _A, else Rotate90/None/270/180FlipX.
+    Arm(_SQUARE, lambda pm, sub: pm == 4 and sub == 0, _C, mirror=True,
+        not_ported=NOT_PORTED_NO_GLASS),
+    Arm(_SQUARE, _always, _A),
+    # The Mjolnir: `myDevicePingMu == 5`, tested before every other resolution.
+    Arm(None, lambda pm, sub: pm == 5, _A),
+    # `is1600x720`: mySubMode == 3.
+    Arm(_res((1600, 720)), lambda pm, sub: sub == 3, _A),
+    Arm(_res((1600, 720)), _always, _B),
+    # `is1280x480`: mySubMode == 2.
+    Arm(_res((1280, 480)), lambda pm, sub: sub == 2, _C),
+    Arm(_res((1280, 480)), _always, _A),
+    # `is960x320`: mySubMode < 5 → _A, == 7 → _B, else _A (it was _B).
+    Arm(_res((960, 320)), lambda pm, sub: sub < 5, _A),
+    Arm(_res((960, 320)), lambda pm, sub: sub == 7, _B),
+    Arm(_res((960, 320)), _always, _A, not_ported=NOT_PORTED_NO_GLASS),
+    # `is960x540`: mySubMode == 5 || == 7.
+    Arm(_res((960, 540)), lambda pm, sub: sub in (5, 7), _B),
+    Arm(_res((960, 540)), _always, _A),
+    # `is1920x462 || is1920x440`: `(pm != 66 || sub != 2) ? (sub == 2 || sub
+    # == 4 ? _A : _B) : _B`.  SUB 3 is split out of the else only to label it.
+    Arm(_WIDE_1920, lambda pm, sub: pm == 66 and sub == 2, _B,
+        not_ported=NOT_PORTED_NO_GLASS),
+    Arm(_WIDE_1920, lambda pm, sub: sub in (2, 4), _A),
+    Arm(_WIDE_1920, lambda pm, sub: sub == 3, _B,
+        not_ported=NOT_PORTED_SUB3_GLASS_MIXED),
+    Arm(_WIDE_1920, _always, _B),
     # `is640x480 || is360x360 || is640x172` — no guard.
-    (frozenset({(640, 480), (360, 360), (640, 172)}), _A, None, _A),
+    Arm(_res((640, 480), (360, 360), (640, 172)), _always, _A),
+    # `is854x480 || is800x480` (the final else): mySubMode == 2 → _E, else _D,
+    # then `RotateFlip(RotateNoneFlipX)` when mySubMode == 0.
+    Arm(_WIDE_854, lambda pm, sub: sub == 2, _E,
+        not_ported=NOT_PORTED_NO_GLASS),
+    Arm(_WIDE_854, lambda pm, sub: sub == 0, _D, mirror=True,
+        not_ported=NOT_PORTED_NO_GLASS),
+    Arm(_WIDE_854, _always, _D),
 )
 
-# ImageTo565 (2.1.8).  `is240x240 || is320x320 || is480x480 || is360x360`
-# (360 is new in 2.1.8), then `is640x172`: mySubMode == 5 → the default arm
-# (new in 2.1.8), else _F.
-_565_ARMS: tuple[_Arm, ...] = (
-    (frozenset({(240, 240), (320, 320), (480, 480), (360, 360)}), _A, None, _A),
-    (frozenset({(640, 172)}), _C, frozenset({5}), _F),
+# ImageTo565.  `is240x240 || is320x320 || is480x480 || is360x360`, then
+# `is640x172`: mySubMode == 5 → the default arm, else _F.
+_565_ARMS: tuple[Arm, ...] = (
+    Arm(_res((240, 240), (320, 320), (480, 480), (360, 360)), _always, _A),
+    Arm(_res((640, 172)), lambda pm, sub: sub == 5, _C),
+    Arm(_res((640, 172)), _always, _F),
 )
 
-# The Mjolnir: `myDevicePingMu == 5` is tested BEFORE every resolution guard in
-# ImageToJpg, so a 320x240 JPEG panel takes this arm and never the default.
-_PM5_ARM = _A
-# `myDevicePingMu == 6` inside the JPEG square guard — the FW360 Ultra's
-# physical mount.  Our port applies this as `encode_baseline`, a separate
-# rotation composed with the encode angle, so an auditor must add the two
-# before comparing.
-_PM6_ARM = _B
+# Both switches end in the same default arm.
+_DEFAULT_ARM = Arm(None, _always, _C)
+
+
+def csharp_encode(
+    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0,
+    my_sub_mode: int = 0,
+) -> Arm:
+    """The switch arm the C# takes for this panel — first match, C# order."""
+    return next(
+        (arm for arm in (_JPG_ARMS if jpeg else _565_ARMS)
+         if (arm.resolutions is None or resolution in arm.resolutions)
+         and arm.guard(pm, my_sub_mode)),
+        _DEFAULT_ARM)
 
 
 def csharp_encode_angles(
-    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0, sub: int = 0,
+    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0,
+    my_sub_mode: int = 0,
 ) -> dict[int, int]:
-    """Every ``directionB -> rotation`` the C# would apply to this panel.
-
-    Branch ORDER is the C#'s, because order decides ties: a 480x480 JPEG panel
-    with ``pm == 6`` hits the square guard's PM sub-branch, and a 320x240 JPEG
-    panel hits ``myDevicePingMu == 5`` before any resolution is tested.
-    """
-    if jpeg and resolution in ((320, 320), (480, 480)):
-        return dict(_PM6_ARM if pm == 6 else _A)
-    if jpeg and pm == 5:
-        return dict(_PM5_ARM)
-    my_sub_mode = csharp_my_sub_mode(resolution, sub)
-    for resolutions, guarded, guard, otherwise in (
-            _JPG_ARMS if jpeg else _565_ARMS):
-        if resolution not in resolutions:
-            continue
-        if guard is not None and my_sub_mode in guard:
-            return dict(guarded)
-        return dict(otherwise)
-    return dict(_C)
+    """Every ``directionB -> rotation`` the C# would apply to this panel."""
+    return dict(csharp_encode(
+        resolution, jpeg=jpeg, pm=pm, my_sub_mode=my_sub_mode).angles)
 
 
 def csharp_encode_base(
-    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0, sub: int = 0,
+    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0,
+    my_sub_mode: int = 0,
 ) -> int:
     """The rotation at ``directionB == 0`` — the panel's dir-0 mount offset."""
-    return csharp_encode_angles(resolution, jpeg=jpeg, pm=pm, sub=sub)[0]
+    return csharp_encode_angles(
+        resolution, jpeg=jpeg, pm=pm, my_sub_mode=my_sub_mode)[0]
 
 
 def csharp_wire_rotation(
-    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0, sub: int = 0,
-    orientation: int = 0,
+    resolution: tuple[int, int], *, jpeg: bool, pm: int = 0,
+    my_sub_mode: int = 0, orientation: int = 0,
 ) -> int:
     """The rotation the C# applies at one display angle."""
     return csharp_encode_angles(
-        resolution, jpeg=jpeg, pm=pm, sub=sub)[orientation % 360]
+        resolution, jpeg=jpeg, pm=pm, my_sub_mode=my_sub_mode)[orientation % 360]

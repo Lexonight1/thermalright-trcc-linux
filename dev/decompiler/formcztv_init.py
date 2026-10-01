@@ -258,10 +258,16 @@ def form_cztv_init(
         st.hit(1006, "mode==3 && pm==100 && fbl==58 -> pm = 101 "
                      "(gates the frame-skip logic)")
     elif st.myDeviceMode == 3 and st.myDevicePingMu == 100 and fbl == 54:
-        st.isFanLcd = True
-        st.myDeviceMode = 2
-        st.hit(1010, "mode==3 && pm==100 && fbl==54 -> isFanLcd, mode = 2 "
-                     "(so the fan hub encodes JPEG)")
+        # REWORKED IN 2.1.8 (:1019).  Through 2.1.6 every fan hub was isFanLcd
+        # and mode 2 (JPEG).  Now isFanLcd is SUB 1 only, mySubMode is
+        # assigned, and SUB 4 stays mode 3 — so it encodes RGB565.
+        st.isFanLcd = st.pmSub == 1
+        st.mySubMode = st.pmSub
+        if st.pmSub != 4:
+            st.myDeviceMode = 2
+        st.hit(1019, f"mode==3 && pm==100 && fbl==54 -> isFanLcd="
+                     f"{st.isFanLcd}, mySubMode = pmSub = {st.pmSub}, "
+                     f"mode = {st.myDeviceMode}")
     elif st.myDeviceMode == 3 and st.myDevicePingMu == 100 and fbl == 128:
         st.myDeviceMode = 2
         st.isBiliPingmu = st.is1280x480 = True
@@ -275,7 +281,9 @@ def form_cztv_init(
     elif st.myDeviceMode == 3 and st.myDevicePingMu == 100 and fbl == 59:
         st.is640x172 = True
         st.fbl = fbl = 224
-        st.hit(1036, "mode==3 && pm==100 && fbl==59 -> is640x172, fbl = 224")
+        st.mySubMode = st.pmSub
+        st.hit(1052, "mode==3 && pm==100 && fbl==59 -> is640x172, fbl = 224")
+        st.hit(1056, f"  mySubMode = pmSub = {st.pmSub}   (new in 2.1.8)")
     elif st.myDeviceMode == 3 and st.myDevicePingMu == 100 and fbl == 60:
         st.is176x320 = True
         st.fbl = fbl = 224
@@ -365,6 +373,9 @@ def set_theme_info_theme_ml(st: CztvState) -> None:
 
     for flag, token in _SQUARE_TOKENS:
         if getattr(st, flag):
+            # 2.1.8 (:1270): a 360x360 hub off SUB 1 takes the `360360m` catalog.
+            if flag == "is360x360" and st.pmSub != 1:
+                token = f"{token}m"
             st.ThemeML = f"{token}\\"
             st.hit(1249, f"{flag} -> ThemeML = {st.ThemeML!r} "
                          f"(squares ignore orientation)")

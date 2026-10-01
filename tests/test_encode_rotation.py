@@ -16,8 +16,9 @@ what produced the drift.
 
 MUTATION CHECK -- in ``ENCODE_ROTATIONS``, change ``(854, 480, _JPEG)`` from
 ``EncodeRotation(0, invert=False)`` to ``EncodeRotation(0)`` (the shape that
-shipped, and #203/#169/#171).  MEASURED: **17 failures**, all 854x480 --
-``test_encode_angles_match_the_csharp_switch`` for all 8 SUB bytes,
+shipped, and #203/#169/#171).  MEASURED 2026-10-01: **15 failures**, all
+854x480 -- ``test_encode_angles_match_the_csharp_switch`` for SUB 1 and 3-7
+(SUB 0 and 2 meet a ``not_ported`` arm, which differs either way),
 ``test_854_takes_the_same_angles_at_every_sub`` for all 8, and
 ``test_854_and_800_count_up_with_the_display_angle`` once.  The reported diff
 is ``90: 270`` and ``270: 90`` against the C#'s ``90: 90`` and ``270: 270``,
@@ -31,6 +32,7 @@ wired to the code it audits.
 """
 from __future__ import annotations
 
+import functools
 import sys
 from pathlib import Path
 
@@ -38,6 +40,7 @@ import pytest
 
 from trcc.core.protocol import (
     ENCODE_ROTATIONS,
+    FBL_PROFILES,
     get_profile,
     resolve_encode_angle,
     resolve_encode_rotation,
@@ -47,8 +50,11 @@ from trcc.core.protocol import (
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
 from encode_reference import (  # pyright: ignore[reportMissingImports]
+    csharp_encode,
     csharp_encode_angles,
-    csharp_my_sub_mode,
+)
+from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    form_cztv_init,
 )
 
 _ORIENTATIONS = (0, 90, 180, 270)
@@ -60,15 +66,25 @@ _SUBS = tuple(range(8))
 # the ANGLES are, and hand-listing them is how the last two files went stale.
 _PANELS = sorted(ENCODE_ROTATIONS)
 
-# The C# tests `myDevicePingMu == 5` BEFORE any resolution guard, so the oracle
-# needs the PM byte to reach that arm while our table keys the same panel on
-# (320x240, JPEG).  The two select the same single device — enumerating every
-# PM shows six resolve to 320x240 and only PM 5 is a bulk PM, so only PM 5 ever
-# arrives with jpeg=True — and this is where that equivalence is asserted
-# rather than assumed.  `pm == 6` (the FW360 mount offset) is NOT here: our
-# port carries it as `encode_baseline`, a separate rotation, so it is not part
-# of the encode table under test.
-_CSHARP_PM: dict[tuple[int, int, bool], int] = {(320, 240, True): 5}
+@functools.cache
+def _route(width: int, height: int, jpeg: bool) -> tuple[int, int, int]:
+    """The first C# ``FormCZTVInit(fbl, mode, pm)`` that reaches this panel.
+
+    Searched, not listed: the oracle switch tests ``myDevicePingMu`` and
+    ``mySubMode``, and only the emulator knows which a real route sets.  The
+    encoder is the C#'s own rule — ``myDeviceMode == 2 ? ImageToJpg :
+    ImageTo565``.  The FIRST route is the lowest PM, so a square resolves
+    through PM 0, not PM 4 or PM 6; those per-PM arms are swept against every
+    catalogued bulk fingerprint by ``test_csharp_conformance.py``.
+    """
+    for mode in (1, 2, 3):
+        for fbl in sorted(FBL_PROFILES):
+            for pm in range(256):
+                st = form_cztv_init(fbl, m=mode, pm=pm)
+                if (st.resolution == (width, height)
+                        and (st.myDeviceMode == 2) == jpeg):
+                    return fbl, mode, pm
+    raise AssertionError(f"no C# route reaches {width}x{height} jpeg={jpeg}")
 
 
 @pytest.mark.parametrize("sub", _SUBS)
@@ -76,19 +92,31 @@ _CSHARP_PM: dict[tuple[int, int, bool], int] = {(320, 240, True): 5}
 def test_encode_angles_match_the_csharp_switch(
     width: int, height: int, jpeg: bool, sub: int,
 ) -> None:
-    """Every panel, every encoder, every SUB byte, all four display angles."""
+    """Every panel, every encoder, every SUB byte, all four display angles.
+
+    A difference passes only when the C# arm itself is labelled
+    ``not_ported`` — and then it MUST still differ, so a label cannot outlive
+    the divergence it excuses.
+    """
+    fbl, mode, pm = _route(width, height, jpeg)
+    st = form_cztv_init(fbl, m=mode, pm=pm, pmSub=sub)
+    assert st.resolution == (width, height), (fbl, mode, pm, sub)
+    arm = csharp_encode((width, height), jpeg=jpeg, pm=pm,
+                        my_sub_mode=st.mySubMode)
     rotation = resolve_encode_rotation((width, height), jpeg, sub)
-    ours = {
-        deg: (rotation.base + (deg if not rotation.invert else -deg)) % 360
-        for deg in _ORIENTATIONS
-    }
-    theirs = csharp_encode_angles(
-        (width, height), jpeg=jpeg, sub=sub,
-        pm=_CSHARP_PM.get((width, height, jpeg), 0))
+    ours = ({deg: (rotation.base + (deg if not rotation.invert else -deg)) % 360
+             for deg in _ORIENTATIONS}, False)
+    theirs = (arm.angles, arm.mirror)
+    label = (f"{width}x{height} {'JPEG' if jpeg else 'RGB565'} sub={sub} "
+             f"(route fbl={fbl} mode={mode} pm={pm}, mySubMode={st.mySubMode})")
+    if arm.not_ported:
+        assert ours != theirs, (
+            f"{label}: we now match the C# arm labelled not_ported — delete "
+            f"the label in encode_reference.py")
+        return
     assert ours == theirs, (
-        f"{width}x{height} {'JPEG' if jpeg else 'RGB565'} sub={sub}: we rotate "
-        f"{ours}, the C# rotates {theirs}.  A frame at the wrong angle is "
-        f"upside-down or sideways on the glass (#203/#169/#171)."
+        f"{label}: we rotate {ours}, the C# rotates {theirs}.  A frame at the "
+        f"wrong angle is upside-down or sideways on the glass (#203/#169/#171)."
     )
 
 
@@ -110,14 +138,14 @@ def test_854_and_800_count_up_with_the_display_angle() -> None:
 
 @pytest.mark.parametrize("sub", _SUBS)
 def test_854_takes_the_same_angles_at_every_sub(sub: int) -> None:
-    """854x480 has a ``mySubMode == 2`` arm in the C# that can never fire.
+    """854x480 takes base 0, non-inverted, whatever its SUB byte says.
 
-    ``FormCZTVInit`` never assigns ``mySubMode`` on the branch that sets this
-    resolution, so it stays 0 and the arm is dead code.  A port that keys on
-    the RAW SUB byte fires it and rotates 180 wrong for that one panel — which
-    is what a plain revert of the deleted rows would have done.
+    Through 2.1.6 ``FormCZTVInit`` never assigned ``mySubMode`` on this branch,
+    so its ``mySubMode == 2`` arm was dead.  The current oracle assigns it,
+    which makes that arm and a SUB-0 mirror reachable — both labelled
+    ``not_ported`` (every reporter on this family posts SUB 5, and none has
+    seen a mirrored image).  This pins OUR choice: no SUB arm on 854x480.
     """
-    assert csharp_my_sub_mode((854, 480), sub) == 0
     rotation = resolve_encode_rotation((854, 480), jpeg=True, sub=sub)
     assert (rotation.base, rotation.invert) == (0, False), sub
 
