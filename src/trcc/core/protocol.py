@@ -110,6 +110,12 @@ class DeviceProfile:
     # A degraded frame beats a frozen panel, which is what #251 asked for.
     # Only the ceiling and its universality are ported, not the drop.
     max_frame_bytes: int = 450_000
+    # The panel's RGB565 framebuffer row, in pixels, when it is wider than the
+    # encoded frame's row; 0 = the rows match.  Each row is centred in it.
+    # The C#'s ``is640x172`` step in ImageTo565 (FormCZTV.cs:4285): every
+    # 172-px row of the turned frame is copied into a 176-px row 4 bytes in,
+    # a 225280-byte buffer.  Renderer.encode_payload applies it.
+    wire_row_px: int = 0
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -193,13 +199,18 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
 #     { is640x172 = true; fbl = 224; }
 #
 # Without this row that handshake fell to ``DEFAULT_PROFILE`` -- 320x320
-# RGB565 for a 640x172 JPEG panel, wrong on both axes and wrong encoder.
+# for a 640x172 panel, wrong on both axes.
 #
 # Derived from the 224 base rather than written out, because the two routes
 # describe ONE panel: a flag added to 224 that this row spelled by hand would
 # silently apply to the PM-15 device and not this one.
+#
+# The ENCODER is the route's, not the panel's.  Every C# encode site is
+# ``myDeviceMode == 2 ? ImageToJpg : ImageTo565`` (FormCZTV.cs:2825-3586), so
+# the mode-2 PM-15 device ships JPEG and this mode-3 one RGB565 -- with the
+# ``is640x172`` row repack (``wire_row_px``) that only ImageTo565 performs.
 FBL_PROFILES[59] = dataclasses.replace(
-    FBL_PROFILES[224], width=640, height=172)
+    FBL_PROFILES[224], width=640, height=172, jpeg=False, wire_row_px=176)
 
 
 #: The geometry to assume when the catalog identifies NOTHING.  Public
@@ -339,15 +350,17 @@ ENCODE_ROTATIONS: dict[tuple[int, int, bool], EncodeRotation] = {
     (640, 480, _JPEG): EncodeRotation(0),
     (360, 360, _JPEG): EncodeRotation(0),
     (640, 172, _JPEG): EncodeRotation(0),
-    # ── ImageTo565 ────────────────────────────────────────────────────────
-    # `is240x240 || is320x320 || is480x480` → 0/270/180/90.
+    # ── ImageTo565 (TRCC 2.1.8) ───────────────────────────────────────────
+    # `is240x240 || is320x320 || is480x480 || is360x360` → 0/270/180/90.
+    # 2.1.8 added 360×360 to the arm; no RGB565 360×360 panel is catalogued.
     (240, 240, _565): EncodeRotation(0),
     (320, 320, _565): EncodeRotation(0),
+    (360, 360, _565): EncodeRotation(0),
     (480, 480, _565): EncodeRotation(0),
-    # `is640x172` → 270/180/90/0.  No panel reaches this today (PM 15 hands us
-    # a JPEG 640×172), but the switch has the arm and leaving it out would make
-    # the next RGB565 640×172 silently take the base-90 default.
-    (640, 172, _565): EncodeRotation(270),
+    # `is640x172`: mySubMode == 5 → 90/0/270/180, else 270/180/90/0.  Reached
+    # by the mode-3 FBL 59 route, whose branch assigns mySubMode = pmSub
+    # (FormCZTV.cs:1056) — new in 2.1.8, as is the SUB 5 arm.
+    (640, 172, _565): EncodeRotation(270, alt_base=90, alt_subs=frozenset({5})),
 }
 
 # Both switches end in the same default arm: 90/0/270/180.  It is what the

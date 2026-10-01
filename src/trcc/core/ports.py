@@ -14,6 +14,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from ._frames import pad_rows
 from ._safe import is_under
 from .errors import DeviceDisconnectedError, UnsupportedOperationError
 from .logs import per_frame
@@ -1934,7 +1935,8 @@ class Renderer(ABC):
 
         Mirrors ``DisplayService._encode_for_wire``: a fixed hardware-mount
         baseline (``encode_baseline`` — FW360 PM=6 → 180°) pre-rotates the wire
-        frame, then JPEG or RGB565 per the profile.
+        frame, then JPEG or RGB565 per the profile — RGB565 rows centred in
+        the panel's wider framebuffer row when it has one (``wire_row_px``).
         """
         if profile.encode_baseline:
             frame_log.debug("encode_payload: hardware-mount baseline %d° "
@@ -1949,9 +1951,11 @@ class Renderer(ABC):
             # (uncapped) with only LY setting it, which left every other JPEG
             # panel able to ship a frame the firmware silently discards (#251).
             return self.encode_jpeg(surface, max_size=profile.max_frame_bytes)
-        frame_log.debug("encode_payload: RGB565, byte order %s",
-                        profile.byte_order)
-        return self.encode_rgb565(surface, profile.byte_order)
+        frame_log.debug("encode_payload: RGB565, byte order %s, row %d px",
+                        profile.byte_order, profile.wire_row_px)
+        width, _ = self.surface_size(surface)
+        return pad_rows(self.encode_rgb565(surface, profile.byte_order),
+                        width * 2, profile.wire_row_px * 2)
 
     # ── Fonts ─────────────────────────────────────────────────────────
     def list_fonts(self) -> list[str]:

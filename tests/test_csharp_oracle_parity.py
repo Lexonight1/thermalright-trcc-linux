@@ -27,7 +27,7 @@ installer, and every rotation conclusion drawn from it was drawn from the wrong
 release.  See memory ``project_csharp_oracle_was_the_wrong_version``.
 
 The ROTATION constants are no longer transcribed here.  They come from
-``dev/decompiler/encode_reference.py``, the one 2.1.6 transcription, because
+``dev/decompiler/encode_reference.py``, the one transcription, because
 this file holding a second copy of them is how they drifted: it asserted a
 sub-independent encode base that the real switch contradicts in six families.
 What stays here is what this file uniquely checks — the PM byte to geometry
@@ -42,6 +42,7 @@ Never "fix" a failure by loosening the assertion.
 """
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -286,8 +287,8 @@ def test_360_fan_hub_matches_the_csharp_default_branch() -> None:
 # ``test_pm_resolves_to_the_csharp_resolution`` above cannot see any of this:
 # its table is PM-keyed and every entry is a mode-2 PM, so a mode-3 panel is
 # outside its universe no matter how wrong we get it.  That is how fbl 59 sat
-# resolving to 320x320 RGB565 — wrong size AND wrong encoder for a 640x172
-# JPEG panel — under a green suite.
+# resolving to 320x320 — the wrong size for a 640x172 panel — under a green
+# suite.
 _CSHARP_MODE3_REWRITES: dict[int, tuple[int, int]] = {
     129: (480, 480),
     59: (640, 172),
@@ -307,15 +308,40 @@ def test_mode3_fbl_rewrites_match_the_csharp(
     )
 
 
-def test_fbl_59_is_the_same_panel_as_the_pm_15_route() -> None:
-    """Both C# routes to 640x172 must produce ONE profile, not two.
+def test_fbl_59_is_the_pm_15_panel_on_the_rgb565_encoder() -> None:
+    """Both C# routes to 640x172 are ONE panel, encoded by the ROUTE.
 
     ``mode == 2 && pm == 15`` and ``mode == 3 && pm == 100 && fbl == 59`` are
     the same screen; the C# proves it by rewriting the second to 224, the very
-    code the first already carries.  Asserting equality rather than repeating
-    the flags is what stops a change to 224 from reaching one route only.
+    code the first already carries.  But every encode site is
+    ``myDeviceMode == 2 ? ImageToJpg : ImageTo565`` (FormCZTV.cs:2825), so the
+    mode-3 route ships RGB565 with the ``is640x172`` row repack.  Asserting the
+    exact set of differing fields is what stops a change to 224 from reaching
+    one route only.
     """
-    assert get_profile(59, 100) == get_profile(224, 15)
+    route3, route2 = get_profile(59, 100), get_profile(224, 15)
+    differ = {f.name for f in dataclasses.fields(route3)
+              if getattr(route3, f.name) != getattr(route2, f.name)}
+    assert differ == {"jpeg", "wire_row_px", "encode_base"}
+    assert (route3.jpeg, route3.wire_row_px) == (False, 176)
+
+
+# ImageTo565's ``is640x172`` arm (2.1.8, FormCZTV.cs:4221): SUB 5 takes the
+# default 90/0/270/180, every other SUB 270/180/90/0.  Written out here, not
+# read from the oracle, so a wrong transcription cannot agree with itself.
+_CSHARP_640x172_RGB565: dict[int, dict[int, int]] = {
+    0: {0: 270, 90: 180, 180: 90, 270: 0},
+    5: {0: 90, 90: 0, 180: 270, 270: 180},
+}
+
+
+@pytest.mark.parametrize("sub", sorted(_CSHARP_640x172_RGB565))
+def test_fbl_59_wire_angle_follows_the_sub_arm(sub: int) -> None:
+    """The mode-3 640x172 wire angle must be the 2.1.8 arm for its SUB."""
+    profile = get_profile(59, 59, sub)
+    got = {deg: resolve_encode_angle(profile, deg) for deg in (0, 90, 180, 270)}
+    assert got == _CSHARP_640x172_RGB565[sub]
+    assert got == csharp_encode_angles((640, 172), jpeg=False, sub=sub)
 
 
 def test_the_176x320_panel_is_dual_orientation_not_just_a_size() -> None:

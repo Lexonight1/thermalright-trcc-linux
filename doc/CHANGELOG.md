@@ -86,6 +86,12 @@
 
 ### Fixed
 
+- **The 640x172 screen reached over HID (FBL 59) was sent JPEG frames.** The
+  Windows app sends this route raw RGB565 pixels, with each row centred in the
+  panel's 176-pixel framebuffer row, and turns the picture 90° for a panel that
+  reports SUB 5 instead of 270°. TRCC now does the same. Checked against the
+  Windows app's code and a simulated device; nobody has reported this panel,
+  so it has not been seen on real hardware.
 - **320x240 and 640x480 screens turned to 90° or 270° got sideways or
   partial frames.** A screen cast, a picture sent with
   `trcc display send-image`, and the blank frame sent when the screen sleeps

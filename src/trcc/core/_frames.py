@@ -1,4 +1,4 @@
-"""Row-padding primitive shared by every frame producer.
+"""Row-padding primitives: stripping it from frame producers, adding it for a panel.
 
 Why centralised: the project had three copies of this one subtle loop —
 ``adapters/screencast/pipewire.py`` (named ``unpad_rows``, documented and
@@ -15,14 +15,17 @@ sites cannot reach the PipeWire adapter for it: that would be an
 adapter→adapter dependency, and it would drag GStreamer + dbus imports into
 the render path, which has no business knowing either exists.
 
-Pure-stdlib, no project imports.
+Pure-stdlib apart from ``core.logs``.
 """
 
 from __future__ import annotations
 
 import logging
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 def unpad_rows(data: bytes, width: int, height: int, stride: int) -> bytes:
@@ -66,3 +69,25 @@ def unpad_rows(data: bytes, width: int, height: int, stride: int) -> bytes:
     log.debug("unpad_rows: stride=%d row=%d (%d byte(s) of padding per row)",
               stride, row, stride - row)
     return b"".join(data[y * stride:y * stride + row] for y in range(height))
+
+
+def pad_rows(data: bytes, row: int, stride: int) -> bytes:
+    """Centre each *row*-byte row of *data* in a zero-filled *stride*-byte row.
+
+    The inverse of :func:`unpad_rows`, for a panel whose framebuffer row is
+    wider than the frame: the C#'s ``is640x172`` step copies each 344-byte row
+    into a 352-byte row 4 bytes in (FormCZTV.cs:4285).  A *stride* no wider
+    than *row* returns *data* unchanged, so the common case costs one
+    comparison.
+    """
+    if stride <= row:
+        return data
+    rows = len(data) // row
+    offset = (stride - row) // 2
+    frame_log.debug("pad_rows: %d row(s) of %d → %d byte(s), offset %d",
+              rows, row, stride, offset)
+    out = bytearray(rows * stride)
+    for y in range(rows):
+        out[y * stride + offset:y * stride + offset + row] = \
+            data[y * row:(y + 1) * row]
+    return bytes(out)

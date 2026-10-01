@@ -1,7 +1,11 @@
 """C# encode-rotation oracle — the ``directionB`` switches, transcribed.
 
-Source: **TRCC 2.1.6**, ``TRCC.CZTV/FormCZTV.cs`` — ``ImageToJpg`` and
-``ImageTo565``.  Verify the tree before trusting a citation::
+Source: ``TRCC.CZTV/FormCZTV.cs`` — ``ImageToJpg`` transcribed from
+**TRCC 2.1.6**, ``ImageTo565`` re-transcribed from **2.1.8**.  The 2.1.8
+``ImageToJpg`` changed arms this file does not carry yet (square SUB 7,
+1280x480 SUB 7, 1920x462/440) — see
+``memory/project_2_1_8_encoder_arms_unported.md``.  Verify the tree before
+trusting a citation::
 
     grep -rh AssemblyVersion ~/Downloads/TRCC_2.1.6_decompiled/Properties/*.cs
     # -> [assembly: AssemblyVersion("2.1.6.0")]
@@ -28,7 +32,8 @@ from __future__ import annotations
 #
 # ``FormCZTVInit`` assigns ``mySubMode = pmSub`` on the branches that set
 # 1920x462 (pm 65/66, pm1+sub49), 1920x440 (pm 69), 1280x480 (pm 68, and the
-# mode-3 fbl-128 branch), 960x540 (pm 10/16) and 960x320 (pm 13/17/18).
+# mode-3 fbl-128 branch), 960x540 (pm 10/16), 960x320 (pm 13/17/18) and,
+# since 2.1.8, 640x172 on the mode-3 fbl-59 branch.
 #
 # It does NOT assign it for **854x480** (pm 9/11) or **800x480** (pm 12) —
 # every sibling branch does, those two do not — so it stays 0 for them and
@@ -60,12 +65,13 @@ _D = {0: 0, 90: 90, 180: 180, 270: 270}      # counts UP — 854/800 only
 _E = {0: 180, 90: 270, 180: 0, 270: 90}      # counts up, offset — 854/800 alt
 _F = {0: 270, 90: 180, 180: 90, 270: 0}      # ImageTo565 640x172
 
-# ImageToJpg, in the C#'s own branch order.  Each entry is
-# (resolution(s), arm when the mySubMode guard holds, guard, arm otherwise).
-_JPG_ARMS: tuple[tuple[frozenset[tuple[int, int]],
-                       dict[int, int],
-                       frozenset[int] | None,
-                       dict[int, int]], ...] = (
+# One arm table row: (resolution(s), arm when the mySubMode guard holds,
+# guard, arm otherwise).  Both switches are a list of these, in C# order.
+_Arm = tuple[frozenset[tuple[int, int]], dict[int, int],
+             frozenset[int] | None, dict[int, int]]
+
+# ImageToJpg, in the C#'s own branch order.
+_JPG_ARMS: tuple[_Arm, ...] = (
     # `is320x320 || is480x480`.  The `myDevicePingMu == 6` sub-branch (arm _B)
     # is the FW360 mount offset and is handled by `pm`, below, not by SUB.
     (frozenset({(320, 320), (480, 480)}), _A, None, _A),
@@ -85,10 +91,12 @@ _JPG_ARMS: tuple[tuple[frozenset[tuple[int, int]],
     (frozenset({(640, 480), (360, 360), (640, 172)}), _A, None, _A),
 )
 
-# ImageTo565.  `is240x240 || is320x320 || is480x480`, then `is640x172`.
-_565_ARMS: tuple[tuple[frozenset[tuple[int, int]], dict[int, int]], ...] = (
-    (frozenset({(240, 240), (320, 320), (480, 480)}), _A),
-    (frozenset({(640, 172)}), _F),
+# ImageTo565 (2.1.8).  `is240x240 || is320x320 || is480x480 || is360x360`
+# (360 is new in 2.1.8), then `is640x172`: mySubMode == 5 → the default arm
+# (new in 2.1.8), else _F.
+_565_ARMS: tuple[_Arm, ...] = (
+    (frozenset({(240, 240), (320, 320), (480, 480), (360, 360)}), _A, None, _A),
+    (frozenset({(640, 172)}), _C, frozenset({5}), _F),
 )
 
 # The Mjolnir: `myDevicePingMu == 5` is tested BEFORE every resolution guard in
@@ -110,17 +118,13 @@ def csharp_encode_angles(
     with ``pm == 6`` hits the square guard's PM sub-branch, and a 320x240 JPEG
     panel hits ``myDevicePingMu == 5`` before any resolution is tested.
     """
-    if not jpeg:
-        for resolutions, arm in _565_ARMS:
-            if resolution in resolutions:
-                return dict(arm)
-        return dict(_C)
-    if resolution in ((320, 320), (480, 480)):
+    if jpeg and resolution in ((320, 320), (480, 480)):
         return dict(_PM6_ARM if pm == 6 else _A)
-    if pm == 5:
+    if jpeg and pm == 5:
         return dict(_PM5_ARM)
     my_sub_mode = csharp_my_sub_mode(resolution, sub)
-    for resolutions, guarded, guard, otherwise in _JPG_ARMS:
+    for resolutions, guarded, guard, otherwise in (
+            _JPG_ARMS if jpeg else _565_ARMS):
         if resolution not in resolutions:
             continue
         if guard is not None and my_sub_mode in guard:
