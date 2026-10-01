@@ -46,12 +46,9 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          # No recommends: 212 -> 134 MB measured in ubuntu:24.04 (2026-10-01).
-          # They are GTK3, VA/VDPAU/Vulkan drivers, systemd/dbus and icon
-          # themes; the Mesa GL libraries Qt needs are Depends and stay.
-          sudo apt-get install -y --no-install-recommends libgl1 libegl1 ffmpeg
+        uses: ./.github/actions/system-deps
+        with:
+          packages: libgl1 libegl1 ffmpeg
 
       - name: Install dependencies
         run: |
@@ -163,12 +160,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          # No recommends: 212 -> 134 MB measured in ubuntu:24.04 (2026-10-01).
-          # They are GTK3, VA/VDPAU/Vulkan drivers, systemd/dbus and icon
-          # themes; the Mesa GL libraries Qt needs are Depends and stay.
-          sudo apt-get install -y --no-install-recommends libgl1 libegl1 ffmpeg
+        uses: ./.github/actions/system-deps
+        with:
+          packages: libgl1 libegl1 ffmpeg
 
       - name: Install dependencies
         run: |

@@ -1,0 +1,53 @@
+name: System dependencies
+description: >-
+  apt packages the tests need, installed from a cache of their .deb files so a
+  job does not depend on the Ubuntu mirror's speed.
+
+# Why a cache: on 2026-10-01 the same 74 MB download took 9-20 s on three
+# runners and 15-18 minutes on others (78.8-99.3 kB/s from the Azure mirror).
+# apt has no fastest-mirror selection; it moves to the next mirror on a
+# FAILURE, never on slowness.  With the .debs present, apt reports
+# "Need to get 0 B/134 MB" and installs with no download (measured in
+# ubuntu:24.04 the same day).
+#
+# The key carries the runner image version: when GitHub ships a new image the
+# previous cache is restored, apt downloads only what changed, and the new key
+# is saved.  The glob leaves out apt's root-owned partial/ directory and lock
+# file, which would make saving the cache fail.
+#
+# /tmp, not the home directory: apt downloads as its sandbox user ``_apt``,
+# which cannot enter a 750 /home/runner, so a cache there makes every run
+# print "Download is performed unsandboxed as root" (measured in ubuntu:24.04
+# with a non-root runner user).  /tmp is world-traversable and gives none.
+
+inputs:
+  packages:
+    description: Space-separated apt packages.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Runner image version
+      id: image
+      shell: bash
+      run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache apt archives
+      uses: actions/cache@v6
+      with:
+        path: /tmp/apt-cache/*.deb
+        key: ${{ runner.os }}-apt-${{ steps.image.outputs.version }}-${{ inputs.packages }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
+
+    - name: Install
+      shell: bash
+      run: |
+        mkdir -p /tmp/apt-cache
+        sudo apt-get update
+        # No recommends: 212 -> 134 MB measured in ubuntu:24.04 (2026-10-01).
+        # They are GTK3, VA/VDPAU/Vulkan drivers, systemd/dbus and icon
+        # themes; the Mesa GL libraries Qt needs are Depends and stay.
+        sudo apt-get install -y --no-install-recommends \
+          -o Dir::Cache::Archives=/tmp/apt-cache ${{ inputs.packages }}
