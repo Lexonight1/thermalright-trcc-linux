@@ -60,11 +60,13 @@ from ._helpers import (
     _search_theme_by_name,
     as_working_layer,
     device_overlay_layout,
+    fit_mask_upload,
     native_canvas,
     oriented_theme_path,
     overlay_elements_to_dc,
     screencast_dc_flags,
     seed_screencast_rect,
+    user_mask_flags,
 )
 from .device import (
     ApplyMask,
@@ -1609,8 +1611,10 @@ class UploadCustomMask(Command[MaskUploadResult]):
                          "connect the device or register the product first"),
             )
         try:
-            image = self.source.read_bytes()
-        except OSError as e:
+            shrunk, size = fit_mask_upload(app, self.source, resolution)
+            image = shrunk if shrunk is not None else self.source.read_bytes()
+        except Exception as e:
+            log.warning("UploadCustomMask: cannot read %s: %s", self.source, e)
             return MaskUploadResult(
                 ok=False, key=self.key, path="",
                 message=f"Cannot read source {self.source}: {e}",
@@ -1621,7 +1625,7 @@ class UploadCustomMask(Command[MaskUploadResult]):
         # the image so the upload applies with its metrics.
         dc_bytes = overlay_elements_to_dc(
             device_overlay_layout(app, self.key), allow_empty=True,
-            flags=screencast_dc_flags(app.settings.for_device(self.key)),
+            flags=user_mask_flags(app, self.key, size),
         )
         # Named, not content-addressed: this mask is one the user chose and
         # will look for by name in the browser.  The store owns the layout —

@@ -173,9 +173,14 @@ def persist_user_mask_dc(app: App, key: str) -> None:
     elements = device_overlay_layout(app, key)
     # allow_empty=True → the user mask always keeps a config1.dc, even when
     # every metric is removed, so it stays an editable unit.
+    try:
+        size = app.renderer.surface_size(app.renderer.open_image(mask_file))
+    except Exception as e:
+        log.warning("persist_user_mask_dc: cannot size %s (%s) — skip",
+                    mask_file, e)
+        return
     dc = overlay_elements_to_dc(
-        elements, allow_empty=True,
-        flags=screencast_dc_flags(app.settings.for_device(key)))
+        elements, allow_empty=True, flags=user_mask_flags(app, key, size))
     mask_dc = ThemeDir(mask_file.parent).dc
     try:
         if dc is not None:
@@ -772,6 +777,51 @@ def screencast_dc_flags(s: DeviceSettings) -> dict[str, Any]:
              "screencast_border": s.screencast_hide_border}
     log.debug("screencast_dc_flags: %s", flags)
     return flags
+
+
+def user_mask_flags(app: App, key: str, size: tuple[int, int]) -> dict[str, Any]:
+    """A user mask's DC fields beyond its metrics: the device's screencast
+    region, and the mask's CENTRE.
+
+    The C# centres an uploaded mask on itself -- ``XvalMB = W / 2``,
+    ``YvalMB = H / 2`` (FormCZTV.cs:5821, :6032) -- which draws it at the
+    top-left.  Our writer left the codec's (0, 0), which draws a mask at minus
+    half its size whenever it is not full-size, as every portrait upload is
+    against the landscape profile: a quarter of it on the panel.
+    """
+    w, h = size
+    flags = {**screencast_dc_flags(app.settings.for_device(key)),
+             "mask_position": (w // 2, h // 2)}
+    log.debug("user_mask_flags: %s %dx%d -> centre %s", key, w, h,
+              flags["mask_position"])
+    return flags
+
+
+def fit_mask_upload(app: App, source: Path,
+                    canvas: tuple[int, int]) -> tuple[bytes | None, tuple[int, int]]:
+    """An uploaded mask's size, and its PNG when it had to shrink to fit
+    *canvas* as the C# does -- None when it fits and is stored as given.
+
+    FormCZTV.cs:5786-5809: wider than the canvas -> scale to its width, then
+    to its height if still too tall; else taller -> scale to its height; never
+    enlarged, aspect kept, integer arithmetic.
+    """
+    renderer = app.renderer
+    surface = renderer.open_image(source)
+    w, h = renderer.surface_size(surface)
+    cw, ch = canvas
+    if w > cw:
+        nw, nh = cw, h * cw // w
+        if nh > ch:
+            nw, nh = w * ch // h, ch
+    elif h > ch:
+        nw, nh = w * ch // h, ch
+    else:
+        log.debug("fit_mask_upload: %s %dx%d fits %dx%d", source.name, w, h, cw, ch)
+        return None, (w, h)
+    log.info("fit_mask_upload: %s %dx%d -> %dx%d to fit %dx%d",
+             source.name, w, h, nw, nh, cw, ch)
+    return renderer.encode_png(renderer.resize(surface, nw, nh)), (nw, nh)
 
 
 def _apply_screencast_rect(app: App, key: str, native: tuple[int, int, int, int],

@@ -247,6 +247,15 @@ class OverlayService:
             cx, cy = int(pos[0]), int(pos[1])
         except (TypeError, ValueError):
             return centered
+        if (cx, cy) == (0, 0):
+            # Never the vendor's: 0 of 1704 shipped DCs with a visible mask
+            # store it (2026-09-30).  It is what our user-mask writer left until
+            # then, unset; read it as the C#'s upload default, the mask's own
+            # centre (FormCZTV.cs:5821), so masks uploaded before the fix land
+            # at the top-left instead of a quarter of them on the panel.
+            log.info("calculate_mask_position: %s stores centre (0, 0) — "
+                     "the unset default, placing at the top-left", mask_dir)
+            return (0, 0)
         # DC stores CENTER coords; render at top-left = center - size/2.
         return (cx - mask_w // 2, cy - mask_h // 2)
 

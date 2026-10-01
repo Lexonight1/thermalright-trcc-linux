@@ -157,11 +157,12 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     # (SPIMode is set only at mode1/fbl51 and mode3/fbl49).  Falling through to
     # DEFAULT_PROFILE got the size AND the byte order wrong.
     #
-    # NOTE, undetermined: `theme176320` ships 176x320 backgrounds with 172x320
-    # MASKS -- the ONLY catalog in the set where the two differ, and the same
-    # 172-in-176 pair as the `is640x172` stride repack (FormCZTV.cs:4190),
-    # which centres with a +2px offset.  Our compositor places masks top-left
-    # unscaled, so this panel's mask may sit 2px off.  Not guessed here.
+    # `theme176320` ships 176x320 backgrounds with 172x320 masks.  Measured
+    # 2026-09-30, all 10 (both catalogs): each DC stores the mask centre
+    # (86, 160) / (160, 86), so the C# draws it at XvalMB - W/2 = 0 -- the
+    # top-left, 4px short on the right -- and so do we.  The +2px centring of
+    # the `is640x172` repack (FormCZTV.cs:4190) is a WIRE step for that panel,
+    # not a mask rule.
     60:  DeviceProfile(320,  176,  rotate=True),
     64:  DeviceProfile(640,  480,  rotate=True),
     72:  DeviceProfile(480,  480,

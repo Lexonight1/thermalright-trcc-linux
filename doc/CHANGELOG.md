@@ -94,6 +94,12 @@
   portrait theme is, which is also how the Windows app does it. This affected
   FBL 50, 51, 52, 53, 58 and 64 (for example the Frozen Warframe SE and the
   BA120 Vision).
+- **An uploaded mask could land mostly off the screen.** A mask you
+  uploaded in portrait, or one smaller than the screen, was drawn shifted
+  up and left by half its size, so only a corner showed. Uploads now sit at
+  the top-left like in the Windows app, oversized ones shrink to fit the
+  screen the same way, and masks you uploaded before this update are placed
+  correctly too.
 - **The 176x320 screen (FBL 60) had its width and height swapped**, so
   every frame for it would have been built in the wrong shape. No one has
   reported this screen yet; it now matches the Windows app at every angle.
