@@ -65,3 +65,18 @@ def test_the_walk_actually_finds_rows() -> None:
         f"only {len(found)} variant rows named an image — the walk is looking "
         f"in the wrong place, and the parametrized test above is vacuous"
     )
+
+
+@pytest.mark.parametrize(("sub", "image"), [
+    (1, "A1LC5"), (2, "A1LC13"), (3, "A1CORE VISION"), (4, "A1CORE VISION"),
+])
+def test_the_fan_hub_names_its_core_vision_rows(sub: int, image: str) -> None:
+    """HID fbl 54: ``sub == 2`` LC13, ``sub == 3 || sub == 4`` CORE VISION, else LC5.
+
+    2.1.8's ``ADDUserButton`` case 2 / 54 (TRCC/UCDevice.cs).  The 3/4 rows
+    were missed when the 2.1.8 images were added, and the walk above cannot
+    see a row that is not there -- it checks the images rows NAME.
+    """
+    from trcc.core.variants import get_button_image
+
+    assert get_button_image(0x0416, 0x5302, 54, sub) == image

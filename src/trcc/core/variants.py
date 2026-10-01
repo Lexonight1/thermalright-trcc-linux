@@ -182,7 +182,8 @@ _VARIANT_REGISTRY: dict[
         51:  {None: _v('A1FROZEN WARFRAME')},
         52:  {None: _v('A1BA120 VISION')},
         53:  {1: _v('A1LCO3'), None: _v('A1LF20')},   # 2.1.8: +sub1
-        54:  {2: _v('A1LC13'), None: _v('A1LC5')},   # 2.1.6: +sub2
+        54:  {2: _v('A1LC13'), None: _v('A1LC5'),    # 2.1.6: +sub2
+              3: _v('A1CORE VISION'), 4: _v('A1CORE VISION')},  # 2.1.8: +sub3/4
         58:  {0: _v('A1FROZEN WARFRAME SE'), None: _v('A1LM26')},
         59:  {0: _v('A1LC7'), 1: _v('A1LC7'),
               4: _v('A1LC18'),                      # 2.1.8: +sub4
