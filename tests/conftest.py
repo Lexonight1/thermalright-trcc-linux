@@ -963,10 +963,33 @@ def cli_app(fake_platform):
     _ctx.set_platform(fake_platform)
     _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
     yield _ctx.compose_app()
+    _reset_cli_ctx()
+
+
+def _reset_cli_ctx() -> None:
+    """Forget the CLI's cached App and its overrides -- a fresh process."""
+    import sys
+
+    if "trcc.ui.cli._ctx" not in sys.modules:   # never imported: nothing cached
+        return
+    from trcc.ui.cli import _ctx
+
     _ctx.get_app.cache_clear()
     _ctx.compose_app.cache_clear()
     _ctx._platform_override = None
     _ctx._renderer_override = None
+
+
+@pytest.fixture(autouse=True)
+def _cli_app_never_outlives_its_test() -> Iterator[None]:
+    """The CLI caches ONE App per process (``_ctx.compose_app``), and three
+    fixtures filled it without clearing it.  The next test on that worker then
+    got their App: ``test_status_and_kill_through_a_ui_never_start_an_app``
+    failed whenever one ran before it, which a new test FILE decided by
+    reshuffling the workers (2026-09-30).  Reset after every test, so no
+    fixture has to remember to."""
+    yield
+    _reset_cli_ctx()
 
 
 # =========================================================================

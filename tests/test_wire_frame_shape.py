@@ -159,7 +159,13 @@ def test_the_family_is_exactly_the_tail_callers() -> None:
 def test_wire_frame_matches_the_rendered_frame_shape(
     builder: str, fbl: int, orientation: int, tmp_home: Path,
 ) -> None:
-    profile = FBL_PROFILES[fbl]
+    # ``get_profile``, never the raw ``FBL_PROFILES`` row: the row carries no
+    # encode base (0 on every one), and every device's profile comes through
+    # ``get_profile``, which sets it -- 90 on the base-90 family.  Measured on
+    # the raw rows, this gate passed while cast, image and solid colour sent
+    # a TRANSPOSED buffer at 90/270 on FBL 50-53/58/60/64 on real devices:
+    # 42 of 240 frames (2026-09-30).
+    profile = get_profile(fbl)
     info = _info(fbl, profile.resolution)
 
     renderer = RecordingRenderer()

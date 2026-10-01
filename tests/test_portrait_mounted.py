@@ -81,10 +81,14 @@ def test_the_table_is_exactly_what_the_csharp_guards() -> None:
         _THEME_TOKENS,
     )
 
+    # Keyed long side first, as every profile is: the flag spells its sides in
+    # either order (``is176x320``), and the C# composes all of them landscape
+    # at 0 degrees (GIFSize, FormCZTV.cs:3100-3545).
     theirs = {
-        tuple(int(n) for n in flag[2:].split("x")): portrait_from
+        (max(sides), min(sides)): portrait_from
         for flag, _, _, portrait_from, _ in _THEME_TOKENS
         if portrait_from is not None
+        for sides in [tuple(int(n) for n in flag[2:].split("x"))]
     }
     assert theirs == _PORTRAIT_MOUNT_MIN_SUB, (
         "the shipping mount table and the C# transcription disagree"

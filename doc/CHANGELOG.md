@@ -40,9 +40,6 @@
   The region now keeps the shape of the picture it fills, which turns when
   you rotate the screen. Before, it kept the shape of the unrotated panel, so
   a portrait-mounted screen locked a landscape region.
-  Known gap: on 7 of 20 panel types (FBL 50, 51, 52, 53, 58 and 64 at 90° or
-  270°, and FBL 60 at any angle) the Windows app captures a different shape
-  than we compose. The default region is letterboxed there until you edit it.
 - **The media player plays web videos and live streams.** Give it an http,
   https or rtsp address (`trcc display media-player <key> <url>`, or the REST
   API) and it plays on the panel at 16 frames a second, with your theme's
@@ -89,6 +86,17 @@
 
 ### Fixed
 
+- **320x240 and 640x480 screens turned to 90° or 270° got sideways or
+  partial frames.** A screen cast, a picture sent with
+  `trcc display send-image`, and the blank frame sent when the screen sleeps
+  were built in the wrong shape on these panels, so the screen painted only
+  part of them, and a cast came out sideways. They are now built the way a
+  portrait theme is, which is also how the Windows app does it. This affected
+  FBL 50, 51, 52, 53, 58 and 64 (for example the Frozen Warframe SE and the
+  BA120 Vision).
+- **The 176x320 screen (FBL 60) had its width and height swapped**, so
+  every frame for it would have been built in the wrong shape. No one has
+  reported this screen yet; it now matches the Windows app at every angle.
 - **The gui's background, screencast, video and mask switches show what the
   screen is doing.** They showed everything off for every theme, and never
   followed a cast or a video started from another window. Turning the

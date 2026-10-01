@@ -31,8 +31,8 @@ from trcc.core.commands import (
     StartScreencast,
 )
 from trcc.core.events import ScreencastRegionChanged
-from trcc.core.geometry import screencast_axes
-from trcc.core.protocol import FBL_PROFILES
+from trcc.core.geometry import oriented_canvas, screencast_axes
+from trcc.core.protocol import FBL_PROFILES, get_profile
 from trcc.services import _dc as Dc
 
 _KEY = "87ad:70db"
@@ -57,9 +57,19 @@ def test_the_box_follows_the_csharp_rule(native: tuple[int, int], orientation: i
     assert screencast_axes(box, native, orientation) == (1, 2, 30, 40), "not its own inverse"
 
 
-def test_a_portrait_native_panel_still_captures_landscape_at_0() -> None:
-    """176x320 is portrait natively; the C# captures (JpH, JpW) there at 0."""
-    assert screencast_axes((0, 0, 176, 320), (176, 320), 0) == (0, 0, 320, 176)
+@pytest.mark.parametrize("fbl", sorted(FBL_PROFILES))
+@pytest.mark.parametrize("orientation", [0, 90, 180, 270])
+def test_the_box_and_the_canvas_it_fills_share_a_shape(fbl: int, orientation: int) -> None:
+    """The C# sizes its canvas (GIFSize) to the capture box, so a region is
+    never letterboxed into a canvas of the other shape.  Ours disagreed on 7
+    of 20 panels until 2026-09-30 -- the base-90 family at 90/270 and FBL 60
+    at every angle."""
+    profile = get_profile(fbl)
+    cw, ch = oriented_canvas(profile, orientation)
+    *_, bw, bh = screencast_axes((0, 0, 240, 320), profile.resolution, orientation)
+
+    assert cw == ch or (cw > ch) == (bw > bh), (
+        f"fbl {fbl} at {orientation}: canvas {cw}x{ch}, capture box {bw}x{bh}")
 
 
 # ── The App ───────────────────────────────────────────────────────────

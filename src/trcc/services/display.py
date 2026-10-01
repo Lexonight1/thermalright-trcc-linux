@@ -639,15 +639,12 @@ class DisplayService:
         capture is then sent bare, which is the old behaviour and still beats
         dropping the frame.
 
-        **Geometry is deliberately untouched.**  The canvas stays
-        ``oriented_canvas`` and rotation stays ``_orient_for_wire``, so the
-        wire bytes are unchanged on every panel at every orientation.  The
-        oracle sizes its canvas (``GIFSize``) to the capture box's own shape
-        and stretches the grab into it (FormCZTV.cs:3100-3557); the box now
-        follows that rule (``screencast_axes``) and the canvas does not.
-        Measured 2026-09-30: they disagree on 7 of 20 FBLs -- 50 51 52 53 58
-        64 at 90/270, and 60 at every angle.  Changing the canvas changes the
-        wire on panels nobody has verified, so it is its own step.
+        **Geometry is the C#'s.**  The canvas is ``oriented_canvas`` -- the
+        oracle's ``GIFSize``, which it sizes to the capture box's own shape
+        and stretches the grab into (FormCZTV.cs:3100-3557) -- and rotation
+        is ``_orient_for_wire``.  A cast is a background, so at 90/270 it
+        takes the portrait-theme route; ``test_cast_takes_the_portrait_route``
+        holds it byte-identical to a portrait theme with the same picture.
         """
         log.debug("build_screencast_frame: key=%s theme=%s",
                   info.key, theme.name if theme else None)
@@ -792,28 +789,16 @@ class DisplayService:
         gets a 480x854 frame under an 854x480 header, and the firmware paints
         only the overlap (#262).
 
-        ``portrait_content=False``: these callers scale a supplied image onto
-        the device canvas rather than loading an authored portrait theme, so
-        the content is native-shaped by construction.
-
-        ``wire_angle`` ALONE, deliberately.  A ``post_rotate`` branch was
-        drafted here on the reasoning that ``plan_orientation`` answers 90/270
-        with post_rotate while leaving ``wire_angle`` at 0/180, so the latter
-        would emit 320x240 under a 240x320 header.  MEASURED 2026-08-19: it
-        does not.  On the 6 base-90 profiles (50/51/52/53/58 at 320x240, 64 at
-        640x480) -- the only 12 (panel, angle) pairs where post_rotate is
-        non-zero at all with ``portrait_content=False`` -- ``wire_angle``
-        answers **270 at 90deg and 90 at 270deg**, not 0/180.  Both swap the
-        axes, so the two paths emit the SAME shape on every live pair and the
-        branch changed no dimension anywhere.
-
-        What it did change is the rotation DIRECTION on those 12 pairs, by
-        180deg, for ``build_image_frame`` and ``build_screencast_frame``.
-        Whether the table's direction or post_rotate's is the one the glass
-        wants is a real question, but it is a direction question on the
-        base-90 family -- ``ENCODE_ROTATIONS`` territory, hardware-gated with
-        #169/#203 -- and no shape gate can see it.  It does not belong in a
-        shape fix, so it is not here.
+        ``wire_angle`` ALONE, deliberately, with no ``post_rotate``: these
+        callers compose on ``oriented_canvas``, which is upright at every angle
+        (the portrait canvas at 90/270), and the wire owns all rotation --
+        the route an authored portrait theme takes in ``build_frame``.  The
+        question once recorded here as hardware-gated -- landscape canvas plus
+        ``wire_angle``, or ``post_rotate``, on the base-90 panels -- was the
+        wrong question: the C# composes neither way.  Its ``GIFSize`` is
+        portrait at 90/270 and ``ImageTo565`` turns it 0 / 180 relative to the
+        0-degree frame's 90, the same steps our portrait route takes
+        (FormCZTV.cs:3518-3533, :4236-4243).  Settled 2026-09-30.
         """
         angle = wire_angle(resolved, s.orientation, False)
         log.debug("_orient_for_wire %s: orientation=%d → wire %d°",

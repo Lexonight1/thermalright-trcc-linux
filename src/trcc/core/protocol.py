@@ -141,12 +141,17 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     54:  DeviceProfile(360,  360,  jpeg=True),
     58:  DeviceProfile(320,  240,  rotate=True),                    # AussieMakerGeek's Frozen Warframe SE
     # `mode == 3 && pm == 100 && fbl == 60` -> is176x320 (FormCZTV.cs:1041),
-    # the sibling of the fbl 59 rewrite directly above it in the C#.  The only
-    # family the vendor stores (short, long): its long axis is the HEIGHT,
-    # which `UCTouPingXianShi.cs:370` confirms independently with the aspect
-    # constant 0.55 == 176/320, where every landscape panel there uses
-    # short/long.  RGB565, because the mode-3 route never reaches ImageToJpg
-    # (all four encode sites are guarded `myDeviceMode == 2`), and
+    # the sibling of the fbl 59 rewrite directly above it in the C#.  Stored
+    # (long, short) like every other row, although the C# flag is spelled
+    # short-first: the C# composes it LANDSCAPE at 0 degrees -- the `320176`
+    # catalog (:1289-1311), GIFSize 320x176 (:3160) -- and turns it 90 into
+    # the wire like the 320x240 family (ImageTo565's default arm, :4236).
+    # The W/H lock constant 0.55 == 176/320 (`UCTouPingXianShi.cs:370`) is
+    # short/long, exactly as for every landscape panel.  Stored (176, 320)
+    # until 2026-09-30, every orientation came out transposed: a 320x176
+    # buffer where the C# sends 176x320.  RGB565, because the mode-3 route
+    # never reaches ImageToJpg (all four encode sites are guarded
+    # `myDeviceMode == 2`), and
     # little-endian, because the big-endian arm needs
     # `is320x320 || mode == 10 || SPIMode == 2` and this panel is none of them
     # (SPIMode is set only at mode1/fbl51 and mode3/fbl49).  Falling through to
@@ -157,7 +162,7 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     # 172-in-176 pair as the `is640x172` stride repack (FormCZTV.cs:4190),
     # which centres with a +2px offset.  Our compositor places masks top-left
     # unscaled, so this panel's mask may sit 2px off.  Not guessed here.
-    60:  DeviceProfile(176,  320,  rotate=True),
+    60:  DeviceProfile(320,  176,  rotate=True),
     64:  DeviceProfile(640,  480,  rotate=True),
     72:  DeviceProfile(480,  480,
                        encode_pm_bases=((6, 180),)),                # FW360 Ultra PM=6 → 180° baseline (#137)
@@ -664,10 +669,10 @@ def resolve_encode_angle(profile: DeviceProfile, orientation: int) -> int:
 # are absent for the same reason.  Verified against ``control-flow.json`` by
 # ``tests/test_oracle_transcription_complete.py``.
 #
-# 176x320 is reachable only once ``FBL_PROFILES[60]`` exists; the row is the
-# C#'s rule, and costs nothing while no panel resolves to it.
+# 320x176 (the C#'s ``is176x320``, stored long side first like every
+# profile) is the C#'s rule; no reporter has presented this panel yet.
 _PORTRAIT_MOUNT_MIN_SUB: dict[tuple[int, int], int] = {
-    (176, 320): 5,
+    (320, 176): 5,
     (640, 172): 5,
     (640, 480): 5,
     (800, 480): 5,

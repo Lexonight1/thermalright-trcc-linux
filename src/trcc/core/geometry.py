@@ -108,10 +108,9 @@ def catalog_spellings(
 
     Expressed as long/short rather than as ``(w, h)``/``(h, w)`` because those
     two coincide only while every catalogued resolution is stored (long,
-    short), which is true of all 15 live ones today and NOT true of 176x320 —
-    the single family the C# stores (short, long).  Written the old way, that
-    panel selects its landscape catalog when it wants portrait and composes on
-    a transposed canvas.  Measured: 0 differences over 480 combinations of the
+    short).  The C# spells one family short-first (``is176x320``), and our row
+    for it did too until 2026-09-30; written the old way, that panel selected
+    its landscape catalog when it wanted portrait.  Measured: 0 differences over 480 combinations of the
     live resolutions, 8 over the same sweep once 176x320 is included.
     """
     w, h = resolution
@@ -196,12 +195,17 @@ def save_folder_resolution(
 
 
 def oriented_canvas(profile: DeviceProfile, orientation: int) -> tuple[int, int]:
-    """The canvas for a picture with no portrait variant, at *orientation*.
+    """The canvas a supplied picture fills at *orientation* -- the C#'s GIFSize.
 
     A solid colour, a single image and a screen cast compose here; for a cast
-    it is also the aspect a region locks to.
+    it is also the aspect a region locks to.  The C# sizes it to the
+    orientation, portrait at 90/270 on every non-square panel
+    (FormCZTV.cs:3100-3557), and puts the picture in the background slot, so
+    it takes the route an authored portrait theme takes -- upright, the wire
+    owning the rotation.  It used to take the landscape-only route, which on
+    the base-90 panels (50 51 52 53 58 64) sent a cast at 90/270 sideways.
     """
-    canvas = plan_orientation(profile, orientation, False).canvas
+    canvas = plan_orientation(profile, orientation, True).canvas
     frame_log.debug("oriented_canvas: %s @ %d -> %s", profile.resolution,
                     orientation, canvas)
     return canvas
@@ -216,8 +220,8 @@ def screencast_axes(
     ``(JpH, JpW)`` -- long side across -- on every square panel and on every
     other panel at 0 / 180 degrees; only a non-square panel turned to 90 / 270
     captures ``(JpW, JpH)`` (FormCZTV.cs:3100-3545).  It keys on the panel being
-    square and on the rotation, not on our canvas's shape: a 176x320 panel is
-    portrait natively and still captures landscape at 0.
+    square and on the rotation, and the canvas (``oriented_canvas``) follows
+    the same rule, so the box and the canvas it fills always share a shape.
 
     Swapping is its own inverse, so one call converts either way.
     """

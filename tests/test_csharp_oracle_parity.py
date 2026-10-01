@@ -291,7 +291,7 @@ def test_360_fan_hub_matches_the_csharp_default_branch() -> None:
 _CSHARP_MODE3_REWRITES: dict[int, tuple[int, int]] = {
     129: (480, 480),
     59: (640, 172),
-    60: (176, 320),
+    60: (320, 176),     # is176x320, stored long side first
 }
 
 
@@ -323,11 +323,13 @@ def test_the_176x320_panel_is_dual_orientation_not_just_a_size() -> None:
 
     It was pinned unsupported for a long time with the note that it "needs
     SUB-keyed geometry, not a table row" -- correct, and that geometry arrived
-    separately: ``is_portrait_mounted`` now covers 176x320 (``pmSub < 5`` ->
+    separately: ``is_portrait_mounted`` now covers it (``pmSub < 5`` ->
     ``320176\\`` at 0 degrees, otherwise ``176320\\`` at 90), and
     ``catalog_spellings`` names those two catalogs by long/short rather than by
-    ``(w, h)`` order -- which matters here and nowhere else, because this is
-    the one family the C# stores (short, long).
+    ``(w, h)`` order.  The C# spells the flag short-first (``is176x320``) but
+    composes the panel LANDSCAPE at 0 (GIFSize 320x176, FormCZTV.cs:3160), so
+    the row is (320, 176) like every other; stored (176, 320) until
+    2026-09-30, every angle came out transposed.
 
     Both catalogs already shipped: ``theme176320.7z`` and ``theme320176.7z``,
     5 themes each, backgrounds measured at 176x320 and 320x176 straight from
@@ -339,12 +341,12 @@ def test_the_176x320_panel_is_dual_orientation_not_just_a_size() -> None:
     from trcc.core.geometry import catalog_spellings
     from trcc.core.protocol import is_portrait_mounted
 
-    assert fbl_to_resolution(60, 100) == (176, 320)
+    assert fbl_to_resolution(60, 100) == (320, 176)
     # The SUB byte picks between the two shipped catalogs.
-    assert is_portrait_mounted((176, 320), 4) is False
-    assert is_portrait_mounted((176, 320), 5) is True
+    assert is_portrait_mounted((320, 176), 4) is False
+    assert is_portrait_mounted((320, 176), 5) is True
     # And they are named long/short, NOT (w, h)/(h, w).
-    assert catalog_spellings((176, 320)) == ((320, 176), (176, 320))
+    assert catalog_spellings((320, 176)) == ((320, 176), (176, 320))
 
 
 # ── The HID type-2 / mode-3 route, swept against the C# ────────────────────
@@ -417,9 +419,14 @@ def test_mode3_fingerprint_matches_the_csharp(fbl: int, sub: int) -> None:
         )
         return
 
-    assert state.resolution == profile.resolution, (
-        f"mode-3 fbl={fbl} sub={sub}: the C# resolves "
-        f"{state.resolution}, we resolve {profile.resolution}"
+    # The flag NAMES the panel's sides (``is176x320`` short-first,
+    # ``is640x172`` long-first); what the C# composes at 0 degrees -- GIFSize
+    # at directionB 0, FormCZTV.cs:3100-3545 -- is landscape for every one,
+    # and that canvas is what ``profile.resolution`` stores.
+    at_0 = (max(state.resolution), min(state.resolution))
+    assert at_0 == profile.resolution, (
+        f"mode-3 fbl={fbl} sub={sub}: the C# composes {at_0} at 0 degrees "
+        f"(flag {state.resolution}), we resolve {profile.resolution}"
     )
     theirs = state.themeDirection == 90
     ours = is_portrait_mounted(profile.resolution, sub)
