@@ -18,6 +18,7 @@ from ..presentation.video_clock import playback_clock
 from .assets import Assets
 from .base import BasePanel, ImageLabel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
+from .preview_popup import PreviewPopOut
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -56,9 +57,15 @@ class UCPreview(BasePanel):
 
         self._lcd_width = width
         self._lcd_height = height
-        self._offset_info = lcd_panel_for((width, height)).offset_info
+        model = lcd_panel_for((width, height))
+        self._offset_info = model.offset_info
 
         self._setup_ui()
+        #: Where the one preview label lives -- the bezel, or the widescreen
+        #: pop-out window (C# ``FormScreenImage``).
+        self.popout = PreviewPopOut(self.preview_label, self.frame_container)
+        left, top, w, h, _ = self._offset_info
+        self.popout.follow(model.popup, (left, top, w, h))
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -153,8 +160,12 @@ class UCPreview(BasePanel):
         return btn
 
     def _widget_to_lcd(self, wx: int, wy: int) -> tuple[int, int]:
-        """Translate preview widget coordinates to LCD coordinates."""
-        _, _, pw, ph, _ = self._offset_info
+        """Translate preview widget coordinates to LCD coordinates.
+
+        Against the label's CURRENT size: docked it is the bezel's LCD area,
+        popped it is the pop-out's, and a drag must land on the same pixel.
+        """
+        pw, ph = self.preview_label._width, self.preview_label._height
         if pw <= 0 or ph <= 0:
             return (0, 0)
         lx = int(wx * self._lcd_width / pw)
@@ -174,7 +185,7 @@ class UCPreview(BasePanel):
     def _on_nudge(self, dx: int, dy: int):
         """Forward keyboard nudge as LCD-scaled delta."""
         log.debug("_on_nudge: dx=%s dy=%s", dx, dy)
-        _, _, pw, ph, _ = self._offset_info
+        pw, ph = self.preview_label._width, self.preview_label._height
         if pw <= 0 or ph <= 0:
             return
         lcd_dx = int(dx * self._lcd_width / pw) if dx else 0
@@ -258,23 +269,23 @@ class UCPreview(BasePanel):
             set_background_pixmap(self.frame_container, pixmap_or_path)
 
     def set_resolution(self, width, height):
+        """The one funnel for the preview's geometry -- connect, rotation,
+        device switch.  A popped preview follows it (``PreviewPopOut.follow``):
+        still widescreen, the pop-out re-lays with the art for the new shape;
+        anything else docks it first."""
         self._lcd_width = width
         self._lcd_height = height
-        self._offset_info = lcd_panel_for((width, height)).offset_info
+        model = lcd_panel_for((width, height))
+        self._offset_info = model.offset_info
 
         left, top, w, h, frame_name = self._offset_info
-        # On-change (not per-frame) — INFO so the chosen bezel + LCD-area
-        # placement is visible at the default level: this is the preview that
-        # must match the device orientation.
         log.debug(
-            "preview.set_resolution: lcd=%dx%d → bezel=%s area=%dx%d@(%d,%d)",
-            width, height, frame_name, w, h, left, top,
+            "preview.set_resolution: lcd=%dx%d → bezel=%s area=%dx%d@(%d,%d) "
+            "popup=%s",
+            width, height, frame_name, w, h, left, top, model.popup,
         )
-        self.preview_label.setFixedSize(w, h)
-        self.preview_label._width = w
-        self.preview_label._height = h
-        self.preview_label.move(left, top)
         self.set_frame_image(frame_name)
+        self.popout.follow(model.popup, (left, top, w, h))
 
     def get_lcd_size(self):
         return (self._lcd_width, self._lcd_height)

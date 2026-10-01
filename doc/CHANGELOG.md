@@ -25,6 +25,15 @@
 
 ### Added
 
+- **A widescreen screen's preview can pop out into its own window.** As in
+  the Windows app, double-click the preview of a wide screen (800x480 up to
+  1920x462, and their portrait forms) in `trcc gui` and it opens in a
+  separate, always-on-top window you can drag anywhere, larger than the
+  preview in the main window. Editing works there as it does in the main
+  window. Turning the screen to portrait turns the window with it, and the
+  power button in its corner puts the preview back. The 1280x480 window also
+  uses the Windows app's current, half-size frame instead of an older
+  full-size one.
 - **The new interface (`trcc qtgui`) can type and nudge the screen-cast
   region.** It had only "Choose region…", which drags one. It now has X, Y,
   W and H boxes, whose arrows move the region a pixel at a time, as the

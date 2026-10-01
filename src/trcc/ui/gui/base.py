@@ -178,6 +178,7 @@ class ImageLabel(QLabel):
     drag_moved = Signal(int, int)      # (x, y) in widget coords
     drag_ended = Signal()
     nudge = Signal(int, int)           # (dx, dy) in pixels (1 or 10)
+    double_clicked = Signal()
 
     def __init__(self, width: int, height: int, parent=None):
         super().__init__(parent)
@@ -185,6 +186,10 @@ class ImageLabel(QLabel):
         self._width = width
         self._height = height
         self._dragging = False
+        #: The last image as it ARRIVED, before scaling -- so a resize (the
+        #: widescreen pop-out) redraws at the new size at once instead of
+        #: waiting for the next frame, which a static theme never sends.
+        self._source: QPixmap | QImage | None = None
 
         self.setFixedSize(width, height)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -192,8 +197,18 @@ class ImageLabel(QLabel):
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
 
+    def resize_area(self, width: int, height: int) -> None:
+        """Show the image at a new size -- docked bezel or the pop-out."""
+        log.debug("ImageLabel.resize_area: %dx%d -> %dx%d",
+                  self._width, self._height, width, height)
+        self._width, self._height = width, height
+        self.setFixedSize(width, height)
+        if self._source is not None:
+            self.set_image(self._source)
+
     def set_image(self, image, fast: bool = False):
         """Set image from QPixmap or QImage."""
+        self._source = image
         if image is None:
             frame_log.debug("set_image: None — preview cleared")
             self.clear()
@@ -234,6 +249,7 @@ class ImageLabel(QLabel):
         Creates QPixmap directly from the RGB565 bytes sent to the LCD device.
         """
         pixmap = rgb565_to_pixmap(data, width, height, byte_order)
+        self._source = pixmap
         if (width, height) != (self._width, self._height):
             pixmap = pixmap.scaled(
                 self._width, self._height,
@@ -269,6 +285,13 @@ class ImageLabel(QLabel):
             log.info("ImageLabel.mouseReleaseEvent: drag end")
             self.drag_ended.emit()
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """A double-click -- the C#'s pop-out gesture on a widescreen panel."""
+        log.info("ImageLabel.mouseDoubleClickEvent: %s", event.button())
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit()
+        super().mouseDoubleClickEvent(event)
 
     def keyPressEvent(self, event):
         """WASD/arrow nudge: 1px normal, 10px with Shift (C# UCScreenImage)."""

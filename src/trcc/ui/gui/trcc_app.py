@@ -2470,6 +2470,10 @@ class TRCCApp(QMainWindow):
         self.uc_system_info.stop_updates()
         self.uc_info_module.stop_updates()
         self.uc_activity_sidebar.stop_updates()
+        # The widescreen pop-out is its own top-level: hide-to-tray leaves it
+        # up, as the C# does, but quitting must not leave it on screen holding
+        # the preview label.
+        self.uc_preview.popout.dock()
         # App teardown belongs to ``run_gui``'s ``finally``, which runs
         # unconditionally once ``qapp.quit()`` below returns from ``exec()`` —
         # the same split qtgui states in its own closeEvent ("App teardown

@@ -81,6 +81,23 @@ _WIDESCREEN: frozenset[tuple[int, int]] = frozenset({
 })
 
 
+# The pop-out (C# ``FormScreenImage``) takes its art from the ``P0预览弹窗*``
+# resources, named for the composed resolution -- except 1600x720, whose
+# branch keeps the form's own half-size default (FormCZTV.cs:4862-4870).
+_POPUP_ART_EXCEPTIONS: dict[tuple[int, int], str] = {
+    (1600, 720): "800x360", (720, 1600): "360x800",
+}
+
+# The pop-out's layout is the ART's, as in the C#: ``ResetFormScreenImage``
+# sizes the window to its background image, and ``SetMyUCScreenImage`` puts the
+# popped preview at (10, 50) for every panel -- so the preview is the art less
+# this margin (verified for all 16 against the 2.1.8 resources).  The dock
+# button is 40x40 at (window width - 44, 2).
+POPUP_PREVIEW_ORIGIN: tuple[int, int] = (10, 50)
+POPUP_PREVIEW_MARGIN: tuple[int, int] = (20, 60)
+POPUP_DOCK_BUTTON: tuple[int, int, int] = (44, 2, 40)   # inset from right, top, side
+
+
 @dataclass(frozen=True, slots=True)
 class LcdPanelModel:
     """What an LCD preview panel shows, for one resolution.
@@ -89,10 +106,14 @@ class LcdPanelModel:
     standard square/portrait panels are ``False``.
     ``offset_info``: the 5-tuple ``(left, top, width, height, frame_image)``
     placing the LCD area inside the shared 500x500 preview container.
+    ``popup``: the pop-out window's art for a widescreen panel, ``None`` for
+    every other -- the C# pops out only when ``isBiliPingmu``
+    (``UCScreenImage_MouseDoubleClick``).
     """
     resolution: tuple[int, int]
     widescreen: bool
     offset_info: tuple[int, int, int, int, str]
+    popup: str | None = None
 
 
 def lcd_panel_for(resolution: tuple[int, int]) -> LcdPanelModel:
@@ -109,8 +130,12 @@ def lcd_panel_for(resolution: tuple[int, int]) -> LcdPanelModel:
                     "320x320 default; add it to _PREVIEW_OFFSETS", w, h)
         offset = _DEFAULT_OFFSET
     else:
-        log.debug("lcd_panel_for: %dx%d → widescreen=%s frame=%s", w, h,
-                 widescreen, offset[4])
+        log.debug("lcd_panel_for: %dx%d → widescreen=%s frame=%s popup=%s", w, h,
+                 widescreen, offset[4],
+                 _POPUP_ART_EXCEPTIONS.get((w, h), f"{w}x{h}") if widescreen else None)
+    popup = (f"preview_popup_{_POPUP_ART_EXCEPTIONS.get((w, h), f'{w}x{h}')}.png"
+             if widescreen else None)
     return LcdPanelModel(
         resolution=(w, h), widescreen=widescreen, offset_info=offset,
+        popup=popup,
     )
