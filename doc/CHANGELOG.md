@@ -25,6 +25,13 @@
 
 ### Added
 
+- **The new interface (`trcc qtgui`) can type and nudge the screen-cast
+  region.** It had only "Choose region…", which drags one. It now has X, Y,
+  W and H boxes, whose arrows move the region a pixel at a time, as the
+  Windows app's +/- buttons do. Changing the width sets the height to match
+  the screen's shape, and changing the height sets the width, in both
+  interfaces. The change is sent when you press Enter, leave the box or click
+  an arrow, not on every key.
 - **Each screen keeps its own screen-cast region, and themes carry one.**
   Like the Windows app, a theme or mask stores where on your desktop to cast
   from, and loading it sets that region; saving or exporting a theme writes

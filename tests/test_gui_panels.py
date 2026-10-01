@@ -1676,7 +1676,7 @@ def test_screencast_panel_stores_the_picked_region(cast_app: App) -> None:
 
     assert cast_app.dispatch(LcdSnapshot(key="0402:3922")).screencast_rect == (
         40, 60, 300, 300)
-    assert panel._region_label.text() == "300 × 300 at (40, 60)"
+    assert tuple(panel._fields[a].value() for a in "xywh") == (40, 60, 300, 300)
 
 
 def test_screencast_panel_follows_another_uis_region(cast_app: App, qtbot) -> None:
@@ -1687,8 +1687,9 @@ def test_screencast_panel_follows_another_uis_region(cast_app: App, qtbot) -> No
     cast_app.dispatch(SetScreencastRegion(key="0402:3922", x=9, y=8, w=64, h=64,
                                           hide_border=False))
 
-    qtbot.waitUntil(lambda: panel._region_label.text() == "64 × 64 at (9, 8)",
-                    timeout=2000)
+    qtbot.waitUntil(
+        lambda: tuple(panel._fields[a].value() for a in "xywh") == (9, 8, 64, 64),
+        timeout=2000)
     assert panel._hide_border.isChecked() is False
 
 
@@ -2358,24 +2359,23 @@ def test_screencast_plus_button_keeps_the_region_on_aspect(
 def test_screencast_does_not_lock_before_a_device_is_known(qtbot) -> None:
     """With no resolution set the lock stays out of the way.
 
-    ``_get_aspect_ratio`` returns 0.0 rather than a plausible default, so a
-    width typed before any device is attached does not silently write a
-    height computed from somebody else's panel.
+    A width typed before any device is attached must not silently write a
+    height computed from somebody else's panel.  The decision is
+    ``lock_region_to_panel``'s (``None`` = nobody has told us yet), shared
+    with qtgui; this panel used to keep its own ratio method for it.
     """
     from trcc.ui.gui.display_mode_panels import ScreenCastPanel
 
     scp = ScreenCastPanel()
     qtbot.addWidget(scp)
-    # None, the same word ``DeviceStateResult.resolution`` uses for it — not a
-    # 0.0 sentinel the panel invented, and not a plausible default ratio.
-    assert scp._get_aspect_ratio() is None
     scp.entry_w.setText("200")
     assert scp.entry_h.text() == "0"      # untouched, not invented
 
     # A device that answers nonsense is the THIRD state and is not the same
     # as never having asked: it warns, and still declines to lock.
     scp.set_resolution(0, 0)
-    assert scp._get_aspect_ratio() is None
+    scp.entry_w.setText("300")
+    assert scp.entry_h.text() == "0"
 
 
 def test_screencast_region_is_sent_when_finished_not_per_keystroke(qtbot) -> None:

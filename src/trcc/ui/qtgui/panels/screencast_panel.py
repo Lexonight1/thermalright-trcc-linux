@@ -5,8 +5,10 @@ Workflow:
 1.  Pick a device (the existing :class:`DevicePickerWidget`).
 2.  The region shown is the device's own (``LcdSnapshot.screencast_rect``:
     the loaded theme's, the last edit from any UI, or the C#'s default).
-    "Choose region…" opens :class:`RegionSelectOverlay` to drag a new one,
-    which :class:`SetScreencastRegion` stores -- a running cast follows it.
+    Edit it in the X / Y / W / H fields (their arrows are the C#'s +/-
+    nudges), or "Choose region…" to drag one with
+    :class:`RegionSelectOverlay`.  :class:`SetScreencastRegion` stores
+    either -- a running cast follows it.
 3.  Pick an update interval (frames per second), and optionally tick
     "Draw a spectrum from the microphone" — it applies at the next Start
     and re-issues the session when toggled mid-cast.
@@ -29,9 +31,10 @@ Honest scope:
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -40,6 +43,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -69,6 +73,10 @@ _MAX_FPS = 30
 #: cli and api ran at 16.7.  See ``SCREENCAST_TICK_S`` for the derivation
 #: from ``FormCZTV.Timer_event``.
 _DEFAULT_FPS = round(1.0 / SCREENCAST_TICK_S)
+#: The region's fields, in the order the C# lays them out and the Command takes.
+_AXES = ("x", "y", "w", "h")
+#: The C#'s clamp on every field and nudge (``UCTouPingXianShi.cs:215-310``).
+_FIELD_MAX = 9999
 
 
 class ScreencastPanel(BasePanel):
@@ -79,6 +87,9 @@ class ScreencastPanel(BasePanel):
         #: The selected device's region as the App last showed it, re-read on
         #: every event -- what Start and the border flag send back.
         self._rect: tuple[int, int, int, int] | None = None
+        #: The canvas the cast fills, as the App last showed it -- what a
+        #: W or H edit locks the other edge to.
+        self._canvas: tuple[int, int] | None = None
         #: Whether the SELECTED device is casting, as the App says
         #: (``LcdSnapshot.screencast_region``).  It was a local
         #: ``_casting_key``: another UI's start or stop never showed here, and
@@ -91,15 +102,24 @@ class ScreencastPanel(BasePanel):
             parent=self, selection=self._selection,
         )
 
-        # ── Region picker ─────────────────────────────────────────────
-        self._region_label = QLabel("No region selected.", self)
-        self._region_label.setStyleSheet("color: #aaa;")
+        # ── Region: typed fields + the drag picker ────────────────────
+        # Keyboard tracking off: a field signals on Enter, on focus leaving it
+        # and on each arrow click -- a finished edit, as gui sends -- never on
+        # the half-typed "3" of "320".  An unchanged focus-out signals nothing.
         self._pick_btn = QPushButton("Choose region…", self)
         self._pick_btn.clicked.connect(self._on_pick_region)
-
         region_row = QHBoxLayout()
         region_row.addWidget(self._pick_btn)
-        region_row.addWidget(self._region_label, stretch=1)
+        self._fields: dict[str, QSpinBox] = {}
+        for axis in _AXES:
+            field = QSpinBox(self)
+            field.setRange(0, _FIELD_MAX)
+            field.setKeyboardTracking(False)
+            field.setPrefix(f"{axis.upper()} ")
+            field.valueChanged.connect(partial(self._on_field_edited, axis))
+            region_row.addWidget(field)
+            self._fields[axis] = field
+        region_row.addStretch(1)
 
         # The C#'s border button (``myYcbk``): hide the frame drawn round the
         # region on screen.  Stored with the region and saved into themes.
@@ -215,10 +235,32 @@ class ScreencastPanel(BasePanel):
         if not key:
             self._status.setText("Pick a device first.  Open the Devices panel to scan.")
             return
-        snap = self.dispatch(LcdSnapshot(key=key))
-        canvas = snap.screencast_canvas if snap.ok else None
-        x, y, w, h = lock_region_to_panel(canvas, x, y, w, h)
+        self._send_region(key, lock_region_to_panel(self._canvas, x, y, w, h))
+
+    def _on_field_edited(self, axis: str, value: int) -> None:
+        """A field finished an edit -- the App stores the region it shows.
+
+        A W or H edit leads and the other edge locks to the canvas, through
+        the same helper gui uses (the C# locks both ways too,
+        ``UCTouPingXianShi.cs:362-395``).  X and Y move the region and lock
+        nothing.
+        """
+        key = self._picker.current_key()
+        region = tuple(self._fields[a].value() for a in _AXES)
+        log.info("_on_field_edited: %s %s=%d -> %s", key, axis, value, region)
+        if not key:
+            return
+        if axis in ("w", "h"):
+            region = lock_region_to_panel(
+                self._canvas, *region, keep="width" if axis == "w" else "height")
+        self._send_region(key, region)
+
+    def _send_region(self, key: str, region: tuple[int, ...]) -> None:
+        """Store a region edit in the App; a refusal shows, and the panel re-reads."""
+        x, y, w, h = region
         result = self.dispatch(SetScreencastRegion(key=key, x=x, y=y, w=w, h=h))
+        log.info("_send_region: %s (%d,%d %dx%d) -> %s", key, x, y, w, h,
+                 result.message)
         if not result.ok:
             self._status.setText(result.message)
         self._show_state()
@@ -345,14 +387,15 @@ class ScreencastPanel(BasePanel):
             snap = None
         region = snap.screencast_region if snap is not None else None
         self._rect = snap.screencast_rect if snap is not None else None
+        self._canvas = snap.screencast_canvas if snap is not None else None
         self._casting = region is not None
         log.info("_show_state: %s casting=%s region=%s rect=%s", key,
                  self._casting, region, self._rect)
-        if self._rect is not None:
-            x, y, w, h = self._rect
-            self._region_label.setText(f"{w} × {h} at ({x}, {y})")
-        else:
-            self._region_label.setText("No device picked.")
+        for field, value in zip(self._fields.values(),
+                                self._rect or (0, 0, 0, 0), strict=True):
+            with QSignalBlocker(field):
+                field.setValue(value)
+            field.setEnabled(self._rect is not None)
         if snap is not None:
             _set_quietly(self._hide_border, snap.screencast_hide_border)
         if region is not None:

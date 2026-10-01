@@ -653,25 +653,21 @@ class ScreenCastPanel(DisplayModePanel):
         except ValueError:
             return
 
-        if self._aspect_lock and which in ('w', 'h') and (
-                ratio := self._get_aspect_ratio()):
-            # ratio is height/width, so height = width * ratio and
-            # width = height / ratio.  These were the wrong way round, which
-            # made every non-square panel move the locked edge the WRONG WAY:
-            # on an 854x480 panel a width of 201 produced a height of 357
-            # where 113 is correct.  Square panels were skipped outright by a
-            # ``ratio != 1.0`` guard, so they never locked at all.
+        if self._aspect_lock and which in ('w', 'h'):
+            # ONE derivation, shared with qtgui -- core.geometry, in either
+            # direction.  The typed edge leads; only the other field is
+            # rewritten, so the cursor in the one being typed stays put.  No
+            # device yet (None) or a 0x0 answer leaves the region alone.
+            _, _, w, h = lock_region_to_panel(
+                self._resolution, *self.values(),
+                keep="width" if which == 'w' else "height")
+            follower, value = ((self.entry_h, h) if which == 'w'
+                               else (self.entry_w, w))
             self._updating = True
-            if which == 'w':
-                # ONE derivation, shared with qtgui — core.geometry.
-                *_, locked = lock_region_to_panel(self._resolution, 0, 0, val, 0)
-                self.entry_h.setText(str(locked))
-            else:
-                self.entry_w.setText(str(round(val / ratio)))
-            log.debug("_on_coord_changed: aspect lock %s=%d ratio=%.4f -> %sx%s",
-                      which, val, ratio,
-                      self.entry_w.text(), self.entry_h.text())
+            follower.setText(str(value))
             self._updating = False
+            log.debug("_on_coord_changed: aspect lock %s=%d on %s -> %sx%s",
+                      which, val, self._resolution, w, h)
 
     def values(self) -> tuple[int, int, int, int]:
         """The region the fields show, ``(x, y, w, h)`` -- what Start sends.
@@ -701,30 +697,6 @@ class ScreenCastPanel(DisplayModePanel):
         if region != self._shown:
             self._shown = region
             self.region_edited.emit(*region)
-
-    def _get_aspect_ratio(self) -> float | None:
-        """The panel's height/width, or ``None`` before a device is known.
-
-        Derived, not tabulated.  A hardcoded resolution->ratio table used to
-        live here; every one of its 11 entries was exactly ``height / width``,
-        so it was a second copy of geometry this panel is already handed by
-        :meth:`set_resolution` — and it had drifted, missing 640x172 entirely
-        and falling back to a 0.75 default that is 2.8x wrong for that panel.
-
-        ``None`` carries the same meaning it does on
-        ``DeviceStateResult.resolution``, which is where this geometry comes
-        from: nobody has told us yet.  A UI that answered 0.75 anyway would be
-        constraining the user's region to a panel it has not met.
-        """
-        if self._resolution is None:
-            log.debug("_get_aspect_ratio: no device yet — no aspect lock")
-            return None
-        width, height = self._resolution
-        if width <= 0 or height <= 0:
-            log.warning("_get_aspect_ratio: device reported %dx%d — no aspect lock",
-                        width, height)
-            return None
-        return height / width
 
     def _on_border_toggle(self):
         log.info("_on_border_toggle: hide_border=%s→%s",

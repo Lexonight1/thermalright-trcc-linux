@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from .logs import per_frame
 from .models import FitMode, Theme, oriented_resolution
@@ -236,6 +237,7 @@ def screencast_axes(
 def lock_region_to_panel(
     resolution: tuple[int, int] | None,
     x: int, y: int, width: int, height: int,
+    *, keep: Literal["width", "height"] = "width",
 ) -> tuple[int, int, int, int]:
     """Fit a screen region to the panel's aspect, keeping its top-left.
 
@@ -248,9 +250,13 @@ def lock_region_to_panel(
     letting the render pipeline squash it loses the guarantee the original
     gave: what you framed is what appears.
 
-    Ratio is ``height / width``.  Height follows width -- the width the user
-    dragged is the intent, and honouring it keeps the gesture's horizontal
-    extent, which is what a viewfinder's edges are read against.
+    Ratio is ``height / width``.  By default height follows width -- the width
+    the user dragged is the intent, and honouring it keeps the gesture's
+    horizontal extent, which is what a viewfinder's edges are read against.
+    ``keep="height"`` is the other edge leading, for a typed height: the C#'s
+    ``textBoxH_TextChanged`` locks the width the same way
+    (``UCTouPingXianShi.cs:378``), and both of our editors used to carry
+    their own copy of that half.
 
     ``resolution`` of ``None`` means "nobody has told us which panel yet" --
     the same meaning it carries on ``DeviceStateResult.resolution`` -- and the
@@ -266,14 +272,23 @@ def lock_region_to_panel(
         log.debug("lock_region_to_panel: no panel known — region unchanged")
         return x, y, width, height
     pw, ph = resolution
-    if pw <= 0 or ph <= 0 or width <= 0:
-        log.debug("lock_region_to_panel: degenerate panel %sx%s or width %s — "
-                  "region unchanged", pw, ph, width)
+    if pw <= 0 or ph <= 0:
+        # Not "no device yet" (that is None, above): a device that answered
+        # nonsense.  Say so, and still decline to constrain to it.
+        log.warning("lock_region_to_panel: the panel reported %sx%s — region "
+                    "unchanged", pw, ph)
         return x, y, width, height
-    locked = max(1, round(width * (ph / pw)))
-    log.debug("lock_region_to_panel: %sx%s on a %sx%s panel -> %sx%s",
-              width, height, pw, ph, width, locked)
-    return x, y, width, locked
+    lead = width if keep == "width" else height
+    if lead <= 0:
+        log.debug("lock_region_to_panel: %s %s — region unchanged", keep, lead)
+        return x, y, width, height
+    if keep == "width":
+        locked = (width, max(1, round(width * ph / pw)))
+    else:
+        locked = (max(1, round(height * pw / ph)), height)
+    log.debug("lock_region_to_panel: %sx%s on a %sx%s panel, keeping %s -> "
+              "%sx%s", width, height, pw, ph, keep, *locked)
+    return x, y, *locked
 
 
 @dataclass(frozen=True, slots=True)

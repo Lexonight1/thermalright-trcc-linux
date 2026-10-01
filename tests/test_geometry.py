@@ -262,6 +262,39 @@ def test_every_panel_in_the_catalog_gives_a_usable_height() -> None:
     assert seen > 5, f"only {seen} panels checked — is FBL_PROFILES wired?"
 
 
+@pytest.mark.parametrize(("panel", "height", "width"), [
+    ((854, 480), 112, 199),    # 112 * 854/480 = 199.27
+    ((640, 172), 54, 201),     # 54 * 640/172 = 200.93
+    ((320, 320), 200, 200),
+])
+def test_a_typed_height_leads_and_the_width_follows(
+    panel: tuple[int, int], height: int, width: int,
+) -> None:
+    """``keep="height"``: the edge the user typed survives, the other locks.
+
+    The C#'s ``textBoxH_TextChanged`` is this direction
+    (``UCTouPingXianShi.cs:378``).  The gui did it with inline arithmetic and
+    no floor, a second copy of the rule beside the helper.
+    """
+    assert lock_region_to_panel(panel, 3, 4, 999, height, keep="height") == (
+        3, 4, width, height)
+
+
+def test_a_short_height_on_a_tall_canvas_never_collapses_to_zero() -> None:
+    """A portrait 172x640 canvas is 0.269 wide per high: 1px high rounds to 0."""
+    for height in (1, 2, 3):
+        _, _, w, h = lock_region_to_panel((172, 640), 0, 0, 999, height,
+                                          keep="height")
+        assert h == height
+        assert w >= 1, f"a {height}px height collapsed to {w}px wide"
+
+
+def test_a_zero_leading_edge_leaves_the_region_alone() -> None:
+    """The edge that leads is the one checked: a 0 height cannot lock a width."""
+    assert lock_region_to_panel((854, 480), 1, 2, 300, 0, keep="height") == (
+        1, 2, 300, 0)
+
+
 def test_a_narrow_drag_on_a_wide_panel_never_collapses_to_zero() -> None:
     """A 640x172 panel is 0.269 high per wide, so a 1px drag rounds to 0.
 
