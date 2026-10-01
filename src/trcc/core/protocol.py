@@ -116,6 +116,12 @@ class DeviceProfile:
     # 172-px row of the turned frame is copied into a 176-px row 4 bytes in,
     # a 225280-byte buffer.  Renderer.encode_payload applies it.
     wire_row_px: int = 0
+    # SUB bytes on which a JPEG panel's firmware takes RGB565 instead.  The C#
+    # picks the encoder on ``myDeviceMode == 2``, and ``FormCZTVInit`` can leave
+    # a panel in mode 3 for one SUB: 2.1.8's fan hub, fbl 54, stays mode 3 at
+    # SUB 4 (FormCZTV.cs:1019) and so takes ``ImageTo565``.  get_profile
+    # applies it before resolving the rotation, which is keyed by encoder.
+    rgb565_subs: frozenset[int] = frozenset()
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -144,7 +150,7 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     51:  DeviceProfile(320,  240,  rotate=True),                    # HID Type 2 → SPIMode=1
     52:  DeviceProfile(320,  240,  rotate=True),                    # BA120 Vision (#100)
     53:  DeviceProfile(320,  240,  rotate=True),                    # HID Type 2 → SPIMode=1
-    54:  DeviceProfile(360,  360,  jpeg=True),
+    54:  DeviceProfile(360,  360,  jpeg=True, rgb565_subs=frozenset({4})),  # CORE VISION SUB 4
     58:  DeviceProfile(320,  240,  rotate=True),                    # AussieMakerGeek's Frozen Warframe SE
     # `mode == 3 && pm == 100 && fbl == 60` -> is176x320 (FormCZTV.cs:1041),
     # the sibling of the fbl 59 rewrite directly above it in the C#.  Stored
@@ -598,7 +604,6 @@ def get_profile(fbl: int, pm: int = 0, sub: int = 0) -> DeviceProfile:
     Defaulted so the eight existing call sites are unchanged; only a caller
     that KNOWS the byte should pass it.
     """
-    log.debug("get_profile: fbl=%d pm=%d sub=%d", fbl, pm, sub)
     profile = FBL_PROFILES.get(fbl, DEFAULT_PROFILE)
     if fbl not in FBL_PROFILES:
         _warn_unknown("FBL", fbl, f"pm={pm}", (profile.width, profile.height))
@@ -607,9 +612,13 @@ def get_profile(fbl: int, pm: int = 0, sub: int = 0) -> DeviceProfile:
         by_pm, fallback = shared
         w, h = _resolution_by_pm(by_pm, pm, fallback, fbl)
         profile = dataclasses.replace(profile, width=w, height=h)
-    rotation = resolve_encode_rotation(profile.resolution, profile.jpeg, sub)
+    jpeg = profile.jpeg and sub not in profile.rgb565_subs
+    log.debug("get_profile: fbl=%d pm=%d sub=%d → %dx%d %s", fbl, pm, sub,
+              profile.width, profile.height, "JPEG" if jpeg else "RGB565")
+    rotation = resolve_encode_rotation(profile.resolution, jpeg, sub)
     return dataclasses.replace(
-        profile, encode_base=rotation.base, encode_invert=rotation.invert,
+        profile, jpeg=jpeg,
+        encode_base=rotation.base, encode_invert=rotation.invert,
         # The SUB byte says TWO things, and this function used to spend it on
         # only one.  Besides the encode rotation above it says how the panel is
         # MOUNTED, and ``portrait_mounted`` was left at its dataclass default

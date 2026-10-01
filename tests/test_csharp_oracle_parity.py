@@ -60,6 +60,7 @@ from trcc.core.protocol import (
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
 from encode_reference import (  # pyright: ignore[reportMissingImports]
+    csharp_encode,
     csharp_encode_angles,
 )
 from formcztv_init import (  # pyright: ignore[reportMissingImports]
@@ -397,21 +398,21 @@ def test_the_176x320_panel_is_dual_orientation_not_just_a_size() -> None:
 #     manufactures a divergence out of two different quantities -- the same
 #     category error as widescreen vs isBiliPingmu.
 #   mount -- always; it is a pure function of the SUB byte.
-#   encode -- NOT compared YET, and that is now a gap, not a choice.  The C#
-#     picks JPEG vs RGB565 on `myDeviceMode == 2` (all four call sites).  The
-#     old excuse -- fbl 59 shipping jpeg=True -- is gone: it ships RGB565 since
-#     438ac584.  What the gap hides, measured 2026-10-01: in 2.1.8 fbl 54 at
-#     SUB 4 (CORE VISION) stays mode 3 and encodes RGB565, while we send JPEG
-#     at every SUB -- and SUB 4 is not even in the list swept below.  See
-#     memory/project_2_1_8_encoder_arms_unported.md.
+#   encoder -- always; the C# picks JPEG vs RGB565 on `myDeviceMode == 2`
+#     (all four call sites), which FormCZTVInit can rewrite per SUB (fbl 54
+#     stays mode 3, so RGB565, at SUB 4).
+#   wire angle + mirror -- always, against the oracle arm for the C#'s own
+#     encoder; a difference passes only on an arm labelled `not_ported`.
+#
+# Every SUB 0-7 is swept: the list used to skip 4 and 7, and SUB 4 was where
+# the one encoder divergence on this route sat.
 
 
 def _mode3_fingerprints() -> list[tuple[int, int]]:
     """Every catalogued FBL against the SUB bytes a panel actually sends."""
     from trcc.core.protocol import FBL_PROFILES
 
-    return [(fbl, sub) for fbl in sorted(FBL_PROFILES)
-            for sub in (0, 1, 2, 3, 5, 6)]
+    return [(fbl, sub) for fbl in sorted(FBL_PROFILES) for sub in range(8)]
 
 
 @pytest.mark.parametrize(("fbl", "sub"), _mode3_fingerprints())
@@ -467,4 +468,24 @@ def test_mode3_fingerprint_matches_the_csharp(fbl: int, sub: int) -> None:
     assert theirs == ours, (
         f"mode-3 fbl={fbl} sub={sub} ({profile.resolution}): the C# mounts "
         f"portrait={theirs}, we say {ours}"
+    )
+    jpeg = state.myDeviceMode == 2
+    assert profile.jpeg == jpeg, (
+        f"mode-3 fbl={fbl} sub={sub}: the C# encodes "
+        f"{'JPEG' if jpeg else 'RGB565'}, we send "
+        f"{'JPEG' if profile.jpeg else 'RGB565'}"
+    )
+    arm = csharp_encode(state.resolution, jpeg=jpeg, pm=state.myDevicePingMu,
+                        my_sub_mode=state.mySubMode)
+    sent = ({o: (wire_angle(profile, o, portrait_content=False)
+                 + profile.encode_baseline) % 360 for o in (0, 90, 180, 270)},
+            False)
+    if arm.not_ported:
+        assert sent != (arm.angles, arm.mirror), (
+            f"mode-3 fbl={fbl} sub={sub} now matches an arm labelled "
+            f"not_ported -- delete the label in encode_reference.py")
+        return
+    assert sent == (arm.angles, arm.mirror), (
+        f"mode-3 fbl={fbl} sub={sub}: we send {sent}, the C# sends "
+        f"{(arm.angles, arm.mirror)}"
     )

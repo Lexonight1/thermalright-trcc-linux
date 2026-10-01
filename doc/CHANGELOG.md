@@ -92,6 +92,12 @@
   reports SUB 5 instead of 270°. TRCC now does the same. Checked against the
   Windows app's code and a simulated device; nobody has reported this panel,
   so it has not been seen on real hardware.
+- **The 360x360 fan-hub screen reporting SUB 4 (CORE VISION) was sent JPEG
+  frames.** The Windows app sends that one model raw RGB565 pixels, and TRCC
+  now does the same. Its SUB 3 and SUB 4 models also showed the wrong cooler
+  picture in the device list; they now show CORE VISION. Checked against the
+  Windows app's code and a simulated device; nobody has reported this panel,
+  so it has not been seen on real hardware.
 - **320x240 and 640x480 screens turned to 90° or 270° got sideways or
   partial frames.** A screen cast, a picture sent with
   `trcc display send-image`, and the blank frame sent when the screen sleeps
