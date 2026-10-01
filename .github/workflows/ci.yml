@@ -20,6 +20,10 @@ jobs:
   tests:
     name: tests
     runs-on: ubuntu-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 45
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -44,7 +48,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1 libegl1 ffmpeg
+          # No recommends: 212 -> 134 MB measured in ubuntu:24.04 (2026-10-01).
+          # They are GTK3, VA/VDPAU/Vulkan drivers, systemd/dbus and icon
+          # themes; the Mesa GL libraries Qt needs are Depends and stay.
+          sudo apt-get install -y --no-install-recommends libgl1 libegl1 ffmpeg
 
       - name: Install dependencies
         run: |
@@ -100,6 +107,10 @@ jobs:
     # once, read what fails, fix or skip each with a reason.
     name: tests (windows, file + locking layer)
     runs-on: windows-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -135,6 +146,10 @@ jobs:
     # is catching silent failures.  Nothing that depends on memory survives.
     name: dev harnesses + meters
     runs-on: ubuntu-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -150,7 +165,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1 libegl1 ffmpeg
+          # No recommends: 212 -> 134 MB measured in ubuntu:24.04 (2026-10-01).
+          # They are GTK3, VA/VDPAU/Vulkan drivers, systemd/dbus and icon
+          # themes; the Mesa GL libraries Qt needs are Depends and stay.
+          sudo apt-get install -y --no-install-recommends libgl1 libegl1 ffmpeg
 
       - name: Install dependencies
         run: |
@@ -261,6 +279,10 @@ jobs:
   update-badges:
     name: Update README badges
     runs-on: ubuntu-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 10
     needs: tests
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
@@ -298,6 +320,10 @@ jobs:
   security-scans:
     name: Security scans (pip-audit, bandit) — non-blocking
     runs-on: ubuntu-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 10
     needs: tests
     outputs:
       found: ${{ steps.scan.outputs.found }}
@@ -354,6 +380,10 @@ jobs:
   security-triage:
     name: Security triage (open or update one issue)
     runs-on: ubuntu-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 10
     needs: security-scans
     # Never on a PR: a fork's token cannot write issues, and an unmerged
     # branch must not open one.  Its findings are in the run summary.
@@ -385,6 +415,10 @@ jobs:
   build-artifacts:
     name: Build artifacts (wheel + sdist)
     runs-on: ubuntu-latest
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 10
     needs: tests
     if: github.event_name != 'pull_request' # only build on push or manual
     steps:

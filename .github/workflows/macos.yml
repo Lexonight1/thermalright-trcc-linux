@@ -13,6 +13,10 @@ jobs:
   build-macos:
     name: Build macOS app (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    # A ceiling, not a target: ~2-3x the slowest run measured 2026-10-01, and
+    # above that day's slow-mirror outlier.  Without one a hang holds the
+    # runner for GitHub's 6-hour default.
+    timeout-minutes: 30
     # One DMG per architecture (#219).  Not universal2: the app bundles
     # Homebrew's 7z, ffmpeg and libusb, and Homebrew ships each only for the
     # host architecture -- a universal2 PyInstaller app would still carry
