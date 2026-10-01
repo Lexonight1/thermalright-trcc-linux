@@ -17,6 +17,7 @@ established home for Qt code both skins share.
 from __future__ import annotations
 
 import logging
+from functools import partial
 
 from PySide6.QtCore import QObject, Signal, SignalInstance
 
@@ -157,11 +158,27 @@ class BusBridge(QObject):
             (ScreencastRegionChanged, self.settings_changed),
             (LedSettingsChanged, self.settings_changed),
         )
-        for event_type, signal in pairs:
-            self._bus.subscribe(
-                event_type, _SignalForwarder(signal, event_type.__name__),
-            )
+        subscribed = tuple(
+            (event_type, _SignalForwarder(signal, event_type.__name__))
+            for event_type, signal in pairs)
+        for event_type, forwarder in subscribed:
+            self._bus.subscribe(event_type, forwarder)
+        # A freed bridge takes its subscriptions with it.  Left on the bus,
+        # every forwarder raises "Signal source has been deleted" and the bus
+        # logs a traceback per dead bridge per publish -- measured: one dead
+        # bridge left 40 handlers.  The slot is a module function over the bus
+        # and the pairs, never ``self``, so it cannot keep the bridge alive.
+        self.destroyed.connect(partial(_unsubscribe, self._bus, subscribed))
         log.info("BusBridge._wire: subscribed %d event types", len(pairs))
+
+
+def _unsubscribe(bus: EventBus,
+                 subscribed: tuple[tuple[type[Event], _SignalForwarder], ...],
+                 *_: object) -> None:
+    """Drop a destroyed bridge's forwarders from the App's bus."""
+    log.info("BusBridge destroyed: unsubscribing %d forwarders", len(subscribed))
+    for event_type, forwarder in subscribed:
+        bus.unsubscribe(event_type, forwarder)
 
 
 class _SignalForwarder:

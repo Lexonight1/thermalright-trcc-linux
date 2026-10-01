@@ -1,0 +1,65 @@
+"""A freed BusBridge takes its EventBus subscriptions with it.
+
+It never unsubscribed.  Each bridge subscribes one forwarder per event type it
+mirrors (40), and when the bridge was collected the forwarders stayed on the
+App's bus: every later publish raised "Signal source has been deleted" in each
+of them, and the bus logged a traceback per dead bridge.  Found 2026-10-01 by
+the viewfinder drive, whose temporary bridge was collected and took the frames'
+input with it.  Latent in production -- both windows hold their bridge for
+their whole life -- and exactly the trap the next widget with its own bridge
+walks into, burying a report's real errors under tracebacks.
+
+MUTATION CHECK -- MEASURED 2026-10-01: drop the ``destroyed`` hookup in
+``BusBridge._wire`` and both tests here fail.
+"""
+from __future__ import annotations
+
+import gc
+import logging
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from tests.mock_platform import MockPlatform
+from trcc.app import App
+from trcc.core.events import ScreencastStopped
+from trcc.ui.bus_bridge import BusBridge
+
+
+@pytest.fixture
+def app(tmp_path: Path, qapp: Any) -> Iterator[App]:
+    built = App(MockPlatform([], tmp_path, host_sensors=False))
+    yield built
+    built.close()
+
+
+def _handlers(app: App) -> int:
+    return sum(len(v) for v in app.events._handlers.values())   # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_freed_bridge_leaves_no_subscription_behind(app: App) -> None:
+    baseline = _handlers(app)
+    kept = BusBridge(app.events)
+    with_one = _handlers(app)
+    assert with_one > baseline, "a bridge subscribed nothing -- the test is vacuous"
+
+    for _ in range(3):
+        BusBridge(app.events)
+    gc.collect()
+
+    assert _handlers(app) == with_one, "freed bridges left forwarders on the bus"
+    del kept
+    gc.collect()
+    assert _handlers(app) == baseline
+
+
+def test_a_publish_after_a_bridge_is_freed_logs_no_error(
+    app: App, caplog: pytest.LogCaptureFixture,
+) -> None:
+    BusBridge(app.events)
+    gc.collect()
+    with caplog.at_level(logging.ERROR, logger="trcc.core.events"):
+        app.events.publish(ScreencastStopped(key="0000:0000"))
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
