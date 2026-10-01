@@ -56,6 +56,7 @@ from ....core.commands import (
 from ....core.events import Event
 from ....core.geometry import lock_region_to_panel
 from ....core.models import SCREENCAST_TICK_S
+from ...viewfinder import frames_supported, open_picker, store_picked_region
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -125,6 +126,12 @@ class ScreencastPanel(BasePanel):
         # region on screen.  Stored with the region and saved into themes.
         self._hide_border = QCheckBox("Hide the frame around the region", self)
         self._hide_border.toggled.connect(self._on_hide_border_toggled)
+        if not frames_supported(self.app):
+            # Stored and saved into themes all the same, so a theme moved to
+            # an X11 or Windows desktop keeps it -- but nothing draws here.
+            self._hide_border.setToolTip(
+                "No frame can be shown on Wayland: a window cannot place "
+                "itself there.  Use \"Choose region…\" to set the region.")
 
         # ── Interval slider ───────────────────────────────────────────
         self._fps = QSlider(Qt.Orientation.Horizontal, self)
@@ -215,12 +222,9 @@ class ScreencastPanel(BasePanel):
 
     def _on_pick_region(self) -> None:
         log.info("_on_pick_region")
-        from ..region_overlay import RegionSelectOverlay
-
-        overlay = RegionSelectOverlay(self)
+        overlay = open_picker(self)
         overlay.region_selected.connect(self._on_region_selected)
         overlay.cancelled.connect(self._on_region_cancelled)
-        overlay.show()
 
     def _on_region_selected(
         self, x: int, y: int, w: int, h: int,
@@ -235,7 +239,10 @@ class ScreencastPanel(BasePanel):
         if not key:
             self._status.setText("Pick a device first.  Open the Devices panel to scan.")
             return
-        self._send_region(key, lock_region_to_panel(self._canvas, x, y, w, h))
+        result = store_picked_region(self.app, key, x, y, w, h)
+        if not result.ok:
+            self._status.setText(result.message)
+        self._show_state()
 
     def _on_field_edited(self, axis: str, value: int) -> None:
         """A field finished an edit -- the App stores the region it shows.

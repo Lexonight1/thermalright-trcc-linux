@@ -532,7 +532,6 @@ src/trcc/
     ├── constants.py             # Layout coords, sizes, colors, styles
     ├── assets.py                # Asset loader with lru_cache
     ├── eyedropper.py            # Fullscreen color picker
-    ├── screen_capture.py        # X11/Wayland screen grab
     ├── pipewire_capture.py      # PipeWire/Portal Wayland capture
     ├── uc_device.py             # Device sidebar
     ├── uc_preview.py            # Live preview frame

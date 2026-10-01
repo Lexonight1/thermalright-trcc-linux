@@ -114,11 +114,22 @@ class _FakeTray:
         return self._divert
 
 
+class _FakeFleet:
+    """Records whether the window took its screencast frames down."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def _make_window(*, divert: bool):
     from trcc.ui.qtgui.app import MainWindow
 
     win = MainWindow.__new__(MainWindow)
     win._tray = _FakeTray(divert=divert)      # type: ignore[attr-defined]
+    win._viewfinders = _FakeFleet()           # type: ignore[attr-defined]
     return win
 
 
@@ -155,6 +166,7 @@ def test_qtgui_genuine_close_quits_the_event_loop(
         "a genuine close did not quit the event loop — qapp.exec() never "
         "returns, so App.close() (panel blank + device release) never runs"
     )
+    assert win._viewfinders.closed, "quitting left the screencast frames up"
 
 
 def test_qtgui_close_to_tray_does_not_quit(
@@ -174,6 +186,7 @@ def test_qtgui_close_to_tray_does_not_quit(
 
     assert quits == [], "a close diverted to the tray must NOT quit the app"
     assert event.accepted is False
+    assert not win._viewfinders.closed, "hiding to the tray took the frames down"
 
 
 # ── The console scripts skip typer's root callback (and its logging) ──────

@@ -25,6 +25,13 @@
 
 ### Added
 
+- **A frame shows on your desktop round the area being cast.** As in the
+  Windows app, while a screen cast runs, a thin grey frame marks what is being
+  sent to the cooler's screen, in both `trcc gui` and `trcc qtgui`. Drag the
+  frame to move what is cast; double-click it, or use the border button, to
+  hide it. The frame sits just outside the cast area, so it never appears on
+  the cooler. Wayland does not let a window place itself on screen, so there
+  the border button lets you drag out a new area instead.
 - **A widescreen screen's preview can pop out into its own window.** As in
   the Windows app, double-click the preview of a wide screen (800x480 up to
   1920x462, and their portrait forms) in `trcc gui` and it opens in a

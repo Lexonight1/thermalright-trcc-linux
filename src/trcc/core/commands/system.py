@@ -1209,13 +1209,14 @@ class GetPlatformInfo(Query[PlatformInfoResult]):
     def execute(self, app: App) -> PlatformInfoResult:
         p = app.platform
         paths = p.paths()
+        server = p.display_session().server.value
         # One-shot and pure gold in a report: which distro, how it was
         # installed, and every path the app resolved to on THIS machine.
         log.info("GetPlatformInfo.execute: distro=%s install=%s config=%s "
-                 "data=%s user=%s log=%s warnings=%s",
+                 "data=%s user=%s log=%s warnings=%s display=%s",
                  p.distro_name(), p.install_method(), paths.config_dir(),
                  paths.data_dir(), paths.user_content_dir(), paths.log_file(),
-                 p.check_permissions())
+                 p.check_permissions(), server)
         return PlatformInfoResult(
             ok=True,
             message=f"Platform: {p.distro_name()}",
@@ -1227,6 +1228,7 @@ class GetPlatformInfo(Query[PlatformInfoResult]):
             log_file=str(paths.log_file()),
             permission_warnings=p.check_permissions(),
             no_devices_hint=p.no_devices_hint(),
+            display_server=server,
         )
 
 @dataclass(frozen=True, slots=True)

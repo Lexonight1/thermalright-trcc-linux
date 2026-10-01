@@ -13,6 +13,7 @@ currently-selected device; the rest keep ticking in the background.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +70,7 @@ from ...core.results import ControlCenterSnapshotResult, LanguageEntry
 from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
+from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
 from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -216,6 +218,9 @@ class TRCCApp(QMainWindow):
         self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
         self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
+        # The frame round each casting device's region (C# FormScreenshot),
+        # shared with qtgui and following the App, not this window.
+        self._viewfinders = ViewfinderFleet(app, self._bus)
         self._bus.video_started.connect(self._on_bus_video_started, type=qconn)
         self._bus.video_stopped.connect(self._on_bus_video_stopped, type=qconn)
         self._bus.theme_loaded.connect(self._on_bus_theme_loaded, type=qconn)
@@ -1422,7 +1427,6 @@ class TRCCApp(QMainWindow):
             self._on_screencast_region_edited)
         self.uc_theme_setting.screencast_panel.border_toggled.connect(
             self._on_screencast_border_toggled)
-        self.uc_theme_setting.capture_requested.connect(self._on_capture_requested)
         self.uc_theme_setting.eyedropper_requested.connect(self._on_eyedropper_requested)
 
         self.uc_image_cut.image_cut_done.connect(self._on_image_cut_done)
@@ -1722,9 +1726,19 @@ class TRCCApp(QMainWindow):
                 key=self._active_key, x=x, y=y, w=w, h=h))
 
     def _on_screencast_border_toggled(self, hide: bool) -> None:
-        """The border button -- the App's flag, sent with the App's region."""
-        log.info("_on_screencast_border_toggled: %s hide=%s",
-                 self._active_key, hide)
+        """The border button -- the App's flag, sent with the App's region.
+
+        Where no frame can be shown (Wayland) it picks a region instead, and
+        the button's own toggle is undone: no flag changed.
+        """
+        log.info("_on_screencast_border_toggled: %s hide=%s frames=%s",
+                 self._active_key, hide, self._viewfinders.enabled)
+        if not self._viewfinders.enabled:
+            if self._active_key:
+                open_picker(self).region_selected.connect(
+                    partial(store_picked_region, self._app, self._active_key))
+            self._show_cast()
+            return
         snap = (self._app.dispatch(LcdSnapshot(key=self._active_key))
                 if self._active_key else None)
         if snap is not None and snap.ok and snap.screencast_rect is not None:
@@ -2399,27 +2413,6 @@ class TRCCApp(QMainWindow):
             'https://github.com/Lexonight1/thermalright-trcc-linux'
             '/blob/main/doc/GUIDE_TROUBLESHOOTING.md')
 
-    def _on_capture_requested(self) -> None:
-        log.info("_on_capture_requested")
-        from .screen_capture import ScreenCaptureOverlay
-        self._capture_overlay = ScreenCaptureOverlay()
-        self._capture_overlay.captured.connect(self._on_screen_captured)
-        self._capture_overlay.show()
-
-    def _on_screen_captured(self, pixmap: Any) -> None:
-        log.info("_on_screen_captured")
-        self._capture_overlay = None
-        h = self._active_lcd()
-        if pixmap is None or not h:
-            return
-        from PySide6.QtGui import QPixmap as _QPixmap
-        img = pixmap.toImage() if isinstance(pixmap, _QPixmap) else pixmap
-        if img.isNull():
-            return
-        w, hw = h.lcd_size
-        self.uc_image_cut.load_image(img, w, hw)
-        self._show_cutter('image')
-
     def _on_eyedropper_requested(self) -> None:
         log.info("_on_eyedropper_requested")
         from ..eyedropper import EyedropperOverlay
@@ -2474,6 +2467,7 @@ class TRCCApp(QMainWindow):
         # up, as the C# does, but quitting must not leave it on screen holding
         # the preview label.
         self.uc_preview.popout.dock()
+        self._viewfinders.close()
         # App teardown belongs to ``run_gui``'s ``finally``, which runs
         # unconditionally once ``qapp.quit()`` below returns from ``exec()`` —
         # the same split qtgui states in its own closeEvent ("App teardown

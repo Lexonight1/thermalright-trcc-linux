@@ -188,3 +188,35 @@ def test_the_lock_follows_the_app_s_canvas(wide: Any, qtbot: Any, degrees: int) 
     _panel(wide).entry_w.setText("200")
 
     assert _panel(wide).entry_h.text() == str(round(200 * canvas[1] / canvas[0]))
+
+
+def test_on_wayland_the_border_button_picks_a_region_instead(
+    window: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No frame can place itself, so the button opens the drag picker, and
+    the picked rectangle is stored -- the hide flag it would have toggled is
+    left alone."""
+    from PySide6.QtCore import QObject, Signal
+
+    import trcc.ui.gui.trcc_app as gui_app
+
+    class _Picker(QObject):
+        region_selected = Signal(int, int, int, int)
+
+    opened: list[_Picker] = []
+
+    def fake_open(parent: Any) -> _Picker:
+        opened.append(_Picker())
+        return opened[-1]
+
+    monkeypatch.setattr(gui_app, "open_picker", fake_open)
+    window._viewfinders.enabled = False
+    before = window._app.dispatch(LcdSnapshot(key=_A)).screencast_hide_border
+
+    window._on_screencast_border_toggled(not before)
+
+    assert len(opened) == 1
+    assert window._app.dispatch(LcdSnapshot(key=_A)).screencast_hide_border == before
+    opened[0].region_selected.emit(10, 20, 200, 999)
+    assert window._app.dispatch(LcdSnapshot(key=_A)).screencast_rect == (
+        10, 20, 200, 200)                      # A is the 320x320 panel

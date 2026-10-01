@@ -94,7 +94,6 @@ class UCThemeSetting(BasePanel):
     background_changed = Signal(bool)
     screencast_changed = Signal(bool)
     eyedropper_requested = Signal()  # launch eyedropper color picker
-    capture_requested = Signal()     # launch screen capture
 
     def __init__(self, parent=None):
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
@@ -149,7 +148,6 @@ class UCThemeSetting(BasePanel):
         self.screencast_panel = ScreenCastPanel(self)
         self.screencast_panel.move(*Layout.SCREENCAST_PANEL)
         self.screencast_panel.mode_changed.connect(self._on_mode_changed)
-        self.screencast_panel.capture_requested.connect(self.capture_requested.emit)
 
         self.video_panel = DisplayModePanel("video", ["VideoLoad", "VideoUrl"], self)
         self.video_panel.move(*Layout.VIDEO_PANEL)

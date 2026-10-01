@@ -43,6 +43,7 @@ from ...core.events import (
 )
 from ..bus_bridge import BusBridge
 from ..qt_tray import TrayController
+from ..viewfinder import ViewfinderFleet
 from .device_selection import DeviceSelection
 from .panels import (
     AboutPanel,
@@ -72,6 +73,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._app = app
         self._bus = BusBridge(app.events)
+        # The frame round each casting device's region (C# FormScreenshot),
+        # the same module gui uses.
+        self._viewfinders = ViewfinderFleet(app, self._bus)
 
         # #201 repair — the same Command cli, api and gui all dispatch, and
         # the one capability qtgui could not reach.  An entry keeps whatever
@@ -180,6 +184,7 @@ class MainWindow(QMainWindow):
         if self._tray.intercept_close(event):
             return
         # Genuine quit.  The core's loops are stopped by ``App.close``.
+        self._viewfinders.close()
         event.accept()
         # End the event loop so ``run``'s ``finally: app.close()`` actually
         # runs.  ``quitOnLastWindowClosed`` is False (hide-to-tray), so

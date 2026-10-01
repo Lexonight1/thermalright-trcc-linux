@@ -666,6 +666,11 @@ class PlatformInfoResult(Result):
     # what this Result already is, and the gui asking for it was reaching
     # ``app.platform`` — a crash under TRCC_DAEMON=1 (#249).
     no_devices_hint: str = ""
+    # What draws the App's desktop (``DisplayServer`` value: x11, wayland,
+    # native, headless).  A UI decides from it whether a window can place
+    # itself on screen -- the screencast frame cannot on Wayland -- and under
+    # the shared App it cannot ask the platform itself.
+    display_server: str = ""
 
 
 # =========================================================================

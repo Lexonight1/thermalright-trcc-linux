@@ -579,7 +579,6 @@ class ScreenCastPanel(DisplayModePanel):
     _BTN_BORDER = (309, 16, 24, 16)
     _BTN_AUDIO = (280, 16, 24, 16)
 
-    capture_requested = Signal()  # launch screen capture
 
     def __init__(self, parent=None):
         super().__init__("screencast", [], parent)

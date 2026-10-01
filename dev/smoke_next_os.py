@@ -124,7 +124,7 @@ def _probe_gui_imports() -> Section:
         ("trcc.ui.screen_overlay",          "G2 screen_overlay"),
         ("trcc.ui.qtgui.panels.led",        "G3 LED sub-tabs"),
         ("trcc.ui.qtgui.device_picker",     "G4 device_picker"),
-        ("trcc.ui.qtgui.region_overlay",    "G5 region_overlay"),
+        ("trcc.ui.viewfinder",              "G5 viewfinder"),
         ("trcc.ui.qtgui.panels.screencast_panel", "G5 screencast_panel"),
         ("trcc.adapters.screencast.qt",   "G5 screencast Qt links"),
     ):

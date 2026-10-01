@@ -30,7 +30,7 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -321,3 +321,27 @@ class DragSelectOverlay(BaseScreenOverlay):
         raise NotImplementedError(
             "DragSelectOverlay subclass must act on the chosen rectangle",
         )
+
+
+class RegionSelectOverlay(DragSelectOverlay):
+    """Drag out a screen region; emits it as ``(x, y, w, h)``.
+
+    The screencast region picker for both skins: qtgui's "Choose region…", and
+    gui's border button on Wayland, where no frame can place itself on screen
+    (``ui/viewfinder.py``).  The drag itself is :class:`DragSelectOverlay`'s;
+    this only says what the rectangle means -- the four numbers.
+    """
+
+    region_selected = Signal(int, int, int, int)
+    cancelled = Signal()
+
+    def _emit_cancel(self) -> None:
+        log.info("RegionSelectOverlay._emit_cancel: cancelled by user")
+        self.cancelled.emit()
+
+    def _confirm(self, sel: QRect) -> None:
+        log.info("RegionSelectOverlay._confirm: region %dx%d at (%d, %d)",
+                 sel.width(), sel.height(), sel.x(), sel.y())
+        self.hide()
+        self.region_selected.emit(sel.x(), sel.y(), sel.width(), sel.height())
+        self.deleteLater()

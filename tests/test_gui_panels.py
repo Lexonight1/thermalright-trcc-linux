@@ -1846,7 +1846,7 @@ def test_screencast_audio_off_session_does_not_dispatch(
 
 def test_region_overlay_constructs(qapp: object) -> None:
     """RegionSelectOverlay constructs without raising — no screen grab yet."""
-    from trcc.ui.qtgui.region_overlay import RegionSelectOverlay
+    from trcc.ui.screen_overlay import RegionSelectOverlay
 
     overlay = RegionSelectOverlay()
     assert hasattr(overlay, "region_selected")
@@ -1856,8 +1856,10 @@ def test_region_overlay_constructs(qapp: object) -> None:
 # =========================================================================
 # Drag-select overlays — ONE interaction, proven on BOTH skins
 #
-# gui's ``ScreenCaptureOverlay`` and qtgui's ``RegionSelectOverlay`` are the
-# same press-drag-release behaviour; it lives once, in ``DragSelectOverlay``.
+# The press-drag-release behaviour lives once, in ``DragSelectOverlay``; its
+# one subclass now is the shared ``RegionSelectOverlay`` (gui's
+# ``ScreenCaptureOverlay`` was reachable from no button and was deleted
+# 2026-10-01).
 # Before that it was written twice and NOTHING drove it, which is how the two
 # copies came to disagree on their own constants (``_MIN_SELECTION`` vs
 # ``_MIN_EDGE``, same value) and their control flow.  These tests are
@@ -1869,8 +1871,7 @@ def test_region_overlay_constructs(qapp: object) -> None:
 #: never at decorator time: importing a Qt widget module during collection
 #: runs its class bodies before ``QApplication`` exists.
 _DRAG_SKINS = {
-    "gui": ("trcc.ui.gui.screen_capture", "ScreenCaptureOverlay"),
-    "qtgui": ("trcc.ui.qtgui.region_overlay", "RegionSelectOverlay"),
+    "shared": ("trcc.ui.screen_overlay", "RegionSelectOverlay"),
 }
 
 
@@ -2027,59 +2028,6 @@ def test_drag_select_right_click_cancels(skin: str, qtbot) -> None:
     _press(overlay, 100, 120, button="RightButton")
 
     assert cancelled == [True]
-
-
-@pytest.mark.parametrize("gesture", sorted(_DIAGONALS))
-def test_screen_capture_crops_the_pixels_that_were_dragged_over(
-    gesture: str, qtbot,
-) -> None:
-    """The gui skin emits the SOURCE pixels inside the rectangle, not just
-    a pixmap of the right size.
-
-    Every pixel of the stand-in screenshot encodes its own coordinates, so
-    the crop names its own provenance: read a corner back and it says which
-    screen pixel it came from.  Sizes alone would pass even if the crop were
-    taken from the wrong origin.
-    """
-    from PySide6.QtGui import QImage, QPixmap
-
-    from trcc.ui.gui.screen_capture import ScreenCaptureOverlay
-
-    width, height = 64, 48
-    shot = QImage(width, height, QImage.Format.Format_RGB32)
-    for y in range(height):
-        for x in range(width):
-            shot.setPixel(x, y, (0xFF << 24) | (x << 16) | (y << 8))
-
-    (x0, y0), (x1, y1) = _DIAGONALS[gesture]
-    # Scale the shared diagonals down into this small stand-in screen.
-    x0, x1, y0, y1 = x0 // 10, x1 // 10, y0 // 10, y1 // 10
-
-    got: list[object] = []
-    overlay = ScreenCaptureOverlay()
-    qtbot.addWidget(overlay)
-    overlay._screenshot = QPixmap.fromImage(shot)
-    overlay.captured.connect(got.append)
-
-    _press(overlay, x0, y0)
-    _move_to(overlay, x1, y1)
-    _release(overlay, x1, y1)
-
-    assert len(got) == 1 and got[0] is not None
-    cropped = got[0].toImage()          # type: ignore[attr-defined]
-    left, right = sorted((x0, x1))
-    top, bottom = sorted((y0, y1))
-    assert (cropped.width(), cropped.height()) == (right - left + 1,
-                                                   bottom - top + 1)
-    for corner_x, corner_y, want in (
-        (0, 0, (left, top)),
-        (cropped.width() - 1, cropped.height() - 1, (right, bottom)),
-    ):
-        colour = cropped.pixelColor(corner_x, corner_y)
-        assert (colour.red(), colour.green()) == want, (
-            f"{gesture}: crop corner ({corner_x}, {corner_y}) came from screen "
-            f"pixel {(colour.red(), colour.green())}, expected {want}"
-        )
 
 
 def test_both_skins_share_one_drag_implementation() -> None:
