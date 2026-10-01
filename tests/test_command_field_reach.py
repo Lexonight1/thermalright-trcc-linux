@@ -127,21 +127,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("RunUpgrade", "gui"): (frozenset({"dry_run"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("StartScreencast", "api"): (frozenset({"interval_s"}), (
-        "scoped: traced 2026-09-29 -- interval_s is qtgui's fps slider, the "
-        "only rate control any face has; the rest take the C#-grounded "
-        "SCREENCAST_TICK_S default"
-    )),
-    ("StartScreencast", "cli"): (frozenset({"interval_s"}), (
-        "scoped: traced 2026-09-29 -- interval_s is qtgui's fps slider, the "
-        "only rate control any face has; the rest take the C#-grounded "
-        "SCREENCAST_TICK_S default"
-    )),
-    ("StartScreencast", "gui"): (frozenset({"interval_s"}), (
-        "scoped: traced 2026-09-29 -- interval_s is qtgui's fps slider, the "
-        "only rate control any face has; the rest take the C#-grounded "
-        "SCREENCAST_TICK_S default"
-    )),
 }
 
 

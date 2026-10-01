@@ -546,24 +546,19 @@ def test_the_screencast_cadence_matches_the_c_sharp_oracle() -> None:
 
 
 def test_every_face_starts_at_the_same_cadence() -> None:
-    """Four faces, one rate — and qtgui was the third place it was restated.
+    """One rate, the C#'s, and no field to vary it by UI.
 
-    gui had ``start(150)`` beside a 0.15 constant; qtgui had a slider
-    defaulting to a literal ``6``.  cli, api and gui pass no interval at all,
-    so they take the Command's default.  Moving the constant to the oracle's
-    rate would have left qtgui alone at 6 fps.
+    qtgui had a 1-30 fps slider and was the only face that could set
+    ``StartScreencast.interval_s``; cli, api and gui always took the default,
+    recorded as three ``scoped:`` exceptions.  The C# casts at one fixed rate,
+    so the field went with the slider (2026-10-01): a cadence no Command can
+    carry is a cadence no UI can make different.
     """
-    from trcc.ui.qtgui.panels import screencast_panel
+    import dataclasses
 
-    expected = round(1.0 / SCREENCAST_TICK_S)
-
-    # cli, api and gui dispatch with no interval; this is what they get.
-    assert StartScreencast(key="0000:0000", x=0, y=0, w=1, h=1).interval_s \
-        == SCREENCAST_TICK_S
-    assert expected == screencast_panel._DEFAULT_FPS, (
-        f"qtgui starts at {screencast_panel._DEFAULT_FPS} fps, the rest at "
-        f"{expected}")
-    assert screencast_panel._MIN_FPS <= expected <= screencast_panel._MAX_FPS
+    assert "interval_s" not in {f.name for f in dataclasses.fields(StartScreencast)}
+    assert ScreencastDriver.DEFAULT_INTERVAL_S == SCREENCAST_TICK_S
+    assert ScreencastDriver.__init__.__defaults__ == (None,)   # -> the default
 
 
 # ── one display source at a time ─────────────────────────────────────

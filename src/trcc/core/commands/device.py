@@ -44,7 +44,6 @@ from ..models import (
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
-    SCREENCAST_TICK_S,
     STREAM_SCHEMES,
     STREAM_TICK_S,
     FitMode,
@@ -1449,8 +1448,9 @@ class StartScreencast(Command[ScreencastResult]):
     face that worked.
 
     Re-issuing replaces the driver (same scheduler key), which is how the
-    audio flag and ``interval_s`` change mid-cast.  ``interval_s`` defaults to
-    the C#-grounded cadence; qtgui's fps slider sets it.
+    audio flag changes mid-cast.  The cadence is the C#'s and is not a field:
+    its cast form is driven at one fixed rate (``SCREENCAST_TICK_S``), and a
+    rate only one UI could set was a per-UI asymmetry, removed 2026-10-01.
 
     Validates region geometry — refuses negative or one-sided sizes so a typo
     in CLI args is caught at dispatch time.  No region (0x0, the default)
@@ -1464,14 +1464,11 @@ class StartScreencast(Command[ScreencastResult]):
     w: int = 0
     h: int = 0
     audio: bool = False
-    interval_s: float = SCREENCAST_TICK_S
 
     def execute(self, app: App) -> ScreencastResult:
         log.info(
-            "StartScreencast.execute: key=%s region=(%d,%d %dx%d) audio=%s "
-            "interval=%.3fs",
+            "StartScreencast.execute: key=%s region=(%d,%d %dx%d) audio=%s",
             self.key, self.x, self.y, self.w, self.h, self.audio,
-            self.interval_s,
         )
         try:
             device = app.get(self.key)
@@ -1537,7 +1534,7 @@ class StartScreencast(Command[ScreencastResult]):
         ))
         from ...services.screencast_driver import ScreencastDriver
 
-        app.add_task(ScreencastDriver(app, self.key, self.interval_s))
+        app.add_task(ScreencastDriver(app, self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=True,
             x=x, y=y, w=w, h=h, audio=self.audio,

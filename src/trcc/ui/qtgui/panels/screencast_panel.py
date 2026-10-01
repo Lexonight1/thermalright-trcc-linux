@@ -9,9 +9,9 @@ Workflow:
     nudges), or "Choose region…" to drag one with
     :class:`RegionSelectOverlay`.  :class:`SetScreencastRegion` stores
     either -- a running cast follows it.
-3.  Pick an update interval (frames per second), and optionally tick
-    "Draw a spectrum from the microphone" — it applies at the next Start
-    and re-issues the session when toggled mid-cast.
+3.  Optionally tick "Draw a spectrum from the microphone" — it applies at
+    the next Start and re-issues the session when toggled mid-cast.  The
+    frame rate is the C#'s, fixed, as in every UI.
 4.  Click Start — :class:`StartScreencast` casts the stored region; the
     App's capture driver grabs and sends every tick.
 5.  Stop ends the cast; the device keeps the last frame until the
@@ -42,7 +42,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSlider,
     QSpinBox,
     QVBoxLayout,
 )
@@ -55,7 +54,6 @@ from ....core.commands import (
 )
 from ....core.events import Event
 from ....core.geometry import lock_region_to_panel
-from ....core.models import SCREENCAST_TICK_S
 from ...viewfinder import frames_supported, open_picker, store_picked_region
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -65,15 +63,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_MIN_FPS = 1
-_MAX_FPS = 30
-#: Where the slider starts: the app's own cadence, DERIVED rather than
-#: restated.  This was a literal 6, which matched the invented 0.15 s tick
-#: the rest of the tree used until 2026-09-18 -- so once that moved to the
-#: C# oracle's rate, qtgui would have gone on casting at 6 fps while gui,
-#: cli and api ran at 16.7.  See ``SCREENCAST_TICK_S`` for the derivation
-#: from ``FormCZTV.Timer_event``.
-_DEFAULT_FPS = round(1.0 / SCREENCAST_TICK_S)
 #: The region's fields, in the order the C# lays them out and the Command takes.
 _AXES = ("x", "y", "w", "h")
 #: The C#'s clamp on every field and nudge (``UCTouPingXianShi.cs:215-310``).
@@ -133,22 +122,6 @@ class ScreencastPanel(BasePanel):
                 "No frame can be shown on Wayland: a window cannot place "
                 "itself there.  Use \"Choose region…\" to set the region.")
 
-        # ── Interval slider ───────────────────────────────────────────
-        self._fps = QSlider(Qt.Orientation.Horizontal, self)
-        self._fps.setRange(_MIN_FPS, _MAX_FPS)
-        self._fps.setValue(_DEFAULT_FPS)
-        self._fps.setTickInterval(5)
-        self._fps.setToolTip(
-            "How many frames to push per second.  Higher = smoother + "
-            "more CPU; the LCD's refresh limit is usually 25–30 fps.",
-        )
-        self._fps_label = QLabel(f"{_DEFAULT_FPS} fps", self)
-        self._fps.valueChanged.connect(self._on_fps_slid)
-        self._fps.valueChanged.connect(self._on_fps_changed)
-        fps_row = QHBoxLayout()
-        fps_row.addWidget(self._fps, stretch=1)
-        fps_row.addWidget(self._fps_label)
-
         # ── Microphone ────────────────────────────────────────────────
         # The last face that could not reach ``StartScreencast.audio``:
         # gui has a mic button, cli has ``--audio``, api has ``body.audio``,
@@ -199,7 +172,6 @@ class ScreencastPanel(BasePanel):
         form.addRow("Device:", self._picker)
         form.addRow("Region:", region_row)
         form.addRow("", self._hide_border)
-        form.addRow("Update rate:", fps_row)
         form.addRow("", self._audio)
 
         root = QVBoxLayout(self)
@@ -285,50 +257,29 @@ class ScreencastPanel(BasePanel):
         log.info("_on_region_cancelled")
         self._status.setText("Region selection cancelled.")
 
-    # ── FPS plumbing ─────────────────────────────────────────────────
-
-    def _on_fps_slid(self, value: int) -> None:
-        """Echo the slider position beside it.  ``_on_fps_changed`` applies."""
-        log.debug("_on_fps_slid: value=%s", value)
-        self._fps_label.setText(f"{value} fps")
-
-    def _on_fps_changed(self, value: int) -> None:
-        log.info("_on_fps_changed: value=%s", value)
-        key = self._picker.current_key()
-        if self._casting and key:
-            # Re-issuing replaces the driver, so this is how the cadence
-            # changes mid-cast.
-            self._issue(key)
+    # ── Issuing the session ──────────────────────────────────────────
 
     def _issue(self, key: str) -> ScreencastResult:
         """Start (or re-issue) the session with everything the panel holds.
 
-        One dispatch for Start, the fps slider and the mic checkbox, so a
-        re-issue for one of them cannot reset the others.  The region is the
+        One dispatch for Start and the mic checkbox, so a re-issue for the
+        microphone cannot reset the region.  The region is the
         one shown -- the App's, re-read on every event; 0x0 before a snapshot
         has answered, which the App reads as the stored one.
         """
         x, y, w, h = self._rect or (0, 0, 0, 0)
-        log.info("_issue: key=%s region=%s audio=%s fps=%s", key, self._rect,
-                 self._audio.isChecked(), self._fps.value())
+        log.info("_issue: key=%s region=%s audio=%s", key, self._rect,
+                 self._audio.isChecked())
         return self.dispatch(StartScreencast(
             key=key, x=x, y=y, w=w, h=h, audio=self._audio.isChecked(),
-            interval_s=self._fps_interval_s(),
         ))
-
-    def _fps_interval_s(self) -> float:
-        """The slider's fps as the driver's tick interval, in seconds."""
-        log.debug("_fps_interval_s")
-        return max(0.033, 1.0 / max(_MIN_FPS, self._fps.value()))
 
     # ── Microphone ───────────────────────────────────────────────────
 
     def _on_audio_toggled(self, enabled: bool) -> None:
         """Mic on/off, mid-cast included.
 
-        Re-issuing the session with the new flag is how the flag changes,
-        exactly as re-issuing it is how the cadence changes
-        (:meth:`_on_fps_changed`).  The flag lives in ``screencast_region``'s
+        Re-issuing the session with the new flag is how the flag changes.  The flag lives in ``screencast_region``'s
         fifth element — the one persisted truth — so there is no second piece
         of state to keep in step, and ``_sync_audio`` in the Command holds the
         microphone open for exactly as long as some session wants it.

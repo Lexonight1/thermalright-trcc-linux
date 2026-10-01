@@ -527,7 +527,6 @@ Begin a screen-capture session for a device, and drive it.
 | `w` | `int` | no |
 | `h` | `int` | no |
 | `audio` | `bool` | no |
-| `interval_s` | `float` | no |
 
 ### `StopScreencast`
 

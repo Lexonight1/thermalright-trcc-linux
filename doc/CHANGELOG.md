@@ -58,7 +58,7 @@
   click +/-), the Qt gui's region picker, `trcc display screencast-region`
   and `POST …/display/screencast/region`. The Windows-style gui's border
   button and a new Qt gui checkbox store whether to hide the frame around
-  the region; the frame itself is not drawn yet. `trcc display screencast`
+  the region (the frame is described above). `trcc display screencast`
   and `POST …/screencast/start` no longer need a region.
   The region now keeps the shape of the picture it fills, which turns when
   you rotate the screen. Before, it kept the shape of the unrotated panel, so
@@ -82,6 +82,11 @@
   `cryptography` package as a dependency.
 
 ### Changed
+
+- **The Qt gui (`trcc qtgui`) no longer has a screen-cast "Update rate"
+  slider.** Every interface now casts at the Windows app's one fixed rate,
+  about 17 frames a second; before, only that slider could change it, so the
+  same cast ran at a different speed depending on which window started it.
 
 - **A clock's time and date format belongs to the clock, as in the Windows
   app.** There used to be one 12h/24h and date setting that applied to every
