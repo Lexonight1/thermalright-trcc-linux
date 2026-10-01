@@ -25,7 +25,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from ..core.geometry import content_is_portrait, fit_rect_for_mode, plan_orientation
+from ..core.geometry import (
+    content_is_portrait,
+    fit_rect_for_mode,
+    oriented_canvas,
+    plan_orientation,
+)
 from ..core.logs import per_frame
 from ..core.models import (
     MEDIA,
@@ -591,8 +596,7 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         # The ORIENTED canvas, not the native one — the canvas and the wire
         # angle are one pair (see ``_orient_for_wire``).
-        target_w, target_h = plan_orientation(
-            resolved, s.orientation, False).canvas
+        target_w, target_h = oriented_canvas(resolved, s.orientation)
         # Surface is opaque RGB; alpha not needed for solid fill.
         surface = self._r.create_surface(
             target_w, target_h, color=(*color, 255))
@@ -636,20 +640,20 @@ class DisplayService:
         dropping the frame.
 
         **Geometry is deliberately untouched.**  The canvas stays
-        ``plan_orientation(..., False).canvas`` and rotation stays
-        ``_orient_for_wire``, so the wire bytes are unchanged on every panel
-        at every orientation.  The oracle composes on the ORIENTED canvas
-        instead (``GIFSize`` transposes at 90/270 for non-square panels,
-        FormCZTV.cs:3430-3512), which is a real divergence on 6 FBLs — but it
-        is coupled to the capture aspect, which the region picker does not yet
-        transpose, and changing both belongs in its own verified step.
+        ``oriented_canvas`` and rotation stays ``_orient_for_wire``, so the
+        wire bytes are unchanged on every panel at every orientation.  The
+        oracle sizes its canvas (``GIFSize``) to the capture box's own shape
+        and stretches the grab into it (FormCZTV.cs:3100-3557); the box now
+        follows that rule (``screencast_axes``) and the canvas does not.
+        Measured 2026-09-30: they disagree on 7 of 20 FBLs -- 50 51 52 53 58
+        64 at 90/270, and 60 at every angle.  Changing the canvas changes the
+        wire on panels nobody has verified, so it is its own step.
         """
         log.debug("build_screencast_frame: key=%s theme=%s",
                   info.key, theme.name if theme else None)
         resolved = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
-        target_w, target_h = plan_orientation(
-            resolved, s.orientation, False).canvas
+        target_w, target_h = oriented_canvas(resolved, s.orientation)
 
         surface = self._r.from_raw_rgb24(frame)
         if (
@@ -731,8 +735,7 @@ class DisplayService:
         resolved = self._resolve_profile(info, profile)
         s0 = self._settings.for_device(info.key)
         # The ORIENTED canvas, not the native one — see ``_orient_for_wire``.
-        target_w, target_h = plan_orientation(
-            resolved, s0.orientation, False).canvas
+        target_w, target_h = oriented_canvas(resolved, s0.orientation)
 
         surface = self._r.open_image(path)
         if self._r.surface_size(surface) != (target_w, target_h):

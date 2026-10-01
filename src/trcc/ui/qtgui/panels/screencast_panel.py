@@ -3,14 +3,16 @@
 Workflow:
 
 1.  Pick a device (the existing :class:`DevicePickerWidget`).
-2.  Click "Choose region…" — opens :class:`RegionSelectOverlay` which
-    freezes the screen and lets the user drag a rectangle.
+2.  The region shown is the device's own (``LcdSnapshot.screencast_rect``:
+    the loaded theme's, the last edit from any UI, or the C#'s default).
+    "Choose region…" opens :class:`RegionSelectOverlay` to drag a new one,
+    which :class:`SetScreencastRegion` stores -- a running cast follows it.
 3.  Pick an update interval (frames per second), and optionally tick
     "Draw a spectrum from the microphone" — it applies at the next Start
     and re-issues the session when toggled mid-cast.
-4.  Click Start — every tick the panel grabs the chosen region,
-    encodes it for the device, and dispatches :class:`SendFrame`.
-5.  Stop ends the loop; the device keeps the last frame until the
+4.  Click Start — :class:`StartScreencast` casts the stored region; the
+    App's capture driver grabs and sends every tick.
+5.  Stop ends the cast; the device keeps the last frame until the
     user picks a new theme.
 
 Honest scope:
@@ -18,9 +20,6 @@ Honest scope:
 * X11 and Wayland both capture through ``Platform.screen_capture()``:
   Qt's grab and the X11 grabbers on X11, the xdg-portal PipeWire stream
   with the desktop's own tool behind it on Wayland.
-* The panel runs the timer locally; it does not persist across
-  restarts.  Screencast state is intentionally transient — users
-  who want a permanent mirror are an unusual case.
 * Background mode is left to the user — the configuration panel
   exposes ``transparent`` which makes the captured frame the only
   visible layer.  Picking ``theme`` keeps the theme's background and
@@ -45,12 +44,12 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import (
-    DeviceState,
     LcdSnapshot,
+    SetScreencastRegion,
     StartScreencast,
     StopScreencast,
 )
-from ....core.events import ScreencastStarted, ScreencastStopped
+from ....core.events import Event
 from ....core.geometry import lock_region_to_panel
 from ....core.models import SCREENCAST_TICK_S
 from ..base import BasePanel
@@ -77,7 +76,9 @@ class ScreencastPanel(BasePanel):
 
     def _setup_ui(self) -> None:
         log.debug("_setup_ui")
-        self._region: tuple[int, int, int, int] | None = None
+        #: The selected device's region as the App last showed it, re-read on
+        #: every event -- what Start and the border flag send back.
+        self._rect: tuple[int, int, int, int] | None = None
         #: Whether the SELECTED device is casting, as the App says
         #: (``LcdSnapshot.screencast_region``).  It was a local
         #: ``_casting_key``: another UI's start or stop never showed here, and
@@ -99,6 +100,11 @@ class ScreencastPanel(BasePanel):
         region_row = QHBoxLayout()
         region_row.addWidget(self._pick_btn)
         region_row.addWidget(self._region_label, stretch=1)
+
+        # The C#'s border button (``myYcbk``): hide the frame drawn round the
+        # region on screen.  Stored with the region and saved into themes.
+        self._hide_border = QCheckBox("Hide the frame around the region", self)
+        self._hide_border.toggled.connect(self._on_hide_border_toggled)
 
         # ── Interval slider ───────────────────────────────────────────
         self._fps = QSlider(Qt.Orientation.Horizontal, self)
@@ -165,6 +171,7 @@ class ScreencastPanel(BasePanel):
         form = QFormLayout()
         form.addRow("Device:", self._picker)
         form.addRow("Region:", region_row)
+        form.addRow("", self._hide_border)
         form.addRow("Update rate:", fps_row)
         form.addRow("", self._audio)
 
@@ -179,7 +186,8 @@ class ScreencastPanel(BasePanel):
 
         qconn = Qt.ConnectionType.QueuedConnection
         self._picker.key_changed.connect(self._on_key_changed)
-        for signal in (self._bus.screencast_started, self._bus.screencast_stopped):
+        for signal in (self._bus.screencast_started, self._bus.screencast_stopped,
+                       self._bus.settings_changed):
             signal.connect(self._on_cast_event, type=qconn)
         self._show_state()
 
@@ -198,22 +206,31 @@ class ScreencastPanel(BasePanel):
         self, x: int, y: int, w: int, h: int,
     ) -> None:
         log.info("_on_region_selected: x=%s y=%s w=%s h=%s", x, y, w, h)
-        # Fit the drag to the panel's shape.  The C# oracle's viewfinder is
-        # PRE-SIZED from the panel and the user picks position only, so a
-        # free-form rectangle loses the guarantee the original gave: what you
-        # framed is what appears.  Before this, qtgui dragged unconstrained and
-        # the render pipeline squashed the result.
+        # Fit the drag to the canvas the cast fills.  The C# oracle's
+        # viewfinder is PRE-SIZED from the panel and the user picks position
+        # only, so a free-form rectangle loses the guarantee the original
+        # gave: what you framed is what appears.  The canvas turns with the
+        # orientation; the native resolution this used to read does not.
         key = self._picker.current_key()
-        resolution = None
-        if key:
-            state = self.dispatch(DeviceState(key=key))
-            resolution = state.resolution if state.ok else None
-        x, y, w, h = lock_region_to_panel(resolution, x, y, w, h)
-        self._region = (x, y, w, h)
-        suffix = "" if resolution else "  (no device picked — not fitted)"
-        self._region_label.setText(
-            f"{w} × {h} at ({x}, {y}){suffix}",
-        )
+        if not key:
+            self._status.setText("Pick a device first.  Open the Devices panel to scan.")
+            return
+        snap = self.dispatch(LcdSnapshot(key=key))
+        canvas = snap.screencast_canvas if snap.ok else None
+        x, y, w, h = lock_region_to_panel(canvas, x, y, w, h)
+        result = self.dispatch(SetScreencastRegion(key=key, x=x, y=y, w=w, h=h))
+        if not result.ok:
+            self._status.setText(result.message)
+        self._show_state()
+
+    def _on_hide_border_toggled(self, hide: bool) -> None:
+        """The border flag, sent with the region the App holds."""
+        key = self._picker.current_key()
+        log.info("_on_hide_border_toggled: %s hide=%s rect=%s", key, hide, self._rect)
+        if key and self._rect is not None:
+            x, y, w, h = self._rect
+            self.dispatch(SetScreencastRegion(key=key, x=x, y=y, w=w, h=h,
+                                              hide_border=hide))
 
     def _on_region_cancelled(self) -> None:
         log.info("_on_region_cancelled")
@@ -229,21 +246,22 @@ class ScreencastPanel(BasePanel):
     def _on_fps_changed(self, value: int) -> None:
         log.info("_on_fps_changed: value=%s", value)
         key = self._picker.current_key()
-        if self._casting and key and self._region is not None:
+        if self._casting and key:
             # Re-issuing replaces the driver, so this is how the cadence
             # changes mid-cast.
-            self._issue(key, self._region)
+            self._issue(key)
 
-    def _issue(self, key: str,
-               region: tuple[int, int, int, int]) -> ScreencastResult:
+    def _issue(self, key: str) -> ScreencastResult:
         """Start (or re-issue) the session with everything the panel holds.
 
         One dispatch for Start, the fps slider and the mic checkbox, so a
-        re-issue for one of them cannot reset the others.
+        re-issue for one of them cannot reset the others.  The region is the
+        one shown -- the App's, re-read on every event; 0x0 before a snapshot
+        has answered, which the App reads as the stored one.
         """
-        x, y, w, h = region
-        log.info("_issue: key=%s region=%s audio=%s fps=%s", key,
-                 region, self._audio.isChecked(), self._fps.value())
+        x, y, w, h = self._rect or (0, 0, 0, 0)
+        log.info("_issue: key=%s region=%s audio=%s fps=%s", key, self._rect,
+                 self._audio.isChecked(), self._fps.value())
         return self.dispatch(StartScreencast(
             key=key, x=x, y=y, w=w, h=h, audio=self._audio.isChecked(),
             interval_s=self._fps_interval_s(),
@@ -270,11 +288,11 @@ class ScreencastPanel(BasePanel):
         """
         log.info("_on_audio_toggled: enabled=%s", enabled)
         key = self._picker.current_key()
-        if not self._casting or not key or self._region is None:
+        if not self._casting or not key:
             log.debug("_on_audio_toggled: no live session — the checkbox "
                       "applies at the next Start")
             return
-        result = self._issue(key, self._region)
+        result = self._issue(key)
         if not result.ok:
             log.warning("_on_audio_toggled: re-issue failed: %s",
                         result.message)
@@ -290,12 +308,7 @@ class ScreencastPanel(BasePanel):
                 "Pick a device first.  Open the Devices panel to scan.",
             )
             return
-        if self._region is None:
-            self._status.setText(
-                "Choose a region first — click 'Choose region…' above.",
-            )
-            return
-        started = self._issue(key, self._region)
+        started = self._issue(key)
         if not started.ok:
             self._status.setText(started.message)
             return
@@ -314,33 +327,48 @@ class ScreencastPanel(BasePanel):
         log.info("_on_key_changed: %s", key)
         self._show_state()
 
-    def _on_cast_event(self, event: ScreencastStarted | ScreencastStopped) -> None:
-        if event.key == self._picker.current_key():
-            log.info("_on_cast_event: %s for %s", type(event).__name__, event.key)
+    def _on_cast_event(self, event: Event) -> None:
+        """A cast started or stopped, or a device setting changed -- the
+        region among them -- in any UI."""
+        key = getattr(event, "key", None)
+        log.debug("_on_cast_event: %s for %s", type(event).__name__, key)
+        if key == self._picker.current_key():
             self._show_state()
 
     def _show_state(self) -> None:
-        """The selected device's cast, from any UI: buttons, region, mic.
-        Sends nothing -- the mic checkbox is set under blocked signals."""
+        """The selected device's screencast, from any UI: region, border,
+        buttons, mic.  Sends nothing -- checkboxes are set under blocked
+        signals."""
         key = self._picker.current_key()
         snap = self.dispatch(LcdSnapshot(key=key)) if key else None
-        region = snap.screencast_region if snap is not None and snap.ok else None
+        if snap is not None and not snap.ok:
+            snap = None
+        region = snap.screencast_region if snap is not None else None
+        self._rect = snap.screencast_rect if snap is not None else None
         self._casting = region is not None
-        log.info("_show_state: %s casting=%s region=%s", key, self._casting, region)
+        log.info("_show_state: %s casting=%s region=%s rect=%s", key,
+                 self._casting, region, self._rect)
+        if self._rect is not None:
+            x, y, w, h = self._rect
+            self._region_label.setText(f"{w} × {h} at ({x}, {y})")
+        else:
+            self._region_label.setText("No device picked.")
+        if snap is not None:
+            _set_quietly(self._hide_border, snap.screencast_hide_border)
         if region is not None:
-            x, y, w, h, audio = region
-            self._region = (x, y, w, h)
-            self._region_label.setText(f"{w}×{h} at ({x}, {y})")
-            self._audio.blockSignals(True)
-            self._audio.setChecked(bool(audio))
-            self._audio.blockSignals(False)
+            _set_quietly(self._audio, region[4])
             self._status.setText(f"Mirroring a region to {key}.  Click Stop to end.")
         elif key:
-            self._status.setText("Not casting.  Choose a region, then Start.")
+            self._status.setText("Not casting.  Start mirrors the region shown.")
         self._start_btn.setEnabled(not self._casting)
         self._stop_btn.setEnabled(self._casting)
-        self._pick_btn.setEnabled(not self._casting)
+        self._pick_btn.setEnabled(bool(key))
+        self._hide_border.setEnabled(self._rect is not None)
 
-    # ── Tick ─────────────────────────────────────────────────────────
 
-    # ── Helpers ──────────────────────────────────────────────────────
+def _set_quietly(box: QCheckBox, checked: bool) -> None:
+    """Show a value from the App without emitting ``toggled``."""
+    log.debug("_set_quietly: %s -> %s", box.text(), checked)
+    box.blockSignals(True)
+    box.setChecked(bool(checked))
+    box.blockSignals(False)

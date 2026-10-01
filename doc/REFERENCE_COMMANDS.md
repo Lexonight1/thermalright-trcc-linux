@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**140 total: 102 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -477,6 +477,21 @@ Replace the user-overlay layer wholesale.
 | `key` | `str` | yes |
 | `elements` | `tuple[dict, Ellipsis]` | no |
 
+### `SetScreencastRegion`
+
+Set the device's screencast region -- and its hide-border flag.
+
+*Command* → `ScreencastResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `x` | `int` | yes |
+| `y` | `int` | yes |
+| `w` | `int` | yes |
+| `h` | `int` | yes |
+| `hide_border` | `bool | None` | no |
+
 ### `SetSplitMode`
 
 Set the Dynamic Island style for widescreen panels.
@@ -507,10 +522,10 @@ Begin a screen-capture session for a device, and drive it.
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
-| `x` | `int` | yes |
-| `y` | `int` | yes |
-| `w` | `int` | yes |
-| `h` | `int` | yes |
+| `x` | `int` | no |
+| `y` | `int` | no |
+| `w` | `int` | no |
+| `h` | `int` | no |
 | `audio` | `bool` | no |
 | `interval_s` | `float` | no |
 

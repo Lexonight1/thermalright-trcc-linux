@@ -111,6 +111,9 @@ from ._helpers import (
     _theme_directories,
     native_canvas,
     resolve_overlay_layout,
+    screencast_box,
+    seed_screencast_rect,
+    store_screencast_box,
 )
 
 if TYPE_CHECKING:
@@ -1449,15 +1452,17 @@ class StartScreencast(Command[ScreencastResult]):
     audio flag and ``interval_s`` change mid-cast.  ``interval_s`` defaults to
     the C#-grounded cadence; qtgui's fps slider sets it.
 
-    Validates region geometry — refuses zero-area or negative sizes so
-    a typo in CLI args is caught at dispatch time.
+    Validates region geometry — refuses negative or one-sided sizes so a typo
+    in CLI args is caught at dispatch time.  No region (0x0, the default)
+    casts the device's stored one (``screencast_box``: the theme's, or the
+    C#'s default); a given region is stored too, as the C# has one Jp*.
     """
     USES_DEVICE: ClassVar[bool] = True
     key: str
-    x: int
-    y: int
-    w: int
-    h: int
+    x: int = 0
+    y: int = 0
+    w: int = 0
+    h: int = 0
     audio: bool = False
     interval_s: float = SCREENCAST_TICK_S
 
@@ -1468,17 +1473,6 @@ class StartScreencast(Command[ScreencastResult]):
             self.key, self.x, self.y, self.w, self.h, self.audio,
             self.interval_s,
         )
-        if self.w <= 0 or self.h <= 0:
-            log.warning(
-                "StartScreencast.execute: invalid region %dx%d for %s",
-                self.w, self.h, self.key,
-            )
-            return ScreencastResult(
-                ok=False, key=self.key,
-                message=(f"invalid screencast region {self.w}x{self.h} "
-                         f"(both dimensions must be > 0)"),
-            )
-
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
@@ -1504,6 +1498,18 @@ class StartScreencast(Command[ScreencastResult]):
                 message=f"{self.key} is an LED controller — it has no panel",
             )
 
+        given = (self.x, self.y, self.w, self.h)
+        box = given if (self.w, self.h) != (0, 0) else screencast_box(app, self.key)
+        if box is None or box[2] <= 0 or box[3] <= 0:
+            log.warning("StartScreencast.execute: invalid region %s for %s",
+                        box, self.key)
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=(f"invalid screencast region {box} "
+                         "(both dimensions must be > 0)"),
+            )
+        x, y, w, h = box
+
         # A live video playback overlay would race the screencast tick on
         # the same wire — stop it first so the handler owns the surface
         # cleanly.  StopVideo is idempotent so it's safe even if no
@@ -1514,9 +1520,12 @@ class StartScreencast(Command[ScreencastResult]):
         # background/video override — the toggles are mutually exclusive) so
         # SaveTheme can bake it into a theme's ``screencast`` ref and a reload
         # can resume it.
-        app.settings.set_screencast_region(
-            self.key, (self.x, self.y, self.w, self.h, self.audio),
-        )
+        app.settings.set_screencast_region(self.key, (x, y, w, h, self.audio))
+        if box == given and device.profile is not None:
+            # The C# has ONE Jp*: what was cast is what a save keeps.
+            store_screencast_box(
+                app, self.key, box,
+                app.settings.for_device(self.key).screencast_hide_border)
         # The spectrum is drawn into the wire frame by every face now, so the
         # microphone belongs to the Command, not to whichever UI happened to
         # subscribe.  Written AFTER the region, because the rule reads the
@@ -1524,19 +1533,63 @@ class StartScreencast(Command[ScreencastResult]):
         _sync_audio(app)
 
         app.events.publish(ScreencastStarted(
-            key=self.key,
-            x=self.x, y=self.y, w=self.w, h=self.h,
-            audio=self.audio,
+            key=self.key, x=x, y=y, w=w, h=h, audio=self.audio,
         ))
         from ...services.screencast_driver import ScreencastDriver
 
         app.add_task(ScreencastDriver(app, self.key, self.interval_s))
         return ScreencastResult(
             ok=True, key=self.key, active=True,
-            x=self.x, y=self.y, w=self.w, h=self.h, audio=self.audio,
-            message=(f"screencast started on {self.key} "
-                     f"({self.w}x{self.h} @ {self.x},{self.y})"),
+            x=x, y=y, w=w, h=h, audio=self.audio,
+            message=f"screencast started on {self.key} ({w}x{h} @ {x},{y})",
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SetScreencastRegion(Command[ScreencastResult]):
+    """Set the device's screencast region -- and its hide-border flag.
+
+    The C#'s X/Y/W/H fields (UCTouPingXianShi -> FormCZTV cases 65-68) and its
+    border button (case 69): stored per device, written into a saved theme,
+    and followed by a running cast without a restart.  ``x, y, w, h`` is the
+    box on SCREEN; ``hide_border`` None leaves the flag as it is.  Values are
+    0..9999 as the C#'s fields clamp them; a 0 size is stored, as there, and
+    only refused when a cast starts.
+    """
+    USES_DEVICE: ClassVar[bool] = True
+    key: str
+    x: int
+    y: int
+    w: int
+    h: int
+    hide_border: bool | None = None
+
+    def execute(self, app: App) -> ScreencastResult:
+        log.info("SetScreencastRegion: key=%s (%d,%d %dx%d) hide_border=%s",
+                 self.key, self.x, self.y, self.w, self.h, self.hide_border)
+        box = (self.x, self.y, self.w, self.h)
+        device = app.devices.get(self.key)
+        problem = (
+            f"region values must be 0..9999, got {box}"
+            if not all(0 <= v <= 9999 for v in box)
+            else f"no device {self.key}" if device is None
+            else f"{self.key} is an LED controller — it has no panel" if device.is_led
+            else f"{self.key} has not reported its panel size yet"
+            if device.profile is None else "")
+        if problem:
+            log.warning("SetScreencastRegion: %s", problem)
+            return ScreencastResult(ok=False, key=self.key, message=problem)
+        s = app.settings.for_device(self.key)
+        hide = s.screencast_hide_border if self.hide_border is None else self.hide_border
+        store_screencast_box(app, self.key, box, hide)
+        return ScreencastResult(
+            ok=True, key=self.key,
+            active=app.settings.for_device(self.key).screencast_region is not None,
+            x=self.x, y=self.y, w=self.w, h=self.h,
+            message=(f"screencast region of {self.key} is "
+                     f"{self.w}x{self.h} @ {self.x},{self.y}"),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SendScreencastFrame(Command[ScreencastResult]):
@@ -2429,6 +2482,10 @@ class ApplyMask(Command[MaskApplyResult]):
                 log.warning("ApplyMask: %s DC unreadable (%s) — keeping "
                             "theme's overlay layout", mask_dc, e)
             else:
+                # The C# reads Jp* from every DC it loads, a mask's included
+                # (FormCZTV.cs:6805, outside the readMyMode gate).
+                seed_screencast_rect(app, self.key, dc,
+                                     f"mask {mask_dir.name}")
                 mask_elements = dc.get("elements") or []
                 if mask_elements:
                     # Store on DeviceSettings — not theme.config — so the
@@ -3078,10 +3135,13 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
 
     def execute(self, app: App) -> LcdSnapshotResult:
         from ...services._clock import icu_date_pattern
+        from ..geometry import oriented_canvas
         from ._helpers import device_overlay_layout
 
         log.debug("execute: app=%s", app)
         s = app.settings.for_device(self.key)
+        device = app.devices.get(self.key)
+        profile = device.profile if device is not None else None
         # The format is each clock element's own; report the first of each
         # kind, which is what a one-clock theme shows.
         clocks: dict[str, str] = {}
@@ -3106,6 +3166,10 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
                             else "media" if s.media_player_uri
                             else "background"),
             media_player_uri=s.media_player_uri,
+            screencast_rect=screencast_box(app, self.key),
+            screencast_hide_border=s.screencast_hide_border,
+            screencast_canvas=(None if profile is None
+                               else oriented_canvas(profile, s.orientation)),
             temp_unit=s.temp_unit,
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,

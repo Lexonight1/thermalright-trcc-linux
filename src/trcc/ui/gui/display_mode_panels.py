@@ -548,10 +548,16 @@ class ScreenCastPanel(DisplayModePanel):
     Extends DisplayModePanel with coordinate entry fields, +/- buttons,
     border toggle, and aspect ratio locking.
 
-    Matches Windows UCTouPingXianShi layout within 351x100.
+    Matches Windows UCTouPingXianShi layout within 351x100.  The region and
+    the border flag are the App's (``LcdSnapshot.screencast_rect``); the panel
+    shows them and says when the user changed one.
     """
 
-    screencast_params_changed = Signal(int, int, int, int)  # x, y, w, h
+    #: A finished edit -- Enter, focus leaving a field, or a +/- click -- of
+    #: the region on screen, ``(x, y, w, h)``.  Not per keystroke: a half-typed
+    #: "3" of "320" is not a region anyone asked for.
+    region_edited = Signal(int, int, int, int)
+    #: The border button: True hides the on-screen frame (the C#'s ``myYcbk``).
     border_toggled = Signal(bool)
     audio_toggled = Signal(bool)
 
@@ -578,8 +584,9 @@ class ScreenCastPanel(DisplayModePanel):
     def __init__(self, parent=None):
         super().__init__("screencast", [], parent)
         self._updating = False
-        self._show_border = True
+        self._hide_border = True
         self._aspect_lock = True
+        self._shown: tuple[int, int, int, int] = (0, 0, 0, 0)
         # None, not (0, 0) — ``DeviceStateResult.resolution`` keeps "we have
         # not asked the hardware yet" distinct from "a 0x0 panel", and a
         # presentation that collapses them cannot tell a user with no device
@@ -599,6 +606,7 @@ class ScreenCastPanel(DisplayModePanel):
                             ("w", self.entry_w), ("h", self.entry_h)):
             field.setProperty(_AXIS_PROPERTY, axis)
             field.textChanged.connect(self._on_coord_edited)
+            field.editingFinished.connect(self._commit)
 
         # +/- buttons
         self._make_pm_btn(*self._BTN_ADD_X, +1, self.entry_x)
@@ -665,8 +673,6 @@ class ScreenCastPanel(DisplayModePanel):
                       self.entry_w.text(), self.entry_h.text())
             self._updating = False
 
-        self._emit_params()
-
     def values(self) -> tuple[int, int, int, int]:
         """The region the fields show, ``(x, y, w, h)`` -- what Start sends.
 
@@ -678,9 +684,23 @@ class ScreenCastPanel(DisplayModePanel):
         log.debug("values: x=%d y=%d w=%d h=%d", x, y, w, h)
         return x, y, w, h
 
-    def _emit_params(self):
-        """Emit all four coordinate values."""
-        self.screencast_params_changed.emit(*self.values())
+    def _increment(self, entry, delta):
+        """A +/- click is a finished edit, as in the C# (one delegate per click)."""
+        log.debug("_increment: %s %+d", entry.property(_AXIS_PROPERTY), delta)
+        super()._increment(entry, delta)
+        self._commit()
+
+    def _commit(self) -> None:
+        """Emit ``region_edited`` when the fields differ from what was shown.
+
+        ``editingFinished`` also fires when focus merely leaves a field, so an
+        unchanged region sends nothing.
+        """
+        region = self.values()
+        log.debug("_commit: %s (shown %s)", region, self._shown)
+        if region != self._shown:
+            self._shown = region
+            self.region_edited.emit(*region)
 
     def _get_aspect_ratio(self) -> float | None:
         """The panel's height/width, or ``None`` before a device is known.
@@ -707,23 +727,25 @@ class ScreenCastPanel(DisplayModePanel):
         return height / width
 
     def _on_border_toggle(self):
-        log.debug("_on_border_toggle: show_border=%s→%s", self._show_border, not self._show_border)
-        self._show_border = not self._show_border
+        log.info("_on_border_toggle: hide_border=%s→%s",
+                 self._hide_border, not self._hide_border)
+        self._hide_border = not self._hide_border
         self._update_border_icon()
-        self.border_toggled.emit(self._show_border)
+        self.border_toggled.emit(self._hide_border)
 
     def _update_border_icon(self):
-        img = 'display_mode_border_active.png' if self._show_border else 'display_mode_border.png'
+        # The C#'s ``P显示边框A`` is the image for ``myYcbk`` True -- hidden.
+        img = 'display_mode_border_active.png' if self._hide_border else 'display_mode_border.png'
         pix = Assets.load_pixmap(img, 24, 16)
         if not pix.isNull():
             self.border_btn.setIcon(QIcon(pix))
             self.border_btn.setIconSize(self.border_btn.size())
             self.border_btn.setStyleSheet(Styles.FLAT_BUTTON)
         else:
-            self.border_btn.setText("B" if self._show_border else "b")
+            self.border_btn.setText("B" if self._hide_border else "b")
             self.border_btn.setStyleSheet(
                 "QPushButton { background: #00CED1; color: white; border: none; font-size: 8px; }"
-                if self._show_border else
+                if self._hide_border else
                 "QPushButton { background: #555; color: white; border: none; font-size: 8px; }"
             )
 
@@ -739,16 +761,21 @@ class ScreenCastPanel(DisplayModePanel):
         if h is not None:
             self.entry_h.setText(str(h))
         self._updating = False
+        self._shown = self.values()
 
     def set_resolution(self, width: int, height: int) -> None:
-        """Set LCD resolution for aspect ratio calculations."""
+        """The canvas a cast fills (``LcdSnapshot.screencast_canvas``) -- the
+        aspect the region locks to."""
+        log.debug("set_resolution: %s -> %dx%d", self._resolution, width, height)
         self._resolution = (width, height)
 
     def set_aspect_lock(self, enabled):
         self._aspect_lock = enabled
 
-    def set_border_visible(self, visible):
-        self._show_border = visible
+    def set_hide_border(self, hide: bool) -> None:
+        """Show the App's border flag without emitting ``border_toggled``."""
+        log.debug("set_hide_border: %s -> %s", self._hide_border, hide)
+        self._hide_border = hide
         self._update_border_icon()
 
     @property

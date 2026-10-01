@@ -53,6 +53,7 @@ from ...core.commands import (
     SetMaskVisible,
     SetMediaPlayer,
     SetRefreshInterval,
+    SetScreencastRegion,
     SetTempUnit,
     StartScreencast,
     StopScreencast,
@@ -429,6 +430,8 @@ class TRCCApp(QMainWindow):
         if handler is not None:
             handler.follow_app()
             self._update_ldd_icon()
+        if event.key == self._active_key and isinstance(handler, LCDHandler):
+            self._show_cast()
 
     def _on_bus_app_settings_changed(self, event: Any) -> None:
         """An app-wide setting changed — here, in another UI, or in the App."""
@@ -1415,6 +1418,10 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting.overlay_grid.toggle_changed.connect(self._on_overlay_toggle)
         self.uc_theme_setting.screencast_panel.audio_toggled.connect(
             self._on_screencast_audio_toggled)
+        self.uc_theme_setting.screencast_panel.region_edited.connect(
+            self._on_screencast_region_edited)
+        self.uc_theme_setting.screencast_panel.border_toggled.connect(
+            self._on_screencast_border_toggled)
         self.uc_theme_setting.capture_requested.connect(self._on_capture_requested)
         self.uc_theme_setting.eyedropper_requested.connect(self._on_eyedropper_requested)
 
@@ -1515,6 +1522,8 @@ class TRCCApp(QMainWindow):
                 self._update_ldd_icon()
                 if self._ui_state.state.show_info_module:
                     self.uc_info_module.setVisible(True)
+                if key == self._active_key:
+                    self._show_cast()
             else:
                 log.debug("_on_handshake_done: skipping apply_device_config — already initialized")
 
@@ -1678,19 +1687,58 @@ class TRCCApp(QMainWindow):
         return region
 
     def _show_cast(self) -> None:
-        """Show the selected device's live cast in the panel, sending nothing.
+        """Show the selected device's screencast state, sending nothing.
 
-        Not casting leaves the fields as the user left them -- that is their
-        next region, view state this window owns.
+        The region, its border flag and the canvas it locks to are the App's,
+        cast or not -- the theme's, the user's last edit from any UI, or the
+        C#'s default.  The mic button shows a live cast's flag; off a cast it
+        is this window's choice for the next Start.
         """
         key = self._active_key
-        region = self._cast_region(key) if key else None
-        log.info("_show_cast: %s -> %s", key, region)
-        if region is not None:
-            panel = self.uc_theme_setting.screencast_panel
-            x, y, w, h, audio = region
+        snap = self._app.dispatch(LcdSnapshot(key=key)) if key else None
+        if snap is None or not snap.ok:
+            log.debug("_show_cast: nothing to show for %s", key)
+            return
+        log.info("_show_cast: %s rect=%s hide_border=%s canvas=%s cast=%s", key,
+                 snap.screencast_rect, snap.screencast_hide_border,
+                 snap.screencast_canvas, snap.screencast_region)
+        panel = self.uc_theme_setting.screencast_panel
+        if snap.screencast_canvas is not None:
+            panel.set_resolution(*snap.screencast_canvas)
+        if snap.screencast_rect is not None:
+            x, y, w, h = snap.screencast_rect
             panel.set_values(x=x, y=y, w=w, h=h)
-            panel.set_audio(audio)
+        panel.set_hide_border(snap.screencast_hide_border)
+        if snap.screencast_region is not None:
+            panel.set_audio(snap.screencast_region[4])
+
+    def _on_screencast_region_edited(self, x: int, y: int, w: int, h: int) -> None:
+        """The user finished editing the region -- the App stores it, and a
+        running cast follows it."""
+        log.info("_on_screencast_region_edited: %s (%d,%d %dx%d)",
+                 self._active_key, x, y, w, h)
+        if self._active_key:
+            self._send_region(SetScreencastRegion(
+                key=self._active_key, x=x, y=y, w=w, h=h))
+
+    def _on_screencast_border_toggled(self, hide: bool) -> None:
+        """The border button -- the App's flag, sent with the App's region."""
+        log.info("_on_screencast_border_toggled: %s hide=%s",
+                 self._active_key, hide)
+        snap = (self._app.dispatch(LcdSnapshot(key=self._active_key))
+                if self._active_key else None)
+        if snap is not None and snap.ok and snap.screencast_rect is not None:
+            x, y, w, h = snap.screencast_rect
+            self._send_region(SetScreencastRegion(
+                key=self._active_key, x=x, y=y, w=w, h=h, hide_border=hide))
+
+    def _send_region(self, cmd: SetScreencastRegion) -> None:
+        """Dispatch a region edit; a refusal shows, and the panel re-reads."""
+        result = self._app.dispatch(cmd)
+        log.debug("_send_region: %s -> %s", cmd, result.message)
+        if not result.ok:
+            self.uc_preview.set_status(f"Screencast: {result.message}")
+            self._show_cast()
 
     def _on_bus_cast_changed(self, event: Any) -> None:
         """A cast started or stopped in any UI -- redraw if it is ours."""

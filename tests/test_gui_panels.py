@@ -1634,17 +1634,24 @@ def test_screencast_panel_constructs(gui_app: App, qapp: object) -> None:
     assert panel._stop_btn.isEnabled() is False
 
 
-def test_screencast_panel_start_without_region_is_a_no_op(
-    gui_app: App, qapp: object,
-) -> None:
-    """Start without a chosen region surfaces guidance, starts no cast."""
+def test_screencast_panel_start_casts_the_stored_region(cast_app: App) -> None:
+    """No region to choose first: the device has one (the theme's, or the
+    C#'s default), and Start casts it -- as every other UI's Start does."""
+    from trcc.core.commands import ConnectDevice, LcdSnapshot
     from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
-    panel = ScreencastPanel(gui_app, _bus(gui_app))
+    resp = bytearray(0xE100)
+    resp[0] = 100                       # FBL=100 -> 320x320
+    cast_app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    assert cast_app.dispatch(ConnectDevice(key="0402:3922")).ok
+    panel = ScreencastPanel(cast_app, _bus(cast_app))
     panel._picker.set_key("0402:3922")
+
     panel._on_start()
-    assert panel._casting is False
-    assert "region" in panel._status.text().lower()
+
+    rect = cast_app.dispatch(LcdSnapshot(key="0402:3922")).screencast_rect
+    assert panel._casting is True, panel._status.text()
+    assert cast_app.settings.for_device("0402:3922").screencast_region == (*rect, False)
 
 
 def test_screencast_panel_start_without_key_is_a_no_op(
@@ -1654,23 +1661,59 @@ def test_screencast_panel_start_without_key_is_a_no_op(
     from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
-    panel._region = (0, 0, 200, 100)
     panel._on_start()
     assert panel._casting is False
     assert "device" in panel._status.text().lower()
 
 
-def test_screencast_panel_records_picked_region(
+def test_screencast_panel_stores_the_picked_region(cast_app: App) -> None:
+    """A drag is the device's region now -- fitted to the canvas (320x320
+    here) and stored in the App, where every UI and a save read it."""
+    from trcc.core.commands import LcdSnapshot
+
+    panel = _casting_panel(cast_app)
+    panel._on_region_selected(40, 60, 300, 240)
+
+    assert cast_app.dispatch(LcdSnapshot(key="0402:3922")).screencast_rect == (
+        40, 60, 300, 300)
+    assert panel._region_label.text() == "300 × 300 at (40, 60)"
+
+
+def test_screencast_panel_follows_another_uis_region(cast_app: App, qtbot) -> None:
+    from trcc.core.commands import SetScreencastRegion
+
+    panel = _casting_panel(cast_app)
+    qtbot.addWidget(panel)
+    cast_app.dispatch(SetScreencastRegion(key="0402:3922", x=9, y=8, w=64, h=64,
+                                          hide_border=False))
+
+    qtbot.waitUntil(lambda: panel._region_label.text() == "64 × 64 at (9, 8)",
+                    timeout=2000)
+    assert panel._hide_border.isChecked() is False
+
+
+def test_screencast_panel_without_a_device_stores_nothing(
     gui_app: App, qapp: object,
 ) -> None:
-    """Receiving region_selected updates the panel's region + label."""
     from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
+    sent = _writes(panel)
     panel._on_region_selected(40, 60, 320, 240)
-    assert panel._region == (40, 60, 320, 240)
-    assert "320" in panel._region_label.text()
-    assert "240" in panel._region_label.text()
+
+    assert sent == []
+    assert "device" in panel._status.text().lower()
+
+
+def test_screencast_panel_hide_border_is_the_apps_flag(cast_app: App) -> None:
+    from trcc.core.commands import LcdSnapshot
+
+    panel = _casting_panel(cast_app)
+    assert panel._hide_border.isChecked() is True       # the C#'s default
+    panel._hide_border.setChecked(False)
+
+    snap = cast_app.dispatch(LcdSnapshot(key="0402:3922"))
+    assert (snap.screencast_rect, snap.screencast_hide_border) == ((0, 0, 200, 200), False)
 
 
 def test_screencast_build_frame_returns_bytes(gui_app: App) -> None:
@@ -2299,7 +2342,7 @@ def test_screencast_plus_button_keeps_the_region_on_aspect(
     scp = ScreenCastPanel()
     qtbot.addWidget(scp)
     scp.set_resolution(width, height)
-    scp.screencast_params_changed.connect(
+    scp.region_edited.connect(
         lambda x, y, w, h: emitted.append((x, y, w, h)),
     )
     scp.set_values(x=100, y=100, w=200, h=round(200 * height / width))
@@ -2333,6 +2376,55 @@ def test_screencast_does_not_lock_before_a_device_is_known(qtbot) -> None:
     # as never having asked: it warns, and still declines to lock.
     scp.set_resolution(0, 0)
     assert scp._get_aspect_ratio() is None
+
+
+def test_screencast_region_is_sent_when_finished_not_per_keystroke(qtbot) -> None:
+    """Typing "320" is not three regions; Enter or focus leaving sends one,
+    and a focus change with nothing edited sends none."""
+    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+
+    emitted: list[tuple[int, int, int, int]] = []
+    scp = ScreenCastPanel()
+    qtbot.addWidget(scp)
+    scp.set_values(x=0, y=0, w=320, h=240)
+    scp.region_edited.connect(lambda *r: emitted.append(r))
+
+    for typed in ("1", "12", "123"):
+        scp.entry_x.setText(typed)
+    assert emitted == []
+    scp.entry_x.editingFinished.emit()
+    scp.entry_x.editingFinished.emit()          # focus moved, no new edit
+
+    assert emitted == [(123, 0, 320, 240)]
+
+
+def test_showing_a_region_is_not_an_edit(qtbot) -> None:
+    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+
+    emitted: list[tuple[int, ...]] = []
+    scp = ScreenCastPanel()
+    qtbot.addWidget(scp)
+    scp.region_edited.connect(lambda *r: emitted.append(r))
+
+    scp.set_values(x=5, y=6, w=320, h=240)
+    scp.entry_w.editingFinished.emit()
+
+    assert emitted == []
+
+
+def test_the_border_button_toggles_hide_and_showing_it_sends_nothing(qtbot) -> None:
+    """The C#'s myYcbk starts True (hidden); a click flips it."""
+    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+
+    toggled: list[bool] = []
+    scp = ScreenCastPanel()
+    qtbot.addWidget(scp)
+    scp.border_toggled.connect(toggled.append)
+
+    scp.set_hide_border(False)
+    scp.border_btn.click()
+
+    assert toggled == [True]
 
 
 # =========================================================================
@@ -3858,7 +3950,7 @@ def test_the_screencast_page_shows_the_selected_devices_cast(
     gui_app.events.publish(ScreencastStarted(key=_KEY_Q3, x=10, y=20, w=300,
                                              h=200, audio=True))
     qtbot.waitUntil(panel._stop_btn.isEnabled, timeout=2000)
-    assert panel._audio.isChecked() and panel._region == (10, 20, 300, 200)
+    assert panel._audio.isChecked()
 
     sent = _writes(panel)
     panel._stop_btn.click()

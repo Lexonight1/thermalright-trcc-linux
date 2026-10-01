@@ -34,6 +34,7 @@ from ..results import (
 if TYPE_CHECKING:
     from ...app import App
     from ...services.theme_directories import ThemeDirectories
+    from ..models import DeviceSettings
 
 from ..logs import per_frame
 from ..models import MEDIA, MediaKind
@@ -99,7 +100,7 @@ def oriented_theme_path(
 def overlay_elements_to_dc(
     elements: list[dict[str, Any]], *,
     rotation: int = 0, overlay_enabled: bool = True,
-    allow_empty: bool = False,
+    allow_empty: bool = False, flags: dict[str, Any] | None = None,
 ) -> bytes | None:
     """Serialise overlay elements into ``config1.dc`` (``0xDD``) bytes.
 
@@ -123,6 +124,10 @@ def overlay_elements_to_dc(
         "overlay_enabled": overlay_enabled,
         "rotation": rotation,
         "mask_visible": True,
+        # The device's screencast region: re-applying a user mask reads its
+        # DC (ApplyMask seeds Jp* from it), so a mask that wrote the codec's
+        # default would reset the user's region.
+        **(flags or {}),
     })
     log.info("overlay_elements_to_dc: %d element(s) → %d DC byte(s)",
              len(elements), len(dc))
@@ -168,7 +173,9 @@ def persist_user_mask_dc(app: App, key: str) -> None:
     elements = device_overlay_layout(app, key)
     # allow_empty=True → the user mask always keeps a config1.dc, even when
     # every metric is removed, so it stays an editable unit.
-    dc = overlay_elements_to_dc(elements, allow_empty=True)
+    dc = overlay_elements_to_dc(
+        elements, allow_empty=True,
+        flags=screencast_dc_flags(app.settings.for_device(key)))
     mask_dc = ThemeDir(mask_file.parent).dc
     try:
         if dc is not None:
@@ -698,3 +705,89 @@ def native_canvas(app: App, key: str) -> tuple[int, int, str]:
         return (0, 0, "unknown")
     log.debug("native_canvas: %s from the product registry", key)
     return (*product.native_resolution, "registry")
+
+
+# ── The screencast region (the C#'s JpX/JpY/JpW/JpH + myYcbk) ─────────────
+
+
+def screencast_box(app: App, key: str) -> tuple[int, int, int, int] | None:
+    """*key*'s screencast region as the box on screen, or None with no panel.
+
+    What every UI shows and what ``StartScreencast`` casts when it is given no
+    region: the stored DC rect, or the C#'s default, in screen axes.
+    """
+    from ..geometry import screencast_axes
+    from ..models import SCREENCAST_DEFAULT_RECT
+
+    device = app.devices.get(key)
+    profile = device.profile if device is not None else None
+    if profile is None:
+        log.debug("screencast_box: %s has no panel yet", key)
+        return None
+    s = app.settings.for_device(key)
+    return screencast_axes(s.screencast_rect or SCREENCAST_DEFAULT_RECT,
+                           profile.resolution, s.orientation)
+
+
+def store_screencast_box(app: App, key: str, box: tuple[int, int, int, int],
+                         hide_border: bool) -> None:
+    """Store a box on screen as *key*'s region; a running cast follows it.
+
+    The capture driver reads ``screencast_region`` every tick, so updating it
+    moves a live cast without restarting it -- the C# re-reads Jp* each tick.
+    """
+    from ..geometry import screencast_axes
+
+    profile = app.devices[key].profile
+    assert profile is not None, f"{key} has no panel"
+    native = screencast_axes(box, profile.resolution,
+                             app.settings.for_device(key).orientation)
+    log.debug("store_screencast_box: %s box=%s -> rect=%s", key, box, native)
+    _apply_screencast_rect(app, key, native, hide_border)
+
+
+def seed_screencast_rect(app: App, key: str, config: dict[str, Any],
+                         source: str) -> None:
+    """Take a theme's or mask's DC region as *key*'s -- the C# reads Jp* from
+    every DC it loads (FormCZTV.cs:6805).  A missing or empty rect keeps the
+    current one: a ``trcc.json``-only theme says nothing about it."""
+    rect = config.get("screencast_rect")
+    if not (isinstance(rect, (list, tuple)) and len(rect) == 4
+            and all(isinstance(v, int) for v in rect) and rect[2] > 0 and rect[3] > 0):
+        log.debug("seed_screencast_rect: %s carries no region (%r) — %s keeps "
+                  "its own", source, rect, key)
+        return
+    hide = bool(config.get("screencast_border", True))
+    log.info("seed_screencast_rect: %s <- %s %s hide_border=%s",
+             key, source, tuple(rect), hide)
+    _apply_screencast_rect(app, key, (rect[0], rect[1], rect[2], rect[3]), hide)
+
+
+def screencast_dc_flags(s: DeviceSettings) -> dict[str, Any]:
+    """A device's region as the DC fields a saved theme or mask carries --
+    what the C# writes from its live Jp* on save (FormCZTV.cs:7290, 7433)."""
+    from ..models import SCREENCAST_DEFAULT_RECT
+
+    flags = {"screencast_rect": s.screencast_rect or SCREENCAST_DEFAULT_RECT,
+             "screencast_border": s.screencast_hide_border}
+    log.debug("screencast_dc_flags: %s", flags)
+    return flags
+
+
+def _apply_screencast_rect(app: App, key: str, native: tuple[int, int, int, int],
+                           hide_border: bool) -> None:
+    """The one write: store, let a live cast follow, tell every UI."""
+    from ..events import ScreencastRegionChanged
+
+    app.settings.set_screencast_rect(key, native, hide_border)
+    box = screencast_box(app, key)
+    if box is None:
+        log.debug("_apply_screencast_rect: %s stored, no panel to announce", key)
+        return
+    live = app.settings.for_device(key).screencast_region
+    if live is not None and live[:4] != box:
+        log.info("_apply_screencast_rect: %s's running cast moves to %s", key, box)
+        app.settings.set_screencast_region(key, (*box, live[4]))
+    app.events.publish(ScreencastRegionChanged(key=key, x=box[0], y=box[1],
+                                               w=box[2], h=box[3],
+                                               hide_border=hide_border))

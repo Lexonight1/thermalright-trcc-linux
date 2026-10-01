@@ -44,6 +44,7 @@ from ...core.commands import (
     SetMediaPlayer,
     SetOrientation,
     SetOverlayBackground,
+    SetScreencastRegion,
     SetSlideshow,
     SetSplitMode,
     SleepDevice,
@@ -1173,10 +1174,11 @@ def overlay_render(
 @app.command("screencast")
 def screencast(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
-    x: int = typer.Argument(..., help="Top-left X coordinate of capture region (px)"),
-    y: int = typer.Argument(..., help="Top-left Y coordinate of capture region (px)"),
-    w: int = typer.Argument(..., min=1, help="Capture region width (px)"),
-    h: int = typer.Argument(..., min=1, help="Capture region height (px)"),
+    x: int = typer.Argument(0, min=0, help="Top-left X of the capture region (px)"),
+    y: int = typer.Argument(0, min=0, help="Top-left Y of the capture region (px)"),
+    w: int = typer.Argument(
+        0, min=0, help="Capture region width (px); 0 0 0 0 casts the stored region"),
+    h: int = typer.Argument(0, min=0, help="Capture region height (px)"),
     audio: bool = typer.Option(
         False, "--audio/--no-audio",
         help="Pipe system audio alongside the video feed (Linux: PipeWire)",
@@ -1185,7 +1187,9 @@ def screencast(
     """Stream a screen region to the LCD until interrupted.
 
     Wraps :class:`StartScreencast`, which starts capturing.  Ctrl-C calls
-    :class:`StopScreencast` for clean teardown.
+    :class:`StopScreencast` for clean teardown.  Without a region it casts the
+    device's stored one (``screencast-region``, or the loaded theme's); a given
+    region is stored as the device's.
     """
     log.info(
         "cli display screencast: key=%s x=%s y=%s w=%s h=%s audio=%s",
@@ -1217,6 +1221,25 @@ def screencast(
     typer.echo(stop_result.message)
     if not stop_result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("screencast-region")
+def screencast_region(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    x: int = typer.Argument(..., min=0, max=9999, help="Top-left X on screen (px)"),
+    y: int = typer.Argument(..., min=0, max=9999, help="Top-left Y on screen (px)"),
+    w: int = typer.Argument(..., min=0, max=9999, help="Region width (px)"),
+    h: int = typer.Argument(..., min=0, max=9999, help="Region height (px)"),
+    hide_border: bool | None = typer.Option(
+        None, "--hide-border/--show-border",
+        help="Hide the on-screen border around the region (default: unchanged)",
+    ),
+) -> None:
+    """Set the device's screen-cast region; a running cast follows it."""
+    log.info("cli display screencast-region: key=%s (%d,%d %dx%d) hide_border=%s",
+             key, x, y, w, h, hide_border)
+    dispatch_echo(SetScreencastRegion(
+        key=key, x=x, y=y, w=w, h=h, hide_border=hide_border))
 
 
 @app.command("stop-screencast")

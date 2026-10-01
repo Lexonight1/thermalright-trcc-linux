@@ -437,6 +437,22 @@ class Settings:
                 dev.media_player_uri = None
             self._save()
 
+    def set_screencast_rect(self, key: str, rect: tuple[int, int, int, int],
+                            hide_border: bool) -> None:
+        """Store the device's screencast region (DC axes) and hide-border flag.
+
+        A stored PREFERENCE, not a display source: unlike
+        ``set_screencast_region`` it clears nothing, so seeding it from a theme
+        or editing it leaves the background and the media player alone.
+        """
+        log.info("set_screencast_rect: key=%s rect=%s hide_border=%s",
+                 key, rect, hide_border)
+        with self._lock:
+            dev = self.for_device(key)
+            dev.screencast_rect = rect
+            dev.screencast_hide_border = hide_border
+            self._save()
+
     def set_media_player_uri(self, key: str, uri: str | None) -> None:
         """Set (or clear with ``None``) the device's media-player source URI.
 
@@ -1098,6 +1114,12 @@ def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
     sc = kwargs.get("screencast_region")
     if isinstance(sc, list) and len(sc) == 5:
         kwargs["screencast_region"] = (sc[0], sc[1], sc[2], sc[3], bool(sc[4]))
+    # screencast_rect: list[4] → tuple[x, y, w, h] -- named here, like every
+    # tuple field: the loader converts by name, so an unnamed one stays a list
+    # and compares unequal to the tuple a Command writes.
+    rect = kwargs.get("screencast_rect")
+    if isinstance(rect, list) and len(rect) == 4:
+        kwargs["screencast_rect"] = tuple(int(v) for v in rect)
     # user_overlay_elements: list[dict] → list[OverlayElement]
     raw_elements = kwargs.get("user_overlay_elements")
     if isinstance(raw_elements, list):

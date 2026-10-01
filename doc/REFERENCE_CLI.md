@@ -831,23 +831,43 @@ trcc display resume [OPTIONS]
 
 ### `trcc display screencast`
 
-Stream a screen region to the LCD until interrupted. Wraps `StartScreencast`, which starts capturing. Ctrl-C calls `StopScreencast` for clean teardown.
+Stream a screen region to the LCD until interrupted. Wraps `StartScreencast`, which starts capturing. Ctrl-C calls `StopScreencast` for clean teardown. Without a region it casts the device's stored one (`screencast-region`, or the loaded theme's); a given region is stored as the device's.
 
 ```bash
-trcc display screencast [OPTIONS] KEY X Y W H
+trcc display screencast [OPTIONS] KEY [X] [Y] [W] [H]
 ```
 
 | Argument | Description |
 |---|---|
 | `KEY` | Device key, e.g. 0402:3922 |
-| `X` | Top-left X coordinate of capture region (px) |
-| `Y` | Top-left Y coordinate of capture region (px) |
-| `W` | Capture region width (px) |
-| `H` | Capture region height (px) |
+| `X` | Top-left X of the capture region (px) *(optional)* |
+| `Y` | Top-left Y of the capture region (px) *(optional)* |
+| `W` | Capture region width (px); 0 0 0 0 casts the stored region *(optional)* |
+| `H` | Capture region height (px) *(optional)* |
 
 | Option | Description |
 |---|---|
 | `--audio` | Pipe system audio alongside the video feed (Linux: PipeWire) |
+
+### `trcc display screencast-region`
+
+Set the device's screen-cast region; a running cast follows it.
+
+```bash
+trcc display screencast-region [OPTIONS] KEY X Y W H
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `X` | Top-left X on screen (px) |
+| `Y` | Top-left Y on screen (px) |
+| `W` | Region width (px) |
+| `H` | Region height (px) |
+
+| Option | Description |
+|---|---|
+| `--hide-border` | Hide the on-screen border around the region (default: unchanged) |
 
 ### `trcc display seek-video`
 

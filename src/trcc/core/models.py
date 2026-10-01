@@ -723,6 +723,15 @@ class DeviceSettings:
     # ref and a reload can resume it.  Mutually exclusive with a video/image
     # background (the toggles are).
     screencast_region: tuple[int, int, int, int, bool] | None = None
+    # The device's screencast REGION, cast or not -- the C#'s JpX, JpY, JpW,
+    # JpH, kept as the theme's DC stores them (``core.geometry.screencast_axes``
+    # turns them into a screen box).  Seeded from every theme and mask DC the
+    # device loads (FormCZTV.cs:6805), edited by ``SetScreencastRegion``,
+    # written back on save.  ``None`` = never seeded: the C#'s default applies.
+    screencast_rect: tuple[int, int, int, int] | None = None
+    # The C#'s ``myYcbk``: HIDE the on-screen region frame.  True by default,
+    # as in the C# (FormCZTV.cs:316).
+    screencast_hide_border: bool = True
     # Active media-player source URI — the display source when the media-player
     # toggle is on.  A URI: a local path OR a URL/stream (http, https, rtsp, …).
     # ``None`` = not playing media.  Persisted like ``background_path`` so
@@ -1209,6 +1218,10 @@ def percent_only(readings: Mapping[str, float], sensor_id: str) -> float | None:
 #: This was 0.15 (6.7 fps) from the cutover to 2026-09-18 — never measured
 #: against the oracle, and 2.5x slower than the app being ported.
 SCREENCAST_TICK_S = 0.06
+
+#: The C#'s screencast region before any theme sets one -- JpX, JpY, JpW, JpH
+#: (FormCZTV.cs:324-330), in the DC's own axes.
+SCREENCAST_DEFAULT_RECT: tuple[int, int, int, int] = (0, 0, 240, 320)
 
 #: The media player's cadence for a web source: 62.5 ms, the C# player's own
 #: step (``UCBoFangQiKongZhi.cs:1129``, ``nowTimerVal += 62.5``) -- 16 fps.

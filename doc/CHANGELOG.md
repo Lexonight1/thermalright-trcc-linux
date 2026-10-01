@@ -25,6 +25,24 @@
 
 ### Added
 
+- **Each screen keeps its own screen-cast region, and themes carry one.**
+  Like the Windows app, a theme or mask stores where on your desktop to cast
+  from, and loading it sets that region; saving or exporting a theme writes
+  yours back. Start without typing numbers casts the stored region, where it
+  used to send nothing. Editing the region moves a running cast without
+  restarting it, and every window shows the same region: the Windows-style
+  gui's X/Y/W/H fields (sent when you press Enter or leave the field, or
+  click +/-), the Qt gui's region picker, `trcc display screencast-region`
+  and `POST …/display/screencast/region`. The Windows-style gui's border
+  button and a new Qt gui checkbox store whether to hide the frame around
+  the region; the frame itself is not drawn yet. `trcc display screencast`
+  and `POST …/screencast/start` no longer need a region.
+  The region now keeps the shape of the picture it fills, which turns when
+  you rotate the screen. Before, it kept the shape of the unrotated panel, so
+  a portrait-mounted screen locked a landscape region.
+  Known gap: on 7 of 20 panel types (FBL 50, 51, 52, 53, 58 and 64 at 90° or
+  270°, and FBL 60 at any angle) the Windows app captures a different shape
+  than we compose. The default region is letterboxed there until you edit it.
 - **The media player plays web videos and live streams.** Give it an http,
   https or rtsp address (`trcc display media-player <key> <url>`, or the REST
   API) and it plays on the panel at 16 frames a second, with your theme's

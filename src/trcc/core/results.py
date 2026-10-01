@@ -753,6 +753,14 @@ class LcdSnapshotResult(Result):
     display_source: Literal["background", "screencast", "media"] = "background"
     #: What the media player plays -- a local file or a web URL -- or None.
     media_player_uri: str | None = None
+    #: The device's screencast region on screen, cast or not (the theme's, or
+    #: the C#'s default) -- None until the panel reports its size.
+    screencast_rect: tuple[int, int, int, int] | None = None
+    #: The C#'s ``myYcbk``: hide the on-screen region frame.
+    screencast_hide_border: bool = True
+    #: The canvas a cast frame fills, ``(w, h)`` at the current orientation --
+    #: the aspect a region locks to.  None until the panel reports its size.
+    screencast_canvas: tuple[int, int] | None = None
     # Slideshow config.  Absent until 2026-08-25, which made this Result
     # unable to answer its own docstring: the gui restoring slideshow state
     # had to keep reaching for ``settings.for_device`` — a crash under

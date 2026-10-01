@@ -362,7 +362,3 @@ class UCThemeSetting(BasePanel):
         self.background_panel.set_enabled(source == "background" and background_drawn)
         self.screencast_panel.set_enabled(source == "screencast")
         self.video_panel.set_enabled(source == "media")
-
-    def set_resolution(self, width: int, height: int):
-        """Delegate resolution to screencast panel."""
-        self.screencast_panel.set_resolution(width, height)

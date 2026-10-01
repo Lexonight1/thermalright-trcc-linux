@@ -43,6 +43,7 @@ from ..core.events import (
     OrientationChanged,
     OverlayChanged,
     RefreshIntervalChanged,
+    ScreencastRegionChanged,
     ScreencastStarted,
     ScreencastStopped,
     SensorsUpdated,
@@ -153,6 +154,7 @@ class BusBridge(QObject):
             (MaskApplied, self.settings_changed),
             (MaskPositionChanged, self.settings_changed),
             (MaskVisibilityChanged, self.settings_changed),
+            (ScreencastRegionChanged, self.settings_changed),
             (LedSettingsChanged, self.settings_changed),
         )
         for event_type, signal in pairs:

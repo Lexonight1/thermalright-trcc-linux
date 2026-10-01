@@ -559,12 +559,25 @@ class DaemonStatusResponse(ResultBase):
 
 
 class ScreencastStartRequest(BaseModel):
-    """Body for ``POST /devices/{key}/display/screencast/start``."""
-    x: int = Field(..., ge=0)
-    y: int = Field(..., ge=0)
-    w: int = Field(..., gt=0)
-    h: int = Field(..., gt=0)
+    """Body for ``POST /devices/{key}/display/screencast/start``.
+
+    No region (all 0, the default) casts the device's stored one.
+    """
+    x: int = Field(0, ge=0)
+    y: int = Field(0, ge=0)
+    w: int = Field(0, ge=0)
+    h: int = Field(0, ge=0)
     audio: bool = False
+
+
+class ScreencastRegionRequest(BaseModel):
+    """Body for ``POST /devices/{key}/display/screencast/region``."""
+    x: int = Field(..., ge=0, le=9999)
+    y: int = Field(..., ge=0, le=9999)
+    w: int = Field(..., ge=0, le=9999)
+    h: int = Field(..., ge=0, le=9999)
+    hide_border: bool | None = Field(
+        None, description="Hide the on-screen border; null leaves it as it is.")
 
 
 class MediaPlayerRequest(BaseModel):

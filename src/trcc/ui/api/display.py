@@ -55,6 +55,7 @@ from ...core.commands import (
     SetOrientation,
     SetOverlayBackground,
     SetOverlayConfig,
+    SetScreencastRegion,
     SetSlideshow,
     SetSplitMode,
     SleepDevice,
@@ -137,6 +138,7 @@ from .schemas import (
     PauseVideoRequest,
     PlayVideoRequest,
     RenderDcRequest,
+    ScreencastRegionRequest,
     ScreencastStartRequest,
     SeekVideoRequest,
     SlideshowConfigureRequest,
@@ -575,6 +577,23 @@ def screencast_start(key: str, body: ScreencastStartRequest,
             audio=body.audio,
         ),
     )
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/screencast/region")
+def screencast_region(key: str, body: ScreencastRegionRequest,
+                      request: Request) -> ScreencastResult:
+    """Set *key*'s screen-cast region; a running cast follows it."""
+    log.info(
+        "api POST /devices/{key}/display/screencast/region: key=%s "
+        "x=%s y=%s w=%s h=%s hide_border=%s",
+        key, body.x, body.y, body.w, body.h, body.hide_border,
+    )
+    result = request.app.state.trcc.dispatch(SetScreencastRegion(
+        key=key, x=body.x, y=body.y, w=body.w, h=body.h,
+        hide_border=body.hide_border,
+    ))
     http_error_if_failed(result)
     return result
 

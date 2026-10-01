@@ -75,8 +75,10 @@ _TRAILER_HEAD: tuple[tuple[str, Any], ...] = (
 )
 _TRAILER_TAIL: tuple[tuple[str, Any], ...] = (
     ("display_source", 0),               # myMode      → DisplaySource
-    ("screencast_border", False),        # myYcbk      buttonXSBK — show border
-    ("screencast_rect", (0, 0, 0, 0)),   # JpX JpY JpW JpH
+    # myYcbk is HIDE the region frame (C# default True, FormCZTV.cs:316); the
+    # key keeps its old name so saved themes still load.
+    ("screencast_border", True),         # myYcbk      buttonXSBK — HIDE border
+    ("screencast_rect", (0, 0, 240, 320)),  # JpX JpY JpW JpH (C# default)
     ("mask_visible", False),             # myMbxs      蒙版显示 — mask
     ("mask_position", (0, 0)),           # XvalMB YvalMB
 )
@@ -440,7 +442,9 @@ def _write_run(w: _Writer, run: tuple[tuple[str, Any], ...],
     """Write one declared run, padding a short tuple with its default.
 
     A field must occupy its full width or every byte after it shifts, so a
-    config carrying a 3-int ``screencast_rect`` still writes four.
+    config carrying a 3-int ``screencast_rect`` still writes four -- the
+    missing ones from the SAME positions of the default.  It took the
+    default's head, which only went unnoticed while every default was zero.
     """
     log.debug("_write_run: %s",
               {key: config.get(key, default) for key, default in run})
@@ -449,7 +453,7 @@ def _write_run(w: _Writer, run: tuple[tuple[str, Any], ...],
         if isinstance(default, bool):
             w.write_bool(bool(value))
         elif isinstance(default, tuple):
-            for item in (*value, *default)[:len(default)]:
+            for item in (*value, *default[len(value):])[:len(default)]:
                 w.write_int32(int(item))
         else:
             w.write_int32(int(value))

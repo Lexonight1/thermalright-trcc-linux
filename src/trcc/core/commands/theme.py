@@ -63,6 +63,8 @@ from ._helpers import (
     native_canvas,
     oriented_theme_path,
     overlay_elements_to_dc,
+    screencast_dc_flags,
+    seed_screencast_rect,
 )
 from .device import (
     ApplyMask,
@@ -378,6 +380,14 @@ class LoadTheme(Command[ThemeResult]):
         # TOP-LEFT.  Same conversion ApplyMask runs — port the legacy
         # behavior here so a freshly-loaded theme renders its bundled
         # mask at the right spot, not stored-center-as-top-left.
+        # The theme's screencast region (the C#'s Jp*, read from every DC it
+        # loads).  AFTER the bundled mask, so the theme's own wins over its
+        # mask's; on a restore only when the device never had one, so a
+        # reconnect does not undo the user's edit.
+        if (self.reset_overrides
+                or app.settings.for_device(self.key).screencast_rect is None):
+            seed_screencast_rect(app, self.key, theme.config,
+                                 f"theme {theme.name}")
         from ...services.overlay import OverlayService
         theme_mask = ThemeDir(theme.path).mask
         pos = theme.config.get("mask_position")
@@ -743,6 +753,7 @@ class SaveTheme(Command[ThemeResult]):
         ))
         return ThemeResult(
             ok=True, key=self.key, theme_name=self.name,
+            theme_path=str(target),
             message=f"theme saved as '{self.name}' at {target}",
         )
 
@@ -774,6 +785,9 @@ class SaveTheme(Command[ThemeResult]):
         for field in THEME_FLAG_KEYS:
             if field in theme.config:
                 manifest[field] = theme.config[field]
+        # The device's region over the source theme's -- the user may have
+        # edited it, and the C# saves its live Jp* (FormCZTV.cs:7290).
+        manifest.update(screencast_dc_flags(s))
         manifest.setdefault("overlay_enabled", True)
         manifest["elements"] = self._combine_elements(theme, s)
 
@@ -1486,6 +1500,7 @@ class ExportDcTheme(Command[ThemeDcExportResult]):
             written = app.themes.export_dc(
                 theme_dir, self.output_path,
                 elements=device_overlay_layout(app, self.key),
+                flags=screencast_dc_flags(app.settings.for_device(self.key)),
             )
         except ThemeError as e:
             return ThemeDcExportResult(
@@ -1606,6 +1621,7 @@ class UploadCustomMask(Command[MaskUploadResult]):
         # the image so the upload applies with its metrics.
         dc_bytes = overlay_elements_to_dc(
             device_overlay_layout(app, self.key), allow_empty=True,
+            flags=screencast_dc_flags(app.settings.for_device(self.key)),
         )
         # Named, not content-addressed: this mask is one the user chose and
         # will look for by name in the browser.  The store owns the layout —

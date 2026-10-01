@@ -121,7 +121,12 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: ``MaskPanel.set_mask_visible`` gained a line; ``LCDHandler``'s
 #: ``is_background_active`` getter + setter were DELETED -- a flag written in
 #: five places and read in none.  Diffing ``--list``: those 3 left, none joined.
-MAX_SILENT = 310
+#: 310 -> 306 on 2026-09-30: the screencast region became the App's.  Left:
+#: ``_emit_params`` (deleted -- it emitted per keystroke), ``set_border_visible``
+#: (became ``set_hide_border``, logged), ``UCThemeSetting.set_resolution``
+#: (deleted -- its one caller wrote the NATIVE size where the cast canvas
+#: belongs) and ``ScreenCastPanel.set_resolution`` (logged).  None joined.
+MAX_SILENT = 306
 
 
 def test_logging_coverage_only_improves() -> None:

@@ -241,6 +241,22 @@ class ScreencastStarted(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ScreencastRegionChanged(Event):
+    """A device's stored screencast region or hide-border flag changed.
+
+    Published by ``SetScreencastRegion`` and by a theme or mask seeding it, so
+    every UI's region fields and frame follow -- cast or not.  ``x, y, w, h``
+    is the box on SCREEN (``LcdSnapshot.screencast_rect``).
+    """
+    key: str
+    x: int
+    y: int
+    w: int
+    h: int
+    hide_border: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ScreencastStopped(Event):
     """Published by ``StopScreencast`` after a device's capture session
     is torn down.  Every UI follows it the way it follows ``ScreencastStarted``."""

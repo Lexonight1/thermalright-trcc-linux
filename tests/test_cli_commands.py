@@ -1615,6 +1615,48 @@ def test_stop_screencast_is_one_command(cli_runner: CliRunner, cli_app) -> None:
         "StopScreencast"]
 
 
+@pytest.mark.parametrize(("flag", "hide"), [
+    ([], None), (["--hide-border"], True), (["--show-border"], False)])
+def test_screencast_region_is_one_command(cli_runner: CliRunner, cli_app,
+                                          flag: list[str], hide: bool | None) -> None:
+    """No flag leaves the border as it is -- the C# button is a toggle."""
+    from trcc.core.commands import SetScreencastRegion
+
+    sent: list[object] = []
+    real = cli_app.dispatch
+    cli_app.dispatch = lambda cmd: (sent.append(cmd), real(cmd))[1]
+
+    cli_runner.invoke(_app(), ["display", "screencast-region", "0402:3922",
+                               "1", "2", "300", "400", *flag])
+
+    assert [c for c in sent if isinstance(c, SetScreencastRegion)] == [
+        SetScreencastRegion(key="0402:3922", x=1, y=2, w=300, h=400, hide_border=hide)]
+
+
+def test_screencast_without_a_region_asks_for_the_stored_one(
+        cli_runner: CliRunner, cli_app) -> None:
+    """``screencast KEY`` sends 0x0, which the App reads as the stored region.
+    The refusal keeps the test from entering the Ctrl-C wait."""
+    from trcc.core.commands import StartScreencast
+    from trcc.core.results import ScreencastResult
+
+    sent: list[object] = []
+    real = cli_app.dispatch
+
+    def _dispatch(cmd: object) -> object:
+        sent.append(cmd)
+        if isinstance(cmd, StartScreencast):
+            return ScreencastResult(ok=False, key=cmd.key, message="refused")
+        return real(cmd)
+
+    cli_app.dispatch = _dispatch
+    result = cli_runner.invoke(_app(), ["display", "screencast", "0402:3922"])
+
+    assert result.exit_code == 1, result.output
+    assert [c for c in sent if isinstance(c, StartScreencast)] == [
+        StartScreencast(key="0402:3922")]
+
+
 def test_the_note_never_builds_an_app_a_command_did_not(capsys) -> None:
     """``trcc --version`` must not open USB just to decide it has nothing to say."""
     from trcc.ui.cli import _ctx

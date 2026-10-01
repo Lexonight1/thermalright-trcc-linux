@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**132 endpoints.**
+**133 endpoints.**
 
 ## Running it
 
@@ -67,6 +67,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/display/render-dc` | — | Render a legacy DC config to a PNG with no device and no theme load. |
 | `POST /devices/{key}/display/reset` | `SendResult` | Reset the display — stop any active video, then send a solid red frame. |
 | `POST /devices/{key}/display/restore-theme` | `ThemeResponse` | Restore the device's display state (persisted theme + background). |
+| `POST /devices/{key}/display/screencast/region` | `ScreencastResult` | Set *key*'s screen-cast region; a running cast follows it. |
 | `POST /devices/{key}/display/screencast/start` | `ScreencastResult` | Begin a screen-capture session for *key*. |
 | `POST /devices/{key}/display/screencast/stop` | `ScreencastResult` | End the screen-capture session for *key*. |
 | `POST /devices/{key}/display/seek-video` | `SeekVideoResult` | Jump to a specific frame. |

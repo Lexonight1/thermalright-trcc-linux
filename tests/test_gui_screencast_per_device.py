@@ -18,7 +18,13 @@ from tests.conftest import FakeMic
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, LcdSnapshot, StartScreencast
+from trcc.core.commands import (
+    ConnectDevice,
+    LcdSnapshot,
+    SetOrientation,
+    SetScreencastRegion,
+    StartScreencast,
+)
 
 _A, _B = "0402:3922", "87ad:70db"
 _SPECS = [{"vid": "0402", "pid": "3922", "fbl": 100},
@@ -90,3 +96,95 @@ def test_start_sends_the_region_the_panel_shows(window: Any) -> None:
     window._on_screencast_toggle(True)
 
     assert _cast(window, _A) == (5, 6, 64, 64, True)
+
+
+# ── The region is the App's: shown, edited and followed ───────────────
+
+
+def _rect(win: Any, key: str) -> Any:
+    snap = win._app.dispatch(LcdSnapshot(key=key))
+    return snap.screencast_rect, snap.screencast_hide_border
+
+
+def test_selecting_A_shows_A_s_own_region_not_B_s(window: Any) -> None:
+    window._activate_device(_B)
+    window._activate_device(_A)
+
+    assert _panel(window).values() == _rect(window, _A)[0] != _B_CAST
+
+
+def test_a_finished_edit_stores_A_s_region_and_leaves_B(window: Any) -> None:
+    panel = _panel(window)
+    panel.entry_x.setText("7")
+    panel.entry_x.editingFinished.emit()
+
+    assert _rect(window, _A)[0][0] == 7
+    assert _rect(window, _B)[0] == _B_CAST
+
+
+def test_another_ui_s_edit_on_A_shows(window: Any, qtbot: Any) -> None:
+    window._app.dispatch(SetScreencastRegion(key=_A, x=9, y=8, w=64, h=64,
+                                             hide_border=False))
+    qtbot.wait(50)
+
+    assert _panel(window).values() == (9, 8, 64, 64)
+    assert _panel(window)._hide_border is False
+
+
+def test_another_ui_s_edit_on_B_leaves_A_s_fields(window: Any, qtbot: Any) -> None:
+    before = _panel(window).values()
+    window._app.dispatch(SetScreencastRegion(key=_B, x=1, y=1, w=50, h=50))
+    qtbot.wait(50)
+
+    assert _panel(window).values() == before
+
+
+def test_the_border_button_sets_the_app_s_flag(window: Any) -> None:
+    assert _rect(window, _A)[1] is True
+    _panel(window).border_btn.click()
+
+    assert _rect(window, _A) == (_panel(window).values(), False)
+
+
+def test_a_refused_edit_puts_the_app_s_region_back(window: Any) -> None:
+    """0..9999 is the C#'s field range; past it the App refuses, and the
+    panel shows what the App kept rather than what was typed."""
+    kept = _rect(window, _A)[0]
+    _panel(window).entry_w.setText("10000")      # setText skips the validator
+    _panel(window).entry_w.editingFinished.emit()
+
+    assert _rect(window, _A)[0] == kept
+    assert _panel(window).values() == kept
+
+
+# A non-square, portrait-MOUNTED panel: the lock follows the App's canvas,
+# which turns with the orientation.  It used to lock to the native size.
+_WIDE = "87ad:70db"
+
+
+@pytest.fixture
+def wide(tmp_path: Path, qtbot: Any) -> Iterator[Any]:
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = App(MockPlatform([{"vid": "87ad", "pid": "70db", "resolution": "854x480",
+                             "pm": 11, "sub": 5}], tmp_path), renderer=QtRenderer())
+    app.audio = FakeMic()                   # type: ignore[assignment]
+    assert app.dispatch(ConnectDevice(key=_WIDE)).ok
+    win = TRCCApp(app=app)
+    qtbot.addWidget(win)
+    win.replay_initial_devices()
+    win._activate_device(_WIDE)
+    yield win
+    win.close()
+    app.close()
+
+
+@pytest.mark.parametrize("degrees", [0, 90])
+def test_the_lock_follows_the_app_s_canvas(wide: Any, qtbot: Any, degrees: int) -> None:
+    wide._app.dispatch(SetOrientation(key=_WIDE, degrees=degrees))
+    qtbot.wait(50)
+    canvas = wide._app.dispatch(LcdSnapshot(key=_WIDE)).screencast_canvas
+
+    _panel(wide).entry_w.setText("200")
+
+    assert _panel(wide).entry_h.text() == str(round(200 * canvas[1] / canvas[0]))

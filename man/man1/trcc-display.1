@@ -734,9 +734,9 @@ Show this command's help and exit.
 .RE
 .SS screencast
 .PP
-\fBtrcc display screencast\fR \fIKEY\fR \fIX\fR \fIY\fR \fIW\fR \fIH\fR [\fIOPTIONS\fR]
+\fBtrcc display screencast\fR \fIKEY\fR [\fIX\fR] [\fIY\fR] [\fIW\fR] [\fIH\fR] [\fIOPTIONS\fR]
 .PP
-Stream a screen region to the LCD until interrupted. Wraps StartScreencast, which starts capturing. Ctrl\-C calls StopScreencast for clean teardown.
+Stream a screen region to the LCD until interrupted. Wraps StartScreencast, which starts capturing. Ctrl\-C calls StopScreencast for clean teardown. Without a region it casts the device's stored one (screencast\-region, or the loaded theme's); a given region is stored as the device's.
 .PP
 Arguments:
 .RS 4
@@ -745,13 +745,13 @@ Arguments:
 Device key, e.g. 0402:3922
 .TP
 \fBX\fR
-Top\-left X coordinate of capture region (px)
+Top\-left X of the capture region (px)
 .TP
 \fBY\fR
-Top\-left Y coordinate of capture region (px)
+Top\-left Y of the capture region (px)
 .TP
 \fBW\fR
-Capture region width (px)
+Capture region width (px); 0 0 0 0 casts the stored region
 .TP
 \fBH\fR
 Capture region height (px)
@@ -762,6 +762,40 @@ Options:
 .TP
 \fB\-\-audio\fR
 Pipe system audio alongside the video feed (Linux: PipeWire)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS screencast\-region
+.PP
+\fBtrcc display screencast\-region\fR \fIKEY\fR \fIX\fR \fIY\fR \fIW\fR \fIH\fR [\fIOPTIONS\fR]
+.PP
+Set the device's screen\-cast region; a running cast follows it.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBX\fR
+Top\-left X on screen (px)
+.TP
+\fBY\fR
+Top\-left Y on screen (px)
+.TP
+\fBW\fR
+Region width (px)
+.TP
+\fBH\fR
+Region height (px)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-hide\-border\fR
+Hide the on\-screen border around the region (default: unchanged)
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

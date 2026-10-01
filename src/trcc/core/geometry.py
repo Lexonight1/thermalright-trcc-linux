@@ -195,6 +195,40 @@ def save_folder_resolution(
     return oriented_resolution((w, h), orientation)
 
 
+def oriented_canvas(profile: DeviceProfile, orientation: int) -> tuple[int, int]:
+    """The canvas for a picture with no portrait variant, at *orientation*.
+
+    A solid colour, a single image and a screen cast compose here; for a cast
+    it is also the aspect a region locks to.
+    """
+    canvas = plan_orientation(profile, orientation, False).canvas
+    frame_log.debug("oriented_canvas: %s @ %d -> %s", profile.resolution,
+                    orientation, canvas)
+    return canvas
+
+
+def screencast_axes(
+    rect: tuple[int, int, int, int], native: tuple[int, int], orientation: int,
+) -> tuple[int, int, int, int]:
+    """Between a theme's stored screencast region and the box on screen.
+
+    The C# stores JpX, JpY, JpW, JpH with W the panel's SHORT side, and captures
+    ``(JpH, JpW)`` -- long side across -- on every square panel and on every
+    other panel at 0 / 180 degrees; only a non-square panel turned to 90 / 270
+    captures ``(JpW, JpH)`` (FormCZTV.cs:3100-3545).  It keys on the panel being
+    square and on the rotation, not on our canvas's shape: a 176x320 panel is
+    portrait natively and still captures landscape at 0.
+
+    Swapping is its own inverse, so one call converts either way.
+    """
+    x, y, a, b = rect
+    swap = native[0] == native[1] or orientation in (0, 180)
+    out = (x, y, b, a) if swap else (x, y, a, b)
+    log.debug("screencast_axes: %s on %dx%d @ %d° -> %s",
+              rect, *native, orientation, out)
+    return out
+
+
 def lock_region_to_panel(
     resolution: tuple[int, int] | None,
     x: int, y: int, width: int, height: int,

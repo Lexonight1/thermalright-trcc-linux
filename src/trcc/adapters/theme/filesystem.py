@@ -554,6 +554,7 @@ class FileContentStore(ContentStore):
     def export_dc(
         self, theme_dir: Path, output_path: Path,
         *, elements: list[dict] | None = None,
+        flags: dict | None = None,
     ) -> Path:
         """Write *theme_dir*'s config out as legacy ``config1.dc`` to
         *output_path* — for sharing themes with Windows TRCC users.
@@ -570,9 +571,10 @@ class FileContentStore(ContentStore):
         log.info("export_dc: theme_dir=%s output_path=%s elements=%s",
                  theme_dir, output_path,
                  None if elements is None else len(elements))
-        config = self._load_config(theme_dir)
+        config = {**self._load_config(theme_dir), **(flags or {})}
         if elements is not None:
             config = {**config, "elements": elements}
+        log.debug("export_dc: flags=%s", flags)
         Dc.File(output_path).write(config)
         return output_path
 

@@ -462,7 +462,7 @@ def test_a_short_screencast_rect_still_writes_four_ints(
 
     parsed = load_dc_as_theme_config(out)
 
-    assert parsed["screencast_rect"] == [8, 0, 0, 0]
+    assert parsed["screencast_rect"] == [8, 0, 240, 320]   # the default's tail
     assert parsed["mask_visible"] is True, "the rect under-wrote and shifted"
     assert parsed["mask_position"] == [4, 5]
 

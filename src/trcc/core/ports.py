@@ -1652,12 +1652,14 @@ class ContentStore(ABC):
     def export_dc(
         self, theme_dir: Path, output_path: Path,
         *, elements: list[dict] | None = None,
+        flags: dict | None = None,
     ) -> Path:
         """Write *theme_dir*'s config out in the legacy binary layout — for
         sharing with Windows TRCC users.
 
         *elements* REPLACES the theme's own layout when given: the caller
-        passes what the device is actually showing.
+        passes what the device is actually showing.  *flags* override the
+        theme's DC fields the same way (the device's screencast region).
         """
 
     @abstractmethod

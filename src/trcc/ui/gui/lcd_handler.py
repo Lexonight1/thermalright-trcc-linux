@@ -305,7 +305,6 @@ class LCDHandler(BaseHandler):
         self._w['preview'].set_image(None)
         self._w['image_cut'].set_resolution(w, h)
         self._w['video_cut'].set_resolution(w, h)
-        self._w['theme_setting'].set_resolution(w, h)
 
         self._update_theme_directories()
 
