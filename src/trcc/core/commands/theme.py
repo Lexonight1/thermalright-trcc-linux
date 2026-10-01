@@ -2021,11 +2021,10 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
       2. ``CloudThemeService.materialise`` downloads the MP4 flat into
          ``paths.cloud_theme_dir(w, h)/<id>.mp4`` and generates the
          first-frame PNG + animated GIF previews for the GUI.
-      3. Persist the new background path on ``DeviceSettings.background_path``
-         so it survives an app restart.
-      4. Dispatch ``PlayVideo(key, path=<mp4>)`` — that's the path
+      3. Dispatch ``PlayVideo(key, path=<mp4>)`` — that's the path
          MediaService + DisplayService already use to render a video
-         background on every tick.
+         background on every tick.  It persists ``background_path`` itself,
+         and only once the video loads.
     """
     USES_DEVICE: ClassVar[bool] = True
     key: str
@@ -2077,13 +2076,10 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
                 message=f"Local IO failed: {e}",
             )
 
-        log.info(
-            "LoadCloudTheme: %s ready at %s — setting background override + "
-            "dispatching PlayVideo",
-            self.theme_id, mp4_path,
-        )
-        # Persist the new background on the device — survives restart.
-        app.settings.set_background_path(self.key, str(mp4_path))
+        log.info("LoadCloudTheme: %s ready at %s — dispatching PlayVideo",
+                 self.theme_id, mp4_path)
+        # Not persisted here: PlayVideo saves the path once the video LOADS, so
+        # a play that fails keeps the background the user had.
         # MediaService.load_video populates the playback; DisplayService's
         # ``_resolve_background`` short-circuits to ``playback.current``
         # when a playback exists, so this is the entire "play this video

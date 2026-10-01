@@ -151,3 +151,29 @@ def test_cloud_background_decodes_at_oriented_canvas(connected) -> None:
     decode_sizes.clear()
     app.dispatch(LoadCloudTheme(key=_KEY, theme_id="a003"))
     assert decode_sizes[-1] == (854, 480)
+
+
+def test_a_cloud_video_that_fails_to_play_keeps_the_saved_background(
+    connected, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``PlayVideo`` saves the path only once the video loads.  LoadCloudTheme
+    used to write it first, so a failed play left the broken video saved: the
+    next restart and the next ``theme save`` both picked it up.
+
+    MUTATION CHECK -- MEASURED 2026-10-01: restore the pre-write and this fails.
+    """
+    from trcc.core.errors import ThemeError
+
+    app, _recorder, _ = connected
+    assert app.dispatch(LoadCloudTheme(key=_KEY, theme_id="a003")).ok
+    kept = app.settings.for_device(_KEY).background_path
+    assert kept is not None and kept.endswith("a003.mp4")
+
+    def _broken(self, device_key, path, size=None, **kwargs):  # type: ignore[no-untyped-def]
+        raise ThemeError(f"cannot decode {path.name}")
+
+    monkeypatch.setattr(MediaService, "load_video", _broken)
+    result = app.dispatch(LoadCloudTheme(key=_KEY, theme_id="a004"))
+
+    assert not result.ok
+    assert app.settings.for_device(_KEY).background_path == kept
