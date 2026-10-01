@@ -114,6 +114,10 @@
 
 ### Fixed
 
+- **Themes you saved or exported stored a CPU fan reading as the fan hub's
+  own fan.** TRCC wrote it with the code the Windows app uses for a fan-hub
+  screen's built-in fan, so on any other cooler the Windows app showed that
+  reading blank. It is now saved as the CPU fan. Loading themes is unchanged.
 - **The 640x172 screen reached over HID (FBL 59) was sent JPEG frames.** The
   Windows app sends this route raw RGB565 pixels, with each row centred in the
   panel's 176-pixel framebuffer row, and turns the picture 90° for a panel that

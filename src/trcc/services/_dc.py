@@ -139,9 +139,12 @@ def _sensor_to_hw() -> dict[str, tuple[int, int]]:
     log.debug("_sensor_to_hw")
     global _SENSOR_TO_HW
     if _SENSOR_TO_HW is None:
-        _SENSOR_TO_HW = {
-            sensor: pair for pair, (sensor, _fmt) in _HW_TO_SENSOR.items()
-        }
+        # From the CANONICAL pairs only.  An alias reads as its sensor, but is
+        # never what that sensor is WRITTEN as: inverting every pair let the
+        # Fan-LCD sentinel (10000, 1) win for fan:cpu, so each saved CPU-fan
+        # element became the cooler's own fan -- blank in the C# on any panel
+        # that is not a fan LCD.
+        _SENSOR_TO_HW = {METRICS[pair].sensor_id: pair for pair in METRICS}
     return _SENSOR_TO_HW
 
 

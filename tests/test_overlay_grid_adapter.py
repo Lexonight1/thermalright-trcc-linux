@@ -29,6 +29,27 @@ def test_hardware_metric_accessors_round_trip() -> None:
     assert Dc.metric_to_hardware("not:a:sensor") is None
 
 
+def test_every_sensor_is_written_as_its_own_pair() -> None:
+    """The reverse map is the canonical pairs, never an alias.
+
+    The Fan-LCD sentinel ``(10000, 1)`` aliases ``fan:cpu`` for READING; when
+    the reverse map inverted every pair it won, and every saved CPU-fan
+    element was written as the cooler's own fan.
+    """
+    from trcc.core.models import METRICS
+
+    for pair in METRICS:
+        assert Dc.metric_to_hardware(METRICS[pair].sensor_id) == pair, pair
+    assert Dc.metric_to_hardware("fan:cpu") == (5, 1)
+    assert Dc.hardware_metric(10000, 1)[0] == "fan:cpu"      # still reads
+
+
+def test_a_cpu_fan_element_is_saved_as_the_cpu_fan() -> None:
+    mode, _, main, sub, _ = Dc._element_to_legacy(       # pyright: ignore[reportPrivateUsage]
+        {"type": "metric", "metric": "fan:cpu"})
+    assert (main, sub) == (5, 1)
+
+
 def test_cells_convert_to_fields_the_app_accepts(tmp_path: Path) -> None:
     """Every converted cell is accepted by the real ``AddOverlayElement``, and
     colour/size/bold survive the conversion (the edit that 'did nothing')."""
