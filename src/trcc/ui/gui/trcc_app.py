@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -1135,6 +1136,7 @@ class TRCCApp(QMainWindow):
             MASK_LOAD_POS,
             MASK_UPLOAD_POS,
             MEDIA_PLAYER_LOAD_POS,
+            MEDIA_PLAYER_URL_POS,
             ONLINE_THEME_POS,
             OVERLAY_GRID_HINT_POS,
             PARAM_COLOUR_POS,
@@ -1224,6 +1226,8 @@ class TRCCApp(QMainWindow):
         vp = s.video_panel
         x, y, w, h, pt = MEDIA_PLAYER_LOAD_POS
         _lbl(vp, tr('Load Video', lang), x, y, w, h, pt, 'Load Video')
+        x, y, w, h, pt = MEDIA_PLAYER_URL_POS
+        _lbl(vp, tr('Web Video', lang), x, y, w, h, pt, 'Web Video')
 
         x, y, w, h, pt = LOCAL_THEME_POS
         _lbl(self.uc_theme_local, tr('Local Theme', lang), x, y, w, h, pt, 'Local Theme')
@@ -1634,6 +1638,8 @@ class TRCCApp(QMainWindow):
                 self._show_panel(3)
             case UCThemeSetting.CMD_VIDEO_LOAD:
                 self._on_media_player_load_clicked()
+            case UCThemeSetting.CMD_VIDEO_URL:
+                self._on_media_player_url_clicked()
             case 51:
                 self._show_panel(1)
             case UCThemeSetting.CMD_VIDEO_TOGGLE:
@@ -1810,6 +1816,21 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(
             f"Playing: {Path(path).name}" if result.ok
             else f"Error: {result.message}")
+
+    def _on_media_player_url_clicked(self) -> None:
+        """The media player's web source: an address, played live by the App."""
+        from ...core.i18n import tr
+        h = self._active_lcd()
+        url, accepted = QInputDialog.getText(
+            self, tr("Web Video", self._lang_combo.currentData() or "en"),
+            "An http, https or rtsp address (a video file or a live stream):")
+        url = url.strip()
+        log.info("_on_media_player_url_clicked: accepted=%s url=%r", accepted, url)
+        if not (accepted and url and h):
+            return
+        result = self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=url))
+        self.uc_preview.set_status(
+            f"Streaming: {url}" if result.ok else f"Error: {result.message}")
 
     def _video_picker_start_dir(self, h: Any) -> str:
         """Resolve the QFileDialog start directory for a video pick.

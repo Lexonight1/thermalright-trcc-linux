@@ -86,6 +86,7 @@ class UCThemeSetting(BasePanel):
     CMD_MASK_POSITION = 100
     CMD_MASK_VISIBILITY = 101
     CMD_VIDEO_LOAD = 10
+    CMD_VIDEO_URL = 11     # ours: a web source for the media player
     CMD_OVERLAY_CHANGED = 128
     CMD_EYEDROPPER = 112  # Matches Windows cmd for FormGetColor
 
@@ -150,7 +151,7 @@ class UCThemeSetting(BasePanel):
         self.screencast_panel.mode_changed.connect(self._on_mode_changed)
         self.screencast_panel.capture_requested.connect(self.capture_requested.emit)
 
-        self.video_panel = DisplayModePanel("video", ["VideoLoad"], self)
+        self.video_panel = DisplayModePanel("video", ["VideoLoad", "VideoUrl"], self)
         self.video_panel.move(*Layout.VIDEO_PANEL)
         self.video_panel.mode_changed.connect(self._on_mode_changed)
         self.video_panel.action_requested.connect(self._on_action_requested)
@@ -319,6 +320,7 @@ class UCThemeSetting(BasePanel):
             "Load": self.CMD_MASK_LOAD,
             "Upload": self.CMD_MASK_UPLOAD,
             "VideoLoad": self.CMD_VIDEO_LOAD,
+            "VideoUrl": self.CMD_VIDEO_URL,
         }
         cmd = action_map.get(action_name)
         if cmd:

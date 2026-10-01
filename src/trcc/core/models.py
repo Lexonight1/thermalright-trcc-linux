@@ -964,6 +964,9 @@ ACTION_ICON_IMAGES: dict[str, str] = {
     "VideoLoad": "display_mode_icon_livestream.png",
     "GIF":       "display_mode_icon_gif.png",
     "Network":   "display_mode_icon_network.png",
+    # The media player's web source -- no C# twin (its player opens files only);
+    # the C#'s network art, since the C# names its load icon 直播 (live).
+    "VideoUrl":  "display_mode_icon_network.png",
 }
 
 

@@ -751,6 +751,8 @@ class LcdSnapshotResult(Result):
     #: Derived once, here, from the three exclusive settings, so every UI's
     #: switches agree.  ``background_mode`` says whether a background is drawn.
     display_source: Literal["background", "screencast", "media"] = "background"
+    #: What the media player plays -- a local file or a web URL -- or None.
+    media_player_uri: str | None = None
     # Slideshow config.  Absent until 2026-08-25, which made this Result
     # unable to answer its own docstring: the gui restoring slideshow state
     # had to keep reaching for ``settings.for_device`` — a crash under

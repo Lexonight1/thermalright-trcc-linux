@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QVBoxLayout,
+    QWidget,
 )
 
 from ....core.commands import (
@@ -26,6 +28,7 @@ from ....core.commands import (
     SeekVideo,
     SetBackground,
     SetBrightness,
+    SetMediaPlayer,
     SetOrientation,
     StopVideo,
     ToggleVideo,
@@ -33,6 +36,7 @@ from ....core.commands import (
 )
 from ....core.events import VideoAdvanced, VideoStarted, VideoStopped
 from ....core.models import MEDIA, MediaKind
+from ...presentation.display_source import describe_source
 from ...presentation.video_clock import playback_clock
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -136,13 +140,22 @@ class DisplayPanel(BasePanel):
         seek_row.addWidget(self._seek_label)
         seek_row.addWidget(self._refresh_video_btn)
 
+        #: What is on the panel, from any UI -- ``describe_source``.
+        self._showing = QLabel("", self)
+        for signal in (self._bus.screencast_started, self._bus.screencast_stopped,
+                       self._bus.video_started, self._bus.video_stopped):
+            signal.connect(self._on_source_event,
+                           type=Qt.ConnectionType.QueuedConnection)
+
         self._status = QLabel("", self)
+        self._media = MediaPlayerControls(self, self._status.setText)
 
         form = QFormLayout()
         form.addRow("Device key:", self._picker)
         form.addRow("Orientation:", self._orientation)
         form.addRow("Brightness:", brightness_row)
         form.addRow("Theme:", theme_row)
+        form.addRow("Showing:", self._showing)
 
         root = QVBoxLayout(self)
         root.addLayout(form)
@@ -151,6 +164,8 @@ class DisplayPanel(BasePanel):
         root.addWidget(QLabel("Background:", self))
         root.addLayout(video_row)
         root.addLayout(seek_row)
+        root.addWidget(QLabel("Media player:", self))
+        root.addWidget(self._media)
         root.addWidget(self._status)
         root.addStretch(1)
 
@@ -243,6 +258,9 @@ class DisplayPanel(BasePanel):
         self._brightness.setValue(snap.brightness)
         self._brightness.blockSignals(False)
         self._brightness_label.setText(f"{snap.brightness}%")
+        self._showing.setText(describe_source(
+            snap.display_source, snap.background_mode, snap.media_player_uri))
+        self._media.show_snapshot(snap)
 
     def _on_set_background(self) -> None:
         """Override the background with a STILL IMAGE, keeping the theme.
@@ -327,6 +345,13 @@ class DisplayPanel(BasePanel):
                   event.key, event.cursor, event.frame_count)
         self._show_position(event.cursor, event.frame_count, event.fps)
 
+    def _on_source_event(self, event: Any) -> None:
+        """A cast or video started or stopped in any UI -- not a settings
+        event, so ``_on_settings_changed`` never saw it."""
+        if event.key == self._picker.current_key():
+            log.info("_on_source_event: %s for %s", type(event).__name__, event.key)
+            self._show_state()
+
     def _on_video_state(self, event: VideoStarted | VideoStopped) -> None:
         """A video started or stopped somewhere — show the selected device's."""
         log.info("_on_video_state: %s %s (showing %s)", type(event).__name__,
@@ -380,3 +405,65 @@ class DisplayPanel(BasePanel):
         log.info("_on_load_theme: key=%s path=%s", key, theme_path)
         self._status.setText(self.dispatch(
             LoadTheme(key=key, path=Path(theme_path))).message)
+
+
+class MediaPlayerControls(QWidget):
+    """The media player: a video file, or a web video / live stream.
+
+    One field for both, as the CLI's ``display media-player`` and the API take
+    one ``uri``; the App plays a URL on the screencast's chain.  Its own class
+    because it is its own concern -- the Display panel shows it and hands it
+    each snapshot; this sends ``SetMediaPlayer`` and nothing else.
+    """
+
+    def __init__(self, panel: DisplayPanel, report: Callable[[str], None]) -> None:
+        super().__init__(panel)
+        log.debug("MediaPlayerControls.__init__")
+        self._panel = panel
+        self._report = report
+        self._source = QLineEdit(self)
+        self._source.setPlaceholderText("A video file, or an http / https / rtsp address")
+        self._source.returnPressed.connect(self._on_play)
+        self._browse = QPushButton("Browse…", self)
+        self._browse.clicked.connect(self._on_browse)
+        self._play = QPushButton("Play", self)
+        self._play.clicked.connect(self._on_play)
+        self._close = QPushButton("Close media player", self)
+        self._close.clicked.connect(self._on_close)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self._source, 1)
+        for button in (self._browse, self._play, self._close):
+            row.addWidget(button)
+
+    def show_snapshot(self, snap: Any) -> None:
+        """Another UI's source, shown -- unless the user is typing one here."""
+        log.debug("show_snapshot: source=%s uri=%s",
+                  snap.display_source, snap.media_player_uri)
+        self._close.setEnabled(snap.display_source == "media")
+        if snap.media_player_uri and not self._source.hasFocus():
+            self._source.setText(snap.media_player_uri)
+
+    def _on_browse(self) -> None:
+        """Pick a local video into the field -- Play starts it."""
+        source, _ = QFileDialog.getOpenFileName(
+            self, "Pick a video for the media player", "",
+            f"Videos ({MEDIA.patterns(MediaKind.ANIMATED)});;All files (*)",
+        )
+        log.info("_on_browse: %r", source)
+        if source:
+            self._source.setText(source)
+
+    def _on_play(self) -> None:
+        """``SetMediaPlayer`` with the field: a file, or a web address."""
+        key = self._panel._require_key()
+        uri = self._source.text().strip()
+        log.info("_on_play: key=%s uri=%r", key, uri)
+        if key is not None and uri:
+            self._report(self._panel.dispatch(SetMediaPlayer(key=key, uri=uri)).message)
+
+    def _on_close(self) -> None:
+        key = self._panel._require_key()
+        log.info("_on_close: key=%s", key)
+        if key is not None:
+            self._report(self._panel.dispatch(SetMediaPlayer(key=key, uri="")).message)

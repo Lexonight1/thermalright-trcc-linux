@@ -19,6 +19,8 @@ from ._ctx import dumps_json, get_app, warn_blanking_panels
 if TYPE_CHECKING:
     from ...core.results import ApiTlsResult
 
+from ..presentation.display_source import describe_source
+
 log = logging.getLogger(__name__)
 
 app = typer.Typer(
@@ -472,6 +474,7 @@ def status(
         typer.echo(f"  current theme:    {s.current_theme}")
         typer.echo(f"  overlay enabled:  {s.overlay_enabled}")
         typer.echo(f"  fit mode:         {s.fit_mode}")
+        typer.echo(f"  showing:          {describe_source(s.display_source, s.background_mode, s.media_player_uri)}")
 
     for i, s in enumerate(led_snaps):
         typer.echo("")

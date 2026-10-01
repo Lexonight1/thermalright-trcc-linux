@@ -32,6 +32,10 @@
   server loops. It needs ffmpeg. Other kinds of address, such as `file://`,
   are refused. Before, a web address was only noted down and nothing played,
   and setting one could lose the background you had.
+  Both windows can start it: the Windows-style gui has a **Web Video** button
+  beside Load Video, and the Qt gui's Display panel has a Media player row
+  that takes a file or an address. The Qt gui and `trcc status` now also say
+  what the screen is showing.
 - **HTTPS for the REST API: `trcc api --tls`.** The first start makes a
   certificate and keeps it in the config directory. Every start prints its
   SHA-256 fingerprint, so a phone app or Home Assistant can pin it; it stays the

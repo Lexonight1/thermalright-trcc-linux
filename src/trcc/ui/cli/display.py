@@ -59,6 +59,7 @@ from ...core.commands import (
 )
 from ...core.errors import TrccError
 from ...core.models import MEDIA, FitMode, MediaKind
+from ..presentation.display_source import describe_source
 from ._ctx import (
     daemon_owns_the_panels,
     dispatch_echo,
@@ -1276,3 +1277,5 @@ def snapshot(
     typer.echo(f"  time_format      {result.time_format}")
     typer.echo(f"  date_format      {result.date_format}")
     typer.echo(f"  temp_unit        {result.temp_unit}")
+    typer.echo(f"  background_mode  {result.background_mode}")
+    typer.echo(f"  showing          {describe_source(result.display_source, result.background_mode, result.media_player_uri)}")

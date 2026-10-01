@@ -224,6 +224,7 @@ class DisplayModePanel(QFrame):
         "Load": "Load mask overlay",
         "Clear": "Clear mask",
         "VideoLoad": "Load video for playback",
+        "VideoUrl": "Play a web video or live stream (http, https, rtsp)",
         "GIF": "Load animated GIF",
         "Network": "Network stream",
         "Settings": "Settings",

@@ -3105,6 +3105,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             display_source=("screencast" if s.screencast_region is not None
                             else "media" if s.media_player_uri
                             else "background"),
+            media_player_uri=s.media_player_uri,
             temp_unit=s.temp_unit,
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,

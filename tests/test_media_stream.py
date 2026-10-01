@@ -291,3 +291,114 @@ def test_ffmpeg_may_not_open_local_files_for_a_stream() -> None:
     allowed = cmd[cmd.index("-protocol_whitelist") + 1].split(",")
     assert {"file", "concat", "subfile", "pipe", "data"}.isdisjoint(allowed)
     assert cmd.index("-protocol_whitelist") < cmd.index("-i")
+
+
+# ── Every UI can start it, and every UI shows it (item 1c) ───────────
+#
+# The App streamed, and only the CLI and API could start it; qtgui had no
+# media player at all, the gui opened files only, and neither qtgui nor the
+# CLI's text said what the panel was showing.
+
+
+@pytest.fixture
+def qtgui_panel(app: App, qtbot: Any) -> Any:
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.panels.display_panel import DisplayPanel
+
+    panel = DisplayPanel(app, BusBridge(app.events))
+    qtbot.addWidget(panel)
+    qtbot.waitUntil(lambda: panel._picker.current_key() == _KEY)
+    panel._show_state()
+    return panel
+
+
+def test_qtgui_plays_a_url_and_says_so(app: App, qtgui_panel: Any, qtbot: Any) -> None:
+    assert qtgui_panel._showing.text() == "the theme's background"
+    assert not qtgui_panel._media._close.isEnabled()
+
+    qtgui_panel._media._source.setText(_URL)
+    qtgui_panel._media._on_play()
+    qtbot.wait(50)
+
+    assert _reader(app).url == _URL
+    assert qtgui_panel._showing.text() == f"the media player: {_URL}"
+    assert qtgui_panel._media._close.isEnabled()
+
+    qtgui_panel._media._on_close()
+    qtbot.wait(50)
+    assert _reader(app) is None
+    assert qtgui_panel._showing.text() == "the theme's background"
+
+
+def test_qtgui_shows_a_cast_another_ui_started(
+    app: App, qtgui_panel: Any, qtbot: Any,
+) -> None:
+    from tests.conftest import FakeMic
+    from trcc.core.commands import StartScreencast
+
+    app.audio = FakeMic()                       # type: ignore[assignment]
+    assert app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=32, h=32)).ok
+    qtbot.wait(50)
+
+    assert qtgui_panel._showing.text() == "a screen cast"
+
+
+def test_qtgui_browse_fills_the_field(
+    qtgui_panel: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from PySide6.QtWidgets import QFileDialog
+    monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                        lambda *a, **k: ("/videos/clip.mp4", ""))
+
+    qtgui_panel._media._on_browse()
+
+    assert qtgui_panel._media._source.text() == "/videos/clip.mp4"
+
+
+def test_the_gui_web_video_action_streams_it(
+    app: App, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from PySide6.QtWidgets import QInputDialog
+
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    win = TRCCApp(app=app)
+    qtbot.addWidget(win)
+    win.replay_initial_devices()
+    qtbot.waitUntil(lambda: win._handlers[_KEY]._pm.ui_active)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: (f" {_URL} ", True))
+
+    win.uc_theme_setting.video_panel.action_requested.emit("VideoUrl")
+    qtbot.wait(50)
+
+    assert _reader(app).url == _URL
+    assert win.uc_theme_setting.video_panel.toggle_btn.isChecked()
+    assert "Web Video" in [key for _, key in win._i18n_labels]
+    win.close()
+
+
+def test_the_cli_text_says_what_is_showing(
+    tmp_path: Path, cli_runner: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import trcc.core.toolchain as toolchain
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import _CliRenderer
+
+    monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
+    monkeypatch.setattr(toolchain, "present", lambda tool: True)
+    monkeypatch.setattr(App, "add_task", lambda self, task: None)
+    _ctx.set_platform(MockPlatform([_SPEC], tmp_path))
+    _ctx.set_renderer(_CliRenderer())          # type: ignore[arg-type]
+    try:
+        assert cli_runner.invoke(cli, ["display", "media-player", _KEY, _URL]).exit_code == 0
+        out = cli_runner.invoke(cli, ["display", "snapshot", _KEY]).output
+        status = cli_runner.invoke(cli, ["status"]).output
+    finally:
+        _ctx.get_app.cache_clear()
+        _ctx._platform_override = None
+        _ctx._renderer_override = None
+
+    assert f"  showing          the media player: {_URL}" in out.splitlines()
+    assert f"  showing:          the media player: {_URL}" in status.splitlines()
