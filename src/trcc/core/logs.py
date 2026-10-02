@@ -215,6 +215,20 @@ def per_frame(module_name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+def sink_for(level: int, log: logging.Logger,
+             frame: logging.Logger) -> logging.Logger:
+    """The logger a Command's lines belong to: *frame* for one that declares
+    itself per-tick (``LOG_LEVEL`` DEBUG or below), else *log*.
+
+    A Command already says how often it runs, so the sink follows that rather
+    than a second list that would drift from it.  ``App.dispatch`` and
+    ``AppProxy.dispatch`` -- the chokepoint in each process -- both ask here.
+    """
+    sink = frame if level <= logging.DEBUG else log
+    frame_log.debug("sink_for: level=%d -> %s", level, sink.name)
+    return sink
+
+
 # ── Dispatch origin — which UI asked ─────────────────────────────────────
 #
 # Every UI dispatches through the same bus, so the bus's one log line could

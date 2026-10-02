@@ -125,6 +125,10 @@
 - **Seeking a paused video left the other windows' progress bars behind.** Only
   the window you seeked from showed the new position. Every open window now
   follows the seek.
+- **`trcc report` held only seconds of history while a video played.** With
+  the window open, TRCC logged every preview frame in full, image included,
+  about 2.6 MB a second, so the log kept only the last couple of seconds.
+  It now logs about 2 KB a second, and a report covers the last hour or so.
 - **Shutting the PC down while TRCC was still starting could leave a screen
   lit.** A stop signal that arrived while TRCC was connecting your devices
   ended it on the spot, before it could put the screens to sleep. This

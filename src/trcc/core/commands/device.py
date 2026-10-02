@@ -877,13 +877,13 @@ class CurrentFrame(Query[PreviewResult]):
     def execute(self, app: App) -> PreviewResult:
         surface = app.display.rendered_surface(self.key)
         if surface is None:
-            log.debug("CurrentFrame: %s has no cached frame", self.key)
+            frame_log.debug("CurrentFrame: %s has no cached frame", self.key)
             return PreviewResult(
                 ok=True, key=self.key,
                 message="No frame rendered yet",
             )
         width, height = app.renderer.surface_size(surface)
-        log.debug("CurrentFrame: %s → cached %dx%d surface",
+        frame_log.debug("CurrentFrame: %s → cached %dx%d surface",
                   self.key, width, height)
         return PreviewResult(
             ok=True, key=self.key, surface=surface,
@@ -926,7 +926,7 @@ class TickDisplay(Command[RenderResult]):
         if playback is None or not playback.frames:
             # No video on this device — a plain re-render.  Video fields stay
             # None so a UI can tell "not a video" from "frame 0 of a video".
-            log.debug("TickDisplay %s: no playback — plain render", self.key)
+            frame_log.debug("TickDisplay %s: no playback — plain render", self.key)
             return app.dispatch(RenderAndSend(key=self.key))
 
         # ``Playback.advance`` self-guards on ``paused`` (returns the current
@@ -1001,12 +1001,12 @@ class BuildPreview(Query[PreviewResult]):
             # and then its frame IS the preview (#306).
             pushed = _rendered_surface(app, self.key)
             if pushed is None:
-                log.debug("BuildPreview: %s has no active theme", self.key)
+                frame_log.debug("BuildPreview: %s has no active theme", self.key)
                 return PreviewResult(
                     ok=True, key=self.key,
                     message="No active theme — nothing to preview",
                 )
-            log.debug("BuildPreview: %s has no active theme — previewing "
+            frame_log.debug("BuildPreview: %s has no active theme — previewing "
                       "the pushed image", self.key)
             return self._finish(app, partial(_rendered_surface, app, self.key),
                                 "")
@@ -1036,7 +1036,7 @@ class BuildPreview(Query[PreviewResult]):
         *theme_name* is the pushed image.
         """
         label = theme_name or "the pushed image"
-        log.debug("BuildPreview %s: finishing a preview of %s", self.key, label)
+        frame_log.debug("BuildPreview %s: finishing a preview of %s", self.key, label)
         try:
             surface = build()
             width, height = app.renderer.surface_size(surface)
@@ -1055,7 +1055,7 @@ class BuildPreview(Query[PreviewResult]):
                 message=f"Preview render failed — {type(e).__name__}: {e}",
             )
 
-        log.debug(
+        frame_log.debug(
             "BuildPreview %s: theme=%s %dx%d encode=%s bytes=%d grid=%s",
             self.key, label, width, height,
             self.encode or "none", len(image),
@@ -1071,7 +1071,7 @@ class BuildPreview(Query[PreviewResult]):
 
     def _encode(self, app: App, surface: Any) -> tuple[bytes, str]:
         """Encode *surface* to the requested container, or nothing at all."""
-        log.debug("BuildPreview %s: encode=%s", self.key, self.encode or "none")
+        frame_log.debug("BuildPreview %s: encode=%s", self.key, self.encode or "none")
         if self.encode == "png":
             return app.display.encode_png(surface), "image/png"
         if self.encode == "jpeg":
@@ -1092,7 +1092,7 @@ class BuildPreview(Query[PreviewResult]):
         rows = max(2, round(self.sample_cols * height / width) if width else 2)
         if rows % 2:
             rows += 1
-        log.debug("BuildPreview %s: sampling %dx%d grid from %dx%d surface",
+        frame_log.debug("BuildPreview %s: sampling %dx%d grid from %dx%d surface",
                   self.key, self.sample_cols, rows, width, height)
         return app.renderer.get_pixels_rgb(surface, self.sample_cols, rows)
 

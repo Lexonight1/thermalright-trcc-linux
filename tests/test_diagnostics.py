@@ -5,6 +5,7 @@ import ast
 import logging
 import os
 import re
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -1790,11 +1791,37 @@ def test_trace_helper_emits_only_when_enabled(tmp_path: Path) -> None:
 _PER_FRAME_RATE = 0.5
 
 
-def _records_by_site(log_file: Path, start: int) -> dict[str, int]:
-    """Count records appended after byte offset *start*, keyed by call site."""
+class _Mark(NamedTuple):
+    """Where a measurement starts: an offset IN ONE FILE."""
+
+    offset: int
+    inode: int          # -1: the file did not exist yet
+
+
+def _mark(log_file: Path) -> _Mark:
+    """Mark the end of *log_file* -- and which file it is."""
+    if not log_file.exists():
+        return _Mark(0, -1)
+    st = log_file.stat()
+    return _Mark(st.st_size, st.st_ino)
+
+
+def _records_by_site(log_file: Path, start: _Mark) -> dict[str, int]:
+    """Count records appended after *start*, keyed by call site.
+
+    Refuses a file that rotated since the mark.  A flood big enough to turn
+    the 1 MB file over inside the window used to leave the count seeking into
+    the NEW file and reporting nothing -- measured: a mutation printing a PNG
+    per field passed every gate.  Rotation inside a measurement IS a flood.
+    """
+    assert start.inode in (-1, log_file.stat().st_ino), (
+        "the log rotated while it was being measured — something wrote more "
+        "than a whole file inside the window, which is a flood the per-site "
+        "count can no longer see"
+    )
     counts: dict[str, int] = {}
     with log_file.open("r", encoding="utf-8", errors="replace") as fh:
-        fh.seek(start)
+        fh.seek(start.offset)
         for line in fh:
             m = re.match(r"^\S+ \w+\s+(\S+?):(\S+?):(\d+):", line)
             if m is not None:
@@ -1890,7 +1917,7 @@ def _frame_path_rates(tmp_path: Path, *, starve_cache: bool,
     for handler in logging.getLogger().handlers:
         handler.flush()
 
-    mark = log_file.stat().st_size
+    mark = _mark(log_file)
     for _ in range(frames):
         render_once()
     for handler in logging.getLogger().handlers:
@@ -1958,6 +1985,52 @@ class _TickRun(NamedTuple):
     writes: int
 
 
+_TICK_KEY = "0402:3922"
+_TICK_FPS = 15
+
+
+def _ticking_app(tmp_path: Path) -> tuple[Any, Path]:
+    """A real App over a fake 320x320 SCSI panel, playing a 3-frame video,
+    logging at DEFAULT verbosity into ``tmp_path/trcc.log`` -- what a user runs.
+
+    Shared by the tick-path and remote-preview gates so both measure the same
+    App; returns it with the log file.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice
+    from trcc.core.models import Theme
+    from trcc.services.media import Playback
+
+    from .conftest import FakePlatform
+    from .test_video_playback import _encoded_frame
+
+    ladder = levels_for(0)                       # what a user runs: no -v
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+
+    app = App(platform=FakePlatform(tmp_path))
+    # Scripted SCSI handshake: FBL=100 -> a 320x320 panel.
+    resp = bytearray(0xE100)
+    resp[0] = 100
+    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    connected = app.dispatch(ConnectDevice(key=_TICK_KEY))
+    assert connected.ok, connected.message
+    app.set_renderer(QtRenderer())
+
+    app.active_themes[_TICK_KEY] = Theme(
+        path=tmp_path / "theme", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    app.media._playbacks[_TICK_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+        frames=[_encoded_frame(v) for v in (0xFF000000, 0xFF404040, 0xFF808080)],
+        fps=_TICK_FPS,
+    )
+    return app, log_file
+
+
 def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     """Records-per-frame for a WHOLE animation tick: advance, render, encode, SEND.
 
@@ -1983,42 +2056,12 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     would then understate it ~50x and report a live flood as clean.  One write
     per tick is what makes records-per-frame mean anything here.
     """
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.app import App
-    from trcc.core.commands import ConnectDevice, TickDisplay
-    from trcc.core.models import Theme
-    from trcc.services.media import Playback
+    from trcc.core.commands import TickDisplay
     from trcc.ui.presentation.video_clock import playback_clock
 
-    from .conftest import FakePlatform
-    from .test_video_playback import _encoded_frame
-
-    key = "0402:3922"
-    _FPS = 15
-    ladder = levels_for(0)                       # what a user runs: no -v
-    log_file = tmp_path / "trcc.log"
-    configure_logging(log_file, level=ladder.file,
-                      stderr_level=logging.CRITICAL,
-                      per_frame=ladder.per_frame)
-
-    app = App(platform=FakePlatform(tmp_path))
+    app, log_file = _ticking_app(tmp_path)
+    key = _TICK_KEY
     scsi = app.platform.scsi        # pyright: ignore[reportAttributeAccessIssue]
-    # Scripted SCSI handshake: FBL=100 -> a 320x320 panel.
-    resp = bytearray(0xE100)
-    resp[0] = 100
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
-    connected = app.dispatch(ConnectDevice(key=key))
-    assert connected.ok, connected.message
-    app.set_renderer(QtRenderer())
-
-    app.active_themes[key] = Theme(
-        path=tmp_path / "theme", name="t",
-        resolution=(320, 320), config={"elements": []},
-    )
-    app.media._playbacks[key] = Playback(   # pyright: ignore[reportPrivateUsage]
-        frames=[_encoded_frame(v) for v in (0xFF000000, 0xFF404040, 0xFF808080)],
-        fps=_FPS,
-    )
 
     # Force every submit to block until THIS frame is written -- see the
     # docstring: without it the denominator counts frames that never reached
@@ -2033,14 +2076,14 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     def tick_once() -> None:
         """Exactly what ``LCDHandler._on_video_tick`` does for an active UI."""
         result = app.dispatch(TickDisplay(key=key))
-        playback_clock(result.cursor or 0, result.frame_count or 0, _FPS)
+        playback_clock(result.cursor or 0, result.frame_count or 0, _TICK_FPS)
 
     for _ in range(5):            # warm-up: first-frame lines are one-shot
         tick_once()
     for handler in logging.getLogger().handlers:
         handler.flush()
 
-    mark = log_file.stat().st_size
+    mark = _mark(log_file)
     writes = len(scsi.sent)
     for _ in range(frames):
         tick_once()
@@ -2107,6 +2150,177 @@ def test_the_tick_path_gate_actually_reaches_the_wire(tmp_path: Path) -> None:
     )
 
 
+class _RemoteRun(NamedTuple):
+    """What one remote-preview run measured, and its independent witnesses."""
+
+    rates: dict[str, float]
+    longest: int        # the longest record written, in characters
+    previews: int       # PNG previews the client actually decoded
+    advances: int       # VideoAdvanced events the client actually received
+    png_bytes: int      # the smallest preview PNG -- what a dump would carry
+
+
+#: A record longer than this is carrying a payload, not describing one.
+_RECORD_CAP = 2048
+
+
+def _remote_preview_rates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                          *, frames: int = 20) -> _RemoteRun:
+    """Records per frame for the preview a UI follows over the socket.
+
+    The App runs in its own process by default, so a window's live preview is
+    the App ticking and the UI, per frame, receiving ``VideoAdvanced`` /
+    ``FrameSent`` and dispatching ``CurrentFrame`` -- whose surface cannot
+    cross JSON -- then ``BuildPreview(encode="png")``.  Neither sibling gate
+    reaches any of it.  Measured 2026-10-01 on the maintainer's box: ~2.6 MB/s,
+    99% of it three ``ipc`` helpers printing the base64 PNG, and the 6 MB ring
+    held about two seconds -- every ``trcc report`` was useless.
+
+    Both ends run in this process and write one file, as the App and a UI
+    share one log on a real machine.
+    """
+    import threading
+
+    from trcc import ipc
+    from trcc.core.commands import BuildPreview, CurrentFrame, TickDisplay
+    from trcc.core.events import VideoAdvanced
+    from trcc.proxy import AppProxy
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    app, log_file = _ticking_app(tmp_path)
+    # Noise, not the solid frames the tick gate plays: a solid preview
+    # compresses to a few hundred bytes, so a line dumping it whole still fit
+    # under the cap and the payload check was blind (measured: two mutations
+    # that printed the PNG stayed green).  A real theme's is ~55 KB.
+    app.media._playbacks[_TICK_KEY].frames = [   # pyright: ignore[reportPrivateUsage]
+        _noise_jpeg(seed) for seed in range(3)]
+    server = ipc.IPCServer(app)
+    server.start()
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+    proxy = AppProxy(timeout=10.0)
+    advances: list[VideoAdvanced] = []
+    proxy.events.subscribe(VideoAdvanced, advances.append)  # type: ignore[arg-type]
+    previews = 0
+    sizes: list[int] = []
+
+    def frame() -> int:
+        """The App's tick, then what the gui's ``rebuild_preview`` asks."""
+        app.dispatch(TickDisplay(key=_TICK_KEY))
+        proxy.dispatch(CurrentFrame(key=_TICK_KEY))
+        image = proxy.dispatch(BuildPreview(key=_TICK_KEY, encode="png")).image
+        sizes.append(len(image or b""))
+        return 1 if image else 0
+
+    try:
+        deadline = time.monotonic() + 10
+        while not advances and time.monotonic() < deadline:   # stream is up
+            frame()
+        for _ in range(5):            # warm-up: first-frame lines are one-shot
+            frame()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        mark = _mark(log_file)
+        seen = len(advances)
+        for _ in range(frames):
+            previews += frame()
+        deadline = time.monotonic() + 5
+        while len(advances) < seen + frames and time.monotonic() < deadline:
+            time.sleep(0.01)
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+    finally:
+        proxy.close()
+        server.shutdown()
+        serving.join(timeout=5)
+        app.close()
+
+    rates = {site: n / frames
+             for site, n in _records_by_site(log_file, mark).items()}
+    with log_file.open(encoding="utf-8", errors="replace") as fh:
+        fh.seek(mark.offset)
+        longest = max((len(line) for line in fh), default=0)
+    return _RemoteRun(
+        rates=rates, longest=longest, previews=previews, advances=len(advances) - seen,
+        png_bytes=min(sizes[-frames:], default=0),
+    )
+
+
+def _noise_jpeg(seed: int, w: int = 320, h: int = 320) -> bytes:
+    """An incompressible frame: its PNG re-encode stays tens of KB."""
+    import random
+
+    from PySide6.QtCore import QBuffer, QByteArray
+    from PySide6.QtGui import QImage
+
+    rng = random.Random(seed)
+    img = QImage(bytes(rng.getrandbits(8) for _ in range(w * h * 3)),
+                 w, h, w * 3, QImage.Format.Format_RGB888).copy()
+    data = QByteArray()
+    buf = QBuffer(data)
+    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+    img.save(buf, "JPEG", 95)
+    buf.close()
+    return bytes(data)
+
+
+def test_the_remote_preview_writes_no_record_per_frame(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A window following the App over the socket, at DEFAULT verbosity:
+    nothing may scale with frames.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: put ``ipc._send_json`` back on the
+    module logger → fails here only.  Restore ``_coerce``'s original
+    ``log.debug(... raw=%s, raw)`` → all three remote tests fail, on the
+    rotation check: a PNG per field turns the 1 MB file over inside the
+    window.  Before that check the same mutation passed every gate.
+    """
+    run = _remote_preview_rates(tmp_path, monkeypatch)
+    floods = {s: r for s, r in run.rates.items() if r >= _PER_FRAME_RATE}
+    assert not floods, (
+        "these call sites write a record per previewed frame at DEFAULT "
+        "verbosity — move each onto core.logs.per_frame(__name__):\n"
+        + "\n".join(f"  {rate:.2f}/frame  {site}"
+                    for site, rate in sorted(floods.items(),
+                                             key=lambda kv: -kv[1]))
+    )
+
+
+def test_no_remote_preview_record_carries_a_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rare is not enough: one record holding a base64 PNG is 55 KB, and the
+    rate gate cannot see a line that fires once.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: a ONE-OFF ``log.debug`` of the
+    decoded envelope in ``AppProxy.dispatch`` → fails here only.
+    """
+    run = _remote_preview_rates(tmp_path, monkeypatch)
+    assert run.longest <= _RECORD_CAP, (
+        f"a {run.longest}-character record — a log line is carrying a payload "
+        "(a base64 image, a whole envelope) instead of describing it"
+    )
+
+
+def test_the_remote_preview_gate_actually_crosses_the_socket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate above is only as good as the traffic it drives.  The witnesses
+    are what the CLIENT received, never a log record: a chain that stopped
+    running and a chain that correctly stopped logging look identical from
+    the log, and the second is what this exists to produce."""
+    frames = 20
+    run = _remote_preview_rates(tmp_path, monkeypatch, frames=frames)
+    assert run.previews == frames, (
+        f"{run.previews} of {frames} PNG previews came back over the socket")
+    assert run.advances >= frames, (
+        f"{run.advances} of {frames} VideoAdvanced events reached the client")
+    assert run.png_bytes > 4 * _RECORD_CAP, (
+        f"the preview PNG is {run.png_bytes} B — a line dumping it would fit "
+        f"under the {_RECORD_CAP}-character cap, so the payload test is blind")
+
+
 def test_the_frame_path_gate_can_actually_see_a_flood(tmp_path: Path) -> None:
     """Mutation check: the rule must FAIL when a flood is present.
 
@@ -2126,7 +2340,7 @@ def test_the_frame_path_gate_can_actually_see_a_flood(tmp_path: Path) -> None:
     rare = logging.getLogger("trcc.services.pretend_rare")
 
     frames = 40
-    mark = log_file.stat().st_size if log_file.exists() else 0
+    mark = _mark(log_file)
     for i in range(frames):
         ordinary.debug("pretend per-frame line %d", i)
         if i == 0:

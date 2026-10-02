@@ -114,14 +114,14 @@ def runtime_dir() -> Path:
     """
     xdg = os.environ.get("XDG_RUNTIME_DIR")
     base = Path(xdg) if xdg else Path.home() / ".cache"
-    log.debug("runtime_dir: %s (%s)", base,
+    frame_log.debug("runtime_dir: %s (%s)", base,
               "XDG_RUNTIME_DIR" if xdg else "fallback")
     return base
 
 
 def socket_path() -> Path:
     """Return the canonical Unix-socket path for this user's daemon."""
-    log.debug("socket_path: called")
+    frame_log.debug("socket_path: called")
     return runtime_dir() / _SOCK_NAME
 
 
@@ -220,7 +220,7 @@ def _from_wire(raw: Any) -> Any:
     Enums and dataclasses need their target type (see ``_coerce``) — this
     walker only handles the type-blind bytes marker.
     """
-    log.debug("_from_wire: raw=%s", raw)
+    frame_log.debug("_from_wire: %s", type(raw).__name__)
     if isinstance(raw, dict) and len(raw) == 1 and _BYTES_MARKER in raw:
         return base64.b64decode(raw[_BYTES_MARKER])
     if isinstance(raw, list):
@@ -237,7 +237,7 @@ def _from_wire(raw: Any) -> Any:
 
 def _coerce(hint: Any, raw: Any) -> Any:
     """Convert a JSON-decoded value into the type the field expects."""
-    log.debug("_coerce: hint=%s raw=%s", hint, raw)
+    frame_log.debug("_coerce: hint=%s raw=%s", hint, type(raw).__name__)
     if raw is None:
         return None
     origin = typing.get_origin(hint)
@@ -322,7 +322,7 @@ def _hints(cls: type) -> dict[str, Any]:
 
 def _build_dataclass(cls: type, data: dict[str, Any]) -> Any:
     """Reconstruct a dataclass instance from a JSON-decoded dict."""
-    log.debug("_build_dataclass: data=%s", data)
+    frame_log.debug("_build_dataclass: %s fields=%s", cls.__name__, sorted(data))
     hints = _hints(cls)
     kwargs: dict[str, Any] = {}
     for field in dataclasses.fields(cls):
@@ -339,7 +339,7 @@ def _build_dataclass(cls: type, data: dict[str, Any]) -> Any:
 
 def encode_command(cmd: Command[Any]) -> dict[str, Any]:
     """Serialize a Command into a dispatch envelope."""
-    log.debug("encode_command: cmd=%s", type(cmd).__name__)
+    frame_log.debug("encode_command: cmd=%s", type(cmd).__name__)
     # Every concrete Command is a frozen dataclass; the runtime check
     # narrows the type for the static checker too.
     assert dataclasses.is_dataclass(cmd), (
@@ -351,7 +351,7 @@ def encode_command(cmd: Command[Any]) -> dict[str, Any]:
 
 def decode_command(envelope: dict[str, Any]) -> Command[Any]:
     """Reconstruct a Command from a dispatch envelope."""
-    log.debug("decode_command: keys=%s", sorted(envelope))
+    frame_log.debug("decode_command: keys=%s", sorted(envelope))
     name = envelope.get("command")
     if not isinstance(name, str):
         raise ValueError("envelope missing 'command' key")
@@ -366,13 +366,13 @@ def decode_command(envelope: dict[str, Any]) -> Command[Any]:
 
 def encode_result(result: Result) -> dict[str, Any]:
     """Serialize a Result into a response envelope (carries the class name)."""
-    log.debug("encode_result: result=%s", type(result).__name__)
+    frame_log.debug("encode_result: result=%s", type(result).__name__)
     return {"type": type(result).__name__, **_to_wire(result)}
 
 
 def decode_result(envelope: dict[str, Any]) -> Result:
     """Reconstruct a Result from a response envelope."""
-    log.debug("decode_result: keys=%s", sorted(envelope))
+    frame_log.debug("decode_result: keys=%s", sorted(envelope))
     type_name = envelope.get("type", "Result")
     cls = RESULT_TYPES.get(str(type_name), Result)
     body = {k: v for k, v in envelope.items() if k != "type"}
@@ -423,13 +423,13 @@ def decode_event(envelope: dict[str, Any]) -> Event:
 
 
 def _send_json(sock: socket.socket, payload: dict[str, Any]) -> None:
-    log.debug("_send_json: keys=%s", sorted(payload))
+    frame_log.debug("_send_json: keys=%s", sorted(payload))
     sock.sendall(json.dumps(payload).encode() + b"\n")
 
 
 def _recv_json(sock: socket.socket, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, Any]:
     """Read one newline-delimited JSON object from *sock*."""
-    log.debug("_recv_json: max_bytes=%d", max_bytes)
+    frame_log.debug("_recv_json: max_bytes=%d", max_bytes)
     chunks: list[bytes] = []
     received = 0
     while received < max_bytes:
@@ -455,7 +455,7 @@ def one_shot_request(
     timeout: float = _DEFAULT_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Send one envelope over the daemon socket, return the response."""
-    log.info("one_shot_request: keys=%s timeout=%s",
+    frame_log.debug("one_shot_request: keys=%s timeout=%s",
              sorted(payload), timeout)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)

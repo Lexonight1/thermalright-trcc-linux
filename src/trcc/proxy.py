@@ -32,11 +32,12 @@ from . import ipc
 from .core.commands import Command, DiscoverDevices
 from .core.errors import DaemonUnavailableError, RemoteCommandError
 from .core.events import EventBus
-from .core.logs import current_origin
+from .core.logs import current_origin, per_frame, sink_for
 from .core.ports import CommandBus
 from .core.results import Result
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 R = TypeVar("R", bound=Result)
@@ -127,8 +128,12 @@ class AppProxy(CommandBus):
                         type(cmd).__name__, remote)
             raise RemoteCommandError(f"{type(cmd).__name__}: {remote}")
         result = ipc.decode_result(response)
-        log.debug("AppProxy.dispatch: %s -> %s",
-                  type(cmd).__name__, type(result).__name__)
+        # The client's chokepoint, so it follows the Command's own frequency
+        # exactly as ``App.dispatch`` does: a per-frame Query must not write a
+        # record per frame here either.
+        sink_for(cmd.LOG_LEVEL, log, frame_log).debug(
+            "AppProxy.dispatch: %s -> %s", type(cmd).__name__,
+            type(result).__name__)
         return result  # type: ignore[return-value]   # caller's TypeVar binds the subclass
 
     @property

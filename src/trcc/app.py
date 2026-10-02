@@ -47,7 +47,7 @@ from .core.events import (
 )
 from .core.led_models import LedRuntimeState
 from .core.libraries import DeviceLibraries
-from .core.logs import current_origin, per_frame, recurring_warning
+from .core.logs import current_origin, per_frame, recurring_warning, sink_for
 from .core.models import (
     DeviceInfo,
     DeviceQuirks,
@@ -685,7 +685,7 @@ class App(CommandBus):
         the renderer directly without going through DisplayService's
         scene cache.  Raises if no renderer is attached.
         """
-        log.debug("renderer")
+        frame_log.debug("renderer")
         if self._renderer is None:
             raise RuntimeError(
                 "Renderer unavailable — call App.set_renderer(...) first"
@@ -1196,7 +1196,7 @@ class App(CommandBus):
         # ``dev/tools/diagnose.py`` replays a report by matching
         # ``dispatch Name(`` anywhere in the line, old reports and new.
         origin = current_origin()
-        sink = frame_log if cmd.LOG_LEVEL <= logging.DEBUG else log
+        sink = sink_for(cmd.LOG_LEVEL, log, frame_log)
         sink.log(cmd.LOG_LEVEL, "[%s] dispatch %r", origin, cmd)
         if cmd.USES_DEVICE:
             self._connect_for(cmd)

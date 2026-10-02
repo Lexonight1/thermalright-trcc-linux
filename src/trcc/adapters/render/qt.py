@@ -370,7 +370,7 @@ class QtRenderer(Renderer):
         Used by ``GET /devices/{key}/display/preview`` for dashboard
         snapshots — JPEG would chew up overlay text + small CJK glyphs.
         """
-        log.debug("encode_png: called")
+        frame_log.debug("encode_png: called")
         from PySide6.QtCore import QBuffer, QIODevice
         qbuf = QBuffer()
         qbuf.open(QIODevice.OpenModeFlag.WriteOnly)

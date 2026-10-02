@@ -53,6 +53,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...core.logs import per_frame
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import entries_to_configs
 from .base_handler import BaseHandler
@@ -127,6 +128,7 @@ class LCDHandler(BaseHandler):
         # the device list, and the same reason.
         self._dirs_signature: tuple[object, ...] | None = None
         self.log: logging.Logger = log
+        self.frame_log: logging.Logger = per_frame(__name__)
 
         # Qt-free coordination model — owns the per-device DeviceState cache
         # AND the activation/view-lifecycle flags (ui_active gate, configured
@@ -249,6 +251,7 @@ class LCDHandler(BaseHandler):
         self._pm.configured = True
         # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{key}")
+        self.frame_log = per_frame(f"{__name__}.{key}")
         self._refresh(w, h)
 
     def reactivate(self, w: int, h: int) -> None:
@@ -790,7 +793,7 @@ class LCDHandler(BaseHandler):
         """
         if event.key != self._device_key:
             return
-        self.log.debug("on_video_advanced: %d/%d", event.cursor, event.frame_count)
+        self.frame_log.debug("on_video_advanced: %d/%d", event.cursor, event.frame_count)
         if self._pm.ui_active:
             self._w['preview'].set_progress(
                 event.cursor, event.frame_count, event.fps,
@@ -873,7 +876,7 @@ class LCDHandler(BaseHandler):
         Idempotent.
         """
         if not self._pm.ui_active:
-            self.log.debug(
+            self.frame_log.debug(
                 "rebuild_preview: ui_active=False for %s — skip",
                 self._device_key,
             )
@@ -881,13 +884,13 @@ class LCDHandler(BaseHandler):
         image = self._app.dispatch(CurrentFrame(key=self._device_key)).surface
         if image is None:
             # No frame rendered yet (pre-load) — build a one-off surface.
-            self.log.debug(
+            self.frame_log.debug(
                 "rebuild_preview: no cached frame for %s — building once",
                 self._device_key,
             )
             image = self._build_preview_surface()
         if image is None:
-            self.log.debug(
+            self.frame_log.debug(
                 "rebuild_preview: no surface built (theme/device pre-load?)",
             )
             return

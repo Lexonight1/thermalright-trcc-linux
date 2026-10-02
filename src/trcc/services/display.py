@@ -443,7 +443,7 @@ class DisplayService:
         + device-side rotation so what the preview shows matches what
         the device would receive byte-for-byte.
         """
-        log.debug("build_preview_surface: key=%s theme=%s",
+        frame_log.debug("build_preview_surface: key=%s theme=%s",
                   info.key, theme.name)
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
@@ -482,7 +482,7 @@ class DisplayService:
             # into the portrait buffer as one unit, so the preview shows that
             # same spin — there is no upright portrait layout to show instead.
             # (The C# would draw solid black here; we do better on purpose.)
-            log.debug("build_preview_surface %s: post_rotate %d° "
+            frame_log.debug("build_preview_surface %s: post_rotate %d° "
                       "(landscape theme at a portrait angle)",
                       info.key, post_rotate)
             return self._r.rotate(surface, post_rotate)
@@ -490,7 +490,7 @@ class DisplayService:
         # canvas but never turns the picture — see build_frame for the C# call
         # sites.  Logged with the angle that did NOT move it, so a report can
         # prove which behaviour the user was running.
-        log.debug("build_preview_surface %s: composed upright, orientation=%d "
+        frame_log.debug("build_preview_surface %s: composed upright, orientation=%d "
                   "not applied to the preview (wire-only)",
                   info.key, s.orientation)
         return surface
@@ -909,12 +909,12 @@ class DisplayService:
         A public encode seam over the Renderer so callers (the preview
         routes) don't reach the private ``_r``.
         """
-        log.debug("encode_png: encoding preview surface")
+        frame_log.debug("encode_png: encoding preview surface")
         return self._r.encode_png(surface)
 
     def encode_jpeg(self, surface: Any, quality: int = 95) -> bytes:
         """JPEG-encode a preview surface (the WebSocket preview stream)."""
-        log.debug("encode_jpeg: quality=%d", quality)
+        frame_log.debug("encode_jpeg: quality=%d", quality)
         return self._r.encode_jpeg(surface, quality)
 
     # ── Layer 1: background + mask ────────────────────────────────────

@@ -385,7 +385,7 @@ class TRCCApp(QMainWindow):
 
     def _on_bus_video_advanced(self, event: Any) -> None:
         """Route a ``VideoAdvanced`` event to its device's handler (per-frame)."""
-        log.debug("_on_bus_video_advanced: key=%s cursor=%d/%d",
+        frame_log.debug("_on_bus_video_advanced: key=%s cursor=%d/%d",
                   event.key, event.cursor, event.frame_count)
         handler = self._handlers.get(event.key)
         if handler is not None:
