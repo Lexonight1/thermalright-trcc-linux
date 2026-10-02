@@ -332,3 +332,36 @@ def test_closing_after_a_taskbar_restore_still_hides_to_the_tray(
 
     tray.request_quit()                 # only Exit quits
     assert quits == [1]
+
+
+@pytest.mark.parametrize(("face", "module", "factory"), [
+    ("GuiUI", "trcc.ui.gui.splash", "run_bootstrap_with_splash"),
+    ("QtGuiUI", "trcc.ui.qtgui.splash", "show_splash"),
+])
+@pytest.mark.parametrize("hidden", [True, False], ids=["resume", "normal"])
+def test_a_hidden_start_shows_no_splash_and_still_brings_the_session_up(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, face: str, module: str,
+    factory: str, hidden: bool,
+) -> None:
+    """``--resume`` (autostart, hidden in the tray) flashed a splash at login
+    in both skins.  The C# never shows one: ``FormStart`` is hidden 1 ms after
+    it is shown (``Form1.cs:519-521``).  A hidden start skips it and takes the
+    shared bring-up; a normal start keeps it.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop either skin's ``start_hidden``
+    branch → that skin's ``resume`` case fails.
+    """
+    import importlib
+    from unittest import mock
+
+    from trcc.ui import _uis
+
+    shown: list[str] = []
+    monkeypatch.setattr(importlib.import_module(module), factory,
+                        lambda *_a, **_kw: shown.append(factory) or True)
+    ui = getattr(_uis, face)(start_hidden=hidden)
+    ui._composed = mock.MagicMock()
+
+    assert ui.bring_up() is True
+    assert shown == ([] if hidden else [factory])
+    ui._composed.start_session.assert_called_once()

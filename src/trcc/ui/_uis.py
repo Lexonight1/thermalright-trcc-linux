@@ -281,7 +281,16 @@ class GuiUI(_QtUI, key="gui"):
         The coldplug runs on a background QThread so the splash can paint
         per-device progress; ``start_session`` afterwards is idempotent and
         skips the coldplug it already did, starting only the loops.
+
+        ``--resume`` (autostart, hidden in the tray) shows no splash: a window
+        flashing up at login is what starting hidden exists to avoid, and the
+        C# never shows one at all (``FormStart`` is hidden 1 ms after it is
+        shown, ``Form1.cs:519-521``).  The shared bring-up does the same
+        coldplug inline.
         """
+        if self.start_hidden:
+            log.info("GuiUI.bring_up: --resume — no splash")
+            return super().bring_up()
         log.info("GuiUI.bring_up: splash bootstrap")
         from .gui.splash import run_bootstrap_with_splash
         if not run_bootstrap_with_splash(self._app):
@@ -335,15 +344,17 @@ class QtGuiUI(_QtUI, key="qtgui"):
         Inline rather than on a worker (the gui's shape): one handshake per
         attached device is fast, and doing it first means the pickers and
         browsers populate at construction instead of booting blank.
+        ``--resume`` shows no splash, for the gui's reason.
         """
-        log.info("QtGuiUI.bring_up: splash + session")
-        from PySide6.QtWidgets import QApplication
+        log.info("QtGuiUI.bring_up: splash=%s + session", not self.start_hidden)
+        if not self.start_hidden:
+            from PySide6.QtWidgets import QApplication
 
-        from .qtgui.splash import show_splash
-        self._splash = show_splash()
-        qapp = QApplication.instance()
-        if qapp is not None:
-            qapp.processEvents()
+            from .qtgui.splash import show_splash
+            self._splash = show_splash()
+            qapp = QApplication.instance()
+            if qapp is not None:
+                qapp.processEvents()
         return super().bring_up()
 
     def run(self) -> int:

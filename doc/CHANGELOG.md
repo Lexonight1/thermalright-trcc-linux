@@ -125,6 +125,9 @@
 - **Seeking a paused video left the other windows' progress bars behind.** Only
   the window you seeked from showed the new position. Every open window now
   follows the seek.
+- **Starting at login in the tray still flashed the loading screen.** With
+  autostart (`--resume`), TRCC starts hidden in the tray, but its loading
+  screen still popped up at every login. It no longer does.
 - **`trcc report` held only seconds of history while a video played.** With
   the window open, TRCC logged every preview frame in full, image included,
   about 2.6 MB a second, so the log kept only the last couple of seconds.
