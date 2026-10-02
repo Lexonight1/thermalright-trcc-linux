@@ -31,17 +31,10 @@ log = logging.getLogger(__name__)
 _ENV_FLAG = "TRCC_DAEMON"
 
 
-def _local_reason(platform: Platform | None = None) -> str | None:
-    """Why this process must build its own App, or None to use the shared one.
-
-    An injected *platform* is a reason: it is a scripted or test one -- every
-    production face passes None -- and the shared App would drop it and run
-    the caller's Commands on the host's real USB.  Four dev smokes did exactly
-    that, painting a real panel from a mock fleet (measured 2026-10-01).
-    """
+def _local_reason() -> str | None:
+    """Why this process must build its own App, or None to use the shared one."""
     flag = os.environ.get(_ENV_FLAG, "1")
-    reason = ("a platform was injected" if platform is not None
-              else f"{_ENV_FLAG}={flag}" if flag != "1"
+    reason = (f"{_ENV_FLAG}={flag}" if flag != "1"
               else "no AF_UNIX on this platform" if not hasattr(socket, "AF_UNIX")
               else "running as root — the shared App lives in userland"
               if os.geteuid() == 0 else None)
@@ -58,11 +51,10 @@ def trcc(
 
     The shared App (an ``AppProxy``, the App found or started by
     ``daemon.ensure_daemon``) unless :func:`_local_reason` names a reason to
-    build one in-process from ``platform`` / ``renderer``.  Injecting a
-    ``platform`` is itself such a reason; a ``renderer`` alone is ignored for
-    the proxy, which owns its own.
+    build one in-process from ``platform`` / ``renderer``.  Those two are
+    ignored for the proxy: the App owns its own.
     """
-    reason = _local_reason(platform)
+    reason = _local_reason()
     log.info("trcc: %s=%s platform=%s renderer=%s -> %s", _ENV_FLAG,
              os.environ.get(_ENV_FLAG), platform is not None,
              renderer is not None, reason or "the shared App")

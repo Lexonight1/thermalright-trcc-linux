@@ -202,6 +202,31 @@ def test_the_factory_uses_the_shared_app_unless_a_reason_says_otherwise(
     assert bool(started) is shared, "a local App must not start a daemon"
 
 
+def test_the_gui_s_real_platform_still_reaches_the_shared_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``trcc gui`` passes ``current_platform()`` (``ui/gui/__init__.py``), so
+    an injected platform is NOT a reason to build locally.
+
+    A 2026-10-02 change made it one, on the belief that production passes
+    None.  Driven for real, the gui then built its own App on the host's USB,
+    attached the panel the running daemon was already driving, and blanked it
+    on exit.  Reverted; this pins the contract.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: re-add ``"a platform was
+    injected" if platform is not None`` to ``_local_reason`` and this fails.
+    """
+    from trcc import _boot
+    from trcc.proxy import AppProxy
+
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(daemon, "ensure_daemon", lambda **kw: True)
+    monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
+
+    assert isinstance(_boot.trcc(platform=object()), AppProxy)  # type: ignore[arg-type]
+
+
 def test_a_shared_app_that_will_not_start_falls_back_in_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -213,33 +238,6 @@ def test_a_shared_app_that_will_not_start_falls_back_in_process(
     monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
 
     assert _boot.trcc() == "LOCAL"
-
-
-def test_an_injected_platform_is_never_handed_to_the_shared_app(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A scripted platform means "run on THIS fleet".  The shared App dropped
-    it: four dev smokes passed a mock and drove the maintainer's running
-    daemon -- ``SendColor`` from the #171 probe painted a real panel green.
-
-    MUTATION CHECK -- MEASURED 2026-10-01: drop the platform clause from
-    ``_local_reason`` and this fails.
-    """
-    from trcc import _boot
-
-    monkeypatch.delenv(_ENV_FLAG, raising=False)
-    monkeypatch.setattr(os, "geteuid", lambda: 1000)
-    started: list[bool] = []
-    monkeypatch.setattr(daemon, "ensure_daemon",
-                        lambda **kw: started.append(True) or True)
-    built: list[object] = []
-    monkeypatch.setattr(_boot, "_build_local_app",
-                        lambda **kw: built.append(kw["platform"]) or "LOCAL")
-    scripted = object()
-
-    assert _boot.trcc(platform=scripted) == "LOCAL"          # type: ignore[arg-type]
-    assert built == [scripted]
-    assert started == [], "an injected platform must not start a daemon"
 
 
 def test_the_app_starts_in_root_not_in_the_first_uis_directory(
