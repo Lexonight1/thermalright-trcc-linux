@@ -126,7 +126,7 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: (became ``set_hide_border``, logged), ``UCThemeSetting.set_resolution``
 #: (deleted -- its one caller wrote the NATIVE size where the cast canvas
 #: belongs) and ``ScreenCastPanel.set_resolution`` (logged).  None joined.
-MAX_SILENT = 306
+MAX_SILENT = 305
 
 
 def test_logging_coverage_only_improves() -> None:

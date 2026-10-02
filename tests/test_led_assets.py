@@ -169,3 +169,27 @@ def test_carousel_and_interval_visibility_follow_selector(style, qtbot) -> None:
         f"{style.name}: selector row visibility != (selector!=NONE)"
     assert panel._carousel_interval.isVisibleTo(panel) == is_page, \
         f"{style.name}: interval box visibility != (selector==PAGE)"
+
+
+def test_a_language_chosen_before_the_led_appears_reaches_its_captions(qtbot) -> None:
+    """The language can change while no LED is bound (the window shows an
+    LCD); ``set_language`` then skips the captions, since no style is known.
+    ``initialize`` re-applied the background alone, so the mode buttons and
+    section labels stayed in the start-up language once the LED appeared.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: restore the background-only block
+    in ``initialize`` → fails.
+    """
+    from trcc.core.i18n import tr
+    from trcc.core.led_models import LED_MODE_LABELS
+
+    spec = LED_STYLES[_MULTIZONE[0]]
+    panel = _panel(qtbot)
+    panel.set_language("de")                     # no LED bound yet
+
+    panel.initialize(LEGACY_STYLE_ID[_MULTIZONE[0]], spec.zone_count,
+                     model=spec.model_name)
+
+    assert panel._mode_buttons[0].text() == tr(LED_MODE_LABELS[0], "de")
+    assert panel._display_selection_label.text() == tr("Display Selection", "de")
+    assert tr("Display Selection", "de") != tr("Display Selection", "en")

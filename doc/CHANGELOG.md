@@ -133,6 +133,10 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **LED button labels could stay in the old language.** If you changed the
+  language before an LED device appeared, its mode buttons and section labels
+  stayed in the language TRCC started with. They now follow the language you
+  chose.
 - **The native-skin window showed every LED zone as taking part in the
   carousel on a new device.** Only the first zone takes part until you pick
   others, as in the Windows app, but every box showed ticked. The boxes now

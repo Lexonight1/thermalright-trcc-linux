@@ -954,6 +954,8 @@ class UCLedControl(QWidget):
             zone_count: Number of independent zones.
             model: Device model name (for PM-specific preview image).
         """
+        log.info("initialize: style=%d zones=%d model=%r lang=%s",
+                 style_id, zone_count, model, self._language)
         self._style_id = style_id
         self._zone_count = zone_count
         self._model = model
@@ -976,10 +978,11 @@ class UCLedControl(QWidget):
         if (preview_pixmap := Assets.get(preview_name)):
             self._preview.set_overlay(QPixmap(preview_pixmap))
 
-        # Set panel background (localized with fallback)
-        bg_name = Assets.get_localized(style.background_base, self._language)
-        if Assets.get(bg_name):
-            set_background_pixmap(self, bg_name)
+        # Background AND captions in the current language.  A language change
+        # made while no LED was bound skipped both (``_style_id`` was still the
+        # sentinel); this used to re-apply only the background, so the mode
+        # buttons and section labels stayed in the start-up language.
+        self.apply_localized_background()
 
         self._title.setText(f"RGB LED Control \u2014 {style.model_name}")
 
