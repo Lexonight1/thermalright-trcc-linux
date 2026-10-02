@@ -424,6 +424,27 @@ def test_a_paused_seek_tells_every_ui_where_it_landed(
         (_KEY, 2, 3, 15)]
 
 
+def test_a_pause_or_resume_is_announced_whoever_asked(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    """``PauseVideo`` -- and ``ToggleVideo``, which dispatches it -- tells
+    every UI; the playback stays loaded, so nothing else would.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop the publish → fails.
+    """
+    from trcc.core.commands import ToggleVideo
+    from trcc.core.events import VideoPauseChanged
+
+    connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
+    seen: list[VideoPauseChanged] = []
+    connected_app.events.subscribe(VideoPauseChanged, seen.append)  # type: ignore[arg-type]
+
+    connected_app.dispatch(PauseVideo(key=_KEY, paused=True))
+    connected_app.dispatch(ToggleVideo(key=_KEY))
+
+    assert [(e.key, e.paused) for e in seen] == [(_KEY, True), (_KEY, False)]
+
+
 def test_stop_video_keep_override_unloads_but_keeps_the_persisted_path(
     connected_app: App, stub_media: list, video_file: Path,
 ) -> None:

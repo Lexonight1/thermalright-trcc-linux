@@ -172,6 +172,18 @@ class VideoAdvanced(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class VideoPauseChanged(Event):
+    """A device's video was paused or resumed -- by any UI.
+
+    The playback stays loaded, so neither ``VideoStarted`` nor
+    ``VideoStopped`` fires; without this a window showed whatever ITS OWN
+    last toggle returned.
+    """
+    key: str
+    paused: bool
+
+
+@dataclass(frozen=True, slots=True)
 class VideoStarted(Event):
     """Published by ``PlayVideo`` after a playback is loaded.
 

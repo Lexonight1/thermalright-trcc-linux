@@ -36,6 +36,7 @@ from ..events import (
     ScreencastStopped,
     SplitModeChanged,
     VideoAdvanced,
+    VideoPauseChanged,
     VideoStarted,
     VideoStopped,
 )
@@ -3005,6 +3006,8 @@ class PauseVideo(Command[PauseVideoResult]):
             )
         playback.pause(self.paused)
         state = "paused" if self.paused else "playing"
+        log.info("PauseVideo: %s %s", self.key, state)
+        app.events.publish(VideoPauseChanged(key=self.key, paused=self.paused))
         return PauseVideoResult(
             ok=True, key=self.key, paused=self.paused,
             message=f"Video {state}",

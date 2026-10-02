@@ -133,6 +133,11 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **Pausing a video in one place left the other window's button wrong.** A
+  window showed the play state its own last click produced, so a video paused
+  from the command line or the other window still read as playing. Both
+  windows now follow every pause and resume. The native-skin window's button
+  now reads "Pause" or "Resume" instead of "Pause/Resume".
 - **Starting at login in the tray still flashed the loading screen.** With
   autostart (`--resume`), TRCC starts hidden in the tray, but its loading
   screen still popped up at every login. It no longer does.

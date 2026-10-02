@@ -736,14 +736,23 @@ class LCDHandler(BaseHandler):
                 self._device_key, result.message,
             )
             return
-        playing = not result.paused
-        self.log.info("play_pause: → playing=%s", playing)
-        self._w['preview'].set_playing(playing)
-        # Pause is a transient toggle on an EXISTING playback — no
-        # VideoStarted / VideoStopped is published.  The core's VideoLoop
-        # already skips a paused playback; this keeps the handler's view in
-        # step, so metric refreshes redraw the paused frame.
-        self._set_video_playing(playing, reason="play_pause")
+        # Shown by ``on_video_pause_changed``, as a toggle from any UI is.
+        self.log.info("play_pause: → paused=%s", result.paused)
+
+    def on_video_pause_changed(self, event: Any) -> None:
+        """Paused or resumed -- by this window or any other UI.
+
+        The playback stays loaded, so no VideoStarted / VideoStopped fires.
+        The core's VideoLoop already skips a paused playback; this keeps the
+        handler's view in step, so metric refreshes redraw the paused frame.
+        The preview's button is shared, so only the active handler writes it.
+        """
+        playing = not event.paused
+        self.log.info("on_video_pause_changed: playing=%s active=%s",
+                      playing, self._pm.ui_active)
+        self._set_video_playing(playing, reason="pause_changed")
+        if self._pm.ui_active:
+            self._w['preview'].set_playing(playing)
 
     def stop_video(self) -> None:
         self.log.info("stop_video: device=%s", self._device_key)

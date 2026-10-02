@@ -34,7 +34,12 @@ from ....core.commands import (
     ToggleVideo,
     VideoStatus,
 )
-from ....core.events import VideoAdvanced, VideoStarted, VideoStopped
+from ....core.events import (
+    VideoAdvanced,
+    VideoPauseChanged,
+    VideoStarted,
+    VideoStopped,
+)
 from ....core.models import MEDIA, MediaKind
 from ...presentation.display_source import describe_source
 from ...presentation.video_clock import playback_clock
@@ -100,7 +105,7 @@ class DisplayPanel(BasePanel):
         self._background_btn.clicked.connect(self._on_set_background)
         self._play_video_btn = QPushButton("Play video…", self)
         self._play_video_btn.clicked.connect(self._on_play_video)
-        self._pause_video_btn = QPushButton("Pause/Resume", self)
+        self._pause_video_btn = QPushButton("Pause", self)
         self._pause_video_btn.clicked.connect(self._on_toggle_video)
         self._stop_video_btn = QPushButton("Stop", self)
         self._stop_video_btn.clicked.connect(self._on_stop_video)
@@ -122,6 +127,10 @@ class DisplayPanel(BasePanel):
         for signal in (self._bus.video_started, self._bus.video_stopped):
             signal.connect(self._on_video_state,
                            type=Qt.ConnectionType.QueuedConnection)
+        # ...and a pause or resume from any UI, which neither of those carries.
+        self._bus.video_pause_changed.connect(
+            self._on_video_pause_changed,
+            type=Qt.ConnectionType.QueuedConnection)
         self._seek_label = QLabel("no video", self)
         self._refresh_video_btn = QPushButton("↻", self)
         self._refresh_video_btn.setToolTip("Refresh playback position")
@@ -305,8 +314,7 @@ class DisplayPanel(BasePanel):
             return
         log.info("_on_toggle_video: key=%s", key)
         result = self.dispatch(ToggleVideo(key=key))
-        self._status.setText(result.message)
-        self._refresh_video_status()
+        self._status.setText(result.message)   # the button follows the event
 
     def _on_stop_video(self) -> None:
         key = self._require_key()
@@ -329,9 +337,23 @@ class DisplayPanel(BasePanel):
         if key is None:
             return
         r = self.dispatch(VideoStatus(key=key))
-        log.debug("_refresh_video_status: key=%s playing=%s cursor=%s/%s",
-                  key, r.playing, r.cursor, r.frame_count)
+        log.debug("_refresh_video_status: key=%s playing=%s paused=%s "
+                  "cursor=%s/%s", key, r.playing, r.paused, r.cursor,
+                  r.frame_count)
         self._show_position(r.cursor or 0, r.frame_count or 0, r.fps or 0)
+        self._show_paused(bool(r.paused))
+
+    def _on_video_pause_changed(self, event: VideoPauseChanged) -> None:
+        """Paused or resumed in any UI -- this one included."""
+        log.info("_on_video_pause_changed: %s paused=%s (showing %s)",
+                 event.key, event.paused, self._picker.current_key())
+        if event.key == self._picker.current_key():
+            self._show_paused(event.paused)
+
+    def _show_paused(self, paused: bool) -> None:
+        """The button names what a click will do."""
+        log.debug("_show_paused: %s", paused)
+        self._pause_video_btn.setText("Resume" if paused else "Pause")
 
     def _on_video_advanced(self, event: VideoAdvanced) -> None:
         """Follow the selected device's video frame by frame (per-frame: DEBUG).

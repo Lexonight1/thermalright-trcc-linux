@@ -60,6 +60,7 @@ from ..core.events import (
     VideoAdvanced,
     VideoExportFinished,
     VideoExportProgress,
+    VideoPauseChanged,
     VideoStarted,
     VideoStopped,
 )
@@ -95,6 +96,7 @@ class BusBridge(QObject):
     video_started = Signal(object)             # VideoStarted
     video_advanced = Signal(object)            # VideoAdvanced
     video_stopped = Signal(object)             # VideoStopped
+    video_pause_changed = Signal(object)       # VideoPauseChanged
     video_export_progress = Signal(object)     # VideoExportProgress
     video_export_finished = Signal(object)     # VideoExportFinished
     screencast_started = Signal(object)        # ScreencastStarted
@@ -139,6 +141,7 @@ class BusBridge(QObject):
             (VideoStarted, self.video_started),
             (VideoAdvanced, self.video_advanced),
             (VideoStopped, self.video_stopped),
+            (VideoPauseChanged, self.video_pause_changed),
             (VideoExportProgress, self.video_export_progress),
             (VideoExportFinished, self.video_export_finished),
             (ScreencastStarted, self.screencast_started),

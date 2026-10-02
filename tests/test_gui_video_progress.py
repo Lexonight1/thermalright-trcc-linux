@@ -96,3 +96,69 @@ def test_frames_leave_a_held_thumb_alone(window: Any, qtbot: Any) -> None:
     _advance(window, qtbot, 151)
 
     assert slider.value() == 42, "a frame tore the thumb out of the user's hand"
+
+
+# ── Pause / resume from any UI (2026-10-02) ──────────────────────────────────
+
+
+def _icon_is(button: Any, image: Any) -> bool:
+    """Whether *button* shows *image* (an icon path or pixmap) right now."""
+    from PySide6.QtGui import QIcon
+    return (button.icon().pixmap(24).toImage()
+            == QIcon(image).pixmap(24).toImage())
+
+
+def test_the_gui_follows_a_pause_from_another_ui(window: Any, qtbot: Any) -> None:
+    """``PauseVideo`` published nothing, so the gui showed whatever ITS OWN
+    last toggle returned: paused from the CLI or qtgui, its button still said
+    playing and its metric refreshes did not redraw the held frame.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop the PauseVideo publish, or the
+    gui's ``video_pause_changed`` hookup → fails.
+    """
+    from trcc.core.commands import PauseVideo
+
+    handler = window._handlers[_KEY]
+    btn = window.uc_preview.play_btn
+    play_img, pause_img = btn._img_refs[0], btn._img_refs[1]
+
+    window._app.dispatch(PauseVideo(key=_KEY, paused=False))
+    qtbot.waitUntil(lambda: handler._video_playing and _icon_is(btn, pause_img),
+                    timeout=3000)
+
+    window._app.dispatch(PauseVideo(key=_KEY, paused=True))
+    qtbot.waitUntil(lambda: not handler._video_playing
+                    and _icon_is(btn, play_img), timeout=3000)
+
+
+def test_qtgui_s_button_says_what_a_click_will_do_wherever_the_pause_came_from(
+    tmp_path: Path, qtbot: Any,
+) -> None:
+    """The button read "Pause/Resume" whatever the state -- qtgui showed no
+    pause state at all.  It now names the next action, on open and when any
+    UI toggles.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop qtgui's
+    ``video_pause_changed`` hookup → fails.
+    """
+    from trcc.core.commands import PauseVideo
+    from trcc.services.media import Playback
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.panels.display_panel import DisplayPanel
+
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    try:
+        assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        app.media._playbacks[_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+            frames=[b"f"] * _FRAMES, fps=_FPS)
+        panel = DisplayPanel(app, BusBridge(app.events))
+        qtbot.addWidget(panel)
+        qtbot.waitUntil(lambda: panel._picker.current_key() == _KEY)
+        button = panel._pause_video_btn
+
+        app.dispatch(PauseVideo(key=_KEY, paused=True))
+        qtbot.waitUntil(lambda: button.text() == "Resume", timeout=3000)
+        app.dispatch(PauseVideo(key=_KEY, paused=False))
+        qtbot.waitUntil(lambda: button.text() == "Pause", timeout=3000)
+    finally:
+        app.close()

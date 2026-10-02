@@ -227,6 +227,8 @@ class TRCCApp(QMainWindow):
         self._bus.slideshow_changed.connect(
             self._on_bus_slideshow_changed, type=qconn)
         self._bus.video_advanced.connect(self._on_bus_video_advanced, type=qconn)
+        self._bus.video_pause_changed.connect(
+            self._on_bus_video_pause_changed, type=qconn)
         self._bus.video_export_progress.connect(
             self._on_bus_video_export_progress, type=qconn)
         self._bus.video_export_finished.connect(
@@ -330,6 +332,14 @@ class TRCCApp(QMainWindow):
                  handler.device_key if handler is not None else "(no LCD)")
         if handler is not None:
             handler.refresh_themes()
+
+    def _on_bus_video_pause_changed(self, event: Any) -> None:
+        """Paused or resumed in ANY UI -- the device's handler shows it."""
+        handler = self._handlers.get(event.key)
+        log.info("_on_bus_video_pause_changed: %s paused=%s handler=%s",
+                 event.key, event.paused, type(handler).__name__)
+        if isinstance(handler, LCDHandler):
+            handler.on_video_pause_changed(event)
 
     def _on_bus_data_installed(self, event: Any) -> None:
         """First-run archives landed — re-list every LCD device's grids.
