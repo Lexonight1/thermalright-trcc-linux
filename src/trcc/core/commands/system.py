@@ -77,6 +77,7 @@ from ._helpers import (
     _autostart_path,
     _drive_slideshow,
     _health_entries,
+    _invalidate_scene,
     _publish_slideshow,
     _require_connected_device,
     _resolve_oriented_resolution,
@@ -95,7 +96,7 @@ def _set_clock_format(app: App, key: str | None, source: str,
     """Give *source* clocks *pattern*, re-render, tell every UI; the scope said."""
     touched = app.settings.set_clock_format(key, source, pattern)
     for k in touched:
-        app.display.invalidate(k)
+        _invalidate_scene(app, k)
         app.events.publish(OverlayChanged(
             key=k, enabled=app.settings.for_device(k).overlay_enabled,
         ))

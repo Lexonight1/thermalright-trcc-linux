@@ -2597,7 +2597,7 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
         # Drop the scene cache so the next tick re-renders with the new bg,
         # and tell every UI -- this published nothing, so no other window
         # could show the change.
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
         _publish_background(app, self.key)
         return BackgroundModeResult(
             ok=True, key=self.key, mode=self.mode,
@@ -2618,7 +2618,7 @@ class SetOverlayBackground(Command[OverlayBackgroundResult]):
             return OverlayBackgroundResult(
                 ok=False, key=self.key, color=self.color, message=str(e),
             )
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
         _publish_background(app, self.key)
         r, g, b = self.color
         return OverlayBackgroundResult(
@@ -2679,7 +2679,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
             source=self.source,  # type: ignore[arg-type]
         )
         app.settings.add_user_overlay_element(self.key, element)
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
         app.events.publish(OverlayChanged(key=self.key, enabled=True))
         return OverlayElementResult(
             ok=True, key=self.key, element=_element_to_entry(element),
@@ -2719,7 +2719,7 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
             return OverlayElementResult(
                 ok=False, key=self.key, element=None, message=str(e),
             )
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
         app.events.publish(OverlayChanged(key=self.key, enabled=True))
         return OverlayElementResult(
             ok=True, key=self.key, element=_element_to_entry(element),
@@ -2741,7 +2741,7 @@ class DeleteOverlayElement(Command[OverlayElementDeleteResult]):
                 ok=False, key=self.key, element_id=self.element_id,
                 message=str(e),
             )
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
         app.events.publish(OverlayChanged(key=self.key, enabled=True))
         return OverlayElementDeleteResult(
             ok=True, key=self.key, element_id=self.element_id,
@@ -2974,7 +2974,7 @@ class SetOverlayConfig(Command[OverlayConfigResult]):
                 )
             parsed.append(element)
         app.settings.set_user_overlay_elements(self.key, parsed)
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
         # Report the device's actual toggle, not a hardcoded True.  This
         # Command sets the LAYOUT; whether the overlay is switched on is
         # ``DeviceSettings.overlay_enabled``'s to say (the single authority —
@@ -3080,7 +3080,7 @@ class SeekVideo(Command[SeekVideoResult]):
     frame: int
 
     def execute(self, app: App) -> SeekVideoResult:
-        log.debug("execute: app=%s", app)
+        log.info("SeekVideo: key=%s frame=%d", self.key, self.frame)
         playback = app.media.playback(self.key)
         if playback is None:
             return SeekVideoResult(
@@ -3094,7 +3094,13 @@ class SeekVideo(Command[SeekVideoResult]):
                 message=f"frame must be >= 0, got {self.frame}",
             )
         playback.seek(self.frame)
-        app.display.invalidate(self.key)
+        _invalidate_scene(app, self.key)
+        # Every UI's progress bar follows the jump -- while paused no tick
+        # announces the new position, so the seek has to.
+        app.events.publish(VideoAdvanced(
+            key=self.key, cursor=playback.cursor,
+            frame_count=playback.frame_count, fps=playback.fps,
+        ))
         return SeekVideoResult(
             ok=True, key=self.key,
             cursor=playback.cursor, frame_count=playback.frame_count,

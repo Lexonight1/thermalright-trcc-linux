@@ -122,6 +122,9 @@
   showing the old background, but TRCC had already recorded the broken video,
   so the next restart or theme save picked it up. It is now saved only once it
   plays.
+- **Seeking a paused video left the other windows' progress bars behind.** Only
+  the window you seeked from showed the new position. Every open window now
+  follows the seek.
 - **The 640x172 screen reached over HID (FBL 59) was sent JPEG frames.** The
   Windows app sends this route raw RGB565 pixels, with each row centred in the
   panel's 176-pixel framebuffer row, and turns the picture 90° for a panel that

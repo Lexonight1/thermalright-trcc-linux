@@ -21,14 +21,16 @@ from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import (
     ConnectDevice,
+    PauseVideo,
     PlayVideo,
     RenderAndSend,
+    SeekVideo,
     SetBackground,
     StopVideo,
     TickDisplay,
 )
 from trcc.core.errors import ThemeError
-from trcc.core.events import VideoStarted, VideoStopped
+from trcc.core.events import VideoAdvanced, VideoStarted, VideoStopped
 from trcc.core.models import (
     FitMode,
     Kind,
@@ -397,6 +399,29 @@ def test_stop_video_idempotent_on_unattached_device(app: App) -> None:
     """StopVideo on an unattached device succeeds (no transport touched)."""
     result = app.dispatch(StopVideo(key="dead:beef"))
     assert result.ok is True
+
+
+def test_a_paused_seek_tells_every_ui_where_it_landed(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    """While paused no tick announces a position, so the seek must, or
+    every other UI's progress bar stays where it was.  This App has no
+    Renderer: the seek used to raise from ``app.display`` after moving the
+    cursor.
+
+    MUTATION CHECK -- MEASURED 2026-10-01: drop the publish → fails; call
+    ``app.display.invalidate`` directly → raises.
+    """
+    connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
+    connected_app.dispatch(PauseVideo(key=_KEY, paused=True))
+    seen: list[VideoAdvanced] = []
+    connected_app.events.subscribe(VideoAdvanced, seen.append)  # type: ignore[arg-type]
+
+    result = connected_app.dispatch(SeekVideo(key=_KEY, frame=2))
+
+    assert result.ok, result.message
+    assert [(e.key, e.cursor, e.frame_count, e.fps) for e in seen] == [
+        (_KEY, 2, 3, 15)]
 
 
 def test_stop_video_keep_override_unloads_but_keeps_the_persisted_path(

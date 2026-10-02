@@ -373,6 +373,35 @@ def test_configure_logging_has_one_call_site() -> None:
     )
 
 
+def test_commands_invalidate_the_scene_only_through_the_seam() -> None:
+    """``app.display`` RAISES on an App with no Renderer, so a Command that
+    busts the scene cache does it through ``_invalidate_scene``, which checks.
+
+    Eight Commands called ``app.display.invalidate`` directly and so saved an
+    edit and then raised; the seek, overlay-element, background-mode and
+    clock-format edits among them (found 2026-10-01).
+    """
+    offenders: list[str] = []
+    for path in _files_under("trcc/core/commands"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        seam = {n for f in ast.walk(tree)
+                if isinstance(f, ast.FunctionDef) and f.name == "_invalidate_scene"
+                for n in ast.walk(f)}
+        offenders += [
+            f"  {path.relative_to(_SRC)}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and node not in seam
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "invalidate"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "display"
+        ]
+    assert not offenders, (
+        "app.display.invalidate outside _invalidate_scene -- raises with no "
+        "Renderer:\n" + "\n".join(offenders)
+    )
+
+
 def test_os_path_confined_to_zip_slip_normalisation() -> None:
     """CLAUDE.md Code Style: prefer pathlib; ``os.path`` only where a lexical
     path-string operation is required (zip-slip member sanitisation).
