@@ -341,6 +341,31 @@ def test_type2_serial_extracted_when_marker_set(
     assert result.serial == "DEADBEEFCAFEBABE0102030405060708"
 
 
+def test_type2_serial_kept_on_a_36_byte_reply(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """A reply that ENDS with the serial still carries it.
+
+    This panel answers with exactly 36 bytes — magic, PM/SUB, the 0x10 marker
+    and the 16 serial bytes at resp[20:36] — so ``len(resp) > 36`` was false
+    for the only reply that matters and the serial came back empty.
+    """
+    serial_bytes = bytes.fromhex("415035333030300C007AB95B03004F78")
+    resp = bytearray(36)
+    resp[0:4] = _TYPE2_MAGIC
+    resp[4] = 2        # SUB
+    resp[5] = 128      # PM
+    resp[12] = 0x01    # required by the validator
+    resp[16] = 0x10    # serial marker
+    resp[20:36] = serial_bytes
+    fake_bulk.read_script.append(bytes(resp))
+    device = _make_type2(fake_bulk)
+
+    result = device.connect()
+
+    assert result.serial == serial_bytes.hex().upper()
+
+
 def test_type2_serial_blank_without_marker(
     fake_bulk: FakeBulkTransport,
 ) -> None:
