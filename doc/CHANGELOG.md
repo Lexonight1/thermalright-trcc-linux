@@ -125,6 +125,11 @@
 - **Seeking a paused video left the other windows' progress bars behind.** Only
   the window you seeked from showed the new position. Every open window now
   follows the seek.
+- **Shutting the PC down while TRCC was still starting could leave a screen
+  lit.** A stop signal that arrived while TRCC was connecting your devices
+  ended it on the spot, before it could put the screens to sleep. This
+  affected the windows and the background service. TRCC now finishes starting
+  up, puts the screens to sleep and exits.
 - **The 640x172 screen reached over HID (FBL 59) was sent JPEG frames.** The
   Windows app sends this route raw RGB565 pixels, with each row centred in the
   panel's 176-pixel framebuffer row, and turns the picture 90° for a panel that

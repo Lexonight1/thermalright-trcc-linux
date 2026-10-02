@@ -364,8 +364,7 @@ def repro_148_daemon_metrics_loop() -> ReproResult:
 
     fake = _App()
     with patch("trcc._boot._build_local_app", return_value=fake), \
-         patch.object(dm.ipc, "IPCServer", _Srv), \
-         patch.object(dm, "_install_signal_handlers", lambda s: None):
+         patch.object(dm.ipc, "IPCServer", _Srv):
         dm.run_daemon(platform=None, renderer=None)
     if not fake.metrics_loop.started:
         return _bug("run_daemon never called app.metrics_loop.start() — display stays blank")

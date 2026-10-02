@@ -20,11 +20,10 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
 import subprocess
 import sys
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from . import ipc
 
@@ -61,7 +60,7 @@ def run_daemon(
     (``DaemonUI.preflight``, exit 1), building a LOCAL App with ``TRCC_DAEMON``
     stripped so the daemon can never proxy to itself (#162), the session
     bring-up, and the single ``App.close()``.  What stays daemon-specific is
-    ``DaemonUI.run`` -- the IPC server and its signal handlers.
+    ``DaemonUI.run`` and ``stop`` -- the IPC server, and ending it.
 
     ``App.close()`` used to be called here AND by the caller; the template now
     owns it exactly once, which is the double-teardown the GUI window had
@@ -204,18 +203,6 @@ def kill_daemon(*, timeout: float = 5.0) -> bool:
 # =========================================================================
 # Internals
 # =========================================================================
-
-
-def _install_signal_handlers(server: ipc.IPCServer) -> None:
-    """SIGTERM / SIGINT flip the server's stop flag + wake the accept loop."""
-    log.debug("_install_signal_handlers: called")
-    def _shutdown(signo: int, _frame: Any) -> None:
-        name = signal.Signals(signo).name
-        log.info("trcc daemon: received %s — shutting down", name)
-        server.shutdown()
-
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT, _shutdown)
 
 
 def running_status() -> DaemonResult | None:

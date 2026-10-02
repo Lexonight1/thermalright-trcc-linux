@@ -592,6 +592,10 @@ class IPCServer:
         """Accept connections until ``shutdown`` is called or a kill arrives."""
         log.info("serve_forever: called")
         import threading
+        if self._stop:
+            # ``shutdown`` came first -- a SIGTERM while the daemon bound.
+            log.info("serve_forever: shut down before serving — returning")
+            return
         if self._sock is None:
             raise RuntimeError("serve_forever called before start")
         while not self._stop:

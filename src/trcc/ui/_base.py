@@ -43,6 +43,8 @@ than inventing a lazy second one.  ``tests/test_ui_bus.py`` gates it.
 from __future__ import annotations
 
 import logging
+import signal
+import threading
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -93,6 +95,9 @@ class UserInterface(CommandBus):
     #: The in-process App for ``RUNS_IN_CALLER`` Commands, when this face's own
     #: App is the shared one.  Built on first need, never otherwise.
     _in_caller: App | None = None
+    #: A SIGTERM / SIGINT arrived.  Set from :meth:`start` on, so a signal
+    #: before the face's loop exists still ends in ``App.close``.
+    _stop_requested: bool = False
 
     #: Whether this UI needs the live session (coldplug + metrics + LED loops).
     #: False for the one-shot CLI, which must not pay for a coldplug it will
@@ -133,6 +138,7 @@ class UserInterface(CommandBus):
             log.info("start: %s refused to launch, exit=%d",
                      type(self).__name__, code)
             return code
+        previous = self._catch_stop_signals()
         try:
             if self.needs_session:
                 # Compose BEFORE bring_up, not lazily inside it.  A Qt face
@@ -152,6 +158,10 @@ class UserInterface(CommandBus):
                     log.warning("start: %s bring-up failed",
                                 type(self).__name__)
                     return 1
+            if self._stop_requested:
+                log.info("start: %s stopped during start-up — closing without "
+                         "running", type(self).__name__)
+                return 0
             return self.run()
         finally:
             # Close only what was actually built.  A face that never
@@ -163,6 +173,7 @@ class UserInterface(CommandBus):
                 self._composed.close()
                 self._composed = None
             self.teardown()
+            self._release_stop_signals(previous)
             # The unconditional teardown proof.  ``dev/smoke_ui_shutdown.py``
             # greps for exactly this: a UI that exits WITHOUT it left the panel
             # lit and the transport held (#143), and "the process is gone" on
@@ -171,6 +182,49 @@ class UserInterface(CommandBus):
             # worse than none.
             log.info("%s: cleanup complete — process exit",
                      type(self).__name__)
+
+    # ── Stop signals — one handler, from preflight to exit ───────────────
+
+    def _catch_stop_signals(self) -> dict[int, Any]:
+        """Own SIGTERM / SIGINT for the whole of :meth:`start`.
+
+        SIGTERM is what the session manager sends at shutdown.  Each face used
+        to install its handler only as its loop began, so one arriving during
+        compose or the coldplug -- seconds on a fleet -- killed the process
+        with no ``App.close``: the panel left lit, the transport held (#143).
+        Returns the handlers it replaced; none off the main thread, where
+        Python cannot install one.
+        """
+        if threading.current_thread() is not threading.main_thread():
+            log.info("_catch_stop_signals: %s not on the main thread — left "
+                     "to the caller", type(self).__name__)
+            return {}
+        log.info("_catch_stop_signals: %s owns SIGTERM/SIGINT",
+                 type(self).__name__)
+        return {signo: signal.signal(signo, self._on_stop_signal)
+                for signo in (signal.SIGTERM, signal.SIGINT)}
+
+    @staticmethod
+    def _release_stop_signals(previous: dict[int, Any]) -> None:
+        """Put back what :meth:`_catch_stop_signals` replaced."""
+        log.debug("_release_stop_signals: restoring %d handler(s)",
+                  len(previous))
+        for signo, handler in previous.items():
+            signal.signal(signo, handler)
+
+    def _on_stop_signal(self, signo: int, _frame: object) -> None:
+        log.info("%s: %s — stopping", type(self).__name__,
+                 signal.Signals(signo).name)
+        self._stop_requested = True
+        self.stop()
+
+    def stop(self) -> None:
+        """End this face's loop, if it is running.  Called on the main thread.
+
+        The default has no loop to end: :meth:`start` reads the flag before
+        :meth:`run`.  A face whose loop can be running overrides this.
+        """
+        log.debug("stop: %s has no loop to end", type(self).__name__)
 
     # ── The command bus — what a face IS ─────────────────────────────────
     #

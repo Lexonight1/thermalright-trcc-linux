@@ -6,16 +6,22 @@ assert ``QApplication.quit()`` was called, but only a real subprocess shows
 whether the interpreter exited, the metrics thread stopped, the panel was
 blanked and ``/dev/sgN`` released.
 
-Two ways a UI is told to stop, both checked per skin:
+SIGTERM — what systemd / the session manager sends at PC shutdown — at two
+moments per face:
 
-    SIGTERM   — what systemd / the session manager sends at PC shutdown.
-                Without a handler the process dies BEFORE ``qapp.exec()``
-                returns, so cleanup never runs and the LCD is left lit
-                showing its last frame (#143).
-    UI quit   — tray "Exit" / window close.  With ``quitOnLastWindowClosed``
-                False (both skins hide to tray), accepting the close is not
-                enough: the event loop must be told to stop or the process
-                lives on with the metrics thread still polling.
+    start-up  — just after ``UserInterface.start`` takes the signals, while
+                the App composes and the fleet coldplugs.  Each face used to
+                install its handler only as its loop began, so a SIGTERM here
+                died with the default action (rc 143) and no cleanup — measured
+                on both skins 2026-10-01.
+    running   — inside the face's own loop.  Without a handler the process
+                dies BEFORE ``qapp.exec()`` returns, so cleanup never runs and
+                the LCD is left lit showing its last frame (#143).
+
+The UI-quit path (tray "Exit" / window close) is not driven here:
+with ``quitOnLastWindowClosed`` False (both skins hide to tray), accepting the
+close is not enough: the event loop must be told to stop or the process lives
+on with the metrics thread still polling.
 
 A skin PASSES only when the process is gone AND its log shows the teardown
 markers.  Exiting without them is the #143 bug, not a pass.
@@ -31,8 +37,9 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -60,9 +67,13 @@ class Skin:
     # mock fleet, so the SIGTERM landed before the handlers existed and both
     # skins "failed" on the harness's timing, not on their teardown.
     boot_marker: str
+    env: dict[str, str] = field(default_factory=dict)
 
 
 _LOOP = "_exec: entering the Qt event loop"
+#: ``UserInterface.start`` owns SIGTERM from here -- before compose and the
+#: coldplug, so a signal on this line lands in the start-up window.
+_STARTUP = "_catch_stop_signals:"
 
 SKINS = (
     Skin("gui", ["dev/mock_gui.py", "-v", "-platform", "offscreen"],
@@ -70,11 +81,18 @@ SKINS = (
     Skin("qtgui", ["dev/mock.py", "--ui", "qtgui", "-v",
                    "-platform", "offscreen"],
          boot_marker=_LOOP),
+    # Its own runtime dir: a real daemon on this machine would otherwise own
+    # the socket and the mock one would refuse to start.
+    Skin("daemon", ["dev/_mock_daemon.py"],
+         boot_marker="IPC server listening on",
+         env={"XDG_RUNTIME_DIR": tempfile.mkdtemp(prefix="trcc-smoke-")}),
 )
+PHASES = ("start-up", "running")
 
 
 def _launch(skin: Skin) -> subprocess.Popen[bytes]:
-    env = {**os.environ, "PYTHONPATH": "src", "QT_QPA_PLATFORM": "offscreen"}
+    env = {**os.environ, "PYTHONPATH": "src", "QT_QPA_PLATFORM": "offscreen",
+           **skin.env}
     return subprocess.Popen(
         [sys.executable, *skin.argv],
         cwd=REPO, env=env,
@@ -84,8 +102,8 @@ def _launch(skin: Skin) -> subprocess.Popen[bytes]:
 
 
 def _wait_for_boot(proc: subprocess.Popen[bytes], since: int,
-                   marker: str) -> bool:
-    """Wait for THIS run's window to appear.
+                   marker: str, settle_s: float = 2) -> bool:
+    """Wait for THIS run to log *marker*, then *settle_s* more.
 
     Reads only past ``since`` — ``trcc.latest.log`` does not truncate per run
     despite ``mode="w"``, so scanning the whole tail matches a PREVIOUS run's
@@ -96,9 +114,9 @@ def _wait_for_boot(proc: subprocess.Popen[bytes], since: int,
         if proc.poll() is not None:
             return False
         if marker in _log_since(since):
-            time.sleep(2)           # let the loops spin up
+            time.sleep(settle_s)    # let the loops spin up
             return True
-        time.sleep(0.5)
+        time.sleep(0.05)
     return False
 
 
@@ -123,20 +141,23 @@ def _log_since(offset: int) -> str:
         return fh.read()
 
 
-def check(skin: Skin) -> str:
-    print(f"\n── {skin.name} ──────────────────────────────────────")
+def check(skin: Skin, phase: str) -> str:
+    print(f"\n── {skin.name} / {phase} ──────────────────────────────")
     start = LOG.stat().st_size if LOG.exists() else 0
     proc = _launch(skin)
-    if not _wait_for_boot(proc, start, skin.boot_marker):
-        print(f"  SKIP  {skin.name} did not boot within {BOOT_TIMEOUT_S}s "
-              f"(rc={proc.poll()}) — environment, not a shutdown verdict")
+    early = phase == "start-up"
+    marker = _STARTUP if early else skin.boot_marker
+    if not _wait_for_boot(proc, start, marker, settle_s=0 if early else 2):
+        print(f"  SKIP  {skin.name} never logged {marker!r} within "
+              f"{BOOT_TIMEOUT_S}s (rc={proc.poll()}) — environment, not a "
+              f"shutdown verdict")
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=5)
         return "SKIP"
 
-    offset = LOG.stat().st_size if LOG.exists() else 0
-    print(f"  booted pid={proc.pid} — sending SIGTERM")
+    offset = start if early else (LOG.stat().st_size if LOG.exists() else 0)
+    print(f"  {marker!r} seen, pid={proc.pid} — sending SIGTERM")
     t0 = time.monotonic()
     proc.send_signal(signal.SIGTERM)
 
@@ -151,6 +172,10 @@ def check(skin: Skin) -> str:
 
     tail = _log_since(offset)
     print(f"  exited rc={rc} in {time.monotonic() - t0:.1f}s")
+    if early and skin.boot_marker in tail:
+        print("  SKIP  the signal landed after the loop started — this run "
+              "proved the running case, not start-up")
+        return "SKIP"
 
     required = list(ALWAYS)
     devices = _devices_at_close(tail)
@@ -182,7 +207,8 @@ def _devices_at_close(tail: str) -> int:
 
 def main() -> int:
     print("UI shutdown smoke — mock fleet, no hardware touched.")
-    results = {skin.name: check(skin) for skin in SKINS}
+    results = {f"{skin.name} / {phase}": check(skin, phase)
+               for skin in SKINS for phase in PHASES}
     print("\n── summary ─────────────────────────────────────────")
     for name, verdict in results.items():
         print(f"  {verdict}  {name}")

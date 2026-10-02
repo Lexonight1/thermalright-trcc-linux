@@ -52,7 +52,6 @@ def test_run_daemon_starts_metrics_loop_and_pops_flag(
     )
     server = mock.MagicMock()
     monkeypatch.setattr(ipc, "IPCServer", lambda a: server)
-    monkeypatch.setattr(daemon, "_install_signal_handlers", lambda s: None)
 
     rc = daemon.run_daemon()
 
@@ -79,7 +78,6 @@ def test_run_daemon_injects_platform_and_renderer(
 
     monkeypatch.setattr("trcc._boot._build_local_app", _capture)
     monkeypatch.setattr(ipc, "IPCServer", lambda a: mock.MagicMock())
-    monkeypatch.setattr(daemon, "_install_signal_handlers", lambda s: None)
 
     sentinel_platform = mock.MagicMock()
     sentinel_renderer = mock.MagicMock()

@@ -32,12 +32,13 @@ from ._base import UserInterface
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import uvicorn
     from PySide6.QtWidgets import QWidget
 
     from ..app import App
     from ..core.ports import Platform, Renderer
     from ..core.results import ApiTlsResult
-    from ..ipc import SingleInstance
+    from ..ipc import IPCServer, SingleInstance
 
     # ``TYPE_CHECKING`` only: these names cost NOTHING at runtime, so the
     # module stays light while the faces keep real types.  A ``type: ignore``
@@ -65,6 +66,7 @@ class ApiUI(UserInterface, key="api"):
         self.host = host
         self.port = port
         self.tls = tls
+        self._server: uvicorn.Server | None = None
 
     def compose(self, platform: Platform | None) -> App:
         """Headless composition: the API renders preview frames, has no widgets."""
@@ -87,11 +89,29 @@ class ApiUI(UserInterface, key="api"):
         # a second line per request would let a ``/tick`` poller rotate the
         # diagnosis out of the file within hours.
         # ssl_* None is uvicorn's own "plain HTTP" — no branch needed here.
-        uvicorn.run(build_app(trcc=self), host=self.host, port=self.port,
-                    log_level="info", log_config=None, access_log=False,
-                    ssl_certfile=self.tls and self.tls.cert,
-                    ssl_keyfile=self.tls and self.tls.key)
+        # A Server we hold, not ``uvicorn.run``: :meth:`stop` must reach it.
+        self._server = server = uvicorn.Server(uvicorn.Config(
+            build_app(trcc=self), host=self.host, port=self.port,
+            log_level="info", log_config=None, access_log=False,
+            ssl_certfile=self.tls and self.tls.cert,
+            ssl_keyfile=self.tls and self.tls.key))
+        if self._stop_requested:
+            log.info("ApiUI.run: stopped before serving")
+            return 0
+        server.run()
+        if not server.started:
+            # ``uvicorn.run``'s own verdict: it exits 3 when startup failed --
+            # a port in use, a bad certificate.
+            log.error("ApiUI.run: the server never started on %s:%d",
+                      self.host, self.port)
+            return 3
         return 0
+
+    def stop(self) -> None:
+        """Ask uvicorn to finish: it checks ``should_exit`` every tick."""
+        log.info("ApiUI.stop: server=%s", self._server is not None)
+        if self._server is not None:
+            self._server.should_exit = True
 
 
 class DaemonUI(UserInterface, key="daemon"):
@@ -105,6 +125,7 @@ class DaemonUI(UserInterface, key="daemon"):
     def __init__(self, *, renderer: Renderer | None = None) -> None:
         log.info("DaemonUI.__init__: renderer=%s", renderer is not None)
         self._renderer = renderer
+        self._server: IPCServer | None = None
 
     def preflight(self) -> int | None:
         """Refuse to start if another daemon already owns the socket.
@@ -154,16 +175,23 @@ class DaemonUI(UserInterface, key="daemon"):
         """
         log.info("DaemonUI.run: binding the IPC server")
         from .. import ipc
-        from ..daemon import _install_signal_handlers
-        server = ipc.IPCServer(self._app)
+        self._server = server = ipc.IPCServer(self._app)
+        if self._stop_requested:
+            log.info("DaemonUI.run: stopped before the server bound")
+            return 0
         server.start()
-        _install_signal_handlers(server)
         try:
             server.serve_forever()
         finally:
             server.shutdown()
         log.info("DaemonUI.run: served to completion")
         return 0
+
+    def stop(self) -> None:
+        """Stop serving: flip the server's flag and wake its accept loop."""
+        log.info("DaemonUI.stop: server=%s", self._server is not None)
+        if self._server is not None:
+            self._server.shutdown()
 
 
 class _QtUI(UserInterface):
@@ -179,34 +207,31 @@ class _QtUI(UserInterface):
         from .qapp import build_qt_app
         return build_qt_app(platform)
 
-    @staticmethod
-    def _install_quit_handlers() -> None:
-        """SIGINT / SIGTERM must reach the Qt loop, or teardown never runs.
+    def stop(self) -> None:
+        """Queue a quit for the Qt loop.
 
-        SIGTERM is what the session manager sends at PC shutdown.  Without a
-        handler the process dies before ``qapp.exec()`` returns, the cleanup
-        never happens, and the panel is left mid-stream showing its last frame
-        (#143).
+        Queued, not called: ``quit()`` is ignored unless ``exec()`` is running,
+        and a queued one is honoured the moment it starts.  One posted during
+        the splash's nested loop is ignored there (measured), so the coldplug
+        finishes and :meth:`UserInterface.start` reads the flag instead.
         """
-        import signal
-
+        from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
+        qapp = QApplication.instance()
+        log.info("%s.stop: queueing quit (qapp=%s)", type(self).__name__,
+                 qapp is not None)
+        if qapp is not None:
+            QTimer.singleShot(0, qapp.quit)
 
-        def _quit(*_args: object) -> None:
-            log.info("_install_quit_handlers: quit signal — stopping the loop")
-            qapp = QApplication.instance()
-            if qapp is not None:
-                qapp.quit()
-
-        signal.signal(signal.SIGINT, _quit)
-        signal.signal(signal.SIGTERM, _quit)
-
-    @staticmethod
-    def _exec() -> int:
-        """Run the Qt event loop to completion."""
+    def _exec(self) -> int:
+        """Run the Qt event loop to completion -- unless a stop came first."""
         from PySide6.QtWidgets import QApplication
         qapp = QApplication.instance()
         assert qapp is not None, "compose() must have built a QApplication"
+        if self._stop_requested:
+            log.info("_exec: stopped while the window was built — not entering "
+                     "the Qt event loop")
+            return 0
         log.info("_exec: entering the Qt event loop")
         return qapp.exec()
 
@@ -277,7 +302,6 @@ class GuiUI(_QtUI, key="gui"):
         window.replay_initial_devices()
         if self.on_ready is not None:
             self.on_ready(window)
-        self._install_quit_handlers()
         if not self.start_hidden:
             window.show()
             # Surface devices found but not connected, read from the bus: the
@@ -337,7 +361,6 @@ class QtGuiUI(_QtUI, key="qtgui"):
             self._splash = None
         if self.on_ready is not None:
             self.on_ready(window)
-        self._install_quit_handlers()
         return self._exec()
 
 

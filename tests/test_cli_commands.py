@@ -1960,12 +1960,18 @@ def test_the_api_face_hands_its_tls_files_to_uvicorn(
     from trcc.ui.api import main as api_main
 
     ran: dict = {}
-    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: ran.update(kw))
+
+    def serve(self: uvicorn.Server, sockets: object = None) -> None:
+        ran.update(ssl_certfile=self.config.ssl_certfile,
+                   ssl_keyfile=self.config.ssl_keyfile)
+        self.started = True
+
+    monkeypatch.setattr(uvicorn.Server, "run", serve)
     monkeypatch.setattr(api_main, "build_app", lambda trcc: object())
 
-    ApiUI(port=9443, tls=ApiTlsResult(
+    assert ApiUI(port=9443, tls=ApiTlsResult(
         ok=True, cert=str(tmp_path / "c.pem"), key=str(tmp_path / "k.pem"),
-        fingerprint="AA")).run()
+        fingerprint="AA")).run() == 0
 
     assert (ran["ssl_certfile"], ran["ssl_keyfile"]) == (
         str(tmp_path / "c.pem"), str(tmp_path / "k.pem"))

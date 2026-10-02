@@ -18,8 +18,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`Query`](#query) | 1 | 0 | 38 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 3 |
-| [`UserInterface`](#userinterface) | 1 | 8 | 5 |
-| [`_QtUI`](#_qtui) | 1 | 1 | 2 |
+| [`UserInterface`](#userinterface) | 1 | 9 | 5 |
+| [`_QtUI`](#_qtui) | 1 | 2 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 18 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -186,7 +186,7 @@ One face of the one app — CLI, API, GUI, qtgui, daemon.
 run() -> int
 ```
 
-**You inherit (8):** `bring_up` · `compose` · `dispatch` · `events` · `preflight` · `remote` · `start` · `teardown`
+**You inherit (9):** `bring_up` · `compose` · `dispatch` · `events` · `preflight` · `remote` · `start` · `stop` · `teardown`
 
 **Implementations (5):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
 
@@ -202,7 +202,7 @@ Shared base for the two widget skins.  Intermediate — not registered.
 run() -> int
 ```
 
-**You inherit (1):** `compose`
+**You inherit (2):** `compose` · `stop`
 
 **Implementations (2):** `GuiUI` · `QtGuiUI`
 

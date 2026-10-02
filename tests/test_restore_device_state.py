@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -292,14 +291,15 @@ def test_the_api_runs_a_session(tmp_home: Path,
     _save(App(platform=FakePlatform(tmp_home)), tmp_home)
     shown: list[bool] = []
 
-    def serve(asgi: Any, **_kw: Any) -> None:
-        bus = asgi.state.trcc
+    def serve(self: uvicorn.Server, sockets: object = None) -> None:
+        bus = self.config.app.state.trcc
         bus.dispatch(ConnectDevice(key=_KEY))
         shown.extend(d.has_active_theme
                      for d in bus.dispatch(ListDevices()).devices
                      if d.key == _KEY)
+        self.started = True
 
-    monkeypatch.setattr(uvicorn, "run", serve)
+    monkeypatch.setattr(uvicorn.Server, "run", serve)
 
     assert ApiUI().start(FakePlatform(tmp_home)) == 0
     assert shown == [True]
