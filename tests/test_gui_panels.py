@@ -2640,17 +2640,28 @@ def test_the_carousel_says_which_zones_it_visits(gui_app: App, qtbot) -> None:
     assert [b.isChecked() for b in tab._participation_checks] == [True, False, True]
 
 
-def test_an_unconfigured_mask_shows_every_zone_participating(
-    gui_app: App, qtbot,
+@pytest.mark.parametrize(("mask", "shown"), [
+    ((), [True, False, False]),                 # never configured
+    ((False, True), [False, True, False]),      # shorter than the zones
+    ((False, False, False), [True, False, False]),
+])
+def test_the_participation_boxes_show_the_zones_the_app_uses(
+    gui_app: App, qtbot, mask: tuple, shown: list,
 ) -> None:
-    """An EMPTY mask is the state that silently disables the carousel.
+    """A missing entry is off, and with none on the App uses zone 0 -- for
+    edits (``_edit_zones``) and for the carousel (``next_sync_zone`` returns 0
+    for an empty mask, so it never cycles).  The C# starts the same way
+    (``LunBo1`` only); the gui shows the same.
 
-    Rendering it as "nothing selected" would be accurate about the bytes and a
-    lie about the behaviour the switch above promises.
+    This used to show an empty mask as EVERY zone participating, promising a
+    carousel the App does not run.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: restore the old line (a missing
+    entry shows ON, an all-off mask shows nothing) → all three cases fail.
     """
-    tab = _zone_tab_with(gui_app, qtbot, zones=3, mask=())
+    tab = _zone_tab_with(gui_app, qtbot, zones=3, mask=mask)
 
-    assert all(b.isChecked() for b in tab._participation_checks)
+    assert [b.isChecked() for b in tab._participation_checks] == shown
 
 
 def test_toggling_participation_sends_the_whole_mask(gui_app: App, qtbot) -> None:

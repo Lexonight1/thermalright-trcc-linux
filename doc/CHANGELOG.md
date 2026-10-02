@@ -133,6 +133,10 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **The native-skin window showed every LED zone as taking part in the
+  carousel on a new device.** Only the first zone takes part until you pick
+  others, as in the Windows app, but every box showed ticked. The boxes now
+  show the zones that actually take part.
 - **The disk, sensor dashboard and start-at-login settings didn't update in
   an open window.** Changed from the command line or the other window, they
   showed the old value until you reopened the window. They now update on

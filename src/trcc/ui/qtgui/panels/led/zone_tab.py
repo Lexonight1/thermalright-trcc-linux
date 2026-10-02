@@ -280,13 +280,17 @@ class ZoneTab(LedTabBase):
         self._interval_spin.setValue(snapshot.zone_sync_interval_ticks)
         self._interval_spin.blockSignals(False)
 
-        # An empty mask is the "never configured" state, and it is the one that
-        # silently disables the carousel -- show it as every zone participating
-        # so the switch above tells the truth about what it will do.
+        # The zones the App actually uses: a missing entry is off, and with
+        # none on it falls back to zone 0 -- ``_edit_zones`` for edits,
+        # ``next_sync_zone`` for the carousel, and the C#'s default
+        # (``LunBo1`` only).  This showed a missing entry as ON, so a fresh
+        # device read "every zone" while the App drove zone 0 alone.
         mask = snapshot.zone_sync_zones or ()
+        used = {i for i, on in enumerate(mask) if on} or {0}
+        log.debug("refresh_from: zone mask %s -> showing %s", list(mask), sorted(used))
         for i, box in enumerate(self._participation_checks):
             box.blockSignals(True)
-            box.setChecked(mask[i] if i < len(mask) else True)
+            box.setChecked(i in used)
             box.blockSignals(False)
 
     # ── Internals ─────────────────────────────────────────────────────
