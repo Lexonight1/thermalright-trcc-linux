@@ -5,6 +5,7 @@ import ast
 import logging
 import os
 import re
+import socket
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -2162,6 +2163,11 @@ class _RemoteRun(NamedTuple):
 
 #: A record longer than this is carrying a payload, not describing one.
 _RECORD_CAP = 2048
+#: The remote path needs a Unix socket.  Without AF_UNIX (Windows) the App
+#: never binds one and every UI runs in-process, so there is no path to gate.
+_needs_af_unix = pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"),
+    reason="no AF_UNIX: the App binds no socket, every UI runs in-process")
 
 
 def _remote_preview_rates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -2264,6 +2270,7 @@ def _noise_jpeg(seed: int, w: int = 320, h: int = 320) -> bytes:
     return bytes(data)
 
 
+@_needs_af_unix
 def test_the_remote_preview_writes_no_record_per_frame(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2287,6 +2294,7 @@ def test_the_remote_preview_writes_no_record_per_frame(
     )
 
 
+@_needs_af_unix
 def test_no_remote_preview_record_carries_a_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2303,6 +2311,7 @@ def test_no_remote_preview_record_carries_a_payload(
     )
 
 
+@_needs_af_unix
 def test_the_remote_preview_gate_actually_crosses_the_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
