@@ -20,13 +20,15 @@ from tests.mock_platform import MockPlatform
 from trcc.app import App
 from trcc.core.events import DataInstalled
 from trcc.ui.bus_bridge import BusBridge
+from trcc.ui.qtgui.panels.cloud_theme_browser import CloudThemeBrowser
 from trcc.ui.qtgui.panels.local_theme_browser import LocalThemeBrowser
 from trcc.ui.qtgui.panels.mask_browser import MaskBrowser
 
 _SPECS = [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}]
 
 
-@pytest.mark.parametrize("panel_cls", [LocalThemeBrowser, MaskBrowser])
+@pytest.mark.parametrize("panel_cls",
+                         [LocalThemeBrowser, MaskBrowser, CloudThemeBrowser])
 def test_data_installed_re_lists_the_grid(qtbot, tmp_path: Path,
                                           panel_cls: type) -> None:
     app = App(MockPlatform(_SPECS, tmp_path))

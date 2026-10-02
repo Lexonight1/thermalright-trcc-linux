@@ -143,9 +143,10 @@ class ThemeDeleted(Event):
 class DataInstalled(Event):
     """A resolution's theme / cloud-preview / mask archives finished.
 
-    Published by the background installer, never on the caller's thread —
-    every UI listens for this to re-list its theme + mask grids, which are
-    empty until the first-run download lands.
+    Published by the background installer (on its worker thread) and by
+    ``EnsureDataDownload`` (on the dispatching one) -- so a subscriber must
+    not assume either thread.  Every UI listens for this to re-list its
+    theme + mask grids, which are empty until the first-run download lands.
     """
     resolution: tuple[int, int]
     ok: bool

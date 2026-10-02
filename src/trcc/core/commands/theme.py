@@ -17,6 +17,7 @@ from ..errors import (
     TrccError,
 )
 from ..events import (
+    DataInstalled,
     ErrorOccurred,
     FrameSent,
     ThemeDeleted,
@@ -1937,6 +1938,10 @@ class EnsureDataDownload(Command[EnsureDataDownloadResult]):
                          "(both dimensions must be > 0)"),
             )
         result = app.data_install.ensure_all((self.width, self.height))
+        # Every open grid re-lists, whichever UI asked -- the connect-time
+        # installer announces the same way.
+        app.events.publish(DataInstalled(resolution=(self.width, self.height),
+                                         ok=result.ok))
         return EnsureDataDownloadResult(
             ok=result.ok,
             width=self.width, height=self.height,

@@ -129,6 +129,10 @@
   window.** A theme saved from the command line, or deleted in the other
   window, left the theme list out of date until you pressed Refresh or
   restarted. Every open window's list now updates on its own.
+- **Downloading theme data from the command line left an open window's
+  lists empty.** The theme, cloud and mask lists filled in only after a
+  restart. They now fill in as soon as the download finishes. The native-skin
+  window's cloud list also refreshes now when the first-run download lands.
 - **Starting at login in the tray still flashed the loading screen.** With
   autostart (`--resume`), TRCC starts hidden in the tray, but its loading
   screen still popped up at every login. It no longer does.

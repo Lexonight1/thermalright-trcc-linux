@@ -285,3 +285,28 @@ def test_a_good_extract_lands_unwrapped_with_nothing_beside_it(
     assert sorted(p.name for p in target.iterdir()) == ["Theme1"]
     assert (target / "Theme1" / "00.png").read_bytes() == b"\x89PNG"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["theme320320"]
+
+
+# ── EnsureDataDownload announces what it installed ──────────────────────────
+
+def test_an_explicit_download_tells_every_open_grid(fake_platform) -> None:
+    """``trcc`` / the API can pre-fetch a resolution while a window is open.
+    Only the connect-time installer announced ``DataInstalled``; the explicit
+    Command installed in silence, so the open window's theme, cloud and mask
+    grids stayed as they were until a restart.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop the publish → fails.
+    """
+    from trcc.app import App
+    from trcc.core.commands import EnsureDataDownload
+    from trcc.core.events import DataInstalled
+
+    app = App(platform=fake_platform)
+    seen: list[DataInstalled] = []
+    app.events.subscribe(DataInstalled, seen.append)  # type: ignore[arg-type]
+
+    assert app.dispatch(EnsureDataDownload(width=320, height=320)).ok
+    assert app.dispatch(EnsureDataDownload(width=0, height=320)).ok is False
+
+    assert [(e.resolution, e.ok) for e in seen] == [((320, 320), True)], (
+        "one announcement for the install that ran, none for the refused one")

@@ -19,13 +19,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QListWidget,
     QListWidgetItem,
     QPushButton,
     QVBoxLayout,
@@ -33,15 +32,15 @@ from PySide6.QtWidgets import (
 
 from ....core.commands import DeviceState, ListCloudThemes, LoadCloudTheme
 from ..assets import thumbnail_icon
-from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+from ._browser_base import AssetBrowserPanel
 
 log = logging.getLogger(__name__)
 
 _ALL_CATEGORIES = "all"
 
 
-class CloudThemeBrowser(BasePanel):
+class CloudThemeBrowser(AssetBrowserPanel):
     """Browse + apply themes from Thermalright's cloud catalog."""
 
     def _setup_ui(self) -> None:
@@ -59,24 +58,15 @@ class CloudThemeBrowser(BasePanel):
         key_form.addRow("Device key:", self._picker)
         key_form.addRow("Category:", self._category)
 
-        self._list = QListWidget(self)
-        self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._list.itemDoubleClicked.connect(self._on_row_activated)
-        # Thumbnail grid (parity with the gui skin): each catalog entry shows
-        # its extracted preview PNG (data/web/{w}{h}/<id>.png).
-        self._list.setViewMode(QListWidget.ViewMode.IconMode)
-        self._list.setIconSize(QSize(96, 96))
-        self._list.setGridSize(QSize(124, 140))
-        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self._list.setMovement(QListWidget.Movement.Static)
-        self._list.setSpacing(6)
-        self._list.setWordWrap(True)
+        # Each catalog entry shows its extracted preview PNG
+        # (data/web/{w}{h}/<id>.png) in the grid every asset browser shares.
+        self._list = self._build_asset_list()
         # Re-fill on device change so previews resolve to the picked device's
         # resolution (the local/mask browsers do the same).
         self._picker.key_changed.connect(self._on_key_changed)
 
         self._refresh_btn = QPushButton("Refresh", self)
-        self._refresh_btn.clicked.connect(self._on_refresh)
+        self._refresh_btn.clicked.connect(self.refresh)
 
         self._apply_btn = QPushButton("Download + apply", self)
         self._apply_btn.clicked.connect(self._on_apply)
@@ -124,8 +114,10 @@ class CloudThemeBrowser(BasePanel):
         # Fill the initial list too.
         self._fill_list_from_result(result)
 
-    def _on_refresh(self) -> None:
-        log.info("_on_refresh")
+    def refresh(self) -> None:
+        """Re-list the catalog -- the Refresh button, and the base's re-list
+        when the first-run archives (the preview PNGs) land."""
+        log.info("refresh")
         self._on_category_changed()
 
     def _on_category_changed(self) -> None:
@@ -174,23 +166,14 @@ class CloudThemeBrowser(BasePanel):
 
     # ── Apply ─────────────────────────────────────────────────────────
 
-    def _on_row_activated(self, item: object) -> None:
-        """Double-click applies the row; the item is read from the list."""
-        log.debug("_on_row_activated: item=%s", item)
-        self._on_apply()
-
     def _on_apply(self) -> None:
         log.info("_on_apply")
         item = self._list.currentItem()
         if item is None:
             self._status.setText("Pick a theme from the list first.")
             return
-        key = self._picker.current_key()
-        if not key:
-            self._status.setText(
-                "Pick a device first.  Open the Devices panel to scan "
-                "if no devices are listed.",
-            )
+        key = self._device_key()
+        if key is None:
             return
         theme_id = str(item.data(Qt.ItemDataRole.UserRole))
         self._status.setText(
