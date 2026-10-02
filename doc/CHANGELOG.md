@@ -125,6 +125,10 @@
 - **Seeking a paused video left the other windows' progress bars behind.** Only
   the window you seeked from showed the new position. Every open window now
   follows the seek.
+- **A theme saved, imported or deleted in one place didn't show in an open
+  window.** A theme saved from the command line, or deleted in the other
+  window, left the theme list out of date until you pressed Refresh or
+  restarted. Every open window's list now updates on its own.
 - **Starting at login in the tray still flashed the loading screen.** With
   autostart (`--resume`), TRCC starts hidden in the tray, but its loading
   screen still popped up at every login. It no longer does.

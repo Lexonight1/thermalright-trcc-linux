@@ -53,6 +53,46 @@ def test_data_installed_re_lists_the_grid(qtbot, tmp_path: Path,
         app.close()
 
 
+def test_the_local_browser_follows_a_theme_saved_or_deleted_elsewhere(
+    qtbot, tmp_path: Path,
+) -> None:
+    """Saved or deleted in another UI -- the CLI, the gui -- the list used to
+    keep what it last listed until its own Refresh: it re-listed only after
+    ITS OWN save/import/delete.  Driven on the App, as another UI's Command
+    is; asserted on the names the list shows.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop the browser's
+    ``themes_changed`` hookup → fails.
+    """
+    from PySide6.QtCore import Qt
+
+    from tests.conftest import renderable_theme
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice, DeleteTheme, LoadTheme, SaveTheme
+
+    app = App(MockPlatform(_SPECS, tmp_path), renderer=QtRenderer())
+    try:
+        assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+        themes = app.platform.paths().theme_dir(320, 320)
+        renderable_theme(themes, "Theme1")
+        assert app.dispatch(LoadTheme(key="0402:3922", path=themes / "Theme1")).ok
+        panel = LocalThemeBrowser(app, BusBridge(app.events))
+        qtbot.addWidget(panel)
+
+        def names() -> set[str]:
+            return {panel._list.item(i).data(Qt.ItemDataRole.UserRole + 1)
+                    for i in range(panel._list.count())}
+
+        qtbot.waitUntil(lambda: "Theme1" in names(), timeout=3000)
+        saved = app.dispatch(SaveTheme(key="0402:3922", name="Elsewhere"))
+        assert saved.ok, saved.message
+        qtbot.waitUntil(lambda: "Elsewhere" in names(), timeout=3000)
+
+        assert app.dispatch(DeleteTheme(path=Path(saved.theme_path))).ok
+        qtbot.waitUntil(lambda: "Elsewhere" not in names(), timeout=3000)
+    finally:
+        app.close()
+
 def test_every_asset_browser_can_re_list(qtbot, tmp_path: Path) -> None:
     """The base wires the signal for ALL asset browsers, so a new one added
     later inherits the behaviour instead of having to remember it."""

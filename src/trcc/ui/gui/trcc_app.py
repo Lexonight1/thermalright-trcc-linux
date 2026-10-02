@@ -232,6 +232,7 @@ class TRCCApp(QMainWindow):
         self._bus.video_export_finished.connect(
             self._on_bus_video_export_finished, type=qconn)
         self._bus.data_installed.connect(self._on_bus_data_installed, type=qconn)
+        self._bus.themes_changed.connect(self._on_bus_themes_changed, type=qconn)
         self._bus.settings_changed.connect(self._on_bus_settings_changed, type=qconn)
         self._bus.app_settings_changed.connect(
             self._on_bus_app_settings_changed, type=qconn)
@@ -318,6 +319,17 @@ class TRCCApp(QMainWindow):
         self._add_handler(state)
         self._refresh_sidebar()
         self._configure_inactive_lcd(event.key)
+
+    def _on_bus_themes_changed(self, event: Any) -> None:
+        """A theme was saved, imported or deleted -- by this window or any
+        other UI.  The grid is shared by every LCD handler, so the active one
+        re-lists it; that is the only re-list, this window's own included."""
+        handler = self._active_lcd()
+        log.info("_on_bus_themes_changed: %s %s -> re-list %s",
+                 type(event).__name__, event.theme_name,
+                 handler.device_key if handler is not None else "(no LCD)")
+        if handler is not None:
+            handler.refresh_themes()
 
     def _on_bus_data_installed(self, event: Any) -> None:
         """First-run archives landed — re-list every LCD device's grids.
@@ -1606,8 +1618,9 @@ class TRCCApp(QMainWindow):
             return
         # Delete via the Command — the FS removal happens in the service,
         # confined to the user-content tree (shipped themes are refused), so
-        # the View does no filesystem work.  Then re-list through ListThemes
-        # and forget the name from the slideshow. (#theme-collision)
+        # the View does no filesystem work.  The grid re-lists on the
+        # ThemeDeleted that follows; forget the name from the slideshow.
+        # (#theme-collision)
         result = self._app.dispatch(DeleteTheme(path=Path(theme_info.path)))
         if not result.ok:
             self.uc_preview.set_status(result.message)
@@ -1615,7 +1628,6 @@ class TRCCApp(QMainWindow):
         self.uc_theme_local.forget_slideshow_theme(theme_info.name)
         h = self._active_lcd()
         if h is not None:
-            h.refresh_themes()
             # The Command dropped the scene cache for every device showing
             # this theme and reports which — so the panel only has to blank
             # the preview when the device it is displaying was one of them.

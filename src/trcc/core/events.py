@@ -133,6 +133,13 @@ class ThemeImported(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ThemeDeleted(Event):
+    """A user theme was removed -- so every open theme list drops it."""
+    theme_name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
 class DataInstalled(Event):
     """A resolution's theme / cloud-preview / mask archives finished.
 

@@ -616,11 +616,9 @@ class LCDHandler(BaseHandler):
         r = self._app.dispatch(SaveTheme(
             key=self._device_key, name=name, overwrite=overwrite,
         ))
+        # The grid re-lists on the ThemeSaved that follows, as it does for a
+        # save made in any other UI.
         self._w['preview'].set_status(r.message)
-        if r.ok:
-            # Re-list via ListThemes so the new theme appears with user-
-            # precedence (same universal path as the initial listing).
-            self._update_theme_directories(force=True)
         return r
 
     def export_config(self, path: Path) -> None:
@@ -635,9 +633,7 @@ class LCDHandler(BaseHandler):
         r = self._app.dispatch(ImportTheme(
             key=self._device_key, archive_path=path,
         ))
-        self._w['preview'].set_status(r.message)
-        if r.ok:
-            self._update_theme_directories(force=True)   # re-list via ListThemes
+        self._w['preview'].set_status(r.message)   # re-lists on ThemeImported
 
     # ── DC File Loading ────────────────────────────────────────────
 

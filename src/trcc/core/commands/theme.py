@@ -19,6 +19,7 @@ from ..errors import (
 from ..events import (
     ErrorOccurred,
     FrameSent,
+    ThemeDeleted,
     ThemeExported,
     ThemeImported,
     ThemeLoaded,
@@ -1580,6 +1581,9 @@ class DeleteTheme(Command[DeleteThemeResult]):
         else:
             log.info("DeleteTheme: no device was showing %s — no scene "
                      "invalidated", deleted.name)
+        # Every open theme list drops it, whichever UI asked.
+        app.events.publish(ThemeDeleted(theme_name=deleted.name,
+                                        path=str(deleted)))
         return DeleteThemeResult(
             ok=True, theme_name=deleted.name, path=str(deleted),
             invalidated=invalidated,

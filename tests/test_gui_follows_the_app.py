@@ -27,9 +27,11 @@ from trcc.app import App
 from trcc.core.commands import (
     ConnectDevice,
     ControlCenterSnapshot,
+    DeleteTheme,
     EnableOverlay,
     LcdSnapshot,
     LoadTheme,
+    SaveTheme,
     SetBrightness,
     SetGpuDevice,
     SetHddEnabled,
@@ -54,6 +56,11 @@ def _translated(window: Any, lang: str) -> bool:
     """Every translatable label reads in *lang*."""
     return all(label.text() == tr(key, lang)
                for label, key in window._i18n_labels if key is not None)
+
+
+def _local_names(window: Any) -> set[str]:
+    """The names the gui's local theme grid holds."""
+    return {t.name for t in window.uc_theme_local._all_themes}
 
 
 # setting: (what another UI sends, how the gui shows it, what it must show)
@@ -86,6 +93,8 @@ _ROWS: dict[str, tuple[Callable[[], Any], Callable[[Any], Any], Any]] = {
                          lambda w: (w.uc_about.refresh_input.text(),
                                     w.uc_about.refresh_interval),
                          ("7", 7)),
+    "saved theme": (lambda: SaveTheme(key=_KEY, name="Mine"),
+                    lambda w: "Mine" in _local_names(w), True),
     "language": (lambda: SetLanguage(language="de"),
                  lambda w: (w._lang_combo.currentData(), _translated(w, "de")),
                  ("de", True)),
@@ -310,3 +319,23 @@ def test_a_panel_with_no_mask_position_does_not_show_the_previous_panels(
     qtbot.waitUntil(lambda: (panel.entry_x.text(), panel.entry_y.text())
                     == ("0", "0"), timeout=3000)
     win.close()
+
+
+def test_a_theme_deleted_elsewhere_leaves_the_gui_s_grid(
+    window: Any, qtbot: Any,
+) -> None:
+    """``DeleteTheme`` published nothing, so a theme deleted from the CLI or
+    the other skin stayed in the grid until a restart -- clickable, and gone.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop ``ThemeDeleted`` from
+    BusBridge's table → fails; drop the gui's ``themes_changed`` hookup →
+    this AND the "saved theme" row fail.
+    """
+    app = window._app
+    saved = app.dispatch(SaveTheme(key=_KEY, name="Doomed"))
+    assert saved.ok, saved.message
+    qtbot.waitUntil(lambda: "Doomed" in _local_names(window), timeout=3000)
+
+    assert app.dispatch(DeleteTheme(path=Path(saved.theme_path))).ok
+
+    qtbot.waitUntil(lambda: "Doomed" not in _local_names(window), timeout=3000)

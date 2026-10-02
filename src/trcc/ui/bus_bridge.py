@@ -53,7 +53,10 @@ from ..core.events import (
     SystemResumed,
     SystemSuspending,
     TempUnitChanged,
+    ThemeDeleted,
+    ThemeImported,
     ThemeLoaded,
+    ThemeSaved,
     VideoAdvanced,
     VideoExportFinished,
     VideoExportProgress,
@@ -100,6 +103,9 @@ class BusBridge(QObject):
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
     data_installed = Signal(object)            # DataInstalled
+    # The user's theme list changed -- saved, imported or deleted, by any UI.
+    # One signal: a window re-lists rather than patching its grid per kind.
+    themes_changed = Signal(object)
     # An app-wide setting changed (the control centre: temperature unit,
     # language, GPU, refresh interval, HDD); a window re-reads the snapshot.
     app_settings_changed = Signal(object)
@@ -141,6 +147,9 @@ class BusBridge(QObject):
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),
             (DataInstalled, self.data_installed),
+            (ThemeSaved, self.themes_changed),
+            (ThemeImported, self.themes_changed),
+            (ThemeDeleted, self.themes_changed),
             (TempUnitChanged, self.app_settings_changed),
             (LanguageChanged, self.app_settings_changed),
             (GpuDeviceChanged, self.app_settings_changed),

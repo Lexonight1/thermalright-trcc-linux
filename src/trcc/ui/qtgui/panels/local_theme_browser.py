@@ -56,6 +56,10 @@ class LocalThemeBrowser(AssetBrowserPanel):
             parent=self, selection=self._selection,
         )
         self._picker.key_changed.connect(self._on_key_changed)
+        # Saved, imported or deleted in ANY UI, this one included: the one
+        # re-list.  Queued -- the event may arrive from the IPC reader thread.
+        self._bus.themes_changed.connect(
+            self._on_themes_changed, type=Qt.ConnectionType.QueuedConnection)
 
         key_form = QFormLayout()
         key_form.addRow("Device key:", self._picker)
@@ -200,9 +204,12 @@ class LocalThemeBrowser(AssetBrowserPanel):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         result = self.dispatch(DeleteTheme(path=Path(path)))
-        self._status.setText(result.message)
-        if result.ok:
-            self.refresh()
+        self._status.setText(result.message)   # re-lists on the event
+
+    def _on_themes_changed(self, event: object) -> None:
+        log.info("_on_themes_changed: %s %s -> refreshing",
+                 type(event).__name__, getattr(event, "theme_name", ""))
+        self.refresh()
 
     def _on_save(self) -> None:
         key = self._device_key()
@@ -233,9 +240,7 @@ class LocalThemeBrowser(AssetBrowserPanel):
             log.info("_on_save: user confirmed overwrite of %r", name)
             result = self.dispatch(SaveTheme(key=key, name=name, overwrite=True))
 
-        self._status.setText(result.message)
-        if result.ok:
-            self.refresh()
+        self._status.setText(result.message)   # re-lists on the event
 
     def _on_export(self) -> None:
         selected = self._selected()
@@ -269,9 +274,7 @@ class LocalThemeBrowser(AssetBrowserPanel):
             return
         log.info("_on_import: key=%s source=%s", key, source)
         result = self.dispatch(ImportTheme(key=key, archive_path=Path(source)))
-        self._status.setText(result.message)
-        if result.ok:
-            self.refresh()
+        self._status.setText(result.message)   # re-lists on the event
 
     # ── Create-from-… ─────────────────────────────────────────────────
 
