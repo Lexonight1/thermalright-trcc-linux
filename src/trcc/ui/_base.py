@@ -275,7 +275,7 @@ class UserInterface(CommandBus):
         must not do.  A face whose App is already in-process reuses it.
         """
         from .._boot import _build_local_app, _local_reason
-        if _local_reason() is not None:
+        if _local_reason(self._platform) is not None:
             log.debug("_caller_app: %s is in-process already",
                       type(self).__name__)
             return self._app

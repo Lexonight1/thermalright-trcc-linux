@@ -215,6 +215,33 @@ def test_a_shared_app_that_will_not_start_falls_back_in_process(
     assert _boot.trcc() == "LOCAL"
 
 
+def test_an_injected_platform_is_never_handed_to_the_shared_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scripted platform means "run on THIS fleet".  The shared App dropped
+    it: four dev smokes passed a mock and drove the maintainer's running
+    daemon -- ``SendColor`` from the #171 probe painted a real panel green.
+
+    MUTATION CHECK -- MEASURED 2026-10-01: drop the platform clause from
+    ``_local_reason`` and this fails.
+    """
+    from trcc import _boot
+
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    started: list[bool] = []
+    monkeypatch.setattr(daemon, "ensure_daemon",
+                        lambda **kw: started.append(True) or True)
+    built: list[object] = []
+    monkeypatch.setattr(_boot, "_build_local_app",
+                        lambda **kw: built.append(kw["platform"]) or "LOCAL")
+    scripted = object()
+
+    assert _boot.trcc(platform=scripted) == "LOCAL"          # type: ignore[arg-type]
+    assert built == [scripted]
+    assert started == [], "an injected platform must not start a daemon"
+
+
 def test_the_app_starts_in_root_not_in_the_first_uis_directory(
     monkeypatch: pytest.MonkeyPatch, tmp_path,
 ) -> None:
