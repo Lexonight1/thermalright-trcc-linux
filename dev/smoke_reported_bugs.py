@@ -362,10 +362,20 @@ def repro_148_daemon_metrics_loop() -> ReproResult:
         def serve_forever(self) -> None: ...
         def shutdown(self) -> None: ...
 
+    import tempfile
+
     fake = _App()
-    with patch("trcc._boot._build_local_app", return_value=fake), \
+    # Its own runtime dir: a daemon already running on this machine made
+    # ``DaemonUI.preflight`` refuse (exit 1), the stub never started, and this
+    # probe reported #148 live on the maintainer's box (measured 2026-10-01).
+    with tempfile.TemporaryDirectory(prefix="trcc-repro-") as runtime, \
+         patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime}), \
+         patch("trcc._boot._build_local_app", return_value=fake), \
          patch.object(dm.ipc, "IPCServer", _Srv):
-        dm.run_daemon(platform=None, renderer=None)
+        rc = dm.run_daemon(platform=None, renderer=None)
+    if rc != 0:
+        return _bug(f"run_daemon refused to start (rc={rc}) — the probe "
+                    "never reached bring-up")
     if not fake.metrics_loop.started:
         return _bug("run_daemon never called app.metrics_loop.start() — display stays blank")
     return _ok("run_daemon starts metrics_loop (+ led_animation_loop) during bring-up")
