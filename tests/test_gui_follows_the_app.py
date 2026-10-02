@@ -28,6 +28,7 @@ from trcc.core.commands import (
     ConnectDevice,
     ControlCenterSnapshot,
     DeleteTheme,
+    DisableAutostart,
     EnableOverlay,
     LcdSnapshot,
     LoadTheme,
@@ -40,11 +41,13 @@ from trcc.core.commands import (
     SetMaskVisible,
     SetOrientation,
     SetRefreshInterval,
+    SetSensorDashboard,
     SetSplitMode,
     SetTempUnit,
 )
 from trcc.core.commands._base import Query
 from trcc.core.i18n import tr
+from trcc.core.models import PanelConfig
 
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
 _KEY = "0402:3922"
@@ -93,6 +96,14 @@ _ROWS: dict[str, tuple[Callable[[], Any], Callable[[Any], Any], Any]] = {
                          lambda w: (w.uc_about.refresh_input.text(),
                                     w.uc_about.refresh_interval),
                          ("7", 7)),
+    # Off: opening the gui ENABLES autostart on a first launch
+    # (``ensure_autostart``), so "on" is already what it shows.
+    "autostart": (lambda: DisableAutostart(),
+                  lambda w: (w.uc_about.startup_btn.isChecked(),
+                             w.uc_about._autostart), (False, False)),
+    "sensor dashboard": (lambda: SetSensorDashboard(panels=(PanelConfig.custom("Mine"),)),
+                         lambda w: [c.name for c in w.uc_system_info._dashboard],
+                         ["Mine"]),
     "saved theme": (lambda: SaveTheme(key=_KEY, name="Mine"),
                     lambda w: "Mine" in _local_names(w), True),
     "language": (lambda: SetLanguage(language="de"),
@@ -339,3 +350,27 @@ def test_a_theme_deleted_elsewhere_leaves_the_gui_s_grid(
     assert app.dispatch(DeleteTheme(path=Path(saved.theme_path))).ok
 
     qtbot.waitUntil(lambda: "Doomed" not in _local_names(window), timeout=3000)
+
+
+def test_the_gui_follows_a_disk_chosen_elsewhere(window: Any, qtbot: Any) -> None:
+    """``SetDiskDevice`` published nothing; the gui's disk picker showed what
+    IT last picked.  Two drives, chosen from another UI.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: route DiskDeviceChanged nowhere in
+    ``_on_bus_app_settings_changed`` → fails.
+    """
+    from trcc.adapters.sensors.aggregator import BaselineSensors
+    from trcc.core.commands import SetDiskDevice
+
+    from .conftest import FakeCpu, FakeMemory
+    from .test_sensors import FakeDisk
+
+    window._app.platform._sensors = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        disks=[FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0)])
+    picker = window.uc_led_control._disk_selector
+
+    window._app.dispatch(SetDiskDevice(disk_key="nvme1"))
+
+    qtbot.waitUntil(lambda: picker.currentData() == "nvme1", timeout=3000)
+    assert [picker.itemData(i) for i in range(picker.count())] == ["nvme0", "nvme1"]

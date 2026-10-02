@@ -207,11 +207,11 @@ class AdvancedTab(LedTabBase):
         # trigger gui uses (``uc_led_control:1018``).  The list is hardware
         # identity, not per-tick state, so it does not belong in refresh_from.
         if panel.show_disk_panel:
-            self._populate_disk_sensors()
+            self.show_disk_sensors()
 
     # ── Internals ─────────────────────────────────────────────────────
 
-    def _populate_disk_sensors(self) -> None:
+    def show_disk_sensors(self) -> None:
         """Fill the picker from ``ListDiskSensors`` — the list the metric comes from.
 
         Deliberately NOT ``Platform.disk_info()`` (physical drives) nor
@@ -223,7 +223,7 @@ class AdvancedTab(LedTabBase):
         Falls safe on any exception: the probe surface underneath is wide
         (hwmon / WMI / SMC), and this runs on every device switch.
         """
-        log.info("_populate_disk_sensors")
+        log.info("show_disk_sensors")
         try:
             result = self._dispatch(ListDiskSensors())
             self._disk_selector.blockSignals(True)
@@ -239,10 +239,10 @@ class AdvancedTab(LedTabBase):
                 if idx >= 0:
                     self._disk_selector.setCurrentIndex(idx)
             self._disk_selector.blockSignals(False)
-            log.info("_populate_disk_sensors: %d sensor(s), active=%s",
+            log.info("show_disk_sensors: %d sensor(s), active=%s",
                      len(result.disks), result.active or "(hottest)")
         except Exception as e:
-            log.warning("_populate_disk_sensors: failed (%s) — picker empty", e)
+            log.warning("show_disk_sensors: failed (%s) — picker empty", e)
             self._disk_selector.blockSignals(False)
 
     def _block_sources(self, blocked: bool) -> None:

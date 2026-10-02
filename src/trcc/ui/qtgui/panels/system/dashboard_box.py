@@ -10,6 +10,7 @@ The working layout is held here and nothing persists until the user saves:
 """
 from __future__ import annotations
 
+import copy
 import logging
 
 from PySide6.QtCore import Qt
@@ -90,6 +91,10 @@ class DashboardBox(SystemBox):
         log.debug("refresh")
         r = self.dispatch(GetSensorDashboard())
         self._panels = list(r.panels)
+        #: What the App holds, as last read or saved here: the working layout
+        #: differing from it is an unsaved edit.  A deep copy -- add, rename
+        #: and bind edit the working panels in place.
+        self._saved = copy.deepcopy(self._panels)
         log.info("refresh: %d panel(s), %d row(s) auto-mapped",
                  len(self._panels), getattr(r, "auto_mapped", 0))
         self._redraw()
@@ -244,5 +249,20 @@ class DashboardBox(SystemBox):
         log.info("_on_save: %d panel(s)", len(self._panels))
         r = self.dispatch(SetSensorDashboard(panels=tuple(self._panels)))
         self._status.setText(r.message)
-        if r.ok:
-            self.refresh()
+        if r.ok:   # the reload comes with the SensorDashboardChanged it sent
+            self._saved = copy.deepcopy(self._panels)
+
+    def on_layout_saved(self) -> None:
+        """A layout was saved -- here, or in any other UI.
+
+        Reloaded unless this box holds unsaved edits: overwriting them would
+        throw away work the user has not chosen to discard.  They are told
+        instead, and "Save layout" still makes theirs the one that counts.
+        """
+        unsaved = self._panels != self._saved
+        log.info("on_layout_saved: unsaved=%s", unsaved)
+        if unsaved:
+            self._status.setText("The layout was saved in another window — "
+                                 "Save layout keeps yours")
+            return
+        self.refresh()

@@ -133,6 +133,11 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **The disk, sensor dashboard and start-at-login settings didn't update in
+  an open window.** Changed from the command line or the other window, they
+  showed the old value until you reopened the window. They now update on
+  their own. In the native-skin window, a dashboard layout you are still
+  editing is kept, with a note that another window saved one.
 - **Pausing a video in one place left the other window's button wrong.** A
   window showed the play state its own last click produced, so a video paused
   from the command line or the other window still read as playing. Both

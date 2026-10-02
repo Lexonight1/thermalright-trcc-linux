@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import DeviceState, LedSnapshot
+from ....core.events import DiskDeviceChanged
 from ....core.led_models import LEGACY_STYLE_ID, LedStyle
 from ...presentation.led_panel import led_panel_for
 from ..base import BasePanel
@@ -101,7 +102,17 @@ class LedPanel(BasePanel):
             self._on_led_settings_changed,
             type=Qt.ConnectionType.QueuedConnection,
         )
+        # The disk the Advanced tab picks is app-wide: follow it from any UI.
+        self._bus.app_settings_changed.connect(
+            self._on_app_settings_changed,
+            type=Qt.ConnectionType.QueuedConnection,
+        )
         self._on_key_changed()          # show the selected device on open
+
+    def _on_app_settings_changed(self, event: object) -> None:
+        log.debug("_on_app_settings_changed: %s", type(event).__name__)
+        if isinstance(event, DiskDeviceChanged):
+            self._advanced_tab.show_disk_sensors()
 
     # ── Key plumbing ─────────────────────────────────────────────────
 

@@ -27,6 +27,7 @@ import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout
 
+from ....core.events import AutostartChanged, SensorDashboardChanged
 from ..base import BasePanel
 from .system import (
     DashboardBox,
@@ -67,7 +68,21 @@ class SystemPanel(BasePanel):
             self._sensors.on_sensors_updated,
             type=Qt.ConnectionType.QueuedConnection,
         )
+        # Autostart and the dashboard, changed in ANY UI.  Routed to the one
+        # box each, by name -- SystemBox has no shared refresh on purpose.
+        self._bus.app_settings_changed.connect(
+            self._on_app_settings_changed,
+            type=Qt.ConnectionType.QueuedConnection,
+        )
         log.info("_setup_ui: six boxes built; sensors ride SensorsUpdated")
+
+    def _on_app_settings_changed(self, event: object) -> None:
+        log.debug("_on_app_settings_changed: %s", type(event).__name__)
+        match event:
+            case AutostartChanged():
+                self._maintenance.refresh()
+            case SensorDashboardChanged():
+                self._dash.on_layout_saved()
 
     def _build_action_row(self) -> QHBoxLayout:
         """The two health actions, kept below the boxes they act on."""

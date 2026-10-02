@@ -22,12 +22,14 @@ from functools import partial
 from PySide6.QtCore import QObject, Signal, SignalInstance
 
 from ..core.events import (
+    AutostartChanged,
     BackgroundChanged,
     BrightnessChanged,
     DataInstalled,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
+    DiskDeviceChanged,
     ErrorOccurred,
     Event,
     EventBus,
@@ -47,6 +49,7 @@ from ..core.events import (
     ScreencastRegionChanged,
     ScreencastStarted,
     ScreencastStopped,
+    SensorDashboardChanged,
     SensorsUpdated,
     SlideshowChanged,
     SplitModeChanged,
@@ -109,7 +112,8 @@ class BusBridge(QObject):
     # One signal: a window re-lists rather than patching its grid per kind.
     themes_changed = Signal(object)
     # An app-wide setting changed (the control centre: temperature unit,
-    # language, GPU, refresh interval, HDD); a window re-reads the snapshot.
+    # language, GPU, refresh interval, HDD, disk, dashboard, autostart); a
+    # window re-reads what it shows.
     app_settings_changed = Signal(object)
     # A device's saved settings changed — by this UI, another one, or the
     # App.  One signal for all of them, so a window re-reads what the App now
@@ -158,6 +162,9 @@ class BusBridge(QObject):
             (GpuDeviceChanged, self.app_settings_changed),
             (RefreshIntervalChanged, self.app_settings_changed),
             (HddEnabledChanged, self.app_settings_changed),
+            (DiskDeviceChanged, self.app_settings_changed),
+            (SensorDashboardChanged, self.app_settings_changed),
+            (AutostartChanged, self.app_settings_changed),
             (BrightnessChanged, self.settings_changed),
             (OrientationChanged, self.settings_changed),
             (SplitModeChanged, self.settings_changed),

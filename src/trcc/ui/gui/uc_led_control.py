@@ -1034,7 +1034,7 @@ class UCLedControl(QWidget):
         if panel.show_memory_panel:
             self._populate_memory_identity()
         elif panel.show_disk_panel:
-            self._populate_disk_identity()
+            self.show_disk_identity()
 
     def _apply_selector_labels(self, style_id: int) -> None:
         """Label the selector buttons with the metric each page shows.
@@ -1630,7 +1630,7 @@ class UCLedControl(QWidget):
         self._ddr_combo.setCurrentIndex(idx)
         self._ddr_combo.blockSignals(False)
 
-    def _populate_disk_identity(self) -> None:
+    def show_disk_identity(self) -> None:
         """Populate the disk selector from the THERMAL sensor list.
 
         Sourced from ``ListDiskSensors``, which is the list ``disk_temp``
@@ -1643,10 +1643,10 @@ class UCLedControl(QWidget):
         list (``ListDisks``, psutil partitions) fed the CLI's ``disk-index``.
         Three lists, three cardinalities, no shared key.
         """
-        log.info("_populate_disk_identity: app=%s", self._app is not None)
+        log.info("show_disk_identity: app=%s", self._app is not None)
         try:
             if self._app is None:
-                log.warning("_populate_disk_identity: no bus — selector empty")
+                log.warning("show_disk_identity: no bus — selector empty")
                 return
             result = self._app.dispatch(ListDiskSensors())
             self._disk_slots = result.disks
@@ -1663,7 +1663,7 @@ class UCLedControl(QWidget):
                 if idx >= 0:
                     self._disk_selector.setCurrentIndex(idx)
             self._disk_selector.blockSignals(False)
-            log.info("_populate_disk_identity: %d sensor(s), active=%s",
+            log.info("show_disk_identity: %d sensor(s), active=%s",
                      len(result.disks), result.active or "(hottest)")
         except Exception as e:
             # Probe surface is wide (hwmon / WMI / SMC) — fall safe.

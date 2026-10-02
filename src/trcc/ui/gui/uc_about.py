@@ -430,6 +430,13 @@ class UCAbout(BasePanel):
             self._gpu_combo.setCurrentIndex(self._gpu_combo.findData(self._gpu_device))
             self._gpu_combo.blockSignals(False)
 
+    def show_autostart(self, enabled: bool) -> None:
+        """Show whether TRCC starts at login -- sends nothing (the button
+        emits on a click, not on ``setChecked``)."""
+        log.info("show_autostart: %s", enabled)
+        self._autostart = enabled
+        self.startup_btn.setChecked(enabled)
+
     def show_temp_unit(self, mode: str) -> None:
         """Show the App's temperature unit — sends nothing back."""
         log.info("show_temp_unit: %s → %s", self._temp_mode, mode)

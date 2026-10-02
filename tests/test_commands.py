@@ -771,3 +771,43 @@ def test_split_mode_starts_at_style_2_and_a_chosen_off_survives_a_restart(
     App(fake_platform).dispatch(SetSplitMode(key=key, mode=0))
 
     assert App(fake_platform).settings.for_device(key).split_mode == 0
+
+
+# ── App-wide settings announce themselves (2026-10-02) ──────────────────────
+
+def test_each_app_wide_setting_announces_its_change(fake_platform) -> None:
+    """Disk, dashboard and autostart changed in silence, so a window showed
+    only what IT had last sent -- a change from the CLI, the API or the other
+    window reached no open UI until it was reopened.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop any one publish → fails.
+    """
+    from trcc.core.commands import (
+        DisableAutostart,
+        EnableAutostart,
+        SetDiskDevice,
+        SetSensorDashboard,
+    )
+    from trcc.core.events import (
+        AutostartChanged,
+        DiskDeviceChanged,
+        SensorDashboardChanged,
+    )
+    from trcc.core.models import PanelConfig
+
+    app = App(platform=fake_platform)
+    seen: list[object] = []
+    for kind in (AutostartChanged, DiskDeviceChanged, SensorDashboardChanged):
+        app.events.subscribe(kind, seen.append)  # type: ignore[arg-type]
+
+    for command in (SetDiskDevice(disk_key="nvme1"), SetDiskDevice(disk_key=""),
+                    SetSensorDashboard(panels=(PanelConfig.custom(),)),
+                    SetSensorDashboard(panels=()),          # refused: no event
+                    EnableAutostart(), DisableAutostart()):
+        app.dispatch(command)
+
+    assert seen == [
+        DiskDeviceChanged(disk_key="nvme1"), DiskDeviceChanged(disk_key=None),
+        SensorDashboardChanged(panels=1),
+        AutostartChanged(enabled=True), AutostartChanged(enabled=False),
+    ]

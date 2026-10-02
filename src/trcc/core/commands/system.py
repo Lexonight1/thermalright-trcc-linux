@@ -14,10 +14,13 @@ from ..errors import (
     HttpFetchError,
 )
 from ..events import (
+    AutostartChanged,
+    DiskDeviceChanged,
     GpuDeviceChanged,
     LanguageChanged,
     OverlayChanged,
     RefreshIntervalChanged,
+    SensorDashboardChanged,
     TempUnitChanged,
 )
 from ..models import (
@@ -260,6 +263,7 @@ class SetDiskDevice(Command[DiskDeviceResult]):
         app.platform.sensors().set_preferred_disk(normalized)
         log.info("SetDiskDevice.execute: active disk -> %s",
                  normalized or "(hottest)")
+        app.events.publish(DiskDeviceChanged(disk_key=normalized))
         return DiskDeviceResult(
             ok=True, disk_key=normalized,
             message=(f"disk_temp now follows {normalized}" if normalized
@@ -599,6 +603,7 @@ class SetSensorDashboard(Command[SensorDashboardResult]):
                     for b in p.sensors if b.sensor_id)
         log.info("SetSensorDashboard.execute: saved %d panel(s), %d bound row(s) → %s",
                  len(app.sysinfo.panels), bound, app.sysinfo.path)
+        app.events.publish(SensorDashboardChanged(panels=len(app.sysinfo.panels)))
         return SensorDashboardResult(
             ok=True,
             panels=_copy_panels(app.sysinfo.panels),
@@ -1278,6 +1283,7 @@ class EnableAutostart(Command[AutostartResult]):
         installed = mgr.installed_target() or ""
         log.info("EnableAutostart.execute: enabled=%s target=%s at %s",
                  mgr.is_enabled(), installed, _autostart_path(app))
+        app.events.publish(AutostartChanged(enabled=mgr.is_enabled()))
         return AutostartResult(
             ok=True, message=f"autostart enabled ({installed or 'default'})",
             enabled=mgr.is_enabled(), path=_autostart_path(app),
@@ -1294,6 +1300,7 @@ class DisableAutostart(Command[AutostartResult]):
         app.settings.mark_autostart_configured()
         log.info("DisableAutostart.execute: now enabled=%s at %s",
                  mgr.is_enabled(), _autostart_path(app))
+        app.events.publish(AutostartChanged(enabled=mgr.is_enabled()))
         return AutostartResult(
             ok=True, message="autostart disabled",
             enabled=mgr.is_enabled(), path=_autostart_path(app),

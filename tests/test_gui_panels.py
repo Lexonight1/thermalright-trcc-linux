@@ -4072,3 +4072,90 @@ def test_the_qtgui_edit_dialog_sends_only_what_the_user_changed(
     assert (element.size, element.color) == (256, "#00ff00"), (
         "an untouched field was written back")
     assert element.x == (40 if user_moves_x else 5)
+
+
+# =========================================================================
+# qtgui follows the app-wide settings another UI changes (2026-10-02)
+# =========================================================================
+
+
+def test_qtgui_s_autostart_box_follows_another_ui(gui_app: App, qtbot) -> None:
+    """MUTATION CHECK -- MEASURED 2026-10-02: drop the AutostartChanged case
+    in ``SystemPanel._on_app_settings_changed`` → fails."""
+    from trcc.core.commands import DisableAutostart, EnableAutostart
+    from trcc.ui.qtgui.panels.system_panel import SystemPanel
+
+    panel = SystemPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    check = panel._maintenance._autostart_check
+    assert not check.isChecked()
+
+    gui_app.dispatch(EnableAutostart())
+    qtbot.waitUntil(check.isChecked, timeout=3000)
+    gui_app.dispatch(DisableAutostart())
+    qtbot.waitUntil(lambda: not check.isChecked(), timeout=3000)
+
+
+def test_qtgui_s_dashboard_reloads_a_layout_saved_elsewhere(
+    gui_app: App, qtbot,
+) -> None:
+    """MUTATION CHECK -- MEASURED 2026-10-02: drop the SensorDashboardChanged
+    case → fails."""
+    from trcc.core.commands import SetSensorDashboard
+    from trcc.core.models import PanelConfig
+    from trcc.ui.qtgui.panels.system_panel import SystemPanel
+
+    panel = SystemPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+
+    gui_app.dispatch(SetSensorDashboard(panels=(PanelConfig.custom("Elsewhere"),)))
+
+    qtbot.waitUntil(lambda: [p.name for p in panel._dash._panels] == ["Elsewhere"],
+                    timeout=3000)
+
+
+def test_qtgui_s_dashboard_keeps_unsaved_edits_when_another_ui_saves(
+    gui_app: App, qtbot,
+) -> None:
+    """Reloading would throw away edits the user has not saved -- with no
+    warning, since they are only in this box.  It says so instead.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: reload unconditionally in
+    ``on_layout_saved`` → fails.
+    """
+    from trcc.core.commands import SetSensorDashboard
+    from trcc.core.models import PanelConfig
+    from trcc.ui.qtgui.panels.system_panel import SystemPanel
+
+    panel = SystemPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    box = panel._dash
+    box._on_add_panel()                                     # unsaved edit
+    mine = [p.name for p in box._panels]
+
+    gui_app.dispatch(SetSensorDashboard(panels=(PanelConfig.custom("Elsewhere"),)))
+
+    qtbot.waitUntil(lambda: "another window" in box._status.text(), timeout=3000)
+    assert [p.name for p in box._panels] == mine
+
+
+def test_qtgui_s_disk_picker_follows_another_ui(gui_app: App, qtbot) -> None:
+    """MUTATION CHECK -- MEASURED 2026-10-02: drop ``LedPanel``'s
+    app_settings_changed hookup → fails."""
+    from trcc.adapters.sensors.aggregator import BaselineSensors
+    from trcc.core.commands import SetDiskDevice
+    from trcc.ui.qtgui.panels.led_panel import LedPanel
+
+    from .conftest import FakeCpu, FakeMemory
+    from .test_sensors import FakeDisk
+
+    gui_app.platform._sensors = BaselineSensors(   # type: ignore[attr-defined]
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        disks=[FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0)])
+    panel = LedPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    picker = panel._advanced_tab._disk_selector
+
+    gui_app.dispatch(SetDiskDevice(disk_key="nvme1"))
+
+    qtbot.waitUntil(lambda: picker.currentData() == "nvme1", timeout=3000)

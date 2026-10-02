@@ -425,6 +425,24 @@ class RefreshIntervalChanged(Event):
     seconds: float
 
 
+@dataclass(frozen=True, slots=True)
+class DiskDeviceChanged(Event):
+    """The drive ``disk_temp`` follows; None is "the hottest"."""
+    disk_key: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class SensorDashboardChanged(Event):
+    """The System Info dashboard's panels were saved."""
+    panels: int
+
+
+@dataclass(frozen=True, slots=True)
+class AutostartChanged(Event):
+    """TRCC's start-at-login entry was added or removed."""
+    enabled: bool
+
+
 # ── Hotplug / power transitions ──────────────────────────────────────
 
 

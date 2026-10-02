@@ -98,7 +98,8 @@ class MaintenanceBox(SystemBox):
             EnableAutostart(target=target) if checked else DisableAutostart(),
         )
         self._status.setText(r.message)
-        self.refresh()
+        if not r.ok:   # refused: no AutostartChanged follows to put it back
+            self.refresh()
 
     def _on_autostart_target_changed(self, index: int) -> None:
         """Re-install for the newly chosen target, but only if it is ON.

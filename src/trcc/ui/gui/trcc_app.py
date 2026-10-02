@@ -59,6 +59,11 @@ from ...core.commands import (
     StartScreencast,
     StopScreencast,
 )
+from ...core.events import (
+    AutostartChanged,
+    DiskDeviceChanged,
+    SensorDashboardChanged,
+)
 from ...core.logs import per_frame
 from ...core.models import (
     FitMode,
@@ -461,9 +466,22 @@ class TRCCApp(QMainWindow):
             self._show_cast()
 
     def _on_bus_app_settings_changed(self, event: Any) -> None:
-        """An app-wide setting changed — here, in another UI, or in the App."""
+        """An app-wide setting changed — here, in another UI, or in the App.
+
+        The control-centre settings come back as one snapshot; the three that
+        live elsewhere are shown by the widget that owns them, so a temperature
+        unit change never re-reads a dashboard.
+        """
         log.info("_on_bus_app_settings_changed: %s", type(event).__name__)
-        self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
+        match event:
+            case AutostartChanged(enabled=enabled):
+                self.uc_about.show_autostart(enabled)
+            case DiskDeviceChanged():
+                self.uc_led_control.show_disk_identity()
+            case SensorDashboardChanged():
+                self.uc_system_info.show_dashboard()
+            case _:
+                self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
 
     def _show_app_settings(self, cc: ControlCenterSnapshotResult) -> None:
         """Put the App's control-centre settings on the window — sends nothing.

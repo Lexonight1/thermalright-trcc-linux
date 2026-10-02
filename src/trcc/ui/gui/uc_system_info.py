@@ -324,14 +324,22 @@ class UCSystemInfo(QWidget):
         # persisted when the user actually edits it.  So a dashboard
         # re-derives its unbound rows every launch instead of freezing at
         # whatever the very first run happened to see.
-        result = self._app.dispatch(GetSensorDashboard())
-        self._dashboard = result.panels
-        log.info(
-            "UCSystemInfo._setup_ui: %d panel(s), %d row(s) auto-mapped",
-            len(self._dashboard), result.auto_mapped,
-        )
+        self.show_dashboard(rebuild=True)    # the grid exists even when empty
 
-        self._rebuild_grid()
+    def show_dashboard(self, *, rebuild: bool = False) -> None:
+        """Show the layout the App holds -- at open, and when any UI saves one.
+
+        Rebuilt only when it differs from what is shown: every edit here is
+        saved at once, so this window's own save comes back identical.
+        """
+        result = self._app.dispatch(GetSensorDashboard())
+        changed = list(result.panels) != list(self._dashboard)
+        log.info("UCSystemInfo.show_dashboard: %d panel(s), %d row(s) "
+                 "auto-mapped, changed=%s", len(result.panels),
+                 result.auto_mapped, changed)
+        if rebuild or changed:
+            self._dashboard = result.panels
+            self._rebuild_grid()
 
     def _save(self) -> None:
         """Persist the edited layout through the bus."""
