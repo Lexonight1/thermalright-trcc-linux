@@ -839,7 +839,10 @@ class SetLedZoneSync(Command[LedColorsResult]):
 
     Switching it off on a page style keeps one page, the lowest selected, as
     FormLED does (``buttonLB_Click``, :2600).  Not on a select-all style
-    (PA120/LF10), where it means "every zone" and the zones stay as picked.
+    (PA120/LF10), where it means "every zone" and the zones stay as picked --
+    and switching it ON there gives every zone the current mode, as FormLED
+    does (``myLedMode1..4 = myLedMode``, :2578-2595).  Only the mode: colour,
+    brightness and on/off stay per zone until the next edit reaches them all.
     """
     key: str
     enabled: bool
@@ -851,7 +854,12 @@ class SetLedZoneSync(Command[LedColorsResult]):
                                    message=why)
         _ensure_zones(app, self.key)
         app.settings.set_led_zone_sync(self.key, self.enabled)
-        if not self.enabled and not is_select_all(_style_of(app, self.key)):
+        select_all = is_select_all(_style_of(app, self.key))
+        if self.enabled and select_all:
+            # Select-all reaches every zone now, so this writes them all.
+            _write_edit_zones(app, self.key,
+                              mode=app.settings.for_led(self.key).mode)
+        if not self.enabled and not select_all:
             s = app.settings.for_led(self.key)
             first = s.selected_zone
             app.settings.set_led_zone_sync_zones(

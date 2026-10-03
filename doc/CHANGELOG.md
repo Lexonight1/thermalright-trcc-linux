@@ -133,6 +133,9 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **"Select all" on a PA120 or LF10 cooler didn't give every zone the same
+  effect.** As in the Windows app, turning it on now sets every zone to the
+  effect currently selected. Colours and brightness stay as they are.
 - **LED button labels could stay in the old language.** If you changed the
   language before an LED device appeared, its mode buttons and section labels
   stayed in the language TRCC started with. They now follow the language you

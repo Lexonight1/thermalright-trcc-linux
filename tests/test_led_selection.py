@@ -240,3 +240,34 @@ def test_the_gui_carousel_switch_leaves_the_mask_to_the_app(
     # RenderLed is the App's own re-render, dispatched inside the change.
     assert [c for c in sent if c != "RenderLed"] == ["SetLedZoneSync", "SetLedZoneSync"]
     win.close()
+
+
+def test_select_all_on_a_pa120_gives_every_zone_the_current_mode(
+    fake_platform: FakePlatform,
+) -> None:
+    """FormLED, on turning select-all on (styles 2 and 7 only):
+    ``myLedMode1..4 = myLedMode`` (:2578-2595) -- the mode the buttons show,
+    and nothing else.  We set only the flag, so the zones kept their own
+    modes until the next mode click reached them.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: drop the copy in SetLedZoneSync →
+    fails.
+    """
+    from trcc.core.commands import SetLedMode
+    from trcc.core.led_models import LEDMode
+
+    app = _connected(fake_platform, _PA120)
+    app.dispatch(SetLedZoneSync(key=_LED_KEY, enabled=False))
+    app.dispatch(SelectZone(key=_LED_KEY, zone=1))
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.BREATHING))
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(9, 9, 9)))
+    app.dispatch(SelectZone(key=_LED_KEY, zone=0))
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.COLORFUL))
+    before = app.dispatch(LedSnapshot(key=_LED_KEY))
+    assert [z.mode for z in before.zones][:2] == ["COLORFUL", "BREATHING"]
+
+    assert app.dispatch(SetLedZoneSync(key=_LED_KEY, enabled=True)).ok
+
+    after = app.dispatch(LedSnapshot(key=_LED_KEY))
+    assert {z.mode for z in after.zones} == {"COLORFUL"}
+    assert after.zones[1].color == (9, 9, 9), "only the mode is copied"
