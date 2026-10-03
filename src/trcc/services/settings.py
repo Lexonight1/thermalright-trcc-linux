@@ -561,8 +561,11 @@ class Settings:
             log.info("set_led_zone_count: key=%s count=%d (was %d)",
                      key, count, current)
             if count > current:
+                # New zones take the device's mode, as FormLED's first run
+                # copies ``myLedMode`` into every zone (:1966 → :2578).
                 settings.zones.extend(
-                    LedZoneSettings() for _ in range(count - current)
+                    LedZoneSettings(mode=settings.mode)
+                    for _ in range(count - current)
                 )
             if current == 0:
                 # A device's first zones start with select-all on, as FormLED's

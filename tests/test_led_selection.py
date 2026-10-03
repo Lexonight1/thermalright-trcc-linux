@@ -271,3 +271,41 @@ def test_select_all_on_a_pa120_gives_every_zone_the_current_mode(
     after = app.dispatch(LedSnapshot(key=_LED_KEY))
     assert {z.mode for z in after.zones} == {"COLORFUL"}
     assert after.zones[1].color == (9, 9, 9), "only the mode is copied"
+
+
+def test_a_new_cooler_starts_in_rainbow_on_every_zone(
+    fake_platform: FakePlatform,
+) -> None:
+    """FormLED starts in rainbow (``myLedMode = 4``, :27) and its first run
+    copies that into the zones (:1966 → :2578).  We started in STATIC.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: STATIC as the default again →
+    fails.
+    """
+    app = _fresh(fake_platform, _PA120)
+    assert app.dispatch(LedSnapshot(key=_LED_KEY)).mode == "RAINBOW"
+
+    app.dispatch(RenderLed(key=_LED_KEY))                    # creates the zones
+
+    zones = app.dispatch(LedSnapshot(key=_LED_KEY)).zones
+    assert zones and {z.mode for z in zones} == {"RAINBOW"}
+
+
+def test_zones_created_later_take_the_device_s_saved_mode(
+    fake_platform: FakePlatform,
+) -> None:
+    """A saved mode wins over the default, zones included: a cooler whose
+    zones do not exist yet gets them in the mode the user already chose.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: create zones with the zone default
+    instead of the device's mode → fails.
+    """
+    from trcc.core.led_models import LEDMode
+
+    app = _fresh(fake_platform, _PA120)
+    app.settings.set_led_mode(_LED_KEY, LEDMode.TEMP_LINKED)
+
+    app.dispatch(RenderLed(key=_LED_KEY))
+
+    zones = app.dispatch(LedSnapshot(key=_LED_KEY)).zones
+    assert zones and {z.mode for z in zones} == {"TEMP_LINKED"}

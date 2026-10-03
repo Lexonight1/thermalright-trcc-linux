@@ -64,8 +64,10 @@ class LedDeviceSettings:
     place, then atomic-save.  Loaded back from JSON via
     ``_led_settings_from_dict``.
     """
-    # Global state (used by single-zone devices + as zone-sync defaults)
-    mode: LEDMode = LEDMode.STATIC
+    # Global state (used by single-zone devices + as zone-sync defaults).
+    # A new device starts in rainbow, as FormLED does (``myLedMode = 4``,
+    # FormLED.cs:27); a saved mode always wins.
+    mode: LEDMode = LEDMode.RAINBOW
     color: tuple[int, int, int] = (255, 0, 0)
     brightness: int = 65
     global_on: bool = True

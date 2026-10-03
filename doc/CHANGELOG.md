@@ -133,6 +133,8 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **A new LED cooler now starts in rainbow**, as in the Windows app, instead
+  of a solid colour. Coolers you have already set up keep their effect.
 - **"Select all" on a PA120 or LF10 cooler didn't give every zone the same
   effect.** As in the Windows app, turning it on now sets every zone to the
   effect currently selected. Colours and brightness stay as they are.

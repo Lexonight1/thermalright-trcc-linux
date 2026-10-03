@@ -103,8 +103,9 @@ _CONTROLS: dict[str, tuple[Callable[[], Any], Callable[[Any], Any],
                            Callable[[Any], Any], Any]] = {
     "colour": (lambda: SetLedColor(key=_LED_KEY, color=(1, 2, 3)),
                lambda s: s.color, lambda z: z.color, (1, 2, 3)),
-    "mode": (lambda: SetLedMode(key=_LED_KEY, mode=LEDMode.RAINBOW),
-             lambda s: s.mode, lambda z: z.mode, "RAINBOW"),
+    # Not RAINBOW: that is the starting mode now (FormLED's ``myLedMode = 4``).
+    "mode": (lambda: SetLedMode(key=_LED_KEY, mode=LEDMode.BREATHING),
+             lambda s: s.mode, lambda z: z.mode, "BREATHING"),
     "brightness": (lambda: SetLedBrightness(key=_LED_KEY, percent=30),
                    lambda s: s.brightness, lambda z: z.brightness, 30),
     "on/off": (lambda: ToggleLed(key=_LED_KEY, on=False),

@@ -51,9 +51,10 @@ _ROWS: dict[str, tuple[int, Callable[[], Any], Callable[[Any], Any], Any]] = {
                          lambda p: p._brightness_slider.value(), 75),
     "PA120 off": (_PA120, lambda: ToggleLed(key=_KEY, on=False),
                   lambda p: p._color_wheel._onoff, 0),
-    "PA120 effect": (_PA120, lambda: SetLedMode(key=_KEY, mode=LEDMode.RAINBOW),
+    # Not RAINBOW: that is the starting mode now (FormLED's ``myLedMode = 4``).
+    "PA120 effect": (_PA120, lambda: SetLedMode(key=_KEY, mode=LEDMode.BREATHING),
                      lambda p: (p._current_mode, p._preview._led_mode),
-                     (LEDMode.RAINBOW.value, LEDMode.RAINBOW.value)),
+                     (LEDMode.BREATHING.value, LEDMode.BREATHING.value)),
     "AX120 carousel": (_AX120, lambda: SetLedZoneSync(key=_KEY, enabled=True),
                        lambda p: p._carousel_btn.isChecked(), True),
     "AX120 page": (_AX120, lambda: SelectZone(key=_KEY, zone=2),
