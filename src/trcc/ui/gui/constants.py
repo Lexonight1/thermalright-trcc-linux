@@ -200,13 +200,14 @@ class Layout:
     # (preview ends y=648; the bottom control row sits at y=680).
     DEVICE_INFO = (16, 712, 500, 44)
 
-    # Bottom control buttons (within form_container)
+    # Bottom control row (within form_container) -- FormCZTV 2.1.8: the
+    # brightness slider ``ucScrollB1`` (164, 680) 180x24, the theme name
+    # ``textBoxCMM`` (378, 684) 102x16, save ``buttonBCZT`` (482, 680) 24x24.
+    # 2.1.8 moved export / import off the form (y=880), so the gui has none.
     ROTATION_COMBO = (39, 680, 108, 24)
-    BRIGHTNESS_BTN = (157, 680, 52, 24)
-    THEME_NAME_INPUT = (278, 684, 102, 16)
-    SAVE_BTN = (383, 680, 24, 24)
-    EXPORT_BTN = (412, 680, 40, 24)
-    IMPORT_BTN = (453, 680, 40, 24)
+    BRIGHTNESS_SLIDER = (164, 680, 180, 24)
+    THEME_NAME_INPUT = (378, 684, 102, 16)
+    SAVE_BTN = (482, 680, 24, 24)
 
     # Title bar buttons (within form_container)
     HELP_BTN = (1162, 24, 40, 40)

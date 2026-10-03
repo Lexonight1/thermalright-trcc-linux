@@ -30,9 +30,7 @@ from ...core.commands import (
     CurrentFrame,
     DeviceState,
     EnableOverlay,
-    ExportTheme,
     GetPaths,
-    ImportTheme,
     LcdSnapshot,
     ListThemes,
     LoadCloudTheme,
@@ -47,7 +45,6 @@ from ...core.commands import (
     SetMaskPosition,
     SetMediaPlayer,
     SetOrientation,
-    SetSplitMode,
     StopVideo,
     ToggleVideo,
     UploadCustomMask,
@@ -621,20 +618,6 @@ class LCDHandler(BaseHandler):
         self._w['preview'].set_status(r.message)
         return r
 
-    def export_config(self, path: Path) -> None:
-        r = self._app.dispatch(ExportTheme(
-            key=self._device_key,
-            theme_name=path.stem,
-            archive_path=path,
-        ))
-        self._w['preview'].set_status(r.message)
-
-    def import_config(self, path: Path) -> None:
-        r = self._app.dispatch(ImportTheme(
-            key=self._device_key, archive_path=path,
-        ))
-        self._w['preview'].set_status(r.message)   # re-lists on ThemeImported
-
     # ── DC File Loading ────────────────────────────────────────────
 
     def _show_overlay_layout(self) -> None:
@@ -1006,14 +989,6 @@ class LCDHandler(BaseHandler):
         self._pm.state.current_theme_path = current
         if current is not None:
             self._show_overlay_layout()
-
-    def set_split_mode(self, mode: int) -> None:
-        self.log.info("set_split_mode: %d -> %d device=%s",
-                      self._pm.split_mode, mode, self._device_key)
-        self._pm.split_mode = mode
-        self._app.dispatch(SetSplitMode(
-            key=self._device_key, mode=mode,
-        ))
 
     # ── Background / Screencast Toggles ────────────────────────────
 

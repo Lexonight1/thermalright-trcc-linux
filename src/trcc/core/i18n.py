@@ -115,8 +115,7 @@ GALLERY_TAB_FONT = 9
 
 # Main view (P0CZTV) — 1274x800
 DISPLAY_ANGLE_POS = (50, 664, 120, 16, 9)
-SAVE_AS_POS = (286, 664, 70, 16, 9)
-EXPORT_IMPORT_POS = (407, 664, 100, 16, 9)
+SAVE_AS_POS = (386, 664, 70, 16, 9)       # over textBoxCMM (378, 684), 2.1.8
 
 # Shortcuts panel (shortcuts_panel) — 230x430
 SHORTCUTS_COORDINATE_POS = (8, 5, 110, 16, 10)

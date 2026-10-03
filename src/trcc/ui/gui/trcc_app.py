@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QRegularExpression as QRE
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPalette, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
@@ -85,6 +85,7 @@ from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
 from .uc_about import UCAbout, ensure_autostart
 from .uc_activity_sidebar import UCActivitySidebar
+from .uc_brightness import UCBrightness
 from .uc_device import UCDevice
 from .uc_image_cut import UCImageCut
 from .uc_info_module import UCInfoModule
@@ -461,7 +462,7 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.follow_app()
-            self._update_ldd_icon()
+            self._show_brightness()
         if event.key == self._active_key and isinstance(handler, LCDHandler):
             self._show_cast()
 
@@ -821,11 +822,11 @@ class TRCCApp(QMainWindow):
                     elif not handler.is_configured:
                         log.debug("_activate_device: LCD %s first-time config %dx%d", key, w, h)
                         handler.apply_device_config(key, w, h)
-                        self._update_ldd_icon()
+                        self._show_brightness()
                     else:
                         log.debug("_activate_device: LCD %s reactivate %dx%d", key, w, h)
                         handler.reactivate(w, h)
-                        self._update_ldd_icon()
+                        self._show_brightness()
                 else:
                     self._start_handshake(key)
         elif isinstance(handler, LEDHandler) and not handler.active:
@@ -1078,19 +1079,14 @@ class TRCCApp(QMainWindow):
             "QLabel { color: #9AA0A6; font-family: monospace; font-size: 10px; }")
         self.device_info_label.setToolTip("Device fingerprint (selectable)")
 
-        from ...core.registry import BRIGHTNESS_STEPS
-        self._ldd_pixmaps: dict = {}
-        for i, percent in enumerate(BRIGHTNESS_STEPS, start=1):
-            pix = Assets.load_pixmap(f'app_brightness_{i}.png')
-            if not pix.isNull():
-                self._ldd_pixmaps[i] = pix        # split mode key (1-3)
-                self._ldd_pixmaps[percent] = pix  # brightness key (25/50/100)
-
-        self.ldd_btn = QPushButton(self.form_container)
-        self.ldd_btn.setGeometry(*Layout.BRIGHTNESS_BTN)
-        self.ldd_btn.setToolTip("Cycle brightness (Low / Medium / High)")
-        self.ldd_btn.clicked.connect(self._on_ldd_click)
-        self._update_ldd_icon()
+        # The C#'s brightness slider (``UCScrollB``).  This spot held its
+        # HIDDEN dynamic-island button, repurposed as a 3-step brightness
+        # cycle; ``uc_brightness`` says why that was wrong.
+        self.uc_brightness = UCBrightness(self.form_container)
+        self.uc_brightness.setGeometry(*Layout.BRIGHTNESS_SLIDER)
+        self.uc_brightness.setToolTip("Brightness")
+        self.uc_brightness.changed.connect(self._on_brightness_changed)
+        self._show_brightness()
 
         self.theme_name_input = QLineEdit(self.form_container)
         self.theme_name_input.setGeometry(*Layout.THEME_NAME_INPUT)
@@ -1107,14 +1103,6 @@ class TRCCApp(QMainWindow):
         self.save_btn = self._icon_btn(*Layout.SAVE_BTN, Assets.BTN_SAVE, "S")
         self.save_btn.setToolTip("Save theme")
         self.save_btn.clicked.connect(self._on_save_clicked)
-
-        self.export_btn = self._icon_btn(*Layout.EXPORT_BTN, Assets.BTN_EXPORT, "Exp")
-        self.export_btn.setToolTip("Export theme to file")
-        self.export_btn.clicked.connect(self._on_export_clicked)
-
-        self.import_btn = self._icon_btn(*Layout.IMPORT_BTN, Assets.BTN_IMPORT, "Imp")
-        self.import_btn.setToolTip("Import theme from file")
-        self.import_btn.clicked.connect(self._on_import_clicked)
 
     def _icon_btn(self, x: int, y: int, w: int, h: int,
                   icon_name: str, fallback_text: str) -> QPushButton:
@@ -1174,7 +1162,6 @@ class TRCCApp(QMainWindow):
             BACKGROUND_LOAD_IMG_POS,
             BACKGROUND_LOAD_VIDEO_POS,
             DISPLAY_ANGLE_POS,
-            EXPORT_IMPORT_POS,
             GALLERY_TAB_FONT,
             GALLERY_TAB_H,
             GALLERY_TAB_Y,
@@ -1224,7 +1211,6 @@ class TRCCApp(QMainWindow):
         for key, pos in [
             ('Display Angle', DISPLAY_ANGLE_POS),
             ('Save As', SAVE_AS_POS),
-            ('Export/Import', EXPORT_IMPORT_POS),
         ]:
             x, y, w, h, pt = pos
             _lbl(self.form_container, tr(key, lang), x, y, w, h, pt, key)
@@ -1563,7 +1549,7 @@ class TRCCApp(QMainWindow):
             log.debug("_on_handshake_done: handler is_configured=%r", handler.is_configured)
             if not handler.is_configured:
                 handler.apply_device_config(key, w, h)
-                self._update_ldd_icon()
+                self._show_brightness()
                 if self._ui_state.state.show_info_module:
                     self.uc_info_module.setVisible(True)
                 if key == self._active_key:
@@ -2024,24 +2010,6 @@ class TRCCApp(QMainWindow):
                 self.uc_preview.set_status(
                     "Save cancelled — choose a different name")
 
-    def _on_export_clicked(self) -> None:
-        log.info("_on_export_clicked")
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Theme", "",
-            "Theme files (*.tr);;JSON (*.json);;All Files (*)")
-        h = self._active_lcd()
-        if path and h:
-            h.export_config(Path(path))
-
-    def _on_import_clicked(self) -> None:
-        log.info("_on_import_clicked")
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import Theme", "",
-            "Theme files (*.tr);;JSON (*.json);;All Files (*)")
-        h = self._active_lcd()
-        if path and h:
-            h.import_config(Path(path))
-
     # ── Image/Video Cutters ─────────────────────────────────────────
 
     def _show_cutter(self, kind: str) -> None:
@@ -2360,53 +2328,24 @@ class TRCCApp(QMainWindow):
             h.set_rotation(index * 90)
             self.uc_preview.set_status(f"Rotation: {index * 90}°")
 
-    def _on_ldd_click(self) -> None:
-        log.info("_on_ldd_click")
+    def _on_brightness_changed(self, percent: int) -> None:
+        """The slider settled on *percent*: the panel the window shows takes it.
+        The slider then shows what the App holds, as it does for any UI's
+        change (``_show_brightness`` on ``BrightnessChanged``)."""
         h = self._active_lcd()
-        if not h:
-            return
-        if h.ldd_is_split:
-            mode = (h.split_mode % 3) + 1
-            h.set_split_mode(mode)
-            self._update_ldd_icon()
-            self.uc_preview.set_status(f"Split mode: {mode}")
-        else:
-            from ...core.registry import BRIGHTNESS_STEPS
-            steps = BRIGHTNESS_STEPS
-            cur = h.brightness_level
-            nxt = steps[(steps.index(cur) + 1) % len(steps)] if cur in steps else steps[0]
-            h.set_brightness(nxt)
-            self._update_ldd_icon()
-            self.uc_preview.set_status(f"Brightness: {nxt}%")
+        log.info("_on_brightness_changed: %d%% -> %s", percent,
+                 h.device_key if h is not None else "(no LCD)")
+        if h is not None:
+            h.set_brightness(percent)
+            self.uc_preview.set_status(f"Brightness: {percent}%")
 
-    def _update_ldd_icon(self) -> None:
+    def _show_brightness(self) -> None:
+        """Put the shown panel's brightness on the slider -- sends nothing."""
         h = self._active_lcd()
-        if h is None:
-            # Pre-activation default — show the highest-brightness icon
-            # instead of a blank button.  The icon updates again as
-            # soon as ``_activate_device`` runs and the handler reports
-            # its restored level.
-            from ...core.registry import BRIGHTNESS_STEPS
-            default_level = BRIGHTNESS_STEPS[-1]
-            pix = self._ldd_pixmaps.get(default_level)
-            if pix and not pix.isNull():
-                self.ldd_btn.setIcon(QIcon(pix))
-                self.ldd_btn.setIconSize(QSize(52, 24))
-                self.ldd_btn.setStyleSheet(Styles.ICON_BUTTON_HOVER)
-            else:
-                self.ldd_btn.setText(f"L{default_level}")
-                self.ldd_btn.setStyleSheet(Styles.TEXT_BUTTON)
-            return
-        level = h.split_mode if h.ldd_is_split else h.brightness_level
-        pix = self._ldd_pixmaps.get(level)
-        if pix and not pix.isNull():
-            self.ldd_btn.setIcon(QIcon(pix))
-            self.ldd_btn.setIconSize(QSize(52, 24))
-            self.ldd_btn.setStyleSheet(Styles.ICON_BUTTON_HOVER)
-        else:
-            label = f"S{level}" if h.ldd_is_split else f"L{level}"
-            self.ldd_btn.setText(label)
-            self.ldd_btn.setStyleSheet(Styles.TEXT_BUTTON)
+        level = h.brightness_level if h is not None else 100
+        log.debug("_show_brightness: %s -> %d",
+                  h.device_key if h is not None else "(no LCD)", level)
+        self.uc_brightness.show_value(level)
 
     # ── Global Settings ─────────────────────────────────────────────
 

@@ -133,6 +133,12 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **The window now has a brightness slider, as in the Windows app.** Drag
+  it or type a value from 0 to 100. It replaces the button that cycled
+  through three levels. The bottom row now matches the Windows app 2.1.8,
+  which also removed the export and import buttons from this window. You
+  can still export and import themes from the native-skin window, the
+  command line and the API.
 - **The native-skin window can now choose what an LED display shows.** On
   coolers whose display shows one reading at a time (AX120, AK120, LF8 and
   others), the Zones tab said "no separately-addressable zones" and offered

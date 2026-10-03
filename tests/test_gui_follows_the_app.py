@@ -68,8 +68,9 @@ def _local_names(window: Any) -> set[str]:
 
 # setting: (what another UI sends, how the gui shows it, what it must show)
 _ROWS: dict[str, tuple[Callable[[], Any], Callable[[Any], Any], Any]] = {
-    "brightness": (lambda: SetBrightness(key=_KEY, percent=25),
-                   lambda w: w._handlers[_KEY]._pm.brightness_level, 25),
+    "brightness": (lambda: SetBrightness(key=_KEY, percent=37),
+                   lambda w: (w._handlers[_KEY]._pm.brightness_level,
+                              w.uc_brightness.value), (37, 37)),
     "orientation": (lambda: SetOrientation(key=_KEY, degrees=90),
                     lambda w: w.rotation_combo.currentIndex() * 90, 90),
     "split mode": (lambda: SetSplitMode(key=_KEY, mode=3),
@@ -295,23 +296,49 @@ def test_a_change_to_the_panel_not_shown_leaves_the_shared_widgets_alone(
     win.close()
 
 
-def test_the_brightness_button_shows_the_selected_panels_level(
+def test_the_brightness_slider_shows_the_selected_panels_level(
     tmp_path: Path, qtbot: Any,
 ) -> None:
     """Switching back to a panel used to leave the other panel's level on the
-    button."""
+    control."""
     win = _two_panels(tmp_path, qtbot)
     win._app.dispatch(SetBrightness(key=_KEY, percent=25))
-    win._app.dispatch(SetBrightness(key=_OTHER_KEY, percent=50))
+    win._app.dispatch(SetBrightness(key=_OTHER_KEY, percent=63))
 
-    def shows(level: int) -> bool:
-        return (win.ldd_btn.icon().pixmap(52, 24).toImage()
-                == win._ldd_pixmaps[level].scaled(52, 24).toImage())
-
-    for key, level in ((_OTHER_KEY, 50), (_KEY, 25), (_OTHER_KEY, 50)):
+    for key, level in ((_OTHER_KEY, 63), (_KEY, 25), (_OTHER_KEY, 63)):
         win._activate_device(key)
-        qtbot.waitUntil(lambda level=level: shows(level), timeout=3000)
+        qtbot.waitUntil(lambda level=level: win.uc_brightness.value == level,
+                        timeout=3000)
     win.close()
+
+
+def test_releasing_the_slider_sets_the_shown_panel_s_brightness(
+    window: Any, qtbot: Any,
+) -> None:
+    """Any of 101 values, as the C#'s slider -- the old button reached three.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: disconnect ``changed`` → fails.
+    """
+    window.uc_brightness.changed.emit(42)
+
+    qtbot.waitUntil(lambda: window._app.dispatch(LcdSnapshot(key=_KEY)).brightness
+                    == 42, timeout=3000)
+
+
+def test_the_bottom_row_sits_where_formcztv_2_1_8_puts_it(window: Any) -> None:
+    """Slider, theme name and save at the C#'s own coordinates
+    (FormCZTV.cs:8884, :8620 and the buttonBCZT setup), so they cannot
+    overlap -- the slider needs the 278-344 span the name box used to hold.
+    No export / import: 2.1.8 moved them off the form (y=880).
+    """
+    def rect(w: Any) -> tuple[int, int, int, int]:
+        g = w.geometry()
+        return (g.x(), g.y(), g.width(), g.height())
+
+    assert rect(window.uc_brightness) == (164, 680, 180, 24)
+    assert rect(window.theme_name_input) == (378, 684, 102, 16)
+    assert rect(window.save_btn) == (482, 680, 24, 24)
+    assert not hasattr(window, "export_btn") and not hasattr(window, "import_btn")
 
 
 def test_a_panel_with_no_mask_position_does_not_show_the_previous_panels(

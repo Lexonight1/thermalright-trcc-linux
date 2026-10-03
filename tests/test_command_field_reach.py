@@ -90,9 +90,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("GetPaths", "api"): (frozenset({"resolution"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("ImportTheme", "gui"): (frozenset({"name"}), (
-        "unclassified: measured 2026-09-22, not traced"
-    )),
     ("ImportTheme", "qtgui"): (frozenset({"name"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
@@ -229,7 +226,7 @@ def test_every_record_is_tagged(pair: tuple[str, str]) -> None:
 #: ``_sync_audio`` in ``core/commands/device.py``.
 #: 19 -> 18 on 2026-09-29: ``EnsureDaemon`` was DELETED (V5c: every dispatch finds or starts
 #: the App now), not traced — its ('EnsureDaemon', 'api') record went with it.
-UNCLASSIFIED = 18
+UNCLASSIFIED = 17     # 18 → 17 (2026-10-02): gui no longer dispatches ImportTheme (export/import left the gui with 2.1.8's row)
 
 
 def test_the_unclassified_backlog_does_not_grow() -> None:
@@ -263,7 +260,7 @@ def _unclassified() -> list[tuple[str, str]]:
 _RECORDED = frozenset({
     ("BuildPreview", "api"), ("BuildPreview", "cli"), ("BuildPreview", "gui"),
     ("BuildPreview", "qtgui"), ("EnableAutostart", "gui"),
-    ("GetPaths", "api"), ("ImportTheme", "gui"),
+    ("GetPaths", "api"),
     ("ImportTheme", "qtgui"), ("ListCloudThemes", "api"),
     ("ListCloudThemes", "cli"), ("ListMasks", "api"), ("ListMasks", "gui"),
     ("ListMasks", "qtgui"), ("ListThemes", "gui"), ("ListThemes", "qtgui"),
