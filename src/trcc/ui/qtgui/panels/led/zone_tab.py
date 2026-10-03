@@ -48,6 +48,7 @@ from .....core.commands import (
 )
 from .....core.led_models import LEDMode
 from .....core.results import LedSnapshotResult
+from ....presentation.led_display import LedSelector, led_display_for
 from ._base import LedTabBase
 
 log = logging.getLogger(__name__)
@@ -182,6 +183,14 @@ class _ZoneRow(QWidget):
         self._on_brightness(self._index, self._brightness.value())
 
 
+_ZONES_INTRO = ("Each zone holds its own colour.  Pick the active zone "
+                "with the radio button on the left; the global colour tab "
+                "still drives the default for STATIC mode.")
+_PAGES_INTRO = ("This display shows one reading at a time.  Pick the one it "
+                "shows, or turn the carousel on and tick the ones it cycles "
+                "through.")
+
+
 class ZoneTab(LedTabBase):
     """Per-zone colour + sync carousel."""
 
@@ -190,6 +199,10 @@ class ZoneTab(LedTabBase):
         super().__init__(app, key_provider, parent)
         self._zone_widgets: list[_ZoneRow] = []
         self._placeholder_visible = True
+        #: The metric pages of a PAGE-style display (AX120, AK120, LF8, ...),
+        #: from ``apply_style``; empty on zone and no-selector styles.
+        self._pages: tuple[str, ...] = ()
+        self._participation_labels: tuple[str, ...] = ()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -198,15 +211,10 @@ class ZoneTab(LedTabBase):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(10)
 
-        intro = QLabel(
-            "Each zone holds its own colour.  Pick the active zone "
-            "with the radio button on the left; the global colour tab "
-            "still drives the default for STATIC mode.",
-            self,
-        )
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color: #aaa;")
-        root.addWidget(intro)
+        self._intro = QLabel(_ZONES_INTRO, self)
+        self._intro.setWordWrap(True)
+        self._intro.setStyleSheet("color: #aaa;")
+        root.addWidget(self._intro)
 
         self._zones_box = QGroupBox("Zones", self)
         self._zones_layout = QVBoxLayout(self._zones_box)
@@ -250,18 +258,31 @@ class ZoneTab(LedTabBase):
 
     # ── Public ────────────────────────────────────────────────────────
 
+    def apply_style(self, style_id: int | None) -> None:
+        """Know the device's LED style -- a PAGE style has no zones, but its
+        pages are picked here, as the gui's selector buttons pick them."""
+        display = led_display_for(style_id or 0)
+        self._pages = (display.page_labels
+                       if display.selector is LedSelector.PAGE else ())
+        log.info("apply_style: style=%s pages=%s", style_id, self._pages)
+
     def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")
         if snapshot is None:
             self._show_placeholder(True)
             return
         zone_count = len(snapshot.zones)
-        if zone_count <= 1:
+        pages = self._pages if zone_count <= 1 else ()
+        if zone_count <= 1 and not pages:
             self._show_placeholder(True)
             self._rebuild_zone_rows(0)
             return
         self._show_placeholder(False)
-        self._rebuild_zone_rows(zone_count)
+        self._zones_box.setVisible(not pages)
+        self._intro.setText(_PAGES_INTRO if pages else _ZONES_INTRO)
+        self._rebuild_zone_rows(0 if pages else zone_count)
+        if pages:
+            self._rebuild_participation(pages)
         for i, zone in enumerate(snapshot.zones):
             row = self._zone_widgets[i]
             row.set_color(*zone.color)
@@ -326,11 +347,14 @@ class ZoneTab(LedTabBase):
             )
             self._zones_layout.addWidget(row)
             self._zone_widgets.append(row)
-        self._rebuild_participation(count)
+        self._rebuild_participation(tuple(str(i + 1) for i in range(count)))
 
-    def _rebuild_participation(self, count: int) -> None:
-        """One checkbox per zone — the carousel's mask, rebuilt with the rows."""
-        log.debug("_rebuild_participation: count=%d", count)
+    def _rebuild_participation(self, labels: tuple[str, ...]) -> None:
+        """One checkbox per zone or page -- the carousel's mask."""
+        log.debug("_rebuild_participation: %s", labels)
+        if labels == self._participation_labels:
+            return
+        self._participation_labels = labels
         while self._participation_layout.count():
             item = self._participation_layout.takeAt(0)
             if item is None:
@@ -339,8 +363,8 @@ class ZoneTab(LedTabBase):
             if w is not None:
                 w.deleteLater()
         self._participation_checks = []
-        for i in range(count):
-            box = QCheckBox(str(i + 1), self._participation)
+        for label in labels:
+            box = QCheckBox(label, self._participation)
             box.toggled.connect(self._on_participation_changed)
             self._participation_layout.addWidget(box)
             self._participation_checks.append(box)
@@ -389,13 +413,33 @@ class ZoneTab(LedTabBase):
         log.info("_on_zone_brightness: zone=%d percent=%d", zone, percent)
         self._dispatch(SetLedZoneBrightness(key=key, zone=zone, percent=percent))
 
-    def _on_participation_changed(self, _checked: bool) -> None:
-        """Send the WHOLE mask — ``SetLedZoneSyncZones`` replaces it wholesale."""
+    def _on_participation_changed(self, checked: bool) -> None:
+        """Send the WHOLE mask — ``SetLedZoneSyncZones`` replaces it wholesale.
+
+        Except on a page display with the carousel off: there a click picks
+        exactly that page (FormLED :2812, ``SelectZone``), and the shown page
+        cannot be un-picked -- the C#'s last selection cannot be deselected.
+        """
         mask = tuple(b.isChecked() for b in self._participation_checks)
-        log.info("_on_participation_changed: mask=%s", mask)
         key = self.current_key()
-        if key:
+        picking = bool(self._pages) and not self._sync_check.isChecked()
+        log.info("_on_participation_changed: mask=%s picking=%s", mask, picking)
+        if not key:
+            return
+        if not picking:
             self._dispatch(SetLedZoneSyncZones(key=key, zones=mask))
+            return
+        box = self.sender()
+        if not isinstance(box, QCheckBox) or box not in self._participation_checks:
+            log.warning("_on_participation_changed: unknown sender %r", box)
+            return
+        if not checked:                      # the page shown stays shown
+            box.blockSignals(True)
+            box.setChecked(True)
+            box.blockSignals(False)
+            return
+        self._dispatch(SelectZone(key=key,
+                                  zone=self._participation_checks.index(box)))
 
     def _on_sync_toggled(self, checked: bool) -> None:
         log.info("_on_sync_toggled: checked=%s", checked)

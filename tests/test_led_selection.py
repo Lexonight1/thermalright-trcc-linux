@@ -309,3 +309,72 @@ def test_zones_created_later_take_the_device_s_saved_mode(
 
     zones = app.dispatch(LedSnapshot(key=_LED_KEY)).zones
     assert zones and {z.mode for z in zones} == {"TEMP_LINKED"}
+
+
+def _qtgui_led_panel(tmp_path: Path, qtbot: Any) -> tuple[Any, App]:
+    """qtgui's LED panel on a page-style cooler (AX120, four pages)."""
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.panels.led_panel import LedPanel
+
+    app = App(MockPlatform([{"type": "led", "vid": "0416", "pid": "8001", "pm": _AX120}],
+                           tmp_path), renderer=QtRenderer())
+    assert app.dispatch(ConnectDevice(key=_LED_KEY)).ok
+    panel = LedPanel(app, BusBridge(app.events))
+    qtbot.addWidget(panel)
+    qtbot.waitUntil(lambda: panel._current_key() == _LED_KEY)
+    panel._refresh_all_tabs()
+    return panel, app
+
+
+def test_qtgui_shows_a_page_display_s_pages_and_picks_one(
+    tmp_path: Path, qtbot: Any,
+) -> None:
+    """A page display has no zones, so qtgui hid the whole tab behind "no
+    separately-addressable zones" -- no way to choose what an AX120 shows.
+    It now lists the pages; with the carousel off a tick picks exactly that
+    page (FormLED :2812), and the page shown cannot be un-picked.
+
+    MUTATION CHECK -- MEASURED 2026-10-02: no ``apply_style`` call in
+    ``LedPanel`` → fails (the tab stays a placeholder); letting the shown
+    page be un-picked → fails.
+    """
+    panel, app = _qtgui_led_panel(tmp_path, qtbot)
+    tab = panel._zone_tab
+    boxes = tab._participation_checks
+
+    assert tab.has_visible_content()
+    assert [b.text() for b in boxes] == ["CPU (°C/°F)", "CPU (%)",
+                                         "GPU (°C/°F)", "GPU (%)"]
+
+    def picked() -> int:
+        return app.dispatch(LedSnapshot(key=_LED_KEY)).selected_zone
+
+    boxes[2].setChecked(True)
+    qtbot.waitUntil(lambda: picked() == 2 and [
+        b.isChecked() for b in tab._participation_checks]
+        == [False, False, True, False], timeout=3000)
+    mask = _mask(app)
+
+    tab._participation_checks[2].setChecked(False)          # the shown page
+    assert tab._participation_checks[2].isChecked()
+    assert (picked(), _mask(app)) == (2, mask)
+
+
+def test_qtgui_s_page_boxes_edit_the_carousel_when_it_is_on(
+    tmp_path: Path, qtbot: Any,
+) -> None:
+    """MUTATION CHECK -- MEASURED 2026-10-02: always pick (ignore the
+    carousel switch) → fails."""
+    panel, app = _qtgui_led_panel(tmp_path, qtbot)
+    tab = panel._zone_tab
+    tab._sync_check.setChecked(True)
+    qtbot.waitUntil(lambda: app.dispatch(LedSnapshot(key=_LED_KEY)).zone_sync,
+                    timeout=3000)
+
+    for i, on in enumerate((True, False, True, True)):
+        tab._participation_checks[i].setChecked(on)
+
+    qtbot.waitUntil(lambda: _mask(app) == (True, False, True, True), timeout=3000)

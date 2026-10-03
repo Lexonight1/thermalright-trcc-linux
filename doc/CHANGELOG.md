@@ -133,6 +133,11 @@
   lists empty.** The theme, cloud and mask lists filled in only after a
   restart. They now fill in as soon as the download finishes. The native-skin
   window's cloud list also refreshes now when the first-run download lands.
+- **The native-skin window can now choose what an LED display shows.** On
+  coolers whose display shows one reading at a time (AX120, AK120, LF8 and
+  others), the Zones tab said "no separately-addressable zones" and offered
+  nothing. It now lists the readings: pick the one to show, or turn the
+  carousel on and tick the ones to cycle through.
 - **A new LED cooler now starts in rainbow**, as in the Windows app, instead
   of a solid colour. Coolers you have already set up keep their effect.
 - **"Select all" on a PA120 or LF10 cooler didn't give every zone the same

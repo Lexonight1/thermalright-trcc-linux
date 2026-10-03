@@ -492,7 +492,7 @@ MAX_CROSS_SKIN = 4
 #: nine are in ``ui/presentation`` and all nine serve gui, 1361 of that
 #: package's 1756 lines.  Deleting ``ui/gui`` takes this to zero; until then it
 #: may not grow.
-MAX_SINGLE_SKIN_SHARED = 9
+MAX_SINGLE_SKIN_SHARED = 8     # 9 → 8 (2026-10-02): qtgui picks LED pages via led_display
 
 
 def test_no_skin_reaches_into_another_skin() -> None:

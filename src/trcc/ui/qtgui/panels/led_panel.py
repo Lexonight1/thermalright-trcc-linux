@@ -134,10 +134,29 @@ class LedPanel(BasePanel):
             )
             self._set_optional_tabs_visible(zones=False, segments=False)
             self._advanced_tab.apply_panel(led_panel_for(1))   # plain default
+            self._zone_tab.apply_style(None)
             return
         # One Query, six tabs — instead of handing each of them a live
         # ``LedDeviceSettings`` reached off the App (an AttributeError under
         # TRCC_DAEMON=1, and a domain object a UI must not hold).
+        state = self.dispatch(DeviceState(key=key))
+        # Rebuilt from the VALUE, not used as-is.  ``LedStyle`` is a str-enum,
+        # so this field arrives as the enum in-process and as a plain
+        # ``'ax120'`` across the daemon socket.  The ``LEGACY_STYLE_ID`` lookup
+        # below survives that on its own — a str-enum hashes and compares equal
+        # to its value — but ``style.name`` in the status line does NOT, and
+        # raises on a bare string.  Rebuilding makes both paths identical
+        # rather than leaving one of two uses wire-fragile.
+        style = LedStyle(state.led_style) if state.led_style else None
+        # Gate the Advanced tab's sub-sections to this device's LED style —
+        # the same C#-sourced composition the gui renders from.  Unknown
+        # style falls back to a plain panel (gauges only).
+        sid = LEGACY_STYLE_ID.get(style) if style else None
+        self._advanced_tab.apply_panel(led_panel_for(sid if sid is not None else 1))
+        # Before the tabs refresh: a page display has no zones, and the zone
+        # tab must know its pages to show them instead of "no zones".
+        self._zone_tab.apply_style(sid)
+
         snapshot = self.dispatch(LedSnapshot(key=key))
         for tab in (
             self._color_tab,
@@ -154,20 +173,6 @@ class LedPanel(BasePanel):
             segments=self._segment_tab.has_visible_content(),
         )
 
-        state = self.dispatch(DeviceState(key=key))
-        # Rebuilt from the VALUE, not used as-is.  ``LedStyle`` is a str-enum,
-        # so this field arrives as the enum in-process and as a plain
-        # ``'ax120'`` across the daemon socket.  The ``LEGACY_STYLE_ID`` lookup
-        # below survives that on its own — a str-enum hashes and compares equal
-        # to its value — but ``style.name`` in the status line does NOT, and
-        # raises on a bare string.  Rebuilding makes both paths identical
-        # rather than leaving one of two uses wire-fragile.
-        style = LedStyle(state.led_style) if state.led_style else None
-        # Gate the Advanced tab's sub-sections to this device's LED style —
-        # the same C#-sourced composition the gui renders from.  Unknown
-        # style falls back to a plain panel (gauges only).
-        sid = LEGACY_STYLE_ID.get(style) if style else None
-        self._advanced_tab.apply_panel(led_panel_for(sid if sid is not None else 1))
 
         if not state.connected:
             self._status_label.setText(
