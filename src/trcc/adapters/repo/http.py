@@ -18,6 +18,18 @@ from ...core.ports import HttpFetcher
 log = logging.getLogger(__name__)
 
 
+class OfflineHttpFetcher(HttpFetcher):
+    """Fetches nothing, and says so -- for a test or dev run's platform.
+
+    Fails the way no network fails (``HttpFetchError``), so every caller takes
+    the path it already takes offline, and each refusal is in the log.
+    """
+
+    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
+        log.warning("OfflineHttpFetcher: refused GET %s (offline run)", url)
+        raise HttpFetchError(f"offline: {url} was not fetched")
+
+
 class UrllibHttpFetcher(HttpFetcher):
     """Minimal stdlib HTTP GET — keep this dependency-free."""
 

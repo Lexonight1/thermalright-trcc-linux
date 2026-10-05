@@ -40,6 +40,7 @@ from ...core.models import DeviceInfo, DisplayServer, DisplaySession, Wire
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
+    HttpFetcher,
     PackageManager,
     Paths,
     Platform,
@@ -277,6 +278,7 @@ class BaseOS(Platform):
         self._hotplug: HotplugMonitor | None = None
         self._packages: PackageManager | None = None
         self._screen_capture: ScreenCapture | None = None
+        self._http_fetcher: HttpFetcher | None = None
 
     # ── Abstract hooks — the per-OS internals ────────────────────────────
 
@@ -473,6 +475,15 @@ class BaseOS(Platform):
             log.debug("%s.screen_capture: returning cached source",
                       type(self).__name__)
         return self._screen_capture
+
+    def http_fetcher(self) -> HttpFetcher:
+        """The real network -- one fetcher, built on first use."""
+        if self._http_fetcher is None:
+            from ..repo.http import UrllibHttpFetcher
+            log.info("%s.http_fetcher: building the urllib fetcher",
+                     type(self).__name__)
+            self._http_fetcher = UrllibHttpFetcher()
+        return self._http_fetcher
 
     def packages(self) -> PackageManager:
         if self._packages is None:

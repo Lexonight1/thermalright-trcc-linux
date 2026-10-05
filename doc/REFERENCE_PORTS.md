@@ -14,7 +14,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Command`](#command) | 1 | 0 | 141 |
 | [`CpuSource`](#cpusource) | 1 | 4 | 10 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
-| [`HttpFetcher`](#httpfetcher) | 1 | 0 | 1 |
+| [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`Query`](#query) | 1 | 0 | 38 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 3 |
@@ -49,9 +49,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 7 | 1 |
-| [`BaseOS`](#baseos) | 12 | 17 | 8 |
+| [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 14 | 8 | 1 |
-| [`Platform`](#platform) | 24 | 0 | 8 |
+| [`Platform`](#platform) | 25 | 0 | 8 |
 | [`ContentStore`](#contentstore) | 27 | 0 | 1 |
 
 ---
@@ -128,7 +128,7 @@ Tiny port for "fetch bytes from URL" used by cloud-theme adapters.
 fetch(url: 'str', timeout_s: 'float' = 30.0) -> bytes
 ```
 
-**Implementations (1):** `UrllibHttpFetcher`
+**Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`
 
 ## MissPolicy
 
@@ -734,7 +734,7 @@ permission_denied_hint() -> str
 setup(dry_run: 'bool' = False) -> int
 ```
 
-**You inherit (17):** `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
+**You inherit (18):** `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
@@ -773,7 +773,7 @@ to_raw_rgb24(surface: 'Any') -> RawFrame
 
 OS abstraction.  DI'd into App at startup.
 
-**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 17 of these 24, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
+**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 18 of these 25, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
 
 **Register by naming your key in the class line:**
 
@@ -781,7 +781,7 @@ OS abstraction.  DI'd into App at startup.
 class MyPlatform(BaseOS, key="myos"):
 ```
 
-**You implement (24):**
+**You implement (25):**
 
 ```python
 autostart() -> AutostartManager
@@ -792,6 +792,7 @@ disk_partitions() -> list[tuple[str, str]]
 display_session() -> DisplaySession
 distro_name() -> str
 hotplug() -> HotplugMonitor
+http_fetcher() -> HttpFetcher
 install_method() -> str
 memory_info() -> list[dict[str, str]]
 no_devices_hint() -> str

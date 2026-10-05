@@ -110,3 +110,79 @@ def test_the_dev_platforms_are_stand_ins(
         f"{type(platform).__name__} is a stand-in, not this host's "
         f"{host_platform_class().__name__}")
 
+
+# ── A dev or test run is offline unless asked ────────────────────────────────
+
+_SPEC = {"vid": "87ad", "pid": "70db", "pm": 11, "sub": 5, "resolution": "854x480"}
+
+
+@pytest.mark.parametrize("specs", [None, [_SPEC]], ids=["--hardware", "fleet"])
+@pytest.mark.parametrize("online", [False, True])
+def test_a_dev_platform_is_offline_unless_asked(
+    specs: list[dict] | None, online: bool,
+) -> None:
+    """Every mock launch used to go online unasked: the gui's update check at
+    startup and hourly, the data archives on each auto-connect, the dev
+    console's prefetch of every resolution."""
+    from trcc.adapters.repo.http import OfflineHttpFetcher, UrllibHttpFetcher
+
+    fetcher = _build_dev_platform(specs, online=online).http_fetcher()
+
+    assert type(fetcher) is (UrllibHttpFetcher if online else OfflineHttpFetcher)
+
+
+def test_the_host_platform_stays_online() -> None:
+    from trcc.adapters.repo.http import UrllibHttpFetcher
+    from trcc.adapters.system import current_platform
+
+    assert type(current_platform().http_fetcher()) is UrllibHttpFetcher
+
+
+def test_an_app_on_a_mock_platform_asks_the_network_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The App built its own fetcher (``app.py``), so no platform could keep it
+    offline.  Measured on a mock before the fix: 12 lookups for
+    api.github.com, raw.githubusercontent.com and the czhorde mirrors.  DNS is
+    recorded as well as connect -- the suite's own guard only stops connect,
+    and a lookup with no network has no time limit."""
+    import socket
+
+    from tests.mock_platform import MockPlatform
+    from trcc.app import App
+    from trcc.core.commands import CheckForUpdate, DownloadCloudTheme
+
+    asked: list[object] = []
+
+    def refuse_lookup(host: object, *_a: object, **_k: object) -> object:
+        asked.append(host)
+        raise socket.gaierror("refused by the test")
+
+    def refuse_connect(_sock: object, address: object) -> None:
+        asked.append(address)
+        raise ConnectionRefusedError("refused by the test")
+
+    monkeypatch.setattr(socket, "getaddrinfo", refuse_lookup)
+    monkeypatch.setattr(socket.socket, "connect", refuse_connect)
+    app = App(MockPlatform([_SPEC], tmp_path))
+
+    update = app.dispatch(CheckForUpdate())
+    cloud = app.dispatch(DownloadCloudTheme(theme_id="a001", resolution=(854, 480)))
+
+    assert (update.ok, cloud.ok) == (False, False)
+    assert asked == []
+
+
+def test_the_suite_refuses_a_dns_lookup() -> None:
+    """The session guard (tests/conftest.py) stopped connect, not the lookup
+    before it, so a test reaching urllib still sent a real DNS query."""
+    import socket
+
+    with pytest.raises(socket.gaierror) as refused:
+        socket.getaddrinfo("example.invalid", 443)
+
+    assert str(refused.value) == (
+        "the trcc test suite is hermetic — blocked a DNS lookup of "
+        "'example.invalid'.  Stub the port (HttpFetcher, DataInstallService, "
+        "GithubReleases) instead of reaching the network.")
+

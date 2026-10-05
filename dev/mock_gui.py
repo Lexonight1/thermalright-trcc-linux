@@ -416,7 +416,16 @@ def _mount_dev_console(window: Any) -> None:
     import dev_console
     window._dev_console = dev_console.mount(window)
     from _mock_bootstrap import app_behind
-    dev_console.ensure_all_data(app_behind(window))
+
+    from trcc.adapters.repo.http import OfflineHttpFetcher
+    app = app_behind(window)
+    if isinstance(app.http, OfflineHttpFetcher):
+        log.info("_mount_dev_console: offline -- all-resolution data "
+                 "prefetch skipped (--online to fetch)")
+        print("Dev console: offline -- skipping the all-resolution data "
+              "prefetch (pass --online to fetch).")
+        return
+    dev_console.ensure_all_data(app)
 
 
 if __name__ == '__main__':

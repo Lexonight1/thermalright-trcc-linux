@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from trcc.core.ports import (
         BulkTransport,
         HotplugMonitor,
+        HttpFetcher,
         Platform,
         ScsiTransport,
     )
@@ -142,6 +143,20 @@ def load_device_specs(report_path: str | None = None) -> list[dict]:
 # Default discreteness per vendor.  Intel is the CPU's integrated graphics;
 # nvidia/amd are add-in cards unless told otherwise.
 _GPU_DISCRETE_DEFAULT = {"nvidia": True, "amd": True, "intel": False}
+
+
+def _pop_online_flag() -> bool:
+    """Pull ``--online`` out of argv: let this dev run reach the network.
+
+    Offline is the default.  The App's downloads -- the update check at the
+    gui's startup and every hour, the data archives on each auto-connect, the
+    dev console's prefetch of every resolution -- used to run on every mock
+    launch, unasked.  Popped in :func:`bootstrap` like ``--gpus``.
+    """
+    if "--online" not in sys.argv:
+        return False
+    sys.argv.remove("--online")
+    return True
 
 
 def _pop_gpu_flag() -> str | None:
@@ -393,7 +408,16 @@ def all_variant_specs() -> list[dict]:
 
 # ─── DevPaths / DevPlatform — production Platform with paths redirected ──────
 
-def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
+def _offline_fetcher() -> HttpFetcher:
+    """A dev platform's network without ``--online``: none."""
+    from trcc.adapters.repo.http import OfflineHttpFetcher
+
+    log.debug("_offline_fetcher: dev run without --online")
+    return OfflineHttpFetcher()
+
+
+def _build_dev_platform(specs: list[dict] | None = None, *,
+                        online: bool = False) -> Platform:
     """Return a Platform rooted at ``dev/.trcc/`` for the host OS.
 
     Always subclasses the production host Platform so sensors, autostart,
@@ -448,6 +472,9 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
             def paths(self) -> Paths:
                 return dev_paths
 
+            def http_fetcher(self) -> HttpFetcher:
+                return super().http_fetcher() if online else _offline_fetcher()
+
         return DevPlatform()
 
     # Simulated fleet — extend the real host, override ONLY the USB seam.
@@ -463,6 +490,9 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
 
     class DevMockPlatform(host_cls):
         """Real host platform with the USB seam swapped for a scripted fleet."""
+
+        def http_fetcher(self) -> HttpFetcher:
+            return super().http_fetcher() if online else _offline_fetcher()
 
         def __init__(self) -> None:
             super().__init__()
@@ -591,7 +621,8 @@ def bootstrap(report_path: str | None = None,
     else:
         source = "full fleet (default)"
         specs = all_variant_specs()
-    platform = _build_dev_platform(specs or None)
+    online = _pop_online_flag()
+    platform = _build_dev_platform(specs or None, online=online)
 
     # Say what was NOT covered.  The old banner named the source and stopped
     # there, so a 3-device devices.json read as "the mock" rather than as 2 of
@@ -624,9 +655,11 @@ def bootstrap(report_path: str | None = None,
         per_frame=verbosity > 0,
     )
     log.info(
-        "dev bootstrap: platform=%s paths.config=%s source=%s specs=%d",
+        "dev bootstrap: platform=%s paths.config=%s source=%s specs=%d "
+        "network=%s",
         type(platform).__name__, platform.paths().config_dir(), source,
         len(specs or []),          # --hardware leaves specs None on purpose
+        "online" if online else "offline (--online to fetch)",
     )
     # A simulated GPU fleet is orthogonal to the device fleet — it fakes what
     # the box HAS, not what's plugged into USB — so it applies to either

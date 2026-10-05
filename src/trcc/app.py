@@ -16,7 +16,6 @@ from typing import Any, TypeVar
 
 from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
-from .adapters.repo.http import UrllibHttpFetcher
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
@@ -163,9 +162,9 @@ class App(CommandBus):
         # the first broadcast — consumers fall back to a one-off read.
         self.last_raw_readings: dict[str, float] | None = None
         self.last_raw_snapshot: HardwareMetrics | None = None
-        # Cloud theme catalog + service.  HTTP adapter is the only seam
-        # that talks to the network; tests inject a fake fetcher.
-        self.http = UrllibHttpFetcher()
+        # Cloud theme catalog + service.  The platform's fetcher is the only
+        # seam that talks to the network -- a test or dev platform's is offline.
+        self.http = platform.http_fetcher()
         self.cloud_themes = CloudThemeService(
             catalog=CzhordeCatalog(
                 http=self.http,

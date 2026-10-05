@@ -66,6 +66,7 @@ from trcc.core.ports import (
     CpuSource,
     GpuSource,
     HotplugMonitor,
+    HttpFetcher,
     MemorySource,
     PackageManager,
     Paths,
@@ -376,6 +377,12 @@ class FakeMic:
 class FakePlatform(Platform):
     """Minimal Platform fake — bulk/scsi transports replayable from tests."""
 
+    def http_fetcher(self) -> HttpFetcher:
+        """Offline: a test reaches the network only through a fetcher it
+        injects itself."""
+        from trcc.adapters.repo.http import OfflineHttpFetcher
+        return OfflineHttpFetcher()
+
     def __init__(self, tmp_home: Path) -> None:
         self.bulk = FakeBulkTransport()
         self.scsi = FakeScsiTransport()
@@ -557,8 +564,26 @@ def _the_suite_is_hermetic() -> Iterator[None]:
             )
         return real_connect(self, address)
 
+    real_getaddrinfo = socket.getaddrinfo
+
+    def getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
+        # ``create_connection`` resolves BEFORE it connects, so a guard on
+        # connect alone still sent the lookup -- and with no network a lookup
+        # has no time limit (data_install.py says so).  Measured 2026-10-05:
+        # the suite made 0 such lookups once stand-in platforms went offline;
+        # this keeps it at 0.
+        if host is None or host == "localhost" or _is_local(
+                socket.AF_INET, (host, 0)):
+            return real_getaddrinfo(host, *args, **kwargs)
+        raise socket.gaierror(
+            f"the trcc test suite is hermetic — blocked a DNS lookup of "
+            f"{host!r}.  Stub the port (HttpFetcher, DataInstallService, "
+            f"GithubReleases) instead of reaching the network.",
+        )
+
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(socket.socket, "connect", connect)
+        mp.setattr(socket, "getaddrinfo", getaddrinfo)
         yield
 
 

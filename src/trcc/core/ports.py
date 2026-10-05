@@ -2485,6 +2485,20 @@ class Platform(ABC):
         ``app.platform`` is what a Command has.
         """
 
+    # ── Network ───────────────────────────────────────────────────────
+    @abstractmethod
+    def http_fetcher(self) -> HttpFetcher:
+        """Where the App's downloads go: the cloud theme catalog, the update
+        check and the data archives.
+
+        On the platform rather than built inside ``App`` because a platform
+        is the one seam every harness owns: the App used to make its own
+        fetcher, so a mock platform could not stop a mock run from going
+        online -- an update check at startup and hourly, and every data
+        archive on each auto-connect.  ``BaseOS`` answers with the real one;
+        stand-ins answer offline.
+        """
+
     # ── Package manager (diagnostics; read-only) ──────────────────────
     @abstractmethod
     def packages(self) -> PackageManager:
