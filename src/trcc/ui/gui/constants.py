@@ -203,7 +203,8 @@ class Layout:
     # Bottom control row (within form_container) -- FormCZTV 2.1.8: the
     # brightness slider ``ucScrollB1`` (164, 680) 180x24, the theme name
     # ``textBoxCMM`` (378, 684) 102x16, save ``buttonBCZT`` (482, 680) 24x24.
-    # 2.1.8 moved export / import off the form (y=880), so the gui has none.
+    # 2.1.8 hid the form's export / import (y=880) and kept the pair on the
+    # local-theme panel (UCThemeLocal 441,28 / 482,28), where the gui has them.
     ROTATION_COMBO = (39, 680, 108, 24)
     BRIGHTNESS_SLIDER = (164, 680, 180, 24)
     THEME_NAME_INPUT = (378, 684, 102, 16)

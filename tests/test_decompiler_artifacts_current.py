@@ -26,6 +26,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "decompiler"))
 
 import extract_control_flow  # noqa: E402  # pyright: ignore[reportMissingImports]
+import inventory_controls  # noqa: E402  # pyright: ignore[reportMissingImports]
 import map_branches  # noqa: E402  # pyright: ignore[reportMissingImports]
 from core.csharp import DECOMPILE_ROOT  # noqa: E402  # pyright: ignore[reportMissingImports]
 
@@ -46,6 +47,20 @@ def test_committed_control_flow_maps_are_current() -> None:
     assert not stale, (
         f"stale or missing: {', '.join(sorted(stale))} — run: "
         + _REGEN.format("extract_control_flow.py")
+    )
+
+
+@_ABSENT
+def test_committed_control_inventory_is_current() -> None:
+    """The LCD page's C# control list -- what ``test_lcd_page_parity`` checks
+    our window against -- matches the generator."""
+    stale = [
+        path.name for path, content in inventory_controls.artifacts().items()
+        if not path.exists() or path.read_text(encoding="utf-8") != content
+    ]
+    assert not stale, (
+        f"stale or missing: {', '.join(stale)} — run: "
+        + _REGEN.format("inventory_controls.py")
     )
 
 

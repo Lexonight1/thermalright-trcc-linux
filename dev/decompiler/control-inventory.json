@@ -1,0 +1,4297 @@
+{
+ "release": "2.1.8",
+ "root": "FormCZTV",
+ "classes": {
+  "FormCZTV": [
+   {
+    "cls": "FormCZTV",
+    "name": "buttonPower",
+    "type": "Button",
+    "rect": [
+     1212,
+     24,
+     40,
+     40
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonPower_Click",
+     "MouseEnter:buttonPower_MouseEnter",
+     "MouseLeave:buttonPower_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucComboBoxA1",
+    "type": "UCComboBoxA",
+    "rect": [
+     26,
+     680,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [
+     "UCComboBoxA:SetUCComboBoxMode:98",
+     "UCComboBoxA:SetUCComboBoxMode:103",
+     "UCComboBoxA:SetUCComboBoxMode:108",
+     "UCComboBoxA:SetUCComboBoxMode:113",
+     "UCComboBoxA:SetUCComboBoxMode:118",
+     "UCComboBoxA:SetUCComboBoxMode:123",
+     "UCComboBoxA:SetUCComboBoxMode:128",
+     "UCComboBoxA:SetUCComboBoxMode:133",
+     "UCComboBoxA:button0_Click:153",
+     "UCComboBoxA:button0_Click:157"
+    ],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucComboBoxA2",
+    "type": "UCComboBoxA",
+    "rect": [
+     425,
+     1000,
+     108,
+     24
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [
+     "UCComboBoxA:SetUCComboBoxMode:98",
+     "UCComboBoxA:SetUCComboBoxMode:103",
+     "UCComboBoxA:SetUCComboBoxMode:108",
+     "UCComboBoxA:SetUCComboBoxMode:113",
+     "UCComboBoxA:SetUCComboBoxMode:118",
+     "UCComboBoxA:SetUCComboBoxMode:123",
+     "UCComboBoxA:SetUCComboBoxMode:128",
+     "UCComboBoxA:SetUCComboBoxMode:133",
+     "UCComboBoxA:button0_Click:153",
+     "UCComboBoxA:button0_Click:157"
+    ],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucComboBoxA3",
+    "type": "UCComboBoxA",
+    "rect": [
+     152,
+     1000,
+     108,
+     24
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [
+     "UCComboBoxA:SetUCComboBoxMode:98",
+     "UCComboBoxA:SetUCComboBoxMode:103",
+     "UCComboBoxA:SetUCComboBoxMode:108",
+     "UCComboBoxA:SetUCComboBoxMode:113",
+     "UCComboBoxA:SetUCComboBoxMode:118",
+     "UCComboBoxA:SetUCComboBoxMode:123",
+     "UCComboBoxA:SetUCComboBoxMode:128",
+     "UCComboBoxA:SetUCComboBoxMode:133",
+     "UCComboBoxA:button0_Click:153",
+     "UCComboBoxA:button0_Click:157"
+    ],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "textBoxCMM",
+    "type": "TextBox",
+    "rect": [
+     378,
+     684,
+     102,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "KeyPress:textBoxCMM_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonBCZT",
+    "type": "Button",
+    "rect": [
+     482,
+     680,
+     24,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonBCZT_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonDaoChu",
+    "type": "Button",
+    "rect": [
+     412,
+     880,
+     40,
+     18
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonDaoChu_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonDaoRu",
+    "type": "Button",
+    "rect": [
+     453,
+     880,
+     40,
+     18
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonDaoRu_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonBDZT",
+    "type": "Button",
+    "rect": [
+     542,
+     90,
+     50,
+     38
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonBDZT_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonYDZT",
+    "type": "Button",
+    "rect": [
+     682,
+     90,
+     50,
+     38
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:FormCZTVInit:1208",
+     "FormCZTV:buttonMS_Mode:4984"
+    ],
+    "hidden_at": [
+     "FormCZTV:buttonMS_Mode:5000",
+     "FormCZTV:buttonMS_Mode:5017"
+    ],
+    "events": [
+     "Click:buttonYDZT_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonZTSZ",
+    "type": "Button",
+    "rect": [
+     882,
+     90,
+     50,
+     38
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonZTSZ_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucThemeSetting1",
+    "type": "UCThemeSetting",
+    "rect": [
+     532,
+     128,
+     732,
+     661
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:ButtonNewMode:1879"
+    ],
+    "hidden_at": [
+     "FormCZTV:ButtonNewMode:1864",
+     "FormCZTV:ButtonNewMode:1871",
+     "FormCZTV:ButtonNewMode:1885"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucScreenImageBK1",
+    "type": "UCScreenImageBK",
+    "rect": [
+     16,
+     88,
+     500,
+     500
+    ],
+    "designer_hidden": false,
+    "shown_at": [
+     "FormCZTV:FormCZTVInit:1170"
+    ],
+    "hidden_at": [
+     "FormCZTV:FormCZTV:808"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucImageCut1",
+    "type": "UCImageCut",
+    "rect": [
+     16,
+     88,
+     500,
+     702
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:buttonMS_Mode:4975"
+    ],
+    "hidden_at": [
+     "FormCZTV:buttonMS_Mode:4970",
+     "FormCZTV:buttonMS_Mode:4981",
+     "FormCZTV:buttonMS_Mode:4998",
+     "FormCZTV:buttonMS_Mode:5015"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonDWXS",
+    "type": "Button",
+    "rect": [
+     237,
+     1000,
+     14,
+     14
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucThemeLocal1",
+    "type": "UCThemeLocal",
+    "rect": [
+     532,
+     128,
+     732,
+     652
+    ],
+    "designer_hidden": false,
+    "shown_at": [
+     "FormCZTV:FormCZTVInit:1169",
+     "FormCZTV:ButtonNewMode:1865"
+    ],
+    "hidden_at": [
+     "FormCZTV:FormCZTV:807",
+     "FormCZTV:ButtonNewMode:1869",
+     "FormCZTV:ButtonNewMode:1876",
+     "FormCZTV:ButtonNewMode:1883"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucThemeWeb1",
+    "type": "UCThemeWeb",
+    "rect": [
+     532,
+     128,
+     732,
+     652
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:ButtonNewMode:1872"
+    ],
+    "hidden_at": [
+     "FormCZTV:ButtonNewMode:1862",
+     "FormCZTV:ButtonNewMode:1877",
+     "FormCZTV:ButtonNewMode:1884"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "labelZXCG",
+    "type": "Label",
+    "rect": [
+     765,
+     28,
+     374,
+     27
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:buttonFXTB_Click:2089",
+     "FormCZTV:buttonFXTB_Click:2106",
+     "FormCZTV:UpDateUCVideoCut:2710",
+     "FormCZTV:DownLoadFile:5152",
+     "FormCZTV:ThemeWeb:5581",
+     "FormCZTV:buttonBCZT_Click:7203"
+    ],
+    "hidden_at": [
+     "FormCZTV:buttonFXTB_Click:2110",
+     "FormCZTV:buttonFXTB_Click:2117",
+     "FormCZTV:UpDateUCVideoCut:2730",
+     "FormCZTV:DownLoadFile:5183",
+     "FormCZTV:ThemeWeb:5605",
+     "FormCZTV:buttonBCZT_Click:7318"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonHelp",
+    "type": "Button",
+    "rect": [
+     1162,
+     24,
+     40,
+     40
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonHelp_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonYDMB",
+    "type": "Button",
+    "rect": [
+     612,
+     90,
+     50,
+     38
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:FormCZTVInit:1209"
+    ],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonYDMB_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucThemeMask1",
+    "type": "UCThemeMask",
+    "rect": [
+     532,
+     128,
+     732,
+     652
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:ButtonNewMode:1886"
+    ],
+    "hidden_at": [
+     "FormCZTV:ButtonNewMode:1863",
+     "FormCZTV:ButtonNewMode:1870",
+     "FormCZTV:ButtonNewMode:1878"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucVideoCut1",
+    "type": "UCVideoCut",
+    "rect": [
+     16,
+     88,
+     500,
+     702
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:buttonMS_Mode:4980"
+    ],
+    "hidden_at": [
+     "FormCZTV:buttonMS_Mode:4971",
+     "FormCZTV:buttonMS_Mode:4976",
+     "FormCZTV:buttonMS_Mode:4999",
+     "FormCZTV:buttonMS_Mode:5016"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucBoFangQiKongZhi1",
+    "type": "UCBoFangQiKongZhi",
+    "rect": [
+     16,
+     650,
+     500,
+     56
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "FormCZTV:buttonMS_Mode:5014"
+    ],
+    "hidden_at": [
+     "FormCZTV:buttonMS_Mode:4983",
+     "FormCZTV:buttonMS_Mode:4997"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "buttonLDD",
+    "type": "Button",
+    "rect": [
+     152,
+     680,
+     52,
+     24
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonLDD_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "FormCZTV",
+    "name": "ucScrollB1",
+    "type": "UCScrollB",
+    "rect": [
+     164,
+     680,
+     180,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCComboBoxA": [
+   {
+    "cls": "UCComboBoxA",
+    "name": "button0",
+    "type": "Button",
+    "rect": [
+     0,
+     0,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button0_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     0,
+     24,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button2",
+    "type": "Button",
+    "rect": [
+     0,
+     48,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button2_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button3",
+    "type": "Button",
+    "rect": [
+     0,
+     72,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button3_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button4",
+    "type": "Button",
+    "rect": [
+     0,
+     96,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button4_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button5",
+    "type": "Button",
+    "rect": [
+     0,
+     120,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button5_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button6",
+    "type": "Button",
+    "rect": [
+     0,
+     144,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button6_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button7",
+    "type": "Button",
+    "rect": [
+     0,
+     168,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button7_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCComboBoxA",
+    "name": "button8",
+    "type": "Button",
+    "rect": [
+     0,
+     192,
+     108,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button8_Click",
+     "MouseEnter:button_MouseEnter",
+     "MouseLeave:button_MouseLeave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCThemeSetting": [
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucBeiJingXianShi1",
+    "type": "UCBeiJingXianShi",
+    "rect": [
+     371,
+     441,
+     351,
+     100
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucTouPingXianShi1",
+    "type": "UCTouPingXianShi",
+    "rect": [
+     10,
+     551,
+     351,
+     100
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucDongHuaLianDong1",
+    "type": "UCDongHuaLianDong",
+    "rect": [
+     10,
+     690,
+     682,
+     84
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucJianPanLianDongA1",
+    "type": "UCJianPanLianDongA",
+    "rect": [
+     10,
+     780,
+     682,
+     84
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucJianPanLianDongB1",
+    "type": "UCJianPanLianDongB",
+    "rect": [
+     10,
+     870,
+     682,
+     84
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucJianPanLianDongC1",
+    "type": "UCJianPanLianDongC",
+    "rect": [
+     10,
+     960,
+     682,
+     84
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucMengBanXianShi1",
+    "type": "UCMengBanXianShi",
+    "rect": [
+     10,
+     441,
+     351,
+     100
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucShiPingBoFangQi1",
+    "type": "UCShiPingBoFangQi",
+    "rect": [
+     10,
+     551,
+     351,
+     100
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucXiTongXianShiAdd1",
+    "type": "UCXiTongXianShiAdd",
+    "rect": [
+     492,
+     1,
+     230,
+     430
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCThemeSetting:XiTongXianShi:128"
+    ],
+    "hidden_at": [
+     "UCThemeSetting:XiTongXianShi:135",
+     "UCThemeSetting:XiTongXianShi:157"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucXiTongXianShi1",
+    "type": "UCXiTongXianShi",
+    "rect": [
+     10,
+     1,
+     472,
+     430
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucXiTongXianShiColor1",
+    "type": "UCXiTongXianShiColor",
+    "rect": [
+     492,
+     1,
+     230,
+     374
+    ],
+    "designer_hidden": false,
+    "shown_at": [
+     "UCThemeSetting:XiTongXianShi:158",
+     "UCThemeSetting:XiTongXianShiAdd:213"
+    ],
+    "hidden_at": [
+     "UCThemeSetting:XiTongXianShi:126",
+     "UCThemeSetting:XiTongXianShi:136"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucXiTongXianShiTable1",
+    "type": "UCXiTongXianShiTable",
+    "rect": [
+     492,
+     376,
+     230,
+     54
+    ],
+    "designer_hidden": false,
+    "shown_at": [
+     "UCThemeSetting:XiTongXianShi:159",
+     "UCThemeSetting:XiTongXianShiAdd:214"
+    ],
+    "hidden_at": [
+     "UCThemeSetting:XiTongXianShi:127",
+     "UCThemeSetting:XiTongXianShi:137"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCThemeSetting",
+    "name": "ucShortcut1",
+    "type": "UCShortcut",
+    "rect": [
+     492,
+     1,
+     230,
+     430
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCThemeSetting:XiTongXianShi:138",
+     "UCThemeSetting:XiTongXianShiAdd:210"
+    ],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   }
+  ],
+  "UCScreenImageBK": [
+   {
+    "cls": "UCScreenImageBK",
+    "name": "ucScreenImage1",
+    "type": "UCScreenImage",
+    "rect": [
+     90,
+     130,
+     320,
+     240
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [
+     "UCScreenImage:SetMyUCScreenImage:179",
+     "UCScreenImage:SetMyUCScreenImage:180",
+     "UCScreenImage:SetMyUCScreenImage:187",
+     "UCScreenImage:SetMyUCScreenImage:188",
+     "UCScreenImage:SetMyUCScreenImage:195",
+     "UCScreenImage:SetMyUCScreenImage:196",
+     "UCScreenImage:SetMyUCScreenImage:204",
+     "UCScreenImage:SetMyUCScreenImage:205",
+     "UCScreenImage:SetMyUCScreenImage:214",
+     "UCScreenImage:SetMyUCScreenImage:215",
+     "UCScreenImage:SetMyUCScreenImage:221",
+     "UCScreenImage:SetMyUCScreenImage:222",
+     "UCScreenImage:SetMyUCScreenImage:233",
+     "UCScreenImage:SetMyUCScreenImage:234",
+     "UCScreenImage:SetMyUCScreenImage:240",
+     "UCScreenImage:SetMyUCScreenImage:241",
+     "UCScreenImage:SetMyUCScreenImage:248",
+     "UCScreenImage:SetMyUCScreenImage:249",
+     "UCScreenImage:SetMyUCScreenImage:255",
+     "UCScreenImage:SetMyUCScreenImage:256",
+     "UCScreenImage:SetMyUCScreenImage:268",
+     "UCScreenImage:SetMyUCScreenImage:269",
+     "UCScreenImage:SetMyUCScreenImage:275",
+     "UCScreenImage:SetMyUCScreenImage:276",
+     "UCScreenImage:SetMyUCScreenImage:283",
+     "UCScreenImage:SetMyUCScreenImage:284",
+     "UCScreenImage:SetMyUCScreenImage:290",
+     "UCScreenImage:SetMyUCScreenImage:291",
+     "UCScreenImage:SetMyUCScreenImage:303",
+     "UCScreenImage:SetMyUCScreenImage:304",
+     "UCScreenImage:SetMyUCScreenImage:310",
+     "UCScreenImage:SetMyUCScreenImage:311",
+     "UCScreenImage:SetMyUCScreenImage:318",
+     "UCScreenImage:SetMyUCScreenImage:319",
+     "UCScreenImage:SetMyUCScreenImage:325",
+     "UCScreenImage:SetMyUCScreenImage:326",
+     "UCScreenImage:SetMyUCScreenImage:338",
+     "UCScreenImage:SetMyUCScreenImage:339",
+     "UCScreenImage:SetMyUCScreenImage:345",
+     "UCScreenImage:SetMyUCScreenImage:346",
+     "UCScreenImage:SetMyUCScreenImage:353",
+     "UCScreenImage:SetMyUCScreenImage:354",
+     "UCScreenImage:SetMyUCScreenImage:360",
+     "UCScreenImage:SetMyUCScreenImage:361",
+     "UCScreenImage:SetMyUCScreenImage:371",
+     "UCScreenImage:SetMyUCScreenImage:372",
+     "UCScreenImage:SetMyUCScreenImage:378",
+     "UCScreenImage:SetMyUCScreenImage:379",
+     "UCScreenImage:SetMyUCScreenImage:391",
+     "UCScreenImage:SetMyUCScreenImage:392",
+     "UCScreenImage:SetMyUCScreenImage:398",
+     "UCScreenImage:SetMyUCScreenImage:399",
+     "UCScreenImage:SetMyUCScreenImage:406",
+     "UCScreenImage:SetMyUCScreenImage:407",
+     "UCScreenImage:SetMyUCScreenImage:413",
+     "UCScreenImage:SetMyUCScreenImage:414",
+     "UCScreenImage:SetMyUCScreenImage:426",
+     "UCScreenImage:SetMyUCScreenImage:427",
+     "UCScreenImage:SetMyUCScreenImage:433",
+     "UCScreenImage:SetMyUCScreenImage:434",
+     "UCScreenImage:SetMyUCScreenImage:441",
+     "UCScreenImage:SetMyUCScreenImage:442",
+     "UCScreenImage:SetMyUCScreenImage:448",
+     "UCScreenImage:SetMyUCScreenImage:449",
+     "UCScreenImage:SetMyUCScreenImage:461",
+     "UCScreenImage:SetMyUCScreenImage:462",
+     "UCScreenImage:SetMyUCScreenImage:468",
+     "UCScreenImage:SetMyUCScreenImage:469",
+     "UCScreenImage:SetMyUCScreenImage:476",
+     "UCScreenImage:SetMyUCScreenImage:477",
+     "UCScreenImage:SetMyUCScreenImage:483",
+     "UCScreenImage:SetMyUCScreenImage:484",
+     "UCScreenImage:SetMyUCScreenImage:496",
+     "UCScreenImage:SetMyUCScreenImage:497",
+     "UCScreenImage:SetMyUCScreenImage:503",
+     "UCScreenImage:SetMyUCScreenImage:504",
+     "UCScreenImage:SetMyUCScreenImage:511",
+     "UCScreenImage:SetMyUCScreenImage:512",
+     "UCScreenImage:SetMyUCScreenImage:518",
+     "UCScreenImage:SetMyUCScreenImage:519",
+     "UCScreenImage:SetMyUCScreenImage:530",
+     "UCScreenImage:SetMyUCScreenImage:531",
+     "UCScreenImage:SetMyUCScreenImage:537",
+     "UCScreenImage:SetMyUCScreenImage:538",
+     "UCScreenImage:SetMyUCScreenImage:544",
+     "UCScreenImage:SetMyUCScreenImage:545",
+     "UCScreenImage:SetMyUCScreenImage:551",
+     "UCScreenImage:SetMyUCScreenImage:552"
+    ],
+    "resized_at": [
+     "UCScreenImage:SetMyUCScreenImage:181",
+     "UCScreenImage:SetMyUCScreenImage:182",
+     "UCScreenImage:SetMyUCScreenImage:189",
+     "UCScreenImage:SetMyUCScreenImage:190",
+     "UCScreenImage:SetMyUCScreenImage:197",
+     "UCScreenImage:SetMyUCScreenImage:198",
+     "UCScreenImage:SetMyUCScreenImage:206",
+     "UCScreenImage:SetMyUCScreenImage:207",
+     "UCScreenImage:SetMyUCScreenImage:216",
+     "UCScreenImage:SetMyUCScreenImage:217",
+     "UCScreenImage:SetMyUCScreenImage:223",
+     "UCScreenImage:SetMyUCScreenImage:224",
+     "UCScreenImage:SetMyUCScreenImage:235",
+     "UCScreenImage:SetMyUCScreenImage:236",
+     "UCScreenImage:SetMyUCScreenImage:242",
+     "UCScreenImage:SetMyUCScreenImage:243",
+     "UCScreenImage:SetMyUCScreenImage:250",
+     "UCScreenImage:SetMyUCScreenImage:251",
+     "UCScreenImage:SetMyUCScreenImage:257",
+     "UCScreenImage:SetMyUCScreenImage:258",
+     "UCScreenImage:SetMyUCScreenImage:270",
+     "UCScreenImage:SetMyUCScreenImage:271",
+     "UCScreenImage:SetMyUCScreenImage:277",
+     "UCScreenImage:SetMyUCScreenImage:278",
+     "UCScreenImage:SetMyUCScreenImage:285",
+     "UCScreenImage:SetMyUCScreenImage:286",
+     "UCScreenImage:SetMyUCScreenImage:292",
+     "UCScreenImage:SetMyUCScreenImage:293",
+     "UCScreenImage:SetMyUCScreenImage:305",
+     "UCScreenImage:SetMyUCScreenImage:306",
+     "UCScreenImage:SetMyUCScreenImage:312",
+     "UCScreenImage:SetMyUCScreenImage:313",
+     "UCScreenImage:SetMyUCScreenImage:320",
+     "UCScreenImage:SetMyUCScreenImage:321",
+     "UCScreenImage:SetMyUCScreenImage:327",
+     "UCScreenImage:SetMyUCScreenImage:328",
+     "UCScreenImage:SetMyUCScreenImage:340",
+     "UCScreenImage:SetMyUCScreenImage:341",
+     "UCScreenImage:SetMyUCScreenImage:347",
+     "UCScreenImage:SetMyUCScreenImage:348",
+     "UCScreenImage:SetMyUCScreenImage:355",
+     "UCScreenImage:SetMyUCScreenImage:356",
+     "UCScreenImage:SetMyUCScreenImage:362",
+     "UCScreenImage:SetMyUCScreenImage:363",
+     "UCScreenImage:SetMyUCScreenImage:373",
+     "UCScreenImage:SetMyUCScreenImage:374",
+     "UCScreenImage:SetMyUCScreenImage:380",
+     "UCScreenImage:SetMyUCScreenImage:381",
+     "UCScreenImage:SetMyUCScreenImage:393",
+     "UCScreenImage:SetMyUCScreenImage:394",
+     "UCScreenImage:SetMyUCScreenImage:400",
+     "UCScreenImage:SetMyUCScreenImage:401",
+     "UCScreenImage:SetMyUCScreenImage:408",
+     "UCScreenImage:SetMyUCScreenImage:409",
+     "UCScreenImage:SetMyUCScreenImage:415",
+     "UCScreenImage:SetMyUCScreenImage:416",
+     "UCScreenImage:SetMyUCScreenImage:428",
+     "UCScreenImage:SetMyUCScreenImage:429",
+     "UCScreenImage:SetMyUCScreenImage:435",
+     "UCScreenImage:SetMyUCScreenImage:436",
+     "UCScreenImage:SetMyUCScreenImage:443",
+     "UCScreenImage:SetMyUCScreenImage:444",
+     "UCScreenImage:SetMyUCScreenImage:450",
+     "UCScreenImage:SetMyUCScreenImage:451",
+     "UCScreenImage:SetMyUCScreenImage:463",
+     "UCScreenImage:SetMyUCScreenImage:464",
+     "UCScreenImage:SetMyUCScreenImage:470",
+     "UCScreenImage:SetMyUCScreenImage:471",
+     "UCScreenImage:SetMyUCScreenImage:478",
+     "UCScreenImage:SetMyUCScreenImage:479",
+     "UCScreenImage:SetMyUCScreenImage:485",
+     "UCScreenImage:SetMyUCScreenImage:486",
+     "UCScreenImage:SetMyUCScreenImage:498",
+     "UCScreenImage:SetMyUCScreenImage:499",
+     "UCScreenImage:SetMyUCScreenImage:505",
+     "UCScreenImage:SetMyUCScreenImage:506",
+     "UCScreenImage:SetMyUCScreenImage:513",
+     "UCScreenImage:SetMyUCScreenImage:514",
+     "UCScreenImage:SetMyUCScreenImage:520",
+     "UCScreenImage:SetMyUCScreenImage:521",
+     "UCScreenImage:SetMyUCScreenImage:532",
+     "UCScreenImage:SetMyUCScreenImage:533",
+     "UCScreenImage:SetMyUCScreenImage:539",
+     "UCScreenImage:SetMyUCScreenImage:540",
+     "UCScreenImage:SetMyUCScreenImage:546",
+     "UCScreenImage:SetMyUCScreenImage:547",
+     "UCScreenImage:SetMyUCScreenImage:553",
+     "UCScreenImage:SetMyUCScreenImage:554"
+    ],
+    "visibility": "visible"
+   }
+  ],
+  "UCImageCut": [
+   {
+    "cls": "UCImageCut",
+    "name": "buttonClose",
+    "type": "Button",
+    "rect": [
+     474,
+     510,
+     16,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonClose_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCImageCut",
+    "name": "buttonTPJCH",
+    "type": "Button",
+    "rect": [
+     169,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCH_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCImageCut",
+    "name": "buttonTPJCW",
+    "type": "Button",
+    "rect": [
+     233,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCW_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCImageCut",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     297,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCImageCut",
+    "name": "buttonTPJCOK",
+    "type": "Button",
+    "rect": [
+     446,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCOK_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCThemeLocal": [
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonAll",
+    "type": "Button",
+    "rect": [
+     21,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonAll_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonDefault",
+    "type": "Button",
+    "rect": [
+     114,
+     2,
+     63,
+     18
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonDefault_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonUser",
+    "type": "Button",
+    "rect": [
+     114,
+     28,
+     63,
+     18
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonUser_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonLunbo",
+    "type": "Button",
+    "rect": [
+     531,
+     28,
+     40,
+     17
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonLunbo_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "textBoxTimer",
+    "type": "TextBox",
+    "rect": [
+     602,
+     29,
+     24,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxTimer_TextChanged",
+     "KeyPress:textBoxTimer_KeyPress",
+     "Leave:textBoxTimer_Leave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonThemeOut",
+    "type": "Button",
+    "rect": [
+     651,
+     27,
+     60,
+     18
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonThemeOut_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonDaoRu",
+    "type": "Button",
+    "rect": [
+     482,
+     28,
+     40,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonDaoRu_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonDaoChu",
+    "type": "Button",
+    "rect": [
+     441,
+     28,
+     40,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonDaoChu_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "textBoxCPU",
+    "type": "TextBox",
+    "rect": [
+     336,
+     29,
+     24,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxCPU_TextChanged",
+     "KeyPress:textBoxTimer_KeyPress",
+     "Leave:textBoxCPU_Leave"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeLocal",
+    "name": "buttonGame",
+    "type": "Button",
+    "rect": [
+     228,
+     28,
+     40,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonGame_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCThemeWeb": [
+   {
+    "cls": "UCThemeWeb",
+    "name": "buttonAll",
+    "type": "Button",
+    "rect": [
+     21,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonAll_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeWeb",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     120,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeWeb",
+    "name": "button2",
+    "type": "Button",
+    "rect": [
+     221,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button2_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeWeb",
+    "name": "button3",
+    "type": "Button",
+    "rect": [
+     322,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button3_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeWeb",
+    "name": "button4",
+    "type": "Button",
+    "rect": [
+     421,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button4_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeWeb",
+    "name": "button5",
+    "type": "Button",
+    "rect": [
+     520,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button5_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCThemeWeb",
+    "name": "button6",
+    "type": "Button",
+    "rect": [
+     621,
+     29,
+     63,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button6_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCThemeMask": [],
+  "UCVideoCut": [
+   {
+    "cls": "UCVideoCut",
+    "name": "buttonTPJCOK",
+    "type": "Button",
+    "rect": [
+     446,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCOK_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "buttonXuanzhuan",
+    "type": "Button",
+    "rect": [
+     297,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonXuanzhuan_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "buttonTPJCW",
+    "type": "Button",
+    "rect": [
+     233,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCW_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "buttonTPJCH",
+    "type": "Button",
+    "rect": [
+     169,
+     656,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCH_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "buttonYulan",
+    "type": "Button",
+    "rect": [
+     233,
+     513,
+     34,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonYulan_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "buttonClose",
+    "type": "Button",
+    "rect": [
+     474,
+     510,
+     16,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonClose_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "labelAllTimer",
+    "type": "Label",
+    "rect": [
+     408,
+     531,
+     88,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "labelStartTimer",
+    "type": "Label",
+    "rect": [
+     32,
+     597,
+     88,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "labelStopTimer",
+    "type": "Label",
+    "rect": [
+     408,
+     597,
+     88,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "labelInfo",
+    "type": "Label",
+    "rect": [
+     106,
+     582,
+     288,
+     28
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCVideoCut:buttonTPJCOK_Click:1492"
+    ],
+    "hidden_at": [
+     "UCVideoCut:buttonTPJCOK_Click:1499"
+    ],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     40,
+     661,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "button2",
+    "type": "Button",
+    "rect": [
+     110,
+     661,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button2_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCVideoCut",
+    "name": "labelTimer",
+    "type": "Label",
+    "rect": [
+     32,
+     531,
+     88,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCBoFangQiKongZhi": [
+   {
+    "cls": "UCBoFangQiKongZhi",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     10,
+     26,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCBoFangQiKongZhi",
+    "name": "buttonTPJCW",
+    "type": "Button",
+    "rect": [
+     108,
+     26,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCW_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCBoFangQiKongZhi",
+    "name": "buttonTPJCH",
+    "type": "Button",
+    "rect": [
+     64,
+     26,
+     34,
+     26
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTPJCH_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCBoFangQiKongZhi",
+    "name": "labelAllTimer",
+    "type": "Label",
+    "rect": [
+     162,
+     26,
+     88,
+     20
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCBoFangQiKongZhi",
+    "name": "labelNowTimer",
+    "type": "Label",
+    "rect": [
+     274,
+     26,
+     220,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCScrollB": [
+   {
+    "cls": "UCScrollB",
+    "name": "textBoxB",
+    "type": "TextBox",
+    "rect": [
+     29,
+     4,
+     36,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxB_TextChanged",
+     "KeyPress:textBoxB_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCBeiJingXianShi": [
+   {
+    "cls": "UCBeiJingXianShi",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     0,
+     0,
+     50,
+     50
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonOnOff_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCBeiJingXianShi",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     149,
+     30,
+     40,
+     40
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCBeiJingXianShi",
+    "name": "button2",
+    "type": "Button",
+    "rect": [
+     149,
+     111,
+     40,
+     40
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button2_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCBeiJingXianShi",
+    "name": "button3",
+    "type": "Button",
+    "rect": [
+     219,
+     111,
+     40,
+     40
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button3_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCBeiJingXianShi",
+    "name": "button4",
+    "type": "Button",
+    "rect": [
+     219,
+     30,
+     40,
+     40
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button4_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCTouPingXianShi": [
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     0,
+     0,
+     50,
+     50
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonOnOff_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonXSBK",
+    "type": "Button",
+    "rect": [
+     309,
+     16,
+     24,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonXSBK_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "textBoxX",
+    "type": "TextBox",
+    "rect": [
+     110,
+     40,
+     56,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxX_TextChanged",
+     "KeyPress:textBoxX_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "textBoxY",
+    "type": "TextBox",
+    "rect": [
+     110,
+     65,
+     56,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxY_TextChanged",
+     "KeyPress:textBoxX_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "textBoxW",
+    "type": "TextBox",
+    "rect": [
+     241,
+     40,
+     56,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxW_TextChanged",
+     "KeyPress:textBoxX_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "textBoxH",
+    "type": "TextBox",
+    "rect": [
+     241,
+     65,
+     56,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxH_TextChanged",
+     "KeyPress:textBoxX_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonAddX",
+    "type": "Button",
+    "rect": [
+     171,
+     42,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonAddX_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonSubX",
+    "type": "Button",
+    "rect": [
+     189,
+     42,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonSubX_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonSubW",
+    "type": "Button",
+    "rect": [
+     319,
+     42,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonSubW_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonAddW",
+    "type": "Button",
+    "rect": [
+     301,
+     42,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonAddW_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonSubY",
+    "type": "Button",
+    "rect": [
+     189,
+     67,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonSubY_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonAddY",
+    "type": "Button",
+    "rect": [
+     171,
+     67,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonAddY_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonSubH",
+    "type": "Button",
+    "rect": [
+     319,
+     67,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonSubH_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCTouPingXianShi",
+    "name": "buttonAddH",
+    "type": "Button",
+    "rect": [
+     301,
+     67,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonAddH_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCDongHuaLianDong": [
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     22,
+     24,
+     18,
+     36
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonM1",
+    "type": "Button",
+    "rect": [
+     240,
+     30,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonM2",
+    "type": "Button",
+    "rect": [
+     280,
+     30,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonM3",
+    "type": "Button",
+    "rect": [
+     320,
+     30,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonM4",
+    "type": "Button",
+    "rect": [
+     240,
+     57,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonM5",
+    "type": "Button",
+    "rect": [
+     280,
+     57,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonM6",
+    "type": "Button",
+    "rect": [
+     320,
+     57,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "textBox1",
+    "type": "TextBox",
+    "rect": [
+     429,
+     5,
+     36,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "textBox2",
+    "type": "TextBox",
+    "rect": [
+     547,
+     5,
+     36,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonYL1",
+    "type": "Button",
+    "rect": [
+     363,
+     27,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonYL2",
+    "type": "Button",
+    "rect": [
+     481,
+     27,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonYL3",
+    "type": "Button",
+    "rect": [
+     599,
+     27,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonXZ1",
+    "type": "Button",
+    "rect": [
+     363,
+     54,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonXZ2",
+    "type": "Button",
+    "rect": [
+     481,
+     54,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonXZ3",
+    "type": "Button",
+    "rect": [
+     599,
+     54,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonWL1",
+    "type": "Button",
+    "rect": [
+     418,
+     54,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonWL2",
+    "type": "Button",
+    "rect": [
+     536,
+     54,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCDongHuaLianDong",
+    "name": "buttonWL3",
+    "type": "Button",
+    "rect": [
+     654,
+     54,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCJianPanLianDongA": [
+   {
+    "cls": "UCJianPanLianDongA",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     22,
+     24,
+     18,
+     36
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongA",
+    "name": "buttonWL1",
+    "type": "Button",
+    "rect": [
+     344,
+     32,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongA",
+    "name": "buttonXZ1",
+    "type": "Button",
+    "rect": [
+     289,
+     32,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongA",
+    "name": "buttonYL1",
+    "type": "Button",
+    "rect": [
+     229,
+     32,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCJianPanLianDongB": [
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     22,
+     24,
+     18,
+     36
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonWL2",
+    "type": "Button",
+    "rect": [
+     384,
+     47,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonWL1",
+    "type": "Button",
+    "rect": [
+     384,
+     18,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonXZ2",
+    "type": "Button",
+    "rect": [
+     329,
+     47,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonXZ1",
+    "type": "Button",
+    "rect": [
+     329,
+     18,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonYL2",
+    "type": "Button",
+    "rect": [
+     269,
+     47,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongB",
+    "name": "buttonYL1",
+    "type": "Button",
+    "rect": [
+     269,
+     18,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCJianPanLianDongC": [
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     22,
+     24,
+     18,
+     36
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "buttonWL1",
+    "type": "Button",
+    "rect": [
+     344,
+     32,
+     20,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "buttonXZ1",
+    "type": "Button",
+    "rect": [
+     289,
+     32,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "buttonYL1",
+    "type": "Button",
+    "rect": [
+     229,
+     32,
+     50,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "labelSize",
+    "type": "Label",
+    "rect": [
+     490,
+     48,
+     40,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "labelFont",
+    "type": "Label",
+    "rect": [
+     394,
+     48,
+     92,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "labelColor",
+    "type": "Label",
+    "rect": [
+     434,
+     14,
+     24,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCJianPanLianDongC",
+    "name": "buttonWZZT",
+    "type": "Button",
+    "rect": [
+     391,
+     14,
+     40,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCMengBanXianShi": [
+   {
+    "cls": "UCMengBanXianShi",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     5,
+     5,
+     36,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonOnOff_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCMengBanXianShi",
+    "name": "button3",
+    "type": "Button",
+    "rect": [
+     149,
+     118,
+     40,
+     40
+    ],
+    "designer_hidden": true,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button3_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "hidden"
+   },
+   {
+    "cls": "UCMengBanXianShi",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     149,
+     30,
+     40,
+     40
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCShiPingBoFangQi": [
+   {
+    "cls": "UCShiPingBoFangQi",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     149,
+     30,
+     40,
+     40
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCShiPingBoFangQi",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     0,
+     0,
+     50,
+     50
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonOnOff_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCXiTongXianShiAdd": [
+   {
+    "cls": "UCXiTongXianShiAdd",
+    "name": "buttonTimer",
+    "type": "Button",
+    "rect": [
+     14,
+     31,
+     46,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonTimer_Click"
+    ],
+    "moved_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:129"
+    ],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiAdd",
+    "name": "buttonWeek",
+    "type": "Button",
+    "rect": [
+     66,
+     31,
+     46,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonWeek_Click"
+    ],
+    "moved_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:130"
+    ],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiAdd",
+    "name": "buttonDate",
+    "type": "Button",
+    "rect": [
+     118,
+     31,
+     46,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonDate_Click"
+    ],
+    "moved_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:131"
+    ],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiAdd",
+    "name": "buttonText",
+    "type": "Button",
+    "rect": [
+     170,
+     31,
+     46,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonText_Click"
+    ],
+    "moved_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:132"
+    ],
+    "resized_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:138"
+    ],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiAdd",
+    "name": "buttonLink",
+    "type": "Button",
+    "rect": [
+     180,
+     3,
+     36,
+     24
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:128"
+    ],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonLink_Click"
+    ],
+    "moved_at": [
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:133",
+     "UCXiTongXianShiAdd:UpdateUCXiTongXianShiAdd:134"
+    ],
+    "resized_at": [],
+    "visibility": "conditional"
+   }
+  ],
+  "UCXiTongXianShi": [
+   {
+    "cls": "UCXiTongXianShi",
+    "name": "buttonOnOff",
+    "type": "Button",
+    "rect": [
+     5,
+     5,
+     36,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonOnOff_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShi",
+    "name": "buttonAdd",
+    "type": "Button",
+    "rect": [
+     5,
+     35,
+     60,
+     60
+    ],
+    "designer_hidden": false,
+    "shown_at": [
+     "UCXiTongXianShi:UCXiTongXianShiSet_UCXiTongXianShiSubArray:136",
+     "UCXiTongXianShi:UCXiTongXianShiAdd:163",
+     "UCXiTongXianShi:XiTongXianShiSub:299"
+    ],
+    "hidden_at": [
+     "UCXiTongXianShi:UCXiTongXianShiSet_UCXiTongXianShiSubArray:140",
+     "UCXiTongXianShi:UCXiTongXianShiAdd:167"
+    ],
+    "events": [
+     "Click:buttonAdd_Click"
+    ],
+    "moved_at": [
+     "UCXiTongXianShi:UCXiTongXianShiSet_UCXiTongXianShiSubArray:134",
+     "UCXiTongXianShi:UCXiTongXianShiSet_UCXiTongXianShiSubArray:135",
+     "UCXiTongXianShi:UCXiTongXianShiAdd:161",
+     "UCXiTongXianShi:UCXiTongXianShiAdd:162",
+     "UCXiTongXianShi:XiTongXianShiSub:297",
+     "UCXiTongXianShi:XiTongXianShiSub:298"
+    ],
+    "resized_at": [],
+    "visibility": "conditional"
+   }
+  ],
+  "UCXiTongXianShiColor": [
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "textBoxX",
+    "type": "TextBox",
+    "rect": [
+     32,
+     32,
+     53,
+     19
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxXY_TextChanged",
+     "KeyPress:ColorKeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "textBoxY",
+    "type": "TextBox",
+    "rect": [
+     121,
+     32,
+     53,
+     19
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:textBoxXY_TextChanged",
+     "KeyPress:ColorKeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "label1",
+    "type": "Label",
+    "rect": [
+     39,
+     90,
+     108,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "label2",
+    "type": "Label",
+    "rect": [
+     151,
+     90,
+     31,
+     18
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "textBoxB",
+    "type": "TextBox",
+    "rect": [
+     181,
+     304,
+     36,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:ColorTextChanged",
+     "KeyPress:ColorKeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "textBoxG",
+    "type": "TextBox",
+    "rect": [
+     132,
+     304,
+     36,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:ColorTextChanged",
+     "KeyPress:ColorKeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "textBoxR",
+    "type": "TextBox",
+    "rect": [
+     83,
+     304,
+     36,
+     16
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:ColorTextChanged",
+     "KeyPress:ColorKeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC1",
+    "type": "Button",
+    "rect": [
+     13,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC2",
+    "type": "Button",
+    "rect": [
+     32,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC3",
+    "type": "Button",
+    "rect": [
+     51,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC4",
+    "type": "Button",
+    "rect": [
+     70,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC5",
+    "type": "Button",
+    "rect": [
+     89,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC6",
+    "type": "Button",
+    "rect": [
+     108,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC7",
+    "type": "Button",
+    "rect": [
+     127,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC8",
+    "type": "Button",
+    "rect": [
+     146,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC9",
+    "type": "Button",
+    "rect": [
+     165,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC10",
+    "type": "Button",
+    "rect": [
+     184,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonC11",
+    "type": "Button",
+    "rect": [
+     203,
+     354,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonC_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     13,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button2",
+    "type": "Button",
+    "rect": [
+     32,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button3",
+    "type": "Button",
+    "rect": [
+     51,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button4",
+    "type": "Button",
+    "rect": [
+     70,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button5",
+    "type": "Button",
+    "rect": [
+     89,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button6",
+    "type": "Button",
+    "rect": [
+     108,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button7",
+    "type": "Button",
+    "rect": [
+     127,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button8",
+    "type": "Button",
+    "rect": [
+     146,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button9",
+    "type": "Button",
+    "rect": [
+     165,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button10",
+    "type": "Button",
+    "rect": [
+     184,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "button11",
+    "type": "Button",
+    "rect": [
+     203,
+     333,
+     14,
+     14
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:button_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonText",
+    "type": "Button",
+    "rect": [
+     12,
+     87,
+     24,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonText_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "ucColorB1",
+    "type": "UCColorB",
+    "rect": [
+     65,
+     273,
+     158,
+     19
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "ucColorC1",
+    "type": "UCColorC",
+    "rect": [
+     8,
+     139,
+     214,
+     136
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCXiTongXianShiColor",
+    "name": "buttonGetColor",
+    "type": "Button",
+    "rect": [
+     12,
+     276,
+     48,
+     48
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonGetColor_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCXiTongXianShiTable": [
+   {
+    "cls": "UCXiTongXianShiTable",
+    "name": "button0",
+    "type": "Button",
+    "rect": [
+     80,
+     15,
+     70,
+     24
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable0:41"
+    ],
+    "hidden_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable1:57",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable2:75",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable3:85",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable4:110"
+    ],
+    "events": [
+     "Click:button0_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCXiTongXianShiTable",
+    "name": "textBox1",
+    "type": "TextBox",
+    "rect": [
+     15,
+     15,
+     200,
+     22
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable4:113"
+    ],
+    "hidden_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable0:38",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable1:56",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable2:74",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable3:84"
+    ],
+    "events": [
+     "TextChanged:textBox1_TextChanged"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCXiTongXianShiTable",
+    "name": "button1",
+    "type": "Button",
+    "rect": [
+     88,
+     16,
+     54,
+     22
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable1:59"
+    ],
+    "hidden_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable0:39",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable2:76",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable3:86",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable4:111"
+    ],
+    "events": [
+     "Click:button1_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   },
+   {
+    "cls": "UCXiTongXianShiTable",
+    "name": "button3",
+    "type": "Button",
+    "rect": [
+     88,
+     16,
+     54,
+     22
+    ],
+    "designer_hidden": true,
+    "shown_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable3:87"
+    ],
+    "hidden_at": [
+     "UCXiTongXianShiTable:UCXiTongXianShiTable0:40",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable1:58",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable2:77",
+     "UCXiTongXianShiTable:UCXiTongXianShiTable4:112"
+    ],
+    "events": [
+     "Click:button3_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "conditional"
+   }
+  ],
+  "UCShortcut": [
+   {
+    "cls": "UCShortcut",
+    "name": "buttonShortcut",
+    "type": "Button",
+    "rect": [
+     13,
+     86,
+     24,
+     24
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "Click:buttonShortcut_Click"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCShortcut",
+    "name": "labelShorcut",
+    "type": "Label",
+    "rect": [
+     38,
+     88,
+     182,
+     27
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCShortcut",
+    "name": "labelVal",
+    "type": "Label",
+    "rect": [
+     181,
+     388,
+     39,
+     27
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCShortcut",
+    "name": "textBoxY",
+    "type": "TextBox",
+    "rect": [
+     121,
+     32,
+     53,
+     19
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:TextBoxXY_TextChanged",
+     "KeyPress:Shortcut_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCShortcut",
+    "name": "textBoxX",
+    "type": "TextBox",
+    "rect": [
+     32,
+     32,
+     53,
+     19
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [
+     "TextChanged:TextBoxXY_TextChanged",
+     "KeyPress:Shortcut_KeyPress"
+    ],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   },
+   {
+    "cls": "UCShortcut",
+    "name": "ucScrollC1",
+    "type": "UCScrollC",
+    "rect": [
+     51,
+     392,
+     128,
+     20
+    ],
+    "designer_hidden": false,
+    "shown_at": [],
+    "hidden_at": [],
+    "events": [],
+    "moved_at": [],
+    "resized_at": [],
+    "visibility": "visible"
+   }
+  ],
+  "UCScreenImage": [],
+  "UCColorB": [],
+  "UCColorC": [],
+  "UCScrollC": []
+ },
+ "unreadable_visibility": []
+}
