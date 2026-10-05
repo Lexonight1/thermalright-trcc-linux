@@ -132,6 +132,11 @@
 
 ### Fixed
 
+- **The note after a one-off command on a screen that goes blank now gives
+  advice that works.** It always said to run `export TRCC_DAEMON=1`, which is
+  already the default and does nothing under `sudo` or on Windows. It now says
+  what applies: unset `TRCC_DAEMON` if it was set to 0, run without `sudo`, or
+  use the GUI where a background App is not possible.
 - **Themes you saved or exported stored a CPU fan reading as the fan hub's
   own fan.** TRCC wrote it with the code the Windows app uses for a fan-hub
   screen's built-in fan, so on any other cooler the Windows app showed that
