@@ -1928,6 +1928,19 @@ trcc theme export-config KEY OUTPUT_PATH
 | `KEY` | Device key, e.g. 0402:3922 |
 | `OUTPUT_PATH` | Destination JSON path (e.g. mydevice.json) |
 
+### `trcc theme export-current`
+
+Export what the panel shows, saved or not -- the Windows app's export.
+
+```bash
+trcc theme export-current KEY ARCHIVE_PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) |
+| `ARCHIVE_PATH` | Destination: .tr (the Windows app's format) or .zip |
+
 ### `trcc theme export-dc`
 
 Write a theme out as legacy `config1.dc` for Windows TRCC users.

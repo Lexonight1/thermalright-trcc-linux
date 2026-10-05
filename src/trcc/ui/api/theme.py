@@ -25,6 +25,7 @@ from ...core.commands import (
     DownloadCloudTheme,
     EnsureDataDownload,
     ExportConfig,
+    ExportCurrentTheme,
     ExportDcTheme,
     ExportOverlay,
     ExportTheme,
@@ -190,6 +191,22 @@ async def import_upload(
             pass
     http_error_if_failed(result)
     return result
+
+
+@router.get("/{key}/download")
+def download_current(key: str, request: Request) -> Response:
+    """Stream what the panel shows, saved or not, as a Windows ``.tr``.
+
+    The Windows app's export (``FormCZTV.buttonDaoChu_Click``); the route
+    below exports a SAVED theme by name.  Built in a tempfile that
+    ``temp_output`` deletes however the route exits.
+    """
+    log.info("api GET /theme/{key}/download: key=%s", key)
+    with temp_output(".tr") as tmp:
+        http_error_if_failed(request.app.state.trcc.dispatch(
+            ExportCurrentTheme(key=key, archive_path=tmp),
+        ))
+        return file_response(tmp, "application/octet-stream", "theme.tr")
 
 
 @router.get("/{key}/{theme_name}/download")

@@ -13,6 +13,7 @@ from ...core.commands import (
     DeviceState,
     DownloadCloudTheme,
     ExportConfig,
+    ExportCurrentTheme,
     ExportDcTheme,
     ExportOverlay,
     ExportTheme,
@@ -212,6 +213,24 @@ def export(
     )
     result = get_app().dispatch(
         ExportTheme(key=key, theme_name=theme_name, archive_path=archive_path),
+    )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("export-current")
+def export_current(
+    key: str = typer.Argument(..., help="Device key (e.g. 0402:3922)"),
+    archive_path: Path = typer.Argument(
+        ..., help="Destination: .tr (the Windows app's format) or .zip",
+    ),
+) -> None:
+    """Export what the panel shows, saved or not -- the Windows app's export."""
+    log.info("cli theme export-current: key=%s archive_path=%s",
+             key, archive_path)
+    result = get_app().dispatch(
+        ExportCurrentTheme(key=key, archive_path=archive_path),
     )
     typer.echo(result.message)
     if not result.ok:

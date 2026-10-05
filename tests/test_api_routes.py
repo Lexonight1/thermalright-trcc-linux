@@ -27,6 +27,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from trcc.app import App
+from trcc.core.commands import LoadTheme
 from trcc.core.models import DEFAULT_AUTOSTART_TARGET, RawFrame
 from trcc.core.ports import Renderer
 from trcc.core.protocol import FBL_PROFILES
@@ -1820,17 +1821,22 @@ def test_the_exports_come_back_as_bytes_and_leave_nothing(
 ) -> None:
     client, app = panel_api
     body = {"key": _KEY, "theme_name": "demo"}
+    demo = app.platform.paths().user_data_dir() / "theme320320" / "demo"
+    assert app.dispatch(LoadTheme(key=_KEY, path=demo)).ok
 
     overlay = client.post("/theme/export-overlay", json=body)
     dc = client.post("/theme/demo/export-dc", json={"key": _KEY})
     archive = client.get(f"/theme/{_KEY}/demo/download")
+    shown = client.get(f"/theme/{_KEY}/download")
     config = client.get(f"/theme/{_KEY}/config-download")
     (app.platform.paths().user_content_dir() / "demo.dc").write_bytes(dc.content)
     png = client.post(f"/devices/{_KEY}/display/render-dc", json={
         "dc_path": str(app.platform.paths().user_content_dir() / "demo.dc"),
         "width": 320, "height": 320})
 
-    assert [r.status_code for r in (overlay, dc, archive, config, png)] == [200] * 5
+    assert [r.status_code for r in (overlay, dc, archive, shown, config, png)
+            ] == [200] * 6
+    assert shown.content[:4] == b"\xdd\xdc\xdd\xdc"     # a Windows .tr
     assert json.loads(overlay.content)["elements"][0]["type"] == "clock"
     assert overlay.headers["content-disposition"] == (
         'attachment; filename="demo-overlay.json"')
@@ -1854,6 +1860,7 @@ def test_a_malformed_range_leaves_no_temp_file(
     for bad in ("bytes=abc", "bytes=99999999-"):
         client.get(f"/theme/{_KEY}/config-download", headers={"range": bad})
         client.get(f"/theme/{_KEY}/demo/download", headers={"range": bad})
+        client.get(f"/theme/{_KEY}/download", headers={"range": bad})
     assert list(private_tmp.iterdir()) == []
 
 

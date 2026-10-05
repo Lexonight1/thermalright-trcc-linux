@@ -15,6 +15,7 @@ import pytest
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import (
+    ExportCurrentTheme,
     ExportTheme,
     ImportTheme,
     LoadTheme,
@@ -2621,3 +2622,118 @@ def test_export_tr_carries_a_video_themes_still_frame(tmp_home: Path) -> None:
     FileContentStore().export(theme_dir, tmp_home / "clip.tr")
     parts = _tr.read((tmp_home / "clip.tr").read_bytes())
     assert (parts.background_png, parts.theme_zt) == (b"\x89PNG\r\n\x1a\nBG", None)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ExportCurrentTheme + ImportTheme: the Windows app's export / import
+# (FormCZTV.buttonDaoChu_Click / buttonDaoRu_Click) -- what is ON the panel
+# goes out, and what comes in goes ON the panel.
+# ─────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def panel(tmp_path: Path) -> tuple[App, list[bytes]]:
+    """A connected 320x320 panel showing a PROGRAM theme with a mask and two
+    overlay elements, plus every payload sent to it from now on."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice
+
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}],
+                           tmp_path), renderer=QtRenderer())
+    assert app.dispatch(ConnectDevice(key=_TEST_DEVICE_KEY)).ok
+    r = app.renderer
+    theme = app.platform.paths().theme_dir(*_TEST_RES) / "Prog"
+    theme.mkdir(parents=True)
+    (theme / "00.png").write_bytes(
+        r.encode_png(r.create_surface(320, 320, color=(200, 30, 30, 255))))
+    (theme / "01.png").write_bytes(
+        r.encode_png(r.create_surface(320, 320, color=(0, 0, 0, 128))))
+    (theme / "trcc.json").write_text(json.dumps({
+        "name": "Prog", "width": 320, "height": 320, "elements": [
+            {"type": "text", "text": "HELLO", "x": 40, "y": 60,
+             "color": "#ffffff", "font_size": 30},
+            {"type": "clock", "source": "date", "format": "%Y/%m/%d",
+             "x": 120, "y": 200, "color": "#00ff00", "font_size": 24},
+        ]}), encoding="utf-8")
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=theme)).ok
+    sent: list[bytes] = []
+    send = app.send
+    app.send = lambda key, payload, **kw: (  # type: ignore[method-assign]
+        sent.append(bytes(payload)), send(key, payload, **kw))[1]
+    return app, sent
+
+
+def _frame(app: App, sent: list[bytes]) -> bytes:
+    from trcc.core.commands import RenderAndSend
+
+    start = len(sent)
+    assert app.dispatch(RenderAndSend(key=_TEST_DEVICE_KEY)).ok
+    return b"".join(sent[start:])
+
+
+def test_export_current_theme_carries_the_panel_not_the_library(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+) -> None:
+    """A PROGRAM theme exports (ExportTheme only knows saved ones), its mask
+    travels in the .tr, and nothing is added to the user's library -- the
+    SaveTheme path would have copied the mask into the mask grid."""
+    from trcc.services import _tr
+
+    app, _ = panel
+    events: list[ThemeExported] = []
+    app.events.subscribe(ThemeExported, events.append)
+    archive = tmp_path / "Party.tr"
+
+    result = app.dispatch(ExportCurrentTheme(key=_TEST_DEVICE_KEY,
+                                             archive_path=archive))
+
+    assert result.ok is True, result.message
+    parts = _tr.read(archive.read_bytes())
+    theme = app.active_themes[_TEST_DEVICE_KEY].path
+    assert parts.mask_png == (theme / "01.png").read_bytes()
+    assert (parts.background_png or b"")[:8] == b"\x89PNG\r\n\x1a\n"
+    user = app.platform.paths().user_content_dir()
+    assert [p for p in user.rglob("*") if p.is_file()] == []
+    assert [e.theme_name for e in events] == ["Party"]
+
+
+@pytest.mark.parametrize("suffix", [".tr", ".zip"])
+def test_an_exported_theme_imports_back_to_the_same_frame(
+    panel: tuple[App, list[bytes]], tmp_path: Path, suffix: str,
+) -> None:
+    """Export what the panel shows, import it: the panel sends the very same
+    bytes -- through the Windows .tr's binary layout as well as our zip."""
+    app, sent = panel
+    before = _frame(app, sent)
+    archive = tmp_path / f"Party{suffix}"
+    assert app.dispatch(ExportCurrentTheme(key=_TEST_DEVICE_KEY,
+                                           archive_path=archive)).ok
+
+    result = app.dispatch(ImportTheme(key=_TEST_DEVICE_KEY,
+                                      archive_path=archive, name="Back"))
+
+    assert result.ok is True, result.message
+    assert app.active_themes[_TEST_DEVICE_KEY].path.name == "Back"
+    assert _frame(app, sent) == before
+
+
+def test_importing_puts_the_theme_on_the_panel(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+) -> None:
+    """The Windows app's import shows the theme; it used to land in the list
+    only, whichever UI asked."""
+    app, _ = panel
+    from .conftest import renderable_theme
+
+    source = renderable_theme(tmp_path / "elsewhere", "Other")
+    archive = tmp_path / "Other.zip"
+    FileContentStore().export(source, archive)
+
+    result = app.dispatch(ImportTheme(key=_TEST_DEVICE_KEY, archive_path=archive))
+
+    assert result.ok is True, result.message
+    assert app.active_themes[_TEST_DEVICE_KEY].path == Path(result.path)
+    assert app.settings.for_device(_TEST_DEVICE_KEY).current_theme == result.path
+

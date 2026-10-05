@@ -1422,6 +1422,8 @@ class TRCCApp(QMainWindow):
 
         self.uc_theme_local.theme_selected.connect(self._on_local_theme_clicked)
         self.uc_theme_local.delete_requested.connect(self._on_delete_theme)
+        self.uc_theme_local.export_requested.connect(self._on_export_clicked)
+        self.uc_theme_local.import_requested.connect(self._on_import_clicked)
         self.uc_theme_local.delegate.connect(self._on_local_delegate)
         self.uc_theme_web.theme_selected.connect(self._on_cloud_theme_clicked)
         self.uc_theme_web.download_started.connect(self._on_theme_download_started)
@@ -1620,6 +1622,41 @@ class TRCCApp(QMainWindow):
             h = self._active_lcd()
             if h:
                 h.on_slideshow_delegate()
+
+    def _on_export_clicked(self) -> None:
+        """The C#'s export: a ``.tr`` named after the theme-name box
+        (``FormCZTV.buttonDaoChu_Click``); our zip keeps a video background."""
+        h = self._active_lcd()
+        log.info("_on_export_clicked: device=%s",
+                 h.device_key if h else None)
+        if h is None:
+            return
+        path, chosen = QFileDialog.getSaveFileName(
+            self, "Export Theme", f"{self.theme_name_input.text()}.tr",
+            "Theme files (*.tr);;TRCC theme archive (*.zip)")
+        if not path:
+            return
+        # A native dialog does not add the filter's extension, and the
+        # extension is what picks the format.
+        target = Path(path)
+        if target.suffix.lower() not in (".tr", ".zip"):
+            target = target.with_name(
+                target.name + (".zip" if "zip" in chosen else ".tr"))
+        h.export_theme(target)
+
+    def _on_import_clicked(self) -> None:
+        """The C#'s import: the theme lands on the panel
+        (``FormCZTV.buttonDaoRu_Click``)."""
+        h = self._active_lcd()
+        log.info("_on_import_clicked: device=%s",
+                 h.device_key if h else None)
+        if h is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Theme", "",
+            "Theme files (*.tr *.zip);;All Files (*)")
+        if path:
+            h.import_theme(Path(path))
 
     def _on_delete_theme(self, theme_info: Any) -> None:
         log.info("_on_delete_theme")

@@ -25,6 +25,15 @@
 
 ### Added
 
+- **Export what the screen is showing, as the Windows app does.** In
+  `trcc gui` the export and import buttons now sit at the top of the local
+  theme list, where the Windows app puts them. Export writes whatever is on
+  the screen right now, saved or not, to a `.tr` file the Windows app can
+  open, or to a `.zip` that also keeps a video background; it is named after
+  the theme name box. Before, export looked for a saved theme with the same
+  name as the file you typed, and failed if there was none. The same export
+  is `trcc theme export-current` on the command line and
+  `GET /theme/{key}/download` in the API.
 - **A frame shows on your desktop round the area being cast.** As in the
   Windows app, while a screen cast runs, a thin grey frame marks what is being
   sent to the cooler's screen, in both `trcc gui` and `trcc qtgui`. Drag the
@@ -83,6 +92,15 @@
 
 ### Changed
 
+- **Importing a theme now shows it on the screen,** as in the Windows app,
+  from every window, the command line and the API. Before, it was only added
+  to the theme list.
+- **The local theme list (`trcc gui`) shows every theme in one list,** as
+  the Windows app does; the "Default" and "User" filter buttons are gone.
+  The delete button now appears on exactly the themes you saved or imported.
+  Before, it followed the position in the list, so on 854x480 screens five
+  of the built-in themes offered a delete that then failed. The unused
+  "export all" button is also gone; the Windows app hides it too.
 - **The Qt gui (`trcc qtgui`) no longer has a screen-cast "Update rate"
   slider.** Every interface now casts at the Windows app's one fixed rate,
   about 17 frames a second; before, only that slider could change it, so the
@@ -136,9 +154,8 @@
 - **The window now has a brightness slider, as in the Windows app.** Drag
   it or type a value from 0 to 100. It replaces the button that cycled
   through three levels. The bottom row now matches the Windows app 2.1.8,
-  which also removed the export and import buttons from this window. You
-  can still export and import themes from the native-skin window, the
-  command line and the API.
+  which moved the export and import buttons to the top of the local theme
+  list.
 - **The native-skin window can now choose what an LED display shows.** On
   coolers whose display shows one reading at a time (AX120, AK120, LF8 and
   others), the Zones tab said "no separately-addressable zones" and offered

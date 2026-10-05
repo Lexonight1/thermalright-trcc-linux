@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**133 endpoints.**
+**134 endpoints.**
 
 ## Running it
 
@@ -101,6 +101,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /theme/save` | `ThemeResponse` | Save the device's active theme, refusing a name collision at 409. |
 | `GET /theme/web` | `list` | Cloud-theme preview gallery for a resolution (e.g. ``320x320``). |
 | `GET /theme/{key}/config-download` | — | Stream a device's settings snapshot as a JSON download. |
+| `GET /theme/{key}/download` | — | Stream what the panel shows, saved or not, as a Windows ``.tr``. |
 | `GET /theme/{key}/{theme_name}/download` | — | Stream a theme archive as a multipart download. |
 | `POST /theme/{name}/export-dc` | — | Download a theme as legacy ``config1.dc``. |
 

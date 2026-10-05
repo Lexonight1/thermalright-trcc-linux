@@ -570,6 +570,32 @@ class LoadTheme(Command[ThemeResult]):
                      if sent else f"Theme '{theme.name}' rendered but send failed",
             )
 
+def _composed_resolution(
+    app: App, key: str, theme: Theme, s: DeviceSettings,
+) -> tuple[int, int] | None:
+    """The resolution the device's live content is composed in -- its folder.
+
+    The content's orientation, not the raw angle: a portrait selection
+    (portrait mask / portrait theme) is ``{h}{w}``, landscape content
+    ``{w}{h}``, so a theme always reloads into the orientation it was composed
+    in.  Folder selection is the asset-catalog concern, kept separate from the
+    renderer's compose canvas.  A device with no live profile falls back to
+    the angle-keyed resolution.  Shared by :class:`SaveTheme` and
+    :class:`ExportCurrentTheme`, which describe the same content.
+    """
+    device = app.devices.get(key)
+    profile = device.profile if device is not None else None
+    if profile is None:
+        log.debug("_composed_resolution: %s has no live profile -- "
+                  "angle-keyed", key)
+        return _resolve_oriented_resolution(app, key)
+    portrait = content_is_portrait(theme, profile, s.mask_path, s.mask_visible)
+    resolution = save_folder_resolution(profile, s.orientation, portrait)
+    log.debug("_composed_resolution: %s portrait=%s -> %s",
+              key, portrait, resolution)
+    return resolution
+
+
 @dataclass(frozen=True, slots=True)
 class SaveTheme(Command[ThemeResult]):
     """Save the device's CURRENT rendered state as a new theme directory.
@@ -639,27 +665,9 @@ class SaveTheme(Command[ThemeResult]):
             )
 
         device_settings = app.settings.for_device(self.key)
-        # Save into the folder matching the content's orientation, not the raw
-        # angle — the content's parent folder IS the orientation.  A connected
-        # device carries its profile, so we key the resolution on
-        # save_folder_resolution: a portrait selection (portrait mask / portrait
-        # theme) → theme{h}{w}; landscape content → theme{w}{h}.  This makes
-        # save + reload agree — a theme always reloads into the orientation it
-        # was composed in.  (Folder selection is the asset-catalog concern, kept
-        # separate from the renderer's compose canvas.)  Disconnected (no live
-        # profile) falls back to the angle-keyed resolution, unchanged.
-        device = app.devices.get(self.key)
-        profile = device.profile if device is not None else None
-        if profile is not None:
-            portrait = content_is_portrait(
-                theme, profile, device_settings.mask_path,
-                device_settings.mask_visible,
-            )
-            resolution = save_folder_resolution(
-                profile, device_settings.orientation, portrait,
-            )
-        else:
-            resolution = _resolve_oriented_resolution(app, self.key)
+        resolution = _composed_resolution(
+            app, self.key, theme, device_settings,
+        )
         if resolution is None:
             log.warning(
                 "SaveTheme: cannot resolve resolution for %s "
@@ -780,7 +788,28 @@ class SaveTheme(Command[ThemeResult]):
         A video background is bundled verbatim by :meth:`_store_background`
         and produces no ref.
         """
-        manifest: dict = {"name": self.name, "width": width, "height": height}
+        manifest = self._live_manifest(app, theme, s, self.name,
+                                       width, height)
+        bg_ref = self._store_background(app, theme, s, width, height)
+        if bg_ref is not None:
+            manifest["background"] = bg_ref
+        mask_ref = self._store_mask(app, theme, s, width, height)
+        if mask_ref is not None:
+            manifest["mask"] = mask_ref
+        return manifest
+
+    @classmethod
+    def _live_manifest(
+        cls, app: App, theme: Theme, s: DeviceSettings, name: str,
+        width: int, height: int,
+    ) -> dict:
+        """Everything a theme of the live state says except where its
+        background and mask live -- the part :class:`SaveTheme` (library
+        refs) and :class:`ExportCurrentTheme` (bundled files) share.
+        """
+        log.info("_live_manifest: %r %dx%d from %s", name, width, height,
+                 theme.name)
+        manifest: dict = {"name": name, "width": width, "height": height}
         # The codec names these, so the codec lists them.  Spelled out here,
         # the tuple went on saying ``transparent_display`` after the field was
         # renamed — and a manifest key nothing reads is indistinguishable from
@@ -793,14 +822,8 @@ class SaveTheme(Command[ThemeResult]):
         # edited it, and the C# saves its live Jp* (FormCZTV.cs:7290).
         manifest.update(screencast_dc_flags(s))
         manifest.setdefault("overlay_enabled", True)
-        manifest["elements"] = self._combine_elements(theme, s)
+        manifest["elements"] = cls._combine_elements(theme, s)
 
-        bg_ref = self._store_background(app, theme, s, width, height)
-        if bg_ref is not None:
-            manifest["background"] = bg_ref
-        mask_ref = self._store_mask(app, theme, s, width, height)
-        if mask_ref is not None:
-            manifest["mask"] = mask_ref
         # Screencast is the active display source when the screencast toggle is
         # on (mutually exclusive with a background/video) — store its region
         # config in the user library and reference it by URI.
@@ -1002,37 +1025,45 @@ class SaveTheme(Command[ThemeResult]):
 
         ``Theme.png`` is the chooser's preferred tile and is NEVER rendered
         to the device, so baking the full composite (background + mask +
-        overlay) is safe.  Best-effort: needs a connected device + renderer
-        to snapshot; a headless save falls back to the source theme's
-        thumbnail.  Never raises — a thumbnail miss must not fail the save.
+        overlay) is safe.  Best-effort: a headless save falls back to the
+        source theme's thumbnail.  Never raises — a thumbnail miss must not
+        fail the save.
         """
-        device = app.devices.get(self.key)
-        if device is not None:
-            try:
-                from ...services.metrics_personalize import personalize_readings
-                s_app = app.settings.app
-                sensors = personalize_readings(
-                    app.platform.sensors().read_all(),
-                    temp_unit=s_app.temp_unit, hdd_enabled=s_app.hdd_enabled,
-                )
-                surface = app.display.build_preview_surface(
-                    info=device.info, theme=theme, sensors=sensors,
-                    profile=device.profile,
-                )
-                out = app.themes.write_preview(
-                    target, app.renderer.encode_png(surface),
-                )
-                log.info("SaveTheme: preview snapshot → %s", out)
-                return
-            except Exception as e:
-                log.warning("SaveTheme: preview snapshot failed (%s) — "
-                            "falling back to source thumbnail", e)
+        png = self._preview_png(app, self.key, theme)
+        if png is not None:
+            out = app.themes.write_preview(target, png)
+            log.info("SaveTheme: preview snapshot → %s", out)
+            return
 
         if app.themes.copy_preview(theme.path, target):
             log.info("SaveTheme: copied source thumbnail from %s", theme.path)
         else:
             log.info("SaveTheme: no device + no source thumbnail — "
                      "saved without a grid tile")
+
+    @staticmethod
+    def _preview_png(app: App, key: str, theme: Theme) -> bytes | None:
+        """The live preview composite as PNG bytes, or None when there is no
+        connected device to snapshot or the render fails.  Never raises."""
+        device = app.devices.get(key)
+        if device is None:
+            log.info("_preview_png: %s not connected — no snapshot", key)
+            return None
+        try:
+            from ...services.metrics_personalize import personalize_readings
+            s_app = app.settings.app
+            sensors = personalize_readings(
+                app.platform.sensors().read_all(),
+                temp_unit=s_app.temp_unit, hdd_enabled=s_app.hdd_enabled,
+            )
+            surface = app.display.build_preview_surface(
+                info=device.info, theme=theme, sensors=sensors,
+                profile=device.profile,
+            )
+            return app.renderer.encode_png(surface)
+        except Exception as e:
+            log.warning("_preview_png: snapshot failed (%s)", e)
+            return None
 
 @dataclass(frozen=True, slots=True)
 class ExportConfig(Command[ExportConfigResult]):
@@ -1215,6 +1246,72 @@ class ExportTheme(Command[ThemeExportResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class ExportCurrentTheme(Command[ThemeExportResult]):
+    """Export what the device is SHOWING, saved or not, to a file.
+
+    The Windows app's export button (``FormCZTV.buttonDaoChu_Click``, shown on
+    ``UCThemeLocal`` at 441,28) writes the live layout, background, mask and
+    orientation -- not a theme folder, so a program theme or unsaved edits
+    export too.  :class:`ExportTheme` exports a SAVED user theme by name.
+
+    The content is :class:`SaveTheme`'s, described once: the same resolution,
+    the same manifest, the same tile.  Only where the assets go differs --
+    bundled into a throwaway dir (``ContentStore.export_unsaved``), never the
+    user library, which would add a mask or background to a grid.
+    """
+    USES_DEVICE: ClassVar[bool] = True
+    key: str
+    archive_path: Path
+
+    def execute(self, app: App) -> ThemeExportResult:
+        name = self.archive_path.stem
+        log.info("ExportCurrentTheme: key=%s archive=%s", self.key,
+                 self.archive_path)
+
+        def failed(message: str) -> ThemeExportResult:
+            log.warning("ExportCurrentTheme: %s", message)
+            return ThemeExportResult(
+                ok=False, theme_name=name,
+                archive_path=str(self.archive_path), message=message,
+            )
+
+        theme = app.active_themes.get(self.key)
+        if theme is None:
+            return failed(f"no active theme for {self.key} — load one first")
+        s = app.settings.for_device(self.key)
+        resolution = _composed_resolution(app, self.key, theme, s)
+        if resolution is None:
+            return failed(f"cannot resolve resolution for {self.key} "
+                          "(connect the device first)")
+
+        manifest = SaveTheme._live_manifest(app, theme, s, name, *resolution)
+        bg = SaveTheme._pick_asset(
+            s.background_path, app.themes.background_path(theme), "background",
+        )
+        mask = (SaveTheme._pick_asset(
+            s.mask_path, app.themes.mask_path(theme), "mask",
+        ) if s.mask_visible else None)
+        try:
+            background = (
+                bg if bg is None or MEDIA.kind_of(bg) is MediaKind.ANIMATED
+                else app.renderer.encode_png(app.renderer.open_image(bg)))
+            app.themes.export_unsaved(
+                manifest, self.archive_path, background=background, mask=mask,
+                preview=SaveTheme._preview_png(app, self.key, theme),
+            )
+        except (OSError, ThemeError, TrccError) as e:
+            return failed(f"failed to export: {e}")
+
+        app.events.publish(ThemeExported(
+            theme_name=name, archive_path=str(self.archive_path),
+        ))
+        return ThemeExportResult(
+            ok=True, theme_name=name, archive_path=str(self.archive_path),
+            message=f"exported the panel's theme to {self.archive_path}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ExportOverlay(Command[ThemeExportResult]):
     """Copy a theme's overlay config file to ``output_path``.
 
@@ -1321,8 +1418,10 @@ class ImportTheme(Command[ThemeImportResult]):
     directory.
 
     ``name`` defaults to the archive filename's stem when blank.
-    Zip-slip is filtered server-side by ``ContentStore.import_``.
+    Zip-slip is filtered server-side by ``ContentStore.import_``.  Then the
+    imported theme is SHOWN, as the Windows app's import shows it.
     """
+    USES_DEVICE: ClassVar[bool] = True
     key: str
     archive_path: Path
     name: str = ""
@@ -1363,9 +1462,24 @@ class ImportTheme(Command[ThemeImportResult]):
         app.events.publish(ThemeImported(
             theme_name=chosen_name, path=str(theme.path),
         ))
+        # The Windows app's import puts the theme ON the panel
+        # (``FormCZTV.buttonDaoRu_Click`` → ``ReadFileTheme``), whichever UI
+        # asked.  A device that is not connected keeps it in the list only.
+        if app.devices.get(self.key) is None:
+            log.info("ImportTheme: %s not connected — imported, not shown",
+                     self.key)
+            return ThemeImportResult(
+                ok=True, theme_name=chosen_name, path=str(theme.path),
+                message=f"theme imported as '{chosen_name}' at {theme.path}",
+            )
+        shown = app.dispatch(LoadTheme(key=self.key, path=theme.path))
+        log.info("ImportTheme: showing %s → ok=%s", theme.path, shown.ok)
         return ThemeImportResult(
-            ok=True, theme_name=chosen_name, path=str(theme.path),
-            message=f"theme imported as '{chosen_name}' at {theme.path}",
+            ok=shown.ok, theme_name=chosen_name, path=str(theme.path),
+            message=(f"theme imported as '{chosen_name}' and shown"
+                     if shown.ok else
+                     f"theme imported as '{chosen_name}' at {theme.path}, "
+                     f"but showing it failed: {shown.message}"),
         )
 
 @dataclass(frozen=True, slots=True)

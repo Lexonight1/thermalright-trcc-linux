@@ -1642,6 +1642,25 @@ class ContentStore(ABC):
         """
 
     @abstractmethod
+    def export_unsaved(
+        self, manifest: dict, archive_path: Path, *,
+        background: Path | bytes | None,
+        mask: Path | None,
+        preview: bytes | None,
+    ) -> None:
+        """Archive a theme that exists only as a device's live state.
+
+        The Windows app's export writes what is ON the panel, saved or not
+        (``FormCZTV.buttonDaoChu_Click``), so there is no theme folder to hand
+        :meth:`export`.  The caller decides the content -- the manifest, the
+        background (PNG bytes, or a video file), the mask image, the grid
+        tile -- and this assembles it as a self-contained theme somewhere the
+        user never sees, archives it like :meth:`export`, and discards it.
+        Nothing lands in the user library, so an export never adds a mask or
+        a background to a grid.
+        """
+
+    @abstractmethod
     def import_(self, archive_path: Path, into_dir: Path) -> Theme:
         """Unpack a theme archive into *into_dir*.
 

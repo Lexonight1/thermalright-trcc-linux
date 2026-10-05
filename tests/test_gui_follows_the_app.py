@@ -329,7 +329,8 @@ def test_the_bottom_row_sits_where_formcztv_2_1_8_puts_it(window: Any) -> None:
     """Slider, theme name and save at the C#'s own coordinates
     (FormCZTV.cs:8884, :8620 and the buttonBCZT setup), so they cannot
     overlap -- the slider needs the 278-344 span the name box used to hold.
-    No export / import: 2.1.8 moved them off the form (y=880).
+    No export / import here: 2.1.8 moved them off the form (y=880), onto the
+    local-theme panel (see the test below).
     """
     def rect(w: Any) -> tuple[int, int, int, int]:
         g = w.geometry()
@@ -339,6 +340,47 @@ def test_the_bottom_row_sits_where_formcztv_2_1_8_puts_it(window: Any) -> None:
     assert rect(window.theme_name_input) == (378, 684, 102, 16)
     assert rect(window.save_btn) == (482, 680, 24, 24)
     assert not hasattr(window, "export_btn") and not hasattr(window, "import_btn")
+
+
+def test_the_local_theme_panel_exports_and_imports_like_formcztv(
+    window: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """2.1.8 hid FormCZTV's export / import and kept them on UCThemeLocal at
+    (441, 28) / (482, 28) (UCThemeLocal.cs:889, :903).  d9093b61 removed the
+    gui's outright, reading the hidden pair as the whole story.  Export is
+    what the panel shows, named after the theme-name box; a name typed
+    without an extension gets the chosen format's; import shows the theme.
+    """
+    from PySide6.QtWidgets import QFileDialog
+
+    local = window.uc_theme_local
+
+    def rect(w: Any) -> tuple[int, int, int, int]:
+        g = w.geometry()
+        return (g.x(), g.y(), g.width(), g.height())
+
+    assert rect(local.export_btn) == (441, 28, 40, 18)
+    assert rect(local.import_btn) == (482, 28, 40, 18)
+    sent = _commands_sent(window._app, monkeypatch)
+    offered: list[str] = []
+
+    def save_as(_parent: Any, _title: str, default: str, _filters: str):
+        offered.append(default)
+        return str(tmp_path / "Party"), "Theme files (*.tr)"
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", save_as)
+    monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                        lambda *_a: (str(tmp_path / "Party.tr"), ""))
+    window.theme_name_input.setText("Party")
+
+    local.export_btn.click()
+    local.import_btn.click()
+
+    assert offered == ["Party.tr"]
+    # The third is the App's, not the gui's: ImportTheme shows the theme
+    # through LoadTheme on the bus.
+    assert sent == ["ExportCurrentTheme", "ImportTheme", "LoadTheme"]
+    assert window._app.active_themes[_KEY].path.name == "Party"
 
 
 def test_a_panel_with_no_mask_position_does_not_show_the_previous_panels(

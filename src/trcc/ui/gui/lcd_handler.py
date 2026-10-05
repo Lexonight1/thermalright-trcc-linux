@@ -30,7 +30,9 @@ from ...core.commands import (
     CurrentFrame,
     DeviceState,
     EnableOverlay,
+    ExportCurrentTheme,
     GetPaths,
+    ImportTheme,
     LcdSnapshot,
     ListThemes,
     LoadCloudTheme,
@@ -617,6 +619,24 @@ class LCDHandler(BaseHandler):
         # save made in any other UI.
         self._w['preview'].set_status(r.message)
         return r
+
+    def export_theme(self, path: Path) -> None:
+        """Write what this panel shows, saved or not, to *path* (the C#'s
+        ``buttonDaoChu_Click``)."""
+        self.log.info("export_theme: %s device=%s", path, self._device_key)
+        r = self._app.dispatch(ExportCurrentTheme(
+            key=self._device_key, archive_path=path,
+        ))
+        self._w['preview'].set_status(r.message)
+
+    def import_theme(self, path: Path) -> None:
+        """Import *path* and show it on this panel (the C#'s
+        ``buttonDaoRu_Click``); the grid re-lists on ``ThemeImported``."""
+        self.log.info("import_theme: %s device=%s", path, self._device_key)
+        r = self._app.dispatch(ImportTheme(
+            key=self._device_key, archive_path=path,
+        ))
+        self._w['preview'].set_status(r.message)
 
     # ── DC File Loading ────────────────────────────────────────────
 

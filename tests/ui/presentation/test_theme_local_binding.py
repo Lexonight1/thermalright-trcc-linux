@@ -31,10 +31,12 @@ def test_set_slideshow_state_disabled_clears(qtbot) -> None:
     assert panel.get_slideshow_themes() == []      # no names → no resolved items
 
 
-def test_set_themes_renders_entries_and_origin_drives_filter(qtbot) -> None:
+def test_set_themes_renders_entries_and_origin_decides_deletion(qtbot) -> None:
     """The View renders ListThemes entries (no disk walk): ``origin`` maps to
-    is_user (location-derived) and drives the user/default filter; ``preview``
-    is the tile image. (#theme-collision)"""
+    is_user (location-derived) and decides which tiles offer delete;
+    ``preview`` is the tile image.  Every theme is listed -- the C# hides its
+    Default / User filters for good (UCThemeLocal.cs:821, :836).
+    (#theme-collision)"""
     from trcc.core.results import ThemeListEntry
 
     panel = UCThemeLocal()
@@ -52,8 +54,6 @@ def test_set_themes_renders_entries_and_origin_drives_filter(qtbot) -> None:
     assert by_name["Aurora"].is_user is False
     assert by_name["MyMix"].thumbnail == "/u/MyMix/Theme.png"
 
-    panel.filter_mode = panel.MODE_USER
-    panel._render_filtered()
-    shown = [w.item_info.name for w in panel.item_widgets
-             if hasattr(w, "item_info")]
-    assert shown == ["MyMix"]                          # only the user-origin theme
+    deletable = {w.item_info.name: w._delete_btn is not None
+                 for w in panel.item_widgets if hasattr(w, "item_info")}
+    assert deletable == {"MyMix": True, "Aurora": False}

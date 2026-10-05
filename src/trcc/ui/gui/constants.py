@@ -222,8 +222,6 @@ class Layout:
 
     # UCThemeLocal filter buttons
     LOCAL_BTN_ALL = (21, 29, 63, 18)
-    LOCAL_BTN_DEFAULT = (121, 29, 63, 18)
-    LOCAL_BTN_USER = (221, 29, 63, 18)
 
     # UCThemeWeb category buttons
     WEB_CATEGORIES = [

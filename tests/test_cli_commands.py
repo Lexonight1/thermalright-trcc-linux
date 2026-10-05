@@ -1188,6 +1188,34 @@ def test_theme_export_help(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_theme_export_current_writes_the_panels_theme(
+    cli_runner: CliRunner, tmp_path: Path,
+) -> None:
+    """``trcc theme export-current`` -- the Windows app's export: what the
+    panel shows goes to a .tr, without saving it first."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice, LoadTheme
+    from trcc.ui.cli import _ctx
+
+    from .conftest import renderable_theme
+    from .mock_platform import MockPlatform
+
+    _ctx.set_platform(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}],
+                                   tmp_path / "root"))
+    _ctx.set_renderer(QtRenderer())
+    app = _ctx.compose_app()
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+    theme = renderable_theme(app.platform.paths().theme_dir(320, 320), "Theme1")
+    assert app.dispatch(LoadTheme(key="0402:3922", path=theme)).ok
+    archive = tmp_path / "Party.tr"
+
+    result = cli_runner.invoke(
+        _app(), ["theme", "export-current", "0402:3922", str(archive)])
+
+    assert result.exit_code == 0, result.output
+    assert archive.read_bytes()[:4] == b"\xdd\xdc\xdd\xdc"
+
+
 def test_theme_import_help(cli_runner: CliRunner, cli_app) -> None:
     del cli_app
     result = cli_runner.invoke(_app(), ["theme", "import", "--help"])

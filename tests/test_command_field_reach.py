@@ -90,6 +90,11 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("GetPaths", "api"): (frozenset({"resolution"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
+    ("ImportTheme", "gui"): (frozenset({"name"}), (
+        "scoped: the C# import has no name field -- the theme is named after "
+        "the file (FormCZTV.buttonDaoRu_Click sets textBoxCMM to the file "
+        "stem), which is ImportTheme's own default"
+    )),
     ("ImportTheme", "qtgui"): (frozenset({"name"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),

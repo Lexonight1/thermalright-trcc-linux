@@ -50,7 +50,9 @@ import function_census  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: LOWER IT when a function comes off the list; never raise it.
 #: 15 -> 14 on 2026-09-30: qtgui's ConfigurationPanel._setup_ui (150 -> 111
 #: lines) when its two Apply buttons gave way to one Command per control.
-MAX_LONG_FUNCTIONS = 14
+#: 14 -> 13 on 2026-10-05: SaveTheme.execute, when the resolution of the live
+#: content moved to ``_composed_resolution``, shared with ExportCurrentTheme.
+MAX_LONG_FUNCTIONS = 13
 
 #: LOWER IT when a function comes off the list; never raise it.
 MAX_BRANCHY_FUNCTIONS = 8

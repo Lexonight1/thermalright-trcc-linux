@@ -35,6 +35,7 @@ import hashlib
 import json
 import logging
 import shutil
+import tempfile
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -851,6 +852,41 @@ class FileContentStore(ContentStore):
             ) from e
         log.info("Exported %s → %s (%d member(s): %s)",
                  theme_path, archive_path, len(members), sorted(members))
+
+    def export_unsaved(
+        self, manifest: dict, archive_path: Path, *,
+        background: Path | bytes | None,
+        mask: Path | None,
+        preview: bytes | None,
+    ) -> None:
+        """Assemble live state as a throwaway theme dir, then :meth:`export` it.
+
+        The dir follows the self-contained convention :meth:`export` already
+        reads -- ``00.png`` or ``Theme.<ext>``, ``01.png``, ``Theme.png`` and
+        the manifest -- so the archive is built by the one writer every export
+        uses, and the temp dir is gone on return, success or not.
+        """
+        log.info("export_unsaved: %s (bg=%s mask=%s preview=%s)",
+                 archive_path,
+                 "png" if isinstance(background, bytes) else background,
+                 mask, preview is not None)
+        with tempfile.TemporaryDirectory(prefix="trcc-export-") as tmp:
+            theme_dir = Path(tmp) / "theme"
+            theme_dir.mkdir()
+            if isinstance(background, bytes):
+                (theme_dir / ThemeDir.BG).write_bytes(background)
+            elif background is not None:
+                # The member names ``_export_members`` gives a referenced
+                # background, so the two exporters cannot disagree.
+                ext = background.suffix.lower()
+                name = f"Theme{ext}" if ext in _VIDEO_EXTS else ThemeDir.BG
+                shutil.copyfile(background, theme_dir / name)
+            if mask is not None:
+                shutil.copyfile(mask, theme_dir / ThemeDir.MASK)
+            if preview is not None:
+                (theme_dir / ThemeDir.PREVIEW).write_bytes(preview)
+            self.write_manifest(theme_dir, manifest)
+            self.export(theme_dir, archive_path)
 
     def _export_tr(self, theme_path: Path, members: dict[str, Path | bytes],
                    archive_path: Path) -> None:
