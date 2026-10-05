@@ -667,7 +667,10 @@ def _root(
     # ``force``: the root callback OWNS verbosity, so it always configures.
     # Every other entry point calls ``ensure_configured()`` bare and the guard
     # keeps a bare call from downgrading this one.
-    ensure_configured(verbose, force=True)
+    # The log lives with the platform the CLI builds its App on: the host's
+    # in production, the mock's under ``dev/mock_cli.py``.
+    from ._ctx import platform_override
+    ensure_configured(verbose, force=True, platform=platform_override())
     levels = levels_for(verbose)
     # Logged AFTER configuration, so it lands in every report: a reader can see
     # which rung produced the file they are holding without asking.

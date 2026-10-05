@@ -208,6 +208,12 @@ def set_platform(platform: Platform) -> None:
     compose_app.cache_clear()
 
 
+def platform_override() -> Platform | None:
+    """The Platform set by :func:`set_platform`, or None for the host's."""
+    log.debug("platform_override: %s", _platform_override)
+    return _platform_override
+
+
 def set_renderer(renderer: Renderer) -> None:
     """Override the default QtRenderer.  Mostly for tests."""
     log.debug("set_renderer: renderer=%s", renderer)

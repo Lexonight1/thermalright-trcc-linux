@@ -513,7 +513,34 @@ _COLOR = {
 }
 
 
+def _log_into(root: Path) -> None:
+    """Send every log line this smoke produces under *root*.
+
+    Two repros reach logging setup: ``gui()`` (#187) configures it when nothing
+    has, and the CLI root callback (#201) re-configures it with ``force``.
+    Both used to land in the user's real ``~/.trcc`` log -- appending to a
+    running session's ``latest`` or truncating it when no TRCC ran, which is
+    the file ``trcc report`` sends.  A mock platform as the CLI's override, and
+    logging configured from it first, keeps both here.
+    """
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.infra.logging import ensure_configured
+    from trcc.ui.cli import _ctx
+
+    platform = MockPlatform([], root)
+    _ctx.set_platform(platform)
+    ensure_configured(platform=platform)
+
+
 def main() -> int:
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="trcc-smoke-bugs-") as logs:
+        _log_into(Path(logs))
+        return _run_all()
+
+
+def _run_all() -> int:
     print(f"{_BOLD}TRCC reported-bugs repro smoke{_RESET}")
     print(f"  {len(REPROS)} reporter scenarios across "
           f"{len({r.issue for r in REPROS})} GitHub issues\n")

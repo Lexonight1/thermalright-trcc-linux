@@ -964,6 +964,31 @@ def test_logging_survives_a_platform_that_cannot_be_asked(
     )
 
 
+def test_the_cli_logs_where_its_platform_lives(tmp_path: Path) -> None:
+    """The CLI root callback re-configures logging (``force``) -- at the HOST
+    platform's path, whatever platform the CLI builds its App on.  So
+    ``dev/mock_cli.py`` wrote the user's real ``~/.trcc`` log on every run,
+    even ``--help``: mock lines appended to a running session's ``latest``, or
+    ``latest`` truncated when no TRCC ran -- the file ``trcc report`` sends.
+    """
+    from typer.testing import CliRunner
+
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import FakePlatform
+
+    platform = FakePlatform(tmp_path / "mock")
+    _ctx.set_platform(platform)
+
+    result = CliRunner().invoke(cli, ["theme", "list", "--help"])
+
+    assert result.exit_code == 0, result.output
+    logs = {Path(h.baseFilename) for h in logging.getLogger().handlers
+            if isinstance(h, logging.FileHandler)}
+    assert platform.paths().log_file() in logs, logs
+
+
 # =========================================================================
 # Action history — selecting by significance, not recency
 # =========================================================================

@@ -29,9 +29,12 @@ from collections import deque
 from collections.abc import Iterator
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from ...core.logs import PER_FRAME_ROOT, levels_for
+
+if TYPE_CHECKING:
+    from ...core.ports import Platform
 
 log = logging.getLogger(__name__)
 
@@ -930,7 +933,8 @@ def _replay_early_logging(
                 handler.handle(record)
 
 
-def ensure_configured(verbose: int = 0, *, force: bool = False) -> bool:
+def ensure_configured(verbose: int = 0, *, force: bool = False,
+                      platform: Platform | None = None) -> bool:
     """Configure logging unless this process already did.  Returns True if it did.
 
     The CLI root callback owns verbosity and always configures (``force``).
@@ -946,6 +950,12 @@ def ensure_configured(verbose: int = 0, *, force: bool = False) -> bool:
     moment the GUI actually started, the root logger had **0 handlers, level
     WARNING, and no file** — a whole launch path that produced no diagnostics
     at all, and a ``trcc report`` with nothing in it.
+
+    *platform* is where the log lives: the one the caller builds its App on.
+    ``None`` is the host's, which is every production caller.  The CLI passes
+    its override, so ``dev/mock_cli.py`` logs into the mock's tree -- it used to
+    write the user's real ``~/.trcc`` log, and truncate ``latest`` when no
+    TRCC was running.
     """
     root = logging.getLogger()
     if not force and any(getattr(h, _HANDLER_TAG, False) for h in root.handlers):
@@ -961,8 +971,10 @@ def ensure_configured(verbose: int = 0, *, force: bool = False) -> bool:
     # import is the one outcome worth guarding against.
     platform_error: Exception | None = None
     try:
-        from ..system import current_platform
-        platform = current_platform()
+        if platform is None:
+            from ..system import current_platform
+            platform = current_platform()
+        log.debug("ensure_configured: logging for %s", type(platform).__name__)
         # Windows consoles default to cp1252 and crash on non-ASCII log output
         # — wrap stdout/stderr UTF-8 BEFORE the StreamHandler is attached.
         platform.configure_stdout()
