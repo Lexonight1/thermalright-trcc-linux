@@ -64,7 +64,9 @@ from pathlib import Path
 
 # In-process on purpose: this measures the App's work in THIS process, and the
 # production default would hand it a proxy to a daemon doing the work elsewhere.
-os.environ.setdefault("TRCC_DAEMON", "0")
+# In-process measurement, whatever the shell exports: through the shared App
+# this would time a different process.  ``main`` refuses while one runs.
+os.environ["TRCC_DAEMON"] = "0"
 
 _RESULT = re.compile(r"RESULT requested=(\d+) sent=(\d+)")
 
@@ -434,6 +436,14 @@ def _run_arm(n: int, video: Path | None) -> None:
     print(f"RESULT requested={n} sent={counter['frames'] - start}", file=sys.stderr)
 
 
+def _refuse_while_trcc_runs(what: str) -> None:
+    """Exit if a TRCC App owns the panels -- see ``_mock_bootstrap``."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from _mock_bootstrap import refuse_while_trcc_runs
+
+    refuse_while_trcc_runs(what)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -460,6 +470,10 @@ def main() -> None:
             _run_arm(args.run, args.video)
         return
 
+    # The orchestrator only: a ``--run`` child may be ANOTHER tree's src
+    # (``--against``), and importing the dev bootstrap there would put this
+    # tree's src first on its path and measure the wrong build.
+    _refuse_while_trcc_runs("glass_bench")
     workload = f"advancing video ({args.video.name})" if args.video else "static theme"
     workload += " · REAL GUI" if args.gui else " · headless"
     print(f"workload: {workload}   span: {args.lo} → {args.hi} frames   "

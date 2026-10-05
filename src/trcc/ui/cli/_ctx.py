@@ -178,12 +178,38 @@ def warn_blanking_panels() -> None:
             # this one sent, so it holds the SAVED THEME instead.  A daemon keeps
             # the frame -- measured on Bulk, LY and HID: it went on resending
             # after the command exited (#267).
+            from ..._boot import _local_reason
             typer.echo(
                 f"Note: {entry.key} goes blank when frames stop, and this "
-                "command has ended. To keep what you send on screen, run "
-                "`export TRCC_DAEMON=1` first: trcc commands then hand the panel "
-                "to a background daemon that keeps it showing. Or use the GUI.",
+                "command has ended. "
+                f"{keep_it_lit(_local_reason(_platform_override))}",
                 err=True)
+
+
+def keep_it_lit(reason: str | None) -> str:
+    """How to keep a blanking panel showing, given WHY this command ran on its
+    own App instead of the background one that keeps panels lit.
+
+    It used to say "run `export TRCC_DAEMON=1`" whatever the reason.  1 is the
+    default since the shared App, so that only ever helped someone who had set
+    it to 0 -- and it was wrong under ``sudo`` and on Windows, where nothing
+    the user exports gives a background App.
+    """
+    log.debug("keep_it_lit: reason=%s", reason)
+    if reason is None:
+        return ("The background App that keeps panels showing did not start; "
+                "`trcc report` has the reason. Or use the GUI.")
+    if reason.startswith("TRCC_DAEMON="):
+        return (f"{reason} keeps trcc commands off the background App that "
+                "keeps panels showing: run `unset TRCC_DAEMON` and they hand "
+                "the panel to it. Or use the GUI.")
+    if reason.startswith("running as root"):
+        return ("Run it without sudo: as root, trcc commands do not use the "
+                "background App that keeps panels showing. Or use the GUI.")
+    if reason.startswith("no AF_UNIX"):
+        return ("This system cannot run the background App that keeps panels "
+                "showing, so use the GUI to keep it on screen.")
+    return "Use the GUI to keep it on screen."
 
 
 def parse_on_off(state: str) -> bool:

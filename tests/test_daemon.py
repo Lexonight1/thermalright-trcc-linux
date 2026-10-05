@@ -211,12 +211,15 @@ def test_the_gui_s_real_platform_still_reaches_the_shared_app(
     A 2026-10-02 change made it one, on the belief that production passes
     None.  Driven for real, the gui then built its own App on the host's USB,
     attached the panel the running daemon was already driving, and blanked it
-    on exit.  Reverted; this pins the contract.
+    on exit.  Reverted; this pins the contract -- with the object the gui
+    really passes, which this test stood in for with ``object()`` until a
+    stand-in became a local reason of its own (2026-10-05).
 
-    MUTATION CHECK -- MEASURED 2026-10-02: re-add ``"a platform was
-    injected" if platform is not None`` to ``_local_reason`` and this fails.
+    MUTATION CHECK: re-add ``"a platform was injected" if platform is not
+    None`` to ``_local_reason`` and this fails.
     """
     from trcc import _boot
+    from trcc.adapters.system import current_platform
     from trcc.proxy import AppProxy
 
     monkeypatch.delenv(_ENV_FLAG, raising=False)
@@ -224,7 +227,93 @@ def test_the_gui_s_real_platform_still_reaches_the_shared_app(
     monkeypatch.setattr(daemon, "ensure_daemon", lambda **kw: True)
     monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
 
-    assert isinstance(_boot.trcc(platform=object()), AppProxy)  # type: ignore[arg-type]
+    assert isinstance(_boot.trcc(platform=current_platform()), AppProxy)
+
+
+def _host_subclass() -> object:
+    """A keyless subclass of this host's class -- the shape of the dev mock's
+    ``DevPlatform`` / ``DevMockPlatform``: an INSTANCE of the host class, so
+    ``isinstance`` would wave it through to the shared App."""
+    from trcc.adapters.system import host_platform_class
+
+    return object.__new__(type("_DevLike", (host_platform_class(),), {}))
+
+
+@pytest.mark.parametrize("stand_in", ["fake", "host subclass"])
+def test_a_stand_in_platform_never_reaches_the_shared_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, stand_in: str,
+) -> None:
+    """The shared App runs on this host's own platform and IGNORES the one it
+    is given, so a mock handed to ``trcc()`` used to be dropped silently --
+    leaving the mock harnesses local only because importing ``tests.conftest``
+    sets TRCC_DAEMON=0, and with ``export TRCC_DAEMON=1`` (which the CLI
+    tells users to run) ``--hardware`` reached the user's running App.
+    """
+    from trcc import _boot
+
+    from .conftest import FakePlatform
+
+    platform = FakePlatform(tmp_path) if stand_in == "fake" else _host_subclass()
+    monkeypatch.setenv(_ENV_FLAG, "1")
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    started: list[str] = []
+    monkeypatch.setattr(daemon, "ensure_daemon",
+                        lambda **kw: started.append("shared") or True)
+    monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
+
+    assert _boot.trcc(platform=platform) == "LOCAL"  # type: ignore[arg-type]
+    assert started == []
+
+
+@pytest.mark.parametrize("sys_platform", ["freebsd14", "openbsd7", "netbsd10"])
+def test_every_bsd_host_reaches_the_shared_app(
+    monkeypatch: pytest.MonkeyPatch, sys_platform: str,
+) -> None:
+    """Each BSD resolves to an UNREGISTERED child of ``BsdOS``, so "is the
+    platform's class registered" would send the real gui local on every BSD
+    -- 2026-10-02 again.  The rule is "is it exactly this host's class".
+    """
+    import sys
+
+    from trcc import _boot
+    from trcc.adapters.system import host_platform_class
+
+    monkeypatch.setattr(sys, "platform", sys_platform)
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    host = object.__new__(host_platform_class())
+
+    assert _boot._local_reason(host) is None  # type: ignore[arg-type]
+
+
+def test_a_stand_in_face_runs_caller_commands_on_its_own_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    """``_caller_app`` asks the same question: a face on a stand-in already
+    holds a local App, and must not build a second one beside it."""
+    from trcc import _boot
+    from trcc.app import App
+    from trcc.core.commands import DaemonStatus, ListDevices
+    from trcc.ui._uis import CliUI
+
+    from .conftest import FakePlatform
+
+    platform = FakePlatform(tmp_path)
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(daemon, "ensure_daemon", lambda **kw: True)
+    built: list[str] = []
+    monkeypatch.setattr(_boot, "_build_local_app",
+                        lambda **kw: built.append("app") or App(platform))
+    ui = CliUI()
+    ui._platform = platform
+    ui.dispatch(ListDevices())           # the face's own App: local, on it
+    assert built == ["app"]
+
+    ui.dispatch(DaemonStatus())          # a caller-side Command
+
+    assert built == ["app"], "a second in-process App was built beside it"
 
 
 def test_a_shared_app_that_will_not_start_falls_back_in_process(

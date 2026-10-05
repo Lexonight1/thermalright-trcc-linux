@@ -1593,10 +1593,36 @@ def test_a_one_shot_on_a_blanking_panel_says_how_to_keep_it_lit(
     out = _cli_on(tmp_path, cli_runner, _WARFRAME_SE,
                   ["display", "color", "0416:5302", "ff0000"])
     assert "0416:5302 goes blank when frames stop" in out, out
-    # The daemon, not `display keepalive`: a new keepalive process holds the
-    # saved theme, not the frame this command sent (#267).
-    assert "export TRCC_DAEMON=1" in out, out
+    # The background App, not `display keepalive`: a new keepalive process
+    # holds the saved theme, not the frame this command sent (#267).  The suite
+    # runs with TRCC_DAEMON=0, so the advice is to unset it.
+    assert "run `unset TRCC_DAEMON`" in out, out
     assert "display keepalive" not in out, out
+
+
+@pytest.mark.parametrize("reason, advice", [
+    ("TRCC_DAEMON=0",
+     "TRCC_DAEMON=0 keeps trcc commands off the background App that keeps "
+     "panels showing: run `unset TRCC_DAEMON` and they hand the panel to it. "
+     "Or use the GUI."),
+    ("running as root — the shared App lives in userland",
+     "Run it without sudo: as root, trcc commands do not use the background "
+     "App that keeps panels showing. Or use the GUI."),
+    ("no AF_UNIX on this platform",
+     "This system cannot run the background App that keeps panels showing, "
+     "so use the GUI to keep it on screen."),
+    (None,
+     "The background App that keeps panels showing did not start; "
+     "`trcc report` has the reason. Or use the GUI."),
+])
+def test_the_blanking_note_names_what_actually_keeps_the_panel_lit(
+    reason: str | None, advice: str,
+) -> None:
+    """It said "export TRCC_DAEMON=1" for every reason: a no-op under sudo and
+    on Windows, and 1 is the default anyway."""
+    from trcc.ui.cli._ctx import keep_it_lit
+
+    assert keep_it_lit(reason) == advice
 
 
 def test_a_panel_that_holds_its_image_gets_no_note(tmp_path, cli_runner) -> None:

@@ -39,10 +39,24 @@ def current_platform() -> Platform:
     rather than returned as a class.  An unknown platform falls back to Linux
     with a warning via the registry's ``FallBackTo`` policy.
     """
+    platform_cls = host_platform_class()
+    log.info("current_platform: building %s", platform_cls.__name__)
+    return platform_cls()
+
+
+def host_platform_class() -> type[Platform]:
+    """The exact class :func:`current_platform` builds on this OS.
+
+    Derived here, once, because ``_boot`` asks the same question: a platform
+    of any OTHER class -- a mock, a fake, a keyless dev subclass of this one --
+    is a stand-in the shared App cannot run on.  Not "is it registered": each
+    BSD resolves to an UNREGISTERED child (``BsdOS.resolve``), so that test
+    would cut the real gui off the shared App on every BSD.
+    """
     key = "bsd" if "bsd" in sys.platform else sys.platform
     platform_cls = PLATFORMS[key].resolve()
-    log.info("current_platform: %s → building %s", key, platform_cls.__name__)
-    return platform_cls()
+    log.debug("host_platform_class: %s -> %s", key, platform_cls.__name__)
+    return platform_cls
 
 
 # Side-effect imports: load each OS module so defining its class registers it.

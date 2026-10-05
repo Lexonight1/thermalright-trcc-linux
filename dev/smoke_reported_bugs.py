@@ -287,11 +287,22 @@ def repro_162_daemon_flag_strip() -> ReproResult:
             seen["flag"] = os.environ.get("TRCC_DAEMON")
             raise RuntimeError("stop before serve")
 
-        with patch("trcc._boot._build_local_app", _build_spy):
+        # A private runtime dir, as #148's probe has: the real one holds the
+        # user's running App, so ``DaemonUI.preflight`` refused (exit 1)
+        # before the spy could fire -- and an empty ``seen`` read as "fixed"
+        # without testing anything.
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="trcc-repro-") as runtime, \
+             patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime}), \
+             patch("trcc._boot._build_local_app", _build_spy):
             try:
                 dm.run_daemon(platform=None, renderer=None)
             except RuntimeError:
                 pass
+        if "flag" not in seen:
+            return _diff("run_daemon never reached _build_local_app -- the "
+                         "probe proved nothing")
         if seen.get("flag") is not None:
             return _bug(f"run_daemon builds App with TRCC_DAEMON={seen['flag']!r} still set")
     finally:

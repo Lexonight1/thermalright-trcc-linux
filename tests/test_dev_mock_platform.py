@@ -85,3 +85,28 @@ def test_the_dev_mock_opens_a_transport_with_the_ports_defaults() -> None:
     transport = platform.open_transport(Wire.SCSI, 0x0402, 0x3922)
 
     assert isinstance(transport, Transport)
+
+
+@pytest.mark.parametrize("specs", [None, [{"vid": "0402", "pid": "3922",
+                                            "fbl": 100}]],
+                         ids=["--hardware", "fleet"])
+def test_the_dev_platforms_are_stand_ins(
+    monkeypatch: pytest.MonkeyPatch, specs: list[dict] | None,
+) -> None:
+    """Both dev platforms subclass the host's class without a key, so they are
+    stand-ins whatever the shell says -- the mock harnesses used to be local
+    only through ``tests.conftest`` setting TRCC_DAEMON=0, which ``--hardware``
+    never imports."""
+    import os
+
+    from trcc._boot import _ENV_FLAG, _local_reason
+    from trcc.adapters.system import host_platform_class
+
+    monkeypatch.setenv(_ENV_FLAG, "1")
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    platform = _build_dev_platform(specs)
+
+    assert _local_reason(platform) == (
+        f"{type(platform).__name__} is a stand-in, not this host's "
+        f"{host_platform_class().__name__}")
+

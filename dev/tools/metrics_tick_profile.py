@@ -46,7 +46,9 @@ from pathlib import Path
 
 # In-process on purpose: this measures the App's work in THIS process, and the
 # production default would hand it a proxy to a daemon doing the work elsewhere.
-os.environ.setdefault("TRCC_DAEMON", "0")
+# In-process measurement, whatever the shell exports: through the shared App
+# this would time a different process.  ``main`` refuses while one runs.
+os.environ["TRCC_DAEMON"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
@@ -216,6 +218,14 @@ def _selftest() -> int:
     return 0 if ok else 1
 
 
+def _refuse_while_trcc_runs(what: str) -> None:
+    """Exit if a TRCC App owns the panels -- see ``_mock_bootstrap``."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from _mock_bootstrap import refuse_while_trcc_runs
+
+    refuse_while_trcc_runs(what)
+
+
 def main() -> int:
     install_probes()
     from trcc.adapters.infra.logging import configure_logging
@@ -230,6 +240,7 @@ def main() -> int:
     threading.Thread(target=report_forever, daemon=True).start()
     if "--selftest" in sys.argv:
         return _selftest()
+    _refuse_while_trcc_runs("metrics_tick_profile")
     return launch(start_hidden="--shown" not in sys.argv)
 
 

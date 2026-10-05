@@ -36,11 +36,32 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / 'src'))
 sys.path.insert(0, str(_REPO_ROOT))
 
-# Dev mocks build their App IN-PROCESS on the scripted fleet.  The production
-# default is the shared App, which would find or START a real daemon on this
-# host's real USB and ignore the mock platform.  ``setdefault``: a harness that
-# means to test daemon mode (smoke_daemon_gui) sets TRCC_DAEMON=1 itself.
+# Dev mocks build their App IN-PROCESS.  The dev platforms are stand-ins
+# (``_boot._stand_in``: not this host's own class), which is what keeps them
+# local whatever the shell exports; this default covers the paths that hand
+# ``trcc()`` no platform at all.  (It used to say smoke_daemon_gui sets
+# TRCC_DAEMON=1 itself -- it does not: it pops the variable for its child and
+# builds its own AppProxy against a private runtime dir.)
 os.environ.setdefault("TRCC_DAEMON", "0")
+
+
+def refuse_while_trcc_runs(what: str) -> None:
+    """Exit when a running TRCC App already owns the panels.
+
+    For a dev run that builds an App on REAL USB -- ``--hardware``, the
+    profilers.  Beside a running App that is two owners of one panel: they
+    fight over it, and whichever exits blanks it (2026-10-02, the user's
+    panel).  Going through the running App instead would measure the wrong
+    process, so the only right answer is "not now".
+    """
+    from trcc import ipc
+
+    if ipc.daemon_running():
+        sys.exit(f"{what}: TRCC is running and owns the panels "
+                 f"({ipc.socket_path()}).  This would build a second App on "
+                 "the same USB -- the two fight, and the panel blanks when one "
+                 "exits.  Quit TRCC first: `trcc kill`.")
+    log.info("refuse_while_trcc_runs: %s -- no TRCC App running", what)
 
 
 # ─── Dev paths (every mock_* script writes here, not ~/.trcc) ────────────────
@@ -545,11 +566,19 @@ def bootstrap(report_path: str | None = None,
     if specs:
         source = "device= CLI"
     elif hardware:
+        refuse_while_trcc_runs("--hardware")
         source = "--hardware (real attached device)"
         specs = None
     elif report_path:
         source = "--report"
         specs = load_device_specs(report_path)
+        if not specs:
+            # Falling through to ``_build_dev_platform(None)`` meant the REAL
+            # hardware, silently -- a replay that parsed nothing drove the
+            # panel on the desk instead.
+            sys.exit(f"--report {report_path}: no devices parsed from it, so "
+                     "there is nothing to replay.  (It used to fall back to "
+                     "the real hardware without saying so.)")
     elif all_devices:
         # --all still means something now that the fleet is the default: it
         # OVERRIDES a local devices.json, so you can get full coverage without

@@ -9,6 +9,9 @@ a stated reason:
     no AF_UNIX               CPython has no AF_UNIX on Windows, at any build
     running as root          the shared App lives in userland: a root App
                              would outlive ``sudo trcc system setup`` holding USB
+    a stand-in platform      a mock, a fake, a dev subclass: the shared App runs
+                             on this host's own platform, so asking it would
+                             silently drop the stand-in and drive real USB
     the App failed to start  degrade to in-process rather than fail the UI
 
 UIs hold the return value as ``App``; the proxy is structurally compatible
@@ -31,15 +34,36 @@ log = logging.getLogger(__name__)
 _ENV_FLAG = "TRCC_DAEMON"
 
 
-def _local_reason() -> str | None:
-    """Why this process must build its own App, or None to use the shared one."""
+def _local_reason(platform: Platform | None = None) -> str | None:
+    """Why this process must build its own App, or None to use the shared one.
+
+    *platform* is what the caller would build on.  ``None`` and this host's
+    own class (what ``trcc gui`` passes) are the shared App's to serve; any
+    other class is a stand-in.  "A platform was injected" is NOT the test --
+    that rule (2026-10-02) put the real gui on its own App and blanked a panel.
+    """
     flag = os.environ.get(_ENV_FLAG, "1")
     reason = (f"{_ENV_FLAG}={flag}" if flag != "1"
               else "no AF_UNIX on this platform" if not hasattr(socket, "AF_UNIX")
               else "running as root — the shared App lives in userland"
-              if os.geteuid() == 0 else None)
+              if os.geteuid() == 0 else _stand_in(platform))
     log.debug("_local_reason: %s", reason)
     return reason
+
+
+def _stand_in(platform: Platform | None) -> str | None:
+    """Name *platform* a stand-in if it is not this host's own class."""
+    if platform is None:
+        log.debug("_stand_in: no platform given")
+        return None
+    from .adapters.system import host_platform_class
+
+    host = host_platform_class()
+    if type(platform) is host:
+        log.debug("_stand_in: %s is this host's own", host.__name__)
+        return None
+    return (f"{type(platform).__name__} is a stand-in, not this host's "
+            f"{host.__name__}")
 
 
 def trcc(
@@ -54,7 +78,7 @@ def trcc(
     build one in-process from ``platform`` / ``renderer``.  Those two are
     ignored for the proxy: the App owns its own.
     """
-    reason = _local_reason()
+    reason = _local_reason(platform)
     log.info("trcc: %s=%s platform=%s renderer=%s -> %s", _ENV_FLAG,
              os.environ.get(_ENV_FLAG), platform is not None,
              renderer is not None, reason or "the shared App")

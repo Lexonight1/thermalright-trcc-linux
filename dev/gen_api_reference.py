@@ -33,7 +33,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # In-process: ``build_app()`` composes an App to walk its routes, and the
 # production default would find or START the shared App — which it did, from
 # the pre-commit hook's system python, on every commit after the default flipped.
-os.environ.setdefault("TRCC_DAEMON", "0")
+# Assigned, not ``setdefault``: a shell exporting TRCC_DAEMON=1 (the CLI used to
+# advise it) would otherwise send every commit's hook to the shared App again.
+os.environ["TRCC_DAEMON"] = "0"
 
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
