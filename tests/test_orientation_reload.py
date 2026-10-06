@@ -49,6 +49,10 @@ def app(tmp_home: Path) -> App:
         # pick the per-SKU theme library.  None = generic, which is what a
         # 1280x480 panel gets anyway (no variant at that resolution).
         handshake=None,
+        # Not connected as far as ``App.close`` is concerned: it blanks only
+        # connected panels.  Without this the teardown raised on every test
+        # here -- hidden, because pytest shows logs only for a failure.
+        is_connected=False,
     )
     return a
 
@@ -58,9 +62,11 @@ def spy(app: App) -> list[Any]:
     """Record dispatched Commands without executing them."""
     calls: list[Any] = []
 
-    def _record(cmd: Any) -> None:
+    def _record(cmd: Any) -> Any:
         calls.append(cmd)
-        return None
+        # A Result, as the bus always returns one: a theme load's ``ok`` is
+        # read to decide whether to fall back to Theme1.
+        return SimpleNamespace(ok=True)
 
     app.dispatch = _record  # type: ignore[method-assign]
     return calls
@@ -100,11 +106,26 @@ def test_oriented_theme_path_landscape_at_zero(app: App) -> None:
     assert oriented_theme_path(app, _KEY, land, degrees=0) == land
 
 
-def test_oriented_theme_path_falls_back_when_variant_absent(app: App) -> None:
-    """No portrait dir on disk → keep the stored path (renderer pixel-rotates)."""
+def test_oriented_theme_path_has_no_answer_when_the_folder_lacks_the_theme(
+    app: App,
+) -> None:
+    """No portrait twin → ``None``, and the caller shows Theme1.  It used to
+    return the landscape path "for the renderer to rotate": on a widescreen
+    panel the canvas is portrait and a landscape background draws solid black,
+    so a rotation sent black frames and a clipped overlay."""
     from trcc.core.commands._helpers import oriented_theme_path
     land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
-    assert oriented_theme_path(app, _KEY, land, degrees=270) == land
+    assert oriented_theme_path(app, _KEY, land, degrees=270) is None
+
+
+def test_a_theme_outside_the_panels_folders_keeps_its_path(
+    app: App, tmp_path: Path,
+) -> None:
+    """A directory handed to ``load-theme`` has no orientation twin: it is the
+    user's own path, and a rotation or restore keeps it."""
+    from trcc.core.commands._helpers import oriented_theme_path
+    elsewhere = _seed(tmp_path / "anywhere" / _NAME, "00.png")
+    assert oriented_theme_path(app, _KEY, elsewhere, degrees=270) == elsewhere
 
 
 def test_oriented_theme_path_preserves_user_tree_over_shipped(app: App) -> None:
@@ -236,16 +257,18 @@ def test_rotation_theme_reload_preserves_user_overrides(
     assert themes[0].reset_overrides is False
 
 
-def test_theme_already_in_rotated_dir_no_reload(
+def test_a_rotation_within_the_folder_reloads_its_theme(
     app: App, spy: list[Any],
 ) -> None:
+    """90 → 270 stays in one folder (the C#'s ``themeDirection % 180``) and
+    still reloads its theme, as the C#'s ``Theme_Click_Event`` does on every
+    rotation -- the same theme, not another one."""
     port = _seed(_data(app) / "theme4801280" / _NAME, "00.png")
-    # Already loaded from the portrait dir → rotating to portrait is a no-op.
     app.settings.set_current_theme(_KEY, str(port.resolve()))
 
     app.events.publish(OrientationChanged(key=_KEY, degrees=90))
 
-    assert [c for c in spy if isinstance(c, LoadTheme)] == []
+    assert [c.path for c in spy if isinstance(c, LoadTheme)] == [port.resolve()]
 
 
 # ── ordering + guards ───────────────────────────────────────────────────

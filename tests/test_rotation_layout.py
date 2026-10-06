@@ -143,3 +143,169 @@ def test_an_old_config_that_fits_is_kept_and_learns_its_folder(root: Path) -> No
 
     dev = app.settings.for_device(_KEY)
     assert (_layout(app), dev.user_overlay_catalog) == ([(300, 100)], "theme854480")
+
+
+# ── Per-orientation memory (the C#'s per-folder Theme.dc) ────────────────────
+
+_COLOURS = {"Theme1": 0xC80000, "Theme2": 0x00C800, "Theme3": 0x0000C8,
+            "Mine": 0xC8C800}
+
+
+def _painted(directory: Path, width: int, height: int) -> Path:
+    """A full-canvas theme in one colour, so a frame on the wire says which."""
+    from PySide6.QtGui import QImage
+
+    directory.mkdir(parents=True, exist_ok=True)
+    image = QImage(width, height, QImage.Format.Format_RGB888)
+    image.fill(_COLOURS[directory.name])
+    image.save(str(directory / "00.png"))
+    (directory / "trcc.json").write_text(
+        json.dumps({"name": directory.name, "elements": []}), encoding="utf-8")
+    return directory
+
+
+@pytest.fixture
+def folders(tmp_path: Path) -> Path:
+    """Theme1-3 in both orientations, painted; "Mine" saved in landscape only."""
+    paths = MockPlatform([_WIDE], tmp_path).paths()
+    for name in ("Theme1", "Theme2", "Theme3"):
+        _painted(paths.theme_dir(854, 480) / name, 854, 480)
+        _painted(paths.theme_dir(480, 854) / name, 480, 854)
+    _painted(paths.user_theme_dir(854, 480) / "Mine", 854, 480)
+    return tmp_path
+
+
+def _pick(app: App, folder: tuple[int, int], name: str, brightness: int) -> None:
+    from trcc.core.commands import SetBrightness
+
+    path = app.platform.paths().theme_dir(*folder) / name
+    assert app.dispatch(LoadTheme(key=_KEY, path=path)).ok
+    assert app.dispatch(SetBrightness(key=_KEY, percent=brightness)).ok
+
+
+def _showing(app: App) -> tuple[str, str, int]:
+    theme = app.active_themes[_KEY]
+    return (theme.path.parent.name, theme.path.name,
+            app.settings.for_device(_KEY).brightness)
+
+
+def test_each_orientation_keeps_its_own_theme_and_brightness(folders: Path) -> None:
+    """The C# reads the folder's own ``Theme.dc`` on a rotation: back in a
+    folder, its theme and brightness come back; a folder never visited carries
+    over what was playing (an empty file keeps the old values)."""
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme3", 40)
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    assert _showing(app) == ("theme480854", "Theme3", 40)       # carried over
+    _pick(app, (480, 854), "Theme2", 80)
+
+    from trcc.core.events import BrightnessChanged
+    heard: list[int] = []
+    app.events.subscribe(BrightnessChanged, lambda e: heard.append(e.percent))
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    assert _showing(app) == ("theme854480", "Theme3", 40)
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    assert _showing(app) == ("theme480854", "Theme2", 80)
+    assert heard == [40, 80]            # every UI shows the folder's own level
+
+
+def test_a_folder_left_untouched_is_not_remembered(folders: Path) -> None:
+    """The C# writes a folder's ``Theme.dc`` only on a user action, so a folder
+    merely passed through still reads empty and carries over the next time."""
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme3", 40)
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))           # untouched
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme2", 60)
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+
+    assert _showing(app) == ("theme480854", "Theme2", 60)
+
+
+def test_a_theme_without_a_portrait_twin_shows_theme1_not_black(
+    folders: Path,
+) -> None:
+    """A theme saved only in landscape used to stay on after a rotation; on a
+    widescreen panel's portrait canvas its background drew solid black."""
+    from PySide6.QtGui import QImage
+
+    from trcc.core.commands import RenderAndSend
+
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    assert app.dispatch(LoadTheme(
+        key=_KEY,
+        path=app.platform.paths().user_theme_dir(854, 480) / "Mine")).ok
+    sent: list[bytes] = []
+    send = app.send
+    app.send = lambda key, payload, **kw: (  # type: ignore[method-assign]
+        sent.append(bytes(payload)), send(key, payload, **kw))[1]
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    assert app.dispatch(RenderAndSend(key=_KEY)).ok
+
+    assert _showing(app)[:2] == ("theme480854", "Theme1")
+    frame = QImage.fromData(sent[-1])
+    assert frame.pixelColor(frame.width() // 2, frame.height() // 2).red() > 150
+
+
+def test_a_rotation_does_not_switch_the_slideshow_off(folders: Path) -> None:
+    """The rotation's theme load looked like a theme picked by hand to the
+    running slideshow, which then switched itself off."""
+    import time
+
+    from trcc.core.commands import ConfigureSlideshow, SetSlideshow
+
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme1", 100)
+    assert app.dispatch(ConfigureSlideshow(
+        key=_KEY, interval_s=1.0, themes=("Theme1", "Theme2"))).ok
+    assert app.dispatch(SetSlideshow(key=_KEY, enabled=True)).ok
+    first = app.settings.for_device(_KEY).current_theme
+    deadline = time.monotonic() + 5
+    while app.settings.for_device(_KEY).current_theme == first:
+        assert time.monotonic() < deadline, "the slideshow never advanced"
+        time.sleep(0.05)
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    time.sleep(2.5)                     # the driver ticks once a second
+
+    assert app.settings.for_device(_KEY).slideshow_enabled is True
+
+
+def test_a_rotation_made_while_unplugged_applies_at_connect(folders: Path) -> None:
+    """``SetOrientation`` works with the panel unplugged; the next connect
+    must show that folder's own state.  A restart also proves the per-folder
+    state survives the settings file."""
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme3", 40)
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    _pick(app, (480, 854), "Theme2", 80)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    app.close()
+
+    again = App(MockPlatform([_WIDE], folders), renderer=QtRenderer())
+    again.settings.set_orientation(_KEY, 90)        # turned while unplugged
+    assert again.dispatch(ConnectDevice(key=_KEY)).ok
+    assert again.dispatch(RestoreDeviceState(key=_KEY)).ok
+
+    assert _showing(again) == ("theme480854", "Theme2", 80)
+
+
+def test_0_and_180_share_one_folder(folders: Path) -> None:
+    """The C# picks the folder by ``themeDirection % 180``."""
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme3", 40)
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=180))
+
+    assert _showing(app) == ("theme854480", "Theme3", 40)
+    assert app.settings.for_device(_KEY).orientation_slots == {}

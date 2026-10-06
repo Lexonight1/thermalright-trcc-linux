@@ -14,8 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, TypeVar, cast
@@ -32,10 +33,18 @@ from ..core.models import (
     TIME_FORMATS,
     DeviceSettings,
     FitMode,
+    OrientationState,
     OverlayElement,
     TempUnit,
 )
 from ..core.ports import Paths
+
+#: What a panel keeps per theme folder (``OrientationState``), by field name --
+#: derived, so a field added there is swapped without being listed again.
+_PER_FOLDER = tuple(f.name for f in fields(OrientationState))
+
+#: What entering a folder found: already there, its saved state, or none yet.
+FolderVisit = Literal["same", "restored", "first"]
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -324,6 +333,55 @@ class Settings:
         log.info("set_orientation: key=%s degrees=%d", key, degrees)
         with self._lock:
             self.for_device(key).orientation = degrees
+            self._save()
+
+    def enter_catalog(self, key: str, catalog: str) -> FolderVisit:
+        """Make *catalog* the folder *key*'s per-folder values belong to.
+
+        The C# keeps theme, brightness, split mode and slideshow in each
+        folder's ``Theme.dc`` and reads the new folder's on a rotation
+        (``UpDateUCComboBox1`` -> ``ReadFileThemeSub``).  Here the live fields
+        are the active folder's; the one being left is stashed, and the one
+        entered is restored -- ``"restored"`` -- or, never visited, keeps the
+        values it arrived with, as the C#'s read of an empty file does --
+        ``"first"``.  With no folder recorded yet (a new panel, or a config
+        from before this existed) the live values belong to the one entered.
+        """
+        with self._lock:
+            s = self.for_device(key)
+            fresh = s.active_catalog is None and s.current_theme is None
+            current = s.active_catalog or catalog
+            log.info("enter_catalog: key=%s %s -> %s", key, current, catalog)
+            if current == catalog:
+                visit: FolderVisit = "first" if fresh else "same"
+            else:
+                live = _snapshot(s)
+                if s.entered_with is None or live != s.entered_with:
+                    s.orientation_slots[current] = live
+                else:                   # untouched: an unwritten Theme.dc
+                    s.orientation_slots.pop(current, None)
+                saved = s.orientation_slots.pop(catalog, None)
+                visit = "first" if saved is None else "restored"
+                if saved is not None:
+                    for name in _PER_FOLDER:
+                        setattr(s, name, _copied(getattr(saved, name)))
+            if visit == "restored":
+                s.entered_with = None
+            elif visit == "first":
+                s.entered_with = _snapshot(s)
+            s.active_catalog = catalog
+            self._save()
+        log.info("enter_catalog: %s %s (%d other folder(s) kept)",
+                 key, visit, len(s.orientation_slots))
+        return visit
+
+    def mark_entered(self, key: str) -> None:
+        """Record what a folder entered with nothing saved shows, once its
+        theme is on -- the baseline ``enter_catalog`` compares on leaving."""
+        log.info("mark_entered: key=%s", key)
+        with self._lock:
+            s = self.for_device(key)
+            s.entered_with = _snapshot(s)
             self._save()
 
     def set_brightness(self, key: str, percent: int) -> None:
@@ -1090,46 +1148,109 @@ def _migrate_led(data: dict[str, Any], schema: int, key: str) -> dict[str, Any]:
     return out
 
 
+def _snapshot(s: DeviceSettings) -> OrientationState:
+    """The active folder's values, as a slot keeps them."""
+    log.debug("_snapshot: theme=%s brightness=%s", s.current_theme, s.brightness)
+    return OrientationState(
+        **{name: _copied(getattr(s, name)) for name in _PER_FOLDER})
+
+
+def _copied(value: Any) -> Any:
+    """A list is copied, so a folder's slot never aliases the live field."""
+    log.debug("_copied: %s", type(value).__name__)
+    return list(value) if isinstance(value, list) else value
+
+
+def _orientation_state_from_dict(data: dict[str, Any]) -> OrientationState:
+    """One saved folder's values, tolerant of extras (a later release's)."""
+    log.debug("_orientation_state_from_dict: data=%s", data)
+    known = {k: v for k, v in data.items() if k in _PER_FOLDER}
+    return replace(OrientationState(), **known)
+
+
+# ── Fields JSON cannot round-trip, converted back by name ──────────────────
+
+#: A converter's answer for a value that cannot stand: drop it, so the field
+#: takes its default.
+_DROP = object()
+
+
+def _tuple_of(size: int,
+              item: Callable[[Any], Any] | None = None) -> Callable[[Any], Any]:
+    """JSON gives a list where the field holds a tuple of *size*."""
+    def convert(value: Any) -> Any:
+        log.debug("_tuple_of(%d): %r", size, value)
+        if isinstance(value, list) and len(value) == size:
+            return tuple(item(v) for v in value) if item else tuple(value)
+        return value
+    return convert
+
+
+def _fit_mode(value: Any) -> Any:
+    """The enum from its string; an unknown one falls back to the default."""
+    log.debug("_fit_mode: %r", value)
+    if not isinstance(value, str):
+        return value
+    try:
+        return FitMode(value)
+    except ValueError:
+        return _DROP
+
+
+def _screencast_region(value: Any) -> Any:
+    """``[x, y, w, h, audio]`` -> ``(x, y, w, h, bool(audio))``."""
+    log.debug("_screencast_region: %r", value)
+    if isinstance(value, list) and len(value) == 5:
+        return (*value[:4], bool(value[4]))
+    return value
+
+
+def _overlay_elements(value: Any) -> Any:
+    log.debug("_overlay_elements: %d", len(value) if isinstance(value, list) else -1)
+    if not isinstance(value, list):
+        return value
+    return [OverlayElement.from_dict(d) if isinstance(d, dict) else d
+            for d in value]
+
+
+def _orientation_state(value: Any) -> Any:
+    log.debug("_orientation_state: %s", type(value).__name__)
+    return _orientation_state_from_dict(value) if isinstance(value, dict) else value
+
+
+def _orientation_slots(value: Any) -> Any:
+    log.debug("_orientation_slots: %s", type(value).__name__)
+    if not isinstance(value, dict):
+        return value
+    return {str(folder): _orientation_state_from_dict(state)
+            for folder, state in value.items() if isinstance(state, dict)}
+
+
+#: How each such field comes back -- by name, one row each, so a new tuple,
+#: enum or dataclass field is a row here.  A tuple field with no row stays a
+#: list and compares unequal to the tuple a Command writes.
+_FROM_JSON: dict[str, Callable[[Any], Any]] = {
+    "mask_position": _tuple_of(2),
+    "fit_mode": _fit_mode,
+    "overlay_background": _tuple_of(3),
+    "screencast_region": _screencast_region,
+    "screencast_rect": _tuple_of(4, int),
+    "user_overlay_elements": _overlay_elements,
+    "entered_with": _orientation_state,
+    "orientation_slots": _orientation_slots,
+}
+
+
 def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
     """Build DeviceSettings from a parsed JSON dict, tolerant of extras."""
     log.debug("_device_settings_from_dict: data=%s", data)
     kwargs: dict[str, Any] = {}
-    valid_fields = {f for f in DeviceSettings.__dataclass_fields__}
-    for field_name, value in data.items():
-        if field_name in valid_fields:
-            kwargs[field_name] = value
-    # Mask position: JSON loads tuples as lists → restore tuple
-    pos = kwargs.get("mask_position")
-    if isinstance(pos, list) and len(pos) == 2:
-        kwargs["mask_position"] = (pos[0], pos[1])
-    # FitMode enum from its string value
-    fm = kwargs.get("fit_mode")
-    if isinstance(fm, str):
-        try:
-            kwargs["fit_mode"] = FitMode(fm)
-        except ValueError:
-            kwargs.pop("fit_mode")
-    # overlay_background: list[3] → tuple[r,g,b]
-    bg = kwargs.get("overlay_background")
-    if isinstance(bg, list) and len(bg) == 3:
-        kwargs["overlay_background"] = (bg[0], bg[1], bg[2])
-    # screencast_region: list[5] → tuple[x, y, w, h, audio]
-    sc = kwargs.get("screencast_region")
-    if isinstance(sc, list) and len(sc) == 5:
-        kwargs["screencast_region"] = (sc[0], sc[1], sc[2], sc[3], bool(sc[4]))
-    # screencast_rect: list[4] → tuple[x, y, w, h] -- named here, like every
-    # tuple field: the loader converts by name, so an unnamed one stays a list
-    # and compares unequal to the tuple a Command writes.
-    rect = kwargs.get("screencast_rect")
-    if isinstance(rect, list) and len(rect) == 4:
-        kwargs["screencast_rect"] = tuple(int(v) for v in rect)
-    # user_overlay_elements: list[dict] → list[OverlayElement]
-    raw_elements = kwargs.get("user_overlay_elements")
-    if isinstance(raw_elements, list):
-        kwargs["user_overlay_elements"] = [
-            OverlayElement.from_dict(d) if isinstance(d, dict) else d
-            for d in raw_elements
-        ]
+    for name, value in data.items():
+        if name not in DeviceSettings.__dataclass_fields__:
+            continue
+        convert = _FROM_JSON.get(name)
+        if (value := convert(value) if convert else value) is not _DROP:
+            kwargs[name] = value
     return DeviceSettings(**kwargs)
 
 

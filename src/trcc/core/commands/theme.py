@@ -62,6 +62,7 @@ from ._helpers import (
     _search_theme_by_name,
     as_working_layer,
     device_overlay_layout,
+    enter_orientation,
     fit_mask_upload,
     native_canvas,
     oriented_theme_path,
@@ -1844,8 +1845,13 @@ class ListMasks(Query[MasksListResult]):
             message=f"{len(entries)} mask(s) under {target}",
         )
 
-def _restore_saved_theme(app: App, key: str) -> None:
-    """Load *key*'s persisted theme (``current_theme``), keeping its edits.
+def _saved_theme_path(app: App, key: str,
+                      degrees: int | None = None) -> Path | None:
+    """Where *key*'s persisted theme (``current_theme``) is in the folder of
+    its orientation now, or ``None`` -- nothing saved, or that folder has no
+    theme of the name (saved in the other orientation; a portrait archive
+    that never downloaded).  Shared by the restore and the rotation, so both
+    pick the same theme.
 
     ``current_theme`` is normally the theme's absolute path (written by
     LoadTheme), re-rooted to the device's CURRENT orientation: a non-square
@@ -1863,20 +1869,19 @@ def _restore_saved_theme(app: App, key: str) -> None:
     """
     stored = app.settings.for_device(key).current_theme
     if not stored:
-        log.info("_restore_saved_theme: %s has no persisted theme", key)
-        return
+        log.info("_saved_theme_path: %s has no persisted theme", key)
+        return None
     candidate = Path(stored)
-    path = (oriented_theme_path(app, key, candidate) if candidate.is_dir()
-            else _search_theme_by_name(app, key, stored))
+    path = (oriented_theme_path(app, key, candidate, degrees)
+            if candidate.is_dir() else _search_theme_by_name(app, key, stored))
     if path is None:
-        log.warning("_restore_saved_theme: %s persisted theme %r not found in "
-                    "any known theme root", key, stored)
-        return
-    log.info("_restore_saved_theme: %s -> %s", key, path)
-    app.dispatch(LoadTheme(key=key, path=path, reset_overrides=False))
+        log.warning("_saved_theme_path: %s persisted theme %r is not in the "
+                    "folder of its orientation -- Theme1 instead", key, stored)
+    return path
 
 
-def _fallback_theme(app: App, key: str) -> Path | None:
+def _fallback_theme(app: App, key: str,
+                    degrees: int | None = None) -> Path | None:
     """The theme a device with nothing saved shows: shipped ``Theme1``.
 
     Named, not ``themes[0]``: the listing is a plain lexical sort, so Theme1
@@ -1887,7 +1892,7 @@ def _fallback_theme(app: App, key: str) -> Path | None:
     Resolved at the device's ORIENTED resolution, so a rotated panel gets its
     portrait catalog — the same one the theme browsers list.
     """
-    resolution = _resolve_oriented_resolution(app, key)
+    resolution = _resolve_oriented_resolution(app, key, degrees)
     if resolution is None:
         log.warning("_fallback_theme: %s — cannot resolve a resolution", key)
         return None
@@ -1899,20 +1904,60 @@ def _fallback_theme(app: App, key: str) -> Path | None:
     return Path(first.path) if first else None
 
 
-def _show_saved_theme(app: App, key: str) -> None:
-    """Load *key*'s saved theme, else the fallback (Theme1) — no background.
+def _show_saved_theme(app: App, key: str, *, keep_overrides: bool = False,
+                     degrees: int | None = None) -> None:
+    """Load *key*'s saved theme in the folder of its orientation, else Theme1
+    — no background.
 
-    The THEME half of :class:`RestoreDeviceState`, shared with the background
-    Commands (``PlayVideo`` / ``SetBackground``), which put their own media on
-    top.  Replaying the saved background here too would decode the old video
-    just before the new one replaced it.
+    The THEME half of :func:`show_orientation_theme`, shared with the
+    background Commands (``PlayVideo`` / ``SetBackground``), which put their
+    own media on top.  Replaying the saved background here too would decode
+    the old video just before the new one replaced it.  The saved theme
+    replays the device's overlay edits and mask; Theme1 starts clean unless
+    *keep_overrides* (a rotation, whose background and mask the App
+    re-resolves).  A saved theme that fails to load falls to Theme1 too.
+    *degrees*: a rotation's new angle; ``None`` the saved one.
     """
-    log.info("_show_saved_theme: %s", key)
-    _restore_saved_theme(app, key)
-    if app.active_themes.get(key) is None:
-        fallback = _fallback_theme(app, key)
-        if fallback is not None:
-            app.dispatch(LoadTheme(key=key, path=fallback))
+    log.info("_show_saved_theme: %s keep_overrides=%s", key, keep_overrides)
+    saved = _saved_theme_path(app, key, degrees)
+    if saved is not None and app.dispatch(
+            LoadTheme(key=key, path=saved, reset_overrides=False)).ok:
+        return
+    if (fallback := _fallback_theme(app, key, degrees)) is not None:
+        app.dispatch(LoadTheme(key=key, path=fallback,
+                               reset_overrides=not keep_overrides))
+
+
+def show_orientation_theme(app: App, key: str, degrees: int | None = None) -> None:
+    """Enter the folder of *key*'s orientation and put its theme on the panel
+    -- the C#'s ``ReadFileTheme`` + ``Theme_Click_Event``, run on every
+    rotation and at connect.
+
+    The folder's own theme, brightness, split mode and slideshow come back
+    (``enter_orientation``); the theme shown is the one it remembers, the
+    same-named one there, else Theme1 -- never a theme of the other folder.
+    *degrees* is a rotation's new angle; ``None`` is a restore at the saved
+    one.  Only a restore with nothing saved starts the theme clean: a rotation
+    keeps the background and mask overrides, which the App re-resolves for the
+    new orientation.
+
+    One function for the restore and the rotation, which each used to pick
+    the theme their own way -- and the rotation kept the folder it left.
+    """
+    from ...services.slideshow_driver import task_key
+
+    visit = enter_orientation(app, key, degrees)
+    log.info("show_orientation_theme: %s %s folder", key, visit or "unknown")
+    # The slideshow's driver reads any theme it did not load as one picked by
+    # hand and switches the slideshow off.  ``_drive_slideshow`` below starts
+    # a fresh driver (tested); removing it first closes the window in which
+    # the OLD driver ticks during the load -- a race no test can time.
+    app.remove_task(task_key(key))
+    _show_saved_theme(app, key, keep_overrides=degrees is not None,
+                      degrees=degrees)
+    if visit == "first":
+        app.settings.mark_entered(key)
+    _drive_slideshow(app, key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1952,7 +1997,8 @@ class RestoreDeviceState(Command[ThemeResult]):
             log.warning("RestoreDeviceState: %s — %s", self.key, e)
             return ThemeResult(ok=False, key=self.key, message=str(e))
 
-        _show_saved_theme(app, self.key)
+        # A rotation made while the panel was unplugged reaches it here.
+        show_orientation_theme(app, self.key)
 
         theme = app.active_themes.get(self.key)
         if theme is None:
@@ -1974,7 +2020,6 @@ class RestoreDeviceState(Command[ThemeResult]):
                      self.key, s.background_path)
             app.dispatch(PlayVideo(key=self.key, path=Path(s.background_path)))
 
-        _drive_slideshow(app, self.key)
         return ThemeResult(
             ok=True, key=self.key, theme_name=theme.name,
             theme_path=str(theme.path),

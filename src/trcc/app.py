@@ -511,18 +511,19 @@ class App(CommandBus):
             self.dispatch(ConnectDevice(key=key))
 
     def _on_orientation_changed(self, event: Any) -> None:
-        """``OrientationChanged`` → reload the active theme + mask from the
-        orientation-keyed resolution dir.
+        """``OrientationChanged`` → the folder of the new orientation, with its
+        own theme, brightness, split mode and slideshow -- the port of the C#
+        ``UpDateUCComboBox1``, which reads that folder's ``Theme.dc``.
 
         Non-square panels store theme / web-mask catalogs per oriented
         resolution (``theme1280480`` vs ``theme4801280``, ``web/zt1280480`` vs
-        ``web/zt4801280``).  On rotation the active content must follow — the
-        port of the C# ``UpDateUCComboBox1`` reload.  Theme first, then the
-        user mask (so an explicitly-applied mask wins over the theme's bundled
-        one).  Each reload is best-effort + skipped when no rotated variant is
-        on disk (the renderer pixel-rotates the landscape art as fallback,
-        matching C# ``isFanZhuan``).  ``event`` is ``Any`` to satisfy the
-        ``Handler`` type, as the other subscribers do.
+        ``web/zt4801280``).  The folder's remembered theme loads; never
+        visited, the same-named theme there, else Theme1 -- never the theme of
+        the folder just left, which drew black on a widescreen panel's
+        portrait canvas.  Then the background and the user mask (so an
+        explicitly-applied mask wins over the theme's bundled one).
+        ``event`` is ``Any`` to satisfy the ``Handler`` type, as the other
+        subscribers do.
         """
         key = event.key
         device = self.devices.get(key)
@@ -535,38 +536,18 @@ class App(CommandBus):
         log.info("_on_orientation_changed: %s degrees=%d catalog=%dx%d",
                  key, event.degrees, bw, bh)
 
-        from .core.commands import ApplyMask, LoadCloudTheme, LoadTheme
-        from .core.commands._helpers import oriented_theme_path
+        from .core.commands import ApplyMask, LoadCloudTheme
+        from .core.commands.theme import show_orientation_theme
 
         web_root = paths.data_dir() / "web"
 
-        # Active theme → reload from the rotated-resolution theme dir.  Shared
-        # resolver with RestoreDeviceState so connect-restore + runtime rotation
-        # agree on the oriented variant (#136).
-        #
-        # reset_overrides=False: a rotation re-roots the SAME theme to its
-        # oriented variant — it is NOT an explicit theme switch, so the video
-        # and the cloud background survive, and the blocks below re-resolve the
-        # background and mask to the oriented resolution.
-        #
-        # The overlay layout does NOT survive into another theme folder:
-        # LoadTheme takes the rotated folder's own layout
-        # (``_layer_laid_out_elsewhere``), as 2.1.8 does — ``UpDateUCComboBox1``
-        # recomputes ``ThemeML`` and reloads that folder's theme
-        # (FormCZTV.cs:1927-1960).  This comment used to say the C# "rotates at
-        # the render layer and NEVER drops the user's edits"; that reading
-        # dates from June, when every tool still read the 2.0.3 decompile, and
-        # once every theme load filled the layer (#276) it put a landscape
-        # layout on the portrait canvas for every user.  A restart at the same
-        # orientation stays in the same folder, so edits survive it.
-        if s.current_theme:
-            cur = Path(s.current_theme)
-            cand = oriented_theme_path(self, key, cur, degrees=event.degrees)
-            if cand != cur:
-                log.info("_on_orientation_changed: reload theme %s → %s "
-                         "(preserve overrides)", cur.name, cand)
-                self.dispatch(LoadTheme(key=key, path=cand,
-                                        reset_overrides=False))
+        # The folder's own theme and values (``show_orientation_theme``).  The
+        # overlay layout does not survive into another folder: LoadTheme takes
+        # the folder's own (``_layer_laid_out_elsewhere``), as 2.1.8's
+        # ``Theme_Click_Event`` re-copies the working dir on every rotation
+        # (FormCZTV.cs:7046-7054).  A restart at the same orientation stays in
+        # the same folder, so edits survive it.
+        show_orientation_theme(self, key, event.degrees)
 
         # Active cloud background → re-apply from the rotated-resolution web dir.
         # Stored as ``web/{res}/<id>``; ``LoadCloudTheme`` now materialises per

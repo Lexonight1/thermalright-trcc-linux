@@ -92,6 +92,12 @@
 
 ### Changed
 
+- **Each screen orientation now remembers its own theme, brightness and
+  slideshow,** as the Windows app does. Turn the screen back and it shows what
+  you last chose in that orientation. The first time you turn it, what was
+  playing carries over (that orientation's version of the same theme), and
+  Theme1 shows only when nothing was ever played. 0° and 180° share one memory,
+  as do 90° and 270°.
 - **Importing a theme now shows it on the screen,** as in the Windows app,
   from every window, the command line and the API. Before, it was only added
   to the theme list.
@@ -132,6 +138,12 @@
 
 ### Fixed
 
+- **Turning a widescreen screen to an orientation without a matching theme
+  showed black.** A theme you saved in landscape stayed on after turning the
+  screen to portrait, and its background was drawn as solid black with the
+  overlay cut off. That orientation's Theme1 now shows instead. A restart while
+  turned no longer squashes the landscape video either.
+- **Turning the screen switched a running slideshow off.**
 - **The note after a one-off command on a screen that goes blank now gives
   advice that works.** It always said to run `export TRCC_DAEMON=1`, which is
   already the default and does nothing under `sudo` or on Windows. It now says

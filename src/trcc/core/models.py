@@ -771,6 +771,35 @@ class DeviceSettings:
     slideshow_enabled: bool = False
     slideshow_interval_s: float = 60.0
     slideshow_themes: list[str] = field(default_factory=list)
+    # Per-orientation memory -- the C#'s per-folder ``Theme.dc``.  The fields
+    # above are the folder the panel is in (``active_catalog``); every OTHER
+    # folder this panel has shown keeps its own theme, brightness, split mode
+    # and slideshow in ``orientation_slots``, swapped back in when the panel
+    # returns there (FormCZTV.ReadFileThemeSub / ChangeFileTheme).  ``None``:
+    # not recorded yet -- the next connect or rotation records it.
+    active_catalog: str | None = None
+    orientation_slots: dict[str, OrientationState] = field(default_factory=dict)
+    # Whether the active folder's values are the user's.  ``None``: they are
+    # (restored from its slot, or a config from before this) -- kept on
+    # leaving.  A value: the folder was entered with nothing saved, and holds
+    # what it showed then; leaving keeps a slot only if something changed
+    # since.  The C# keeps a folder's ``Theme.dc`` only once a user action
+    # writes it, so an untouched folder reads as empty and carries over.
+    entered_with: OrientationState | None = None
+
+
+@dataclass
+class OrientationState:
+    """What a panel keeps per theme folder -- the C#'s 48-byte ``Theme.dc``
+    (theme, slideshow, split mode, brightness), less the Game mode pair, which
+    is not ported.  Always taken from a :class:`DeviceSettings`, so its
+    defaults are that class's."""
+    current_theme: str | None = DeviceSettings.current_theme
+    brightness: int = DeviceSettings.brightness
+    split_mode: int = DeviceSettings.split_mode
+    slideshow_enabled: bool = DeviceSettings.slideshow_enabled
+    slideshow_interval_s: float = DeviceSettings.slideshow_interval_s
+    slideshow_themes: list[str] = field(default_factory=list)
 
 
 # =========================================================================

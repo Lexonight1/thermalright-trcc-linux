@@ -11,10 +11,12 @@ from ..errors import (
     DeviceNotConnectedError,
 )
 from ..events import (
+    BrightnessChanged,
     DeviceDisconnected,
     LedColorsChanged,
     LedSettingsChanged,
     SlideshowChanged,
+    SplitModeChanged,
 )
 from ..models import (
     Kind,
@@ -45,15 +47,20 @@ frame_log = per_frame(__name__)
 
 def oriented_theme_path(
     app: App, key: str, stored: Path, degrees: int | None = None,
-) -> Path:
+) -> Path | None:
     """Re-root a stored theme path to the device's orientation dir.
 
     Non-square panels keep per-oriented theme catalogs (``theme854480`` vs
     ``theme480854``).  ``current_theme`` is an absolute path into ONE of them;
     at a different orientation the same-named theme in the matching dir is the
-    variant to load — otherwise a portrait-rotated device shows the landscape
-    theme on a portrait canvas (and vice versa).  Falls back to ``stored`` when
-    no oriented variant is on disk (the renderer pixel-rotates the art).
+    variant to load.  ``None`` when that folder has no theme of the name -- a
+    theme the user saved in the other orientation, or a portrait archive that
+    never downloaded.  It used to return ``stored`` then, on the belief that
+    the renderer rotates landscape art: on a widescreen panel the canvas is
+    portrait and ``bg_fit`` draws a landscape background as solid black, so a
+    rotation showed black frames and a clipped overlay, and a restart at 90
+    squashed the landscape video.  The caller loads Theme1 instead
+    (``_fallback_theme``), as the C# loads the folder's own list.
 
     ``degrees`` is the authoritative orientation; pass it from an
     ``OrientationChanged`` event (``App._on_orientation_changed``) where
@@ -78,6 +85,7 @@ def oriented_theme_path(
     # (the renderer pixel-rotates the art).
     if is_under(stored, paths.user_content_dir()):
         bases = [paths.user_theme_dir(bw, bh)]
+        others = [paths.user_theme_dir(bh, bw)]
     else:
         # Per-SKU library first, generic second.  A 1600x720 panel at SUB 3
         # keeps its themes in ``theme7201600l``; looking only in
@@ -89,12 +97,71 @@ def oriented_theme_path(
         bases = [libs.theme_dir(bw, bh)]
         if bases[0] != paths.theme_dir(bw, bh):
             bases.append(paths.theme_dir(bw, bh))
+        others = [libs.theme_dir(bh, bw), paths.theme_dir(bh, bw)]
+    # A theme kept anywhere but a folder of this panel -- a directory handed
+    # to ``load-theme`` -- has no orientation twin: it is the user's own path.
+    if stored.parent not in {*bases, *others}:
+        log.debug("oriented_theme_path: %s is outside the panel's folders",
+                  stored)
+        return stored
     for base in bases:
         cand = base / stored.name
         if cand.exists():
             log.debug("_oriented_theme_path: resolved %s", cand)
             return cand
-    return stored
+    log.info("oriented_theme_path: no %r in the %dx%d folder", stored.name,
+             bw, bh)
+    return None
+
+
+def orientation_catalog(app: App, key: str, degrees: int) -> str | None:
+    """The theme folder *key* shows at *degrees* -- the C#'s ``ThemeML``.
+
+    Named by ``Paths`` from the resolution and the SKU's variant, never by the
+    folder found on disk, which falls back to the generic one while a variant
+    archive is missing: the key a panel's per-folder values are kept under
+    must not change with what has downloaded.  0 and 180 name one folder, as do 90 and
+    270 (the C#'s ``themeDirection % 180``).  ``None`` with no live profile.
+    """
+    device = app.devices.get(key)
+    if device is None or device.profile is None:
+        log.debug("orientation_catalog: %s has no live profile", key)
+        return None
+    bw, bh = oriented_resolution(device.profile.resolution, degrees)
+    return app.platform.paths().theme_dir(
+        bw, bh, app.libraries(key).theme_variant).name
+
+
+def enter_orientation(app: App, key: str, degrees: int | None = None) -> str:
+    """Swap in *key*'s values for the folder it shows at *degrees* -- its own
+    theme, brightness, split mode and slideshow, kept per folder as the C#
+    keeps them per ``Theme.dc``.  Returns the settings verdict: ``"same"``,
+    ``"restored"`` or ``"first"`` (``""`` with no live profile).
+
+    Every value the swap changes is announced with the event a UI already
+    follows, so all of them show the folder's own state.
+    """
+    if degrees is None:
+        degrees = app.settings.for_device(key).orientation
+    catalog = orientation_catalog(app, key, degrees)
+    if catalog is None:
+        log.info("enter_orientation: %s not connected -- nothing to swap", key)
+        return ""
+    s = app.settings.for_device(key)
+    before = (s.brightness, s.split_mode, s.slideshow_enabled,
+              s.slideshow_interval_s, list(s.slideshow_themes))
+    visit = app.settings.enter_catalog(key, catalog)
+    s = app.settings.for_device(key)
+    log.info("enter_orientation: %s %d° -> %s (%s)", key, degrees, catalog,
+             visit)
+    if s.brightness != before[0]:
+        app.events.publish(BrightnessChanged(key=key, percent=s.brightness))
+    if s.split_mode != before[1]:
+        app.events.publish(SplitModeChanged(key=key, mode=s.split_mode))
+    if (s.slideshow_enabled, s.slideshow_interval_s,
+            list(s.slideshow_themes)) != before[2:]:
+        _publish_slideshow(app, key)
+    return visit
 
 
 def overlay_elements_to_dc(
@@ -324,8 +391,11 @@ def _resolve_resolution(app: App, key: str) -> tuple[int, int] | None:
     return product.native_resolution
 
 
-def _resolve_oriented_resolution(app: App, key: str) -> tuple[int, int] | None:
-    """The device resolution adjusted for its current user orientation.
+def _resolve_oriented_resolution(app: App, key: str,
+                                 degrees: int | None = None,
+                                 ) -> tuple[int, int] | None:
+    """The device resolution adjusted for its user orientation -- *degrees*,
+    or the saved one.
 
     Cloud assets (themes / backgrounds / masks) are catalogued per ORIENTED
     resolution — the C# keys every ``Web\\{res}\\`` directory on ``directionB``
@@ -338,8 +408,9 @@ def _resolve_oriented_resolution(app: App, key: str) -> tuple[int, int] | None:
     native = _resolve_resolution(app, key)
     if native is None:
         return None
-    orientation = app.settings.for_device(key).orientation
-    return oriented_resolution(native, orientation)
+    if degrees is None:
+        degrees = app.settings.for_device(key).orientation
+    return oriented_resolution(native, degrees)
 
 
 def _resolve_mask_path(path: Path) -> Path | None:
