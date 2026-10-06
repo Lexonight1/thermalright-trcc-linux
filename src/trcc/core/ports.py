@@ -985,7 +985,7 @@ class SensorEnumerator(ABC):
         """
         clamped = max(MIN_REFRESH_INTERVAL_S, seconds)
         if clamped == self._interval_s:
-            log.debug("set_interval: already %.2fs — no change", clamped)
+            frame_log.debug("set_interval: already %.2fs — no change", clamped)
             return
         log.info("set_interval: %.2fs -> %.2fs", self._interval_s, clamped)
         self._interval_s = clamped

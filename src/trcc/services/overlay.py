@@ -35,7 +35,7 @@ _METRIC_UNITS = ("°C", "°F", "℃", "℉", " MHz", "MHz", " RPM", "RPM", "%")
 
 def _strip_metric_unit(text: str) -> str:
     """Return ``text`` with any trailing metric unit removed (bare number)."""
-    log.debug("_strip_metric_unit: text=%s", text)
+    frame_log.debug("_strip_metric_unit: text=%s", text)
     for unit in _METRIC_UNITS:
         text = text.replace(unit, "")
     return text.strip()
@@ -76,7 +76,7 @@ def resolve_overlay_elements(
     # every element verbatim, so this line was 2,641 bytes per render.  What a
     # reader needs is which layer won and how many elements it has, and
     # ``_build_overlay`` already reports the winner beside this.
-    log.debug("resolve_overlay_elements: theme=%r theme_elements=%d "
+    frame_log.debug("resolve_overlay_elements: theme=%r theme_elements=%d "
               "user_elements=%s", theme_config.get("name"),
               len(theme_config.get("elements") or []),
               "none" if user_elements is None else len(user_elements))
@@ -93,7 +93,7 @@ def overlay_source(user_elements: list[OverlayElement] | None) -> str:
     rather than each restating the ternary.
     """
     source = "user" if user_elements is not None else "theme"
-    log.debug("overlay_source: %s", source)
+    frame_log.debug("overlay_source: %s", source)
     return source
 
 
@@ -314,7 +314,7 @@ class OverlayService:
 
         elements: list[dict[str, Any]] = config.get("elements", [])
         clock_keys = list(clock.keys()) if clock else []
-        log.debug(
+        frame_log.debug(
             "render: %dx%d, elements=%d, sensors=%d, clock_sources=%s, "
             "temp_unit=%s",
             width, height, len(elements),

@@ -2176,6 +2176,139 @@ def test_the_tick_path_gate_actually_reaches_the_wire(tmp_path: Path) -> None:
     )
 
 
+#: The one record a sensor update may write: the snapshot, which carries the
+#: readings.  Everything a consumer does with them is per-update.
+_SENSOR_TICK_ALLOWED = "trcc.core.ports:BaselineSensors.snapshot:"
+
+
+def _sensor_tick_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
+                     video: bool, ticks: int = 20) -> tuple[_TickRun, str]:
+    """Records per SENSOR UPDATE on a panel drawing a user overlay layout.
+
+    Every update re-renders every LCD: the overlay resolves, draws, the
+    observer dispatches -- measured 2026-10-06 at 8-10 records per update per
+    panel, 69 lines a tick on the mock fleet.  The CPU temperature climbs one
+    degree a read so each update genuinely changes the overlay, and the cache
+    cannot answer for it.  ``video`` adds three frames between updates, the
+    case where the overlay cache flips MISS -> HIT on every update.
+
+    Returns the run and the whole log text, for the once-only checks.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice, TickDisplay
+    from trcc.core.models import OverlayElement, Theme
+    from trcc.services.media import Playback
+
+    from . import conftest
+    from .test_video_playback import _encoded_frame
+
+    temp = [40.0]
+
+    def climbing_temp(self: Any) -> float:
+        temp[0] += 1.0
+        return temp[0]
+
+    monkeypatch.setattr(conftest.FakeCpu, "temp", climbing_temp)
+
+    ladder = levels_for(0)                       # what a user runs: no -v
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+
+    platform = conftest.FakePlatform(tmp_path)
+    app = App(platform=platform)
+    resp = bytearray(0xE100)
+    resp[0] = 100                                 # FBL 100 -> 320x320
+    platform.scsi.read_script.append(bytes(resp))
+    assert app.dispatch(ConnectDevice(key=_TICK_KEY)).ok
+    app.set_renderer(QtRenderer())
+    app.active_themes[_TICK_KEY] = Theme(
+        path=tmp_path / "theme", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    # A USER layout, so the per-tick resolve runs OverlayElement.to_dict.
+    app.settings.set_user_overlay_elements(_TICK_KEY, [
+        OverlayElement(id="t", type="metric", metric="cpu:temp", x=10, y=10),
+        OverlayElement(id="u", type="metric", metric="cpu:usage", x=10, y=60),
+        OverlayElement(id="c", type="clock", x=10, y=110),
+    ])
+    if video:
+        app.media._playbacks[_TICK_KEY] = Playback(  # pyright: ignore[reportPrivateUsage]
+            frames=[_encoded_frame(v)
+                    for v in (0xFF000000, 0xFF404040, 0xFF808080)],
+            fps=_TICK_FPS,
+        )
+    real_send = app.send
+
+    def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
+        return real_send(key, payload, wait=True)
+
+    app.send = sync_send        # type: ignore[method-assign]
+    sensors: Any = platform.sensors()
+
+    def sensor_update() -> None:
+        """One ``MetricsLoop._loop`` cycle: push the cadence, the poll-thread
+        sweep it waits for, then the broadcast."""
+        sensors.set_interval(float(app.settings.app.refresh_interval_s))
+        sensors._poll_once()
+        app.metrics_loop._publish_once(app.events)  # pyright: ignore[reportPrivateUsage]
+        for _ in range(3 if video else 0):
+            app.dispatch(TickDisplay(key=_TICK_KEY))
+
+    for _ in range(3):            # warm-up: first-render lines are one-shot
+        sensor_update()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    mark = _mark(log_file)
+    writes = len(platform.scsi.sent)
+    for _ in range(ticks):
+        sensor_update()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    run = _TickRun(
+        rates={site: n / ticks
+               for site, n in _records_by_site(log_file, mark).items()},
+        writes=len(platform.scsi.sent) - writes,
+    )
+    return run, log_file.read_text(encoding="utf-8", errors="replace")
+
+
+@pytest.mark.parametrize("video", [False, True], ids=["static", "video"])
+def test_a_sensor_update_writes_only_the_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, video: bool,
+) -> None:
+    """Per sensor update, the file gets the readings -- and nothing else."""
+    ticks = 20
+    run, text = _sensor_tick_run(tmp_path, monkeypatch, video=video,
+                                 ticks=ticks)
+    if not video:
+        # 320x320 RGB565 is 4 CDBs; each update must re-render and send ONE
+        # frame, or "nothing logged" is measured against renders that never ran.
+        assert run.writes == ticks * 4, (
+            f"{ticks} sensor updates sent {run.writes} CDB(s), expected "
+            f"{ticks * 4}: the update is not re-rendering the panel")
+    floods = {s: r for s, r in run.rates.items()
+              if r >= _PER_FRAME_RATE and not s.startswith(_SENSOR_TICK_ALLOWED)}
+    assert not floods, (
+        "these call sites write a record per SENSOR UPDATE at DEFAULT "
+        "verbosity — move each onto core.logs.per_frame(__name__):\n"
+        + "\n".join(f"  {rate:.2f}/update  {site}"
+                    for site, rate in sorted(floods.items(),
+                                             key=lambda kv: -kv[1]))
+    )
+    # The diagnosis lines still reach the file -- once, because nothing
+    # about the layout or the background changed after the first render.
+    for needle in (f"build_overlay {_TICK_KEY}: theme='t' layout=user",
+                   f"build_frame {_TICK_KEY}: background cache (first)"):
+        assert text.count(needle) == 1, (
+            f"{needle!r} appears {text.count(needle)} time(s), expected once: "
+            "the layout and background lines must log on CHANGE")
+
+
 #: One panel per LCD wire variant, from ``dev/devices.json``.  Each wire has
 #: its own send chain -- framing, chunking, the JPEG encode on bulk/LY -- and
 #: ``_ticking_app`` drives SCSI alone, which is how all of these flooded while

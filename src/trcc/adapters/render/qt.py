@@ -204,7 +204,7 @@ class QtRenderer(Renderer):
         composite black at that alpha.  ``percent >= 100`` is a no-op
         (legacy doesn't implement brightness boost above 100% either).
         """
-        log.debug("apply_brightness: percent=%d", percent)
+        frame_log.debug("apply_brightness: percent=%d", percent)
         if percent >= 100:
             return surface
         result = surface.copy()
@@ -356,7 +356,7 @@ class QtRenderer(Renderer):
         # Shrink-quality loop
         for q in (85, 75, 60, 45, 30):
             data = _save(q)
-            log.debug("QtRenderer.encode_jpeg: q=%d size=%d (target ≤%d)",
+            frame_log.debug("QtRenderer.encode_jpeg: q=%d size=%d (target ≤%d)",
                       q, len(data), max_size)
             if len(data) <= max_size:
                 return data

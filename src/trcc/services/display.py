@@ -175,12 +175,13 @@ class DisplayService:
         # (style, rotation, mirrored).  Loaded lazily on first
         # widescreen render so non-Levita devices pay nothing.
         self._split_cache: dict[str, Any] = {}
-        # Per-device scene-cache hit/miss state — used to log INFO on
-        # TRANSITION only (matches Phase-0's ``_log_tick_skip``
-        # shape).  Per-tick HIT/MISS stays at DEBUG so 15 fps doesn't
-        # flood the log; transitions surface "froze on first frame"
-        # regressions in one grep.
-        self._cache_state: dict[str, tuple[bool, bool]] = {}
+        # Per-device BACKGROUND cache hit/miss, logged on a flip only:
+        # a flip is what surfaces "froze on first frame" in one grep.
+        self._cache_state: dict[str, bool] = {}
+        # Per-device overlay layout last announced (theme, source, element
+        # count, switch), so build_overlay names its layout when it CHANGES
+        # instead of on every sensor tick.
+        self._overlay_layout: dict[str, tuple[str, str, int, bool]] = {}
         #: Devices whose profile came from a FALLBACK, so ``_resolve_profile``
         #: announces each one once instead of once per frame.
         self._profile_fallbacks: set[str] = set()
@@ -346,7 +347,7 @@ class DisplayService:
 
         # Brightness dim (before rotation — matches C# order)
         if s.brightness != 100:
-            log.debug("build_frame %s: applying brightness %d%%",
+            frame_log.debug("build_frame %s: applying brightness %d%%",
                       info.key, s.brightness)
             surface = self._r.apply_brightness(surface, s.brightness)
 
@@ -850,6 +851,7 @@ class DisplayService:
         # this key logs INFO when the cache state first appears
         # post-invalidation (instead of comparing against stale state).
         self._cache_state.pop(key, None)
+        self._overlay_layout.pop(key, None)
 
     def invalidate_all(self) -> None:
         log.info("invalidate_all: scenes=%d bg_caches=%d",
@@ -857,30 +859,31 @@ class DisplayService:
         self._scenes.clear()
         self._bg_caches.clear()
         self._cache_state.clear()
+        self._overlay_layout.clear()
 
     def _log_cache_transition(self, key: str, bg_hit: bool,
                               ovl_hit: bool) -> None:
-        """Log on the first call AND every cache state flip per device.
+        """Log the first background-cache state per device, and every flip.
 
-        DEBUG, not INFO: on animated / cloud-background content the state flips
-        EVERY frame, so at INFO this floods the log and scrolls the once-per-
-        connect handshake line (PM/SUB/resolution) out of the report's tail.
-        The "frozen on frame N" diagnostic (a missing flip) is still here at
-        ``-v``; per-tick HIT/MISS already logs at DEBUG in ``build_frame``.
+        The OVERLAY state is reported but is not part of the transition: it
+        MISSes on every new sensor reading and HITs on the next frame by
+        design, so keying on it logged two "flips" per sensor tick on any
+        playing video -- 4.6% of a real log, every one of them expected.
         """
-        new_state = (bg_hit, ovl_hit)
-        prev_state = self._cache_state.get(key)
-        if prev_state == new_state:
+        prev = self._cache_state.get(key)
+        if prev == bg_hit:
+            frame_log.debug("build_frame %s: bg=%s overlay=%s", key,
+                            "HIT" if bg_hit else "MISS",
+                            "HIT" if ovl_hit else "MISS")
             return
         log.debug(
-            "build_frame %s: cache state %s → bg=%s overlay=%s",
+            "build_frame %s: background cache %s → %s (overlay %s)",
             key,
-            "(first)" if prev_state is None
-            else f"bg={prev_state[0]} overlay={prev_state[1]}",
+            "(first)" if prev is None else ("HIT" if prev else "MISS"),
             "HIT" if bg_hit else "MISS",
             "HIT" if ovl_hit else "MISS",
         )
-        self._cache_state[key] = new_state
+        self._cache_state[key] = bg_hit
 
     # ── One-off encoding (used by Commands that bypass the scene cache) ──
 
@@ -1291,7 +1294,13 @@ class DisplayService:
             "overlay_enabled": s.overlay_enabled,
         }
         layout = overlay_source(s.user_overlay_elements)
-        log.debug(
+        # Which layout a panel draws is the line that diagnoses a missing
+        # clock, so it reaches the file whenever it CHANGES; the identical
+        # repeat on every sensor tick goes to the frame family.
+        announced = (theme.name, layout, len(elements), s.overlay_enabled)
+        sink = log if self._overlay_layout.get(info.key) != announced else frame_log
+        self._overlay_layout[info.key] = announced
+        sink.debug(
             "build_overlay %s: theme=%r layout=%s (%d element(s)) "
             "[theme=%d user=%s] overlay_enabled=%s",
             info.key, theme.name, layout, len(elements),

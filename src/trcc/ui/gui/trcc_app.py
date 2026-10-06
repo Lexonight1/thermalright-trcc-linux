@@ -534,7 +534,7 @@ class TRCCApp(QMainWindow):
         GUI just OBSERVES it.  Cache it so a view-switch between ticks can
         re-render the last reading without re-polling.
         """
-        log.debug("_on_bus_sensors_updated: %d readings",
+        frame_log.debug("_on_bus_sensors_updated: %d readings",
                   len(event.metrics.readings))
         self._last_metrics = event.metrics
         self._fan_out_metrics(reason="bus")
@@ -573,7 +573,7 @@ class TRCCApp(QMainWindow):
             self._metrics_fanout_first_logged = True
             self._last_vis_state = vis_state
         else:
-            log.debug(
+            frame_log.debug(
                 "_fan_out_metrics: reason=%s readings=%d "
                 "info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
                 reason, len(readings), info_vis, sysinfo_vis, sidebar_vis,

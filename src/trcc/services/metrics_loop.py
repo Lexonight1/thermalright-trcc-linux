@@ -31,9 +31,11 @@ from ..core.events import (
     SensorsUpdated,
     TempUnitChanged,
 )
+from ..core.logs import per_frame
 from ..core.models import MIN_REFRESH_INTERVAL_S
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 #: How many refresh intervals to wait for a sweep before publishing anyway.
 #: Only reached when the poll thread never started or has died, so it trades a
@@ -294,7 +296,7 @@ class MetricsLoop:
             )
             self._first_publish_logged = True
         else:
-            log.debug(
+            frame_log.debug(
                 "MetricsLoop: SensorsUpdated(%d) published (raw=%d, "
                 "temp_unit=%s, hdd_enabled=%s)",
                 len(readings), len(raw), s.temp_unit, s.hdd_enabled,

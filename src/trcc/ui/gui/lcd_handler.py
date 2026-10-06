@@ -917,10 +917,9 @@ class LCDHandler(BaseHandler):
     def update_metrics(self, metrics: Any) -> None:
         """Metrics tick: cache for video-overlay redraws on next frame."""
         # Per-tick on every metrics broadcast; DEBUG only.
-        log.debug("update_metrics")
         self._pm.state.last_metrics = metrics
         readings = getattr(metrics, 'readings', None) or {}
-        self.log.debug(
+        self.frame_log.debug(
             "update_metrics: %s readings=%d", self._device_key, len(readings),
         )
 

@@ -1348,13 +1348,13 @@ class _DeviceRenderObserver:
                 continue
             owner = self._cadence_owner(key)
             if owner is not None:
-                log.debug(
+                frame_log.debug(
                     "DeviceRenderObserver: skip %s for %s (%s owns the panel; "
                     "its tick renders at its own rate)",
                     type(event).__name__, key, owner,
                 )
                 continue
-            log.debug(
+            frame_log.debug(
                 "DeviceRenderObserver: %s for %s → RenderAndSend",
                 type(event).__name__, key,
             )
@@ -1400,5 +1400,5 @@ class _DeviceRenderObserver:
         playback = self._app.media.playback(key)
         if playback is not None and not playback.paused:
             return "video"
-        log.debug("_cadence_owner: %s — nothing else owns this panel", key)
+        frame_log.debug("_cadence_owner: %s — nothing else owns this panel", key)
         return None
