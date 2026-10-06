@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import py_compile
 import runpy
 import subprocess
 import sys
@@ -124,9 +123,32 @@ def restore(path: Path, original: bytes) -> None:
         raise RuntimeError(f"{path} did not restore")
 
 
-def _pytest(tests: tuple[str, ...]) -> tuple[int, str]:
-    env = dict(os.environ, PYTHONPATH=str(_ROOT / "src"))
+def compile_error(path: Path) -> str | None:
+    """Why *path* does not compile, or None -- WITHOUT writing bytecode.
+
+    ``py_compile.compile`` wrote the MUTATED ``.pyc`` into ``__pycache__``,
+    stamped with the mutated file's size and mtime.  A same-length mutation
+    (``return 1`` -> ``return 0``) restored within the same second left that
+    stamp matching the restored source, so Python kept running the mutation
+    after this tool reported "the tree is as it was" (2026-10-06).
+    """
+    try:
+        compile(path.read_text(encoding="utf-8"), str(path), "exec")
+    except SyntaxError as e:
+        return str(e.msg)
+    return None
+
+
+def _pytest_env() -> dict[str, str]:
+    """No bytecode written under a mutation: see :func:`compile_error`."""
+    env = dict(os.environ, PYTHONPATH=str(_ROOT / "src"),
+               PYTHONDONTWRITEBYTECODE="1")
     env.pop("WAYLAND_DISPLAY", None)
+    return env
+
+
+def _pytest(tests: tuple[str, ...]) -> tuple[int, str]:
+    env = _pytest_env()
     run = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-n", "0", *tests],
         cwd=_ROOT, env=env, capture_output=True, text=True, timeout=900,
@@ -174,11 +196,9 @@ def run(mutations: list[Mutation]) -> int:
             results.append(INVALID)
             continue
         try:
-            if path.suffix == ".py":
-                py_compile.compile(str(path), doraise=True)
-            v = verdict(*_pytest(m.tests), m.tests)
-        except py_compile.PyCompileError as e:
-            v = Verdict(INVALID, f"the mutation does not compile: {e.msg.strip()}")
+            broken = compile_error(path) if path.suffix == ".py" else None
+            v = (Verdict(INVALID, f"the mutation does not compile: {broken}")
+                 if broken is not None else verdict(*_pytest(m.tests), m.tests))
         finally:
             restore(path, original)
         print(f"{v.kind:9} {m.name}: {v.reason[:200]}")
@@ -254,6 +274,14 @@ def gate() -> int:
         checks.append(("apply mutates exactly the anchor", mutated))
         checks.append(("restore puts the bytes back",
                        target.read_bytes() == b"x = 1\ny = 1\n"))
+        checks.append(("the compile check writes no bytecode",
+                       compile_error(target) is None
+                       and not (Path(tmp) / "__pycache__").exists()))
+        target.write_text("x = (\n", encoding="utf-8")
+        checks.append(("a mutation that does not compile is caught",
+                       compile_error(target) is not None))
+    checks.append(("pytest under a mutation writes no bytecode",
+                   _pytest_env().get("PYTHONDONTWRITEBYTECODE") == "1"))
 
     for label, ok in checks:
         print(f"  {'PASS' if ok else 'FAIL'}  {label}")
