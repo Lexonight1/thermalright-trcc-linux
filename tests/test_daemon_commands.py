@@ -241,6 +241,37 @@ def test_status_and_kill_through_a_ui_never_start_an_app(
     assert started == ["ensure_daemon"]
 
 
+def test_the_caller_side_app_builds_no_renderer(
+    fake_platform, tmp_path, monkeypatch,
+) -> None:
+    """``trcc kill`` and ``daemon-status`` build an App only to dispatch on it,
+    and none of the caller-side Commands draws.  A QtRenderer plus its display
+    wiring was ~70 ms of every one (349 -> 280 ms measured, 2026-10-06)."""
+    from trcc import _boot
+    from trcc.adapters.render import qt
+    from trcc.ui._uis import CliUI
+
+    real_build = _boot._build_local_app      # before the helper stubs it
+    _shared_by_default(monkeypatch, fake_platform, tmp_path)
+    renderers: list[int] = []
+    real_qt = qt.QtRenderer
+
+    def counting_renderer() -> object:
+        renderers.append(1)
+        return real_qt()
+
+    def build_on_the_fake(**kw: object) -> App:
+        return real_build(**{**kw, "platform": fake_platform})  # type: ignore[arg-type]
+
+    monkeypatch.setattr(qt, "QtRenderer", counting_renderer)
+    monkeypatch.setattr(_boot, "_build_local_app", build_on_the_fake)
+
+    result = CliUI().dispatch(DaemonStatus())
+
+    assert result.message == "No daemon is running"
+    assert renderers == [], "the caller-side App built a QtRenderer"
+
+
 def test_stop_says_it_stopped_the_app(fake_platform, monkeypatch) -> None:
     from trcc import daemon, ipc
 

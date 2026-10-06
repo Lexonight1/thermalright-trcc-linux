@@ -97,16 +97,22 @@ def _build_local_app(
     *,
     platform: Platform | None = None,
     renderer: Renderer | None = None,
+    draws: bool = True,
 ) -> App:
-    """Construct an in-process App.  Used by ``trcc`` and the daemon."""
-    log.info("_build_local_app: platform=%s renderer=%s",
-             platform is not None, renderer is not None)
+    """Construct an in-process App.  Used by ``trcc`` and the daemon.
+
+    ``draws=False`` builds it with no renderer, for the caller-side Commands
+    (daemon status and stop, setup, upgrade, report) that never draw a frame:
+    a QtRenderer and its display wiring were ~100 ms of every ``trcc kill``.
+    """
+    log.info("_build_local_app: platform=%s renderer=%s draws=%s",
+             platform is not None, renderer is not None, draws)
     from .adapters.system import current_platform
     from .app import App
 
     real_platform = platform if platform is not None else current_platform()
     real_renderer = renderer
-    if real_renderer is None:
+    if real_renderer is None and draws:
         try:
             from .adapters.render.qt import QtRenderer
             real_renderer = QtRenderer()

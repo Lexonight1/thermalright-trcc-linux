@@ -282,7 +282,9 @@ class UserInterface(CommandBus):
         if self._in_caller is None:
             log.info("_caller_app: %s building an in-process App for "
                      "caller-side Commands", type(self).__name__)
-            self._in_caller = _build_local_app(platform=self._platform)
+            # None of them draws a frame -- see _build_local_app(draws=).
+            self._in_caller = _build_local_app(platform=self._platform,
+                                               draws=False)
         return self._in_caller
 
     @property
