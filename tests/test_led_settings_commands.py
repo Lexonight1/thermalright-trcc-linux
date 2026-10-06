@@ -329,6 +329,50 @@ def _new_runtime_with_test(*, timer: int, color: int):
     return LedRuntimeState(test_timer=timer, test_color=color)
 
 
+# ── LedSnapshot's segment count is the panel's, not a settings list's ─────
+
+
+def _first_pm_per_style() -> list[int]:
+    from trcc.core.led_protocol import _PM_REGISTRY
+
+    first: dict[object, int] = {}
+    for pm, entry in sorted(_PM_REGISTRY.items()):
+        first.setdefault(entry.style, pm)
+    return list(first.values())
+
+
+@pytest.mark.parametrize("pm", _first_pm_per_style())
+def test_a_fresh_leds_snapshot_counts_its_panels_segments(
+    fake_platform: FakePlatform, pm: int,
+) -> None:
+    """``segment_count`` was ``len(segment_on)``, a list nothing fills until a
+    segment is clicked, so `trcc led snapshot` and `led-debug` said
+    "segments 0" for every fresh device.  It is the style's display now --
+    the source ListLedStyles already used."""
+    from trcc.core.commands import LedSnapshot
+    from trcc.services.led_segment import get_display
+
+    from .conftest import _CliRenderer
+    from .test_render_led import _LED_KEY, _attach_and_connect
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=pm)
+    style = app.get(_LED_KEY).led_handshake.style  # type: ignore[attr-defined]
+    display = get_display(style)
+
+    snap = app.dispatch(LedSnapshot(key=_LED_KEY))
+
+    assert snap.segment_count == (display.mask_size if display else 0)
+    assert app.settings.for_led(_LED_KEY).segment_on == [], (
+        "the count must not depend on the clicked-segment list")
+
+
+def test_an_unattached_leds_snapshot_counts_no_segments(tmp_path: Path) -> None:
+    from trcc.core.commands import LedSnapshot
+
+    assert _app(tmp_path).dispatch(LedSnapshot(key="0416:8001")).segment_count == 0
+
+
 # ── LedSnapshot carries per-zone state, not just a zone COUNT ─────────────
 #
 # ``zone_count`` said how many zones exist with no way to ask what any of

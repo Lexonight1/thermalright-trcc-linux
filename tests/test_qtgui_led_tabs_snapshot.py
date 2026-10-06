@@ -41,4 +41,3 @@ def test_the_four_added_fields_survive_the_round_trip(fake_platform) -> None:
     assert r.clock_24h is False
     assert r.week_sunday is True
     assert r.memory_ratio == 4
-    assert r.segment_count == 3, "segment_count must stay len(segment_on)"

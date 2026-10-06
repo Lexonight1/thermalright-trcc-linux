@@ -1139,7 +1139,12 @@ class LedSnapshot(Query[LedSnapshotResult]):
 
     def execute(self, app: App) -> LedSnapshotResult:
         log.debug("execute: app=%s", app)
+        from ...services.led_segment import get_display
         s = app.settings.for_led(self.key)
+        # The connected panel's segment total, from the same source as
+        # ListLedStyles.  It was len(segment_on) -- a list nothing fills until
+        # a segment is clicked -- so a fresh device reported "segments 0".
+        display = get_display(_style_of(app, self.key))
         return LedSnapshotResult(
             ok=True, key=self.key,
             mode=s.mode.name,
@@ -1153,7 +1158,7 @@ class LedSnapshot(Query[LedSnapshotResult]):
             zone_sync_interval_ticks=s.zone_sync_interval_ticks,
             selected_zone=s.selected_zone,
             zone_count=len(s.zones),
-            segment_count=len(s.segment_on),
+            segment_count=display.mask_size if display is not None else 0,
             zones=tuple(
                 LedZoneEntry(mode=z.mode.name, color=z.color,
                              brightness=z.brightness, on=z.on)
