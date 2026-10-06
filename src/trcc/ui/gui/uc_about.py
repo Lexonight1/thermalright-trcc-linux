@@ -658,9 +658,3 @@ class UCAbout(BasePanel):
         """Handle close/back button."""
         log.info("_on_close")
         self.close_requested.emit()
-
-    # --- Public API ---
-
-    def sync_language(self):
-        """Sync background to current settings.lang."""
-        self._apply_localized_background()

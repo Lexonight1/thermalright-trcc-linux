@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.geometry import lock_region_to_panel
-from ...core.i18n import tr
 from ...core.models import ACTION_ICON_IMAGES, DATE_FORMAT_IMAGES, OverlayMode
 from .assets import Assets
 from .base import set_background_pixmap
@@ -536,10 +535,6 @@ class MaskPanel(DisplayModePanel):
         self._mask_visible = visible
         self._update_eye_icon()
         self.set_enabled(visible)
-
-    def apply_language(self, lang: str) -> None:
-        """Update title label for current language."""
-        self._title_lbl.setText(tr('Layer Mask', lang))
 
 
 class ScreenCastPanel(DisplayModePanel):
