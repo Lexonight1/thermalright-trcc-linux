@@ -2309,6 +2309,90 @@ def test_a_sensor_update_writes_only_the_snapshot(
             "the layout and background lines must log on CHANGE")
 
 
+def _records_per_parse(tmp_path: Path, name: str, data: bytes | None = None,
+                       config: dict[str, Any] | None = None) -> dict[str, int]:
+    """Records one layout-file parse writes at DEFAULT verbosity, by site."""
+    from trcc.services import _dc as Dc
+
+    ladder = levels_for(0)
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+    path = tmp_path / f"{name}.dc"
+    if config is not None:
+        Dc.File(path).write(config)
+    else:
+        assert data is not None
+        path.write_bytes(data)
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    mark = _mark(log_file)
+    Dc.File(path).read()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    return _records_by_site(log_file, mark)
+
+
+#: Records one layout parse may write.  Measured 6-7 (entry, read, summary
+#: and a few one-shot branch lines); a per-field line adds ~90.
+_PARSE_RECORD_CAP = 10
+
+
+def _dd_layout(elements: int) -> dict[str, Any]:
+    return {"elements": [
+        {"type": "metric", "metric": "cpu:temp", "x": i, "y": i,
+         "color": "#ffffff", "size": 18.0}
+        for i in range(elements)]}
+
+
+@pytest.mark.parametrize("fmt", ["0xdd", "0xdc"])
+def test_a_layout_parse_writes_the_same_records_at_any_size(
+    tmp_path: Path, fmt: str,
+) -> None:
+    """Parsing a layout file costs a fixed handful of records, not one per byte.
+
+    Every theme in every library is parsed when the grids fill.  The reader
+    logged each byte, int, float, string and bool it read -- measured
+    2026-10-06 at ~94 records per file and ~40,000 lines in the first 8 s of
+    a 10-device mock -- so the startup lines a report is read for (handshake,
+    resolution, which library) were pushed out of the file before the window
+    was up.  The one summary line per file already names what was parsed.
+    """
+    from .test_dc_reader import _build_dc
+
+    if fmt == "0xdd":
+        small = _records_per_parse(tmp_path / "s", "small", config=_dd_layout(1))
+        large = _records_per_parse(tmp_path / "l", "large", config=_dd_layout(30))
+    else:
+        small = _records_per_parse(tmp_path / "s", "small",
+                                   data=_build_dc(flags=[True] + [False] * 7))
+        large = _records_per_parse(tmp_path / "l", "large",
+                                   data=_build_dc(flags=[True] * 8))
+    # An absolute cap as well as the comparison: 0xDC is FIXED-size -- all 13
+    # font records are written whether enabled or not -- so a per-field line
+    # costs the small and the large file the same and the comparison alone
+    # passed with one in place (a mutation caught it).  Measured 6-7 per parse.
+    assert sum(large.values()) <= _PARSE_RECORD_CAP, (
+        f"{fmt}: one parse wrote {sum(large.values())} record(s), cap "
+        f"{_PARSE_RECORD_CAP} — something logs per field at DEFAULT verbosity:\n"
+        + "\n".join(f"  {n}  {s}" for s, n in sorted(large.items(),
+                                                     key=lambda kv: -kv[1]))
+    )
+    assert large == small, (
+        f"{fmt}: the larger file wrote {sum(large.values())} record(s) against "
+        f"{sum(small.values())} — something logs per field or per element at "
+        "DEFAULT verbosity; move it onto core.logs.per_frame(__name__):\n"
+        + "\n".join(f"  {large.get(s, 0)} vs {small.get(s, 0)}  {s}"
+                    for s in sorted(set(large) | set(small))
+                    if large.get(s, 0) != small.get(s, 0))
+    )
+    text = (tmp_path / "l" / "trcc.log").read_text(encoding="utf-8")
+    assert re.search(r"Reader\.parse: \S+ → \d+ elements", text), (
+        "the per-file summary line (element count, source, overlay, …) no "
+        "longer reaches the file — it is what a parse is diagnosed from")
+
+
 #: One panel per LCD wire variant, from ``dev/devices.json``.  Each wire has
 #: its own send chain -- framing, chunking, the JPEG encode on bulk/LY -- and
 #: ``_ticking_app`` drives SCSI alone, which is how all of these flooded while

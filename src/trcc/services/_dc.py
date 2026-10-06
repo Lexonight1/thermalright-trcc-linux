@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
-from ..core.logs import Blob
+from ..core.logs import Blob, per_frame
 from ..core.models import (
     DATE_FORMATS,
     METRICS,
@@ -32,6 +32,7 @@ from ..core.models import (
 )
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 _MAGIC_DC = 0xDC
@@ -329,31 +330,31 @@ class _Reader:
         self.pos = start
 
     def read_int32(self) -> int:
-        log.debug("read_int32")
+        frame_log.debug("read_int32")
         val = struct.unpack_from("<i", self.data, self.pos)[0]
         self.pos += 4
         return val
 
     def read_bool(self) -> bool:
-        log.debug("read_bool")
+        frame_log.debug("read_bool")
         val = self.data[self.pos] != 0
         self.pos += 1
         return val
 
     def read_byte(self) -> int:
-        log.debug("read_byte")
+        frame_log.debug("read_byte")
         val = self.data[self.pos]
         self.pos += 1
         return val
 
     def read_float(self) -> float:
-        log.debug("read_float")
+        frame_log.debug("read_float")
         val = struct.unpack_from("<f", self.data, self.pos)[0]
         self.pos += 4
         return val
 
     def read_string(self) -> str:
-        log.debug("read_string")
+        frame_log.debug("read_string")
         if self.pos >= len(self.data):
             return ""
         length = self.data[self.pos]
@@ -436,7 +437,7 @@ def _read_run(r: _Reader, run: tuple[tuple[str, Any], ...],
             into[key] = [r.read_int32() for _ in default]
         else:
             into[key] = r.read_int32()
-    log.debug("_read_run: %s",
+    frame_log.debug("_read_run: %s",
               {key: into[key] for key, _ in run})
 
 
@@ -697,7 +698,7 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
 
 
 def _read_dd_font(r: _Reader) -> dict[str, Any]:
-    log.debug("_read_dd_font: r=%s", r)
+    frame_log.debug("_read_dd_font: r=%s", r)
     name = r.read_string() or _DEFAULT_FONT_NAME
     size = _clamp_font_size(r.read_float())
     style = r.read_byte()
@@ -766,7 +767,7 @@ def _clamp_font_size(raw: float, default: float = 24.0) -> float:
     # Theme fonts span ~8 px labels up to the panel's hero number (the 001-series
     # temperature is authored at 128).  Only reject values a misaligned/garbage
     # read produces (NaN, negative, or absurdly large); everything else is real.
-    log.debug("_clamp_font_size: raw=%s default=%s", raw, default)
+    frame_log.debug("_clamp_font_size: raw=%s default=%s", raw, default)
     if 8.0 <= raw <= 512.0:
         return raw
     return default

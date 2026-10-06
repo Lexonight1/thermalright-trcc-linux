@@ -604,18 +604,21 @@ class ThemeDir:
 
     @property
     def preview(self) -> Path:
-        log.debug("preview")
-        return self.path / self.PREVIEW
+        path = self.path / self.PREVIEW
+        frame_log.debug("ThemeDir.preview: %s", path)
+        return path
 
     @property
     def dc(self) -> Path:
-        log.debug("dc")
-        return self.path / self.DC
+        path = self.path / self.DC
+        frame_log.debug("ThemeDir.dc: %s", path)
+        return path
 
     @property
     def json(self) -> Path:
-        log.debug("json")
-        return self.path / self.JSON
+        path = self.path / self.JSON
+        frame_log.debug("ThemeDir.json: %s", path)
+        return path
 
     @property
     def legacy_json(self) -> Path:
