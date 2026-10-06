@@ -112,6 +112,22 @@ def test_streaming_connect_skips_init_and_pins_portrait(monkeypatch) -> None:
     assert dev.profile is not None and dev.profile.rotate is False
 
 
+def test_streaming_connect_keeps_the_sub_byte(monkeypatch) -> None:
+    """The streaming reply carries SUB at [4]; the profile must too.  It was
+    resolved with ``get_profile(fbl, pm)``, so SUB defaulted to 0 -- the #290
+    shape, moot only while no streaming panel has a SUB-dependent angle."""
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", lambda *_: None)
+    transport = FakeBulkTransport()
+    transport.read_script = [bytes([0xDA, 0xDB, 0xDC, 0xDD, 0x05, 0x3A, 0x00, 0x00])]
+    dev = _make_type2(transport)
+    dev.set_quirks(quirks_for(*_WF_SE))
+
+    result = dev.connect()
+
+    assert result.sub_byte == 5
+    assert dev.profile is not None and dev.profile.sub == 5
+
+
 def test_a_silent_quirked_panel_falls_through_to_the_standard_handshake(
     monkeypatch,
 ) -> None:

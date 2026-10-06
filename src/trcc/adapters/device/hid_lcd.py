@@ -266,7 +266,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
                  self.info.key, pm, sub)
 
         fbl = pm_to_fbl(pm, sub)
-        profile = self._portrait_native(self._base_profile(fbl, pm))
+        profile = self._portrait_native(self._base_profile(fbl, pm, sub))
         self._profile = profile
         log.info("HidLcd %s: streaming connect OK, portrait-native %s",
                  self.info.key, profile.resolution)
@@ -275,13 +275,15 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             pm_byte=pm, sub_byte=sub, fbl=fbl, raw_response=bytes(resp),
         )
 
-    def _base_profile(self, fbl: int | None, pm: int) -> DeviceProfile:
+    def _base_profile(self, fbl: int | None, pm: int, sub: int) -> DeviceProfile:
         """Resolve the pre-quirk geometry profile: from the FBL when known,
         else from the registry ``native_resolution`` (a streaming firmware that
         volunteered no handshake is still identified by its registry row)."""
-        log.debug("_base_profile: fbl=%s pm=%s", fbl, pm)
+        log.debug("_base_profile: fbl=%s pm=%s sub=%s", fbl, pm, sub)
         if fbl is not None:
-            return get_profile(fbl, pm)
+            # SUB too: a profile resolved without it takes the wrong encode
+            # angle on the panels whose angle depends on it (#290).
+            return get_profile(fbl, pm, sub)
         return DeviceProfile(*self.info.native_resolution)
 
     def _portrait_native(self, base: DeviceProfile) -> DeviceProfile:
