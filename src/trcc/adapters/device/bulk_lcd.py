@@ -319,7 +319,7 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
         The ZLP is exempt: it is a zero-length delimiter, so there is no
         payload to come up short.
         """
-        log.debug("_write_frame: frame=%s", Blob(frame))
+        frame_log.debug("_write_frame: frame=%s", Blob(frame))
         for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
             chunk = frame[offset:offset + _WRITE_CHUNK_SIZE]
             if self._transport.write(

@@ -105,13 +105,13 @@ class _ProbeMemory:
 
 def _ceil_to_align(n: int, align: int = _USB_BULK_ALIGNMENT) -> int:
     """Round *n* up to the next multiple of *align*."""
-    log.debug("_ceil_to_align: n=%s align=%s", n, align)
+    frame_log.debug("_ceil_to_align: n=%s align=%s", n, align)
     return (n + align - 1) // align * align
 
 
 def _frame_timeout_ms(packet_size: int) -> int:
     """Scale frame timeout with packet size (USB 2.0 ≈ 4 KB/ms + 100ms margin)."""
-    log.debug("_frame_timeout_ms: packet_size=%s", packet_size)
+    frame_log.debug("_frame_timeout_ms: packet_size=%s", packet_size)
     return max(_DEFAULT_FRAME_TIMEOUT_MS, packet_size // 4 + 100)
 
 
@@ -422,7 +422,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         fall back to ``info.native_resolution`` so smoke tests that build
         frames before connect() still produce a valid header.
         """
-        log.debug("_build_frame_type2: image_data=%s", Blob(image_data))
+        frame_log.debug("_build_frame_type2: image_data=%s", Blob(image_data))
         is_jpeg = len(image_data) >= 2 and image_data[:2] == b'\xff\xd8'
         w, h = (self._profile.resolution if self._profile is not None
                 else self.info.native_resolution)
@@ -485,7 +485,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
 
     def _build_frame_type3(self, image_data: bytes) -> bytes:
         """Type 3 frame: 16-byte prefix + exactly this panel's payload size."""
-        log.debug("_build_frame_type3: image_data=%s", Blob(image_data))
+        frame_log.debug("_build_frame_type3: image_data=%s", Blob(image_data))
         size = getattr(self, "_f5_payload", _f5.DATA_SIZE)
         prefix = _f5.frame_header(size)
         if len(image_data) < size:

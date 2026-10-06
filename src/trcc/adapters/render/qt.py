@@ -340,9 +340,9 @@ class QtRenderer(Renderer):
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes:
         """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size."""
-        log.debug("encode_jpeg: quality=%d max_size=%d", quality, max_size)
+        frame_log.debug("encode_jpeg: quality=%d max_size=%d", quality, max_size)
         def _save(q: int) -> bytes:
-            log.debug("_save: q=%s", q)
+            frame_log.debug("_save: q=%s", q)
             from PySide6.QtCore import QBuffer, QIODevice
             qbuf = QBuffer()
             qbuf.open(QIODevice.OpenModeFlag.WriteOnly)

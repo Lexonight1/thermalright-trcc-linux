@@ -2176,6 +2176,106 @@ def test_the_tick_path_gate_actually_reaches_the_wire(tmp_path: Path) -> None:
     )
 
 
+#: One panel per LCD wire variant, from ``dev/devices.json``.  Each wire has
+#: its own send chain -- framing, chunking, the JPEG encode on bulk/LY -- and
+#: ``_ticking_app`` drives SCSI alone, which is how all of these flooded while
+#: the gate above stayed green (measured 2026-10-06: 75% of a mock fleet's
+#: steady-state log).
+_WIRE_SPECS: dict[str, dict[str, Any]] = {
+    "scsi": {"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100},
+    "hid-type2": {"type": "lcd", "vid": "0416", "pid": "5302", "pm": 5},
+    "hid-ali": {"type": "lcd", "vid": "0416", "pid": "5406", "pm": 32},
+    "hid-type3": {"type": "lcd", "vid": "0418", "pid": "5304", "fbl": 100},
+    "ly": {"type": "lcd", "vid": "0416", "pid": "5408", "pm": 65},
+    "ly1": {"type": "lcd", "vid": "0416", "pid": "5409", "pm": 65},
+    "bulk": {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 72},
+}
+
+
+def _wire_tick_rates(tmp_path: Path, spec: dict[str, Any], *,
+                     frames: int = 20) -> _TickRun:
+    """``_tick_path_rates`` on any wire: a playing video, one TickDisplay per
+    frame, sends forced synchronous, at DEFAULT verbosity."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice, TickDisplay
+    from trcc.core.models import Theme
+    from trcc.services.media import Playback
+
+    from .mock_platform import MockPlatform
+    from .test_video_playback import _encoded_frame
+
+    ladder = levels_for(0)                       # what a user runs: no -v
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+
+    app = App(platform=MockPlatform([spec], tmp_path, host_sensors=False))
+    key = f"{spec['vid']}:{spec['pid']}"
+    connected = app.dispatch(ConnectDevice(key=key))
+    assert connected.ok and connected.handshake is not None, connected.message
+    app.set_renderer(QtRenderer())
+    app.active_themes[key] = Theme(
+        path=tmp_path / "theme", name="t",
+        resolution=connected.handshake.resolution, config={"elements": []},
+    )
+    app.media._playbacks[key] = Playback(   # pyright: ignore[reportPrivateUsage]
+        frames=[_encoded_frame(v) for v in (0xFF000000, 0xFF404040, 0xFF808080)],
+        fps=_TICK_FPS,
+    )
+    real_send = app.send
+
+    def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
+        return real_send(key, payload, wait=True)
+
+    app.send = sync_send        # type: ignore[method-assign]
+    transport: Any = app.devices[key]._transport  # pyright: ignore[reportPrivateUsage]
+
+    def wire_writes() -> int:
+        return len(getattr(transport, "sent", None) or transport.writes)
+
+    for _ in range(5):            # warm-up: first-frame lines are one-shot
+        app.dispatch(TickDisplay(key=key))
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    mark = _mark(log_file)
+    writes = wire_writes()
+    for _ in range(frames):
+        app.dispatch(TickDisplay(key=key))
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    return _TickRun(
+        rates={site: n / frames
+               for site, n in _records_by_site(log_file, mark).items()},
+        writes=wire_writes() - writes,
+    )
+
+
+@pytest.mark.parametrize("wire", list(_WIRE_SPECS))
+def test_every_wire_sends_a_frame_without_a_record(
+    tmp_path: Path, wire: str,
+) -> None:
+    """The tick-path gate, on every LCD wire: nothing may scale with frames."""
+    frames = 20
+    run = _wire_tick_rates(tmp_path, _WIRE_SPECS[wire], frames=frames)
+    # The witness is the wire, not the log -- see _TickRun.
+    assert run.writes >= frames and run.writes % frames == 0, (
+        f"{wire}: {frames} frames made {run.writes} transport write(s) — not "
+        "a whole number per frame, so the verdict below is measured against "
+        "frames the wire never saw")
+    floods = {s: r for s, r in run.rates.items() if r >= _PER_FRAME_RATE}
+    assert not floods, (
+        f"{wire}: these call sites write a record per sent frame at DEFAULT "
+        "verbosity — move each onto core.logs.per_frame(__name__):\n"
+        + "\n".join(f"  {rate:.2f}/frame  {site}"
+                    for site, rate in sorted(floods.items(),
+                                             key=lambda kv: -kv[1]))
+    )
+
+
 #: Every state that puts an LED on the 150 ms animation tick
 #: (``led_animation_loop._ANIMATED_MODES``, the zone-sync carousel, test mode).
 #: Each reaches its own effect and encode functions.

@@ -243,7 +243,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
 
     def _write_frame(self, frame: bytes) -> bool:
         """4096-byte USB writes over the chunk buffer, then the 512-byte ACK."""
-        log.debug("_write_frame: frame=%s", Blob(frame))
+        frame_log.debug("_write_frame: frame=%s", Blob(frame))
         total_bytes = len(frame)
         pos = 0
         while pos < total_bytes:
