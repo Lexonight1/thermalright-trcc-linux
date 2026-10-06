@@ -220,6 +220,3 @@ class UCThemeMask(DownloadableThemeBrowser):
         self.mask_selected.emit(item_info)
         self.theme_selected.emit(item_info)
         self.invoke_delegate(self.CMD_MASK_SELECTED, item_info)
-
-    def get_selected_mask(self):
-        return self.selected_item

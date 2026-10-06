@@ -333,6 +333,3 @@ class UCThemeWeb(DownloadableThemeBrowser):
                 if item.id == theme_id:
                     self._on_item_clicked(item)
                     break
-
-    def get_selected_theme(self):
-        return self.selected_item

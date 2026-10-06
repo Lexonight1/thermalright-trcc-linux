@@ -504,10 +504,6 @@ def open_event_stream(
 # =========================================================================
 
 
-class _ShutdownRequested(Exception):
-    """Internal marker — the request handler asked the server to exit."""
-
-
 class _Subscriber:
     """One connected client that asked for an event stream.
 

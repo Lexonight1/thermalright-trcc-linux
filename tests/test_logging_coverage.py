@@ -129,7 +129,10 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: 302 -> 300 on 2026-10-06: two DELETED, both silent and called by nothing
 #: (AST, src + tests + dev): ``UCAbout.sync_language`` and
 #: ``MaskPanel.apply_language``.  Diffing ``--list``: those 2 left, none joined.
-MAX_SILENT = 300
+#: 300 -> 297 on 2026-10-06: nine definitions with zero references (AST, src +
+#: tests + dev) DELETED; three were silent -- ``get_selected_mask`` and both
+#: ``get_selected_theme``.  Diffing ``--list``: those 3 left, none joined.
+MAX_SILENT = 297
 
 
 def test_logging_coverage_only_improves() -> None:

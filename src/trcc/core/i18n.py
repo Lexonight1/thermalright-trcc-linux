@@ -2227,17 +2227,3 @@ LEGACY_TO_ISO: dict[str, str] = {
     "en": "en",
 }
 ISO_TO_LEGACY: dict[str, str] = {v: k for k, v in LEGACY_TO_ISO.items()}
-
-
-def locale_to_lang(locale_prefix: str, default: str = "en") -> str:
-    """``getlocale()`` prefix → ISO 639-1 code, falling back to *default*."""
-    log.info("locale_to_lang: locale_prefix=%s default=%s",
-             locale_prefix, default)
-    return LOCALE_TO_LANG.get(locale_prefix, default)
-
-
-def iso_to_legacy_suffix(lang: str) -> str:
-    """ISO code → legacy C# asset suffix.  Unknown languages map to
-    themselves so callers always get a string back."""
-    log.debug("iso_to_legacy_suffix: lang=%s", lang)
-    return ISO_TO_LEGACY.get(lang, lang)

@@ -36,7 +36,7 @@ from typing import Protocol
 
 from ...core import toolchain
 from ...core._safe import is_safe_zip_member
-from ...core.errors import HttpFetchError, TrccError
+from ...core.errors import HttpFetchError
 from ...core.ports import DataInstaller, HttpFetcher
 
 log = logging.getLogger(__name__)
@@ -263,7 +263,3 @@ def _unwrap_nested_dir(target_dir: Path) -> None:
         nested.rmdir()
     except OSError as e:
         log.warning("unwrap: cannot remove %s: %s", nested, e)
-
-
-class DataInstallError(TrccError):
-    """Raised when no archive can be obtained AND no local data exists."""

@@ -393,8 +393,6 @@ class UCThemeLocal(BaseThemeBrowser):
                     break
         return result
 
-    def get_selected_theme(self):
-        return self.selected_item
 
     def forget_slideshow_theme(self, name: str) -> None:
         """Drop a deleted theme from the slideshow array.

@@ -200,9 +200,3 @@ def products_by_wire(wire: Wire) -> list[ProductInfo]:
     """Return all products using a given wire protocol."""
     log.debug("products_by_wire: wire=%s", wire)
     return [p for p in ALL_DEVICES.values() if p.wire is wire]
-
-
-def products_by_kind(kind: Kind) -> list[ProductInfo]:
-    """Return all products of a given kind (LCD or LED)."""
-    log.debug("products_by_kind: kind=%s", kind)
-    return [p for p in ALL_DEVICES.values() if p.kind is kind]
