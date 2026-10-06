@@ -407,3 +407,18 @@ def test_a_0xdc_label_is_not_given_a_show_unit(tmp_path: Path) -> None:
     texts = [e for e in cfg["elements"] if e["type"] == "text"]
     assert texts, "no text elements parsed — this pin proves nothing"
     assert all("show_unit" not in e for e in texts)
+
+
+def test_an_icon_element_is_skipped_by_name(caplog: pytest.LogCaptureFixture) -> None:
+    """Mode 5 is the C#'s icon element (UCShortcut), not "unknown": a report
+    from a theme that has one must say what was dropped."""
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="trcc.services._dc")
+    element = Dc._build_dd_element(5, 0, 12, 34, 0, 0, {}, "")
+
+    assert element is None
+    assert [r.getMessage() for r in caplog.records if "0xDD" in r.getMessage()] == [
+        "0xDD: icon element (C# mode 5, UCShortcut) at (12, 34) is not "
+        "supported; skipping"]
+

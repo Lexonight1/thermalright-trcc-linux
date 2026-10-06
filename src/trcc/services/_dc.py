@@ -758,6 +758,12 @@ def _build_dd_element(
         case 3:
             return {**base, "type": "clock", "source": "date",
                     "format": DATE_FORMATS.get(mode_sub, DATE_FORMATS[0])}
+        case 5:
+            # The C#'s icon/shortcut element (UCShortcut).  Not ported: 0 of
+            # 9809 0xDD files on disk carry one -- named so a report says so.
+            log.debug("0xDD: icon element (C# mode 5, UCShortcut) at (%d, %d) "
+                      "is not supported; skipping", x, y)
+            return None
         case _:
             log.debug("0xDD: unknown element mode %d; skipping", mode)
             return None
