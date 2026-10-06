@@ -291,11 +291,53 @@ def test_a_per_poll_failure_writes_its_traceback_once(
         "go to the per-frame log"]
 
 
+def test_a_missing_lhm_namespace_writes_its_traceback_once(
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    """Seen on a Windows VM 2026-10-06: LibreHardwareMonitor never published
+    ``root\\LibreHardwareMonitor``, and every LHM read re-probed it -- a dozen
+    tracebacks per sweep, forever.  The probe and the per-thread handle are
+    per-poll failures, so each writes its traceback once.
+
+    MUTATION CHECK: route either site back to ``log.debug(..., exc_info=True)``
+    → this fails."""
+    import sys
+    from types import SimpleNamespace
+
+    from trcc.adapters.sensors import _lhm
+    from trcc.core import logs
+
+    def no_namespace(**_kwargs: object) -> object:
+        raise OSError("0x8004100E WBEM_E_INVALID_NAMESPACE")
+
+    monkeypatch.setattr(logs, "_REPORTED", set())
+    monkeypatch.setitem(sys.modules, "wmi", SimpleNamespace(WMI=no_namespace))
+    # LHM "up", its namespace not: the per-thread handle path runs.
+    monkeypatch.setattr(_lhm, "_SHARED_LHM", SimpleNamespace(start=object))
+    monkeypatch.setattr(_lhm._handle_local, "lhm_ns", None, raising=False)
+    caplog.set_level(logging.DEBUG)
+
+    probes = [_lhm._probe_wmi_namespace() for _ in range(12)]
+    handles = [_lhm._default_handle_factory() for _ in range(12)]
+
+    assert probes == [None] * 12 and handles == [None] * 12
+    assert sorted(r.getMessage() for r in caplog.records if r.exc_info) == [
+        "LHM namespace root\\LibreHardwareMonitor unavailable — traceback "
+        "logged once; repeats go to the per-frame log",
+        "LHM per-thread WMI handle failed — traceback logged once; repeats go "
+        "to the per-frame log",
+    ]
+
+
 #: Tracebacks the sensor adapters may still write — every one a ONE-SHOT probe
-#: (enumeration, a library load, a namespace check), where one traceback is the
-#: diagnosis.  A per-poll read must use ``core.logs.recurring_failure``.
+#: (enumeration, a library load), where one traceback is the diagnosis.  A
+#: per-poll read must use ``core.logs.recurring_failure``.  ``_lhm.py`` was 6
+#: and its namespace check was counted one-shot here; it is re-probed on every
+#: read while the namespace is missing, which on a Windows VM wrote a dozen
+#: tracebacks per sweep (2026-10-06).  Both it and the per-thread handle now use
+#: ``recurring_failure``.
 KNOWN_SENSOR_TRACEBACKS: dict[str, int] = {
-    "_lhm.py": 6, "_macos_hid.py": 2, "_msacpi.py": 1, "_powermetrics.py": 1,
+    "_lhm.py": 4, "_macos_hid.py": 2, "_msacpi.py": 1, "_powermetrics.py": 1,
     "_smc.py": 1, "_sysctl.py": 1, "nvml.py": 3,
 }
 

@@ -83,7 +83,11 @@ def _probe_wmi_namespace() -> Any:
         ns = wmi.WMI(namespace=_LHM_NAMESPACE)
         list(ns.Hardware())
     except Exception:
-        log.debug("LHM namespace unavailable", exc_info=True)
+        # Probed on EVERY LHM read while the namespace is missing (start()
+        # re-probes so it picks the namespace up the moment it registers), so
+        # a host without it logged a traceback a dozen times per sweep,
+        # forever -- seen on a VM, 0x8004100E WBEM_E_INVALID_NAMESPACE.
+        recurring_failure(log, "LHM namespace %s unavailable", _LHM_NAMESPACE)
         return None
     return ns
 
@@ -395,7 +399,7 @@ def _default_handle_factory() -> Any:
         import wmi  # pyright: ignore[reportMissingImports]
         handle = wmi.WMI(namespace=_LHM_NAMESPACE)
     except Exception:
-        log.debug("LHM per-thread WMI handle failed", exc_info=True)
+        recurring_failure(log, "LHM per-thread WMI handle failed")
         handle = None
     _handle_local.lhm_ns = handle
     return handle
