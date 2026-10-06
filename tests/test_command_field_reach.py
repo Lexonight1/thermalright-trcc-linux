@@ -231,7 +231,10 @@ def test_every_record_is_tagged(pair: tuple[str, str]) -> None:
 #: ``_sync_audio`` in ``core/commands/device.py``.
 #: 19 -> 18 on 2026-09-29: ``EnsureDaemon`` was DELETED (V5c: every dispatch finds or starts
 #: the App now), not traced — its ('EnsureDaemon', 'api') record went with it.
-UNCLASSIFIED = 17     # 18 → 17 (2026-10-02): gui no longer dispatches ImportTheme (export/import left the gui with 2.1.8's row)
+#: 18 → 17 on 2026-10-02: the gui stopped dispatching ImportTheme.  It
+#: dispatches it again since 94c16024 (2026-10-05, UCThemeLocal's export/import
+#: pair), and its record came back CLASSIFIED ("scoped:", above) -- so 17 stands.
+UNCLASSIFIED = 17
 
 
 def test_the_unclassified_backlog_does_not_grow() -> None:

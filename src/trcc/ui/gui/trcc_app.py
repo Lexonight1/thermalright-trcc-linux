@@ -500,11 +500,13 @@ class TRCCApp(QMainWindow):
         self._show_language(cc.language)
 
     def _show_language(self, lang: str) -> None:
-        """Show the App's language in the picker and the translated labels.
+        """Show the App's language in the picker and every translated text.
 
-        What the gui's own language switch has always re-translated: the
-        i18n labels, the panel titles and the LED panel's localized
-        background.  The other panels take their language at startup only.
+        The gui translates in three places, and all three re-translate here:
+        the labels made by ``_create_i18n_overlays`` (``_i18n_labels`` -- theme,
+        mask, background, video and settings panels), the panel-table titles
+        (``_i18n_panel_tables``), and the LED panel, which translates its own
+        texts (``set_language``).  Nothing else in ``ui/gui`` calls ``tr``.
         """
         from ...core.i18n import tr
         log.info("_show_language: %s", lang)

@@ -9,13 +9,13 @@ Owns the device-key picker + connection status header and hosts a
 * :class:`SegmentTab`  — per-segment toggles (hidden if no segments)
 * :class:`AdvancedTab` — sensor source, test mode, clock options
 
-The header watches the ``LedColorsChanged`` event so an external
-mutation (another UI, an API client) refreshes every tab without the
-user having to click Refresh.  Zone + Segment tabs decide for
-themselves whether they have content to show, so the panel asks each
-on every refresh and hides the irrelevant ones.
+The panel follows the device's settings events (``settings_changed``) and
+app-wide changes (``app_settings_changed``), so a change from another UI or an
+API client refreshes every tab.  Zone + Segment tabs decide for themselves
+whether they have content to show, so the panel asks each on every refresh and
+hides the irrelevant ones.
 
-Replaces the legacy 1390-line ``uc_led_control.py`` monolith.
+qtgui's counterpart of the gui skin's ``uc_led_control.py``, which still ships.
 """
 from __future__ import annotations
 

@@ -88,9 +88,10 @@ class IconButton:
 class Label:
     """Static text at a rect.
 
-    ``text`` is the ENGLISH source string, not a resolved one: panels re-run
-    ``apply_language`` on a language change, so a spec holding translated text
-    would freeze the panel in whatever locale built it.
+    ``text`` is the ENGLISH source string, drawn as-is: no panel built from a
+    spec translates it today (``panel_renderer`` makes ``QLabel(text)``).  Keep
+    it the source string, so a translation pass can key off it instead of a
+    locale frozen in at build time.
     """
     id: str
     rect: Rect
