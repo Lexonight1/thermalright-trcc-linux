@@ -138,6 +138,12 @@
 
 ### Fixed
 
+- **A Frozen Warframe panel that identifies as 49 is drawn at its real size.**
+  The Windows app treats a USB-display (0416:5302) panel answering 49 as a
+  Frozen Warframe: 320×240, turned like the other Warframe panels, colours sent
+  high byte first. TRCC had no entry for 49 and drew it at 320×320, unturned,
+  with the wrong theme pack. Taken from the Windows app; not yet seen on a real
+  panel, so please report if yours shows 49.
 - **A screen command aimed at an LED controller froze its lights.**
   `trcc display color`, `send-image`, a raw frame send and the matching API
   routes treated an LED controller as a screen. The send failed, but the lights

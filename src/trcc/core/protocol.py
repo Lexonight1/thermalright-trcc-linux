@@ -146,6 +146,14 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     #          W      H     jpeg    BE      rotate   notes
     36:  DeviceProfile(240,  240),
     37:  DeviceProfile(240,  240),
+    # A Frozen Warframe on the type-2 HID list (UCDevice.cs:463 `case 49: case
+    # 50:`).  No is{W}x{H} flag, so the C# draws its 320x240 fallback
+    # (UCScreenImage.cs:1095) and shares every path with FBL 50 but one:
+    # `mode == 3 && fbl == 49` sets SPIMode=2 (FormCZTV.cs:1069), the
+    # big-endian branch of ImageTo565, sent unchanged through UsbHid.  Missing
+    # until 2026-10-06, so it fell back to 320x320 unrotated (audit G3).
+    # From the C# alone -- no PM 49 panel has been seen on glass.
+    49:  DeviceProfile(320,  240,  big_endian=True, rotate=True),   # HID Type 2 → SPIMode=2
     50:  DeviceProfile(320,  240,  rotate=True),
     51:  DeviceProfile(320,  240,  rotate=True),                    # HID Type 2 → SPIMode=1
     52:  DeviceProfile(320,  240,  rotate=True),                    # BA120 Vision (#100)

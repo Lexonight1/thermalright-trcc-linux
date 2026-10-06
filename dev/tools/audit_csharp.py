@@ -617,8 +617,8 @@ public void FormCZTVInit(int fbl, int m, int pm, int pmSub)
                    not gone))
     # Each table resolved by its own wire's function.  Through one resolver
     # for all, SCSI/Bulk/LY/LED PMs warned "UNKNOWN FBL" 140 times a run.  The
-    # one left is REAL: HID PM 49 (the C# draws it as a Frozen Warframe,
-    # UCDevice.cs:471) has no FBL in our catalog -- a finding, not noise.
+    # last one was REAL -- HID PM 49 had no FBL row -- and got its row on
+    # 2026-10-06, so any unknown FBL now is a new finding.
     import logging as _logging
     unknown: list[str] = []
 
@@ -636,7 +636,7 @@ public void FormCZTVInit(int fbl, int m, int pm, int pmSub)
         proto.removeHandler(catch)
     checks.append((f"tables resolve by their own wire ({len(unknown)} unknown "
                    f"FBL: {sorted(set(unknown))})",
-                   set(unknown) <= {"get_profile: UNKNOWN FBL=49"}))
+                   not unknown))
     key = re.compile(rf"Data/USBLCD/Theme{_RES_KEY}\b")
     checks.append(("a resolution key takes any one-letter variant (m, u, l, y)",
                    all((m := key.search(f"Data/USBLCD/Theme{n}")) and m.group(1) == n

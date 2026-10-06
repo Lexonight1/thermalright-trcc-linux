@@ -96,6 +96,9 @@ def _make_type3(transport: FakeBulkTransport,
     (10, (960, 540), 224),
     # PM=5 → FBL=50 (override) → (320, 240).
     (5,  (320, 240),  50),
+    # PM=49 → FBL=49 (identity) → (320, 240): the C#'s no-flag fallback.  It
+    # had no row and resolved to the 320x320 default.
+    (49, (320, 240),  49),
 ])
 def test_type2_handshake_derives_resolution_from_pm(
     fake_bulk: FakeBulkTransport,
@@ -138,6 +141,23 @@ def test_type2_pm_sub_compound_uses_correct_fbl(
 
 
 # ── Type 3: FBL byte derives resolution + profile ─────────────────────
+
+
+def test_a_pm_49_panel_is_fbl_50_big_endian(fake_bulk: FakeBulkTransport) -> None:
+    """PM 49 is a Frozen Warframe on the type-2 list (UCDevice.cs:463); the
+    C# shares every path with FBL 50 except SPIMode=2 (FormCZTV.cs:1069),
+    ImageTo565's big-endian branch.  Rotation and size are FBL 50's."""
+    fake_bulk.read_script.append(_type2_response(49))
+    device = _make_type2(fake_bulk)
+
+    device.connect()
+
+    fifty = get_profile(50)
+    assert device._profile is not None
+    assert (device._profile.resolution, device._profile.rotate) == (
+        fifty.resolution, fifty.rotate)
+    assert device._profile.big_endian is True and fifty.big_endian is False
+    assert device._profile.jpeg is False
 
 
 @pytest.mark.parametrize("indicator,expected_fbl,expected_resolution", [
