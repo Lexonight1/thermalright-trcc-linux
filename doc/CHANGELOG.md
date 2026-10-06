@@ -138,6 +138,12 @@
 
 ### Fixed
 
+- **A screen command aimed at an LED controller froze its lights.**
+  `trcc display color`, `send-image`, a raw frame send and the matching API
+  routes treated an LED controller as a screen. The send failed, but the lights
+  stopped animating and stopped following the sensors until an LED setting was
+  changed. These commands, video playback, previews and screen cast now refuse
+  an LED controller with a clear message and leave it running.
 - **Turning a widescreen screen to an orientation without a matching theme
   showed black.** A theme you saved in landscape stayed on after turning the
   screen to portrait, and its background was drawn as solid black with the

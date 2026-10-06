@@ -48,6 +48,7 @@ from .core.led_models import LedRuntimeState
 from .core.libraries import DeviceLibraries
 from .core.logs import current_origin, per_frame, recurring_warning, sink_for
 from .core.models import (
+    Capability,
     DeviceInfo,
     DeviceQuirks,
     HardwareMetrics,
@@ -904,12 +905,15 @@ class App(CommandBus):
         from .core.commands import RestoreDeviceState
         with self._prime_lock:
             device = self.devices.get(key)
-            if (device is None or not device.is_connected or device.is_led
+            # What is restored is a rendered display, so only a device that
+            # draws frames has one — not "anything that is not an LED".
+            draws = (device is not None
+                     and Capability.FRAME_RENDER in device.info.capabilities)
+            if (device is None or not device.is_connected or not draws
                     or key in self.active_themes or key in self.held):
-                log.debug("_prime: %s skipped (connected=%s led=%s active=%s "
-                          "held=%s)", key, device is not None
-                          and device.is_connected,
-                          device is not None and device.is_led,
+                log.debug("_prime: %s skipped (connected=%s frames=%s "
+                          "active=%s held=%s)", key, device is not None
+                          and device.is_connected, draws,
                           key in self.active_themes, key in self.held)
                 return
             log.info("_prime: %s is blank — restoring its saved display", key)
@@ -1328,6 +1332,12 @@ class _DeviceRenderObserver:
                 # animation tick — hold the carousel so a slider drag or a
                 # sensor broadcast doesn't race the metric page forward.
                 self._app.dispatch(self._RenderLed(key=key, advance=False))
+                continue
+            if Capability.FRAME_RENDER not in device.info.capabilities:
+                log.debug(
+                    "DeviceRenderObserver: skip %s for %s (draws no frames)",
+                    type(event).__name__, key,
+                )
                 continue
             theme = self._app.active_themes.get(key)
             if theme is None:

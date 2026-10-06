@@ -19,6 +19,7 @@ from ..events import (
     SplitModeChanged,
 )
 from ..models import (
+    Capability,
     Kind,
     OverlayElement,
     ThemeDir,
@@ -36,7 +37,7 @@ from ..results import (
 if TYPE_CHECKING:
     from ...app import App
     from ...services.theme_directories import ThemeDirectories
-    from ..models import DeviceSettings
+    from ..models import DeviceSettings, ProductInfo
 
 from ..logs import per_frame
 from ..models import MEDIA, MediaKind
@@ -462,14 +463,58 @@ def _not_an_led(app: App, key: str) -> str | None:
     device = app.devices.get(key)
     if device is not None:
         return None if device.is_led else refusal
-    try:
-        vid, pid, _ = parse_device_key(key)
-    except ValueError:
-        return None
-    product = find_product(vid, pid)
+    product = _registry_product(key)
     if product is None:
         return None
     return None if product.kind is Kind.LED else refusal
+
+
+def _registry_product(key: str) -> ProductInfo | None:
+    """The registry row *key* names, or ``None`` when the registry cannot say.
+
+    ``None`` covers a key that does not parse and a VID/PID the registry has
+    never seen — the "cannot tell" answer both refusal helpers allow.
+    """
+    try:
+        vid, pid, _ = parse_device_key(key)
+    except ValueError:
+        frame_log.debug("_registry_product: %r is not a device key", key)
+        return None
+    product = find_product(vid, pid)
+    frame_log.debug("_registry_product: %s -> %s", key,
+                    product.product if product is not None else None)
+    return product
+
+
+def _lacks(app: App, key: str, capability: Capability) -> str | None:
+    """Refusal message when *key*'s device provably lacks *capability*.
+
+    The LCD half of what :func:`_not_an_led` is for the LED half.  Every frame
+    Command assumed its device draws frames, so an LED controller handed
+    ``SendColor`` rendered a 320x320 frame for a device with no screen, had it
+    refused at the wire — and was already marked held by then, which froze its
+    animation and its sensor refresh until an LED setting changed.
+
+    Same ternary as :func:`_not_an_led`, keyed on the declared capability set
+    rather than on "is it an LED", so a device that is neither an LCD nor an
+    LED is refused by what it cannot do instead of being taken for an LCD:
+
+    * **attached** — the device's own ``ProductInfo`` answers.
+    * **not attached** — the VID/PID registry answers.
+    * **unknown VID/PID** — allowed; nothing is proven about a key never seen.
+
+    Called per tick by ``RenderAndSend``, so it logs on the frame family.
+    """
+    device = app.devices.get(key)
+    product = device.info if device is not None else _registry_product(key)
+    if product is None or capability in product.capabilities:
+        frame_log.debug("_lacks: %s has %s (or cannot tell)", key,
+                        capability.value)
+        return None
+    frame_log.debug("_lacks: %s (%s) lacks %s", key, product.kind.value,
+                    capability.value)
+    return (f"{key} ({product.kind.value.upper()}) has no "
+            f"{capability.value} capability")
 
 
 def _publish_led_settings_changed(app: App, key: str) -> None:

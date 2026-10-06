@@ -346,8 +346,11 @@ class ProductInfo:
         Keyed by ``kind`` so a standard product declares nothing extra;
         an unknown kind yields the empty set (no Command applies).
         """
-        log.debug("capabilities")
-        return CAPABILITIES_BY_KIND.get(self.kind, frozenset())
+        capabilities = CAPABILITIES_BY_KIND.get(self.kind, frozenset())
+        frame_log.debug("ProductInfo.capabilities: %s %s -> %s",
+                        format_device_key(self.vid, self.pid), self.kind.value,
+                        sorted(c.value for c in capabilities))
+        return capabilities
 
 
 # =========================================================================

@@ -104,6 +104,7 @@ from ._base import Command, Query
 from ._helpers import (
     _element_to_entry,
     _invalidate_scene,
+    _lacks,
     _publish_if_disconnect,
     _rendered_surface,
     _require_connected_device,
@@ -121,7 +122,7 @@ if TYPE_CHECKING:
     from ..ports import Device
 
 from ..logs import per_frame
-from ..models import MEDIA, MediaKind
+from ..models import MEDIA, Capability, MediaKind
 from ..ports import CaptureNotReady
 
 log = logging.getLogger(__name__)
@@ -542,6 +543,8 @@ class SendFrame(Command[SendResult]):
 
     def execute(self, app: App) -> SendResult:
         log.debug("execute: app=%s", app)
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return SendResult(ok=False, key=self.key, message=why)
         try:
             _require_connected_device(app, self.key)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
@@ -589,6 +592,9 @@ class SendColor(Command[SendResult]):
                     ok=False, key=self.key, bytes_sent=0,
                     message=f"{label} out of range (0-255): {value}",
                 )
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=why)
 
         try:
             device = _require_connected_device(app, self.key)
@@ -724,6 +730,9 @@ class SendImage(Command[SendResult]):
                     f"supported: {', '.join(sorted(MEDIA.exts(MediaKind.IMAGE)))}"
                 ),
             )
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=why)
         try:
             device = _require_connected_device(app, self.key)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
@@ -783,6 +792,8 @@ class RenderAndSend(Command[RenderResult]):
     key: str
 
     def execute(self, app: App) -> RenderResult:
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return RenderResult(ok=False, key=self.key, message=why)
         try:
             device = _require_connected_device(app, self.key)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
@@ -995,6 +1006,8 @@ class BuildPreview(Query[PreviewResult]):
             device = app.get(self.key)
         except DeviceNotFoundError as e:
             return PreviewResult(ok=False, key=self.key, message=str(e))
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return PreviewResult(ok=False, key=self.key, message=why)
 
         theme = app.active_themes.get(self.key)
         if theme is None:
@@ -1262,6 +1275,9 @@ class PlayVideo(Command[VideoResult]):
                         self.key, e)
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return VideoResult(ok=False, key=self.key, path=str(self.path),
+                               message=why)
         if why := _theme_under_background(app, self.key):
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                message=why)
@@ -1480,21 +1496,15 @@ class StartScreencast(Command[ScreencastResult]):
             )
             return ScreencastResult(ok=False, key=self.key, message=str(e))
 
-        # An LED controller has no panel to cast to.  Refused HERE, before
-        # anything is written, because this Command PERSISTS the region: it
-        # used to answer ok=True and leave ``screencast_region`` set on an
-        # LED device, which is a wrong-state write rather than a wasted call
-        # — and the capture driver reads exactly that field to decide what to
-        # grab for.  Shaped like ``SetLedColors``' own guard, inverted.
-        if device.is_led:
-            log.warning(
-                "StartScreencast.execute: %s is an LED controller — refused",
-                self.key,
-            )
-            return ScreencastResult(
-                ok=False, key=self.key,
-                message=f"{self.key} is an LED controller — it has no panel",
-            )
+        # A device that draws no frames has no panel to cast to.  Refused
+        # HERE, before anything is written, because this Command PERSISTS the
+        # region: it used to answer ok=True and leave ``screencast_region`` set
+        # on an LED device, which is a wrong-state write rather than a wasted
+        # call — and the capture driver reads exactly that field to decide
+        # what to grab for.
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            log.warning("StartScreencast.execute: refused — %s", why)
+            return ScreencastResult(ok=False, key=self.key, message=why)
 
         given = (self.x, self.y, self.w, self.h)
         box = given if (self.w, self.h) != (0, 0) else screencast_box(app, self.key)
@@ -1571,9 +1581,9 @@ class SetScreencastRegion(Command[ScreencastResult]):
             f"region values must be 0..9999, got {box}"
             if not all(0 <= v <= 9999 for v in box)
             else f"no device {self.key}" if device is None
-            else f"{self.key} is an LED controller — it has no panel" if device.is_led
-            else f"{self.key} has not reported its panel size yet"
-            if device.profile is None else "")
+            else _lacks(app, self.key, Capability.FRAME_RENDER)
+            or (f"{self.key} has not reported its panel size yet"
+                if device.profile is None else ""))
         if problem:
             log.warning("SetScreencastRegion: %s", problem)
             return ScreencastResult(ok=False, key=self.key, message=problem)
@@ -1623,6 +1633,8 @@ class SendScreencastFrame(Command[ScreencastResult]):
             log.warning("SendScreencastFrame: device %s not found: %s",
                         self.key, e)
             return ScreencastResult(ok=False, key=self.key, message=str(e))
+        if why := _lacks(app, self.key, Capability.FRAME_RENDER):
+            return ScreencastResult(ok=False, key=self.key, message=why)
 
         # The capture is the BACKGROUND; the active theme's mask and metric
         # elements compose on top of it, which is what the C# does for every

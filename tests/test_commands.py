@@ -1,6 +1,10 @@
 """Commands — UI contract dispatched through App.dispatch."""
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from trcc.app import App
 from trcc.core.commands import (
     DisableAutostart,
@@ -430,7 +434,7 @@ def test_start_screencast_refuses_an_led_controller(tmp_path) -> None:
     result = app.dispatch(StartScreencast(key=key, x=0, y=0, w=320, h=320))
 
     assert result.ok is False
-    assert "no panel" in result.message
+    assert result.message == f"{key} (LED) has no frame_render capability"
     assert app.settings.for_device(key).screencast_region is None, (
         "refused, but the region was written anyway — the driver reads this"
     )
@@ -451,6 +455,172 @@ def test_start_screencast_still_accepts_an_lcd(fake_platform) -> None:
 
     assert result.ok is True, result.message
     assert app.settings.for_device(key).screencast_region == (1, 2, 64, 48, False)
+
+
+# ── Frame Commands refuse a device that draws no frames ─────────────
+#
+# The LED Commands refused a non-LED in one voice (``_not_an_led``, #252); the
+# frame Commands had no mirror.  Measured on the mock 2026-10-06: ``SendColor``
+# at an LED rendered a 320x320 frame, had it refused at the wire, and left the
+# LED in ``App.held`` — its animation and sensor refresh both stopped until an
+# LED setting changed.
+
+
+def _frame_commands(tmp_path):
+    """One of every Command whose whole job is a frame, aimed at the LED."""
+    from trcc.core.commands import (
+        BuildPreview,
+        PlayVideo,
+        RenderAndSend,
+        SendColor,
+        SendFrame,
+        SendImage,
+        SendScreencastFrame,
+        SetScreencastRegion,
+    )
+    from trcc.core.models import RawFrame
+
+    key = _led_key()
+    image = tmp_path / "x.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n")
+    video = tmp_path / "x.mp4"
+    video.write_bytes(b"\0")
+    return [
+        SendFrame(key=key, data=b"\0" * 64),
+        SendColor(key=key, r=255, g=0, b=0),
+        SendImage(key=key, path=image),
+        RenderAndSend(key=key),
+        BuildPreview(key=key),
+        PlayVideo(key=key, path=video),
+        SetScreencastRegion(key=key, x=0, y=0, w=64, h=48),
+        SendScreencastFrame(key=key, frame=RawFrame(data=b"\0" * 12,
+                                                    width=2, height=2)),
+    ]
+
+
+@pytest.mark.parametrize("index", range(8))
+def test_a_frame_command_refuses_an_led_and_leaves_it_running(
+    tmp_path, index: int,
+) -> None:
+    """Refused by capability, and — the point — the LED is not held.
+
+    MUTATION CHECK: delete the ``_lacks`` guard from any one of these Commands
+    and its row fails.
+    """
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice
+
+    key = _led_key()
+    # A real renderer and sender, as in the App: without them an unguarded
+    # Command dies on "no renderer" before it can hold anything.
+    app = App(MockPlatform([{"type": "led", "vid": key[:4], "pid": key[5:],
+                             "pm": 16}], tmp_path),
+              renderer=QtRenderer(), send_scheduler=SyncSendScheduler())
+    try:
+        assert app.dispatch(ConnectDevice(key=key)).ok
+        cmd = _frame_commands(tmp_path)[index]
+
+        result = app.dispatch(cmd)
+
+        assert key not in app.held, (
+            f"{type(cmd).__name__} held the LED — its animation and sensor "
+            "refresh stop until an LED setting changes"
+        )
+        assert result.ok is False
+        assert result.message == f"{key} (LED) has no frame_render capability"
+    finally:
+        app.close()
+
+
+def test_lacks_answers_from_the_registry_when_nothing_is_attached(
+    fake_platform,
+) -> None:
+    """The ternary's other two arms: registry, and "cannot tell" is allowed."""
+    from trcc.core.commands._helpers import _lacks
+    from trcc.core.models import Capability
+
+    app = App(fake_platform)
+    key = _led_key()
+    assert key not in app.devices
+
+    assert _lacks(app, key, Capability.FRAME_RENDER) == (
+        f"{key} (LED) has no frame_render capability")
+    assert _lacks(app, key, Capability.EFFECTS) is None
+    assert _lacks(app, "ffff:ffff", Capability.FRAME_RENDER) is None
+    assert _lacks(app, "not-a-key", Capability.FRAME_RENDER) is None
+
+
+def test_a_device_that_draws_no_frames_is_neither_primed_nor_rendered(
+    tmp_path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shape of a self-rendering device: not an LED, and no frames.
+
+    ``_prime`` and the render observer used to read "not an LED" as "a frame
+    LCD", so such a device would have been restored and rendered to.  An LCD
+    with ``FRAME_RENDER`` taken out of its kind's set stands in for it; the
+    control half proves the same App DOES prime and render with it in.
+
+    MUTATION CHECK: drop the ``FRAME_RENDER`` test from ``_prime`` or from
+    ``_DeviceRenderObserver``'s per-key loop and this fails.  The loop is the
+    only gate the observer needs: the sensor sweep's keys go through it too.
+    """
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import (
+        ConnectDevice,
+        RenderAndSend,
+        RestoreDeviceState,
+    )
+    from trcc.core.events import OverlayChanged, SensorsUpdated
+    from trcc.core.models import (
+        CAPABILITIES_BY_KIND,
+        Capability,
+        Kind,
+        Theme,
+    )
+
+    key = "0402:3922"
+    # A renderer, or the observer returns before it reads a single device.
+    app = App(MockPlatform([{"type": "lcd", "vid": "0402", "pid": "3922",
+                             "fbl": 100}], tmp_path), renderer=QtRenderer())
+    try:
+        assert app.dispatch(ConnectDevice(key=key)).ok
+        rendered: list[str] = []
+        restored: list[str] = []
+        real_dispatch = app.dispatch
+
+        def recording_dispatch(cmd):
+            for kind, seen in ((RestoreDeviceState, restored),
+                               (RenderAndSend, rendered)):
+                if isinstance(cmd, kind):
+                    seen.append(cmd.key)
+                    return None
+            return real_dispatch(cmd)
+
+        monkeypatch.setattr(app, "dispatch", recording_dispatch)
+
+        def drive() -> None:
+            app.active_themes.pop(key, None)
+            app._prime(key)
+            app.active_themes[key] = Theme(name="T", path=Path("/nonexistent"),
+                                           resolution=(320, 320))
+            app.events.publish(SensorsUpdated(readings={}, metrics=None))
+            app.events.publish(OverlayChanged(key=key, enabled=True))
+
+        drive()
+        assert (restored, rendered) == ([key], [key, key]), "control"
+
+        restored.clear()
+        rendered.clear()
+        monkeypatch.setitem(
+            CAPABILITIES_BY_KIND, Kind.LCD,
+            CAPABILITIES_BY_KIND[Kind.LCD] - {Capability.FRAME_RENDER})
+        drive()
+        assert (restored, rendered) == ([], [])
+    finally:
+        app.close()
 
 
 def test_keepalive_says_why_the_device_is_missing(fake_platform) -> None:
