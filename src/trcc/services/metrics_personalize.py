@@ -150,13 +150,13 @@ def personalize_metrics(
 
     Returns a NEW object; ``metrics`` is not mutated.
     """
-    log.debug("personalize_metrics: temp_unit=%s hdd_enabled=%s cpus=%d gpus=%d",
+    frame_log.debug("personalize_metrics: temp_unit=%s hdd_enabled=%s cpus=%d gpus=%d",
               temp_unit, hdd_enabled, len(metrics.cpus), len(metrics.gpus))
     to_f = temp_unit == "F"
 
     def conv(celsius: float) -> float:
         # 0.0 == "no reading" — never fabricate 32°F from an absent sensor.
-        log.debug("conv: celsius=%s", celsius)
+        frame_log.debug("conv: celsius=%s", celsius)
         return celsius_to_fahrenheit(celsius) if (to_f and celsius) else celsius
 
     cpus = [dataclasses.replace(c, temp=conv(c.temp)) for c in metrics.cpus]

@@ -282,7 +282,7 @@ class Device(ABC, Generic[T]):
     @property
     def is_led(self) -> bool:
         """True for LED-control devices; False for LCD-frame devices."""
-        log.debug("is_led")
+        frame_log.debug("Device.is_led: False (%s)", self.info.key)
         return False
 
     #: Which PHYSICAL unit this is, when more than one of the model is

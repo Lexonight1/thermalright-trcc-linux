@@ -24,10 +24,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from .logs import Blob
+from .logs import Blob, per_frame
 from .models import LedStyle
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # =========================================================================
 # Entry shape
@@ -367,7 +368,7 @@ def remap_led_colors(
     Sub-tables (e.g. LF25 = LF8 with sub=1) take precedence over the
     base style table when both exist.
     """
-    log.debug("remap_led_colors: style=%s sub=%d colors=%d",
+    frame_log.debug("remap_led_colors: style=%s sub=%d colors=%d",
               style, style_sub, len(colors))
     if style is None:
         return colors

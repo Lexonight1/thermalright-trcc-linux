@@ -29,9 +29,11 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from ..core.logs import per_frame
 from ..core.models import HardwareMetrics, LedStyle
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -138,7 +140,7 @@ class SegmentDisplay:
         with the *per-device* unit before calling ``compute_mask`` — so this
         only truncates; the °C/°F segment lights the matching label.
         """
-        log.debug("_to_display_temp: value=%s temp_unit=%s", value, temp_unit)
+        frame_log.debug("_to_display_temp: value=%s temp_unit=%s", value, temp_unit)
         return int(value)
 
     # ── Encoding helpers ────────────────────────────────────────────
@@ -147,7 +149,7 @@ class SegmentDisplay:
         self, ch: str, leds: tuple[int, ...], mask: list[bool],
     ) -> None:
         """Encode a single character into 7-segment LEDs."""
-        log.debug("_encode_7seg: ch=%s leds=%s", ch, leds)
+        frame_log.debug("_encode_7seg: ch=%s leds=%s", ch, leds)
         segs = self.CHAR_7SEG.get(ch, set())
         for wi, seg in enumerate(self.WIRE_7SEG):
             if seg in segs:
@@ -163,7 +165,7 @@ class SegmentDisplay:
         suppress_leading_zeros: bool = True,
     ) -> None:
         """Encode N-digit value with optional leading-zero suppression."""
-        log.debug("_encode_digits: value=%s max_val=%s", value, max_val)
+        frame_log.debug("_encode_digits: value=%s max_val=%s", value, max_val)
         v = max(0, min(max_val, value))
         chars: list[str] = []
         for i in range(digit_count - 1, -1, -1):
@@ -181,13 +183,13 @@ class SegmentDisplay:
     def _encode_3digit(
         self, value: int, digit_leds: tuple[tuple[int, ...], ...], mask: list[bool],
     ) -> None:
-        log.debug("_encode_3digit: value=%s digit_leds=%s", value, digit_leds)
+        frame_log.debug("_encode_3digit: value=%s digit_leds=%s", value, digit_leds)
         self._encode_digits(value, 999, 3, digit_leds, mask)
 
     def _encode_4digit(
         self, value: int, digit_leds: tuple[tuple[int, ...], ...], mask: list[bool],
     ) -> None:
-        log.debug("_encode_4digit: value=%s digit_leds=%s", value, digit_leds)
+        frame_log.debug("_encode_4digit: value=%s digit_leds=%s", value, digit_leds)
         self._encode_digits(value, 9999, 4, digit_leds, mask)
 
     def _encode_5digit(
@@ -199,7 +201,7 @@ class SegmentDisplay:
     def _encode_2digit(
         self, value: int, digit_leds: tuple[tuple[int, ...], ...], mask: list[bool],
     ) -> None:
-        log.debug("_encode_2digit: value=%s digit_leds=%s", value, digit_leds)
+        frame_log.debug("_encode_2digit: value=%s digit_leds=%s", value, digit_leds)
         self._encode_digits(value, 99, 2, digit_leds, mask)
 
     def _encode_2digit_partial(
@@ -210,7 +212,7 @@ class SegmentDisplay:
         mask: list[bool],
     ) -> None:
         """Encode 0-199: 2 full digits + optional partial '1' for hundreds."""
-        log.debug("_encode_2digit_partial: value=%s digit_leds=%s", value, digit_leds)
+        frame_log.debug("_encode_2digit_partial: value=%s digit_leds=%s", value, digit_leds)
         v = max(0, min(199, value))
         if v >= 100 and partial_bc:
             mask[partial_bc[0]] = True
@@ -226,7 +228,7 @@ class SegmentDisplay:
         self, mode: int, digit_leds: tuple[int, ...], mask: list[bool],
     ) -> None:
         """Encode unit symbol: 0=C, -1=F, 1=MHz('H'), 2=GB('G')."""
-        log.debug("_encode_unit: mode=%s digit_leds=%s", mode, digit_leds)
+        frame_log.debug("_encode_unit: mode=%s digit_leds=%s", mode, digit_leds)
         ch = {0: "C", -1: "F", 1: "H", 2: "G"}.get(mode, " ")
         self._encode_7seg(ch, digit_leds, mask)
 
@@ -237,7 +239,7 @@ class SegmentDisplay:
         mask: list[bool],
         suppress_zero: bool = False,
     ) -> None:
-        log.debug("_encode_clock_digit: value=%s digit_leds=%s", value, digit_leds)
+        frame_log.debug("_encode_clock_digit: value=%s digit_leds=%s", value, digit_leds)
         if suppress_zero and value == 0:
             return
         self._encode_7seg(str(value), digit_leds, mask)
@@ -249,7 +251,7 @@ class SegmentDisplay:
         mask: list[bool],
     ) -> None:
         """Encode value with 13-segment encoding for 3 digits."""
-        log.debug("_encode_3digit_13seg: value=%s digits_13=%s", value, digits_13)
+        frame_log.debug("_encode_3digit_13seg: value=%s digits_13=%s", value, digits_13)
         v = max(0, min(999, value))
         d_h, d_t, d_o = v // 100, (v % 100) // 10, v % 10
         for digit_val, leds, suppress in (
@@ -320,7 +322,7 @@ class AX120Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 30
         for idx in self.ALWAYS_ON:
             mask[idx] = True
@@ -395,7 +397,7 @@ class PA120Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 84
         for idx in (self.CPU1, self.CPU2, self.GPU1, self.GPU2, self.BFB, self.BFB1):
             mask[idx] = True
@@ -457,7 +459,7 @@ class AK120Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 64
         mask[self.WATT] = mask[self.BFB] = True
         temp_key, use_key, watt_key, source_idx = self.PHASES[phase % 2]
@@ -512,7 +514,7 @@ class LC1Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 31
         sub_style = kw.get("sub_style", 0)
         memory_ratio = kw.get("memory_ratio", 2)
@@ -577,7 +579,7 @@ class LF8Display(SegmentDisplay):
         self, metrics: HardwareMetrics, phase: int, temp_unit: str, mask: list[bool],
     ) -> None:
         """Shared digit computation for LF8 and LF12."""
-        log.debug("_compute_digits: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("_compute_digits: metrics=%s phase=%s", metrics, phase)
         mask[self.WATT] = mask[self.MHZ] = mask[self.BFB] = True
         temp_key, watt_key, mhz_key, use_key, src = self.PHASES[phase % 2]
         mask[src] = True
@@ -599,7 +601,7 @@ class LF8Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * self.mask_size
         self._compute_digits(metrics, phase, temp_unit, mask)
         return mask
@@ -627,7 +629,7 @@ class LF12Display(LF8Display):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 124
         self._compute_digits(metrics, phase, temp_unit, mask)
         for idx in self.DECORATION:
@@ -668,7 +670,7 @@ class LF10Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 116
         mask[self.CPU1] = mask[self.GPU1] = True
         if temp_unit == "C":
@@ -712,7 +714,7 @@ class CZ1Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 18
         metric_key, indicator_on = self.PHASES[phase % 4]
         for idx in indicator_on:
@@ -840,7 +842,7 @@ class LC2Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 61
         is_24h = kw.get("is_24h", True)
         week_sunday = kw.get("week_sunday", False)
@@ -905,7 +907,7 @@ class LF11Display(SegmentDisplay):
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
-        log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
+        frame_log.debug("compute_mask: metrics=%s phase=%s", metrics, phase)
         mask = [False] * 38
         metric_key, mode = self.PHASES[phase % 4]
         value = int(getattr(metrics, metric_key, 0))
@@ -962,7 +964,7 @@ def compute_mask(
     display (e.g. LF13 is pure RGB).  ``memory_ratio`` is the DDR
     multiplier (1/2/4) the memory gauge scales its reading by.
     """
-    log.debug("compute_mask: style=%s phase=%d temp_unit=%s memory_ratio=%d "
+    frame_log.debug("compute_mask: style=%s phase=%d temp_unit=%s memory_ratio=%d "
               "cpu_temp=%.0f cpu_pct=%.0f gpu_temp=%.0f gpu_usage=%.0f",
               style, phase, temp_unit, memory_ratio,
               getattr(metrics, "cpu_temp", 0.0),
@@ -978,14 +980,14 @@ def compute_mask(
         metrics, phase, temp_unit, is_24h=is_24h, week_sunday=week_sunday,
         memory_ratio=memory_ratio,
     )
-    log.debug("compute_mask: style=%s -> %d/%d segments lit",
+    frame_log.debug("compute_mask: style=%s -> %d/%d segments lit",
               style, sum(mask), len(mask))
     return mask
 
 
 def get_display(style: LedStyle | None) -> SegmentDisplay | None:
     """Get the SegmentDisplay instance for a style, or None."""
-    log.debug("get_display: style=%s", style)
+    frame_log.debug("get_display: style=%s", style)
     if style is None:
         return None
     return DISPLAYS.get(style)

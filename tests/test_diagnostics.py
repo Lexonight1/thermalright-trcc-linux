@@ -2176,6 +2176,135 @@ def test_the_tick_path_gate_actually_reaches_the_wire(tmp_path: Path) -> None:
     )
 
 
+#: Every state that puts an LED on the 150 ms animation tick
+#: (``led_animation_loop._ANIMATED_MODES``, the zone-sync carousel, test mode).
+#: Each reaches its own effect and encode functions.
+_LED_ANIMATING_STATES = ("breathing", "colorful", "rainbow", "zone_sync",
+                         "test_mode")
+
+
+def _first_pm_per_led_style() -> list[int]:
+    from trcc.core.led_protocol import _PM_REGISTRY
+
+    first: dict[Any, int] = {}
+    for pm, entry in sorted(_PM_REGISTRY.items()):
+        first.setdefault(entry.style, pm)
+    return list(first.values())
+
+
+def _led_tick_rates(tmp_path: Path, pm: int, state: str, *,
+                    ticks: int = 20) -> _TickRun:
+    """Records per ``LedAnimationLoop`` tick, at DEFAULT verbosity.
+
+    The tick runs every 150 ms for every attached device, so a line on it is
+    ~6.7 records a second.  Measured 2026-10-06 before the fix: 18-67 records
+    per tick on every style in every animating state -- up to ~450 a second,
+    turning the 1 MB log over in minutes for any LED owner.
+
+    A SCSI LCD rides along because the tick reads ``is_led`` on EVERY device,
+    LCDs included -- that one line was 37.6% of a real LCD-only log.
+
+    The sensor broadcast is seeded first, as the running ``MetricsLoop`` does in
+    production; without it ``RenderLed`` re-reads the sensors on every tick, a
+    fallback that never runs once the loop has published.
+    """
+    from trcc.app import App
+    from trcc.core.commands import (
+        ConnectDevice,
+        EnableLedTestMode,
+        SetLedMode,
+        SetLedZoneSync,
+    )
+    from trcc.core.led_models import LEDMode
+
+    from .conftest import FakePlatform, _CliRenderer
+    from .test_render_led import _LED_KEY, _attach_and_connect
+
+    ladder = levels_for(0)                       # what a user runs: no -v
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL,
+                      per_frame=ladder.per_frame)
+
+    platform = FakePlatform(tmp_path)
+    app = App(platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    resp = bytearray(0xE100)
+    resp[0] = 100                                 # FBL 100 -> 320x320
+    platform.scsi.read_script.append(bytes(resp))
+    assert app.dispatch(ConnectDevice(key=_TICK_KEY)).ok
+    _attach_and_connect(app, platform, pm=pm)
+
+    match state:
+        case "zone_sync":
+            command: Any = SetLedZoneSync(key=_LED_KEY, enabled=True)
+        case "test_mode":
+            command = EnableLedTestMode(key=_LED_KEY, enabled=True)
+        case _:
+            command = SetLedMode(key=_LED_KEY, mode=LEDMode[state.upper()])
+    app.dispatch(command)
+    app.metrics_loop._publish_once(app.events)  # pyright: ignore[reportPrivateUsage]
+    assert app.led_animation_loop.animating_keys() == [_LED_KEY], (
+        f"pm={pm} {state}: the LED is not on the animation tick, so this run "
+        "would measure nothing")
+
+    # One wire write set per tick, as _tick_path_rates does for the LCD:
+    # asynchronous sends supersede each other and would undercount.
+    real_send = app.send
+
+    def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
+        return real_send(key, payload, wait=True)
+
+    app.send = sync_send        # type: ignore[method-assign]
+
+    for _ in range(5):          # warm-up: first-tick lines are one-shot
+        app.led_animation_loop.tick()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    mark = _mark(log_file)
+    writes = len(platform.bulk.writes)
+    for _ in range(ticks):
+        app.led_animation_loop.tick()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    return _TickRun(
+        rates={site: n / ticks
+               for site, n in _records_by_site(log_file, mark).items()},
+        writes=len(platform.bulk.writes) - writes,
+    )
+
+
+@pytest.mark.parametrize("state", _LED_ANIMATING_STATES)
+@pytest.mark.parametrize("pm", _first_pm_per_led_style())
+def test_the_led_tick_writes_no_record_per_tick(
+    tmp_path: Path, pm: int, state: str,
+) -> None:
+    """Every LED style, every animating state: nothing may scale with ticks.
+
+    The static tick-closure gate below roots at ``LedAnimationLoop.tick`` and
+    still could not see any of this: its closure stops at
+    ``app.dispatch(RenderLed(...))``, and ``device.is_led`` is an attribute
+    read, not a call.  So this one DRIVES the tick.
+    """
+    ticks = 20
+    run = _led_tick_rates(tmp_path, pm, state, ticks=ticks)
+    # The witness is the wire, not the log: a tick that stopped rendering and
+    # a tick that correctly stopped logging read the same from the log.
+    assert run.writes >= ticks and run.writes % ticks == 0, (
+        f"pm={pm} {state}: {ticks} ticks made {run.writes} bulk write(s) — "
+        "not a whole number of frames per tick, so the 'no floods' verdict "
+        "below is measured against ticks the wire never saw")
+    floods = {s: r for s, r in run.rates.items() if r >= _PER_FRAME_RATE}
+    assert not floods, (
+        f"pm={pm} {state}: these call sites write a record per LED tick at "
+        "DEFAULT verbosity — move each onto core.logs.per_frame(__name__):\n"
+        + "\n".join(f"  {rate:.2f}/tick  {site}"
+                    for site, rate in sorted(floods.items(),
+                                             key=lambda kv: -kv[1]))
+    )
+
+
 class _RemoteRun(NamedTuple):
     """What one remote-preview run measured, and its independent witnesses."""
 

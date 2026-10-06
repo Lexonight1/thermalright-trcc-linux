@@ -23,6 +23,7 @@ from ..led_models import (
     LedRuntimeState,
     is_select_all,
 )
+from ..logs import per_frame
 from ..results import (
     ClockFormatResult,
     HddEnabledResult,
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from ...services.led_segment import SegmentDisplay
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +195,7 @@ class RenderLed(Command[LedColorsResult]):
             current, metrics = enum.read_all(), enum.snapshot()
             log.debug("RenderLed %s: no broadcast yet — read sensors directly",
                       self.key)
-        log.debug(
+        frame_log.debug(
             "RenderLed %s: snapshot cpu_temp=%.0f cpu_pct=%.0f "
             "gpu_temp=%.0f gpu_usage=%.0f", self.key,
             metrics.cpu_temp, metrics.cpu_percent,
@@ -222,11 +224,11 @@ class RenderLed(Command[LedColorsResult]):
         ``LedSettingsChanged`` — cannot race it forward.
         """
         if display.phase_count <= 1:
-            log.debug("RenderLed %s: single-page display — phase=%d",
+            frame_log.debug("RenderLed %s: single-page display — phase=%d",
                       self.key, self.phase)
             return self.phase
         if not settings.zone_sync or is_select_all(style):
-            log.debug("RenderLed %s: selected-zone phase=%d",
+            frame_log.debug("RenderLed %s: selected-zone phase=%d",
                       self.key, settings.selected_zone)
             return settings.selected_zone
         if self.advance:
@@ -236,7 +238,7 @@ class RenderLed(Command[LedColorsResult]):
                 runtime.zone_sync_current = app.led_effects.next_sync_zone(
                     settings.zone_sync_zones, runtime.zone_sync_current,
                 )
-        log.debug("RenderLed %s: zone-sync carousel phase=%d (advance=%s)",
+        frame_log.debug("RenderLed %s: zone-sync carousel phase=%d (advance=%s)",
                   self.key, runtime.zone_sync_current, self.advance)
         return runtime.zone_sync_current
 
@@ -324,7 +326,7 @@ class RenderLed(Command[LedColorsResult]):
                 effective_settings, runtime, current,
                 led_count=LED_STYLES[style].led_count,
             )
-            log.debug("RenderLed %s: color-only fill (%d RGB LEDs)",
+            frame_log.debug("RenderLed %s: color-only fill (%d RGB LEDs)",
                       self.key, len(colors))
         else:
             # Multi-zone styles (PA120/LF10) keep a per-zone colour/mode list;
@@ -384,7 +386,7 @@ class RenderLed(Command[LedColorsResult]):
             if (zone_map is not None and effective_settings.zones
                     and explicit_color is None):
                 zoned = True
-                log.debug("RenderLed %s: multi-zone fill (%d zones)",
+                frame_log.debug("RenderLed %s: multi-zone fill (%d zones)",
                           self.key, len(zone_map))
                 colors = app.led_effects.tick_multi_zone(
                     effective_settings, runtime, current,

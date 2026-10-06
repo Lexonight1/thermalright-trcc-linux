@@ -933,7 +933,7 @@ class OverlayElement:
 
     def to_dict(self) -> dict:
         """Flat dict — the shape ``OverlayService.render`` consumes."""
-        log.debug("to_dict")
+        frame_log.debug("OverlayElement.to_dict: %s (%s)", self.id, self.type)
         out: dict = {
             "id": self.id,
             "type": self.type,

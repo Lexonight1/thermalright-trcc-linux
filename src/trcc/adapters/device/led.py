@@ -30,12 +30,13 @@ from ...core.led_protocol import (
     resolve_model_name,
     resolve_pm,
 )
-from ...core.logs import Blob
+from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ._base import BaseBulkDevice, read_state, write_state
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # ── Wire constants ─────────────────────────────────────────────────────
@@ -151,13 +152,13 @@ class Led(BaseBulkDevice, wire=Wire.LED):
 
     @property
     def is_led(self) -> bool:
-        log.debug("is_led")
+        frame_log.debug("Led.is_led: True (%s)", self.info.key)
         return True
 
     @property
     def led_handshake(self) -> LedHandshakeResult | None:
         """LED-specific handshake info (pm, sub_type, style)."""
-        log.debug("led_handshake")
+        frame_log.debug("Led.led_handshake: %s (%s)", self._led_handshake is not None, self.info.key)
         return self._led_handshake
 
     def _reset_state(self) -> None:
@@ -377,13 +378,13 @@ class Led(BaseBulkDevice, wire=Wire.LED):
                 )
 
         packet = self._build_packet(payload)
-        log.debug("Led %s: sending %d-byte packet (%d colors)",
+        frame_log.debug("Led %s: sending %d-byte packet (%d colors)",
                   self.info.key, len(packet), len(payload.colors))
         return packet
 
     def _write_frame(self, frame: bytes) -> bool:
         """Stream the packet as 64-byte HID reports, zero-padding the last."""
-        log.debug("_write_frame: frame=%s", Blob(frame))
+        frame_log.debug("_write_frame: frame=%s", Blob(frame))
         remaining = len(frame)
         offset = 0
         while remaining > 0:
@@ -408,7 +409,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
 
     @staticmethod
     def _build_header(payload_length: int) -> bytes:
-        log.debug("_build_header: payload_length=%s", payload_length)
+        frame_log.debug("_build_header: payload_length=%s", payload_length)
         header = bytearray(_HEADER_SIZE)
         header[0:4] = _MAGIC
         header[12] = _CMD_DATA
@@ -417,7 +418,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
 
     @classmethod
     def _build_packet(cls, payload: LedPayload) -> bytes:
-        log.debug("_build_packet: payload=%s", payload)
+        frame_log.debug("_build_packet: payload=%s", payload)
         count = len(payload.colors)
         payload_len = count * 3
         header = cls._build_header(payload_len)
