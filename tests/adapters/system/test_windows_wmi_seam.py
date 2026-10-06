@@ -76,3 +76,28 @@ def test_windows_platform_has_no_direct_wmi_construction() -> None:
     """Every WMI handle in windows.py goes through the wmi_handle seam."""
     src = Path("src/trcc/adapters/system/windows.py").read_text(encoding="utf-8")
     assert "wmi.WMI(" not in src, "construct WMI via wmi_handle(), not wmi.WMI() directly"
+
+
+def test_com_apartment_opens_one_on_a_fresh_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.adapters.system.windows import _ComApartment
+
+    pc = _FakePythoncom()
+    _install(monkeypatch, pc)
+    with _ComApartment():
+        pass
+    assert pc.init_calls == 1
+
+
+def test_com_apartment_tolerates_a_thread_that_already_has_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sensors are built on whichever thread asks first, the main thread
+    included -- where Qt has already initialised COM and pythoncom raises on
+    a second ``CoInitialize``.  That must not fail the build."""
+    from trcc.adapters.system.windows import _ComApartment
+
+    pc = _FakePythoncom(raise_on_init=True)
+    _install(monkeypatch, pc)
+    with _ComApartment():
+        pass
+    assert pc.init_calls == 1

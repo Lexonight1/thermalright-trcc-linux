@@ -96,7 +96,7 @@ def test_an_unsupported_metric_says_so_instead_of_blaming_the_tick(caplog):
     from trcc.adapters.render.qt import QtRenderer
     from trcc.services.overlay import OverlayService
 
-    svc = OverlayService(QtRenderer(), unsupported=frozenset({"cpu:power"}))
+    svc = OverlayService(QtRenderer(), unsupported=lambda: frozenset({"cpu:power"}))
     surface = svc._r.create_surface(64, 64)
 
     with caplog.at_level(logging.WARNING, logger="trcc.services.overlay"):
@@ -116,7 +116,7 @@ def test_a_supported_metric_that_missed_a_tick_says_THAT(caplog):
     from trcc.adapters.render.qt import QtRenderer
     from trcc.services.overlay import OverlayService
 
-    svc = OverlayService(QtRenderer(), unsupported=frozenset({"cpu:power"}))
+    svc = OverlayService(QtRenderer(), unsupported=lambda: frozenset({"cpu:power"}))
     surface = svc._r.create_surface(64, 64)
 
     with caplog.at_level(logging.WARNING, logger="trcc.services.overlay"):
@@ -147,6 +147,6 @@ def test_the_app_actually_wires_the_unsupported_set(fake_platform) -> None:
 
     app = App(platform=fake_platform, renderer=QtRenderer())
 
-    assert app.display._overlay._unsupported == known, (
+    assert app.display._overlay._unsupported() == known, (
         "App built an OverlayService without the host's unsupported set"
     )

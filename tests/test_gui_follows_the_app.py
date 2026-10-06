@@ -257,8 +257,13 @@ def test_the_gpu_picker_follows_another_ui(
 ) -> None:
     """The picker exists only with two GPUs or more."""
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
-    gpus = [SimpleNamespace(key="nvidia:0", name="RTX", is_discrete=True),
-            SimpleNamespace(key="amd:0", name="RX", is_discrete=True)]
+    # ``provides`` because the sensors' ``unsupported()`` asks every GPU what
+    # it can read.  It used to be answered at App construction, before this
+    # patch, so a fake without it passed; it is asked on first need now.
+    gpus = [SimpleNamespace(key="nvidia:0", name="RTX", is_discrete=True,
+                            provides=lambda quantity: True),
+            SimpleNamespace(key="amd:0", name="RX", is_discrete=True,
+                            provides=lambda quantity: True)]
     monkeypatch.setattr(type(app.platform.sensors()), "gpus", lambda self: gpus)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     win = _open(app, qtbot)

@@ -630,15 +630,24 @@ class App(CommandBus):
         self._renderer = renderer
         self._wire_display(renderer)
 
+    def _unsupported_sensors(self) -> frozenset[str]:
+        """The host's static "no backend reads this" set -- asked by the
+        overlay only when a metric comes back blank, so building an App does
+        not build the sensors (see OverlayService.__init__)."""
+        unsupported = self.platform.sensors().unsupported()
+        frame_log.debug("App._unsupported_sensors: %d key(s)", len(unsupported))
+        return unsupported
+
     def _wire_display(self, renderer: Renderer) -> None:
         log.debug("_wire_display: renderer=%s", type(renderer).__name__)
         self._display = DisplayService(
             renderer=renderer,
             themes=self.themes,
-            # The host's static "can never read this" set, resolved ONCE —
-            # see OverlayService.__init__.
+            # The host's static "can never read this" set, asked only when a
+            # metric comes back blank — see OverlayService.__init__.
             overlay=OverlayService(
-                renderer, unsupported=self.platform.sensors().unsupported(),
+                renderer,
+                unsupported=self._unsupported_sensors,
             ),
             settings=self.settings,
             media=self.media,

@@ -11,6 +11,7 @@ Uses the Renderer port exclusively; knows nothing about Qt directly.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -147,8 +148,8 @@ class OverlayService:
     """Compose text/metric overlays onto a base surface."""
 
     def __init__(self, renderer: Renderer,
-                 unsupported: frozenset[str] = frozenset()) -> None:
-        log.debug("__init__: renderer=%s unsupported=%s", renderer, unsupported)
+                 unsupported: Callable[[], frozenset[str]] = frozenset) -> None:
+        log.debug("__init__: renderer=%s", renderer)
         self._r = renderer
         # Quantities NO backend on this host can read — ``SensorEnumerator.
         # unsupported()``, which is STATIC, so it is injected once rather than
@@ -156,6 +157,12 @@ class OverlayService:
         # Without it a missing metric warns identically whether the host has
         # no such sensor at all or this tick's read came back empty, and those
         # are different diagnoses with different replies to a reporter.
+        #
+        # Injected as a CALLABLE, asked only when a metric comes back blank:
+        # answering it builds the sensor stack, and taking the set at
+        # construction built it for every App -- a ``trcc kill`` included,
+        # which on a Windows install spawned LibreHardwareMonitor and waited
+        # for it.
         self._unsupported = unsupported
 
     @classmethod
@@ -390,7 +397,7 @@ class OverlayService:
             # one, never as "30 RPM" (#145).
             fmt = fmt.replace(" RPM", "%").replace("RPM", "%")
         if value is None:
-            if metric_id in self._unsupported:
+            if metric_id in self._unsupported():
                 # Not a fault and not a slow tick: nothing on this host reads
                 # it, and it never will.  Saying so stops a reporter (and me)
                 # hunting a transient that cannot happen.

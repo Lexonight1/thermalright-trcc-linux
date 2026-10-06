@@ -327,9 +327,16 @@ class _ComApartment:
     def __enter__(self) -> None:
         try:
             import pythoncom  # type: ignore[import-not-found,import-untyped]
-            pythoncom.CoInitialize()
         except ImportError:
             log.debug("_ComApartment: pythoncom unavailable — no-op")
+            return
+        try:
+            pythoncom.CoInitialize()
+        except pythoncom.com_error as e:
+            # Already initialised on this thread (the main thread after Qt,
+            # or a second entry) -- the apartment is there, which is all we
+            # need.  Same handling as ``_windows_wmi.wmi_handle``.
+            log.debug("_ComApartment: COM already initialised here (%s)", e)
 
     def __exit__(self, *exc: object) -> None:
         log.debug("__exit__")

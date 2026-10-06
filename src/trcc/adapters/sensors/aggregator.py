@@ -480,7 +480,12 @@ class BaselineSensors(SensorEnumerator):
         frame_log.debug("_refresh_if_stale: cache %.2fs old >= %.2fs interval "
                         "and no poll thread — polling inline",
                         age, self._interval_s)
-        self._poll_once()
+        # The sources keep thread-local WMI handles that need a COM apartment
+        # on THIS thread -- the one _poll_loop opens for itself.  An inline
+        # sweep runs on whoever asked (the gui's splash worker, a CLI command,
+        # a daemon request), so it opens one too.
+        with self._thread_context():
+            self._poll_once()
 
     # ── Polling ────────────────────────────────────────────────────
 

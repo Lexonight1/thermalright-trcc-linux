@@ -352,3 +352,21 @@ def test_broadcasts_continue_when_the_poll_thread_never_starts(
         "the fallback published an empty reading set — with no poll thread, "
         "read_all() is supposed to sweep inline on this thread"
     )
+
+
+def test_building_an_app_builds_no_sensors(tmp_path: Path) -> None:
+    """Constructing the App must not build the sensor stack.
+
+    Every one-shot command builds an App -- ``trcc kill`` and
+    ``daemon-status`` among them -- and on a Windows install building the
+    sensors spawns LibreHardwareMonitor and waits up to 10 s for it.  The
+    overlay's "unsupported here" set forced that build on every App from
+    2026-09-15 until it became a callable asked only when a metric is blank.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    platform = FakePlatform(tmp_path)
+    App(platform=platform, renderer=QtRenderer())
+
+    assert platform._sensors is None, "constructing the App built the sensors"
+

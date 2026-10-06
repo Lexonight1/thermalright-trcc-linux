@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
@@ -274,6 +275,7 @@ class BaseOS(Platform):
         log.info("%s: initialising", type(self).__name__)
         self._paths: Paths = self._make_paths()
         self._sensors: SensorEnumerator | None = None
+        self._sensors_lock = threading.Lock()
         self._autostart: AutostartManager | None = None
         self._hotplug: HotplugMonitor | None = None
         self._packages: PackageManager | None = None
@@ -440,13 +442,24 @@ class BaseOS(Platform):
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
-        if self._sensors is None:
-            log.info("%s.sensors: building enumerator", type(self).__name__)
-            self._sensors = self._build_sensors()
-        else:
-            frame_log.debug("%s.sensors: returning cached enumerator",
-                      type(self).__name__)
-        return self._sensors
+        """The one enumerator, built on first ask by whichever thread asks.
+
+        Under a lock, so two threads asking at once build it once (on Windows
+        a second build would spawn LibreHardwareMonitor twice).  Inside the
+        thread's OS setup, because the first ask is not always the main
+        thread -- the gui primes devices on its splash worker, and building
+        means WMI discovery, which needs a COM apartment on that thread.
+        """
+        with self._sensors_lock:
+            if self._sensors is None:
+                log.info("%s.sensors: building enumerator on %s",
+                         type(self).__name__, threading.current_thread().name)
+                with self.worker_thread_context():
+                    self._sensors = self._build_sensors()
+            else:
+                frame_log.debug("%s.sensors: returning cached enumerator",
+                                type(self).__name__)
+            return self._sensors
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:

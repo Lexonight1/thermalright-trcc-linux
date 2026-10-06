@@ -1005,6 +1005,77 @@ def test_read_one_polls_instead_of_returning_none_forever() -> None:
     assert s.read_one("cpu:temp") == 42.0
 
 
+def test_an_inline_sweep_runs_inside_the_threads_os_setup() -> None:
+    """With no poll thread, ``read_all`` sweeps on whoever asked -- the gui's
+    splash worker, a CLI command, a daemon request.  The sources hold
+    thread-local WMI handles that need a COM apartment on THAT thread, which
+    only ``_poll_loop`` used to open (the #131 shape, on the inline path)."""
+    from contextlib import contextmanager
+
+    state = {"inside": False}
+    seen: list[bool] = []
+
+    @contextmanager
+    def os_setup():
+        state["inside"] = True
+        try:
+            yield
+        finally:
+            state["inside"] = False
+
+    class RecordingCpu(FakeCpu):
+        def temp(self) -> float | None:
+            seen.append(state["inside"])
+            return super().temp()
+
+    s = BaselineSensors(cpu=RecordingCpu(), memory=FakeMemory(), gpus=[],
+                        fans=[], thread_context=os_setup)
+    s.read_all()
+
+    assert seen and all(seen), f"the inline sweep read outside the setup: {seen}"
+
+
+def test_the_platform_builds_one_enumerator_for_threads_that_race() -> None:
+    """The first ask is no longer the App's constructor on the main thread,
+    so two threads can ask at once -- and on Windows a second build is a
+    second LibreHardwareMonitor.  It is also built INSIDE the thread's OS
+    setup, because the asking thread may have no COM apartment."""
+    import time
+    from contextlib import contextmanager
+
+    from trcc.adapters.system.linux import LinuxOS
+
+    platform = LinuxOS()
+    builds: list[bool] = []
+    state = {"inside": False}
+
+    @contextmanager
+    def os_setup():
+        state["inside"] = True
+        try:
+            yield
+        finally:
+            state["inside"] = False
+
+    def slow_build():
+        builds.append(state["inside"])
+        time.sleep(0.05)              # wide enough for the race to land
+        return BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    platform._build_sensors = slow_build          # type: ignore[method-assign]
+    platform.worker_thread_context = os_setup     # type: ignore[method-assign]
+    got: list[object] = []
+    threads = [threading.Thread(target=lambda: got.append(platform.sensors()))
+               for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5.0)
+
+    assert builds == [True], f"built {len(builds)} time(s), inside setup: {builds}"
+    assert len(got) == 8 and len({id(g) for g in got}) == 1
+
+
 # ── Disk SELECTION — the feature `disk_index` never delivered ────────
 #
 # NOTE ON SHAPE, because the obvious test is WRONG here: `read_all()` is
