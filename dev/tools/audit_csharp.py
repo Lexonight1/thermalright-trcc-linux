@@ -48,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "decompiler"))
 from core.csharp import (  # pyright: ignore[reportMissingImports]
     DECOMPILE_ROOT,
+    INSTALLER,
     ORACLE_RELEASE,
     decompile_text,
 )
@@ -70,21 +71,31 @@ ASSET_ROOTS = (
 )
 DATA = REPO / "src" / "trcc" / "data"
 
-# 2.1.6 Form (.resx) → our analogue, or None if we have no panel for it.
-_PANEL_MAP = {
-    "LED.FormLED": "uc_led_control / uc_screen_led",
-    "LCD.FormLCD": "lcd_handler / uc_preview",
-    "LCD.FormLCDImageCut": "uc_image_cut",
-    "FormSystemInfo": "uc_system_info",
-    "FormStart": "splash",
-    "Form1": "TRCCApp (main window)",
-    "DCUserControl.UCThemeSetting": "uc_theme_setting",
-    "DCUserControl.UCShortcut": None,
-    "KVMALED6.FormKVMALED6": "(folded into uc_led_control via KVMALEDC6→PA120)",
-    "CZTV.FormCZTV": None,
-    "CZTV.FormScreenshot": None,
-    "CZTV.FormScreenImage": None,
-    "CZTV.FormGetColor": None,
+#: A C# form that is in the program but never shown by the shipped app.
+DEAD_IN_CSHARP = "dead in C#"
+
+# C# Form (.resx) -> our analogue as a REPO PATH (gate() checks each exists),
+# None when we have no panel for it, or DEAD_IN_CSHARP.  Values were free-text
+# names until 2026-10-06 and drifted both ways: four forms we had read MISSING
+# (the LCD page, the eyedropper, the region picker, the preview popup), and the
+# two FormLCD forms read "have" though the C# never runs them.
+_PANEL_MAP: dict[str, str | None] = {
+    "LED.FormLED": "src/trcc/ui/gui/uc_led_control.py",
+    # FormLCD launches Data/LCD/TRCCLCDAPP.exe, which no installer ships;
+    # FormLCDImageCut is its screen-region marker.  dev/decompiler/
+    # AUDIT_FORMLCD_PROJECTION.md.
+    "LCD.FormLCD": DEAD_IN_CSHARP,
+    "LCD.FormLCDImageCut": DEAD_IN_CSHARP,
+    "FormSystemInfo": "src/trcc/ui/gui/uc_system_info.py",
+    "FormStart": "src/trcc/ui/gui/splash.py",
+    "Form1": "src/trcc/ui/gui/trcc_app.py",
+    "DCUserControl.UCThemeSetting": "src/trcc/ui/gui/uc_theme_setting.py",
+    "DCUserControl.UCShortcut": None,        # the icon element (mode 5)
+    "KVMALED6.FormKVMALED6": "src/trcc/ui/gui/uc_led_control.py",  # via KVMALEDC6 -> PA120
+    "CZTV.FormCZTV": "src/trcc/ui/gui/lcd_handler.py",
+    "CZTV.FormScreenshot": "src/trcc/ui/viewfinder.py",
+    "CZTV.FormScreenImage": "src/trcc/ui/gui/preview_popup.py",
+    "CZTV.FormGetColor": "src/trcc/ui/eyedropper.py",
 }
 
 
@@ -232,7 +243,10 @@ def _resx_all_assets(resx_dir: Path) -> set[str]:
 # by construction, and the check reported "0 new, 0 only-ours" while twelve
 # archives were missing across the three axes.  It was not measuring us against
 # the installer; it was measuring the digits-only names against themselves.
-_RES_KEY = r"(\d+[uly]?)"
+# The suffix is ANY one letter, not a list of the letters seen so far: ``[uly]``
+# could not match 2.1.8's ``Theme360360m``, so the audit reported a library we
+# ship as ours-only and the installer as disagreeing with itself (2026-10-06).
+_RES_KEY = r"(\d+[a-z]?)"
 
 #: Directory prefix -> where our matching archives live, per data axis.
 _DATA_AXES = (
@@ -377,19 +391,40 @@ def _handshake_convention(cs: Path) -> str:
 def _our_catalog_resolutions() -> set[tuple[int, int]]:
     """Resolutions a real device in our catalog actually resolves to.
 
-    The accurate check (bare FBL_PROFILES misses pm-override-derived sizes):
-    every (pm, sub) in the variant registry run through the real resolver, plus
-    any fixed native_resolution from registry devices with no variant table.
+    Each variant table is resolved the way ITS WIRE resolves a handshake, by
+    the shipped functions -- never by one resolver for all:
+
+    * Bulk + LY: ``bulk_profile(pm, sub)``, the one implementation both
+      ``connect()`` calls use (its docstring: an oracle that re-implements the
+      thing it audits proves nothing).
+    * HID: ``pm_to_fbl`` then ``get_profile``, as ``HidLcd`` does.
+    * SCSI: the PM table selects button ART; the panel's size comes from the
+      FBL byte its poll reports, so every ``FBL_PROFILES`` size is reachable.
+    * LED: segment displays, no LCD size at all.
+
+    It ran every table through the HID path until 2026-10-06, so the SCSI,
+    Bulk and LY tables' PMs (1, 3, 4, 6, 19, 21, 22 ...) and the LED family's
+    each fell back to 320x320 with "UNKNOWN FBL ... please report this line":
+    140 false warnings a run, and invented entries in this set.
     """
-    from trcc.core.protocol import get_profile, pm_to_fbl
+    from trcc.adapters.device.bulk_lcd import bulk_profile
+    from trcc.core.models import Wire
+    from trcc.core.protocol import FBL_PROFILES, get_profile, pm_to_fbl
     from trcc.core.registry import ALL_DEVICES
     from trcc.core.variants import _VARIANT_REGISTRY
-    out: set[tuple[int, int]] = set()
-    for table in _VARIANT_REGISTRY.values():
+    out: set[tuple[int, int]] = {get_profile(fbl).resolution for fbl in FBL_PROFILES}
+    for key, table in _VARIANT_REGISTRY.items():
+        product = ALL_DEVICES.get(key)
+        wire = product.wire if product is not None else None
+        if wire not in (Wire.BULK, Wire.LY, Wire.HID):
+            continue        # SCSI: covered by FBL_PROFILES above; LED: no LCD
         for pm, subs in table.items():
             for sub in subs:
                 s = sub if sub is not None else 0
-                out.add(get_profile(pm_to_fbl(pm, s), pm).resolution)
+                if wire is Wire.HID:
+                    out.add(get_profile(pm_to_fbl(pm, s), pm, s).resolution)
+                else:
+                    out.add(bulk_profile(pm, s)[1].resolution)
     for product in ALL_DEVICES.values():
         if product.native_resolution != (0, 0):
             out.add(product.native_resolution)
@@ -575,6 +610,37 @@ public void FormCZTVInit(int fbl, int m, int pm, int pmSub)
     # exist — 1234x567 is in the fixture solely to be NOT found.
     checks.append(("the fan-out block does not invent panels",
                    (1234, 567) not in rows and (320, 320) not in rows))
+    # The map drifted for months as free text; a path that moved fails here.
+    gone = [f"{form} -> {path}" for form, path in _PANEL_MAP.items()
+            if path not in (None, DEAD_IN_CSHARP) and not (REPO / path).is_file()]
+    checks.append((f"every panel analogue exists ({gone or 'all present'})",
+                   not gone))
+    # Each table resolved by its own wire's function.  Through one resolver
+    # for all, SCSI/Bulk/LY/LED PMs warned "UNKNOWN FBL" 140 times a run.  The
+    # one left is REAL: HID PM 49 (the C# draws it as a Frozen Warframe,
+    # UCDevice.cs:471) has no FBL in our catalog -- a finding, not noise.
+    import logging as _logging
+    unknown: list[str] = []
+
+    class _Catch(_logging.Handler):
+        def emit(self, record: _logging.LogRecord) -> None:
+            if "UNKNOWN FBL" in record.getMessage():
+                unknown.append(record.getMessage().split(" (")[0])
+
+    catch = _Catch()
+    proto = _logging.getLogger("trcc.core.protocol")
+    proto.addHandler(catch)
+    try:
+        _our_catalog_resolutions()
+    finally:
+        proto.removeHandler(catch)
+    checks.append((f"tables resolve by their own wire ({len(unknown)} unknown "
+                   f"FBL: {sorted(set(unknown))})",
+                   set(unknown) <= {"get_profile: UNKNOWN FBL=49"}))
+    key = re.compile(rf"Data/USBLCD/Theme{_RES_KEY}\b")
+    checks.append(("a resolution key takes any one-letter variant (m, u, l, y)",
+                   all((m := key.search(f"Data/USBLCD/Theme{n}")) and m.group(1) == n
+                       for n in ("360360m", "1600720u", "1600720l", "480480y"))))
 
     for label, ok in checks:
         print(f"  {'PASS' if ok else 'FAIL'}  {label}")
@@ -588,11 +654,12 @@ public void FormCZTVInit(int fbl, int m, int pm, int pmSub)
 
 
 def _show(label: str, only_new: set, only_ours: set) -> None:
-    print(f"  {label}: {len(only_new)} new in 2.1.6, {len(only_ours)} only-ours")
+    print(f"  {label}: {len(only_new)} new in {ORACLE_RELEASE}, "
+          f"{len(only_ours)} only-ours")
     for n in sorted(only_new):
         print(f"    + {n}")
     for n in sorted(only_ours):
-        print(f"    - {n}  (ours, not in 2.1.6)")
+        print(f"    - {n}  (ours, not in {ORACLE_RELEASE})")
 
 
 def main() -> None:
@@ -602,8 +669,7 @@ def main() -> None:
     ap.add_argument("--resx", default=str(DECOMPILE_ROOT),
                     help="decompile carrying the .resx files (ilspycmd -p <exe>)")
     ap.add_argument("--installer",
-                    default=str(Path.home() / "Downloads/TRCC 2.1.6-Setup"
-                                              "/TRCC 2.1.6-Setup.exe"))
+                    default=str(INSTALLER))
     ap.add_argument("--cs", default=str(DECOMPILE_ROOT),
                     help="the C# decompile for the resolution-fingerprint "
                          "parser — a project tree (ilspycmd -p) or a "
@@ -662,13 +728,13 @@ def main() -> None:
     for m in absent:
         print(f"    + {m} (+ {m}a hover)")
     if orphan:
-        print(f"  hover-only in 2.1.6, no base art to port ({len(orphan)}): "
+        print(f"  hover-only in {ORACLE_RELEASE}, no base art to port ({len(orphan)}): "
               f"{', '.join(orphan)}")
 
     _h("ASSETS — chrome (converted via rename_assets.RENAME_MAP, then checked)")
     chrome = {n for n in _resx_all_assets(resx_dir) if n not in new_dev}
     chrome_missing = sorted(n for n in chrome if not _covered(n, our_assets))
-    print(f"  chrome assets present in 2.1.6 but not covered: {len(chrome_missing)} "
+    print(f"  chrome assets present in {ORACLE_RELEASE} but not covered: {len(chrome_missing)} "
           f"(of {len(chrome)})")
     print("  (caveat: a miss here may just be an unmapped rename, not absent art)")
     for n in chrome_missing[:40]:
@@ -676,12 +742,15 @@ def main() -> None:
     if len(chrome_missing) > 40:
         print(f"    … +{len(chrome_missing) - 40} more")
 
+    installer_data: set[str] | None = None     # None: no installer to ask
     if setup.is_file():
+        installer_data = set()
         _h("DATA (per-resolution archives, all three axes)")
         listing = _installer_listing(setup)
         csharp_keys = _csharp_data_keys(decompile_text(cs)) if cs.exists() else {}
         for label, pattern, template in _DATA_AXES:
             theirs = _installer_axis(listing, pattern, label)
+            installer_data |= theirs
             ours = _our_data_keys(template)
             _show(label, theirs - ours, ours - theirs)
             # The installer says what shipped; the C# constants say what the
@@ -702,14 +771,22 @@ def main() -> None:
         cs_res = _csharp_resolutions(cs)
         ours = _our_catalog_resolutions()
         res_fps = _resolution_fingerprints(cs)
-        res_gap = sorted(cs_res - ours)
+        # One panel, two orientations: the C# names 176x320 where our profile
+        # says 320x176 (rotate=True).  Unfolded, that read as a missing panel
+        # and WHAT TO PULL told us to pack data the installer does not have.
+        turned = {(h, w) for w, h in ours}
+        folded = sorted(r for r in cs_res - ours if r in turned)
+        res_gap = sorted(r for r in cs_res - ours if r not in turned)
         print(f"  handshake fingerprint: {_handshake_convention(cs)}")
         print(f"  C# supports {len(cs_res)} panel resolutions; "
               f"{len(res_gap)} not produced by any device in our catalog:")
         for w, h in res_gap:
             guards = res_fps.get((w, h)) or [f"(direct fbl assign — grep is{w}x{h})"]
             print(f"    + {w}x{h}   ⟵ {'  |  '.join(guards)}")
-        only_ours = sorted(ours - cs_res)
+        for w, h in folded:
+            print(f"    = {w}x{h}   is ours as {h}x{w} -- the same panel, turned")
+        only_ours = sorted(r for r in ours - cs_res
+                           if (r[1], r[0]) not in cs_res)
         if only_ours:
             print(f"  ({len(only_ours)} ours-only — derived rotations / legacy: "
                   + ", ".join(f"{w}x{h}" for w, h in only_ours) + ")")
@@ -756,7 +833,8 @@ def main() -> None:
                    if "Form" in f.stem or "UC" in f.stem)
     for f in forms:
         have = _PANEL_MAP.get(f, "?")
-        mark = "MISSING" if have is None else ("?" if have == "?" else "have")
+        mark = ("MISSING" if have is None else "?" if have == "?"
+                else "dead" if have == DEAD_IN_CSHARP else "have")
         print(f"  [{mark:7}] {f:32} {have or ''}")
 
     _h("WHAT TO PULL (actionable — validate each on the dev console before landing)")
@@ -779,6 +857,10 @@ def main() -> None:
         for w, h in res_gap:
             fp = (res_fps.get((w, h)) or ["(grep is%dx%d)" % (w, h)])[0]
             print(f"      {w}x{h}: variant fingerprint  ⟵ {fp}")
+            if installer_data is not None and f"{w}{h}" not in installer_data:
+                print("             data:  none to pull -- the C# names it, the "
+                      "installer ships no data for it")
+                continue
             print(f"             data:  python dev/tools/pack_theme_archives.py {w}{h}"
                   f"   (from installer Data/USBLCD/Theme{w}{h}, Web/{w}{h}, Web/zt{w}{h})")
     if not todo:

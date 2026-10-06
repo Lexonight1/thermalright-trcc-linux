@@ -90,6 +90,16 @@ DECOMPILE_ROOT = Path(
     or Path.home() / f"Downloads/TRCC_{ORACLE_RELEASE}_decompiled"
 )
 
+# The installer that release ships as -- what the asset and data audits open.
+# Derived from the same constant, so a release change moves it too; the audit
+# defaulted to a hand-spelled 2.1.6 path for a month after the oracle moved.
+# Override with ``TRCC_INSTALLER``.
+INSTALLER = Path(
+    os.environ.get("TRCC_INSTALLER")
+    or Path.home() / f"Downloads/TRCC {ORACLE_RELEASE}-Setup"
+    / f"TRCC {ORACLE_RELEASE}-Setup.exe"
+)
+
 _ASSEMBLY_VERSION = re.compile(r'AssemblyVersion\("([\d.]+)"\)')
 
 

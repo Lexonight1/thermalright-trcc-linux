@@ -59,7 +59,7 @@ WEB_DIR = DATA_DIR / "web"
 # they are distinct artwork, not aliases.  The same digits-only assumption also
 # lived in ``dev/tools/audit_csharp.py``, where it made the missing archives
 # report as parity.
-_RES = re.compile(r"^\d+[uly]?$")
+_RES = re.compile(r"^\d+[a-z]?$")   # any one-letter variant: u, l, y, m, ...
 
 
 def _discover_resolutions() -> list[str]:
