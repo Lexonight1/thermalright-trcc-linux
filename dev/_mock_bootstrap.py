@@ -408,6 +408,28 @@ def all_variant_specs() -> list[dict]:
 
 # ─── DevPaths / DevPlatform — production Platform with paths redirected ──────
 
+class _NoRealSetup:
+    """A dev run never performs the host's real one-time setup.
+
+    On Linux that re-executes under sudo with THIS checkout's ``src/`` first
+    on root's path, writes ``/etc/udev/rules.d`` and ``/etc/modprobe.d``,
+    loads modules, and pip-installs GPU extras into whichever interpreter
+    runs the mock.  The dry run only reads, so it stays the real one.  Placed
+    before the host class, so ``super()`` is the host's own ``setup``.
+    """
+
+    def setup(self, dry_run: bool = False) -> int:
+        if dry_run:
+            log.info("dev platform: setup dry run — the host's, read-only")
+            return super().setup(dry_run=True)  # type: ignore[misc]
+        log.warning("dev platform: refusing the real setup (sudo, /etc, pip)")
+        print("dev platform: `system setup` writes /etc via sudo and installs "
+              "into this interpreter — run the installed `trcc setup` instead "
+              "(--dry-run is allowed here).")
+        return 1
+
+
+
 def _offline_fetcher() -> HttpFetcher:
     """A dev platform's network without ``--online``: none."""
     from trcc.adapters.repo.http import OfflineHttpFetcher
@@ -466,7 +488,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     dev_paths = DevPaths()
 
     if not specs:
-        class DevPlatform(host_cls):
+        class DevPlatform(_NoRealSetup, host_cls):
             """Production host platform with paths redirected to ``dev/.trcc/``."""
 
             def paths(self) -> Paths:
@@ -488,7 +510,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     parsed = [DeviceSpec.parse(s) for s in specs]
     by_key = {sp.key: sp for sp in parsed}
 
-    class DevMockPlatform(host_cls):
+    class DevMockPlatform(_NoRealSetup, host_cls):
         """Real host platform with the USB seam swapped for a scripted fleet."""
 
         def http_fetcher(self) -> HttpFetcher:

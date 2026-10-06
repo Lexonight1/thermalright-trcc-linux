@@ -131,6 +131,39 @@ def test_a_dev_platform_is_offline_unless_asked(
     assert type(fetcher) is (UrllibHttpFetcher if online else OfflineHttpFetcher)
 
 
+@pytest.mark.parametrize("specs", [None, [_SPEC]], ids=["--hardware", "fleet"])
+def test_a_dev_platform_refuses_the_real_setup(
+    specs: list[dict] | None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``dev/mock_cli.py system setup`` ran the host's real setup: sudo, /etc
+    writes, module loads and a pip install into the dev interpreter.  Every
+    one of those is stubbed to a recorder here, so even a regression is safe."""
+    from types import SimpleNamespace
+
+    from trcc.adapters.system import _elevate, linux
+
+    touched: list[str] = []
+
+    def recorder(name: str):
+        return lambda *a, **kw: touched.append(name) or 0
+
+    # Every name LinuxOS.setup reaches that changes the system.  setattr
+    # RAISES on a name that moved, so a rename fails here instead of
+    # leaving a real side effect unstubbed.
+    for name in ("install_udev_rules", "install_matching_gpu_extras",
+                 "install_selinux_policy"):
+        monkeypatch.setattr(linux, name, recorder(name))
+    monkeypatch.setattr(linux, "XdgDesktopEntry",
+                        lambda: SimpleNamespace(install=recorder("desktop entry"),
+                                                path="(stub)"))
+    monkeypatch.setattr(_elevate, "reexec_as_root", recorder("reexec_as_root"))
+
+    code = _build_dev_platform(specs).setup(dry_run=False)
+
+    assert touched == [], f"the dev platform's setup reached {touched}"
+    assert code != 0, "the dev platform's setup reported success"
+
+
 def test_the_host_platform_stays_online() -> None:
     from trcc.adapters.repo.http import UrllibHttpFetcher
     from trcc.adapters.system import current_platform
