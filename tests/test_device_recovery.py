@@ -91,8 +91,11 @@ def test_led_send_reconnects_on_eio_then_succeeds() -> None:
     transport.fail_writes = 1                            # first write of the send fails
 
     assert led.send(_payload()) is True
-    # initial connect opened once; the reconnect opened again.
-    assert transport.open_calls >= 2
+    # initial connect opened once; the reconnect opened ONCE more.  It opened
+    # twice -- ``_reconnect`` opened, then ``connect()`` opened again: a
+    # second libusb handle claiming the interface while the first still held
+    # it, invisible here because a fake's open() is a flag.
+    assert transport.open_calls == 2
 
 
 def test_led_send_escalates_to_disconnect_after_threshold() -> None:
@@ -169,7 +172,7 @@ def test_scsi_send_reconnects_on_eio_then_succeeds() -> None:
     transport.fail_send = 1                          # first CDB of the send raises EIO
 
     assert scsi.send(b"\x00" * 100) is True
-    assert transport.open_calls >= 2
+    assert transport.open_calls == 2                     # connect + reconnect
 
 
 # ── Step 4: per-OS permission hint is injected, not sniffed in core ──────────

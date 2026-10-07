@@ -427,7 +427,9 @@ class Device(ABC, Generic[T]):
         log.info("%s: reconnecting transport (close → open → handshake)", self.key)
         try:
             self._transport.close()
-            self._transport.open()
+            # ``connect()`` opens the transport itself.  Opening here as well
+            # made every reconnect open TWICE: a second USB handle claiming the
+            # interface while the first still held it.
             self.connect()
         except Exception as e:
             log.warning("%s: reconnect failed: %s", self.key, e)
