@@ -148,6 +148,12 @@
 
 ### Fixed
 
+- **An open TRCC window no longer costs a quarter of a CPU core.** Since TRCC
+  became one shared background App, the window's live preview asked that App to
+  draw every frame a second time and send it as a PNG image, about 25% of one
+  core while a video theme played. The App now sends the frame it already drew
+  for the panel, once, and the window shows that. The Qt window (`trcc qtgui`)
+  also drew every frame twice even when running on its own, and no longer does.
 - **With two panels, the one you were looking at comes back on screen.** If
   the panel shown in `trcc gui` briefly disconnected, the window switched to
   your other panel and stayed there when it came back. It now switches back,

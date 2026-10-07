@@ -4170,3 +4170,47 @@ def test_qtgui_s_disk_picker_follows_another_ui(gui_app: App, qtbot) -> None:
     gui_app.dispatch(SetDiskDevice(disk_key="nvme1"))
 
     qtbot.waitUntil(lambda: picker.currentData() == "nvme1", timeout=3000)
+
+
+def test_qtgui_shows_the_sent_frame_without_rendering_another(gui_app: App) -> None:
+    """qtgui re-rendered on every FrameSent, in-process too; now it shows the
+    frame the panel got -- the live surface, or (across the daemon socket)
+    the App's JPEG of it, which the shared BusBridge turns into a surface.
+
+    MUTATION CHECK: call ``refresh()`` on every FrameSent again and a
+    BuildPreview goes out per frame.
+    """
+    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtWidgets import QApplication
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.events import FrameSent
+    from trcc.ui.qtgui.device_selection import DeviceSelection
+    from trcc.ui.qtgui.preview_surface import PreviewSurface
+
+    selection = DeviceSelection()
+    surface = PreviewSurface(gui_app, _bus(gui_app), selection)
+    selection.set_key("0402:3922")
+    surface._label.setFixedSize(320, 320)
+    frame = QImage(320, 320, QImage.Format.Format_RGB888)
+    frame.fill(QColor(0, 64, 128))
+    sizes: list[tuple[int, int]] = []
+    surface.rendered.connect(lambda w, h: sizes.append((w, h)))
+    asked: list[str] = []
+    real = gui_app.dispatch
+    gui_app.dispatch = lambda cmd: (asked.append(type(cmd).__name__), real(cmd))[1]  # type: ignore[method-assign]
+    try:
+        gui_app.events.publish(FrameSent(key="0402:3922", bytes_sent=1,
+                                         image=QtRenderer().encode_jpeg(frame, 95)))
+        gui_app.events.publish(FrameSent(key="0402:3922", bytes_sent=1,
+                                         surface=frame))
+        for _ in range(50):
+            QApplication.processEvents()
+            if len(sizes) == 2:
+                break
+    finally:
+        gui_app.dispatch = real                # type: ignore[method-assign]
+
+    assert asked == []
+    assert sizes == [(320, 320), (320, 320)]
+    assert not surface._label.pixmap().isNull()

@@ -526,3 +526,41 @@ def test_a_panel_picked_meanwhile_keeps_the_screen(tmp_path: Path, qtbot: Any) -
 
     assert win._active_key == _B
     win.close()
+
+
+def test_a_frame_from_the_socket_is_shown_without_asking_for_another(
+    window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Observed, not re-rendered: the picture on FrameSent IS the preview.
+
+    Published on the App's bus exactly as a daemon client's proxy republishes
+    it -- a JPEG and no live surface -- so it goes through the window's real
+    BusBridge, which every Qt window shares.
+
+    MUTATION CHECK: drop the decode in ``BusBridge``'s frame forwarder and
+    the window asks the App for the frame again -- CurrentFrame, then a fresh
+    render.
+    """
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.core.events import FrameSent
+
+    frame = QImage(320, 320, QImage.Format.Format_RGB888)
+    frame.fill(QColor(0, 64, 128))
+    jpeg = QtRenderer().encode_jpeg(frame, 95)
+    shown: list[Any] = []
+    monkeypatch.setattr(window._handlers[_KEY], "handle_frame", shown.append)
+    asked: list[str] = []
+    dispatch = window._app.dispatch
+
+    def recording(cmd: Any) -> Any:
+        asked.append(type(cmd).__name__)
+        return dispatch(cmd)
+
+    monkeypatch.setattr(window._app, "dispatch", recording)
+
+    window._app.events.publish(FrameSent(key=_KEY, bytes_sent=1, image=jpeg))
+    qtbot.waitUntil(lambda: bool(shown), timeout=3000)
+
+    assert [(i.width(), i.height()) for i in shown] == [(320, 320)]
+    assert asked == []

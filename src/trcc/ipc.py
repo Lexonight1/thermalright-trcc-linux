@@ -62,7 +62,7 @@ from .core import events as _events_module
 from .core import results as _results_module
 from .core.commands import Command
 from .core.commands._base import Query
-from .core.events import Event
+from .core.events import Event, FrameSent
 from .core.logs import dispatch_origin, per_frame, recurring_warning
 from .core.models import IN_PROCESS_ONLY_KEY
 from .core.results import Result
@@ -809,12 +809,34 @@ class IPCServer:
             if not targets:
                 continue
             # ONE encode, N writes -- the whole reason the fan-out is central.
-            line = json.dumps(encode_event(event)).encode() + b"\n"
+            line = json.dumps(encode_event(self._for_the_wire(event))).encode() + b"\n"
             frame_log.debug("_fanout_loop: %s -> %d subscriber(s), %d bytes",
                             name, len(targets), len(line))
             for sub in targets:
                 self._write_or_evict(sub, line)
         log.info("_fanout_loop: stopped")
+
+    def _for_the_wire(self, event: Event) -> Event:
+        """Carry what the socket cannot: a ``FrameSent``'s picture, as JPEG.
+
+        The live surface is in-process only, so a remote preview used to get
+        a FrameSent with no picture and ask for a fresh render + PNG every
+        frame.  Encoded HERE, on the fan-out thread -- never on the render
+        thread that published it -- once for every subscriber, and only for
+        an event someone is subscribed to.
+        """
+        if not isinstance(event, FrameSent) or event.surface is None or event.image:
+            return event
+        try:
+            image = self._app.display.encode_jpeg(event.surface)
+        except Exception as e:
+            recurring_warning(log, "_for_the_wire: FrameSent for %s sent without "
+                              "its picture — %s: %s", event.key,
+                              type(e).__name__, e)
+            return event
+        frame_log.debug("_for_the_wire: FrameSent %s carries %d byte(s) of JPEG",
+                        event.key, len(image))
+        return dataclasses.replace(event, image=image)
 
     def _write_or_evict(self, sub: _Subscriber, line: bytes) -> None:
         """Send *line*; drop the subscriber on any failure."""

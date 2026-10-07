@@ -257,3 +257,47 @@ def test_a_relative_path_crosses_the_socket_absolute(
 
     assert sent[0]["kwargs"]["output_path"] == str(tmp_path / "rel.txt")
     assert sent[1]["kwargs"]["frame_paths"] == [str(tmp_path / "a.png"), "/abs/b.png"]
+
+
+def test_a_sent_frame_crosses_the_socket_as_a_picture(
+    fake_platform, tmp_path, monkeypatch,
+) -> None:
+    """The preview observes the frame the panel got, even across the socket.
+
+    The live surface is in-process only; the App encodes it ONCE as JPEG for
+    subscribers.  Without that, a remote window re-rendered and PNG-encoded
+    every frame itself -- 25-29% of a core in the daemon (2026-10-06).
+
+    MUTATION CHECK: return the event unchanged from ``_for_the_wire`` and the
+    client gets a FrameSent with no picture at all.
+    """
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.events import FrameSent
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    app = App(fake_platform, renderer=QtRenderer())
+    srv = IPCServer(app)
+    srv.start()
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    proxy = AppProxy()
+    try:
+        seen: list = []
+        proxy.events.subscribe(FrameSent, seen.append)
+        time.sleep(0.4)
+        frame = QImage(320, 320, QImage.Format.Format_RGB888)
+        frame.fill(QColor(0, 64, 128))
+
+        app.events.publish(FrameSent(key="0402:3922", bytes_sent=204800,
+                                     surface=frame))
+        _wait(seen)
+
+        assert seen[0].surface is None, "a live surface never crosses"
+        picture = QImage.fromData(seen[0].image)
+        assert (picture.width(), picture.height()) == (320, 320)
+        r, g, b, _ = picture.pixelColor(160, 160).getRgb()
+        assert abs(r - 0) <= 4 and abs(g - 64) <= 4 and abs(b - 128) <= 4
+    finally:
+        proxy.close()
+        srv.shutdown()

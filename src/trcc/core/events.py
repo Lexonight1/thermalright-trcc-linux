@@ -58,6 +58,12 @@ class FrameSent(Event):
     # SendColor / SendImage / keepalive), and never sent across IPC, where a
     # remote client falls back to a re-render.
     surface: Any = field(default=None, metadata=IN_PROCESS_ONLY)
+    # ``surface`` for an observer on the far side of the daemon socket: the
+    # same frame, JPEG-encoded ONCE by the IPC fan-out (``ipc.IPCServer``) and
+    # only while a window is subscribed.  Empty in-process.  Without it a
+    # remote preview re-rendered and PNG-encoded every frame itself -- 25-29%
+    # of a core in the daemon with the gui open (measured 2026-10-06).
+    image: bytes = field(default=b"", repr=False)
     # LED twin of ``surface``: an LED render has no image, it has per-LED
     # colors.  Carried on the SAME event so LED uses the SAME preview path as
     # LCD (one render → FrameSent → handle_frame → preview), not a parallel

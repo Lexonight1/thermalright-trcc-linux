@@ -143,8 +143,24 @@ class PreviewSurface(TicksWhileShown, QWidget):
         # read for.
         mine = getattr(event, "key", None) == self._selection.key
         frame_log.debug("PreviewSurface._on_frame_sent: mine=%s", mine)
-        if mine:
+        if not mine:
+            return
+        # The frame that went to the panel IS the preview: show it.  Across
+        # the daemon socket the BusBridge has already turned the App's JPEG
+        # into this surface, so every window reads one shape.  Only a send
+        # with no picture (a colour, raw bytes) renders one.
+        surface = getattr(event, "surface", None)
+        if not isinstance(surface, QImage) or surface.isNull():
             self.refresh()
+            return
+        pixmap = surface_to_pixmap(surface, self._label.width(),
+                                   self._label.height())
+        if pixmap is None:
+            self.refresh()
+            return
+        self._label.setPixmap(pixmap)
+        self._label.setText("")
+        self.rendered.emit(surface.width(), surface.height())
 
     # ── Render ─────────────────────────────────────────────────────────
 

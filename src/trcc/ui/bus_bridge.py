@@ -16,10 +16,12 @@ established home for Qt code both skins share.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 from functools import partial
 
 from PySide6.QtCore import QObject, Signal, SignalInstance
+from PySide6.QtGui import QImage
 
 from ..core.events import (
     AutostartChanged,
@@ -67,7 +69,7 @@ from ..core.events import (
     VideoStarted,
     VideoStopped,
 )
-from ..core.logs import per_frame
+from ..core.logs import per_frame, recurring_warning
 
 log = logging.getLogger(__name__)
 #: Every bus event crosses this bridge, including the per-frame ones.
@@ -178,7 +180,8 @@ class BusBridge(QObject):
             (LedSettingsChanged, self.settings_changed),
         )
         subscribed = tuple(
-            (event_type, _SignalForwarder(signal, event_type.__name__))
+            (event_type, (_FrameForwarder if event_type is FrameSent
+                          else _SignalForwarder)(signal, event_type.__name__))
             for event_type, signal in pairs)
         for event_type, forwarder in subscribed:
             self._bus.subscribe(event_type, forwarder)
@@ -222,3 +225,30 @@ class _SignalForwarder:
 
     def __repr__(self) -> str:
         return f"<BusBridge forwarder for {self._event_name}>"
+
+
+class _FrameForwarder(_SignalForwarder):
+    """``FrameSent`` with its picture as a surface, wherever the App runs.
+
+    Across the daemon socket the live surface cannot travel; the App sends the
+    same frame as JPEG bytes (``FrameSent.image``) instead.  Decoding it HERE,
+    once, gives every window one event shape -- they read ``surface`` and
+    never ask the App to draw the frame again.  It runs on the thread that
+    received the event, not the UI thread.
+    """
+
+    __slots__ = ()
+
+    def __call__(self, event: Event) -> None:
+        if (isinstance(event, FrameSent) and event.surface is None
+                and event.image):
+            picture = QImage.fromData(event.image)
+            if picture.isNull():
+                recurring_warning(log, "BusBridge: FrameSent for %s carried %d "
+                                  "byte(s) that would not decode", event.key,
+                                  len(event.image))
+            else:
+                frame_log.debug("BusBridge: FrameSent %s decoded %dx%d",
+                                event.key, picture.width(), picture.height())
+                event = dataclasses.replace(event, surface=picture)
+        super().__call__(event)
