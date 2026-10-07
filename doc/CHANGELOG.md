@@ -153,6 +153,10 @@
 
 ### Fixed
 
+- **`trcc status` no longer pokes the panels.** It ran a full device scan,
+  which sends a USB request to every panel the background App is driving and
+  announces each device to every open window, just to list what the App
+  already had. It now asks the App.
 - **macOS: theme and data downloads trust the right certificates again.** The
   fix for #109 (load certifi's certificate bundle, since macOS Python does
   not read the Keychain) was lost when the code was reorganised, and the

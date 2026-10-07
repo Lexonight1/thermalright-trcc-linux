@@ -55,11 +55,40 @@ def test_help_lists_every_sub_app(cli_runner: CliRunner, cli_app) -> None:
         assert sub in result.stdout
 
 
-def test_status_smoke(cli_runner: CliRunner, cli_app) -> None:
-    """Exits 1 when no daemon listening (typical Linux dev box)."""
-    del cli_app
+class _Watched:
+    """The CLI's bus, recording what it dispatches; *remote* says whose App."""
+
+    def __init__(self, app, remote: bool) -> None:
+        self._app, self.remote, self.sent = app, remote, []
+
+    def dispatch(self, cmd):
+        self.sent.append(type(cmd).__name__)
+        return self._app.dispatch(cmd)
+
+
+@pytest.mark.parametrize(("remote", "asks"), [
+    (True, "ListDevices"), (False, "DiscoverDevices"),
+], ids=["shared_app", "in_process"])
+def test_status_reads_the_shared_app_and_scans_only_in_process(
+    cli_runner: CliRunner, cli_app, monkeypatch: pytest.MonkeyPatch,
+    remote: bool, asks: str,
+) -> None:
+    """Under the shared App, ``status`` discovered: a USB scan (a control
+    transfer to every panel the App was streaming to) and a DeviceDiscovered
+    to every open window, to print what the App already had attached.
+
+    MUTATION CHECK: always discover and the shared-App case scans.
+    """
+    from trcc.ui.cli import main as cli_main
+    bus = _Watched(cli_app, remote)
+    monkeypatch.setattr(cli_main, "get_app", lambda: bus)
+
     result = cli_runner.invoke(_app(), ["status"])
-    assert result.exit_code in (0, 1)
+
+    assert result.exit_code == 0, result.output
+    other = "DiscoverDevices" if asks == "ListDevices" else "ListDevices"
+    assert asks in bus.sent
+    assert other not in bus.sent
 
 
 def test_gui_help(cli_runner: CliRunner, cli_app) -> None:

@@ -435,15 +435,28 @@ def status(
         DiscoverDevices,
         LcdSnapshot,
         LedSnapshot,
+        ListDevices,
     )
     from ...core.models import Kind
+    from ._ctx import daemon_owns_the_panels
 
     app_obj = get_app()
     app_snap = app_obj.dispatch(ControlCenterSnapshot())
-    discovery = app_obj.dispatch(DiscoverDevices())
+    if daemon_owns_the_panels(app_obj):
+        # The shared App has attached everything already.  Discovering here
+        # scanned USB -- a control transfer to every panel it was streaming
+        # to -- and announced each device to every open window.
+        attached = app_obj.dispatch(ListDevices()).devices
+        units = [(e.key, e.kind == Kind.LED.value) for e in attached]
+    else:
+        # In-process, nothing is attached until a scan, and no other process
+        # is driving the panels.
+        units = [(k, p.kind == Kind.LED)
+                 for k, p in app_obj.dispatch(DiscoverDevices()).units()]
+    log.info("cli status: %d device(s)", len(units))
 
-    lcd_keys = [k for k, p in discovery.units() if p.kind != Kind.LED]
-    led_keys = [k for k, p in discovery.units() if p.kind == Kind.LED]
+    lcd_keys = [k for k, is_led in units if not is_led]
+    led_keys = [k for k, is_led in units if is_led]
     lcd_snaps = [app_obj.dispatch(LcdSnapshot(key=k)) for k in lcd_keys]
     led_snaps = [app_obj.dispatch(LedSnapshot(key=k)) for k in led_keys]
 
