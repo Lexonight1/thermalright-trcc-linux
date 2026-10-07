@@ -2811,12 +2811,21 @@ class DeviceCanvas(Query[DeviceCanvasResult]):
         w, h, source = native_canvas(app, self.key)
         log.debug("DeviceCanvas: key=%s -> %dx%d via %s",
                   self.key, w, h, source)
-        if source == "unknown":
-            return DeviceCanvasResult(
-                ok=False, key=self.key, source=source,
-                message=(f"no canvas known for {self.key} — attach the "
-                         "device, or use a key in the product registry"),
-            )
+        if not (w and h):
+            # A registry row of 0x0 answered ok=True, and the qtgui browsers
+            # authored themes and crops for a 0x0 panel.  Say WHY there is
+            # no size: an unknown key, a device that draws no frames, or one
+            # whose size only its handshake knows (0416:5302 covers several).
+            why = (f"no canvas known for {self.key} — attach the device, or "
+                   "use a key in the product registry"
+                   if source == "unknown" else
+                   _lacks(app, self.key, Capability.FRAME_RENDER)
+                   or f"{self.key}'s size is known only after it answers a "
+                   "handshake — connect it first")
+            log.info("DeviceCanvas: %s has no canvas (%s) — %s",
+                     self.key, source, why)
+            return DeviceCanvasResult(ok=False, key=self.key, source=source,
+                                      message=why)
         return DeviceCanvasResult(
             ok=True, key=self.key, width=w, height=h, source=source,
             message=f"{w}x{h} native for {self.key} (from {source})",

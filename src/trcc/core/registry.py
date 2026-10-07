@@ -95,9 +95,10 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         # (1280, 480).  Six reporters: #240, #244, #257, #267, #268, #300.
         #
         # Nothing downstream needs the guess.  `DiscoverDevices` skips a
-        # (0, 0) row, `_resolve_resolution` returns None for it, the qtgui
-        # browsers guard it, and `ConnectDevice` installs for the HANDSHAKE
-        # resolution -- so a device that connects still gets its data.  The
+        # (0, 0) row, `_resolve_resolution` returns None for it,
+        # `DeviceCanvas` refuses it (so no browser authors for 0x0), and
+        # `ConnectDevice` installs for the HANDSHAKE resolution -- so a
+        # device that connects still gets its data.  The
         # cost is that a device which NEVER connects shows empty grids
         # instead of wrong-sized ones, which is the better failure: empty
         # self-heals on connect (DataInstalled -> notify_data_ready), wrong

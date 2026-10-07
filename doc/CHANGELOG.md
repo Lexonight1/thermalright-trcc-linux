@@ -153,6 +153,10 @@
 
 ### Fixed
 
+- **The Qt window's theme and mask lists no longer size themselves for a 0x0
+  panel.** For a cooler whose screen size only its handshake reports
+  (0416:5302), or an LED controller, they used to go ahead with no size;
+  they now ask you to connect the device first.
 - **Stopping a screen cast on one panel no longer stops it on another.** All
   casting panels share one screen capture, and stopping any of them stopped
   it for all of them (on Wayland, it closed the screen-sharing session).
