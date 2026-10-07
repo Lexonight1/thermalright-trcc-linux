@@ -293,9 +293,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "DataInstalled (trcc_app.py:560) but dispatches nothing, so a GUI "
         "user cannot re-fetch archives whose first download failed"
     )),
-    "MarkFirstRunDone": (frozenset({"cli", "api"}), (
-        "gap: record that onboarding completed; the GUIs have a first-run flow "
-        "but do not close it through the bus"
+    "MarkFirstRunDone": (frozenset({"cli", "api", "qtgui"}), (
+        "scoped: qtgui closes its first-run welcome on the first launch "
+        "(2026-10-07; it showed at every launch before). ui/gui has no "
+        "first-run flow to close -- nor does the Windows app it copies"
     )),
     "RunSetup": (frozenset({"cli", "api"}), (
         "gap: OS-specific one-time setup (udev rules, WinUSB guide). A GUI-only "
