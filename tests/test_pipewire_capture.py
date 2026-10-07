@@ -895,3 +895,40 @@ def test_a_portal_cast_writes_nothing_per_frame(
 
     assert [r.getMessage() for r in caplog.records
             if not r.name.startswith("trcc.frame")] == []
+
+
+def test_the_capture_pipeline_converts_no_more_than_the_cast_uses() -> None:
+    """A 60 Hz screen through the real pipeline: the cast-rate frames, no more.
+
+    Driven with GStreamer itself (a live 60 fps test source in place of
+    ``pipewiresrc``, which needs a portal).  Converting and copying every
+    frame at full size, to keep one in four, was ~70% of the pipeline.
+
+    MUTATION CHECK: drop ``videorate`` from ``capture_pipeline`` and ~120
+    frames arrive in these two seconds.
+    """
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from gi.repository import GLib, Gst
+
+    Gst.init(None)
+    if Gst.ElementFactory.find("videorate") is None:
+        pytest.skip("GStreamer has no videorate here")
+    pipe = Gst.parse_launch(pw.capture_pipeline(
+        "videotestsrc is-live=true pattern=solid-color ! "
+        "video/x-raw,format=BGRx,width=64,height=48,framerate=60/1"))
+    frames: list[int] = []
+
+    def on_sample(sink: Any) -> Any:
+        sink.emit("pull-sample")
+        frames.append(1)
+        return Gst.FlowReturn.OK
+
+    pipe.get_by_name("sink").connect("new-sample", on_sample)
+    pipe.set_state(Gst.State.PLAYING)
+    loop = GLib.MainLoop()
+    GLib.timeout_add(2000, loop.quit)
+    loop.run()
+    pipe.set_state(Gst.State.NULL)
+
+    assert 10 <= len(frames) <= 2 * pw.CAPTURE_MAX_FPS + 2, len(frames)

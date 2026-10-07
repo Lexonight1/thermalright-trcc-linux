@@ -40,6 +40,7 @@ chain -- which is exactly what every face does today.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import threading
 import time
@@ -48,7 +49,7 @@ from typing import Any
 
 from ...core._frames import unpad_rows
 from ...core.logs import per_frame
-from ...core.models import RawFrame
+from ...core.models import SCREENCAST_TICK_S, RawFrame
 from ...core.ports import CaptureNotReady, ScreenCapture
 
 log = logging.getLogger(__name__)
@@ -532,14 +533,9 @@ class PipeWireScreenCast:
                 "(Debian/Ubuntu) or gst-plugin-pipewire (Arch), then check "
                 "it with: gst-inspect-1.0 pipewiresrc",
             )
-        # Pipeline: pipewiresrc → videoconvert → RGB → appsink
-        pipeline_str = (
+        pipeline_str = capture_pipeline(
             f"pipewiresrc fd={self._pipewire_fd} path={self._node_id} "
-            f"do-timestamp=true keepalive-time=1000 ! "
-            f"videoconvert ! "
-            f"video/x-raw,format=RGB ! "
-            f"appsink name=sink emit-signals=true max-buffers=2 drop=true"
-        )
+            f"do-timestamp=true keepalive-time=1000")
 
         self._pipeline = Gst.parse_launch(pipeline_str)
         self._appsink = self._pipeline.get_by_name('sink')
@@ -629,6 +625,35 @@ class PipeWireScreenCast:
     def __del__(self):
         log.debug("__del__")
         self.stop()
+
+
+#: The most frames a second worth converting: just above the cast's own tick.
+#: Derived, so a change to the tick cannot leave this behind.
+CAPTURE_MAX_FPS = math.ceil(1 / SCREENCAST_TICK_S)
+
+
+def capture_pipeline(source: str) -> str:
+    """*source* → at most ``CAPTURE_MAX_FPS`` → packed RGB → ``appsink``.
+
+    The rate limit comes BEFORE ``videoconvert``: PipeWire delivers a frame
+    whenever the screen changes, up to its refresh rate, while the cast takes
+    one every ``SCREENCAST_TICK_S``.  Converting and copying the rest of a
+    60 Hz screen at full size only to drop it cost ~70% of the pipeline --
+    measured 2026-10-07 on a live 1920x1080 60 fps source: 23 G instructions
+    per 10 s and 598 frames into Python, against 7-9 G and 200 frames with
+    the limit.  ``videorate max-rate`` only ever DROPS, so a still screen
+    still sends nothing
+    (gst-inspect: "max-rate … implies drop-only").
+    """
+    log.debug("capture_pipeline: max %d fps from %s", CAPTURE_MAX_FPS,
+              source.split(" ", 1)[0])
+    return (
+        f"{source} ! "
+        f"videorate max-rate={CAPTURE_MAX_FPS} ! "
+        f"videoconvert ! "
+        f"video/x-raw,format=RGB ! "
+        f"appsink name=sink emit-signals=true max-buffers=2 drop=true"
+    )
 
 
 def crop_rgb24(

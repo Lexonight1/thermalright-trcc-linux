@@ -160,6 +160,12 @@
 - **A full-screen cast costs a quarter less per frame.** Each captured frame
   was copied in full once more than needed before being shrunk to the panel's
   size: 8.3 ms per 1920x1080 frame, now 6.2 ms.
+- **A screen cast on Wayland no longer converts frames it throws away.** The
+  screen arrives up to 60 times a second and the cast uses about 17. Every
+  frame was converted to RGB and copied in full before most were dropped. Now
+  the extra frames are dropped first. On a test 1920x1080 60 Hz source the
+  capture work fell by about two thirds (23 billion instructions per 10
+  seconds, now 7-9).
 - **An open TRCC window no longer costs a quarter of a CPU core.** Since TRCC
   became one shared background App, the window's live preview asked that App to
   draw every frame a second time and send it as a PNG image, about 25% of one
