@@ -823,13 +823,15 @@ class FileContentStore(ContentStore):
         _scan(user_masks_dir, is_custom=True)
         return masks
 
-    def export(self, theme_path: Path, archive_path: Path) -> None:
+    def export(self, theme_path: Path, archive_path: Path, *,
+               background: Path | None = None) -> None:
         """Archive a theme as a self-contained, shareable file.
 
         ``.tr`` writes the Windows app's own format, so a Windows user can
         import it (#272); it holds a still background or a Theme.zt, never an
-        mp4, exactly like a Windows export.  Anything else is our zip, which
-        keeps every file.
+        mp4, exactly like a Windows export.  A video reaches it as a Theme.zt
+        the caller baked and passed as *background*.  Anything else is our
+        zip, which keeps every file.
 
         A saved theme references its background/mask in the user library
         (Phase D), so a raw dir-zip would omit them.  Export DEREFERENCES:
@@ -844,7 +846,8 @@ class FileContentStore(ContentStore):
         if not theme_path.is_dir():
             raise ThemeError(f"Theme path is not a directory: {theme_path}")
 
-        members = self._export_members(self.load(theme_path), theme_path)
+        members = self._export_members(self.load(theme_path), theme_path,
+                                       background)
         if archive_path.suffix.lower() == ".tr":
             self._export_tr(theme_path, members, archive_path)
             return
@@ -900,20 +903,18 @@ class FileContentStore(ContentStore):
 
     def _export_tr(self, theme_path: Path, members: dict[str, Path | bytes],
                    archive_path: Path) -> None:
-        """Write *members* as a Windows ``.tr``.  A video background travels
-        as the theme's still ``00.png``, as the Windows export does."""
+        """Write *members* as a Windows ``.tr``: a still ``00.png`` or a
+        ``Theme.zt``, as ``FormCZTV.buttonDaoChu_Click`` writes one.  Any
+        other video has no slot and is refused by :func:`Tr.write`."""
         def read(name: str) -> bytes | None:
             log.debug("_export_tr.read: %s", name)
             source = members.get(name)
             return source.read_bytes() if isinstance(source, Path) else source
 
-        still = ThemeDir(theme_path).bg
-        background = read(ThemeDir.BG) or (
-            still.read_bytes() if ThemeDir.ZT not in members and still.is_file() else None)
         data = Tr.write(Tr.TrTheme(
             config_dc=Dc.Writer().serialize(self._load_config(theme_path)),
             mask_png=read(ThemeDir.MASK),
-            background_png=background,
+            background_png=read(ThemeDir.BG),
             theme_zt=read(ThemeDir.ZT),
         ))
         try:
@@ -924,18 +925,21 @@ class FileContentStore(ContentStore):
                  theme_path, archive_path, len(data))
 
     def _export_members(
-        self, theme: Theme, theme_path: Path,
+        self, theme: Theme, theme_path: Path, background: Path | None = None,
     ) -> dict[str, Path | bytes]:
         """Resolve a theme into its self-contained archive members.
 
         Maps each archive entry name to a source ``Path`` (copied
         verbatim) or ``bytes`` (the rebuilt manifest).  Dereferences the
         background/mask refs to library files via Phase-B resolution, so
-        the archive carries the bytes, not the refs.
+        the archive carries the bytes, not the refs.  *background*, when
+        given, stands in for the theme's own.
         """
         members: dict[str, Path | bytes] = {}
 
-        bg = self.background_path(theme)
+        bg = background or self.background_path(theme)
+        if background is not None:
+            log.info("export: background overridden by %s", background)
         if bg is not None and bg.suffix.lower() in _VIDEO_EXTS:
             members[f"Theme{bg.suffix.lower()}"] = bg
             log.info("export: bundling video bg %s", bg.name)

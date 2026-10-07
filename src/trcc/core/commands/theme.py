@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -591,6 +593,59 @@ def _composed_resolution(
     return resolution
 
 
+@contextmanager
+def _tr_background(app: App, key: str, archive_path: Path,
+                   background: Path | None,
+                   size: tuple[int, int]) -> Iterator[Path | None]:
+    """The background a ``.tr`` export of *background* carries.
+
+    A ``.tr`` holds a still or a ``Theme.zt`` and nothing else
+    (``FormCZTV.buttonDaoChu_Click``), and the Windows app's own video themes
+    ARE a ``Theme.zt`` -- ``UCVideoCut.BmpToThemeFile`` bakes every video at
+    the canvas size when it is imported.  So a video becomes one here, at
+    *size* and the device's fit (what the panel shows), gone on exit.
+    Anything else -- a zip, a still, a ``Theme.zt`` -- passes through.
+    """
+    if (archive_path.suffix.lower() != ".tr" or background is None
+            or MEDIA.kind_of(background) is not MediaKind.ANIMATED
+            or background.suffix.lower() == ".zt"):
+        log.debug("_tr_background: %s carries %s as it is",
+                  archive_path.name, background)
+        yield background
+        return
+
+    from ...services.video_export import (
+        VideoExporter,
+        VideoExportError,
+        probe_duration_ms,
+    )
+
+    duration = probe_duration_ms(background)
+    if duration <= 0:
+        log.warning("_tr_background: cannot probe %s's length -- baking "
+                    "its first 10 s", background)
+        duration = 10_000
+    elif duration > ZT_MAX_DURATION_MS:
+        log.warning("_tr_background: %s runs %d ms -- a Theme.zt holds "
+                    "%d, the rest is cut", background, duration,
+                    ZT_MAX_DURATION_MS)
+    fit = app.settings.for_device(key).fit_mode
+    w, h = size
+    log.info("_tr_background: baking %s into a %dx%d Theme.zt (%d ms, "
+             "fit %s) for %s", background, w, h,
+             min(duration, ZT_MAX_DURATION_MS), fit, archive_path.name)
+    try:
+        with VideoExporter(app.platform.software_install_hint).baked(
+                VideoExportRequest(source=background, start_ms=0,
+                                   end_ms=min(duration, ZT_MAX_DURATION_MS),
+                                   target_w=w, target_h=h, fit_mode=fit),
+        ) as zt:
+            yield zt
+    except VideoExportError as e:
+        raise ThemeError(f"could not turn the video into a Theme.zt for "
+                         f"the .tr: {e}") from e
+
+
 @dataclass(frozen=True, slots=True)
 class SaveTheme(Command[ThemeResult]):
     """Save the device's CURRENT rendered state as a new theme directory.
@@ -1061,7 +1116,8 @@ class ExportTheme(Command[ThemeExportResult]):
     """Export a theme under ``user_theme_dir(w, h) / theme_name`` to a file.
 
     ``.tr`` writes the Windows app's own format, which Windows can import
-    (#272); any other name writes our zip, which keeps a video background.
+    (#272), with a video background baked into the ``Theme.zt`` that format
+    carries; any other name writes our zip, which keeps the video itself.
 
     Device-scoped — resolution comes from the device the caller named via
     ``key``, matching legacy's ``dev.export_config(path)`` shape where the
@@ -1108,7 +1164,12 @@ class ExportTheme(Command[ThemeExportResult]):
             )
 
         try:
-            app.themes.export(source, self.archive_path)
+            theme = app.themes.load(source)
+            with _tr_background(app, self.key, self.archive_path,
+                                app.themes.background_path(theme),
+                                resolution) as background:
+                app.themes.export(source, self.archive_path,
+                                  background=background)
         except ThemeError as e:
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -1173,13 +1234,17 @@ class ExportCurrentTheme(Command[ThemeExportResult]):
             s.mask_path, app.themes.mask_path(theme), "mask",
         ) if s.mask_visible else None)
         try:
-            background = (
-                bg if bg is None or MEDIA.kind_of(bg) is MediaKind.ANIMATED
-                else app.renderer.encode_png(app.renderer.open_image(bg)))
-            app.themes.export_unsaved(
-                manifest, self.archive_path, background=background, mask=mask,
-                preview=SaveTheme._preview_png(app, self.key, theme),
-            )
+            with _tr_background(app, self.key, self.archive_path, bg,
+                                resolution) as baked:
+                background = (
+                    baked if baked is None
+                    or MEDIA.kind_of(baked) is MediaKind.ANIMATED
+                    else app.renderer.encode_png(app.renderer.open_image(baked)))
+                app.themes.export_unsaved(
+                    manifest, self.archive_path, background=background,
+                    mask=mask,
+                    preview=SaveTheme._preview_png(app, self.key, theme),
+                )
         except (OSError, ThemeError, TrccError) as e:
             return failed(f"failed to export: {e}")
 

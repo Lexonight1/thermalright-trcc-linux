@@ -828,7 +828,7 @@ background_path(theme: 'Theme') -> Path | None
 copy_preview(src_theme_dir: 'Path', dst_theme_dir: 'Path') -> bool
 delete(directory: 'Path', name: 'str') -> Path
 discover_masks(cloud_masks_dir: 'Path | None' = None, user_masks_dir: 'Path | None' = None) -> builtins.list[DiscoveredMask]
-export(theme_path: 'Path', archive_path: 'Path') -> None
+export(theme_path: 'Path', archive_path: 'Path', background: 'Path | None' = None) -> None
 export_dc(theme_dir: 'Path', output_path: 'Path', elements: 'list[dict] | None' = None, flags: 'dict | None' = None) -> Path
 export_unsaved(manifest: 'dict', archive_path: 'Path', background: 'Path | bytes | None', mask: 'Path | None', preview: 'bytes | None') -> None
 import_(archive_path: 'Path', into_dir: 'Path') -> Theme

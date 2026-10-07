@@ -7,6 +7,7 @@ called out.
 from __future__ import annotations
 
 import json
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import pytest
 
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
+from trcc.core import toolchain
 from trcc.core.commands import (
     ExportCurrentTheme,
     ExportTheme,
@@ -24,7 +26,14 @@ from trcc.core.commands import (
 )
 from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
-from trcc.core.models import CAPABILITIES_BY_KIND, MEDIA, Kind, MediaKind, Theme
+from trcc.core.models import (
+    CAPABILITIES_BY_KIND,
+    MEDIA,
+    FitMode,
+    Kind,
+    MediaKind,
+    Theme,
+)
 from trcc.services.settings import Settings
 
 from .conftest import FakeMic, FakePlatform
@@ -2661,29 +2670,42 @@ def test_export_tr_writes_what_windows_imports(tmp_home: Path) -> None:
     assert (tmp_home / "back" / "00.png").read_bytes() == b"\x89PNG\r\n\x1a\nBG"
 
 
-def test_export_tr_refuses_a_video_it_cannot_carry(tmp_home: Path) -> None:
-    """The format has no slot for an mp4.  With no still frame beside it the
-    export refuses and names .zip, instead of writing what Windows would
-    crash on (the C# writes nothing for the background in that case)."""
+@pytest.mark.parametrize("still_beside_it", [False, True])
+def test_export_tr_refuses_a_video_it_cannot_carry(
+    tmp_home: Path, still_beside_it: bool,
+) -> None:
+    """The format has no slot for an mp4, and the store has no transcoder --
+    the export Commands bake the video first.  Handed one raw, it refuses,
+    and a 00.png beside the video is NOT exported in its place: the panel
+    plays the video, so a still would be a different theme (the old
+    fallback exported that still and called it what Windows does)."""
     theme_dir = _write_self_contained_theme(tmp_home, "clip")
-    (theme_dir / "00.png").unlink()
+    if not still_beside_it:
+        (theme_dir / "00.png").unlink()
     (theme_dir / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
-    config = json.loads((theme_dir / "trcc.json").read_text(encoding="utf-8"))
-    (theme_dir / "trcc.json").write_text(json.dumps(config), encoding="utf-8")
-    with pytest.raises(ThemeError, match=r"\.zip"):
+    with pytest.raises(ThemeError, match="a .tr needs a still background "
+                       r"\(00.png\) or a Theme.zt"):
         FileContentStore().export(theme_dir, tmp_home / "clip.tr")
+    assert not (tmp_home / "clip.tr").exists()
 
 
-def test_export_tr_carries_a_video_themes_still_frame(tmp_home: Path) -> None:
-    """A video theme keeps its first frame as 00.png; that is what a .tr
-    carries, as a Windows export of the same theme does."""
+def test_export_tr_carries_the_background_it_is_handed(tmp_home: Path) -> None:
+    """The baked Theme.zt a Command hands over is what the .tr carries, in
+    place of the theme's video -- and the theme on disk is left alone."""
     from trcc.services import _tr
 
     theme_dir = _write_self_contained_theme(tmp_home, "clip")
+    (theme_dir / "00.png").unlink()
     (theme_dir / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
-    FileContentStore().export(theme_dir, tmp_home / "clip.tr")
+    before = sorted(p.name for p in theme_dir.iterdir())
+    zt = tmp_home / "baked.zt"
+    zt.write_bytes(b"\xdc" + _i32(1, 41, 4) + b"\xff\xd8\xff\xd9")
+
+    FileContentStore().export(theme_dir, tmp_home / "clip.tr", background=zt)
+
     parts = _tr.read((tmp_home / "clip.tr").read_bytes())
-    assert (parts.background_png, parts.theme_zt) == (b"\x89PNG\r\n\x1a\nBG", None)
+    assert (parts.background_png, parts.theme_zt) == (None, zt.read_bytes())
+    assert sorted(p.name for p in theme_dir.iterdir()) == before
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -2759,6 +2781,132 @@ def test_export_current_theme_carries_the_panel_not_the_library(
     user = app.platform.paths().user_content_dir()
     assert [p for p in user.rglob("*") if p.is_file()] == []
     assert [e.theme_name for e in events] == ["Party"]
+
+
+# A video theme exported to .tr: the Windows app's own video themes are a
+# Theme.zt baked at the canvas (UCVideoCut.BmpToThemeFile), and that is the
+# only animation a .tr can hold, so the export bakes one.  It refused instead,
+# 10 of 10 times, telling the user to pick .zip -- which Windows cannot read.
+
+_needs_ffmpeg = pytest.mark.skipif(
+    not (toolchain.present("ffmpeg") and toolchain.present("ffprobe")),
+    reason="ffmpeg/ffprobe not on PATH")
+
+
+def _clip(path: Path) -> Path:
+    """A real 2 s 4:3 test pattern -- not the panel's square shape, so the
+    device's fit decides what reaches the frames."""
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi",
+                    "-i", "testsrc=duration=2:size=320x240:rate=30",
+                    "-pix_fmt", "yuv420p", str(path)],
+                   capture_output=True, check=True, timeout=120)
+    return path
+
+
+def _zt_frames(zt: bytes, tmp: Path) -> list[bytes]:
+    """The JPEGs of a Theme.zt, through the decoder the panel plays it with."""
+    from trcc.services.media import ZtDecoder
+
+    (tmp / "read.zt").write_bytes(zt)
+    return ZtDecoder(tmp / "read.zt", _TEST_RES).decode()
+
+
+@_needs_ffmpeg
+@pytest.mark.parametrize("fit", [FitMode.WIDTH, FitMode.HEIGHT])
+def test_export_theme_bakes_a_video_into_the_tr(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, fit: FitMode,
+) -> None:
+    """A saved video theme exports to .tr as canvas-sized Theme.zt frames at
+    the device's fit, imports back as an animation, and leaves no temp."""
+    import tempfile
+
+    from PySide6.QtGui import QImage
+
+    from trcc.services import _tr
+
+    app, _ = panel
+    private = tmp_path / "systmp"
+    private.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(private))
+    app.settings.for_device(_TEST_DEVICE_KEY).fit_mode = fit
+    theme = app.platform.paths().user_theme_dir(*_TEST_RES) / "Clip"
+    theme.mkdir(parents=True)
+    _clip(theme / "Theme.mp4")
+    (theme / "trcc.json").write_text(json.dumps(
+        {"name": "Clip", "width": 320, "height": 320, "elements": []}),
+        encoding="utf-8")
+    archive = tmp_path / "Clip.tr"
+
+    result = app.dispatch(ExportTheme(key=_TEST_DEVICE_KEY, theme_name="Clip",
+                                      archive_path=archive))
+
+    assert result.ok is True, result.message
+    parts = _tr.read(archive.read_bytes())
+    assert parts.background_png is None and parts.theme_zt is not None
+    frames = _zt_frames(parts.theme_zt, tmp_path)
+    assert len(frames) > 1                         # an animation, not a still
+    first = QImage.fromData(frames[0])
+    assert (first.width(), first.height()) == _TEST_RES
+    # 320x240 into 320x320: WIDTH letterboxes (black top row), HEIGHT pins
+    # the height and crops the sides (the pattern reaches the top).
+    top = first.pixelColor(160, 2)
+    assert (max(top.red(), top.green(), top.blue()) < 40) is (fit is FitMode.WIDTH)
+    assert list(private.iterdir()) == []
+
+    back = app.dispatch(ImportTheme(key=_TEST_DEVICE_KEY, archive_path=archive,
+                                    name="Back"))
+    assert back.ok is True, back.message
+    zt = app.active_themes[_TEST_DEVICE_KEY].path / "Theme.zt"
+    assert _zt_frames(zt.read_bytes(), tmp_path) == frames
+
+
+@_needs_ffmpeg
+def test_export_current_theme_bakes_the_video_on_the_panel(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+) -> None:
+    """The panel's export button, on a theme playing a video."""
+    from trcc.services import _tr
+
+    app, _ = panel
+    theme = app.platform.paths().theme_dir(*_TEST_RES) / "Vid"
+    theme.mkdir(parents=True)
+    _clip(theme / "Theme.mp4")
+    (theme / "trcc.json").write_text(json.dumps(
+        {"name": "Vid", "width": 320, "height": 320, "elements": []}),
+        encoding="utf-8")
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=theme)).ok
+    archive = tmp_path / "Vid.tr"
+
+    result = app.dispatch(ExportCurrentTheme(key=_TEST_DEVICE_KEY,
+                                             archive_path=archive))
+
+    assert result.ok is True, result.message
+    parts = _tr.read(archive.read_bytes())
+    assert parts.background_png is None and parts.theme_zt is not None
+    assert len(_zt_frames(parts.theme_zt, tmp_path)) > 1
+
+
+@_needs_ffmpeg
+def test_a_zip_keeps_the_video_itself(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+) -> None:
+    """Our zip has room for the mp4, so nothing is baked."""
+    app, _ = panel
+    theme = app.platform.paths().user_theme_dir(*_TEST_RES) / "Clip"
+    theme.mkdir(parents=True)
+    clip = _clip(theme / "Theme.mp4")
+    (theme / "trcc.json").write_text(json.dumps(
+        {"name": "Clip", "width": 320, "height": 320, "elements": []}),
+        encoding="utf-8")
+    archive = tmp_path / "Clip.zip"
+
+    assert app.dispatch(ExportTheme(key=_TEST_DEVICE_KEY, theme_name="Clip",
+                                    archive_path=archive)).ok
+
+    with zipfile.ZipFile(archive) as zf:
+        assert zf.read("Theme.mp4") == clip.read_bytes()
+        assert "Theme.zt" not in zf.namelist()
 
 
 @pytest.mark.parametrize("suffix", [".tr", ".zip"])

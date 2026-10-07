@@ -26,7 +26,8 @@ import shutil
 import struct
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ..core import toolchain
@@ -86,6 +87,22 @@ class VideoExporter:
         self._validate(request)
         return self._do_export(request, progress or _noop_progress)
 
+    @contextmanager
+    def baked(
+        self,
+        request: VideoExportRequest,
+        progress: ProgressCallback | None = None,
+    ) -> Iterator[Path]:
+        """:meth:`export_zt` for a caller that needs the file only while it
+        works -- a ``.tr`` export packs it and is done.  The Theme.zt and the
+        directory it was made in are gone on exit, success or not."""
+        produced = self.export_zt(request, progress)
+        log.info("baked: %s held for the caller", produced)
+        try:
+            yield produced
+        finally:
+            _discard(produced.parent)
+
     # ── Internals ────────────────────────────────────────────────────
 
     def _validate(self, req: VideoExportRequest) -> None:
@@ -133,7 +150,7 @@ class VideoExporter:
         except BaseException:
             # Every failure, not only the worded ones: a raise from the
             # progress callback or the frame reader left the directory behind.
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            _discard(temp_dir)
             raise
 
     def _run_ffmpeg(
@@ -260,8 +277,10 @@ class VideoExporter:
             with output_path.open("wb") as f:
                 f.write(struct.pack("B", ZT_MAGIC))
                 f.write(struct.pack("<i", len(jpegs)))
-                for i in range(len(jpegs)):
-                    f.write(struct.pack("<i", int(i * ZT_FRAME_INTERVAL_MS)))
+                # Each frame's END time, as ``UCVideoCut.BmpToThemeFile``
+                # writes it: ``(int)(41.67 * i)`` for i = 1..n, never 0.
+                for i in range(1, len(jpegs) + 1):
+                    f.write(struct.pack("<i", int(ZT_FRAME_INTERVAL_MS * i)))
                 for jpeg in jpegs:
                     f.write(struct.pack("<i", len(jpeg)))
                     f.write(jpeg)
@@ -273,6 +292,12 @@ class VideoExporter:
 
 def _noop_progress(_percent: int, _msg: str) -> None:
     pass
+
+
+def _discard(temp_dir: Path) -> None:
+    """Remove an export's working directory and everything in it."""
+    log.debug("_discard: %s", temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def probe_dimensions(source: Path) -> tuple[int, int]:

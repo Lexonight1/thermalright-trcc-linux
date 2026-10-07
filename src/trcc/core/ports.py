@@ -1643,12 +1643,17 @@ class ContentStore(ABC):
     # ── Whole units in and out ────────────────────────────────────────
 
     @abstractmethod
-    def export(self, theme_path: Path, archive_path: Path) -> None:
+    def export(self, theme_path: Path, archive_path: Path, *,
+               background: Path | None = None) -> None:
         """Archive a theme as a self-contained, shareable zip.
 
         DEREFERENCES: a saved theme references its assets in the user
         library, so the resolved bytes are bundled and the ref keys stripped
         — the recipient needs nothing from the sender's library.
+
+        *background* replaces the theme's own background in the archive only
+        — a video baked to a ``Theme.zt`` for a ``.tr``, which has no slot for
+        an mp4.  The theme on disk is untouched.
         """
 
     @abstractmethod

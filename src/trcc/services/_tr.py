@@ -94,8 +94,7 @@ def write(theme: TrTheme) -> bytes:
     elif theme.theme_zt is not None:
         out.append(theme.theme_zt[1:])
     else:
-        raise ThemeError("a .tr needs a still background (00.png) or a Theme.zt; "
-                         "export as .zip to keep a video background")
+        raise ThemeError("a .tr needs a still background (00.png) or a Theme.zt")
     data = b"".join(out)
     log.info("write: %d bytes (mask=%s background=%s zt=%s)", len(data),
              _size(theme.mask_png), _size(theme.background_png),

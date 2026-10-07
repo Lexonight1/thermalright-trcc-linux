@@ -284,9 +284,10 @@ def test_real_encode_round_trips(app: App, events: list, clip: Path,
     frames = decoder.decode()
     assert len(frames) > 1
     assert decoder.fps == ZT_FPS
-    # Absolute cumulative offsets at ~41.67 ms, so the second frame is 41.
-    assert decoder.timestamps[0] == 0
-    assert decoder.timestamps[1] == 41
+    # Each frame's END time, as UCVideoCut.BmpToThemeFile writes it
+    # (``(int)(41.666666666666664 * i)`` for i = 1..n) -- not its start.
+    assert decoder.timestamps == [int(41.666666666666664 * i)
+                                  for i in range(1, len(frames) + 1)]
 
 
 @needs_ffmpeg
