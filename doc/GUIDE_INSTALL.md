@@ -20,7 +20,7 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
 | Arch / CachyOS / Manjaro / EndeavourOS / Garuda | [Native pkg](#arch--cachyos--manjaro--endeavouros--garuda) | [pip](#arch--cachyos--manjaro--endeavouros--garuda-pip) |
 | openSUSE | [Native RPM](#opensuse) | [pip](#opensuse-pip) |
 | NixOS | [Flake](#nixos) | — |
-| Gentoo | [Ebuild](#gentoo) | — |
+| Gentoo | [pipx](#gentoo) | — |
 | Bazzite / Bluefin / Aurora / Fedora Atomic | [rpm-ostree](#bazzite--aurora--bluefin--fedora-atomic) | — |
 | SteamOS (Steam Deck) | — | [pip / Distrobox](#steamos-steam-deck) |
 | Vanilla OS | — | [apx subsystem](#vanilla-os) |
@@ -279,24 +279,23 @@ trcc gui
 
 Covers: Gentoo Linux, Funtoo, Calculate Linux
 
-An ebuild is provided in the repo:
+Install with pipx -- there is no maintained ebuild:
 
 ```bash
-# Copy the ebuild to your local overlay
-sudo mkdir -p /var/db/repos/local/app-misc/trcc-linux
-sudo cp packaging/gentoo/trcc-linux-*.ebuild /var/db/repos/local/app-misc/trcc-linux/
-cd /var/db/repos/local/app-misc/trcc-linux
-sudo ebuild trcc-linux-*.ebuild manifest
+# Step 1: Install system dependencies
+sudo emerge --ask dev-python/pipx sys-apps/sg3_utils media-video/ffmpeg media-libs/portaudio
 
-# Install
-sudo emerge --ask app-misc/trcc-linux
-```
+# Step 2: Install TRCC
+pipx install trcc-linux
 
-Then:
+# Step 3: Run the setup wizard (device permissions, desktop shortcut)
+trcc system setup
 
-```bash
+# Step 4: Launch
 trcc gui
 ```
+
+> To upgrade later: `pipx upgrade trcc-linux`
 
 ---
 

@@ -42,7 +42,6 @@
 [![Manjaro](https://img.shields.io/badge/Manjaro-pkg.tar.zst-35BF5C?logo=manjaro&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
 
 [![NixOS](https://img.shields.io/badge/NixOS-flake-5277C3?logo=nixos&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/flake.nix)
-[![Gentoo](https://img.shields.io/badge/Gentoo-ebuild-54487A?logo=gentoo&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/tree/main/packaging/gentoo)
 
 [![Buy Me a Beer](https://img.shields.io/badge/Buy_Me_a_Beer-🍺-FF5F5F?style=flat)](https://buymeacoffee.com/Lexonight1)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-☕-FF5E5B?style=flat&logo=kofi&logoColor=white)](https://ko-fi.com/lexonight1)

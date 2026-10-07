@@ -112,6 +112,10 @@
 
 ### Changed
 
+- **Gentoo: install with pipx.** The Gentoo ebuild in the repository had not
+  been updated since 8.8.1 and could no longer build; the install guide now
+  gives the pipx steps instead. The released Arch, Debian and Fedora packages
+  are unchanged (they are built by the release itself).
 - **"(next)" is gone from what you see.** The login entry is named
   "TRCC Linux" (it said "TRCC (next)"), the Qt window's title drops "(next)",
   and `trcc --help` and the `gui` / `qtgui` help no longer describe a

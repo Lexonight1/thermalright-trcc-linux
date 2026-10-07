@@ -27,7 +27,6 @@ tomllib = pytest.importorskip("tomllib")
 _ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _ROOT / "pyproject.toml"
 _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
-_RPM_SPEC = _ROOT / "packaging" / "rpm" / "trcc-linux.spec"
 
 # Binaries the packaging installs directly from ``src/trcc/assets/`` (NOT wheel
 # console scripts), so they legitimately appear in the file-lists without a
@@ -46,16 +45,12 @@ def _declared_scripts() -> set[str]:
 def _packaged_binaries() -> set[str]:
     """``trcc*`` binary names hardcoded in the packaging specs:
     release.yml's RPM ``%files`` (``/usr/bin/<name>``) + DEB wrapper loops
-    (``for cmd in <names>; do``), AND the standalone RPM spec's ``%files``
-    (``%{_bindir}/<name>``).  The Arch build installs the wheel directly
+    (``for cmd in <names>; do``).  The Arch build installs the wheel directly
     (globs ``trcc*``), so it has no hardcoded list to drift."""
     text = _RELEASE_YML.read_text(encoding="utf-8")
     names = set(re.findall(r"/usr/bin/(trcc[A-Za-z0-9_-]*)", text))
     for group in re.findall(r"for cmd in ([A-Za-z0-9 _-]+?);\s*do", text):
         names |= {tok for tok in group.split() if tok.startswith("trcc")}
-    if _RPM_SPEC.is_file():
-        spec = _RPM_SPEC.read_text(encoding="utf-8")
-        names |= set(re.findall(r"%\{_bindir\}/(trcc[A-Za-z0-9_-]*)", spec))
     return names
 
 

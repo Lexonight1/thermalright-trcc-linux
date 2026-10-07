@@ -88,7 +88,7 @@ All features are tested and working on the `main` branch:
 | 25 | LY bulk protocol | Done — `0416:5408` / `0416:5409` |
 | 26 | IPC daemon (GUI-as-server) | Done — Unix socket, CLI auto-routes through GUI |
 | 27 | Native packages (RPM, DEB, Arch) | Done — CI builds on tag push |
-| 28 | Version bump automation | Done — `scripts/bump_version.py` |
+| 28 | Version bump automation | Removed — a release bumps exactly two literals (CLAUDE.md, Release) |
 | 29 | Type annotation hardening (pyright strict) | Not planned — basic mode with targeted checks is sufficient |
 | 30 | SOLID device architecture | Done — ISP (LCDMixin/LEDMixin), LSP, DIP, SRP, OCP (@register decorator) |
 | 31 | GoF file renames | Done — 13 files renamed to `{pattern}_{name}.py` format |

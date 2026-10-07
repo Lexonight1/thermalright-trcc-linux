@@ -97,14 +97,6 @@ _SOURCES = [
     _DOC_DIR / "REFERENCE_TECHNICAL.md",
     _ROOT / "install.sh",
     _ROOT / "README.md",
-    # Packaging post-install text is the FIRST thing a user reads after
-    # installing, and it is the last place anyone thinks to check.  A Gentoo
-    # ebuild kept telling people to run `trcc detect --all` long after that
-    # flag stopped existing, because the gate stopped at doc/ and install.sh
-    # (#247).
-    *sorted(_ROOT.glob("packaging/**/*.ebuild")),
-    *sorted(_ROOT.glob("packaging/**/*.spec")),
-    *sorted(_ROOT.glob("packaging/**/PKGBUILD")),
 ]
 
 # `trcc <word>` optionally followed by a subcommand.  Options are excluded by
