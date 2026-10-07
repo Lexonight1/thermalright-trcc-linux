@@ -182,6 +182,9 @@ class DisplayService:
         # count, switch), so build_overlay names its layout when it CHANGES
         # instead of on every sensor tick.
         self._overlay_layout: dict[str, tuple[str, str, int, bool]] = {}
+        # What each one-shot diagnostic last said, per (topic, device): a
+        # screen cast repeats them ~16 times a second, a single send once.
+        self._said: dict[tuple[str, str], object] = {}
         #: Devices whose profile came from a FALLBACK, so ``_resolve_profile``
         #: announces each one once instead of once per frame.
         self._profile_fallbacks: set[str] = set()
@@ -621,7 +624,7 @@ class DisplayService:
         # SendColor holds the panel like an image push, so the preview is this
         # colour — without it /preview showed the dropped theme's last frame.
         self._remember_preview(info.key, surface)
-        surface = self._apply_post_processing(surface, s, resolved)
+        surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
 
@@ -664,8 +667,8 @@ class DisplayService:
         takes the portrait-theme route; ``test_cast_takes_the_portrait_route``
         holds it byte-identical to a portrait theme with the same picture.
         """
-        log.debug("build_screencast_frame: key=%s theme=%s",
-                  info.key, theme.name if theme else None)
+        frame_log.debug("build_screencast_frame: key=%s theme=%s",
+                        info.key, theme.name if theme else None)
         resolved = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
         target_w, target_h = oriented_canvas(resolved, s.orientation)
@@ -719,9 +722,18 @@ class DisplayService:
         # the mask and the metrics, the LCD had them and the preview did not.
         self._remember_preview(info.key, surface)
 
-        surface = self._apply_post_processing(surface, s, resolved)
+        surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
+
+    def _sink(self, topic: tuple[str, str], value: object) -> logging.Logger:
+        """The plain logger when *value* changed since last said, else the
+        per-frame family: a cast repeats these every frame, a send says
+        them once."""
+        changed = self._said.get(topic) != value
+        self._said[topic] = value
+        frame_log.debug("_sink: %s changed=%s", topic, changed)
+        return log if changed else frame_log
 
     def _remember_preview(self, key: str, surface: Any) -> None:
         """Park *surface* where :meth:`rendered_surface` will find it.
@@ -775,7 +787,7 @@ class DisplayService:
         self._remember_preview(info.key, surface)
 
         s = self._settings.for_device(info.key)
-        surface = self._apply_post_processing(surface, s, resolved)
+        surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
 
@@ -784,6 +796,7 @@ class DisplayService:
         surface: Any,
         s: DeviceSettings,
         resolved: DeviceProfile,
+        key: str,
     ) -> Any:
         """Apply user brightness, user orientation, and device-side rotation.
 
@@ -803,7 +816,8 @@ class DisplayService:
         caller now pairs this with that method, so there is one wire-rotation
         authority rather than a per-caller model.
         """
-        log.debug("_apply_post_processing: brightness=%d", s.brightness)
+        sink = self._sink(("brightness", key), s.brightness)
+        sink.debug("_apply_post_processing: brightness=%d", s.brightness)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         return surface
@@ -833,8 +847,9 @@ class DisplayService:
         (FormCZTV.cs:3518-3533, :4236-4243).  Settled 2026-09-30.
         """
         angle = wire_angle(resolved, s.orientation, False)
-        log.debug("_orient_for_wire %s: orientation=%d → wire %d°",
-                  info.key, s.orientation, angle)
+        sink = self._sink(("wire angle", info.key), (s.orientation, angle))
+        sink.debug("_orient_for_wire %s: orientation=%d → wire %d°",
+                   info.key, s.orientation, angle)
         if angle % 360:
             surface = self._r.rotate(surface, angle)
         return surface

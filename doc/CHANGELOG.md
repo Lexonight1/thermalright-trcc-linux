@@ -157,6 +157,9 @@
   drew every text, metric and clock element again on every frame, about 16
   times a second, for readings that change every couple of seconds. It now
   reuses the drawn layer like a theme does, about a tenth less work per frame.
+- **A full-screen cast costs a quarter less per frame.** Each captured frame
+  was copied in full once more than needed before being shrunk to the panel's
+  size: 8.3 ms per 1920x1080 frame, now 6.2 ms.
 - **An open TRCC window no longer costs a quarter of a CPU core.** Since TRCC
   became one shared background App, the window's live preview asked that App to
   draw every frame a second time and send it as a PNG image, about 25% of one

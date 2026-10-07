@@ -921,3 +921,105 @@ def test_a_reused_overlay_sends_the_same_picture(
     reused = _cast_frame(casting, {"cpu:temp": 41.0})
 
     assert reused == drawn_fresh
+
+
+# ── turning a grab into a surface ────────────────────────────────────────────
+
+
+def test_a_grab_becomes_a_surface_that_owns_its_pixels() -> None:
+    """The surface must not share the grab's buffer: a capture reuses it.
+
+    MUTATION CHECK: convert to a format the input already has (no new buffer)
+    and changing the grab afterwards changes the surface.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.models import RawFrame
+
+    grab = bytearray(bytes([10, 20, 30]) * (8 * 4))
+    surface = QtRenderer().from_raw_rgb24(RawFrame(data=grab, width=8, height=4))
+    grab[:] = bytes(len(grab))                    # the capture reuses its buffer
+
+    r, g, b, a = surface.pixelColor(3, 2).getRgb()
+    assert (r, g, b, a) == (10, 20, 30, 255)
+
+
+def test_a_cast_frame_writes_nothing_to_the_log(
+    casting: App, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Grab -> surface -> resize ran on the plain logger, ~16 times a second.
+
+    MUTATION CHECK: log ``from_raw_rgb24`` or ``resize`` on the plain logger
+    again and the frames below reach the file.
+    """
+    import logging
+
+    _cast_frame(casting, {"cpu:temp": 41.0})
+    with caplog.at_level(logging.DEBUG):
+        caplog.clear()
+        for _ in range(10):
+            _cast_frame(casting, {"cpu:temp": 41.0})
+
+    assert [f"{r.name}: {r.getMessage()}" for r in caplog.records
+            if not r.name.startswith("trcc.frame")] == []
+
+
+def test_a_single_send_still_says_its_brightness_and_angle(
+    casting: App, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Said once per change: a one-shot send is diagnosed from the file.
+
+    MUTATION CHECK: send these to the per-frame family unconditionally and
+    a colour push leaves no trace of the angle it went out at.
+    """
+    import logging
+
+    from trcc.core.commands import SetBrightness
+
+    def said() -> list[str]:
+        return [r.getMessage() for r in caplog.records
+                if r.name == "trcc.services.display"
+                and ("brightness=" in r.getMessage() or "→ wire" in r.getMessage())]
+
+    info = casting.devices[_KEY].info
+    profile = casting.devices[_KEY].profile
+    with caplog.at_level(logging.DEBUG):
+        casting.display.build_solid_color_frame(info=info, color=(1, 2, 3),
+                                                profile=profile)
+        first = said()
+        caplog.clear()
+        casting.display.build_solid_color_frame(info=info, color=(1, 2, 3),
+                                                profile=profile)
+        repeat = said()
+        casting.dispatch(SetBrightness(key=_KEY, percent=50))
+        caplog.clear()
+        casting.display.build_solid_color_frame(info=info, color=(1, 2, 3),
+                                                profile=profile)
+        changed = said()
+
+    assert len(first) == 2 and repeat == []
+    assert len(changed) == 1 and "brightness=" in changed[0]
+
+
+def test_the_qt_renderer_writes_nothing_per_cast_frame(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The cast fixture draws with ``_CliRenderer``; this is the Qt one the
+    app runs, through the two calls every cast frame makes.
+
+    MUTATION CHECK: log ``from_raw_rgb24`` or ``resize`` on the plain logger
+    again and these ten frames reach the file.
+    """
+    import logging
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.models import RawFrame
+
+    renderer = QtRenderer()
+    grab = RawFrame(data=bytes([30, 60, 90]) * (64 * 48), width=64, height=48)
+    with caplog.at_level(logging.DEBUG):
+        caplog.clear()
+        for _ in range(10):
+            renderer.resize(renderer.from_raw_rgb24(grab), 320, 320)
+
+    assert [f"{r.name}: {r.getMessage()}" for r in caplog.records
+            if not r.name.startswith("trcc.frame")] == []
