@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v9.10.5
 
 ### Breaking
 
@@ -169,6 +169,19 @@
 
 ### Fixed
 
+- **Windows: TRCC no longer stalls for about 9 seconds on every log line.**
+  Since 9.10.0, each line written to the log waited on a lock it already held,
+  so starting up took minutes and every action was slow, with a
+  "Logging error … Resource deadlock avoided" message after each line. A
+  command that did not finish in a minute on 9.10.4 now takes about a second.
+- **Windows: closing the window hides it to the tray, every time.** It
+  minimised to the taskbar instead, and closing it again after restoring it
+  from the taskbar quit TRCC. Closing now hides to the tray as the Windows app
+  does; quit from the tray menu.
+- **Windows: a panel that needs administrator rights says so.** When Windows
+  refused access to the panel, TRCC treated it as "not ready yet", retried it
+  every few minutes for as long as it ran, and never said to run it as
+  administrator. It now says so once and stops retrying.
 - **Colours sent in the byte order the Windows app uses, for three panel
   types** -- not yet confirmed on a real panel, and no owner of these has
   reported in; if colours look red/blue swapped after this, please open an
