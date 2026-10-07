@@ -639,8 +639,11 @@ class BaseThumbnail(ClickableFrame):
                 self.setStyleSheet(Styles.thumb_normal(cls_name))
 
     def set_selected(self, selected):
-        log.debug("BaseThumbnail.set_selected: name=%r selected=%s",
-                  getattr(self.item_info, 'name', '?'), selected)
+        # On change only: the grid calls this for EVERY thumbnail on each
+        # selection, so logging each call wrote the whole grid per click.
+        if selected != self.selected:
+            log.debug("BaseThumbnail.set_selected: name=%r selected=%s",
+                      getattr(self.item_info, 'name', '?'), selected)
         self.selected = selected
         self._update_style()
 

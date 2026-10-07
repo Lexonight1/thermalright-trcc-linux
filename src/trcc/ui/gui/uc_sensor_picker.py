@@ -99,8 +99,9 @@ class SensorRow(QWidget):
 
     def set_selected(self, selected: bool):
         """Update checkbox image."""
-        log.debug("SensorRow.set_selected: %s -> %s (sensor=%s)",
-                  self._selected, selected, self.sensor.id)
+        if selected != self._selected:       # on change: called for every row
+            log.debug("SensorRow.set_selected: %s -> %s (sensor=%s)",
+                      self._selected, selected, self.sensor.id)
         self._selected = selected
         px = self._cb_on if selected else self._cb_off
         if not px.isNull():

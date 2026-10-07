@@ -2626,10 +2626,12 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
     mode: str
 
     def execute(self, app: App) -> BackgroundModeResult:
-        log.debug("execute: app=%s", app)
+        log.info("SetBackgroundMode: %s mode=%s", self.key, self.mode)
         try:
             app.settings.set_background_mode(self.key, self.mode)  # type: ignore[arg-type]
         except ValueError as e:
+            log.warning("SetBackgroundMode: %s refused mode %r — %s",
+                        self.key, self.mode, e)
             return BackgroundModeResult(
                 ok=False, key=self.key, mode=self.mode, message=str(e),
             )
@@ -2650,10 +2652,12 @@ class SetOverlayBackground(Command[OverlayBackgroundResult]):
     color: tuple[int, int, int]
 
     def execute(self, app: App) -> OverlayBackgroundResult:
-        log.debug("execute: app=%s", app)
+        log.info("SetOverlayBackground: %s color=%s", self.key, self.color)
         try:
             app.settings.set_overlay_background(self.key, self.color)
         except ValueError as e:
+            log.warning("SetOverlayBackground: %s refused color %s — %s",
+                        self.key, self.color, e)
             return OverlayBackgroundResult(
                 ok=False, key=self.key, color=self.color, message=str(e),
             )
