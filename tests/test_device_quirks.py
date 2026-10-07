@@ -32,7 +32,7 @@ def test_warframe_se_407_opts_into_every_quirk() -> None:
     q = quirks_for(*_WF_SE)
     assert q == DeviceQuirks(
         hid_reports=True, skip_init=True, short_handshake=True,
-        portrait_native=True, keepalive_stream=True,
+        portrait_native=True, keepalive_stream=True, single_session=True,
     )
 
 
@@ -234,6 +234,77 @@ def test_keepalive_stream_quirk_marks_needs_keepalive() -> None:
     assert dev.needs_keepalive is False           # HID wire is not volatile
     dev.set_quirks(quirks_for(*_WF_SE))
     assert dev.needs_keepalive is True
+
+
+# ── Seam 6: single session is EARNED by the short reply (#283) ───────
+
+
+class _StaleOnce(FakeBulkTransport):
+    """A handle that goes stale once armed -- the first write raises EIO, as
+    after a resume -- and counts how often it is reopened."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stale = False
+        self.opens = 0
+
+    def open(self) -> bool:
+        self.opens += 1
+        return super().open()
+
+    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:
+        if self.stale:
+            self.stale = False
+            raise OSError(5, "Input/output error")
+        return super().write(endpoint, data, timeout_ms)
+
+
+def _quirked(tmp_path, monkeypatch, script: list[bytes]) -> tuple:
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep",
+                        lambda *_: None)
+    transport = _StaleOnce()
+    transport.read_script = list(script)
+    dev = _make_type2(transport)
+    dev.set_quirks(quirks_for(*_WF_SE))
+    dev.set_state_dir(tmp_path)
+    dev.connect()
+    return dev, transport
+
+
+def _write_after_stale(dev, transport) -> bool:
+    transport.stale = True
+    opens = transport.opens
+    ok = dev._send_with_recovery(lambda: transport.write(1, b"frame") > 0)
+    return ok, transport.opens - opens
+
+
+def test_a_407_panel_that_answers_the_handshake_may_reconnect(
+    tmp_path, monkeypatch,
+) -> None:
+    """#283: a 0416:5302 firmware-4.07 panel that is NOT the Warframe SE --
+    silent to the probe, then a full PM 52 reply to the ordinary handshake --
+    got the SE's "never reconnect", so one stale handle meant 0 frames until
+    a replug.  Taking the init packet proves it is not that firmware."""
+    full = bytearray(512)
+    full[0:4] = b"\xda\xdb\xdc\xdd"
+    full[4], full[5], full[12] = 0, 52, 0x01
+    # probe: silent; handshake; then the reconnect's handshake
+    dev, transport = _quirked(tmp_path, monkeypatch,
+                              [b"", bytes(full), bytes(full)])
+
+    assert dev.quirks.single_session is False
+    assert dev.needs_keepalive is True          # resending stays: it blanks
+    assert _write_after_stale(dev, transport) == (True, 1)
+
+
+def test_the_warframe_se_still_never_reconnects(tmp_path, monkeypatch) -> None:
+    """The panel that volunteered the short reply IS the single-session
+    firmware: a reopen wedges it (#228), so a failed write soft-fails and
+    the keepalive resends."""
+    dev, transport = _quirked(tmp_path, monkeypatch, [_short_reply()])
+
+    assert dev.quirks.single_session is True
+    assert _write_after_stale(dev, transport) == (False, 0)
 
 
 # ── Isolation: a normal Type-2 device is completely unaffected ────────

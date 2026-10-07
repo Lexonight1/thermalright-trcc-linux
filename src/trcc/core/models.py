@@ -472,6 +472,10 @@ class DeviceQuirks:
     short_handshake: bool = False   # accept the firmware's short (<20-byte) reply
     portrait_native: bool = False   # device self-orients: 240×320 raster, no pre-rotate
     keepalive_stream: bool = False  # never skip an unchanged frame (panel blanks when idle)
+    # Never reconnect: a close→reopen wedges the panel until a replug.  A
+    # GUESS from the fingerprint until the panel answers: one that takes the
+    # ordinary handshake survives a reopen, and HidLcd drops it (#283).
+    single_session: bool = False
 
 
 _NO_QUIRKS = DeviceQuirks()
@@ -481,10 +485,11 @@ DEVICE_QUIRKS: dict[tuple[int, int, int], DeviceQuirks] = {
     # Frozen Warframe SE, firmware bcdDevice 4.07 (#228, adamkoehler1990):
     # reverse-engineered — needs HID output reports (pyusb bulk is ignored),
     # no init packet, an 8-byte handshake reply, a portrait-native 240×320
-    # raster (no pre-rotate), and a continuous frame stream (blanks when idle).
+    # raster (no pre-rotate), a continuous frame stream (blanks when idle),
+    # and one session -- a reopen wedges it.
     (0x0416, 0x5302, 0x0407): DeviceQuirks(
         hid_reports=True, skip_init=True, short_handshake=True,
-        portrait_native=True, keepalive_stream=True,
+        portrait_native=True, keepalive_stream=True, single_session=True,
     ),
 }
 

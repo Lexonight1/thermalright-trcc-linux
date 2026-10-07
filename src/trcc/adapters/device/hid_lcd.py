@@ -205,6 +205,15 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             raise
         if probed:
             memory.remember(silent=True)
+        if self._quirks.single_session:
+            # It took the init packet and answered, so it is not the firmware
+            # a reopen wedges (#228), whatever its fingerprint says.  Keeping
+            # the guess left a 4.07 PM 52 panel unable to reconnect after a
+            # stale handle -- 0 frames, forever (#283).
+            log.info("HidLcd %s: answered the ordinary handshake -- it may "
+                     "reconnect", self.info.key)
+            self.set_quirks(dataclasses.replace(self._quirks,
+                                                single_session=False))
         return result
 
     def _validate_and_parse(self, resp: bytes) -> HandshakeResult:
