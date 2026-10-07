@@ -164,32 +164,35 @@ def test_disable_not_loaded_returncode_is_accepted(tmp_path: Path) -> None:
 # =========================================================================
 
 
-def test_resolve_macos_program_args_uses_trcc_next_when_on_path(
-    monkeypatch,
+@pytest.mark.parametrize("on_path", [None, "/opt/trcc/bin/trcc"])
+def test_the_agent_runs_this_interpreter_whatever_path_says(
+    monkeypatch: pytest.MonkeyPatch, on_path: str | None,
 ) -> None:
+    """launchd gives an agent a minimal PATH, Terminal the shell's: a PATH
+    lookup named different programs in the two, and refresh rewrote the plist
+    on every switch.  --resume keeps the gui in the tray (#201)."""
+    import sys
+
     from trcc.adapters.system import _autostart
 
-    monkeypatch.setattr(
-        _autostart.shutil, "which",
-        lambda name: "/opt/trcc/bin/trcc" if name == "trcc" else None,
-    )
-    args = _autostart._resolve_macos_program_args()
-    # --resume: an autostarted LaunchAgent starts in the tray, matching Linux
-    # since #201.  macOS never got that fix because #201 was reported on Linux.
-    assert args == ["/opt/trcc/bin/trcc", "gui", "--resume"]
+    monkeypatch.setattr(sys, "executable", "/opt/py/bin/python3")
+    monkeypatch.setattr(_autostart.shutil, "which", lambda name: on_path)
+    assert _autostart._resolve_macos_program_args() == [
+        "/opt/py/bin/python3", "-m", "trcc", "gui", "--resume"]
 
 
-def test_resolve_macos_program_args_falls_back_to_python(monkeypatch) -> None:
+def test_a_frozen_app_runs_its_own_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A frozen app has no ``-m``: it was handed ``-m trcc`` as CLI args."""
+    import sys
+
     from trcc.adapters.system import _autostart
 
-    monkeypatch.setattr(_autostart.shutil, "which", lambda name: None)
-    args = _autostart._resolve_macos_program_args()
-    assert "-m" in args
-    assert "trcc" in args
-    # --resume, so an autostarted LaunchAgent comes up in the tray instead of
-    # popping a window — the behaviour Linux has had since #201 and macOS had
-    # not.  The subcommand is still the last thing before it.
-    assert args[-2:] == ["gui", "--resume"]
+    monkeypatch.setattr(sys, "executable", "/Applications/TRCC.app/Contents/MacOS/trcc")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    argv = _autostart._macos_argv("qtgui")
+    assert argv == ["/Applications/TRCC.app/Contents/MacOS/trcc", "qtgui",
+                    *_autostart.AUTOSTART_TARGETS["qtgui"]]
+    assert _autostart.target_from_argv(argv) == "qtgui"
 
 
 # =========================================================================
@@ -222,17 +225,20 @@ def test_refresh_rerenders_an_installed_plist(tmp_path: Path) -> None:
 _OLD = 1_000_000_000_000_000_000      # 2001, in ns: no write can land on it
 
 
-@pytest.fixture
-def trcc_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    """One fixed program path, so the rendered argv is stable."""
-    from trcc.adapters.system import _autostart
+_PY = "/opt/py/bin/python3"
 
-    monkeypatch.setattr(_autostart.shutil, "which",
-                        lambda name: "/opt/trcc/bin/trcc" if name == "trcc" else None)
+
+@pytest.fixture
+def fixed_python(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fixed interpreter, so the rendered argv is stable."""
+    import sys
+
+    monkeypatch.setattr(sys, "executable", _PY)
+    monkeypatch.delattr(sys, "frozen", raising=False)
 
 
 def test_refresh_leaves_a_current_plist_and_launchd_alone(
-    tmp_path: Path, trcc_on_path: None,
+    tmp_path: Path, fixed_python: None,
 ) -> None:
     """It ran on every UI start: a rewrite and a ``launchctl bootstrap`` of a
     loaded agent each time (PR #303)."""
@@ -249,23 +255,23 @@ def test_refresh_leaves_a_current_plist_and_launchd_alone(
 
 
 def test_refresh_rewrites_a_stale_plist_without_touching_launchd(
-    tmp_path: Path, trcc_on_path: None,
+    tmp_path: Path, fixed_python: None,
 ) -> None:
     """#201 still holds: an agent from before ``--resume`` gets it.  Loading
     is launchd's, at the next login."""
     autostart, rec, plist = _build(tmp_path)
     plist.parent.mkdir(parents=True)
-    plist.write_text(_render_plist(["/opt/trcc/bin/trcc", "gui"]), encoding="utf-8")
+    plist.write_text(_render_plist([_PY, "-m", "trcc", "gui"]), encoding="utf-8")
 
     autostart.refresh()
 
     assert plist.read_text(encoding="utf-8") == _render_plist(
-        ["/opt/trcc/bin/trcc", "gui", "--resume"])
+        [_PY, "-m", "trcc", "gui", "--resume"])
     assert rec.calls == []
 
 
 def test_enabling_again_loads_the_agent_without_rewriting_it(
-    tmp_path: Path, trcc_on_path: None,
+    tmp_path: Path, fixed_python: None,
 ) -> None:
     autostart, rec, plist = _build(tmp_path)
     autostart.enable("gui")

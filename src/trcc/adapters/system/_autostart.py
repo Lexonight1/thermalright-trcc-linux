@@ -791,12 +791,28 @@ _DEFAULT_PLIST_PATH = (
 )
 
 
+def _macos_argv(target: str = DEFAULT_AUTOSTART_TARGET) -> list[str]:
+    """The LaunchAgent's argv: THIS install's program, never a PATH lookup.
+
+    launchd starts an agent with a minimal PATH and Terminal starts one with
+    the shell's, so ``launch_argv``'s ``shutil.which("trcc")`` named different
+    programs in the two -- and ``refresh`` rewrote the plist on every switch
+    between them (3 of 3 alternating launches).  The running interpreter is
+    the same either way, as in ``daemon._daemon_spawn_cmd``.  A frozen app
+    has no ``-m``: its own binary takes the subcommand.  The flags are
+    ``AUTOSTART_TARGETS``' -- ``--resume`` keeps the gui in the tray (#201).
+    """
+    head = ([sys.executable] if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "trcc"])
+    argv = [*head, target, *AUTOSTART_TARGETS[target]]
+    log.debug("_macos_argv(%s): %s", target, argv)
+    return argv
+
+
 def _resolve_macos_program_args() -> list[str]:
     """Return the argv that the LaunchAgent should run on login."""
     log.debug("_resolve_macos_program_args: called")
-    # ``--resume`` — see _resolve_command: launch hidden in the tray, the
-    # behaviour Linux has had since #201 and these two platforms had not.
-    return autostart_argv()
+    return _macos_argv()
 
 
 def _render_plist(program_args: list[str], *, label: str = _MAC_LABEL) -> str:
@@ -925,7 +941,7 @@ class MacOSAutostart(AutostartManager):
 
     def _args_for(self, target: str | None) -> list[str]:
         """``None`` keeps the constructor's argv — the injected-args seam."""
-        args = list(self._program_args) if target is None else autostart_argv(target)
+        args = list(self._program_args) if target is None else _macos_argv(target)
         log.debug("MacOSAutostart._args_for(%s): %s", target, args)
         return args
 
