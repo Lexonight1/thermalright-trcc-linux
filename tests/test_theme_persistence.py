@@ -2909,6 +2909,101 @@ def test_a_zip_keeps_the_video_itself(
         assert "Theme.zt" not in zf.namelist()
 
 
+# LoadVideo (CLI display load-video, the API route): the file plays as it is,
+# with the device's fit live, like the gui's video button.  It was baked into
+# a canvas Theme.zt at a fixed contain-fit, so SetFitMode never reached it --
+# 6 of 6 fit/order combinations gave the same letterbox (#291).
+
+
+def _top_is_black(payload: bytes) -> bool:
+    """Whether the frame's top rows at the centre are black -- a 4:3 clip
+    letterboxed on the square panel.  Black is 0x0000 in either RGB565 byte
+    order, so the wire's order does not matter."""
+    w, _ = _TEST_RES
+    row = 2 * w * 2
+    return payload[row + w:row + w + 2] == b"\x00\x00"
+
+
+@_needs_ffmpeg
+def test_load_video_plays_the_file_with_the_live_fit(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import LoadVideo, SetFitMode
+    from trcc.services.video_export import VideoExporter
+
+    app, sent = panel
+
+    def no_bake(*_a: object, **_k: object) -> Path:
+        raise AssertionError("a load without a cut ran the exporter")
+
+    monkeypatch.setattr(VideoExporter, "export_zt", no_bake)
+    clip = _clip(tmp_path / "clip.mp4")
+
+    result = app.dispatch(LoadVideo(key=_TEST_DEVICE_KEY, path=clip))
+
+    assert result.ok is True, result.message
+    staged = app.active_themes[_TEST_DEVICE_KEY].path
+    assert sorted(p.name for p in staged.iterdir()) == ["Theme.mp4", "trcc.json"]
+    assert (staged / "Theme.mp4").read_bytes() == clip.read_bytes()
+    inode = (staged / "Theme.mp4").stat().st_ino
+    assert app.dispatch(LoadVideo(key=_TEST_DEVICE_KEY, path=clip)).ok
+    assert (staged / "Theme.mp4").stat().st_ino == inode   # unchanged: no copy
+    seen = []
+    for fit in ("width", "height", "width"):
+        assert app.dispatch(SetFitMode(key=_TEST_DEVICE_KEY, mode=fit)).ok
+        seen.append(_top_is_black(_frame(app, sent)))
+    assert seen == [True, False, True]
+
+
+@_needs_ffmpeg
+@pytest.mark.parametrize("fit", [FitMode.WIDTH, FitMode.HEIGHT])
+def test_a_cut_bakes_the_devices_fit(
+    panel: tuple[App, list[bytes]], tmp_path: Path, fit: FitMode,
+) -> None:
+    """A cut is the C#'s trimmer: the clip is baked at the canvas with the
+    W/H choice, so the device's fit goes into the frames."""
+    from PySide6.QtGui import QImage
+
+    from trcc.core.commands import LoadVideo
+
+    app, _ = panel
+    app.settings.for_device(_TEST_DEVICE_KEY).fit_mode = fit
+
+    result = app.dispatch(LoadVideo(key=_TEST_DEVICE_KEY, end_ms=1000,
+                                    path=_clip(tmp_path / "clip.mp4")))
+
+    assert result.ok is True, result.message
+    staged = app.active_themes[_TEST_DEVICE_KEY].path
+    assert sorted(p.name for p in staged.iterdir()) == ["Theme.zt", "trcc.json"]
+    first = QImage.fromData(
+        _zt_frames((staged / "Theme.zt").read_bytes(), tmp_path)[0])
+    top = first.pixelColor(160, 2)
+    assert (max(top.red(), top.green(), top.blue()) < 40) is (fit is FitMode.WIDTH)
+
+
+@_needs_ffmpeg
+def test_reloading_a_clip_replaces_the_earlier_payload(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+) -> None:
+    """The staged dir is named by the file's stem and reused.  A cut after
+    an uncut load left Theme.mp4 beside the new Theme.zt -- and the mp4 is
+    the first candidate, so the panel kept playing the old clip."""
+    from trcc.core.commands import LoadVideo
+
+    app, _ = panel
+    clip = _clip(tmp_path / "clip.mp4")
+    assert app.dispatch(LoadVideo(key=_TEST_DEVICE_KEY, path=clip)).ok
+
+    assert app.dispatch(LoadVideo(key=_TEST_DEVICE_KEY, path=clip,
+                                  end_ms=1000)).ok
+
+    staged = app.active_themes[_TEST_DEVICE_KEY]
+    assert sorted(p.name for p in staged.path.iterdir()) == [
+        "Theme.zt", "trcc.json"]
+    assert app.themes.video_path(staged) == staged.path / "Theme.zt"
+
+
 @pytest.mark.parametrize("suffix", [".tr", ".zip"])
 def test_an_exported_theme_imports_back_to_the_same_frame(
     panel: tuple[App, list[bytes]], tmp_path: Path, suffix: str,

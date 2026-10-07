@@ -278,11 +278,11 @@ def load_video(
     ),
     start_ms: int = typer.Option(
         0, "--start", "-s", min=0,
-        help="Clip start in milliseconds (default: 0).",
+        help="Cut from here, in milliseconds (default: 0).",
     ),
     end_ms: int = typer.Option(
         None, "--end", "-e", min=1,
-        help="Clip end in milliseconds (default: probe duration, fallback 10s).",
+        help="Cut to here, in milliseconds (default: the file's end).",
     ),
     rotation: int = typer.Option(
         0, "--rotation", "-r",
@@ -291,10 +291,11 @@ def load_video(
 ) -> None:
     """Play a video on the LCD as a single-video theme.
 
-    Transcodes the source to a ``Theme.zt`` matching the device's native
-    resolution (.zt inputs are copied as-is), stages a one-file theme,
-    then dispatches LoadTheme.  Device must be attached so we know the
-    target resolution.
+    The file plays as it is, with the device's fit (``display
+    set-fit-mode``) applied live.  Any of --start / --end / --rotation cuts
+    it instead: that clip is baked into a ``Theme.zt`` at the panel's size
+    and the current fit, as the Windows trimmer does (.zt inputs always go
+    in as they are).  Device must be attached so we know the panel's size.
     """
     log.info(
         "cli display load-video: key=%s path=%s start_ms=%s end_ms=%s "

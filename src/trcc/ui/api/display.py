@@ -381,11 +381,12 @@ def load_video(key: str, body: LoadVideoRequest,
     from the CLI and from qtgui, and nowhere else, so a REST client could
     play a ``.zt`` it already had but could not turn an ``.mp4`` into one.
 
-    ``.zt`` inputs are copied straight in; real video files are
-    transcoded to the device's native resolution first, which is why the
-    device must be attached (or its key known to the product registry).
-    Use ``export-video`` instead when you want the ``.zt`` file back
-    rather than the theme applied.
+    The file plays as it is, with the device's fit applied live.  A cut
+    (``start_ms`` / ``end_ms`` / ``rotation``) is baked into a ``Theme.zt``
+    at the panel's size and the current fit, which is why the device must
+    be attached (or its key known to the product registry).  Use
+    ``export-video`` instead when you want the ``.zt`` file back rather
+    than the theme applied.
     """
     log.info(
         "api POST /devices/{key}/display/load-video: key=%s path=%s "

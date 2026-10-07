@@ -304,7 +304,7 @@ Show this command's help and exit.
 .PP
 \fBtrcc display load\-video\fR \fIKEY\fR \fIPATH\fR [\fIOPTIONS\fR]
 .PP
-Play a video on the LCD as a single\-video theme. Transcodes the source to a Theme.zt matching the device's native resolution (.zt inputs are copied as\-is), stages a one\-file theme, then dispatches LoadTheme. Device must be attached so we know the target resolution.
+Play a video on the LCD as a single\-video theme. The file plays as it is, with the device's fit (display set\-fit\-mode) applied live. Any of \-\-start / \-\-end / \-\-rotation cuts it instead: that clip is baked into a Theme.zt at the panel's size and the current fit, as the Windows trimmer does (.zt inputs always go in as they are). Device must be attached so we know the panel's size.
 .PP
 Arguments:
 .RS 4
@@ -320,10 +320,10 @@ Options:
 .RS 4
 .TP
 \fB\-\-start, \-s \fISTART_MS\fR\fR
-Clip start in milliseconds (default: 0).
+Cut from here, in milliseconds (default: 0).
 .TP
 \fB\-\-end, \-e \fIEND_MS\fR\fR
-Clip end in milliseconds (default: probe duration, fallback 10s).
+Cut to here, in milliseconds (default: the file's end).
 .TP
 \fB\-\-rotation, \-r \fIROTATION\fR\fR
 Rotation in degrees: 0 / 90 / 180 / 270.

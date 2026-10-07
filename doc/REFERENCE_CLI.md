@@ -580,7 +580,7 @@ trcc display load-theme KEY PATH
 
 ### `trcc display load-video`
 
-Play a video on the LCD as a single-video theme. Transcodes the source to a `Theme.zt` matching the device's native resolution (.zt inputs are copied as-is), stages a one-file theme, then dispatches LoadTheme. Device must be attached so we know the target resolution.
+Play a video on the LCD as a single-video theme. The file plays as it is, with the device's fit (`display set-fit-mode`) applied live. Any of --start / --end / --rotation cuts it instead: that clip is baked into a `Theme.zt` at the panel's size and the current fit, as the Windows trimmer does (.zt inputs always go in as they are). Device must be attached so we know the panel's size.
 
 ```bash
 trcc display load-video [OPTIONS] KEY PATH
@@ -593,8 +593,8 @@ trcc display load-video [OPTIONS] KEY PATH
 
 | Option | Description |
 |---|---|
-| `--start`, `-s` `START_MS` | Clip start in milliseconds (default: 0). |
-| `--end`, `-e` `END_MS` | Clip end in milliseconds (default: probe duration, fallback 10s). |
+| `--start`, `-s` `START_MS` | Cut from here, in milliseconds (default: 0). |
+| `--end`, `-e` `END_MS` | Cut to here, in milliseconds (default: the file's end). |
 | `--rotation`, `-r` `ROTATION` | Rotation in degrees: 0 / 90 / 180 / 270. |
 
 ### `trcc display loop-video`

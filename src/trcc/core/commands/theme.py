@@ -593,6 +593,20 @@ def _composed_resolution(
     return resolution
 
 
+def _clip_end_ms(source: Path, start_ms: int) -> int:
+    """Where a clip of *source* from *start_ms* ends when no end was given:
+    the file's own end, or 10 s on when ffprobe cannot say."""
+    from ...services.video_export import probe_duration_ms
+
+    probed = probe_duration_ms(source)
+    if probed > 0:
+        log.debug("_clip_end_ms: %s ends at %d ms", source.name, probed)
+        return probed
+    log.warning("_clip_end_ms: cannot probe %s's length -- taking 10 s "
+                "from %d ms", source, start_ms)
+    return start_ms + 10_000
+
+
 @contextmanager
 def _tr_background(app: App, key: str, archive_path: Path,
                    background: Path | None,
@@ -614,18 +628,10 @@ def _tr_background(app: App, key: str, archive_path: Path,
         yield background
         return
 
-    from ...services.video_export import (
-        VideoExporter,
-        VideoExportError,
-        probe_duration_ms,
-    )
+    from ...services.video_export import VideoExporter, VideoExportError
 
-    duration = probe_duration_ms(background)
-    if duration <= 0:
-        log.warning("_tr_background: cannot probe %s's length -- baking "
-                    "its first 10 s", background)
-        duration = 10_000
-    elif duration > ZT_MAX_DURATION_MS:
+    duration = _clip_end_ms(background, 0)
+    if duration > ZT_MAX_DURATION_MS:
         log.warning("_tr_background: %s runs %d ms -- a Theme.zt holds "
                     "%d, the rest is cut", background, duration,
                     ZT_MAX_DURATION_MS)
@@ -2474,11 +2480,17 @@ class LoadVideo(Command[ThemeResult]):
     Conceptually parallel to :class:`LoadImage`: turn an arbitrary file
     into a one-shot theme directory + dispatch :class:`LoadTheme`.
 
-    For ``.zt`` inputs the source is copied straight in.  For real video
-    files (``.mp4``, ``.mov``, ``.webm``, etc.) the file is transcoded
-    into a ``Theme.zt`` via :class:`VideoExporter`, sized to the
-    device's native resolution and optionally clipped to ``start_ms`` →
-    ``end_ms``.
+    The file goes in as it is (``Theme.mp4``, ``Theme.zt``, ...), so it plays
+    the way the gui's video button plays it: decoded at its own size, with
+    the device's fit (``SetFitMode``) applied live and changeable while it
+    plays (#291).  It was transcoded to a canvas-sized ``Theme.zt`` with a
+    fixed contain-fit, so no fit ever reached it, a clip over five minutes
+    failed, and every load ran ffmpeg on the Command.
+
+    ``start_ms`` / ``end_ms`` / ``rotation`` ask for a CUT, which is the
+    C#'s trimmer (``UCVideoCut``): that clip is baked into a ``Theme.zt`` at
+    the canvas, with the device's fit, as the trimmer bakes its W/H choice.
+    A ``.zt`` is already baked and always goes in as it is.
 
     The device must be attached (so we know its native resolution).
     Errors surface as structured Results — never exceptions to UIs.
@@ -2521,29 +2533,25 @@ class LoadVideo(Command[ThemeResult]):
                 ),
             )
 
-        from ...services.video_export import (
-            VideoExporter,
-            VideoExportError,
-            VideoExportRequest,
-            probe_duration_ms,
-        )
+        from ...services.video_export import VideoExporter, VideoExportError
 
         # One ``with`` for the whole assembly: the marker is written only on a
         # clean exit, so any failure below leaves a markerless directory that
         # never shows up in the theme list.  The four separate error arms this
         # replaces each returned their own wording for the same outcome — the
         # video was not staged.
+        cut = (self.start_ms, self.end_ms, self.rotation) != (0, None, 0)
+        log.info("LoadVideo: %s %s", self.path.name,
+                 f"cut {self.start_ms}-{self.end_ms} ms rot {self.rotation}"
+                 if cut else "as it is")
         try:
             with app.themes.single_file_theme(self.path, "video") as unit:
                 theme_dir = unit.path
-                if self.path.suffix.lower() == ".zt":
-                    unit.install(self.path, ThemeDir.ZT)
+                if not cut or self.path.suffix.lower() == ".zt":
+                    unit.install(self.path, ThemeDir.video(self.path.suffix))
                 else:
-                    end_ms = self.end_ms
-                    if end_ms is None:
-                        probed = probe_duration_ms(self.path)
-                        end_ms = (probed if probed > 0
-                                  else self.start_ms + 10_000)
+                    end_ms = (self.end_ms if self.end_ms is not None
+                              else _clip_end_ms(self.path, self.start_ms))
                     produced = VideoExporter(
                         app.platform.software_install_hint,
                     ).export_zt(VideoExportRequest(
@@ -2553,6 +2561,7 @@ class LoadVideo(Command[ThemeResult]):
                         target_w=target_w,
                         target_h=target_h,
                         rotation=self.rotation,
+                        fit_mode=app.settings.for_device(self.key).fit_mode,
                     ))
                     unit.adopt(produced, ThemeDir.ZT)
         except VideoExportError as e:

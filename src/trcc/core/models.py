@@ -571,6 +571,7 @@ class ThemeDir:
       td.preview  → Theme.png     (panel thumbnail; never rendered)
       td.dc       → config1.dc    (binary overlay layout)
       td.zt       → Theme.zt      (legacy JPEG-sequence animation)
+      ThemeDir.video(".mp4") → Theme.mp4 (any animated background, by suffix)
       td.json     → trcc.json     (next/-native JSON config)
       td.legacy_json → config.json (legacy JSON, read for fallback)
     """
@@ -634,6 +635,15 @@ class ThemeDir:
     def zt(self) -> Path:
         log.debug("zt")
         return self.path / self.ZT
+
+    @staticmethod
+    def video(ext: str) -> str:
+        """The member name an animated background with suffix *ext* takes
+        in a theme dir -- ``Theme.mp4``, ``Theme.gif``, ... (``Theme.zt`` is
+        the C#'s own; the rest keep their container)."""
+        name = f"Theme{ext.lower()}"
+        log.debug("ThemeDir.video: %s -> %s", ext, name)
+        return name
 
     def __truediv__(self, other: str) -> Path:
         log.debug("__truediv__: other=%s", other)

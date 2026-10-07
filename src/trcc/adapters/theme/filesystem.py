@@ -90,7 +90,7 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 # ("unsupported background extension"), and a .zip export wrote the raw
 # container under 00.png (#261, 2026-10-07).
 _VIDEO_EXTS = MEDIA.exts(MediaKind.ANIMATED)
-_VIDEO_CANDIDATES = tuple(f"Theme{ext}" for ext in sorted(_VIDEO_EXTS))
+_VIDEO_CANDIDATES = tuple(ThemeDir.video(ext) for ext in sorted(_VIDEO_EXTS))
 # The background allowlist: every animated format plus the static PNG.
 _BG_EXTS = _VIDEO_EXTS | {".png"}
 
@@ -112,6 +112,7 @@ class FileSingleFileTheme(SingleFileTheme):
         checks size first and reads the bytes only when the sizes match.
         """
         dest = self.path / filename
+        self._drop_other_videos(dest)
         if dest.is_file() and filecmp.cmp(source, dest, shallow=False):
             log.info("SingleFileTheme.install: %s unchanged — skipped", dest)
             return dest
@@ -123,11 +124,26 @@ class FileSingleFileTheme(SingleFileTheme):
         """Move an already-produced file (a transcoder output) in as
         *filename*, and clear the temp directory it came from."""
         dest = self.path / filename
+        self._drop_other_videos(dest)
         shutil.move(str(produced), str(dest))
         shutil.rmtree(produced.parent, ignore_errors=True)
         log.info("SingleFileTheme.adopt: %s → %s (temp dir cleared)",
                  produced, dest)
         return dest
+
+    def _drop_other_videos(self, dest: Path) -> None:
+        """Remove an earlier payload in another container.
+
+        The directory is named by the source's stem and reused, so loading
+        ``clip.zt`` after ``clip.mp4`` would leave both -- and ``video_path``
+        picks the first candidate, which is the OLD clip.  One file in, one
+        file there.
+        """
+        for name in _VIDEO_CANDIDATES:
+            if name != dest.name and (stale := self.path / name).is_file():
+                stale.unlink()
+                log.info("SingleFileTheme: dropped %s, replaced by %s",
+                         stale.name, dest.name)
 
 
 class FileContentStore(ContentStore):
@@ -892,7 +908,7 @@ class FileContentStore(ContentStore):
                 # The member names ``_export_members`` gives a referenced
                 # background, so the two exporters cannot disagree.
                 ext = background.suffix.lower()
-                name = f"Theme{ext}" if ext in _VIDEO_EXTS else ThemeDir.BG
+                name = ThemeDir.video(ext) if ext in _VIDEO_EXTS else ThemeDir.BG
                 shutil.copyfile(background, theme_dir / name)
             if mask is not None:
                 shutil.copyfile(mask, theme_dir / ThemeDir.MASK)
@@ -941,7 +957,7 @@ class FileContentStore(ContentStore):
         if background is not None:
             log.info("export: background overridden by %s", background)
         if bg is not None and bg.suffix.lower() in _VIDEO_EXTS:
-            members[f"Theme{bg.suffix.lower()}"] = bg
+            members[ThemeDir.video(bg.suffix)] = bg
             log.info("export: bundling video bg %s", bg.name)
         elif bg is not None:
             members[ThemeDir.BG] = bg
