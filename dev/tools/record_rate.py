@@ -46,6 +46,8 @@ os.environ["TRCC_DAEMON"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # dev/
+from _refuse import refuse_while_trcc_runs
 
 from _gui_drive import drive_gui
 from trcc._boot import trcc
@@ -237,14 +239,6 @@ def measure_sensors(ticks: int) -> tuple[int, collections.Counter]:
     return _tally(log_file, before, ticks)
 
 
-def _refuse_while_trcc_runs(what: str) -> None:
-    """Exit if a TRCC App owns the panels -- see ``_mock_bootstrap``."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from _mock_bootstrap import refuse_while_trcc_runs
-
-    refuse_while_trcc_runs(what)
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -266,7 +260,7 @@ def main() -> int:
                          "workload; run it on its own")
 
     if not args.sensors:                  # the sensor tick needs no device
-        _refuse_while_trcc_runs("record_rate")
+        refuse_while_trcc_runs("record_rate")
     if args.sensors:
         units, by_site = measure_sensors(args.frames)
         unit, workload = "tick", "sensor tick"

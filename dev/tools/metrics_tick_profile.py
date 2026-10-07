@@ -51,6 +51,8 @@ from pathlib import Path
 os.environ["TRCC_DAEMON"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # dev/
+from _refuse import refuse_while_trcc_runs
 
 REPORT_S = 20.0
 
@@ -218,14 +220,6 @@ def _selftest() -> int:
     return 0 if ok else 1
 
 
-def _refuse_while_trcc_runs(what: str) -> None:
-    """Exit if a TRCC App owns the panels -- see ``_mock_bootstrap``."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from _mock_bootstrap import refuse_while_trcc_runs
-
-    refuse_while_trcc_runs(what)
-
-
 def main() -> int:
     install_probes()
     from trcc.adapters.infra.logging import configure_logging
@@ -240,7 +234,7 @@ def main() -> int:
     threading.Thread(target=report_forever, daemon=True).start()
     if "--selftest" in sys.argv:
         return _selftest()
-    _refuse_while_trcc_runs("metrics_tick_profile")
+    refuse_while_trcc_runs("metrics_tick_profile")
     return launch(start_hidden="--shown" not in sys.argv)
 
 

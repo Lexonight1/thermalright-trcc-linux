@@ -52,6 +52,8 @@ os.environ["TRCC_DAEMON"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # dev/
+from _refuse import refuse_while_trcc_runs
 
 from _gui_drive import WARMUP, drive_gui
 from trcc._boot import trcc
@@ -149,14 +151,6 @@ def profile_gui(frames: int) -> dict[tuple[str, int, str], float]:
     return _calls_per_frame(pr, rendered or frames)
 
 
-def _refuse_while_trcc_runs(what: str) -> None:
-    """Exit if a TRCC App owns the panels -- see ``_mock_bootstrap``."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from _mock_bootstrap import refuse_while_trcc_runs
-
-    refuse_while_trcc_runs(what)
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -172,7 +166,7 @@ def main() -> int:
     if args.gui and args.video is not None:
         raise SystemExit("--gui drives whatever the GUI has loaded; "
                          "--video is for the headless arm")
-    _refuse_while_trcc_runs("frame_profile")
+    refuse_while_trcc_runs("frame_profile")
     rows = profile_gui(args.frames) if args.gui else profile(args.frames,
                                                              args.video)
     picked = {k: v for k, v in rows.items() if not args.hot or v >= 0.5}

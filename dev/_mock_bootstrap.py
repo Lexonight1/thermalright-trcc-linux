@@ -32,7 +32,10 @@ if TYPE_CHECKING:
         ScsiTransport,
     )
 
+from _refuse import refuse_while_trcc_runs
+
 # Make src/ importable without requiring the caller to set PYTHONPATH.
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / 'src'))
 sys.path.insert(0, str(_REPO_ROOT))
@@ -44,25 +47,6 @@ sys.path.insert(0, str(_REPO_ROOT))
 # TRCC_DAEMON=1 itself -- it does not: it pops the variable for its child and
 # builds its own AppProxy against a private runtime dir.)
 os.environ.setdefault("TRCC_DAEMON", "0")
-
-
-def refuse_while_trcc_runs(what: str) -> None:
-    """Exit when a running TRCC App already owns the panels.
-
-    For a dev run that builds an App on REAL USB -- ``--hardware``, the
-    profilers.  Beside a running App that is two owners of one panel: they
-    fight over it, and whichever exits blanks it (2026-10-02, the user's
-    panel).  Going through the running App instead would measure the wrong
-    process, so the only right answer is "not now".
-    """
-    from trcc import ipc
-
-    if ipc.daemon_running():
-        sys.exit(f"{what}: TRCC is running and owns the panels "
-                 f"({ipc.socket_path()}).  This would build a second App on "
-                 "the same USB -- the two fight, and the panel blanks when one "
-                 "exits.  Quit TRCC first: `trcc kill`.")
-    log.info("refuse_while_trcc_runs: %s -- no TRCC App running", what)
 
 
 # ─── Dev paths (every mock_* script writes here, not ~/.trcc) ────────────────
