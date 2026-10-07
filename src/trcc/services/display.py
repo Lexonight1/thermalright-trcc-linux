@@ -496,6 +496,28 @@ class DisplayService:
                   info.key, s.orientation)
         return surface
 
+    def _reuse_or_build_overlay(
+        self,
+        info: ProductInfo,
+        theme: Theme,
+        sensors: dict[str, float],
+        visual_size: tuple[int, int],
+        clock: dict[str, str],
+        scene: SceneCache | None,
+        overlay_key: tuple[Any, ...],
+    ) -> tuple[Any, bool]:
+        """The overlay drawn for *overlay_key*: the scene's if it is that one.
+
+        The text, metric and clock layer changes when a reading, the clock or
+        the layout does -- every couple of seconds -- while a frame goes out
+        15-16 times a second.  One rule for the theme render and the cast.
+        """
+        if scene is not None and scene.overlay_key == overlay_key:
+            frame_log.debug("_reuse_or_build_overlay %s: reused", info.key)
+            return scene.overlay_surface, True
+        frame_log.debug("_reuse_or_build_overlay %s: drawing", info.key)
+        return self._build_overlay(info, theme, sensors, visual_size, clock), False
+
     def _resolve_bg_overlay(
         self,
         info: ProductInfo,
@@ -550,13 +572,8 @@ class DisplayService:
             bg_cache.put(bg_key, bg_surface, nbytes,
                          working_set_bytes=frames * nbytes)
 
-        overlay_hit = scene is not None and scene.overlay_key == overlay_key
-        if overlay_hit:
-            overlay_surface = scene.overlay_surface   # type: ignore[union-attr]
-        else:
-            overlay_surface = self._build_overlay(
-                info, theme, sensors, visual_size, clock,
-            )
+        overlay_surface, overlay_hit = self._reuse_or_build_overlay(
+            info, theme, sensors, visual_size, clock, scene, overlay_key)
         # The two-layer decision the whole cache design exists for: a video
         # theme's bg cycles and its overlay moves with the sensors, so the pair
         # is what says whether a tick paid a dict lookup or a JPEG decode plus
@@ -662,8 +679,22 @@ class DisplayService:
         if theme is not None:
             surface = self._composite_mask(info, s, theme, surface)
             clock = compute_clock(language=self._settings.app.language)
-            overlay = self._build_overlay(
-                info, theme, sensors or {}, (target_w, target_h), clock)
+            readings = sensors or {}
+            # The cast used to draw every element again on every frame --
+            # ~16 times a second for numbers that change every two seconds.
+            # It keeps its overlay in the device's scene like a theme render.
+            overlay_key = self._overlay_key(
+                info, theme, (target_w, target_h), readings, clock)
+            scene = self._scenes.get(info.key)
+            overlay, reused = self._reuse_or_build_overlay(
+                info, theme, readings, (target_w, target_h), clock, scene,
+                overlay_key)
+            if not reused:
+                self._scenes[info.key] = (
+                    replace(scene, overlay_surface=overlay,
+                            overlay_key=overlay_key) if scene is not None
+                    else SceneCache(overlay_surface=overlay,
+                                    overlay_key=overlay_key))
             surface = self._r.composite(surface, overlay, position=(0, 0))
 
         # Audio spectrum LAST, over everything, because it is a live meter

@@ -863,3 +863,61 @@ def test_a_failed_return_keeps_the_cast(casting: App,
     assert not result.ok, "precondition: the handshake failed"
     assert _KEY in casting.active_themes
     assert task_key(_KEY) in scheduler._tasks
+
+
+# ── the overlay is drawn when it changes, not every frame ────────────────────
+
+
+def _cast_frame(app: App, sensors: dict[str, float]) -> bytes:
+    from trcc.core.models import RawFrame
+
+    from .conftest import show_a_theme
+
+    if _KEY not in app.active_themes:
+        show_a_theme(app, _KEY)
+    device = app.devices[_KEY]
+    grab = RawFrame(data=bytes([30, 60, 90]) * (64 * 48), width=64, height=48)
+    return app.display.build_screencast_frame(
+        info=device.info, frame=grab, theme=app.active_themes[_KEY],
+        sensors=sensors, profile=device.profile)
+
+
+def test_a_cast_draws_its_overlay_only_when_it_changes(
+    casting: App, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """~16 cast frames a second; the readings move every couple of seconds.
+
+    MUTATION CHECK: build the overlay unconditionally in
+    ``build_screencast_frame`` again and five frames draw it five times.
+    """
+    from trcc.services.display import DisplayService
+
+    drawn: list[dict[str, float]] = []
+    real = DisplayService._build_overlay
+
+    def counting(self, info, theme, sensors, size, clock):  # type: ignore[no-untyped-def]
+        drawn.append(dict(sensors))
+        return real(self, info, theme, sensors, size, clock)
+
+    monkeypatch.setattr(DisplayService, "_build_overlay", counting)
+    monkeypatch.setattr("trcc.services.display.compute_clock",
+                        lambda **_: {"time": "12:00", "date": "2026-10-07"})
+
+    for _ in range(5):
+        _cast_frame(casting, {"cpu:temp": 41.0})
+    assert len(drawn) == 1
+    _cast_frame(casting, {"cpu:temp": 42.0})
+    assert len(drawn) == 2, "a new reading must be drawn"
+
+
+def test_a_reused_overlay_sends_the_same_picture(
+    casting: App, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reuse is only a saving if the panel cannot tell the difference."""
+    monkeypatch.setattr("trcc.services.display.compute_clock",
+                        lambda **_: {"time": "12:00", "date": "2026-10-07"})
+
+    drawn_fresh = _cast_frame(casting, {"cpu:temp": 41.0})
+    reused = _cast_frame(casting, {"cpu:temp": 41.0})
+
+    assert reused == drawn_fresh

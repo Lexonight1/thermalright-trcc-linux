@@ -153,6 +153,10 @@
   everything else out of the file `trcc report` sends. Those lines now only
   appear at the most verbose setting (`-vvv`), and a change worth knowing (the
   capture switching to another method, a capture tool failing) is logged once.
+- **A screen cast redraws its sensor text only when a value changes.** It
+  drew every text, metric and clock element again on every frame, about 16
+  times a second, for readings that change every couple of seconds. It now
+  reuses the drawn layer like a theme does, about a tenth less work per frame.
 - **An open TRCC window no longer costs a quarter of a CPU core.** Since TRCC
   became one shared background App, the window's live preview asked that App to
   draw every frame a second time and send it as a PNG image, about 25% of one
