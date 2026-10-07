@@ -27,7 +27,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from trcc.app import App
-from trcc.core.commands import LoadTheme
+from trcc.core.commands import GetPaths, LoadTheme
 from trcc.core.models import DEFAULT_AUTOSTART_TARGET
 from trcc.core.ports import Renderer
 from trcc.core.protocol import FBL_PROFILES
@@ -368,12 +368,12 @@ def test_devices_connect_unknown_returns_4xx(api_client: TestClient) -> None:
     not a 500.  Proves the dispatch path → result envelope works."""
     resp = api_client.post("/devices/dead:beef/connect")
     # http_error_if_failed maps ok=False → 400 by default
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_devices_disconnect_unknown_returns_4xx(api_client: TestClient) -> None:
     resp = api_client.post("/devices/dead:beef/disconnect")
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 404
 
 
 # =========================================================================
@@ -429,7 +429,7 @@ def test_display_send_color_unknown_device_returns_4xx(
         "/devices/dead:beef/display/color",
         json={"r": 255, "g": 0, "b": 0},
     )
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_display_reset_unknown_device_returns_4xx(
@@ -439,7 +439,7 @@ def test_display_reset_unknown_device_returns_4xx(
     an unknown key surfaces a structured error envelope (the StopVideo
     pre-step is best-effort and doesn't mask the send failure)."""
     resp = api_client.post("/devices/dead:beef/display/reset")
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_display_load_theme_reaches_lookup_not_attribute_error(
@@ -528,7 +528,7 @@ def test_boot_animation_valid_subdir_passes_path_barrier(
         json={"frames_dir": "myanim", "delay_ds": 5},
     )
     # Path barrier passed; the device dispatch fails (not connected) → 4xx.
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 # =========================================================================
@@ -676,7 +676,7 @@ def test_display_restore_theme_no_persisted(api_client: TestClient) -> None:
     returns a 400 from ``http_error_if_failed`` (Result.ok=False —
     "No theme available")."""
     resp = api_client.post("/devices/0402:3922/display/restore-theme")
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_display_restore_theme_autoloads_first_theme(
@@ -819,7 +819,7 @@ def test_display_pause_video_no_playback(api_client: TestClient) -> None:
         "/devices/0402:3922/display/pause-video",
         json={"paused": True},
     )
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_display_seek_negative_rejected(api_client: TestClient) -> None:
@@ -835,7 +835,7 @@ def test_display_loop_no_playback(api_client: TestClient) -> None:
         "/devices/0402:3922/display/loop-video",
         json={"loop": False},
     )
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 @pytest.mark.parametrize("resolution", API_TEST_RESOLUTIONS)
@@ -857,9 +857,19 @@ def test_display_masks_listing_empty(
 
 
 def test_theme_delete_unknown(api_client: TestClient) -> None:
-    """Deleting a non-existent theme returns a structured error."""
-    resp = api_client.delete("/theme/definitely-not-real-9zq")
-    assert resp.status_code in (400, 404)
+    """Deleting a non-existent theme returns a structured error.
+
+    It sent ``DELETE /theme/<name>``, a route that does not exist, so the
+    router's own 404 passed it and the delete was never reached.
+    """
+    root = api_client.app.state.trcc.dispatch(GetPaths()).user_content_dir
+    Path(root).mkdir(parents=True, exist_ok=True)   # the theme is missing, not the root
+    resp = api_client.request(
+        "DELETE", "/theme",
+        json={"path": str(Path(root) / "definitely-not-real-9zq")},
+    )
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["detail"]
 
 
 def test_system_fonts_listing(api_client: TestClient) -> None:
@@ -903,14 +913,14 @@ def test_overlay_update_unknown(api_client: TestClient) -> None:
         "/devices/0402:3922/display/overlay-elements/el_nope",
         json={"x": 5},
     )
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_overlay_delete_unknown(api_client: TestClient) -> None:
     resp = api_client.delete(
         "/devices/0402:3922/display/overlay-elements/el_nope",
     )
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_overlay_round_trip(api_client: TestClient) -> None:
@@ -962,7 +972,7 @@ def test_theme_cloud_list_returns_catalog(api_client: TestClient) -> None:
 def test_theme_cloud_list_unknown_category(api_client: TestClient) -> None:
     resp = api_client.get("/theme/cloud", params={"category": "zzz"})
     # Result.ok = False → http_error_if_failed → 400
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 def test_theme_web_gallery_lists_downloaded_previews(
@@ -1054,7 +1064,7 @@ def test_set_language_rejects_unknown_code(api_client: TestClient) -> None:
     resp = api_client.post(
         "/config/language", json={"language": "zz_unknown"},
     )
-    assert resp.status_code in (400, 404)
+    assert resp.status_code == 400
 
 
 # --- Diagnostics ------------------------------------------------------------
