@@ -39,7 +39,13 @@ if TYPE_CHECKING:
     from ..models import DeviceSettings, ProductInfo, SensorBinding
 
 from ..logs import per_frame
-from ..models import MEDIA, MediaKind
+from ..models import (
+    FAN_PANEL_CATEGORY,
+    FAN_PANEL_SLOTS,
+    MEDIA,
+    MediaKind,
+    PanelConfig,
+)
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -1012,3 +1018,14 @@ def _apply_screencast_rect(app: App, key: str, native: tuple[int, int, int, int]
     app.events.publish(ScreencastRegionChanged(key=key, x=box[0], y=box[1],
                                                w=box[2], h=box[3],
                                                hide_border=hide_border))
+
+
+def fan_slot_pins(panels: list[PanelConfig]) -> dict[str, str]:
+    """The fan slots the dashboard's FAN rows pin: a row bound to anything but
+    its own slot id names the reading that fills that slot (#145)."""
+    panel = next((p for p in panels if p.category_id == FAN_PANEL_CATEGORY), None)
+    pins = ({slot: b.sensor_id for slot, b in zip(FAN_PANEL_SLOTS, panel.sensors,
+                                                     strict=False)
+             if b.sensor_id and b.sensor_id != slot} if panel is not None else {})
+    log.info("fan_slot_pins: %s", pins or "none")
+    return pins

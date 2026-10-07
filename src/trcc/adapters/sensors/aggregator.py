@@ -29,6 +29,8 @@ from contextlib import AbstractContextManager, nullcontext
 from ...core.logs import per_frame
 from ...core.models import (
     DEFAULT_REFRESH_INTERVAL_S,
+    FAN_PANEL_SLOTS,
+    METRICS,
     SensorReading,
 )
 from ...core.ports import (
@@ -424,6 +426,9 @@ class BaselineSensors(SensorEnumerator):
         for fan in self._fans:
             add([(f"fan:{fan.key}:rpm", "fan", "RPM", "Speed"),
                  (f"fan:{fan.key}:percent", "fan", "%", "Duty")], fan.name)
+        # The panel's fan slots, so a dashboard row shows what the LCD shows.
+        add([(slot, "fan", "RPM", f"{METRICS[slot].label} (auto)")
+             for slot in FAN_PANEL_SLOTS if slot in current])
 
         # Board / super-I/O temperatures.  Plural and user-chosen, exactly
         # like fans -- and read off the SAME chip, which is the part that made

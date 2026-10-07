@@ -49,7 +49,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`SensorEnumerator`](#sensorenumerator) | 11 | 7 | 1 |
+| [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 13 | 8 | 1 |
 | [`Platform`](#platform) | 25 | 0 | 8 |
@@ -727,7 +727,7 @@ stop_polling() -> None
 unsupported() -> frozenset[str]
 ```
 
-**You inherit (7):** `fan_slots` · `preferred_disk` · `primary_gpu` · `set_interval` · `set_preferred_disk` · `set_preferred_gpu` · `snapshot`
+**You inherit (8):** `fan_slots` · `preferred_disk` · `primary_gpu` · `set_fan_slot_pins` · `set_interval` · `set_preferred_disk` · `set_preferred_gpu` · `snapshot`
 
 **Implementations (1):** `BaselineSensors`
 

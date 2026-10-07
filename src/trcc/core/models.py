@@ -1756,6 +1756,23 @@ SENSORS: dict[str, list[tuple[str, str, str, str]]] = {
 }
 
 
+#: The dashboard's FAN panel, and the slot each of its four rows fills -- the
+#: C#'s CPUFAN, GPUFAN, FAN1, FAN2 (overlay pairs (5,1)..(5,4)).  Its rows are
+#: user-rebindable (UCSystemInfoOptions.cs:335-345), and a row bound to one
+#: fan IS the choice of which header fills that slot (#145).
+FAN_PANEL_CATEGORY = 6
+FAN_PANEL_SLOTS: tuple[str, ...] = ("fan:cpu", "fan:gpu", "fan:ssd", "fan:sys2")
+
+#: What a fan's NAME must contain to claim a slot by default, before
+#: spinning order fills the rest.  The dashboard and the panel used to apply
+#: two different rules here and could disagree; this is now the only one.
+FAN_SLOT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "fan:cpu": ("cpu",),
+    "fan:ssd": ("ssd", "nvme", "m.2"),
+    "fan:sys2": ("sys", "chassis", "case", "pump"),
+}
+
+
 # Category ID → sensor-dashboard background image asset.
 CATEGORY_IMAGES: dict[int, str] = {
     0: "sysinfo_custom.png",

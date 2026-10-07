@@ -86,6 +86,7 @@ from ._helpers import (
     _require_connected_device,
     _resolve_oriented_resolution,
     _slideshow_snapshot,
+    fan_slot_pins,
 )
 from .theme import RestoreDeviceState
 
@@ -600,6 +601,8 @@ class SetSensorDashboard(Command[SensorDashboardResult]):
             )
         app.sysinfo.panels = _copy_panels(list(self.panels))
         app.sysinfo.save()
+        # A FAN row rebound to a concrete fan picks the LCD's slot too (#145).
+        app.platform.sensors().set_fan_slot_pins(fan_slot_pins(app.sysinfo.panels))
         bound = sum(1 for p in app.sysinfo.panels
                     for b in p.sensors if b.sensor_id)
         log.info("SetSensorDashboard.execute: saved %d panel(s), %d bound row(s) → %s",

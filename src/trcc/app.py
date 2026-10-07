@@ -384,6 +384,14 @@ class App(CommandBus):
             self.platform.sensors().set_preferred_gpu(self.settings.app.active_gpu)
         if self.settings.app.active_disk:
             self.platform.sensors().set_preferred_disk(self.settings.app.active_disk)
+        # The dashboard's FAN rows pick which header fills each LCD fan slot
+        # (#145).  Read only when a dashboard was saved; the sensors are built
+        # only when a row actually pins one, like the two choices above.
+        if self.sysinfo.path.is_file():
+            from .core.commands._helpers import fan_slot_pins
+            self.sysinfo.load()
+            if pins := fan_slot_pins(self.sysinfo.panels):
+                self.platform.sensors().set_fan_slot_pins(pins)
 
     def _persist_user_mask_dc(self, event: Any) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active

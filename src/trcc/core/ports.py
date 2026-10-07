@@ -9,7 +9,7 @@ from __future__ import annotations
 import builtins
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
@@ -20,6 +20,7 @@ from .errors import DeviceDisconnectedError, UnsupportedOperationError
 from .logs import per_frame
 from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
+    FAN_SLOT_KEYWORDS,
     MIN_REFRESH_INTERVAL_S,
     TlsFiles,
     VideoExportRequest,
@@ -975,6 +976,8 @@ class SensorEnumerator(ABC):
     # boot by the composition root from ``settings.active_disk``.
     _preferred_disk_key: str | None = None
     _warned_missing_disk_key: str | None = None
+    _fan_slot_pins: dict[str, str] | None = None
+    _warned_missing_fan_pins: frozenset[str] = frozenset()
 
     # Poll cadence, in seconds.  Lives here rather than on the concrete
     # enumerator for the same reason the preference keys do: it is pure state
@@ -1212,19 +1215,43 @@ class SensorEnumerator(ABC):
         own hwmon fan is excluded so it is not counted twice.
         """
         slots: dict[str, float] = {}
-        if (rpm := readings.get("gpu:primary:fan_rpm")) is not None:
-            slots["fan:gpu"] = rpm
-        elif (duty := readings.get("gpu:primary:fan")) is not None:
-            slots["fan:gpu:percent"] = duty
-        pool = iter(
-            rpm for f in self.fans()
-            if not f.on_gpu
-            and (rpm := readings.get(f"fan:{f.key}:rpm"))
-        )
-        for key in ("fan:cpu", "fan:ssd", "fan:sys2"):
-            slots[key] = next(pool, 0.0)
+        pins = self._fan_slot_pins or {}
+        for slot, key in pins.items():
+            if (value := readings.get(key)) is not None:
+                slots[slot] = value
+            elif slot not in self._warned_missing_fan_pins:
+                log.warning("fan_slots: %s is pinned to %s, which has no "
+                            "reading -- the default fills it", slot, key)
+                self._warned_missing_fan_pins |= {slot}
+        if "fan:gpu" not in slots:
+            if (rpm := readings.get("gpu:primary:fan_rpm")) is not None:
+                slots["fan:gpu"] = rpm
+            elif (duty := readings.get("gpu:primary:fan")) is not None:
+                slots["fan:gpu:percent"] = duty
+        # Spinning motherboard fans no pin has taken: a name keyword claims a
+        # slot first, then the rest fill in order.
+        pool = [(f.name.lower(), rpm) for f in self.fans()
+                if not f.on_gpu and f"fan:{f.key}:rpm" not in pins.values()
+                and (rpm := readings.get(f"fan:{f.key}:rpm"))]
+        open_slots = [s for s in FAN_SLOT_KEYWORDS if s not in slots]
+        for slot in list(open_slots):
+            hit = next((i for i, (name, _) in enumerate(pool)
+                        if any(kw in name for kw in FAN_SLOT_KEYWORDS[slot])), None)
+            if hit is not None:
+                slots[slot] = pool.pop(hit)[1]
+                open_slots.remove(slot)
+        for slot in open_slots:
+            slots[slot] = pool.pop(0)[1] if pool else 0.0
         frame_log.debug("fan_slots: %s", slots)
         return slots
+
+    def set_fan_slot_pins(self, pins: Mapping[str, str]) -> None:
+        """Pin which reading fills each fan slot (``fan:cpu`` ->
+        ``fan:hwmon:nct6798:fan6:rpm``).  The App seeds this from the
+        dashboard's FAN rows, the one place a user picks (#145)."""
+        log.info("set_fan_slot_pins: %s -> %s", self._fan_slot_pins, dict(pins))
+        self._fan_slot_pins = dict(pins)
+        self._warned_missing_fan_pins = frozenset()
 
     # ── Flat dict view (for overlay lookups) ────────────────────────
     @abstractmethod

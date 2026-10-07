@@ -55,7 +55,7 @@ import function_census  # noqa: E402  # pyright: ignore[reportMissingImports]
 MAX_LONG_FUNCTIONS = 12
 
 #: LOWER IT when a function comes off the list; never raise it.
-MAX_BRANCHY_FUNCTIONS = 8
+MAX_BRANCHY_FUNCTIONS = 7
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140

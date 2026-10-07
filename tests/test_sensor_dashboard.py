@@ -194,3 +194,43 @@ def test_auto_map_leaves_a_row_unbound_when_the_host_cannot_read_it() -> None:
     assert [lbl for lbl in ("Usage", "Clock", "Power") if bound[lbl]] == [], (
         "a row bound to a sensor this host can never read renders 0, not --"
     )
+
+
+# ── #145: the FAN rows pick the LCD's fan slots ──────────────────────────────
+
+
+def _pin_cpufan(panels: list[PanelConfig], sensor_id: str) -> list[PanelConfig]:
+    fan_panel = next(p for p in panels if p.category_id == 6)
+    fan_panel.sensors[0] = SensorBinding("CPUFAN", sensor_id, "RPM")
+    return panels
+
+
+def test_rebinding_a_fan_row_moves_the_lcds_fan_slot(fake_platform) -> None:
+    """Choosing the header for CPUFAN IS rebinding the dashboard's FAN row, as
+    in the C#.  The two used to be separate policies and could disagree."""
+    app = App(fake_platform)
+    panels = list(app.dispatch(GetSensorDashboard()).panels)
+
+    assert app.dispatch(SetSensorDashboard(
+        panels=tuple(_pin_cpufan(panels, "gpu:primary:temp")))).ok
+
+    # The next sweep applies it, as a GPU or disk choice does; ask the policy
+    # directly rather than wait out the cached sweep.
+    sensors = app.platform.sensors()
+    readings = sensors.read_all()
+    assert sensors.fan_slots(readings)["fan:cpu"] == readings["gpu:primary:temp"]
+
+
+def test_a_saved_fan_row_pins_the_slot_after_a_restart(fake_platform) -> None:
+    """Every process seeds the pins at start -- a CLI render or the daemon
+    shows the fan the user picked, not only the session that picked it."""
+    first = App(fake_platform)
+    panels = list(first.dispatch(GetSensorDashboard()).panels)
+    assert first.dispatch(SetSensorDashboard(
+        panels=tuple(_pin_cpufan(panels, "gpu:primary:temp")))).ok
+
+    fake_platform._sensors = None           # a new process builds its own
+    restarted = App(fake_platform)
+
+    readings = restarted.platform.sensors().read_all()
+    assert readings["fan:cpu"] == readings["gpu:primary:temp"]
