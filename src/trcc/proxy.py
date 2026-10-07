@@ -31,7 +31,7 @@ from typing import TypeVar, cast
 from . import ipc
 from .core.commands import Command, DiscoverDevices
 from .core.errors import DaemonUnavailableError, RemoteCommandError
-from .core.events import EventBus
+from .core.events import AppStopping, EventBus
 from .core.logs import current_origin, per_frame, sink_for
 from .core.ports import CommandBus
 from .core.results import Result
@@ -87,6 +87,9 @@ class AppProxy(CommandBus):
         # that died: the first is routine, the second is the thing a user
         # needs told about, and logging both the same way buries it.
         self._closing = False
+        # The lifecycle watch (``on_app_gone``): its own stream and thread.
+        self._watcher: threading.Thread | None = None
+        self._watch_sock: socket.socket | None = None
 
     def dispatch(self, cmd: Command[R]) -> R:
         """Serialize *cmd*, round-trip through the daemon, return the Result.
@@ -157,18 +160,19 @@ class AppProxy(CommandBus):
         if self._events is None:
             log.info("AppProxy.events: opening the daemon event stream")
             self._events = EventBus()
-            self._start_reader()
+            self._start_reader(self._events)
         return self._events
 
-    def _start_reader(self) -> None:
-        """Spawn the background reader that feeds the local bus."""
+    def _start_reader(self, bus: EventBus) -> None:
+        """Spawn the background reader that feeds *bus*."""
         log.info("AppProxy._start_reader: starting reader thread")
         self._reader = threading.Thread(
-            target=self._read_events, daemon=True, name="trcc-proxy-events",
+            target=self._read_events, args=(bus,), daemon=True,
+            name="trcc-proxy-events",
         )
         self._reader.start()
 
-    def _read_events(self) -> None:
+    def _read_events(self, bus: EventBus) -> None:
         """Read the stream until EOF, republishing onto the local bus.
 
         EOF is SURFACED, not swallowed: a GUI whose daemon died would
@@ -198,8 +202,9 @@ class AppProxy(CommandBus):
                                     "dropped (%s: %s)", type(e).__name__, e)
                         continue
                     seen += 1
-                    assert self._events is not None
-                    self._events.publish(event)
+                    # Its own bus, not ``self._events``: ``close`` clears that,
+                    # and a line can still arrive after it has.
+                    bus.publish(event)
         except OSError as e:
             if not self._closing:
                 log.warning("AppProxy._read_events: stream failed after %d "
@@ -214,6 +219,60 @@ class AppProxy(CommandBus):
                 log.warning("AppProxy._read_events: event stream CLOSED after "
                             "%d event(s); this client is no longer observing",
                             seen)
+
+    # ── Whether the App is still there ───────────────────────────────────
+
+    def on_app_gone(self, stopped: Callable[[], None],
+                    lost: Callable[[], None]) -> None:
+        """Watch the App on a stream of its own that carries only ``AppStopping``.
+
+        Its own, not :attr:`events`: that one carries every event, and
+        subscribing to it makes the App JPEG-encode each frame for this client
+        -- about 2% of a core that ``trcc api`` would pay only to learn the App
+        quit.  This one is silent until the App's last line.
+        """
+        log.info("AppProxy.on_app_gone: watching the App on a lifecycle stream")
+        self._watcher = threading.Thread(
+            target=self._watch_app, args=(stopped, lost), daemon=True,
+            name="trcc-proxy-lifecycle",
+        )
+        self._watcher.start()
+
+    def _watch_app(self, stopped: Callable[[], None],
+                   lost: Callable[[], None]) -> None:
+        """Wait for the stream to end, then say which way it ended."""
+        said_stop = False
+        try:
+            sock = ipc.open_event_stream([AppStopping.__name__],
+                                         timeout=self._timeout)
+        except (OSError, ConnectionError) as e:
+            log.error("AppProxy._watch_app: the App is not there to watch "
+                      "(%s: %s)", type(e).__name__, e)
+            lost()
+            return
+        self._watch_sock = sock
+        try:
+            with sock, sock.makefile("rb") as reader:
+                for line in reader:
+                    if line.strip() and isinstance(
+                            ipc.decode_event(json.loads(line.decode())),
+                            AppStopping):
+                        said_stop = True
+                        break
+        except (OSError, ValueError, KeyError) as e:
+            log.debug("AppProxy._watch_app: stream read ended — %s: %s",
+                      type(e).__name__, e)
+        finally:
+            self._watch_sock = None
+        if self._closing:
+            log.info("AppProxy._watch_app: this client closed — not the App")
+        elif said_stop:
+            log.info("AppProxy._watch_app: the App is stopping on purpose")
+            stopped()
+        else:
+            log.error("AppProxy._watch_app: the App went away without "
+                      "stopping — it crashed or was killed hard")
+            lost()
 
     # ── Session lifecycle — the daemon owns it, this client does not ────
     #
@@ -260,20 +319,22 @@ class AppProxy(CommandBus):
         log.info("AppProxy.close: leaving the daemon's devices attached; "
                  "closing this client's event stream")
         self._closing = True
-        sock = self._stream_sock
-        if sock is not None:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                log.debug("AppProxy.close: stream shutdown failed",
-                          exc_info=True)
-        reader = self._reader
-        if reader is not None and reader.is_alive():
-            reader.join(timeout=2.0)
-            if reader.is_alive():
-                log.warning("AppProxy.close: reader thread did not stop "
-                            "within 2s")
+        for sock, thread in ((self._stream_sock, self._reader),
+                             (self._watch_sock, self._watcher)):
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    log.debug("AppProxy.close: stream shutdown failed",
+                              exc_info=True)
+            if (thread is not None and thread.is_alive()
+                    and thread is not threading.current_thread()):
+                thread.join(timeout=2.0)
+                if thread.is_alive():
+                    log.warning("AppProxy.close: %s did not stop within 2s",
+                                thread.name)
         self._reader = None
+        self._watcher = None
         self._events = None
         self._closing = False
 

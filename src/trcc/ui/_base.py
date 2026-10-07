@@ -43,9 +43,13 @@ than inventing a lazy second one.  ``tests/test_ui_bus.py`` gates it.
 from __future__ import annotations
 
 import logging
+import os
 import signal
+import sys
 import threading
+import time
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from ..core.errors import UnknownUserInterfaceError
@@ -66,6 +70,16 @@ frame_log = per_frame(__name__)
 
 #: Binds the caller's Result subclass, so ``dispatch`` keeps concrete typing.
 R = TypeVar("R", bound="Result")
+
+
+#: Set in the environment of a face that restarted itself after its App died,
+#: to the time it did -- so the new process can say so, and can refuse to
+#: restart again within :data:`RELAUNCH_GUARD_S` (an App that dies at start
+#: would otherwise relaunch the window forever).
+RELAUNCHED_ENV = "TRCC_RELAUNCHED"
+RELAUNCH_GUARD_S = 60.0
+RELAUNCH_NOTICE = ("TRCC's background App stopped unexpectedly and was "
+                   "restarted.")
 
 
 # The face table.  A miss RAISES: asking for a UI that does not exist is a typo
@@ -95,6 +109,12 @@ class UserInterface(CommandBus):
     #: The in-process App for ``RUNS_IN_CALLER`` Commands, when this face's own
     #: App is the shared one.  Built on first need, never otherwise.
     _in_caller: App | None = None
+    #: The App died (not stopped on purpose): start this face again on exit.
+    _relaunch: bool = False
+    #: When this process was started as a restart, taken from
+    #: :data:`RELAUNCHED_ENV` -- and taken OUT of it, so an App this face
+    #: starts does not believe it was restarted too.
+    _relaunched_at: str = ""
     #: A SIGTERM / SIGINT arrived.  Set from :meth:`start` on, so a signal
     #: before the face's loop exists still ends in ``App.close``.
     _stop_requested: bool = False
@@ -134,6 +154,7 @@ class UserInterface(CommandBus):
         log.info("start: ui=%s platform=%s", type(self).__name__,
                  type(platform).__name__)
         self._platform = platform
+        self._relaunched_at = os.environ.pop(RELAUNCHED_ENV, "")
         if (code := self.preflight()) is not None:
             log.info("start: %s refused to launch, exit=%d",
                      type(self).__name__, code)
@@ -154,6 +175,8 @@ class UserInterface(CommandBus):
                 # nothing.  The faces that DO need a session were always going
                 # to compose a moment later anyway.
                 _ = self._app
+                # Quitting TRCC quits every UI; a crash brings this one back.
+                self.on_app_gone(self._on_app_stopped, self._on_app_lost)
                 if not self.bring_up():
                     log.warning("start: %s bring-up failed",
                                 type(self).__name__)
@@ -162,6 +185,8 @@ class UserInterface(CommandBus):
                 log.info("start: %s stopped during start-up — closing without "
                          "running", type(self).__name__)
                 return 0
+            if self._relaunched_at:
+                self.announce(RELAUNCH_NOTICE)
             return self.run()
         finally:
             # Close only what was actually built.  A face that never
@@ -182,6 +207,8 @@ class UserInterface(CommandBus):
             # worse than none.
             log.info("%s: cleanup complete — process exit",
                      type(self).__name__)
+            if self._relaunch:
+                self._relaunch_self()
 
     # ── Stop signals — one handler, from preflight to exit ───────────────
 
@@ -211,6 +238,59 @@ class UserInterface(CommandBus):
                   len(previous))
         for signo, handler in previous.items():
             signal.signal(signo, handler)
+
+    # ── The App going away — quit closes this face, a crash restarts it ──
+
+    def on_app_gone(self, stopped: Callable[[], None],
+                    lost: Callable[[], None]) -> None:
+        """Watch THIS face's App -- the shared one, when it is not in-process."""
+        log.debug("on_app_gone: %s watches its App", type(self).__name__)
+        self._app.on_app_gone(stopped, lost)
+
+    def _on_app_stopped(self) -> None:
+        """The App quit on purpose (``trcc kill``): so does this face."""
+        log.info("%s: the App stopped — closing", type(self).__name__)
+        self._stop_requested = True
+        self.stop()
+
+    def _on_app_lost(self) -> None:
+        """The App died: close, and start again -- which starts a new App."""
+        log.error("%s: the App went away unexpectedly — restarting",
+                  type(self).__name__)
+        self._relaunch = True
+        self._stop_requested = True
+        self.stop()
+
+    def _relaunch_self(self) -> None:
+        """Run this process's own command line again, in place of this one.
+
+        ``sys.orig_argv`` and not ``sys.argv``: it is what the interpreter was
+        started with -- ``-m trcc gui``, the console script, or a dev harness
+        -- so the same face starts the same way.  Refused within
+        :data:`RELAUNCH_GUARD_S` of the last restart.
+        """
+        last = self._relaunched_at
+        now = time.time()
+        if last and now - float(last) < RELAUNCH_GUARD_S:
+            log.error("%s: the App died again %.0f s after the last restart "
+                      "— not restarting; `trcc report` has the reason",
+                      type(self).__name__, now - float(last))
+            return
+        argv = [sys.executable, *sys.orig_argv[1:]]
+        log.warning("%s: restarting as %s", type(self).__name__, argv)
+        os.environ[RELAUNCHED_ENV] = f"{now:.0f}"
+        for handler in logging.getLogger().handlers:
+            handler.flush()       # exec runs no atexit: nothing else would
+        try:
+            os.execv(sys.executable, argv)
+        except OSError as e:
+            log.error("%s: could not restart — %s: %s", type(self).__name__,
+                      type(e).__name__, e)
+
+    def announce(self, text: str) -> None:
+        """Tell the user *text* where they are looking.  A face with a screen
+        overrides this; a headless one has only its log."""
+        log.warning("%s: %s", type(self).__name__, text)
 
     def _on_stop_signal(self, signo: int, _frame: object) -> None:
         log.info("%s: %s — stopping", type(self).__name__,

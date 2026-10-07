@@ -1162,9 +1162,12 @@ _APP_ATTRS = frozenset({"_app", "app", "_trcc"})
 _BUS_TYPES = frozenset({"App", "CommandBus"})
 
 #: What a UI may touch on the bus — DERIVED from the port, not listed here:
-#: ``dispatch``, ``events`` (observing is the other half of the bus) and
-#: ``remote``.  Anything else is App internals, absent on an ``AppProxy``.
-_PORT_MEMBERS = frozenset(CommandBus.__abstractmethods__)
+#: ``dispatch``, ``events`` (observing is the other half of the bus),
+#: ``remote`` and ``on_app_gone``.  Every public member, abstract or not: a
+#: concrete one is still the contract every implementer answers, ``AppProxy``
+#: included.  Anything else is App internals, absent on an ``AppProxy``.
+_PORT_MEMBERS = frozenset(name for name in vars(CommandBus)
+                          if not name.startswith("_"))
 
 #: Functions whose return annotation is a bus type — the only way a local name
 #: gets bound to one.  Gated by ``test_app_factories_still_return_app`` below,
@@ -2210,6 +2213,11 @@ MISSING_IN_QTGUI: set[str] = set()
 #: offered and declined.  May not grow.
 MAX_UNBRIDGED_EVENTS = 3     # 5 → 3 (2026-10-02): ThemeSaved, ThemeImported bridged
 
+#: Events a FACE reads and no widget should: the App's last line on a stream,
+#: which ``CommandBus.on_app_gone`` turns into "close" for the whole UI.
+#: Classified by name, not absorbed into the ceiling above.
+FACE_EVENTS = frozenset({"AppStopping"})
+
 
 def test_qtgui_observes_what_gui_observes() -> None:
     """Retiring ``ui/gui`` means qtgui must hear everything gui hears.
@@ -2241,6 +2249,8 @@ def test_unbridged_events_do_not_grow() -> None:
     missing wire, the second is a choice. The tool splits them for that reason.
     """
     unbridged, _declined = ui_contract.unheard_split(ui_contract.event_reach())
+    assert set(ui_contract.event_types()) >= FACE_EVENTS, "a face event was renamed"
+    unbridged = [name for name in unbridged if name not in FACE_EVENTS]
     assert len(unbridged) <= MAX_UNBRIDGED_EVENTS, (
         f"{len(unbridged)} Event type(s) reach no Qt skin, over the ceiling of "
         f"{MAX_UNBRIDGED_EVENTS} — a new event was published with no bridge "

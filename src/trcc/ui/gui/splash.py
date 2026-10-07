@@ -190,6 +190,13 @@ def run_bootstrap_with_splash(app: App) -> bool:
     worker.finished.connect(loop.quit)
     worker.start()
     loop.exec()
+    if worker.isRunning():
+        # A stop ends every event loop (``exit``), this one included, while
+        # the coldplug may still hold USB: let it finish before anything
+        # closes the App underneath it.
+        log.info("run_bootstrap_with_splash: stopped early — waiting for the "
+                 "coldplug to finish")
+        worker.wait()
 
     splash.close()
     splash.deleteLater()

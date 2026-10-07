@@ -2895,3 +2895,14 @@ class CommandBus(ABC):
     @abstractmethod
     def remote(self) -> bool:
         """True when a daemon runs the Commands, not this process."""
+
+    def on_app_gone(self, stopped: Callable[[], None],
+                    lost: Callable[[], None]) -> None:
+        """Call *stopped* if the App stops on purpose, *lost* if it dies.
+
+        At most one of them, once, on a background thread.  An App in this
+        process lives and dies with it, so by default there is nothing to
+        watch; ``AppProxy`` overrides this.
+        """
+        log.debug("on_app_gone: %s runs in this process — nothing to watch",
+                  type(self).__name__)

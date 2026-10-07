@@ -7,7 +7,10 @@
 - **TRCC now runs as one background App that every window and command
   shares.** Opening `trcc gui`, `trcc qtgui`, the API or any `trcc` command
   finds the running App or starts it, and all of them control the same panels.
-  Closing a window no longer stops the panels; `trcc kill` does. Set
+  Closing a window no longer stops the panels; `trcc kill` does, and closes
+  every open window, `trcc api` and `trcc shell` with it. If the App crashes,
+  each open window starts a new one and says so; a second crash within a
+  minute leaves it closed, and `trcc report` has the reason. Set
   `TRCC_DAEMON=0` to keep the old behaviour, where each process drives the
   panels itself. Windows is unchanged (Python there has no Unix sockets), and a
   command run as root never starts or joins the shared App.
@@ -155,6 +158,8 @@
   start such a program from the usual sign-in entry, so turning autostart on
   did nothing. TRCC now registers a sign-in task instead, as the Windows app
   does, and uninstalling removes it.
+- **A TRCC window showing "devices did not connect" now closes when you log
+  out.** That message held the window open until someone clicked it.
 - **A screen cast no longer fills the log.** Capturing the screen wrote up to
   six lines to the log for every frame, about 16 frames a second, which pushed
   everything else out of the file `trcc report` sends. Those lines now only

@@ -482,6 +482,18 @@ class SystemResumed(Event):
     """The OS just resumed from suspend.  Re-discover + reconnect."""
 
 
+@dataclass(frozen=True, slots=True)
+class AppStopping(Event):
+    """The App is stopping ON PURPOSE -- ``trcc kill``, SIGTERM, or a newer
+    version replacing it.  Quitting TRCC quits every open UI.
+
+    Written by the IPC server as the LAST line of every event stream, never
+    published on a bus: the queue the fan-out drains could still be holding it
+    when the sockets close.  Its absence is what tells a crash apart.  Read by
+    the face, through ``CommandBus.on_app_gone`` -- not by widgets.
+    """
+
+
 # =========================================================================
 # Bus
 # =========================================================================

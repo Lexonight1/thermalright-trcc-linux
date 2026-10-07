@@ -13,10 +13,11 @@ Lifecycle::
     trcc> display color 0402:3922 ff0000
     trcc> ^D            # or `exit`
 
-In daemon mode (``TRCC_DAEMON=1``) the cached App is the
-``AppProxy`` so every line round-trips to the daemon.  In default mode
-the App is in-process and reused across commands so handshakes don't
-repeat per invocation.
+The cached App is the shared one (an ``AppProxy``), so every line
+round-trips to it; with ``TRCC_DAEMON=0`` it is in-process and reused
+across commands so handshakes don't repeat per invocation.  When the shared
+App quits (``trcc kill``) the shell leaves too; when it dies, the next line
+starts a new one.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ import logging
 import os
 import shlex
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,7 +35,7 @@ from prompt_toolkit.completion import NestedCompleter
 from prompt_toolkit.history import FileHistory
 
 from . import config, device, display, led, system, theme
-from ._ctx import get_app
+from ._ctx import compose_app, get_app
 
 if TYPE_CHECKING:
     pass
@@ -108,11 +110,34 @@ def _run_typer_line(typer_app: typer.Typer, argv: list[str]) -> int:
         return 1
 
 
+class _AppWatch:
+    """How the shell's App went away, if it did -- set from the proxy's thread."""
+
+    def __init__(self) -> None:
+        log.debug("_AppWatch.__init__")
+        self.stopped = threading.Event()
+        self.lost = threading.Event()
+
+    def watch(self) -> None:
+        """Watch the App the shell dispatches on now."""
+        log.debug("_AppWatch.watch")
+        get_app().on_app_gone(self.stopped.set, self.lost.set)
+
+    def renew(self) -> None:
+        """After a crash: drop the dead App so the next line starts a new one."""
+        log.info("_AppWatch.renew: the App died — the next command starts one")
+        self.lost.clear()
+        get_app.cache_clear()
+        compose_app.cache_clear()
+        self.watch()
+
+
 def run_shell(typer_app: typer.Typer) -> int:
     """Launch the interactive shell.  Returns process exit code."""
     log.debug("run_shell: typer_app=%s", typer_app)
     # Warm the App so the first command isn't slowed by a fresh build.
-    _ = get_app()
+    watch = _AppWatch()
+    watch.watch()
 
     session: PromptSession[str] = PromptSession(
         history=FileHistory(str(_history_path())),
@@ -124,6 +149,13 @@ def run_shell(typer_app: typer.Typer) -> int:
     )
 
     while True:
+        if watch.stopped.is_set():
+            typer.echo("TRCC was stopped — leaving the shell.")
+            break
+        if watch.lost.is_set():
+            typer.echo("TRCC's background App stopped unexpectedly — the "
+                       "next command starts a new one.", err=True)
+            watch.renew()
         try:
             line = session.prompt(_PROMPT).strip()
         except (EOFError, KeyboardInterrupt):

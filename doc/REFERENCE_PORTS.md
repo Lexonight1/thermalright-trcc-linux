@@ -18,8 +18,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`Query`](#query) | 1 | 0 | 38 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 3 |
-| [`UserInterface`](#userinterface) | 1 | 9 | 5 |
-| [`_QtUI`](#_qtui) | 1 | 2 | 2 |
+| [`UserInterface`](#userinterface) | 1 | 11 | 5 |
+| [`_QtUI`](#_qtui) | 1 | 3 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 18 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -30,7 +30,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 1 |
-| [`CommandBus`](#commandbus) | 3 | 0 | 7 |
+| [`CommandBus`](#commandbus) | 3 | 1 | 7 |
 | [`Device`](#device) | 3 | 14 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
@@ -186,7 +186,7 @@ One face of the one app — CLI, API, GUI, qtgui, daemon.
 run() -> int
 ```
 
-**You inherit (9):** `bring_up` · `compose` · `dispatch` · `events` · `preflight` · `remote` · `start` · `stop` · `teardown`
+**You inherit (11):** `announce` · `bring_up` · `compose` · `dispatch` · `events` · `on_app_gone` · `preflight` · `remote` · `start` · `stop` · `teardown`
 
 **Implementations (5):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
 
@@ -202,7 +202,7 @@ Shared base for the two widget skins.  Intermediate — not registered.
 run() -> int
 ```
 
-**You inherit (2):** `compose` · `stop`
+**You inherit (3):** `announce` · `compose` · `stop`
 
 **Implementations (2):** `GuiUI` · `QtGuiUI`
 
@@ -374,6 +374,8 @@ dispatch(cmd: 'Command[_R]') -> _R
 events() -> EventBus
 remote() -> bool
 ```
+
+**You inherit (1):** `on_app_gone`
 
 **Implementations (7):** `ApiUI` · `App` · `AppProxy` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
 

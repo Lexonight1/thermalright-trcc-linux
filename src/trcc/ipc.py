@@ -62,7 +62,7 @@ from .core import events as _events_module
 from .core import results as _results_module
 from .core.commands import Command
 from .core.commands._base import Query
-from .core.events import Event, FrameSent
+from .core.events import AppStopping, Event, FrameSent
 from .core.logs import dispatch_origin, per_frame, recurring_warning
 from .core.models import IN_PROCESS_ONLY_KEY
 from .core.results import Result
@@ -624,6 +624,24 @@ class IPCServer:
                           exc_info=True)
             self._sock.close()
             self._sock = None
+        # Joined first: it re-reads ``_stop`` every 0.25 s, and a write it
+        # still has in flight must not interleave with the notice below.
+        fanout = self._fanout_thread
+        if fanout is not None and fanout is not threading.current_thread():
+            fanout.join(timeout=1.0)
+        with self._sub_lock:
+            subs, self._subscribers = self._subscribers, []
+        # The last line of every stream says WHY it ends, so a UI can tell a
+        # quit (close with it) from a crash (the stream just stops).
+        notice = json.dumps(encode_event(AppStopping())).encode() + b"\n"
+        for sub in subs:
+            self._write_or_evict(sub, notice)
+            sub.close()
+        if subs:
+            log.info("shutdown: told %d subscriber stream(s) the App is "
+                     "stopping, then closed them", len(subs))
+        # Last: ``trcc kill`` returns when this file is gone, so every UI has
+        # been told by then.
         path = self._bound_path
         if path is not None and path.exists():
             try:
@@ -631,12 +649,6 @@ class IPCServer:
             except OSError:
                 log.debug("shutdown: socket unlink failed", exc_info=True)
         self._bound_path = None
-        with self._sub_lock:
-            subs, self._subscribers = self._subscribers, []
-        for sub in subs:
-            sub.close()
-        if subs:
-            log.info("shutdown: closed %d subscriber stream(s)", len(subs))
         log.info("IPC server shut down")
 
     def _serve_client(self, client: socket.socket) -> None:

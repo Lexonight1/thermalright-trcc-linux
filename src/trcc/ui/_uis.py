@@ -208,20 +208,42 @@ class _QtUI(UserInterface):
         return build_qt_app(platform)
 
     def stop(self) -> None:
-        """Queue a quit for the Qt loop.
+        """Queue an exit for the Qt loop -- and for any loop nested in it.
 
-        Queued, not called: ``quit()`` is ignored unless ``exec()`` is running,
-        and a queued one is honoured the moment it starts.  One posted during
-        the splash's nested loop is ignored there (measured), so the coldplug
-        finishes and :meth:`UserInterface.start` reads the flag instead.
+        Queued, not called: it is honoured the moment a loop runs.  One that
+        lands before :meth:`_exec` ends whatever nested loop is up -- a modal,
+        the splash (which then waits out its coldplug) -- and
+        :meth:`UserInterface.start` reads the flag instead.
         """
-        from PySide6.QtCore import QTimer
+        from PySide6.QtCore import Q_ARG, QMetaObject, Qt
         from PySide6.QtWidgets import QApplication
         qapp = QApplication.instance()
-        log.info("%s.stop: queueing quit (qapp=%s)", type(self).__name__,
+        log.info("%s.stop: queueing exit (qapp=%s)", type(self).__name__,
                  qapp is not None)
         if qapp is not None:
-            QTimer.singleShot(0, qapp.quit)
+            # From any thread: the App's stop notice arrives on the proxy's
+            # watcher thread, where a QTimer would never fire.  ``exit``, not
+            # ``quit``: Qt 6 lets a window REFUSE a quit, and an open modal
+            # did -- "devices did not connect" stayed up and the face with it
+            # (driven 2026-10-07: quit ignored, exit ended it in 0.5 s).
+            QMetaObject.invokeMethod(qapp, "exit",
+                                     Qt.ConnectionType.QueuedConnection,
+                                     Q_ARG(int, 0))
+
+    def announce(self, text: str) -> None:
+        """Show *text* the way the window shows any error, once it is up.
+
+        Queued to the event loop: the window that displays it is built in
+        :meth:`run`, after this is called.
+        """
+        from functools import partial
+
+        from PySide6.QtCore import QTimer
+
+        from ..core.events import ErrorOccurred
+        log.warning("%s.announce: %s", type(self).__name__, text)
+        QTimer.singleShot(0, partial(self.events.publish,
+                                     ErrorOccurred(message=text, kind="app")))
 
     def _exec(self) -> int:
         """Run the Qt event loop to completion -- unless a stop came first."""
