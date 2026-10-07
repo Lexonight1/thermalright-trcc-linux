@@ -133,11 +133,13 @@ frame_log = per_frame(__name__)
 class DiscoverDevices(Command[DiscoverResult]):
     """List attached devices that match the product registry.
 
-    Also kicks off a per-resolution data install for each discovered
-    product the first time we see that resolution — so the GUI's theme
-    / web preview / mask grids aren't empty on first launch.  Subsequent
-    discoveries are no-ops because ``DataInstallService`` short-circuits
-    on already-populated dirs.
+    Installs NO data.  Discovery never handshakes, so all it knows of a
+    device is its registry row, and three rows still guess a size one USB id
+    cannot know (0402:3922, 87ad:70db, 87cd:70db).  It used to install for
+    that guess, without the variant library either: measured 2026-10-06, an
+    854x480 87ad:70db fetched 38.5 MB of 480x480 data ahead of its real
+    26 MB in the one-worker queue (#300 was the same shape).  ConnectDevice
+    installs for the handshake's resolution and variants, ~0.1 s later.
     """
 
     def execute(self, app: App) -> DiscoverResult:
@@ -147,7 +149,6 @@ class DiscoverDevices(Command[DiscoverResult]):
         # firmware quirks (bcdDevice isn't in the static registry).  (#228)
         app.remember_scan(live)
         products, units = [], []
-        seen_resolutions: set[tuple[int, int]] = set()
         for info in live:
             product = find_product(info.vid, info.pid)
             if product is not None:
@@ -156,18 +157,8 @@ class DiscoverDevices(Command[DiscoverResult]):
                 app.events.publish(DeviceDiscovered(
                     key=info.key, product_name=product.product,
                 ))
-                if product.native_resolution != (0, 0):
-                    seen_resolutions.add(product.native_resolution)
-        # One install pass per unique resolution, handed to the background
-        # runner: discovery must not wait on ~30 MB of archives, and the
-        # runner de-duplicates so ConnectDevice re-submitting the same panel
-        # costs nothing.  Grids fill in when ``DataInstalled`` lands.  (#275)
-        for resolution in seen_resolutions:
-            app.data_install_runner.submit(resolution)
-        log.info(
-            "DiscoverDevices: %d live, %d recognised, resolutions=%s",
-            len(live), len(products), sorted(seen_resolutions),
-        )
+        log.info("DiscoverDevices: %d live, %d recognised", len(live),
+                 len(products))
         return DiscoverResult(
             ok=True,
             message=f"{len(products)} device(s) found",
@@ -370,9 +361,9 @@ class ConnectDevice(Command[ConnectResult]):
                 )
 
         # Install theme/cloud/mask data for the HANDSHAKE-resolved resolution.
-        # Non-square bulk panels report native_resolution=(0,0) and only learn
-        # their real size here, so DiscoverDevices' static-resolution pass
-        # skipped them — they'd have no data on disk.  ensure_all installs BOTH
+        # This is the only install a device gets: DiscoverDevices never
+        # handshakes, so it cannot know the size or the variant library
+        # (2026-10-06).  ensure_all installs BOTH
         # orientations for non-square panels (so portrait themes/masks exist).
         #
         # SUBMITTED, not called: this is the port of legacy's

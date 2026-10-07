@@ -148,6 +148,12 @@
 
 ### Fixed
 
+- **First-run downloads fetch only your panel's own themes.** Finding a
+  device used to start downloading themes for the size its USB id usually has,
+  before the device had said its real size. For panels that share an id with
+  another size (an 854×480 panel on 87ad:70db, for one) that meant ~38 MB of
+  the wrong size first, ahead of the right ones. Downloads now start when the
+  device connects and reports its size.
 - **A Frozen Warframe panel that identifies as 49 is drawn at its real size.**
   The Windows app treats a USB-display (0416:5302) panel answering 49 as a
   Frozen Warframe: 320×240, turned like the other Warframe panels, colours sent

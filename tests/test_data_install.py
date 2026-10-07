@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from trcc.services.data_install import DataInstallService
 
 from .conftest import FakePlatform
@@ -84,8 +86,14 @@ def test_http_data_installer_implements_the_core_data_installer_port() -> None:
 # =========================================================================
 
 
+@pytest.mark.parametrize("vid,pid", [
+    (0x0416, 0x5302),   # (0, 0): one id, three panel sizes
+    (0x0402, 0x3922),   # guesses 320x320
+    (0x87AD, 0x70DB),   # guesses 480x480; an 854x480 panel shares the id
+    (0x87CD, 0x70DB),   # guesses 320x320
+])
 def test_discovery_installs_nothing_for_a_panel_it_cannot_identify(
-    tmp_home: Path, monkeypatch,
+    tmp_home: Path, monkeypatch, vid: int, pid: int,
 ) -> None:
     """``DiscoverDevices`` must not install for a resolution it GUESSED.
 
@@ -111,7 +119,7 @@ def test_discovery_installs_nothing_for_a_panel_it_cannot_identify(
     platform = FakePlatform(tmp_home)
     monkeypatch.setattr(
         platform, "scan_devices",
-        lambda: [DeviceInfo(vid=0x0416, pid=0x5302)],
+        lambda: [DeviceInfo(vid=vid, pid=pid)],
     )
     app = App(platform=platform)
 
@@ -125,14 +133,38 @@ def test_discovery_installs_nothing_for_a_panel_it_cannot_identify(
     result = app.dispatch(DiscoverDevices())
 
     assert result.ok is True
-    assert [prod.key for prod in result.products] == ["0416:5302"], (
+    assert [prod.key for prod in result.products] == [f"{vid:04x}:{pid:04x}"], (
         "the device must still be DISCOVERED — only the guessed install goes"
     )
     assert submitted == [], (
         f"discovery installed for a guessed resolution: {submitted}. "
-        f"0416:5302 spans 240x320 / 320x240 / 1280x480 and is identified by "
-        f"its PM byte, which discovery never reads (#300)."
+        f"Only the handshake knows the panel's size and variant library, and "
+        f"discovery never handshakes (#300)."
     )
+
+
+def test_a_discovered_then_connected_panel_installs_only_its_own_data(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """The measured case: an 854x480 87ad:70db, whose registry row guesses
+    480x480.  Discovery fetched 38.5 MB of 480x480 data ahead of the real
+    26 MB in the one-worker queue (2026-10-06).  After both steps, the ONLY
+    install asked for is the handshake's own."""
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice, DiscoverDevices
+
+    from .mock_platform import MockPlatform
+
+    spec = {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 11, "sub": 5}
+    app = App(platform=MockPlatform([spec], tmp_path, host_sensors=False))
+    submitted: list[tuple] = []
+    monkeypatch.setattr(app.data_install_runner, "submit",
+                        lambda *a, **k: submitted.append(a))
+
+    assert app.dispatch(DiscoverDevices()).ok
+    assert app.dispatch(ConnectDevice(key="87ad:70db")).ok
+
+    assert [args[0] for args in submitted] == [(854, 480)], submitted
 
 
 def test_an_undeclared_row_never_yields_a_zero_sized_profile() -> None:
