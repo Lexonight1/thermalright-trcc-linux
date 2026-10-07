@@ -64,6 +64,10 @@ def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -
         for hint in result.hints:
             typer.echo(f"  hint: {hint}")
         raise typer.Exit(code=1)
+    if result.product:
+        catalog = (f"  (catalog: {result.catalog_product})"
+                   if result.catalog_product not in ("", result.product) else "")
+        typer.echo(f"  device:     {result.product}{catalog}")
     if result.handshake:
         h = result.handshake
         typer.echo(f"  resolution: {h.resolution[0]}×{h.resolution[1]}")

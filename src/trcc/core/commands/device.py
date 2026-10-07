@@ -332,6 +332,7 @@ class ConnectDevice(Command[ConnectResult]):
         from dataclasses import replace as _dc_replace
 
         from ..variants import get_variant_override
+        catalog_product = device.info.product
         override = get_variant_override(
             vid, pid, handshake.pm_byte, handshake.sub_byte,
         )
@@ -422,10 +423,13 @@ class ConnectDevice(Command[ConnectResult]):
         app.events.publish(DeviceConnected(
             key=self.key, resolution=handshake.resolution,
         ))
+        log.info("ConnectDevice %s: %s %dx%d (catalog: %s)", self.key,
+                 device.info.product, w, h, catalog_product)
         return ConnectResult(
             ok=True, key=self.key,
-            message=f"Connected: {handshake.resolution}",
+            message=f"Connected: {device.info.product} {w}x{h}",
             handshake=handshake,
+            product=device.info.product, catalog_product=catalog_product,
         )
 
 

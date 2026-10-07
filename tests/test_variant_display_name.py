@@ -127,6 +127,37 @@ def test_a_frozen_warframe_se_says_so(tmp_path) -> None:
     assert app.devices["0416:5302"].info.product == "Frozen Warframe SE"
 
 
+def test_connect_says_which_cooler_it_found(tmp_path, cli_runner) -> None:
+    """`device list` promises that connect "names yours"; connect printed only
+    a resolution tuple, and the Result carried no name for any UI (#272)."""
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import _CliRenderer
+    from .mock_platform import MockPlatform
+
+    app = _app_with(tmp_path, vid="87ad", pid="70db", pm=5, sub=1)
+    result = app.dispatch(ConnectDevice(key="87ad:70db"))
+    assert (result.product, result.catalog_product) == (
+        "Mjolnir Vision", "GrandVision 360 AIO")
+    assert result.handshake is not None
+    w, h = result.handshake.resolution
+    assert result.message == f"Connected: Mjolnir Vision {w}x{h}"
+
+    _ctx.set_platform(MockPlatform(
+        [{"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
+        tmp_path / "cli"))
+    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    try:
+        out = cli_runner.invoke(cli, ["device", "connect", "87ad:70db"]).output
+    finally:
+        _ctx.get_app.cache_clear()
+        _ctx._platform_override = None
+        _ctx._renderer_override = None
+    assert "  device:     Mjolnir Vision  (catalog: GrandVision 360 AIO)" in out, out
+
+
 def test_the_report_names_the_cooler_its_own_probe_identified(tmp_path) -> None:
     """It printed "GrandVision 360 AIO" directly above ``PM=4 SUB=5`` (#272)."""
     from trcc.adapters.diagnostics.debug_report import _collect_devices

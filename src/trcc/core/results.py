@@ -68,6 +68,10 @@ class ConnectResult(Result):
     key: str = ""
     handshake: HandshakeResult | None = None
     led_handshake: LedHandshakeResult | None = None
+    # The cooler the handshake named, and the catalog's name for its USB id --
+    # one id covers many coolers, so the two differ for most of them (#272).
+    product: str = ""
+    catalog_product: str = ""
     # OS-correct guidance when ``ok`` is False (e.g. "run as administrator").
     # ``list[str]`` (not tuple) so it round-trips the reflective IPC encoder
     # as a JSON array with no decode coercion.
