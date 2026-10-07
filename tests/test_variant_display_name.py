@@ -109,6 +109,24 @@ def test_connecting_a_mjolnir_vision_names_it(tmp_path) -> None:
     assert app.devices["87ad:70db"].info.product == "Mjolnir Vision"
 
 
+def test_a_frozen_warframe_se_says_so(tmp_path) -> None:
+    """PM=58/SUB=0 called itself "USBDISPLAY" -- the registry's name for
+    0416:5302.  Three owners read it off the cooler: #295 (a Frozen Warframe
+    SE 360 ARGB), #228 and #150.  SUB=1 (A1LM26) has no owner yet."""
+    from trcc.core.commands import ConnectDevice
+
+    se = get_variant_override(0x0416, 0x5302, 58, 0)
+    other = get_variant_override(0x0416, 0x5302, 58, 1)
+    assert se is not None and other is not None
+    assert (se.button_image, se.display_name) == (
+        "A1FROZEN WARFRAME SE", "Frozen Warframe SE")
+    assert (other.button_image, other.display_name) == ("A1LM26", "")
+
+    app = _app_with(tmp_path, vid="0416", pid="5302", pm=58, sub=0)
+    assert app.dispatch(ConnectDevice(key="0416:5302")).ok
+    assert app.devices["0416:5302"].info.product == "Frozen Warframe SE"
+
+
 def test_the_report_names_the_cooler_its_own_probe_identified(tmp_path) -> None:
     """It printed "GrandVision 360 AIO" directly above ``PM=4 SUB=5`` (#272)."""
     from trcc.adapters.diagnostics.debug_report import _collect_devices
