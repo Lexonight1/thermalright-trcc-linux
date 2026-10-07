@@ -1,5 +1,79 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **A command run as root shares the App again, unless it was raised with
+  `sudo`, `run0`, `pkexec` or `doas`.** v9.10.5 sent every root process to its
+  own App, so on a root-only machine (Proxmox, a headless Pi) each one-shot
+  command blanked the panel when it exited, and a root systemd service's
+  clients could not reach it (#150, #246, #267). A root login or service now
+  finds or starts the App like any user; `sudo trcc system setup` still runs on
+  its own and leaves nothing behind. Root's socket is always `/root/.cache`, so
+  a service and an ssh session find each other.
+- **The sensor dashboard's FAN rows choose which fan the LCD shows** as CPUFAN,
+  GPUFAN, FAN1 and FAN2, as in the Windows app (#145). By default a fan whose
+  name says CPU, SSD/NVMe or SYS/pump takes that slot, then spinning fans fill
+  the rest; a GPU's own fan never fills a motherboard slot. The dashboard and
+  the panel used to choose differently.
+- **The gui's Activity list is your sensor dashboard**, custom panels
+  included, so anything the dashboard shows can be placed on the panel
+  (#223, #259, #310).
+- **`trcc display load-video` plays the file itself**, with the fit mode
+  applied live and changeable while it plays (#291). `--start`, `--end` and
+  `--rotation` still cut a clip into a Theme.zt at the panel's size and fit.
+- **Connecting names the cooler it found.** `trcc device connect` prints a
+  `device:` line, `trcc status` names each device, and the REST API gains
+  `GET /devices/{key}/state` (#272). The Python result field
+  `native_resolution` is now `catalog_resolution`, because it is the catalog's
+  guess for the USB id, not the panel's size.
+
+### Added
+
+- **Game mode**, from the Windows app: above a CPU load you choose, the panel
+  shows only the overlay on black, once a second, until the load drops. Every
+  window, `trcc display game` and the REST API can switch it.
+- **More sensors** (#259, #301, #310): GPU hot spot and memory temperature,
+  each CPU core (Intel) or CCD (AMD), each memory module ("DIMM n"), and the
+  board's voltages, read as the chip reports them.
+
+### Fixed
+
+- **Sensor names say what they measure** ("Radeon RX 7800 XT Temperature"),
+  each GPU is listed once instead of three times, and an AMD card is named
+  ("AMD Radeon RX 6800 XT") instead of by its BIOS part number (#301).
+- **Vendor themes' RAM, disk and network elements showed the wrong
+  readings**: our table of the Windows app's sensor codes had those rows in a
+  different order from the Windows app.
+- **Exporting a video theme to `.tr` refused** and pointed at `.zip`, which the
+  Windows app cannot open. It now carries the video as Theme.zt frames, as a
+  Windows export does.
+- **`.gif`, `.mkv` and `.avi` backgrounds could not be saved** in a theme.
+- **No "NVIDIA GPU present" warning** on machines without an NVIDIA card (#231).
+- **A 0416:5302 panel on firmware 4.07 that answers the normal handshake can
+  reconnect** after sleep or a stale USB handle; it was given the Frozen
+  Warframe SE's "never reconnect" rule and stayed blank (#283).
+- **A Frozen Warframe SE introduces itself by name** instead of "USBDISPLAY"
+  (#295).
+- **A serial number in a 36-byte reply is kept** (#302, thanks @1Nexus0).
+- **A SCSI panel that is unplugged or offlined on Linux is noticed** instead
+  of every frame counting as sent (#254). (macOS/BSD too; Windows still to do.)
+- **Reconnecting opened the USB device twice.**
+- **macOS: the login agent is rewritten only when it changed**, never reloaded
+  on every launch, and runs this install's Python instead of whichever `trcc`
+  is on PATH (PR #303 found the problem).
+- **Windows: `trcc` is found in a new terminal right after installing**,
+  instead of only after signing out (#218).
+- **A sensor with no Windows-app code survives `config1.dc`**: board probes,
+  voltages and DIMMs were dropped from user masks and exports.
+- **The cloud theme tab no longer runs ffmpeg while drawing**, which froze it
+  briefly on every visit (#264).
+- **Install guides**: Ubuntu 24.04 / Mint 22 use the legacy .deb; Arch, SteamOS
+  and openSUSE package names corrected (#293, #309, #316).
+- The v9.10.5 entry below said no owner of a SCSI FBL 51 panel had reported
+  in; @PourrezJ had, with the same fix (#313).
+
 ## v9.10.5
 
 ### Breaking
