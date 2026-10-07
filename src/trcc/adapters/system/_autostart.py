@@ -80,6 +80,36 @@ class NoopAutostart(AutostartManager):
 
 _AUTOSTART_FILENAME = "trcc.desktop"
 
+#: Login entries earlier versions wrote under other names.  A name is an
+#: entry's identity, and nothing looked for these, so an upgraded user kept a
+#: second login entry that turning autostart off could not remove: legacy's
+#: ``trcc-linux.desktop`` (Exec ``trcc gui --resume``, ``-m trcc.cli``, or the
+#: oldest ``trcc --last-one``), next/'s ``trcc-next.desktop``, and legacy's
+#: Windows Run value ``TRCC Linux``.  Removed when they are ours -- never
+#: migrated: the current entry already holds the user's latest choice.
+_RETIRED_DESKTOP_FILES = ("trcc-linux.desktop", "trcc-next.desktop")
+_RETIRED_RUN_VALUES = ("TRCC Linux",)
+_OUR_PROGRAMS = frozenset({"trcc", "trcc.exe", "trcc-gui.exe", "trcc-next"})
+
+
+def runs_trcc(command: str) -> bool:
+    """Whether *command* (an ``Exec=`` line or a Run value) starts TRCC.
+
+    The ownership test for an entry under a retired name: a user's own entry
+    that happens to share the name is left alone.  The Windows Run value
+    quotes its program, so a quoted head is read whole.
+    """
+    if command.startswith('"') and (end := command.find('"', 1)) != -1:
+        program, rest = command[1:end], command[end + 1:].split()
+    else:
+        program, *rest = command.split() or [""]
+    name = re.split(r"[\\/]", program)[-1].lower()
+    module = next((rest[i + 1] for i, word in enumerate(rest[:-1])
+                   if word == "-m"), "")
+    ours = name in _OUR_PROGRAMS or module == "trcc" or module.startswith("trcc.")
+    log.debug("runs_trcc: %r -> %s", command, ours)
+    return ours
+
 _AUTOSTART_TEMPLATE = """\
 [Desktop Entry]
 Type=Application
@@ -102,9 +132,11 @@ class XdgDesktopAutostart(AutostartManager):
     XDG spec is identical on each).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config_home: Path | None = None) -> None:
+        """*config_home* stands in for ``$XDG_CONFIG_HOME`` -- a dev platform
+        keeps its entry out of the user's real login items with it."""
         xdg = os.environ.get("XDG_CONFIG_HOME")
-        base = Path(xdg) if xdg else Path.home() / ".config"
+        base = config_home or (Path(xdg) if xdg else Path.home() / ".config")
         self._path = base / "autostart" / _AUTOSTART_FILENAME
         log.info("XdgDesktopAutostart: desktop file path = %s", self._path)
 
@@ -137,10 +169,29 @@ class XdgDesktopAutostart(AutostartManager):
                   self._path)
         return None
 
+    def _retire_old_entries(self) -> None:
+        """Remove the login entries earlier versions wrote, when they are ours."""
+        for name in _RETIRED_DESKTOP_FILES:
+            old = self._path.parent / name
+            if not old.is_file():
+                continue
+            text = old.read_text(encoding="utf-8", errors="replace")
+            exec_cmd = next((line[len("Exec="):] for line in text.splitlines()
+                             if line.startswith("Exec=")), "")
+            # Every entry TRCC ever wrote carries the GNOME key; a copy of the
+            # menu entry made by a tweak tool does not.
+            if "X-GNOME-Autostart-enabled=" in text and runs_trcc(exec_cmd):
+                old.unlink()
+                log.info("XdgDesktopAutostart: removed the old entry %s", old)
+            else:
+                log.warning("XdgDesktopAutostart: %s is not one TRCC wrote — "
+                            "left alone", old)
+
     def enable(self, target: str | None = None) -> None:
         target = target or DEFAULT_AUTOSTART_TARGET
         log.info("XdgDesktopAutostart.enable: writing %s (target=%s)",
                  self._path, target)
+        self._retire_old_entries()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(self._render(target), encoding="utf-8")
         self._path.chmod(0o644)
@@ -148,6 +199,7 @@ class XdgDesktopAutostart(AutostartManager):
 
     def disable(self) -> None:
         log.info("XdgDesktopAutostart.disable: removing %s", self._path)
+        self._retire_old_entries()
         if self._path.exists():
             self._path.unlink()
             log.info("Autostart disabled: %s", self._path)
@@ -156,6 +208,7 @@ class XdgDesktopAutostart(AutostartManager):
 
     def refresh(self) -> None:
         """Re-render the .desktop file if present (picks up a new Exec path)."""
+        self._retire_old_entries()
         if self._path.exists():
             installed = self.installed_target()
             log.info("XdgDesktopAutostart.refresh: re-rendering %s (target=%s)",
@@ -428,11 +481,36 @@ class WindowsAutostart(AutostartManager):
             return False
         return stored == self._command_for(target_from_command(stored))
 
+    def retire_old_values(self) -> None:
+        """Remove the Run values earlier versions wrote, when they are ours."""
+        if self._registry is None:
+            log.debug("WindowsAutostart.retire_old_values: no winreg")
+            return
+        for name in _RETIRED_RUN_VALUES:
+            try:
+                with self._open_key(write=False) as key:
+                    stored, _ = self._registry.QueryValueEx(key, name)
+            except OSError:
+                log.debug("WindowsAutostart.retire_old_values: %s absent", name)
+                continue
+            if not runs_trcc(str(stored)):
+                log.warning("WindowsAutostart: Run value %r is not one TRCC "
+                            "wrote — left alone", name)
+                continue
+            try:
+                with self._open_key(write=True) as key:
+                    self._registry.DeleteValue(key, name)
+            except OSError:
+                log.exception("WindowsAutostart: could not remove %r", name)
+            else:
+                log.info("WindowsAutostart: removed the old Run value %r", name)
+
     def enable(self, target: str | None = None) -> None:
         log.info("enable: target=%s", target)
         if self._registry is None:
             log.debug("WindowsAutostart.enable: winreg unavailable; no-op")
             return
+        self.retire_old_values()
         with self._open_key(write=True) as key:
             self._registry.SetValueEx(
                 key, self._value_name, 0,
@@ -445,6 +523,7 @@ class WindowsAutostart(AutostartManager):
         log.info("disable: called")
         if self._registry is None:
             return
+        self.retire_old_values()
         try:
             with self._open_key(write=True) as key:
                 self._registry.DeleteValue(key, self._value_name)
@@ -468,6 +547,7 @@ class WindowsAutostart(AutostartManager):
         Only rewrites when a value is already present — like every other
         ``refresh``, it must never enable autostart nobody asked for.
         """
+        self.retire_old_values()
         if not self._value_present():
             log.debug("WindowsAutostart.refresh: no entry — nothing to refresh")
             return
@@ -688,6 +768,7 @@ class WindowsTaskAutostart(AutostartManager):
         for the same target.  Neither present means autostart was never
         chosen, and refresh must not choose it for them.
         """
+        self._legacy.retire_old_values()
         target = self.installed_target()
         if target is None and self._legacy._stored_value() is None:
             log.debug("WindowsTaskAutostart.refresh: no task, no Run entry — "

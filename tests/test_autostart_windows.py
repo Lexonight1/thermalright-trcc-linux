@@ -532,3 +532,45 @@ def test_the_frozen_entry_passes_its_arguments_on(
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout.strip().splitlines()[-1]) == dispatched
+
+
+_RUN = ("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run")
+
+
+@pytest.mark.parametrize("action", ["enable", "disable", "refresh"])
+def test_the_legacy_run_value_trcc_wrote_is_removed(action: str) -> None:
+    """Legacy wrote 'TRCC Linux' = "<exe>" gui --resume; nothing removed it.
+
+    MUTATION CHECK: skip the retirement and the value stays.
+    """
+    reg = _FakeWinreg()
+    reg.store[_RUN] = {"TRCC Linux": '"C:\\Users\\u\\AppData\\trcc.exe" gui --resume'}
+    autostart = WindowsAutostart(command='"C:\\trcc.exe" gui', registry=reg)
+
+    getattr(autostart, action)()
+
+    assert "TRCC Linux" not in reg.store[_RUN]
+
+
+def test_a_run_value_of_that_name_for_another_program_stays() -> None:
+    reg = _FakeWinreg()
+    reg.store[_RUN] = {"TRCC Linux": '"C:\\Other\\app.exe"'}
+    autostart = WindowsAutostart(command='"C:\\trcc.exe" gui', registry=reg)
+
+    autostart.disable()
+
+    assert reg.store[_RUN] == {"TRCC Linux": '"C:\\Other\\app.exe"'}
+
+
+def test_the_installer_build_retires_it_even_with_nothing_to_refresh() -> None:
+    """The task class returns early when there is no task and no TRCCNext
+    value -- the one case where only the legacy value is left.
+
+    MUTATION CHECK: drop the retirement from that refresh and it stays.
+    """
+    autostart, _schtasks, reg = _task_autostart()
+    _run_key(reg)["TRCC Linux"] = '"C:\\Program Files\\TRCC\\trcc-gui.exe" gui --resume'
+
+    autostart.refresh()
+
+    assert "TRCC Linux" not in _run_key(reg)

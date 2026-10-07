@@ -160,6 +160,12 @@
 
 ### Fixed
 
+- **Upgrading no longer leaves a second login entry behind.** Older versions
+  started TRCC at login from `trcc-linux.desktop` or `trcc-next.desktop`
+  (and, on Windows, a "TRCC Linux" startup entry), and the current version
+  never looked at them, so turning autostart off left TRCC starting anyway.
+  TRCC now removes those entries when it wrote them, and leaves alone any
+  entry of the same name that it did not write.
 - **PA120 and LF10 coolers: the zone switch is labelled "Select all".** Both
   windows called it a carousel (the Qt window also offered a rotation
   interval), but on those coolers it makes a change reach every zone and

@@ -228,3 +228,73 @@ def test_a_quoted_program_does_not_shift_the_target_position(
 def test_what_we_write_parses_back_to_what_we_wrote(target: str) -> None:
     """Round trip — the property the whole design rests on."""
     assert target_from_argv(autostart_argv(target)) == target
+
+
+# ── Entries earlier versions wrote under other names ─────────────────────
+
+def _entry(exec_cmd: str, *, gnome_key: bool = True) -> str:
+    return ("[Desktop Entry]\nType=Application\nName=TRCC Linux\n"
+            f"Exec={exec_cmd}\n"
+            + ("X-GNOME-Autostart-enabled=true\n" if gnome_key else ""))
+
+
+_OURS = [
+    ("trcc-linux.desktop", "/usr/bin/trcc gui --resume"),
+    ("trcc-linux.desktop", "env PYTHONPATH=/src /usr/bin/python3 -m trcc.cli gui --resume"),
+    ("trcc-linux.desktop", "/usr/bin/trcc --last-one"),
+    ("trcc-next.desktop", "/home/u/.local/bin/trcc-next gui"),
+    ("trcc-next.desktop", "/usr/bin/python3 -m trcc.next gui"),
+]
+
+
+@pytest.mark.parametrize("action", ["enable", "disable", "refresh"])
+@pytest.mark.parametrize(("name", "exec_cmd"), _OURS,
+                         ids=[f"{n}:{e.split()[0].rsplit('/', 1)[-1]}-{i}"
+                              for i, (n, e) in enumerate(_OURS)])
+def test_an_old_entry_trcc_wrote_is_removed(
+    tmp_path: Path, name: str, exec_cmd: str, action: str,
+) -> None:
+    """An upgraded user kept a second login entry that turning autostart
+    off could not remove -- nothing looked for these names.
+
+    MUTATION CHECK: skip the retirement and the old file stays.
+    """
+    auto = XdgDesktopAutostart(config_home=tmp_path)
+    old = tmp_path / "autostart" / name
+    old.parent.mkdir(parents=True)
+    old.write_text(_entry(exec_cmd), encoding="utf-8")
+
+    getattr(auto, action)()
+
+    assert not old.exists()
+
+
+@pytest.mark.parametrize("entry", [
+    _entry("/usr/bin/trcc gui --resume", gnome_key=False),   # a tweak tool's copy
+    _entry("/opt/other/app"),                                # someone else's program
+], ids=["no_gnome_key", "not_trcc"])
+def test_an_old_name_that_is_not_ours_is_left_alone(tmp_path: Path, entry: str) -> None:
+    auto = XdgDesktopAutostart(config_home=tmp_path)
+    old = tmp_path / "autostart" / "trcc-linux.desktop"
+    old.parent.mkdir(parents=True)
+    old.write_text(entry, encoding="utf-8")
+
+    auto.refresh()
+
+    assert old.read_text(encoding="utf-8") == entry
+
+
+def test_refresh_removes_an_old_entry_without_turning_autostart_on(
+    tmp_path: Path,
+) -> None:
+    """No current entry means the user's latest choice is OFF; carrying the
+    old one over would switch it back on."""
+    auto = XdgDesktopAutostart(config_home=tmp_path)
+    old = tmp_path / "autostart" / "trcc-linux.desktop"
+    old.parent.mkdir(parents=True)
+    old.write_text(_entry("/usr/bin/trcc gui --resume"), encoding="utf-8")
+
+    auto.refresh()
+
+    assert not old.exists()
+    assert not auto.is_enabled()

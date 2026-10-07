@@ -72,9 +72,8 @@ Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environmen
     Check: NeedsAddPath('{app}')
 
 [UninstallDelete]
-; Clean up autostart entry and app directory
-Type: files; Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\trcc-linux.desktop"
-Type: files; Name: "{userstartup}\trcc-linux.desktop"
+; The app directory.  (Autostart is removed in CurUninstallStepChanged: the
+; sign-in task and the Run values.  Nothing ever wrote to the Startup folder.)
 Type: filesandordirs; Name: "{app}"
 ; Remove user config and data (~/.trcc)
 ; ~/.trcc-user is intentionally kept — contains user-created custom content
