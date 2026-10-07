@@ -441,22 +441,25 @@ def status(
         # scanned USB -- a control transfer to every panel it was streaming
         # to -- and announced each device to every open window.
         attached = app_obj.dispatch(ListDevices()).devices
-        units = [(e.key, e.kind == Kind.LED.value) for e in attached]
+        units = [(e.key, e.kind == Kind.LED.value, e.product) for e in attached]
     else:
         # In-process, nothing is attached until a scan, and no other process
-        # is driving the panels.
-        units = [(k, p.kind == Kind.LED)
+        # is driving the panels.  No handshake either, so the name is the
+        # catalog's guess for the USB id -- and says so (#176).
+        units = [(k, p.kind == Kind.LED, f"{p.product} (catalog)")
                  for k, p in app_obj.dispatch(DiscoverDevices()).units()]
     log.info("cli status: %d device(s)", len(units))
 
-    lcd_keys = [k for k, is_led in units if not is_led]
-    led_keys = [k for k, is_led in units if is_led]
+    names = {k: name for k, _, name in units}
+    lcd_keys = [k for k, is_led, _ in units if not is_led]
+    led_keys = [k for k, is_led, _ in units if is_led]
     lcd_snaps = [app_obj.dispatch(LcdSnapshot(key=k)) for k in lcd_keys]
     led_snaps = [app_obj.dispatch(LedSnapshot(key=k)) for k in led_keys]
 
     if json_output:
         payload = {
             "app": dataclasses.asdict(app_snap),
+            "names": names,
             "lcd_devices": [dataclasses.asdict(s) for s in lcd_snaps],
             "led_devices": [dataclasses.asdict(s) for s in led_snaps],
         }
@@ -477,6 +480,7 @@ def status(
     for i, s in enumerate(lcd_snaps):
         typer.echo("")
         typer.echo(f"─ LCD {i} [{lcd_keys[i]}] ─────────────────────────")
+        typer.echo(f"  device:           {names[lcd_keys[i]]}")
         typer.echo(f"  orientation:      {s.orientation}")
         typer.echo(f"  brightness:       {s.brightness}%")
         typer.echo(f"  current theme:    {s.current_theme}")
@@ -488,6 +492,7 @@ def status(
     for i, s in enumerate(led_snaps):
         typer.echo("")
         typer.echo(f"─ LED {i} [{led_keys[i]}] ─────────────────────────")
+        typer.echo(f"  device:      {names[led_keys[i]]}")
         typer.echo(f"  mode:        {s.mode}")
         typer.echo(
             f"  color:       #{s.color[0]:02x}{s.color[1]:02x}{s.color[2]:02x}",

@@ -91,6 +91,32 @@ def test_status_reads_the_shared_app_and_scans_only_in_process(
     assert other not in bus.sent
 
 
+@pytest.mark.parametrize("remote", [True, False], ids=["shared_app", "in_process"])
+def test_status_names_each_device(
+    cli_runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    remote: bool,
+) -> None:
+    """The API's status named each device; the CLI's named none.  The shared
+    App knows the cooler its handshake identified; in-process nothing has
+    handshaken, so the catalog's guess is shown and labelled as one."""
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.cli import main as cli_main
+
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
+                           tmp_path))
+    if remote:
+        assert app.dispatch(ConnectDevice(key="87ad:70db")).ok
+    monkeypatch.setattr(cli_main, "get_app", lambda: _Watched(app, remote))
+
+    out = cli_runner.invoke(_app(), ["status"]).output
+
+    name = "Mjolnir Vision" if remote else "GrandVision 360 AIO (catalog)"
+    assert f"  device:           {name}" in out.splitlines(), out
+
+
 def test_gui_help(cli_runner: CliRunner, cli_app) -> None:
     """``gui --help`` reaches the typer router without actually
     launching Qt — proves the import path resolves."""
