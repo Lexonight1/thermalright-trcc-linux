@@ -1016,20 +1016,23 @@ class BuildPreview(Query[PreviewResult]):
             return PreviewResult(ok=False, key=self.key, message=why)
 
         theme = app.active_themes.get(self.key)
-        if theme is None:
-            # No theme renders here — but a SendImage push may own the panel,
-            # and then its frame IS the preview (#306).
-            pushed = _rendered_surface(app, self.key)
-            if pushed is None:
-                frame_log.debug("BuildPreview: %s has no active theme", self.key)
-                return PreviewResult(
-                    ok=True, key=self.key,
-                    message="No active theme — nothing to preview",
-                )
-            frame_log.debug("BuildPreview: %s has no active theme — previewing "
-                      "the pushed image", self.key)
+        theme_name = theme.name if theme is not None else ""
+        # The frame the panel last got IS the preview, whatever made it: the
+        # theme, a screen cast, a stream, a pushed image (#306).  Re-rendering
+        # the theme instead showed the theme while a cast owned the glass.
+        # Every change that alters the picture drops this frame
+        # (``_invalidate_scene``), and then the theme is rendered below.
+        if _rendered_surface(app, self.key) is not None:
+            frame_log.debug("BuildPreview: %s previews the frame it was sent",
+                            self.key)
             return self._finish(app, partial(_rendered_surface, app, self.key),
-                                "")
+                                theme_name)
+        if theme is None:
+            frame_log.debug("BuildPreview: %s has no active theme", self.key)
+            return PreviewResult(
+                ok=True, key=self.key,
+                message="No active theme — nothing to preview",
+            )
 
         # Same personalization the wire path applies (RenderAndSend, and
         # SaveTheme when it snapshots the thumbnail): sources deliver °C and
@@ -1051,9 +1054,10 @@ class BuildPreview(Query[PreviewResult]):
                 theme_name: str) -> PreviewResult:
         """Build the surface, then encode + sample it into the Result.
 
-        One tail for both sources — the active theme's render and a pushed
-        image — so they cannot answer in different shapes.  An empty
-        *theme_name* is the pushed image.
+        One tail for both sources — the frame the panel was sent and the
+        active theme's render — so they cannot answer in different shapes.
+        An empty *theme_name* is a frame with no theme under it (a pushed
+        image).
         """
         label = theme_name or "the pushed image"
         frame_log.debug("BuildPreview %s: finishing a preview of %s", self.key, label)

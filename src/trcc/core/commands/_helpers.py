@@ -341,9 +341,9 @@ def _rendered_surface(app: App, key: str) -> Any | None:
 
     ``_invalidate_scene``'s sibling, and the same seam for the same reason:
     with no Renderer attached nothing was ever rendered, and ``app.display``
-    would raise rather than answer.
+    would raise rather than answer.  Asked on every preview, so per-frame.
     """
-    log.debug("_rendered_surface: key=%s", key)
+    frame_log.debug("_rendered_surface: key=%s", key)
     if app._renderer is None:  # pyright: ignore[reportPrivateUsage]
         return None
     return app.display.rendered_surface(key)

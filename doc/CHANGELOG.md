@@ -160,6 +160,13 @@
 - **A full-screen cast costs a quarter less per frame.** Each captured frame
   was copied in full once more than needed before being shrunk to the panel's
   size: 8.3 ms per 1920x1080 frame, now 6.2 ms.
+- **The preview shows what the panel shows, in every window and command.**
+  During a screen cast or a web stream, the REST API's live preview,
+  `GET /preview` and `trcc display test-lcd` drew the theme underneath while
+  the panel showed the screen. They now show the frame the panel was sent,
+  as `trcc gui` and `trcc qtgui` already did, and only draw the theme when no
+  frame has gone out since the last change. A preview of a still theme also
+  costs about 40% less (0.8 ms, down from 1.4).
 - **A screen cast on Wayland no longer converts frames it throws away.** The
   screen arrives up to 60 times a second and the cast uses about 17. Every
   frame was converted to RGB and copied in full before most were dropped. Now

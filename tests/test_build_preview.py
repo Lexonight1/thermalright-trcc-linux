@@ -25,6 +25,8 @@ from trcc.core.commands import (
     SendColor,
     SendFrame,
     SendImage,
+    SendScreencastFrame,
+    SetBrightness,
     SetLedBrightness,
     SetLedColors,
     SetLedMode,
@@ -34,7 +36,7 @@ from trcc.core.commands import (
 )
 from trcc.core.events import SensorsUpdated
 from trcc.core.led_models import LEDMode
-from trcc.core.models import Theme
+from trcc.core.models import RawFrame, Theme
 from trcc.services.display import DisplayService
 from trcc.services.media import Playback
 
@@ -276,6 +278,54 @@ def test_the_preview_shows_the_pushed_image(app: App, tmp_path: Path) -> None:
     assert r.theme_name == ""
     assert r.message == "Preview 854x480 of the pushed image"
     assert {px for row in r.pixels for px in row} == {_BLUE}
+
+
+def test_the_preview_shows_the_cast_not_the_theme_under_it(
+    app: App, tmp_path: Path,
+) -> None:
+    """A screen cast and a web stream both send through ``SendScreencastFrame``
+    with the theme still active underneath.  The preview re-rendered that
+    theme, so the API stream, ``GET /preview`` and ``display test-lcd``
+    showed the theme while the glass showed the screen.
+
+    MUTATION CHECK: re-render the theme whenever one is active and this
+    reads red.
+    """
+    assert app.dispatch(LoadImage(key=_KEY, path=_png(tmp_path, "r.png", _RED))).ok
+    screen = RawFrame(data=bytes(_BLUE) * (64 * 48), width=64, height=48)
+    assert app.dispatch(SendScreencastFrame(key=_KEY, frame=screen)).ok
+
+    r = app.dispatch(BuildPreview(key=_KEY, sample_cols=8))
+
+    assert r.ok is True
+    assert r.theme_name == "image:r"
+    assert {px for row in r.pixels for px in row} == {_BLUE}
+
+
+def test_a_change_made_while_the_panel_is_lost_shows_in_the_preview(
+    app: App, tmp_path: Path,
+) -> None:
+    """Nothing is built for a lost panel, so the frame it was last sent goes
+    stale the moment a setting changes; the preview must show the change.
+    (A theme LOAD builds its frame even then, so it is not the case to test.)
+
+    MUTATION CHECK: make ``DisplayService.invalidate`` keep the scene and the
+    preview stays at full brightness.
+    """
+    assert app.dispatch(LoadImage(key=_KEY, path=_png(tmp_path, "r.png", _RED))).ok
+    assert app.dispatch(RenderAndSend(key=_KEY)).ok
+    device = app.devices[_KEY]
+    device._transport.close()             # the cable is pulled
+    app.note_lost(_KEY)
+    assert not device.is_connected
+    assert not app.dispatch(RenderAndSend(key=_KEY)).ok, "precondition: lost"
+
+    assert app.dispatch(SetBrightness(key=_KEY, percent=50)).ok
+    r = app.dispatch(BuildPreview(key=_KEY, sample_cols=8))
+
+    assert r.ok is True
+    reds = {px[0] for row in r.pixels for px in row}
+    assert reds and max(reds) < 200, reds
 
 
 def test_the_next_theme_load_takes_the_panel_back(
