@@ -626,8 +626,12 @@ class IPCServer:
             self._sock = None
         # Joined first: it re-reads ``_stop`` every 0.25 s, and a write it
         # still has in flight must not interleave with the notice below.
+        # Alive only: ``_ensure_fanout`` assigns the thread a moment before it
+        # starts it, and joining one not yet started raises.  One that starts
+        # after this sees ``_stop`` and returns before writing anything.
         fanout = self._fanout_thread
-        if fanout is not None and fanout is not threading.current_thread():
+        if (fanout is not None and fanout.is_alive()
+                and fanout is not threading.current_thread()):
             fanout.join(timeout=1.0)
         with self._sub_lock:
             subs, self._subscribers = self._subscribers, []
