@@ -49,6 +49,7 @@ from ...core.commands import (
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
+    SetGameMode,
     SetMaskPosition,
     SetMaskVisible,
     SetMediaPlayer,
@@ -76,6 +77,7 @@ from ...core.results import (
     BootAnimationResult,
     BrightnessResult,
     FitModeResult,
+    GameModeResult,
     KeepaliveResult,
     LcdSnapshotResult,
     LoopVideoResult,
@@ -121,6 +123,7 @@ from .schemas import (
     CreateThemeResponse,
     ExportVideoRequest,
     FitModeRequest,
+    GameModeRequest,
     KeepaliveRequest,
     LoadVideoRequest,
     LoopVideoRequest,
@@ -333,6 +336,21 @@ def set_split_mode(key: str, body: SplitModeRequest,
     )
     result = request.app.state.trcc.dispatch(
         SetSplitMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/game")
+def set_game_mode(key: str, body: GameModeRequest,
+                  request: Request) -> GameModeResult:
+    """Switch game mode and/or set its CPU threshold."""
+    log.info(
+        "api POST /devices/{key}/display/game: key=%s enabled=%s threshold=%s",
+        key, body.enabled, body.threshold,
+    )
+    result = request.app.state.trcc.dispatch(
+        SetGameMode(key=key, enabled=body.enabled, threshold=body.threshold),
     )
     http_error_if_failed(result)
     return result

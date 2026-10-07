@@ -661,6 +661,35 @@ def test_display_snapshot(api_client: TestClient) -> None:
     assert body["key"] == "0402:3922"
 
 
+@pytest.mark.parametrize("body,expected", [
+    ({"enabled": True, "threshold": 60}, (True, 60)),
+    ({"threshold": 40}, (False, 40)),
+])
+def test_display_game_sets_either_half(
+    api_client: TestClient, body: dict, expected: tuple[bool, int],
+) -> None:
+    resp = api_client.post("/devices/0402:3922/display/game", json=body)
+
+    assert resp.status_code == 200
+    assert (resp.json()["enabled"], resp.json()["threshold"]) == expected
+    snap = api_client.get("/devices/0402:3922/display/snapshot").json()
+    assert (snap["game_enabled"], snap["game_threshold"]) == expected
+
+
+@pytest.mark.parametrize("body,status", [
+    ({"threshold": 100}, 422),       # the schema holds the two digits
+    ({}, 400),                       # the Command refuses an empty change
+])
+def test_display_game_refuses_what_it_cannot_send(
+    api_client: TestClient, body: dict, status: int,
+) -> None:
+    resp = api_client.post("/devices/0402:3922/display/game", json=body)
+
+    assert resp.status_code == status
+    snap = api_client.get("/devices/0402:3922/display/snapshot").json()
+    assert (snap["game_enabled"], snap["game_threshold"]) == (False, 75)
+
+
 def test_display_restore_theme_no_persisted(api_client: TestClient) -> None:
     """RestoreDeviceState with nothing persisted AND no themes installed
     returns a 400 from ``http_error_if_failed`` (Result.ok=False —

@@ -377,6 +377,70 @@ def test_display_split_mode_persists(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+@pytest.mark.parametrize("args,expected", [
+    (["on", "--threshold", "60"], (True, 60)),
+    (["--threshold", "40"], (False, 40)),
+    (["on"], (True, 75)),
+])
+def test_display_game_sets_either_half(
+    cli_runner: CliRunner, cli_app, args: list[str],
+    expected: tuple[bool, int],
+) -> None:
+    """The switch and the threshold are separate controls in the C#; the
+    CLI can send either alone, and the snapshot prints what was saved."""
+    result = cli_runner.invoke(_app(), ["display", "game", "0402:3922", *args])
+    assert result.exit_code == 0, result.output
+    s = cli_app.settings.for_device("0402:3922")
+    assert (s.game_enabled, s.game_threshold) == expected
+
+    shown = cli_runner.invoke(_app(), ["display", "snapshot", "0402:3922"])
+    on, threshold = expected
+    phrase = f"on (CPU > {threshold}%)" if on else "off"
+    assert f"  game_mode        {phrase}" in shown.output.splitlines()
+
+
+def test_status_says_whether_game_mode_is_on(
+    tmp_path: Path, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``trcc status`` lists each panel's game mode: a panel that blacks out
+    under load is otherwise a mystery in a pasted status."""
+    from trcc.app import App
+    from trcc.ui.cli import _ctx
+
+    from .conftest import _CliRenderer, _reset_cli_ctx
+    from .mock_platform import MockPlatform
+
+    monkeypatch.setattr(App, "add_task", lambda self, task: None)
+    _ctx.set_platform(MockPlatform(
+        [{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path))
+    _ctx.set_renderer(_CliRenderer())          # type: ignore[arg-type]
+    try:
+        assert cli_runner.invoke(_app(), [
+            "display", "game", "0402:3922", "on", "--threshold", "60",
+        ]).exit_code == 0
+        status = cli_runner.invoke(_app(), ["status"]).output
+    finally:
+        _reset_cli_ctx()
+
+    assert "  game mode:        on (CPU > 60%)" in status.splitlines()
+
+
+@pytest.mark.parametrize("args,code", [
+    ([], 1),                         # the Command: nothing to set
+    (["maybe"], 2),                  # usage: not on/off
+    (["--threshold", "100"], 2),     # usage: the C#'s box holds two digits
+])
+def test_display_game_refuses_what_it_cannot_send(
+    cli_runner: CliRunner, cli_app, args: list[str], code: int,
+) -> None:
+    """Refused, nothing saved -- a malformed line as a usage error, before
+    anything is dispatched."""
+    result = cli_runner.invoke(_app(), ["display", "game", "0402:3922", *args])
+    assert result.exit_code == code, result.output
+    s = cli_app.settings.for_device("0402:3922")
+    assert (s.game_enabled, s.game_threshold) == (False, 75)
+
+
 def test_display_stop_video_idempotent(cli_runner: CliRunner, cli_app) -> None:
     """``stop-video`` is idempotent — succeeds even with nothing playing."""
     del cli_app

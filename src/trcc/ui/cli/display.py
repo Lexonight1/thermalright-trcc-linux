@@ -39,6 +39,7 @@ from ...core.commands import (
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
+    SetGameMode,
     SetMaskPosition,
     SetMaskVisible,
     SetMediaPlayer,
@@ -60,7 +61,7 @@ from ...core.commands import (
 )
 from ...core.errors import TrccError
 from ...core.models import MEDIA, FitMode, MediaKind
-from ..presentation.display_source import describe_source
+from ..presentation.display_source import describe_game_mode, describe_source
 from ._ctx import (
     daemon_owns_the_panels,
     dispatch_echo,
@@ -222,6 +223,26 @@ def split_mode(
     """Set the Dynamic Island style (widescreen panels only)."""
     log.info("cli display split-mode: key=%s mode=%s", key, mode)
     dispatch_echo(SetSplitMode(key=key, mode=mode))
+
+
+@app.command("game")
+def game(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    state: str | None = typer.Argument(
+        None, help="'on' / 'off'; omit to change only the threshold"),
+    threshold: int | None = typer.Option(
+        None, "--threshold", min=0, max=99,
+        help="CPU usage % above which game mode takes the panel (0-99)"),
+) -> None:
+    """Game mode: while CPU usage stays above the threshold for 11 seconds,
+    the panel shows only its overlay, on black, until it falls back."""
+    log.info("cli display game: key=%s state=%s threshold=%s",
+             key, state, threshold)
+    if state is not None and state.lower() not in ("on", "off"):
+        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
+    dispatch_echo(SetGameMode(
+        key=key, enabled=None if state is None else state.lower() == "on",
+        threshold=threshold))
 
 
 @app.command("load-image")
@@ -1297,6 +1318,7 @@ def snapshot(
     typer.echo(f"  mask_position    {result.mask_position}")
     typer.echo(f"  fit_mode         {result.fit_mode}")
     typer.echo(f"  split_mode       {result.split_mode}")
+    typer.echo(f"  game_mode        {describe_game_mode(result.game_enabled, result.game_threshold)}")
     typer.echo(f"  time_format      {result.time_format}")
     typer.echo(f"  date_format      {result.date_format}")
     typer.echo(f"  temp_unit        {result.temp_unit}")

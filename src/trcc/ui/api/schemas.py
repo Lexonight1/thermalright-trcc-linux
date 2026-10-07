@@ -441,6 +441,12 @@ class SplitModeRequest(BaseModel):
     mode: int = Field(..., ge=0, le=3)
 
 
+class GameModeRequest(BaseModel):
+    """Either half alone, or both; the threshold is the C#'s two digits."""
+    enabled: bool | None = None
+    threshold: int | None = Field(None, ge=0, le=99)
+
+
 class MaskApplyRequest(BaseModel):
     """Path to a mask image file (resolved server-side for security)."""
     path: str = Field(..., min_length=1)

@@ -181,6 +181,31 @@ Follow progress until the encode finishes (default), or print the token and retu
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS game
+.PP
+\fBtrcc display game\fR \fIKEY\fR [\fISTATE\fR] [\fIOPTIONS\fR]
+.PP
+Game mode: while CPU usage stays above the threshold for 11 seconds, the panel shows only its overlay, on black, until it falls back.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBSTATE\fR
+\&'on' / 'off'; omit to change only the threshold
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-threshold \fITHRESHOLD\fR\fR
+CPU usage % above which game mode takes the panel (0\-99)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS keepalive
 .PP
 \fBtrcc display keepalive\fR \fIKEY\fR [\fIOPTIONS\fR]

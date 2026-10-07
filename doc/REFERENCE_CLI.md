@@ -501,6 +501,23 @@ trcc display export-video [OPTIONS] KEY PATH
 | `--fit`, `-f` `FIT` | Fit the clip to the panel: 'width' / 'height' pin that axis and crop the overflow, 'stretch' fills both. Omit for the auto fit -- scale inside the panel, never crop. A .zt is encoded AT canvas size, so this is baked in. |
 | `--wait` | Follow progress until the encode finishes (default), or print the token and return. |
 
+### `trcc display game`
+
+Game mode: while CPU usage stays above the threshold for 11 seconds, the panel shows only its overlay, on black, until it falls back.
+
+```bash
+trcc display game [OPTIONS] KEY [STATE]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `STATE` | 'on' / 'off'; omit to change only the threshold *(optional)* |
+
+| Option | Description |
+|---|---|
+| `--threshold` `THRESHOLD` | CPU usage % above which game mode takes the panel (0-99) |
+
 ### `trcc display keepalive`
 
 Periodically resend the device's last frame. Workaround for Bulk/LY firmware that drops the displayed image when the internal buffer ages out. Render at least once before starting the loop so there's a cached frame to resend. `count=0` (default) runs open-ended and exits cleanly on Ctrl-C — the Command itself owns the loop + signal handling so the CLI doesn't need a user-space `while` wrapper.

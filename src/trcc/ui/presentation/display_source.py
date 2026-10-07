@@ -31,3 +31,9 @@ def describe_source(source: str, background_mode: str,
         shown = uri if "://" in uri else PurePath(uri).name
         return f"the media player: {shown}"
     return _BACKGROUND.get(background_mode, f"background ({background_mode})")
+
+
+def describe_game_mode(enabled: bool, threshold: int) -> str:
+    """``LcdSnapshot``'s game-mode pair as one short phrase."""
+    log.debug("describe_game_mode: enabled=%s threshold=%d", enabled, threshold)
+    return f"on (CPU > {threshold}%)" if enabled else "off"
