@@ -271,6 +271,51 @@ def test_qtgui_advanced_tab_sections_match_panel_model(gui_app: App, style) -> N
     ), f"{style.name} memory/disk"
 
 
+# 1x1 GIF -- Qt reads GIF but cannot write one.
+_GIF = (b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff"
+        b"!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01"
+        b"\x00\x00\x02\x02D\x01\x00;")
+
+
+def test_cloud_tile_reads_the_apps_gif_or_shows_the_png(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#264: the tile made its GIF itself with ffmpeg, on the UI thread,
+    ~100 ms a tile on every visit.  It only reads now -- the App's GIF when
+    there is one, else the preview PNG (all the C# ever shows).  With no GIF
+    it used to show the placeholder, because a downloaded theme had no
+    image path at all."""
+    import subprocess
+
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.core.models import CloudThemeItem
+    from trcc.ui.gui.uc_theme_web import CloudThemeThumbnail
+
+    def refuse(*_a: object, **_k: object) -> None:
+        raise AssertionError("the cloud tile ran a subprocess")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    png = tmp_path / "a001.png"
+    still = QImage(60, 30, QImage.Format.Format_RGB32)
+    still.fill(QColor(255, 0, 0))
+    assert still.save(str(png))
+    mp4 = tmp_path / "a001.mp4"
+    mp4.write_bytes(b"\x00\x00\x00\x1cftypmp42")
+    item = CloudThemeItem(name="a001", id="a001", video=str(mp4),
+                          preview=str(png), is_local=True)
+
+    tile = CloudThemeThumbnail(item)
+    assert tile._movie is None
+    assert tile.thumb_label.pixmap().toImage().pixelColor(60, 60) == QColor(255, 0, 0)
+
+    (tmp_path / "a001.gif").write_bytes(_GIF)
+    animated = CloudThemeThumbnail(item)
+    assert animated._movie is not None
+    assert animated._movie.fileName() == str(tmp_path / "a001.gif")
+
+
 def test_about_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.about_panel import AboutPanel
 

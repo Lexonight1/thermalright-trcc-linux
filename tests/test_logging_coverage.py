@@ -137,7 +137,7 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: ``LCDHandler.has_video_playback``, ``download_preview`` and the unreachable
 #: ``UCInfoModule`` strip with ``set_show_info_module``.  The two silent ones
 #: were gui's ``stop_periodic_updates`` and ``set_show_info_module``.
-MAX_SILENT = 295
+MAX_SILENT = 291
 
 
 def test_logging_coverage_only_improves() -> None:

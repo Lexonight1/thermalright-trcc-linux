@@ -956,10 +956,7 @@ class TRCCApp(QMainWindow):
                      theme_id, result.theme_path)
             return result.theme_path
 
-        def _extract_theme(archive: str, dest: str) -> None:
-            del archive, dest  # CloudThemeService downloads-and-extracts atomically
-
-        self.uc_theme_web = UCThemeWeb(download_fn=_download_theme, extract_fn=_extract_theme)
+        self.uc_theme_web = UCThemeWeb(download_fn=_download_theme)
         self._set_panel_bg(self.uc_theme_web, Assets.THEME_WEB_BG)
         self.panel_stack.addWidget(self.uc_theme_web)
 

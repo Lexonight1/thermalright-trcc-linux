@@ -162,13 +162,18 @@ def _extract_first_frame_png(mp4: Path, png: Path) -> None:
 
 def _generate_animated_gif(mp4: Path, gif: Path) -> None:
     """Write a 120×120 8fps animated GIF preview of *mp4* to *gif*.
-    Same filter chain legacy uses (``uc_theme_web._ensure_thumb_gif``).
+
+    Aspect kept, letterboxed in black, as the C# fits its tile PNGs to 120
+    (``UCThemeWeb.SetThemeWeb``).  ``scale=120:120`` stretched a non-square
+    video to the square; the gui's own copy of this chain had the fit, and
+    the two had drifted.
     """
     log.info("materialise: generating animated GIF → %s", gif)
     _run_ffmpeg_or_warn(
         [
             toolchain.executable("ffmpeg"), "-i", str(mp4),
-            "-vf", "scale=120:120,pad=120:120,fps=8",
+            "-vf", "scale=120:120:force_original_aspect_ratio=decrease,"
+                   "pad=120:120:(ow-iw)/2:(oh-ih)/2:black,fps=8",
             "-loop", "0", "-y", str(gif),
         ],
         timeout=30, label=f"animated GIF for {mp4.name}",

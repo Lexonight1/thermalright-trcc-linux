@@ -300,6 +300,33 @@ def test_download_rejects_path_injection(tmp_path: Path) -> None:
 # =========================================================================
 
 
+def test_the_tile_gif_keeps_the_videos_aspect(tmp_path: Path) -> None:
+    """A 16:9 video letterboxes into the 120x120 tile, as the C# fits its
+    tile PNGs (UCThemeWeb.SetThemeWeb); ``scale=120:120`` stretched it."""
+    import subprocess
+
+    from PySide6.QtGui import QImage
+
+    from trcc.core import toolchain
+    from trcc.services.cloud_theme import _generate_animated_gif
+
+    if not toolchain.present("ffmpeg"):
+        pytest.skip("ffmpeg not on PATH")
+    mp4, gif = tmp_path / "a001.mp4", tmp_path / "a001.gif"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi",
+                    "-i", "color=c=red:s=320x180:d=1:r=8",
+                    "-pix_fmt", "yuv420p", str(mp4)],
+                   capture_output=True, check=True, timeout=60)
+
+    _generate_animated_gif(mp4, gif)
+
+    frame = QImage(str(gif))
+    assert (frame.width(), frame.height()) == (120, 120)
+    bar, middle = frame.pixelColor(60, 4), frame.pixelColor(60, 60)
+    assert max(bar.red(), bar.green(), bar.blue()) < 30          # letterbox
+    assert (middle.red() > 200, middle.green() < 60) == (True, True)
+
+
 @pytest.mark.parametrize("resolution", TEST_RESOLUTIONS)
 def test_materialise_writes_flat_layout(
     tmp_path: Path, resolution: tuple[int, int],
