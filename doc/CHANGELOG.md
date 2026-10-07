@@ -36,6 +36,13 @@
   element but nothing ever drew the highlight, in any window. The Windows app
   has no such highlight either; selecting an element marks it in the editor.
 
+- **The LED "segment on/off" setting is removed**: `trcc led toggle-segment`,
+  the API's `POST …/led/toggle-segment`, the Qt window's Segments tab, the
+  `ToggleSegment` command and `segment_on` in the LED snapshot. Turning a
+  segment off was saved but never reached the cooler or the preview, and the
+  Windows app has no such control: which segments light is decided by the
+  values shown. Saved settings carrying it load as before.
+
 ### Added
 
 - **Export what the screen is showing, as the Windows app does.** In

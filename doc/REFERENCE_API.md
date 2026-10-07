@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**132 endpoints.**
+**131 endpoints.**
 
 ## Running it
 
@@ -120,7 +120,6 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/led/temp-source` | `LedColorsResult` | — |
 | `POST /devices/{key}/led/test-mode` | `LedColorsResult` | — |
 | `POST /devices/{key}/led/toggle` | `LedColorsResult` | Turn the LED device (or one zone) on/off. |
-| `POST /devices/{key}/led/toggle-segment` | `LedColorsResult` | Flip one segment on/off. |
 | `POST /devices/{key}/led/week-start` | `WeekStartResult` | Pick the week-start day (Sunday-first vs Monday-first). |
 | `POST /devices/{key}/led/zone-brightness` | `LedColorsResult` | Set one zone's persistent brightness (0-100). |
 | `POST /devices/{key}/led/zone-color` | `LedColorsResult` | Set one zone's persistent color. |

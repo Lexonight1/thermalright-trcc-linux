@@ -1294,7 +1294,7 @@ KNOWN_APP_REACHES: dict[str, int] = {
     # led/_base.py and led_panel.py reached ZERO on 2026-08-31: the six LED
     # tabs take a ``LedSnapshotResult`` instead of a live ``LedDeviceSettings``.
     # Same rule as UCThemeMask before them — the Result was short four fields
-    # (segment_on, clock_24h, week_sunday, memory_ratio), and a
+    # (a segment mask since deleted, clock_24h, week_sunday, memory_ratio), and a
     # panel holds a domain object exactly as long as the Result does not
     # answer it.
 }

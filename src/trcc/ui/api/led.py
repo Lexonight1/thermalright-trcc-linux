@@ -28,7 +28,6 @@ from ...core.commands import (
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
-    ToggleSegment,
 )
 from ...core.led_models import LEDMode
 from ...core.results import (
@@ -54,7 +53,6 @@ from .schemas import (
     LedSourceRequest,
     LedTestModeRequest,
     LedToggleRequest,
-    LedToggleSegmentRequest,
     LedZoneBrightnessRequest,
     LedZoneColorRequest,
     LedZoneModeRequest,
@@ -302,21 +300,6 @@ def select_zone(key: str, body: LedSelectZoneRequest,
     )
     result = request.app.state.trcc.dispatch(
         SelectZone(key=key, zone=body.zone),
-    )
-    http_error_if_failed(result)
-    return result
-
-
-@router.post("/toggle-segment")
-def toggle_segment(key: str, body: LedToggleSegmentRequest,
-                   request: Request) -> LedColorsResult:
-    """Flip one segment on/off."""
-    log.info(
-        "api POST /devices/{key}/led/toggle-segment: key=%s index=%s on=%s",
-        key, body.index, body.on,
-    )
-    result = request.app.state.trcc.dispatch(
-        ToggleSegment(key=key, index=body.index, on=body.on),
     )
     http_error_if_failed(result)
     return result

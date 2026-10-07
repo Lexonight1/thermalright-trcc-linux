@@ -25,19 +25,17 @@ from trcc.app import App
 from trcc.core.commands import LedSnapshot
 
 
-def test_the_four_added_fields_survive_the_round_trip(fake_platform) -> None:
-    """Segment mask + the LC1/LF11/LC2 readout preferences reach the Result."""
+def test_the_readout_preferences_survive_the_round_trip(fake_platform) -> None:
+    """The LC1/LF11/LC2 readout preferences reach the Result."""
     app = App(fake_platform)
     key = "0416:8001"
     settings = app.settings.for_led(key)
-    settings.segment_on = [True, False, True]
     settings.clock_24h = False
     settings.week_sunday = True
     settings.memory_ratio = 4
 
     r = app.dispatch(LedSnapshot(key=key))
 
-    assert r.segment_on == (True, False, True), "the mask, not a bool"
     assert r.clock_24h is False
     assert r.week_sunday is True
     assert r.memory_ratio == 4

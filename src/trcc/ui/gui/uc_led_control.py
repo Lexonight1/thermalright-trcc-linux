@@ -291,7 +291,6 @@ class UCLedControl(QWidget):
     color_changed = Signal(int, int, int)   # R, G, B
     brightness_changed = Signal(int)         # 0-100
     global_toggled = Signal(bool)            # on/off (from color wheel center button)
-    segment_clicked = Signal(int)            # segment index
     # Zone signals
     zone_selected = Signal(int)              # zone index (0-based)
     zone_toggled = Signal(int, bool)         # zone index, on/off
@@ -368,7 +367,6 @@ class UCLedControl(QWidget):
         # -- LED Preview (standard: circles) --
         self._preview = UCScreenLED(self)
         self._preview.move(PREVIEW_X, PREVIEW_Y)
-        self._preview.segment_clicked.connect(self.segment_clicked.emit)
 
         # -- Title label (hidden when background is loaded — bg has device name) --
         self._title = QLabel("RGB LED Control", self)

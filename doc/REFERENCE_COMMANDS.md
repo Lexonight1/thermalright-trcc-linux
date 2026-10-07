@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**138 total: 100 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1125,18 +1125,6 @@ Toggle an LED device on/off — global, or one zone if ``zone`` is given.
 | `key` | `str` | yes |
 | `on` | `bool` | yes |
 | `zone` | `int | None` | no |
-
-### `ToggleSegment`
-
-Flip one segment's on/off state (segment-display devices).
-
-*Command* → `LedColorsResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-| `index` | `int` | yes |
-| `on` | `bool` | yes |
 
 ## System, settings and diagnostics
 

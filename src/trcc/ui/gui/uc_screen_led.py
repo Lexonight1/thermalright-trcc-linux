@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -477,8 +477,6 @@ class UCScreenLED(QWidget):
     - Device image drawn LAST as foreground mask (LEDs show through transparency)
     """
 
-    segment_clicked = Signal(int)  # segment index
-
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setFixedSize(460, 460)
@@ -537,19 +535,6 @@ class UCScreenLED(QWidget):
         while len(self._colors) < self._led_count:
             self._colors.append((0, 0, 0))
         self.update()
-
-    def set_segment_on(self, index: int, on: bool) -> None:
-        """Toggle an individual segment."""
-        if 0 <= index < len(self._is_on):
-            log.info("UCScreenLED.set_segment_on: index=%d on=%s",
-                     index, on)
-            self._is_on[index] = on
-            self.update()
-        else:
-            log.warning(
-                "UCScreenLED.set_segment_on: index %d out of range "
-                "(len=%d) — dropped", index, len(self._is_on),
-            )
 
     def set_led_mode(self, mode: int) -> None:
         """Set LED mode (4 = display mode with decoration images)."""
@@ -693,26 +678,3 @@ class UCScreenLED(QWidget):
             pm = Assets.load_pixmap(asset_name)
             if pm and not pm.isNull():
                 self._deco_pixmaps[asset_name] = pm
-
-    # ================================================================
-    # Mouse interaction — rectangle hit-test
-    # ================================================================
-
-    def mousePressEvent(self, event: object) -> None:
-        """Handle click to toggle segments (rectangle hit-test)."""
-        from PySide6.QtGui import QMouseEvent
-        if not isinstance(event, QMouseEvent):
-            return
-        if event.button() != Qt.MouseButton.LeftButton:
-            return
-
-        pos = event.position()
-        px, py = pos.x(), pos.y()
-        for i, (x, y, w, h) in enumerate(self._positions):
-            if x <= px <= x + w and y <= py <= y + h:
-                log.info(
-                    "UCScreenLED.mousePressEvent: segment %d hit at (%.0f,%.0f)",
-                    i, px, py,
-                )
-                self.segment_clicked.emit(i)
-                return

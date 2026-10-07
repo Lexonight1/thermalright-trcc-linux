@@ -26,7 +26,6 @@ from trcc.core.commands import (
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
-    ToggleSegment,
 )
 from trcc.core.led_models import LEDMode
 from trcc.services.settings import Settings
@@ -230,7 +229,6 @@ _GATED: list = [
     (SetLedZoneSyncInterval, {"ticks": 9}),
     (SetLedZoneSyncZones, {"zones": (True, False)}),
     (SelectZone, {"zone": 0}),
-    (ToggleSegment, {"index": 0, "on": True}),
     (SetClockFormat, {"is_24h": False}),
     (SetWeekStart, {"sunday_first": True}),
     (SetMemoryRatio, {"ratio": 2}),
@@ -345,8 +343,8 @@ def _first_pm_per_style() -> list[int]:
 def test_a_fresh_leds_snapshot_counts_its_panels_segments(
     fake_platform: FakePlatform, pm: int,
 ) -> None:
-    """``segment_count`` was ``len(segment_on)``, a list nothing fills until a
-    segment is clicked, so `trcc led snapshot` and `led-debug` said
+    """``segment_count`` was the length of a clicked-segment list (since
+    deleted) that nothing filled, so `trcc led snapshot` and `led-debug` said
     "segments 0" for every fresh device.  It is the style's display now --
     the source ListLedStyles already used."""
     from trcc.core.commands import LedSnapshot
@@ -363,8 +361,6 @@ def test_a_fresh_leds_snapshot_counts_its_panels_segments(
     snap = app.dispatch(LedSnapshot(key=_LED_KEY))
 
     assert snap.segment_count == (display.mask_size if display else 0)
-    assert app.settings.for_led(_LED_KEY).segment_on == [], (
-        "the count must not depend on the clicked-segment list")
 
 
 def test_an_unattached_leds_snapshot_counts_no_segments(tmp_path: Path) -> None:
@@ -416,3 +412,16 @@ def test_led_snapshot_reports_the_carousel_mask(tmp_path: Path) -> None:
 
     assert snap.zone_sync_zones == (True, False, True)
     assert isinstance(snap.zone_sync_zones, tuple), "a frozen Result holds tuples"
+
+
+def test_a_saved_segment_mask_from_an_older_version_is_dropped() -> None:
+    """``segment_on`` was a setting until 2026-10-07 (it reached neither the
+    render nor the wire).  An older trcc.json still carries it; loading must
+    not choke on it, and the next save leaves it out."""
+    import dataclasses
+
+    from trcc.services.settings import _led_settings_from_dict
+
+    loaded = _led_settings_from_dict({"segment_on": [True, False], "mode": 2})
+
+    assert "segment_on" not in dataclasses.asdict(loaded)

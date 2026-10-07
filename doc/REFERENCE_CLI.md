@@ -1338,20 +1338,6 @@ trcc led toggle [OPTIONS] KEY STATE
 |---|---|
 | `--zone`, `-z` `ZONE` | Toggle a single zone (omit for global toggle) |
 
-### `trcc led toggle-segment`
-
-Flip one segment on/off (segment-display devices).
-
-```bash
-trcc led toggle-segment KEY INDEX STATE
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | LED device key |
-| `INDEX` | Segment index |
-| `STATE` | 'on' or 'off' |
-
 ### `trcc led week-start`
 
 Pick the week-start day on devices that show a day-of-week display.

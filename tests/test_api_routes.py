@@ -619,17 +619,6 @@ def test_led_select_zone(api_client: TestClient) -> None:
     assert "3" in body["message"]
 
 
-def test_led_toggle_segment(api_client: TestClient) -> None:
-    resp = api_client.post(
-        "/devices/0416:8001/led/toggle-segment",
-        json={"index": 7, "on": False},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is True
-    assert "Segment 7" in body["message"]
-
-
 def test_led_snapshot(api_client: TestClient) -> None:
     """LedSnapshot returns the persisted LED state."""
     resp = api_client.get("/devices/0416:8001/led/snapshot")

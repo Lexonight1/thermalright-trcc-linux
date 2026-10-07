@@ -33,7 +33,6 @@ from ...core.commands import (
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
-    ToggleSegment,
 )
 from ...core.led_models import LED_STYLES, LEGACY_STYLE_ID
 from ...core.logs import per_frame
@@ -223,7 +222,6 @@ class LEDHandler(BaseHandler):
         p.color_changed.connect(self._guard(self._on_color_changed))
         p.brightness_changed.connect(self._guard(self._on_brightness_changed))
         p.global_toggled.connect(self._guard(self._on_global_toggled))
-        p.segment_clicked.connect(self._guard(self._on_segment_clicked))
         p.zone_selected.connect(self._guard(self._on_zone_selected))
         p.zone_toggled.connect(self._guard(self._on_zone_toggled))
         p.carousel_changed.connect(self._guard(self._on_carousel_changed))
@@ -277,14 +275,6 @@ class LEDHandler(BaseHandler):
     def _on_global_toggled(self, on: bool) -> None:
         log.info("_on_global_toggled: on=%s", on)
         self._dispatch(ToggleLed(key=self._device_key, on=on))
-
-    def _on_segment_clicked(self, idx: int) -> None:
-        # ToggleSegment toggles between on/off — the Command resolves
-        # the current state internally and inverts it.
-        log.info("_on_segment_clicked: idx=%s", idx)
-        self._dispatch(ToggleSegment(
-            key=self._device_key, index=idx, on=True,
-        ))
 
     def _on_zone_selected(self, zone_index: int) -> None:
         log.info("_on_zone_selected: zone_index=%s", zone_index)

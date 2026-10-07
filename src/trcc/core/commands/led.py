@@ -976,31 +976,6 @@ class SelectZone(Command[LedColorsResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ToggleSegment(Command[LedColorsResult]):
-    """Flip one segment's on/off state (segment-display devices)."""
-    key: str
-    index: int
-    on: bool
-
-    def execute(self, app: App) -> LedColorsResult:
-        log.debug("execute: app=%s", app)
-        if (why := _not_an_led(app, self.key)) is not None:
-            return LedColorsResult(ok=False, key=self.key, colors=[],
-                                   message=why)
-        try:
-            app.settings.set_led_segment_on(self.key, self.index, self.on)
-        except IndexError as e:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[], message=str(e),
-            )
-        _publish_led_settings_changed(app, self.key)
-        state = "on" if self.on else "off"
-        return LedColorsResult(
-            ok=True, key=self.key, colors=[],
-            message=f"Segment {self.index} turned {state}",
-        )
-
-@dataclass(frozen=True, slots=True)
 class SetClockFormat(Command[ClockFormatResult]):
     """12h/24h clock display for LC2-style LED segment devices."""
     key: str
@@ -1157,8 +1132,8 @@ class LedSnapshot(Query[LedSnapshotResult]):
         from ...services.led_segment import get_display
         s = app.settings.for_led(self.key)
         # The connected panel's segment total, from the same source as
-        # ListLedStyles.  It was len(segment_on) -- a list nothing fills until
-        # a segment is clicked -- so a fresh device reported "segments 0".
+        # ListLedStyles.  It was the length of a per-segment list nothing filled,
+        # so a fresh device reported "segments 0".
         display = get_display(_style_of(app, self.key))
         return LedSnapshotResult(
             ok=True, key=self.key,
@@ -1180,7 +1155,6 @@ class LedSnapshot(Query[LedSnapshotResult]):
                 for z in s.zones
             ),
             zone_sync_zones=tuple(s.zone_sync_zones),
-            segment_on=tuple(s.segment_on),
             clock_24h=s.clock_24h,
             week_sunday=s.week_sunday,
             memory_ratio=s.memory_ratio,

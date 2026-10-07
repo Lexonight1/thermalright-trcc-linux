@@ -104,10 +104,6 @@ class LedDeviceSettings:
     temp_source: SensorLink = "cpu"
     load_source: SensorLink = "cpu"
 
-    # Per-segment on/off — driven by the segment display (gauges) when
-    # the device has one; empty list = always-on.
-    segment_on: list[bool] = field(default_factory=list)
-
     # LC2 clock display options (style 9)
     clock_24h: bool = True
     week_sunday: bool = False

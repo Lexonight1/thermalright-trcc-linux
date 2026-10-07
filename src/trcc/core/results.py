@@ -814,11 +814,6 @@ class LedSnapshotResult(Result):
     # carry them, so ``led_panel`` kept reaching ``app.settings.for_led`` — an
     # AttributeError under TRCC_DAEMON=1.  A UI reaches past the bus exactly
     # when the Result is short a field.
-    #
-    # ``segment_on`` is the per-segment mask, NOT a bool: ``segment_count``
-    # above is ``len()`` of it, so the Command already read this list and threw
-    # the contents away.  Tuple, because a Result is frozen.
-    segment_on: tuple[bool, ...] = ()
     clock_24h: bool = True
     week_sunday: bool = False
     memory_ratio: int = 2

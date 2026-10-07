@@ -194,11 +194,6 @@ class LedSelectZoneRequest(BaseModel):
     zone: int = Field(..., ge=0)
 
 
-class LedToggleSegmentRequest(BaseModel):
-    index: int = Field(..., ge=0)
-    on: bool
-
-
 # Tier-2 request/response shapes
 class ClockFormatRequest(BaseModel):
     is_24h: bool

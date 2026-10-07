@@ -562,16 +562,6 @@ def test_led_select_zone(cli_runner: CliRunner, cli_app) -> None:
     assert "Selected zone 2" in result.output
 
 
-def test_led_toggle_segment(cli_runner: CliRunner, cli_app) -> None:
-    del cli_app
-    result = cli_runner.invoke(
-        _app(), ["led", "toggle-segment", "0416:8001", "5", "off"],
-    )
-    assert result.exit_code == 0
-    assert "Segment 5" in result.output
-    assert "off" in result.output
-
-
 def test_led_list_styles(cli_runner: CliRunner, cli_app) -> None:
     """``led list-styles`` emits the PM registry."""
     del cli_app

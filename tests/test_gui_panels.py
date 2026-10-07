@@ -1471,29 +1471,6 @@ def test_led_zone_tab_builds_rows_for_multi_zone(
     assert len(tab._zone_widgets) == 3
 
 
-def test_led_segment_tab_hides_when_no_segments(
-    gui_app: App, qapp: object,
-) -> None:
-    """SegmentTab shows its placeholder when segment_on is empty."""
-    from trcc.ui.qtgui.panels.led import SegmentTab
-
-    tab = SegmentTab(gui_app, _led_key)
-    tab.refresh_from(_snap(segment_on=()))
-    assert tab.has_visible_content() is False
-
-
-def test_led_segment_tab_builds_checks(gui_app: App, qapp: object) -> None:
-    """SegmentTab builds one checkbox per segment when populated."""
-    from trcc.ui.qtgui.panels.led import SegmentTab
-
-    tab = SegmentTab(gui_app, _led_key)
-    tab.refresh_from(_snap(segment_on=(True, False, True, True, False)))
-    assert tab.has_visible_content() is True
-    assert len(tab._checks) == 5
-    assert tab._checks[0].isChecked() is True
-    assert tab._checks[1].isChecked() is False
-
-
 def test_led_advanced_tab_refreshes_radio_state(
     gui_app: App, qapp: object,
 ) -> None:

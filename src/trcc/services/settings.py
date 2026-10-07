@@ -692,20 +692,6 @@ class Settings:
             self.for_led(key).zone_sync_zones = list(zones)
             self._save()
 
-    def set_led_segment_on(self, key: str, index: int, on: bool) -> None:
-        """Flip one segment on/off (segment-display devices only)."""
-        log.info("set_led_segment_on: key=%s index=%d on=%s", key, index, on)
-        with self._lock:
-            settings = self.for_led(key)
-            if index < 0:
-                raise IndexError(f"segment index must be >= 0, got {index}")
-            # Grow segment_on lazily so callers don't need to know the
-            # segment count up front (style discovery may not have run yet).
-            while len(settings.segment_on) <= index:
-                settings.segment_on.append(True)
-            settings.segment_on[index] = on
-            self._save()
-
     def set_led_clock_24h(self, key: str, is_24h: bool) -> None:
         """Set the 12h/24h clock display format for LC2-style devices."""
         log.info("set_led_clock_24h: key=%s is_24h=%s", key, is_24h)

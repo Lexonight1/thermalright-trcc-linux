@@ -90,7 +90,6 @@ from .led import (
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
-    ToggleSegment,
 )
 from .system import (
     AdvanceSlideshow,
@@ -295,7 +294,6 @@ __all__ = [
     "StopVideo",
     "TickDisplay",
     "ToggleLed",
-    "ToggleSegment",
     "ToggleVideo",
     "UpdateOverlayElement",
     "UploadBootAnimation",

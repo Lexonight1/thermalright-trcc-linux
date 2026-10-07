@@ -31,7 +31,6 @@ from ...core.commands import (
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
-    ToggleSegment,
 )
 from ...core.errors import TrccError
 from ...core.led_models import LEDMode
@@ -277,20 +276,6 @@ def select_zone(
     one zone a PA120/LF10 edit reaches."""
     log.info("cli led select-zone: key=%s zone=%s", key, zone)
     dispatch_echo(SelectZone(key=key, zone=zone))
-
-
-@app.command("toggle-segment")
-def toggle_segment(
-    key: str = typer.Argument(..., help="LED device key"),
-    index: int = typer.Argument(..., help="Segment index"),
-    state: str = typer.Argument(..., help="'on' or 'off'"),
-) -> None:
-    """Flip one segment on/off (segment-display devices)."""
-    log.info(
-        "cli led toggle-segment: key=%s index=%s state=%s",
-        key, index, state,
-    )
-    dispatch_echo(ToggleSegment(key=key, index=index, on=parse_on_off(state)))
 
 
 @app.command("list-styles")
