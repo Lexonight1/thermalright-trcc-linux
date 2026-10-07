@@ -125,7 +125,7 @@ Tiny port for "fetch bytes from URL" used by cloud-theme adapters.
 **You implement (1):**
 
 ```python
-fetch(url: 'str', timeout_s: 'float' = 30.0) -> bytes
+fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None) -> bytes
 ```
 
 **Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`

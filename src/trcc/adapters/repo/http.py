@@ -25,7 +25,9 @@ class OfflineHttpFetcher(HttpFetcher):
     the path it already takes offline, and each refusal is in the log.
     """
 
-    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
+    def fetch(
+        self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+    ) -> bytes:
         log.warning("OfflineHttpFetcher: refused GET %s (offline run)", url)
         raise HttpFetchError(f"offline: {url} was not fetched")
 
@@ -41,8 +43,11 @@ class UrllibHttpFetcher(HttpFetcher):
         log.debug("__init__")
         self._ctx = ssl_context
 
-    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
-        log.info("HTTP GET %s (timeout=%.1fs)", url, timeout_s)
+    def fetch(
+        self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+    ) -> bytes:
+        log.info("HTTP GET %s (timeout=%.1fs, max_bytes=%s)",
+                 url, timeout_s, max_bytes)
         req = Request(url, headers={"User-Agent": self._USER_AGENT})
         try:
             with urlopen(req, timeout=timeout_s, context=self._ctx) as resp:
@@ -52,7 +57,15 @@ class UrllibHttpFetcher(HttpFetcher):
                     raise HttpFetchError(
                         f"GET {url} returned HTTP {status}",
                     )
-                body = resp.read()
+                # One byte past the cap is enough to know it is over, and
+                # never more than that is read.
+                body = resp.read() if max_bytes is None else resp.read(max_bytes + 1)
+                if max_bytes is not None and len(body) > max_bytes:
+                    log.warning("HTTP GET %s → over the %d-byte cap, refused",
+                                url, max_bytes)
+                    raise HttpFetchError(
+                        f"GET {url} is larger than {max_bytes} bytes",
+                    )
                 log.info("HTTP GET %s → %d bytes", url, len(body))
                 return body
         except HTTPError as e:

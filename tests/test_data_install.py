@@ -74,7 +74,7 @@ def test_http_data_installer_implements_the_core_data_installer_port() -> None:
     from trcc.core.ports import DataInstaller
 
     class _FakeHttp:
-        def fetch(self, url, timeout_s=30.0):
+        def fetch(self, url, timeout_s=30.0, max_bytes=None):
             return b""
 
     assert issubclass(HttpDataInstaller, DataInstaller)
@@ -251,7 +251,9 @@ def test_every_reachable_resolution_has_both_shipped_catalogs() -> None:
 
 
 class _Fetches:
-    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
+    def fetch(
+        self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+    ) -> bytes:
         return b"ARCHIVE"
 
 

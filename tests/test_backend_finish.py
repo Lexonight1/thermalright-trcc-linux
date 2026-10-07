@@ -56,8 +56,10 @@ class _FakeHttp(HttpFetcher):
         self.responses = responses
         self.calls: list[str] = []
 
-    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
-        del timeout_s
+    def fetch(
+        self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+    ) -> bytes:
+        del timeout_s, max_bytes
         self.calls.append(url)
         if url in self.responses:
             return self.responses[url]

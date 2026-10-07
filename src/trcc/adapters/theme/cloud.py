@@ -12,10 +12,13 @@ catalog retries the other on failure).
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from pathlib import Path
 from typing import Literal
 
 from ...core.errors import HttpFetchError
+from ...core.logs import Blob
 from ...core.models import CloudCategory, CloudThemeEntry
 from ...core.ports import CloudCatalog, HttpFetcher
 
@@ -48,6 +51,15 @@ _SERVERS: dict[Server, str] = {
     "china":         "http://www.czhorde.com/tr/bj{resolution}/",
     "international": "http://www.czhorde.cc/tr/bj{resolution}/",
 }
+
+# Both mirrors are plain http (neither answers on :443), so a body is only as
+# trustworthy as the network path it crossed.  Measured 2026-10-06, HEAD on
+# all 298 ids at 1600x720: the largest video is 10.0 MB (b011).  64 MB leaves
+# room for the vendor's next one and still refuses a body nobody should keep.
+_MAX_BYTES = 64 * 1024 * 1024
+
+# Enough of a file's head to tell what it is.
+_HEAD_BYTES = 12
 
 
 # =========================================================================
@@ -146,7 +158,7 @@ class CzhordeCatalog(CloudCatalog):
         res_dir = resolution.replace("x", "")
         cache = self._cache_dir / res_dir
         target = cache / f"{theme_id}{suffix}"
-        if target.is_file() and target.stat().st_size > 0:
+        if _is_cached(target, suffix):
             log.debug("CzhordeCatalog: cache hit %s", target)
             return target
         log.info("CzhordeCatalog: fetching %s%s @ %s (cache miss)",
@@ -155,7 +167,15 @@ class CzhordeCatalog(CloudCatalog):
         # Only once there is something to keep: created before the fetch, a
         # failed download left an empty directory per requested resolution.
         cache.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        # A sibling of its own, then a rename: a reader never sees half a
+        # file, and two UIs fetching the same theme -- threads of one App, or
+        # two processes -- cannot write into one another's.  Not ``tempfile``:
+        # it creates 0600, where every other file in the cache honours umask.
+        part = target.with_name(
+            f".{target.name}.{os.getpid()}.{threading.get_ident()}.part",
+        )
+        part.write_bytes(data)
+        part.replace(target)
         log.info("CzhordeCatalog: cached %d bytes to %s", len(data), target)
         return target
 
@@ -180,7 +200,15 @@ class CzhordeCatalog(CloudCatalog):
         for server, timeout_s in zip(order, timeouts, strict=False):
             url = self._url_for(theme_id, suffix, server, resolution)
             try:
-                return self._http.fetch(url, timeout_s=timeout_s)
+                data = self._http.fetch(
+                    url, timeout_s=timeout_s, max_bytes=_MAX_BYTES,
+                )
+                if not _has_magic(suffix, data[:_HEAD_BYTES]):
+                    raise HttpFetchError(
+                        f"GET {url} is not a {suffix} file "
+                        f"(starts {data[:_HEAD_BYTES]!r})",
+                    )
+                return data
             except HttpFetchError as e:
                 last_err = e
                 log.warning("CzhordeCatalog: fetch %s via %s failed: %s",
@@ -203,6 +231,41 @@ class CzhordeCatalog(CloudCatalog):
 # =========================================================================
 # Helpers
 # =========================================================================
+
+
+def _has_magic(suffix: str, head: bytes) -> bool:
+    """Does ``head`` start the way a real ``suffix`` file does?
+
+    An MP4 opens with its ``ftyp`` box (the vendor's do: ``....ftypmp42``),
+    a PNG with its 8-byte signature.  Anything else — the HTML page a
+    captive portal or a 404 serves with a 200 — is not cached for ffmpeg
+    to probe.
+    """
+    log.debug("_has_magic: suffix=%s head=%s", suffix, Blob(head))
+    match suffix:
+        case ".mp4":
+            return head[4:8] == b"ftyp"
+        case ".png":
+            return head.startswith(b"\x89PNG\r\n\x1a\n")
+    return False
+
+
+def _is_cached(target: Path, suffix: str) -> bool:
+    """A cached file counts only if it is still the kind it claims to be.
+
+    Before the type check, any non-empty body was kept forever, so a cache
+    poisoned then is fetched again now rather than trusted.
+    """
+    log.debug("_is_cached: target=%s", target)
+    if not target.is_file():
+        return False
+    with target.open("rb") as f:
+        head = f.read(_HEAD_BYTES)
+    if _has_magic(suffix, head):
+        return True
+    log.warning("CzhordeCatalog: cached %s is not a %s file (starts %r) "
+                "— fetching it again", target, suffix, head)
+    return False
 
 
 def _is_safe_theme_id(theme_id: str) -> bool:

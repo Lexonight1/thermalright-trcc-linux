@@ -148,6 +148,14 @@
 
 ### Fixed
 
+- **Cloud theme videos are checked before they are kept.** Thermalright's two
+  theme servers only speak plain http, so whatever arrives is only as
+  trustworthy as the network it crossed. A download is now refused if it is not
+  a video (a wifi sign-in page served in its place, for one) or is larger than
+  64 MB (the largest in the catalog is 10 MB), and the other server is tried. A
+  download is written to a temporary file and renamed into place, so an
+  interrupted one never leaves half a video behind. A file already cached that
+  is not a video is downloaded again rather than trusted.
 - **First-run downloads fetch only your panel's own themes.** Finding a
   device used to start downloading themes for the size its USB id usually has,
   before the device had said its real size. For panels that share an id with

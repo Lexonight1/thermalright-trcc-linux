@@ -2222,8 +2222,14 @@ class HttpFetcher(ABC):
     """
 
     @abstractmethod
-    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
-        """Fetch a URL's body.  Raise on non-200 status or transport error."""
+    def fetch(
+        self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+    ) -> bytes:
+        """Fetch a URL's body.  Raise on non-200 status or transport error.
+
+        ``max_bytes`` refuses a body longer than that WITHOUT reading the rest
+        of it: a capped caller must never hold more than the cap in memory.
+        """
         ...
 
 
