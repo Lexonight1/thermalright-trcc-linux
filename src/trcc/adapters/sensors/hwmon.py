@@ -26,8 +26,15 @@ import time
 from pathlib import Path
 
 from ...core.logs import per_frame
-from ...core.ports import CpuSource, DiskSource, DramSource, FanSource, GpuSource
-from .psutil_sources import PsutilCpu
+from ...core.ports import (
+    CpuSource,
+    DiskSource,
+    DramSource,
+    FanSource,
+    GpuSource,
+    VoltageSource,
+)
+from .psutil_sources import PsutilCpu, sensor_slug
 
 log = logging.getLogger(__name__)
 #: Sensor readers run once per metrics tick — their records must never
@@ -932,6 +939,53 @@ def discover_dram_temp(devices: list[HwmonDevice]) -> list[DramSource]:
         label = _read_text(dev.attrs / "temp1_label")
         dram.append(HwmonDram(dev, label))
     return dram
+
+
+# ── Board voltages (inN_input, millivolts) ────────────────────────────
+
+
+class HwmonVoltage(VoltageSource):
+    """One ``inN_input`` -- named by ``inN_label`` when the driver has one
+    (nct6686: "CPU Vcore", "+12V"), else "inN (chip)"."""
+
+    def __init__(self, hwmon: HwmonDevice, index: int, label: str) -> None:
+        log.debug("HwmonVoltage: %s in%d label=%r", hwmon.driver, index, label)
+        self._hwmon = hwmon
+        self._index = index
+        self._label = label
+        self._key = sensor_slug(hwmon.driver, label or f"in{index}", index)
+
+    @property
+    def key(self) -> str:
+        frame_log.debug("key")
+        return self._key
+
+    @property
+    def name(self) -> str:
+        frame_log.debug("name")
+        return self._label or f"in{self._index} ({self._hwmon.driver})"
+
+    def volts(self) -> float | None:
+        frame_log.debug("volts")
+        milli = _read_int(self._hwmon.attrs / f"in{self._index}_input")
+        return None if milli is None else milli / 1000.0
+
+
+def discover_voltages(devices: list[HwmonDevice]) -> list[VoltageSource]:
+    """One source per ``inN_input`` on every chip, except one reading exactly
+    0 -- an input the board never wired, the board-temperature rule (#259's
+    nct6686 ``in1`` reads 0.000)."""
+    sources: list[VoltageSource] = []
+    for dev in devices:
+        indices = (_channel_index(p.name, "in") for p in dev.attrs.glob("in*_input"))
+        for index in sorted(i for i in indices if i is not None):
+            if not _read_int(dev.attrs / f"in{index}_input"):
+                continue
+            label = _read_text(dev.attrs / f"in{index}_label") or ""
+            sources.append(HwmonVoltage(dev, index, label))
+    log.info("discover_voltages: %d input(s) across %d chip(s)", len(sources),
+             len({id(s._hwmon) for s in sources if isinstance(s, HwmonVoltage)}))
+    return sources
 
 
 # ── Memory channel clock (what the controller RUNS, read once) ────────

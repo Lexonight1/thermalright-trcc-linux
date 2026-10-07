@@ -188,7 +188,7 @@ _ROLE_OWNED_CHIPS = frozenset({
 _CPU_CHIPS = frozenset({"coretemp", "k10temp", "zenpower"})
 
 
-def _slug(chip: str, label: str, index: int) -> str:
+def sensor_slug(chip: str, label: str, index: int) -> str:
     """A stable, readable key for one board input.
 
     The LABEL is the identity a user recognises -- they are looking for
@@ -196,7 +196,7 @@ def _slug(chip: str, label: str, index: int) -> str:
     the positional index only when the chip publishes no label, because a bare
     ``temp7`` tells the user nothing and two unlabelled chips would collide.
     """
-    log.debug("_slug: chip=%s label=%r index=%d", chip, label, index)
+    log.debug("sensor_slug: chip=%s label=%r index=%d", chip, label, index)
     base = label.strip() or f"temp{index}"
     cleaned = "".join(c if c.isalnum() else "_" for c in base).strip("_").lower()
     return f"{chip}_{cleaned}" if cleaned else f"{chip}_temp{index}"
@@ -298,7 +298,7 @@ class PsutilBoardTemp(BoardTempSource):
         self._chip = chip
         self._label = label
         self._index = index
-        self._key = _slug(chip, label, index)
+        self._key = sensor_slug(chip, label, index)
         # Own scan when constructed alone (tests, a single ad-hoc source);
         # discover_board_temps hands every source the SAME one.
         self._scan = scan if scan is not None else _TemperatureScan()

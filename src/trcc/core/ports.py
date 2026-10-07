@@ -872,6 +872,21 @@ class BoardTempSource(IdentifiedSource):
         """Current temperature in Celsius, or ``None``."""
 
 
+class VoltageSource(IdentifiedSource):
+    """One motherboard / super-I/O voltage input (#259).
+
+    Nothing read ``inN_input`` before.  The kernel reports millivolts,
+    generally UNSCALED: board-specific resistor dividers are applied in
+    userspace (``sensors.d``), so on an unlabelled chip "+12V" can read about
+    1 V.  The reading is the chip's; naming and scaling a row is the user's,
+    on the dashboard.
+    """
+
+    @abstractmethod
+    def volts(self) -> float | None:
+        """Current input voltage in V, as the chip reports it, or ``None``."""
+
+
 class DramSource(IdentifiedSource):
     """One memory module's SPD-hub thermal sensor.
 

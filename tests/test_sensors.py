@@ -610,6 +610,46 @@ def test_discover_dram_temp_skips_node_without_temp1(tmp_path: Path) -> None:
     assert hwmon.discover_dram_temp(devices) == []
 
 
+# ── Board voltages (#259) ─────────────────────────────────────────────
+
+
+def _volt_chip(root: Path, dirname: str, driver: str,
+               inputs: dict[int, tuple[int, str | None]]) -> hwmon.HwmonDevice:
+    d = root / dirname
+    d.mkdir()
+    (d / "name").write_text(f"{driver}\n")
+    for idx, (milli, label) in inputs.items():
+        (d / f"in{idx}_input").write_text(str(milli))
+        if label is not None:
+            (d / f"in{idx}_label").write_text(f"{label}\n")
+    return hwmon.HwmonDevice(d)
+
+
+def test_board_voltages_are_read_named_and_offered(tmp_path: Path) -> None:
+    """#259: nothing read ``inN_input``.  Millivolts become volts, a wired-off
+    input (exactly 0) is not offered, a driver label names the row, channels
+    keep their numeric order, and two chips never share a key."""
+    nct = _volt_chip(tmp_path, "hwmon6", "nct6798",
+                     {0: (1216, None), 1: (0, None), 2: (3344, None), 10: (1120, None)})
+    labelled = _volt_chip(tmp_path, "hwmon7", "nct6686",
+                          {0: (1216, "CPU Vcore"), 1: (1012, "+12V")})
+    volts = hwmon.discover_voltages([nct, labelled])
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+                        voltages=volts)
+
+    values = s.read_all()
+    rows = {r.sensor_id: (r.label, r.unit, r.category) for r in s.discover()
+            if r.sensor_id.startswith("volt:")}
+
+    assert [v.key for v in volts] == [
+        "nct6798_in0", "nct6798_in2", "nct6798_in10",
+        "nct6686_cpu_vcore", "nct6686_12v"]
+    assert values["volt:nct6798_in0"] == 1.216
+    assert rows["volt:nct6798_in2"] == ("in2 (nct6798)", "V", "voltage")
+    assert rows["volt:nct6686_cpu_vcore"] == ("CPU Vcore", "V", "voltage")
+    assert "volt:nct6798_in1" not in rows
+
+
 # ── Label-based GPU temperature resolution (Intel xe / Arc) ──────────
 
 

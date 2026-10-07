@@ -41,6 +41,7 @@ from ...core.ports import (
     MemorySource,
     QuantitySource,
     SensorEnumerator,
+    VoltageSource,
 )
 from .hwmon import (
     HwmonCpu,
@@ -51,6 +52,7 @@ from .hwmon import (
     discover_fans,
     discover_intel_gpus,
     discover_nouveau_gpus,
+    discover_voltages,
     find_cpu_temp_device,
     scan_hwmon_devices,
 )
@@ -208,6 +210,7 @@ class BaselineSensors(SensorEnumerator):
                  disks: list[DiskSource] | None = None,
                  dram: list[DramSource] | None = None,
                  board_temps: list[BoardTempSource] | None = None,
+                 voltages: list[VoltageSource] | None = None,
                  memory_clock: MemoryClock | None = None,
                  thread_context: Callable[[], AbstractContextManager[None]]
                      = nullcontext) -> None:
@@ -218,6 +221,7 @@ class BaselineSensors(SensorEnumerator):
         self._disks: list[DiskSource] = disks or []
         self._dram: list[DramSource] = dram or []
         self._board: list[BoardTempSource] = board_temps or []
+        self._voltages: list[VoltageSource] = voltages or []
         self._memory_clock = memory_clock
         # Per-thread OS setup the poll thread enters before touching OS
         # sensor APIs (Windows → COM apartment for WMI; others → no-op).
@@ -431,6 +435,9 @@ class BaselineSensors(SensorEnumerator):
                 sensor_id=key, category="temperature",
                 value=current.get(key, 0.0), unit="°C", label=board.name,
             ))
+        # Raw, as the chip reports them -- see VoltageSource (#259).
+        for volt in self._voltages:
+            add([(f"volt:{volt.key}", "voltage", "V", "")], volt.name)
 
         add(_io_keys() + _time_keys())
 
@@ -636,6 +643,8 @@ class BaselineSensors(SensorEnumerator):
         for board in self._board:
             _store(r, f"board:{board.key}:temp",
                    self._read(board.temp, f"board:{board.key}:temp"))
+        for volt in self._voltages:
+            _store(r, f"volt:{volt.key}", self._read(volt.volts, f"volt:{volt.key}"))
 
         # Each DIMM under its own id too (#310); ``memory:temp`` stays the max.
         dram_temps: list[float] = []
@@ -703,6 +712,7 @@ def build_linux_sensors() -> BaselineSensors:
     disks = discover_disk_temp(hwmon_devices)
     dram = discover_dram_temp(hwmon_devices)
     board_temps = discover_board_temps()
+    voltages = discover_voltages(hwmon_devices)
     memory_clock = MemoryClock()
     log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d, disks=%d, dram=%d "
              "(mem_clock read on first poll)",
@@ -710,4 +720,5 @@ def build_linux_sensors() -> BaselineSensors:
              len(gpus), len(fans), len(disks), len(dram))
     return BaselineSensors(cpu=cpu, memory=PsutilMemory(),
                            gpus=gpus, fans=fans, disks=disks, dram=dram,
-                           board_temps=board_temps, memory_clock=memory_clock)
+                           board_temps=board_temps, voltages=voltages,
+                           memory_clock=memory_clock)

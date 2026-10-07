@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-43 ports.
+44 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -21,7 +21,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
-| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 18 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 19 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
@@ -39,6 +39,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
+| [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
@@ -236,7 +237,7 @@ key() -> str
 name() -> str
 ```
 
-**Implementations (18):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
+**Implementations (19):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
 
 ## SingleFileTheme
 
@@ -522,6 +523,22 @@ shutdown() -> None
 ```
 
 **Implementations (2):** `SyncSendScheduler` · `ThreadSendScheduler`
+
+## VoltageSource
+
+`core/ports.py`
+
+One motherboard / super-I/O voltage input (#259).
+
+**You implement (3):**
+
+```python
+key() -> str
+name() -> str
+volts() -> float | None
+```
+
+**Implementations (1):** `HwmonVoltage`
 
 ## _SharedRotatingFileHandler
 

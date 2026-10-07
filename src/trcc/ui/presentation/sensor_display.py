@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 _SOURCE_LABELS = {
     "cpu": "CPU", "gpu": "GPU", "fan": "Fans", "memory": "Memory",
     "mem": "Memory", "disk": "Disk", "net": "Network",
+    "board": "Board", "volt": "Voltages",
 }
 # Clock "sensors" aren't hardware — never shown in the picker.
 _CLOCK_SOURCES = frozenset({"time", "date"})
