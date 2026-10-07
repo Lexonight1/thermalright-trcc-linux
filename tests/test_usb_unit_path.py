@@ -761,3 +761,24 @@ def test_polling_publishes_a_twin_arriving_as_one_model_change() -> None:
     snaps.pop(0)
     monitor._tick()
     assert [type(e).__name__ for e in seen] == ["DeviceDetached", "DeviceAttached"]
+
+
+def test_a_twin_that_leaves_is_not_waited_for(tmp_path) -> None:
+    """The survivor is re-keyed to the plain vid:pid, so the leaver's unit key
+    is gone for good -- retrying it would fail once a minute forever.
+
+    MUTATION CHECK: drop the watcher sweep from ``App._reconcile`` and the
+    gone unit's watcher stays armed.
+    """
+    app = _twin_app(tmp_path)
+    app.discover_and_connect()
+    assert _connected(app) == _TWIN_KEYS
+    gone = _TWIN_KEYS[1]
+    app.watch_for_return(gone)                 # it was lost before it left
+    assert app._watchers[gone].armed
+
+    _plug(app, 1)
+    _hotplug(app, "detach")
+
+    assert not app._watchers[gone].armed
+    assert _connected(app) == ["87ad:70db"]

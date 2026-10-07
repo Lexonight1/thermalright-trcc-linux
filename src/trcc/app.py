@@ -480,6 +480,12 @@ class App(CommandBus):
             if key not in live:
                 log.info("_reconcile: %s no longer scanned — releasing", key)
                 self.release_device(key)
+        # A unit key the scan does not show is gone for good: when a twin
+        # leaves, the survivor is re-keyed to the plain vid:pid, so a watcher
+        # on the old ``vid:pid@unit`` would retry a key nothing will answer.
+        for key in [k for k in self._watchers
+                    if parse_device_key(k)[:2] == (vid, pid) and k not in live]:
+            self.stop_watching(key)
         for key in live:
             self._connect_unit(key)
 
