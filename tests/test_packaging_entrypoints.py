@@ -348,3 +348,16 @@ def test_every_hard_dependency_is_declared_by_every_package() -> None:
                if cell == "NO"]
 
     assert missing == []
+
+
+def test_the_nix_flake_carries_every_linux_dependency() -> None:
+    """flake.nix lists its Python dependencies by hand -- the version is
+    derived from pyproject.toml (PR #209), the dependency list is not, and
+    nothing checked it.  A dependency added to pyproject without the flake
+    leaves NixOS installs failing at import."""
+    linux = {name.lower().replace("_", "-") for name in _pyproject_linux_runtime_deps()}
+    flake = (_ROOT / "flake.nix").read_text(encoding="utf-8")
+    block = flake.split("dependencies = with python.pkgs; [", 1)[1].split("];", 1)[0]
+    listed = {line.split("#", 1)[0].strip() for line in block.splitlines()} - {""}
+
+    assert linux - listed == set(), f"missing from flake.nix: {sorted(linux - listed)}"
