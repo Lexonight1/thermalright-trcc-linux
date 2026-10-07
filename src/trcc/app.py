@@ -547,21 +547,29 @@ class App(CommandBus):
         keeping them lets the metrics / LED-animation loops and render observers
         repaint the same content on the next tick.  So both the LED segment
         displays and the LCD panels recover without a manual restart (#189).
+
+        The reconnect is :meth:`_connect_unit`, the replug's own path, so a
+        panel whose node is late after the wake is retried by the reconnect
+        watcher.  It used to be one ``ConnectDevice``: a node not back yet
+        failed it, and the panel stayed dark until a restart.  The stale
+        transport is closed first because it still LOOKS open, which
+        ``_connect_unit`` would take for connected.
         """
-        from .core.commands import ConnectDevice
         keys = list(self.devices)
         log.info("_on_system_resumed: reconnecting %d device(s) after wake", len(keys))
         for key in keys:
-            old = self.devices.get(key)
-            log.info("_on_system_resumed: %s — stale transport after suspend, "
-                     "stop sender + reopen", key)
-            self.stop_sender(key)
-            if old is not None:
-                try:
-                    old.disconnect()
-                except Exception:
-                    log.exception("_on_system_resumed: disconnect %s raised", key)
-            self.dispatch(ConnectDevice(key=key))
+            with self._connect_lock:
+                old = self.devices.get(key)
+                log.info("_on_system_resumed: %s — stale transport after "
+                         "suspend, stop sender + reopen", key)
+                self.stop_sender(key)
+                if old is not None:
+                    try:
+                        old.disconnect()
+                    except Exception:
+                        log.exception("_on_system_resumed: disconnect %s raised",
+                                      key)
+                self._connect_unit(key)
 
     def _on_orientation_changed(self, event: Any) -> None:
         """``OrientationChanged`` → the folder of the new orientation, with its

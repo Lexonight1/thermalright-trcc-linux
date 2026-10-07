@@ -402,3 +402,35 @@ def test_a_screencast_frame_is_not_sent_to_a_dead_panel(
     assert not [r for r in caplog.records
                 if "send() called before connect()" in r.getMessage()
                 or "refused again" in r.getMessage()]
+
+
+def test_a_panel_whose_node_is_late_after_a_wake_is_retried(tmp_path: Path) -> None:
+    """A wake can arrive before the panel's node is back.
+
+    MUTATION CHECK: reconnect with one ``ConnectDevice`` again (the old wake)
+    and that failure is the end of it -- still dark with the node long back.
+    """
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.core.errors import TransportError
+    from trcc.core.events import SystemResumed
+
+    from .mock_platform import MockPlatform
+
+    clock = SyncSendScheduler()
+    app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
+    app.dispatch(ConnectDevice(key=_KEY))
+    hand_back = app.platform.open_transport
+
+    def no_node(*_args: object, **_kwargs: object) -> object:
+        raise TransportError("No SCSI device node found for 0402:3922")
+
+    app.platform.open_transport = no_node      # type: ignore[method-assign]
+    app.events.publish(SystemResumed())
+    assert not (_KEY in app.devices and app.devices[_KEY].is_connected), \
+        "precondition: the wake's own connect found no node"
+
+    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    for now in range(0, 30):
+        clock.tick(float(now))
+
+    assert app.devices[_KEY].is_connected
