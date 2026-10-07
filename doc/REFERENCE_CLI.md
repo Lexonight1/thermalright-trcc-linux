@@ -67,7 +67,7 @@ trcc api [OPTIONS]
 
 ### `trcc daemon`
 
-Run the background daemon that owns USB + serves CLI/API clients. One process per user. Binds a Unix socket at `$XDG_RUNTIME_DIR/trcc.sock` (`~/.cache/trcc.sock` where that is unset, e.g. macOS) and serves Commands until SIGTERM / SIGINT or a remote `trcc kill`. Sets `TRCC_DAEMON=1` to route clients through this daemon.
+Run the background daemon that owns USB + serves CLI/API clients. One process per user. Binds a Unix socket at `$XDG_RUNTIME_DIR/trcc.sock` (`~/.cache/trcc.sock` where that is unset, e.g. macOS) and serves Commands until SIGTERM / SIGINT or a remote `trcc kill`. This is the shared App: every other trcc command and window finds it and uses it, and the first one to need it starts it when none is running.
 
 ```bash
 trcc daemon
@@ -482,7 +482,7 @@ trcc display configure-slideshow [OPTIONS] KEY THEMES
 
 ### `trcc display export-video`
 
-Encode a clip into a loose `Theme.zt` sized for the device's panel. Distinct from `load-video`, which stages a whole theme directory and applies it. This gives you the `.zt` file itself — to set as a background, to keep, or to hand to `set-background`. The encode runs in the background and reports on the event bus, so `--wait` follows it and `--no-wait` returns immediately with the token. Under `TRCC_DAEMON=1` the work happens in the daemon and this terminal is simply watching it, which is why the progress can be followed from a process that is not doing the encoding.
+Encode a clip into a loose `Theme.zt` sized for the device's panel. Distinct from `load-video`, which stages a whole theme directory and applies it. This gives you the `.zt` file itself — to set as a background, to keep, or to hand to `set-background`. The encode runs in the background and reports on the event bus, so `--wait` follows it and `--no-wait` returns immediately with the token. The work happens in the shared App and this terminal only watches it, which is why the progress can be followed from a process that is not doing the encoding.
 
 ```bash
 trcc display export-video [OPTIONS] KEY PATH

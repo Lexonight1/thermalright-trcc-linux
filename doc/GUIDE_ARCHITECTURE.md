@@ -58,29 +58,30 @@ imports no adapter, ever.
 
 ```python
 from trcc._boot import trcc
-app = trcc()                     # in-process App, or a daemon client
+app = trcc()                     # the shared App's proxy, or an in-process App
 ```
 
 It takes an optional `platform` and `renderer` for injection — that seam is what
 lets `dev/mock.py` drive any UI against a `MockPlatform` with no hardware.
 
-## In-process vs daemon mode
+## The shared App vs in-process
 
-| | default | `TRCC_DAEMON=1` |
+| | default | `TRCC_DAEMON=0`, as root, or on Windows |
 |---|---|---|
-| `trcc()` returns | `App` | `AppProxy` |
-| a dispatch is | a method call | one JSON round-trip over a Unix socket |
-| who owns USB | this process | the daemon |
+| `trcc()` returns | `AppProxy` | `App` |
+| a dispatch is | one JSON round-trip over a Unix socket | a method call |
+| who owns USB | the shared App (`trcc daemon`), started by the first UI that needs it | this process |
 
-`AppProxy` exposes **`dispatch(cmd) -> Result` and nothing else** — every other
-attribute raises. That is deliberate: a UI that reaches for `app.settings` or
-`app.devices` works locally and breaks remotely, so the proxy makes the mistake
-loud rather than silent.
+`AppProxy` implements the `CommandBus` port and **nothing else**:
+`dispatch(cmd) -> Result`, `events` (the App's events, streamed over the socket
+and republished on a local bus), `remote`, and `on_app_gone` (told when the App
+stops on purpose or dies). Every other attribute raises. That is deliberate: a
+UI that reaches for `app.settings` or `app.devices` works locally and breaks
+remotely, so the proxy makes the mistake loud rather than silent.
 
-**Events do not cross the socket yet.** `AppProxy` has no `.events`, so the two
-graphical UIs cannot currently run as daemon clients. The wire codec for events
-exists (`encode_event` / `decode_event`); the server fan-out and the client
-reader do not.
+When the App stops on purpose (`trcc kill`), the last line of every event
+stream says so and every open UI closes. When it dies, the stream just ends:
+each open UI starts again, which starts a new App.
 
 ## The IPC wire
 

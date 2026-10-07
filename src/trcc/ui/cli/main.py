@@ -395,8 +395,9 @@ def daemon() -> None:
     One process per user.  Binds a Unix socket at
     ``$XDG_RUNTIME_DIR/trcc.sock`` (``~/.cache/trcc.sock`` where that is
     unset, e.g. macOS) and serves Commands until
-    SIGTERM / SIGINT or a remote ``trcc kill``.  Sets
-    ``TRCC_DAEMON=1`` to route clients through this daemon.
+    SIGTERM / SIGINT or a remote ``trcc kill``.  This is the shared App:
+    every other trcc command and window finds it and uses it, and the first
+    one to need it starts it when none is running.
     """
     log.info("cli daemon")
     from ...daemon import run_daemon

@@ -148,7 +148,7 @@ Show this command's help and exit.
 .PP
 \fBtrcc display export\-video\fR \fIKEY\fR \fIPATH\fR [\fIOPTIONS\fR]
 .PP
-Encode a clip into a loose Theme.zt sized for the device's panel. Distinct from load\-video, which stages a whole theme directory and applies it. This gives you the .zt file itself  \-  to set as a background, to keep, or to hand to set\-background. The encode runs in the background and reports on the event bus, so \-\-wait follows it and \-\-no\-wait returns immediately with the token. Under TRCC_DAEMON=1 the work happens in the daemon and this terminal is simply watching it, which is why the progress can be followed from a process that is not doing the encoding.
+Encode a clip into a loose Theme.zt sized for the device's panel. Distinct from load\-video, which stages a whole theme directory and applies it. This gives you the .zt file itself  \-  to set as a background, to keep, or to hand to set\-background. The encode runs in the background and reports on the event bus, so \-\-wait follows it and \-\-no\-wait returns immediately with the token. The work happens in the shared App and this terminal only watches it, which is why the progress can be followed from a process that is not doing the encoding.
 .PP
 Arguments:
 .RS 4

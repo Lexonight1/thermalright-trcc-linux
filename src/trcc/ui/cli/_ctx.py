@@ -1,8 +1,8 @@
 """Shared CLI context — App singleton + lightweight helpers.
 
-In daemon mode (``TRCC_DAEMON=1``) the App is actually an
-``AppProxy`` — same ``dispatch(cmd) -> Result`` surface, calls travel
-over the Unix socket to the running daemon.  Resolved via the canonical
+By default the App is an ``AppProxy`` to the shared App — same
+``dispatch(cmd) -> Result`` surface, calls travel over the Unix socket to
+it; ``TRCC_DAEMON=0`` builds one in-process instead.  Resolved via the canonical
 ``_boot.trcc()`` factory.
 """
 from __future__ import annotations

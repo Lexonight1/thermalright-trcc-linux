@@ -1,11 +1,13 @@
 """AppProxy — client-side drop-in for ``App`` that talks to the daemon.
 
-UIs hold a typed ``App`` and never distinguish; in daemon mode the
-``_boot.trcc()`` factory hands them an ``AppProxy`` instead.  Only
-``dispatch(cmd) -> Result`` is real — every call serializes the Command,
-sends it over the Unix socket, and reconstructs the typed Result.
+UIs hold a ``CommandBus`` and never distinguish; by default the
+``_boot.trcc()`` factory hands them an ``AppProxy`` to the shared App.  It
+is the ``CommandBus`` port and nothing more: ``dispatch(cmd) -> Result``
+serializes the Command, sends it over the Unix socket, and reconstructs the
+typed Result; ``remote`` says so; ``on_app_gone`` watches for the App
+stopping or dying.
 
-``events`` is the ONE other attribute that is real, and it has to be: both
+``events`` is the one attribute beyond dispatching, and it has to be: both
 Qt skins build a ``BusBridge(app.events)`` at construction, so without it a
 GUI cannot run as a daemon client at all — which is what kept
 ``TRCC_DAEMON=1`` off by default and the bus optional.  The proxy answers it
@@ -15,7 +17,7 @@ subscriber works unchanged and nothing in ``ui/`` needs to know.
 Other ``App`` attributes (``platform`` / ``settings`` / ``devices`` /
 ``display``) are not exposed by the proxy.  UIs that need state should
 dispatch a Command (``DiscoverDevices`` / ``GetPlatformInfo`` /
-``ReadSensors``) — that's the API contract daemon mode honors.
+``ReadSensors``) — that's the API contract the shared App honors.
 """
 from __future__ import annotations
 
@@ -362,6 +364,6 @@ class AppProxy(CommandBus):
     def __getattr__(self, name: str) -> object:
         log.debug("__getattr__: name=%s", name)
         raise AttributeError(
-            f"AppProxy has no attribute {name!r} — daemon mode only exposes "
-            "dispatch(cmd); use a Command to query App state remotely"
+            f"AppProxy has no attribute {name!r} — the shared App is reached "
+            "through dispatch(cmd) and events; ask it with a Query"
         )

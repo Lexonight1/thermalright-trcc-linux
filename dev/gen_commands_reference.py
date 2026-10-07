@@ -132,14 +132,16 @@ def generate() -> str:
         "from trcc._boot import trcc",
         "from trcc.core.commands import SendColor",
         "",
-        "app = trcc()                     # in-process, or a daemon client",
+        "app = trcc()                     # the shared App, or in-process",
         'result = app.dispatch(SendColor(key="0402:3922", r=255, g=0, b=0))',
         "result.ok, result.message",
         "```",
         "",
-        "`trcc()` returns an in-process `App`, or an `AppProxy` speaking to the "
-        "daemon when `TRCC_DAEMON=1`. Both expose `dispatch(cmd) -> Result` and "
-        "nothing else, so a UI written against this page works in either mode.",
+        "`trcc()` returns an `AppProxy` speaking to the shared App -- the "
+        "default -- or an in-process `App` (`TRCC_DAEMON=0`, as root, or on "
+        "Windows). Both are the same `CommandBus`: `dispatch(cmd) -> Result`, "
+        "`events`, `remote` and `on_app_gone`, so a UI written against this "
+        "page works either way.",
         "",
         "Over the socket the same call is one line of JSON:",
         "",

@@ -13,8 +13,9 @@ Lifecycle::
     4. Install SIGTERM / SIGINT handlers that flip the server's stop flag.
     5. Block in ``serve_forever`` until the loop exits.
 
-Opt-in today (``TRCC_DAEMON=1``).  No Qt event loop — next/'s App
-is framework-blind, so the daemon is a plain Python process.
+The default: every UI finds this process or starts it (``TRCC_DAEMON=0``
+opts out).  No Qt event loop — the App is framework-blind, so the daemon is a
+plain Python process.
 """
 from __future__ import annotations
 
@@ -154,7 +155,7 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
             return ipc.daemon_running()
 
     cmd = _daemon_spawn_cmd()
-    log.info("Spawning next/ daemon: %s", " ".join(cmd))
+    log.info("Spawning the shared App: %s", " ".join(cmd))
     # Strip the daemon-mode flag from the child's env so the spawned daemon
     # can't inherit it and try to proxy to itself — it builds the App
     # in-process via run_daemon → _build_local_app regardless (#162).

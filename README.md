@@ -307,12 +307,12 @@ src/trcc/
 ├── adapters/       # USB device protocols (SCSI, HID, Bulk, LY, LED)
 ├── ui/
 │   ├── gui/        # PySide6 GUI — themes, video, overlay, LED, sensors
-│   ├── cli/        # Typer CLI — 144 commands across 8 modules
-│   ├── api/        # FastAPI REST API — 127 endpoints across 9 modules
+│   ├── cli/        # Typer CLI — every command in doc/REFERENCE_CLI.md
+│   ├── api/        # FastAPI REST API — every route in doc/REFERENCE_API.md
 │   └── presentation/ # Toolkit-free models shared by the graphical UIs
 ├── app.py          # The App — owns devices, services, the bus, dispatch()
-├── _boot.py        # Composition root — returns App, or AppProxy in daemon mode
-├── daemon.py       # Optional singleton daemon mode (TRCC_DAEMON=1)
+├── _boot.py        # Composition root — the shared App's proxy, or an in-process App
+├── daemon.py       # The shared App every UI finds or starts (TRCC_DAEMON=0 opts out)
 ├── ipc.py          # Command dispatch over a Unix socket
 └── assets/         # GUI images, desktop entry, polkit policy, systemd service
 ```

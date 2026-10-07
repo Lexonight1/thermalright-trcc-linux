@@ -329,9 +329,9 @@ def export_video(
 
     The encode runs in the background and reports on the event bus, so
     ``--wait`` follows it and ``--no-wait`` returns immediately with the
-    token.  Under ``TRCC_DAEMON=1`` the work happens in the daemon and
-    this terminal is simply watching it, which is why the progress can be
-    followed from a process that is not doing the encoding.
+    token.  The work happens in the shared App and this terminal only
+    watches it, which is why the progress can be followed from a process
+    that is not doing the encoding.
     """
     log.info("cli display export-video: key=%s path=%s start_ms=%s end_ms=%s "
              "rotation=%s wait=%s", key, path, start_ms, end_ms, rotation,

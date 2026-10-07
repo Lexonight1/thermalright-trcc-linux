@@ -19,8 +19,8 @@ Two rules follow, and ``tests/test_ui_bus.py`` gates both:
 
 The CLI is absent on purpose.  It is the **router**, not a leaf face: it
 composes lazily per subcommand (``_ctx.get_app()``), so putting it through
-``compose() -> run(app)`` would build an App it discards — and under
-``TRCC_DAEMON=1`` would spawn a daemon that a ``trcc --help`` never needed.
+``compose() -> run(app)`` would build an App it discards — and would find
+or start the shared App, which a ``trcc --help`` never needed.
 """
 from __future__ import annotations
 

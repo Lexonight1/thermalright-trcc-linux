@@ -1,8 +1,8 @@
-"""IPC for the next/ daemon — manifold dispatch over a Unix socket.
+"""IPC for the shared App — manifold dispatch over a Unix socket.
 
 The daemon (`trcc daemon`) owns one ``App`` and serves requests
-through ``IPCServer``.  Clients (``AppProxy`` returned by
-``_boot.trcc()`` when ``TRCC_DAEMON=1``) call ``dispatch(cmd)``
+through ``IPCServer``.  Clients (the ``AppProxy`` that ``_boot.trcc()``
+returns by default) call ``dispatch(cmd)``
 and the proxy turns each call into one socket round-trip.
 
 Wire format — one line of JSON per request.
