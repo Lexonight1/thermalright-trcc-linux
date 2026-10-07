@@ -612,9 +612,9 @@ class SaveTheme(Command[ThemeResult]):
         background is an image / a mask is present.  Render flags
         (``overlay_enabled`` / ``rotation`` / ``mask_visible`` / …) carry
         over from the source.
-      * image background → stored in the library (deduped); video
-        background → bundled verbatim as ``Theme.<ext>`` (videos dedup
-        poorly and the in-dir convention already reloads them).
+      * background → stored in the user library (deduped) and referenced:
+        an image as ``.png``, an animation in its own container (every
+        animated format ``MEDIA`` declares, .gif included).
       * mask → stored image-only in the library (no ``config1.dc``); the
         manifest's inline ``elements`` own the layout, so ``ApplyMask`` on
         reload applies the mask image + position WITHOUT clobbering them.
@@ -781,8 +781,8 @@ class SaveTheme(Command[ThemeResult]):
         Carries the source's render flags, the baked overlay layout (see
         :meth:`_combine_elements`), and library refs for the background
         image / mask (see :meth:`_store_background` / :meth:`_store_mask`).
-        A video background is bundled verbatim by :meth:`_store_background`
-        and produces no ref.
+        An animated background is stored in its own container by
+        :meth:`_store_background` and referenced like an image.
         """
         manifest = self._live_manifest(app, theme, s, self.name,
                                        width, height)

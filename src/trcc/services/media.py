@@ -290,10 +290,10 @@ class ZtDecoder:
             raise ThemeError(f"Cannot read {self.path}: {e}") from e
 
         if not data or data[0] != ZT_MAGIC:
-            raise ThemeError(
-                f"Not a Theme.zt archive (magic 0x{data[0]:02X if data else 0}): "
-                f"{self.path}"
-            )
+            # The format spec used to hold the conditional, which Python reads
+            # as an invalid spec -- so a bad .zt raised ValueError, not this.
+            magic = f"0x{data[0]:02X}" if data else "empty file"
+            raise ThemeError(f"Not a Theme.zt archive (magic {magic}): {self.path}")
 
         try:
             (frame_count,) = struct.unpack_from("<i", data, 1)

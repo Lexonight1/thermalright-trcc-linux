@@ -46,7 +46,14 @@ from typing import TYPE_CHECKING
 from ...core._safe import is_safe_zip_member
 from ...core.errors import ThemeError
 from ...core.logs import Blob, per_frame
-from ...core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
+from ...core.models import (
+    MEDIA,
+    DiscoveredMask,
+    MediaKind,
+    Theme,
+    ThemeDir,
+    WebPreviewInfo,
+)
 from ...core.ports import ContentStore, SingleFileTheme
 from ...services import _dc as Dc
 from ...services import _tr as Tr
@@ -71,17 +78,20 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 # the legacy overlay_config dict under a ``dc`` key, plus explicit
 # ``background`` and ``mask`` path fields.  Read-only — we translate to
 # next/'s shape on load but don't write this shape back.
-# Video-background filenames TRCC actually ships.  ``td.bg`` (00.png)
-# is the static fallback rendered when no video is present; videos
-# live alongside it as ``Theme.{mp4,mov,webm}`` or ``Theme.zt`` (the
-# JPEG-sequence archive UCVideoCut writes).  No ``background.*`` —
-# that name never existed in legacy or Windows TRCC.
-_VIDEO_CANDIDATES = (
-    "Theme.mp4", "Theme.mov", "Theme.webm", ThemeDir.ZT,
-)
-# Video container extensions we ship (derived from _VIDEO_CANDIDATES so the
-# two never drift); the background allowlist is those plus the static PNG.
-_VIDEO_EXTS = frozenset(Path(c).suffix.lower() for c in _VIDEO_CANDIDATES)
+# Animated-background filenames.  ``td.bg`` (00.png) is the static
+# fallback rendered when no animation is present; an animation lives
+# alongside it as ``Theme{ext}`` -- ``Theme.zt`` being the JPEG-sequence
+# archive UCVideoCut writes, the one name the C# uses.  No ``background.*``
+# -- that name never existed in legacy or Windows TRCC.
+#
+# DERIVED from ``MEDIA``, the one authority for what a background is.  This
+# was a hand list (mp4, mov, webm, zt) while MEDIA declared seven animated
+# formats, so a .gif, .mkv or .avi background played and then failed to save
+# ("unsupported background extension"), and a .zip export wrote the raw
+# container under 00.png (#261, 2026-10-07).
+_VIDEO_EXTS = MEDIA.exts(MediaKind.ANIMATED)
+_VIDEO_CANDIDATES = tuple(f"Theme{ext}" for ext in sorted(_VIDEO_EXTS))
+# The background allowlist: every animated format plus the static PNG.
 _BG_EXTS = _VIDEO_EXTS | {".png"}
 
 

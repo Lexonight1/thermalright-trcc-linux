@@ -525,3 +525,23 @@ def test_an_unexpected_failure_leaves_no_temp_directory(
     finished = [e for e in events if isinstance(e, VideoExportFinished)]
     assert [f.ok for f in finished] == [False]
     assert list(private_tmp.iterdir()) == []
+
+
+
+@pytest.mark.parametrize("data", [b"", b"GIF89a" + b"\0" * 32])
+def test_a_file_that_is_not_a_zt_archive_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data: bytes,
+) -> None:
+    """The refusal's own f-string had an invalid format spec, so a bad .zt
+    raised ValueError -- which escaped SaveTheme -> LoadTheme -> PlayVideo
+    instead of failing the load (2026-10-07)."""
+    from trcc.core.errors import ThemeError
+    from trcc.services.media import ZtDecoder
+
+    monkeypatch.setattr(toolchain, "present", lambda _tool: True)
+    bad = tmp_path / "bad.zt"
+    bad.write_bytes(data)
+
+    with pytest.raises(ThemeError, match="Not a Theme.zt archive"):
+        ZtDecoder(bad, (8, 8)).decode()
+

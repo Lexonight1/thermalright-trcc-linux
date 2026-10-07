@@ -24,7 +24,7 @@ from trcc.core.commands import (
 )
 from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
-from trcc.core.models import CAPABILITIES_BY_KIND, Kind, Theme
+from trcc.core.models import CAPABILITIES_BY_KIND, MEDIA, Kind, MediaKind, Theme
 from trcc.services.settings import Settings
 
 from .conftest import FakeMic, FakePlatform
@@ -1112,6 +1112,66 @@ def test_saved_theme_video_background_plays_via_reference(
     assert vp.exists()
     assert vp.is_relative_to(app.platform.paths().user_background_dir(w, h))
     assert vp.read_bytes() == video_bytes
+
+
+# .zt is TRCC's own container: its bytes are a real archive the reload
+# decodes, and it saved before this fix; the formats that did not are here.
+@pytest.mark.parametrize("ext", sorted(MEDIA.exts(MediaKind.ANIMATED) - {".zt"}))
+def test_every_animated_background_saves_and_reloads(
+    app: App, tmp_home: Path, user_theme_dir: Path, ext: str,
+) -> None:
+    """A .gif, .mkv or .avi background played and then failed to save:
+    "unsupported background extension" (#261).  The store's list was a
+    hand copy of four formats while MEDIA declared seven."""
+    import json as _json
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
+    picked = tmp_home / "picked" / f"clip{ext}"
+    picked.parent.mkdir(parents=True, exist_ok=True)
+    picked.write_bytes(b"ANIMATED" * 64)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(picked))
+
+    saved = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="anim"))
+
+    assert saved.ok, saved.message
+    manifest = _json.loads(
+        (user_theme_dir / "anim" / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest["background"].endswith(ext)
+    vp = app.themes.video_path(app.themes.load(user_theme_dir / "anim"))
+    assert vp is not None and vp.read_bytes() == b"ANIMATED" * 64
+
+
+def test_the_store_accepts_every_animated_format_media_declares() -> None:
+    """One authority: a format added to MEDIA saves without a second edit."""
+    from trcc.adapters.theme import filesystem
+
+    assert MEDIA.exts(MediaKind.ANIMATED) == filesystem._VIDEO_EXTS  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_zip_export_never_writes_an_animation_as_00_png(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """The zip named a .gif background ``00.png``: a GIF89a file under a PNG
+    name, reported ok=True (2026-10-07)."""
+    import zipfile
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
+    picked = tmp_home / "picked" / "clip.gif"
+    picked.parent.mkdir(parents=True, exist_ok=True)
+    picked.write_bytes(b"GIF89a" + b"\0" * 64)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(picked))
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="anim")).ok
+    archive = tmp_home / "anim.zip"
+
+    assert app.dispatch(ExportTheme(key=_TEST_DEVICE_KEY, theme_name="anim",
+                                    archive_path=archive)).ok
+
+    with zipfile.ZipFile(archive) as zf:
+        members = {Path(n).name: zf.read(n) for n in zf.namelist()}
+    assert members["Theme.gif"].startswith(b"GIF89a")
+    assert not members.get("00.png", b"\x89PNG").startswith(b"GIF")
 
 
 def test_save_theme_inlines_mask_overlay_elements_into_manifest(
