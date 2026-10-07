@@ -409,3 +409,29 @@ def test_a_zone_past_the_style_is_refused(fake_platform: FakePlatform,
         # Zone 0, not the last: there ``zone + 1`` equals the count and a
         # mask sized by the zone would pass unseen.
         assert len(_mask(app)) == count
+
+
+@pytest.mark.parametrize("zone, ok", [(3, True), (4, False), (10_000_000, False)])
+def test_a_zone_before_the_handshake_is_bounded_by_the_largest_style(
+    fake_platform: FakePlatform, zone: int, ok: bool,
+) -> None:
+    """Before the handshake the style is unknown.  Only "not negative" was
+    checked, so zone=10_000_000 stored a ten-million-entry mask in trcc.json;
+    no cooler has more zones than the largest style."""
+    app = App(fake_platform)
+
+    result = app.dispatch(SelectZone(key=_LED_KEY, zone=zone))
+
+    assert result.ok is ok, result.message
+    assert len(app.settings.for_led(_LED_KEY).zone_sync_zones) <= 4
+
+
+def test_a_mask_stored_too_long_is_cut_back(fake_platform: FakePlatform) -> None:
+    """A mask saved before the bound existed (zone 99 stored 100 entries)
+    shrinks to the largest style's size on the next selection."""
+    app = App(fake_platform)
+    app.settings.set_led_zone_sync_zones(_LED_KEY, [False] * 100)
+
+    assert app.dispatch(SelectZone(key=_LED_KEY, zone=1)).ok
+
+    assert len(app.settings.for_led(_LED_KEY).zone_sync_zones) == 4

@@ -540,6 +540,11 @@ def _ensure_zones(app: App, key: str) -> int | None:
     return zone_count
 
 
+#: The most zones any LED style has -- the bound on a zone before the
+#: handshake says which style this cooler is.
+_MOST_ZONES = max(style.zone_count for style in LED_STYLES.values())
+
+
 def _style_of(app: App, key: str) -> LedStyle | None:
     """The connected LED's resolved style, or None before its handshake."""
     try:
@@ -952,22 +957,25 @@ class SelectZone(Command[LedColorsResult]):
             )
         # The style's own count bounds the choice -- a zone 99 was accepted
         # (on LC2 and LF13, which have none) and stored a 100-entry mask.
-        # Before the handshake the style is unknown, and only "not negative"
-        # can be said.
+        # Before the handshake the style is unknown, but no style has more
+        # zones than the largest: that bound kept zone=10_000_000 from storing
+        # a ten-million-entry mask in trcc.json.
         style = _style_of(app, self.key)
         count = LED_STYLES[style].zone_count if style is not None else None
-        if count is not None and self.zone >= count:
+        bound = count if count is not None else _MOST_ZONES
+        if self.zone >= bound:
             log.warning("SelectZone %s: zone %d is out of range — %s has %d",
-                        self.key, self.zone, style.name if style else "?", count)
+                        self.key, self.zone,
+                        style.name if style else "no style yet, at most", bound)
             return LedColorsResult(
                 ok=False, key=self.key, colors=[],
-                message=(f"{self.key} has no zones to select" if not count else
-                         f"zone must be 0..{count - 1}, got {self.zone}"),
+                message=(f"{self.key} has no zones to select" if not bound else
+                         f"zone must be 0..{bound - 1}, got {self.zone}"),
             )
         if _ensure_zones(app, self.key) is not None:
             app.settings.set_led_zone_sync(self.key, False)
-        size = (count if count is not None else
-                max(len(app.settings.for_led(self.key).zone_sync_zones), self.zone + 1))
+        size = (count if count is not None else min(_MOST_ZONES, max(
+            len(app.settings.for_led(self.key).zone_sync_zones), self.zone + 1)))
         app.settings.set_led_zone_sync_zones(self.key, one_hot(self.zone, size))
         _publish_led_settings_changed(app, self.key)
         return LedColorsResult(
