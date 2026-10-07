@@ -183,13 +183,16 @@
   every few minutes for as long as it ran, and never said to run it as
   administrator. It now says so once and stops retrying.
 - **Colours sent in the byte order the Windows app uses, for three panel
-  types** -- not yet confirmed on a real panel, and no owner of these has
-  reported in; if colours look red/blue swapped after this, please open an
+  types.** The SCSI one is confirmed on a real panel (below); the other two
+  are not yet -- if colours look red/blue swapped after this, please open an
   issue with `trcc report`:
   - LY panels (0416:5409) and bulk panels reporting PM 50: big-endian, as
     the Windows app sends them (they were sent little-endian).
   - SCSI panels reporting FBL 51: big-endian (USB HID panels with FBL 51 keep
-    little-endian, which their owners confirmed).
+    little-endian, which their owners confirmed). @PourrezJ found and fixed
+    this on his own panel at the same time -- a green theme showed pink
+    (#313). *This entry said no owner had reported in; he had, and it was
+    corrected after the release.*
   - The boot animation now uses the panel's own byte order. It was always
     sent big-endian, so FBL 36, 37 and 50 panels got theirs with red and blue
     swapped.

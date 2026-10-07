@@ -76,7 +76,9 @@ _BOOT_ANIM_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
 #: sets SPI mode 2 for mode 1 + FBL 51 (FormCZTV.cs:1065), and USBLCD.exe
 #: copies the frame to the panel unswapped (its '3' class, USBLCD.exe.c).  NOT
 #: in FBL_PROFILES[51]: the HID wire's FBL 51 is little-endian on real glass
-#: (#65, #67).  Unverified on a SCSI FBL 51 panel -- none has been reported.
+#: (#65, #67).  On a SCSI FBL 51 panel big-endian IS the glass: @PourrezJ's
+#: 0402:3922 (320x240, SUB 0) showed a green theme pink until he swapped it
+#: to big-endian, the same change, made independently (#313).
 _SCSI_BIG_ENDIAN_FBLS: frozenset[int] = frozenset({51})
 
 
