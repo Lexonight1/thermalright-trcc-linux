@@ -148,6 +148,17 @@
 
 ### Fixed
 
+- **A panel that loses its connection no longer floods the log.** When
+  something else took the panel for a moment (a virtual machine it is passed
+  through to, a KVM switch, a hub that reset it), TRCC
+  could keep treating it as connected after its connection had closed. It then
+  logged two errors for every frame it tried to show, for as long as it ran,
+  and the flood pushed everything else out of the log, including whatever had
+  gone wrong, and plugging the panel back in was ignored as "already
+  connected". The panel is now seen as disconnected: the video stops sending to
+  it with one warning, and a replug is no longer ignored. If the panel comes
+  back without being replugged, restart TRCC (`trcc kill`, then open it again);
+  reconnecting on its own is still to come.
 - **Videos play where ffmpeg is installed under a versioned name.** On
   NetBSD (pkgsrc) the programs are `ffmpeg7` and `ffprobe7`. TRCC found them
   when checking what was installed, then ran plain `ffmpeg` anyway, so video

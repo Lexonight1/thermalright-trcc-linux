@@ -275,7 +275,17 @@ class Device(ABC, Generic[T]):
 
     @property
     def is_connected(self) -> bool:
-        connected = self._handshake is not None
+        """Handshaken AND still holding an open transport — "can I send now".
+
+        Not the handshake alone.  Only :meth:`disconnect` clears it, while the
+        device closes its OWN transport in two places that do not call it: the
+        recovery threshold and a ``_reconnect`` whose re-open failed.  Read off
+        the handshake, such a device stayed "connected" with nothing to write
+        to, so every producer kept sending into it — two records and an
+        ``ErrorOccurred`` per frame, for three hours on 2026-10-06 — and a
+        replug's ``_connect_unit`` saw "already connected" and left it there.
+        """
+        connected = self._handshake is not None and self._transport.is_open
         frame_log.debug("Device.is_connected: %s (%s)", connected, self.info.key)
         return connected
 

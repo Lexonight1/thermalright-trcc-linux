@@ -80,3 +80,88 @@ def test_the_worker_always_matches_the_attached_device(app: App) -> None:
 
     assert app.senders[_KEY].device is app.devices[_KEY]
     assert app.devices[_KEY].is_connected
+
+
+# ── A panel taken without an unplug (2026-10-06) ─────────────────────────────
+#
+# A VM with the panel passed through took it from a running daemon: the
+# kernel node vanished, writes failed, the device's own `_reconnect` could not
+# re-open — and closed its transport.  `is_connected` read the HANDSHAKE, so the
+# corpse stayed "connected": the video tick kept sending into it (two records
+# and an ErrorOccurred per frame, three hours), and when the panel came back a
+# replug's `_connect_unit` saw "already connected" and did nothing.
+
+
+def _take_the_panel(app: App) -> None:
+    """The node vanishes under a connected device: writes fail, re-open fails."""
+    import errno
+
+    transport = app.devices[_KEY]._transport
+
+    def gone(*_args: object, **_kwargs: object) -> bool:
+        raise OSError(errno.ENODEV, "No such device")
+
+    transport.send_cdb = gone           # type: ignore[method-assign]
+    transport.open = lambda: False      # type: ignore[method-assign]
+    app.send(_KEY, b"\x00" * 204800)    # the frame that finds out
+
+
+def test_a_panel_whose_transport_closed_is_not_connected(app: App) -> None:
+    app.dispatch(ConnectDevice(key=_KEY))
+
+    _take_the_panel(app)
+
+    assert not app.devices[_KEY]._transport.is_open, "precondition: closed"
+    assert not app.devices[_KEY].is_connected
+
+
+def test_producers_stop_sending_into_a_closed_transport(
+    app: App, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The per-frame render refuses a dead panel instead of writing to it.
+
+    MUTATION CHECK: read ``is_connected`` off the handshake alone and every
+    render below queues a frame, each one failing in the worker.
+    """
+    import logging
+
+    from trcc.core.commands import RenderAndSend
+    from trcc.core.errors import TransportError
+
+    from .conftest import show_a_theme
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    show_a_theme(app, _KEY)
+    _take_the_panel(app)
+    caplog.clear()
+
+    with caplog.at_level(logging.DEBUG):
+        results = [app.dispatch(RenderAndSend(key=_KEY)) for _ in range(20)]
+        # Drain: a waited frame runs after anything queued before it.
+        with pytest.raises(TransportError):
+            app.send(_KEY, b"\x00" * 204800)
+
+    assert [r.connected for r in results] == [False] * 20
+    refused = [r for r in caplog.records
+               if "send() called before connect()" in r.getMessage()]
+    assert len(refused) == 1, "only the drain frame may reach the dead transport"
+
+
+def test_a_replug_heals_a_panel_whose_transport_closed(app: App) -> None:
+    """``_connect_unit`` releases the corpse and connects a fresh device.
+
+    MUTATION CHECK: read ``is_connected`` off the handshake alone and the
+    hotplug add answers "already connected" — the same dead object stays.
+    """
+    from trcc.core.events import DeviceAttached
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    corpse = app.devices[_KEY]
+    _take_the_panel(app)
+
+    app._on_device_attached(DeviceAttached(key=_KEY, vid=0x0402, pid=0x3922))
+
+    assert app.devices[_KEY] is not corpse
+    assert app.devices[_KEY].is_connected
+    assert app.senders[_KEY].device is app.devices[_KEY]
+    assert app.send(_KEY, b"\x00" * 204800) is True
