@@ -6,8 +6,9 @@ The post-cutover ``Platform`` port is the only seam we need.
 ``DevPlatform`` subclasses the host's production platform (just
 ``LinuxOS`` here — Mac/Windows/BSD can extend later) and overrides
 only ``paths()`` to point at the dev directories.  Real USB, real
-sensors, real autostart — same code paths a packaged install runs, just
-isolated to a throwaway data root.
+sensors -- same code paths a packaged install runs, just isolated to a
+throwaway data root.  Autostart runs the real XDG adapter code with its entry
+kept under ``dev/.trcc/`` (``_SandboxedAutostart``).
 
 For a hardware-less smoke (CI, ergonomics dev box without a real LCD),
 plug in ``FakePlatform`` from ``tests/conftest.py`` instead — the
@@ -25,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from trcc.core.models import DeviceInfo, Wire
     from trcc.core.ports import (
+        AutostartManager,
         BulkTransport,
         HotplugMonitor,
         HttpFetcher,
@@ -414,6 +416,24 @@ class _NoRealSetup:
 
 
 
+class _SandboxedAutostart:
+    """A dev run's login entry lives under ``dev/.trcc/``, never the user's.
+
+    The host's adapter wrote ``~/.config/autostart/trcc.desktop`` -- the
+    user's REAL login item -- and the gui enables or refreshes it on launch,
+    so a dev run with a fresh ``dev/.trcc`` switched the user's autostart back
+    on, or pointed it at this checkout's interpreter.  The XDG adapter is the
+    one used on every host: its enable/disable/refresh cycle still runs for
+    real, into a file nothing logs in from.
+    """
+
+    def _build_autostart(self) -> AutostartManager:
+        from trcc.adapters.system._autostart import XdgDesktopAutostart
+
+        log.info("dev platform: autostart kept under %s", DEV_TRCC)
+        return XdgDesktopAutostart(config_home=DEV_TRCC)
+
+
 def _offline_fetcher() -> HttpFetcher:
     """A dev platform's network without ``--online``: none."""
     from trcc.adapters.repo.http import OfflineHttpFetcher
@@ -426,16 +446,16 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
                         online: bool = False) -> Platform:
     """Return a Platform rooted at ``dev/.trcc/`` for the host OS.
 
-    Always subclasses the production host Platform so sensors, autostart,
-    setup, distro detection — everything except the filesystem layout — run
-    as the real packaged app does.
+    Always subclasses the production host Platform so sensors, setup and
+    distro detection run as the real packaged app does; the filesystem and
+    the login entry are kept under ``dev/.trcc/``.
 
     * No ``specs`` → ``DevPlatform``: real USB enumeration + real hotplug too.
       "Drive the real GUI against my own hardware without polluting ~/.trcc."
     * ``specs`` → ``DevMockPlatform``: additionally overrides ONLY the USB
       seam (``scan_devices`` + scripted ``open_scsi``/``open_bulk``) and forces
-      Noop hotplug (a simulated fleet has no live attach).  Sensors/autostart/
-      setup/distro stay the real host code, so the mock IS the real app with
+      Noop hotplug (a simulated fleet has no live attach).  Sensors/setup/
+      distro stay the real host code, so the mock IS the real app with
       three methods swapped — which is exactly why it surfaces real bugs.
     """
     from trcc.core.ports import Paths
@@ -461,7 +481,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
             return DEV_TRCC / "trcc.log"
 
     # Pick the host's production Platform impl as the base so sensors +
-    # autostart + setup + distro all work the way the packaged app does.
+    # setup + distro all work the way the packaged app does.
     # Mirrors production launch (ui/gui/__init__.run_gui + _boot).
     from trcc.adapters.system import current_platform
     host = current_platform()
@@ -472,7 +492,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     dev_paths = DevPaths()
 
     if not specs:
-        class DevPlatform(_NoRealSetup, host_cls):
+        class DevPlatform(_NoRealSetup, _SandboxedAutostart, host_cls):
             """Production host platform with paths redirected to ``dev/.trcc/``."""
 
             def paths(self) -> Paths:
@@ -494,7 +514,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     parsed = [DeviceSpec.parse(s) for s in specs]
     by_key = {sp.key: sp for sp in parsed}
 
-    class DevMockPlatform(_NoRealSetup, host_cls):
+    class DevMockPlatform(_NoRealSetup, _SandboxedAutostart, host_cls):
         """Real host platform with the USB seam swapped for a scripted fleet."""
 
         def http_fetcher(self) -> HttpFetcher:

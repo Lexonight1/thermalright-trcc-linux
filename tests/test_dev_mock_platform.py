@@ -219,3 +219,21 @@ def test_the_suite_refuses_a_dns_lookup() -> None:
         "'example.invalid'.  Stub the port (HttpFetcher, DataInstallService, "
         "GithubReleases) instead of reaching the network.")
 
+
+
+@pytest.mark.parametrize("specs", [None, [_SPEC]], ids=["--hardware", "fleet"])
+def test_a_dev_platforms_login_entry_is_not_the_users(
+    specs: list[dict] | None,
+) -> None:
+    """The host's adapter wrote the user's REAL ~/.config/autostart entry,
+    and the gui enables or refreshes it on launch -- so a dev run with a
+    fresh dev/.trcc switched the user's autostart back on.
+
+    MUTATION CHECK: drop the mixin from a dev class and its entry is the
+    user's.
+    """
+    from _mock_bootstrap import DEV_TRCC
+
+    platform = _build_dev_platform(specs)
+
+    assert Path(platform.autostart().entry_location()).is_relative_to(DEV_TRCC)
