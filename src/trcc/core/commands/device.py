@@ -247,7 +247,7 @@ class ConnectDevice(Command[ConnectResult]):
             log.info("ConnectDevice %s: ordinary transport failed (%s) — "
                      "retrying on the firmware's HID output-report transport",
                      self.key, e)
-            app.detach(self.key)
+            app.release_device(self.key)    # the device, not what it shows
             retried = app.attach(vid, pid, quirk_transport=True, unit=unit)
             result = retried.connect()
             log.info("ConnectDevice %s: the quirk transport handshook where "
@@ -302,7 +302,9 @@ class ConnectDevice(Command[ConnectResult]):
                                                          unit)
             device = app.devices[self.key]      # the retry may have rebuilt it
         except (HandshakeError, TransportError, ImportError, OSError) as e:
-            app.detach(self.key)   # clears any prior issue for this key first
+            # The device only: a retry that fails here must not throw away what
+            # the panel is coming back to (its theme, a cast, a slideshow).
+            app.release_device(self.key)
             hints = _connect_failure_hints(app, e, vid, pid, unit)
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key, hints=hints))
@@ -486,7 +488,7 @@ class DisconnectDevice(Command[DisconnectResult]):
         # NOT hoisted into ``App.detach``: that also runs on ConnectDevice's
         # quirk retry and on a failed handshake, where the panel must not be
         # written to at all.  Hotplug removal never reaches either — it goes
-        # ``_on_device_detached`` -> ``_release_stale_device`` -> the transport
+        # ``_on_device_detached`` -> ``release_device`` -> the transport
         # — so an unplugged device is not asked to accept a farewell frame.
         blank = SleepDevice(key=self.key).execute(app)
         if not blank.ok:

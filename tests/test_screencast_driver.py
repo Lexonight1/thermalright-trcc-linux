@@ -835,3 +835,31 @@ def test_stopping_one_cast_keeps_the_microphone_for_another(
 
     assert app.dispatch(StopScreencast(key=_KEY)).ok
     assert (mic.running, mic.stops) == (False, 1)
+
+
+def test_a_failed_return_keeps_the_cast(casting: App,
+                                        scheduler: SyncSendScheduler,
+                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A lost panel's return can fail its first handshake (it is not answering
+    yet).  That retry must drop only the half-made device.
+
+    MUTATION CHECK: ``app.detach`` on a failed handshake again and the cast is
+    gone before the panel is back -- it froze on its last frame instead.
+    """
+    from trcc.adapters.device.scsi_lcd import ScsiLcd
+    from trcc.core.errors import HandshakeError
+
+    from .conftest import show_a_theme
+
+    def not_answering(self: ScsiLcd) -> object:
+        raise HandshakeError("no reply yet")
+
+    show_a_theme(casting, _KEY)
+    casting.devices[_KEY].disconnect()             # the panel went away
+    monkeypatch.setattr(ScsiLcd, "_do_handshake", not_answering)
+
+    result = casting.dispatch(ConnectDevice(key=_KEY))
+
+    assert not result.ok, "precondition: the handshake failed"
+    assert _KEY in casting.active_themes
+    assert task_key(_KEY) in scheduler._tasks

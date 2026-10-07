@@ -405,3 +405,41 @@ def test_the_quirk_transport_is_tried_only_after_the_ordinary_one_fails(
     assert len(attempts) == 2, "the override should have earned one retry"
     assert attempts[0] is not attempts[1], "the retry must rebuild the device"
     assert result.ok, f"the retry should have recovered: {result.message}"
+
+
+def test_the_quirk_retry_keeps_what_the_panel_shows(tmp_path, monkeypatch) -> None:
+    """The retry rebuilds the DEVICE; the theme it was showing is not its to drop.
+
+    MUTATION CHECK: ``app.detach`` before the retry again and a reconnect of a
+    quirked panel comes back with no theme -- and no cast, slideshow or stream.
+    """
+    from pathlib import Path
+
+    from trcc.adapters.device.hid_lcd import HidLcd
+    from trcc.core.commands import ConnectDevice
+    from trcc.core.errors import HandshakeError
+    from trcc.core.models import Theme, Wire
+
+    app = _quirk_app(tmp_path, scanned=False)
+    monkeypatch.setattr(
+        "trcc.adapters.device.transport.HidApiTransport",
+        lambda vid, pid, serial=None, unit="": app.platform.open_transport(
+            Wire.HID, vid, pid, serial, unit),
+    )
+    real_connect = HidLcd.connect
+    attempts: list[object] = []
+
+    def failing_first(self):  # type: ignore[no-untyped-def]
+        attempts.append(self)
+        if len(attempts) == 1:
+            raise HandshakeError("ordinary transport said nothing")
+        return real_connect(self)
+
+    monkeypatch.setattr(HidLcd, "connect", failing_first)
+    theme = Theme(path=Path("/nonexistent/shown"), name="Shown",
+                  resolution=(320, 240))
+    app.active_themes["0416:5302"] = theme
+
+    assert app.dispatch(ConnectDevice(key="0416:5302")).ok
+
+    assert app.active_themes.get("0416:5302") is theme

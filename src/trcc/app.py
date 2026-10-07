@@ -384,8 +384,13 @@ class App(CommandBus):
         from .core.commands._helpers import persist_user_mask_dc
         persist_user_mask_dc(self, event.key)
 
-    def _release_stale_device(self, key: str) -> None:
+    def release_device(self, key: str) -> None:
         """Stop the sender and close a dead transport, keeping the content.
+
+        Public because ``ConnectDevice`` needs it too: a handshake that fails
+        while a lost panel is being retried must drop only the half-made
+        device -- ``detach`` there threw away the theme and stopped the cast,
+        slideshow or stream the panel was coming back to.
 
         The teardown half of a replug.  Deliberately NOT :meth:`detach` —
         that also drops ``active_themes`` / ``led_runtime`` / media /
@@ -403,7 +408,7 @@ class App(CommandBus):
         try:
             device.disconnect()
         except Exception:
-            log.exception("_release_stale_device: disconnect %s raised", key)
+            log.exception("release_device: disconnect %s raised", key)
 
     def _on_device_detached(self, event: Any) -> None:
         """Hotplug ``DeviceDetached`` → release the handle the unplug killed.
@@ -425,7 +430,7 @@ class App(CommandBus):
         if event.key in self.devices:
             log.info("_on_device_detached: %s unplugged — stopping sender + "
                      "releasing stale transport", event.key)
-            self._release_stale_device(event.key)
+            self.release_device(event.key)
         if self._attached_units(event.vid, event.pid):
             self._reconcile(event.vid, event.pid, fallback="")
         else:
@@ -474,7 +479,7 @@ class App(CommandBus):
         for key in self._attached_units(vid, pid):
             if key not in live:
                 log.info("_reconcile: %s no longer scanned — releasing", key)
-                self._release_stale_device(key)
+                self.release_device(key)
         for key in live:
             self._connect_unit(key)
 
@@ -498,7 +503,7 @@ class App(CommandBus):
                 # down rather than bail — bailing here was the #254 / #246 bug.
                 log.info("_connect_unit: %s present but not connected — "
                          "releasing stale transport before reconnect", key)
-                self._release_stale_device(key)
+                self.release_device(key)
             log.info("_connect_unit: connecting %s", key)
             from .core.commands import ConnectDevice
             result = self.dispatch(ConnectDevice(key=key))
