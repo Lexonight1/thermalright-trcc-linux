@@ -553,3 +553,53 @@ def test_aggregator_enters_thread_context_on_poll_thread() -> None:
 
 
 _ = Any  # quiet ruff if Any falls out of use
+
+
+def test_msacpi_does_not_ask_again_after_finding_nothing() -> None:
+    """No handle, or no thermal zones: None for good -- not a fresh WMI
+    connect on every sensor read.
+
+    MUTATION CHECK: drop the short-circuit in ``temp`` and the factory is
+    asked on every read.
+    """
+    asked: list[int] = []
+
+    def no_handle() -> None:
+        asked.append(1)
+        return None
+
+    cpu = WmiAcpiCpu(handle_factory=no_handle)
+
+    assert [cpu.temp() for _ in range(3)] == [None, None, None]
+    assert asked == [1]
+
+
+def test_a_failed_wmi_handle_is_remembered_on_its_thread(monkeypatch) -> None:
+    """The default factory cached ``None`` for a failure, and ``None`` also
+    meant "not tried", so it reconnected on every call.
+
+    MUTATION CHECK: cache ``None`` again and ``wmi.WMI`` runs every call.
+    """
+    import sys
+    import types
+
+    from trcc.adapters.sensors import _msacpi
+
+    tries: list[int] = []
+
+    def refuse(**_kw: Any) -> None:
+        tries.append(1)
+        raise RuntimeError("namespace refused")
+
+    monkeypatch.setitem(sys.modules, "wmi", types.SimpleNamespace(WMI=refuse))
+    seen: list[Any] = []
+
+    def on_fresh_thread() -> None:      # a thread of its own: the cache is per thread
+        seen.extend(_msacpi._default_handle_factory() for _ in range(3))
+
+    t = threading.Thread(target=on_fresh_thread)
+    t.start()
+    t.join()
+
+    assert seen == [None, None, None]
+    assert tries == [1]

@@ -38,21 +38,28 @@ _MSACPI_NAMESPACE = "root\\wmi"
 # apartment.  The poll thread enters its COM apartment via
 # Platform.worker_thread_context() before the first read.
 _handle_local = threading.local()
+#: Cached in place of a handle that could not be made.  ``None`` meant "not
+#: tried yet" to the lookup as well, so a failure was retried -- an import or
+#: a COM connect -- on every sensor read.
+_UNAVAILABLE = object()
 
 
 def _default_handle_factory() -> Any:
     """Per-thread ``root\\wmi`` WMI handle.  Returns ``None`` when unavailable."""
     handle = getattr(_handle_local, "msacpi_ns", None)
+    if handle is _UNAVAILABLE:
+        return None
     if handle is not None:
         return handle
     try:
         import wmi  # pyright: ignore[reportMissingImports]
         handle = wmi.WMI(namespace=_MSACPI_NAMESPACE)
-    except ImportError:
-        handle = None
     except Exception as e:
-        log.debug("MSAcpi WMI handle failed: %s", e)
-        handle = None
+        # ImportError too: no ``wmi`` here is as final as a refused connect.
+        log.info("MSAcpi: no root\\wmi handle on this thread — %s: %s",
+                 type(e).__name__, e)
+        _handle_local.msacpi_ns = _UNAVAILABLE
+        return None
     _handle_local.msacpi_ns = handle
     return handle
 
@@ -106,6 +113,10 @@ class WmiAcpiCpu(CpuSource):
         Multiple zones (CPU + chipset + ambient) are common; the hottest
         is the most useful single number for an overlay.
         """
+        if self._probed and self._zone_count == 0:
+            # Probed once and found nothing: None forever, as promised above,
+            # without asking for a handle again every read.
+            return None
         handle = self._handle_factory()
         self._ensure_probed(handle)
         if handle is None or self._zone_count == 0:

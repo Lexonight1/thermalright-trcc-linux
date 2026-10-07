@@ -153,6 +153,9 @@
 
 ### Fixed
 
+- **Windows: a PC without ACPI thermal zones no longer retries them on every
+  sensor read.** When that source was unavailable, TRCC tried to connect to
+  it again every time it read the sensors.
 - **Selecting an LED zone that the cooler does not have is refused.** Any
   zone number was accepted, on coolers with no zones at all, and stored a
   selection the panel could not show.
