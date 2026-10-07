@@ -83,6 +83,22 @@ def test_a_role_owned_chip_is_not_reported_twice(
     assert psutil_sources.discover_board_temps() == []
 
 
+@pytest.mark.parametrize("chip, entries, expected", [
+    ("k10temp", [("Tctl", 61.0), ("Tccd1", 55.0), ("Tccd2", 57.0)],
+     ["k10temp_tccd1", "k10temp_tccd2"]),
+    ("coretemp", [("Package id 0", 48.0), ("Core 0", 45.0), ("Core 1", 47.0)],
+     ["coretemp_core_0", "coretemp_core_1"]),
+])
+def test_a_cpu_offers_its_cores_but_not_its_package_twice(
+    monkeypatch: pytest.MonkeyPatch, chip: str,
+    entries: list[tuple[str, float]], expected: list[str],
+) -> None:
+    """#301: CPU chips were claimed whole, so per-CCD and per-core readings
+    were read by nothing.  The first input IS ``cpu:temp`` and stays claimed."""
+    _fake_chips(monkeypatch, {chip: [_Entry(label, t) for label, t in entries]})
+    assert [s.key for s in psutil_sources.discover_board_temps()] == expected
+
+
 def test_the_key_is_built_from_the_LABEL_the_user_reads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
