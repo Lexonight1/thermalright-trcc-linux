@@ -448,3 +448,81 @@ def test_the_gui_follows_a_disk_chosen_elsewhere(window: Any, qtbot: Any) -> Non
 
     qtbot.waitUntil(lambda: picker.currentData() == "nvme1", timeout=3000)
     assert [picker.itemData(i) for i in range(picker.count())] == ["nvme0", "nvme1"]
+
+
+# ── Two panels: the one on screen blinks ─────────────────────────────────────
+
+_A, _B = "0402:3922", "87ad:70db"
+
+
+def _two_panels_viewing_a(tmp_path: Path, qtbot: Any) -> tuple[App, Any]:
+    """Two connected panels, the window showing A."""
+    from trcc.core.commands import ConnectDevice as _Connect
+
+    app = App(MockPlatform([
+        {"type": "lcd", "name": "FW", "vid": "0402", "pid": "3922", "fbl": 100},
+        {"type": "lcd", "name": "HR10", "vid": "87ad", "pid": "70db", "pm": 72,
+         "resolution": "480x480"}], tmp_path), renderer=QtRenderer())
+    assert app.dispatch(_Connect(key=_A)).ok and app.dispatch(_Connect(key=_B)).ok
+    win = _open(app, qtbot, key=_B)
+    win._activate_device(_A)
+    qtbot.waitUntil(lambda: win._handlers[_A]._pm.ui_active)
+    return app, win
+
+
+def _blink_out(app: App, win: Any, qtbot: Any) -> None:
+    """A VM takes A: its writes fail and it is announced lost."""
+    import errno
+
+    transport = app.devices[_A]._transport
+
+    def gone(*_a: object, **_k: object) -> bool:
+        raise OSError(errno.ENODEV, "No such device")
+
+    transport.send_cdb = gone                  # type: ignore[attr-defined]
+    transport.open = lambda: False             # type: ignore[attr-defined]
+    app.send(_A, b"\x00" * 204800)
+    qtbot.waitUntil(lambda: _A not in win._handlers, timeout=5000)
+
+
+def _comes_back(app: App, win: Any, qtbot: Any) -> None:
+    from trcc.core.events import DeviceAttached
+
+    app._on_device_attached(DeviceAttached(key=_A, vid=0x0402, pid=0x3922))
+    qtbot.waitUntil(lambda: _A in win._handlers, timeout=5000)
+    qtbot.wait(200)
+
+
+def test_the_panel_on_screen_comes_back_on_screen(tmp_path: Path, qtbot: Any) -> None:
+    """Away, the view moves to the other panel; back, it returns.
+
+    MUTATION CHECK: drop the re-activation from ``_on_bus_device_connected``
+    and the user is left looking at the other panel after every blink.
+    """
+    app, win = _two_panels_viewing_a(tmp_path, qtbot)
+
+    _blink_out(app, win, qtbot)
+    assert win._active_key == _B
+    _comes_back(app, win, qtbot)
+
+    assert win._active_key == _A
+    assert win._handlers[_A]._pm.ui_active and not win._handlers[_B]._pm.ui_active
+    assert win.uc_device.selected_device["path"] == _A, "the sidebar follows"
+    win.close()
+
+
+def test_a_panel_picked_meanwhile_keeps_the_screen(tmp_path: Path, qtbot: Any) -> None:
+    """The user chose while it was away; its return must not override that.
+
+    MUTATION CHECK: drop the reset from ``_on_device_picked`` and the returning
+    panel takes the screen from the one the user picked.
+    """
+    app, win = _two_panels_viewing_a(tmp_path, qtbot)
+
+    _blink_out(app, win, qtbot)
+    win.uc_device._on_device_clicked(                      # a real press
+        next(d for d in win.uc_device.devices if d["path"] == _B))
+    _comes_back(app, win, qtbot)
+
+    assert win._active_key == _B
+    win.close()

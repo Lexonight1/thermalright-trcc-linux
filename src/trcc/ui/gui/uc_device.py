@@ -237,6 +237,10 @@ class UCDevice(BasePanel):
     CMD_HOME = 512
 
     device_selected = Signal(dict)
+    #: A device button the USER pressed.  ``device_selected`` also fires when
+    #: the sidebar picks one itself (its selection vanished), which is not a
+    #: choice anybody made.
+    device_clicked = Signal(dict)
     about_clicked = Signal()
     home_clicked = Signal()
 
@@ -378,7 +382,20 @@ class UCDevice(BasePanel):
 
     def _on_device_clicked(self, device_info: dict) -> None:
         log.debug("_on_device_clicked: %s", device_info.get('path'))
+        self.device_clicked.emit(device_info)
         self._select_device(device_info)
+
+    def select_path(self, path: str) -> None:
+        """Select the button for *path*, as a click would (emits the signal).
+
+        For the window bringing a device back on screen: going through the
+        sidebar keeps its highlight and the view in step.
+        """
+        device = next((d for d in self.devices if d.get('path') == path), None)
+        log.debug("select_path: %s (%s)", path,
+                  "found" if device is not None else "not listed")
+        if device is not None:
+            self._select_device(device)
 
     def _deselect_all_devices(self) -> None:
         """Deselect all device buttons (Windows: set all to bitmap1)."""

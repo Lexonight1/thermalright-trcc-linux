@@ -148,6 +148,10 @@
 
 ### Fixed
 
+- **With two panels, the one you were looking at comes back on screen.** If
+  the panel shown in `trcc gui` briefly disconnected, the window switched to
+  your other panel and stayed there when it came back. It now switches back,
+  unless you picked another panel yourself in the meantime.
 - **A panel that is not ready when TRCC starts is connected once it is.** A
   panel a virtual machine was holding, or whose device file had not appeared
   yet, was given up on at startup. TRCC now keeps trying (less often the longer

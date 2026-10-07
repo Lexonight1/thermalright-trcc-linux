@@ -196,6 +196,9 @@ class TRCCApp(QMainWindow):
         # Per-device handlers keyed by ``device.info.key`` ("vid:pid")
         self._handlers: dict[str, BaseHandler] = {}
         self._active_key = ''         # vid:pid of currently active device
+        # The device the view was taken from when it went away -- shown again
+        # when it comes back, unless the user picked another one meanwhile.
+        self._view_lost_from = ''
 
         self._handshake_pending = False
         self._cut_mode = 'background'
@@ -327,6 +330,14 @@ class TRCCApp(QMainWindow):
         self._add_handler(state)
         self._refresh_sidebar()
         self._configure_inactive_lcd(event.key)
+        if event.key == self._view_lost_from:
+            # It was the one on screen when it went (a VM, a hub reset): put
+            # it back, or every blink leaves the user looking at another panel.
+            log.info("_on_bus_device_connected: %s is back — showing it again",
+                     event.key)
+            self._view_lost_from = ''
+            # Through the sidebar, so its highlight follows the view.
+            self.uc_device.select_path(event.key)
 
     def _on_bus_themes_changed(self, event: Any) -> None:
         """A theme was saved, imported or deleted -- by this window or any
@@ -750,6 +761,7 @@ class TRCCApp(QMainWindow):
 
         if self._active_key == key:
             self._active_key = ''
+            self._view_lost_from = key
             remaining = list(self._handlers)
             if remaining:
                 self._activate_device(remaining[0])
@@ -1419,6 +1431,7 @@ class TRCCApp(QMainWindow):
 
     def _connect_view_signals(self) -> None:
         self.uc_device.device_selected.connect(self._on_device_widget_clicked)
+        self.uc_device.device_clicked.connect(self._on_device_picked)
         self.uc_device.home_clicked.connect(self._on_home_clicked)
         self.uc_device.about_clicked.connect(self._on_about_clicked)
 
@@ -1481,6 +1494,13 @@ class TRCCApp(QMainWindow):
         log.debug("_on_device_widget_clicked: path=%s", path)
         if path:
             self._activate_device(path)
+
+    def _on_device_picked(self, device_info: dict) -> None:
+        """The user pressed a device button: a returning device must not
+        take the screen back from their choice."""
+        log.debug("_on_device_picked: %s (clears view_lost_from=%r)",
+                  device_info.get('path'), self._view_lost_from)
+        self._view_lost_from = ''
 
     def _on_about_close_requested(self) -> None:
         """Close button on About/Control Center panel — return to form view."""
