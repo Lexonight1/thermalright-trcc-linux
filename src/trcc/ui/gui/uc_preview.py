@@ -137,6 +137,10 @@ class UCPreview(BasePanel):
         self.progress_slider.setStyleSheet(Styles.SLIDER)
         self.progress_slider.sliderMoved.connect(self._on_seek_moved)
         self.progress_slider.sliderReleased.connect(self._on_seek_released)
+        # A groove click or an arrow/page key moves the value without a
+        # press on the handle, so neither signal above fires -- it seeked
+        # nothing, and the next tick snapped the slider back.
+        self.progress_slider.valueChanged.connect(self._on_seek_stepped)
         #: ``(frame_count, fps)`` of the video shown, for the drag label.
         self._clock_basis = (0, 0)
 
@@ -221,6 +225,14 @@ class UCPreview(BasePanel):
     def _on_seek_released(self) -> None:
         frame = self.progress_slider.value()
         log.info("_on_seek_released: frame=%d of %d", frame, self._clock_basis[0])
+        self.invoke_delegate(self.CMD_VIDEO_SEEK, frame)
+
+    def _on_seek_stepped(self, frame: int) -> None:
+        """A groove click or a key step -- seek now.  A drag seeks once, on
+        release; playback updates block signals, so they never land here."""
+        if self.progress_slider.isSliderDown():
+            return
+        log.info("_on_seek_stepped: frame=%d of %d", frame, self._clock_basis[0])
         self.invoke_delegate(self.CMD_VIDEO_SEEK, frame)
 
     def set_image(self, image, fast: bool = False):

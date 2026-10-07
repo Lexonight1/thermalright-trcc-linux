@@ -117,6 +117,8 @@ class DisplayPanel(BasePanel):
         self._seek.setEnabled(False)
         self._seek.sliderReleased.connect(self._on_seek_released)
         self._seek.sliderMoved.connect(self._on_seek_moved)
+        # A groove click or an arrow/page key: neither signal above fires.
+        self._seek.valueChanged.connect(self._on_seek_released)
         #: ``(frame_count, fps)`` of the video shown, for the drag label.
         self._clock_basis = (0, 0)
         # The core ticks the video (#249) and announces each frame, so the
@@ -401,14 +403,17 @@ class DisplayPanel(BasePanel):
         log.debug("_on_seek_moved: frame=%d", frame)
         self._seek_label.setText(playback_clock(frame, *self._clock_basis))
 
-    def _on_seek_released(self) -> None:
-        """Jump on RELEASE, not on every drag step.
+    def _on_seek_released(self, _value: int | None = None) -> None:
+        """Seek -- on RELEASE of a drag, or on a groove click / key step.
 
-        ``SeekVideo`` moves the playback cursor, which the render tick reads --
-        seeking per pixel of drag would queue a rebuild per pixel.
+        Not on every drag step: ``SeekVideo`` moves the playback cursor, which
+        the render tick reads, so seeking per pixel of drag would queue a
+        rebuild per pixel.  ``valueChanged`` lands here too, for the click and
+        the key that move the value without a press on the handle; while the
+        handle is held it is ignored, and ``_show_position`` blocks signals,
+        so following playback never lands here.
         """
-        key = self._require_key()
-        if key is None:
+        if self._seek.isSliderDown() or (key := self._require_key()) is None:
             return
         frame = int(self._seek.value())
         log.info("_on_seek_released: key=%s frame=%d", key, frame)

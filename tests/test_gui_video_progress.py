@@ -162,3 +162,68 @@ def test_qtgui_s_button_says_what_a_click_will_do_wherever_the_pause_came_from(
         qtbot.waitUntil(lambda: button.text() == "Pause", timeout=3000)
     finally:
         app.close()
+
+
+def test_a_key_step_on_the_bar_seeks(window: Any, qtbot: Any) -> None:
+    """A groove click or an arrow/page key moves the value without a press on
+    the handle, so neither ``sliderMoved`` nor ``sliderReleased`` fires -- it
+    seeked nothing, and the next frame snapped the thumb back."""
+    from PySide6.QtCore import Qt
+
+    _advance(window, qtbot, 150)
+    slider = window.uc_preview.progress_slider
+    slider.setFocus()
+
+    qtbot.keyClick(slider, Qt.Key.Key_Right)
+
+    assert window._app.dispatch(VideoStatus(key=_KEY)).cursor == 151
+
+
+def test_a_held_thumb_seeks_only_on_release(window: Any, qtbot: Any) -> None:
+    """Value changes during a drag must not seek, or a drag would rebuild the
+    frame once per step; the release seeks once."""
+    _advance(window, qtbot, 150)
+    slider = window.uc_preview.progress_slider
+    slider.setSliderDown(True)
+    slider.setValue(60)
+    assert window._app.dispatch(VideoStatus(key=_KEY)).cursor == 0
+
+    slider.setSliderDown(False)          # Qt emits sliderReleased here
+
+    assert window._app.dispatch(VideoStatus(key=_KEY)).cursor == 60
+
+
+def test_a_frame_from_playback_seeks_nothing(window: Any, qtbot: Any) -> None:
+    """The thumb follows playback with signals blocked, so following it is
+    never mistaken for the user asking to seek."""
+    _advance(window, qtbot, 150)
+    _advance(window, qtbot, 200)
+
+    assert window._app.dispatch(VideoStatus(key=_KEY)).cursor == 0
+
+
+def test_qtgui_s_bar_seeks_on_a_key_step_too(tmp_path: Path, qtbot: Any) -> None:
+    """Same defect in qtgui's display panel: only a handle drag seeked."""
+    from PySide6.QtCore import Qt
+
+    from trcc.services.media import Playback
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.panels.display_panel import DisplayPanel
+
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    try:
+        assert app.dispatch(ConnectDevice(key=_KEY)).ok
+        app.media._playbacks[_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+            frames=[b"f"] * _FRAMES, fps=_FPS)
+        panel = DisplayPanel(app, BusBridge(app.events))
+        qtbot.addWidget(panel)
+        qtbot.waitUntil(lambda: panel._picker.current_key() == _KEY)
+        panel._show_position(150, _FRAMES, _FPS)
+        assert app.dispatch(VideoStatus(key=_KEY)).cursor == 0   # following, not seeking
+        panel._seek.setFocus()
+
+        qtbot.keyClick(panel._seek, Qt.Key.Key_Right)
+
+        assert app.dispatch(VideoStatus(key=_KEY)).cursor == 151
+    finally:
+        app.close()

@@ -2876,10 +2876,11 @@ def test_releasing_the_scrubber_seeks(gui_app: App, qtbot) -> None:
     panel = _display_panel(gui_app, qtbot)
     sent = _stub_status(panel, cursor=10, frame_count=300)
     panel._refresh_video_status()
+    panel._seek.setSliderDown(True)          # a drag holds the handle
     panel._seek.setValue(120)
     sent.clear()
 
-    panel._on_seek_released()
+    panel._seek.setSliderDown(False)         # Qt emits sliderReleased
 
     seeks = [c for c in sent if type(c).__name__ == "SeekVideo"]
     assert len(seeks) == 1, f"expected exactly one seek, got {len(seeks)}"
