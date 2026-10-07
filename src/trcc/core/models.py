@@ -1118,6 +1118,7 @@ class Metric:
     field: str        #: ``HardwareMetrics`` attribute — "cpu_temp"
     sensor_id: str    #: render / DC vocabulary — "cpu:temp"
     fmt: str          #: default format string — "{value:.0f}°C"
+    label: str        #: the C# dashboard row's name — "TEMP"
 
     @property
     def pair(self) -> tuple[int, int]:
@@ -1199,36 +1200,43 @@ _RPM = "{value:.0f} RPM"
 #: it below, so a name cannot drift from the pair that selects it.
 METRICS = MetricCatalog(
     (
+        # One row per C# dashboard row: a DC pair is "panel ``main``, row
+        # ``sub``" (UCXiTongXianShiSub.cs:221-245 reads that row's label and
+        # value), so the rows follow the C#'s defaults in
+        # UCSystemInfoOptions.InitUCSystemInfoOptionsOneVal, case main+1.
         # CPU (main_count=0)
-        Metric(0, 1, "cpu_temp", "cpu:temp", _TEMP),
-        Metric(0, 2, "cpu_percent", "cpu:usage", _PCT),
-        Metric(0, 3, "cpu_freq", "cpu:freq", _MHZ),
-        Metric(0, 4, "cpu_power", "cpu:power", _WATT),
+        Metric(0, 1, "cpu_temp", "cpu:temp", _TEMP, "TEMP"),
+        Metric(0, 2, "cpu_percent", "cpu:usage", _PCT, "Usage"),
+        Metric(0, 3, "cpu_freq", "cpu:freq", _MHZ, "Clock"),
+        Metric(0, 4, "cpu_power", "cpu:power", _WATT, "Power"),
         # GPU (main_count=1)
-        Metric(1, 1, "gpu_temp", "gpu:primary:temp", _TEMP),
-        Metric(1, 2, "gpu_usage", "gpu:primary:usage", _PCT),
-        Metric(1, 3, "gpu_clock", "gpu:primary:clock", _MHZ),
-        Metric(1, 4, "gpu_power", "gpu:primary:power", _WATT),
+        Metric(1, 1, "gpu_temp", "gpu:primary:temp", _TEMP, "TEMP"),
+        Metric(1, 2, "gpu_usage", "gpu:primary:usage", _PCT, "Usage"),
+        Metric(1, 3, "gpu_clock", "gpu:primary:clock", _MHZ, "Clock"),
+        Metric(1, 4, "gpu_power", "gpu:primary:power", _WATT, "Power"),
         # MEM (main_count=2)
-        Metric(2, 1, "mem_percent", "memory:percent", _PCT),
-        Metric(2, 2, "mem_clock", "memory:clock", _MHZ),
-        Metric(2, 3, "mem_available", "memory:available", "{value:.0f} MB"),
-        Metric(2, 4, "mem_temp", "memory:temp", _TEMP),
+        Metric(2, 1, "mem_temp", "memory:temp", _TEMP, "TEMP"),
+        Metric(2, 2, "mem_percent", "memory:percent", _PCT, "Usage"),
+        Metric(2, 3, "mem_clock", "memory:clock", _MHZ, "Clock"),
+        Metric(2, 4, "mem_available", "memory:available", "{value:.0f} MB",
+               "Available"),
         # HDD (main_count=3)
-        Metric(3, 1, "disk_read", "disk:read", "{value:.0f} MB/s"),
-        Metric(3, 2, "disk_write", "disk:write", "{value:.0f} MB/s"),
-        Metric(3, 3, "disk_activity", "disk:activity", _PCT),
-        Metric(3, 4, "disk_temp", "disk:temp", _TEMP),
+        Metric(3, 1, "disk_temp", "disk:temp", _TEMP, "TEMP"),
+        Metric(3, 2, "disk_activity", "disk:activity", _PCT, "Activity"),
+        Metric(3, 3, "disk_read", "disk:read", "{value:.0f} MB/s", "Read"),
+        Metric(3, 4, "disk_write", "disk:write", "{value:.0f} MB/s", "Write"),
         # NET (main_count=4)
-        Metric(4, 1, "net_down", "net:down", "{value:.0f} KB/s"),
-        Metric(4, 2, "net_up", "net:up", "{value:.0f} KB/s"),
-        Metric(4, 3, "net_total_down", "net:total_down", "{value:.0f} MB"),
-        Metric(4, 4, "net_total_up", "net:total_up", "{value:.0f} MB"),
+        Metric(4, 1, "net_up", "net:up", "{value:.0f} KB/s", "UP rate"),
+        Metric(4, 2, "net_down", "net:down", "{value:.0f} KB/s", "DL rate"),
+        Metric(4, 3, "net_total_up", "net:total_up", "{value:.0f} MB",
+               "Total UP"),
+        Metric(4, 4, "net_total_down", "net:total_down", "{value:.0f} MB",
+               "Total DL"),
         # FAN (main_count=5)
-        Metric(5, 1, "fan_cpu", "fan:cpu", _RPM),
-        Metric(5, 2, "fan_gpu", "fan:gpu", _RPM),
-        Metric(5, 3, "fan_ssd", "fan:ssd", _RPM),
-        Metric(5, 4, "fan_sys2", "fan:sys2", _RPM),
+        Metric(5, 1, "fan_cpu", "fan:cpu", _RPM, "CPUFAN"),
+        Metric(5, 2, "fan_gpu", "fan:gpu", _RPM, "GPUFAN"),
+        Metric(5, 3, "fan_ssd", "fan:ssd", _RPM, "FAN1"),
+        Metric(5, 4, "fan_sys2", "fan:sys2", _RPM, "FAN2"),
     ),
     # Fan-LCD sentinel: the C# maps main_count 10000 to the cooler's own fan
     # RPM (UCXiTongXianShiSubTimer: label1="FAN", label2=RPM, label3="RPM").
@@ -1494,15 +1502,14 @@ CATEGORY_NAMES: dict[int, str] = {
 }
 
 
-# Per-category sub-metric labels (matches the legacy uc_theme_setting grid).
-SUB_METRICS: dict[int, dict[int, str]] = {
-    0: {1: "Temp",  2: "Usage", 3: "Freq",     4: "Power"},
-    1: {1: "Temp",  2: "Usage", 3: "Clock",    4: "Power"},
-    2: {1: "Used%", 2: "Clock", 3: "Used",     4: "Free"},
-    3: {1: "Read",  2: "Write", 3: "Activity", 4: "Temp"},
-    4: {1: "Down",  2: "Up",    3: "Total",    4: "Ping"},
-    5: {1: "RPM",   2: "PWM%",  3: "Temp",     4: "Speed"},
-}
+# Per-category row names, as the C# dashboard names its rows.
+# DERIVED — do not hand-edit; add a row to METRICS above.  The hand-kept copy
+# this replaced named rows the C# never had ("Ping", "PWM%") and, for MEM, HDD
+# and NET, put them in the order METRICS itself had wrong (2026-10-07).
+SUB_METRICS: dict[int, dict[int, str]] = {}
+for _metric in METRICS.by_dc_pair.values():
+    SUB_METRICS.setdefault(_metric.main, {})[_metric.sub] = _metric.label
+del _metric
 
 
 # Category → cell text colour (matches Windows TRCC palette).
