@@ -223,6 +223,11 @@ class UCThemeLocal(BaseThemeBrowser):
         btn.clicked.connect(signal)
         return btn
 
+    def show_game_mode(self, enabled: bool, threshold: int) -> None:
+        """Show the App's game mode on the panel's two controls -- READ only."""
+        log.debug("UCThemeLocal.show_game_mode: %s/%d", enabled, threshold)
+        self.game.show(enabled, threshold)
+
     def _create_thumbnail(self, item_info: LocalThemeItem) -> ThemeThumbnail:
         return ThemeThumbnail(item_info)
 
