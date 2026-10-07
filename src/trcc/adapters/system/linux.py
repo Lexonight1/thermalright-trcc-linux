@@ -124,6 +124,38 @@ class _SgIoHdr(ctypes.Structure):
 
 _SG_HDR_SIZE = ctypes.sizeof(_SgIoHdr)
 
+#: Host byte the kernel completes SG_IO with once the device is being removed
+#: or has been offlined (scsi_lib.c, usb-storage scsiglue.c, uas.c).  The
+#: ioctl itself returns 0 and ``status`` stays 0.
+_DID_NO_CONNECT = 0x01
+#: ``info`` bit the kernel sets when status, host or driver byte reports any
+#: error (sg.h SG_INFO_OK_MASK).
+_SG_INFO_OK_MASK = 0x1
+
+
+def _sg_failed(hdr: _SgIoHdr, op: str, path: str) -> bool:
+    """Whether a completed SG_IO failed; raise when the device is gone.
+
+    ``status`` alone was tested, and a removed or offlined panel completes
+    with ``status`` 0 and ``host_status`` DID_NO_CONNECT -- so every frame to
+    a dead panel counted as SENT, nothing escalated, and the panel stayed
+    "connected" (#254).  That one is raised as disconnect-class (ENODEV), so
+    the recovery threshold marks it lost; any other error is a soft failure,
+    as USBLCD.exe treats every write.
+    """
+    if hdr.host_status == _DID_NO_CONNECT:
+        log.warning("SG_IO %s on %s: DID_NO_CONNECT -- the device is gone",
+                    op, path)
+        raise TransportError(
+            f"SG_IO {op} on {path}: device gone (DID_NO_CONNECT)",
+        ) from OSError(errno.ENODEV, "DID_NO_CONNECT")
+    if hdr.info & _SG_INFO_OK_MASK:
+        log.warning("SG_IO %s on %s failed: status=%d host=%d driver=%d "
+                    "info=%#x", op, path, hdr.status, hdr.host_status,
+                    hdr.driver_status, hdr.info)
+        return True
+    return False
+
 
 def _resolve_scsi_path(vid: int, pid: int,
                        unit: str = "") -> str | None:
@@ -304,7 +336,8 @@ class LinuxScsiTransport(ScsiTransport):
 
     def send_cdb(self, cdb: bytes, data: bytes,
                  timeout_ms: int = 5000) -> bool:
-        """SCSI CDB + data-out via single SG_IO ioctl.  True on status 0."""
+        """SCSI CDB + data-out via single SG_IO ioctl.  True when it
+        completed clean; raises once the device is gone (:func:`_sg_failed`)."""
         frame_log.debug("LinuxScsiTransport.send_cdb: cdb_len=%d data_len=%d timeout=%dms",
                   len(cdb), len(data), timeout_ms)
         if self._fd is None:
@@ -326,11 +359,7 @@ class LinuxScsiTransport(ScsiTransport):
         fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
-        if hdr.status != 0:
-            log.warning("SG_IO send_cdb status=%d host=%d driver=%d",
-                        hdr.status, hdr.host_status, hdr.driver_status)
-            return False
-        return True
+        return not _sg_failed(hdr, "send_cdb", self._path)
 
     def read_cdb(self, cdb: bytes, length: int,
                  timeout_ms: int = 5000) -> bytes:
@@ -365,9 +394,7 @@ class LinuxScsiTransport(ScsiTransport):
         fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
-        if hdr.status != 0:
-            log.warning("SG_IO read_cdb status=%d host=%d driver=%d",
-                        hdr.status, hdr.host_status, hdr.driver_status)
+        if _sg_failed(hdr, "read_cdb", self._path):
             return b""
         actual = length - hdr.resid
         return bytes(data_buf[:actual])

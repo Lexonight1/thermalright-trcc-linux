@@ -146,7 +146,11 @@ class ScsiTransport(ABC):
     @abstractmethod
     def send_cdb(self, cdb: bytes, data: bytes,
                  timeout_ms: int = 5000) -> bool:
-        """Send a 16-byte CDB with a data-out payload.  True on CSW status 0."""
+        """Send a 16-byte CDB with a data-out payload.  True on CSW status 0.
+
+        A failed command returns False (soft: the next frame retries).  A
+        device that is GONE raises a disconnect-class error instead, so the
+        recovery threshold can mark it lost."""
 
     @abstractmethod
     def read_cdb(self, cdb: bytes, length: int,

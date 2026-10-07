@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import struct
 
+from ...core.device_recovery import is_disconnect_error
 from ...core.errors import TransportError
 from ...core.ports import BulkTransport, ScsiTransport
 
@@ -68,7 +69,9 @@ class UsbBotScsiTransport(ScsiTransport):
             if data:
                 self._bulk.write(_EP_OUT, data, timeout_ms)
             csw = self._bulk.read(_EP_IN, _CSW_SIZE, timeout_ms)
-        except TransportError:
+        except TransportError as e:
+            if is_disconnect_error(e):
+                raise       # gone: the recovery threshold must count it
             log.exception("USB BOT send_cdb transfer failed")
             return False
         if len(csw) < _CSW_SIZE or csw[12] != 0:
@@ -84,7 +87,9 @@ class UsbBotScsiTransport(ScsiTransport):
             self._bulk.write(_EP_OUT, cbw, timeout_ms)
             data = self._bulk.read(_EP_IN, length, timeout_ms)
             csw = self._bulk.read(_EP_IN, _CSW_SIZE, timeout_ms)
-        except TransportError:
+        except TransportError as e:
+            if is_disconnect_error(e):
+                raise
             log.exception("USB BOT read_cdb transfer failed")
             return b""
         if len(csw) < _CSW_SIZE or csw[12] != 0:

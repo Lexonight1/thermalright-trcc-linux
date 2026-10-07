@@ -106,6 +106,32 @@ def test_usb_bot_scsi_wraps_bulk_with_cbw_csw(fake_bulk) -> None:
     assert data == b"payload"
 
 
+@pytest.mark.parametrize("errno_val, gone", [(19, True), (110, False)])
+def test_usb_bot_scsi_raises_only_when_the_device_is_gone(
+    fake_bulk, monkeypatch: pytest.MonkeyPatch, errno_val: int, gone: bool,
+) -> None:
+    """A transfer failing with ENODEV is a gone panel: raised, so the recovery
+    threshold marks it lost.  It was folded into False like a timeout, and a
+    dead panel stayed "connected" (#254).  A timeout stays soft."""
+    from trcc.core.errors import TransportError
+
+    def fail(*_a: object, **_k: object) -> int:
+        raise TransportError("transfer failed") from OSError(errno_val, "x")
+
+    transport = UsbBotScsiTransport(fake_bulk)
+    transport.open()
+    monkeypatch.setattr(fake_bulk, "write", fail)
+
+    if gone:
+        with pytest.raises(TransportError):
+            transport.send_cdb(b"\xF5" + b"\x00" * 15, b"x")
+        with pytest.raises(TransportError):
+            transport.read_cdb(b"\xF5" + b"\x00" * 15, 8)
+    else:
+        assert transport.send_cdb(b"\xF5" + b"\x00" * 15, b"x") is False
+        assert transport.read_cdb(b"\xF5" + b"\x00" * 15, 8) == b""
+
+
 def test_usb_bot_scsi_fails_on_non_zero_csw(fake_bulk) -> None:
     """CSW status != 0 must make send_cdb return False."""
     fake_bulk.read_script = [b"USBS" + b"\x00" * 8 + b"\x01"]   # status=1
