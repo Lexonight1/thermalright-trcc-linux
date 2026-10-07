@@ -117,7 +117,13 @@ def test_a_dead_daemon_is_surfaced_not_silent(daemon, caplog) -> None:
 
     _app, srv, proxy = daemon
     proxy.events.subscribe(DeviceConnected, lambda _e: None)
-    time.sleep(0.4)
+    # Wait for the stream to OPEN.  A fixed 0.4 s sleep was a guess: under
+    # load the stream was not open yet, the close loop below exited at once,
+    # and no "CLOSED" line could ever be logged (2 of 8 under 12 burners).
+    deadline = time.monotonic() + 5.0
+    while not proxy._stream_open and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert proxy._stream_open, "the event stream never opened"
 
     with caplog.at_level(logging.WARNING, logger="trcc.proxy"):
         srv.shutdown()
