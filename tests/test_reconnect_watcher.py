@@ -89,3 +89,13 @@ def test_a_disarmed_watcher_never_tries() -> None:
     watcher.disarm()
 
     assert _attempt_times(watcher, app, until=300) == []
+
+
+def test_a_panel_that_never_answered_is_tried_at_most_every_five_minutes() -> None:
+    app = _App(*[False] * 9)
+    watcher = ReconnectWatcher(app, _KEY)  # type: ignore[arg-type]
+    watcher.arm(slow=True)
+
+    times = _attempt_times(watcher, app, until=981)
+
+    assert times == [3, 9, 21, 45, 93, 189, 381, 681, 981]

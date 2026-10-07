@@ -50,6 +50,10 @@ class ReconnectWatcher(BaseSendTask):
     NEEDS_PANEL = False
     #: The longest wait between two attempts.
     MAX_INTERVAL_S = 60.0
+    #: ...for a panel that has never answered.  It may be held by a VM since
+    #: boot -- or be one TRCC cannot drive at all, retried for as long as TRCC
+    #: runs: a minute apart that is ~1.7 MB of log a day, five is ~350 KB.
+    SLOW_MAX_INTERVAL_S = 300.0
 
     def __init__(self, app: App, device_key: str,
                  interval_s: float | None = None) -> None:
@@ -61,6 +65,7 @@ class ReconnectWatcher(BaseSendTask):
         # only "now" this task trusts (a test ticks it), so arm() cannot know it.
         self._next_at: float | None = None
         self._attempts = 0
+        self._max = self.MAX_INTERVAL_S
         log.debug("ReconnectWatcher.__init__: %s (cap %.0f s)", device_key,
                   self.MAX_INTERVAL_S)
 
@@ -70,11 +75,12 @@ class ReconnectWatcher(BaseSendTask):
         log.debug("ReconnectWatcher.armed: %s %s", self._device_key, self._armed)
         return self._armed
 
-    def arm(self) -> None:
+    def arm(self, *, slow: bool = False) -> None:
         """Start waiting for the panel; a no-op while already waiting.
 
         Re-arming must not restart the backoff, or each failed attempt --
         which reports itself as a failed connect -- would reset it to 3 s.
+        *slow* caps the wait at ``SLOW_MAX_INTERVAL_S`` instead.
         """
         with self._lock:
             if self._armed:
@@ -85,6 +91,7 @@ class ReconnectWatcher(BaseSendTask):
             self._delay = self._interval
             self._next_at = None
             self._attempts = 0
+            self._max = self.SLOW_MAX_INTERVAL_S if slow else self.MAX_INTERVAL_S
         log.info("ReconnectWatcher: waiting for %s to come back (first try in "
                  "%.0f s)", self._device_key, self._interval)
         self.wake()
@@ -118,7 +125,7 @@ class ReconnectWatcher(BaseSendTask):
             self.disarm()
             return _IDLE_S
         with self._lock:
-            self._delay = min(self._delay * 2, self.MAX_INTERVAL_S)
+            self._delay = min(self._delay * 2, self._max)
             self._next_at = now + self._delay
             delay = self._delay
         log.info("ReconnectWatcher: %s not back (attempt %d) — next try in "

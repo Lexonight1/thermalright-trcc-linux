@@ -81,8 +81,8 @@ def _failing_handshake(app, monkeypatch):
             raise HandshakeError("USB read failed: [Errno 110] Operation timed out")
 
     monkeypatch.setattr(app, "attach", lambda vid, pid, **kw: _Asleep())
-    monkeypatch.setattr(app, "detach", lambda key: None)
-    monkeypatch.setattr(app, "note_connect_issue", lambda result: None)
+    monkeypatch.setattr(app, "release_device", lambda key: None)
+    monkeypatch.setattr(app, "note_connect_issue", lambda result, permanent=False: None)
 
 
 def test_suspended_panel_explains_itself_instead_of_a_bare_timeout(

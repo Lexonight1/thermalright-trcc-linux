@@ -137,3 +137,28 @@ def test_a_lock_error_that_is_not_busy_degrades_instead_of_failing(
     transport = _transport(node)
     assert transport.open() is True
     transport.close()
+
+
+def test_a_denied_open_says_so_instead_of_returning_false(
+    node: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """EACCES is the user's setup, not a panel that is not answering yet.
+
+    A plain False read as "try again", so a panel nobody may open was retried
+    for as long as TRCC ran, and the connect lost the remedy.  Raised the way
+    the bulk and HID transports raise it.  (Injected rather than ``chmod 000``:
+    CI runs as root, which ignores the mode.)
+    """
+    from trcc.core.errors import PermissionError_
+
+    real_open = os.open
+
+    def denied(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if path == node:
+            raise PermissionError(errno.EACCES, "Permission denied", path)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", denied)
+
+    with pytest.raises(PermissionError_, match="trcc system setup"):
+        _transport(node).open()

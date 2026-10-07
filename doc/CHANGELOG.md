@@ -148,6 +148,12 @@
 
 ### Fixed
 
+- **A panel that is not ready when TRCC starts is connected once it is.** A
+  panel a virtual machine was holding, or whose device file had not appeared
+  yet, was given up on at startup. TRCC now keeps trying (less often the longer
+  it waits, at most every five minutes), so it comes up when it is freed. A
+  panel TRCC is not allowed to open is not retried: on Linux the error now
+  says to run `trcc system setup`, which is what fixes it.
 - **A screen cast, slideshow or media stream keeps going after the computer
   wakes.** Waking from sleep, or a panel briefly disconnecting, stopped a
   running screen cast (the panel froze on its last picture while TRCC still

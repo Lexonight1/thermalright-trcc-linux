@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ._imc_timings import ImcTimings
 
-from ...core.errors import TransportError
+from ...core.errors import PermissionError_, TransportError
 from ...core.logs import per_frame
 from ...core.models import UsbPowerState
 from ...core.ports import (
@@ -232,11 +232,14 @@ class LinuxScsiTransport(ScsiTransport):
                 # instead of a bare EACCES.  (#217)
                 detail = ("this is a root-only block node (the sg kernel module "
                           "isn't loaded) — " if self._is_block else "")
-                log.warning(
-                    "LinuxScsiTransport: permission denied on %s — %srun "
-                    "`trcc system setup` then reboot to load sg and grant "
-                    "0666 access without sudo (#217)", self._path, detail,
-                )
+                hint = (f"permission denied on {self._path} — {detail}run "
+                        "`trcc system setup` then reboot to load sg and grant "
+                        "0666 access without sudo (#217)")
+                log.warning("LinuxScsiTransport: %s", hint)
+                # Raised, like the bulk and HID transports: a plain False read
+                # as "not answering yet", so a panel nobody may open was retried
+                # for as long as TRCC ran, and the connect lost the hint.
+                raise PermissionError_(hint) from e
             return False
         if not self._claim(fd):
             os.close(fd)

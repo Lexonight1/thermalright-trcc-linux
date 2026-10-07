@@ -434,3 +434,85 @@ def test_a_panel_whose_node_is_late_after_a_wake_is_retried(tmp_path: Path) -> N
         clock.tick(float(now))
 
     assert app.devices[_KEY].is_connected
+
+
+# ── A panel that was not ready when TRCC started ─────────────────────────────
+
+
+def _coldplug_without(tmp_path: Path, error: Exception):  # type: ignore[no-untyped-def]
+    """Start an App whose panel's node fails to open with *error*."""
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+
+    from .mock_platform import MockPlatform
+
+    clock = SyncSendScheduler()
+    app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
+    hand_back = app.platform.open_transport
+
+    def failing(*_args: object, **_kwargs: object) -> object:
+        raise error
+
+    app.platform.open_transport = failing      # type: ignore[method-assign]
+    app.discover_and_connect()
+    assert _KEY not in app.devices or not app.devices[_KEY].is_connected, \
+        "precondition: the startup connect failed"
+    return app, clock, hand_back
+
+
+def test_a_panel_held_when_trcc_starts_is_waited_for(tmp_path: Path) -> None:
+    """A VM holding it since boot, a node still coming: tried until it answers.
+
+    MUTATION CHECK: coldplug with a bare ``ConnectDevice`` again and the
+    failure at startup is the end of it.
+    """
+    from trcc.core.errors import TransportError
+
+    app, clock, hand_back = _coldplug_without(
+        tmp_path, TransportError("No SCSI device node found for 0402:3922"))
+    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    for now in range(0, 120):
+        clock.tick(float(now))
+
+    assert app.devices[_KEY].is_connected
+
+
+@pytest.mark.parametrize("where", ["build", "open"])
+def test_a_panel_nobody_may_open_is_not_retried(tmp_path: Path, where: str) -> None:
+    """A denied open stays denied until the user runs setup; retrying would
+    repeat the same error once every few minutes for as long as TRCC runs.
+
+    Both doors: the bulk/HID transports can refuse while being BUILT, the
+    Linux SCSI one when OPENED inside the handshake.
+
+    MUTATION CHECK: record either as retryable and its watcher is armed.
+    """
+    from trcc.core.errors import PermissionError_
+
+    denied = PermissionError_("permission denied on /dev/sg0")
+    if where == "build":
+        app, _clock, _back = _coldplug_without(tmp_path, denied)
+    else:
+        from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+
+        from .mock_platform import MockPlatform
+
+        app = App(platform=MockPlatform(_SPEC, tmp_path),
+                  send_scheduler=SyncSendScheduler())
+        build = app.platform.open_transport
+
+        def refusing_to_open(*args: object, **kwargs: object) -> object:
+            transport = build(*args, **kwargs)
+
+            def no(*_a: object, **_k: object) -> bool:
+                raise denied
+
+            transport.open = no                # type: ignore[attr-defined]
+            return transport
+
+        app.platform.open_transport = refusing_to_open  # type: ignore[method-assign]
+        app.discover_and_connect()
+
+    watcher = app._watchers.get(_KEY)
+    assert watcher is None or not watcher.armed
+    assert [i.message for i in app.connection_issues()] == [
+        "permission denied on /dev/sg0"]

@@ -272,7 +272,7 @@ class ConnectDevice(Command[ConnectResult]):
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),
                                    hints=hints)
-            app.note_connect_issue(result)
+            app.note_connect_issue(result, permanent=True)
             return result
         except (ImportError, OSError, TransportError) as e:
             # Building the transport can fail for reasons that are the user's
@@ -294,7 +294,10 @@ class ConnectDevice(Command[ConnectResult]):
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),
                                    hints=hints)
-            app.note_connect_issue(result)
+            # A missing library or a denied open stays that way until the user
+            # acts; a node that is not there yet does not.
+            app.note_connect_issue(
+                result, permanent=isinstance(e, (ImportError, PermissionError_)))
             return result
 
         try:
@@ -310,7 +313,8 @@ class ConnectDevice(Command[ConnectResult]):
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),
                                    hints=hints)
-            app.note_connect_issue(result)
+            app.note_connect_issue(
+                result, permanent=isinstance(e, PermissionError_))
             return result
 
         # Variant override: handshake reveals the PM/SUB fingerprint, which

@@ -239,10 +239,14 @@ class App(CommandBus):
         # Panels a send found unusable since their last connect -- so the loss
         # is announced ONCE, however many frames were still in flight.
         self._lost: set[str] = set()
-        # Panels this App has had connected -- the only ones worth waiting for
-        # (a panel that never connected, say for want of permission, would be
-        # retried forever).  An explicit DisconnectDevice forgets one.
+        # Panels worth waiting for: every one a scan found or that connected,
+        # minus one the user let go (DisconnectDevice).  A permanent failure --
+        # a denied open, a missing library -- is not retried (``_unretryable``):
+        # it stays that way until the user acts.  ``_was_connected`` only
+        # picks the cadence: a panel that never answered is tried less often.
+        self._wanted: set[str] = set()
         self._was_connected: set[str] = set()
+        self._unretryable: set[str] = set()
         self._watchers: dict[str, ReconnectWatcher] = {}
         # Hotplug, resume and the reconnect watcher each run on their own
         # thread; two connects of one key at once would build two transports
@@ -476,6 +480,7 @@ class App(CommandBus):
             live = [fallback]
         log.info("_reconcile: %04x:%04x live=%s attached=%s",
                  vid, pid, live, self._attached_units(vid, pid))
+        self._wanted.update(live)
         for key in self._attached_units(vid, pid):
             if key not in live:
                 log.info("_reconcile: %s no longer scanned — releasing", key)
@@ -526,15 +531,16 @@ class App(CommandBus):
 
     def watch_for_return(self, key: str) -> None:
         """Keep retrying *key* until it connects (see ``ReconnectWatcher``)."""
-        if key not in self._was_connected:
-            log.debug("watch_for_return: %s never connected here — not waiting",
-                      key)
+        if key not in self._wanted or key in self._unretryable:
+            log.debug("watch_for_return: %s not waited for (wanted=%s "
+                      "retryable=%s)", key, key in self._wanted,
+                      key not in self._unretryable)
             return
         watcher = self._watchers.get(key)
         if watcher is None:
             watcher = self._watchers[key] = ReconnectWatcher(self, key)
             self.add_task(watcher)
-        watcher.arm()
+        watcher.arm(slow=key not in self._was_connected)
 
     def stop_watching(self, key: str, *, forget: bool = False) -> None:
         """Stop retrying *key*; *forget* also drops it from the panels it had."""
@@ -542,7 +548,7 @@ class App(CommandBus):
         if (watcher := self._watchers.get(key)) is not None:
             watcher.disarm()
         if forget:
-            self._was_connected.discard(key)
+            self._wanted.discard(key)
 
     def _on_system_resumed(self, _event: Any) -> None:
         """``SystemResumed`` → reconnect every attached device after wake.
@@ -887,13 +893,25 @@ class App(CommandBus):
 
     # ── Connect-issue model (queried via DeviceConnectionIssues) ─────────
 
-    def note_connect_issue(self, result: ConnectResult) -> None:
-        """Record a failed connect so any UI can query why it didn't come up."""
-        log.info("note_connect_issue: key=%s msg=%s", result.key, result.message)
+    def note_connect_issue(self, result: ConnectResult, *,
+                           permanent: bool = False) -> None:
+        """Record a failed connect so any UI can query why it didn't come up.
+
+        *permanent* marks a failure retrying cannot fix (a denied open, a
+        missing library, an unknown product): the reconnect watcher leaves it
+        alone until the next failure says otherwise.
+        """
+        log.info("note_connect_issue: key=%s permanent=%s msg=%s",
+                 result.key, permanent, result.message)
         self._connect_issues[result.key] = result
+        if permanent:
+            self._unretryable.add(result.key)
+        else:
+            self._unretryable.discard(result.key)
 
     def clear_connect_issue(self, key: str) -> None:
         """Drop a device's recorded failure (it connected, or it's gone)."""
+        self._unretryable.discard(key)
         if self._connect_issues.pop(key, None) is not None:
             log.info("clear_connect_issue: key=%s", key)
 
@@ -1081,6 +1099,7 @@ class App(CommandBus):
             on_failure=self._on_sender_failure,
         )
         self._lost.discard(key)
+        self._wanted.add(key)
         self._was_connected.add(key)
         self.senders[key] = sender
         self._send_scheduler.add(sender)
@@ -1228,7 +1247,7 @@ class App(CommandBus):
         (splash display); connect *failures* are logged + recorded on the App
         model (queried via ``DeviceConnectionIssues``), never raised.
         """
-        from .core.commands import ConnectDevice, DiscoverDevices
+        from .core.commands import DiscoverDevices
 
         def _say(message: str) -> None:
             log.debug("_say: message=%s", message)
@@ -1245,12 +1264,10 @@ class App(CommandBus):
         # attached the same model twice, unit-less, into one Device.
         for key, product in result.units():
             _say(f"Connecting {product.vendor} {product.product}…")
-            connect = self.dispatch(ConnectDevice(key=key))
-            if not connect.ok:
-                log.warning(
-                    "discover_and_connect: connect %s failed: %s",
-                    key, connect.message,
-                )
+            # Through the replug's path: a panel that is not ready when TRCC
+            # starts -- a VM holding it, a node still coming -- is waited for.
+            self._wanted.add(key)
+            self._connect_unit(key)
         log.info(
             "discover_and_connect: %d product(s) discovered, %d attached",
             len(result.products), len(self.devices),
