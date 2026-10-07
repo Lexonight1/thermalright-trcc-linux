@@ -220,7 +220,7 @@ class ZoneTab(LedTabBase):
         self._zones_layout = QVBoxLayout(self._zones_box)
         root.addWidget(self._zones_box)
 
-        sync_box = QGroupBox("Carousel", self)
+        self._sync_box = sync_box = QGroupBox("Carousel", self)
         sync_form = QFormLayout(sync_box)
         self._sync_check = QCheckBox(
             "Enable zone-sync carousel", self,
@@ -233,7 +233,8 @@ class ZoneTab(LedTabBase):
         self._interval_spin.setKeyboardTracking(False)
         self._interval_spin.valueChanged.connect(self._on_interval_changed)
         sync_form.addRow(self._sync_check)
-        sync_form.addRow("Rotation interval:", self._interval_spin)
+        self._interval_label = QLabel("Rotation interval:", sync_box)
+        sync_form.addRow(self._interval_label, self._interval_spin)
         # WHICH zones the carousel visits.  Without this mask it stays empty
         # and ``next_sync_zone`` is stuck on page 0 -- the carousel never
         # advances however the user sets the switch above, so the feature
@@ -242,7 +243,8 @@ class ZoneTab(LedTabBase):
         self._participation_layout = QHBoxLayout(self._participation)
         self._participation_layout.setContentsMargins(0, 0, 0, 0)
         self._participation_checks: list[QCheckBox] = []
-        sync_form.addRow("Rotate through:", self._participation)
+        self._participation_label = QLabel("Rotate through:", sync_box)
+        sync_form.addRow(self._participation_label, self._participation)
         root.addWidget(sync_box)
 
         self._placeholder = QLabel(
@@ -264,7 +266,18 @@ class ZoneTab(LedTabBase):
         display = led_display_for(style_id or 0)
         self._pages = (display.page_labels
                        if display.selector is LedSelector.PAGE else ())
-        log.info("apply_style: style=%s pages=%s", style_id, self._pages)
+        # PA120 / LF10: the switch selects EVERY zone for an edit and nothing
+        # rotates -- the C#'s panel reads "Select all" there and hides its
+        # timer (FormLED.cs:1669, :1724).  "Carousel" said otherwise.
+        select_all = display.selector is LedSelector.ZONE
+        self._sync_box.setTitle("Select all" if select_all else "Carousel")
+        self._sync_check.setText("Edit every zone at once" if select_all
+                                 else "Enable zone-sync carousel")
+        for widget in (self._interval_label, self._interval_spin,
+                       self._participation_label, self._participation):
+            widget.setVisible(not select_all)
+        log.info("apply_style: style=%s pages=%s select_all=%s",
+                 style_id, self._pages, select_all)
 
     def refresh_from(self, snapshot: LedSnapshotResult | None) -> None:
         log.debug("refresh_from")

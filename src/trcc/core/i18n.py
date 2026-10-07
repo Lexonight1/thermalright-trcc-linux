@@ -190,6 +190,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': '负载联动',
         'Display Selection': '功能选择',
         'Circulate': '轮播',
+        'Select all': '全选',
     },
     'zh_TW': {
         'Layer Mask': '佈局蒙板',
@@ -242,6 +243,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': '負載聯動',
         'Display Selection': '功能選擇',
         'Circulate': '輪播',
+        'Select all': '全選',
     },
     'en': {
         'Layer Mask': 'Layer Mask',
@@ -294,6 +296,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Load Linked',
         'Display Selection': 'Display Selection',
         'Circulate': 'Circulate',
+        'Select all': 'Select all',
         # LED info-panel field labels (sourced from the C# en resx panels:
         # D0LC1en memory, D0LF11en disk, D0LC2en clock).  Rendered as tr()
         # overlays since our panel backgrounds are label-less here.
@@ -374,6 +377,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Last-Modus',
         'Display Selection': 'Funktion',
         'Circulate': 'Wechselnd',
+        'Select all': 'Alle auswählen',
     },
     'ru': {
         'Layer Mask': 'Покрытие',
@@ -426,6 +430,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'По нагр.',
         'Display Selection': 'Функции',
         'Circulate': 'По очереди',
+        'Select all': 'Выбрать все',
     },
     'fr': {
         'Layer Mask': 'Masque de couche',
@@ -478,6 +483,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Lié charge',
         'Display Selection': 'Sélection',
         'Circulate': 'Alterner',
+        'Select all': 'Tout sélectionner',
     },
     'pt': {
         'Layer Mask': 'Máscara de camada',
@@ -530,6 +536,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Vínc. carga',
         'Display Selection': 'Seleção',
         'Circulate': 'Circular',
+        'Select all': 'Selecionar tudo',
     },
     'ja': {
         'Layer Mask': 'レイヤーマスク',
@@ -582,6 +589,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': '負荷連動',
         'Display Selection': '機能',
         'Circulate': 'かわるがわる',
+        'Select all': 'すべて選択',
     },
     'es': {
         'Layer Mask': 'Mascarilla de capa',
@@ -634,6 +642,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Vínc. carga',
         'Display Selection': 'Selección',
         'Circulate': 'Alternar',
+        'Select all': 'Seleccionar todo',
     },
     'ko': {
         'Layer Mask': '레이어 마스크',
@@ -686,6 +695,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': '부하 연동',
         'Display Selection': '기능 선택',
         'Circulate': '순환',
+        'Select all': '모두 선택',
     },
     'it': {
         'Layer Mask': 'Maschera livello',
@@ -738,6 +748,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Lega carico',
         'Display Selection': 'Selezione',
         'Circulate': 'Alternare',
+        'Select all': 'Seleziona tutto',
     },
     'nl': {
         'Layer Mask': 'Laagmasker',
@@ -790,6 +801,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Belast-link',
         'Display Selection': 'Selectie',
         'Circulate': 'Wisselen',
+        'Select all': 'Alles selecteren',
     },
     'pl': {
         'Layer Mask': 'Maska warstwy',
@@ -842,6 +854,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Wg obciąż.',
         'Display Selection': 'Wybór',
         'Circulate': 'Cyklicznie',
+        'Select all': 'Zaznacz wszystko',
     },
     'tr': {
         'Layer Mask': 'Katman maskesi',
@@ -894,6 +907,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Yük bağlı',
         'Display Selection': 'Seçim',
         'Circulate': 'Döndür',
+        'Select all': 'Tümünü seç',
     },
     'ar': {
         'Layer Mask': 'قناع الطبقة',
@@ -946,6 +960,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'ربط حمل',
         'Display Selection': 'اختيار',
         'Circulate': 'تدوير',
+        'Select all': 'تحديد الكل',
     },
     'hi': {
         'Layer Mask': 'लेयर मास्क',
@@ -998,6 +1013,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'लोड लिंक',
         'Display Selection': 'चयन',
         'Circulate': 'चक्रण',
+        'Select all': 'सभी चुनें',
     },
     'th': {
         'Layer Mask': 'มาสก์เลเยอร์',
@@ -1050,6 +1066,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'ตามโหลด',
         'Display Selection': 'เลือก',
         'Circulate': 'สลับ',
+        'Select all': 'เลือกทั้งหมด',
     },
     'vi': {
         'Layer Mask': 'Mặt nạ lớp',
@@ -1102,6 +1119,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Theo tải',
         'Display Selection': 'Chọn',
         'Circulate': 'Luân phiên',
+        'Select all': 'Chọn tất cả',
     },
     'id': {
         'Layer Mask': 'Masker lapisan',
@@ -1154,6 +1172,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Ikut beban',
         'Display Selection': 'Pilihan',
         'Circulate': 'Bergantian',
+        'Select all': 'Pilih semua',
     },
     'cs': {
         'Layer Mask': 'Maska vrstvy',
@@ -1206,6 +1225,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Dle zátěže',
         'Display Selection': 'Výběr',
         'Circulate': 'Střídat',
+        'Select all': 'Vybrat vše',
     },
     'sv': {
         'Layer Mask': 'Lagermask',
@@ -1258,6 +1278,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Last-länk',
         'Display Selection': 'Val',
         'Circulate': 'Växla',
+        'Select all': 'Markera alla',
     },
     'da': {
         'Layer Mask': 'Lagmaske',
@@ -1310,6 +1331,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Last-link',
         'Display Selection': 'Valg',
         'Circulate': 'Skiftevis',
+        'Select all': 'Vælg alle',
     },
     'no': {
         'Layer Mask': 'Lagmaske',
@@ -1362,6 +1384,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Last-link',
         'Display Selection': 'Valg',
         'Circulate': 'Veksle',
+        'Select all': 'Velg alle',
     },
     'fi': {
         'Layer Mask': 'Tasomaski',
@@ -1414,6 +1437,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Kuormalinkki',
         'Display Selection': 'Valinta',
         'Circulate': 'Kiertää',
+        'Select all': 'Valitse kaikki',
     },
     'hu': {
         'Layer Mask': 'Rétegmaszk',
@@ -1466,6 +1490,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Terh. kötés',
         'Display Selection': 'Választás',
         'Circulate': 'Váltakozó',
+        'Select all': 'Összes kijelölése',
     },
     'ro': {
         'Layer Mask': 'Mască strat',
@@ -1518,6 +1543,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Legat sarcină',
         'Display Selection': 'Selecție',
         'Circulate': 'Alternare',
+        'Select all': 'Selectează tot',
     },
     'uk': {
         'Layer Mask': 'Маска шару',
@@ -1570,6 +1596,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'За навант.',
         'Display Selection': 'Функції',
         'Circulate': 'По черзі',
+        'Select all': 'Вибрати все',
     },
     'el': {
         'Layer Mask': 'Μάσκα στρώματος',
@@ -1622,6 +1649,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Σύνδ. φορτ.',
         'Display Selection': 'Επιλογή',
         'Circulate': 'Εναλλαγή',
+        'Select all': 'Επιλογή όλων',
     },
     'he': {
         'Layer Mask': 'מסכת שכבה',
@@ -1674,6 +1702,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'קישור עומס',
         'Display Selection': 'בחירה',
         'Circulate': 'סיבוב',
+        'Select all': 'בחר הכל',
     },
     'ms': {
         'Layer Mask': 'Topeng lapisan',
@@ -1726,6 +1755,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Ikut beban',
         'Display Selection': 'Pilihan',
         'Circulate': 'Bergilir',
+        'Select all': 'Pilih semua',
     },
     # --- New languages (v8.3.9) ---
     'bn': {
@@ -1779,6 +1809,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'লোড সংযুক্ত',
         'Display Selection': 'নির্বাচন',
         'Circulate': 'ঘোরানো',
+        'Select all': 'সব নির্বাচন করুন',
     },
     'ur': {
         'Layer Mask': 'لیئر ماسک',
@@ -1831,6 +1862,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'لوڈ لنک',
         'Display Selection': 'انتخاب',
         'Circulate': 'گردش',
+        'Select all': 'سب منتخب کریں',
     },
     'fa': {
         'Layer Mask': 'ماسک لایه',
@@ -1883,6 +1915,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'اتصال بار',
         'Display Selection': 'انتخاب',
         'Circulate': 'چرخش',
+        'Select all': 'انتخاب همه',
     },
     'tl': {
         'Layer Mask': 'Layer Mask',
@@ -1935,6 +1968,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Load link',
         'Display Selection': 'Pagpili',
         'Circulate': 'Pag-ikot',
+        'Select all': 'Piliin lahat',
     },
     'ta': {
         'Layer Mask': 'லேயர் மாஸ்க்',
@@ -1987,6 +2021,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'சுமை இணைப்பு',
         'Display Selection': 'தேர்வு',
         'Circulate': 'சுழற்று',
+        'Select all': 'அனைத்தையும் தேர்ந்தெடு',
     },
     'pa': {
         'Layer Mask': 'ਲੇਅਰ ਮਾਸਕ',
@@ -2039,6 +2074,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'ਲੋਡ ਲਿੰਕ',
         'Display Selection': 'ਚੋਣ',
         'Circulate': 'ਘੁੰਮਾਓ',
+        'Select all': 'ਸਭ ਚੁਣੋ',
     },
     'sw': {
         'Layer Mask': 'Mask ya Tabaka',
@@ -2091,6 +2127,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Mzigo-link',
         'Display Selection': 'Uchaguzi',
         'Circulate': 'Zungusha',
+        'Select all': 'Chagua zote',
     },
     'my': {
         'Layer Mask': 'အလွှာမျက်နှာဖုံး',
@@ -2143,6 +2180,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'ဝန်ချိတ်',
         'Display Selection': 'ရွေးချယ်',
         'Circulate': 'လည်ပတ်',
+        'Select all': 'အားလုံးရွေးပါ',
     },
 }
 

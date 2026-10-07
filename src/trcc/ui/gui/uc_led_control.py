@@ -331,6 +331,7 @@ class UCLedControl(QWidget):
         # so the panel never reaches into _boot for global settings.  Kept
         # current via set_language() on every language change.
         self._language = language
+        self._is_select_all_style = False     # set per style by initialize()
 
         self._current_mode = 0
         self._zone_count = 1
@@ -942,6 +943,15 @@ class UCLedControl(QWidget):
     # Public API
     # ================================================================
 
+    def _selector_word(self) -> str:
+        """The label beside the selector switch, as the C#'s panel art reads:
+        PA120 / LF10 select every zone ("Select all", the switch beside
+        buttonLB; FormLED hides the timer there, :1669 / :1724), a page style
+        circulates its pages ("Circulate")."""
+        word = "Select all" if self._is_select_all_style else "Circulate"
+        log.debug("_selector_word: %s", word)
+        return word
+
     def initialize(self, style_id: int,
                    zone_count: int = 1,
                    model: str = '') -> None:
@@ -1008,6 +1018,7 @@ class UCLedControl(QWidget):
         )
         self._carousel_interval.setVisible(is_page)
         self._display_selection_label.setVisible(has_selector)
+        self._circulate_label.setText(tr(self._selector_word(), self._language))
         self._circulate_label.setVisible(has_selector)
         self._zones.configure(zone_count, self._is_select_all_style)
         self._carousel_btn.setChecked(False)
@@ -1114,7 +1125,7 @@ class UCLedControl(QWidget):
                 self._mode_buttons[i].setText(text)
                 self._mode_buttons[i].setToolTip(text)
         self._display_selection_label.setText(tr('Display Selection', lang))
-        self._circulate_label.setText(tr('Circulate', lang))
+        self._circulate_label.setText(tr(self._selector_word(), lang))
         # Memory-panel field names (LC1) follow the language too.
         for lbl, key in self._mem_name_labels:
             lbl.setText(tr(key, lang))

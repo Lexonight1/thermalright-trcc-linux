@@ -160,6 +160,10 @@
 
 ### Fixed
 
+- **PA120 and LF10 coolers: the zone switch is labelled "Select all".** Both
+  windows called it a carousel (the Qt window also offered a rotation
+  interval), but on those coolers it makes a change reach every zone and
+  nothing rotates, as the Windows app's panel says.
 - **LCD-only settings are refused for LED coolers.** Loading a theme, setting
   a background, brightness, rotation, overlay or mask on an LED cooler was
   accepted, and saved LCD settings under its name that it could never use.

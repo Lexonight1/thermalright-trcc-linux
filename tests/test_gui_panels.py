@@ -4213,3 +4213,43 @@ def test_qtgui_welcomes_a_first_run_once(make_window, qapp: object,
     assert first._content.currentWidget() is first._panels["system"]
     assert second._content.currentWidget() is second._panels["devices"]
     assert not app.dispatch(GetFirstRunStatus()).is_first_run
+
+
+@pytest.mark.parametrize(("style_id", "title", "timer_shown"), [
+    (2, "Select all", False),     # PA120: the switch selects every zone
+    (1, "Carousel", True),        # AX120: a page style circulates
+], ids=["PA120", "AX120"])
+def test_the_qtgui_zone_tab_names_the_switch_as_the_csharp_does(
+    gui_app: App, qapp: object, style_id: int, title: str, timer_shown: bool,
+) -> None:
+    """On PA120/LF10 nothing rotates: the switch makes an edit reach every
+    zone, and the C#'s panel reads "Select all" with its timer hidden
+    (FormLED.cs:1669).  The tab said "Carousel" with a rotation interval.
+
+    MUTATION CHECK: always title it "Carousel" and PA120 fails.
+    """
+    from trcc.ui.qtgui.panels.led import ZoneTab
+
+    tab = ZoneTab(gui_app, _led_key)
+    tab.apply_style(style_id)
+
+    assert tab._sync_box.title() == title
+    assert tab._interval_spin.isHidden() is not timer_shown
+    assert tab._participation.isHidden() is not timer_shown
+
+
+@pytest.mark.parametrize(("style_id", "word"), [
+    (2, "Select all"), (7, "Select all"), (1, "Circulate"),
+], ids=["PA120", "LF10", "AX120"])
+def test_the_gui_led_panel_labels_the_switch_as_the_csharp_does(
+    qapp: object, style_id: int, word: str,
+) -> None:
+    """MUTATION CHECK: always say "Circulate" and PA120/LF10 fail."""
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_led_control import UCLedControl
+
+    set_assets_dir(_PKG_ASSETS_DIR)
+    panel = UCLedControl()
+    panel.initialize(style_id, zone_count=4)
+
+    assert panel._circulate_label.text() == word
