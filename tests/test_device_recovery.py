@@ -236,3 +236,37 @@ def test_attach_gives_the_device_the_platforms_permission_hint(
     assert platform.permission_denied_hint() in warning, (
         "the platform's own hint must reach the permission-denied warning; "
         f"got: {warning}")
+
+
+def test_a_closed_transport_is_refused_loudly_once_per_closed_spell(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``send() called before connect()`` once per spell, not once per frame.
+
+    MUTATION CHECK: drop the ``_refusing`` guard and five refusals log five
+    ERRORs -- the line that rotated its own cause away on 2026-10-06.
+    """
+    import logging
+
+    from trcc.core.errors import TransportError
+
+    scsi, transport = _connected_scsi()
+
+    def refusals() -> int:
+        return sum(1 for r in caplog.records if r.levelno == logging.ERROR
+                   and "send() called before connect()" in r.getMessage())
+
+    with caplog.at_level(logging.INFO):
+        transport.close()
+        for _ in range(5):
+            with pytest.raises(TransportError):
+                scsi.send(b"\x00" * 100)
+        assert refusals() == 1
+
+        transport.open()
+        assert scsi.send(b"\x00" * 100) is True
+        transport.close()
+        with pytest.raises(TransportError):
+            scsi.send(b"\x00" * 100)
+
+    assert refusals() == 2, "a new closed spell is reported again"

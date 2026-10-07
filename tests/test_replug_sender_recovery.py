@@ -337,3 +337,68 @@ def test_a_hotplug_add_with_no_node_yet_keeps_waiting(tmp_path: Path) -> None:
         clock.tick(float(now))
 
     assert app.devices[_KEY].is_connected
+
+
+# ── Bounded reporting (increment 4) ──────────────────────────────────────────
+
+
+def test_a_lost_panel_raises_no_error_event_per_frame(app: App) -> None:
+    """The loss was announced; an ErrorOccurred per later frame is noise to
+    every window.  MUTATION CHECK: publish it for a lost panel and the ten
+    frames below send ten."""
+    import time
+
+    from trcc.core.errors import TransportError
+    from trcc.core.events import ErrorOccurred
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    _take_the_panel(app)
+    errors: list[str] = []
+    app.events.subscribe(ErrorOccurred, lambda e: errors.append(e.message))
+
+    # Paced: back to back, latest-wins would fold all ten into the waited
+    # drain frame, whose failure goes to its caller -- and test nothing.
+    failures: list[str] = []
+    sender = app.senders[_KEY]
+    sender._on_failure = lambda key, exc: (  # type: ignore[method-assign]
+        failures.append(key), app._on_sender_failure(key, exc))
+    for _ in range(10):
+        app.send(_KEY, b"\x00" * 204800, wait=False)
+        deadline = time.monotonic() + 2
+        while sender._has_pending and time.monotonic() < deadline:
+            time.sleep(0.005)
+        time.sleep(0.02)
+    with pytest.raises(TransportError):
+        app.send(_KEY, b"\x00" * 204800)
+
+    assert len(failures) >= 5, "precondition: the frames reached the worker"
+    assert errors == []
+
+
+def test_a_screencast_frame_is_not_sent_to_a_dead_panel(
+    app: App, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The one per-tick producer that did not ask ``is_connected`` first.
+
+    MUTATION CHECK: look the device up with ``app.get`` again and the frame
+    is built and written into the closed transport.
+    """
+    import logging
+
+    from trcc.core.commands import SendScreencastFrame
+    from trcc.core.models import RawFrame
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    _take_the_panel(app)
+    caplog.clear()
+
+    with caplog.at_level(logging.DEBUG):
+        result = app.dispatch(SendScreencastFrame(
+            key=_KEY, frame=RawFrame(data=b"\0" * 12, width=2, height=2)))
+
+    assert result.ok is False
+    assert result.message == ("0402:3922 not connected — dispatch "
+                              "ConnectDevice first")
+    assert not [r for r in caplog.records
+                if "send() called before connect()" in r.getMessage()
+                or "refused again" in r.getMessage()]

@@ -129,6 +129,9 @@ class BaseDevice(Device[T]):
         # this in ``_do_handshake``; LED leaves it None (no canvas), which is
         # exactly what the ``Device.profile`` port contract says.
         self._profile: DeviceProfile | None = None
+        # True from the first refused send until one gets through: a producer
+        # that does not ask ``is_connected`` first refuses on EVERY frame.
+        self._refusing = False
 
     @property
     def profile(self) -> DeviceProfile | None:
@@ -266,9 +269,17 @@ class BaseDevice(Device[T]):
         panel was plugged in.
         """
         if self._transport.is_open:
+            self._refusing = False
             return
-        log.error("%s %s: send() called before connect()",
-                  type(self).__name__, self.info.key)
+        if self._refusing:
+            frame_log.debug("%s %s: send() refused again — transport closed",
+                            type(self).__name__, self.info.key)
+        else:
+            # Once per closed spell, not per frame: on 2026-10-06 this line,
+            # repeated, was what rotated its own cause out of the log.
+            self._refusing = True
+            log.error("%s %s: send() called before connect()",
+                      type(self).__name__, self.info.key)
         raise TransportError(
             f"{type(self).__name__} {self.info.key} not connected — "
             f"call connect() first"

@@ -1626,10 +1626,12 @@ class SendScreencastFrame(Command[ScreencastResult]):
         frame_log.debug("SendScreencastFrame.execute: key=%s %dx%d",
                         self.key, self.frame.width, self.frame.height)
         try:
-            device = app.get(self.key)
-        except DeviceNotFoundError as e:
-            log.warning("SendScreencastFrame: device %s not found: %s",
-                        self.key, e)
+            # Connected, not merely attached: a panel whose transport closed is
+            # still attached, and every captured frame was built and sent into
+            # it.  The failed Result is reported once by ``App.dispatch``.
+            device = _require_connected_device(app, self.key)
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
+            frame_log.debug("SendScreencastFrame: %s — %s", self.key, e)
             return ScreencastResult(ok=False, key=self.key, message=str(e))
         if why := _lacks(app, self.key, Capability.FRAME_RENDER):
             return ScreencastResult(ok=False, key=self.key, message=why)

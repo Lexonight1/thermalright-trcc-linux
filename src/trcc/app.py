@@ -1071,7 +1071,11 @@ class App(CommandBus):
         Command's ``except TransportError`` would (the producer that submitted
         it isn't waiting, so the sender routes the failure here)."""
         if exc is None:
-            log.warning("_on_sender_failure: %s write returned False", key)
+            log.debug("_on_sender_failure: %s write returned False", key)
+        elif key in self._lost:
+            # Every window was told when it was lost; an error per frame
+            # after that is the same news on repeat.
+            frame_log.debug("_on_sender_failure: %s still lost: %s", key, exc)
         else:
             self.events.publish(ErrorOccurred(
                 message=str(exc), kind="transport", key=key,

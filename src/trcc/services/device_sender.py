@@ -47,6 +47,7 @@ class DeviceSender(SendTask):
 
     __slots__ = (
         "_device",
+        "_failing",
         "_has_pending",
         "_interval",
         "_last",
@@ -93,6 +94,9 @@ class DeviceSender(SendTask):
         self._has_pending = False
         self._last: Any = None
         self._last_sent_at = 0.0
+        # True from the first failed write until one succeeds: each failing
+        # run is reported once, then per-frame.
+        self._failing = False
         # Optional one-shot result channel for ``submit(wait=True)`` callers
         # (CLI/API one-shots that report success).  ``(Event, box)`` where the
         # worker fills ``box["ok"]`` or ``box["exc"]`` — so a wire exception
@@ -172,12 +176,14 @@ class DeviceSender(SendTask):
         The keepalive ``is_connected`` guard above stops the ~150 ms flood once
         the device's recovery threshold has closed it.
         """
-        if exc is not None:
-            log.warning("DeviceSender %s: %s write failed: %s",
-                        self._device.key, reason, exc)
+        outcome = f"failed: {exc}" if exc is not None else "returned False"
+        if self._failing:
+            frame_log.debug("DeviceSender %s: %s write %s (still failing)",
+                            self._device.key, reason, outcome)
         else:
-            log.warning("DeviceSender %s: %s write returned False",
-                        self._device.key, reason)
+            self._failing = True
+            log.warning("DeviceSender %s: %s write %s", self._device.key,
+                        reason, outcome)
         if self._on_failure is not None:
             self._on_failure(self._device.key, exc)
 
@@ -260,6 +266,13 @@ class DeviceSender(SendTask):
             with self._lock:
                 self._last = payload
                 self._last_sent_at = now
+            if self._failing:
+                log.info("DeviceSender %s: writing again (%s)",
+                         self._device.key, reason)
+                self._failing = False
+        elif self._failing:
+            frame_log.debug("DeviceSender %s: device.send returned False (%s)",
+                            self._device.key, reason)
         else:
             log.warning("DeviceSender %s: device.send returned False (%s)",
                         self._device.key, reason)

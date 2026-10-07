@@ -262,3 +262,42 @@ def test_thread_scheduler_shutdown_is_prompt_for_idle_nonvolatile() -> None:
     start = time.monotonic()
     sched.shutdown()
     assert time.monotonic() - start < 1.0
+
+
+def test_a_failing_run_is_reported_once_then_again_after_a_success(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A dead panel fails every frame; the log hears about the run, not each one.
+
+    MUTATION CHECK: drop the ``_failing`` guard in ``_fail`` and the three
+    failures in a row log three warnings.
+    """
+    import logging
+
+    dev = FakeDevice()
+    sender = DeviceSender(dev, volatile=False)
+
+    def frame(now: float) -> None:
+        sender.submit(b"F")
+        sender.run_once(now)
+
+    def warnings() -> list[str]:
+        return [r.getMessage() for r in caplog.records
+                if r.levelno == logging.WARNING
+                and r.name == "trcc.services.device_sender"]
+
+    with caplog.at_level(logging.INFO):
+        dev.fail = True
+        for now in (1.0, 2.0, 3.0):
+            frame(now)
+        assert warnings() == [
+            "DeviceSender dead:beef: device.send returned False (frame)",
+            "DeviceSender dead:beef: frame write returned False",
+        ]
+        dev.fail = False
+        frame(4.0)
+        dev.fail = True
+        frame(5.0)
+
+    assert len(warnings()) == 4, "a new run after a success is reported again"
+    assert "DeviceSender dead:beef: writing again (frame)" in caplog.messages
