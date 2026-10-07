@@ -140,13 +140,24 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
   begin
     { Remove TRCC from system PATH }
     RemoveFromPath(ExpandConstant('{app}'));
 
-    { Remove autostart registry key if TRCC set it }
+    { Remove every autostart TRCC may have set.  The names are identity and
+      must match src/trcc/adapters/system/_autostart.py -- gated by
+      tests/test_installer_uninstall.py.  The sign-in task (_TASK_NAME) is
+      what the installed app uses; left behind, it runs a deleted program at
+      every sign-in. }
+    Exec(ExpandConstant('{sys}\schtasks.exe'), '/delete /tn "TRCC Linux" /f',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    RegDeleteValue(HKEY_CURRENT_USER,
+      'Software\Microsoft\Windows\CurrentVersion\Run',
+      'TRCCNext');
     RegDeleteValue(HKEY_CURRENT_USER,
       'Software\Microsoft\Windows\CurrentVersion\Run',
       'TRCC Linux');

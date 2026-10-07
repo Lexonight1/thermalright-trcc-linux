@@ -150,6 +150,11 @@
 
 ### Fixed
 
+- **On Windows, TRCC installed from the installer now starts at sign-in.**
+  The installed programs ask for administrator rights, and Windows does not
+  start such a program from the usual sign-in entry, so turning autostart on
+  did nothing. TRCC now registers a sign-in task instead, as the Windows app
+  does, and uninstalling removes it.
 - **A screen cast no longer fills the log.** Capturing the screen wrote up to
   six lines to the log for every frame, about 16 frames a second, which pushed
   everything else out of the file `trcc report` sends. Those lines now only
