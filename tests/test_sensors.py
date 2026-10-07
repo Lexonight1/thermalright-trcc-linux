@@ -1521,6 +1521,9 @@ def test_build_linux_sensors_offers_a_nouveau_gpu(
     node = _nouveau_node(tmp_path, temp1_input="58000")
     monkeypatch.setattr(aggregator, "scan_hwmon_devices", lambda: [node])
     monkeypatch.setattr(aggregator, "discover_nvidia_gpus", lambda: [])
+    # read_all reads the memory clock, whose configured speed is dmidecode's.
+    monkeypatch.setattr("trcc.adapters.system.linux.configured_memory_mts",
+                        lambda: None)
     s = aggregator.build_linux_sensors()
     assert [g.key for g in s.gpus()] == ["nouveau:0"]
     assert s.read_all()["gpu:primary:temp"] == 58.0

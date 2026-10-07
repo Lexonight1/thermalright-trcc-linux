@@ -43,7 +43,8 @@ def main() -> int:
 
     from tests.mock_platform import MockPlatform
 
-    platform = MockPlatform(SPECS, DEV_TRCC)
+    # An interactive dev daemon shows THIS computer's metrics.
+    platform = MockPlatform(SPECS, DEV_TRCC, host_sensors=True)
     configure_logging(platform.paths().log_file(), level=logging.INFO)
     # renderer=None → run_daemon builds the offscreen QtRenderer, exactly as a
     # packaged ``trcc daemon`` does; we inject only the scripted platform.

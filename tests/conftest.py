@@ -587,6 +587,104 @@ def _the_suite_is_hermetic() -> Iterator[None]:
         yield
 
 
+#: Programs no test may run: they act as root (``pkexec``/``sudo``/``doas``)
+#: or read the host's firmware tables and disks (``dmidecode``/``smartctl``).
+_ELEVATORS = frozenset({"pkexec", "sudo", "doas"})
+_PRIVILEGED_TOOLS = frozenset({"dmidecode", "smartctl"})
+#: Every refused attempt, as ``(PYTEST_CURRENT_TEST, command)``.
+_PRIVILEGED_ATTEMPTS: list[tuple[str, str]] = []
+
+
+def _privileged(argv: Any) -> str | None:
+    """The command line if *argv* would run something privileged, else None.
+
+    Whole words only, by basename, so ``sudo_reexec`` or a path that merely
+    contains "sudo" is not mistaken for the program.
+    """
+    words = (argv.split() if isinstance(argv, str)
+             else [os.fsdecode(w) for w in argv] if argv else [])
+    names = [os.path.basename(w) for w in words]
+    if names and (names[0] in _ELEVATORS
+                  or any(n in _PRIVILEGED_TOOLS for n in names)):
+        return " ".join(words)
+    return None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_privileged_commands() -> Iterator[list[tuple[str, str]]]:
+    """Nothing in the suite runs a command as root or reads the host's firmware.
+
+    Measured 2026-10-07: one full run asked for ``pkexec /usr/bin/dmidecode -t
+    memory`` 263 times, from 39 test files.  ``MockPlatform`` built the HOST's
+    real sensors by default, the memory clock reads the configured speed through
+    dmidecode, and the polkit rule this project installs (``allow_active=yes``)
+    let every call run as root without a prompt -- the developer's journal held
+    52,092 of them.
+
+    ``PermissionError`` is what a host without the polkit rule gives, so the
+    code under test degrades exactly as it does there.  Every attempt is
+    recorded: one made by a test's body fails that test
+    (``pytest_runtest_call`` below), and one made anywhere else -- a fixture's
+    setup or teardown, or outside any test -- fails the session here.  Session
+    scope for the reason "The scope trap" above gives.
+    """
+    import subprocess
+
+    attempts = _PRIVILEGED_ATTEMPTS
+    real_popen_init = subprocess.Popen.__init__
+
+    def refuse(command: str) -> PermissionError:
+        attempts.append((os.environ.get("PYTEST_CURRENT_TEST", "<outside a test>"),
+                         command))
+        return PermissionError(
+            f"the trcc test suite runs nothing privileged -- refused "
+            f"{command!r}.  Use MockPlatform's default fake sensors, or stub "
+            f"the call.")
+
+    def popen_init(self: Any, args: Any, *a: Any, **k: Any) -> None:
+        if (command := _privileged(args)) is not None:
+            raise refuse(command)
+        real_popen_init(self, args, *a, **k)
+
+    def guarded_exec(real: Any) -> Any:
+        def exec_(path: Any, args: Any, *rest: Any) -> Any:
+            if (command := _privileged([path, *list(args)[1:]])) is not None:
+                raise refuse(command)
+            return real(path, args, *rest)
+        return exec_
+
+    real_system = os.system
+
+    def system(command: str) -> int:
+        if (privileged := _privileged(command)) is not None:
+            raise refuse(privileged)
+        return real_system(command)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(subprocess.Popen, "__init__", popen_init)
+        for name in ("execv", "execve", "execvp", "execvpe"):
+            mp.setattr(os, name, guarded_exec(getattr(os, name)))
+        mp.setattr(os, "system", system)
+        yield attempts
+    elsewhere = [(where, command) for where, command in attempts
+                 if not where.endswith("(call)")]
+    assert not elsewhere, (
+        f"a fixture tried to run privileged commands, which the suite "
+        f"refuses: {elsewhere}")
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> Iterator[None]:
+    """Fail the test whose body asked for a privileged command (it was refused)."""
+    before = len(_PRIVILEGED_ATTEMPTS)
+    result = yield
+    asked = [command for _where, command in _PRIVILEGED_ATTEMPTS[before:]]
+    if asked:
+        pytest.fail(f"this test asked to run privileged commands, which the "
+                    f"suite refuses: {asked}", pytrace=False)
+    return result
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _home_is_never_the_real_one_at_any_scope(
     tmp_path_factory: pytest.TempPathFactory,

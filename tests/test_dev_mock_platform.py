@@ -221,6 +221,54 @@ def test_the_suite_refuses_a_dns_lookup() -> None:
 
 
 
+# Paths that do not exist: with the guard working they are refused by name;
+# with it broken they fail to start.  A guard test must stay harmless when the
+# guard is gone -- its first version named the real ``/usr/bin/dmidecode`` and
+# ran it as root once per mutation run (2026-10-07).
+@pytest.mark.parametrize("argv", [
+    ["/nonexistent/pkexec", "/nonexistent/dmidecode", "-t", "memory"],
+    ["/nonexistent/dmidecode", "-t", "memory"],
+    ["/nonexistent/sudo", "/nonexistent/smartctl", "-A", "/dev/sda"],
+    "/nonexistent/doas true",
+])
+def test_the_suite_refuses_a_privileged_command(
+    argv: list[str] | str, _no_privileged_commands: list[tuple[str, str]],
+) -> None:
+    """One full run asked for ``pkexec dmidecode`` 263 times, as root, through
+    the polkit rule we install (2026-10-07).  Refused, and recorded so the test
+    that asks fails -- this one clears its own record to stay green."""
+    import subprocess
+
+    before = len(_no_privileged_commands)
+    with pytest.raises(PermissionError):
+        subprocess.run(argv, shell=isinstance(argv, str), check=False)
+
+    recorded = _no_privileged_commands[before:]
+    assert [command for _where, command in recorded] == [
+        argv if isinstance(argv, str) else " ".join(argv)]
+    del _no_privileged_commands[before:]
+
+
+def test_the_suite_still_runs_ordinary_commands() -> None:
+    """Whole words only: a path that merely contains "sudo" is not refused."""
+    import subprocess
+    import sys
+
+    done = subprocess.run([sys.executable, "-c", "print('sudo_reexec')"],
+                          capture_output=True, text=True, check=True)
+    assert done.stdout == "sudo_reexec\n"
+
+
+def test_mock_platform_reads_fake_sensors_unless_asked(tmp_path: Path) -> None:
+    """The host's sensors are a dev tool's choice, never a test's default."""
+    from .conftest import FakeCpu
+    from .mock_platform import MockPlatform
+
+    platform = MockPlatform([_SPEC], tmp_path)
+
+    assert isinstance(platform.sensors().cpu(), FakeCpu)
+
+
 @pytest.mark.parametrize("specs", [None, [_SPEC]], ids=["--hardware", "fleet"])
 def test_a_dev_platforms_login_entry_is_not_the_users(
     specs: list[dict] | None,

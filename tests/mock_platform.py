@@ -467,12 +467,14 @@ class MockPlatform(FakePlatform):
     """
 
     def __init__(self, specs: list[dict], root: Path, *,
-                 host_sensors: bool = True) -> None:
+                 host_sensors: bool = False) -> None:
         super().__init__(root)
-        # The mock GUI wants THIS computer's metrics; a test asserting on a
-        # sensor row must not -- CI's VM has no CPU temperature sensor, so
-        # ``cpu:temp`` was never listed there and six qtgui tests failed on CI
-        # alone.  ``host_sensors=False`` hands back FakePlatform's fixed set.
+        # FakePlatform's fixed sensors unless a caller asks for THIS computer's.
+        # Off by default because the host's are not the test's to read: CI's VM
+        # has no CPU temperature sensor (six qtgui tests failed there alone), and
+        # the memory clock runs ``pkexec dmidecode`` -- 263 times per suite run
+        # until 2026-10-07, as root, through the polkit rule this project
+        # installs.  A dev tool that wants real metrics passes True.
         self._host_sensors = host_sensors
         self._specs: list[DeviceSpec] = [DeviceSpec.parse(s) for s in specs]
         self._by_key: dict[tuple[int, int], DeviceSpec] = {
@@ -494,7 +496,7 @@ class MockPlatform(FakePlatform):
                  vid, pid, pm, sub, fbl)
 
     def sensors(self) -> SensorEnumerator:
-        """REAL host sensors — the mock fakes ONLY the USB handshake.
+        """REAL host sensors when ``host_sensors=True`` — a dev tool's choice.
 
         The whole point of the multi-device mock is "a vid/pid + a scripted
         handshake stands in for the panel"; everything else is the live
