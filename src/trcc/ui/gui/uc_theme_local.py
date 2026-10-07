@@ -13,10 +13,12 @@ Features:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal, SignalInstance
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QIntValidator
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 
 from ...core.models import LocalThemeItem
@@ -132,6 +134,9 @@ class UCThemeLocal(BaseThemeBrowser):
     CMD_THEME_SELECTED = 16
     CMD_SLIDESHOW = 48
     CMD_DELETE = 32
+    #: The C#'s delegate code for both game-mode controls (UCThemeLocal.cs:627,
+    #: :726); here it carries the one half that changed.
+    CMD_GAME_MODE = 64
 
     slideshow_changed = Signal(bool, int, list)  # enabled, interval, theme_indices
     delete_requested = Signal(object)  # LocalThemeItem
@@ -199,8 +204,32 @@ class UCThemeLocal(BaseThemeBrowser):
         self.import_btn = self._icon_button(
             482, 'app_import.png', "Import a theme", self.import_requested)
 
+        # Game mode -- Windows: buttonGame (228, 28) 40x18 and textBoxCPU
+        # (336, 29) 24x16, two digits, default 75 (UCThemeLocal.cs:910-935).
+        # Neither changes its own look: the App's GameModeChanged comes back
+        # through ``show_game_mode``, so this shows what the App holds.
+        self._game_on = False
+        self._game_threshold = 75
+        self._game_off_px = Assets.load_pixmap('theme_local_game.png', 40, 18)
+        self._game_on_px = Assets.load_pixmap('theme_local_game_active.png', 40, 18)
+        self.game_btn = self._icon_button(
+            228, 'theme_local_game.png',
+            "Game mode: while CPU usage stays above the threshold, the panel "
+            "shows only its overlay", self._on_game_clicked)
+        self.cpu_input = QLineEdit(str(self._game_threshold), self)
+        self.cpu_input.setGeometry(336, 29, 24, 16)
+        self.cpu_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cpu_input.setMaxLength(2)
+        self.cpu_input.setValidator(QIntValidator(0, 99, self.cpu_input))
+        self.cpu_input.setToolTip("Game mode: CPU usage % that takes the panel")
+        self.cpu_input.setStyleSheet(
+            "QLineEdit { background: #232227; color: white; border: none; "
+            "font-family: 'Microsoft YaHei'; font-size: 9pt; }"
+        )
+        self.cpu_input.editingFinished.connect(self._on_cpu_threshold_changed)
+
     def _icon_button(self, x: int, image: str, tip: str,
-                     signal: SignalInstance) -> QPushButton:
+                     signal: SignalInstance | Callable[..., Any]) -> QPushButton:
         """A flat 40x18 picture button on the header row (y=28)."""
         log.debug("_icon_button: %s at x=%d", image, x)
         btn = QPushButton(self)
@@ -215,6 +244,39 @@ class UCThemeLocal(BaseThemeBrowser):
             btn.setIconSize(btn.size())
         btn.clicked.connect(signal)
         return btn
+
+    def _on_game_clicked(self, *_qt_args) -> None:
+        """Ask for the switch the other way (Windows: buttonGame_Click)."""
+        log.info("UCThemeLocal._on_game_clicked: shown=%s -> asking %s",
+                 self._game_on, not self._game_on)
+        self.invoke_delegate(self.CMD_GAME_MODE, None,
+                             {"enabled": not self._game_on})
+
+    def _on_cpu_threshold_changed(self) -> None:
+        """Send a typed threshold (Windows: textBoxCPU_TextChanged).
+
+        Sent when the edit is finished, not per keystroke as the C# does --
+        "7" on the way to "75" would be a threshold the user never meant.
+        An emptied box shows the saved value again.
+        """
+        text = self.cpu_input.text().strip()
+        log.info("UCThemeLocal._on_cpu_threshold_changed: %r (shown %d)",
+                 text, self._game_threshold)
+        if not text or int(text) == self._game_threshold:
+            self.cpu_input.setText(str(self._game_threshold))
+            return
+        self.invoke_delegate(self.CMD_GAME_MODE, None, {"threshold": int(text)})
+
+    def show_game_mode(self, enabled: bool, threshold: int) -> None:
+        """Show the App's game mode -- READ only (Windows: buttonGame_Set)."""
+        log.info("UCThemeLocal.show_game_mode: %s/%d -> %s/%d", self._game_on,
+                 self._game_threshold, enabled, threshold)
+        self._game_on, self._game_threshold = enabled, threshold
+        px = self._game_on_px if enabled else self._game_off_px
+        if not px.isNull():
+            self.game_btn.setIcon(QIcon(px))
+        if not self.cpu_input.hasFocus():
+            self.cpu_input.setText(str(threshold))
 
     def _create_thumbnail(self, item_info: LocalThemeItem) -> ThemeThumbnail:
         return ThemeThumbnail(item_info)

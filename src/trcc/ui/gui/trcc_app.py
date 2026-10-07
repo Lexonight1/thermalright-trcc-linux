@@ -1171,6 +1171,8 @@ class TRCCApp(QMainWindow):
             GALLERY_TAB_H,
             GALLERY_TAB_Y,
             GALLERY_TITLE_POS,
+            LOCAL_GAME_CPU_POS,
+            LOCAL_GAME_CPU_TEXT,
             LOCAL_THEME_POS,
             MASK_DESC_POS,
             MASK_LOAD_POS,
@@ -1270,6 +1272,9 @@ class TRCCApp(QMainWindow):
 
         x, y, w, h, pt = LOCAL_THEME_POS
         _lbl(self.uc_theme_local, tr('Local Theme', lang), x, y, w, h, pt, 'Local Theme')
+        x, y, w, h, pt = LOCAL_GAME_CPU_POS
+        _lbl(self.uc_theme_local, LOCAL_GAME_CPU_TEXT, x, y, w, h, pt,
+             color='#b3b3b3')
 
         x, y, w, h, pt = ONLINE_THEME_POS
         _lbl(self.uc_theme_mask, tr('Cloud Masks', lang), x, y, w, h, pt, 'Cloud Masks')
@@ -1633,6 +1638,10 @@ class TRCCApp(QMainWindow):
             h = self._active_lcd()
             if h:
                 h.on_slideshow_delegate()
+        elif cmd == UCThemeLocal.CMD_GAME_MODE:
+            h = self._active_lcd()
+            if h:
+                h.on_game_mode_delegate(data)
 
     def _on_export_clicked(self) -> None:
         """The C#'s export: a ``.tr`` named after the theme-name box

@@ -103,6 +103,11 @@ PARAM_COLOUR_POS = (13, 124, 80, 16, 10)
 
 # Local Theme browser (P0本地主题) — 732x652
 LOCAL_THEME_POS = (23, 28, 140, 18, 12)
+# Game mode's threshold caption, left of textBoxCPU (336, 29).  Printed the
+# same in all ten P0本地主题 variants, so it is never translated: x 276-330,
+# y 31-44, #b3b3b3 -- 10 pt YaHei is the width that matches.
+LOCAL_GAME_CPU_POS = (276, 29, 60, 18, 10)
+LOCAL_GAME_CPU_TEXT = "CPU(%)>"
 
 # Online Theme browser (P0云端主题) — 732x652
 ONLINE_THEME_POS = (23, 28, 160, 18, 12)

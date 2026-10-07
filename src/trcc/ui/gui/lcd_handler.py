@@ -391,6 +391,7 @@ class LCDHandler(BaseHandler):
         settings.show_sources(ds.display_source, ds.background_mode != "transparent")
         # None is the default place, which the render draws at (0, 0).
         settings.set_mask_position(*(ds.mask_position or (0, 0)))
+        self._w['theme_local'].show_game_mode(ds.game_enabled, ds.game_threshold)
 
     def _restore_brightness(self, ds: LcdSnapshotResult) -> None:
         self._pm.brightness_level = ds.brightness
@@ -1041,6 +1042,20 @@ class LCDHandler(BaseHandler):
         self._app.dispatch(SetSlideshow(
             key=self._device_key, enabled=enabled,
         ))
+
+    def on_game_mode_delegate(self, change: dict[str, Any]) -> None:
+        """The game-mode button or threshold box: send the half that changed.
+
+        The panel shows the result when the App's ``GameModeChanged`` comes
+        back (``follow_app``), never what this window sent.
+        """
+        from ...core.commands import SetGameMode
+
+        self.log.info("on_game_mode_delegate: device=%s %s",
+                      self._device_key, change)
+        self._app.dispatch(SetGameMode(
+            key=self._device_key, enabled=change.get("enabled"),
+            threshold=change.get("threshold")))
 
     def on_slideshow_delegate(self) -> None:
         """Handle slideshow toggle from local theme panel."""

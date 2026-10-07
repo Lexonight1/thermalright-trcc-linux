@@ -34,6 +34,7 @@ from trcc.core.commands import (
     LoadTheme,
     SaveTheme,
     SetBrightness,
+    SetGameMode,
     SetGpuDevice,
     SetHddEnabled,
     SetLanguage,
@@ -75,6 +76,10 @@ _ROWS: dict[str, tuple[Callable[[], Any], Callable[[Any], Any], Any]] = {
                     lambda w: w.rotation_combo.currentIndex() * 90, 90),
     "split mode": (lambda: SetSplitMode(key=_KEY, mode=3),
                    lambda w: w._handlers[_KEY]._pm.split_mode, 3),
+    "game mode": (lambda: SetGameMode(key=_KEY, enabled=True, threshold=60),
+                  lambda w: (w.uc_theme_local._game_on,
+                             w.uc_theme_local.cpu_input.text()),
+                  (True, "60")),
     "overlay": (lambda: EnableOverlay(key=_KEY, enabled=False),
                 lambda w: (w._handlers[_KEY]._pm.state.overlay_enabled,
                            w.uc_theme_setting.overlay_grid._toggle_btn.isChecked()),
@@ -386,6 +391,42 @@ def test_the_local_theme_panel_exports_and_imports_like_formcztv(
     # through LoadTheme on the bus.
     assert sent == ["ExportCurrentTheme", "ImportTheme", "LoadTheme"]
     assert window._app.active_themes[_KEY].path.name == "Party"
+
+
+def test_the_game_mode_controls_sit_where_ucthemelocal_puts_them(
+    window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """buttonGame (228, 28) 40x18, textBoxCPU (336, 29) 24x16, two digits
+    (UCThemeLocal.cs:910-935), and the ``CPU(%)>`` the C# prints beside it.
+    Each control sends only its own half -- the C#'s two handlers -- so a
+    click cannot overwrite a threshold another UI just set."""
+    local = window.uc_theme_local
+
+    def rect(w: Any) -> tuple[int, int, int, int]:
+        g = w.geometry()
+        return (g.x(), g.y(), g.width(), g.height())
+
+    assert rect(local.game_btn) == (228, 28, 40, 18)
+    assert rect(local.cpu_input) == (336, 29, 24, 16)
+    assert local.cpu_input.maxLength() == 2
+    assert any(label.text() == "CPU(%)>" and label.parent() is local
+               for label, _key in window._i18n_labels)
+    sent: list[Any] = []
+    dispatch = window._app.dispatch
+    monkeypatch.setattr(window._app, "dispatch",
+                        lambda cmd: (sent.append(cmd), dispatch(cmd))[1])
+
+    local.game_btn.click()
+    qtbot.waitUntil(lambda: local._game_on, timeout=3000)
+    local.cpu_input.setText("60")
+    local.cpu_input.editingFinished.emit()
+    qtbot.waitUntil(lambda: local._game_threshold == 60, timeout=3000)
+
+    asked = [c for c in sent if isinstance(c, SetGameMode)]
+    assert asked == [SetGameMode(key=_KEY, enabled=True),
+                     SetGameMode(key=_KEY, threshold=60)]
+    s = window._app.settings.for_device(_KEY)
+    assert (s.game_enabled, s.game_threshold) == (True, 60)
 
 
 def test_a_panel_with_no_mask_position_does_not_show_the_previous_panels(

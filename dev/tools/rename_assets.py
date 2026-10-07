@@ -360,6 +360,8 @@ RENAME_MAP: dict[str, str] = {
     # ------------------------------------------------------------------
     'P主题轮播': 'theme_local_carousel',
     'P主题轮播a': 'theme_local_carousel_active',
+    'P游戏模式': 'theme_local_game',
+    'P游戏模式a': 'theme_local_game_active',
     'P导出所有主题': 'theme_local_export_all',
     'P主题分类选择': 'theme_browser_filter',
     'P主题分类选择0': 'theme_browser_filter_active',

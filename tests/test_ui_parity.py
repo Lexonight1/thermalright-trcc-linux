@@ -66,10 +66,10 @@ def _commands_dispatched_by(package: str) -> set[str]:
 
 KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── GAP: a feature mid-port, wired one face at a time ────────────────
-    "SetGameMode": (frozenset({"cli", "api"}), (
-        "gap: game mode lands in steps (2026-10-07); the CLI and API dispatch "
-        "it, the gui and qtgui controls (G7, G8) do not yet.  Delete this "
-        "entry when they do -- the stale check above fails until then"
+    "SetGameMode": (frozenset({"cli", "api", "gui"}), (
+        "gap: game mode lands in steps (2026-10-07); the CLI, the API and the "
+        "gui dispatch it, the qtgui control (G8) does not yet.  Delete this "
+        "entry when it does -- the stale check above fails until then"
     )),
     # ── Turned by a service task, so NO UI dispatches them ────────────────
     "CaptureScreencastFrame": (frozenset(), (
