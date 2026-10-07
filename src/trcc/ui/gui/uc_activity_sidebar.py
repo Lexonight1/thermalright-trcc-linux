@@ -1,8 +1,11 @@
 """
 PyQt6 UCActivitySidebar - Activity sidebar with live sensor values.
 
-Shows real-time hardware sensor values that can be clicked to add to overlay.
-Matches Windows TRCC right-side Activity panel.
+Shows the sensor dashboard's rows, live; click one to add it to the overlay.
+Matches Windows TRCC's right-side Activity panel, which IS the dashboard panel
+list, custom panels included.  It used to be a fixed 24-entry catalog, so a
+board probe, a voltage or one DIMM the dashboard could show could never be
+placed (#223, #259, #310).
 """
 
 import logging
@@ -11,44 +14,34 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from ...core.models import (
-    METRICS,
-    SENSOR_TO_OVERLAY,
-    SENSORS,
-    OverlayElementConfig,
-    OverlayMode,
-    percent_only,
-)
+from ...core.models import PanelConfig, percent_only
+from ..presentation.sensor_display import activity_rows, format_sensor_value
 
 log = logging.getLogger(__name__)
 
-# Category colors for sidebar display — view-local (Qt layer, will be replaced)
+# Dashboard panel category -> colour.  View-local (Qt layer).
 CATEGORY_COLORS = {
-    'cpu': '#32C5FF',
-    'gpu': '#44D7B6',
-    'memory': '#6DD401',
-    'hdd': '#F7B501',
-    'network': '#FA6401',
-    'fan': '#E02020',
+    1: '#32C5FF',   # CPU
+    2: '#44D7B6',   # GPU
+    3: '#6DD401',   # memory
+    4: '#F7B501',   # disk
+    5: '#FA6401',   # network
+    6: '#E02020',   # fan
 }
+_CUSTOM_COLOR = '#FFFFFF'
 
 
 class SensorItem(QFrame):
-    """Single sensor row — clickable to add to overlay."""
+    """Single sensor row -- clickable to add to overlay."""
 
     clicked = Signal(object)  # OverlayElementConfig
 
-    def __init__(self, category, key_suffix, label, unit, metric_key, color, parent=None):
+    def __init__(self, label, sensor_id, unit, config, color, parent=None):
         super().__init__(parent)
-        self.category = category
-        self.key_suffix = key_suffix
-        self.metric_key = metric_key
+        self.sensor_id = sensor_id
         self.unit = unit
-        self.color = color
-        log.debug(
-            "SensorItem.__init__: category=%s key=%s label=%r metric_key=%s",
-            category, key_suffix, label, metric_key,
-        )
+        self._overlay_config = config
+        log.debug("SensorItem.__init__: %s label=%r unit=%s", sensor_id, label, unit)
 
         self.setFixedHeight(22)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -57,65 +50,41 @@ class SensorItem(QFrame):
         layout.setContentsMargins(10, 0, 5, 0)
         layout.setSpacing(4)
 
-        # Color indicator
         indicator = QLabel('\u25c6')
         indicator.setFixedWidth(12)
         indicator.setStyleSheet(f"color: {color}; font-size: 6px; background: transparent;")
         layout.addWidget(indicator)
 
-        # Sensor name
         name_lbl = QLabel(label)
         name_lbl.setStyleSheet("color: #AAAAAA; font-size: 9px; background: transparent;")
-        name_lbl.setFixedWidth(70)
+        name_lbl.setFixedWidth(120)
         layout.addWidget(name_lbl)
 
         layout.addStretch()
 
-        # Sensor value
         self.value_label = QLabel('--')
         self.value_label.setStyleSheet(f"color: {color}; font-size: 9px; font-weight: bold; background: transparent;")
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.value_label.setFixedWidth(80)
         layout.addWidget(self.value_label)
 
-        # Overlay config for click-to-add
-        sensor_key = f"{category}_{key_suffix}"
-        main_count, sub_count = SENSOR_TO_OVERLAY.get(sensor_key, (0, 1))
-        self._overlay_config = OverlayElementConfig(
-            mode=OverlayMode.HARDWARE,
-            mode_sub=1,  # button0 default: show the unit (the C# / 89%-mask default)
-            main_count=main_count,
-            sub_count=sub_count,
-            color=color,
-        )
-
     def update_value(self, metrics):
-        """Update displayed value from HardwareMetrics DTO."""
-        log.debug("update_value")
-        value = getattr(metrics, self.metric_key, None)
-        unit = self.unit
-        # A GPU fan with a duty percent only shows it as one (#145).
-        sensor_id = str(METRICS.get(self.metric_key, ""))
-        if (duty := percent_only(getattr(metrics, "readings", {}), sensor_id)) is not None:
-            value, unit = duty, "%"
-        if value is not None:
-            if isinstance(value, float):
-                if value >= 1000:
-                    self.value_label.setText(f"{int(value)}{unit}")
-                else:
-                    self.value_label.setText(f"{value:.1f}{unit}")
-            else:
-                self.value_label.setText(f"{value}{unit}")
+        """Show this row's reading from the broadcast, by sensor id."""
+        log.debug("update_value: %s", self.sensor_id)
+        readings = getattr(metrics, "readings", {})
+        # A GPU fan with a duty percent only shows it as one, never under
+        # "RPM" (#145).
+        if (duty := percent_only(readings, self.sensor_id)) is not None:
+            self.value_label.setText(format_sensor_value(duty, "%"))
+        elif (value := readings.get(self.sensor_id)) is not None:
+            self.value_label.setText(format_sensor_value(value, self.unit))
         else:
-            self.value_label.setText(f"--{unit}")
+            self.value_label.setText('--')
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            log.info(
-                "SensorItem.mousePressEvent: category=%s metric=%s "
-                "(emit overlay add)",
-                self.category, self.metric_key,
-            )
+            log.info("SensorItem.mousePressEvent: %s (emit overlay add)",
+                     self.sensor_id)
             self.clicked.emit(self._overlay_config)
 
     def enterEvent(self, event):
@@ -126,24 +95,21 @@ class SensorItem(QFrame):
 
 
 class UCActivitySidebar(QWidget):
-    """Activity sidebar — scrollable list of live hardware sensor values.
-
-    Click a sensor to add it to the overlay grid.
-    """
+    """Activity sidebar -- the dashboard's rows, live.  Click one to add it to
+    the overlay grid.  Filled by :meth:`set_panels` each time it opens."""
 
     sensor_clicked = Signal(object)  # OverlayElementConfig
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
-        self._sensor_items: list = []
+        self._sensor_items: list[SensorItem] = []
+        self._inner: QWidget | None = None
         log.info("UCActivitySidebar.__init__: building activity sidebar")
         self._setup_ui()
 
     def _setup_ui(self):
-        log.info("UCActivitySidebar._setup_ui: %d categories from SENSORS",
-                 len(SENSORS))
-        # Dark background via palette (not stylesheet — children use QPalette)
+        log.info("UCActivitySidebar._setup_ui")
+        # Dark background via palette (not stylesheet -- children use QPalette)
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor('#1E1E1E'))
         self.setPalette(palette)
@@ -153,7 +119,6 @@ class UCActivitySidebar(QWidget):
         main_layout.setContentsMargins(0, 5, 0, 0)
         main_layout.setSpacing(0)
 
-        # Title
         title = QLabel("Activity")
         title.setStyleSheet(
             "color: white; font-size: 10px; font-weight: bold; "
@@ -161,66 +126,54 @@ class UCActivitySidebar(QWidget):
         )
         main_layout.addWidget(title)
 
-        # Scroll area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet(
             "QScrollArea { border: none; background: transparent; }"
             "QScrollBar:vertical { background: transparent; width: 8px; }"
             "QScrollBar::handle:vertical { background: #555; border-radius: 4px; min-height: 20px; }"
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
         )
-        main_layout.addWidget(scroll)
+        main_layout.addWidget(self._scroll)
 
-        # Inner widget
+    def set_panels(self, panels: list[PanelConfig]) -> None:
+        """Rebuild the rows from the sensor dashboard (``GetSensorDashboard``)."""
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.setSpacing(0)
-
-        for category, sensors in SENSORS.items():
-            color = CATEGORY_COLORS.get(category, '#FFFFFF')
-
-            # Category header
-            header = QLabel(f"  \u25aa {category.upper()}")
+        self._sensor_items = []
+        for name, category_id, rows in activity_rows(panels):
+            color = CATEGORY_COLORS.get(category_id, _CUSTOM_COLOR)
+            header = QLabel(f"  \u25aa {name.upper()}")
             header.setFixedHeight(24)
             header.setStyleSheet(
                 f"color: {color}; font-size: 9px; font-weight: bold; "
                 f"background-color: #2A2A2A; padding-top: 3px;"
             )
             inner_layout.addWidget(header)
-
-            # Sensor items
-            for key_suffix, label, unit, metric_key in sensors:
-                item = SensorItem(category, key_suffix, label, unit, metric_key, color)
+            for label, sensor_id, unit, config in rows:
+                config.color = color
+                item = SensorItem(label, sensor_id, unit, config, color)
                 item.clicked.connect(self._on_sensor_clicked)
                 inner_layout.addWidget(item)
                 self._sensor_items.append(item)
-
         inner_layout.addStretch()
-        scroll.setWidget(inner)
-        log.info(
-            "UCActivitySidebar._setup_ui: built %d sensor items",
-            len(self._sensor_items),
-        )
+        self._scroll.setWidget(inner)
+        self._inner = inner
+        log.info("UCActivitySidebar.set_panels: %d row(s) from %d panel(s)",
+                 len(self._sensor_items), len(panels))
 
     def _on_sensor_clicked(self, config):
-        log.info(
-            "UCActivitySidebar._on_sensor_clicked: re-emitting "
-            "OverlayElementConfig (main=%s sub=%s)",
-            getattr(config, 'main_count', '?'),
-            getattr(config, 'sub_count', '?'),
-        )
+        log.info("UCActivitySidebar._on_sensor_clicked: %s", config.metric)
         self.sensor_clicked.emit(config)
 
     def update_from_metrics(self, metrics) -> None:
         """Render from the unified Topic.METRICS broadcast."""
-        # Per-tick — DEBUG so a default INFO run isn't drowned.
-        log.debug(
-            "UCActivitySidebar.update_from_metrics: %d items",
-            len(self._sensor_items),
-        )
+        # Per-tick -- DEBUG so a default INFO run isn't drowned.
+        log.debug("UCActivitySidebar.update_from_metrics: %d items",
+                  len(self._sensor_items))
         try:
             for item in self._sensor_items:
                 item.update_value(metrics)
@@ -228,7 +181,5 @@ class UCActivitySidebar(QWidget):
             log.error("Activity sidebar update error: %s", e)
 
     def stop_updates(self) -> None:
-        """No-op — retained for cleanup compatibility."""
-        log.info(
-            "UCActivitySidebar.stop_updates: no-op (Topic.METRICS observer)",
-        )
+        """No-op -- retained for cleanup compatibility."""
+        log.info("UCActivitySidebar.stop_updates: no-op (Topic.METRICS observer)")

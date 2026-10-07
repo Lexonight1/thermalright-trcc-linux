@@ -29,6 +29,7 @@ from ...core.models import (
     TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
+    default_metric_format,
     format_index,
 )
 from ...core.results import OverlayElementEntry
@@ -45,9 +46,10 @@ def entries_to_configs(
 ) -> list[OverlayElementConfig]:
     """App elements → editor cells, in order, each keeping its id.
 
-    A metric the DC table cannot name has no ``(main, sub)`` to show in a
-    cell and is left out — safe, because the editor edits by id and so never
-    touches an element it does not show.
+    A metric the DC table cannot name (a board probe, a voltage, one DIMM)
+    gets a cell too, by its sensor id -- it used to be left out, so the gui
+    could neither show nor edit what qtgui, the CLI and the API placed (#223,
+    #259, #310).
     """
     configs: list[OverlayElementConfig] = []
     for e in entries:
@@ -67,9 +69,12 @@ def entries_to_configs(
                 cfg.mode_sub = format_index(DATE_FORMATS, e.format)
             case "clock", "weekday":
                 cfg.mode = OverlayMode.WEEKDAY
-            case "metric", _ if (hw := Dc.metric_to_hardware(e.metric)):
+            case "metric", _ if e.metric:
                 cfg.mode = OverlayMode.HARDWARE
-                cfg.main_count, cfg.sub_count = hw
+                if (hw := Dc.metric_to_hardware(e.metric)) is not None:
+                    cfg.main_count, cfg.sub_count = hw
+                else:
+                    cfg.main_count, cfg.sub_count, cfg.metric = 0, 0, e.metric
                 # button0, the C# unit-switch: 1 draws the unit glyph.
                 cfg.mode_sub = 1 if e.show_unit else 0
             case _:
@@ -104,6 +109,10 @@ def config_fields(cfg: OverlayElementConfig) -> dict[str, Any] | None:
                       "format": DATE_FORMATS.get(cfg.mode_sub, DATE_FORMATS[0])}
         case OverlayMode.WEEKDAY:
             fields = {**base, "type": "clock", "source": "weekday"}
+        case OverlayMode.HARDWARE if cfg.metric:
+            fields = {**base, "type": "metric", "metric": cfg.metric,
+                      "format": default_metric_format(cfg.metric),
+                      "show_unit": cfg.mode_sub == 1}
         case OverlayMode.HARDWARE if (
                 hw := Dc.hardware_metric(cfg.main_count, cfg.sub_count)):
             sensor, fmt = hw

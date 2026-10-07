@@ -43,6 +43,7 @@ from ...core.commands import (
     ExportVideoClip,
     GetPaths,
     GetPlatformInfo,
+    GetSensorDashboard,
     LcdSnapshot,
     ListDevices,
     ListGpus,
@@ -2311,6 +2312,10 @@ class TRCCApp(QMainWindow):
 
     def _on_overlay_add_requested(self) -> None:
         log.info("_on_overlay_add_requested")
+        # The dashboard's rows, read when the list opens -- so an edit made in
+        # any UI since is what the user picks from.
+        self.uc_activity_sidebar.set_panels(
+            list(self._app.dispatch(GetSensorDashboard()).panels))
         self.uc_activity_sidebar.setVisible(True)
         self.uc_activity_sidebar.raise_()
 

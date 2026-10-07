@@ -454,20 +454,50 @@ def test_autostart_picker_shows_the_installed_target(
     assert box._autostart_target.currentData() == "qtgui"
 
 
-@pytest.mark.parametrize(("fan_gpu", "readings", "text"), [
-    (1000.0, {"fan:gpu": 1000.0}, "1000RPM"),
-    (0.0, {"fan:gpu:percent": 30.0}, "30.0%"),     # never "0.0RPM" or "30RPM"
+@pytest.mark.parametrize(("readings", "text"), [
+    ({"fan:gpu": 1000.0}, "1000RPM"),
+    ({"fan:gpu:percent": 30.0}, "30%"),            # never "0RPM" or "30RPM"
+    ({}, "--"),
 ])
 def test_gui_gpufan_row_shows_the_unit_its_reading_has(
-        qtbot, fan_gpu: float, readings: dict[str, float], text: str) -> None:
-    """The ``ui/gui`` activity sidebar's GPUFAN row -- the #145 screenshot."""
-    from trcc.core.models import HardwareMetrics
+        qtbot, readings: dict[str, float], text: str) -> None:
+    """The ``ui/gui`` activity sidebar's GPUFAN row -- the #145 screenshot.
+    The row is the dashboard's FAN row, bound to the ``fan:gpu`` slot."""
+    from trcc.core.models import HardwareMetrics, OverlayElementConfig
     from trcc.ui.gui.uc_activity_sidebar import SensorItem
 
-    item = SensorItem("fan", "gpu_fan", "GPUFAN", "RPM", "fan_gpu", "#ffffff")
+    item = SensorItem("GPUFAN", "fan:gpu", "RPM", OverlayElementConfig(), "#ffffff")
     qtbot.addWidget(item)
-    item.update_value(HardwareMetrics(fan_gpu=fan_gpu, readings=readings))
+    item.update_value(HardwareMetrics(readings=readings))
     assert item.value_label.text() == text
+
+
+def test_the_activity_list_is_the_dashboard_and_adds_any_sensor(
+        qtbot, gui_app: App) -> None:
+    """#223 #259 #310: the gui's Activity list was a fixed 24-entry catalog,
+    so a board probe the dashboard showed could not be placed.  It is the
+    dashboard's rows now -- custom panels included -- and a click adds that
+    sensor by id."""
+    from PySide6.QtCore import Qt
+
+    from trcc.core.models import PanelConfig, SensorBinding
+    from trcc.ui.gui.uc_activity_sidebar import UCActivitySidebar
+
+    sidebar = UCActivitySidebar()
+    qtbot.addWidget(sidebar)
+    custom = PanelConfig.custom("Probes")
+    custom.sensors[0] = SensorBinding("T_SENSOR1", "board:nct6798_auxtin1:temp", "°C")
+    sidebar.set_panels([PanelConfig(1, "CPU", [SensorBinding("TEMP", "cpu:temp", "°C")]),
+                        custom])
+    added: list = []
+    sidebar.sensor_clicked.connect(added.append)
+
+    ids = [item.sensor_id for item in sidebar._sensor_items]
+    qtbot.mouseClick(sidebar._sensor_items[1], Qt.MouseButton.LeftButton)
+
+    assert ids == ["cpu:temp", "board:nct6798_auxtin1:temp"]
+    assert [(c.mode.name, c.metric) for c in added] == [
+        ("HARDWARE", "board:nct6798_auxtin1:temp")]
 
 
 def test_activity_sidebar_emits_selection(gui_app: App) -> None:
@@ -4369,3 +4399,23 @@ def test_the_gui_led_panel_labels_the_switch_as_the_csharp_does(
     panel.initialize(style_id, zone_count=4)
 
     assert panel._circulate_label.text() == word
+
+
+def test_a_grid_cell_shows_a_board_sensor_by_its_id(qtbot) -> None:
+    """A cell for a sensor the DC table cannot name reads its value by id and
+    names its group the way the picker does -- (0, 0) would otherwise show as
+    the CPU, the C#'s main count 0."""
+    from trcc.core.models import HardwareMetrics, OverlayElementConfig, OverlayMode
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.presentation.sensor_display import source_label
+
+    cell = OverlayElementWidget(0)
+    qtbot.addWidget(cell)
+    cell.set_config(OverlayElementConfig(
+        mode=OverlayMode.HARDWARE, mode_sub=1, main_count=0, sub_count=0,
+        metric="board:nct6798_auxtin1:temp"))
+
+    cell.update_metrics(HardwareMetrics(readings={"board:nct6798_auxtin1:temp": 31.0}))
+
+    assert (cell._live_value, cell._live_unit) == ("31", "°C")
+    assert source_label("board:nct6798_auxtin1:temp") == "Board"

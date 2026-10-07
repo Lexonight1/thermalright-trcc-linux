@@ -214,12 +214,23 @@ def test_a_pair_the_dc_table_cannot_name_gives_no_element() -> None:
     assert config_fields(cfg) is None
 
 
-def test_an_element_the_grid_cannot_show_is_left_out() -> None:
-    """A metric outside the DC table has no cell — and because edits go by id,
-    leaving it out means no gui edit can touch it."""
+def test_a_metric_the_dc_table_cannot_name_still_gets_a_cell() -> None:
+    """#223 #259 #310: such an element was left out of the gui grid, so the gui
+    could neither show nor edit what qtgui, the CLI and the API placed.  It
+    gets a cell by its sensor id, and an edit sends that id back with the
+    format trcc's own table gives it."""
     shown = OverlayElementEntry(id="t", type="text", text="hi")
-    unknown = OverlayElementEntry(id="m", type="metric", metric="not:a:sensor")
-    assert [c.id for c in entries_to_configs([shown, unknown])] == ["t"]
+    board = OverlayElementEntry(id="m", type="metric",
+                                metric="board:nct6798_auxtin1:temp", show_unit=True)
+
+    configs = entries_to_configs([shown, board])
+    fields = config_fields(configs[1])
+
+    assert [(c.id, c.metric) for c in configs] == [
+        ("t", ""), ("m", "board:nct6798_auxtin1:temp")]
+    assert fields is not None
+    assert (fields["metric"], fields["format"], fields["show_unit"]) == (
+        "board:nct6798_auxtin1:temp", "{value:.0f}°C", True)
 
 
 def _element(**kw):

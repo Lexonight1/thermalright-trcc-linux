@@ -20,8 +20,10 @@ from ...core.models import (
     SUB_METRICS,
     OverlayElementConfig,
     OverlayMode,
+    default_metric_format,
     format_metric,
 )
+from ..presentation.sensor_display import source_label
 from .assets import Assets
 from .constants import Colors, Sizes
 
@@ -119,12 +121,19 @@ class OverlayElementWidget(QWidget):
         if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
         pair = (self.config.main_count, self.config.sub_count)
-        if pair not in METRICS:
+        if self.config.metric:
+            # A sensor the DC table cannot name, by its id (#223, #259, #310).
+            value = getattr(metrics, "readings", {}).get(self.config.metric)
+            if value is None:
+                log.debug("update_metrics: no reading for %s", self.config.metric)
+                return
+            formatted = default_metric_format(self.config.metric).format(value=value)
+        elif pair not in METRICS:
             log.debug("update_metrics: %s is not a known metric — skip", pair)
             return
-        metric = METRICS[pair]
-        # Separate number from unit: "52°C" → "52" + "°C".
-        formatted = format_metric(metric.field, metrics[pair])
+        else:
+            # Separate number from unit: "52°C" → "52" + "°C".
+            formatted = format_metric(METRICS[pair].field, metrics[pair])
         m = re.match(r'([\d.]+)(.*)', formatted)
         if m:
             self._live_value = m.group(1)
@@ -157,7 +166,8 @@ class OverlayElementWidget(QWidget):
             if mode == OverlayMode.HARDWARE:
                 mc = self.config.main_count
                 cat_color = CATEGORY_COLORS.get(mc, '#9375FF')
-                cat_name = CATEGORY_NAMES.get(mc, '???')
+                cat_name = (source_label(self.config.metric) if self.config.metric
+                            else CATEGORY_NAMES.get(mc, '???'))
 
                 # label1: category name in category color (Windows: label1.ForeColor)
                 painter.setPen(QColor(cat_color))
@@ -168,7 +178,8 @@ class OverlayElementWidget(QWidget):
                     painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
                                      self._live_value)
                 else:
-                    sub_name = SUB_METRICS.get(mc, {}).get(self.config.sub_count, '--')
+                    sub_name = ('--' if self.config.metric else
+                                SUB_METRICS.get(mc, {}).get(self.config.sub_count, '--'))
                     painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, sub_name)
                 # label3: unit suffix (Windows: label3.ForeColor = myColor)
                 painter.drawText(2, 41, 56, 18, Qt.AlignmentFlag.AlignCenter,
