@@ -6,6 +6,7 @@ together instead of hunting tabs:
 * Fit / split mode, the overlay switch, the device's clock and date format
 * Background mode (theme / color / transparent) + the color picker
 * Slideshow controls (themes + interval + on/off)
+* Game mode (on/off + the CPU threshold)
 * Application settings (temperature unit, language, refresh interval)
 
 Every control SHOWS what the App holds — on open, when the device changes,
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -49,6 +51,7 @@ from ....core.commands import (
     SetBackgroundMode,
     SetDateFormat,
     SetFitMode,
+    SetGameMode,
     SetLanguage,
     SetOverlayBackground,
     SetRefreshInterval,
@@ -158,6 +161,20 @@ class ConfigurationPanel(BasePanel):
         sl_form.addRow("Themes:", self._slideshow_themes)
         sl_form.addRow("", self._slideshow_save)
 
+        # ── Game mode group ──
+        game_box = QGroupBox("Game mode", self)
+        game_form = QFormLayout(game_box)
+        self._game = _combo(game_box, ((False, "Off"), (True, "On")))
+        self._game_threshold = QSpinBox(game_box)
+        self._game_threshold.setRange(0, 99)      # the C#'s two-digit box
+        self._game_threshold.setSuffix(" %")
+        self._game_threshold.setKeyboardTracking(False)
+        game_form.addRow("State:", self._game)
+        game_form.addRow("Takes the panel above CPU:", self._game_threshold)
+        game_form.addRow("", QLabel(
+            "After 11 seconds above it the panel shows only its overlay, on "
+            "black, until 11 seconds at or below it.", game_box))
+
         # ── Application group (all devices — no device key needed) ──
         app_box = QGroupBox("Application (all devices)", self)
         app_form = QFormLayout(app_box)
@@ -185,6 +202,7 @@ class ConfigurationPanel(BasePanel):
         root.addWidget(display_box)
         root.addWidget(bg_box)
         root.addWidget(sl_box, stretch=1)
+        root.addWidget(game_box)
         root.addWidget(app_box)
         root.addWidget(self._status)
 
@@ -218,6 +236,8 @@ class ConfigurationPanel(BasePanel):
         self._temp_unit.activated.connect(self._send_temp_unit)
         self._language.activated.connect(self._send_language)
         self._refresh.valueChanged.connect(self._send_refresh)
+        self._game.activated.connect(self._send_game_enabled)
+        self._game_threshold.valueChanged.connect(self._send_game_threshold)
         self._date.activated.connect(self._send_date)
         if (line_edit := self._date.lineEdit()) is not None:
             line_edit.editingFinished.connect(self._send_date)
@@ -241,6 +261,18 @@ class ConfigurationPanel(BasePanel):
     def _send_refresh(self, seconds: float) -> None:
         log.info("_send_refresh: %.1fs", seconds)
         self._send(SetRefreshInterval(seconds=float(seconds)))
+
+    def _send_game_enabled(self, _index: int) -> None:
+        log.info("_send_game_enabled: %s", self._game.currentData())
+        key = self._key()
+        if key is not None:
+            self._send(SetGameMode(key=key, enabled=bool(self._game.currentData())))
+
+    def _send_game_threshold(self, percent: int) -> None:
+        log.info("_send_game_threshold: %d%%", percent)
+        key = self._key()
+        if key is not None:
+            self._send(SetGameMode(key=key, threshold=percent))
 
     def _send_date(self, _index: int = -1) -> None:
         """A typed pattern is sent when it is finished, and only if it
@@ -333,9 +365,9 @@ class ConfigurationPanel(BasePanel):
                 else snap.message)
             return
         log.info("_show_state: %s fit=%s split=%s overlay=%s bg=%s clock=%s "
-                 "date=%s", key, snap.fit_mode, snap.split_mode,
+                 "date=%s game=%s/%d%%", key, snap.fit_mode, snap.split_mode,
                  snap.overlay_enabled, snap.background_mode, snap.time_format,
-                 snap.date_format)
+                 snap.date_format, snap.game_enabled, snap.game_threshold)
         self._select_combo_by_data(self._fit, snap.fit_mode)
         self._select_combo_by_data(self._split, snap.split_mode)
         self._select_combo_by_data(self._overlay, snap.overlay_enabled)
@@ -348,6 +380,10 @@ class ConfigurationPanel(BasePanel):
         self._bg_color_label.setText(self._bg_color)
         self._show_slideshow(snap.slideshow_enabled, snap.slideshow_interval_s,
                              snap.slideshow_themes)
+        self._select_combo_by_data(self._game, snap.game_enabled)
+        self._game_threshold.blockSignals(True)
+        self._game_threshold.setValue(snap.game_threshold)
+        self._game_threshold.blockSignals(False)
 
     def _show_slideshow(self, enabled: bool, interval_s: float,
                         themes: Sequence[str]) -> None:

@@ -65,12 +65,6 @@ def _commands_dispatched_by(package: str) -> set[str]:
 # close).  A ``gap`` is not permission to leave it; it is a promise it is known.
 
 KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
-    # ── GAP: a feature mid-port, wired one face at a time ────────────────
-    "SetGameMode": (frozenset({"cli", "api", "gui"}), (
-        "gap: game mode lands in steps (2026-10-07); the CLI, the API and the "
-        "gui dispatch it, the qtgui control (G8) does not yet.  Delete this "
-        "entry when it does -- the stale check above fails until then"
-    )),
     # ── Turned by a service task, so NO UI dispatches them ────────────────
     "CaptureScreencastFrame": (frozenset(), (
         "scoped: ScreencastDriver turns it; every UI reaches the capability "

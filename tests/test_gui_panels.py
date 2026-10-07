@@ -802,6 +802,47 @@ def test_a_panel_follows_another_uis_change(
     qtbot.waitUntil(shows, timeout=2000)
 
 
+def test_the_game_mode_controls_send_their_own_half(
+    gui_app: App, qtbot,
+) -> None:
+    """The switch and the threshold are two controls, as in the C#; each
+    sends only its own field."""
+    from trcc.core.commands import SetGameMode
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+
+    panel = ConfigurationPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+    sent = _writes(panel)
+
+    on = panel._game.findData(True)
+    panel._game.setCurrentIndex(on)
+    panel._game.activated.emit(on)                         # the user's pick
+    panel._game_threshold.setValue(60)                     # typed + finished
+
+    assert sent == [SetGameMode(key=_KEY_Q3, enabled=True),
+                    SetGameMode(key=_KEY_Q3, threshold=60)], sent
+    assert panel._game_threshold.maximum() == 99
+
+
+def test_a_game_mode_change_reaches_other_windows(gui_app: App, qtbot) -> None:
+    """Changed ALONE, so only GameModeChanged can carry it."""
+    from trcc.core.commands import SetGameMode
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+
+    panel = ConfigurationPanel(gui_app, _bus(gui_app))
+    qtbot.addWidget(panel)
+    _on_device(panel)
+    sent = _writes(panel)
+
+    gui_app.dispatch(SetGameMode(key=_KEY_Q3, enabled=True, threshold=40))
+
+    qtbot.waitUntil(lambda: (panel._game.currentData(),
+                             panel._game_threshold.value()) == (True, 40),
+                    timeout=2000)
+    assert sent == [], "showing it must not send it back"
+
+
 def test_a_background_change_reaches_other_windows(gui_app: App, qtbot) -> None:
     """SetBackgroundMode / SetOverlayBackground published nothing, so no other
     window could show the change.  Changed ALONE: any other event would make
