@@ -2,7 +2,8 @@
 """FormCZTVInit branch tracer — run a device fingerprint through the C#.
 
 A line-cited transcription of the C# device-onboarding function
-``FormCZTVInit`` (**TRCC 2.1.6**, ``TRCC.CZTV/FormCZTV.cs:858``) plus the
+``FormCZTVInit`` (the oracle release, ``core.csharp.ORACLE_RELEASE``;
+``TRCC.CZTV/FormCZTV.cs:858``) plus the
 catalog selector it calls at the end, ``SetThemeInfo_ThemeML`` (``:1247``).
 Given a handshake fingerprint ``(fbl, mode, pm, pmSub)`` it walks the SAME
 branches the C# walks, prints every one it hits, and returns the resulting
@@ -26,8 +27,8 @@ tests ``fbl == 49``.
 A stale oracle is worse than no oracle: it manufactures agreement.  Verify the
 tree before trusting a citation::
 
-    grep -rh AssemblyVersion ~/Downloads/TRCC_2.1.6_decompiled/Properties/*.cs
-    # -> [assembly: AssemblyVersion("2.1.6.0")]
+    grep -rh AssemblyVersion "$TRCC_DECOMPILE"/Properties/*.cs
+    # -> must equal core.csharp.ORACLE_VERSION (tests/test_oracle_version.py)
 
 Run::
 
@@ -39,6 +40,8 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
+
+from core.csharp import ORACLE_RELEASE
 
 # The display angle FormCZTVInit passes down when the device has no saved one.
 # `themeDirection == -1` is the C#'s "first boot" sentinel, and it is the only
@@ -465,7 +468,7 @@ def main() -> int:
     st = form_cztv_init(args.fbl, m=args.mode, pm=args.pm, pmSub=args.sub,
                         themeDirection=args.angle)
     print(f"\nFormCZTVInit(fbl={args.fbl}, mode={args.mode}, pm={args.pm}, "
-          f"pmSub={args.sub})  —  TRCC 2.1.6\n")
+          f"pmSub={args.sub})  —  TRCC {ORACLE_RELEASE}\n")
     for row in st.trace:
         print(row)
     w, h = st.resolution

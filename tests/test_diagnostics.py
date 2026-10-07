@@ -1592,7 +1592,8 @@ def test_debug_report_captures_live_handshake(tmp_path: Path) -> None:
     the connect-time log line scrolls out of the tail (the #176/#186 blocker)."""
     from tests.mock_platform import MockPlatform
 
-    # GrandVision 360 (bulk, registry fbl 72) with a pinned PM=50 handshake.
+    # 87ad:70db (registry: GrandVision 360, fbl 72) answering PM=50 -- a
+    # 320x240 panel, not the catalog's 480x480 (#186).
     platform = MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 50}], tmp_path)
     report = build_debug_report(platform)
 

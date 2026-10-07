@@ -46,7 +46,8 @@ _ORIENTS = (0, 90, 180, 270)
 _FAMILY: tuple[tuple[str, int, int], ...] = (
     ("Mjolnir",              5,  1),   # → fbl 50, 320x240 JPEG
     ("FW360 Ultra",          6,  0),   # → fbl 72, 480x480, PM-keyed 180° baseline (#137)
-    ("GrandVision 360",     50,  0),   # → fbl 72 (unknown PM → 480x480 base, #176)
+    ("87ad pm50",           50,  0),   # → fbl 50, 320x240: a 240x320 raster
+                                       #   turned 90° (FormCZTV.cs:882-887, #186)
     ("widescreen 854x480",  11,  5),   # → fbl 224
     ("widescreen 960x540",  10,  0),   # → fbl 224 (PM disambiguates, not FBL)
     ("bulk pm1 sub48",       1, 48),   # → fbl 114, 1600x720

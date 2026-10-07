@@ -131,7 +131,7 @@ _FLEET: tuple[tuple[int, int, int, int, str], ...] = (
     (58,  1, 58,  0,  "Frozen Warframe SE 320x240 (SCSI RGB565)"),
     (72,  2, 6,   0,  "FW360 Ultra 480x480 pm=6 (bulk JPEG)"),
     (72,  1, 72,  0,  "480x480 square (SCSI RGB565)"),
-    (72,  2, 50,  0,  "GrandVision/Elite 480x480 pm=50 (bulk)"),
+    (72,  2, 50,  0,  "pm=50 (bulk) -> fbl 50, 320x240, not 480x480"),
     (100, 2, 32,  0,  "320x320 pm=32 (bulk → mode 4)"),
     (100, 1, 100, 0,  "320x320 (SCSI RGB565)"),
     (36,  1, 36,  0,  "240x240 (SCSI RGB565)"),
