@@ -102,6 +102,7 @@ _SOURCES: dict[str, dict[str, Any]] = {
     "build_solid_color_frame": {"color": (0, 0, 0)},
     "build_image_frame": {"path": Path("ignored-by-the-fake-renderer.png")},
     "build_screencast_frame": {"frame": RawFrame(b"", 64, 64)},
+    "build_game_frame": {"theme": None},
 }
 
 

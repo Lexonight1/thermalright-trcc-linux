@@ -1287,6 +1287,12 @@ STREAM_SCHEMES: frozenset[str] = frozenset({"http", "https", "rtsp"})
 #: is 3% late at worst, and the poll itself is a settings read.
 SLIDESHOW_POLL_S = 1.0
 
+#: How often game mode reads its row: the C#'s check runs every 64th tick
+#: (FormCZTV.cs:2849) of a 15 ms timer (Form1.cs:502), which Windows fires at
+#: its 15.625 ms resolution -- the C# counts it so itself (FormCZTV.cs:2997).
+#: One second; its 11-reading counts are 11 seconds each way.
+GAME_MODE_TICK_S = 1.0
+
 
 # =========================================================================
 # Media formats — what a background file IS, and therefore how it plays

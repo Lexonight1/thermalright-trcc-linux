@@ -38,6 +38,7 @@ from ..core.events import (
     FitModeChanged,
     FrameSent,
     GameModeChanged,
+    GameModeEngaged,
     GpuDeviceChanged,
     HddEnabledChanged,
     LanguageChanged,
@@ -108,6 +109,7 @@ class BusBridge(QObject):
     screencast_started = Signal(object)        # ScreencastStarted
     screencast_stopped = Signal(object)        # ScreencastStopped
     slideshow_changed = Signal(object)         # SlideshowChanged
+    game_mode_engaged = Signal(object)         # GameModeEngaged
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
     data_installed = Signal(object)            # DataInstalled
@@ -154,6 +156,7 @@ class BusBridge(QObject):
             (ScreencastStarted, self.screencast_started),
             (ScreencastStopped, self.screencast_stopped),
             (SlideshowChanged, self.slideshow_changed),
+            (GameModeEngaged, self.game_mode_engaged),
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),
             (DataInstalled, self.data_installed),

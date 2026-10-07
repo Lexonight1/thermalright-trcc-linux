@@ -114,6 +114,18 @@ class GameModeChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class GameModeEngaged(Event):
+    """Game mode took the panel (``engaged``) or gave it back.
+
+    The setting is :class:`GameModeChanged`; this is the busy CPU acting on
+    it.  The C# shows no indicator, so no window draws one -- it is here for
+    the log, a script, or a UI that later wants one.
+    """
+    key: str
+    engaged: bool
+
+
+@dataclass(frozen=True, slots=True)
 class MaskApplied(Event):
     key: str
     path: str

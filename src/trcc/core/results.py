@@ -341,6 +341,15 @@ class GameModeResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class GameModeTickResult(Result):
+    """One game-mode reading: what it read, and what it decided."""
+    key: str = ""
+    reading: int = 0
+    verdict: str = "idle"
+    engaged: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class MaskApplyResult(Result):
     key: str = ""
     path: str = ""

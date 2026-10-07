@@ -51,8 +51,10 @@ from ..results import (
 )
 from ._base import Command, Query
 from ._helpers import (
+    _drive_game_mode,
     _drive_slideshow,
     _invalidate_scene,
+    _live_sensors,
     _publish_if_disconnect,
     _require_connected_device,
     _resolve_oriented_resolution,
@@ -511,14 +513,8 @@ class LoadTheme(Command[ThemeResult]):
         # used by MetricsLoop + ReadSensors + RenderAndSend so this
         # one-shot first-frame matches the cadence the periodic
         # broadcast will deliver.
-        from ...services.metrics_personalize import personalize_readings
-        s_app = app.settings.app
         try:
-            sensors = personalize_readings(
-                app.platform.sensors().read_all(),
-                temp_unit=s_app.temp_unit,
-                hdd_enabled=s_app.hdd_enabled,
-            )
+            sensors = _live_sensors(app)
         except Exception as e:
             log.warning(
                 "LoadTheme: sensors.read_all() raised %s — first frame "
@@ -1050,12 +1046,7 @@ class SaveTheme(Command[ThemeResult]):
             log.info("_preview_png: %s not connected — no snapshot", key)
             return None
         try:
-            from ...services.metrics_personalize import personalize_readings
-            s_app = app.settings.app
-            sensors = personalize_readings(
-                app.platform.sensors().read_all(),
-                temp_unit=s_app.temp_unit, hdd_enabled=s_app.hdd_enabled,
-            )
+            sensors = _live_sensors(app)
             surface = app.display.build_preview_surface(
                 info=device.info, theme=theme, sensors=sensors,
                 profile=device.profile,
@@ -1823,8 +1814,9 @@ def show_orientation_theme(app: App, key: str, degrees: int | None = None) -> No
     -- the C#'s ``ReadFileTheme`` + ``Theme_Click_Event``, run on every
     rotation and at connect.
 
-    The folder's own theme, brightness, split mode and slideshow come back
-    (``enter_orientation``); the theme shown is the one it remembers, the
+    The folder's own theme, brightness, split mode, slideshow and game mode
+    come back (``enter_orientation``), and the slideshow and game mode run if
+    that folder has them on; the theme shown is the one it remembers, the
     same-named one there, else Theme1 -- never a theme of the other folder.
     *degrees* is a rotation's new angle; ``None`` is a restore at the saved
     one.  Only a restore with nothing saved starts the theme clean: a rotation
@@ -1848,6 +1840,7 @@ def show_orientation_theme(app: App, key: str, degrees: int | None = None) -> No
     if visit == "first":
         app.settings.mark_entered(key)
     _drive_slideshow(app, key)
+    _drive_game_mode(app, key)
 
 
 @dataclass(frozen=True, slots=True)

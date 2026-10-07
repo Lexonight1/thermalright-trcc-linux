@@ -36,7 +36,7 @@ from ..results import (
 if TYPE_CHECKING:
     from ...app import App
     from ...services.theme_directories import ThemeDirectories
-    from ..models import DeviceSettings, ProductInfo
+    from ..models import DeviceSettings, ProductInfo, SensorBinding
 
 from ..logs import per_frame
 from ..models import MEDIA, MediaKind
@@ -681,6 +681,25 @@ def _slideshow_snapshot(settings, key: str) -> SlideshowResult:
     )
 
 
+def _live_sensors(app: App) -> dict[str, float]:
+    """This instant's readings with the user's prefs applied -- the °C/°F
+    conversion and the disk filter every metrics consumer sees.
+
+    One read for every frame builder (the theme render, the cast, the first
+    frame of a load, the previews, game mode), so none of them can draw °C
+    while another draws °F.  Raises what the sensor read raises; each caller
+    decides what a failed read costs it.
+    """
+    from ...services.metrics_personalize import personalize_readings
+
+    s = app.settings.app
+    frame_log.debug("_live_sensors: temp_unit=%s hdd=%s",
+                    s.temp_unit, s.hdd_enabled)
+    return personalize_readings(app.platform.sensors().read_all(),
+                                temp_unit=s.temp_unit,
+                                hdd_enabled=s.hdd_enabled)
+
+
 def _publish_slideshow(app: App, key: str) -> None:
     """Tell every UI the slideshow's saved state, whoever changed it."""
     s = app.settings.for_device(key)
@@ -701,6 +720,47 @@ def _publish_game_mode(app: App, key: str) -> None:
              key, s.game_enabled, s.game_threshold)
     app.events.publish(GameModeChanged(
         key=key, enabled=s.game_enabled, threshold=s.game_threshold))
+
+
+def _drive_game_mode(app: App, key: str) -> None:
+    """Watch *key*'s CPU while game mode is switched on, and only then.
+
+    For ``SetGameMode`` and for every folder entered (connect, restore,
+    rotation), as ``_drive_slideshow`` is.  Switched on, the dashboard row is
+    bound here -- once, not every second -- the same in-memory auto-map
+    ``GetSensorDashboard`` runs, so a fresh install with nothing saved still
+    reads CPU usage.  Switched off while engaged, one last tick lets the
+    gate see it and give the panel back.
+    """
+    from ...services.game_mode_driver import GameModeTask, task_key
+    from .device import TickGameMode
+
+    if app.settings.for_device(key).game_enabled:
+        if not app.sysinfo.panels:
+            app.sysinfo.load()
+        row = _game_row(app)
+        if row is not None and not row.sensor_id:
+            bound = app.sysinfo.auto_map(app.platform.sensors().discover())
+            log.info("_drive_game_mode: %s row was unbound -- auto-mapped %d "
+                     "row(s), it now reads %r", key, bound, row.sensor_id)
+        log.info("_drive_game_mode: %s is on -- watching %r", key,
+                 row.sensor_id if row is not None else None)
+        app.add_task(GameModeTask(app, key))
+        return
+    log.info("_drive_game_mode: %s is off -- not watching", key)
+    app.remove_task(task_key(key))
+    if (gate := app.game_gates.get(key)) is not None and gate.engaged:
+        app.dispatch(TickGameMode(key=key))
+
+
+def _game_row(app: App) -> SensorBinding | None:
+    """The dashboard row game mode reads: the first panel's second row --
+    the C#'s ``UCSystemInfoOptionsOneList[0].label2`` (FormCZTV.cs:2853-2856),
+    CPU usage by default.  None when the layout has no such row."""
+    panels = app.sysinfo.panels
+    row = panels[0].sensors[1] if panels and len(panels[0].sensors) > 1 else None
+    frame_log.debug("_game_row: %s", row)
+    return row
 
 
 def _drive_slideshow(app: App, key: str) -> None:

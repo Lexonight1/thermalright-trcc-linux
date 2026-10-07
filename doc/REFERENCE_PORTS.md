@@ -10,8 +10,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
-| [`BaseSendTask`](#basesendtask) | 1 | 4 | 4 |
-| [`Command`](#command) | 1 | 1 | 139 |
+| [`BaseSendTask`](#basesendtask) | 1 | 4 | 5 |
+| [`Command`](#command) | 1 | 1 | 140 |
 | [`CpuSource`](#cpusource) | 1 | 4 | 10 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
@@ -43,7 +43,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`Paths`](#paths) | 4 | 10 | 5 |
-| [`SendTask`](#sendtask) | 4 | 0 | 5 |
+| [`SendTask`](#sendtask) | 4 | 0 | 6 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
@@ -70,7 +70,7 @@ _run(now: 'float') -> float
 
 **You inherit (4):** `key` · `run_once` · `wait` · `wake`
 
-**Implementations (4):** `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
+**Implementations (5):** `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
 
 ## Command
 
@@ -86,7 +86,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (139):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BuildPreview` · `CaptureScreencastFrame` · `CaptureStreamFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListSensors` · `ListThemes` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `ReadSensors` · `RefreshAutostart` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRefreshInterval` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus`
+**Implementations (140):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BuildPreview` · `CaptureScreencastFrame` · `CaptureStreamFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListSensors` · `ListThemes` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `ReadSensors` · `RefreshAutostart` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRefreshInterval` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus`
 
 ## CpuSource
 
@@ -611,7 +611,7 @@ wait(timeout: 'float') -> None
 wake() -> None
 ```
 
-**Implementations (5):** `DeviceSender` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
+**Implementations (6):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
 
 ## BulkTransport
 

@@ -27,6 +27,7 @@ from ..events import (
     ErrorOccurred,
     FitModeChanged,
     FrameSent,
+    GameModeEngaged,
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
@@ -74,6 +75,7 @@ from ..results import (
     DiscoverResult,
     FitModeResult,
     GameModeResult,
+    GameModeTickResult,
     LcdSnapshotResult,
     LoopVideoResult,
     MaskApplyResult,
@@ -103,9 +105,12 @@ from ..results import (
 from ..variants import covers_several_coolers
 from ._base import Command, Query
 from ._helpers import (
+    _drive_game_mode,
     _element_to_entry,
+    _game_row,
     _invalidate_scene,
     _lacks,
+    _live_sensors,
     _publish_game_mode,
     _publish_if_disconnect,
     _rendered_surface,
@@ -824,13 +829,7 @@ class RenderAndSend(Command[RenderResult]):
         # SensorsUpdated subscribers see.  Single conversion site for
         # the entire metrics path — matches legacy's
         # ``PollingMetricsLoop._poll_metrics`` shape.
-        from ...services.metrics_personalize import personalize_readings
-        s = app.settings.app
-        sensors = personalize_readings(
-            app.platform.sensors().read_all(),
-            temp_unit=s.temp_unit,
-            hdd_enabled=s.hdd_enabled,
-        )
+        sensors = _live_sensors(app)
 
         try:
             frame = app.display.build_frame(
@@ -1039,13 +1038,7 @@ class BuildPreview(Query[PreviewResult]):
         # Same personalization the wire path applies (RenderAndSend, and
         # SaveTheme when it snapshots the thumbnail): sources deliver °C and
         # every disk key, the user's prefs are applied once, here.
-        from ...services.metrics_personalize import personalize_readings
-        s = app.settings.app
-        sensors = personalize_readings(
-            app.platform.sensors().read_all(),
-            temp_unit=s.temp_unit,
-            hdd_enabled=s.hdd_enabled,
-        )
+        sensors = _live_sensors(app)
         return self._finish(app, partial(
             app.display.build_preview_surface,
             info=device.info, theme=theme, sensors=sensors,
@@ -1658,15 +1651,9 @@ class SendScreencastFrame(Command[ScreencastResult]):
         # ``RenderAndSend`` personalises them: the renderer must receive the
         # already-converted, already-filtered dict that every other metrics
         # consumer sees, or a screencast would show °C while the theme shows °F.
-        from ...services.metrics_personalize import personalize_readings
         theme = app.active_themes.get(self.key)
-        app_s = app.settings.app
         try:
-            sensors = personalize_readings(
-                app.platform.sensors().read_all(),
-                temp_unit=app_s.temp_unit,
-                hdd_enabled=app_s.hdd_enabled,
-            )
+            sensors = _live_sensors(app)
         except Exception as e:
             # A sensor fault costs the METRICS on one frame, never the frame.
             log.warning("SendScreencastFrame: sensor read failed for %s (%s) "
@@ -2451,6 +2438,7 @@ class SetGameMode(Command[GameModeResult]):
         app.settings.set_game_mode(
             self.key, enabled=self.enabled, threshold=self.threshold)
         _publish_game_mode(app, self.key)
+        _drive_game_mode(app, self.key)
         s = app.settings.for_device(self.key)
         return GameModeResult(
             ok=True, key=self.key, enabled=s.game_enabled,
@@ -2458,6 +2446,98 @@ class SetGameMode(Command[GameModeResult]):
             message=(f"game mode {'on' if s.game_enabled else 'off'} for "
                      f"{self.key} (CPU > {s.game_threshold}%)"),
         )
+
+@dataclass(frozen=True, slots=True)
+class TickGameMode(Command[GameModeTickResult]):
+    """One game-mode reading: read the row, step the hysteresis, act.
+
+    The C#'s once-a-second check (FormCZTV.cs:2853-2913), turned by
+    ``GameModeTask``.  The row's text is what the C# parses: it strips "%" and
+    reads an integer, so a percentage or a bare number counts -- truncated, as
+    the C# formats load values (UCSystemInfo.cs:871-873) -- and a temperature,
+    clock, fan or power row reads 0 and never engages.
+
+    Engaging and releasing draw nothing, as in the C#.  While engaged, every
+    reading sends the game frame.  On release the panel's own picture is
+    rendered back: a static theme has no producer that would redraw it.
+
+    LOG_LEVEL is DEBUG: this fires every second.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    REQUIRES: ClassVar[Capability | None] = Capability.FRAME_RENDER
+    key: str
+
+    def execute(self, app: App) -> GameModeTickResult:
+        from ...services.game_mode import GameModeGate, GameVerdict
+
+        s = app.settings.for_device(self.key)
+        gate = app.game_gates.setdefault(self.key, GameModeGate())
+        reading = self._reading(app) if s.game_enabled else 0
+        verdict = gate.step(s.game_enabled, reading, s.game_threshold)
+        frame_log.debug("TickGameMode: %s read %d (> %d?) -> %s", self.key,
+                        reading, s.game_threshold, verdict.value)
+        ok, message = True, verdict.value
+        match verdict:
+            case GameVerdict.ENGAGE:
+                app.events.publish(GameModeEngaged(key=self.key, engaged=True))
+            case GameVerdict.RELEASE:
+                app.events.publish(GameModeEngaged(key=self.key, engaged=False))
+                # The game frame took the scene's preview; with the same
+                # theme, readings and minute, a render back would be a full
+                # cache hit that resends the theme and leaves the preview
+                # black.  Drop the scene so it is composed again.
+                _invalidate_scene(app, self.key)
+                render = app.dispatch(RenderAndSend(key=self.key))
+                log.info("TickGameMode: %s released -- panel rendered back "
+                         "(ok=%s)", self.key, render.ok)
+            case GameVerdict.HOLD:
+                ok, message = self._send_game_frame(app)
+        return GameModeTickResult(
+            ok=ok, key=self.key, reading=reading, verdict=verdict.value,
+            engaged=gate.engaged, message=message)
+
+    def _reading(self, app: App) -> int:
+        """The row as the C# parses its text: an integer, else 0."""
+        row = _game_row(app)
+        if row is None or not row.sensor_id:
+            frame_log.debug("TickGameMode: %s has no bound row -- reads 0",
+                            self.key)
+            return 0
+        if row.unit not in ("%", ""):
+            frame_log.debug("TickGameMode: %s row %r is in %r, which the C# "
+                            "cannot parse -- reads 0", self.key,
+                            row.sensor_id, row.unit)
+            return 0
+        raw = app.last_raw_readings
+        value = (raw.get(row.sensor_id) if raw is not None
+                 else app.platform.sensors().read_one(row.sensor_id))
+        frame_log.debug("TickGameMode: %s %s = %s", self.key, row.sensor_id,
+                        value)
+        return 0 if value is None else int(value)
+
+    def _send_game_frame(self, app: App) -> tuple[bool, str]:
+        """Build the overlay-on-black frame and put it on the wire."""
+        try:
+            device = _require_connected_device(app, self.key)
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
+            frame_log.debug("TickGameMode: %s -- %s", self.key, e)
+            return False, str(e)
+        try:
+            sensors = _live_sensors(app)
+        except Exception as e:
+            log.warning("TickGameMode: sensor read failed for %s (%s) -- "
+                        "the game frame goes out without metrics", self.key, e)
+            sensors = {}
+        data = app.display.build_game_frame(
+            info=device.info, theme=app.active_themes.get(self.key),
+            sensors=sensors, profile=device.profile)
+        app.send(self.key, data)
+        app.events.publish(FrameSent(
+            key=self.key, bytes_sent=len(data),
+            surface=app.display.rendered_surface(self.key)))
+        frame_log.debug("TickGameMode: %s game frame %d bytes",
+                        self.key, len(data))
+        return True, f"game frame {len(data)} bytes"
 
 @dataclass(frozen=True, slots=True)
 class ApplyMask(Command[MaskApplyResult]):

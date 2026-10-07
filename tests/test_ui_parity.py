@@ -91,6 +91,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "frames, 5 -> 10 in 5 s), then gui's hand renders (one colour edit sent "
         "2, now 1) and its flash renders with FlashOverlayElement"
     )),
+    "TickGameMode": (frozenset(), (
+        "scoped: GameModeTask turns it once a second; every UI reaches the "
+        "capability through SetGameMode, which owns the task"
+    )),
     "SendFrame": (frozenset(), (
         "scoped: a deliberate scripting/daemon affordance -- ipc.py names it as "
         "the Command whose raw bytes survive JSON, and its own docstring says "

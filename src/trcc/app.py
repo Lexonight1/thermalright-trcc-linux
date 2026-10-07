@@ -79,6 +79,7 @@ from .services.cloud_theme import CloudThemeService
 from .services.device_sender import DeviceSender
 from .services.display import DisplayService
 from .services.first_run import FirstRunService
+from .services.game_mode import GameModeGate
 from .services.led_animation_loop import LedAnimationLoop
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
@@ -164,6 +165,10 @@ class App(CommandBus):
         # the first broadcast — consumers fall back to a one-off read.
         self.last_raw_readings: dict[str, float] | None = None
         self.last_raw_snapshot: HardwareMetrics | None = None
+        # Each panel's game-mode hysteresis -- whether a busy CPU holds it and
+        # how far the count has run.  The App's, not the task's, because
+        # every frame source must be able to ask "is this panel held?".
+        self.game_gates: dict[str, GameModeGate] = {}
         # Cloud theme catalog + service.  The platform's fetcher is the only
         # seam that talks to the network -- a test or dev platform's is offline.
         self.http = platform.http_fetcher()
@@ -1187,7 +1192,8 @@ class App(CommandBus):
         self._send_scheduler.remove(key)
 
     def stop_sources(self, key: str) -> None:
-        """Stop what plays on *key*'s panel: its screencast, slideshow, stream.
+        """Stop what plays on *key*'s panel: its screencast, slideshow, stream
+        and game mode.
 
         Only for letting the panel go (``detach``: a disconnect, quitting),
         never for a blink -- see :meth:`stop_sender`.  While the panel is away
@@ -1196,6 +1202,7 @@ class App(CommandBus):
         otherwise kill the device's own sender; it is also why each removal is
         explicit here, and why a NEW driver must be added to this list.
         """
+        from .services.game_mode_driver import task_key as game_task
         from .services.screencast_driver import task_key as screencast_task
         from .services.slideshow_driver import task_key as slideshow_task
         from .services.stream_driver import task_key as stream_task
@@ -1204,6 +1211,8 @@ class App(CommandBus):
         self._send_scheduler.remove(screencast_task(key))
         self._send_scheduler.remove(slideshow_task(key))
         self._send_scheduler.remove(stream_task(key))
+        self._send_scheduler.remove(game_task(key))
+        self.game_gates.pop(key, None)
         self.media.close_stream(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:

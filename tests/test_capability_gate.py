@@ -36,6 +36,7 @@ def _commands(key: str, tmp: Path) -> list[Command[Any]]:
         C.EnableOverlay(key=key, enabled=True),
         C.SetSplitMode(key=key, mode=1),
         C.SetGameMode(key=key, enabled=True),
+        C.TickGameMode(key=key),
         C.SetMaskPosition(key=key, x=1, y=2),
         C.SetMaskVisible(key=key, visible=False),
         C.SetBackgroundMode(key=key, mode="color"),

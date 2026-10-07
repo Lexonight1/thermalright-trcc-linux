@@ -681,24 +681,10 @@ class DisplayService:
 
         if theme is not None:
             surface = self._composite_mask(info, s, theme, surface)
-            clock = compute_clock(language=self._settings.app.language)
-            readings = sensors or {}
-            # The cast used to draw every element again on every frame --
-            # ~16 times a second for numbers that change every two seconds.
-            # It keeps its overlay in the device's scene like a theme render.
-            overlay_key = self._overlay_key(
-                info, theme, (target_w, target_h), readings, clock)
-            scene = self._scenes.get(info.key)
-            overlay, reused = self._reuse_or_build_overlay(
-                info, theme, readings, (target_w, target_h), clock, scene,
-                overlay_key)
-            if not reused:
-                self._scenes[info.key] = (
-                    replace(scene, overlay_surface=overlay,
-                            overlay_key=overlay_key) if scene is not None
-                    else SceneCache(overlay_surface=overlay,
-                                    overlay_key=overlay_key))
-            surface = self._r.composite(surface, overlay, position=(0, 0))
+            surface = self._r.composite(
+                surface,
+                self._scene_overlay(info, theme, (target_w, target_h), sensors),
+                position=(0, 0))
 
         # Audio spectrum LAST, over everything, because it is a live meter
         # rather than part of the picture — the same order the gui's tick drew
@@ -725,6 +711,69 @@ class DisplayService:
         surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
+
+    def build_game_frame(
+        self,
+        *,
+        info: ProductInfo,
+        theme: Theme | None,
+        sensors: dict[str, float] | None = None,
+        profile: DeviceProfile | None = None,
+    ) -> bytes:
+        """Encode game mode's frame: the overlay alone, on black.
+
+        The C# turns the background and the mask off, draws, and turns them
+        back on (FormCZTV.cs:2880-2891); its canvas starts black
+        (UCScreenImage.cs:903) and brightness still applies
+        (UCScreenImage.cs:1222).  So: the oriented canvas, black, the theme's
+        overlay, and the same preview and wire tail as every other frame.
+        With no theme there is nothing to draw on the black.
+        """
+        frame_log.debug("build_game_frame: key=%s theme=%s",
+                        info.key, theme.name if theme else None)
+        resolved = self._resolve_profile(info, profile)
+        s = self._settings.for_device(info.key)
+        size = oriented_canvas(resolved, s.orientation)
+        surface = self._r.create_surface(*size, color=(0, 0, 0, 255))
+        if theme is not None:
+            surface = self._r.composite(
+                surface, self._scene_overlay(info, theme, size, sensors),
+                position=(0, 0))
+        self._remember_preview(info.key, surface)
+        surface = self._apply_post_processing(surface, s, resolved, info.key)
+        surface = self._orient_for_wire(surface, s, resolved, info)
+        return self._encode_for_wire(surface, resolved)
+
+    def _scene_overlay(
+        self,
+        info: ProductInfo,
+        theme: Theme,
+        size: tuple[int, int],
+        sensors: dict[str, float] | None,
+    ) -> Any:
+        """The theme's text, metric and clock layer at *size*, kept in the
+        device's scene so a frame source that sends many times between two
+        sensor readings draws it once.
+
+        The cast drew every element again on every frame -- ~16 times a
+        second for numbers that change every two seconds -- until it kept its
+        overlay in the scene like a theme render; game mode does the same.
+        """
+        clock = compute_clock(language=self._settings.app.language)
+        readings = sensors or {}
+        overlay_key = self._overlay_key(info, theme, size, readings, clock)
+        scene = self._scenes.get(info.key)
+        overlay, reused = self._reuse_or_build_overlay(
+            info, theme, readings, size, clock, scene, overlay_key)
+        frame_log.debug("_scene_overlay: key=%s %dx%d reused=%s",
+                        info.key, *size, reused)
+        if not reused:
+            self._scenes[info.key] = (
+                replace(scene, overlay_surface=overlay,
+                        overlay_key=overlay_key) if scene is not None
+                else SceneCache(overlay_surface=overlay,
+                                overlay_key=overlay_key))
+        return overlay
 
     def _sink(self, topic: tuple[str, str], value: object) -> logging.Logger:
         """The plain logger when *value* changed since last said, else the

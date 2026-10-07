@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**140 total: 102 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -566,6 +566,16 @@ Clear the device's playback override AND the persisted bg override.
 Advance a video playback one frame, then render + send (one tick).
 
 *Command* → `RenderResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+
+### `TickGameMode`
+
+One game-mode reading: read the row, step the hysteresis, act.
+
+*Command* → `GameModeTickResult`
 
 | Field | Type | Required |
 |---|---|---|
