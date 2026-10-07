@@ -7,6 +7,7 @@ subprocess.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -216,6 +217,65 @@ def test_refresh_rerenders_an_installed_plist(tmp_path: Path) -> None:
     assert "<string>--resume</string>" in plist.read_text(encoding="utf-8"), (
         "refresh left the stale argv in the plist"
     )
+
+
+_OLD = 1_000_000_000_000_000_000      # 2001, in ns: no write can land on it
+
+
+@pytest.fixture
+def trcc_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One fixed program path, so the rendered argv is stable."""
+    from trcc.adapters.system import _autostart
+
+    monkeypatch.setattr(_autostart.shutil, "which",
+                        lambda name: "/opt/trcc/bin/trcc" if name == "trcc" else None)
+
+
+def test_refresh_leaves_a_current_plist_and_launchd_alone(
+    tmp_path: Path, trcc_on_path: None,
+) -> None:
+    """It ran on every UI start: a rewrite and a ``launchctl bootstrap`` of a
+    loaded agent each time (PR #303)."""
+    autostart, rec, plist = _build(tmp_path)
+    autostart.enable("qtgui")
+    os.utime(plist, ns=(_OLD, _OLD))     # a rewrite now cannot share its tick
+    rec.calls.clear()
+
+    autostart.refresh()
+
+    assert plist.stat().st_mtime_ns == _OLD
+    assert rec.calls == []
+    assert autostart.installed_target() == "qtgui"
+
+
+def test_refresh_rewrites_a_stale_plist_without_touching_launchd(
+    tmp_path: Path, trcc_on_path: None,
+) -> None:
+    """#201 still holds: an agent from before ``--resume`` gets it.  Loading
+    is launchd's, at the next login."""
+    autostart, rec, plist = _build(tmp_path)
+    plist.parent.mkdir(parents=True)
+    plist.write_text(_render_plist(["/opt/trcc/bin/trcc", "gui"]), encoding="utf-8")
+
+    autostart.refresh()
+
+    assert plist.read_text(encoding="utf-8") == _render_plist(
+        ["/opt/trcc/bin/trcc", "gui", "--resume"])
+    assert rec.calls == []
+
+
+def test_enabling_again_loads_the_agent_without_rewriting_it(
+    tmp_path: Path, trcc_on_path: None,
+) -> None:
+    autostart, rec, plist = _build(tmp_path)
+    autostart.enable("gui")
+    os.utime(plist, ns=(_OLD, _OLD))
+    rec.calls.clear()
+
+    autostart.enable("gui")
+
+    assert plist.stat().st_mtime_ns == _OLD
+    assert rec.calls == [["launchctl", "bootstrap", "gui/501", str(plist)]]
 
 
 def test_refresh_does_not_install_a_plist_that_was_never_enabled(

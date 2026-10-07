@@ -929,12 +929,23 @@ class MacOSAutostart(AutostartManager):
         log.debug("MacOSAutostart._args_for(%s): %s", target, args)
         return args
 
+    def _write_if_changed(self, body: str) -> bool:
+        """Write the plist only when *body* differs from it; True if it wrote."""
+        if (self._plist_path.is_file()
+                and self._plist_path.read_text(encoding="utf-8") == body):
+            log.debug("MacOSAutostart: %s is current", self._plist_path)
+            return False
+        self._plist_path.parent.mkdir(parents=True, exist_ok=True)
+        self._plist_path.write_text(body, encoding="utf-8")
+        log.info("MacOSAutostart: wrote %s", self._plist_path)
+        return True
+
     def enable(self, target: str | None = None) -> None:
         log.info("enable: target=%s", target)
-        self._plist_path.parent.mkdir(parents=True, exist_ok=True)
-        body = _render_plist(self._args_for(target), label=self._label)
-        self._plist_path.write_text(body, encoding="utf-8")
-        # bootstrap can fail with code 17 ("already loaded") — that's OK.
+        self._write_if_changed(
+            _render_plist(self._args_for(target), label=self._label))
+        # Enabling is the user's request, so the agent is loaded now, written
+        # or not.  bootstrap can fail with code 17 ("already loaded") — OK.
         rc = self._runner([
             "launchctl", "bootstrap", self._domain, str(self._plist_path),
         ])
@@ -959,16 +970,23 @@ class MacOSAutostart(AutostartManager):
             log.info("MacOSAutostart: disabled")
 
     def refresh(self) -> None:
-        """Re-render the plist when one is installed — see WindowsAutostart.
+        """Re-render an installed plist when its argv changed — see
+        WindowsAutostart.  Never touches launchd.
 
-        Was a no-op on the premise that the plist never changes between
-        sessions.  ``--resume`` changed it, and an existing LaunchAgent would
-        otherwise keep launching a visible window forever.
+        ``--resume`` changed the argv, and an existing LaunchAgent would
+        otherwise keep launching a visible window forever (#201).  But it ran
+        on EVERY UI start through ``enable``: a rewrite and a ``launchctl
+        bootstrap`` each time (PR #303).  launchd reads LaunchAgents at the
+        next login; ``bootstrap`` on a loaded label fails and reloads nothing,
+        and ``bootout`` would kill the UI the agent started.  So: write only a
+        difference, and leave the loaded agent alone.
         """
         if not self._plist_path.exists():
             log.debug("MacOSAutostart.refresh: no plist — nothing to refresh")
             return
         installed = self.installed_target()
-        log.info("MacOSAutostart.refresh: re-rendering %s (target=%s)",
-                 self._plist_path, installed)
-        self.enable(installed)
+        if self._write_if_changed(
+                _render_plist(self._args_for(installed), label=self._label)):
+            log.info("MacOSAutostart.refresh: re-rendered %s (target=%s) — "
+                     "launchd reads it at the next login",
+                     self._plist_path, installed)
