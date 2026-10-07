@@ -43,12 +43,11 @@ class BasePanel(QFrame):
 
     Enforces lifecycle:
         _setup_ui() — abstract, must be implemented by every subclass.
-        apply_language(lang) — virtual hook, default no-op.
         get_state() / set_state() — virtual hooks, default no-op/empty.
 
     Provides:
         invoke_delegate() — delegate signal emission (MVC pattern).
-        start_periodic_updates() / stop_periodic_updates() — timer management.
+        start_periodic_updates() — timer management.
     """
 
     # Signal for delegate pattern (replaces Tkinter invoke_delegate)
@@ -98,16 +97,6 @@ class BasePanel(QFrame):
 
     # === Virtual hooks (default no-op) ===
 
-    def apply_language(self, lang: str) -> None:
-        """Update localized text/images for the given language.
-
-        Override in panels that have localized content.
-        """
-        log.debug(
-            "%s.apply_language: lang=%r (base no-op)",
-            type(self).__name__, lang,
-        )
-
     def get_state(self) -> dict:
         """Serialize panel state for save/restore."""
         return {}
@@ -130,10 +119,6 @@ class BasePanel(QFrame):
         the new interval and callback.
         """
         self._updates.start(interval_ms, callback)
-
-    def stop_periodic_updates(self) -> None:
-        """Stop the periodic update timer if running."""
-        self._updates.stop()
 
     # === Legacy ===
 

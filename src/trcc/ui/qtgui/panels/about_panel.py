@@ -71,11 +71,3 @@ class AboutPanel(BasePanel):
             "Architecture: hexagonal (ports + adapters), one Command bus, "
             "four UIs (CLI / API / GUI / REPL)."
         )
-
-    def apply_language(self, lang: str) -> None:
-        """Localized text re-render — minimal for now (English only),
-        but the hook is in place for when ``tr()`` keys land."""
-        log.debug("apply_language: lang=%s", lang)
-        del lang
-        from .... import __version__
-        self._version_label.setText(f"version {__version__}")

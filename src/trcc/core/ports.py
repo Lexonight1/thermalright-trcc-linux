@@ -2150,10 +2150,6 @@ class CloudCatalog(ABC):
         """Fetch ``<theme_id>.mp4`` (cached); return its local path."""
         ...
 
-    @abstractmethod
-    def download_preview(self, theme_id: str, resolution: str | None = None) -> Path:
-        """Fetch ``<theme_id>.png`` (cached); return its local path."""
-        ...
 
 
 # =========================================================================

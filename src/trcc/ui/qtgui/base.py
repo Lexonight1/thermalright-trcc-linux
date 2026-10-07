@@ -8,8 +8,6 @@ Every panel:
 * holds the ``BusBridge`` (so it can subscribe to typed Qt signals
   forwarded from the EventBus);
 * implements ``_setup_ui()`` to build its widget tree;
-* may override ``apply_language(code)`` to re-render localized strings
-  (default no-op);
 * may override ``get_state()`` / ``set_state(dict)`` for save / restore.
 
 Why a metaclass-style enforcement: legacy hit ``TypeError`` when QFrame
@@ -146,11 +144,6 @@ class BasePanel(TicksWhileShown, QFrame):
             f"{type(self).__name__} must implement _setup_ui()"
         )
 
-    def apply_language(self, lang: str) -> None:
-        """Re-render localized strings.  Default no-op."""
-        log.debug("apply_language: lang=%s", lang)
-        del lang
-
     def get_state(self) -> dict:
         """Serialize panel state for save / restore.  Default empty."""
         log.debug("get_state")
@@ -203,8 +196,3 @@ class BasePanel(TicksWhileShown, QFrame):
         """Run *callback* every *interval_ms* on the Qt main thread."""
         log.debug("start_periodic_updates: interval_ms=%s callback=%s", interval_ms, callback)
         self._start_updates(interval_ms, callback)
-
-    def stop_periodic_updates(self) -> None:
-        """Stop the periodic update timer if running."""
-        log.debug("stop_periodic_updates")
-        self._updates.stop()

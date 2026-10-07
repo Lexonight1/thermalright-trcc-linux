@@ -223,20 +223,6 @@ class LCDHandler(BaseHandler):
         )
         return snap
 
-    def has_video_playback(self) -> bool:
-        """True iff MediaService has frames bound for this device.
-
-        ``playing`` alone is not enough: a bound playback that decoded zero
-        frames is not something to animate, which is why this tests the count
-        as well — and why ``frame_count`` is ``None`` rather than ``0`` when
-        there is no playback at all.
-        """
-        status = self._video_status()
-        answer = status.playing and bool(status.frame_count)
-        self.log.debug("has_video_playback: %s (playing=%s frames=%s)",
-                       answer, status.playing, status.frame_count)
-        return answer
-
     # ── LCDDevice Config (C# ReadSystemConfiguration) ─────────────────
 
     def apply_device_config(self, key: str, w: int, h: int) -> None:

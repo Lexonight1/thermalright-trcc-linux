@@ -88,7 +88,6 @@ from .uc_activity_sidebar import UCActivitySidebar
 from .uc_brightness import UCBrightness
 from .uc_device import UCDevice
 from .uc_image_cut import UCImageCut
-from .uc_info_module import UCInfoModule
 from .uc_led_control import UCLedControl
 from .uc_preview import UCPreview
 from .uc_system_info import UCSystemInfo
@@ -167,7 +166,7 @@ class TRCCApp(QMainWindow):
         # panel visibility flips (which is itself a transition worth
         # surfacing).  Same shape Phase 0 used for the video tick.
         self._metrics_fanout_first_logged: bool = False
-        self._last_vis_state: tuple[bool, bool, bool] = (False, False, False)
+        self._last_vis_state: tuple[bool, bool] = (False, False)
         # Last metrics snapshot OBSERVED from the OS dispatcher
         # (``SensorsUpdated`` at the refresh-rate cadence).  The GUI never
         # re-polls; a view-switch re-fans-out this cached object so a panel
@@ -568,32 +567,29 @@ class TRCCApp(QMainWindow):
         metrics = self._last_metrics
         readings = metrics.readings
 
-        info_vis = self.uc_info_module.isVisible()
         sysinfo_vis = self.uc_system_info.isVisible()
         sidebar_vis = self.isVisible() and self.uc_activity_sidebar.isVisible()
         # INFO on first call after construction + on every visibility
         # state TRANSITION (panel opens or closes).  Per-tick stays
         # DEBUG so 2 s cadence doesn't flood.  Mirrors Phase 0's
         # transition-only skip-log shape.
-        vis_state = (info_vis, sysinfo_vis, sidebar_vis)
+        vis_state = (sysinfo_vis, sidebar_vis)
         if (not self._metrics_fanout_first_logged
                 or self._last_vis_state != vis_state):
             log.info(
                 "_fan_out_metrics: reason=%s readings=%d "
-                "info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
-                reason, len(readings), info_vis, sysinfo_vis, sidebar_vis,
+                "sysinfo_vis=%s sidebar_vis=%s",
+                reason, len(readings), sysinfo_vis, sidebar_vis,
             )
             self._metrics_fanout_first_logged = True
             self._last_vis_state = vis_state
         else:
             frame_log.debug(
                 "_fan_out_metrics: reason=%s readings=%d "
-                "info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
-                reason, len(readings), info_vis, sysinfo_vis, sidebar_vis,
+                "sysinfo_vis=%s sidebar_vis=%s",
+                reason, len(readings), sysinfo_vis, sidebar_vis,
             )
 
-        if info_vis:
-            self.uc_info_module.update_from_metrics(metrics)
         if sysinfo_vis:
             self.uc_system_info.update_from_metrics(metrics)
         if sidebar_vis:
@@ -901,11 +897,6 @@ class TRCCApp(QMainWindow):
         # pre-connect render.
         self.uc_preview = UCPreview(320, 320, self.form_container)
         self.uc_preview.setGeometry(*Layout.PREVIEW)
-
-        # Info module
-        self.uc_info_module = UCInfoModule(self.form_container)
-        self.uc_info_module.setGeometry(16, 16, 500, 70)
-        self.uc_info_module.setVisible(False)
 
         # Image/video cutters
         self.uc_image_cut = UCImageCut(self.form_container)
@@ -1574,8 +1565,6 @@ class TRCCApp(QMainWindow):
             if not handler.is_configured:
                 handler.apply_device_config(key, w, h)
                 self._show_brightness()
-                if self._ui_state.state.show_info_module:
-                    self.uc_info_module.setVisible(True)
                 if key == self._active_key:
                     self._show_cast()
             else:
@@ -2499,7 +2488,6 @@ class TRCCApp(QMainWindow):
         for h in list(self._handlers.values()):
             h.cleanup()
         self.uc_system_info.stop_updates()
-        self.uc_info_module.stop_updates()
         self.uc_activity_sidebar.stop_updates()
         # The widescreen pop-out is its own top-level: hide-to-tray leaves it
         # up, as the C# does, but quitting must not leave it on screen holding

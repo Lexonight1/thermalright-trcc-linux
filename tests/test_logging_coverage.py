@@ -132,7 +132,12 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: 300 -> 297 on 2026-10-06: nine definitions with zero references (AST, src +
 #: tests + dev) DELETED; three were silent -- ``get_selected_mask`` and both
 #: ``get_selected_theme``.  Diffing ``--list``: those 3 left, none joined.
-MAX_SILENT = 297
+#: 297 -> 295 on 2026-10-07: dead code DELETED (AST, src + tests + dev, zero
+#: callers): both ``stop_periodic_updates``, four ``apply_language`` hooks,
+#: ``LCDHandler.has_video_playback``, ``download_preview`` and the unreachable
+#: ``UCInfoModule`` strip with ``set_show_info_module``.  The two silent ones
+#: were gui's ``stop_periodic_updates`` and ``set_show_info_module``.
+MAX_SILENT = 295
 
 
 def test_logging_coverage_only_improves() -> None:

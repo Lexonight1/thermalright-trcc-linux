@@ -137,18 +137,6 @@ class CzhordeCatalog(CloudCatalog):
         log.debug("download_theme: theme_id=%s resolution=%s", theme_id, resolution)
         return self._fetch_cached(theme_id, ".mp4", resolution or self._resolution)
 
-    def download_preview(
-        self, theme_id: str, resolution: str | None = None,
-    ) -> Path:
-        """Fetch ``<theme_id>.png`` (cached) and return its local path.
-
-        Some entries don't have a PNG — caller catches HttpFetchError
-        and falls back to extracting a still from the MP4 (or shows a
-        placeholder).
-        """
-        log.debug("download_preview: theme_id=%s resolution=%s", theme_id, resolution)
-        return self._fetch_cached(theme_id, ".png", resolution or self._resolution)
-
     # ── Internals ─────────────────────────────────────────────────────
 
     def _fetch_cached(self, theme_id: str, suffix: str, resolution: str) -> Path:

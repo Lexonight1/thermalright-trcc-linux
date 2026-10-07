@@ -91,7 +91,7 @@ class PeriodicUpdater:
         Clears the WANT, so a later ``resume`` will not restart it — that is
         what separates this from :meth:`suspend`.
         """
-        log.info("%s.stop_periodic_updates: active=%s",
+        log.info("%s periodic updates: stop (active=%s)",
                  self._owner_name, self.is_active)
         self._wanted = False
         if self._timer is not None:

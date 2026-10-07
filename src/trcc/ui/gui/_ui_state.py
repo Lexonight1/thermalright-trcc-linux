@@ -38,9 +38,6 @@ class UiState:
     # Sidebar / device selection
     last_device_key: str = ""              # vid:pid of last-active device
 
-    # Info module above preview (4 mini sensor readouts)
-    show_info_module: bool = False
-
     # Recorded once on first run for upgrade hints
     install_method: str = ""               # pip / pipx / rpm / deb / pacman / pyinstaller
     install_distro: str = ""               # fedora / arch / ubuntu / debian / …
@@ -95,12 +92,6 @@ class UiStateStore:
         if self._state.last_device_key == key:
             return
         self._state.last_device_key = key
-        self.save()
-
-    def set_show_info_module(self, on: bool) -> None:
-        if self._state.show_info_module == on:
-            return
-        self._state.show_info_module = on
         self.save()
 
     def set_install_info(self, method: str, distro: str) -> None:
