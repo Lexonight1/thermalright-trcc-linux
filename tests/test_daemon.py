@@ -171,18 +171,21 @@ def test_a_ui_starts_a_daemon_of_its_own_install(
     ("1", True, 1000, True),
     ("0", True, 1000, False),     # tests, dev mocks, profilers
     (None, False, 1000, False),   # CPython on Windows has no AF_UNIX
-    (None, True, 0, False),       # root: the shared App lives in userland
+    (None, True, 0, True),        # a root login / root service is a user too
 ])
 def test_the_factory_uses_the_shared_app_unless_a_reason_says_otherwise(
     monkeypatch: pytest.MonkeyPatch,
     env: str | None, af_unix: bool, euid: int, shared: bool,
 ) -> None:
-    """Root matters most: every install guide runs ``sudo trcc system setup``,
-    which dispatches — a shared root App would outlive it, holding USB."""
+    """A root login (Proxmox, a headless Pi) or a root service shares one App
+    like any user (#150 #246 #267); ELEVATED root is the next test."""
     import socket
 
     from trcc import _boot
     from trcc.proxy import AppProxy
+
+    for var in _boot._ELEVATED_BY:
+        monkeypatch.delenv(var, raising=False)
 
     if env is None:
         monkeypatch.delenv(_ENV_FLAG, raising=False)
@@ -200,6 +203,47 @@ def test_the_factory_uses_the_shared_app_unless_a_reason_says_otherwise(
 
     assert isinstance(app, AppProxy) is shared
     assert bool(started) is shared, "a local App must not start a daemon"
+
+
+@pytest.mark.parametrize("var, value", [
+    ("SUDO_UID", "1000"),         # sudo, and run0 (systemd 256+)
+    ("PKEXEC_UID", "1000"),
+    ("DOAS_USER", "alice"),
+])
+def test_root_raised_from_a_user_stays_in_process(
+    monkeypatch: pytest.MonkeyPatch, var: str, value: str,
+) -> None:
+    """Every install guide runs ``sudo trcc system setup``: a shared root App
+    started there would outlive it, holding USB, beside the user's own."""
+    from trcc import _boot
+
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    for other in _boot._ELEVATED_BY:
+        monkeypatch.delenv(other, raising=False)
+    monkeypatch.setenv(var, value)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    started: list[bool] = []
+    monkeypatch.setattr(daemon, "ensure_daemon",
+                        lambda **kw: started.append(True) or True)
+    monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
+
+    assert _boot._local_reason() == (
+        f"elevated by {var} — the shared App is the invoking user's")
+    assert _boot.trcc() == "LOCAL"
+    assert started == []
+
+
+def test_a_user_with_a_stale_sudo_variable_is_not_elevated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only ROOT can be elevated: a variable left in a user's shell means
+    nothing, and must not keep them off their own App."""
+    from trcc import _boot
+
+    monkeypatch.setenv("SUDO_UID", "1000")
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+
+    assert _boot._elevated() is None
 
 
 def test_the_gui_s_real_platform_still_reaches_the_shared_app(

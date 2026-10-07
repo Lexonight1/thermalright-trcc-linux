@@ -1688,9 +1688,9 @@ def test_a_one_shot_on_a_blanking_panel_says_how_to_keep_it_lit(
      "TRCC_DAEMON=0 keeps trcc commands off the background App that keeps "
      "panels showing: run `unset TRCC_DAEMON` and they hand the panel to it. "
      "Or use the GUI."),
-    ("running as root — the shared App lives in userland",
-     "Run it without sudo: as root, trcc commands do not use the background "
-     "App that keeps panels showing. Or use the GUI."),
+    ("elevated by SUDO_UID — the shared App is the invoking user's",
+     "Run it without sudo: an elevated trcc command does not use the "
+     "background App that keeps panels showing. Or use the GUI."),
     ("no AF_UNIX on this platform",
      "This system cannot run the background App that keeps panels showing, "
      "so use the GUI to keep it on screen."),

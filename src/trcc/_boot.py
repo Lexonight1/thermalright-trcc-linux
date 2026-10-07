@@ -7,8 +7,11 @@ a stated reason:
 
     TRCC_DAEMON=0            the caller asked (tests, dev mocks, profilers)
     no AF_UNIX               CPython has no AF_UNIX on Windows, at any build
-    running as root          the shared App lives in userland: a root App
-                             would outlive ``sudo trcc system setup`` holding USB
+    elevated from a user     sudo / run0 / pkexec / doas: the shared App is
+                             that user's, and a root App started here would
+                             outlive ``sudo trcc system setup`` holding USB.
+                             A root LOGIN or a root service is not elevated:
+                             it shares one App like any user (#150 #246 #267)
     a stand-in platform      a mock, a fake, a dev subclass: the shared App runs
                              on this host's own platform, so asking it would
                              silently drop the stand-in and drive real USB
@@ -33,6 +36,10 @@ log = logging.getLogger(__name__)
 
 _ENV_FLAG = "TRCC_DAEMON"
 
+#: What each elevator leaves in the environment of the root process it starts:
+#: sudo and run0 ``SUDO_UID``, pkexec ``PKEXEC_UID``, doas ``DOAS_USER``.
+_ELEVATED_BY = ("SUDO_UID", "PKEXEC_UID", "DOAS_USER")
+
 
 def _local_reason(platform: Platform | None = None) -> str | None:
     """Why this process must build its own App, or None to use the shared one.
@@ -45,10 +52,27 @@ def _local_reason(platform: Platform | None = None) -> str | None:
     flag = os.environ.get(_ENV_FLAG, "1")
     reason = (f"{_ENV_FLAG}={flag}" if flag != "1"
               else "no AF_UNIX on this platform" if not hasattr(socket, "AF_UNIX")
-              else "running as root — the shared App lives in userland"
-              if os.geteuid() == 0 else _stand_in(platform))
+              else _elevated() or _stand_in(platform))
     log.debug("_local_reason: %s", reason)
     return reason
+
+
+def _elevated() -> str | None:
+    """Name the elevator when this is root raised from a user's session.
+
+    That user's App is the shared one, so this process stays in-process.  A
+    root login or a root service has no elevator variable: it is a user in
+    its own right and shares an App like any other.  Every root process was
+    sent in-process from 50b557eb, which left a root-only box (Proxmox, a
+    headless Pi) with no App to keep a panel lit and a root service with
+    clients that could not reach it (#150 #246 #267).
+    """
+    if os.geteuid() != 0:
+        return None
+    by = next((var for var in _ELEVATED_BY if os.environ.get(var)), None)
+    log.debug("_elevated: root, elevator variable %s", by)
+    return (f"elevated by {by} — the shared App is the invoking user's"
+            if by else None)
 
 
 def _stand_in(platform: Platform | None) -> str | None:

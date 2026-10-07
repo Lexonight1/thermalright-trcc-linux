@@ -147,6 +147,7 @@ def test_without_xdg_runtime_dir_no_socket_goes_to_tmp(
     ``XDG_RUNTIME_DIR``, so this is every Mac session."""
     from trcc import ipc
 
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
 
@@ -162,10 +163,28 @@ def test_with_xdg_runtime_dir_the_paths_are_unchanged(
     that an older install started."""
     from trcc import ipc
 
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
 
     assert ipc.socket_path() == tmp_path / "trcc.sock"
     assert _instance_socket_path("gui") == tmp_path / "trcc" / "gui.sock"
+
+
+def test_root_has_one_socket_whatever_its_session_says(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """A root ssh login gets XDG_RUNTIME_DIR=/run/user/0 from pam_systemd; a
+    root service gets none.  Honouring it put a root client and the root App
+    a service started on different sockets (#246)."""
+    from trcc import ipc
+
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")
+    login = ipc.socket_path()
+    monkeypatch.delenv("XDG_RUNTIME_DIR")
+
+    assert login == ipc.socket_path() == tmp_path / ".cache" / "trcc.sock"
 
 
 def test_only_a_raise_request_raises() -> None:

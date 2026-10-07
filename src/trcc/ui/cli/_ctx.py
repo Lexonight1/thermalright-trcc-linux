@@ -203,9 +203,9 @@ def keep_it_lit(reason: str | None) -> str:
         return (f"{reason} keeps trcc commands off the background App that "
                 "keeps panels showing: run `unset TRCC_DAEMON` and they hand "
                 "the panel to it. Or use the GUI.")
-    if reason.startswith("running as root"):
-        return ("Run it without sudo: as root, trcc commands do not use the "
-                "background App that keeps panels showing. Or use the GUI.")
+    if reason.startswith("elevated by"):
+        return ("Run it without sudo: an elevated trcc command does not use "
+                "the background App that keeps panels showing. Or use the GUI.")
     if reason.startswith("no AF_UNIX"):
         return ("This system cannot run the background App that keeps panels "
                 "showing, so use the GUI to keep it on screen.")

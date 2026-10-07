@@ -513,7 +513,7 @@ current_platform()                  ← OS dispatch    → Platform
 
 ## Daemon Mode (`TRCC_DAEMON`)
 
-One background process per user owns USB and every panel, and serves the CLI, API, gui and qtgui over a Unix domain socket. It is the default: any UI finds the running App or starts it (`daemon.ensure_daemon()`). A UI builds its own in-process App only for a reason `_boot._local_reason` names: `TRCC_DAEMON` set to anything but `1` (tests, dev mocks, profilers), no `AF_UNIX` (CPython on Windows, every build), running as root, or a stand-in platform (mock, fake, dev subclass) — or when the App fails to start (WARNING, then in-process).
+One background process per user owns USB and every panel, and serves the CLI, API, gui and qtgui over a Unix domain socket. It is the default: any UI finds the running App or starts it (`daemon.ensure_daemon()`). A UI builds its own in-process App only for a reason `_boot._local_reason` names: `TRCC_DAEMON` set to anything but `1` (tests, dev mocks, profilers), no `AF_UNIX` (CPython on Windows, every build), root elevated from a user (`sudo`/`run0`/`pkexec`/`doas` — a root login or root service shares an App like any user), or a stand-in platform (mock, fake, dev subclass) — or when the App fails to start (WARNING, then in-process).
 
 ### Composition root
 
@@ -533,7 +533,7 @@ What `trcc()` returns depends on environment:
 | Situation | Returns | Behaviour |
 |---|---|---|
 | default (`TRCC_DAEMON` unset or `1`) | `AppProxy` | finds or starts the App via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
-| `TRCC_DAEMON=0`, root, a stand-in platform, or no `AF_UNIX` (Windows) | real `App` | in-process, from the passed `platform` / `renderer` (auto-detected when omitted) |
+| `TRCC_DAEMON=0`, root under sudo/pkexec/doas, a stand-in platform, or no `AF_UNIX` (Windows) | real `App` | in-process, from the passed `platform` / `renderer` (auto-detected when omitted) |
 | the App fails to start | real `App` | WARNING, then in-process |
 
 `AppProxy` (`proxy.py`) implements the **`CommandBus` port** (`dispatch`,

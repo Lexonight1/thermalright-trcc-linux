@@ -111,8 +111,14 @@ def runtime_dir() -> Path:
     long-running App's socket.  No other account can create files in your home,
     and nothing ages ``~/.cache``.  macOS never sets ``XDG_RUNTIME_DIR``, so
     this fallback is every Mac session.
+
+    Root always takes ``~/.cache``: a root login gets ``/run/user/0`` from
+    pam_systemd and a root service gets nothing, so honouring the variable
+    put the two on different sockets and a root client never found the root
+    App a service started (#246).
     """
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
+    root = hasattr(os, "geteuid") and os.geteuid() == 0
+    xdg = None if root else os.environ.get("XDG_RUNTIME_DIR")
     base = Path(xdg) if xdg else Path.home() / ".cache"
     frame_log.debug("runtime_dir: %s (%s)", base,
               "XDG_RUNTIME_DIR" if xdg else "fallback")
