@@ -94,6 +94,25 @@ def test_handshake_caches_canonical_profile(fake_scsi: FakeScsiTransport) -> Non
     assert device._profile.rotate is False
 
 
+def test_scsi_fbl51_uses_spimode2_big_endian(
+    fake_scsi: FakeScsiTransport,
+) -> None:
+    """SCSI mode-1 FBL=51 uses SPIMode 2 / big-endian RGB565.
+
+    The global FBL=51 profile must stay little-endian because HID Type-2
+    panels use the same FBL without the SCSI mode-1 SPIMode override.
+    """
+    fake_scsi.read_script.append(_poll_response(51))
+    device = _make_scsi(fake_scsi)
+
+    result = device.connect()
+
+    assert result.resolution == (320, 240)
+    assert device._profile is not None
+    assert device._profile.big_endian is True
+    assert get_profile(51, 51).big_endian is False
+
+
 # ── Empty poll falls back to registry FBL ────────────────────────────
 
 
