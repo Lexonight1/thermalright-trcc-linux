@@ -60,12 +60,12 @@ ProgressCallback = Callable[[int, str], None]
 class VideoExporter:
     """ffmpeg-driven ``Theme.zt`` encoder."""
 
-    def __init__(self) -> None:
+    def __init__(self, install_hint: Callable[[str], str]
+                 = toolchain.generic_install_hint) -> None:
+        self._install_hint = install_hint
         if not toolchain.present("ffmpeg"):
-            log.warning(
-                "VideoExporter: ffmpeg not on PATH — exports will fail until "
-                "you install it (e.g. 'dnf install ffmpeg' / 'apt install ffmpeg').",
-            )
+            log.warning("VideoExporter: exports will fail — %s",
+                        toolchain.missing("ffmpeg", install_hint("ffmpeg")))
 
     def export_zt(
         self,
@@ -91,10 +91,8 @@ class VideoExporter:
     def _validate(self, req: VideoExportRequest) -> None:
         log.debug("_validate: req=%s", req)
         if not toolchain.present("ffmpeg"):
-            raise VideoExportError(
-                "ffmpeg not found on PATH.  Install it via your package "
-                "manager (e.g. 'dnf install ffmpeg' / 'apt install ffmpeg').",
-            )
+            raise VideoExportError(toolchain.missing(
+                "ffmpeg", self._install_hint("ffmpeg")))
         if not req.source.is_file():
             raise VideoExportError(f"Video file not found: {req.source}")
         if req.end_ms <= req.start_ms:

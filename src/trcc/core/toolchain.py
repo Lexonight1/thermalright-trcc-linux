@@ -146,6 +146,23 @@ def tried(tool: str) -> str:
     return names
 
 
+def generic_install_hint(tool: str) -> str:
+    """The hint when no platform is at hand to name the package."""
+    log.debug("toolchain.generic_install_hint: %s", tool)
+    return f"install {tool} with your system's package manager"
+
+
+def missing(tool: str, hint: str) -> str:
+    """The one message for a tool that is not installed: what was looked
+    for, then how to get it -- *hint* is the platform's own
+    (``Platform.software_install_hint``), so it is right per OS and distro.
+    Four copies told every OS to run a Fedora package command, for a
+    package stock Fedora does not even ship."""
+    message = f"{tool} not found on PATH (looked for: {tried(tool)}) — {hint}"
+    log.debug("toolchain.missing: %s", message)
+    return message
+
+
 def installed_elsewhere(distribution: str) -> str | None:
     """Version of *distribution*, if it is installed but not importable here.
 

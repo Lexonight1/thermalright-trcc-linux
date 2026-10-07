@@ -2478,7 +2478,9 @@ class LoadVideo(Command[ThemeResult]):
                         probed = probe_duration_ms(self.path)
                         end_ms = (probed if probed > 0
                                   else self.start_ms + 10_000)
-                    produced = VideoExporter().export_zt(VideoExportRequest(
+                    produced = VideoExporter(
+                        app.platform.software_install_hint,
+                    ).export_zt(VideoExportRequest(
                         source=self.path,
                         start_ms=self.start_ms,
                         end_ms=end_ms,

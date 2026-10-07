@@ -135,7 +135,7 @@ class App(CommandBus):
         self._events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = FileContentStore(platform.paths())
-        self.media = MediaService()
+        self.media = MediaService(install_hint=platform.software_install_hint)
         # The current background per device.  Here rather than on
         # DisplayService because ``_wire_display`` rebuilds that service
         # whenever a renderer is attached, and a background that vanished on
@@ -215,8 +215,9 @@ class App(CommandBus):
             from .adapters.infra.video_export_runner import (
                 ThreadVideoExportRunner,
             )
-            video_export_runner = ThreadVideoExportRunner(self.events,
-                                                          self.themes)
+            video_export_runner = ThreadVideoExportRunner(
+                self.events, self.themes,
+                install_hint=platform.software_install_hint)
         self.video_export_runner: VideoExportRunner = video_export_runner
         # Per-device slideshow cursor — tick-driven, no background thread.
         self.slideshow = SlideshowService()

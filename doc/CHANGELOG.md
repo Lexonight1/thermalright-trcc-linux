@@ -153,6 +153,11 @@
 
 ### Fixed
 
+- **When ffmpeg is missing, TRCC names the right package for your system.**
+  It told everyone to run `dnf install ffmpeg` or `apt install ffmpeg`,
+  including on Windows, macOS and BSD, and stock Fedora has no package by
+  that name. The message now uses the same per-system hint as `trcc doctor`
+  (for example `winget install Gyan.FFmpeg` on Windows).
 - **Windows: a PC without ACPI thermal zones no longer retries them on every
   sensor read.** When that source was unavailable, TRCC tried to connect to
   it again every time it read the sensors.

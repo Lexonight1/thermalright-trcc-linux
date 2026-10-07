@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import struct
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,7 +59,10 @@ class VideoDecoder:
     def __init__(self, path: Path, size: tuple[int, int] | None,
                  fps: int = _DEFAULT_FPS,
                  rotation_degrees: int = 0,
-                 duration_s: float | None = None) -> None:
+                 duration_s: float | None = None,
+                 install_hint: Callable[[str], str] = toolchain.generic_install_hint,
+                 ) -> None:
+        self._install_hint = install_hint
         # ``size`` is the OUTPUT scale ffmpeg is told to produce.
         # ``None`` → decode at the source's native resolution and let
         # the render pipeline's fit-mode scale at composite time.  Used
@@ -82,10 +86,8 @@ class VideoDecoder:
         if not self.path.exists():
             raise ThemeError(f"Video path does not exist: {self.path}")
         if not toolchain.present("ffmpeg"):
-            raise ThemeError(
-                "ffmpeg not found on PATH — install via your package manager "
-                "(e.g. 'dnf install ffmpeg' / 'apt install ffmpeg')"
-            )
+            raise ThemeError(toolchain.missing("ffmpeg",
+                                               self._install_hint("ffmpeg")))
 
         if self.size is None:
             native = _probe_video_size(self.path)
@@ -262,10 +264,13 @@ class ZtDecoder:
     delay (timestamps are absolute ms offsets).
     """
 
-    def __init__(self, path: Path, size: tuple[int, int]) -> None:
+    def __init__(self, path: Path, size: tuple[int, int],
+                 install_hint: Callable[[str], str] = toolchain.generic_install_hint,
+                 ) -> None:
         log.debug("__init__: path=%s size=%s", path, size)
         self.path = path
         self.size = size
+        self._install_hint = install_hint
         self.frames: list[bytes] = []
         self.timestamps: list[int] = []
         self.delays: list[int] = []
@@ -276,10 +281,8 @@ class ZtDecoder:
         if not self.path.exists():
             raise ThemeError(f".zt path does not exist: {self.path}")
         if not toolchain.present("ffmpeg"):
-            raise ThemeError(
-                "ffmpeg not found on PATH — install via your package manager "
-                "(e.g. 'dnf install ffmpeg' / 'apt install ffmpeg')"
-            )
+            raise ThemeError(toolchain.missing("ffmpeg",
+                                               self._install_hint("ffmpeg")))
 
         try:
             data = self.path.read_bytes()
@@ -465,8 +468,10 @@ class MediaService:
     #: fake without ffmpeg or a network (``tests/test_media_stream.py``).
     stream_reader: type[StreamReader] = StreamReader
 
-    def __init__(self) -> None:
+    def __init__(self, install_hint: Callable[[str], str]
+                 = toolchain.generic_install_hint) -> None:
         log.debug("__init__")
+        self._install_hint = install_hint
         self._playbacks: dict[str, Playback] = {}
         self._streams: dict[str, StreamReader] = {}
 
@@ -513,7 +518,8 @@ class MediaService:
                     ".zt decode requires an explicit size — pass the "
                     "device's canvas resolution",
                 )
-            zt = ZtDecoder(path=path, size=size)
+            zt = ZtDecoder(path=path, size=size,
+                           install_hint=self._install_hint)
             zt.decode()
             effective_fps = fps if fps != _DEFAULT_FPS else zt.fps
             # ``.zt`` is authored AT canvas by ``UCVideoCut`` and rejects a
@@ -526,6 +532,7 @@ class MediaService:
                 path=path, size=size, fps=fps,
                 rotation_degrees=rotation_degrees,
                 duration_s=duration_s,
+                install_hint=self._install_hint,
             )
             decoder.decode()
             playback = Playback(frames=decoder.frames, fps=fps,
