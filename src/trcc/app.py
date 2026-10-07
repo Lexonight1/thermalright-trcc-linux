@@ -86,6 +86,7 @@ from .services.metrics_loop import MetricsLoop
 from .services.migration import LibraryMigration
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
+from .services.reconnect_watcher import ReconnectWatcher
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
 from .services.video_loop import VideoLoop
@@ -238,6 +239,15 @@ class App(CommandBus):
         # Panels a send found unusable since their last connect -- so the loss
         # is announced ONCE, however many frames were still in flight.
         self._lost: set[str] = set()
+        # Panels this App has had connected -- the only ones worth waiting for
+        # (a panel that never connected, say for want of permission, would be
+        # retried forever).  An explicit DisconnectDevice forgets one.
+        self._was_connected: set[str] = set()
+        self._watchers: dict[str, ReconnectWatcher] = {}
+        # Hotplug, resume and the reconnect watcher each run on their own
+        # thread; two connects of one key at once would build two transports
+        # and leak the first one's open handle.
+        self._connect_lock = threading.RLock()
         if send_scheduler is None:
             from .adapters.infra.send_scheduler import ThreadSendScheduler
             send_scheduler = ThreadSendScheduler()
@@ -410,6 +420,8 @@ class App(CommandBus):
         left.  Only then: reconciling a lone cooler would rescan a device that
         may still be mid-unplug and reconnect it.
         """
+        # Unplugged: its replug announces itself, so stop polling for it.
+        self.stop_watching(event.key)
         if event.key in self.devices:
             log.info("_on_device_detached: %s unplugged — stopping sender + "
                      "releasing stale transport", event.key)
@@ -467,22 +479,59 @@ class App(CommandBus):
             self._connect_unit(key)
 
     def _connect_unit(self, key: str) -> None:
-        """Connect one unit unless it already is; release a dead one first."""
-        existing = self.devices.get(key)
-        if existing is not None and existing.is_connected:
-            log.debug("_connect_unit: %s already connected", key)
+        """Connect one unit unless it already is; release a dead one first.
+
+        A panel this App had connected that does not come up is waited for
+        (:meth:`watch_for_return`): a usb add can land before its SCSI node
+        exists, and a panel a VM holds has none until it is handed back --
+        with no event to say so.
+        """
+        with self._connect_lock:
+            existing = self.devices.get(key)
+            if existing is not None and existing.is_connected:
+                log.debug("_connect_unit: %s already connected", key)
+                return
+            if existing is not None:
+                # Present but DEAD: the detach event never arrived (coalesced
+                # or dropped udev event, or a monitor that only reports adds).
+                # The entry is a corpse holding a stale transport, so tear it
+                # down rather than bail — bailing here was the #254 / #246 bug.
+                log.info("_connect_unit: %s present but not connected — "
+                         "releasing stale transport before reconnect", key)
+                self._release_stale_device(key)
+            log.info("_connect_unit: connecting %s", key)
+            from .core.commands import ConnectDevice
+            result = self.dispatch(ConnectDevice(key=key))
+        if not result.ok:
+            self.watch_for_return(key)
+
+    def try_reconnect(self, key: str) -> bool:
+        """One reconnect attempt for the watcher; True once *key* is connected."""
+        self._connect_unit(key)
+        device = self.devices.get(key)
+        connected = device is not None and device.is_connected
+        log.debug("try_reconnect: %s -> %s", key, connected)
+        return connected
+
+    def watch_for_return(self, key: str) -> None:
+        """Keep retrying *key* until it connects (see ``ReconnectWatcher``)."""
+        if key not in self._was_connected:
+            log.debug("watch_for_return: %s never connected here — not waiting",
+                      key)
             return
-        if existing is not None:
-            # Present but DEAD: the detach event never arrived (coalesced or
-            # dropped udev event, or a monitor that only reports adds).  The
-            # entry is a corpse holding a stale transport, so tear it down
-            # rather than bail — bailing here was the #254 / #246 bug.
-            log.info("_connect_unit: %s present but not connected — "
-                     "releasing stale transport before reconnect", key)
-            self._release_stale_device(key)
-        log.info("_connect_unit: connecting %s", key)
-        from .core.commands import ConnectDevice
-        self.dispatch(ConnectDevice(key=key))
+        watcher = self._watchers.get(key)
+        if watcher is None:
+            watcher = self._watchers[key] = ReconnectWatcher(self, key)
+            self.add_task(watcher)
+        watcher.arm()
+
+    def stop_watching(self, key: str, *, forget: bool = False) -> None:
+        """Stop retrying *key*; *forget* also drops it from the panels it had."""
+        log.info("stop_watching: %s forget=%s", key, forget)
+        if (watcher := self._watchers.get(key)) is not None:
+            watcher.disarm()
+        if forget:
+            self._was_connected.discard(key)
 
     def _on_system_resumed(self, _event: Any) -> None:
         """``SystemResumed`` → reconnect every attached device after wake.
@@ -1012,6 +1061,7 @@ class App(CommandBus):
             on_failure=self._on_sender_failure,
         )
         self._lost.discard(key)
+        self._was_connected.add(key)
         self.senders[key] = sender
         self._send_scheduler.add(sender)
         log.info("start_sender: %s volatile=%s", key, device.needs_keepalive)
@@ -1047,6 +1097,7 @@ class App(CommandBus):
         self._lost.add(key)
         log.warning("note_lost: %s lost its connection", key)
         self.events.publish(DeviceDisconnected(key=key))
+        self.watch_for_return(key)
 
     def add_task(self, task: SendTask) -> None:
         """Drive *task* on the shared scheduler.

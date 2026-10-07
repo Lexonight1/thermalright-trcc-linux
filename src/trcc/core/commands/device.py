@@ -493,6 +493,8 @@ class DisconnectDevice(Command[DisconnectResult]):
             log.debug("DisconnectDevice %s: blank skipped — %s",
                       self.key, blank.message)
         app.detach(self.key)
+        # The user let it go: never bring it back behind their back.
+        app.stop_watching(self.key, forget=True)
         app.events.publish(DeviceDisconnected(key=self.key))
         return DisconnectResult(ok=True, key=self.key, message="Disconnected")
 

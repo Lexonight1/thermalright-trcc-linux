@@ -10,7 +10,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
-| [`BaseSendTask`](#basesendtask) | 1 | 3 | 3 |
+| [`BaseSendTask`](#basesendtask) | 1 | 3 | 4 |
 | [`Command`](#command) | 1 | 0 | 139 |
 | [`CpuSource`](#cpusource) | 1 | 4 | 10 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
@@ -43,7 +43,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`Paths`](#paths) | 4 | 10 | 5 |
-| [`SendTask`](#sendtask) | 4 | 0 | 4 |
+| [`SendTask`](#sendtask) | 4 | 0 | 5 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
@@ -70,7 +70,7 @@ run_once(now: 'float') -> float
 
 **You inherit (3):** `key` · `wait` · `wake`
 
-**Implementations (3):** `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
+**Implementations (4):** `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
 
 ## Command
 
@@ -608,7 +608,7 @@ wait(timeout: 'float') -> None
 wake() -> None
 ```
 
-**Implementations (4):** `DeviceSender` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
+**Implementations (5):** `DeviceSender` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
 
 ## BulkTransport
 

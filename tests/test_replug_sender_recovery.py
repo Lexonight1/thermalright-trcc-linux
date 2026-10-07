@@ -233,3 +233,107 @@ def test_a_panel_lost_again_after_a_reconnect_is_announced_again(app: App) -> No
     _take_the_panel(app)
 
     assert seen == [_KEY, _KEY]
+
+
+# ── Handed back without an event (increment 3) ───────────────────────────────
+
+
+def test_a_panel_handed_back_without_an_event_is_reconnected(tmp_path: Path) -> None:
+    """The 2026-10-06 sequence, minus the three hours.
+
+    A VM takes the panel (writes fail, no node for a fresh connect), then
+    hands it back -- usb-storage re-binds, /dev/sg0 returns, and no usb add is
+    ever published.  Only the reconnect watcher can notice.
+
+    MUTATION CHECK: drop ``self.watch_for_return(key)`` from ``note_lost`` and
+    the panel stays lost however long the clock runs.
+    """
+    import errno
+
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.core.errors import TransportError
+
+    from .mock_platform import MockPlatform
+
+    clock = SyncSendScheduler()
+    app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
+    app.dispatch(ConnectDevice(key=_KEY))
+
+    # The VM takes it.
+    transport = app.devices[_KEY]._transport
+
+    def gone(*_args: object, **_kwargs: object) -> bool:
+        raise OSError(errno.ENODEV, "No such device")
+
+    transport.send_cdb = gone                  # type: ignore[method-assign]
+    transport.open = lambda: False             # type: ignore[method-assign]
+    hand_back = app.platform.open_transport
+
+    def no_node(*_args: object, **_kwargs: object) -> object:
+        raise TransportError("No SCSI device node found for 0402:3922")
+
+    app.platform.open_transport = no_node      # type: ignore[method-assign]
+    app.send(_KEY, b"\x00" * 204800, wait=False)
+    for now in range(0, 30):                   # the VM keeps it for 30 s
+        clock.tick(float(now))
+    assert not (_KEY in app.devices and app.devices[_KEY].is_connected)
+
+    # The VM hands it back -- no event.
+    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    for now in range(30, 120):
+        clock.tick(float(now))
+
+    assert app.devices[_KEY].is_connected
+    assert app.senders[_KEY].device is app.devices[_KEY]
+
+
+def test_an_explicit_disconnect_is_never_undone(tmp_path: Path) -> None:
+    """``DisconnectDevice`` is the user letting go: no watcher brings it back."""
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.core.commands import DisconnectDevice
+
+    from .mock_platform import MockPlatform
+
+    clock = SyncSendScheduler()
+    app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
+    app.dispatch(ConnectDevice(key=_KEY))
+
+    app.dispatch(DisconnectDevice(key=_KEY))
+    app.watch_for_return(_KEY)                 # anything asking afterwards
+    for now in range(0, 120):
+        clock.tick(float(now))
+
+    assert _KEY not in app.devices
+
+
+def test_a_hotplug_add_with_no_node_yet_keeps_waiting(tmp_path: Path) -> None:
+    """The journal's order: remove, an add whose node does not exist yet
+    (the VM claimed it), then the silent hand-back.
+
+    MUTATION CHECK: drop ``self.watch_for_return(key)`` from ``_connect_unit``
+    and the failed add is the end of it.
+    """
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.core.errors import TransportError
+    from trcc.core.events import DeviceAttached, DeviceDetached
+
+    from .mock_platform import MockPlatform
+
+    clock = SyncSendScheduler()
+    app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
+    app.dispatch(ConnectDevice(key=_KEY))
+    hand_back = app.platform.open_transport
+
+    def no_node(*_args: object, **_kwargs: object) -> object:
+        raise TransportError("No SCSI device node found for 0402:3922")
+
+    app._on_device_detached(DeviceDetached(key=_KEY, vid=0x0402, pid=0x3922))
+    app.platform.open_transport = no_node      # type: ignore[method-assign]
+    app._on_device_attached(DeviceAttached(key=_KEY, vid=0x0402, pid=0x3922))
+    assert _KEY not in app.devices, "precondition: the add found no node"
+
+    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    for now in range(0, 60):
+        clock.tick(float(now))
+
+    assert app.devices[_KEY].is_connected
