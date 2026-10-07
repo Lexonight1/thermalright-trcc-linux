@@ -727,7 +727,7 @@ class PipeWireScreenCapture(ScreenCapture):
         """The portal's frame when the session is up; ``CaptureNotReady``
         while it is starting; the fallback only when there is no portal to
         wait for."""
-        log.debug("grab_region: x=%s y=%s", x, y)
+        frame_log.debug("grab_region: x=%s y=%s", x, y)
         session = self._ensure_session()
         if session is None:
             # No bindings, or a start that was refused or timed out --

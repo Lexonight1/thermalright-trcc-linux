@@ -666,3 +666,66 @@ def test_the_picker_grab_leaves_nothing_in_tmp(
 
     assert not pix.isNull()
     assert list(private_tmp.iterdir()) == []
+
+
+# ── a cast writes nothing to the log per frame ─────────────────────────────
+#
+# A grab runs ~16 times a second.  Every line it wrote on the plain logger
+# reached the file each frame -- up to six per frame on the tool rung,
+# INFOs among them -- the noise that rotates away the lines a report is
+# read for.  Per-frame detail goes to the ``trcc.frame`` family; a change of
+# state (handing over, a new crop) is said once.
+
+
+def _file_records(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """What would reach the log file: everything but the per-frame family."""
+    return [f"{r.levelname} {r.getMessage()}" for r in caplog.records
+            if not r.name.startswith("trcc.frame")]
+
+
+@pytest.mark.parametrize("tool, size", [
+    ("grim", (REGION[2], REGION[3])),       # a region tool
+    ("gnome-screenshot", FULL),             # a full grab, cropped
+])
+def test_a_cast_through_a_tool_writes_nothing_per_frame(
+    cap: ToolCapture, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture, tool: str, size: tuple[int, int],
+) -> None:
+    """Qt cannot grab offscreen, so every frame is handed to the tool rung.
+
+    MUTATION CHECK: log the handover, the crop or the capture on the plain
+    logger again and the 20 frames below write 20+ records.
+    """
+    import logging
+
+    _only(tool, monkeypatch, size)
+    chain = QtNativeCapture(then=cap)
+    with caplog.at_level(logging.DEBUG):
+        chain.grab_region(*REGION)          # the first frame may announce
+        caplog.clear()
+        for _ in range(20):
+            chain.grab_region(*REGION)
+
+    assert _file_records(caplog) == []
+
+
+def test_a_cast_through_qt_writes_nothing_per_frame(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Qt's own grab works (an X11 session): three lines a frame, until now."""
+    import logging
+
+    from PySide6.QtGui import QColor, QPixmap
+
+    pix = QPixmap(REGION[2], REGION[3])
+    pix.fill(QColor(*INK))
+    monkeypatch.setattr(QtNativeCapture, "_qt_grab",
+                        lambda self, *region: pix)
+    chain = QtNativeCapture()
+    with caplog.at_level(logging.DEBUG):
+        chain.grab_region(*REGION)
+        caplog.clear()
+        for _ in range(20):
+            chain.grab_region(*REGION)
+
+    assert _file_records(caplog) == []

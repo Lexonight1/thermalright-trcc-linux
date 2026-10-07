@@ -148,6 +148,11 @@
 
 ### Fixed
 
+- **A screen cast no longer fills the log.** Capturing the screen wrote up to
+  six lines to the log for every frame, about 16 frames a second, which pushed
+  everything else out of the file `trcc report` sends. Those lines now only
+  appear at the most verbose setting (`-vvv`), and a change worth knowing (the
+  capture switching to another method, a capture tool failing) is logged once.
 - **An open TRCC window no longer costs a quarter of a CPU core.** Since TRCC
   became one shared background App, the window's live preview asked that App to
   draw every frame a second time and send it as a PNG image, about 25% of one

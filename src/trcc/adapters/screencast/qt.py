@@ -44,10 +44,15 @@ from PySide6.QtGui import QGuiApplication, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from ...core._frames import unpad_rows
+from ...core.logs import per_frame, recurring_warning
 from ...core.models import RawFrame
 from ...core.ports import ScreenCapture
 
 log = logging.getLogger(__name__)
+# Everything a grab says on EVERY frame (~16/s while casting).  On the plain
+# logger it reached the file per frame -- the noise that rotates away the
+# one-shot lines a report is read for.
+frame_log = per_frame(__name__)
 
 
 _EXTERNAL_TIMEOUT_S = 2
@@ -71,7 +76,8 @@ class ToolSpec:
     region: bool
 
     def command(self, x: int, y: int, w: int, h: int, out: str) -> list[str]:
-        log.debug("ToolSpec.command: %s (%d,%d) %dx%d", self.name, x, y, w, h)
+        frame_log.debug("ToolSpec.command: %s (%d,%d) %dx%d",
+                        self.name, x, y, w, h)
         return [part.format(x=x, y=y, w=w, h=h, out=out) for part in self.argv]
 
 
@@ -136,15 +142,21 @@ class QtNativeCapture(ScreenCapture):
         log.info("QtNativeCapture: then=%s",
                  type(then).__name__ if then is not None else None)
         self._then = then
+        # Whether the last grab went to ``then`` -- so the handover is said
+        # once when it starts and once when Qt works again, not per frame.
+        self._handed_over = False
 
     def grab_region(
         self, x: int, y: int, width: int, height: int,
     ) -> RawFrame:
         _check_region(width, height)
-        log.debug("QtNativeCapture: grab region (%d,%d) %dx%d",
-                  x, y, width, height)
+        frame_log.debug("QtNativeCapture: grab region (%d,%d) %dx%d",
+                        x, y, width, height)
         pix = self._qt_grab(x, y, width, height)
         if pix is not None and not pix.isNull() and pix.width() > 1:
+            if self._handed_over:
+                log.info("QtNativeCapture: Qt native grab works again")
+                self._handed_over = False
             return _pixmap_to_raw_frame(pix, width, height)
         if self._then is None:
             log.error("QtNativeCapture: Qt returned a blank pixmap for "
@@ -153,8 +165,12 @@ class QtNativeCapture(ScreenCapture):
             raise OSError(
                 "Screen capture failed — Qt returned a blank pixmap and "
                 "this platform has no other capture path")
-        log.info("QtNativeCapture: Qt native grab unusable (blank) — "
-                 "handing over to %s", type(self._then).__name__)
+        # Once per change, not per frame: when Qt cannot grab (offscreen,
+        # Wayland) it cannot on any frame, and this INFO came every tick.
+        sink = frame_log if self._handed_over else log
+        sink.info("QtNativeCapture: Qt native grab unusable (blank) — "
+                  "handing over to %s", type(self._then).__name__)
+        self._handed_over = True
         return self._then.grab_region(x, y, width, height)
 
     def stop(self) -> None:
@@ -185,18 +201,18 @@ class QtNativeCapture(ScreenCapture):
         """
         app = QGuiApplication.instance()
         if not isinstance(app, QGuiApplication):
-            log.debug("_qt_can_grab: no QGuiApplication (got %r)", type(app))
+            frame_log.debug("_qt_can_grab: no QGuiApplication (got %r)", type(app))
             return False
         if app.platformName() == "offscreen":
-            log.debug("_qt_can_grab: platform is offscreen — Qt cannot see a "
-                      "screen, leaving it to the next link")
+            frame_log.debug("_qt_can_grab: platform is offscreen — Qt cannot "
+                            "see a screen, leaving it to the next link")
             return False
         return True
 
     def _qt_grab(
         self, x: int, y: int, w: int, h: int,
     ) -> QPixmap | None:
-        log.debug("_qt_grab: x=%s y=%s", x, y)
+        frame_log.debug("_qt_grab: x=%s y=%s", x, y)
         if not self._qt_can_grab():
             return None
         screen = QApplication.primaryScreen()
@@ -220,6 +236,8 @@ class ToolCapture(ScreenCapture):
     def __init__(self, tools: tuple[ToolSpec, ...]) -> None:
         log.info("ToolCapture: %s", [tool.name for tool in tools])
         self._tools = tools
+        # The last full-grab crop announced: said again only when it changes.
+        self._last_crop: tuple[int, ...] | None = None
 
     @property
     def tools(self) -> tuple[ToolSpec, ...]:
@@ -230,7 +248,8 @@ class ToolCapture(ScreenCapture):
         self, x: int, y: int, width: int, height: int,
     ) -> RawFrame:
         _check_region(width, height)
-        log.debug("ToolCapture: grab region (%d,%d) %dx%d", x, y, width, height)
+        frame_log.debug("ToolCapture: grab region (%d,%d) %dx%d",
+                        x, y, width, height)
         pix: QPixmap | None = None
         # A directory, and a name inside it that does not exist yet: scrot
         # refuses to overwrite, so a pre-created mkstemp file made it write
@@ -244,9 +263,11 @@ class ToolCapture(ScreenCapture):
                 shot = self._run(tuple(t for t in self._tools if not t.region),
                                  x, y, width, height, tmp_path)
                 if shot is not None:
-                    log.info("ToolCapture: cropping %dx%d full grab to "
-                             "(%d,%d) %dx%d", shot.width(), shot.height(),
-                             x, y, width, height)
+                    crop = (shot.width(), shot.height(), x, y, width, height)
+                    sink = frame_log if crop == self._last_crop else log
+                    self._last_crop = crop
+                    sink.info("ToolCapture: cropping %dx%d full grab to "
+                              "(%d,%d) %dx%d", *crop)
                     pix = shot.copy(QRect(x, y, width, height))
         if pix is None or pix.isNull():
             names = ", ".join(tool.name for tool in self._tools) or "no tool"
@@ -269,22 +290,23 @@ class ToolCapture(ScreenCapture):
         """
         for tool in tools:
             if shutil.which(tool.name) is None:
-                log.debug("ToolCapture: %s not on PATH; skipping", tool.name)
+                frame_log.debug("ToolCapture: %s not on PATH; skipping",
+                                tool.name)
                 continue
             cmd = tool.command(x, y, w, h, tmp_path)
-            log.debug("ToolCapture: trying %s", " ".join(cmd))
+            frame_log.debug("ToolCapture: trying %s", " ".join(cmd))
             try:
                 result = subprocess.run(
                     cmd, capture_output=True,
                     timeout=_EXTERNAL_TIMEOUT_S, check=False,
                 )
             except subprocess.TimeoutExpired:
-                log.warning("ToolCapture: %s timed out", tool.name)
+                recurring_warning(log, "ToolCapture: %s timed out", tool.name)
                 continue
             if result.returncode != 0:
-                log.warning("ToolCapture: %s exited %d (stderr=%r)",
-                            tool.name, result.returncode,
-                            result.stderr[:200].decode("utf-8", "replace"))
+                recurring_warning(log, "ToolCapture: %s exited %d (stderr=%r)",
+                                  tool.name, result.returncode,
+                                  result.stderr[:200].decode("utf-8", "replace"))
                 continue
             # ``spectacle`` returns before its file is flushed (measured on
             # Plasma, PR #271) -- wait for bytes.  The file is not pre-created
@@ -298,10 +320,11 @@ class ToolCapture(ScreenCapture):
                 time.sleep(_OUTPUT_WAIT_INTERVAL_S)
             pix = QPixmap(tmp_path)
             if not pix.isNull():
-                log.info("ToolCapture: %s captured %dx%d",
-                         tool.name, pix.width(), pix.height())
+                frame_log.debug("ToolCapture: %s captured %dx%d",
+                                tool.name, pix.width(), pix.height())
                 return pix
-            log.warning("ToolCapture: %s output was null QPixmap", tool.name)
+            recurring_warning(log, "ToolCapture: %s output was null QPixmap",
+                              tool.name)
         return None
 
 
@@ -314,7 +337,7 @@ def _pixmap_to_raw_frame(
     the dimensions — external tools sometimes round geometry to even
     pixels.
     """
-    log.debug("_pixmap_to_raw_frame: pix=%s target_w=%s", pix, target_w)
+    frame_log.debug("_pixmap_to_raw_frame: pix=%s target_w=%s", pix, target_w)
     image = pix.toImage().convertToFormat(QImage.Format.Format_RGB888)
     if image.width() != target_w or image.height() != target_h:
         image = image.scaled(target_w, target_h)

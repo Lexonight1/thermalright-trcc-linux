@@ -872,3 +872,26 @@ def test_a_missing_pipewiresrc_names_the_package_to_install(
     assert "gst-inspect-1.0 pipewiresrc" in message, (
         "the error must say how to confirm the fix worked"
     )
+
+
+def test_a_portal_cast_writes_nothing_per_frame(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The Wayland rung ran ~16 times a second with a plain-logger line.
+
+    MUTATION CHECK: log ``grab_region`` on the plain logger again and the 20
+    frames below write 20 records to the file.
+    """
+    import logging
+
+    monkeypatch.setattr(pw, "PIPEWIRE_AVAILABLE", True)
+    session = _Session(running=True, frame=(8, 4, bytes([0xAB]) * (8 * 4 * 3)))
+    capture = _capture(session, _Fallback())
+    with caplog.at_level(logging.DEBUG):
+        capture.grab_region(1, 1, 2, 2)
+        caplog.clear()
+        for _ in range(20):
+            capture.grab_region(1, 1, 2, 2)
+
+    assert [r.getMessage() for r in caplog.records
+            if not r.name.startswith("trcc.frame")] == []
