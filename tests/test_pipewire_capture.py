@@ -882,16 +882,25 @@ def test_a_portal_cast_writes_nothing_per_frame(
     MUTATION CHECK: log ``grab_region`` on the plain logger again and the 20
     frames below write 20 records to the file.
     """
+    import gc
     import logging
 
     monkeypatch.setattr(pw, "PIPEWIRE_AVAILABLE", True)
     session = _Session(running=True, frame=(8, 4, bytes([0xAB]) * (8 * 4 * 3)))
     capture = _capture(session, _Fallback())
-    with caplog.at_level(logging.DEBUG):
-        capture.grab_region(1, 1, 2, 2)
-        caplog.clear()
-        for _ in range(20):
+    # A capture left by an EARLIER test, finalized mid-window, logs its own
+    # ``__del__`` -> ``stop`` lines here (CI 3.12, fc69ddf4).  Collect first and
+    # hold the collector off, so the window holds only these 20 frames.
+    gc.collect()
+    gc.disable()
+    try:
+        with caplog.at_level(logging.DEBUG):
             capture.grab_region(1, 1, 2, 2)
+            caplog.clear()
+            for _ in range(20):
+                capture.grab_region(1, 1, 2, 2)
+    finally:
+        gc.enable()
 
     assert [r.getMessage() for r in caplog.records
             if not r.name.startswith("trcc.frame")] == []
