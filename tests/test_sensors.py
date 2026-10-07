@@ -808,8 +808,8 @@ def test_each_gpu_is_offered_once(count: int) -> None:
     a saved binding keeps its value."""
     s = _sensors_with(gpus=[FakeGpu(i, vendor="amd") for i in range(count)])
 
-    gpu_ids = {r.sensor_id.rsplit(":", 1)[0] for r in s.discover()
-               if r.sensor_id.startswith("gpu:")}
+    gpu_ids = {r.sensor_id.removesuffix(":usage") for r in s.discover()
+               if r.sensor_id.startswith("gpu:") and r.sensor_id.endswith(":usage")}
     values = s.read_all()
 
     assert gpu_ids == ({"gpu:primary"} if count == 1
@@ -832,6 +832,47 @@ def test_a_reading_is_named_for_what_it_measures() -> None:
     for prefix in ("cpu:", "gpu:amd:0:", "gpu:amd:1:", "memory:"):
         family = [v for k, v in labels.items() if k.startswith(prefix)]
         assert len(set(family)) == len(family), f"{prefix} rows share a name: {family}"
+
+
+def test_a_gpu_reports_its_hot_spot_and_memory_temperature(
+    tmp_path: Path,
+) -> None:
+    """#301: only the edge sensor (temp1) was read.  amdgpu labels junction
+    and mem on SOC15 cards; they are served as ``...:hotspot:temp`` and
+    ``...:mem:temp`` -- ending in ``:temp`` so °F converts them -- and a card
+    without the label has no hot spot rather than the edge value twice."""
+    from trcc.services.metrics_personalize import personalize_readings
+
+    d = tmp_path / "hwmon0"
+    d.mkdir()
+    (d / "name").write_text("amdgpu\n")
+    for idx, (label, milli) in enumerate((("edge", 50000), ("junction", 71000),
+                                          ("mem", 62000)), start=1):
+        (d / f"temp{idx}_label").write_text(f"{label}\n")
+        (d / f"temp{idx}_input").write_text(str(milli))
+    card = hwmon.AmdGpu(0, hwmon.HwmonDevice(d), None)
+    s = _sensors_with(gpus=[card])
+
+    values = s.read_all()
+
+    assert (values["gpu:primary:temp"], values["gpu:primary:hotspot:temp"],
+            values["gpu:amd:0:mem:temp"]) == (50.0, 71.0, 62.0)
+    assert personalize_readings(values, temp_unit="F")[
+        "gpu:primary:hotspot:temp"] == pytest.approx(159.8)
+    (d / "temp2_label").write_text("other\n")
+    assert hwmon.AmdGpu(0, hwmon.HwmonDevice(d), None).hotspot() is None
+
+
+def test_nvml_offers_no_hot_spot_it_cannot_read() -> None:
+    """``provides`` derives support from the override, so a backend that
+    never implemented the new quantities withholds them unprompted."""
+    from trcc.adapters.sensors.nvml import NvidiaGpu
+
+    # provides() reads only the class, so no NVML handle is needed.
+    nvidia, amd = object.__new__(NvidiaGpu), object.__new__(hwmon.AmdGpu)
+    assert [nvidia.provides(q) for q in ("temp", "hotspot", "mem_temp")] == [
+        True, False, False]
+    assert [amd.provides(q) for q in ("hotspot", "mem_temp")] == [True, True]
 
 
 def test_none_values_omitted_from_flat_dict() -> None:

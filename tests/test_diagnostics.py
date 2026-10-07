@@ -3162,6 +3162,7 @@ _ENUMERATOR_LOGGERS: dict[str, frozenset[str]] = {
     "disks": frozenset({"frame_log"}),
     "read_all": frozenset({"frame_log"}),
     "_refresh_if_stale": frozenset({"frame_log"}),
+    "_gpu_prefixes": frozenset({"frame_log"}),        # every poll, every GPU
     # Per-tick too, and NOT one-shot: qtgui's SensorPickerWidget dispatches
     # ReadSensors() on a 2-second QTimer.
     "discover": frozenset({"frame_log"}),

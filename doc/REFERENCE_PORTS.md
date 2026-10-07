@@ -36,7 +36,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
-| [`GpuSource`](#gpusource) | 3 | 8 | 11 |
+| [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -487,7 +487,7 @@ key() -> str
 name() -> str
 ```
 
-**You inherit (8):** `clock` · `fan` · `fan_rpm` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
+**You inherit (10):** `clock` · `fan` · `fan_rpm` · `hotspot` · `mem_temp` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
 
 **Implementations (11):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
 

@@ -548,7 +548,7 @@ class QuantitySource:
     ``ABC``.
 
     The three ports below declare quantities a backend may simply not have —
-    :class:`CpuSource` 4, :class:`GpuSource` 7, :class:`FanSource` 1 — and
+    :class:`CpuSource` 4, :class:`GpuSource` 10, :class:`FanSource` 1 — and
     answer ``None`` by default so a backend that cannot read one does not have
     to say so in code.  That default is what makes this ABC possible: "the
     subclass never overrode it" IS "this backend has no such sensor", and
@@ -748,6 +748,21 @@ class GpuSource(IdentifiedSource, QuantitySource):
 
     def power(self) -> float | None:
         """Board power draw in W.
+
+        ``None`` is the default and means this backend has no such
+        sensor.  A backend that can read it overrides this.
+        """
+
+    def hotspot(self) -> float | None:
+        """Hottest point on the die in °C -- amdgpu's ``junction``, LHM's
+        "GPU Hot Spot".  Not :meth:`temp`, which is the edge sensor (#301).
+
+        ``None`` is the default and means this backend has no such
+        sensor.  A backend that can read it overrides this.
+        """
+
+    def mem_temp(self) -> float | None:
+        """VRAM temperature in °C -- amdgpu's ``mem``, xe's ``vram``.
 
         ``None`` is the default and means this backend has no such
         sensor.  A backend that can read it overrides this.

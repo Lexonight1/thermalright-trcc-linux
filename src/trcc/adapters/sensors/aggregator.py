@@ -137,18 +137,29 @@ def _memory_keys() -> list[_Row]:
     ]
 
 
+#: One GPU's readings: (key suffix, GpuSource method, category, unit, name).
+#: The ONE list the poll, discover and the unsupported check walk -- the poll
+#: used to spell each quantity three times by hand.  The method is explicit
+#: because a suffix is not one: every temperature id must END in ``:temp``,
+#: which is what the °F conversion and the overlay key on.
+_GPU_QUANTITIES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("temp", "temp", "temperature", "°C", "Temperature"),
+    ("hotspot:temp", "hotspot", "temperature", "°C", "Hot Spot"),
+    ("mem:temp", "mem_temp", "temperature", "°C", "Memory Temperature"),
+    ("usage", "usage", "usage", "%", "Usage"),
+    ("clock", "clock", "clock", "MHz", "Clock"),
+    ("power", "power", "power", "W", "Power"),
+    ("fan", "fan", "fan", "%", "Fan"),
+    ("fan_rpm", "fan_rpm", "fan", "RPM", "Fan Speed"),
+    ("vram_used", "vram_used", "gpu_memory", "MB", "VRAM Used"),
+    ("vram_total", "vram_total", "gpu_memory", "MB", "VRAM Total"),
+)
+
+
 def _gpu_reading_keys(prefix: str) -> list[_Row]:
     log.debug("_gpu_reading_keys: prefix=%s", prefix)
-    return [
-        (f"{prefix}:temp", "temperature", "°C", "Temperature"),
-        (f"{prefix}:usage", "usage", "%", "Usage"),
-        (f"{prefix}:clock", "clock", "MHz", "Clock"),
-        (f"{prefix}:power", "power", "W", "Power"),
-        (f"{prefix}:fan", "fan", "%", "Fan"),
-        (f"{prefix}:fan_rpm", "fan", "RPM", "Fan Speed"),
-        (f"{prefix}:vram_used", "gpu_memory", "MB", "VRAM Used"),
-        (f"{prefix}:vram_total", "gpu_memory", "MB", "VRAM Total"),
-    ]
+    return [(f"{prefix}:{suffix}", cat, unit, name)
+            for suffix, _, cat, unit, name in _GPU_QUANTITIES]
 
 
 def _io_keys() -> list[_Row]:
@@ -309,15 +320,21 @@ class BaselineSensors(SensorEnumerator):
                   len(self._gpus), len(self._fans))
         for key, *_ in _cpu_keys():
             yield key, self._cpu, key.rsplit(":", 1)[1]
+        primary = self.primary_gpu()
         for idx, gpu in enumerate(self._gpus):
-            for prefix in (f"gpu:{idx}", f"gpu:{gpu.key}"):
-                for key, *_ in _gpu_reading_keys(prefix):
-                    yield key, gpu, key.rsplit(":", 1)[1]
-        if (primary := self.primary_gpu()) is not None:
-            for key, *_ in _gpu_reading_keys("gpu:primary"):
-                yield key, primary, key.rsplit(":", 1)[1]
+            for prefix in self._gpu_prefixes(idx, gpu, primary):
+                for suffix, method, *_ in _GPU_QUANTITIES:
+                    yield f"{prefix}:{suffix}", gpu, method
         for fan in self._fans:
             yield f"fan:{fan.key}:percent", fan, "percent"
+
+    @staticmethod
+    def _gpu_prefixes(idx: int, gpu: GpuSource,
+                      primary: GpuSource | None) -> list[str]:
+        """Every id spelling one GPU's readings are served under."""
+        frame_log.debug("_gpu_prefixes: %d %s", idx, gpu.key)
+        return [f"gpu:{idx}", f"gpu:{gpu.key}",
+                *(["gpu:primary"] if gpu is primary else [])]
 
     def unsupported(self) -> frozenset[str]:
         """Normalized keys no backend here can read.  Computed once, kept.
@@ -575,32 +592,11 @@ class BaselineSensors(SensorEnumerator):
         # plus primary alias pointing at the same underlying readings.
         primary = self.primary_gpu()
         for idx, gpu in enumerate(self._gpus):
-            temp = self._read(gpu.temp, f"gpu:{idx}:temp")
-            usage = self._read(gpu.usage, f"gpu:{idx}:usage")
-            clock = self._read(gpu.clock, f"gpu:{idx}:clock")
-            power = self._read(gpu.power, f"gpu:{idx}:power")
-            fan = self._read(gpu.fan, f"gpu:{idx}:fan")
-            fan_rpm = self._read(gpu.fan_rpm, f"gpu:{idx}:fan_rpm")
-            vram_used = self._read(gpu.vram_used, f"gpu:{idx}:vram_used")
-            vram_total = self._read(gpu.vram_total, f"gpu:{idx}:vram_total")
-            for prefix in (f"gpu:{idx}", f"gpu:{gpu.key}"):
-                _store(r, f"{prefix}:temp", temp)
-                _store(r, f"{prefix}:usage", usage)
-                _store(r, f"{prefix}:clock", clock)
-                _store(r, f"{prefix}:power", power)
-                _store(r, f"{prefix}:fan", fan)
-                _store(r, f"{prefix}:fan_rpm", fan_rpm)
-                _store(r, f"{prefix}:vram_used", vram_used)
-                _store(r, f"{prefix}:vram_total", vram_total)
-            if gpu is primary:
-                _store(r, "gpu:primary:temp", temp)
-                _store(r, "gpu:primary:usage", usage)
-                _store(r, "gpu:primary:clock", clock)
-                _store(r, "gpu:primary:power", power)
-                _store(r, "gpu:primary:fan", fan)
-                _store(r, "gpu:primary:fan_rpm", fan_rpm)
-                _store(r, "gpu:primary:vram_used", vram_used)
-                _store(r, "gpu:primary:vram_total", vram_total)
+            values = {suffix: self._read(getattr(gpu, method), f"gpu:{idx}:{suffix}")
+                      for suffix, method, *_ in _GPU_QUANTITIES}
+            for prefix in self._gpu_prefixes(idx, gpu, primary):
+                for suffix, value in values.items():
+                    _store(r, f"{prefix}:{suffix}", value)
 
         # Fans
         for fan in self._fans:

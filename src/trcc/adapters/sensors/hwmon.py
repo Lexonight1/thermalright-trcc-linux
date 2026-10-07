@@ -180,6 +180,21 @@ class HwmonDevice:
         log.debug("read_temp_labeled(%s): no readable temp*_input", self.driver)
         return None
 
+    def read_temp_label(self, label: str) -> float | None:
+        """The channel whose ``tempN_label`` is exactly *label*, else None.
+
+        No fallback, unlike :meth:`read_temp_labeled`: a card without a
+        junction sensor has no hot spot, and answering with its edge
+        temperature would show the same number twice under two names.
+        """
+        for input_path in self.attrs.glob("temp*_input"):
+            idx = _channel_index(input_path.name, "temp")
+            if (idx is not None and (_read_text(self.attrs / f"temp{idx}_label")
+                                     or "").strip().lower() == label):
+                return self.read_temp(idx)
+        frame_log.debug("read_temp_label(%s): no %r channel", self.driver, label)
+        return None
+
     def read_fan_rpm(self, idx: int = 1) -> int | None:
         frame_log.debug("read_fan_rpm: idx=%s", idx)
         return _read_int(self.attrs / f"fan{idx}_input")
@@ -501,6 +516,16 @@ class AmdGpu(GpuSource):
         frame_log.debug("temp")
         return self._hwmon.read_temp(1)
 
+    def hotspot(self) -> float | None:
+        """``junction`` -- amdgpu labels it on SOC15 dGPUs (docs.kernel.org,
+        gpu/amdgpu/thermal); older cards have only the edge sensor."""
+        frame_log.debug("hotspot")
+        return self._hwmon.read_temp_label("junction")
+
+    def mem_temp(self) -> float | None:
+        frame_log.debug("mem_temp")
+        return self._hwmon.read_temp_label("mem")
+
     def usage(self) -> float | None:
         frame_log.debug("usage")
         if self._drm is None:
@@ -583,6 +608,12 @@ class IntelGpu(GpuSource):
         # missing file and yields None (#gpu-temp-empty).
         frame_log.debug("temp")
         return self._hwmon.read_temp_labeled() if self._hwmon is not None else None
+
+    def mem_temp(self) -> float | None:
+        """xe (Arc) labels its VRAM channel ``vram``."""
+        frame_log.debug("mem_temp")
+        return (self._hwmon.read_temp_label("vram")
+                if self._hwmon is not None else None)
 
     def clock(self) -> float | None:
         # i915 publishes the GT clock on the card; xe (Arc) per GT, where gt0

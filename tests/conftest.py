@@ -277,7 +277,8 @@ class FakeGpu(GpuSource):
         self._discrete = discrete
         self._vendor = vendor
         self.values = {
-            "temp": 55.0, "usage": 30.0, "clock": 1800.0, "power": 180.0,
+            "temp": 55.0, "hotspot": 71.0, "mem_temp": 62.0,
+            "usage": 30.0, "clock": 1800.0, "power": 180.0,
             "fan": 42.0, "fan_rpm": 1500.0,
             "vram_used": 1024.0, "vram_total": 8192.0,
         }
@@ -305,6 +306,12 @@ class FakeGpu(GpuSource):
 
     def power(self) -> Optional[float]:
         return self.values["power"]
+
+    def hotspot(self) -> Optional[float]:
+        return self.values["hotspot"]
+
+    def mem_temp(self) -> Optional[float]:
+        return self.values["mem_temp"]
 
     def fan(self) -> Optional[float]:
         return self.values["fan"]
