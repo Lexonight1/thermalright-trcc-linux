@@ -20,6 +20,7 @@ All readings are normalized at the source:
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -876,21 +877,37 @@ def discover_disk_temp(devices: list[HwmonDevice]) -> list[DiskSource]:
 _DRAM_DRIVERS = ("spd5118", "jc42")
 
 
+#: An i2c client directory: ``<bus>-<4-hex-digit address>``.
+_I2C_CLIENT = re.compile(r"\d+-([0-9a-f]{4})")
+
+
 class HwmonDram(DramSource):
-    """One DIMM's temp1 sensor on a hwmon ``spd5118`` / ``jc42`` node."""
+    """One DIMM's temp1 sensor on a hwmon ``spd5118`` / ``jc42`` node.
+
+    Keyed by its i2c client (``3-0051``), never the ``hwmonN`` directory,
+    which renumbers between boots -- a saved binding on it would drift to
+    another DIMM.  Named "DIMM n" from the address: the low three bits pick
+    the slot, for spd5118 (0x50..0x57) and jc42 (0x18..0x1f) alike.  Every
+    module used to be called "spd5118 DRAM" (#310).
+    """
 
     def __init__(self, hwmon: HwmonDevice, label: str | None) -> None:
         log.debug("__init__: hwmon=%s label=%s", hwmon, label)
         self._hwmon = hwmon
-        self._label = label or f"{hwmon.driver} DRAM"
+        client = (hwmon.path / "device").resolve().name
+        if (match := _I2C_CLIENT.fullmatch(client)) is not None:
+            self._client = client
+            slot: str = f"DIMM {int(match[1], 16) & 7}"
+        else:
+            self._client, slot = hwmon.path.name, f"{hwmon.driver} DRAM"
+        self._label = label or slot
+        log.info("HwmonDram: %s at %s -> %r", hwmon.driver, self._client,
+                 self._label)
 
     @property
     def key(self) -> str:
-        # Include the hwmon dir name: matched DIMMs share a driver, so a
-        # driver-only key would collide across modules (and conflate their
-        # per-source read-failure bookkeeping).
         frame_log.debug("key")
-        return f"hwmon:{self._hwmon.driver}:{self._hwmon.path.name}:temp1"
+        return f"dimm:{self._client}"
 
     @property
     def name(self) -> str:

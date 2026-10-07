@@ -402,6 +402,9 @@ class BaselineSensors(SensorEnumerator):
 
         add(_cpu_keys(), self._cpu.name)
         add(_memory_keys(), "Memory")
+        for dimm in self._dram:
+            add([(f"memory:{dimm.key}:temp", "temperature", "°C",
+                  "Temperature")], dimm.name)
         # Each GPU was offered THREE times -- ``gpu:N``, ``gpu:<vendor>:N`` and
         # ``gpu:primary`` -- so one card filled a picker with 24 rows (#301).
         # The primary alias is the one a single-GPU box needs; the vendor key
@@ -634,10 +637,12 @@ class BaselineSensors(SensorEnumerator):
             _store(r, f"board:{board.key}:temp",
                    self._read(board.temp, f"board:{board.key}:temp"))
 
-        dram_temps = [
-            t for d in self._dram
-            if (t := self._read(d.temp, f"memory:{d.key}:temp")) is not None
-        ]
+        # Each DIMM under its own id too (#310); ``memory:temp`` stays the max.
+        dram_temps: list[float] = []
+        for d in self._dram:
+            if (t := self._read(d.temp, f"memory:{d.key}:temp")) is not None:
+                _store(r, f"memory:{d.key}:temp", t)
+                dram_temps.append(t)
         if dram_temps:
             _store(r, "memory:temp", max(dram_temps))
 

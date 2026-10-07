@@ -556,12 +556,11 @@ def test_discover_dram_temp_matches_spd5118_and_jc42(tmp_path: Path) -> None:
 
     dram = hwmon.discover_dram_temp(devices)
 
-    assert {d.key for d in dram} == {
-        "hwmon:spd5118:hwmon1:temp1", "hwmon:jc42:hwmon2:temp1",
-    }
+    # No i2c parent in this fixture, so the key falls back to the hwmon dir.
+    assert {d.key for d in dram} == {"dimm:hwmon1", "dimm:hwmon2"}
     by_key = {d.key: d for d in dram}
-    assert by_key["hwmon:spd5118:hwmon1:temp1"].temp() == 27.25
-    assert by_key["hwmon:jc42:hwmon2:temp1"].temp() == 33.0
+    assert by_key["dimm:hwmon1"].temp() == 27.25
+    assert by_key["dimm:hwmon2"].temp() == 33.0
 
 
 def test_discover_dram_temp_distinct_keys_for_matched_dimms(tmp_path: Path) -> None:
@@ -574,9 +573,34 @@ def test_discover_dram_temp_distinct_keys_for_matched_dimms(tmp_path: Path) -> N
 
     keys = {d.key for d in hwmon.discover_dram_temp(devices)}
 
-    assert keys == {
-        "hwmon:spd5118:hwmon2:temp1", "hwmon:spd5118:hwmon3:temp1",
-    }
+    assert keys == {"dimm:hwmon2", "dimm:hwmon3"}
+
+
+@pytest.mark.parametrize("renumbered", [False, True])
+def test_each_dimm_is_its_own_reading_keyed_by_its_i2c_address(
+    tmp_path: Path, renumbered: bool,
+) -> None:
+    """#310: only the hottest DIMM was kept, every module was "spd5118 DRAM",
+    and the key carried ``hwmonN``, which renumbers between boots.  Keyed by
+    the i2c client; named by the address's low three bits."""
+    nodes = []
+    for hw, addr, milli in (("hwmon2", "0050", 27250), ("hwmon3", "0051", 31000)):
+        name = {"hwmon2": "hwmon7", "hwmon3": "hwmon4"}[hw] if renumbered else hw
+        node = _hwmon_dir(tmp_path, name, "spd5118", temp1_milli=milli)
+        client = tmp_path / "i2c" / f"1-{addr}"
+        client.mkdir(parents=True)
+        (node.path / "device").symlink_to(client)
+        nodes.append(node)
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+                        dram=hwmon.discover_dram_temp(nodes))
+
+    values = s.read_all()
+    labels = {r.sensor_id: r.label for r in s.discover()}
+
+    assert (values["memory:dimm:1-0050:temp"], values["memory:dimm:1-0051:temp"],
+            values["memory:temp"]) == (27.25, 31.0, 31.0)
+    assert (labels["memory:dimm:1-0050:temp"], labels["memory:dimm:1-0051:temp"]) == (
+        "DIMM 0 Temperature", "DIMM 1 Temperature")
 
 
 def test_discover_dram_temp_skips_node_without_temp1(tmp_path: Path) -> None:
