@@ -74,7 +74,7 @@ class SlideshowDriver(BaseSendTask):
         return (s.current_theme, s.background_path, s.screencast_region,
                 s.media_player_uri)
 
-    def run_once(self, now: float) -> float:
+    def _run(self, now: float) -> float:
         """Rotate if due; return the seconds to wait before asking again.
 
         Every failure here costs one rotation and never the driver: a theme can

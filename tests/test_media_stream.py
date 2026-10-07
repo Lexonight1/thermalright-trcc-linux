@@ -218,13 +218,28 @@ def test_restore_resumes_the_stream(app: App) -> None:
 
 
 def test_disconnect_ends_the_stream(app: App) -> None:
+    """Letting the panel go (a disconnect, quitting) ends what plays on it."""
+    app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
+    reader = _reader(app)
+
+    app.detach(_KEY)
+
+    assert reader.closed and _reader(app) is None
+    assert task_key(_KEY) == "stream:" + _KEY
+
+
+def test_a_blink_keeps_the_stream(app: App) -> None:
+    """A panel that blinks -- a wake, a replug -- loses its wire, not its source.
+
+    MUTATION CHECK: close the stream in ``stop_sender`` again and every wake
+    ends the stream for good, as it did until 2026-10-06.
+    """
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
     reader = _reader(app)
 
     app.stop_sender(_KEY)
 
-    assert reader.closed and _reader(app) is None
-    assert task_key(_KEY) == "stream:" + _KEY
+    assert _reader(app) is reader and not reader.closed
 
 
 # ── The reader itself, with real ffmpeg on loopback ──────────────────

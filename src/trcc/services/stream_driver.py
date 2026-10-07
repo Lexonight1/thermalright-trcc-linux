@@ -24,7 +24,7 @@ class StreamDriver(BaseSendTask):
     KEY_PREFIX = "stream:"
     DEFAULT_INTERVAL_S = STREAM_TICK_S
 
-    def run_once(self, now: float) -> float:
+    def _run(self, now: float) -> float:
         """Send one frame; a missed frame costs that frame, not the stream."""
         from ..core.commands import CaptureStreamFrame
 

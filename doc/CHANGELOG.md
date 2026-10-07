@@ -148,6 +148,13 @@
 
 ### Fixed
 
+- **A screen cast, slideshow or media stream keeps going after the computer
+  wakes.** Waking from sleep, or a panel briefly disconnecting, stopped a
+  running screen cast (the panel froze on its last picture while TRCC still
+  said it was casting), a slideshow, or a web video stream, and none of them
+  came back on their own. They now keep running, the way a video theme already
+  did, and pause while the panel is away so nothing is captured for a panel
+  that is not there. Disconnecting a panel yourself still stops them.
 - **A panel that is slow to come back after the computer wakes is
   reconnected.** TRCC reconnects every panel when the computer wakes from
   sleep, but only tried once: if the panel was not ready yet, it stayed dark

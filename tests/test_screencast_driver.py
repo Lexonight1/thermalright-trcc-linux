@@ -277,20 +277,42 @@ def test_stopping_the_screencast_stops_its_driver(
 def test_disconnecting_stops_the_driver(
     casting: App, scheduler: SyncSendScheduler,
 ) -> None:
-    """``App.stop_sender`` removes the BARE key; the driver is namespaced.
+    """Letting the panel go removes the driver; it is namespaced, so the
+    removal has to be explicit (``App.stop_sources``).
 
-    Without an explicit removal the driver outlives its device and keeps
-    capturing for something no longer attached.
-
-    MUTATION CHECK: drop the ``remove(task_key(key))`` from ``stop_sender``
+    MUTATION CHECK: drop the ``remove(task_key(key))`` from ``stop_sources``
     and this fails.
     """
-    casting.start_sender(_KEY)
     assert task_key(_KEY) in scheduler._tasks
 
-    casting.stop_sender(_KEY)
+    casting.detach(_KEY)
 
     assert task_key(_KEY) not in scheduler._tasks
+
+
+def test_a_blink_keeps_the_cast(casting: App, scheduler: SyncSendScheduler) -> None:
+    """A wake or a replug drops the WIRE; the cast keeps going.
+
+    MUTATION CHECK: remove the driver in ``stop_sender`` again and every wake
+    freezes the panel on its last frame while every window says "casting".
+    """
+    casting.stop_sender(_KEY)
+    assert task_key(_KEY) in scheduler._tasks
+
+
+def test_nothing_is_captured_for_a_panel_that_is_away(
+    casting: App, scheduler: SyncSendScheduler,
+) -> None:
+    """A lost panel costs no screen capture."""
+    capture = casting.platform.capture             # type: ignore[attr-defined]
+    casting.devices[_KEY].disconnect()
+    driver = scheduler._tasks[task_key(_KEY)]
+    grabbed = len(capture.regions)
+
+    for now in range(100, 110):
+        driver.run_once(float(now))
+
+    assert len(capture.regions) == grabbed
 
 
 def test_starting_a_screencast_starts_its_driver(

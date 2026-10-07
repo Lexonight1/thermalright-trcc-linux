@@ -44,7 +44,7 @@ class ScreencastDriver(BaseSendTask):
     KEY_PREFIX = "screencast:"
     DEFAULT_INTERVAL_S = SCREENCAST_TICK_S
 
-    def run_once(self, now: float) -> float:
+    def _run(self, now: float) -> float:
         """Capture one frame; return the seconds to wait before the next.
 
         A failed frame does NOT stop the driver — capture depends on a desktop

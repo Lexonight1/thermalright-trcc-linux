@@ -110,17 +110,51 @@ def test_the_key_is_namespaced_away_from_the_device_sender(app: App) -> None:
     assert task_key(_KEY).endswith(_KEY)
 
 
-def test_stop_sender_drops_the_driver_too(configured: App,
-                                          scheduler: SyncSendScheduler) -> None:
+def test_letting_the_panel_go_drops_the_driver(configured: App,
+                                               scheduler: SyncSendScheduler) -> None:
     """Or a disconnected device keeps rotating forever.
 
     The namespacing that protects the sender is exactly why this removal has to
-    be explicit — ``stop_sender`` removing only the bare key would leave the
-    driver running against a device that is gone.
+    be explicit — removing only the bare key would leave the driver running
+    against a device that is gone.
     """
     assert task_key(_KEY) in scheduler._tasks
-    configured.stop_sender(_KEY)
+    configured.detach(_KEY)
     assert task_key(_KEY) not in scheduler._tasks
+
+
+def test_a_blink_keeps_the_driver(configured: App,
+                                  scheduler: SyncSendScheduler) -> None:
+    """A wake or a replug drops the WIRE; the slideshow keeps going.
+
+    MUTATION CHECK: remove the driver in ``stop_sender`` again and every wake
+    ends the slideshow for good, as it did until 2026-10-06.
+    """
+    configured.stop_sender(_KEY)
+    assert task_key(_KEY) in scheduler._tasks
+
+
+def test_a_driver_waits_while_its_panel_is_away(configured: App,
+                                                scheduler: SyncSendScheduler) -> None:
+    """No theme is switched for a panel that is not there.
+
+    MUTATION CHECK: drop the panel check in ``BaseSendTask.run_once`` and the
+    driver rotates -- and connects first, behind the reconnect watcher's back.
+    """
+    configured.devices[_KEY].disconnect()
+    driver = scheduler._tasks[task_key(_KEY)]
+    asked: list[str] = []
+    real_dispatch = configured.dispatch
+
+    def spy(cmd):  # type: ignore[no-untyped-def]
+        asked.append(type(cmd).__name__)
+        return real_dispatch(cmd)
+
+    configured.dispatch = spy                  # type: ignore[method-assign]
+    for now in range(100, 110):
+        driver.run_once(float(now))
+
+    assert asked == []
 
 
 def test_run_once_returns_the_poll_interval_when_not_due(configured: App) -> None:

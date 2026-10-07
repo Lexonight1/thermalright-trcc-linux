@@ -46,6 +46,8 @@ class ReconnectWatcher(BaseSendTask):
 
     KEY_PREFIX = "reconnect:"
     DEFAULT_INTERVAL_S = 3.0
+    #: The panel being away is the whole reason this task runs.
+    NEEDS_PANEL = False
     #: The longest wait between two attempts.
     MAX_INTERVAL_S = 60.0
 
@@ -95,7 +97,7 @@ class ReconnectWatcher(BaseSendTask):
         log.info("ReconnectWatcher.disarm: %s (was waiting=%s)",
                  self._device_key, was)
 
-    def run_once(self, now: float) -> float:
+    def _run(self, now: float) -> float:
         """Try once if it is time; return how long to wait before asking again."""
         with self._lock:
             if not self._armed:

@@ -10,7 +10,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
-| [`BaseSendTask`](#basesendtask) | 1 | 3 | 4 |
+| [`BaseSendTask`](#basesendtask) | 1 | 4 | 4 |
 | [`Command`](#command) | 1 | 0 | 139 |
 | [`CpuSource`](#cpusource) | 1 | 4 | 10 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
@@ -65,10 +65,10 @@ A :class:`SendTask` driven on a fixed cadence for one device.
 **You implement (1):**
 
 ```python
-run_once(now: 'float') -> float
+_run(now: 'float') -> float
 ```
 
-**You inherit (3):** `key` · `wait` · `wake`
+**You inherit (4):** `key` · `run_once` · `wait` · `wake`
 
 **Implementations (4):** `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
 

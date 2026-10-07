@@ -898,6 +898,7 @@ class App(CommandBus):
         self._lost.discard(key)
         # Stop the send worker BEFORE closing the transport so no in-flight
         # write races the disconnect (the scheduler joins the thread).
+        self.stop_sources(key)
         self.stop_sender(key)
         device = self.devices.pop(key, None)
         if device is not None:
@@ -1130,30 +1131,41 @@ class App(CommandBus):
         self._send_scheduler.remove(key)
 
     def stop_sender(self, key: str) -> None:
-        """Stop + drop the send worker for *key* (idempotent).
+        """Stop + drop the send worker for *key* (idempotent) -- the WIRE only.
 
-        Also drops the device's NAMESPACED drivers — screencast and slideshow —
-        which live in the same scheduler.  Removing only the bare key would
-        leave a disconnected device being captured or rotated forever: the
-        driver would keep dispatching, and every turn would fail on a device
-        that is no longer attached.  The namespacing exists because the
-        scheduler evicts by key and would otherwise have killed this device's
-        own sender; that same namespacing is why each removal has to be
+        What plays on the panel is :meth:`stop_sources`.  A panel that blinks
+        -- a wake, a replug, a VM taking it -- loses its wire and keeps its
+        source, the way a monitor does: this used to drop the screencast,
+        slideshow and stream drivers too, and since a reconnect restores
+        nothing a panel still has a theme for, every wake ended a running
+        cast, slideshow or stream for good (measured 2026-10-06).
+        """
+        sender = self.senders.pop(key, None)
+        if sender is None:
+            log.debug("stop_sender: %s has no sender", key)
+            return
+        log.info("stop_sender: %s", key)
+        self._send_scheduler.remove(key)
+
+    def stop_sources(self, key: str) -> None:
+        """Stop what plays on *key*'s panel: its screencast, slideshow, stream.
+
+        Only for letting the panel go (``detach``: a disconnect, quitting),
+        never for a blink -- see :meth:`stop_sender`.  While the panel is away
+        the drivers wait (``BaseSendTask``), so a lost panel costs no capture.
+        The namespacing exists because the scheduler evicts by key and would
+        otherwise kill the device's own sender; it is also why each removal is
         explicit here, and why a NEW driver must be added to this list.
         """
         from .services.screencast_driver import task_key as screencast_task
         from .services.slideshow_driver import task_key as slideshow_task
         from .services.stream_driver import task_key as stream_task
 
+        log.info("stop_sources: %s", key)
         self._send_scheduler.remove(screencast_task(key))
         self._send_scheduler.remove(slideshow_task(key))
         self._send_scheduler.remove(stream_task(key))
         self.media.close_stream(key)
-        sender = self.senders.pop(key, None)
-        if sender is None:
-            return
-        log.info("stop_sender: %s", key)
-        self._send_scheduler.remove(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
         """Submit a frame to a device's send worker.
