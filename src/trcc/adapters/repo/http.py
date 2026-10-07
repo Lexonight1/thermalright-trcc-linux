@@ -32,16 +32,37 @@ class OfflineHttpFetcher(HttpFetcher):
         raise HttpFetchError(f"offline: {url} was not fetched")
 
 
+def _default_context() -> ssl.SSLContext:
+    """The system's trust store, plus certifi's bundle when it is installed.
+
+    macOS Python does not read the Keychain, and a PyInstaller build carries
+    no system CA path, so HTTPS failed there until certifi's bundle was
+    loaded (#109, 68d644af).  The cutover dropped that code with the legacy
+    tree, and with nothing importing certifi PyInstaller stopped bundling
+    it.  Additive and optional: the deb/rpm builds do not ship certifi, and
+    the system store alone is right there.
+    """
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+    except ImportError:
+        log.info("_default_context: no certifi — the system trust store only")
+        return ctx
+    ctx.load_verify_locations(certifi.where())
+    log.info("_default_context: system trust store + certifi %s",
+             certifi.where())
+    return ctx
+
+
 class UrllibHttpFetcher(HttpFetcher):
-    """Minimal stdlib HTTP GET — keep this dependency-free."""
+    """Minimal stdlib HTTP GET."""
 
     _USER_AGENT = "trcc/1.0"
 
     def __init__(self, *, ssl_context: ssl.SSLContext | None = None) -> None:
-        # Caller can hand in a stricter context (e.g. cert pinning); default
-        # is the platform's default trust store via urllib.
+        # Caller can hand in a stricter context (e.g. cert pinning).
         log.debug("__init__")
-        self._ctx = ssl_context
+        self._ctx = ssl_context or _default_context()
 
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,

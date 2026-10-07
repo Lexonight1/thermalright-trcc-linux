@@ -148,11 +148,11 @@ DELIBERATELY_OPTIONAL: dict[str, str] = {
         "the no-binding warning names the package for each distro."
     ),
     "certifi": (
-        "no code imports it. Its last user, data_repository.py (the #109 "
-        "macOS/Windows CERTIFICATE_VERIFY_FAILED fix), was removed in the "
-        "cutover, and UrllibHttpFetcher uses Python's default TLS context -- so "
-        "the deb and rpm need nothing from it. OPEN (2026-09-29): whether the "
-        "frozen macOS/Windows builds regressed #109 without it."
+        "optional: UrllibHttpFetcher loads its bundle on top of the system "
+        "trust store when it is installed (the #109 macOS fix, restored "
+        "2026-10-07 after the cutover dropped it), so a frozen build carries "
+        "it. The deb and rpm need nothing from it -- the system store is right "
+        "there."
     ),
     "nvidia-ml-py": (
         "pulls nvidia-utils (~938 MB) on Arch / libnvidia-ml1 from contrib on "

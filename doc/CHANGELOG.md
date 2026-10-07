@@ -153,6 +153,10 @@
 
 ### Fixed
 
+- **macOS: theme and data downloads trust the right certificates again.** The
+  fix for #109 (load certifi's certificate bundle, since macOS Python does
+  not read the Keychain) was lost when the code was reorganised, and the
+  macOS build stopped including the bundle. Not yet confirmed on a Mac.
 - **When ffmpeg is missing, TRCC names the right package for your system.**
   It told everyone to run `dnf install ffmpeg` or `apt install ffmpeg`,
   including on Windows, macOS and BSD, and stock Fedora has no package by
