@@ -1395,7 +1395,8 @@ def test_a_PAUSED_video_still_gets_the_reactive_render(
 
 
 class _LoopApp:
-    """What VideoLoop reads (the live playbacks) and does (dispatch)."""
+    """What VideoLoop reads (the live playbacks, whether game mode holds a
+    panel) and does (dispatch)."""
 
     def __init__(self, **playing: Any) -> None:
         from types import SimpleNamespace
@@ -1410,6 +1411,9 @@ class _LoopApp:
     def dispatch(self, cmd: Any) -> Any:
         self.sent.append(cmd.key)
         return self.result
+
+    def game_engaged(self, key: str) -> bool:
+        return False
 
 
 def _pb(fps: int = 10) -> Any:

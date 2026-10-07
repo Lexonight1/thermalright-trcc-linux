@@ -1191,6 +1191,19 @@ class App(CommandBus):
         log.info("stop_sender: %s", key)
         self._send_scheduler.remove(key)
 
+    def game_engaged(self, key: str) -> bool:
+        """Whether game mode holds *key*'s panel -- the C#'s ``myCpuHigh``.
+
+        Every producer of the panel's own picture asks this and stands still
+        while it is True, as the C#'s ``Timer_event`` returns before drawing
+        anything (FormCZTV.cs:2988): the video, the slideshow, the cast, the
+        stream and the reactive re-render.  Only the game task draws.
+        """
+        gate = self.game_gates.get(key)
+        engaged = gate is not None and gate.engaged
+        frame_log.debug("game_engaged: %s %s", key, engaged)
+        return engaged
+
     def stop_sources(self, key: str) -> None:
         """Stop what plays on *key*'s panel: its screencast, slideshow, stream
         and game mode.
@@ -1540,6 +1553,9 @@ class _DeviceRenderObserver:
         writing the device.  When something is, the extra frame is at best
         redundant and at worst visible:
 
+        * **game** — game mode holds the panel; its own task draws the only
+          frames it shows, as the C#'s ``Timer_event`` draws nothing else
+          (FormCZTV.cs:2988).
         * **screencast** — its tick composes background + mask + metrics at
           capture rate, and its background is the captured region while this
           one's is the theme.  Two DIFFERENT pictures, so at ~7 fps capture
@@ -1566,6 +1582,8 @@ class _DeviceRenderObserver:
         #202).  Folding it in would be duplication removal that changes
         behaviour.
         """
+        if self._app.game_engaged(key):
+            return "game"
         if self._app.settings.for_device(key).screencast_region is not None:
             return "screencast"
         if self._app.media.stream(key) is not None:

@@ -31,6 +31,8 @@ class GameModeTask(BaseSendTask):
 
     KEY_PREFIX = "game:"
     DEFAULT_INTERVAL_S = GAME_MODE_TICK_S
+    #: The one task that draws while game mode holds the panel.
+    PAUSES_FOR_GAME = False
 
     def __init__(self, app: App, device_key: str,
                  interval_s: float | None = None) -> None:

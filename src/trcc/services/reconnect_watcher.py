@@ -48,6 +48,8 @@ class ReconnectWatcher(BaseSendTask):
     DEFAULT_INTERVAL_S = 3.0
     #: The panel being away is the whole reason this task runs.
     NEEDS_PANEL = False
+    #: It connects a panel; it draws nothing game mode could be holding.
+    PAUSES_FOR_GAME = False
     #: The longest wait between two attempts.
     MAX_INTERVAL_S = 60.0
     #: ...for a panel that has never answered.  It may be held by a VM since

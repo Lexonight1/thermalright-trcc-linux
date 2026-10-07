@@ -90,6 +90,13 @@ class VideoLoop:
                 log.info("VideoLoop: %s playing at %dms/frame",
                          key, playback.interval_ms)
                 self._due[key] = now
+            if self._app.game_engaged(key):
+                # Held by game mode: the video stands still, as the C#'s does
+                # (FormCZTV.cs:2988), and resumes where it was -- one interval
+                # on, never a burst of the frames it missed.
+                frame_log.debug("VideoLoop: %s held by game mode", key)
+                self._due[key] = now + interval
+                continue
             if now >= self._due[key]:
                 self._report(key, self._app.dispatch(TickDisplay(key=key)))
                 # Keep the cadence, but never try to catch up a backlog: a

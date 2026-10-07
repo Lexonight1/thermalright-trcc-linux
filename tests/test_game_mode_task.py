@@ -255,3 +255,94 @@ def test_a_saved_game_mode_runs_again_when_the_panel_is_restored(
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
 
     assert task_key(_KEY) in scheduler._tasks
+
+
+# ── While engaged, nothing else draws (FormCZTV.cs:2988) ─────────────────
+
+
+def test_a_held_panel_is_not_re_rendered_by_settings_or_sensors(
+    app: App,
+) -> None:
+    """The reactive re-render stands still: a sensor tick or a brightness
+    change would put the theme back over the game frame for up to a
+    second."""
+    from trcc.core.commands import SetBrightness
+    from trcc.core.events import SensorsUpdated
+
+    sent = _sends(app)
+    app.events.publish(SensorsUpdated())
+    app.dispatch(SetBrightness(key=_KEY, percent=50))
+    assert len(sent) == 2, "control: both re-render a panel game mode has not"
+
+    _engage(app)
+    sent.clear()
+    app.events.publish(SensorsUpdated())
+    app.dispatch(SetBrightness(key=_KEY, percent=60))
+
+    assert sent == []
+
+
+def test_a_held_panel_does_not_play_its_video(
+    app: App, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The video stands still and resumes where it was."""
+    from types import SimpleNamespace
+
+    ticks: list[str] = []
+    dispatch = app.dispatch
+
+    def spy(cmd):  # type: ignore[no-untyped-def]
+        if type(cmd).__name__ == "TickDisplay":
+            ticks.append(cmd.key)
+            return SimpleNamespace(ok=True, connected=True, cursor=0,
+                                   frame_count=1, message="")
+        return dispatch(cmd)
+
+    monkeypatch.setattr(app, "dispatch", spy)
+    monkeypatch.setattr(app.media, "playing",
+                        lambda: {_KEY: SimpleNamespace(interval_ms=100)})
+    loop = app.video_loop
+    loop.tick(0.0)
+    assert ticks == [_KEY], "control: a playing video ticks"
+
+    _engage(app)
+    for t in range(1, 30):
+        loop.tick(t * 0.1)
+    assert ticks == [_KEY]
+
+    _cpu(app, 10)
+    assert _ticks(app, HOLD_COUNT + 1)[-1] == "release"
+    loop.tick(10.0)
+    assert ticks == [_KEY, _KEY]
+
+
+def test_a_held_panel_runs_no_drawing_task_but_the_game_task(
+    app: App, scheduler: _Scheduler,
+) -> None:
+    """Screencast, slideshow and stream are ``BaseSendTask``s; they wait.
+    The game task and the reconnect watcher draw nothing of the panel's
+    own, and run on."""
+    from trcc.services._send_task import BaseSendTask
+    from trcc.services.reconnect_watcher import ReconnectWatcher
+
+    class _Drawer(BaseSendTask):
+        KEY_PREFIX = "drawer:"
+        DEFAULT_INTERVAL_S = 1.0
+        runs = 0
+
+        def _run(self, now: float) -> float:
+            type(self).runs += 1
+            return 1.0
+
+    drawer = _Drawer(app, _KEY)
+    drawer.run_once(0.0)
+    assert _Drawer.runs == 1, "control: a drawing task runs"
+
+    _engage(app)
+    drawer.run_once(1.0)
+    sent = _sends(app)
+    scheduler._tasks[task_key(_KEY)].run_once(2.0)
+
+    assert _Drawer.runs == 1
+    assert len(sent) == 1, "the game task still draws"
+    assert ReconnectWatcher.PAUSES_FOR_GAME is False

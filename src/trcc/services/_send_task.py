@@ -80,6 +80,10 @@ class BaseSendTask(SendTask):
     NEEDS_PANEL: ClassVar[bool] = True
     #: How often a waiting task looks for its panel again.
     AWAY_POLL_S: ClassVar[float] = 1.0
+    #: Whether this task puts the panel's own picture on it -- and so stands
+    #: still while game mode holds the panel.  On by default, so a new driver
+    #: that draws cannot overwrite the game frame by forgetting to say so.
+    PAUSES_FOR_GAME: ClassVar[bool] = True
 
     def run_once(self, now: float) -> float:
         """Do one turn of the work, unless the panel is away.
@@ -95,6 +99,10 @@ class BaseSendTask(SendTask):
                 frame_log.debug("%s: %s away — waiting", type(self).__name__,
                                 self._device_key)
                 return self.AWAY_POLL_S
+        if self.PAUSES_FOR_GAME and self._app.game_engaged(self._device_key):
+            frame_log.debug("%s: %s held by game mode -- waiting",
+                            type(self).__name__, self._device_key)
+            return self.AWAY_POLL_S
         return self._run(now)
 
     @abstractmethod
