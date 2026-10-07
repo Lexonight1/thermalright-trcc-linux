@@ -108,10 +108,12 @@ class DevicePanel(BasePanel):
         result = self.dispatch(DiscoverDevices())
         self._list.clear()
         for key, product in result.units():
+            # A scan does not handshake: name and size are the catalog's
+            # guess for the USB id, which covers several coolers (#176).
             item = QListWidgetItem(
                 f"{key}  —  {product.vendor} {product.product}  "
                 f"({product.wire.value}, {product.native_resolution[0]}×"
-                f"{product.native_resolution[1]})"
+                f"{product.native_resolution[1]}, catalog)"
             )
             item.setData(_USER_ROLE, key)
             self._list.addItem(item)

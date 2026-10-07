@@ -3309,7 +3309,8 @@ def _inspector_text(gui_app: App, qtbot, *, pm, sub) -> str:
     panel._current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
     panel.dispatch = lambda cmd: DeviceStateResult(   # pyright: ignore[reportAttributeAccessIssue]
         ok=True, key="0402:3922", wire="SCSI", catalog_resolution=(320, 320),
-        pm_byte=pm, sub_byte=sub, fbl=7, serial="ABC")
+        catalog_product="Frozen Warframe 360", pm_byte=pm, sub_byte=sub,
+        fbl=7, serial="ABC")
     panel._refresh_inspector()
     w = panel._inspector
     return w.toPlainText() if hasattr(w, "toPlainText") else w.text()
@@ -3336,6 +3337,35 @@ def test_an_unhandshaken_device_shows_no_handshake_block(
     assert "Handshake" not in text, (
         "a device that never handshook reported handshake values"
     )
+
+
+def test_the_inspector_labels_the_catalogs_answer(gui_app: App, qtbot) -> None:
+    """It printed the catalog's size as "native res" -- 480x480 on a 320x240
+    Mjolnir, the one size that panel is not."""
+    text = _inspector_text(gui_app, qtbot, pm=None, sub=None)
+
+    assert "  catalog     Frozen Warframe 360 320×320" in text.splitlines()
+    assert "native res" not in text
+
+
+def test_a_scan_lists_the_catalogs_guess_as_one(qtbot, tmp_path: Path) -> None:
+    """A scan does not handshake: the name and size it lists are the
+    catalog's for the USB id, and the line says so (#176)."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.ui.qtgui.panels.device_panel import DevicePanel
+
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
+                           tmp_path), renderer=QtRenderer())
+    panel = DevicePanel(app, _bus(app))
+    qtbot.addWidget(panel)
+
+    panel._on_scan()
+
+    rows = [panel._list.item(i).text() for i in range(panel._list.count())]
+    assert rows == ["87ad:70db  —  ChiZhu Tech GrandVision 360 AIO  "
+                    "(bulk, 480×480, catalog)"]
 
 
 # =========================================================================
