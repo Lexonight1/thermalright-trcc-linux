@@ -19,6 +19,7 @@ The encode itself is exercised end-to-end when ffmpeg is present
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -542,6 +543,7 @@ def test_a_file_that_is_not_a_zt_archive_says_so(
     bad = tmp_path / "bad.zt"
     bad.write_bytes(data)
 
-    with pytest.raises(ThemeError, match="Not a Theme.zt archive"):
+    with pytest.raises(ThemeError, match=re.escape(
+            f"Not a Theme.zt archive (starts {data[:4]!r}): {bad}")):
         ZtDecoder(bad, (8, 8)).decode()
 
