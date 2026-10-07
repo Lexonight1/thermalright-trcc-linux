@@ -385,11 +385,18 @@ class BaselineSensors(SensorEnumerator):
 
         add(_cpu_keys(), self._cpu.name)
         add(_memory_keys(), "Memory")
-        for idx, gpu in enumerate(self._gpus):
-            add(_gpu_reading_keys(f"gpu:{idx}"), gpu.name)
-            add(_gpu_reading_keys(f"gpu:{gpu.key}"), gpu.name)
+        # Each GPU was offered THREE times -- ``gpu:N``, ``gpu:<vendor>:N`` and
+        # ``gpu:primary`` -- so one card filled a picker with 24 rows (#301).
+        # The primary alias is the one a single-GPU box needs; the vendor key
+        # is the canonical per-card id (what SetGpuDevice pins; ``gpu:N``
+        # renumbers when a card is added), offered only when there is a
+        # choice.  ``read_all`` still serves all three, so a saved binding or
+        # theme on any spelling keeps its value.
         if (primary := self.primary_gpu()) is not None:
             add(_gpu_reading_keys("gpu:primary"), primary.name)
+        if len(self._gpus) > 1:
+            for gpu in self._gpus:
+                add(_gpu_reading_keys(f"gpu:{gpu.key}"), gpu.name)
         for fan in self._fans:
             add([(f"fan:{fan.key}:rpm", "fan", "RPM", "Speed"),
                  (f"fan:{fan.key}:percent", "fan", "%", "Duty")], fan.name)

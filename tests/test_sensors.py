@@ -757,11 +757,29 @@ def test_discover_contains_one_reading_per_declared_key() -> None:
     expected = {
         "cpu:temp", "cpu:usage", "cpu:freq", "cpu:power",
         "memory:used", "memory:percent",
-        "gpu:0:temp", "gpu:nvidia:0:temp", "gpu:primary:temp",
+        "gpu:primary:temp",
         "time:hour", "date:year",
     }
     missing = expected - ids
     assert not missing, f"missing normalized keys: {missing}"
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_each_gpu_is_offered_once(count: int) -> None:
+    """#301: one card was offered as ``gpu:0``, ``gpu:<vendor>:0`` and
+    ``gpu:primary`` -- 24 picker rows for 8 readings.  The primary alias
+    always; the vendor key (the canonical per-card id) only when there is a
+    choice; ``gpu:N`` never.  ``read_all`` still serves every spelling, so
+    a saved binding keeps its value."""
+    s = _sensors_with(gpus=[FakeGpu(i, vendor="amd") for i in range(count)])
+
+    gpu_ids = {r.sensor_id.rsplit(":", 1)[0] for r in s.discover()
+               if r.sensor_id.startswith("gpu:")}
+    values = s.read_all()
+
+    assert gpu_ids == ({"gpu:primary"} if count == 1
+                       else {"gpu:primary", "gpu:amd:0", "gpu:amd:1"})
+    assert {"gpu:0:temp", "gpu:amd:0:temp", "gpu:primary:temp"} <= values.keys()
 
 
 def test_a_reading_is_named_for_what_it_measures() -> None:
