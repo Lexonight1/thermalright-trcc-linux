@@ -1773,6 +1773,36 @@ FAN_SLOT_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
+#: Drawing format by unit, for a metric no METRICS row names -- a board probe,
+#: a voltage, one DIMM.  The DC table has a format for its 24 pairs only.
+_UNIT_FORMATS: dict[str, str] = {
+    "°C": _TEMP, "%": _PCT, "MHz": _MHZ, "W": _WATT, "RPM": _RPM,
+    "V": "{value:.2f} V", "MB": "{value:.0f} MB",
+    "MB/s": "{value:.1f} MB/s", "KB/s": "{value:.0f} KB/s",
+}
+#: The unit an id's last segment implies, when the caller has no unit -- a
+#: DC read back from disk carries only the id.
+_SUFFIX_UNITS: tuple[tuple[str, str], ...] = (
+    (":temp", "°C"), (":rpm", "RPM"), (":usage", "%"), (":percent", "%"),
+    (":clock", "MHz"), (":freq", "MHz"), (":power", "W"),
+)
+
+
+def default_metric_format(sensor_id: str, unit: str = "") -> str:
+    """How a metric is drawn when nothing chose a format: its METRICS row's,
+    else by its unit, else by what its id says it measures.  Never taken from
+    a file -- a format string is code (``{value.__class__}``), so one read
+    out of a shared theme would be an injection."""
+    try:
+        fmt = METRICS[sensor_id].fmt
+    except KeyError:
+        unit = unit or ("V" if sensor_id.startswith("volt:") else next(
+            (u for suffix, u in _SUFFIX_UNITS if sensor_id.endswith(suffix)), ""))
+        fmt = _UNIT_FORMATS.get(unit, "{value:.0f}")
+    frame_log.debug("default_metric_format: %s (%s) -> %s", sensor_id, unit, fmt)
+    return fmt
+
+
 # Category ID → sensor-dashboard background image asset.
 CATEGORY_IMAGES: dict[int, str] = {
     0: "sysinfo_custom.png",

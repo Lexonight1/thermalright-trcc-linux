@@ -17,6 +17,7 @@ Three classes live here:
 from __future__ import annotations
 
 import logging
+import re
 import struct
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from ..core.models import (
     METRICS,
     TIME_FORMATS,
     DisplaySource,
+    default_metric_format,
     format_index,
 )
 
@@ -36,6 +38,12 @@ frame_log = per_frame(__name__)
 
 
 _MAGIC_DC = 0xDC
+
+#: A metric the DC pair table cannot name, carried in the element's text.
+#: Only a sensor id is ever read back -- never a format (see
+#: ``default_metric_format``).
+_TRCC_TAG = "trcc:"
+_TRCC_TAGGED = re.compile(r"trcc:([a-z0-9_.\-]+(?::[a-z0-9_.\-]+)+)")
 _MAGIC_DD = 0xDD
 _FONT_SLOTS = 13
 _ELEMENT_SLOTS = 13
@@ -733,6 +741,9 @@ def _build_dd_element(
     match mode:
         case 0:
             entry = _HW_TO_SENSOR.get((main_count, sub_count))
+            if entry is None and (tag := _TRCC_TAGGED.fullmatch(custom_text)):
+                entry = (tag[1], default_metric_format(tag[1]))
+                log.info("0xDD HARDWARE element: trcc tag -> %s", tag[1])
             if entry is None:
                 log.debug(
                     "0xDD HARDWARE element (%d, %d) has no sensor mapping; skipping",
@@ -839,11 +850,20 @@ def _element_to_legacy(
         return (_MODE_CUSTOM, 0, 0, 0, str(element.get("text", "")))
     if kind == "metric":
         sensor = str(element.get("metric", ""))
-        main_c, sub_c = _sensor_to_hw().get(sensor, (0, 0))
+        show_unit = int(bool(element.get("show_unit", True)))
         # mode_sub is the unit-switch the reader turns into show_unit; writing
         # 0 dropped it, so every exported metric came back without its unit.
-        return (_MODE_HARDWARE, int(bool(element.get("show_unit", True))),
-                main_c, sub_c, "")
+        if (pair := _sensor_to_hw().get(sensor)) is not None:
+            return (_MODE_HARDWARE, show_unit, *pair, "")
+        # No DC pair names it (a board probe, a voltage, one DIMM).  It was
+        # written as (0, 0) and dropped on read, so a user mask lost the
+        # element at the next ApplyMask.  The id rides in the element's text:
+        # the C# draws label2 for a mode-0 element, never myText
+        # (UCScreenImage.cs:1130, FormLCD.cs:572), and (0, 0) leaves label2
+        # empty, so Windows shows nothing there and writes the text back.
+        log.warning("_element_to_legacy: no DC pair for %r -- kept as a trcc "
+                    "tag; the Windows app draws nothing for it", sensor)
+        return (_MODE_HARDWARE, show_unit, 0, 0, f"{_TRCC_TAG}{sensor}")
     if kind == "clock":
         mode, table = {
             "time": (_MODE_TIME, TIME_FORMATS),

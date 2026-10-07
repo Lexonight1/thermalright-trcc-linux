@@ -127,3 +127,20 @@ def test_a_mask_uploaded_before_the_fix_still_lands_at_the_top_left(
 
     assert OverlayService.calculate_mask_position(
         folder, (400, 700), (854, 480)) == (0, 0)
+
+
+def test_a_board_sensor_on_a_user_mask_survives_in_its_dc(
+    app: App, tmp_path: Path,
+) -> None:
+    """S3: every overlay edit rewrites the user mask's config1.dc, and a metric
+    the DC pair table cannot name was written as (0, 0) and dropped on read.
+    In this session the element lives on in the device's own layer, so the
+    loss shows wherever the mask's DC is read fresh -- another device, an
+    export, a reset layer.  Read it back the way they do."""
+    mask, _ = _upload(app, tmp_path, 0, (300, 200))
+    assert app.dispatch(AddOverlayElement(
+        key=_KEY, type="metric", metric="board:nct6798_auxtin1:temp")).ok
+
+    stored = Dc.File(mask.parent / "config1.dc").read()["elements"]
+
+    assert "board:nct6798_auxtin1:temp" in [e.get("metric") for e in stored]

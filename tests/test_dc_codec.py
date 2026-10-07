@@ -105,6 +105,48 @@ def test_round_trip_metric_element(theme_dir: Path) -> None:
     assert e["x"] == 100
 
 
+@pytest.mark.parametrize("metric, fmt", [
+    ("board:nct6798_auxtin1:temp", "{value:.0f}°C"),
+    ("volt:nct6686_cpu_vcore", "{value:.2f} V"),
+    ("memory:dimm:3-0051:temp", "{value:.0f}°C"),
+    ("gpu:amd:0:hotspot:temp", "{value:.0f}°C"),
+])
+def test_a_metric_the_pair_table_cannot_name_survives_the_dc(
+    theme_dir: Path, metric: str, fmt: str,
+) -> None:
+    """S3: such a metric was written as pair (0, 0) and dropped on read, so a
+    user mask lost the element at the next ApplyMask.  Its id now rides in the
+    element's text, which the C# never draws for a mode-0 element."""
+    out = theme_dir / "config1.dc"
+    write_dc_from_theme_config(out, {"elements": [{
+        "type": "metric", "metric": metric, "show_unit": False,
+        "x": 30, "y": 40, "color": "#ffffff", "size": 14.0}]})
+
+    (e,) = load_dc_as_theme_config(out)["elements"]
+
+    assert (e["type"], e["metric"], e["format"], e["show_unit"], e["x"]) == (
+        "metric", metric, fmt, False, 30)
+
+
+@pytest.mark.parametrize("text, metric", [
+    ("trcc:volt:nct_in0", "volt:nct_in0"),
+    ("trcc:{value.__class__}", None),
+    ("trcc:cpu:temp|{value.__class__.__mro__}", None),
+    ("trcc:nocolon", None),
+    ("TRCC:cpu:temp", None),
+    ("hello", None),
+])
+def test_only_a_bare_sensor_id_tag_is_read_back(text: str, metric: str | None) -> None:
+    """The tag comes from a file anyone can share.  Only a sensor id is read
+    back -- the format comes from trcc's own table, because a format string
+    is code -- so anything else is no element."""
+    element = Dc._build_dd_element(0, 1, 5, 6, 0, 0, {}, text)
+
+    assert (element or {}).get("metric") == metric
+    if element is not None:
+        assert element["format"] == "{value:.2f} V"
+
+
 def test_round_trip_clock_element(theme_dir: Path) -> None:
     out = theme_dir / "config1.dc"
     write_dc_from_theme_config(out, {
