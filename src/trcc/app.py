@@ -492,38 +492,46 @@ class App(CommandBus):
                     if parse_device_key(k)[:2] == (vid, pid) and k not in live]:
             self.stop_watching(key)
         for key in live:
-            self._connect_unit(key)
+            self.connect_unit(key)
 
-    def _connect_unit(self, key: str) -> None:
+    def connect_unit(self, key: str) -> ConnectResult:
         """Connect one unit unless it already is; release a dead one first.
 
-        A panel this App had connected that does not come up is waited for
-        (:meth:`watch_for_return`): a usb add can land before its SCSI node
-        exists, and a panel a VM holds has none until it is handed back --
-        with no event to say so.
+        THE connect path, under ``_connect_lock``: hotplug, a wake, the
+        reconnect watcher and ``EnsureConnected`` (every Command that connects
+        first) all come here.  ``EnsureConnected`` used to dispatch
+        ``ConnectDevice`` on its own, so a UI action during a loss could run
+        a second connect beside the watcher's -- on SCSI the single-owner claim
+        fails one, and that one's cleanup released the device by KEY.
+
+        A panel that does not come up is waited for (:meth:`watch_for_return`):
+        a usb add can land before its SCSI node exists, and a panel a VM holds
+        has none until it is handed back -- with no event to say so.
         """
         with self._connect_lock:
             existing = self.devices.get(key)
             if existing is not None and existing.is_connected:
-                log.debug("_connect_unit: %s already connected", key)
-                return
+                log.debug("connect_unit: %s already connected", key)
+                return ConnectResult(ok=True, key=key,
+                                     message=f"{key} already connected")
             if existing is not None:
                 # Present but DEAD: the detach event never arrived (coalesced
                 # or dropped udev event, or a monitor that only reports adds).
                 # The entry is a corpse holding a stale transport, so tear it
                 # down rather than bail — bailing here was the #254 / #246 bug.
-                log.info("_connect_unit: %s present but not connected — "
+                log.info("connect_unit: %s present but not connected — "
                          "releasing stale transport before reconnect", key)
                 self.release_device(key)
-            log.info("_connect_unit: connecting %s", key)
+            log.info("connect_unit: connecting %s", key)
             from .core.commands import ConnectDevice
             result = self.dispatch(ConnectDevice(key=key))
         if not result.ok:
             self.watch_for_return(key)
+        return result
 
     def try_reconnect(self, key: str) -> bool:
         """One reconnect attempt for the watcher; True once *key* is connected."""
-        self._connect_unit(key)
+        self.connect_unit(key)
         device = self.devices.get(key)
         connected = device is not None and device.is_connected
         log.debug("try_reconnect: %s -> %s", key, connected)
@@ -565,12 +573,12 @@ class App(CommandBus):
         repaint the same content on the next tick.  So both the LED segment
         displays and the LCD panels recover without a manual restart (#189).
 
-        The reconnect is :meth:`_connect_unit`, the replug's own path, so a
+        The reconnect is :meth:`connect_unit`, the replug's own path, so a
         panel whose node is late after the wake is retried by the reconnect
         watcher.  It used to be one ``ConnectDevice``: a node not back yet
         failed it, and the panel stayed dark until a restart.  The stale
         transport is closed first because it still LOOKS open, which
-        ``_connect_unit`` would take for connected.
+        ``connect_unit`` would take for connected.
         """
         keys = list(self.devices)
         log.info("_on_system_resumed: reconnecting %d device(s) after wake", len(keys))
@@ -586,7 +594,7 @@ class App(CommandBus):
                     except Exception:
                         log.exception("_on_system_resumed: disconnect %s raised",
                                       key)
-                self._connect_unit(key)
+                self.connect_unit(key)
 
     def _on_orientation_changed(self, event: Any) -> None:
         """``OrientationChanged`` → the folder of the new orientation, with its
@@ -1267,7 +1275,7 @@ class App(CommandBus):
             # Through the replug's path: a panel that is not ready when TRCC
             # starts -- a VM holding it, a node still coming -- is waited for.
             self._wanted.add(key)
-            self._connect_unit(key)
+            self.connect_unit(key)
         log.info(
             "discover_and_connect: %d product(s) discovered, %d attached",
             len(result.products), len(self.devices),

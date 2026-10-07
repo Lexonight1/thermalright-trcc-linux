@@ -447,7 +447,9 @@ class EnsureConnected(Command[ConnectResult]):
                 message=f"{self.key} already connected",
             )
         log.info("EnsureConnected %s: not connected — attaching", self.key)
-        return app.dispatch(ConnectDevice(key=self.key))
+        # The App's one connect path, not a ConnectDevice of its own: the
+        # reconnect watcher may be connecting this panel right now.
+        return app.connect_unit(self.key)
 
 
 @dataclass(frozen=True, slots=True)

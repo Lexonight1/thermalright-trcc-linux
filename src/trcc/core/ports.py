@@ -283,7 +283,7 @@ class Device(ABC, Generic[T]):
         the handshake, such a device stayed "connected" with nothing to write
         to, so every producer kept sending into it — two records and an
         ``ErrorOccurred`` per frame, for three hours on 2026-10-06 — and a
-        replug's ``_connect_unit`` saw "already connected" and left it there.
+        replug's ``connect_unit`` saw "already connected" and left it there.
         """
         connected = self._handshake is not None and self._transport.is_open
         frame_log.debug("Device.is_connected: %s (%s)", connected, self.info.key)

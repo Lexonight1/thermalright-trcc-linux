@@ -89,7 +89,7 @@ def test_the_worker_always_matches_the_attached_device(app: App) -> None:
 # re-open — and closed its transport.  `is_connected` read the HANDSHAKE, so the
 # corpse stayed "connected": the video tick kept sending into it (two records
 # and an ErrorOccurred per frame, three hours), and when the panel came back a
-# replug's `_connect_unit` saw "already connected" and did nothing.
+# replug's `connect_unit` saw "already connected" and did nothing.
 
 
 def _take_the_panel(app: App) -> None:
@@ -148,7 +148,7 @@ def test_producers_stop_sending_into_a_closed_transport(
 
 
 def test_a_replug_heals_a_panel_whose_transport_closed(app: App) -> None:
-    """``_connect_unit`` releases the corpse and connects a fresh device.
+    """``connect_unit`` releases the corpse and connects a fresh device.
 
     MUTATION CHECK: read ``is_connected`` off the handshake alone and the
     hotplug add answers "already connected" — the same dead object stays.
@@ -310,7 +310,7 @@ def test_a_hotplug_add_with_no_node_yet_keeps_waiting(tmp_path: Path) -> None:
     """The journal's order: remove, an add whose node does not exist yet
     (the VM claimed it), then the silent hand-back.
 
-    MUTATION CHECK: drop ``self.watch_for_return(key)`` from ``_connect_unit``
+    MUTATION CHECK: drop ``self.watch_for_return(key)`` from ``connect_unit``
     and the failed add is the end of it.
     """
     from trcc.adapters.infra.send_scheduler import SyncSendScheduler
@@ -516,3 +516,35 @@ def test_a_panel_nobody_may_open_is_not_retried(tmp_path: Path, where: str) -> N
     assert watcher is None or not watcher.armed
     assert [i.message for i in app.connection_issues()] == [
         "permission denied on /dev/sg0"]
+
+
+def test_a_ui_action_waits_for_a_connect_already_under_way(app: App) -> None:
+    """``EnsureConnected`` (every Command that connects first) shares the
+    App's one connect path, so it cannot run beside the reconnect watcher's.
+
+    Two at once on a SCSI panel: the single-owner claim fails one, and its
+    cleanup releases the device by KEY -- possibly the one just connected.
+
+    MUTATION CHECK: dispatch ``ConnectDevice`` from ``EnsureConnected`` again
+    and it runs while the lock is held.
+    """
+    import threading
+
+    from trcc.core.commands import EnsureConnected
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    _take_the_panel(app)
+    finished = threading.Event()
+
+    def ui_action() -> None:
+        app.dispatch(EnsureConnected(key=_KEY))
+        finished.set()
+
+    with app._connect_lock:                    # the watcher, mid-connect
+        worker = threading.Thread(target=ui_action, daemon=True)
+        worker.start()
+        assert not finished.wait(0.5), "it ran beside the connect under way"
+    worker.join(5)
+
+    assert finished.is_set()
+    assert app.devices[_KEY].is_connected

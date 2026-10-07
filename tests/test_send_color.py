@@ -739,7 +739,10 @@ def test_send_to_an_attached_but_unconnected_device_returns_a_result(
         "a caller would have to string-match"
     )
     reason = app.dispatch(DeviceConnectionIssues()).issues[0].message
-    assert result.message == f"0402:3922 not connected — {reason}"
+    # "Not attached", not "not connected": the connect goes through the App's
+    # one locked path (``App.connect_unit``), which releases a never-connected
+    # entry before it tries -- so after the refusal nothing is attached.
+    assert result.message == f"Not attached: 0402:3922 — {reason}"
     assert reason == "Permission denied: '/dev/sg1'"
 
 
