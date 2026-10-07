@@ -36,9 +36,7 @@ from ..results import (
     CloudThemesListResult,
     DeleteThemeResult,
     EnsureDataDownloadResult,
-    ExportConfigResult,
     FileEntry,
-    ImportConfigResult,
     MasksListResult,
     MaskUploadResult,
     ThemeDcExportResult,
@@ -55,7 +53,6 @@ from ._base import Command, Query
 from ._helpers import (
     _drive_slideshow,
     _invalidate_scene,
-    _json_default_tuple,
     _publish_if_disconnect,
     _require_connected_device,
     _resolve_oriented_resolution,
@@ -1065,117 +1062,6 @@ class SaveTheme(Command[ThemeResult]):
         except Exception as e:
             log.warning("_preview_png: snapshot failed (%s)", e)
             return None
-
-@dataclass(frozen=True, slots=True)
-class ExportConfig(Command[ExportConfigResult]):
-    """Write one device's ``DeviceSettings`` to a JSON file.
-
-    Distinct from :class:`ExportTheme`:
-      * ``ExportTheme`` zips a theme directory (background + DC +
-        masks) for sharing the theme assets.
-      * ``ExportConfig`` snapshots the user's per-device prefs (active
-        theme path, brightness, overlay edits, mask choice, fit mode,
-        format prefs, etc.) — for backup / migration between hosts.
-
-    Restore with :class:`ImportConfig`.  File format is the same shape
-    Settings persists internally; the JSON is intentionally human-
-    inspectable so reporters can paste it into issues.
-    """
-    key: str
-    output_path: Path
-
-    def execute(self, app: App) -> ExportConfigResult:
-        import json
-        log.info("ExportConfig: key=%s output=%s", self.key, self.output_path)
-        try:
-            snapshot = app.settings.snapshot_device(self.key)
-        except Exception as e:
-            log.warning("ExportConfig: snapshot failed for %s: %s", self.key, e)
-            return ExportConfigResult(
-                ok=False, key=self.key, output_path=str(self.output_path),
-                message=f"snapshot failed: {e}",
-            )
-        payload = {
-            "version": 1,
-            "key": self.key,
-            "device": snapshot,
-        }
-        try:
-            self.output_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.output_path.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2, default=_json_default_tuple)
-        except OSError as e:
-            return ExportConfigResult(
-                ok=False, key=self.key, output_path=str(self.output_path),
-                message=f"write failed: {e}",
-            )
-        return ExportConfigResult(
-            ok=True, key=self.key, output_path=str(self.output_path),
-            message=(f"exported {self.key} config to {self.output_path}"),
-        )
-
-@dataclass(frozen=True, slots=True)
-class ImportConfig(Command[ImportConfigResult]):
-    """Restore one device's ``DeviceSettings`` from an :class:`ExportConfig` JSON.
-
-    Atomic — replaces the named device's entire settings dataclass.
-    Tolerant of older snapshot versions (unknown fields ignored;
-    missing fields fall back to dataclass defaults).
-
-    Refuses to import when the file's ``key`` field doesn't match the
-    target key — prevents accidental cross-device clobber.  Pass the
-    explicit ``--force`` at the caller edge if migration across keys
-    is intentional (caller responsibility, not Command).
-    """
-    key: str
-    input_path: Path
-
-    def execute(self, app: App) -> ImportConfigResult:
-        import json
-        log.info("ImportConfig: key=%s input=%s", self.key, self.input_path)
-        if not self.input_path.is_file():
-            return ImportConfigResult(
-                ok=False, key=self.key, input_path=str(self.input_path),
-                message=f"file not found: {self.input_path}",
-            )
-        try:
-            with self.input_path.open("r", encoding="utf-8") as f:
-                payload = json.load(f)
-        except (OSError, ValueError) as e:
-            return ImportConfigResult(
-                ok=False, key=self.key, input_path=str(self.input_path),
-                message=f"failed to parse JSON: {e}",
-            )
-        if not isinstance(payload, dict):
-            return ImportConfigResult(
-                ok=False, key=self.key, input_path=str(self.input_path),
-                message="config root must be an object",
-            )
-        snapshot_key = payload.get("key")
-        if snapshot_key and snapshot_key != self.key:
-            return ImportConfigResult(
-                ok=False, key=self.key, input_path=str(self.input_path),
-                message=(f"key mismatch: snapshot is for {snapshot_key!r}, "
-                         f"target is {self.key!r}"),
-            )
-        device_snapshot = payload.get("device")
-        if not isinstance(device_snapshot, dict):
-            return ImportConfigResult(
-                ok=False, key=self.key, input_path=str(self.input_path),
-                message="missing 'device' object in snapshot",
-            )
-        try:
-            app.settings.restore_device(self.key, device_snapshot)
-        except Exception as e:
-            log.warning("ImportConfig: restore failed for %s: %s", self.key, e)
-            return ImportConfigResult(
-                ok=False, key=self.key, input_path=str(self.input_path),
-                message=f"restore failed: {e}",
-            )
-        return ImportConfigResult(
-            ok=True, key=self.key, input_path=str(self.input_path),
-            message=f"restored {self.key} config from {self.input_path}",
-        )
 
 @dataclass(frozen=True, slots=True)
 class ExportTheme(Command[ThemeExportResult]):

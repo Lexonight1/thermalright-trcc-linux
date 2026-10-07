@@ -22,13 +22,11 @@ from ...core.commands import GetPaths
 from ...core.models import ProductInfo
 from ...core.results import (
     DiscoverResult,
-    ImportConfigResult,
     Result,
     ThemeResult,
 )
 from .schemas import (
     DiscoverResponse,
-    ImportConfigResponse,
     ProductSchema,
     ThemeResponse,
 )
@@ -75,15 +73,6 @@ def to_theme_response(result: ThemeResult) -> ThemeResponse:
         ok=result.ok, message=result.message,
         key=result.key, theme_name=result.theme_name,
         target_exists=result.target_exists,
-    )
-
-
-def to_import_config_response(result: ImportConfigResult) -> ImportConfigResponse:
-    """Deliberate narrowing: ``ImportConfigResult.input_path`` is a
-    server-side absolute path and stays off the wire."""
-    log.debug("to_import_config_response: result=%s", result)
-    return ImportConfigResponse(
-        ok=result.ok, message=result.message, key=result.key,
     )
 
 

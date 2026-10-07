@@ -1915,19 +1915,6 @@ trcc theme export KEY THEME_NAME ARCHIVE_PATH
 | `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
 | `ARCHIVE_PATH` | Destination archive path (e.g. theme.tr) |
 
-### `trcc theme export-config`
-
-Snapshot one device's settings to a JSON file. Captures everything in `DeviceSettings`: active theme path, brightness, orientation, overlay edits, mask choice, format prefs. Pair with `trcc theme import-config` to restore on another host or after a wipe.
-
-```bash
-trcc theme export-config KEY OUTPUT_PATH
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | Device key, e.g. 0402:3922 |
-| `OUTPUT_PATH` | Destination JSON path (e.g. mydevice.json) |
-
 ### `trcc theme export-current`
 
 Export what the panel shows, saved or not -- the Windows app's export.
@@ -1982,19 +1969,6 @@ trcc theme import KEY ARCHIVE_PATH [NAME]
 | `KEY` | Device key (e.g. 0402:3922) whose resolution scopes the target |
 | `ARCHIVE_PATH` | Archive to unpack |
 | `NAME` | Theme name (defaults to archive filename stem) *(optional)* |
-
-### `trcc theme import-config`
-
-Restore one device's settings from an export-config JSON file.
-
-```bash
-trcc theme import-config KEY INPUT_PATH
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | Device key, e.g. 0402:3922 |
-| `INPUT_PATH` | Source JSON written by `trcc theme export-config` |
 
 ### `trcc theme list`
 

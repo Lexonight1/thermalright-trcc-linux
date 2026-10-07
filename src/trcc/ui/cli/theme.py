@@ -12,12 +12,10 @@ from ...core.commands import (
     DeleteTheme,
     DeviceState,
     DownloadCloudTheme,
-    ExportConfig,
     ExportCurrentTheme,
     ExportDcTheme,
     ExportOverlay,
     ExportTheme,
-    ImportConfig,
     ImportTheme,
     ListCloudThemes,
     ListThemes,
@@ -443,50 +441,6 @@ def cloud_load(
     typer.echo(result.message)
     if result.theme_path:
         typer.echo(f"  staged at: {result.theme_path}")
-    if not result.ok:
-        raise typer.Exit(code=1)
-
-
-@app.command("export-config")
-def export_config(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
-    output_path: Path = typer.Argument(
-        ..., help="Destination JSON path (e.g. mydevice.json)",
-    ),
-) -> None:
-    """Snapshot one device's settings to a JSON file.
-
-    Captures everything in ``DeviceSettings``: active theme path,
-    brightness, orientation, overlay edits, mask choice, format prefs.
-    Pair with :command:`trcc theme import-config` to restore on
-    another host or after a wipe.
-    """
-    log.info(
-        "cli theme export-config: key=%s output_path=%s", key, output_path,
-    )
-    result = get_app().dispatch(
-        ExportConfig(key=key, output_path=output_path),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
-
-
-@app.command("import-config")
-def import_config(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
-    input_path: Path = typer.Argument(
-        ..., help="Source JSON written by `trcc theme export-config`",
-    ),
-) -> None:
-    """Restore one device's settings from an export-config JSON file."""
-    log.info(
-        "cli theme import-config: key=%s input_path=%s", key, input_path,
-    )
-    result = get_app().dispatch(
-        ImportConfig(key=key, input_path=input_path),
-    )
-    typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
 

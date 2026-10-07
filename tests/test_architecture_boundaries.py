@@ -1018,7 +1018,10 @@ KNOWN_FS_IO: dict[str, int] = {
     # existence check ``LoadVideo`` two definitions above already makes, and
     # the alternative is a worker thread failing on it after the caller has
     # returned.
-    "trcc/core/commands/theme.py": 25,
+    # 25 -> 23 on 2026-10-06: ExportConfig / ImportConfig DELETED (their
+    # json.dump write and json.load read went with them) -- the import was a
+    # local file-read hole through the theme download.
+    "trcc/core/commands/theme.py": 23,
     "trcc/core/libraries.py": 1,
     "trcc/core/toolchain.py": 2,
     "trcc/services/_dc.py": 3,

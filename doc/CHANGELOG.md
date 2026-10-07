@@ -17,6 +17,16 @@
   API server is itself a client of the App.
 - **The `EnsureDaemon` command is removed** (for anyone scripting against the
   Python command bus).
+- **`trcc theme export-config` and `trcc theme import-config` are removed**,
+  with the REST API's `GET /theme/{key}/config-download` and
+  `POST /theme/config/import-upload` and the `ExportConfig` / `ImportConfig`
+  commands. **Security:** importing a config restored every device setting
+  without checking paths, so a config naming any file you can read as the mask
+  made the next theme download contain that file. The API listens on this
+  machine with no token by default, so any local program could do it. The
+  feature also never worked across machines (configs hold absolute paths), and
+  the Windows app has no config import. Back up a look with the theme export
+  instead (`trcc theme export-current`, or the export button in `trcc gui`).
 - **"Flash an overlay element" is removed**: `trcc display overlay-flash`, the
   API's `POST …/overlay-elements/{id}/flash`, the Qt gui's "Flash on screen"
   button and the `FlashOverlayElement` command. It promised to highlight the

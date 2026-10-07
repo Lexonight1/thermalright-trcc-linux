@@ -269,14 +269,6 @@ _UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _json_default_tuple(obj: Any) -> Any:
-    """tuple → list for JSON serialisation (no other coercions)."""
-    log.debug("_json_default_tuple: type=%s", type(obj).__name__)
-    if isinstance(obj, tuple):
-        return list(obj)
-    raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
-
-
 def _require_connected_device(app: App, key: str) -> Any:
     """Fetch a connected device by key, or raise.
 

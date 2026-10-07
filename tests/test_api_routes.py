@@ -1234,29 +1234,23 @@ def test_config_set_date_format_round_trips(api_client: TestClient) -> None:
     assert body["fmt"] == "dd.MM.yyyy"
 
 
-def test_theme_config_export_import_round_trips(api_client: TestClient) -> None:
-    # Download the device's settings snapshot as JSON.
-    resp = api_client.get("/theme/0402:3922/config-download")
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("application/json")
-    payload = resp.content
-    assert payload  # non-empty JSON snapshot
+def test_no_route_restores_a_whole_device_config(api_client: TestClient) -> None:
+    """``POST /theme/config/import-upload`` restored an entire DeviceSettings
+    with no path confinement: a mask_path aimed at any readable file came back
+    inside the next ``GET /theme/{key}/download`` .tr -- a local file read,
+    re-driven 2026-10-06.  Deleted with ExportConfig/ImportConfig; it must not
+    come back."""
+    from trcc.core import commands
 
-    # Re-import it via multipart upload (key as query param, file as multipart).
-    resp2 = api_client.post(
-        "/theme/config/import-upload",
-        params={"key": "0402:3922"},
-        files={"config": ("device-config.json", payload, "application/json")},
-    )
-    assert resp2.status_code == 200
-    body = resp2.json()
-    assert body["ok"] is True
-    assert body["key"] == "0402:3922"
+    upload = api_client.post(
+        "/theme/config/import-upload", params={"key": "0402:3922"},
+        files={"config": ("x.json", b"{}", "application/json")})
+    download = api_client.get("/theme/0402:3922/config-download")
 
-
-# =========================================================================
-# theme router — listing only (save/export/import need real fixtures)
-# =========================================================================
+    assert upload.status_code in (404, 405)
+    assert download.status_code in (404, 405)
+    assert not hasattr(commands, "ImportConfig")
+    assert not hasattr(commands, "ExportConfig")
 
 
 def test_theme_save_requires_key(api_client: TestClient) -> None:
@@ -1828,14 +1822,13 @@ def test_the_exports_come_back_as_bytes_and_leave_nothing(
     dc = client.post("/theme/demo/export-dc", json={"key": _KEY})
     archive = client.get(f"/theme/{_KEY}/demo/download")
     shown = client.get(f"/theme/{_KEY}/download")
-    config = client.get(f"/theme/{_KEY}/config-download")
     (app.platform.paths().user_content_dir() / "demo.dc").write_bytes(dc.content)
     png = client.post(f"/devices/{_KEY}/display/render-dc", json={
         "dc_path": str(app.platform.paths().user_content_dir() / "demo.dc"),
         "width": 320, "height": 320})
 
-    assert [r.status_code for r in (overlay, dc, archive, shown, config, png)
-            ] == [200] * 6
+    assert [r.status_code for r in (overlay, dc, archive, shown, png)
+            ] == [200] * 5
     assert shown.content[:4] == b"\xdd\xdc\xdd\xdc"     # a Windows .tr
     assert json.loads(overlay.content)["elements"][0]["type"] == "clock"
     assert overlay.headers["content-disposition"] == (
@@ -1846,7 +1839,6 @@ def test_the_exports_come_back_as_bytes_and_leave_nothing(
         "/theme/import-upload", params={"key": _KEY, "name": "roundtrip"},
         files={"archive": ("demo.tr", archive.content, "application/octet-stream")})
     assert reimported.status_code == 200, reimported.text
-    assert json.loads(config.content)
     assert png.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert list(private_tmp.iterdir()) == []
 
@@ -1858,7 +1850,6 @@ def test_a_malformed_range_leaves_no_temp_file(
     3 of 3 requests leaked their tempfile.  Bytes in a plain Response do not."""
     client, _ = panel_api
     for bad in ("bytes=abc", "bytes=99999999-"):
-        client.get(f"/theme/{_KEY}/config-download", headers={"range": bad})
         client.get(f"/theme/{_KEY}/demo/download", headers={"range": bad})
         client.get(f"/theme/{_KEY}/download", headers={"range": bad})
     assert list(private_tmp.iterdir()) == []

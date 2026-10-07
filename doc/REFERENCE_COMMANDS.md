@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**141 total: 103 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -648,17 +648,6 @@ Force-install the theme + cloud + mask archives for a resolution.
 | `width` | `int` | yes |
 | `height` | `int` | yes |
 
-### `ExportConfig`
-
-Write one device's ``DeviceSettings`` to a JSON file.
-
-*Command* → `ExportConfigResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-| `output_path` | `Path` | yes |
-
 ### `ExportCurrentTheme`
 
 Export what the device is SHOWING, saved or not, to a file.
@@ -720,17 +709,6 @@ Encode a clip of *path* into a loose ``Theme.zt`` for *key*'s panel.
 | `end_ms` | `int | None` | no |
 | `rotation` | `int` | no |
 | `fit_mode` | `FitMode | None` | no |
-
-### `ImportConfig`
-
-Restore one device's ``DeviceSettings`` from an :class:`ExportConfig` JSON.
-
-*Command* → `ImportConfigResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-| `input_path` | `Path` | yes |
 
 ### `ImportTheme`
 

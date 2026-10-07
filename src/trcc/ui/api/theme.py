@@ -24,12 +24,10 @@ from ...core.commands import (
     DeviceState,
     DownloadCloudTheme,
     EnsureDataDownload,
-    ExportConfig,
     ExportCurrentTheme,
     ExportDcTheme,
     ExportOverlay,
     ExportTheme,
-    ImportConfig,
     ImportTheme,
     ListCloudThemes,
     ListThemes,
@@ -52,7 +50,6 @@ from ._shared import (
     owned_path,
     staging_dir,
     temp_output,
-    to_import_config_response,
     to_theme_response,
 )
 from .schemas import (
@@ -60,7 +57,6 @@ from .schemas import (
     CloudThemeLoadRequest,
     DeleteThemeRequest,
     ExportOverlayRequest,
-    ImportConfigResponse,
     ThemeDcExportRequest,
     ThemeResponse,
     ThemeSaveRequest,
@@ -230,57 +226,6 @@ def download(key: str, theme_name: str, request: Request) -> Response:
         ))
         return file_response(tmp, "application/octet-stream",
                              f"{safe_name}.tr")
-
-
-@router.get("/{key}/config-download")
-def config_download(key: str, request: Request) -> Response:
-    """Stream a device's settings snapshot as a JSON download.
-
-    REST equivalent of the cli ``theme export-config``: bytes flow back
-    over the response instead of landing on the server filesystem.  The
-    snapshot is written to a tempfile that ``temp_output`` deletes however
-    the route exits.
-    """
-    log.info("api GET /theme/{key}/config-download: key=%s", key)
-    with temp_output(".json") as tmp:
-        http_error_if_failed(request.app.state.trcc.dispatch(
-            ExportConfig(key=key, output_path=tmp),
-        ))
-        return file_response(tmp, "application/json",
-                             f"{_safe_basename(key)}-config.json")
-
-
-@router.post("/config/import-upload", response_model=ImportConfigResponse)
-async def config_import_upload(
-    request: Request,
-    key: str,
-    config: UploadFile = File(...),
-) -> ImportConfigResponse:
-    """Restore a device's settings from an uploaded JSON snapshot.
-
-    Multipart equivalent of the cli ``theme import-config`` for remote
-    clients without server filesystem access.  The upload is staged to a
-    tempfile, imported, and the tempfile cleaned up after dispatch.
-    """
-    log.info(
-        "api POST /theme/config/import-upload: key=%s filename=%s",
-        key, config.filename,
-    )
-    uploads_dir = staging_dir(request)
-    staged = uploads_dir / f"{uuid.uuid4().hex}.json"
-    try:
-        with staged.open("wb") as f:
-            shutil.copyfileobj(config.file, f)
-        result = request.app.state.trcc.dispatch(
-            ImportConfig(key=key, input_path=staged),
-        )
-    finally:
-        try:
-            staged.unlink()
-        except OSError:
-            pass
-    http_error_if_failed(result)
-    return to_import_config_response(result)
 
 
 @router.get("/list")

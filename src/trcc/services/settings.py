@@ -851,31 +851,6 @@ class Settings:
             self.for_device(key).user_overlay_catalog = catalog
             self._save()
 
-    # ── Atomic snapshot / restore (used by ExportConfig/ImportConfig) ─
-
-    def snapshot_device(self, key: str) -> dict[str, Any]:
-        """Return a JSON-ready snapshot of one device's DeviceSettings.
-
-        Same shape used internally by ``_save`` — tuples already coerced
-        to lists by ``_json_default`` is applied at JSON write time.
-        Caller passes the dict to ``json.dump`` with that same default.
-        """
-        log.info("snapshot_device: key=%s", key)
-        with self._lock:
-            return asdict(self.for_device(key))
-
-    def restore_device(self, key: str, snapshot: dict[str, Any]) -> None:
-        """Replace a device's entire DeviceSettings atomically from a dict.
-
-        Inverse of :meth:`snapshot_device`.  Tolerant of older snapshots
-        (unknown fields ignored; missing fields fall back to dataclass
-        defaults) so JSON exports survive schema evolution.
-        """
-        log.info("restore_device: key=%s fields=%d", key, len(snapshot))
-        with self._lock:
-            self._devices[key] = _device_settings_from_dict(snapshot)
-            self._save()
-
     # ── Slideshow ─────────────────────────────────────────────────────
 
     def set_slideshow_enabled(self, key: str, enabled: bool) -> None:

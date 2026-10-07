@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**134 endpoints.**
+**132 endpoints.**
 
 ## Running it
 
@@ -93,14 +93,12 @@ Interactive docs are served at `/docs` while the API is running.
 | `GET /theme/cloud` | `CloudThemesListResult` | List Thermalright cloud catalog (offline — catalog is static). |
 | `POST /theme/cloud/download` | `CloudThemeLoadResult` | Cache a cloud theme locally WITHOUT applying it to a device. |
 | `POST /theme/cloud/{key}` | `CloudThemeLoadResult` | Download a cloud theme + apply it to *key*. |
-| `POST /theme/config/import-upload` | `ImportConfigResponse` | Restore a device's settings from an uploaded JSON snapshot. |
 | `POST /theme/export-overlay` | — | Download a theme's overlay config — ``config1.dc`` or ``trcc.json``. |
 | `POST /theme/import-upload` | `ThemeImportResult` | Import a theme archive uploaded via multipart form-data. |
 | `POST /theme/init` | `EnsureDataDownloadResult` | Prefetch theme/web/mask archives for a resolution (idempotent). |
 | `GET /theme/list` | `ThemesListResult` | List themes for a device resolution. |
 | `POST /theme/save` | `ThemeResponse` | Save the device's active theme, refusing a name collision at 409. |
 | `GET /theme/web` | `list` | Cloud-theme preview gallery for a resolution (e.g. ``320x320``). |
-| `GET /theme/{key}/config-download` | — | Stream a device's settings snapshot as a JSON download. |
 | `GET /theme/{key}/download` | — | Stream what the panel shows, saved or not, as a Windows ``.tr``. |
 | `GET /theme/{key}/{theme_name}/download` | — | Stream a theme archive as a multipart download. |
 | `POST /theme/{name}/export-dc` | — | Download a theme as legacy ``config1.dc``. |

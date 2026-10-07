@@ -278,20 +278,6 @@ class EnsureDataDownloadResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
-class ExportConfigResult(Result):
-    """Per-device JSON snapshot written to disk."""
-    key: str = ""
-    output_path: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class ImportConfigResult(Result):
-    """Per-device JSON snapshot restored from disk."""
-    key: str = ""
-    input_path: str = ""
-
-
-@dataclass(frozen=True, slots=True)
 class RenderDcResult(Result):
     """Stand-alone DC render output (overlay preview, no device).
 

@@ -105,12 +105,6 @@ class ThemeResponse(ResultBase):
 # ── Control-center settings ──────────────────────────────────────────
 
 
-class ImportConfigResponse(ResultBase):
-    """Deliberately narrower than ``ImportConfigResult``: ``input_path`` is a
-    server-side absolute path and is not disclosed over HTTP."""
-    key: str = ""
-
-
 # =========================================================================
 # Request bodies
 # =========================================================================

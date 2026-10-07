@@ -224,14 +224,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "why nobody noticed it was DisconnectDevice byte-for-byte for the "
         "whole rebuild"
     )),
-    "ExportConfig": (frozenset({"cli", "api"}), (
-        "gap: write a device's settings to JSON -- a GUI user cannot back up a "
-        "configuration"
-    )),
-    "ImportConfig": (frozenset({"cli", "api"}), (
-        "gap: restore settings from an ExportConfig JSON; the other half of the "
-        "same hole"
-    )),
     "ExportDcTheme": (frozenset({"cli", "api"}), (
         "gap: write a theme as a legacy config1.dc"
     )),
