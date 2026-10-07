@@ -4214,3 +4214,25 @@ def test_qtgui_shows_the_sent_frame_without_rendering_another(gui_app: App) -> N
     assert asked == []
     assert sizes == [(320, 320), (320, 320)]
     assert not surface._label.pixmap().isNull()
+
+
+def test_qtgui_welcomes_a_first_run_once(make_window, qapp: object,
+                                         tmp_path: Path) -> None:
+    """The welcome is for the FIRST launch.  Only the CLI and the API ever
+    marked first run done, so a qtgui-only user opened on System with the
+    welcome text at every launch.
+
+    MUTATION CHECK: drop the MarkFirstRunDone dispatch and the second
+    window opens on System again.
+    """
+    from trcc.core.commands import GetFirstRunStatus
+
+    app = _two_device_app(tmp_path)
+    assert app.dispatch(GetFirstRunStatus()).is_first_run, "precondition"
+
+    first = make_window(app)
+    second = make_window(app)
+
+    assert first._content.currentWidget() is first._panels["system"]
+    assert second._content.currentWidget() is second._panels["devices"]
+    assert not app.dispatch(GetFirstRunStatus()).is_first_run

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from ...core.commands import (
     GetFirstRunStatus,
     GetPlatformInfo,
+    MarkFirstRunDone,
     RefreshAutostart,
 )
 from ...core.ports import CommandBus
@@ -135,9 +136,15 @@ class MainWindow(QMainWindow):
         for widget in self._panels.values():
             content.addWidget(widget)
         # First-run users land on System (where the doctor lives) so the
-        # welcome screen guides them; everyone else starts on Devices.
-        initial = ("system" if app.dispatch(GetFirstRunStatus()).is_first_run
-                   else "devices")
+        # welcome screen guides them; everyone else starts on Devices.  Read
+        # ONCE and marked done: nothing else in this window ever cleared it,
+        # so a qtgui-only user got the welcome at every launch.
+        self._first_run = app.dispatch(GetFirstRunStatus()).is_first_run
+        if self._first_run:
+            log.info("MainWindow: first run — opening on System, then marking "
+                     "it done")
+            app.dispatch(MarkFirstRunDone())
+        initial = "system" if self._first_run else "devices"
         content.setCurrentWidget(self._panels[initial])
         sidebar.select(initial)
         self._wire_device_selection(sidebar)
@@ -204,7 +211,7 @@ class MainWindow(QMainWindow):
         info = self._app.dispatch(GetPlatformInfo())
         msg = (f"{info.distro_name}  |  install: {info.install_method}"
                f"  |  config: {info.config_dir}")
-        if self._app.dispatch(GetFirstRunStatus()).is_first_run:
+        if self._first_run:
             msg = (
                 "Welcome to TRCC.  Open System → run Doctor to check your "
                 "setup, then plug in a device and open Devices to scan."

@@ -153,6 +153,9 @@
 
 ### Fixed
 
+- **`trcc qtgui` shows its welcome once.** It opened on the System page with
+  the welcome text at every launch, because only the command line ever
+  recorded that the first run was over.
 - **On Windows, TRCC installed from the installer now starts at sign-in.**
   The installed programs ask for administrator rights, and Windows does not
   start such a program from the usual sign-in entry, so turning autostart on
