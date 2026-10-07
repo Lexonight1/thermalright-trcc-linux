@@ -102,6 +102,18 @@ class SplitModeChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class GameModeChanged(Event):
+    """A device's game mode was switched or its CPU threshold changed.
+
+    By any UI, or by a rotation into a folder that keeps its own pair, so
+    every UI's game-mode controls follow the one saved state.
+    """
+    key: str
+    enabled: bool
+    threshold: int
+
+
+@dataclass(frozen=True, slots=True)
 class MaskApplied(Event):
     key: str
     path: str

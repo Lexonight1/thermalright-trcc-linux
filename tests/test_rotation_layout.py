@@ -212,6 +212,39 @@ def test_each_orientation_keeps_its_own_theme_and_brightness(folders: Path) -> N
     assert heard == [40, 80]            # every UI shows the folder's own level
 
 
+def test_each_orientation_keeps_its_own_game_mode(folders: Path) -> None:
+    """Game mode is the last pair in the C#'s per-folder ``Theme.dc``
+    (FormCZTV.cs:6230-6231, read back at :1672-1675): a rotation swaps in the
+    folder's own switch and threshold, tells every UI, and the pair survives a
+    restart."""
+    from trcc.core.events import GameModeChanged
+
+    app = _app(folders)
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    _pick(app, (854, 480), "Theme3", 40)
+    app.settings.set_game_mode(_KEY, enabled=True, threshold=60)
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    s = app.settings.for_device(_KEY)
+    assert (s.game_enabled, s.game_threshold) == (True, 60)     # carried over
+    app.settings.set_game_mode(_KEY, enabled=False, threshold=30)
+
+    heard: list[tuple[bool, int]] = []
+    app.events.subscribe(GameModeChanged,
+                         lambda e: heard.append((e.enabled, e.threshold)))
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    s = app.settings.for_device(_KEY)
+    assert (s.game_enabled, s.game_threshold) == (True, 60)
+    assert heard == [(True, 60)]
+    app.close()
+
+    again = App(MockPlatform([_WIDE], folders), renderer=QtRenderer())
+    assert again.dispatch(ConnectDevice(key=_KEY)).ok
+    again.dispatch(SetOrientation(key=_KEY, degrees=90))
+    s = again.settings.for_device(_KEY)
+    assert (s.game_enabled, s.game_threshold) == (False, 30)
+
+
 def test_a_folder_left_untouched_is_not_remembered(folders: Path) -> None:
     """The C# writes a folder's ``Theme.dc`` only on a user action, so a folder
     merely passed through still reads empty and carries over the next time."""

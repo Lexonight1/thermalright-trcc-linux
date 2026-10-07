@@ -338,8 +338,8 @@ class Settings:
     def enter_catalog(self, key: str, catalog: str) -> FolderVisit:
         """Make *catalog* the folder *key*'s per-folder values belong to.
 
-        The C# keeps theme, brightness, split mode and slideshow in each
-        folder's ``Theme.dc`` and reads the new folder's on a rotation
+        The C# keeps theme, brightness, split mode, slideshow and game mode in
+        each folder's ``Theme.dc`` and reads the new folder's on a rotation
         (``UpDateUCComboBox1`` -> ``ReadFileThemeSub``).  Here the live fields
         are the active folder's; the one being left is stashed, and the one
         entered is restored -- ``"restored"`` -- or, never visited, keeps the
@@ -539,6 +539,22 @@ class Settings:
         log.info("set_split_mode: key=%s mode=%d", key, mode)
         with self._lock:
             self.for_device(key).split_mode = mode
+            self._save()
+
+    def set_game_mode(
+        self, key: str, *, enabled: bool | None = None,
+        threshold: int | None = None,
+    ) -> None:
+        """Switch game mode and/or set its CPU threshold (0-99, the C#'s
+        two-digit box); ``None`` leaves that half as it is."""
+        log.info("set_game_mode: key=%s enabled=%s threshold=%s",
+                 key, enabled, threshold)
+        with self._lock:
+            s = self.for_device(key)
+            if enabled is not None:
+                s.game_enabled = enabled
+            if threshold is not None:
+                s.game_threshold = max(0, min(99, threshold))
             self._save()
 
     # ── LED-device settings ───────────────────────────────────────────

@@ -11,6 +11,7 @@ from ..errors import (
 )
 from ..events import (
     BrightnessChanged,
+    GameModeChanged,
     LedColorsChanged,
     LedSettingsChanged,
     SlideshowChanged,
@@ -133,7 +134,7 @@ def orientation_catalog(app: App, key: str, degrees: int) -> str | None:
 
 def enter_orientation(app: App, key: str, degrees: int | None = None) -> str:
     """Swap in *key*'s values for the folder it shows at *degrees* -- its own
-    theme, brightness, split mode and slideshow, kept per folder as the C#
+    theme, brightness, split mode, slideshow and game mode, kept per folder as the C#
     keeps them per ``Theme.dc``.  Returns the settings verdict: ``"same"``,
     ``"restored"`` or ``"first"`` (``""`` with no live profile).
 
@@ -148,7 +149,8 @@ def enter_orientation(app: App, key: str, degrees: int | None = None) -> str:
         return ""
     s = app.settings.for_device(key)
     before = (s.brightness, s.split_mode, s.slideshow_enabled,
-              s.slideshow_interval_s, list(s.slideshow_themes))
+              s.slideshow_interval_s, list(s.slideshow_themes),
+              s.game_enabled, s.game_threshold)
     visit = app.settings.enter_catalog(key, catalog)
     s = app.settings.for_device(key)
     log.info("enter_orientation: %s %d° -> %s (%s)", key, degrees, catalog,
@@ -158,8 +160,10 @@ def enter_orientation(app: App, key: str, degrees: int | None = None) -> str:
     if s.split_mode != before[1]:
         app.events.publish(SplitModeChanged(key=key, mode=s.split_mode))
     if (s.slideshow_enabled, s.slideshow_interval_s,
-            list(s.slideshow_themes)) != before[2:]:
+            list(s.slideshow_themes)) != before[2:5]:
         _publish_slideshow(app, key)
+    if (s.game_enabled, s.game_threshold) != before[5:]:
+        _publish_game_mode(app, key)
     return visit
 
 
@@ -688,6 +692,15 @@ def _publish_slideshow(app: App, key: str) -> None:
         interval_s=float(s.slideshow_interval_s),
         themes=tuple(s.slideshow_themes),
     ))
+
+
+def _publish_game_mode(app: App, key: str) -> None:
+    """Tell every UI the game mode's saved state, whoever changed it."""
+    s = app.settings.for_device(key)
+    log.info("_publish_game_mode: %s enabled=%s threshold=%d",
+             key, s.game_enabled, s.game_threshold)
+    app.events.publish(GameModeChanged(
+        key=key, enabled=s.game_enabled, threshold=s.game_threshold))
 
 
 def _drive_slideshow(app: App, key: str) -> None:

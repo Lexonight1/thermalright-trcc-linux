@@ -135,3 +135,38 @@ def test_prefers_trcc_json_over_pre_cutover(tmp_path: Path) -> None:
     s = Settings(paths)
 
     assert s.app.language == "de"
+
+
+def test_a_config_from_before_game_mode_loads_it_off(tmp_path: Path) -> None:
+    """Configs and per-folder slots written before game mode existed carry
+    neither field; both read back as the C#'s defaults (UCThemeLocal.cs:122-123),
+    off at 75%."""
+    payload = {
+        "devices": {"0402:3922": {
+            "brightness": 40, "active_catalog": "theme320320",
+            "orientation_slots": {"theme240320": {"brightness": 80}},
+        }},
+    }
+    (tmp_path / "trcc.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    dev = Settings(FakePaths(tmp_path)).for_device("0402:3922")
+
+    assert (dev.game_enabled, dev.game_threshold) == (False, 75)
+    slot = dev.orientation_slots["theme240320"]
+    assert (slot.brightness, slot.game_enabled, slot.game_threshold) == (80, False, 75)
+
+
+def test_the_game_threshold_is_held_to_two_digits(tmp_path: Path) -> None:
+    """The C#'s threshold box takes two digits; a value outside 0-99 from the
+    CLI or API is clamped, and ``None`` leaves that half alone."""
+    s = Settings(FakePaths(tmp_path))
+    dev = s.for_device("0402:3922")
+    s.set_game_mode("0402:3922", enabled=True)
+    s.set_game_mode("0402:3922", threshold=150)
+    assert (dev.game_enabled, dev.game_threshold) == (True, 99)
+    s.set_game_mode("0402:3922", threshold=-5)
+    assert (dev.game_enabled, dev.game_threshold) == (True, 0)
+    s.set_game_mode("0402:3922", threshold=42)
+    s.set_game_mode("0402:3922", enabled=False)
+    saved = Settings(FakePaths(tmp_path)).for_device("0402:3922")
+    assert (saved.game_enabled, saved.game_threshold) == (False, 42)

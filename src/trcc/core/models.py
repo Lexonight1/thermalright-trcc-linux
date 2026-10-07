@@ -782,10 +782,16 @@ class DeviceSettings:
     slideshow_enabled: bool = False
     slideshow_interval_s: float = 60.0
     slideshow_themes: list[str] = field(default_factory=list)
+    # Game mode -- the C#'s ``isGame`` / ``myCPU`` (UCThemeLocal.cs:122-123):
+    # while on, a CPU usage above ``game_threshold`` percent for 11 seconds
+    # running swaps the panel to a black, overlay-only frame.  The threshold
+    # box holds two digits, so 0-99.
+    game_enabled: bool = False
+    game_threshold: int = 75
     # Per-orientation memory -- the C#'s per-folder ``Theme.dc``.  The fields
     # above are the folder the panel is in (``active_catalog``); every OTHER
-    # folder this panel has shown keeps its own theme, brightness, split mode
-    # and slideshow in ``orientation_slots``, swapped back in when the panel
+    # folder this panel has shown keeps its own theme, brightness, split mode,
+    # slideshow and game mode in ``orientation_slots``, swapped back in when the panel
     # returns there (FormCZTV.ReadFileThemeSub / ChangeFileTheme).  ``None``:
     # not recorded yet -- the next connect or rotation records it.
     active_catalog: str | None = None
@@ -802,15 +808,17 @@ class DeviceSettings:
 @dataclass
 class OrientationState:
     """What a panel keeps per theme folder -- the C#'s 48-byte ``Theme.dc``
-    (theme, slideshow, split mode, brightness), less the Game mode pair, which
-    is not ported.  Always taken from a :class:`DeviceSettings`, so its
-    defaults are that class's."""
+    (theme, slideshow, split mode, brightness, game mode; FormCZTV.cs:6213-6231).
+    Always taken from a :class:`DeviceSettings`, so its defaults are that
+    class's."""
     current_theme: str | None = DeviceSettings.current_theme
     brightness: int = DeviceSettings.brightness
     split_mode: int = DeviceSettings.split_mode
     slideshow_enabled: bool = DeviceSettings.slideshow_enabled
     slideshow_interval_s: float = DeviceSettings.slideshow_interval_s
     slideshow_themes: list[str] = field(default_factory=list)
+    game_enabled: bool = DeviceSettings.game_enabled
+    game_threshold: int = DeviceSettings.game_threshold
 
 
 # =========================================================================
