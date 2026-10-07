@@ -319,9 +319,9 @@ jobs:
            Controls LCD displays and LED segment displays on Thermalright CPU coolers
            and AIO liquid coolers. GUI, CLI, and REST API interfaces.
            Depends on the apt-split python3-pyside6.* modules — suitable for
-           Ubuntu 24.04+ and Debian 13+ and any distro packaging PySide6 as a
-           system package. Use the legacy .deb only on releases without
-           python3-pyside6 in apt.
+           Ubuntu 25.10+ and Debian 13+ and any distro packaging PySide6 as a
+           system package. Ubuntu 24.04 has none: use the legacy .deb there
+           and on any release without python3-pyside6 in apt.
           CTRL
 
           cat > "$PKG/DEBIAN/postinst" << POST
