@@ -26,6 +26,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trcc.__version__ import __version__
 from trcc.app import App
 from trcc.core.commands import GetPaths, LoadTheme
 from trcc.core.models import DEFAULT_AUTOSTART_TARGET
@@ -132,7 +133,7 @@ def test_root_returns_endpoint_directory(api_client: TestClient) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "TRCC API"
-    assert body["version"] == "next"
+    assert body["version"] == __version__
     # The endpoint catalog mentions at least the canonical routes
     endpoints = " ".join(body["endpoints"])
     for canonical in (

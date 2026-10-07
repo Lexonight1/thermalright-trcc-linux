@@ -24,7 +24,7 @@ from ..presentation.display_source import describe_source
 log = logging.getLogger(__name__)
 
 app = typer.Typer(
-    help="TRCC — Thermalright LCD/LED cooler control (clean-slate build).",
+    help="TRCC — Thermalright LCD/LED cooler control.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -146,10 +146,9 @@ def qtgui(
         ),
     ),
 ) -> None:
-    """Launch the Qt-native GUI (clean-slate, layout-driven).
+    """Launch the Qt-native GUI (layout-driven).
 
-    This is the rebuild's GUI — built up over G1–G5 and used during
-    development.  See ``gui`` for the legacy Windows-style port.
+    See ``gui`` for the Windows-style one.
 
     ``--resume`` starts hidden in the tray, the same as ``gui``.  Without it
     qtgui could not be autostarted sanely: it would pop a window on every
@@ -191,12 +190,7 @@ def gui(
         ),
     ),
 ) -> None:
-    """Launch the legacy Windows-style GUI (port in progress).
-
-    Today's shell hosts the device sidebar + a diagnostic content
-    area — enough to prove the legacy-on-next/-bus pattern end to
-    end on real hardware.  Real feature panels (LCD handler, theme
-    settings, mask, video, LED) land in subsequent passes.
+    """Launch the Windows-style GUI.
 
     ``--resume`` starts hidden in the tray (XDG autostart-on-login);
     bare ``trcc gui`` shows the window.

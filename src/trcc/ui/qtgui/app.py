@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
         log.info("MainWindow.__init__: autostart refresh — enabled=%s target=%s",
                  autostart.enabled, autostart.target)
 
-        self.setWindowTitle("TRCC — Thermalright LCD/LED Cooler Control (next)")
+        self.setWindowTitle("TRCC Linux — Thermalright LCD/LED Cooler Control")
         # Rail + a 480px preview + a usable tool column.  ``ui/gui`` is a
         # fixed 1454x800 for the same three regions.
         self.resize(1440, 760)

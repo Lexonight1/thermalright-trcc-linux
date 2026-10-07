@@ -112,6 +112,11 @@
 
 ### Changed
 
+- **"(next)" is gone from what you see.** The login entry is named
+  "TRCC Linux" (it said "TRCC (next)"), the Qt window's title drops "(next)",
+  and `trcc --help` and the `gui` / `qtgui` help no longer describe a
+  rebuild in progress. The REST API reports the real version instead of
+  "next".
 - **For developers: a `Renderer` no longer implements `to_raw_rgb24`.**
   Nothing called it once screen casts moved into the App.
 - **Each screen orientation now remembers its own theme, brightness and

@@ -5,7 +5,7 @@
      Regenerate: PYTHONPATH=src python3 dev/gen_cli_reference.py
      A command's text here IS its docstring; edit that. -->
 
-TRCC — Thermalright LCD/LED cooler control (clean-slate build).
+TRCC — Thermalright LCD/LED cooler control.
 
 Commands that act on a device take its **`KEY`** — the USB `VID:PID` shown by `trcc detect`, e.g. `0402:3922` — as the first argument.
 
@@ -99,7 +99,7 @@ trcc doctor
 
 ### `trcc gui`
 
-Launch the legacy Windows-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area — enough to prove the legacy-on-next/-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. `--resume` starts hidden in the tray (XDG autostart-on-login); bare `trcc gui` shows the window. `--decorated` asks the window manager for a normal frame. The default shell is frameless and drags by its top strip, which some window managers will not move at all — leaving the window pinned where it opened with no way to shift it (#231). The capability already existed and two guides already documented the flag; only the flag itself was missing (#247).
+Launch the Windows-style GUI. `--resume` starts hidden in the tray (XDG autostart-on-login); bare `trcc gui` shows the window. `--decorated` asks the window manager for a normal frame. The default shell is frameless and drags by its top strip, which some window managers will not move at all — leaving the window pinned where it opened with no way to shift it (#231). The capability already existed and two guides already documented the flag; only the flag itself was missing (#247).
 
 ```bash
 trcc gui [OPTIONS]
@@ -120,7 +120,7 @@ trcc kill
 
 ### `trcc qtgui`
 
-Launch the Qt-native GUI (clean-slate, layout-driven). This is the rebuild's GUI — built up over G1–G5 and used during development. See `gui` for the legacy Windows-style port. `--resume` starts hidden in the tray, the same as `gui`. Without it qtgui could not be autostarted sanely: it would pop a window on every login where the gui skin comes up quietly.
+Launch the Qt-native GUI (layout-driven). See `gui` for the Windows-style one. `--resume` starts hidden in the tray, the same as `gui`. Without it qtgui could not be autostarted sanely: it would pop a window on every login where the gui skin comes up quietly.
 
 ```bash
 trcc qtgui [OPTIONS]

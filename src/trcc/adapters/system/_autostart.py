@@ -113,7 +113,7 @@ def runs_trcc(command: str) -> bool:
 _AUTOSTART_TEMPLATE = """\
 [Desktop Entry]
 Type=Application
-Name=TRCC (next)
+Name=TRCC Linux
 GenericName=Thermalright Cooler Control
 Comment=Auto-start TRCC ({target}) on login
 Exec={exec_cmd}

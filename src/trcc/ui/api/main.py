@@ -131,7 +131,7 @@ def build_app(trcc: CommandBus | None = None) -> FastAPI:
     api = FastAPI(
         title="TRCC API",
         description="REST API for Thermalright LCD/LED cooler control.",
-        version="next",
+        version=__version__,
     )
     api.state.trcc = trcc
 
@@ -251,7 +251,7 @@ def build_app(trcc: CommandBus | None = None) -> FastAPI:
         log.debug("root")
         return {
             "name": "TRCC API",
-            "version": "next",
+            "version": __version__,
             "endpoints": [
                 "GET  /devices",
                 "POST /devices/{key}/connect",
