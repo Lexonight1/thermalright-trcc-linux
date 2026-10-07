@@ -258,6 +258,41 @@ def test_amdgpu_fan_reads_rpm_and_duty_separately(tmp_path: Path) -> None:
     assert gpu.fan() == 20.0
 
 
+@pytest.mark.parametrize("files, expected", [
+    ({"product_name": "Radeon Pro W7800"}, "Radeon Pro W7800"),
+    ({}, "AMD Radeon RX 6800 XT"),                       # amdgpu.ids row
+    ({"revision": "0x99\n"}, "AMD Navi 21 [Radeon RX 6800/6800 XT / 6900 XT]"),
+    ({"device": "0x1234\n"}, "AMD GPU 0"),                # in neither table
+], ids=["product_name", "amdgpu_ids", "pci_ids", "unknown"])
+def test_an_amd_card_is_named_not_numbered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    files: dict[str, str], expected: str,
+) -> None:
+    """#301: a card without ``product_name`` was named by its vbios part
+    number ("113-D7070100-101").  libdrm's amdgpu.ids names it, then pci.ids."""
+    ids = tmp_path / "amdgpu.ids"
+    ids.write_text("1.0.0\n73BF,\tC1,\tAMD Radeon RX 6800 XT\n", encoding="utf-8")
+    pci = tmp_path / "pci.ids"
+    pci.write_text("10de  NVIDIA Corporation\n\t73bf  not this one\n"
+                   "1002  Advanced Micro Devices, Inc. [AMD/ATI]\n"
+                   "\t73bf  Navi 21 [Radeon RX 6800/6800 XT / 6900 XT]\n"
+                   "\t\t1234 0e3a  a subsystem\n", encoding="utf-8")  # 1234 = [unknown]
+    monkeypatch.setattr(hwmon, "AMDGPU_IDS", ids)
+    monkeypatch.setattr(hwmon, "PCI_IDS", pci)
+    card = tmp_path / "card0"
+    device = card / "device"
+    device.mkdir(parents=True)
+    contents = {"device": "0x73bf\n", "revision": "0xc1\n",
+                "vbios_version": "113-D7070100-101\n", **files}
+    for name, text in contents.items():
+        (device / name).write_text(text)
+    hw = tmp_path / "hwmon0"
+    hw.mkdir()
+    (hw / "name").write_text("amdgpu\n")
+
+    assert hwmon.AmdGpu(0, hwmon.HwmonDevice(hw), card).name == expected
+
+
 def _fan_node(root: Path, name: str, driver: str, rpm: int) -> hwmon.HwmonDevice:
     d = root / name
     d.mkdir()

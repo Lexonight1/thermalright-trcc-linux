@@ -410,6 +410,52 @@ def _find_drm_card_for_hwmon(hwmon_path: Path) -> Path | None:
     return None
 
 
+#: libdrm's marketing-name table, ``device,<TAB>revision,<TAB>name`` per line.
+AMDGPU_IDS = Path("/usr/share/libdrm/amdgpu.ids")
+#: The PCI ID database: a vendor line, then ``<TAB>device  name`` lines.
+PCI_IDS = Path("/usr/share/hwdata/pci.ids")
+
+
+def amd_marketing_name(device_dir: Path) -> str | None:
+    """The card's marketing name from its PCI device and revision ids.
+
+    Consumer cards mostly lack ``product_name``, and the old fallback was
+    ``vbios_version`` -- #301's picker said "113-D7070100-101" for a Radeon.
+    libdrm's ``amdgpu.ids`` names (device, revision) exactly, which is what
+    Mesa shows; ``pci.ids`` names the device family when that has no row.
+    """
+    device = (_read_text(device_dir / "device") or "").lower().removeprefix("0x")
+    revision = (_read_text(device_dir / "revision") or "").lower().removeprefix("0x")
+    if not device:
+        log.debug("amd_marketing_name: no PCI device id under %s", device_dir)
+        return None
+    try:
+        for line in AMDGPU_IDS.read_text(encoding="utf-8").splitlines():
+            fields = [f.strip() for f in line.split(",", 2)]
+            if (len(fields) == 3 and fields[0].lower() == device
+                    and fields[1].lower() == revision):
+                log.info("amd_marketing_name: %s:%s -> %r (amdgpu.ids)",
+                         device, revision, fields[2])
+                return fields[2]
+    except OSError as e:
+        log.debug("amd_marketing_name: %s unreadable (%s)", AMDGPU_IDS, e)
+    try:
+        in_amd = False
+        for line in PCI_IDS.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line and not line.startswith(("\t", "#")):
+                in_amd = line.startswith("1002 ")
+            elif in_amd and line.startswith("\t") and not line.startswith("\t\t"):
+                dev, _, name = line.strip().partition(" ")
+                if dev.lower() == device:
+                    log.info("amd_marketing_name: %s -> %r (pci.ids)", device,
+                             name.strip())
+                    return f"AMD {name.strip()}"
+    except OSError as e:
+        log.debug("amd_marketing_name: %s unreadable (%s)", PCI_IDS, e)
+    log.info("amd_marketing_name: %s:%s is in neither table", device, revision)
+    return None
+
+
 class AmdGpu(GpuSource):
     """AMD Radeon/Ryzen APU — hwmon amdgpu + DRM sysfs.
 
@@ -435,14 +481,14 @@ class AmdGpu(GpuSource):
         frame_log.debug("name")
         if self._name_cache is not None:
             return self._name_cache
-        # /sys/class/drm/cardN/device/product_name is populated by the kernel
-        # on newer drivers; fall back to the PCI ID if not present.
+        # product_name when the kernel has one; else the marketing name from
+        # the PCI ids.  Never vbios_version: it is a part number (#301).
         name = None
         if self._drm is not None:
-            name = _read_text(self._drm / "device" / "product_name")
-            if name is None:
-                name = _read_text(self._drm / "device" / "vbios_version")
+            name = (_read_text(self._drm / "device" / "product_name")
+                    or amd_marketing_name(self._drm / "device"))
         self._name_cache = name or f"AMD GPU {self._index}"
+        frame_log.debug("AmdGpu %d: name %r", self._index, self._name_cache)
         return self._name_cache
 
     @property
