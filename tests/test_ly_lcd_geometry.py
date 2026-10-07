@@ -370,3 +370,61 @@ def test_an_ack_record_never_carries_the_whole_buffer(monkeypatch, fake_bulk, ca
     with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
         ly._write_frame(b"x" * 512)
     assert all(len(r.getMessage()) < 200 for r in caplog.records)
+
+
+# ── #248: the reply's bytes 24-31 are not the canvas ─────────────────
+#
+# Real replies, as their reporters pasted them.  The C# takes the canvas from
+# PM/SUB alone; bytes 24-31 and 44 are only logged.
+
+_REAL_REPLIES = {
+    # issue: (reply hex, PM, SUB, canvas)
+    "#129": ("03ff0000000000000100000000000000c5c493e00100020080070000e001000032"
+             "000000000000000000000012000000", 65, 3, (1920, 462)),
+    "#207": ("03ff0000000000000100000000000000436066970200040080070000570200003200"
+             "000000000000020000008900000000000000000000000000000000000000",
+             65, 5, (1920, 462)),
+    "#289": ("03ff00000000000001000000000000002b8a76420500010080070000e00100004100"
+             "000000000000000000002800000000000000000000000000000000000000000000"
+             "000000", 69, 2, (1920, 440)),
+}
+
+
+@pytest.mark.parametrize("issue", sorted(_REAL_REPLIES))
+def test_a_real_reply_takes_its_canvas_from_pm_and_sub(
+    fake_bulk: FakeBulkTransport, caplog: pytest.LogCaptureFixture, issue: str,
+) -> None:
+    """#207 is #248's own fingerprint (PM 65 SUB 5): its bytes 24-31 say
+    1920x599, so trusting them would not even give #248's 480.  On all three,
+    u32@28 minus byte 44 is the C#'s height -- logged, never obeyed."""
+    reply, pm, sub, canvas = _REAL_REPLIES[issue]
+    fake_bulk.read_script.append(bytes.fromhex(reply).ljust(512, b"\0"))
+    device = _make_ly(fake_bulk)
+
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        result = device.connect()
+
+    assert (result.pm_byte, result.sub_byte, result.resolution) == (pm, sub, canvas)
+    lines = [r for r in caplog.records if "byte 44" in r.getMessage()]
+    assert [r.levelno for r in lines] == [logging.INFO]
+    assert f"-> {canvas[0]}x{canvas[1]};" in lines[0].getMessage()
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_a_reply_off_the_pattern_asks_for_a_report(
+    fake_bulk: FakeBulkTransport, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#129's reply with byte 44 changed: the canvas stays the C#'s, and the
+    log says what to send."""
+    reply = bytearray(bytes.fromhex(_REAL_REPLIES["#129"][0]).ljust(512, b"\0"))
+    reply[44] = 0
+    fake_bulk.read_script.append(bytes(reply))
+    device = _make_ly(fake_bulk)
+
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        result = device.connect()
+
+    assert result.resolution == (1920, 462)
+    (warning,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert "1920x480 does not match the (1920, 462) canvas" in warning.getMessage()
+    assert "trcc report" in warning.getMessage()

@@ -146,11 +146,12 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             #     captioned "Trofeo Vision LCD 9.16"; 4 gives A1LD11, "Trofeo
             #     Vision LCD_9.16 ARGB" — a different SKU.
             #   * For 1920x462 the encode base is 180 at sub 5 and 0 at sub 4.
-            #     180 is what every release has shipped for this panel, and
-            #     that reporter filed six detailed issues about it (blur
-            #     measured by photo-FFT, dropped frames, reconnect, black
+            #     That reporter filed six detailed issues about this panel
+            #     (blur measured by photo-FFT, dropped frames, reconnect, black
             #     canvas, docs, video) without ever reporting an upside-down
-            #     image.
+            #     image.  This said "180 is what every release has shipped";
+            #     it is not -- v9.9.3, the build #248 measured, sent a
+            #     462x1920 portrait JPEG at 0° (emulated, 2026-10-07).
             #
             # So resp[22] + 1 reproduces the C#'s pmSub, and this panel's
             # rotation is unchanged by the sub-aware encode table.
@@ -185,6 +186,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
         log.info("LyLcd %s: raw resp[20]=%d resp[22]=%d → PM=%d SUB=%d",
                  self.info.key, resp[20], raw_sub, self._pm, self._sub)
         fbl, self._profile = bulk_profile(self._pm, self._sub, self.info.key)
+        self._note_reply_timing(resp)
 
         return HandshakeResult(
             resolution=self._profile.resolution,
@@ -194,6 +196,32 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             fbl=fbl,
             raw_response=bytes(resp),
         )
+
+    def _note_reply_timing(self, resp: bytes) -> None:
+        """Log what bytes 24-31 and 44 say -- for the record, never obeyed.
+
+        The C# never reads them: the canvas comes from PM/SUB alone
+        (``is1920x462`` from the PM, FormCZTV.cs:902-905) and LY frames carry
+        no size.  #248 read them as the panel's 1920x480 and asked for that
+        canvas, but on its own fingerprint (PM 65 SUB 5, #207) they say
+        1920x**599**.  What holds on every reply we have (#129 SUB 3, #207,
+        #289) is OBSERVED, not documented: u32@28 minus byte 44 is the C#
+        height.  A panel where it is not gets a WARNING asking for a report.
+        """
+        if len(resp) < 45 or not (width := int.from_bytes(resp[24:28], "little")):
+            log.debug("LyLcd %s: reply carries no timing fields", self.info.key)
+            return
+        height = int.from_bytes(resp[28:32], "little")
+        derived = (width, height - resp[44])
+        canvas = self._profile.resolution if self._profile else None
+        log.info("LyLcd %s: reply says %dx%d, byte 44=%d -> %dx%d; the canvas "
+                 "is %s from PM/SUB, as the Windows app", self.info.key, width,
+                 height, resp[44], *derived, canvas)
+        if derived != canvas:
+            log.warning("LyLcd %s: the reply's %dx%d does not match the %s "
+                        "canvas -- a pattern every known panel follows.  "
+                        "Please open an issue with `trcc report` (#248).",
+                        self.info.key, *derived, canvas)
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """The PID picks the variant (LY vs LY1) — worth having on the record."""
