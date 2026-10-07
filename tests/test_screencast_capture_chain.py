@@ -559,20 +559,6 @@ def _assert_tightly_packed(data: bytes, w: int, h: int, who: str) -> None:
     )
 
 
-def test_qimage_producer_strips_row_padding() -> None:
-    """``qimage_to_raw_rgb24`` — the gui screencast tick and the Renderer."""
-    from trcc.adapters.render.qt import qimage_to_raw_rgb24
-
-    img = _row_ramp(PADDED_W, PADDED_H)
-    assert img.bytesPerLine() != PADDED_W * 3, (
-        "pick a width Qt actually pads, or this test proves nothing"
-    )
-
-    frame = qimage_to_raw_rgb24(img)
-
-    _assert_tightly_packed(frame.data, PADDED_W, PADDED_H, "qimage_to_raw_rgb24")
-
-
 def test_pixmap_producer_strips_row_padding() -> None:
     """``_pixmap_to_raw_frame`` — every external region-capture rung."""
     from PySide6.QtGui import QPixmap
@@ -587,16 +573,16 @@ def test_pixmap_producer_strips_row_padding() -> None:
                            "_pixmap_to_raw_frame")
 
 
-def test_both_qt_producers_agree_with_the_shared_primitive() -> None:
+def test_the_qt_producer_agrees_with_the_shared_primitive() -> None:
     """The three copies were verified identical before being collapsed.
 
-    This is the guard that keeps them that way: both Qt producers must agree
+    This is the guard that keeps them that way: the Qt producer must agree
     byte-for-byte with ``core._frames.unpad_rows`` applied by hand to the same
-    buffer.  A future "optimisation" inside either one fails here.
+    buffer.  A future "optimisation" inside it fails here.  (The second Qt
+    producer, ``qimage_to_raw_rgb24``, went on 2026-10-07 with no caller left.)
     """
     from PySide6.QtGui import QImage, QPixmap
 
-    from trcc.adapters.render.qt import qimage_to_raw_rgb24
     from trcc.adapters.screencast.qt import _pixmap_to_raw_frame
     from trcc.core._frames import unpad_rows
 
@@ -605,7 +591,6 @@ def test_both_qt_producers_agree_with_the_shared_primitive() -> None:
     by_hand = unpad_rows(bytes(img.constBits()), PADDED_W, PADDED_H,
                          img.bytesPerLine())
 
-    assert qimage_to_raw_rgb24(img).data == by_hand
     assert _pixmap_to_raw_frame(
         QPixmap.fromImage(img), PADDED_W, PADDED_H).data == by_hand
 

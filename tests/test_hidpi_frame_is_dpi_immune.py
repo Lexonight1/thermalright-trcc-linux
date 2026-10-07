@@ -13,8 +13,8 @@ hypothesis that devicePixelRatio was leaking into the composed wire surface
 Measured, it is not leaking, and the env var was never why.  ``QtRenderer``
 composes on ``QImage(w, h)`` with explicit pixel dimensions, whose
 ``logicalDpiX`` is 96 whatever the screen reports; ``QPixmap`` -- the
-devicePixelRatio-aware type -- is used only by ``to_pixmap`` for the GUI
-preview and never reaches the wire.  So the frame is DPI-immune BY
+devicePixelRatio-aware type -- is used only by the GUI's own preview
+widgets and never reaches the wire.  So the frame is DPI-immune BY
 CONSTRUCTION, which is a much better guarantee than an env var, but nothing
 proved it.  This does.
 

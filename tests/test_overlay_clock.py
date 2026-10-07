@@ -11,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from trcc.core.models import RawFrame
 from trcc.core.ports import Renderer
 from trcc.services._clock import compute_clock
 from trcc.services.overlay import OverlayService
@@ -73,13 +72,6 @@ class _DrawRecorder(Renderer):
 
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _Surface(100, 100)
-
-    def to_raw_rgb24(self, surface):
-        # The inverse the port now requires.  Test doubles carry no pixels,
-        # so this reports the surface's DIMENSIONS with blank bytes — enough
-        # for a caller that only needs a correctly-sized RawFrame.
-        w, h = self.surface_size(surface)
-        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
 
     def decode_image(self, data: bytes) -> Any:
         return _Surface(100, 100)

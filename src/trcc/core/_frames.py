@@ -3,7 +3,8 @@
 Why centralised: the project had three copies of this one subtle loop —
 ``adapters/screencast/pipewire.py`` (named ``unpad_rows``, documented and
 tested), ``adapters/render/qt.py`` (an inline ``b"".join`` inside
-``qimage_to_raw_rgb24``) and ``adapters/screencast/qt.py`` (an inline
+``qimage_to_raw_rgb24``, since deleted with no caller left) and
+``adapters/screencast/qt.py`` (an inline
 ``bytearray`` loop inside ``_pixmap_to_raw_frame``).  All three were verified
 to compute the same answer, and the second one's own docstring argued it
 avoided "two copies of the stride handling … the one genuinely subtle part"

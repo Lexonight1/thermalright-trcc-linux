@@ -99,13 +99,6 @@ class RecordingRenderer(Renderer):
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _Surface(frame.width, frame.height)
 
-    def to_raw_rgb24(self, surface):
-        # The inverse the port now requires.  Test doubles carry no pixels,
-        # so this reports the surface's DIMENSIONS with blank bytes — enough
-        # for a caller that only needs a correctly-sized RawFrame.
-        w, h = self.surface_size(surface)
-        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
-
     def decode_image(self, data: bytes) -> Any:
         return _Surface(100, 100)
 
@@ -861,31 +854,8 @@ def test_current_frame_returns_the_frame_without_rendering_one(
 # panel blank, since the cutover (4fa876be).
 
 
-def test_to_raw_rgb24_round_trips_a_surface(tmp_home: Path) -> None:
-    """The inverse the port was missing: surface → RawFrame → surface.
-
-    Uses a width whose ``*3`` is NOT a multiple of 4 (7*3 = 21), because Qt
-    pads each scanline to a 4-byte boundary — reading the buffer flat would
-    carry that padding into the pixel data of every row after the first.
-    """
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.core.models import RawFrame
-
-    r = QtRenderer()
-    original = RawFrame(data=bytes(range(7 * 5 * 3 % 256)) * 0 + bytes(7 * 5 * 3),
-                        width=7, height=5)
-    surface = r.from_raw_rgb24(original)
-
-    back = r.to_raw_rgb24(surface)
-
-    assert (back.width, back.height) == (7, 5)
-    assert len(back.data) == 7 * 5 * 3, (
-        "row padding leaked into the packed data — 7*3=21 is not 4-aligned"
-    )
-
-
-def test_screencast_frame_encodes_from_a_surface(tmp_home: Path) -> None:
-    """End to end: what the gui holds → wire bytes.
+def test_screencast_frame_encodes_from_a_raw_frame(tmp_home: Path) -> None:
+    """End to end: a captured frame → wire bytes.
 
     Fails before the fix with ``AttributeError: 'QImage' object has no
     attribute 'data'`` — which the handler swallowed, so the device got
@@ -899,13 +869,8 @@ def test_screencast_frame_encodes_from_a_surface(tmp_home: Path) -> None:
     app = App(platform=FakePlatform(tmp_home), renderer=renderer)
     lcd = next(p for p in ALL_DEVICES.values() if p.kind is Kind.LCD)
 
-    # A surface exactly as the capture tick produces one.
-    surface = renderer.from_raw_rgb24(
-        RawFrame(data=bytes(64 * 48 * 3), width=64, height=48),
-    )
-
     data = app.display.build_screencast_frame(
-        info=lcd, frame=renderer.to_raw_rgb24(surface),
+        info=lcd, frame=RawFrame(data=bytes(64 * 48 * 3), width=64, height=48),
     )
 
     assert isinstance(data, bytes)

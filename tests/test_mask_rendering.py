@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from trcc.adapters.theme.filesystem import FileContentStore
-from trcc.core.models import Kind, OverlayElement, ProductInfo, RawFrame, Theme, Wire
+from trcc.core.models import Kind, OverlayElement, ProductInfo, Theme, Wire
 from trcc.core.ports import Renderer
 from trcc.services.background import BackgroundSlot
 from trcc.services.display import DisplayService
@@ -97,13 +97,6 @@ class RecordingRenderer(Renderer):
 
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _Surface(frame.width, frame.height)
-
-    def to_raw_rgb24(self, surface):
-        # The inverse the port now requires.  Test doubles carry no pixels,
-        # so this reports the surface's DIMENSIONS with blank bytes — enough
-        # for a caller that only needs a correctly-sized RawFrame.
-        w, h = self.surface_size(surface)
-        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
 
     def decode_image(self, data: bytes) -> Any:
         return _Surface(100, 100)

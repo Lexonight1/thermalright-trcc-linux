@@ -102,6 +102,8 @@
 
 ### Changed
 
+- **For developers: a `Renderer` no longer implements `to_raw_rgb24`.**
+  Nothing called it once screen casts moved into the App.
 - **Each screen orientation now remembers its own theme, brightness and
   slideshow,** as the Windows app does. Turn the screen back and it shows what
   you last chose in that orientation. The first time you turn it, what was

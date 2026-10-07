@@ -21,11 +21,9 @@ from PySide6.QtGui import (
     QImage,
     QPainter,
     QPen,
-    QPixmap,
     QTransform,
 )
 
-from ...core._frames import unpad_rows
 from ...core.errors import TrccError
 from ...core.logs import per_frame
 from ...core.models import RawFrame
@@ -432,12 +430,6 @@ class QtRenderer(Renderer):
             QImage.Format.Format_RGB888,
         ).convertToFormat(QImage.Format.Format_ARGB32)
 
-    def to_raw_rgb24(self, surface: Any) -> RawFrame:
-        """Port method — the work lives in the module-level function, which the
-        Qt UI also calls without needing a ``Renderer`` (or an ``App``)."""
-        frame_log.debug("to_raw_rgb24: delegating to qimage_to_raw_rgb24")
-        return qimage_to_raw_rgb24(surface)
-
     # ── Fonts ─────────────────────────────────────────────────────────
 
     def list_fonts(self) -> list[str]:
@@ -456,38 +448,3 @@ class QtRenderer(Renderer):
         log.info("QtRenderer.list_fonts: %d families", len(families))
         return families
 
-    # ── Convenience: QPixmap export for GUI preview ───────────────────
-
-    @staticmethod
-    def to_pixmap(surface: Any) -> QPixmap:
-        """Convert a QImage surface to a QPixmap (for GUI display)."""
-        log.debug("to_pixmap: called")
-        return QPixmap.fromImage(surface)
-
-
-def qimage_to_raw_rgb24(image: Any) -> RawFrame:
-    """A ``QImage`` as packed RGB24 — the shape the wire speaks.
-
-    A module-level function, not just a ``Renderer`` method, because the Qt UI
-    layer needs it WITHOUT an ``App``: the gui's screencast tick produces a
-    ``QImage`` and ``SendScreencastFrame`` wants a ``RawFrame``, and reaching
-    ``app.renderer`` to convert was the last thing in ``ui/`` that raised under
-    ``TRCC_DAEMON=1`` (``AttributeError: AppProxy has no attribute 'renderer'``,
-    measured at 39 occurrences in ~7 seconds of a driven screencast — the timer
-    fires every 150 ms).
-
-    Duplicating the conversion in the GUI would have scored BETTER on the
-    contract audit, which counts imports rather than duplication.
-
-    ``constBits()`` spans the whole buffer INCLUDING per-line padding — Qt
-    aligns each scanline to 4 bytes, so any width whose ``*3`` is not a
-    multiple of 4 carries junk at the end of every row.  Stripping it is
-    ``core._frames.unpad_rows``, shared with both screencast adapters.
-    """
-    img = image.convertToFormat(QImage.Format.Format_RGB888)
-    width, height = img.width(), img.height()
-    stride = img.bytesPerLine()
-    log.debug("qimage_to_raw_rgb24: %dx%d (stride=%d packed=%d)",
-              width, height, stride, width * 3)
-    data = unpad_rows(bytes(img.constBits()), width, height, stride)
-    return RawFrame(data=data, width=width, height=height)
