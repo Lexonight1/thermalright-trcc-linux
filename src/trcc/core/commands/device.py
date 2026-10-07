@@ -274,7 +274,7 @@ class ConnectDevice(Command[ConnectResult]):
                                    hints=hints)
             app.note_connect_issue(result)
             return result
-        except (ImportError, OSError) as e:
+        except (ImportError, OSError, TransportError) as e:
             # Building the transport can fail for reasons that are the user's
             # environment, not a missing device: a firmware quirk selects the
             # HID output-report transport, and hidapi may be absent or be the
@@ -282,6 +282,11 @@ class ConnectDevice(Command[ConnectResult]):
             # (#244, #253).  Those raise from the transport constructor, and an
             # uncaught raise here takes the GUI down instead of telling anyone
             # what to install — so report it like any other connect failure.
+            # ``TransportError`` is the SCSI node not existing (yet): a usb add
+            # arrives ~1 s before usb-storage creates /dev/sgN, and a panel a
+            # VM holds has none.  It used to escape this Command — and every
+            # Command that connects first — as an exception, with no issue
+            # recorded for any UI to show.
             hints = app.platform.check_permissions()
             log.warning("ConnectDevice %s: transport unavailable — %s",
                         self.key, e)

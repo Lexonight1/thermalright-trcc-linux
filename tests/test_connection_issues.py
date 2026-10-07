@@ -57,3 +57,54 @@ def test_format_device_error_joins_message_and_hints() -> None:
     assert "boom" in s and "do x" in s and "do y" in s
     # No hints → just the message, no trailing newline noise.
     assert format_device_error(ConnectResult(ok=False, message="m")) == "m"
+
+
+_NO_NODE = ("No SCSI device node found for 0402:3922 — check that the device "
+            "is attached and the scsi_generic kernel module is loaded")
+
+
+def _no_scsi_node(app: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``LinuxOS._open_scsi`` with no /dev/sgN: a usb add ~1 s early, or a VM."""
+    from trcc.core.errors import TransportError
+
+    def no_node(*_args: object, **_kwargs: object) -> object:
+        raise TransportError(_NO_NODE)
+
+    monkeypatch.setattr(app.platform, "open_transport", no_node)
+
+
+def test_a_missing_scsi_node_fails_the_connect_instead_of_raising(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MUTATION CHECK: drop ``TransportError`` from the attach clause and the
+    dispatch raises — no result, no recorded issue, nothing for a UI."""
+    from trcc.core.events import ErrorOccurred
+
+    app = App(fake_platform)
+    _no_scsi_node(app, monkeypatch)
+    errors: list[str] = []
+    app.events.subscribe(ErrorOccurred, lambda e: errors.append(e.message))
+
+    result = app.dispatch(ConnectDevice(key="0402:3922"))
+
+    assert (result.ok, result.message) == (False, _NO_NODE)
+    assert [i.message for i in app.connection_issues()] == [_NO_NODE]
+    assert errors == [_NO_NODE]
+    assert "0402:3922" not in app.devices
+
+
+def test_a_command_that_connects_first_reports_a_missing_node(
+    fake_platform, monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    """``App._connect_for`` runs ``EnsureConnected`` before every
+    ``USES_DEVICE`` Command — the escape took those down with it."""
+    from trcc.core.commands import SetBackground
+
+    app = App(fake_platform)
+    _no_scsi_node(app, monkeypatch)
+
+    result = app.dispatch(SetBackground(key="0402:3922",
+                                        path=tmp_path / "bg.png"))
+
+    assert result.ok is False
+    assert [i.message for i in app.connection_issues()] == [_NO_NODE]

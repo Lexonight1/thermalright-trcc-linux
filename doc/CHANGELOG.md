@@ -148,6 +148,12 @@
 
 ### Fixed
 
+- **A panel that is not ready yet says why it could not connect.** On Linux a
+  panel's device file appears a moment after it is plugged in, and a panel a
+  virtual machine holds has none. Connecting to it then failed with an internal
+  error instead of a message, and any command that connects first (showing a
+  background, for one) failed the same way. It is now reported like any other
+  connection problem, where every window can show it.
 - **A panel that loses its connection no longer floods the log.** When
   something else took the panel for a moment (a virtual machine it is passed
   through to, a KVM switch, a hub that reset it), TRCC
