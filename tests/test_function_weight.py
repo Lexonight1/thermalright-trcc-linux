@@ -52,7 +52,7 @@ import function_census  # noqa: E402  # pyright: ignore[reportMissingImports]
 #: lines) when its two Apply buttons gave way to one Command per control.
 #: 14 -> 13 on 2026-10-05: SaveTheme.execute, when the resolution of the live
 #: content moved to ``_composed_resolution``, shared with ExportCurrentTheme.
-MAX_LONG_FUNCTIONS = 13
+MAX_LONG_FUNCTIONS = 12
 
 #: LOWER IT when a function comes off the list; never raise it.
 MAX_BRANCHY_FUNCTIONS = 8

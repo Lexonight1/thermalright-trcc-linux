@@ -74,7 +74,25 @@ def test_an_attached_device_reports_identity_and_geometry(app: App) -> None:
     assert result.connected is True
     assert result.vendor and result.product
     assert result.resolution == (320, 320)
-    assert result.native_resolution != (0, 0)
+    assert result.catalog_resolution != (0, 0)
+
+
+def test_the_catalog_and_the_handshake_are_told_apart(tmp_path) -> None:
+    """A Mjolnir Vision shares 87ad:70db, whose catalog row says GrandVision
+    480x480; its handshake says 320x240.  The catalog's answer was reported as
+    ``native_resolution`` and the qtgui inspector printed it as "native res"
+    -- the one size this panel is NOT."""
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
+                           tmp_path))
+    assert app.dispatch(ConnectDevice(key="87ad:70db")).ok
+
+    result = app.dispatch(DeviceState(key="87ad:70db"))
+
+    assert (result.product, result.resolution) == ("Mjolnir Vision", (320, 240))
+    assert (result.catalog_product, result.catalog_resolution) == (
+        "GrandVision 360 AIO", (480, 480))
 
 
 def test_handshake_fields_are_none_not_zero_before_a_handshake(app: App) -> None:

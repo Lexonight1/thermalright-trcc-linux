@@ -1621,6 +1621,31 @@ def test_send_image_keeps_nothing_on_disk(tmp_path: Path) -> None:
     assert "/devices/{key}/display/push-image" not in schema
 
 
+def test_create_theme_reports_the_panels_size_not_the_catalogs(
+    tmp_path: Path,
+) -> None:
+    """The route re-derived the canvas from DeviceState itself; it asks the
+    one ladder now (DeviceCanvas).  A Mjolnir answers 320x240 on a USB id
+    the catalog calls 480x480."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.api.main import build_app
+
+    from .mock_platform import MockPlatform
+
+    renderer = QtRenderer()
+    png = renderer.encode_png(renderer.create_surface(64, 64, color=(0, 0, 255, 255)))
+    trcc = App(MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
+                            tmp_path), renderer=renderer)
+    assert trcc.dispatch(ConnectDevice(key="87ad:70db")).ok
+    with loopback_client(build_app(trcc=trcc)) as client:
+        resp = client.post("/devices/87ad:70db/display/create-theme",
+                           files={"background": ("bg.png", png, "image/png")})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["resolution"] == "320x240"
+
+
 def test_new_capability_routes_are_registered(api_client: TestClient) -> None:
     """Every Gate B route this session added is in the OpenAPI schema."""
     schema = api_client.get("/openapi.json").json()["paths"]

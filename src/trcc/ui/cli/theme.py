@@ -10,7 +10,7 @@ import typer
 from ...core.commands import (
     AddOverlayElement,
     DeleteTheme,
-    DeviceState,
+    DeviceCanvas,
     DownloadCloudTheme,
     ExportCurrentTheme,
     ExportDcTheme,
@@ -367,17 +367,16 @@ def cloud_downloaded(
                 f"--resolution must look like 320x320, got {resolution!r}",
             ) from None
     else:
-        # Only a handshake knows a device's canvas; DiscoverDevices reports
-        # vid/pid/path and nothing about the panel.
-        state = app_obj.dispatch(DeviceState(key=key))
-        canvas = state.resolution or state.native_resolution
-        if not canvas or canvas == (0, 0):
+        # The one ladder: the handshake, the scanned size, the registry.
+        found = app_obj.dispatch(DeviceCanvas(key=key))
+        if not found.ok:
             typer.echo(
-                f"No canvas known for {key} — connect it first, or pass "
-                "--resolution WxH to list a library without the hardware.",
+                f"{found.message}.  Or pass --resolution WxH to list a "
+                "library without the hardware.",
                 err=True,
             )
             raise typer.Exit(code=1)
+        canvas = (found.width, found.height)
     w, h = canvas
     result = app_obj.dispatch(ListWebThemes(width=w, height=h, key=key))
     typer.echo(result.message)

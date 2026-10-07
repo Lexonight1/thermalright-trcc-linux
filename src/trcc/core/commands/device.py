@@ -3500,7 +3500,10 @@ class DeviceState(Query[DeviceStateResult]):
             wire=info.wire.value, kind=info.kind.value,
             model=info.model or "",
             button_image=info.button_image or "",
-            native_resolution=info.native_resolution,
+            catalog_product=(found.product
+                             if (found := find_product(info.vid, info.pid))
+                             else ""),
+            catalog_resolution=info.native_resolution,
             connected=device.is_connected,
             is_led=device.is_led,
             needs_keepalive=device.needs_keepalive,

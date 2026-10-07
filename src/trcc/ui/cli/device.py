@@ -103,8 +103,8 @@ def state(
 ) -> None:
     """Show what a device IS — identity, connection, handshake geometry.
 
-    ``native_resolution`` is what the product registry claims; ``resolution``
-    is what the panel answered at handshake.  When they differ, the handshake
+    ``catalog_*`` is what the product registry claims for the USB id;
+    ``product`` and ``resolution`` are the cooler the handshake identified.  When they differ, the handshake
     wins and the difference is usually the thing worth reporting.
     """
     log.info("cli device state: key=%s", key)
@@ -113,7 +113,8 @@ def state(
         typer.echo(result.message)
         raise typer.Exit(code=1)
     for field in (
-        "vendor", "product", "wire", "kind", "model", "native_resolution",
+        "vendor", "product", "catalog_product", "wire", "kind", "model",
+        "catalog_resolution",
         "connected", "is_led", "resolution", "pm_byte", "sub_byte", "fbl",
         "jpeg", "rotate", "widescreen", "led_style",
     ):

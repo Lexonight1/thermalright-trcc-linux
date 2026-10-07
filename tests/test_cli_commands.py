@@ -425,6 +425,31 @@ def test_display_game_sets_either_half(
     assert f"  game_mode        {phrase}" in shown.output.splitlines()
 
 
+@pytest.mark.parametrize("key, ok", [("0402:3922", True), ("0416:5302", False)])
+def test_cloud_downloaded_sizes_a_device_from_the_one_ladder(
+    tmp_path: Path, cli_runner: CliRunner, key: str, ok: bool,
+) -> None:
+    """Asked of a panel not connected yet, it said "connect it first" even
+    where the catalog knows the size; it asks DeviceCanvas now.  0416:5302
+    covers several panels, so only a handshake can say -- and it says so."""
+    from trcc.ui.cli import _ctx
+
+    from .conftest import _CliRenderer, _reset_cli_ctx
+    from .mock_platform import MockPlatform
+
+    _ctx.set_platform(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}],
+                                   tmp_path))
+    _ctx.set_renderer(_CliRenderer())          # type: ignore[arg-type]
+    try:
+        result = cli_runner.invoke(_app(), ["theme", "cloud-downloaded", key])
+    finally:
+        _reset_cli_ctx()
+
+    assert (result.exit_code == 0) is ok, result.output
+    if not ok:
+        assert "handshake" in result.output and "--resolution" in result.output
+
+
 def test_status_says_whether_game_mode_is_on(
     tmp_path: Path, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

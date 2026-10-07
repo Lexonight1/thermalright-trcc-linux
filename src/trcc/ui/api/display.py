@@ -25,6 +25,7 @@ from ...core.commands import (
     BuildPreview,
     ConfigureSlideshow,
     DeleteOverlayElement,
+    DeviceCanvas,
     DeviceState,
     EnableOverlay,
     ExportVideoClip,
@@ -840,19 +841,9 @@ async def create_theme(
             EnableOverlay(key=key, enabled=True),
         )
 
-    # Resolve the device's resolution for the response — same lookup
-    # ``_resolve_resolution`` does in core/commands.py, kept inline so
-    # the route doesn't reach into private helpers.
-    state = request.app.state.trcc.dispatch(DeviceState(key=key))
-    # Handshake resolution wins; the registry's native size is the fallback
-    # for an attached-but-not-yet-handshaken device.  `resolution is None`
-    # is what distinguishes those — a 0x0 panel would be a real answer.
-    if not state.ok:
-        w, h = 0, 0
-    elif state.resolution is not None:
-        w, h = state.resolution
-    else:
-        w, h = state.native_resolution
+    # The one ladder (DeviceCanvas); this route kept its own copy of it.
+    found = request.app.state.trcc.dispatch(DeviceCanvas(key=key))
+    w, h = (found.width, found.height) if found.ok else (0, 0)
 
     return CreateThemeResponse(
         ok=True,

@@ -3308,7 +3308,7 @@ def _inspector_text(gui_app: App, qtbot, *, pm, sub) -> str:
     qtbot.addWidget(panel)
     panel._current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
     panel.dispatch = lambda cmd: DeviceStateResult(   # pyright: ignore[reportAttributeAccessIssue]
-        ok=True, key="0402:3922", wire="SCSI", native_resolution=(320, 320),
+        ok=True, key="0402:3922", wire="SCSI", catalog_resolution=(320, 320),
         pm_byte=pm, sub_byte=sub, fbl=7, serial="ABC")
     panel._refresh_inspector()
     w = panel._inspector

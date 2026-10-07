@@ -464,7 +464,12 @@ class DeviceStateResult(Result):
     kind: str = ""
     model: str = ""
     button_image: str = ""
-    native_resolution: tuple[int, int] = (0, 0)
+    # The CATALOG's answer for this USB id -- one id covers many coolers, so
+    # neither is the panel's (480x480 on a 320x240 Mjolnir).  ``product`` and
+    # ``resolution`` are the identified cooler and its handshake.  This was
+    # ``native_resolution``, and a UI labelled it "native res".
+    catalog_product: str = ""
+    catalog_resolution: tuple[int, int] = (0, 0)
     # Live connection state.
     connected: bool = False
     is_led: bool = False

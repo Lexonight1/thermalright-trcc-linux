@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import DeviceState, ListCloudThemes, LoadCloudTheme
+from ....core.commands import ListCloudThemes, LoadCloudTheme
 from ..assets import thumbnail_icon
 from ..device_picker import DevicePickerWidget
 from ._browser_base import AssetBrowserPanel
@@ -135,19 +135,9 @@ class CloudThemeBrowser(AssetBrowserPanel):
         """The picked device's canvas resolution, or None if unresolvable."""
         log.debug("_resolution")
         key = self._picker.current_key()
-        if not key:
-            return None
-        # ``DeviceState`` reports both, already flattened and daemon-safe.
-        # ``resolution`` is None until the device has answered a handshake,
-        # which is a DIFFERENT state from a 0x0 panel — so it is tested for
-        # None, not for truth.
-        state = self.dispatch(DeviceState(key=key))
-        if state.connected:
-            if state.resolution is not None:
-                return state.resolution
-            if state.native_resolution != (0, 0):
-                return state.native_resolution
-        return None
+        # The one ladder (DeviceCanvas), as every sibling browser asks it.
+        # This walked a copy of it off DeviceState.
+        return self._target_resolution(key) if key else None
 
     def _fill_list_from_result(self, result) -> None:
         log.debug("_fill_list_from_result: result=%s", result)

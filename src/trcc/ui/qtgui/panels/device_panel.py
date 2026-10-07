@@ -206,7 +206,8 @@ class DevicePanel(BasePanel):
         lines = [
             f"Device        {state.key}",
             f"  wire        {state.wire}",
-            f"  native res  {state.native_resolution[0]}×{state.native_resolution[1]}",
+            f"  catalog     {state.catalog_product} "
+            f"{state.catalog_resolution[0]}×{state.catalog_resolution[1]}",
         ]
 
         # ``None`` means "not handshaken yet" and is distinct from a real 0 —
