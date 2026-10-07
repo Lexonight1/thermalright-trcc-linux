@@ -153,6 +153,11 @@
 
 ### Fixed
 
+- **LCD-only settings are refused for LED coolers.** Loading a theme, setting
+  a background, brightness, rotation, overlay or mask on an LED cooler was
+  accepted, and saved LCD settings under its name that it could never use.
+  Each command now says which ability it needs, and a device without it is
+  refused with a message saying so.
 - **`trcc status` no longer pokes the panels.** It ran a full device scan,
   which sends a USB request to every panel the background App is driving and
   announces each device to every open window, just to list what the App

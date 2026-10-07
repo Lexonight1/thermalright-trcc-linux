@@ -1431,6 +1431,7 @@ class StopVideo(Command[VideoResult]):
     The media player's source is the same kind of override and follows the
     same rule: a stop ends it, a teardown keeps it for the next start.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
     keep_override: bool = False
 
@@ -1973,6 +1974,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
     announced (``BackgroundChanged``) so every UI follows.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
     uri: str
 
@@ -2088,6 +2090,7 @@ class SetBackground(Command[BackgroundResult]):
     overwritten by the next animation tick.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
     path: Path
 
@@ -2262,6 +2265,7 @@ class SetOrientation(Command[OrientationResult]):
     Validates against the product registry — device need not be
     connected yet (users often configure before plugging in).
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.ORIENTATION
     key: str
     degrees: int
 
@@ -2305,6 +2309,7 @@ class SetBrightness(Command[BrightnessResult]):
     ``_publish_frame``); we mirror that here by invalidating + dispatching
     ``RenderAndSend`` on the connected-with-active-theme path.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.BRIGHTNESS
     key: str
     percent: int
 
@@ -2334,6 +2339,7 @@ class SetFitMode(Command[FitModeResult]):
     bottom), ``"height"`` (pillarbox left/right), ``"stretch"`` (fill,
     distort).
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
     mode: str
 
@@ -2363,6 +2369,7 @@ class EnableOverlay(Command[OverlayResult]):
     just the bg+mask renders. Useful for users who want a clean wallpaper
     without sensor readouts.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
     key: str
     enabled: bool
 
@@ -2386,6 +2393,7 @@ class SetSplitMode(Command[SplitModeResult]):
     rendering consults the device profile + resolution to decide whether
     to composite the overlay.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.FRAME_RENDER
     key: str
     mode: int
 
@@ -2417,6 +2425,7 @@ class ApplyMask(Command[MaskApplyResult]):
     aren't affected by ``os.chdir`` between calls.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.MASK
     key: str
     path: Path
 
@@ -2559,6 +2568,7 @@ class ApplyMask(Command[MaskApplyResult]):
 @dataclass(frozen=True, slots=True)
 class SetMaskPosition(Command[MaskPositionResult]):
     """Set the mask offset within the canvas, or pass None to reset to (0, 0)."""
+    REQUIRES: ClassVar[Capability | None] = Capability.MASK
     key: str
     x: int | None
     y: int | None
@@ -2592,6 +2602,7 @@ class SetMaskPosition(Command[MaskPositionResult]):
 @dataclass(frozen=True, slots=True)
 class SetMaskVisible(Command[MaskVisibilityResult]):
     """Toggle the mask overlay visibility for a device."""
+    REQUIRES: ClassVar[Capability | None] = Capability.MASK
     key: str
     visible: bool
 
@@ -2622,6 +2633,7 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
     Modes: ``'theme'`` (theme background), ``'color'`` (solid fill),
     ``'transparent'`` (no background, used by screencast overlay).
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
     mode: str
 
@@ -2648,6 +2660,7 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
 @dataclass(frozen=True, slots=True)
 class SetOverlayBackground(Command[OverlayBackgroundResult]):
     """Set the solid color used when background_mode='color'."""
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
     color: tuple[int, int, int]
 
@@ -2677,6 +2690,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
     have to think about it.  Returned in the result so subsequent
     Update/Delete Commands can reference it.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
     key: str
     type: str = "text"
     x: int = 0
@@ -2732,6 +2746,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
 @dataclass(frozen=True, slots=True)
 class UpdateOverlayElement(Command[OverlayElementResult]):
     """Mutate fields on an existing user-edited overlay element."""
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
     key: str
     element_id: str
     x: int | None = None
@@ -2772,6 +2787,7 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
 @dataclass(frozen=True, slots=True)
 class DeleteOverlayElement(Command[OverlayElementDeleteResult]):
     """Remove a user-edited overlay element by id."""
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
     key: str
     element_id: str
 
@@ -3006,6 +3022,7 @@ class SetOverlayConfig(Command[OverlayConfigResult]):
     Useful when the GUI ships a full edit (drag-out from a panel).
     Each ``elements`` entry is a flat dict matching ``OverlayElement.to_dict``.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
     key: str
     elements: tuple[dict, ...] = ()
 

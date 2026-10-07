@@ -27,7 +27,7 @@ from ..events import (
     ThemeSaved,
 )
 from ..geometry import content_is_portrait, save_folder_resolution
-from ..models import ZT_MAX_DURATION_MS, FitMode, ThemeDir, VideoExportRequest
+from ..models import ZT_MAX_DURATION_MS, Capability, FitMode, ThemeDir, VideoExportRequest
 from ..ports import ContentStore
 from ..results import (
     CloudCategoryEntry,
@@ -151,6 +151,7 @@ class LoadTheme(Command[ThemeResult]):
     App, the send step is skipped (parse + persist only).
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     path: Path
     # Explicit user theme switch (default) establishes the theme's own state
@@ -638,6 +639,7 @@ class SaveTheme(Command[ThemeResult]):
     untouched so the user can retry without losing state.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     name: str
     overwrite: bool = False
@@ -1147,6 +1149,7 @@ class ExportCurrentTheme(Command[ThemeExportResult]):
     user library, which would add a mask or background to a grid.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     archive_path: Path
 
@@ -1605,6 +1608,7 @@ class UploadCustomMask(Command[MaskUploadResult]):
     Then dispatches ApplyMask so the new mask wires onto the device.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.MASK
     key: str
     source: Path
 
@@ -1873,6 +1877,7 @@ class RestoreDeviceState(Command[ThemeResult]):
     CLI loop primed by a restore ticked forever against nothing.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
 
     def execute(self, app: App) -> ThemeResult:
@@ -2081,6 +2086,7 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
          and only once the video loads.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     theme_id: str
 
@@ -2161,6 +2167,7 @@ class LoadImage(Command[ThemeResult]):
     PNG / JPG / JPEG / BMP / WEBP.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     path: Path
 
@@ -2419,6 +2426,7 @@ class LoadVideo(Command[ThemeResult]):
     Errors surface as structured Results — never exceptions to UIs.
     """
     USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     path: Path
     start_ms: int = 0

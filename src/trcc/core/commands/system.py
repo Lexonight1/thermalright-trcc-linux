@@ -28,6 +28,7 @@ from ..models import (
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
     TIME_FORMATS,
+    Capability,
     PanelConfig,
     SensorBinding,
 )
@@ -1074,6 +1075,7 @@ class ConfigureSlideshow(Command[SlideshowResult]):
     SlideshowService cursor so the next tick picks up the new list
     from index 0.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     themes: tuple[str, ...] | None = None
     interval_s: float | None = None
@@ -1109,6 +1111,7 @@ class SetSlideshow(Command[SlideshowResult]):
     driver also dispatches this, with ``enabled=False``, when another source
     takes the panel.
     """
+    REQUIRES: ClassVar[Capability | None] = Capability.THEME
     key: str
     enabled: bool
 

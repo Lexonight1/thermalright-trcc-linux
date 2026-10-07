@@ -24,7 +24,7 @@ from trcc.core.commands import (
 )
 from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
-from trcc.core.models import Theme
+from trcc.core.models import CAPABILITIES_BY_KIND, Kind, Theme
 from trcc.services.settings import Settings
 
 from .conftest import FakeMic, FakePlatform
@@ -2020,7 +2020,8 @@ def test_save_theme_references_the_devices_own_library(
     app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
         profile=get_profile(114, 64),            # FBL 114 PM 64 → 1600x720
         handshake=SimpleNamespace(sub_byte=3, pm_byte=64),
-        info=SimpleNamespace(key=key, native_resolution=resolution),
+        info=SimpleNamespace(key=key, native_resolution=resolution,
+                             kind=Kind.LCD, capabilities=CAPABILITIES_BY_KIND[Kind.LCD]),
         is_connected=True,
     )
 
@@ -2069,7 +2070,8 @@ def test_save_theme_falls_back_when_the_sku_library_is_absent(
     app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
         profile=get_profile(114, 64),            # FBL 114 PM 64 → 1600x720
         handshake=SimpleNamespace(sub_byte=3, pm_byte=64),
-        info=SimpleNamespace(key=key, native_resolution=resolution),
+        info=SimpleNamespace(key=key, native_resolution=resolution,
+                             kind=Kind.LCD, capabilities=CAPABILITIES_BY_KIND[Kind.LCD]),
         is_connected=True,
     )
 

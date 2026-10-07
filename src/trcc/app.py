@@ -1334,9 +1334,12 @@ class App(CommandBus):
         origin = current_origin()
         sink = sink_for(cmd.LOG_LEVEL, log, frame_log)
         sink.log(cmd.LOG_LEVEL, "[%s] dispatch %r", origin, cmd)
-        if cmd.USES_DEVICE:
-            self._connect_for(cmd)
-        result = cmd.execute(self)
+        if (why := self._lacks_capability(cmd)) is not None:
+            result = cmd.refusal(why)
+        else:
+            if cmd.USES_DEVICE:
+                self._connect_for(cmd)
+            result = cmd.execute(self)
         if not getattr(result, "ok", True):
             # A per-tick Command that fails fails again next tick: warn once
             # per distinct message, or a broken screencast writes seven
@@ -1357,6 +1360,15 @@ class App(CommandBus):
             )
         return result
 
+
+    def _lacks_capability(self, cmd: Command[Any]) -> str | None:
+        """Why *cmd*'s device cannot do what it ``REQUIRES``, or None."""
+        frame_log.debug("_lacks_capability: %s requires %s", type(cmd).__name__,
+                        cmd.REQUIRES.value if cmd.REQUIRES else "nothing")
+        if cmd.REQUIRES is None:
+            return None
+        from .core.commands._helpers import _lacks
+        return _lacks(self, getattr(cmd, "key", ""), cmd.REQUIRES)
 
     def _connect_for(self, cmd: Command[Any]) -> None:
         """Bring *cmd*'s device up before it runs — the one place that decides.

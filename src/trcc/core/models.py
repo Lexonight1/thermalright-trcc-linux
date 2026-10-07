@@ -90,6 +90,8 @@ class Capability(str, Enum):
     ORIENTATION = "orientation"     # rotate the displayed image
     EFFECTS = "effects"             # animated LED modes (breathe, rainbow…)
     LED_ZONES = "led_zones"         # per-zone LED color / brightness
+    THEME = "theme"                 # load / save / restore a theme
+    BACKGROUND = "background"       # the panel's background picture / media
 
 
 _LCD_CAPABILITIES = frozenset({
@@ -99,11 +101,14 @@ _LCD_CAPABILITIES = frozenset({
     Capability.OVERLAY,
     Capability.MASK,
     Capability.ORIENTATION,
+    Capability.THEME,
+    Capability.BACKGROUND,
 })
 
+# No BRIGHTNESS: that capability is the PANEL's (``SetBrightness``).  An LED's
+# brightness is its own Command family, gated by ``_not_an_led``.
 _LED_CAPABILITIES = frozenset({
     Capability.COLOR_FILL,
-    Capability.BRIGHTNESS,
     Capability.EFFECTS,
     Capability.LED_ZONES,
 })
