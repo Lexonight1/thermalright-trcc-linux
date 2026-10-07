@@ -19,6 +19,7 @@ which encodes exactly that bug.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -254,3 +255,89 @@ def test_nvidia_fan_rpm(monkeypatch: pytest.MonkeyPatch,
     gpu = nvml.NvidiaGpu(0, handle=object())
     assert gpu.fan_rpm() == expected
     assert gpu.fan() == 30.0
+
+
+# ── no NVIDIA card: no fault to warn about (#231, #224) ─────────────────
+
+_LIBRARY_NOT_FOUND = 12
+
+
+@pytest.mark.parametrize(("present", "warnings", "claims_a_card"), [
+    (False, 0, False),     # AMD-only: the normal state
+    (True, 1, True),       # a card, and its library will not load: a fault
+    (None, 1, False),      # cannot tell (no PCI tree): warn, claim nothing
+])
+def test_an_init_failure_is_a_fault_only_where_a_card_is(
+    caplog: pytest.LogCaptureFixture,
+    present: bool | None, warnings: int, claims_a_card: bool,
+) -> None:
+    """Every AMD-only SteamOS/Bazzite user was told "NVIDIA GPU present but
+    NVML init failed: NVML Shared Library Not Found" (#231)."""
+    runtime = nvml._NvmlRuntime(_FakePynvml(fail_with=_LIBRARY_NOT_FOUND),
+                                None, lambda: present)
+
+    with caplog.at_level(logging.DEBUG, logger="trcc.adapters.sensors.nvml"):
+        assert runtime.ensure_init() is False
+
+    warned = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warned) == warnings
+    assert any("NVIDIA GPU present" in m for m in warned) is claims_a_card
+
+
+@pytest.mark.parametrize(("present", "warnings"), [(False, 0), (None, 1)])
+def test_a_missing_reader_is_a_fault_only_where_a_card_may_be(
+    caplog: pytest.LogCaptureFixture, present: bool | None, warnings: int,
+) -> None:
+    runtime = nvml._NvmlRuntime(None, "No module named 'pynvml'",
+                                lambda: present)
+
+    with caplog.at_level(logging.DEBUG, logger="trcc.adapters.sensors.nvml"):
+        assert runtime.ensure_init() is False
+
+    assert len([r for r in caplog.records
+                if r.levelno == logging.WARNING]) == warnings
+
+
+def _pci(root: Path, *functions: tuple[str, str]) -> Path:
+    """A /sys/bus/pci/devices tree of (vendor, class) functions."""
+    for i, (vendor, klass) in enumerate(functions):
+        dev = root / f"0000:0{i}:00.0"
+        dev.mkdir(parents=True)
+        (dev / "vendor").write_text(f"{vendor}\n")
+        (dev / "class").write_text(f"{klass}\n")
+    return root
+
+
+@pytest.mark.parametrize(("functions", "present"), [
+    ((("0x10de", "0x030000"),), True),                 # an NVIDIA GPU
+    ((("0x10de", "0x040300"),), False),                # its HDMI audio only
+    ((("0x1002", "0x030000"), ("0x8086", "0x038000")), False),  # AMD + Intel
+])
+def test_the_pci_probe_finds_only_an_nvidia_display_controller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    functions: tuple[tuple[str, str], ...], present: bool,
+) -> None:
+    from trcc.adapters.sensors import gpu_detect
+
+    monkeypatch.setattr(gpu_detect, "_PCI_ROOT", _pci(tmp_path / "pci", *functions))
+
+    assert gpu_detect.nvidia_gpu_present() is present
+
+
+def test_the_pci_probe_cannot_tell_without_a_pci_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """macOS, Windows, BSD: unknown, so a real card there still gets its warning."""
+    from trcc.adapters.sensors import gpu_detect
+
+    monkeypatch.setattr(gpu_detect, "_PCI_ROOT", tmp_path / "absent")
+
+    assert gpu_detect.nvidia_gpu_present() is None
+
+
+def test_the_process_runtime_asks_the_pci_probe() -> None:
+    """The fix is only the gate if the real runtime is handed the probe;
+    the default answers "cannot tell" and would keep every false warning."""
+    from trcc.adapters.sensors import gpu_detect
+
+    assert nvml._runtime._nvidia_present is gpu_detect.nvidia_gpu_present  # pyright: ignore[reportPrivateUsage]

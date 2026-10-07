@@ -221,23 +221,13 @@ def nvidia_gpu_present() -> bool:
     independently of the reader so we can advise *installing* the reader.
     Non-Linux falls back to the driver proc node.
     """
-    log.debug("nvidia_gpu_present")
-    if sys.platform != "linux":
+    from ..sensors.gpu_detect import nvidia_gpu_present as pci_probe
+
+    present = pci_probe()
+    log.debug("nvidia_gpu_present: PCI says %s", present)
+    if present is None:
         return Path("/proc/driver/nvidia/version").exists()
-    pci_root = Path("/sys/bus/pci/devices")
-    if not pci_root.is_dir():
-        return False
-    for dev in pci_root.iterdir():
-        try:
-            if dev.joinpath("vendor").read_text().strip().lower() != "0x10de":
-                continue
-            # PCI class 0x03xxxx == display controller (skip non-GPU NVIDIA
-            # functions like the bundled HDMI-audio device).
-            if dev.joinpath("class").read_text().strip().lower().startswith("0x03"):
-                return True
-        except OSError:
-            continue
-    return False
+    return present
 
 
 def check_gpu_sensors(

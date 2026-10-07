@@ -24,6 +24,10 @@ log = logging.getLogger(__name__)
 # PCI class 0x03 = display controller (covers VGA, 3D, other display)
 _PCI_DISPLAY_CLASS = 0x03
 
+#: Where Linux lists PCI functions -- a module constant so a test can point it
+#: at a tree it built (the ``hwmon._HWMON_ROOT`` seam).
+_PCI_ROOT = Path("/sys/bus/pci/devices")
+
 _VENDOR_IDS = {
     0x10DE: "nvidia",
     0x1002: "amd",
@@ -40,7 +44,7 @@ def detect_gpu_vendors() -> set[str]:
     their own detection via the platform's native API).
     """
     log.info("detect_gpu_vendors: called")
-    pci_base = Path("/sys/bus/pci/devices")
+    pci_base = _PCI_ROOT
     if not pci_base.exists():
         return set()
 
@@ -60,6 +64,17 @@ def detect_gpu_vendors() -> set[str]:
             found.add(name)
     log.debug("PCI scan found GPU vendors: %s", sorted(found) or "none")
     return found
+
+
+def nvidia_gpu_present() -> bool | None:
+    """Whether this host has an NVIDIA display controller, or ``None`` when it
+    cannot tell (no PCI tree: macOS, Windows, BSD).
+
+    The display class matters: an NVIDIA HDMI-audio function is not a GPU.
+    """
+    present = "nvidia" in detect_gpu_vendors() if _PCI_ROOT.is_dir() else None
+    log.debug("nvidia_gpu_present: %s", present)
+    return present
 
 
 # Map vendor → pip requirement spec.  Empty = no install needed.
