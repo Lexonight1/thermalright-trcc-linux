@@ -9,11 +9,12 @@ from ...core.commands import (
     ConnectDevice,
     DeviceCanvas,
     DeviceConnectionIssues,
+    DeviceState,
     DisconnectDevice,
     DiscoverDevices,
     ResetDevice,
 )
-from ...core.results import DeviceCanvasResult, DisconnectResult
+from ...core.results import DeviceCanvasResult, DeviceStateResult, DisconnectResult
 from ._shared import (
     http_error_if_failed,
     product_to_schema,
@@ -76,6 +77,22 @@ def device_canvas(key: str, request: Request) -> DeviceCanvasResult:
     """
     log.info("api GET /devices/{key}/canvas: key=%s", key)
     result = request.app.state.trcc.dispatch(DeviceCanvas(key=key))
+    http_error_if_failed(result, 404)
+    return result
+
+
+@router.get("/{key}/state", response_model=DeviceStateResult)
+def device_state(key: str, request: Request) -> DeviceStateResult:
+    """What an attached device IS: the cooler its handshake identified
+    (``product``, ``resolution``) beside the catalog's guess for its USB id
+    (``catalog_product``, ``catalog_resolution``), plus the handshake bytes.
+
+    The CLI's ``device state`` and the qtgui inspector read this Query; the
+    API had only ``/{key}``, which is the catalog row -- one name for every
+    cooler sharing the id (#272).  404 when the device is not attached.
+    """
+    log.info("api GET /devices/{key}/state: key=%s", key)
+    result = request.app.state.trcc.dispatch(DeviceState(key=key))
     http_error_if_failed(result, 404)
     return result
 

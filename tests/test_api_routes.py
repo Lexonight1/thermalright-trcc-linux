@@ -1646,6 +1646,29 @@ def test_create_theme_reports_the_panels_size_not_the_catalogs(
     assert resp.json()["resolution"] == "320x240"
 
 
+def test_device_state_names_the_cooler_and_the_catalogs_guess(
+    tmp_path: Path,
+) -> None:
+    """``/devices/{key}`` is the catalog row -- one name for every cooler on
+    the USB id.  ``/state`` is what the handshake found (#272)."""
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.api.main import build_app
+
+    from .mock_platform import MockPlatform
+
+    trcc = App(MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
+                            tmp_path), renderer=_SmokeRenderer())
+    with loopback_client(build_app(trcc=trcc)) as client:
+        missing = client.get("/devices/87ad:70db/state")
+        assert trcc.dispatch(ConnectDevice(key="87ad:70db")).ok
+        body = client.get("/devices/87ad:70db/state").json()
+
+    assert missing.status_code == 404
+    assert (body["product"], body["resolution"]) == ("Mjolnir Vision", [320, 240])
+    assert (body["catalog_product"], body["catalog_resolution"]) == (
+        "GrandVision 360 AIO", [480, 480])
+
+
 def test_new_capability_routes_are_registered(api_client: TestClient) -> None:
     """Every Gate B route this session added is in the OpenAPI schema."""
     schema = api_client.get("/openapi.json").json()["paths"]

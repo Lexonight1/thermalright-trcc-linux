@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**132 endpoints.**
+**133 endpoints.**
 
 ## Running it
 
@@ -32,6 +32,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/connect` | `ConnectView` | Connect *key*.  Returns the full handshake — including the raw device response as hex, the field issue triage always asks for. |
 | `POST /devices/{key}/disconnect` | `DisconnectResult` | — |
 | `POST /devices/{key}/reset` | `DisconnectResult` | Power-cycle the device: disconnect, reconnect, restore its display. |
+| `GET /devices/{key}/state` | `DeviceStateResult` | What an attached device IS: the cooler its handshake identified (``product``, ``resolution``) beside the catalog's guess for its USB id (``catalog_product``, ``catalog_resolution``), plus the handshake bytes. |
 
 ## Display, themes and frames
 
