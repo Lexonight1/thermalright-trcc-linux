@@ -386,6 +386,26 @@ def test_type2_serial_kept_on_a_36_byte_reply(
     assert result.serial == serial_bytes.hex().upper()
 
 
+def test_type2_serial_blank_on_a_35_byte_reply(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """One byte short of the serial is no serial: the 16 bytes at resp[20:36]
+    are not all there, and a 15-byte slice must not pass for one."""
+    resp = bytearray(35)
+    resp[0:4] = _TYPE2_MAGIC
+    resp[4] = 2        # SUB
+    resp[5] = 128      # PM
+    resp[12] = 0x01    # required by the validator
+    resp[16] = 0x10    # serial marker
+    resp[20:35] = bytes(range(1, 16))
+    fake_bulk.read_script.append(bytes(resp))
+    device = _make_type2(fake_bulk)
+
+    result = device.connect()
+
+    assert result.serial == ""
+
+
 def test_type2_serial_blank_without_marker(
     fake_bulk: FakeBulkTransport,
 ) -> None:
