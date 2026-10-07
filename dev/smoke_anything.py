@@ -349,7 +349,7 @@ def probe_video_size_zero(_platform, _info) -> ProbeResult:
 
     try:
         with patch("trcc.services.media.subprocess.run", side_effect=_fake_run), \
-             patch("trcc.services.media._ffmpeg_available", return_value=True), \
+             patch("trcc.core.toolchain.present", return_value=True), \
              patch.object(Path, "exists", return_value=True):
             VideoDecoder(Path("/tmp/x.mp4"), size=(0, 480)).decode()
         return _bad("VideoDecoder accepted size=(0,480) silently — "
@@ -398,7 +398,7 @@ def probe_video_size_portrait(_platform, _info) -> ProbeResult:
         for label, size in (("portrait", (320, 480)),
                             ("landscape", (480, 320))):
             with patch("trcc.services.media.subprocess.run", side_effect=_fake_run), \
-                 patch("trcc.services.media._ffmpeg_available", return_value=True), \
+                 patch("trcc.core.toolchain.present", return_value=True), \
                  patch.object(Path, "exists", return_value=True):
                 frames = VideoDecoder(Path("/tmp/x.mp4"), size=size).decode()
             if len(frames) != wanted:

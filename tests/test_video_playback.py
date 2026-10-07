@@ -41,13 +41,13 @@ from trcc.core.models import (
 )
 from trcc.core.ports import Renderer
 from trcc.core.protocol import get_profile
+from trcc.core.toolchain import present
 from trcc.services.background import BackgroundSlot
 from trcc.services.display import DisplayService
 from trcc.services.media import (
     MediaService,
     Playback,
     VideoDecoder,
-    _ffmpeg_available,
 )
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
@@ -653,7 +653,7 @@ def test_video_decoder_rejects_zero_dimension(
     """
     clip = tmp_home / "clip.mp4"
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
-    monkeypatch.setattr("trcc.services.media._ffmpeg_available", lambda: True)
+    monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
     monkeypatch.setattr(
         "trcc.services.media.subprocess.run",
         lambda *a, **k: _FakeProc(b""),
@@ -674,7 +674,7 @@ def test_video_decoder_accepts_valid_dimension(
     clip = tmp_home / "clip.mp4"
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     two = _encoded_frame(0xFF102030, 320, 480) + _encoded_frame(0xFF405060, 320, 480)
-    monkeypatch.setattr("trcc.services.media._ffmpeg_available", lambda: True)
+    monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
     monkeypatch.setattr(
         "trcc.services.media.subprocess.run",
         lambda *a, **k: _FakeProc(two),
@@ -1243,7 +1243,7 @@ def test_a_gif_background_routes_to_playback_not_rejection(
     assert connected_app.media.playback(_KEY) is not None
 
 
-@pytest.mark.skipif(not _ffmpeg_available(), reason="ffmpeg not installed")
+@pytest.mark.skipif(not present("ffmpeg"), reason="ffmpeg not installed")
 def test_a_real_gif_decodes_to_many_frames(tmp_home: Path) -> None:
     """The decode half — the capability was there before the table entry was.
 

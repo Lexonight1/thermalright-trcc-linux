@@ -13,7 +13,6 @@ ThemeError with a user-facing install hint.
 from __future__ import annotations
 
 import logging
-import os
 import struct
 import subprocess
 from dataclasses import dataclass, field
@@ -82,7 +81,7 @@ class VideoDecoder:
         """
         if not self.path.exists():
             raise ThemeError(f"Video path does not exist: {self.path}")
-        if not _ffmpeg_available():
+        if not toolchain.present("ffmpeg"):
             raise ThemeError(
                 "ffmpeg not found on PATH — install via your package manager "
                 "(e.g. 'dnf install ffmpeg' / 'apt install ffmpeg')"
@@ -115,7 +114,7 @@ class VideoDecoder:
                 "width and height must both be positive"
             )
 
-        cmd: list[str] = [toolchain.resolve("ffmpeg") or "ffmpeg",
+        cmd: list[str] = [toolchain.executable("ffmpeg"),
                           "-hide_banner", "-loglevel", "error"]
         if self.rotation_degrees:
             cmd += ["-display_rotation", str(self.rotation_degrees)]
@@ -195,17 +194,6 @@ def _split_jpeg_stream(data: bytes) -> list[bytes]:
     return frames
 
 
-def _ffmpeg_available() -> bool:
-    """Quick check whether ffmpeg is on PATH."""
-    log.debug("_ffmpeg_available")
-    for dir_ in os.get_exec_path():
-        if (Path(dir_) / "ffmpeg").exists():
-            return True
-        if (Path(dir_) / "ffmpeg.exe").exists():
-            return True
-    return False
-
-
 def _probe_video_size(path: Path) -> tuple[int, int] | None:
     """Return the video's native ``(width, height)`` or ``None`` on failure.
 
@@ -218,7 +206,7 @@ def _probe_video_size(path: Path) -> tuple[int, int] | None:
         log.warning("_probe_video_size: ffprobe not on PATH")
         return None
     cmd = [
-        "ffprobe", "-v", "error",
+        toolchain.executable("ffprobe"), "-v", "error",
         "-select_streams", "v:0",
         "-show_entries", "stream=width,height",
         "-of", "csv=p=0:s=x",
@@ -287,7 +275,7 @@ class ZtDecoder:
         """Read header + payloads, returning the ENCODED frames unchanged."""
         if not self.path.exists():
             raise ThemeError(f".zt path does not exist: {self.path}")
-        if not _ffmpeg_available():
+        if not toolchain.present("ffmpeg"):
             raise ThemeError(
                 "ffmpeg not found on PATH — install via your package manager "
                 "(e.g. 'dnf install ffmpeg' / 'apt install ffmpeg')"

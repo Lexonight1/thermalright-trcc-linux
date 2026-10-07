@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core import toolchain
 from ...core.commands import DeviceCanvas, ExportVideoClip, ProbeVideoDuration
 from ...core.geometry import fit_rect_for_mode
 from ...core.models import (
@@ -484,7 +485,7 @@ class VideoCropDialog(QDialog):
         try:
             result = subprocess.run(
                 [
-                    "ffmpeg",
+                    toolchain.executable("ffmpeg"),
                     "-ss", f"{ms / 1000.0}",
                     "-i", str(self._video_path),
                     "-vframes", "1",

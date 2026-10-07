@@ -79,6 +79,20 @@ def resolve(tool: str) -> str | None:
     return None
 
 
+def executable(tool: str) -> str:
+    """``argv[0]`` for *tool*: the name that provides it here, else its own.
+
+    The fallback keeps a missing tool failing the way it always has — the
+    caller's ``OSError`` handler sees "no such file" for ``ffmpeg`` — while a
+    machine that only has ``ffmpeg7`` runs ``ffmpeg7``.  An argv that starts
+    with the literal name instead works only where the unversioned binary
+    exists, which is why ``tests/test_toolchain.py`` refuses one.
+    """
+    found = resolve(tool)
+    log.debug("toolchain.executable: %s -> %s", tool, found or tool)
+    return found or tool
+
+
 #: Directories a binary plausibly lives in while PATH does not include it.
 #:
 #: This is the difference between "install it" and "you already have it".  A

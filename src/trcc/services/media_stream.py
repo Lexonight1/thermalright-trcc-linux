@@ -84,7 +84,7 @@ class StreamReader:
     def _command(self) -> list[str]:
         w, h = self._size
         log.debug("_command: %s", self.url)
-        return [toolchain.resolve("ffmpeg") or "ffmpeg",
+        return [toolchain.executable("ffmpeg"),
                 "-hide_banner", "-loglevel", "error",
                 "-protocol_whitelist", _PROTOCOLS,
                 "-rw_timeout", str(_RW_TIMEOUT_US),

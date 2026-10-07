@@ -196,7 +196,7 @@ class VideoExporter:
             size_args = ["-s", f"{req.target_w}x{req.target_h}"]
 
         cmd: list[str] = [
-            "ffmpeg",
+            toolchain.executable("ffmpeg"),
             "-ss", f"{req.start_ms / 1000.0}",
             "-t", f"{(req.end_ms - req.start_ms) / 1000.0}",
             "-i", str(req.source),
@@ -289,7 +289,7 @@ def probe_dimensions(source: Path) -> tuple[int, int]:
         log.warning("probe_dimensions: no ffprobe — aspect cannot be preserved")
         return (0, 0)
     cmd = [
-        "ffprobe", "-v", "error",
+        toolchain.executable("ffprobe"), "-v", "error",
         "-select_streams", "v:0",
         "-show_entries", "stream=width,height",
         "-of", "csv=p=0",
@@ -328,7 +328,7 @@ def probe_duration_ms(source: Path) -> int:
     if not toolchain.present("ffprobe"):
         return 0
     cmd = [
-        "ffprobe", "-v", "error",
+        toolchain.executable("ffprobe"), "-v", "error",
         "-show_entries", "format=duration",
         "-of", "csv=p=0",
         str(source),

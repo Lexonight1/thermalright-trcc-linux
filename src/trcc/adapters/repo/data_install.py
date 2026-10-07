@@ -90,7 +90,7 @@ class SevenZipExtractor:
         target.mkdir(parents=True, exist_ok=True)
         try:
             listing = subprocess.run(
-                [toolchain.resolve("7z") or "7z", "l", "-slt",
+                [toolchain.executable("7z"), "l", "-slt",
                  str(archive)],
                 capture_output=True, text=True, timeout=30,
                 creationflags=_NO_WINDOW,
@@ -122,7 +122,7 @@ class SevenZipExtractor:
                 return False
         try:
             result = subprocess.run(
-                [toolchain.resolve("7z") or "7z", "x", str(archive),
+                [toolchain.executable("7z"), "x", str(archive),
                  f"-o{target}", "-y"],
                 capture_output=True, timeout=120,
                 creationflags=_NO_WINDOW,

@@ -21,6 +21,7 @@ from pathlib import Path
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QMovie
 
+from ...core import toolchain
 from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from ...core.models import CloudThemeItem
 from .base import BaseThumbnail, DownloadableThemeBrowser
@@ -43,7 +44,7 @@ def _ensure_thumb_gif(mp4_path: str, size: int = Sizes.THUMB_IMAGE) -> str | Non
         return str(gif_path)
     try:
         subprocess.run([
-            'ffmpeg', '-i', mp4_path,
+            toolchain.executable('ffmpeg'), '-i', mp4_path,
             '-vf', f'scale={size}:{size}:force_original_aspect_ratio=decrease,'
                    f'pad={size}:{size}:(ow-iw)/2:(oh-ih)/2:black,'
                    'fps=8',
@@ -316,7 +317,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
             png_path = self.web_directory / f"{theme_id}.png"
             if mp4_path.exists() and not png_path.exists():
                 subprocess.run([
-                    'ffmpeg', '-i', str(mp4_path),
+                    toolchain.executable('ffmpeg'), '-i', str(mp4_path),
                     '-vframes', '1', '-y', str(png_path)
                 ], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
         except (OSError, subprocess.SubprocessError) as e:

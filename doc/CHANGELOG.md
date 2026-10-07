@@ -148,6 +148,12 @@
 
 ### Fixed
 
+- **Videos play where ffmpeg is installed under a versioned name.** On
+  NetBSD (pkgsrc) the programs are `ffmpeg7` and `ffprobe7`. TRCC found them
+  when checking what was installed, then ran plain `ffmpeg` anyway, so video
+  backgrounds were refused as "ffmpeg not found", and cloud theme previews,
+  video trimming and video export failed. Every use now runs the name that is
+  actually installed.
 - **Cloud theme videos are checked before they are kept.** Thermalright's two
   theme servers only speak plain http, so whatever arrives is only as
   trustworthy as the network it crossed. A download is now refused if it is not

@@ -34,6 +34,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QLabel, QProgressBar, QWidget
 
+from ...core import toolchain
 from ...core.geometry import fit_rect_for_mode
 from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from ...core.models import (
@@ -343,7 +344,7 @@ class UCVideoCut(QWidget):
         # Get metadata with ffprobe
         try:
             result = subprocess.run([
-                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                toolchain.executable('ffprobe'), '-v', 'error', '-select_streams', 'v:0',
                 '-show_entries', 'stream=r_frame_rate,nb_frames',
                 '-show_entries', 'format=duration',
                 '-of', 'csv=p=0',
@@ -433,7 +434,7 @@ class UCVideoCut(QWidget):
         ss = ms / 1000.0
         try:
             result = subprocess.run([
-                'ffmpeg', '-ss', str(ss), '-i', self._video_path,
+                toolchain.executable('ffmpeg'), '-ss', str(ss), '-i', self._video_path,
                 '-vframes', '1', '-f', 'image2pipe', '-vcodec', 'bmp',
                 '-v', 'error', '-y', '-',
             ], capture_output=True, timeout=5, creationflags=_NO_WINDOW)

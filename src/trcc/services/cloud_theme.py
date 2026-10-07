@@ -154,7 +154,7 @@ def _extract_first_frame_png(mp4: Path, png: Path) -> None:
     """Write the MP4's first frame to *png*.  Best-effort."""
     log.info("materialise: extracting first-frame PNG → %s", png)
     _run_ffmpeg_or_warn(
-        [toolchain.resolve("ffmpeg") or "ffmpeg",
+        [toolchain.executable("ffmpeg"),
          "-i", str(mp4), "-vframes", "1", "-y", str(png)],
         timeout=10, label=f"first-frame PNG for {mp4.name}",
     )
@@ -167,7 +167,7 @@ def _generate_animated_gif(mp4: Path, gif: Path) -> None:
     log.info("materialise: generating animated GIF → %s", gif)
     _run_ffmpeg_or_warn(
         [
-            "ffmpeg", "-i", str(mp4),
+            toolchain.executable("ffmpeg"), "-i", str(mp4),
             "-vf", "scale=120:120,pad=120:120,fps=8",
             "-loop", "0", "-y", str(gif),
         ],
