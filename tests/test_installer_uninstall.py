@@ -35,3 +35,15 @@ def test_the_uninstaller_deletes_the_run_value() -> None:
     run_key = _autostart._WIN_RUN_KEY_PATH
 
     assert f"'{run_key}',\n      '{_autostart._DEFAULT_VALUE_NAME}');" in step
+
+
+def test_setup_broadcasts_the_path_change() -> None:
+    """#218: the installer adds itself to the machine PATH, but without
+    ChangesEnvironment Setup never broadcasts WM_SETTINGCHANGE -- Explorer
+    and every terminal it opens keep the old PATH, so 'trcc' is "not
+    recognized" until the user signs out."""
+    iss = _ISS.read_text(encoding="utf-8")
+    setup = iss.split("[Setup]", 1)[1].split("\n[", 1)[0]
+
+    assert "Session Manager\\Environment" in iss          # it does edit PATH
+    assert "ChangesEnvironment=yes" in setup.splitlines()

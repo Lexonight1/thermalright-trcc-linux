@@ -28,6 +28,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 PrivilegesRequired=admin
+; The [Registry] PATH entry is a machine-wide environment change.  Without this
+; Setup never broadcasts WM_SETTINGCHANGE, so Explorer -- and every terminal it
+; opens -- keeps the old PATH and 'trcc' is "not recognized" until the user
+; signs out (#218).  Applies to the uninstall's PATH removal as well.
+ChangesEnvironment=yes
 LicenseFile=..\LICENSE
 ; Upgrade: detect running TRCC and offer to close it
 CloseApplications=yes
