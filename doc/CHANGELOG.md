@@ -162,7 +162,8 @@
   and the flood pushed everything else out of the log, including whatever had
   gone wrong, and plugging the panel back in was ignored as "already
   connected". The panel is now seen as disconnected: the video stops sending to
-  it with one warning, and a replug is no longer ignored. If the panel comes
+  it with one warning, every open window is told the panel has gone, and a
+  replug is no longer ignored. If the panel comes
   back without being replugged, restart TRCC (`trcc kill`, then open it again);
   reconnecting on its own is still to come.
 - **Videos play where ffmpeg is installed under a versioned name.** On

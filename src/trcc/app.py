@@ -19,7 +19,7 @@ from .adapters.repo.github_releases import GitHubReleases
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
-from .core.errors import DeviceDisconnectedError, DeviceNotFoundError
+from .core.errors import DeviceNotFoundError, TransportError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
@@ -235,6 +235,9 @@ class App(CommandBus):
         # (``SyncSendScheduler``); production defaults to a thread per device.
         # See ``doc/SEND_FOUNDATION.md``.
         self.senders: dict[str, DeviceSender] = {}
+        # Panels a send found unusable since their last connect -- so the loss
+        # is announced ONCE, however many frames were still in flight.
+        self._lost: set[str] = set()
         if send_scheduler is None:
             from .adapters.infra.send_scheduler import ThreadSendScheduler
             send_scheduler = ThreadSendScheduler()
@@ -835,6 +838,7 @@ class App(CommandBus):
         """Disconnect and drop a device.  Frees the scene cache + active theme."""
         log.info("detach: key=%s", key)
         self.clear_connect_issue(key)
+        self._lost.discard(key)
         # Stop the send worker BEFORE closing the transport so no in-flight
         # write races the disconnect (the scheduler joins the thread).
         self.stop_sender(key)
@@ -1007,6 +1011,7 @@ class App(CommandBus):
             device, volatile=device.needs_keepalive,
             on_failure=self._on_sender_failure,
         )
+        self._lost.discard(key)
         self.senders[key] = sender
         self._send_scheduler.add(sender)
         log.info("start_sender: %s volatile=%s", key, device.needs_keepalive)
@@ -1017,14 +1022,31 @@ class App(CommandBus):
         it isn't waiting, so the sender routes the failure here)."""
         if exc is None:
             log.warning("_on_sender_failure: %s write returned False", key)
+        else:
+            self.events.publish(ErrorOccurred(
+                message=str(exc), kind="transport", key=key,
+            ))
+        # Both: the frame that finds a re-open impossible RETURNS False, and
+        # since producers stop at the next one, it is the only one that will.
+        self.note_lost(key)
+
+    def note_lost(self, key: str) -> None:
+        """A send just failed on *key* -- if its panel is now unusable, say so ONCE.
+
+        The device decides, not the exception: a panel closes its own transport
+        both at the recovery threshold (``DeviceDisconnectedError``) and when a
+        ``_reconnect`` cannot re-open (a plain ``TransportError``, every frame
+        after).  Keying on the exception type missed the second for good, so
+        on 2026-10-06 no window was ever told the panel had gone.
+        """
+        device = self.devices.get(key)
+        if device is None or device.is_connected or key in self._lost:
+            log.debug("note_lost: %s — nothing new (attached=%s lost=%s)",
+                      key, device is not None, key in self._lost)
             return
-        self.events.publish(ErrorOccurred(
-            message=str(exc), kind="transport", key=key,
-        ))
-        if isinstance(exc, DeviceDisconnectedError):
-            log.info("_on_sender_failure: %s auto-disconnect (recovery threshold)",
-                     key)
-            self.events.publish(DeviceDisconnected(key=key))
+        self._lost.add(key)
+        log.warning("note_lost: %s lost its connection", key)
+        self.events.publish(DeviceDisconnected(key=key))
 
     def add_task(self, task: SendTask) -> None:
         """Drive *task* on the shared scheduler.
@@ -1081,7 +1103,16 @@ class App(CommandBus):
         if sender is None:
             log.warning("send: no sender for %s (not connected?)", key)
             return False
-        return sender.submit(payload, wait=wait)
+        if not wait:
+            return sender.submit(payload, wait=False)   # failures: on_failure
+        try:
+            ok = sender.submit(payload, wait=True)
+        except TransportError:
+            self.note_lost(key)
+            raise
+        if not ok:
+            self.note_lost(key)
+        return ok
 
     def exclusive_wire(self, key: str) -> AbstractContextManager[None]:
         """Context manager holding a device's wire exclusively for a

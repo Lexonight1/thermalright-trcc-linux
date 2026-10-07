@@ -165,3 +165,71 @@ def test_a_replug_heals_a_panel_whose_transport_closed(app: App) -> None:
     assert app.devices[_KEY].is_connected
     assert app.senders[_KEY].device is app.devices[_KEY]
     assert app.send(_KEY, b"\x00" * 204800) is True
+
+
+# ── The loss is announced once (increment 2) ─────────────────────────────────
+#
+# Nothing ever said the panel had gone: DeviceDisconnected was published only
+# for DeviceDisconnectedError, and a panel whose re-open failed never raises
+# one -- its first failure RETURNS False, every later one is a plain
+# TransportError.
+
+
+def _disconnects(app: App) -> list[str]:
+    from trcc.core.events import DeviceDisconnected
+
+    seen: list[str] = []
+    app.events.subscribe(DeviceDisconnected, lambda e: seen.append(e.key))
+    return seen
+
+
+def test_a_lost_panel_is_announced_once(app: App) -> None:
+    """By the frame that finds out, and never again for that loss."""
+    from trcc.core.errors import TransportError
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    seen = _disconnects(app)
+
+    _take_the_panel(app)                       # a waited frame: returns False
+    assert seen == [_KEY]
+
+    for _ in range(10):
+        app.send(_KEY, b"\x00" * 204800, wait=False)
+    with pytest.raises(TransportError):
+        app.send(_KEY, b"\x00" * 204800)       # drain the ten
+    assert seen == [_KEY]
+
+
+def test_a_fire_and_forget_frame_announces_the_loss(app: App) -> None:
+    """The per-frame path: no waiter, the first failure returns False."""
+    import errno
+    import time
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    seen = _disconnects(app)
+    transport = app.devices[_KEY]._transport
+
+    def gone(*_args: object, **_kwargs: object) -> bool:
+        raise OSError(errno.ENODEV, "No such device")
+
+    transport.send_cdb = gone                  # type: ignore[method-assign]
+    transport.open = lambda: False             # type: ignore[method-assign]
+    app.send(_KEY, b"\x00" * 204800, wait=False)
+
+    deadline = time.monotonic() + 5
+    while not seen and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert seen == [_KEY]
+
+
+def test_a_panel_lost_again_after_a_reconnect_is_announced_again(app: App) -> None:
+    from trcc.core.events import DeviceAttached
+
+    app.dispatch(ConnectDevice(key=_KEY))
+    seen = _disconnects(app)
+
+    _take_the_panel(app)
+    app._on_device_attached(DeviceAttached(key=_KEY, vid=0x0402, pid=0x3922))
+    _take_the_panel(app)
+
+    assert seen == [_KEY, _KEY]

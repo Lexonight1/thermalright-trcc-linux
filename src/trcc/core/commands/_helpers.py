@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from .._safe import is_under
 from ..errors import (
-    DeviceDisconnectedError,
     DeviceNotConnectedError,
 )
 from ..events import (
     BrightnessChanged,
-    DeviceDisconnected,
     LedColorsChanged,
     LedSettingsChanged,
     SlideshowChanged,
@@ -313,24 +311,16 @@ def _require_connected_device(app: App, key: str) -> Any:
 
 
 def _publish_if_disconnect(app: App, key: str, exc: BaseException) -> None:
-    """Publish ``DeviceDisconnected`` if *exc* is the auto-detach signal.
+    """After a Command's ``except TransportError``: announce a lost panel once.
 
-    Called inside every Command's ``except TransportError`` block.
-    The exception from ``Device.send`` is :class:`DeviceDisconnectedError`
-    when the recovery tracker hit the consecutive-failure threshold —
-    transport is already closed by the device, ``is_connected`` is
-    False.  Observers (sidebar, system tray, daemon clients) listen
-    for ``DeviceDisconnected`` to re-run discovery.
-
-    Plain :class:`TransportError` (transient bus errors) does NOT
-    publish the event — the device is still attached, the caller just
-    saw one bad send.
+    Whether the panel is gone is the device's answer (``is_connected``), not
+    the exception's type -- see :meth:`App.note_lost`, which the send worker's
+    fire-and-forget failures reach too.  Nothing in the App re-runs discovery
+    on ``DeviceDisconnected``; the event tells every window the panel is gone.
     """
     log.debug("_publish_if_disconnect: key=%s exc=%s",
               key, type(exc).__name__)
-    if isinstance(exc, DeviceDisconnectedError):
-        log.info("auto-disconnect: %s closed after recovery threshold", key)
-        app.events.publish(DeviceDisconnected(key=key))
+    app.note_lost(key)
 
 
 def _invalidate_scene(app: App, key: str) -> None:
