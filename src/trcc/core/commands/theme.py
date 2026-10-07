@@ -1965,10 +1965,10 @@ class ListCloudThemes(Query[CloudThemesListResult]):
 class EnsureDataDownload(Command[EnsureDataDownloadResult]):
     """Force-install the theme + cloud + mask archives for a resolution.
 
-    The DataInstaller is normally invoked implicitly by
-    :class:`DiscoverDevices` (it ensures every attached device's
-    resolution).  This Command exposes the same machinery for users
-    who want to **pre-fetch** before connecting — e.g. populating a
+    The installer normally runs in the background when a device connects
+    (``ConnectDevice`` submits its resolution to the ``DataInstallRunner``).
+    This Command exposes the same machinery for users who want to
+    **pre-fetch** before connecting — e.g. populating a
     laptop's cache while still online so a headless display setup
     works offline later.
 

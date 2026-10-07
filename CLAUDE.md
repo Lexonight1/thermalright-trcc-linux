@@ -306,10 +306,12 @@ same App behind the same `CommandBus` port, so nothing below changes.
   first. Open any UI and it works. The App starting is at most a splash line.
 - **Opening a UI changes nothing on the panel.** A UI attaches and shows what is
   already playing. It never reloads, restarts or blanks it.
-- **Closing a window is not quitting.** Closing the window leaves the panel
-  playing. Quitting TRCC (tray "Exit", `trcc kill`) is a separate, explicit act,
-  and it is what puts the panels to sleep. Windows users expect exactly this
-  from a tray app.
+- **Closing a window is not quitting.** Closing a window, or its tray "Exit",
+  closes that UI only; the panels keep playing (decided 2026-09-29). `trcc kill`
+  is the one way to quit: it stops the App, which puts the panels to sleep, and
+  every open UI closes with it. If the App crashes, each open UI restarts and
+  finds or starts a new one. (On Windows each UI runs its own App, so there
+  Exit does quit.)
 - **Every UI shows the same truth.** What is on the panel, whether a cast is
   running, which theme is loaded: all UIs agree, because all of them read it
   from the App.
@@ -346,9 +348,8 @@ stop forgot the capture driver, which then logged a WARNING on every tick
 against a daemon. Both were fixed by moving the work into one Command.
 
 **Existing violations are debt, not precedent.** Code older than this rule is
-moved into the App, never copied. One example: the gui's multi-LCD
-`set_inactive` keeps that window's animation timer running so a panel does not
-go dark. Status, and the investigation that comes first, live in
+moved into the App, never copied. Status, and the investigation that comes
+first, live in
 `memory/project_one_app_many_uis.md`. Status belongs there, not here. Daemon
 Mode (below) is the mechanism this rests on.
 
@@ -359,10 +360,10 @@ Mode (below) is the mechanism this rests on.
 - **Services** (`services/`): Core hexagon — all business logic, pure Python. `DisplayService` (`services/display.py`) delegates to the active `Renderer`; `OverlayService` uses the injected Renderer for compositing/text.
 - **Paths** (`core/ports.py`): `Paths` ABC — per-OS subpaths (theme/web/mask/user dirs) derived from `data_dir`/`config_dir`/`user_content_dir`. Each `Platform` returns its concrete `Paths`. Zero adapter imports.
 - **Devices** (`core/ports.py` ABCs + `adapters/device/`): one unified `Device` ABC. Wire adapters `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd` (`adapters/device/{scsi,hid,bulk,ly}_lcd.py`) + `Led` (`led.py`), each *is* the device that speaks its wire. Built by `DEVICES[info.wire]`.
-- **Composition root** (`_boot.py` + `app.py`): `_boot.trcc()` builds the in-process `App` (or an `AppProxy` in daemon mode). `App` owns the services, the `EventBus`, and the one Command bus (`app.dispatch`). Replaces the old `ControllerBuilder`.
+- **Composition root** (`_boot.py` + `app.py`): `_boot.trcc()` returns an `AppProxy` to the shared App, or builds an in-process `App` for a reason `_boot._local_reason` names. `App` owns the services, the `EventBus`, and the one Command bus (`app.dispatch`). Replaces the old `ControllerBuilder`.
 - **Views** (`ui/gui/`): PySide6 GUI adapter. `TRCCApp` (`ui/gui/trcc_app.py`, thin shell) + `LCDHandler`/`LEDHandler` (one per device). `ui/qtgui/` is the in-progress native-skin rebuild.
 - **CLI** (`ui/cli/`): Typer CLI adapter (package). Thin wrappers that build Commands and `app.dispatch(...)` them.
-- **API** (`ui/api/`): FastAPI REST adapter (package). ~105 routes incl. WebSocket preview stream + cloud themes + export. Dispatches Commands on the App.
+- **API** (`ui/api/`): FastAPI REST adapter (package). Every route is listed in the generated `doc/REFERENCE_API.md` (incl. WebSocket preview stream + cloud themes + export). Dispatches Commands on the App.
 - **Config** (`services/settings.py`): `Settings` — mutable app + per-device state (resolution, language, orientation, temperature unit, mask/theme, each device's overlay layout), persisted to **`trcc.json`** in `paths.config_dir()` (atomic tmp→fsync→rename, schema-versioned). Reached via `app.settings` in-process; **`AppProxy` refuses it**, so a daemon-mode UI dispatches a Command/Query instead.
 - **Entry**: `trcc._entry:main` (console script / `python -m trcc`) → `ui/cli` → `_boot.trcc()` → `App` (composition root: `current_platform()` + `DEVICES[wire]`).
 - **Wires**: each device adapter speaks its protocol — SCSI (LCD frames), HID (handshake/resolution), Bulk, LY, LED (RGB effects + segment displays). See "Two-Factory Chain" + the ABC tables below.
@@ -373,7 +374,7 @@ Mode (below) is the mechanism this rests on.
 
 ### Design Patterns (Used in This Project)
 - **Singleton**: ONE `Settings` per App (`services/settings.py`), constructed at
-  `app.py:125` and reached as `app.settings` — there is no `conf` module and no
+  `App.__init__` (`app.py`) and reached as `app.settings` — there is no `conf` module and no
   module-level singleton. Widgets never store copies. **In daemon mode
   `app.settings` raises** (`AppProxy` exposes only the `CommandBus` port:
   `dispatch`, `events`, `remote`), so a UI that must read or write settings
@@ -512,7 +513,7 @@ current_platform()                  ← OS dispatch    → Platform
 
 ## Daemon Mode (`TRCC_DAEMON`)
 
-Opt-in singleton background process that owns USB and serves CLI / API / GUI clients over a Unix domain socket. Toggled by `TRCC_DAEMON=1`. Off by default during cutover. Falls back to in-process silently on platforms where `AF_UNIX` is unavailable (Windows < build 17063), so the flag is safe to leave set on every OS.
+One background process per user owns USB and every panel, and serves the CLI, API, gui and qtgui over a Unix domain socket. It is the default: any UI finds the running App or starts it (`daemon.ensure_daemon()`). A UI builds its own in-process App only for a reason `_boot._local_reason` names: `TRCC_DAEMON` set to anything but `1` (tests, dev mocks, profilers), no `AF_UNIX` (CPython on Windows, every build), running as root, or a stand-in platform (mock, fake, dev subclass) — or when the App fails to start (WARNING, then in-process).
 
 ### Composition root
 
@@ -529,17 +530,20 @@ build Commands and dispatch them.
 
 What `trcc()` returns depends on environment:
 
-| Environment | Returns | Behaviour |
+| Situation | Returns | Behaviour |
 |---|---|---|
-| `TRCC_DAEMON` unset | real `App` | in-process `App` built from the passed `platform` / `renderer` (both auto-detected — `current_platform()` / `QtRenderer` — when omitted) |
-| `TRCC_DAEMON=1` + `AF_UNIX` available | `AppProxy` | auto-spawns daemon via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
-| `TRCC_DAEMON=1` on Windows < 17063 | real `App` | silent in-process fallback (no `AF_UNIX`), no error |
+| default (`TRCC_DAEMON` unset or `1`) | `AppProxy` | finds or starts the App via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
+| `TRCC_DAEMON=0`, root, a stand-in platform, or no `AF_UNIX` (Windows) | real `App` | in-process, from the passed `platform` / `renderer` (auto-detected when omitted) |
+| the App fails to start | real `App` | WARNING, then in-process |
 
-`AppProxy` (`proxy.py`) implements the **`CommandBus` port and nothing else**:
-`dispatch(cmd)` serializes the Command, round-trips it, and returns the Result;
-`events` lazily opens a stream of the daemon's events and republishes them, as
-real `Event` instances, on a local bus; `remote` is `True`. Any *other*
-attribute access raises `AttributeError` — to query App state remotely, send a
+`AppProxy` (`proxy.py`) implements the **`CommandBus` port** (`dispatch`,
+`events`, `remote`, `on_app_gone`) plus `close`, which releases this client's
+streams and never the App's devices: `dispatch(cmd)` serializes the Command,
+round-trips it, and returns the Result; `events` lazily opens a stream of the
+daemon's events and republishes them, as real `Event` instances, on a local
+bus; `remote` is `True`; `on_app_gone` watches a stream of its own for the
+App's last line (`AppStopping`) and says whether it stopped or died. Any
+*other* attribute access raises `AttributeError` — to query App state remotely, send a
 Command or Query, never reach for a field.
 
 ### Wire format
@@ -567,26 +571,18 @@ and serializes the Result back:
 | Action | Command | What happens |
 |---|---|---|
 | Start daemon | `trcc daemon` | binds socket, refuses if another daemon is running |
-| Stop daemon (CLI) | `trcc kill` | sends `{"kill": true}`, waits for socket to disappear |
+| Stop daemon (CLI) | `trcc kill` | sends `{"kill": true}`; the App writes `AppStopping` to every event stream, so every open UI closes; returns once the socket is gone |
 | Stop daemon (API) | `POST /trcc/kill` | same wire |
-| Stop daemon (signal) | `kill <pid>` / SIGTERM | Qt event loop has a 100 ms heartbeat timer so Python signal handlers fire promptly |
-| Auto-spawn on first use | implicit when `TRCC_DAEMON=1` and no daemon found | clients call `daemon.ensure_daemon()` → `subprocess.Popen([trcc, "daemon"], start_new_session=True, …)` |
+| Stop daemon (signal) | `kill <pid>` / SIGTERM | `UserInterface._catch_stop_signals` (`ui/_base.py`) owns SIGTERM/SIGINT from compose on; the face stops and `App.close` runs. The daemon has no Qt loop |
+| Auto-spawn on first use | implicit on first use by any UI | `daemon.ensure_daemon()` → `subprocess.Popen([python, "-m", "trcc", "daemon"], start_new_session=True, …)`; an older App is replaced |
 
-### What's still pending
+### What's still open
 
-- **GUI as a remote daemon *client***: `run_gui` already builds its `App` through
-  `_boot.trcc()` and can bind the daemon-style `IPCServer` (the `ipc=` param) so
-  it *hosts* Command dispatch over the socket. What's unverified is the GUI
-  running purely as a *client* of a separate daemon process (holding an
-  `AppProxy` instead of a local `App`) across every wire.
-- **Daemon round-trip tests**: the suite (1500+) runs on the shipping tree; the
-  in-process Command paths are well covered, but dedicated socket round-trip
-  tests (encode → daemon → `app.dispatch` → encode_result → decode) are still
-  thin.
-- **Donor matrix**: SCSI verified end-to-end. HID / Bulk / LY / LED through the
-  daemon are inferred-but-unverified — same `App.dispatch` path confirmed for the
-  in-process flow, just with JSON serialization in front. Real-hardware donors
-  close the matrix.
+- **Donor matrix**: SCSI verified end-to-end through the shared App. HID / Bulk /
+  LY / LED take the same `App.dispatch` with JSON in front; real-hardware
+  confirmation is still owed.
+- **Windows**: no `AF_UNIX`, so every UI builds its own in-process App and UIs
+  there do not share panels.
 
 ## THE RULE: every function gets a log line — new code AND old code
 
@@ -859,21 +855,22 @@ on the next bug.
   (`qtbot.mouseClick`). Don't hand-roll a bare `QApplication` fixture to fake
   what `qtbot` already gives you. `pytest-qt` is a declared test dependency in
   `pyproject.toml`; keep it declared (never rely on an ambient install).
-- Tests mirror `src/trcc/` hexagonal layers (`tests/{core,services,adapters/{device,infra,system},cli,api,gui,ui/presentation}/`)
+- Most tests are flat files in `tests/`; `tests/adapters/` and `tests/ui/presentation/` hold the rest
 - Refactoring changes mock targets → use `conftest.py` fixtures/helpers, not 50+ inline updates
 - Model-parametrized tests: `FBL_PROFILES` (`core/protocol.py`), `LED_STYLES`
   (`core/led_models.py`), `ALL_DEVICES` (`core/registry.py`) are single source of
   truth — `@pytest.mark.parametrize` over them. Never hardcode domain values in tests.
 - `ruff check .` + `pyright` must pass before any commit (0 errors, 0 warnings)
-- **MockPlatform** (`tests/mock_platform.py`): proper `Platform` subclass — noop USB, temp paths, real DI flow. Same `ControllerBuilder(platform)` wiring as production. Never duck-type a platform mock.
-- **Dev mock GUI** (`dev/mock_gui.py`): patches `core.paths` to `dev/.trcc/`, creates `MockPlatform`, mirrors `gui/__init__.py::launch()` exactly. If production launch changes, update mock_gui to match.
+- **FakePlatform** (`tests/conftest.py`): a real `Platform` subclass with no-op USB, tmp paths and an offline fetcher. **MockPlatform** (`tests/mock_platform.py`) extends it with scripted per-device handshakes. Never duck-type a platform mock.
+- **Dev mock GUI** (`dev/mock_gui.py`): `dev/_mock_bootstrap.bootstrap()` builds `DevMockPlatform` (this host's real platform class, `paths()` → `dev/.trcc/`, USB openers scripted, autostart kept under `dev/.trcc/`) and runs the real `ui.gui.run`. If production launch changes, update the bootstrap to match.
 
 ### Patterns for Adding Things
 
 **New domain data** (constant, mapping, enum):
-1. Search `core/models.py` first — may already exist
-2. Add to `core/models.py` with section comment
-3. `from .core.models import MY_CONSTANT` where needed
+1. Search under `core/` first — it may already exist
+2. Add it beside the constants it belongs with (panel data in `protocol.py`, locale
+   data in `i18n.py`, domain enums and dataclasses in `models.py`) — see Data Ownership
+3. Import it from that one home where needed
 
 **New app state** (user preference):
 1. Add the field to the right dataclass — `AppSettings` (`services/settings.py`),
@@ -888,7 +885,7 @@ on the next bug.
    `.settings`
 
 **New assets** — there are TWO trees and they are not interchangeable:
-1. **GUI skin images** go in `src/trcc/ui/gui/assets/` (640 files). That is
+1. **GUI skin images** go in `src/trcc/ui/gui/assets/`. That is
    what `Assets` loads: `_PKG_ASSETS_DIR = Path(__file__).parent / 'assets'`
    in `ui/gui/assets.py`, overridable at runtime by `set_assets_dir()`.
    Not `src/trcc/assets/gui/` — no such directory.
@@ -934,24 +931,15 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
   **Font typeface — FIXED 2026-06-06.** Overlay text rendered in Noto Sans, not
   the themes' Microsoft YaHei. Root cause traced: the bundled YaHei TTCs
   (`assets/fonts/MSYH.TTC`/`MSYHBD.TTC`) were never registered with Qt, AND
-  `OverlayService` doesn't pass a per-element family — overlay text draws in the
-  app DEFAULT font (`_get_font` resolves `QFont()`). Fix in
-  `adapters/render/qt.py::_register_bundled_fonts` (called from `_ensure_qt_app`,
-  the GUI + headless render chokepoint): glob-register every `assets/fonts/` file,
-  then set the app default font to `Microsoft YaHei` resolved from the UNION of the
-  user's system/downloaded fonts + the bundled copy (user's install wins, bundled
-  fills the gap). Verified: `_get_font(...).family() == "Microsoft YaHei"`. NOTE:
-  per-element theme font names are still NOT plumbed to `draw_text` (a separate
-  latent feature, not the reported typeface bug — all themes use YaHei).
-  **Still open in this area** (separate, secondary): DEFERRED additive sites in
-  EXPORT/MASK-AUTHORING (`export_dc` `adapters/theme/filesystem.py:548` /
-  `ExportDcTheme` `core/commands/theme.py:1327`, `persist_user_mask_dc`
-  `core/commands/_helpers.py:124`, the `UploadCustomMask`
-  `core/commands/theme.py:1462` seed, the DC codec `user_overlay_elements=` param) still append user
-  onto `config["elements"]` — the render + SaveTheme paths are fixed, these
-  export/mask paths aren't (they need a different empty-vs-theme fallback; clean fix
-  = remove the codec param, resolve effective elements at the command layer). DC
-  parser is CORRECT. See `memory/project_gui_overlay_edit_bug.md`.
+  `OverlayService` didn't pass a per-element family. Fix:
+  `_register_bundled_fonts` (`adapters/render/qt.py`, called from `_ensure_qt_app`)
+  registers every `assets/fonts/` file with Qt. It does not change the app font.
+  `QtRenderer._get_font` uses the element's own family (plumbed through
+  `OverlayService` → `draw_text(family=…)` since 2cc9ce28), else `Microsoft YaHei`,
+  resolved from the user's installed fonts plus the bundled copy. Export and mask
+  authoring use the same one layout as the render (`device_overlay_layout`,
+  `core/commands/_helpers.py`, 45789a6f); the additive sites are gone. See
+  `memory/project_gui_overlay_edit_bug.md`.
 - `pyusb 1.3.1` deprecated `_pack_` on Python 3.14 — suppressed in pytest config
 - `pip install .` can use cached wheel — use `pip install --force-reinstall --no-deps .`
 - CI runs as root — mock `subprocess.run` in non-root tests
@@ -970,8 +958,10 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - **Multi-device mock — RESTORED 2026-06-04** (`20cb97b9`). `tests/mock_platform.py`
   `MockPlatform(specs, root)` (extends conftest `FakePlatform`) scripts per-device
   SCSI/Bulk/LED handshakes so `dev/mock_gui.py` simulates any fleet with zero
-  hardware; `dev/_mock_bootstrap` selects it when `dev/devices.json` (local,
-  gitignored) yields specs, else the real `DevPlatform`. `dev/smoke_portrait_854480.py`
+  hardware; `dev/_mock_bootstrap` builds `DevMockPlatform` (the host's platform with
+  these scripted openers) for the whole fleet by default, for `dev/devices.json`
+  (local, gitignored) when it exists, and drives real hardware only with
+  `--hardware`. `dev/smoke_portrait_854480.py`
   is the self-contained verifier. **ALL FIVE wires are scripted** (measured
   2026-09-10): `mock_handshake` has explicit branches for SCSI, LED, HID
   type-2/type-3, LY/LY1 and BULK/ALI, and `BaseOS._transport_openers` routes
@@ -1024,7 +1014,7 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
   byte into a local and never forwarded it, so **five resolutions took the wrong
   wire angle on real glass** — a 1280x480 Trofeo Vision reporting SUB=2 had
   landscape and portrait swapped. `get_profile(fbl, pm, sub)` now takes the byte
-  (`core/protocol.py:510`) and `hid_lcd.py:350` passes it.
+  (`core/protocol.py`) and `HidLcd` (`hid_lcd.py`) passes it.
   **The genuine remainder**: no mock can confirm WIRE OUTPUT, which still needs
   a real device.
   See `memory/project_geometry_subsystem_and_mock.md` and
@@ -1045,8 +1035,7 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 ## Deployment
 - Default branch: `main`
 - Never push without explicit user instruction
-- Dev repo: `~/Desktop/projects/thermalright/trcc-linux`
-- Testing repo: `~/Desktop/trcc_testing/thermalright-trcc-linux/`
+- Dev repo: `~/Desktop/projects/thermalright-trcc-linux`
 - PyPI: `trcc-linux` (published)
 - Tag push triggers PyPI release — always `git tag v{version} && git push origin v{version}` after push
 
@@ -1212,14 +1201,17 @@ the summary silently did not.  One list, or they disagree
   `OverlayChanged` that follows. It used to re-send the whole grid via `SetOverlayConfig`
 - **QPalette vs Stylesheet**: Never `setStyleSheet()` on ancestors — blocks palette backgrounds
 - **First-run**: No device config → overlay disabled. Theme click re-enables. Defaults: each theme's own clock formats, Celsius.
-- **First install auto-load**: `EnsureDataDownload` (`core/commands/theme.py`; there
-  is no `EnsureDataCommand`) downloads + extracts in the background so the window
-  opens without waiting on ~30 MB (#275). It publishes `DataInstalled`, which
-  `TRCCApp._on_bus_data_installed` (`trcc_app.py:560`) fans out to every LCD
-  handler's `notify_data_ready()` (`lcd_handler.py:314`) to re-list the grids
+- **First install auto-load**: connecting a device submits its resolution's
+  archives to the `DataInstallRunner` (`ConnectDevice` →
+  `adapters/infra/data_install_runner.py`), which downloads + extracts in the
+  background so the window opens without waiting on ~30 MB (#275). It publishes
+  `DataInstalled`, which `TRCCApp._on_bus_data_installed` (`trcc_app.py`) fans
+  out to every LCD handler's `notify_data_ready()` (`lcd_handler.py`) to re-list
+  the grids. `EnsureDataDownload` (`core/commands/theme.py`) is the explicit
+  pre-fetch (CLI/API), synchronous, and publishes the same event.
 - **Delegate pattern**: Settings tab → `invoke_delegate(CMD_*, data)` → main window
 - **`_update_selected(**fields)`**: Single entry point for element property changes
-- **Multi-LCD shared widgets**: All `LCDHandler` instances share one preview/progress widget set. Only the *active* handler may write to those widgets — gated by **`self._pm.ui_active`** — the flag lives on the presentation model (`ui/presentation/lcd_presentation_model.py:77`), NOT on the handler; this file said `self._ui_active` until 2026-09-08 and no such attribute exists. `apply_device_config` (`lcd_handler.py:239`) / `reactivate` (`:249`) set it `True`; `set_inactive` (`:1603`, sidebar A→B switch) sets it `False`.  Initial scan uses `apply_device_config` + `set_inactive` inside `_configure_inactive_lcd` (`trcc_app.py:781`, the pair at `:801-802`), which is what keeps a non-selected LCD playing.  (A second method, `restore_inactive_state`, was documented here as the initial-scan path but had **zero callers anywhere** — superseded by the pair above and deleted 2026-09-03; it was also gui's only `RestoreDeviceState` site, so gui's measured Command reach was one higher than the truth.) `_on_video_tick` and `_render_and_send` honor the gate. Cleanup uses full `deactivate()` (stops all timers); sidebar switch uses `set_inactive()` (keeps animation timer running so the LCD's physical screen doesn't go dark when another device owns the GUI).
+- **Multi-LCD shared widgets**: All `LCDHandler` instances share one preview/progress widget set. Only the *active* handler may write to those widgets — gated by **`self._pm.ui_active`**, which lives on the presentation model (`ui/presentation/lcd_presentation_model.py`), NOT on the handler. `apply_device_config` / `reactivate` (`lcd_handler.py`) set it `True`; `set_inactive` (sidebar A→B switch) sets it `False`. The initial scan uses `apply_device_config` + `set_inactive` inside `_configure_inactive_lcd` (`trcc_app.py`). `on_video_advanced` and the preview writers honor the gate. `cleanup()` releases this window's caches; `set_inactive()` only drops the gate. Video keeps playing because the App's VideoLoop drives it, not the window — a non-selected LCD keeps playing with no timer in the gui.
 
 ## Reference Docs
 - **Methods of Operation (the working playbook)**: `METHOD.md` — the C#-oracle port loop (observe → oracle → diff → locate → KISS → verify → guard → confirm), its four executable stations, the "where does the fix go?" layer map, and the anti-patterns. Read it before porting any device/feature.

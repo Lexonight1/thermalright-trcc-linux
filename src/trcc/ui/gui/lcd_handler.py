@@ -1295,11 +1295,10 @@ class LCDHandler(BaseHandler):
         self._set_video_playing(False, reason="deactivate")
 
     def set_inactive(self) -> None:
-        """Soft pause for sidebar switch — keep video playing in background.
+        """Sidebar switch: this handler stops writing the shared widgets.
 
-        Multi-display: dropping `_ui_active` stops shared-widget writes
-        without killing the per-device animation timer, so the LCD keeps
-        showing its theme while another device owns the GUI panel.
+        Only the gate drops (``_pm.ui_active``).  The panel keeps playing
+        because the App's VideoLoop drives it, not this window.
         """
         self._pm.ui_active = False
 
