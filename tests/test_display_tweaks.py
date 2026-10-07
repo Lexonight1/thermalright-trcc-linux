@@ -1,4 +1,4 @@
-"""Display-tweak Commands: SetFitMode / EnableOverlay / SetSplitMode.
+"""Display-tweak Commands: SetFitMode / EnableOverlay / SetSplitMode / SetGameMode.
 
 Each is a per-device settings write + cache invalidation + EventBus
 publish. Validation:
@@ -6,6 +6,8 @@ publish. Validation:
     enum, rejects anything else.
   * EnableOverlay is a straight bool.
   * SetSplitMode accepts 0, 1, 2, or 3; rejects everything else.
+  * SetGameMode takes a threshold of 0-99 and/or the switch; rejects a
+    threshold outside it, and a call that sets neither.
 
 Scene-cache invalidation only happens when a renderer is wired into
 the App; pure settings writes still succeed otherwise.
@@ -19,11 +21,14 @@ import pytest
 from trcc.app import App
 from trcc.core.commands import (
     EnableOverlay,
+    LcdSnapshot,
     SetFitMode,
+    SetGameMode,
     SetSplitMode,
 )
 from trcc.core.events import (
     FitModeChanged,
+    GameModeChanged,
     OverlayChanged,
     SplitModeChanged,
 )
@@ -156,6 +161,76 @@ def test_set_split_mode_publishes_event(app: App) -> None:
     assert len(events) == 1
     assert events[0].key == _KEY
     assert events[0].mode == 2
+
+
+# ── SetGameMode ─────────────────────────────────────────────────────
+
+
+def _game(app: App) -> tuple[bool, int]:
+    s = app.settings.for_device(_KEY)
+    return s.game_enabled, s.game_threshold
+
+
+def test_set_game_mode_saves_announces_and_reports(app: App) -> None:
+    """One dispatch: saved, told to every UI, and read back by the snapshot
+    a UI restores its controls from."""
+    heard: list[GameModeChanged] = []
+    app.events.subscribe(GameModeChanged, heard.append)  # type: ignore[arg-type]
+
+    result = app.dispatch(SetGameMode(key=_KEY, enabled=True, threshold=60))
+
+    assert result.ok
+    assert (result.enabled, result.threshold) == (True, 60)
+    assert _game(app) == (True, 60)
+    assert heard == [GameModeChanged(key=_KEY, enabled=True, threshold=60)]
+    snap = app.dispatch(LcdSnapshot(key=_KEY))
+    assert (snap.game_enabled, snap.game_threshold) == (True, 60)
+
+
+def test_set_game_mode_changes_only_the_half_it_is_given(app: App) -> None:
+    """The button and the box are separate controls (two C# handlers, one
+    delegate code): each sends its own half."""
+    app.dispatch(SetGameMode(key=_KEY, enabled=True, threshold=60))
+
+    app.dispatch(SetGameMode(key=_KEY, threshold=90))
+    assert _game(app) == (True, 90)
+    app.dispatch(SetGameMode(key=_KEY, enabled=False))
+    assert _game(app) == (False, 90)
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"threshold": -1}, {"threshold": 100}, {"enabled": True, "threshold": 150},
+    {},
+])
+def test_set_game_mode_refuses_and_changes_nothing(
+    app: App, kwargs: dict,
+) -> None:
+    """A threshold the C#'s two-digit box cannot hold, or a call that sets
+    nothing, is refused whole -- not clamped, and not half-applied."""
+    app.dispatch(SetGameMode(key=_KEY, threshold=60))
+    heard: list[GameModeChanged] = []
+    app.events.subscribe(GameModeChanged, heard.append)  # type: ignore[arg-type]
+
+    result = app.dispatch(SetGameMode(key=_KEY, **kwargs))
+
+    assert not result.ok
+    assert (result.enabled, result.threshold) == (False, 60)
+    assert _game(app) == (False, 60)
+    assert heard == []
+
+
+def test_set_game_mode_refuses_an_led(app: App) -> None:
+    """Game mode swaps the frame a panel draws; an LED draws none."""
+    from trcc.core.models import Kind
+    from trcc.core.registry import ALL_DEVICES
+
+    led = next(p for p in ALL_DEVICES.values() if p.kind is Kind.LED)
+    key = f"{led.vid:04x}:{led.pid:04x}"
+
+    result = app.dispatch(SetGameMode(key=key, enabled=True))
+
+    assert not result.ok
+    assert app.settings.for_device(key).game_enabled is False
 
 
 # ── Cross-Command isolation: each touches its own setting ───────────

@@ -334,6 +334,13 @@ class SplitModeResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class GameModeResult(Result):
+    key: str = ""
+    enabled: bool = False
+    threshold: int = 75
+
+
+@dataclass(frozen=True, slots=True)
 class MaskApplyResult(Result):
     key: str = ""
     path: str = ""
@@ -769,6 +776,10 @@ class LcdSnapshotResult(Result):
     # callers need sends them around it.
     background_mode: str = "theme"
     overlay_background: tuple[int, int, int] = (0, 0, 0)
+    #: Game mode: whether it is switched on, and the CPU % above which it
+    #: takes the panel (the C#'s isGame / myCPU).
+    game_enabled: bool = False
+    game_threshold: int = 75
 
 
 @dataclass(frozen=True, slots=True)

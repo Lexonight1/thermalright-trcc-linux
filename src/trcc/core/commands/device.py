@@ -73,6 +73,7 @@ from ..results import (
     DisconnectResult,
     DiscoverResult,
     FitModeResult,
+    GameModeResult,
     LcdSnapshotResult,
     LoopVideoResult,
     MaskApplyResult,
@@ -105,6 +106,7 @@ from ._helpers import (
     _element_to_entry,
     _invalidate_scene,
     _lacks,
+    _publish_game_mode,
     _publish_if_disconnect,
     _rendered_surface,
     _require_connected_device,
@@ -2417,6 +2419,47 @@ class SetSplitMode(Command[SplitModeResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class SetGameMode(Command[GameModeResult]):
+    """Switch game mode and/or set its CPU threshold -- the C#'s
+    ``buttonGame`` / ``textBoxCPU`` (UCThemeLocal.cs:620-727).
+
+    While on, CPU usage above the threshold for 11 seconds running hands the
+    panel to a black, overlay-only frame until it falls back.  Kept per theme
+    folder, as the C#'s ``Theme.dc`` keeps it.  ``None`` leaves that half as
+    it is; the threshold is 0-99, the C#'s two-digit box.
+    """
+    REQUIRES: ClassVar[Capability | None] = Capability.FRAME_RENDER
+    key: str
+    enabled: bool | None = None
+    threshold: int | None = None
+
+    def execute(self, app: App) -> GameModeResult:
+        log.info("SetGameMode: key=%s enabled=%s threshold=%s",
+                 self.key, self.enabled, self.threshold)
+        refusal = (
+            "give enabled, threshold or both"
+            if self.enabled is None and self.threshold is None
+            else f"threshold must be 0-99 -- got {self.threshold}"
+            if self.threshold is not None and not 0 <= self.threshold <= 99
+            else None)
+        if refusal is not None:
+            log.warning("SetGameMode %s: refused -- %s", self.key, refusal)
+            s = app.settings.for_device(self.key)
+            return GameModeResult(
+                ok=False, key=self.key, enabled=s.game_enabled,
+                threshold=s.game_threshold, message=refusal)
+        app.settings.set_game_mode(
+            self.key, enabled=self.enabled, threshold=self.threshold)
+        _publish_game_mode(app, self.key)
+        s = app.settings.for_device(self.key)
+        return GameModeResult(
+            ok=True, key=self.key, enabled=s.game_enabled,
+            threshold=s.game_threshold,
+            message=(f"game mode {'on' if s.game_enabled else 'off'} for "
+                     f"{self.key} (CPU > {s.game_threshold}%)"),
+        )
+
+@dataclass(frozen=True, slots=True)
 class ApplyMask(Command[MaskApplyResult]):
     """Set a user-supplied mask image that overrides the active theme's mask.
 
@@ -3252,6 +3295,8 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             slideshow_themes=tuple(s.slideshow_themes),
             background_mode=s.background_mode,
             overlay_background=s.overlay_background,
+            game_enabled=s.game_enabled,
+            game_threshold=s.game_threshold,
             message=f"LCD snapshot for {self.key}",
         )
 

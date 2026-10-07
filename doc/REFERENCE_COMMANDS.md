@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**138 total: 100 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**139 total: 101 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -409,6 +409,18 @@ Set how the background image/video fits the device canvas.
 |---|---|---|
 | `key` | `str` | yes |
 | `mode` | `str` | yes |
+
+### `SetGameMode`
+
+Switch game mode and/or set its CPU threshold -- the C#'s ``buttonGame`` / ``textBoxCPU`` (UCThemeLocal.cs:620-727).
+
+*Command* → `GameModeResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `enabled` | `bool | None` | no |
+| `threshold` | `int | None` | no |
 
 ### `SetMaskPosition`
 
