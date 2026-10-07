@@ -107,67 +107,75 @@ def _store(readings: dict[str, float], key: str, value: float | None) -> None:
         readings[key] = float(value)
 
 
-def _cpu_keys() -> list[tuple[str, str, str]]:
-    """(key, category, unit) triples for the 4 CPU readings."""
+#: A catalog row: (key, category, unit, what it measures).  The last is the
+#: picker's name for the quantity -- every reading used to be labelled with
+#: its DEVICE alone, so a GPU's eight rows all read "113-D7070100-101" and
+#: nothing told temperature from power (#301).  Devices prefix their name.
+_Row = tuple[str, str, str, str]
+
+
+def _cpu_keys() -> list[_Row]:
+    """The 4 CPU readings."""
     log.debug("_cpu_keys")
     return [
-        ("cpu:temp", "temperature", "°C"),
-        ("cpu:usage", "usage", "%"),
-        ("cpu:freq", "clock", "MHz"),
-        ("cpu:power", "power", "W"),
+        ("cpu:temp", "temperature", "°C", "Temperature"),
+        ("cpu:usage", "usage", "%", "Usage"),
+        ("cpu:freq", "clock", "MHz", "Clock"),
+        ("cpu:power", "power", "W", "Power"),
     ]
 
 
-def _memory_keys() -> list[tuple[str, str, str]]:
+def _memory_keys() -> list[_Row]:
     log.debug("_memory_keys")
     return [
-        ("memory:used", "memory", "MB"),
-        ("memory:available", "memory", "MB"),
-        ("memory:total", "memory", "MB"),
-        ("memory:percent", "memory", "%"),
-        ("memory:temp", "temperature", "°C"),
-        ("memory:clock", "clock", "MHz"),
+        ("memory:used", "memory", "MB", "Used"),
+        ("memory:available", "memory", "MB", "Available"),
+        ("memory:total", "memory", "MB", "Total"),
+        ("memory:percent", "memory", "%", "Usage"),
+        ("memory:temp", "temperature", "°C", "Temperature"),
+        ("memory:clock", "clock", "MHz", "Clock"),
     ]
 
 
-def _gpu_reading_keys(prefix: str) -> list[tuple[str, str, str]]:
+def _gpu_reading_keys(prefix: str) -> list[_Row]:
     log.debug("_gpu_reading_keys: prefix=%s", prefix)
     return [
-        (f"{prefix}:temp", "temperature", "°C"),
-        (f"{prefix}:usage", "usage", "%"),
-        (f"{prefix}:clock", "clock", "MHz"),
-        (f"{prefix}:power", "power", "W"),
-        (f"{prefix}:fan", "fan", "%"),
-        (f"{prefix}:fan_rpm", "fan", "RPM"),
-        (f"{prefix}:vram_used", "gpu_memory", "MB"),
-        (f"{prefix}:vram_total", "gpu_memory", "MB"),
+        (f"{prefix}:temp", "temperature", "°C", "Temperature"),
+        (f"{prefix}:usage", "usage", "%", "Usage"),
+        (f"{prefix}:clock", "clock", "MHz", "Clock"),
+        (f"{prefix}:power", "power", "W", "Power"),
+        (f"{prefix}:fan", "fan", "%", "Fan"),
+        (f"{prefix}:fan_rpm", "fan", "RPM", "Fan Speed"),
+        (f"{prefix}:vram_used", "gpu_memory", "MB", "VRAM Used"),
+        (f"{prefix}:vram_total", "gpu_memory", "MB", "VRAM Total"),
     ]
 
 
-def _io_keys() -> list[tuple[str, str, str]]:
+def _io_keys() -> list[_Row]:
+    """Disk and network -- no device name, so the quantity names both."""
     log.debug("_io_keys")
     return [
-        ("disk:temp", "temperature", "°C"),
-        ("disk:read", "disk_io", "MB/s"),
-        ("disk:write", "disk_io", "MB/s"),
-        ("disk:activity", "disk_io", "%"),
-        ("net:up", "network_io", "KB/s"),
-        ("net:down", "network_io", "KB/s"),
-        ("net:total_up", "network_io", "MB"),
-        ("net:total_down", "network_io", "MB"),
+        ("disk:temp", "temperature", "°C", "Disk Temperature"),
+        ("disk:read", "disk_io", "MB/s", "Disk Read"),
+        ("disk:write", "disk_io", "MB/s", "Disk Write"),
+        ("disk:activity", "disk_io", "%", "Disk Activity"),
+        ("net:up", "network_io", "KB/s", "Upload"),
+        ("net:down", "network_io", "KB/s", "Download"),
+        ("net:total_up", "network_io", "MB", "Total Uploaded"),
+        ("net:total_down", "network_io", "MB", "Total Downloaded"),
     ]
 
 
-def _time_keys() -> list[tuple[str, str, str]]:
+def _time_keys() -> list[_Row]:
     log.debug("_time_keys")
     return [
-        ("time:hour", "datetime", ""),
-        ("time:minute", "datetime", ""),
-        ("time:second", "datetime", ""),
-        ("date:year", "datetime", ""),
-        ("date:month", "datetime", ""),
-        ("date:day", "datetime", ""),
-        ("date:dow", "datetime", ""),
+        ("time:hour", "datetime", "", "Hour"),
+        ("time:minute", "datetime", "", "Minute"),
+        ("time:second", "datetime", "", "Second"),
+        ("date:year", "datetime", "", "Year"),
+        ("date:month", "datetime", "", "Month"),
+        ("date:day", "datetime", "", "Day"),
+        ("date:dow", "datetime", "", "Day of Week"),
     ]
 
 
@@ -299,14 +307,14 @@ class BaselineSensors(SensorEnumerator):
         """
         log.debug("_optional_reads: gpus=%d fans=%d",
                   len(self._gpus), len(self._fans))
-        for key, _, _ in _cpu_keys():
+        for key, *_ in _cpu_keys():
             yield key, self._cpu, key.rsplit(":", 1)[1]
         for idx, gpu in enumerate(self._gpus):
             for prefix in (f"gpu:{idx}", f"gpu:{gpu.key}"):
-                for key, _, _ in _gpu_reading_keys(prefix):
+                for key, *_ in _gpu_reading_keys(prefix):
                     yield key, gpu, key.rsplit(":", 1)[1]
         if (primary := self.primary_gpu()) is not None:
-            for key, _, _ in _gpu_reading_keys("gpu:primary"):
+            for key, *_ in _gpu_reading_keys("gpu:primary"):
                 yield key, primary, key.rsplit(":", 1)[1]
         for fan in self._fans:
             yield f"fan:{fan.key}:percent", fan, "percent"
@@ -367,50 +375,24 @@ class BaselineSensors(SensorEnumerator):
         current = self.read_all()
         readings: list[SensorReading] = []
 
-        for key, cat, unit in _cpu_keys():
-            readings.append(SensorReading(
-                sensor_id=key, category=cat,
-                value=current.get(key, 0.0), unit=unit, label=self._cpu.name,
-            ))
+        def add(rows: list[_Row], device: str = "") -> None:
+            frame_log.debug("discover.add: %d row(s) for %r", len(rows), device)
+            for key, cat, unit, quantity in rows:
+                readings.append(SensorReading(
+                    sensor_id=key, category=cat, value=current.get(key, 0.0),
+                    unit=unit, label=f"{device} {quantity}".strip(),
+                ))
 
-        for key, cat, unit in _memory_keys():
-            readings.append(SensorReading(
-                sensor_id=key, category=cat,
-                value=current.get(key, 0.0), unit=unit, label="Memory",
-            ))
-
+        add(_cpu_keys(), self._cpu.name)
+        add(_memory_keys(), "Memory")
         for idx, gpu in enumerate(self._gpus):
-            label = gpu.name
-            # indexed keys
-            for key, cat, unit in _gpu_reading_keys(f"gpu:{idx}"):
-                readings.append(SensorReading(
-                    sensor_id=key, category=cat,
-                    value=current.get(key, 0.0), unit=unit, label=label,
-                ))
-            # vendor keys
-            for key, cat, unit in _gpu_reading_keys(f"gpu:{gpu.key}"):
-                readings.append(SensorReading(
-                    sensor_id=key, category=cat,
-                    value=current.get(key, 0.0), unit=unit, label=label,
-                ))
-
-        # primary GPU alias
-        primary = self.primary_gpu()
-        if primary is not None:
-            for key, cat, unit in _gpu_reading_keys("gpu:primary"):
-                readings.append(SensorReading(
-                    sensor_id=key, category=cat,
-                    value=current.get(key, 0.0), unit=unit, label=primary.name,
-                ))
-
+            add(_gpu_reading_keys(f"gpu:{idx}"), gpu.name)
+            add(_gpu_reading_keys(f"gpu:{gpu.key}"), gpu.name)
+        if (primary := self.primary_gpu()) is not None:
+            add(_gpu_reading_keys("gpu:primary"), primary.name)
         for fan in self._fans:
-            for metric, cat, unit in (("rpm", "fan", "RPM"),
-                                      ("percent", "fan", "%")):
-                key = f"fan:{fan.key}:{metric}"
-                readings.append(SensorReading(
-                    sensor_id=key, category=cat,
-                    value=current.get(key, 0.0), unit=unit, label=fan.name,
-                ))
+            add([(f"fan:{fan.key}:rpm", "fan", "RPM", "Speed"),
+                 (f"fan:{fan.key}:percent", "fan", "%", "Duty")], fan.name)
 
         # Board / super-I/O temperatures.  Plural and user-chosen, exactly
         # like fans -- and read off the SAME chip, which is the part that made
@@ -423,11 +405,7 @@ class BaselineSensors(SensorEnumerator):
                 value=current.get(key, 0.0), unit="°C", label=board.name,
             ))
 
-        for key, cat, unit in _io_keys() + _time_keys():
-            readings.append(SensorReading(
-                sensor_id=key, category=cat,
-                value=current.get(key, 0.0), unit=unit,
-            ))
+        add(_io_keys() + _time_keys())
 
         withheld = self.unsupported()
         advertised = [r for r in readings if r.sensor_id not in withheld]

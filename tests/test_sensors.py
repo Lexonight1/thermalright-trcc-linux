@@ -764,6 +764,23 @@ def test_discover_contains_one_reading_per_declared_key() -> None:
     assert not missing, f"missing normalized keys: {missing}"
 
 
+def test_a_reading_is_named_for_what_it_measures() -> None:
+    """#301: every reading was labelled with its DEVICE alone -- a GPU's eight
+    rows all read "113-D7070100-101", the CPU's four the CPU's name -- so a
+    picker could not tell temperature from power."""
+    s = _sensors_with(gpus=[FakeGpu(0, vendor="amd"), FakeGpu(1, vendor="amd")])
+
+    labels = {r.sensor_id: r.label for r in s.discover()}
+
+    assert labels["cpu:temp"] == "Fake CPU Temperature"
+    assert labels["gpu:amd:1:power"] == "Fake AMD GPU 1 Power"
+    assert labels["memory:percent"] == "Memory Usage"
+    assert labels["net:down"] == "Download"
+    for prefix in ("cpu:", "gpu:amd:0:", "gpu:amd:1:", "memory:"):
+        family = [v for k, v in labels.items() if k.startswith(prefix)]
+        assert len(set(family)) == len(family), f"{prefix} rows share a name: {family}"
+
+
 def test_none_values_omitted_from_flat_dict() -> None:
     """Source returning None for a reading must not produce an entry."""
     cpu = FakeCpu()
