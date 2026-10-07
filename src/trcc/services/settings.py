@@ -23,7 +23,7 @@ from typing import Any, Literal, TypeVar, cast
 
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
-from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
+from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings, one_hot
 from ..core.logs import per_frame
 from ..core.models import (
     DATE_FORMATS,
@@ -1117,7 +1117,7 @@ def _migrate_led(data: dict[str, Any], schema: int, key: str) -> dict[str, Any]:
     if schema < 4 and not zoned and not data.get("zone_sync"):
         page = data.get("selected_zone", 0)
         mask = data.get("zone_sync_zones") or []
-        out["zone_sync_zones"] = [i == page for i in range(max(len(mask), page + 1))]
+        out["zone_sync_zones"] = one_hot(page, max(len(mask), page + 1))
         log.info("_migrate_led: %s schema %d→4 — page %d is now the mask %s",
                  key, schema, page, out["zone_sync_zones"])
     return out

@@ -153,6 +153,9 @@
 
 ### Fixed
 
+- **Selecting an LED zone that the cooler does not have is refused.** Any
+  zone number was accepted, on coolers with no zones at all, and stored a
+  selection the panel could not show.
 - **The Qt window's theme and mask lists no longer size themselves for a 0x0
   panel.** For a cooler whose screen size only its handshake reports
   (0416:5302), or an LED controller, they used to go ahead with no size;

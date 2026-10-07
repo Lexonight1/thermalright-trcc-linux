@@ -24,7 +24,7 @@ from trcc.core.commands import (
     SetLedZoneSync,
     SetLedZoneSyncZones,
 )
-from trcc.core.led_models import LedRuntimeState
+from trcc.core.led_models import LED_STYLES, LedRuntimeState
 from trcc.core.models import LedStyle
 from trcc.services.led_segment import get_display
 
@@ -59,7 +59,7 @@ def test_selecting_a_page_selects_exactly_that_page(fake_platform: FakePlatform)
 
     assert app.dispatch(SelectZone(key=_LED_KEY, zone=2)).ok
 
-    assert (_mask(app), _page_shown(app)) == ((False, False, True), 2)
+    assert (_mask(app), _page_shown(app)) == ((False, False, True, False), 2)
     assert app.dispatch(LedSnapshot(key=_LED_KEY)).selected_zone == 2
 
 
@@ -378,3 +378,34 @@ def test_qtgui_s_page_boxes_edit_the_carousel_when_it_is_on(
         tab._participation_checks[i].setChecked(on)
 
     qtbot.waitUntil(lambda: _mask(app) == (True, False, True, True), timeout=3000)
+
+
+def _pm_for(style: LedStyle) -> int:
+    """A PM byte the registry resolves to *style* -- read, never restated."""
+    from trcc.core.led_protocol import _PM_REGISTRY
+    return min(pm for pm, entry in _PM_REGISTRY.items() if entry.style is style)
+
+
+def _styles_with_a_pm() -> list[LedStyle]:
+    from trcc.core.led_protocol import _PM_REGISTRY
+    return [s for s in LED_STYLES if any(e.style is s for e in _PM_REGISTRY.values())]
+
+
+@pytest.mark.parametrize("style", _styles_with_a_pm(), ids=lambda s: s.name)
+def test_a_zone_past_the_style_is_refused(fake_platform: FakePlatform,
+                                          style: LedStyle) -> None:
+    """``SelectZone(99)`` was accepted on every style -- on LC2 and LF13,
+    which have no zones -- and stored a 100-entry mask.
+
+    MUTATION CHECK: drop the bound and the zone past the last is accepted.
+    """
+    count = LED_STYLES[style].zone_count
+    app = _connected(fake_platform, _pm_for(style))
+
+    assert app.dispatch(SelectZone(key=_LED_KEY, zone=count)).ok is False
+    if count:
+        assert app.dispatch(SelectZone(key=_LED_KEY, zone=count - 1)).ok
+        assert app.dispatch(SelectZone(key=_LED_KEY, zone=0)).ok
+        # Zone 0, not the last: there ``zone + 1`` equals the count and a
+        # mask sized by the zone would pass unseen.
+        assert len(_mask(app)) == count

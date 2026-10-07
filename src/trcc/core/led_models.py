@@ -282,6 +282,12 @@ _ZONE_BTN_N: tuple[tuple[str, str], ...] = (
 )
 
 
+def one_hot(index: int, size: int) -> list[bool]:
+    """The zone/page mask that selects *index* alone, *size* entries long."""
+    frame_log.debug("one_hot: %d of %d", index, size)
+    return [i == index for i in range(size)]
+
+
 LED_STYLES: dict[LedStyle, LedStyleSpec] = {
     LedStyle.AX120: LedStyleSpec(30, 4, "AX120_DIGITAL",
                                  "led_preview_ax120", "led_bg_segment",
