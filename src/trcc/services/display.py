@@ -937,20 +937,23 @@ class DisplayService:
         self,
         image_path: Path,
         resolution: tuple[int, int],
+        byte_order: str,
     ) -> bytes:
         """Encode one image to RGB565 bytes at the given resolution.
 
         Used by UploadBootAnimation — boot-animation frames are always
-        RGB565 regardless of the device's normal wire format, and the
-        firmware applies its own rotation, so we skip both the JPEG
-        branch and the profile's portrait-rotation step.
+        RGB565 regardless of the device's normal wire format, so we skip
+        the JPEG branch and the profile's portrait-rotation step.
+        *byte_order* is the panel's: ``GifTo565`` packs big-endian only for
+        320x320 and SPI mode 2 (FormCZTV.cs:2027), and a fixed ``>`` sent
+        FBL 36/37/50 panels their boot animation with colours swapped.
         """
-        log.info("encode_boot_anim_frame: path=%s resolution=%dx%d",
-                 image_path, *resolution)
+        log.info("encode_boot_anim_frame: path=%s resolution=%dx%d order=%s",
+                 image_path, *resolution, byte_order)
         surface = self._r.open_image(image_path)
         if self._r.surface_size(surface) != resolution:
             surface = self._r.resize(surface, *resolution)
-        return self._r.encode_rgb565(surface)
+        return self._r.encode_rgb565(surface, byte_order)
 
     def encode_png(self, surface: Any) -> bytes:
         """PNG-encode a preview surface (lossless — API preview snapshot).

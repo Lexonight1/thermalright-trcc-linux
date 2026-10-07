@@ -181,3 +181,15 @@ def csharp_wire_rotation(
     """The rotation the C# applies at one display angle."""
     return csharp_encode_angles(
         resolution, jpeg=jpeg, pm=pm, my_sub_mode=my_sub_mode)[orientation % 360]
+
+
+def csharp_rgb565_big_endian(*, is320x320: bool, mode: int, spi_mode: int) -> bool:
+    """Whether ``ImageTo565`` packs RGB565 big-endian -- FormCZTV.cs:4261-4275.
+
+    ``if (is320x320 || myDeviceMode == 10)`` and ``else if (myDeviceSPIMode ==
+    2)`` both write the RRRRRGGG byte first; the else branch writes it second.
+    ``SPIMode = 2`` is set by FormCZTVInit for mode 2 PM 50 (:884), mode 1 FBL
+    51 (:1065) and mode 3 FBL 49 (:1069).  ``GifTo565`` (the boot animation,
+    :2027) is the same rule without the mode-10 case, which mode 1 never has.
+    """
+    return is320x320 or mode == 10 or spi_mode == 2

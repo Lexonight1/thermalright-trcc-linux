@@ -57,7 +57,7 @@ from ..models import (
     oriented_resolution,
     parse_device_key,
 )
-from ..protocol import artwork_variant, mask_variant, pm_to_fbl
+from ..protocol import DEFAULT_PROFILE, artwork_variant, mask_variant, pm_to_fbl
 from ..registry import find_product
 from ..results import (
     BackgroundModeResult,
@@ -2222,11 +2222,13 @@ class UploadBootAnimation(Command[BootAnimationResult]):
         profile = device.profile
         resolution = (profile.resolution if profile
                       else device.info.native_resolution)
+        byte_order = (profile or DEFAULT_PROFILE).byte_order
 
         encoded: list[bytes] = []
         for path in self.frame_paths:
             try:
-                encoded.append(app.display.encode_boot_anim_frame(path, resolution))
+                encoded.append(app.display.encode_boot_anim_frame(
+                    path, resolution, byte_order))
             except (OSError, ValueError) as e:
                 return BootAnimationResult(
                     ok=False, key=self.key,

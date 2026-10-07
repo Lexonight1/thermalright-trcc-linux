@@ -7,6 +7,7 @@ knows the SCSI CDB vocabulary the device expects.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import struct
 import time
@@ -16,7 +17,7 @@ from ...core.errors import TransportError
 from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, Wire
 from ...core.ports import ScsiTransport
-from ...core.protocol import get_profile
+from ...core.protocol import DeviceProfile, get_profile
 from ._base import BaseDevice
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,24 @@ _BOOT_ANIM_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
 # =========================================================================
 
 
+#: Poll bytes whose RGB565 is big-endian on the SCSI wire ONLY.  FormCZTVInit
+#: sets SPI mode 2 for mode 1 + FBL 51 (FormCZTV.cs:1065), and USBLCD.exe
+#: copies the frame to the panel unswapped (its '3' class, USBLCD.exe.c).  NOT
+#: in FBL_PROFILES[51]: the HID wire's FBL 51 is little-endian on real glass
+#: (#65, #67).  Unverified on a SCSI FBL 51 panel -- none has been reported.
+_SCSI_BIG_ENDIAN_FBLS: frozenset[int] = frozenset({51})
+
+
+def scsi_profile(fbl: int) -> DeviceProfile:
+    """The SCSI panel's profile for its poll byte -- ``get_profile`` plus the
+    SCSI-only byte order."""
+    profile = get_profile(fbl, fbl)
+    if fbl in _SCSI_BIG_ENDIAN_FBLS and not profile.big_endian:
+        profile = dataclasses.replace(profile, big_endian=True)
+    log.debug("scsi_profile: FBL %d -> %dx%d big_endian=%s", fbl,
+              *profile.resolution, profile.big_endian)
+    return profile
+
 class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
     """SCSI LCD device.
 
@@ -120,7 +139,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         # Geometry comes from the FBL byte via get_profile — a device that
         # reports e.g. FBL=102 surfaces its resolution from the profile,
         # not the registry's static native_resolution. SCSI uses PM=FBL.
-        self._profile = get_profile(fbl, fbl)
+        self._profile = scsi_profile(fbl)
         return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=fbl,

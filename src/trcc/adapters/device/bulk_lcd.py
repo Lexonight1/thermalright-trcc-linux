@@ -58,6 +58,10 @@ _WRITE_CHUNK_SIZE = 16 * 1024
 # with SPI mode 2 (:878), and every encode site is `myDeviceMode == 2 ?
 # ImageToJpg : ImageTo565`.
 _RGB565_PMS: frozenset[int] = frozenset({32, 50})
+# ...and the PMs whose RGB565 is BIG-endian: pm 50's SPI mode 2 takes
+# ImageTo565's big-endian branch (FormCZTV.cs:884, :4268).  FBL 50's own
+# profile is little-endian, so the table alone sent its colours swapped.
+_BIG_ENDIAN_PMS: frozenset[int] = frozenset({50})
 
 # Bulk base FBL is 72 (480x480, hardcoded by USBLCDNew.exe).  The C# resolves
 # every bulk AND LY panel through ``FormCZTVInit(fbl=72, m=2, pm, pmSub)``
@@ -143,7 +147,8 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
              encode_baseline, base.portrait_mounted)
     return fbl, dataclasses.replace(
         base, jpeg=jpeg, encode_baseline=encode_baseline,
-        encode_base=rotation.base, encode_invert=rotation.invert)
+        encode_base=rotation.base, encode_invert=rotation.invert,
+        big_endian=base.big_endian or pm in _BIG_ENDIAN_PMS)
 
 
 class BulkLcd(BaseBulkDevice, wire=Wire.BULK):

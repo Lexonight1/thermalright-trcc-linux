@@ -82,6 +82,7 @@ from audit_devices import (  # pyright: ignore[reportMissingImports]
 )
 from encode_reference import (  # pyright: ignore[reportMissingImports]
     csharp_encode,
+    csharp_rgb565_big_endian,
 )
 from formcztv_init import (  # pyright: ignore[reportMissingImports]
     form_cztv_init,
@@ -144,6 +145,10 @@ def _divergences(pm: int, sub: int,
         "mount": (st.themeDirection == 90, profile.portrait_mounted),
         "encode": ((arm.angles, arm.mirror), ours_encode),
     }
+    if not jpeg:
+        pairs["byte_order"] = (csharp_rgb565_big_endian(
+            is320x320=st.is320x320, mode=st.myDeviceMode,
+            spi_mode=st.myDeviceSPIMode), profile.big_endian)
     if st.models_geometry:
         pairs["resolution"] = (st.resolution, profile.resolution)
     if profile.resolution not in WIDESCREEN_SEMANTIC_SPLIT:

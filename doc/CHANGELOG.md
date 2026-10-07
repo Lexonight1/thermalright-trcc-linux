@@ -169,6 +169,17 @@
 
 ### Fixed
 
+- **Colours sent in the byte order the Windows app uses, for three panel
+  types** -- not yet confirmed on a real panel, and no owner of these has
+  reported in; if colours look red/blue swapped after this, please open an
+  issue with `trcc report`:
+  - LY panels (0416:5409) and bulk panels reporting PM 50: big-endian, as
+    the Windows app sends them (they were sent little-endian).
+  - SCSI panels reporting FBL 51: big-endian (USB HID panels with FBL 51 keep
+    little-endian, which their owners confirmed).
+  - The boot animation now uses the panel's own byte order. It was always
+    sent big-endian, so FBL 36, 37 and 50 panels got theirs with red and blue
+    swapped.
 - **Upgrading no longer leaves a second login entry behind.** Older versions
   started TRCC at login from `trcc-linux.desktop` or `trcc-next.desktop`
   (and, on Windows, a "TRCC Linux" startup entry), and the current version
