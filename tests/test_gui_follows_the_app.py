@@ -77,8 +77,8 @@ _ROWS: dict[str, tuple[Callable[[], Any], Callable[[Any], Any], Any]] = {
     "split mode": (lambda: SetSplitMode(key=_KEY, mode=3),
                    lambda w: w._handlers[_KEY]._pm.split_mode, 3),
     "game mode": (lambda: SetGameMode(key=_KEY, enabled=True, threshold=60),
-                  lambda w: (w.uc_theme_local._game_on,
-                             w.uc_theme_local.cpu_input.text()),
+                  lambda w: (w.uc_theme_local.game.enabled,
+                             w.uc_theme_local.game.cpu_input.text()),
                   (True, "60")),
     "overlay": (lambda: EnableOverlay(key=_KEY, enabled=False),
                 lambda w: (w._handlers[_KEY]._pm.state.overlay_enabled,
@@ -401,14 +401,15 @@ def test_the_game_mode_controls_sit_where_ucthemelocal_puts_them(
     Each control sends only its own half -- the C#'s two handlers -- so a
     click cannot overwrite a threshold another UI just set."""
     local = window.uc_theme_local
+    game = local.game
 
     def rect(w: Any) -> tuple[int, int, int, int]:
         g = w.geometry()
         return (g.x(), g.y(), g.width(), g.height())
 
-    assert rect(local.game_btn) == (228, 28, 40, 18)
-    assert rect(local.cpu_input) == (336, 29, 24, 16)
-    assert local.cpu_input.maxLength() == 2
+    assert rect(game.button) == (228, 28, 40, 18)
+    assert rect(game.cpu_input) == (336, 29, 24, 16)
+    assert game.cpu_input.maxLength() == 2
     assert any(label.text() == "CPU(%)>" and label.parent() is local
                for label, _key in window._i18n_labels)
     sent: list[Any] = []
@@ -416,11 +417,11 @@ def test_the_game_mode_controls_sit_where_ucthemelocal_puts_them(
     monkeypatch.setattr(window._app, "dispatch",
                         lambda cmd: (sent.append(cmd), dispatch(cmd))[1])
 
-    local.game_btn.click()
-    qtbot.waitUntil(lambda: local._game_on, timeout=3000)
-    local.cpu_input.setText("60")
-    local.cpu_input.editingFinished.emit()
-    qtbot.waitUntil(lambda: local._game_threshold == 60, timeout=3000)
+    game.button.click()
+    qtbot.waitUntil(lambda: game.enabled, timeout=3000)
+    game.cpu_input.setText("60")
+    game.cpu_input.editingFinished.emit()
+    qtbot.waitUntil(lambda: game.threshold == 60, timeout=3000)
 
     asked = [c for c in sent if isinstance(c, SetGameMode)]
     assert asked == [SetGameMode(key=_KEY, enabled=True),

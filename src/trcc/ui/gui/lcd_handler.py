@@ -391,7 +391,7 @@ class LCDHandler(BaseHandler):
         settings.show_sources(ds.display_source, ds.background_mode != "transparent")
         # None is the default place, which the render draws at (0, 0).
         settings.set_mask_position(*(ds.mask_position or (0, 0)))
-        self._w['theme_local'].show_game_mode(ds.game_enabled, ds.game_threshold)
+        self._w['theme_local'].game.show(ds.game_enabled, ds.game_threshold)
 
     def _restore_brightness(self, ds: LcdSnapshotResult) -> None:
         self._pm.brightness_level = ds.brightness

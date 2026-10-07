@@ -77,11 +77,6 @@ _NOT_PORTED: dict[str, str] = {
 _KNOWN: dict[str, str] = {
     "FormCZTV.ucComboBoxA1": (
         "gap: the rotation dropdown sits at x=39, the C#'s at x=26"),
-    "UCThemeLocal.buttonGame": (
-        "gap: Game mode is not ported -- above the CPU threshold the C# stops "
-        "every send and pushes an overlay-only frame once a second "
-        "(FormCZTV.Timer_event / GetSystemInfo)"),
-    "UCThemeLocal.textBoxCPU": "gap: Game mode's CPU threshold (default 75)",
     "UCThemeSetting.ucTouPingXianShi1": (
         "gap: 2.1.8's FormCZTV never shows its screencast panel (designer "
         "Visible=false, no runtime show anywhere); ours shows ScreenCastPanel. "
@@ -124,7 +119,7 @@ _KNOWN: dict[str, str] = {
 
 #: The ``gap:`` rows above and in ``_NOT_PORTED`` -- the LCD page's distance
 #: from the Windows app.  Only goes down.
-GAPS = 18
+GAPS = 16    # 18 -> 16 (2026-10-07): buttonGame, textBoxCPU -- game mode
 
 
 def _reachable() -> dict[str, list[dict[str, Any]]]:
