@@ -17,7 +17,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
-from ...core.errors import TransportError
+from ...core.errors import PermissionError_, TransportError
 from ...core.models import (
     DisplayServer,
     DisplaySession,
@@ -164,6 +164,9 @@ def _find_physical_drive(vid: int, pid: int) -> str | None:
 # Common CreateFileW failures when opening \\.\PhysicalDriveN for SCSI
 # passthrough — translated in the log so a reporter doesn't have to look up
 # the bare WinError number.
+#: ``ERROR_ACCESS_DENIED``: the user's setup, not a panel that is not ready.
+_ERROR_ACCESS_DENIED = 5
+
 _WIN_OPEN_ERRORS: dict[int, str] = {
     2:  "ERROR_FILE_NOT_FOUND — the drive path is gone (replug / rescan)",
     5:  "ERROR_ACCESS_DENIED — raw drive access needs Administrator; "
@@ -203,9 +206,16 @@ class WindowsScsiTransport(ScsiTransport):
                     err, "see Microsoft 'System Error Codes'")
                 log.error("CreateFileW failed for %s — WinError %d: %s",
                           self._path, err, detail)
+                if err == _ERROR_ACCESS_DENIED:
+                    # Raised, like every other transport: a plain False read
+                    # as "not answering yet", so the reconnect watcher retried
+                    # a panel only elevation can open, without saying so.
+                    raise PermissionError_(f"{self._path}: {detail}")
                 return False
             self._handle = handle
             return True
+        except PermissionError_:
+            raise
         except Exception:
             log.exception("Failed to open %s", self._path)
             return False
