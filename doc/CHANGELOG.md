@@ -153,6 +153,9 @@
 
 ### Fixed
 
+- **Stopping a screen cast on one panel no longer stops it on another.** All
+  casting panels share one screen capture, and stopping any of them stopped
+  it for all of them (on Wayland, it closed the screen-sharing session).
 - **`trcc qtgui` shows its welcome once.** It opened on the System page with
   the welcome text at every launch, because only the command line ever
   recorded that the first run was over.

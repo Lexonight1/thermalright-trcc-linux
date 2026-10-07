@@ -1023,3 +1023,37 @@ def test_the_qt_renderer_writes_nothing_per_cast_frame(
 
     assert [f"{r.name}: {r.getMessage()}" for r in caplog.records
             if not r.name.startswith("trcc.frame")] == []
+
+
+def test_stopping_one_cast_keeps_the_capture_for_another(
+    tmp_home: Path,
+) -> None:
+    """Two panels, one capture source.  Stopping the first panel's cast
+    stopped the source under the second (on Wayland, its portal session).
+
+    MUTATION CHECK: stop the capture unconditionally and the first stop
+    already releases it.
+    """
+    other = "87ad:70db"
+    app = App(
+        platform=MockPlatform(
+            [{"vid": "0402", "pid": "3922", "fbl": 100},
+             {"vid": "87ad", "pid": "70db", "fbl": 100}],
+            tmp_home,
+        ),
+        send_scheduler=SyncSendScheduler(), renderer=_CliRenderer(),  # type: ignore[arg-type]
+    )
+    app.attach(0x0402, 0x3922)
+    app.attach(0x87AD, 0x70DB)
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    assert app.dispatch(ConnectDevice(key=other)).ok
+    assert app.dispatch(StartScreencast(key=_KEY, audio=False, **_REGION)).ok
+    assert app.dispatch(StartScreencast(key=other, audio=False, **_REGION)).ok
+    stops: list[int] = []
+    app.platform.capture.stop = lambda: stops.append(1)   # type: ignore[attr-defined]
+
+    assert app.dispatch(StopScreencast(key=_KEY)).ok
+    assert stops == [], "the other panel is still casting"
+
+    assert app.dispatch(StopScreencast(key=other)).ok
+    assert stops == [1]

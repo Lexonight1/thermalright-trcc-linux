@@ -1858,6 +1858,14 @@ class CaptureStreamFrame(Command[ScreencastResult]):
         return app.dispatch(SendScreencastFrame(key=self.key, frame=frame))
 
 
+def _casting_keys(app: App) -> list[str]:
+    """Every device that still has a screencast session."""
+    keys = [key for key in app.devices
+            if app.settings.for_device(key).screencast_region is not None]
+    log.debug("_casting_keys: %s", keys)
+    return keys
+
+
 def _any_audio_session(app: App) -> bool:
     """True while any device still has a screencast session wanting audio.
 
@@ -1925,7 +1933,13 @@ class StopScreencast(Command[ScreencastResult]):
         app.remove_task(task_key(self.key))
         app.settings.set_screencast_region(self.key, None)
         _sync_audio(app)
-        app.platform.screen_capture().stop()
+        # ONE capture source serves every casting panel; stopping it for this
+        # one ended the others' too (on Wayland, their portal session).
+        if (still := _casting_keys(app)):
+            log.info("StopScreencast: capture kept — still casting on %s",
+                     ", ".join(still))
+        else:
+            app.platform.screen_capture().stop()
         app.events.publish(ScreencastStopped(key=self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=False,
