@@ -26,6 +26,7 @@ from ...core.commands import (
     ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
+    OpenRgbSync,
     ReadSensors,
     RefreshAutostart,
     RunDoctor,
@@ -35,6 +36,7 @@ from ...core.commands import (
     RunUpgrade,
     SetDiskDevice,
     SetHddEnabled,
+    SetOpenRgbSync,
     SetSensorDashboard,
 )
 from ...core.models import Kind, PanelConfig, SensorBinding
@@ -55,6 +57,7 @@ from ...core.results import (
     LanguageResult,
     LanguagesListResult,
     MemorySlotsResult,
+    OpenRgbSyncResult,
     QuickstartResult,
     SensorDashboardResult,
     SensorsListResult,
@@ -71,6 +74,7 @@ from .schemas import (
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
+    OpenRgbSyncRequest,
     SensorDashboardRequest,
     UpgradeRequest,
 )
@@ -276,6 +280,25 @@ def hdd_enabled(body: HddEnabledRequest,
     result = request.app.state.trcc.dispatch(
         SetHddEnabled(enabled=body.enabled),
     )
+    http_error_if_failed(result)
+    return result
+
+
+@router.get("/openrgb")
+def openrgb_status(request: Request) -> OpenRgbSyncResult:
+    """Whether OpenRGB's devices follow the cooler, and what they are doing."""
+    log.info("api GET /system/openrgb")
+    return request.app.state.trcc.dispatch(OpenRgbSync())
+
+
+@router.post("/openrgb")
+def openrgb_set(body: OpenRgbSyncRequest,
+                request: Request) -> OpenRgbSyncResult:
+    """Make OpenRGB's devices follow the cooler's colours, or stop (#160)."""
+    log.info("api POST /system/openrgb: enabled=%s host=%r port=%s",
+             body.enabled, body.host, body.port)
+    result = request.app.state.trcc.dispatch(SetOpenRgbSync(
+        enabled=body.enabled, host=body.host, port=body.port))
     http_error_if_failed(result)
     return result
 

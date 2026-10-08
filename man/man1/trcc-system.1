@@ -451,6 +451,31 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS openrgb
+.PP
+\fBtrcc system openrgb\fR [\fISTATE\fR] [\fIOPTIONS\fR]
+.PP
+Make OpenRGB's devices follow the LED cooler's colours (#160). TRCC connects to OpenRGB's SDK server \-\- start it in OpenRGB's SDK Server tab \-\- and sends the cooler's colours to every OpenRGB device, so the whole PC matches. It puts those devices in OpenRGB's direct mode.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBSTATE\fR
+\&'on', 'off' or 'status'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-host \fIHOST\fR\fR
+OpenRGB's SDK server (default: the saved one, 127.0.0.1 at first).
+.TP
+\fB\-\-port \fIPORT\fR\fR
+Its port (default: the saved one, 6742 at first).
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS paths
 .PP
 \fBtrcc system paths\fR [\fIOPTIONS\fR]

@@ -319,6 +319,12 @@ class Layout:
         (657, 443, 'ko'),      # 한국어
     ]
     ABOUT_GPU_COMBO = (297, 456, 250, 28)
+    # OpenRGB follows the cooler (#160) -- ours, no C# control to copy, so a
+    # row of its own under the GPU line, in the checkbox column.
+    ABOUT_OPENRGB = (297, 516, 14, 14)
+    ABOUT_OPENRGB_LABEL = (320, 510, 640, 26)
+    ABOUT_OPENRGB_STATUS = (320, 562, 800, 22)
+    ABOUT_OPENRGB_ADDR = (320, 536, 160, 20)
     ABOUT_CHECKBOX_SIZE = 14
 
     # Re-export from i18n — single source of truth for locale→suffix mapping

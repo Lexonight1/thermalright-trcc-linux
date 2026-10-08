@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **Your OpenRGB devices can follow the cooler's colours (#160).** TRCC
+  connects to OpenRGB's SDK server and sends the LED cooler's colours to every
+  OpenRGB device -- motherboard, RAM, fans, strips -- so the whole PC matches.
+  Start the server in OpenRGB's SDK Server tab, then turn it on in the
+  settings panel (classic window), the LED panel's Advanced tab (new window),
+  `trcc system openrgb on`, or `POST /system/openrgb`. Off by default; it
+  puts the OpenRGB devices in direct mode while it runs. Built on OpenRGB's
+  SDK protocol (credited in the README).
+
 ### Fixed
 
 - **TRCC no longer crashes within seconds on Python 3.10 and 3.11.** PySide6

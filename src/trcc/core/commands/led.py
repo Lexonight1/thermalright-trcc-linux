@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -15,6 +16,7 @@ from ..events import (
     FrameSent,
     HddEnabledChanged,
     LedColorsChanged,
+    OpenRgbSyncChanged,
 )
 from ..led_models import (
     LED_STYLES,
@@ -35,6 +37,7 @@ from ..results import (
     LedStylesListResult,
     LedZoneEntry,
     MemoryRatioResult,
+    OpenRgbSyncResult,
     WeekStartResult,
 )
 from ._base import Command, Query
@@ -109,6 +112,7 @@ class SetLedColors(Command[LedColorsResult]):
             log.info("SetLedColors: %s held", self.key)
             app.events.publish(LedColorsChanged(
                 key=self.key, color_count=len(self.colors),
+                colors=_rgb_tuples(self.colors),
             ))
         return LedColorsResult(
             ok=ok, key=self.key, colors=list(self.colors),
@@ -441,6 +445,7 @@ class RenderLed(Command[LedColorsResult]):
         if ok:
             app.events.publish(LedColorsChanged(
                 key=self.key, color_count=len(colors),
+                colors=_rgb_tuples(colors),
             ))
             # Same preview path as LCD: publish the rendered output on
             # FrameSent so the GUI preview shows exactly what went to the
@@ -1062,6 +1067,64 @@ class SetHddEnabled(Command[HddEnabledResult]):
             ok=True, enabled=self.enabled,
             message=f"HDD metrics {state}",
         )
+
+def _rgb_tuples(colors: Sequence[Sequence[int]]) -> tuple[tuple[int, int, int], ...]:
+    """Colours as ``(r, g, b)`` tuples -- over IPC they arrive as lists."""
+    frame_log.debug("_rgb_tuples: %d colour(s)", len(colors))
+    return tuple((int(c[0]), int(c[1]), int(c[2])) for c in colors)
+
+
+def _openrgb_result(app: App, message: str) -> OpenRgbSyncResult:
+    """The OpenRGB setting and the follower's live status, as one Result."""
+    settings, status = app.settings.app, app.rgb_mirror.status
+    log.debug("_openrgb_result: enabled=%s connected=%s",
+              settings.openrgb_enabled, status.connected)
+    return OpenRgbSyncResult(
+        ok=True, enabled=settings.openrgb_enabled,
+        host=settings.openrgb_host, port=settings.openrgb_port,
+        connected=status.connected, devices=status.devices,
+        lead=status.lead, error=status.error, message=message,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class SetOpenRgbSync(Command[OpenRgbSyncResult]):
+    """Make OpenRGB's devices follow the LED cooler's colours, or stop (#160).
+
+    TRCC leads: it connects to the OpenRGB SDK server at host:port as a client
+    and sends the cooler's colours to every OpenRGB device, so the whole PC
+    matches.  Following puts those devices in OpenRGB's direct mode.  An empty
+    host or a port of 0 keeps the one saved.
+    """
+    enabled: bool
+    host: str = ""
+    port: int = 0
+
+    def execute(self, app: App) -> OpenRgbSyncResult:
+        current = app.settings.app
+        host = self.host or current.openrgb_host
+        port = self.port or current.openrgb_port
+        log.info("SetOpenRgbSync: enabled=%s %s:%d", self.enabled, host, port)
+        try:
+            app.settings.set_openrgb(self.enabled, host, port)
+        except ValueError as e:
+            log.warning("SetOpenRgbSync: refused — %s", e)
+            return OpenRgbSyncResult(ok=False, message=str(e))
+        app.rgb_mirror.configure(self.enabled, host, port)
+        app.events.publish(OpenRgbSyncChanged(enabled=self.enabled))
+        state = (f"OpenRGB at {host}:{port} follows the cooler"
+                 if self.enabled else "OpenRGB no longer follows the cooler")
+        return _openrgb_result(app, state)
+
+
+@dataclass(frozen=True, slots=True)
+class OpenRgbSync(Query[OpenRgbSyncResult]):
+    """Whether OpenRGB follows the cooler, and what it is doing (#160)."""
+
+    def execute(self, app: App) -> OpenRgbSyncResult:
+        log.debug("OpenRgbSync: query")
+        return _openrgb_result(app, "OpenRGB follow status")
+
 
 @dataclass(frozen=True, slots=True)
 class ListLedStyles(Query[LedStylesListResult]):

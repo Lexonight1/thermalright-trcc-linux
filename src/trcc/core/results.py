@@ -605,6 +605,22 @@ class BootAnimationResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class OpenRgbSyncResult(Result):
+    """OpenRGB following the cooler (#160): the setting and what it is doing.
+
+    ``devices`` are the OpenRGB devices that follow; ``lead`` the cooler they
+    follow; ``error`` why OpenRGB could not be reached, if it could not.
+    """
+    enabled: bool = False
+    host: str = ""
+    port: int = 0
+    connected: bool = False
+    devices: tuple[str, ...] = ()
+    lead: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class LedColorsResult(Result):
     key: str = ""
     colors: list[tuple[int, int, int]] = field(default_factory=list)

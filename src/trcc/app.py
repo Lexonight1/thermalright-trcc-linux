@@ -16,6 +16,7 @@ from typing import Any, TypeVar
 
 from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
+from .adapters.rgb.openrgb import OpenRgbMirror
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
@@ -31,6 +32,7 @@ from .core.events import (
     ErrorOccurred,
     EventBus,
     FitModeChanged,
+    LedColorsChanged,
     LedSettingsChanged,
     MaskApplied,
     MaskPositionChanged,
@@ -65,6 +67,7 @@ from .core.ports import (
     Diagnostics,
     Platform,
     Renderer,
+    RgbMirror,
     SendScheduler,
     SendTask,
     TlsIdentity,
@@ -88,6 +91,7 @@ from .services.migration import LibraryMigration
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.reconnect_watcher import ReconnectWatcher
+from .services.rgb_mirror import RgbMirrorService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
 from .services.video_loop import VideoLoop
@@ -120,6 +124,7 @@ class App(CommandBus):
                  send_scheduler: SendScheduler | None = None,
                  data_install_runner: DataInstallRunner | None = None,
                  video_export_runner: VideoExportRunner | None = None,
+                 make_rgb_mirror: Callable[[str, int], RgbMirror] = OpenRgbMirror,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
         self.platform = platform
@@ -360,6 +365,14 @@ class App(CommandBus):
         # its resolution's videos their GIFs, off every caller's thread.
         self._preview_backfill_lock = threading.Lock()
         self.events.subscribe(DataInstalled, self._on_data_installed)
+        # OpenRGB follows the cooler (#160): the LED render's colours go to
+        # the OpenRGB SDK server's devices, from the follower's own thread.
+        self.rgb_mirror = RgbMirrorService(make_rgb_mirror)
+        self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
+        prefs = self.settings.app
+        if prefs.openrgb_enabled:
+            self.rgb_mirror.configure(True, prefs.openrgb_host,
+                                      prefs.openrgb_port)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -1093,6 +1106,7 @@ class App(CommandBus):
         alive past ``QApplication.quit()``.
         """
         log.info("close: devices=%d", len(self.devices))
+        self.rgb_mirror.stop()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
         self.video_loop.stop()

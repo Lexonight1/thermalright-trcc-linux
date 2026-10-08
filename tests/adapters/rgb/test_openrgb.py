@@ -210,3 +210,32 @@ def test_the_credit_names_openrgb_its_licence_and_commit() -> None:
 def test_an_update_payload_is_what_openrgb_builds() -> None:
     assert update_leds_payload([(1, 2, 3)]) == struct.pack(
         "<IHI", 10, 1, 1 | 2 << 8 | 3 << 16)
+
+
+def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:  # type: ignore[no-untyped-def]
+    """The production chain: RenderLed -> the App's follower -> the real
+    OpenRgbMirror -> an OpenRGB server, which receives the cooler's colours."""
+    import sys
+
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice, RenderLed, SetOpenRgbSync
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from tests.mock_platform import MockPlatform
+
+    server, _ = fake([("Motherboard", 3)])
+    app = App(MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path))
+    try:
+        assert app.dispatch(ConnectDevice(key="0416:8001")).ok
+        assert app.dispatch(SetOpenRgbSync(enabled=True, port=server.port)).ok
+        rendered = app.dispatch(RenderLed(key="0416:8001"))
+        server.wait_for(1050)
+        _, data = server.packets(1050)[0]
+        size, count = struct.unpack_from("<IH", data)
+        assert (size, count) == (4 + 2 + 4 * 3, 3)
+        sent = [struct.unpack_from("<I", data, 6 + 4 * i)[0] for i in range(3)]
+        want = [r | g << 8 | b << 16
+                for r, g, b in stretch(rendered.colors, 3)]
+        assert sent == want
+    finally:
+        app.close()

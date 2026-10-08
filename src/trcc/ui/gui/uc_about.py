@@ -46,6 +46,10 @@ from ...core.commands import (
 )
 from ...core.models import DEFAULT_REFRESH_INTERVAL_S
 from ...core.results import ControlCenterSnapshotResult
+from ..presentation.openrgb_address import (
+    format_openrgb_address,
+    parse_openrgb_address,
+)
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
@@ -170,6 +174,7 @@ class UCAbout(BasePanel):
     close_requested = Signal()
     temp_unit_changed = Signal(str)      # 'C' or 'F'
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
+    openrgb_toggle_changed = Signal(bool, str, int)  # on, host, port (#160)
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
     _update_available = Signal(str)       # latest version
@@ -234,6 +239,8 @@ class UCAbout(BasePanel):
         self.celsius_btn.clicked.connect(self._on_celsius_clicked)
         self.fahrenheit_btn = self._make_checkbox(*Layout.ABOUT_FAHRENHEIT)
         self.fahrenheit_btn.clicked.connect(self._on_fahrenheit_clicked)
+
+        self._build_openrgb_row()
 
         # === HDD info checkbox (buttonYP) ===
         self.hdd_btn = self._make_checkbox(*Layout.ABOUT_HDD, checked=self._read_hdd)
@@ -447,6 +454,62 @@ class UCAbout(BasePanel):
     @property
     def temp_mode(self):
         return self._temp_mode
+
+    # --- OpenRGB (#160) ---
+
+    def _build_openrgb_row(self) -> None:
+        """OpenRGB follows the cooler (#160) -- ours, not the C#'s: a row of
+        its own under the GPU line, in the checkbox column."""
+        log.debug("_build_openrgb_row")
+        self.openrgb_btn = self._make_checkbox(*Layout.ABOUT_OPENRGB)
+        self.openrgb_btn.clicked.connect(self._on_openrgb_clicked)
+        self._openrgb_label = QLabel(
+            "OpenRGB's devices follow the cooler's colours "
+            "(start OpenRGB's SDK server first)", self)
+        self._openrgb_label.setGeometry(*Layout.ABOUT_OPENRGB_LABEL)
+        self._openrgb_label.setStyleSheet(
+            "color: white; font-size: 10pt; background: transparent;")
+        self._openrgb_addr = QLineEdit("127.0.0.1:6742", self)
+        self._openrgb_addr.setGeometry(*Layout.ABOUT_OPENRGB_ADDR)
+        self._openrgb_addr.setToolTip("OpenRGB's SDK server, host:port")
+        self._openrgb_addr.setStyleSheet(
+            "background-color: black; color: #B4964F; border: none;"
+            " font-size: 9pt;")
+        self._openrgb_status = QLabel("", self)
+        self._openrgb_status.setGeometry(*Layout.ABOUT_OPENRGB_STATUS)
+        self._openrgb_status.setStyleSheet(
+            "color: #B4964F; font-size: 9pt; background: transparent;")
+
+
+    def _on_openrgb_clicked(self):
+        """Ask for OpenRGB's devices to follow the cooler, or to stop."""
+        on = self.openrgb_btn.isChecked()
+        address = parse_openrgb_address(self._openrgb_addr.text())
+        log.info("_on_openrgb_clicked: on=%s address=%s", on, address)
+        if address is None:
+            self.openrgb_btn.setChecked(False)
+            self._openrgb_status.setText(
+                "Address must be host:port, e.g. 127.0.0.1:6742")
+            return
+        self.openrgb_toggle_changed.emit(on, *address)
+
+    def show_openrgb(self, result) -> None:
+        """Show the App's OpenRGB setting and what it is doing -- sends nothing."""
+        log.debug("show_openrgb: enabled=%s connected=%s", result.enabled,
+                  result.connected)
+        self.openrgb_btn.setChecked(result.enabled)
+        if result.host:
+            self._openrgb_addr.setText(
+                format_openrgb_address(result.host, result.port))
+        if not result.enabled:
+            text = ""
+        elif result.error:
+            text = f"OpenRGB not reachable at {result.host}:{result.port} — {result.error}"
+        elif result.connected:
+            text = f"Following on: {', '.join(result.devices) or 'no devices'}"
+        else:
+            text = f"Waiting for the cooler's colours ({result.host}:{result.port})"
+        self._openrgb_status.setText(text)
 
     # --- HDD info ---
 

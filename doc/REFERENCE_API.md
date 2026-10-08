@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**133 endpoints.**
+**135 endpoints.**
 
 ## Running it
 
@@ -158,6 +158,8 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/mark-setup-done` | `FirstRunStatusResult` | Mark the first-run flow as completed. |
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |
+| `GET /system/openrgb` | `OpenRgbSyncResult` | Whether OpenRGB's devices follow the cooler, and what they are doing. |
+| `POST /system/openrgb` | `OpenRgbSyncResult` | Make OpenRGB's devices follow the cooler's colours, or stop (#160). |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
 | `GET /system/sensors` | `SensorsResult` | — |
 | `GET /system/sensors/catalog` | `SensorsListResult` | Every sensor this machine can measure — identities, no values. |

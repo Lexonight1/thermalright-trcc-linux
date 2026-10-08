@@ -354,6 +354,7 @@ TRCC Linux stands on other people's open-source work. Credit where it is due —
 - **[FFmpeg](https://ffmpeg.org/)** — video trimming, decoding and thumbnails; the Windows and macOS builds ship it.
 - **[7-Zip](https://www.7-zip.org/)** — unpacks the theme archives; the Windows and macOS builds ship it.
 - **[Qt for Python (PySide6)](https://www.qt.io/qt-for-python)** — both windows and the frame renderer.
+- **[OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB)** (GPL-2.0-or-later) — TRCC's OpenRGB support (your OpenRGB devices follow the cooler's colours) speaks OpenRGB's SDK protocol, learned from and ported from its SDK documentation and client code.
 
 ## Code Contributors
 

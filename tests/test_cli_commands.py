@@ -2163,3 +2163,18 @@ def test_the_api_face_hands_its_tls_files_to_uvicorn(
 
     assert (ran["ssl_certfile"], ran["ssl_keyfile"]) == (
         str(tmp_path / "c.pem"), str(tmp_path / "k.pem"))
+
+
+def test_system_openrgb_status_and_off(cli_runner: CliRunner, cli_app) -> None:
+    """#160: `trcc system openrgb` -- status by default, and off."""
+    del cli_app
+    status = cli_runner.invoke(_app(), ["system", "openrgb"])
+    assert status.exit_code == 0, status.output
+    assert "following: off (127.0.0.1:6742)" in status.output
+    off = cli_runner.invoke(_app(), ["system", "openrgb", "off",
+                                     "--port", "6800"])
+    assert off.exit_code == 0, off.output
+    assert "OpenRGB no longer follows the cooler" in off.output
+    assert "following: off (127.0.0.1:6800)" in off.output
+    bad = cli_runner.invoke(_app(), ["system", "openrgb", "maybe"])
+    assert bad.exit_code != 0

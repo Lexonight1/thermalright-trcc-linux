@@ -33,6 +33,8 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QRadioButton,
     QVBoxLayout,
 )
@@ -40,15 +42,21 @@ from PySide6.QtWidgets import (
 from .....core.commands import (
     EnableLedTestMode,
     ListDiskSensors,
+    OpenRgbSync,
     SetClockFormat,
     SetDiskDevice,
     SetLedLoadSource,
     SetLedTempSource,
     SetMemoryRatio,
+    SetOpenRgbSync,
     SetWeekStart,
 )
 from .....core.results import LedSnapshotResult
 from ....presentation.led_panel import LedPanelModel
+from ....presentation.openrgb_address import (
+    format_openrgb_address,
+    parse_openrgb_address,
+)
 from ._base import LedTabBase
 
 log = logging.getLogger(__name__)
@@ -147,6 +155,25 @@ class AdvancedTab(LedTabBase):
         misc_form.addRow("Disk sensor:", self._disk_selector)
         misc_form.addRow("DDR multiplier:", self._memory_ratio)
         root.addWidget(misc_box)
+
+        # ── OpenRGB follows the cooler (#160) -- app-wide ────────────
+        openrgb_box = QGroupBox("OpenRGB", self)
+        openrgb_layout = QVBoxLayout(openrgb_box)
+        self._openrgb_check = QCheckBox(
+            "OpenRGB's devices follow the cooler's colours", self)
+        self._openrgb_check.setToolTip(
+            "Sends this cooler's colours to every device of OpenRGB's SDK "
+            "server (start it in OpenRGB's SDK Server tab) and puts them in "
+            "direct mode.  Applies app-wide, not just to this device.")
+        self._openrgb_check.toggled.connect(self._on_openrgb_toggled)
+        self._openrgb_addr = QLineEdit("127.0.0.1:6742", self)
+        self._openrgb_addr.setToolTip("OpenRGB's SDK server, host:port")
+        self._openrgb_status = QLabel("", self)
+        self._openrgb_status.setWordWrap(True)
+        openrgb_layout.addWidget(self._openrgb_check)
+        openrgb_layout.addWidget(self._openrgb_addr)
+        openrgb_layout.addWidget(self._openrgb_status)
+        root.addWidget(openrgb_box)
 
         root.addStretch(1)
 
@@ -288,6 +315,50 @@ class AdvancedTab(LedTabBase):
         key = self.current_key()
         if key:
             self._dispatch(SetLedLoadSource(key=key, source=source))
+
+    def show_openrgb(self) -> None:
+        """Show the App's OpenRGB setting and what it is doing -- sends nothing."""
+        result = self._dispatch(OpenRgbSync())
+        log.debug("show_openrgb: enabled=%s connected=%s", result.enabled,
+                  result.connected)
+        self._openrgb_check.blockSignals(True)
+        self._openrgb_check.setChecked(result.enabled)
+        self._openrgb_check.blockSignals(False)
+        if result.host:
+            self._openrgb_addr.setText(
+                format_openrgb_address(result.host, result.port))
+        if not result.enabled:
+            text = ""
+        elif result.error:
+            text = f"Not reachable at {result.host}:{result.port} — {result.error}"
+        elif result.connected:
+            text = f"Following on: {', '.join(result.devices) or 'no devices'}"
+        else:
+            text = f"Waiting for the cooler's colours ({result.host}:{result.port})"
+        self._openrgb_status.setText(text)
+
+    def show_openrgb_switch_only(self) -> None:
+        """Put the switch back to the App's state, keeping the status line."""
+        enabled = self._dispatch(OpenRgbSync()).enabled
+        log.debug("show_openrgb_switch_only: enabled=%s", enabled)
+        self._openrgb_check.blockSignals(True)
+        self._openrgb_check.setChecked(enabled)
+        self._openrgb_check.blockSignals(False)
+
+    def _on_openrgb_toggled(self, checked: bool) -> None:
+        address = parse_openrgb_address(self._openrgb_addr.text())
+        log.info("_on_openrgb_toggled: checked=%s address=%s", checked, address)
+        if address is None:
+            self._openrgb_status.setText(
+                "Address must be host:port, e.g. 127.0.0.1:6742")
+            self.show_openrgb_switch_only()
+            return
+        host, port = address
+        result = self._dispatch(SetOpenRgbSync(enabled=checked, host=host,
+                                               port=port))
+        if not result.ok:
+            log.warning("_on_openrgb_toggled: refused — %s", result.message)
+        self.show_openrgb()
 
     def _on_test_mode_toggled(self, checked: bool) -> None:
         log.info("_on_test_mode_toggled: checked=%s", checked)

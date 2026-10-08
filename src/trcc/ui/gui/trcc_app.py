@@ -48,6 +48,7 @@ from ...core.commands import (
     ListDevices,
     ListGpus,
     ListLanguages,
+    OpenRgbSync,
     RecentColors,
     RememberColor,
     SetBackground,
@@ -56,6 +57,7 @@ from ...core.commands import (
     SetLanguage,
     SetMaskVisible,
     SetMediaPlayer,
+    SetOpenRgbSync,
     SetRefreshInterval,
     SetScreencastRegion,
     SetTempUnit,
@@ -509,6 +511,7 @@ class TRCCApp(QMainWindow):
                  "hdd=%s", cc.temp_unit, cc.language, cc.active_gpu,
                  cc.refresh_interval_s, cc.hdd_enabled)
         self.uc_about.show_app_settings(cc)
+        self.uc_about.show_openrgb(self._app.dispatch(OpenRgbSync()))
         self.uc_system_info.set_temp_unit(code)
         self.uc_led_control.set_temp_unit(code)
         self._show_language(cc.language)
@@ -1499,6 +1502,8 @@ class TRCCApp(QMainWindow):
         self.uc_about.language_changed.connect(self._set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
+        self.uc_about.openrgb_toggle_changed.connect(
+            self._on_openrgb_toggle_changed)
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
         self.uc_about.gpu_changed.connect(self._on_gpu_changed)
 
@@ -2443,6 +2448,15 @@ class TRCCApp(QMainWindow):
     def _on_hdd_toggle_changed(self, on: bool) -> None:
         log.debug("_on_hdd_toggle_changed: on=%s", on)
         result = self._app.dispatch(SetHddEnabled(enabled=on))
+        self.uc_preview.set_status(result.message)
+
+    def _on_openrgb_toggle_changed(self, on: bool, host: str, port: int) -> None:
+        """The settings panel's OpenRGB switch (#160)."""
+        log.info("_on_openrgb_toggle_changed: on=%s %s:%d", on, host, port)
+        result = self._app.dispatch(SetOpenRgbSync(enabled=on, host=host,
+                                                   port=port))
+        self.uc_about.show_openrgb(result if result.ok
+                                   else self._app.dispatch(OpenRgbSync()))
         self.uc_preview.set_status(result.message)
 
     def _on_refresh_changed(self, interval: int) -> None:

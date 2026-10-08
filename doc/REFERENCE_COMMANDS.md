@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**142 total: 103 Commands and 39 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**144 total: 104 Commands and 40 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -954,6 +954,14 @@ Enumerate every LED style the PM registry can resolve.
 
 Takes no arguments.
 
+### `OpenRgbSync`
+
+Whether OpenRGB follows the cooler, and what it is doing (#160).
+
+*Query* → `OpenRgbSyncResult`
+
+Takes no arguments.
+
 ### `RenderLed`
 
 Compute one LED frame from current settings + sensors and send it.
@@ -1146,6 +1154,18 @@ Set the DDR memory multiplier (1, 2, or 4) for the LED memory gauge.
 |---|---|---|
 | `key` | `str` | yes |
 | `ratio` | `int` | yes |
+
+### `SetOpenRgbSync`
+
+Make OpenRGB's devices follow the LED cooler's colours, or stop (#160).
+
+*Command* → `OpenRgbSyncResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `enabled` | `bool` | yes |
+| `host` | `str` | no |
+| `port` | `int` | no |
 
 ### `SetWeekStart`
 

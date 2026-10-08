@@ -212,6 +212,18 @@ class HddEnabledRequest(BaseModel):
     enabled: bool
 
 
+class OpenRgbSyncRequest(BaseModel):
+    """Make OpenRGB's devices follow the cooler (#160).
+
+    ``host`` is a hostname or IP address only -- no scheme, path or port --
+    so the API cannot point TRCC at an arbitrary URL.  Empty keeps the saved
+    one; ``port`` 0 likewise.
+    """
+    enabled: bool
+    host: str = Field("", max_length=253, pattern=r"^[A-Za-z0-9.:\-]*$")
+    port: int = Field(0, ge=0, le=65535)
+
+
 class SensorBindingRequest(BaseModel):
     """One dashboard row: a display label bound to a sensor id."""
     label: str = ""

@@ -350,6 +350,10 @@ class SlideshowChanged(Event):
 class LedColorsChanged(Event):
     key: str
     color_count: int
+    #: The colours the cooler shows, BEFORE its segment mask: what another
+    #: RGB system follows (#160).  A segment display's dark digits would
+    #: otherwise put dark gaps along every follower.
+    colors: tuple[tuple[int, int, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +430,17 @@ class ErrorOccurred(Event):
 @dataclass(frozen=True, slots=True)
 class TempUnitChanged(Event):
     unit: str   # "C" or "F"
+
+
+@dataclass(frozen=True, slots=True)
+class OpenRgbSyncChanged(Event):
+    """OpenRGB following was turned on or off (#160), from any UI.
+
+    Published by ``SetOpenRgbSync``; every window shows the switch from the
+    ``OpenRgbSync`` Query on it, so a change from the CLI, the API or the
+    other window shows up too.
+    """
+    enabled: bool
 
 
 @dataclass(frozen=True, slots=True)

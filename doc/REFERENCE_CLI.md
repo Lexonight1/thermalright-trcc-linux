@@ -1746,6 +1746,23 @@ List DRAM slots — size/type/speed/manufacturer, plus timings on Linux. Timings
 trcc system memory-slots
 ```
 
+### `trcc system openrgb`
+
+Make OpenRGB's devices follow the LED cooler's colours (#160). TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's SDK Server tab -- and sends the cooler's colours to every OpenRGB device, so the whole PC matches. It puts those devices in OpenRGB's direct mode.
+
+```bash
+trcc system openrgb [OPTIONS] [STATE]
+```
+
+| Argument | Description |
+|---|---|
+| `STATE` | 'on', 'off' or 'status' *(optional)* |
+
+| Option | Description |
+|---|---|
+| `--host` `HOST` | OpenRGB's SDK server (default: the saved one, 127.0.0.1 at first). |
+| `--port` `PORT` | Its port (default: the saved one, 6742 at first). |
+
 ### `trcc system paths`
 
 Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`. With `--key` the answer is that device's: the resolution comes from its handshake (oriented) and the theme/cloud dirs name its per-SKU library, so the output points at the directories the app actually opens for it.
