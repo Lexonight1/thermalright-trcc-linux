@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**140 total: 102 Commands and 38 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**142 total: 103 Commands and 39 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -255,6 +255,27 @@ How big a UI should draw this device's preview (#136).
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
+
+### `RecentColors`
+
+*key*'s recent-colour row, newest first, padded with Silver.
+
+*Query* → `RecentColorsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+
+### `RememberColor`
+
+Push a colour onto *key*'s recent-colour row and return the row.
+
+*Command* → `RecentColorsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `color` | `tuple[int, int, int]` | yes |
 
 ### `RenderAndSend`
 

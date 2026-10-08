@@ -891,6 +891,13 @@ class OverlayBackgroundResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class RecentColorsResult(Result):
+    """The overlay colour editor's recent row, newest first, always full."""
+    key: str = ""
+    colors: tuple[tuple[int, int, int], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ClockFormatResult(Result):
     key: str = ""
     is_24h: bool = True

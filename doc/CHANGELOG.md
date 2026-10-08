@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **The overlay colour editor remembers your recent colours, per device.**
+  The row of 11 small swatches did nothing. As in the Windows app, the colour
+  you end an edit on is added to the front when you move to another element,
+  and clicking a swatch uses that colour again. Both windows share the row:
+  the new window offers it as the colour dialog's custom colours.
+
 - **The overlay colour editor picks colours in place, as the Windows app
   does.** The classic window had the Windows app's hue strip painted on the
   panel but did nothing with it, and clicking the colour square opened a

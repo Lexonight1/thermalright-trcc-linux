@@ -18,7 +18,12 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.logs import per_frame
-from ...core.models import OverlayElementConfig, OverlayMode
+from ...core.models import (
+    RECENT_COLOR_DEFAULT,
+    RECENT_COLOR_SLOTS,
+    OverlayElementConfig,
+    OverlayMode,
+)
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -168,6 +173,9 @@ class ColorPickerPanel(QFrame):
     """Color and position editor (matches UCXiTongXianShiColor 230x374)."""
 
     color_changed = Signal(int, int, int)
+    #: The colour an edit ENDED on, once, when the user moves to another
+    #: element -- the C#'s UCXiTongXianShiBackupColorSave.  Not per drag step.
+    edit_finished = Signal(int, int, int)
     position_changed = Signal(int, int)
     font_changed = Signal(str, int, int)  # name, size, style (0=Regular, 1=Bold)
     eyedropper_requested = Signal()  # launch eyedropper color picker
@@ -181,6 +189,9 @@ class ColorPickerPanel(QFrame):
             fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
 
         self._current_color = QColor(255, 255, 255)
+        #: The C#'s myColorChange: set by the strip, the square, typed RGB and
+        #: the eyedropper; NOT by a preset or recent swatch.
+        self._edited = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -274,18 +285,21 @@ class ColorPickerPanel(QFrame):
             btn.setProperty(_SWATCH_PROPERTY, (r, g, b))
             btn.clicked.connect(self._on_swatch_clicked)
 
-        # History color swatches
+        # Recent colours (the C#'s button1..11): the App keeps the row per
+        # device; set_recent_colors shows it.  Created transparent and never
+        # filled or connected until 2026-10-08.
         self._history_btns = []
-        for i in range(len(Colors.PRESET_COLORS)):
+        for i in range(RECENT_COLOR_SLOTS):
             btn = QPushButton(self)
             btn.setGeometry(
                 Layout.COLOR_SWATCH_X0 + i * Layout.COLOR_SWATCH_DX,
                 Layout.COLOR_SWATCH_HISTORY_Y,
                 Layout.COLOR_SWATCH_SIZE, Layout.COLOR_SWATCH_SIZE
             )
-            btn.setStyleSheet("background-color: transparent; border: none;")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(self._on_swatch_clicked)
             self._history_btns.append(btn)
+        self.set_recent_colors([RECENT_COLOR_DEFAULT] * RECENT_COLOR_SLOTS)
 
         # Eyedropper button (matches Windows buttonGetColor at (12, 276, 48, 48))
         self.eyedropper_btn = QPushButton(self)
@@ -336,12 +350,32 @@ class ColorPickerPanel(QFrame):
     def _set_color_from_swatch(self, r, g, b):
         log.info("ColorPickerPanel._set_color_from_swatch: (%d,%d,%d)",
                  r, g, b)
-        self._apply_color(r, g, b)
+        self._apply_color(r, g, b, edited=False)
 
-    def _apply_color(self, r, g, b, *, rebase=True):
-        log.debug("ColorPickerPanel._apply_color: r=%d, g=%d, b=%d", r, g, b)
+    def _apply_color(self, r, g, b, *, rebase=True, edited=True):
+        log.debug("ColorPickerPanel._apply_color: r=%d, g=%d, b=%d edited=%s",
+                  r, g, b, edited)
+        self._edited = self._edited or edited
         self.set_color(r, g, b, rebase=rebase)
         self.color_changed.emit(r, g, b)
+
+    def set_recent_colors(self, colors):
+        """Show the device's recent row (newest first) on the 11 swatches."""
+        log.debug("ColorPickerPanel.set_recent_colors: %s", list(colors)[:3])
+        for btn, (r, g, b) in zip(self._history_btns, colors, strict=False):
+            btn.setStyleSheet(
+                f"QPushButton {{ background-color: rgb({r},{g},{b}); "
+                f"border: none; }}"
+                f"QPushButton:hover {{ border: 1px solid white; }}")
+            btn.setProperty(_SWATCH_PROPERTY, (r, g, b))
+
+    def end_edit(self):
+        """The user moved on: report the colour an edit ended on, once."""
+        log.debug("ColorPickerPanel.end_edit: edited=%s", self._edited)
+        if self._edited:
+            self._edited = False
+            c = self._current_color
+            self.edit_finished.emit(c.red(), c.green(), c.blue())
 
     def _on_position_changed(self):
         x, y = self.x_spin.value(), self.y_spin.value()

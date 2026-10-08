@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -42,6 +43,8 @@ from ....core.commands import (
     AddOverlayElement,
     DeleteOverlayElement,
     ListFonts,
+    RecentColors,
+    RememberColor,
     ResolveOverlay,
     UpdateOverlayElement,
 )
@@ -279,7 +282,7 @@ class OverlayEditorPanel(BasePanel):
 class _ElementDialog(QDialog):
     """Modal form for adding or editing one overlay element."""
 
-    def __init__(self, parent: BasePanel, *, prefill=None) -> None:
+    def __init__(self, parent: OverlayEditorPanel, *, prefill=None) -> None:
         log.debug("__init__: parent=%s", parent)
         super().__init__(parent)
         # The owning panel, held rather than rediscovered through
@@ -293,6 +296,9 @@ class _ElementDialog(QDialog):
         )
         self.setModal(True)
         self._prefill = prefill
+        #: The C#'s myColorChange: a colour chosen here, by the picker or the
+        #: eyedropper, is remembered when the dialog is accepted.
+        self._color_edited = False
         self._build()
 
     def _build(self) -> None:
@@ -446,12 +452,28 @@ class _ElementDialog(QDialog):
 
     def _pick_color(self) -> None:
         log.debug("_pick_color")
-        from PySide6.QtGui import QColor
+        # The App's recent row, as the dialog's custom colours: the same row
+        # the classic window shows on its 11 swatches.
+        if (key := self._panel._key()) is not None:
+            recent = self._panel.dispatch(RecentColors(key=key))
+            for slot, rgb in enumerate(recent.colors if recent.ok else ()):
+                QColorDialog.setCustomColor(slot, QColor(*rgb))
         current = QColor(self._color)
         picked = QColorDialog.getColor(current, self, "Pick element color")
         if picked.isValid():
             self._color = picked.name()
             self._color_label.setText(self._color)
+            self._color_edited = True
+
+    def accept(self) -> None:
+        """OK: the edit ended, so a colour chosen in it is remembered."""
+        log.debug("accept: color_edited=%s color=%s", self._color_edited,
+                  self._color)
+        if self._color_edited and (key := self._panel._key()) is not None:
+            c = QColor(self._color)
+            self._panel.dispatch(RememberColor(
+                key=key, color=(c.red(), c.green(), c.blue())))
+        super().accept()
 
     def _pick_color_from_screen(self) -> None:
         """Freeze the desktop and let the user pick a pixel colour."""
@@ -466,6 +488,7 @@ class _ElementDialog(QDialog):
         log.info("_on_eyedropper_picked: r=%s g=%s b=%s", r, g, b)
         self._color = f"#{r:02x}{g:02x}{b:02x}"
         self._color_label.setText(self._color)
+        self._color_edited = True
 
     def _pick_metric(self) -> None:
         """Open a modal sensor-picker dialog; commit the chosen sensor id."""

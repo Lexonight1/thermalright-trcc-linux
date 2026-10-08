@@ -88,6 +88,7 @@ class UCThemeSetting(BasePanel):
     CMD_VIDEO_LOAD = 10
     CMD_VIDEO_URL = 11     # ours: a web source for the media player
     CMD_OVERLAY_CHANGED = 128
+    CMD_COLOR_REMEMBER = 130   # info = (r, g, b) an edit ended on
     CMD_EYEDROPPER = 112  # Matches Windows cmd for FormGetColor
 
     overlay_changed = Signal(dict)
@@ -115,6 +116,7 @@ class UCThemeSetting(BasePanel):
 
         self.color_panel = ColorPickerPanel()
         self.color_panel.color_changed.connect(self._on_color_changed)
+        self.color_panel.edit_finished.connect(self._on_color_edit_finished)
         self.color_panel.position_changed.connect(self._on_position_changed)
         self.color_panel.font_changed.connect(self._on_font_changed)
         self.color_panel.eyedropper_requested.connect(self.eyedropper_requested.emit)
@@ -162,11 +164,18 @@ class UCThemeSetting(BasePanel):
         self.right_stack.setCurrentWidget(self.color_panel)
         self._show_element(config)
 
+    def _on_color_edit_finished(self, r: int, g: int, b: int) -> None:
+        """The last element's colour edit ended: the App remembers it."""
+        log.info("_on_color_edit_finished: (%d,%d,%d)", r, g, b)
+        self.invoke_delegate(self.CMD_COLOR_REMEMBER, (r, g, b))
+
     def _show_element(self, config: OverlayElementConfig) -> None:
-        """Put one element's properties on the side panel.  Sends nothing:
-        every setter here blocks or has no edit signal."""
+        """Put one element's properties on the side panel.  Sends nothing
+        but the colour an edit on the previous element ended on -- the C#
+        saves it right here, before showing the next (UCThemeSetting.cs:179)."""
         log.debug("_show_element: %s %s at (%d, %d)", config.id,
                   config.mode.name, config.x, config.y)
+        self.color_panel.end_edit()
         self.color_panel.set_position(config.x, config.y)
         self.color_panel.set_color_hex(config.color)
         self.color_panel.set_font_display(config.font_name, config.font_size,

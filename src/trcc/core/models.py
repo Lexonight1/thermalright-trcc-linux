@@ -774,6 +774,12 @@ class DeviceSettings:
     background_mode: Literal["theme", "color", "transparent"] = "theme"
     # Solid color used when ``background_mode == 'color'`` (RGB 0-255).
     overlay_background: tuple[int, int, int] = (0, 0, 0)
+    # The overlay colour editor's remembered colours, newest first, at most
+    # RECENT_COLOR_SLOTS -- the C#'s button1..11 row, saved per device to
+    # ``USBLCD\Device\Color.dc`` (UCXiTongXianShiColor.cs:198-275).  Only the
+    # colours actually remembered are kept; a read pads the row with
+    # RECENT_COLOR_DEFAULT, the C#'s designer colour.
+    recent_colors: list[tuple[int, int, int]] = field(default_factory=list)
     # The device's WORKING overlay layer — the one layout that is edited,
     # rendered and saved, mirroring the C#'s single ``UCXiTongXianShiSubArray``
     # (2.1.6 FormCZTV.cs).  A source change (theme load, mask apply, save)
@@ -1474,6 +1480,12 @@ CUTTER_DEFAULT_FPS: int = 15
 #: their trim handles to it so a user cannot ask for a clip the encoder
 #: will refuse.
 ZT_MAX_DURATION_MS: int = 300_000
+
+
+#: The overlay colour editor's recent-colour row: 11 swatches, Silver until
+#: a colour is remembered (``UCXiTongXianShiColor.cs:931``, ``Color.Silver``).
+RECENT_COLOR_SLOTS: int = 11
+RECENT_COLOR_DEFAULT: tuple[int, int, int] = (192, 192, 192)
 
 
 @dataclass(frozen=True, slots=True)

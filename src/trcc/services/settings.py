@@ -30,6 +30,8 @@ from ..core.models import (
     DEFAULT_REFRESH_INTERVAL_S,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
+    RECENT_COLOR_DEFAULT,
+    RECENT_COLOR_SLOTS,
     TIME_FORMATS,
     DeviceSettings,
     FitMode,
@@ -768,6 +770,31 @@ class Settings:
             self.for_device(key).overlay_background = color
             self._save()
 
+    def recent_colors(self, key: str) -> list[tuple[int, int, int]]:
+        """The colour editor's recent row for *key*: newest first, padded to
+        RECENT_COLOR_SLOTS with the C#'s Silver."""
+        with self._lock:
+            kept = list(self.for_device(key).recent_colors)
+        frame_log.debug("recent_colors: key=%s kept=%d", key, len(kept))
+        padding = [RECENT_COLOR_DEFAULT] * RECENT_COLOR_SLOTS
+        return (kept + padding)[:RECENT_COLOR_SLOTS]
+
+    def remember_color(self, key: str, color: tuple[int, int, int]) -> None:
+        """Push *color* onto the front of *key*'s recent row, dropping the
+        oldest -- ``UCXiTongXianShiBackupColorSave``'s shift register.  A
+        repeat is kept, as the C# keeps it."""
+        log.info("remember_color: key=%s color=%s", key, color)
+        for label, value in zip("rgb", color, strict=False):
+            if not 0 <= value <= 255:
+                raise ValueError(
+                    f"{label} channel out of range (0-255): {value}",
+                )
+        with self._lock:
+            device = self.for_device(key)
+            device.recent_colors = [tuple(color), *device.recent_colors][
+                :RECENT_COLOR_SLOTS]
+            self._save()
+
     # ── User overlay elements ─────────────────────────────────────────
 
     def add_user_overlay_element(
@@ -1163,6 +1190,16 @@ def _tuple_of(size: int,
     return convert
 
 
+def _rgb_list(value: Any) -> Any:
+    """``[[r, g, b], ...]`` -> a list of tuples; a malformed row is dropped."""
+    log.debug("_rgb_list: %r", value)
+    if not isinstance(value, list):
+        return _DROP
+    return [tuple(int(c) for c in row) for row in value
+            if isinstance(row, list) and len(row) == 3
+            and all(isinstance(c, int) and 0 <= c <= 255 for c in row)]
+
+
 def _fit_mode(value: Any) -> Any:
     """The enum from its string; an unknown one falls back to the default."""
     log.debug("_fit_mode: %r", value)
@@ -1210,6 +1247,7 @@ _FROM_JSON: dict[str, Callable[[Any], Any]] = {
     "mask_position": _tuple_of(2),
     "fit_mode": _fit_mode,
     "overlay_background": _tuple_of(3),
+    "recent_colors": _rgb_list,
     "screencast_region": _screencast_region,
     "screencast_rect": _tuple_of(4, int),
     "user_overlay_elements": _overlay_elements,

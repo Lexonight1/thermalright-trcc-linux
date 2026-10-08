@@ -92,6 +92,7 @@ from ..results import (
     PauseVideoResult,
     PreviewResult,
     PreviewSizeResult,
+    RecentColorsResult,
     RenderDcResult,
     RenderResult,
     ScreencastResult,
@@ -2810,6 +2811,45 @@ class SetOverlayBackground(Command[OverlayBackgroundResult]):
             ok=True, key=self.key, color=self.color,
             message=f"Overlay background set to #{r:02x}{g:02x}{b:02x}",
         )
+
+@dataclass(frozen=True, slots=True)
+class RememberColor(Command[RecentColorsResult]):
+    """Push a colour onto *key*'s recent-colour row and return the row.
+
+    The C#'s ``UCXiTongXianShiBackupColorSave``: when the user moves to
+    another element (or closes the editor) having changed the colour, that
+    colour goes to the front and the oldest drops off.  ONE entry per edit,
+    not per drag step -- which is why the UI says when an edit ended, and
+    the App keeps the row so every UI sees the same one.
+    """
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
+    key: str
+    color: tuple[int, int, int]
+
+    def execute(self, app: App) -> RecentColorsResult:
+        log.info("RememberColor: %s color=%s", self.key, self.color)
+        try:
+            app.settings.remember_color(self.key, self.color)
+        except ValueError as e:
+            log.warning("RememberColor: %s refused %s — %s", self.key,
+                        self.color, e)
+            return RecentColorsResult(ok=False, key=self.key, message=str(e))
+        colors = tuple(app.settings.recent_colors(self.key))
+        return RecentColorsResult(ok=True, key=self.key, colors=colors,
+                                  message=f"Remembered {self.color}")
+
+
+@dataclass(frozen=True, slots=True)
+class RecentColors(Query[RecentColorsResult]):
+    """*key*'s recent-colour row, newest first, padded with Silver."""
+    key: str
+
+    def execute(self, app: App) -> RecentColorsResult:
+        colors = tuple(app.settings.recent_colors(self.key))
+        log.debug("RecentColors: %s -> %s", self.key, colors[:2])
+        return RecentColorsResult(ok=True, key=self.key, colors=colors,
+                                  message=f"{len(colors)} recent colours")
+
 
 @dataclass(frozen=True, slots=True)
 class AddOverlayElement(Command[OverlayElementResult]):

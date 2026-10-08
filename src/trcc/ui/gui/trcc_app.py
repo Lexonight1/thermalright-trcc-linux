@@ -48,6 +48,8 @@ from ...core.commands import (
     ListDevices,
     ListGpus,
     ListLanguages,
+    RecentColors,
+    RememberColor,
     SetBackground,
     SetGpuDevice,
     SetHddEnabled,
@@ -848,6 +850,25 @@ class TRCCApp(QMainWindow):
         self._show_view(handler.view_name)
         if isinstance(handler, LCDHandler):
             self._show_cast()
+            self._show_recent_colors(key)
+
+    def _remember_color(self, rgb: tuple[int, int, int]) -> None:
+        """An edit ended on *rgb*: the App remembers it for the active LCD."""
+        log.info("_remember_color: %s", rgb)
+        if not (h := self._active_lcd()):
+            return
+        r, g, b = rgb
+        result = self._app.dispatch(RememberColor(key=h.device_key,
+                                                  color=(r, g, b)))
+        if result.ok:
+            self.uc_theme_setting.color_panel.set_recent_colors(result.colors)
+
+    def _show_recent_colors(self, key: str) -> None:
+        """Put the App's recent-colour row for *key* on the colour editor."""
+        result = self._app.dispatch(RecentColors(key=key))
+        log.debug("_show_recent_colors: %s ok=%s", key, result.ok)
+        if result.ok:
+            self.uc_theme_setting.color_panel.set_recent_colors(result.colors)
 
     # ── Timers ──────────────────────────────────────────────────────
 
@@ -1743,6 +1764,8 @@ class TRCCApp(QMainWindow):
                 if h:
                     # One element edit, waiting for this panel's key.
                     h.on_overlay_edit(info)
+            case UCThemeSetting.CMD_COLOR_REMEMBER:
+                self._remember_color(info)
 
     def _on_preview_delegate(self, cmd: Any, info: Any, data: Any) -> None:
         log.info("_on_preview_delegate")
