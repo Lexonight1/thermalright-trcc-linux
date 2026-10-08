@@ -68,12 +68,12 @@ curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/d
 curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.noarch.rpm && sudo dnf install ./trcc-linux-latest.noarch.rpm
 ```
 
-### Ubuntu (24.04+) / Debian 13+ / Pop!_OS / Linux Mint 22+
+### Ubuntu 25.10+ / Debian 13+
 ```bash
 curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest_all.deb && sudo apt install -y ./trcc-linux-latest_all.deb
 ```
 
-### Ubuntu 22.04 / Debian 12 / Linux Mint 21 (legacy)
+### Ubuntu 22.04 / 24.04 / Debian 12 / Linux Mint 21–22 / Pop!_OS / Zorin (legacy)
 ```bash
 curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.legacy_all.deb && sudo apt install -y ./trcc-linux-latest.legacy_all.deb
 ```

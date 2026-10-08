@@ -16,7 +16,7 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
 |-------------|---------|------------|
 | Fedora / Nobara | [Native RPM](#fedora--nobara) | [pip](#fedora--nobara-pip) |
 | Ubuntu 25.10+ / Debian 13+ | [Native DEB](#ubuntu--debian--mint--pop_os--zorin) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
-| Ubuntu 22.04 / 24.04, Mint 21–22, Pop!_OS, Zorin, Debian 12 | [Legacy DEB](#ubuntu-2204--mint-21x--debian-12-legacy-deb) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
+| Ubuntu 22.04 / 24.04, Mint 21–22, Pop!_OS, Zorin, Debian 12 | [Legacy DEB](#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
 | Arch / CachyOS / Manjaro / EndeavourOS / Garuda | [Native pkg](#arch--cachyos--manjaro--endeavouros--garuda) | [pip](#arch--cachyos--manjaro--endeavouros--garuda-pip) |
 | openSUSE | [Native RPM](#opensuse) | [pip](#opensuse-pip) |
 | NixOS | [Flake](#nixos) | — |
@@ -107,7 +107,7 @@ That's it! If your device isn't detected, restart your computer and try again �
 
 Covers: Ubuntu 25.10+ (including **26.04 / Python 3.14**) and its flavours (Kubuntu, Xubuntu, Lubuntu), Debian 13+
 
-> **Ubuntu 24.04 and everything built on it** (Linux Mint 22, Pop!_OS 24.04, Zorin OS 18, KDE neon, elementary OS 8), **and older releases** (Ubuntu 22.04, Mint 21.x, Debian 11/12, Pop!_OS 22.04, Zorin OS 17, elementary OS 7) — use the [Legacy DEB](#ubuntu-2204--mint-21x--debian-12-legacy-deb) instead, which bundles its own Python environment. Ubuntu 24.04 does not ship PySide6 at all, so this package cannot install there (#316).
+> **Ubuntu 24.04 and everything built on it** (Linux Mint 22, Pop!_OS 24.04, Zorin OS 18, KDE neon, elementary OS 8), **and older releases** (Ubuntu 22.04, Mint 21.x, Debian 11/12, Pop!_OS 22.04, Zorin OS 17, elementary OS 7) — use the [Legacy DEB](#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb) instead, which bundles its own Python environment. Ubuntu 24.04 does not ship PySide6 at all, so this package cannot install there (#316).
 
 > **On Ubuntu 26.04 (Python 3.14):** use **v9.7.5 or newer** — earlier `.deb`s installed to a Python-version-specific path and failed with `ModuleNotFoundError: No module named 'trcc'`.
 
@@ -134,11 +134,11 @@ trcc gui
 
 That's it! If your device isn't detected, restart your computer and try again — that's usually all it takes. Still nothing? See the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
 
-> **`python3-pyside6.qtcore … is not installable`?** Your release does not ship PySide6 (Ubuntu 24.04 and the distros built on it) — enabling `universe` does not help. Use the [Legacy DEB](#ubuntu-2204--mint-21x--debian-12-legacy-deb).
+> **`python3-pyside6.qtcore … is not installable`?** Your release does not ship PySide6 (Ubuntu 24.04 and the distros built on it) — enabling `universe` does not help. Use the [Legacy DEB](#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb).
 
 ---
 
-### Ubuntu 22.04 / Mint 21.x / Debian 12 (Legacy DEB)
+### Ubuntu 22.04 / 24.04 / Mint 21.x / 22.x / Debian 12 (Legacy DEB)
 
 Covers: Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Linux Mint 21.x, Linux Mint 22.x, Debian 12 (Bookworm), Pop!_OS 22.04 / 24.04, Zorin OS 17 / 18, KDE neon, elementary OS 7 / 8
 

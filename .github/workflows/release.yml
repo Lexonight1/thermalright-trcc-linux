@@ -341,7 +341,7 @@ jobs:
           echo "DEB build PASSED"
           '
 
-      - name: Build DEB legacy (Ubuntu 22.04 and older)
+      - name: Build DEB legacy (Ubuntu 22.04 / 24.04, Debian 12)
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/src" \

@@ -69,7 +69,7 @@ Pre-built packages are available for every major distro. No pip, no venv, no PEP
 | Fedora / Nobara / openSUSE | [Fedora](doc/GUIDE_INSTALL.md#fedora--nobara) |
 | Bazzite / Bluefin / Aurora / Universal Blue | [Immutable Fedora](doc/GUIDE_INSTALL.md#bazzite--aurora--bluefin--fedora-atomic) |
 | Ubuntu 25.10+ / Debian 13+ | [Ubuntu / Debian](doc/GUIDE_INSTALL.md#ubuntu--debian--mint--pop_os--zorin) |
-| Ubuntu 22.04 / 24.04 / Mint 21–22 / Pop!_OS / Zorin / Debian 12 | [Legacy DEB](doc/GUIDE_INSTALL.md#ubuntu-2204--mint-21x--debian-12-legacy-deb) |
+| Ubuntu 22.04 / 24.04 / Mint 21–22 / Pop!_OS / Zorin / Debian 12 | [Legacy DEB](doc/GUIDE_INSTALL.md#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb) |
 | Arch / CachyOS / Manjaro / EndeavourOS / Garuda | [Arch](doc/GUIDE_INSTALL.md#arch--cachyos--manjaro--endeavouros--garuda) |
 | NixOS | [NixOS](doc/GUIDE_INSTALL.md#nixos) |
 | Gentoo | [Gentoo](doc/GUIDE_INSTALL.md#gentoo) |
@@ -93,7 +93,7 @@ If you see `OK` next to your package — it's clean. Source code is GPL-3.0, ful
 
 ### PyPI
 
-Best option for very old distros (Ubuntu 20.04, Debian 11) or if you prefer Python packaging. For Ubuntu 22.04 / Mint 21.x / Debian 12, the [Legacy DEB](doc/GUIDE_INSTALL.md#ubuntu-2204--mint-21x--debian-12-legacy-deb) is easier.
+Best option for very old distros (Ubuntu 20.04, Debian 11) or if you prefer Python packaging. For Ubuntu 22.04 / 24.04, Mint 21.x / 22.x and Debian 12, the [Legacy DEB](doc/GUIDE_INSTALL.md#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb) is easier.
 
 ```bash
 # Install system dependencies first
