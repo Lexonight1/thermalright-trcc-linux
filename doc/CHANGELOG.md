@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **A saved video theme plays without ffmpeg installed.** A theme's
+  `Theme.zt` holds ready JPEG frames and needs no ffmpeg to play, but TRCC
+  refused to load one when ffmpeg was missing, leaving the panel black.
+
 - **The background App and CLI no longer pick up the desktop's Qt settings
   (#299, #311).** The headless renderer let an inherited
   `QT_QPA_PLATFORM=wayland` win, so a service or a session that had ended

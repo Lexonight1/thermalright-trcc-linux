@@ -85,3 +85,29 @@ def test_the_app_hands_its_platforms_hint_to_media(fake_platform) -> None:
     app = App(fake_platform)
 
     assert app.media._install_hint("ffmpeg") == "fake platform: install ffmpeg"
+
+
+def test_a_zt_plays_without_ffmpeg(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """A ``.zt`` is JPEGs on disk: reading it needs no ffmpeg, so none is asked for.
+
+    ``ZtDecoder`` used to refuse when ffmpeg was absent although it runs none,
+    so a saved video theme went black on a box without ffmpeg.
+    MUTATION CHECK: put the ``toolchain.present("ffmpeg")`` refusal back in
+    ``ZtDecoder.decode`` and this raises.
+    """
+    import struct
+
+    from trcc.core.models import ZT_MAGIC
+    _no_ffmpeg(monkeypatch)
+    frames = [b"\xff\xd8 one \xff\xd9", b"\xff\xd8 two \xff\xd9"]
+    zt = tmp_path / "Theme.zt"
+    zt.write_bytes(
+        struct.pack("<Bi", ZT_MAGIC, len(frames))
+        + b"".join(struct.pack("<i", 42 * (i + 1)) for i in range(len(frames)))
+        + b"".join(struct.pack("<i", len(f)) + f for f in frames))
+
+    playback = MediaService().load_video("k", zt, size=(320, 320))
+
+    assert playback.frames == frames

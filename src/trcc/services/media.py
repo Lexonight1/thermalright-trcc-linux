@@ -252,9 +252,12 @@ class ZtDecoder:
     **Nothing here decodes, and nothing here scales.**  The payloads are
     already JPEG on disk, so :meth:`decode` parses the header and returns
     them unchanged; one is decoded per tick by ``Renderer.decode_image``
-    (``services/display.py``).  It runs **no ffmpeg at all** — it only
-    checks that ffmpeg exists, because :class:`MediaService` may reach
-    :class:`VideoDecoder` for the same theme.
+    (``services/display.py``).  It runs **no ffmpeg at all**, so it does not
+    need one installed.  It used to refuse without one, on the grounds that
+    :class:`MediaService` "may reach :class:`VideoDecoder` for the same
+    theme" — it does not: the ``.zt`` branch of ``load_video`` never falls
+    through, and ``VideoDecoder`` checks for ffmpeg itself.  The C# reads a
+    ``.zt`` with a plain FileStream (``UCVideoCutF.cs:518``).
 
     ``size`` is therefore NOT a scale target.  A ``.zt`` is authored AT the
     canvas by ``UCVideoCut``, and :meth:`MediaService.load_video` refuses one
@@ -264,13 +267,10 @@ class ZtDecoder:
     delay (timestamps are absolute ms offsets).
     """
 
-    def __init__(self, path: Path, size: tuple[int, int],
-                 install_hint: Callable[[str], str] = toolchain.generic_install_hint,
-                 ) -> None:
+    def __init__(self, path: Path, size: tuple[int, int]) -> None:
         log.debug("__init__: path=%s size=%s", path, size)
         self.path = path
         self.size = size
-        self._install_hint = install_hint
         self.frames: list[bytes] = []
         self.timestamps: list[int] = []
         self.delays: list[int] = []
@@ -280,9 +280,6 @@ class ZtDecoder:
         """Read header + payloads, returning the ENCODED frames unchanged."""
         if not self.path.exists():
             raise ThemeError(f".zt path does not exist: {self.path}")
-        if not toolchain.present("ffmpeg"):
-            raise ThemeError(toolchain.missing("ffmpeg",
-                                               self._install_hint("ffmpeg")))
 
         try:
             data = self.path.read_bytes()
@@ -519,8 +516,7 @@ class MediaService:
                     ".zt decode requires an explicit size — pass the "
                     "device's canvas resolution",
                 )
-            zt = ZtDecoder(path=path, size=size,
-                           install_hint=self._install_hint)
+            zt = ZtDecoder(path=path, size=size)
             zt.decode()
             effective_fps = fps if fps != _DEFAULT_FPS else zt.fps
             # ``.zt`` is authored AT canvas by ``UCVideoCut`` and rejects a
