@@ -372,6 +372,43 @@ def test_an_ack_record_never_carries_the_whole_buffer(monkeypatch, fake_bulk, ca
     assert all(len(r.getMessage()) < 200 for r in caplog.records)
 
 
+def _ack_contents_ly(monkeypatch, fake_bulk, acks: list[bytes]) -> Any:
+    """An LY device answering *acks* in turn, every one in 3 ms."""
+    ly = _ack_ly(monkeypatch, fake_bulk, *([3.0] * len(acks)))
+    replies = iter(acks)
+    fake_bulk.read = lambda ep, n, timeout_ms=100: next(replies)  # type: ignore[method-assign]
+    return ly
+
+
+def _content_lines(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records
+            if "ACK content changed" in r.getMessage()]
+
+
+def test_an_ack_that_answers_differently_is_logged(monkeypatch, fake_bulk, caplog) -> None:
+    ly = _ack_contents_ly(monkeypatch, fake_bulk,
+                          [bytes(512), bytes(512), b"\x01" * 512, b"\x01" * 512])
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        for _ in range(4):
+            ly._write_frame(b"x" * 512)
+    assert _content_lines(caplog) == [
+        "LyLcd 0416:5408: ACK content changed to [01 01 01 01 01 01 01 01] "
+        "(512 byte(s); distinct contents 2 of 4 logged) (#251)"]
+
+
+def test_an_ack_counter_cannot_make_the_line_per_frame(monkeypatch, fake_bulk, caplog) -> None:
+    """The C# never reads the ACK's bytes, so they may count frames."""
+    ly = _ack_contents_ly(monkeypatch, fake_bulk,
+                          [bytes([i]) * 512 for i in range(50)])
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.device.ly_lcd"):
+        for _ in range(50):
+            ly._write_frame(b"x" * 512)
+    lines = _content_lines(caplog)
+    assert len(lines) == 3
+    assert lines[-1].endswith("distinct contents 4 of 4 logged; further "
+                              "changes only at -vvv) (#251)")
+
+
 # ── #248: the reply's bytes 24-31 are not the canvas ─────────────────
 #
 # Real replies, as their reporters pasted them.  The C# takes the canvas from

@@ -56,6 +56,11 @@ _READ_TIMEOUT_MS = 1000
 #: blind (Linux USB timing is unmeasured on a real LY panel, #251) -- it is the
 #: line an ACK is WARNED against, so a report shows when it is crossed.
 _CSHARP_ACK_TIMEOUT_MS = 100
+#: Distinct ACK contents logged at INFO.  The C# never reads the ACK's bytes,
+#: so nothing says they are constant -- a per-frame counter in them would make
+#: an every-change line a per-frame line.  A few distinct ones are what a
+#: report needs to show a freeze answering differently (#251).
+_ACK_CONTENTS_LOGGED = 4
 
 # NOTE: the JPEG size ceiling that used to live here as `_MAX_FRAME_BYTES =
 # 512 * 1024` is gone — `DeviceProfile.max_frame_bytes` now carries the C#'s
@@ -100,6 +105,8 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
         # ACK health, for #251's freeze: None until the first ACK is seen,
         # then whether ACKs are currently slower than the C#'s timeout.
         self._ack_slow: bool | None = None
+        # The distinct ACK heads seen, up to _ACK_CONTENTS_LOGGED.
+        self._ack_heads: set[str] = set()
 
     # ── Device ABC ────────────────────────────────────────────────────
 
@@ -303,6 +310,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
         head = ack[:8].hex(" ")
         frame_log.debug("LyLcd %s: ACK %d byte(s) in %.1f ms [%s]",
                         self.info.key, len(ack), ms, head)
+        self._note_ack_content(head, len(ack))
         slow = ms > _CSHARP_ACK_TIMEOUT_MS
         if slow == self._ack_slow:
             return
@@ -317,3 +325,23 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             log.info("LyLcd %s: ACKs back under %d ms (%.1f ms) [%s]",
                      self.info.key, _CSHARP_ACK_TIMEOUT_MS, ms, head)
         self._ack_slow = slow
+
+    def _note_ack_content(self, head: str, size: int) -> None:
+        """Log each ACK content not seen before, up to a few (#251).
+
+        The first is the baseline; a later one is the panel answering
+        differently, which the timing lines alone cannot show.
+        """
+        if (head in self._ack_heads
+                or len(self._ack_heads) >= _ACK_CONTENTS_LOGGED):
+            return
+        self._ack_heads.add(head)
+        if len(self._ack_heads) == 1:
+            log.debug("LyLcd %s: ACK content baseline [%s]", self.info.key, head)
+            return
+        log.info("LyLcd %s: ACK content changed to [%s] (%d byte(s); "
+                 "distinct contents %d of %d logged%s) (#251)",
+                 self.info.key, head, size, len(self._ack_heads),
+                 _ACK_CONTENTS_LOGGED,
+                 "; further changes only at -vvv"
+                 if len(self._ack_heads) == _ACK_CONTENTS_LOGGED else "")
