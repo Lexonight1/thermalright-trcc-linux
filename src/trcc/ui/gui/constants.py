@@ -259,7 +259,8 @@ class Layout:
     COLOR_Y_SPIN = (121, 32, 53, 19)
     COLOR_FONT_BTN = (12, 87, 125, 24)
     COLOR_FONT_SIZE_SPIN = (140, 89, 42, 20)
-    COLOR_AREA = (8, 139, 214, 136)
+    COLOR_AREA = (8, 139, 214, 136)        # UCColorC, the colour square
+    COLOR_HUE = (65, 273, 158, 19)         # UCColorB, the hue strip
     COLOR_R = (83, 304, 36, 16)
     COLOR_G = (132, 304, 36, 16)
     COLOR_B = (181, 304, 36, 16)

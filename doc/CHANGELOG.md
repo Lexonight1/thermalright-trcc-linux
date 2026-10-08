@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **The overlay colour editor picks colours in place, as the Windows app
+  does.** The classic window had the Windows app's hue strip painted on the
+  panel but did nothing with it, and clicking the colour square opened a
+  separate colour dialog. Dragging along the strip now picks a hue, and
+  clicking or dragging in the square picks a shade of it.
+
 - **The video trimmer's preview no longer freezes the window.** Playing or
   dragging along the timeline started one ffmpeg per frame on the window's
   own thread, which held it for 70-290 ms each time: the window froze and the

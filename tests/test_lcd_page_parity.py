@@ -108,14 +108,11 @@ _KNOWN: dict[str, str] = {
     "UCXiTongXianShiColor.label1": "gap: the font name label (see buttonText)",
     "UCXiTongXianShiColor.label2": (
         "gap: the font size label -- ours is an editable size box at (140, 89)"),
-    "UCXiTongXianShiColor.ucColorB1": (
-        "gap: the custom-painted colour bar (UCColorB, picked with the mouse) "
-        "is missing"),
 }
 
 #: The ``gap:`` rows above and in ``_NOT_PORTED`` -- the LCD page's distance
 #: from the Windows app.  Only goes down.
-GAPS = 14    # 16 -> 14 (2026-10-07): UCVideoCut.button1/2 -- the 15/24 fps choice
+GAPS = 13    # 16 -> 13 (2026-10-07): UCVideoCut.button1/2 (15/24 fps), ucColorB1 (hue strip)
 
 
 def _reachable() -> dict[str, list[dict[str, Any]]]:

@@ -1,32 +1,167 @@
 """Color picker and add element panels — right-side overlay editors.
 
-ColorPickerPanel: RGB color picker, XY position, font selector, eyedropper.
+ColorPickerPanel: hue strip + colour square, RGB, XY position, font, eyedropper.
 AddElementPanel: Create new overlay elements by type with category/metric selection.
 """
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
     QFrame,
     QLineEdit,
     QPushButton,
     QSpinBox,
+    QWidget,
 )
 
+from ...core.logs import per_frame
 from ...core.models import OverlayElementConfig, OverlayMode
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 #: Values a widget carries so its slot is a named method rather than a closure
 #: over a loop variable — ``feedback_no_lambdas``.
 _SWATCH_PROPERTY = "trcc_swatch_rgb"
 _MODE_PROPERTY = "trcc_overlay_mode"
+
+
+# ── The C#'s inline picker: UCColorB (hue strip) drives UCColorC (square) ──
+
+#: The square's gradient sits 4 px inside its control on every side
+#: (``UCColorC``: ``MyBitmap = new Bitmap(Width - 8, Height - 8)`` at (4, 4)).
+_SQUARE_INSET = 4
+
+Rgb = tuple[int, int, int]
+
+
+def hue_strip_rgb(center_x: int, width: int, thumb_w: int) -> Rgb:
+    """The colour under the hue strip's thumb -- ``UCColorB_Color``
+    (``UCColorB.cs:87-132``): six linear segments R->Y->G->C->B->M->R,
+    in the C#'s integer arithmetic."""
+    seg = max(1, (width - thumb_w) // 6)
+    x = center_x - thumb_w // 2
+    log.debug("hue_strip_rgb: x=%d segment=%d", x, seg)
+    part, x = divmod(x, seg) if x < seg * 5 else (5, x - seg * 5)
+    up, down = 255 * x // seg, 255 - 255 * x // seg
+    return ((255, up, 0), (down, 255, 0), (0, 255, up),
+            (0, down, 255), (up, 0, 255), (255, 0, down))[part]
+
+
+def color_square_rgb(base: Rgb, x: int, y: int, w: int, h: int) -> Rgb:
+    """Pixel (*x*, *y*) of the *w* x *h* square for hue *base* --
+    ``UCColorC.ColorToBitmap``: toward white across the top row, then each
+    column toward black, truncating to int at each step as the C# does."""
+    log.debug("color_square_rgb: base=%s at (%d,%d) of %dx%d", base, x, y, w, h)
+    fx, fy = x / max(1, w - 1), y / max(1, h - 1)
+    r, g, b = (int(c * (1.0 - fx) + 255 * fx) for c in base)
+    return int(r * (1.0 - fy)), int(g * (1.0 - fy)), int(b * (1.0 - fy))
+
+
+class _HueStrip(QWidget):
+    """The hue strip (``UCColorB``).  The rainbow is in the panel's
+    background art; this draws only the thumb and turns a drag into a hue."""
+
+    hue_picked = Signal(int, int, int)
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._thumb = Assets.load_pixmap('color_panel_slider_thumb.png')
+        self._thumb_w = self._thumb.width() if not self._thumb.isNull() else 8
+        self._center_x = self._thumb_w // 2
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        log.debug("_HueStrip.__init__: thumb %dpx", self._thumb_w)
+
+    def paintEvent(self, event) -> None:
+        frame_log.debug("_HueStrip.paintEvent: x=%d", self._center_x)
+        if not self._thumb.isNull():
+            QPainter(self).drawPixmap(self._center_x - self._thumb_w // 2, 0,
+                                      self._thumb)
+
+    def mousePressEvent(self, event) -> None:
+        log.debug("_HueStrip.mousePressEvent: x=%d", event.position().x())
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._pick(int(event.position().x()))
+
+    def mouseMoveEvent(self, event) -> None:
+        frame_log.debug("_HueStrip.mouseMoveEvent: x=%d", event.position().x())
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._pick(int(event.position().x()))
+
+    def _pick(self, x: int) -> None:
+        half = self._thumb_w // 2
+        self._center_x = max(half, min(self.width() - half, x))
+        self.update()
+        rgb = hue_strip_rgb(self._center_x, self.width(), self._thumb_w)
+        log.debug("_HueStrip._pick: x=%d -> %s", self._center_x, rgb)
+        self.hue_picked.emit(*rgb)
+
+
+class _ColorSquare(QWidget):
+    """The colour square (``UCColorC``): the chosen hue toward white across,
+    toward black down; a press or drag picks the pixel under the ring."""
+
+    color_picked = Signal(int, int, int)
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._base: Rgb = (255, 0, 0)
+        self._ring = Assets.load_pixmap('color_panel_selector_ring.png')
+        self._pos = QPoint(_SQUARE_INSET, _SQUARE_INSET)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        log.debug("_ColorSquare.__init__")
+
+    def set_base(self, r: int, g: int, b: int) -> None:
+        """A new hue: redraw, ring back to the corner (``SetUCColorC``)."""
+        log.debug("_ColorSquare.set_base: %s -> (%d,%d,%d)", self._base, r, g, b)
+        self._base = (r, g, b)
+        self._pos = QPoint(_SQUARE_INSET, _SQUARE_INSET)
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        frame_log.debug("_ColorSquare.paintEvent: base=%s", self._base)
+        p = QPainter(self)
+        area = self.rect().adjusted(_SQUARE_INSET, _SQUARE_INSET,
+                                    -_SQUARE_INSET, -_SQUARE_INSET)
+        across = QLinearGradient(area.topLeft(), area.topRight())
+        across.setColorAt(0.0, QColor(*self._base))
+        across.setColorAt(1.0, QColor(255, 255, 255))
+        p.fillRect(area, across)
+        down = QLinearGradient(area.topLeft(), area.bottomLeft())
+        down.setColorAt(0.0, QColor(0, 0, 0, 0))
+        down.setColorAt(1.0, QColor(0, 0, 0, 255))
+        p.fillRect(area, down)
+        if not self._ring.isNull():
+            p.drawPixmap(self._pos.x() - self._ring.width() // 2,
+                         self._pos.y() - self._ring.height() // 2, self._ring)
+
+    def mousePressEvent(self, event) -> None:
+        log.debug("_ColorSquare.mousePressEvent: %s", event.position())
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._pick(event.position().toPoint())
+
+    def mouseMoveEvent(self, event) -> None:
+        frame_log.debug("_ColorSquare.mouseMoveEvent: %s", event.position())
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._pick(event.position().toPoint())
+
+    def _pick(self, at: QPoint) -> None:
+        w = self.width() - 2 * _SQUARE_INSET
+        h = self.height() - 2 * _SQUARE_INSET
+        x = max(_SQUARE_INSET, min(w + _SQUARE_INSET - 1, at.x()))
+        y = max(_SQUARE_INSET, min(h + _SQUARE_INSET - 1, at.y()))
+        self._pos = QPoint(x, y)
+        self.update()
+        rgb = color_square_rgb(self._base, x - _SQUARE_INSET,
+                               y - _SQUARE_INSET, w, h)
+        log.debug("_ColorSquare._pick: (%d,%d) -> %s", x, y, rgb)
+        self.color_picked.emit(*rgb)
 
 
 class ColorPickerPanel(QFrame):
@@ -91,13 +226,15 @@ class ColorPickerPanel(QFrame):
         self.font_size_spin.setToolTip("Font size")
         self.font_size_spin.valueChanged.connect(self._on_font_size_changed)
 
-        # Color picker area click target
-        self.color_area_btn = QPushButton(self)
-        self.color_area_btn.setGeometry(*Layout.COLOR_AREA)
-        self.color_area_btn.setStyleSheet("background-color: transparent; border: none;")
-        self.color_area_btn.setCursor(Qt.CursorShape.CrossCursor)
-        self.color_area_btn.setToolTip("Pick color")
-        self.color_area_btn.clicked.connect(self._pick_color)
+        # The C#'s inline picker: a hue strip that drives a colour square.
+        # This was a click target that opened a modal QColorDialog instead --
+        # the first commit's stand-in, never revisited.
+        self.color_square = _ColorSquare(self)
+        self.color_square.setGeometry(*Layout.COLOR_AREA)
+        self.color_square.color_picked.connect(self._on_square_picked)
+        self.hue_strip = _HueStrip(self)
+        self.hue_strip.setGeometry(*Layout.COLOR_HUE)
+        self.hue_strip.hue_picked.connect(self._on_hue_picked)
 
         # RGB input boxes
         self.r_input = QLineEdit("255", self)
@@ -163,16 +300,15 @@ class ColorPickerPanel(QFrame):
         self.eyedropper_btn.setToolTip("Pick color from screen")
         self.eyedropper_btn.clicked.connect(self.eyedropper_requested.emit)
 
-    def _pick_color(self):
-        log.info("ColorPickerPanel._pick_color: opening QColorDialog")
-        from PySide6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(self._current_color, self, "Pick Color")
-        if color.isValid():
-            log.info("ColorPickerPanel._pick_color: picked (%d,%d,%d)",
-                     color.red(), color.green(), color.blue())
-            self._apply_color(color.red(), color.green(), color.blue())
-        else:
-            log.info("ColorPickerPanel._pick_color: dialog cancelled")
+    def _on_hue_picked(self, r, g, b):
+        """The hue strip: a new hue for the square, and the colour itself."""
+        log.info("ColorPickerPanel._on_hue_picked: (%d,%d,%d)", r, g, b)
+        self._apply_color(r, g, b)
+
+    def _on_square_picked(self, r, g, b):
+        """The square: the colour only -- its hue stays (``ChangedTextBoxOnly``)."""
+        log.info("ColorPickerPanel._on_square_picked: (%d,%d,%d)", r, g, b)
+        self._apply_color(r, g, b, rebase=False)
 
     def _on_rgb_changed(self):
         try:
@@ -202,12 +338,9 @@ class ColorPickerPanel(QFrame):
                  r, g, b)
         self._apply_color(r, g, b)
 
-    def _apply_color(self, r, g, b):
+    def _apply_color(self, r, g, b, *, rebase=True):
         log.debug("ColorPickerPanel._apply_color: r=%d, g=%d, b=%d", r, g, b)
-        self._current_color = QColor(r, g, b)
-        self.r_input.setText(str(r))
-        self.g_input.setText(str(g))
-        self.b_input.setText(str(b))
+        self.set_color(r, g, b, rebase=rebase)
         self.color_changed.emit(r, g, b)
 
     def _on_position_changed(self):
@@ -215,12 +348,17 @@ class ColorPickerPanel(QFrame):
         log.info("ColorPickerPanel._on_position_changed: (%d,%d)", x, y)
         self.position_changed.emit(x, y)
 
-    def set_color(self, r, g, b):
-        log.debug("ColorPickerPanel.set_color: (%d,%d,%d)", r, g, b)
+    def set_color(self, r, g, b, *, rebase=True):
+        """Show (r, g, b); *rebase* also makes it the square's hue, as every
+        C# path but a pick in the square itself does (``SetUCColorC``)."""
+        log.debug("ColorPickerPanel.set_color: (%d,%d,%d) rebase=%s",
+                  r, g, b, rebase)
         self._current_color = QColor(r, g, b)
         self.r_input.setText(str(r))
         self.g_input.setText(str(g))
         self.b_input.setText(str(b))
+        if rebase:
+            self.color_square.set_base(r, g, b)
 
     def set_color_hex(self, hex_color):
         """Set color from hex string like '#FF0000'."""
