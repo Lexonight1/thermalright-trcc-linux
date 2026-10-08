@@ -30,18 +30,23 @@ from ...core.commands import (
     ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
-    OpenRgbSync,
     ReadSensors,
     RefreshAutostart,
+    RgbFollow,
     RunDoctor,
     RunHealthCheck,
     RunSetup,
     RunUpgrade,
     SetHddEnabled,
-    SetOpenRgbSync,
+    SetRgbFollow,
     SetSensorDashboard,
 )
-from ...core.models import AUTOSTART_TARGETS, PanelConfig, SensorBinding
+from ...core.models import (
+    AUTOSTART_TARGETS,
+    PanelConfig,
+    RgbFollowMode,
+    SensorBinding,
+)
 from ._ctx import emit_json, get_app
 
 if TYPE_CHECKING:
@@ -507,35 +512,39 @@ def hdd_enabled(
         raise typer.Exit(code=1)
 
 
-@app.command("openrgb")
-def openrgb(
-    state: str = typer.Argument(
-        "status", help="'on', 'off' or 'status'"),
+@app.command("follow")
+def follow(
+    mode: str = typer.Argument(
+        "status", help="'off', 'openrgb', 'ram' or 'status'"),
     host: str = typer.Option(
         "", "--host", help="OpenRGB's SDK server (default: the saved one, "
                            "127.0.0.1 at first)."),
     port: int = typer.Option(
         0, "--port", help="Its port (default: the saved one, 6742 at first)."),
 ) -> None:
-    """Make OpenRGB's devices follow the LED cooler's colours (#160).
+    """Make other RGB follow the LED cooler's colours (#160).
 
-    TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's SDK
-    Server tab -- and sends the cooler's colours to every OpenRGB device, so
-    the whole PC matches.  It puts those devices in OpenRGB's direct mode.
+    'openrgb': TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's
+    SDK Server tab -- and sends the cooler's colours to every OpenRGB device,
+    in OpenRGB's direct mode.  'ram': TRCC sends them to Corsair RGB memory
+    itself, with no OpenRGB -- close OpenRGB first, so the two never drive the
+    same sticks.  'off' stops.
     """
-    log.info("cli system openrgb: state=%s host=%r port=%s", state, host, port)
-    choice = state.lower()
-    if choice not in ("on", "off", "status"):
+    log.info("cli system follow: mode=%s host=%r port=%s", mode, host, port)
+    choice = mode.lower()
+    modes = [m.value for m in RgbFollowMode]
+    if choice != "status" and choice not in modes:
         raise typer.BadParameter(
-            f"state must be 'on', 'off' or 'status', got {state!r}")
+            f"mode must be one of {', '.join(modes)} or 'status', "
+            f"got {mode!r}")
     result = get_app().dispatch(
-        OpenRgbSync() if choice == "status" else
-        SetOpenRgbSync(enabled=choice == "on", host=host, port=port))
+        RgbFollow() if choice == "status" else
+        SetRgbFollow(mode=RgbFollowMode(choice), host=host, port=port))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
-    typer.echo(f"  following: {'on' if result.enabled else 'off'} "
-               f"({result.host}:{result.port})")
+    typer.echo(f"  following: {result.mode.value} "
+               f"(OpenRGB at {result.host}:{result.port})")
     if result.lead:
         typer.echo(f"  cooler   : {result.lead}")
     if result.devices:

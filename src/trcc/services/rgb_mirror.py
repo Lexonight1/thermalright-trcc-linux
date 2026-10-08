@@ -2,8 +2,9 @@
 
 Every LED render publishes ``LedColorsChanged`` with the cooler's colours.
 While following is on, this service sends the newest of them to every device
-of the other system (OpenRGB, through the ``RgbMirror`` port) from its own
-thread: a slow or absent OpenRGB never holds a render.  Only the newest
+of the chosen follower (OpenRGB, or Corsair RAM directly -- each an
+``RgbMirror``) from its own thread: a slow or absent follower never holds a
+render.  Only the newest
 colours are kept -- a frame that could not be sent in time is replaced, not
 queued.
 
@@ -19,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..core.logs import per_frame
-from ..core.models import RgbMirrorDevice
+from ..core.models import RgbFollowMode, RgbMirrorDevice
 from ..core.ports import RgbMirror
 
 log = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ Rgb = tuple[int, int, int]
 @dataclass(frozen=True, slots=True)
 class MirrorStatus:
     """What following is doing, for a Query to report."""
-    enabled: bool = False
+    mode: RgbFollowMode = RgbFollowMode.OFF
     connected: bool = False
     devices: tuple[str, ...] = ()
     lead: str = ""
@@ -44,7 +45,9 @@ class RgbMirrorService:
     #: Seconds before trying again after the other system was unreachable.
     RETRY_S = 10.0
 
-    def __init__(self, make_mirror: Callable[[str, int], RgbMirror], *,
+    def __init__(self,
+                 make_mirror: Callable[[RgbFollowMode, str, int], RgbMirror],
+                 *,
                  retry_s: float = RETRY_S) -> None:
         log.debug("RgbMirrorService.__init__: retry %.1f s", retry_s)
         self._make = make_mirror
@@ -63,17 +66,20 @@ class RgbMirrorService:
         frame_log.debug("RgbMirrorService.status: %s", self._status)
         return self._status
 
-    def configure(self, enabled: bool, host: str, port: int) -> None:
-        """Stop following; start again at *host*:*port* when *enabled*."""
-        log.info("RgbMirrorService.configure: enabled=%s %s:%d", enabled,
-                 host, port)
+    def configure(self, mode: RgbFollowMode, host: str, port: int) -> None:
+        """Stop following; start again with *mode* unless it is OFF.
+
+        *host* and *port* are OpenRGB's SDK server; RAM ignores them.
+        """
+        log.info("RgbMirrorService.configure: %s %s:%d", mode.value, host,
+                 port)
         self.stop()
-        if not enabled:
+        if mode is RgbFollowMode.OFF:
             return
         with self._cond:
-            self._mirror = self._make(host, port)
+            self._mirror = self._make(mode, host, port)
             self._running, self._lead, self._retry_at = True, "", 0.0
-            self._status = MirrorStatus(enabled=True)
+            self._status = MirrorStatus(mode=mode)
         self._thread = threading.Thread(target=self._run, daemon=True,
                                         name="trcc-rgb-mirror")
         self._thread.start()
@@ -143,17 +149,18 @@ class RgbMirrorService:
         else:
             frame_log.debug("RgbMirrorService: sent to %d device(s)",
                             len(names))
-        self._status = MirrorStatus(enabled=True, connected=True,
+        self._status = MirrorStatus(mode=self._status.mode, connected=True,
                                     devices=names, lead=self._lead)
 
     def _failed(self, mirror: RgbMirror, error: OSError) -> None:
         message = f"{type(error).__name__}: {error}"
         if self._status.error != message:
-            log.warning("RgbMirrorService: OpenRGB unreachable (%s) — trying "
-                        "again in %.0f s", message, self._retry_s)
+            log.warning("RgbMirrorService: %s unreachable (%s) — trying "
+                        "again in %.0f s", self._status.mode.value, message,
+                        self._retry_s)
         else:
             frame_log.debug("RgbMirrorService: still unreachable")
         mirror.close()
         self._retry_at = time.monotonic() + self._retry_s
-        self._status = MirrorStatus(enabled=True, lead=self._lead,
+        self._status = MirrorStatus(mode=self._status.mode, lead=self._lead,
                                     error=message)

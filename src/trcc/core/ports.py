@@ -2201,7 +2201,9 @@ class RgbMirror(ABC):
 
     TRCC leads: the colours a cooler shows are sent to the other system's
     devices, so the whole PC matches.  Concrete: ``OpenRgbMirror``
-    (``adapters/rgb/openrgb.py``), a client of OpenRGB's SDK server.
+    (``adapters/rgb/openrgb.py``), a client of OpenRGB's SDK server, and
+    ``CorsairDramMirror`` (``adapters/rgb/corsair_dram.py``), Corsair RGB
+    memory over the SMBus.
     Every method may raise ``OSError`` when the other system is unreachable;
     the caller decides when to try again.
     """

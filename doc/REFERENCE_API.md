@@ -158,9 +158,9 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/mark-setup-done` | `FirstRunStatusResult` | Mark the first-run flow as completed. |
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |
-| `GET /system/openrgb` | `OpenRgbSyncResult` | Whether OpenRGB's devices follow the cooler, and what they are doing. |
-| `POST /system/openrgb` | `OpenRgbSyncResult` | Make OpenRGB's devices follow the cooler's colours, or stop (#160). |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
+| `GET /system/rgb-follow` | `RgbFollowResult` | What follows the cooler's colours, and what it is doing (#160). |
+| `POST /system/rgb-follow` | `RgbFollowResult` | Pick what follows the cooler's colours: off, openrgb or ram (#160). |
 | `GET /system/sensors` | `SensorsResult` | — |
 | `GET /system/sensors/catalog` | `SensorsListResult` | Every sensor this machine can measure — identities, no values. |
 | `GET /system/sensors/{category}` | `SensorsResult` | Filter the live sensor list by category prefix. |

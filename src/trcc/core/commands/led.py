@@ -16,7 +16,7 @@ from ..events import (
     FrameSent,
     HddEnabledChanged,
     LedColorsChanged,
-    OpenRgbSyncChanged,
+    RgbFollowChanged,
 )
 from ..led_models import (
     LED_STYLES,
@@ -27,6 +27,7 @@ from ..led_models import (
     one_hot,
 )
 from ..logs import per_frame
+from ..models import RgbFollowMode
 from ..results import (
     ClockFormatResult,
     HddEnabledResult,
@@ -37,7 +38,7 @@ from ..results import (
     LedStylesListResult,
     LedZoneEntry,
     MemoryRatioResult,
-    OpenRgbSyncResult,
+    RgbFollowResult,
     WeekStartResult,
 )
 from ._base import Command, Query
@@ -1074,56 +1075,71 @@ def _rgb_tuples(colors: Sequence[Sequence[int]]) -> tuple[tuple[int, int, int], 
     return tuple((int(c[0]), int(c[1]), int(c[2])) for c in colors)
 
 
-def _openrgb_result(app: App, message: str) -> OpenRgbSyncResult:
-    """The OpenRGB setting and the follower's live status, as one Result."""
+def _rgb_follow_result(app: App, message: str) -> RgbFollowResult:
+    """The follow setting and the follower's live status, as one Result."""
     settings, status = app.settings.app, app.rgb_mirror.status
-    log.debug("_openrgb_result: enabled=%s connected=%s",
-              settings.openrgb_enabled, status.connected)
-    return OpenRgbSyncResult(
-        ok=True, enabled=settings.openrgb_enabled,
+    mode = app.settings.rgb_follow_mode()
+    log.debug("_rgb_follow_result: %s connected=%s", mode.value,
+              status.connected)
+    return RgbFollowResult(
+        ok=True, mode=mode,
         host=settings.openrgb_host, port=settings.openrgb_port,
         connected=status.connected, devices=status.devices,
         lead=status.lead, error=status.error, message=message,
     )
 
 
-@dataclass(frozen=True, slots=True)
-class SetOpenRgbSync(Command[OpenRgbSyncResult]):
-    """Make OpenRGB's devices follow the LED cooler's colours, or stop (#160).
+def _rgb_follow_label(mode: RgbFollowMode, host: str, port: int) -> str:
+    """What follows the cooler, in words."""
+    log.debug("_rgb_follow_label: %s", mode.value)
+    match mode:
+        case RgbFollowMode.OPENRGB:
+            return f"OpenRGB at {host}:{port} follows the cooler"
+        case RgbFollowMode.RAM:
+            return "Corsair RAM follows the cooler"
+    return "Nothing follows the cooler"
 
-    TRCC leads: it connects to the OpenRGB SDK server at host:port as a client
-    and sends the cooler's colours to every OpenRGB device, so the whole PC
-    matches.  Following puts those devices in OpenRGB's direct mode.  An empty
-    host or a port of 0 keeps the one saved.
+
+@dataclass(frozen=True, slots=True)
+class SetRgbFollow(Command[RgbFollowResult]):
+    """Pick what follows the LED cooler's colours (#160): one at a time.
+
+    TRCC leads.  ``OPENRGB``: TRCC connects to the OpenRGB SDK server at
+    host:port as a client and sends the cooler's colours to every OpenRGB
+    device, in OpenRGB's direct mode.  ``RAM``: TRCC sends them to Corsair RGB
+    memory over the SMBus itself, with no OpenRGB running.  ``OFF`` stops.
+    An empty host or a port of 0 keeps the one saved.
     """
-    enabled: bool
+    mode: RgbFollowMode
     host: str = ""
     port: int = 0
 
-    def execute(self, app: App) -> OpenRgbSyncResult:
+    def execute(self, app: App) -> RgbFollowResult:
         current = app.settings.app
         host = self.host or current.openrgb_host
         port = self.port or current.openrgb_port
-        log.info("SetOpenRgbSync: enabled=%s %s:%d", self.enabled, host, port)
+        log.info("SetRgbFollow: %s %s:%d", self.mode.value, host, port)
         try:
-            app.settings.set_openrgb(self.enabled, host, port)
+            app.settings.set_rgb_follow(self.mode, host, port)
         except ValueError as e:
-            log.warning("SetOpenRgbSync: refused — %s", e)
-            return OpenRgbSyncResult(ok=False, message=str(e))
-        app.rgb_mirror.configure(self.enabled, host, port)
-        app.events.publish(OpenRgbSyncChanged(enabled=self.enabled))
-        state = (f"OpenRGB at {host}:{port} follows the cooler"
-                 if self.enabled else "OpenRGB no longer follows the cooler")
-        return _openrgb_result(app, state)
+            log.warning("SetRgbFollow: refused — %s", e)
+            return RgbFollowResult(ok=False, message=str(e))
+        app.rgb_mirror.configure(self.mode, host, port)
+        app.events.publish(RgbFollowChanged(mode=self.mode))
+        return _rgb_follow_result(
+            app, _rgb_follow_label(self.mode, host, port))
 
 
 @dataclass(frozen=True, slots=True)
-class OpenRgbSync(Query[OpenRgbSyncResult]):
-    """Whether OpenRGB follows the cooler, and what it is doing (#160)."""
+class RgbFollow(Query[RgbFollowResult]):
+    """What follows the cooler, and what it is doing (#160)."""
 
-    def execute(self, app: App) -> OpenRgbSyncResult:
-        log.debug("OpenRgbSync: query")
-        return _openrgb_result(app, "OpenRGB follow status")
+    def execute(self, app: App) -> RgbFollowResult:
+        log.debug("RgbFollow: query")
+        current = app.settings.app
+        return _rgb_follow_result(app, _rgb_follow_label(
+            app.settings.rgb_follow_mode(), current.openrgb_host,
+            current.openrgb_port))
 
 
 @dataclass(frozen=True, slots=True)

@@ -23,6 +23,7 @@ from .models import (
     LedHandshakeResult,
     PanelConfig,
     ProductInfo,
+    RgbFollowMode,
     SensorReading,
     WebPreviewInfo,
 )
@@ -605,13 +606,14 @@ class BootAnimationResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
-class OpenRgbSyncResult(Result):
-    """OpenRGB following the cooler (#160): the setting and what it is doing.
+class RgbFollowResult(Result):
+    """What follows the cooler (#160): the setting and what it is doing.
 
-    ``devices`` are the OpenRGB devices that follow; ``lead`` the cooler they
-    follow; ``error`` why OpenRGB could not be reached, if it could not.
+    ``mode`` is what follows -- OpenRGB at ``host``:``port``, or Corsair RAM
+    directly.  ``devices`` are those that follow; ``lead`` the cooler they
+    follow; ``error`` why the follower could not be reached, if it could not.
     """
-    enabled: bool = False
+    mode: RgbFollowMode = RgbFollowMode.OFF
     host: str = ""
     port: int = 0
     connected: bool = False

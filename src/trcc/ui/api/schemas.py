@@ -19,6 +19,7 @@ from ...core.models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     FitMode,
+    RgbFollowMode,
 )
 from ...core.results import ConnectionIssuesResult, ConnectResult
 
@@ -212,14 +213,14 @@ class HddEnabledRequest(BaseModel):
     enabled: bool
 
 
-class OpenRgbSyncRequest(BaseModel):
-    """Make OpenRGB's devices follow the cooler (#160).
+class RgbFollowRequest(BaseModel):
+    """Pick what follows the cooler (#160): off, openrgb or ram.
 
-    ``host`` is a hostname or IP address only -- no scheme, path or port --
-    so the API cannot point TRCC at an arbitrary URL.  Empty keeps the saved
-    one; ``port`` 0 likewise.
+    ``host`` is OpenRGB's, a hostname or IP address only -- no scheme, path
+    or port -- so the API cannot point TRCC at an arbitrary URL.  Empty keeps
+    the saved one; ``port`` 0 likewise.
     """
-    enabled: bool
+    mode: RgbFollowMode
     host: str = Field("", max_length=253, pattern=r"^[A-Za-z0-9.:\-]*$")
     port: int = Field(0, ge=0, le=65535)
 

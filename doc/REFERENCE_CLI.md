@@ -1598,6 +1598,23 @@ Show whether trcc has been set up on this machine yet.
 trcc system first-run-status
 ```
 
+### `trcc system follow`
+
+Make other RGB follow the LED cooler's colours (#160). 'openrgb': TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's SDK Server tab -- and sends the cooler's colours to every OpenRGB device, in OpenRGB's direct mode. 'ram': TRCC sends them to Corsair RGB memory itself, with no OpenRGB -- close OpenRGB first, so the two never drive the same sticks. 'off' stops.
+
+```bash
+trcc system follow [OPTIONS] [MODE]
+```
+
+| Argument | Description |
+|---|---|
+| `MODE` | 'off', 'openrgb', 'ram' or 'status' *(optional)* |
+
+| Option | Description |
+|---|---|
+| `--host` `HOST` | OpenRGB's SDK server (default: the saved one, 127.0.0.1 at first). |
+| `--port` `PORT` | Its port (default: the saved one, 6742 at first). |
+
 ### `trcc system hdd-enabled`
 
 Toggle inclusion of HDD metrics in sensor broadcasts.
@@ -1745,23 +1762,6 @@ List DRAM slots — size/type/speed/manufacturer, plus timings on Linux. Timings
 ```bash
 trcc system memory-slots
 ```
-
-### `trcc system openrgb`
-
-Make OpenRGB's devices follow the LED cooler's colours (#160). TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's SDK Server tab -- and sends the cooler's colours to every OpenRGB device, so the whole PC matches. It puts those devices in OpenRGB's direct mode.
-
-```bash
-trcc system openrgb [OPTIONS] [STATE]
-```
-
-| Argument | Description |
-|---|---|
-| `STATE` | 'on', 'off' or 'status' *(optional)* |
-
-| Option | Description |
-|---|---|
-| `--host` `HOST` | OpenRGB's SDK server (default: the saved one, 127.0.0.1 at first). |
-| `--port` `PORT` | Its port (default: the saved one, 6742 at first). |
 
 ### `trcc system paths`
 

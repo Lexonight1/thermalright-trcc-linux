@@ -44,7 +44,7 @@ from ...core.commands import (
     GetPlatformInfo,
     RefreshAutostart,
 )
-from ...core.models import DEFAULT_REFRESH_INTERVAL_S
+from ...core.models import DEFAULT_REFRESH_INTERVAL_S, RgbFollowMode
 from ...core.results import ControlCenterSnapshotResult
 from ..presentation.openrgb_address import (
     format_openrgb_address,
@@ -174,7 +174,7 @@ class UCAbout(BasePanel):
     close_requested = Signal()
     temp_unit_changed = Signal(str)      # 'C' or 'F'
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
-    openrgb_toggle_changed = Signal(bool, str, int)  # on, host, port (#160)
+    rgb_follow_changed = Signal(str, str, int)  # mode, host, port (#160)
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
     _update_available = Signal(str)       # latest version
@@ -479,6 +479,14 @@ class UCAbout(BasePanel):
         self._openrgb_status.setGeometry(*Layout.ABOUT_OPENRGB_STATUS)
         self._openrgb_status.setStyleSheet(
             "color: #B4964F; font-size: 9pt; background: transparent;")
+        self.ram_btn = self._make_checkbox(*Layout.ABOUT_RAM)
+        self.ram_btn.clicked.connect(self._on_ram_clicked)
+        self._ram_label = QLabel(
+            "Corsair RGB RAM follows the cooler's colours "
+            "(directly -- close OpenRGB first)", self)
+        self._ram_label.setGeometry(*Layout.ABOUT_RAM_LABEL)
+        self._ram_label.setStyleSheet(
+            "color: white; font-size: 10pt; background: transparent;")
 
 
     def _on_openrgb_clicked(self):
@@ -491,24 +499,36 @@ class UCAbout(BasePanel):
             self._openrgb_status.setText(
                 "Address must be host:port, e.g. 127.0.0.1:6742")
             return
-        self.openrgb_toggle_changed.emit(on, *address)
+        self.rgb_follow_changed.emit(
+            RgbFollowMode.OPENRGB.value if on else RgbFollowMode.OFF.value,
+            *address)
+
+    def _on_ram_clicked(self):
+        """Ask for Corsair RAM to follow the cooler directly, or to stop."""
+        on = self.ram_btn.isChecked()
+        log.info("_on_ram_clicked: on=%s", on)
+        self.rgb_follow_changed.emit(
+            RgbFollowMode.RAM.value if on else RgbFollowMode.OFF.value, "", 0)
 
     def show_openrgb(self, result) -> None:
-        """Show the App's OpenRGB setting and what it is doing -- sends nothing."""
-        log.debug("show_openrgb: enabled=%s connected=%s", result.enabled,
+        """Show what follows the cooler and what it is doing -- sends nothing."""
+        mode = RgbFollowMode(result.mode)
+        log.debug("show_openrgb: %s connected=%s", mode.value,
                   result.connected)
-        self.openrgb_btn.setChecked(result.enabled)
+        self.openrgb_btn.setChecked(mode is RgbFollowMode.OPENRGB)
+        self.ram_btn.setChecked(mode is RgbFollowMode.RAM)
         if result.host:
             self._openrgb_addr.setText(
                 format_openrgb_address(result.host, result.port))
-        if not result.enabled:
+        who = ("OpenRGB" if mode is RgbFollowMode.OPENRGB else "Corsair RAM")
+        if mode is RgbFollowMode.OFF:
             text = ""
         elif result.error:
-            text = f"OpenRGB not reachable at {result.host}:{result.port} — {result.error}"
+            text = f"{who} not reachable — {result.error}"
         elif result.connected:
             text = f"Following on: {', '.join(result.devices) or 'no devices'}"
         else:
-            text = f"Waiting for the cooler's colours ({result.host}:{result.port})"
+            text = f"{who}: waiting for the cooler's colours"
         self._openrgb_status.setText(text)
 
     # --- HDD info ---

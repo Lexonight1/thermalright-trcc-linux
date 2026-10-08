@@ -2047,22 +2047,23 @@ def test_screencast_stop_is_one_command(
     assert seen == ["StopScreencast"]
 
 
-def test_system_openrgb_status_and_off(api_client: TestClient) -> None:
-    """#160: OpenRGB following, off by default; off needs no OpenRGB."""
-    status = api_client.get("/system/openrgb").json()
-    assert (status["enabled"], status["host"], status["port"]) == (
-        False, "127.0.0.1", 6742)
-    resp = api_client.post("/system/openrgb",
-                           json={"enabled": False, "port": 6800})
+def test_system_rgb_follow_status_and_off(api_client: TestClient) -> None:
+    """#160: nothing follows by default; off needs no OpenRGB."""
+    status = api_client.get("/system/rgb-follow").json()
+    assert (status["mode"], status["host"], status["port"]) == (
+        "off", "127.0.0.1", 6742)
+    resp = api_client.post("/system/rgb-follow",
+                           json={"mode": "off", "port": 6800})
     assert resp.status_code == 200
-    assert (resp.json()["enabled"], resp.json()["port"]) == (False, 6800)
+    assert (resp.json()["mode"], resp.json()["port"]) == ("off", 6800)
+    assert resp.json()["message"] == "Nothing follows the cooler"
 
 
-def test_system_openrgb_takes_a_host_not_a_url(api_client: TestClient) -> None:
+def test_system_rgb_follow_takes_a_host_not_a_url(api_client: TestClient) -> None:
     for host in ("http://evil", "a/b", "x y"):
-        resp = api_client.post("/system/openrgb",
-                               json={"enabled": False, "host": host})
+        resp = api_client.post("/system/rgb-follow",
+                               json={"mode": "off", "host": host})
         assert resp.status_code == 422, host
-    assert api_client.post("/system/openrgb",
-                           json={"enabled": False, "port": 70000}
-                           ).status_code == 422
+    for bad in ({"mode": "off", "port": 70000}, {"mode": "rainbow"}):
+        assert api_client.post("/system/rgb-follow", json=bad
+                               ).status_code == 422, bad

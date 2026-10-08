@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .logs import per_frame
-from .models import IN_PROCESS_ONLY, HardwareMetrics, TempUnit
+from .models import IN_PROCESS_ONLY, HardwareMetrics, RgbFollowMode, TempUnit
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -433,14 +433,14 @@ class TempUnitChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
-class OpenRgbSyncChanged(Event):
-    """OpenRGB following was turned on or off (#160), from any UI.
+class RgbFollowChanged(Event):
+    """What follows the cooler changed (#160), from any UI.
 
-    Published by ``SetOpenRgbSync``; every window shows the switch from the
-    ``OpenRgbSync`` Query on it, so a change from the CLI, the API or the
+    Published by ``SetRgbFollow``; every window shows the choice from the
+    ``RgbFollow`` Query on it, so a change from the CLI, the API or the
     other window shows up too.
     """
-    enabled: bool
+    mode: RgbFollowMode
 
 
 @dataclass(frozen=True, slots=True)

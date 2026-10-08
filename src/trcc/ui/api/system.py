@@ -26,9 +26,9 @@ from ...core.commands import (
     ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
-    OpenRgbSync,
     ReadSensors,
     RefreshAutostart,
+    RgbFollow,
     RunDoctor,
     RunHealthCheck,
     RunQuickstart,
@@ -36,7 +36,7 @@ from ...core.commands import (
     RunUpgrade,
     SetDiskDevice,
     SetHddEnabled,
-    SetOpenRgbSync,
+    SetRgbFollow,
     SetSensorDashboard,
 )
 from ...core.models import Kind, PanelConfig, SensorBinding
@@ -57,8 +57,8 @@ from ...core.results import (
     LanguageResult,
     LanguagesListResult,
     MemorySlotsResult,
-    OpenRgbSyncResult,
     QuickstartResult,
+    RgbFollowResult,
     SensorDashboardResult,
     SensorsListResult,
     SensorsResult,
@@ -74,7 +74,7 @@ from .schemas import (
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
-    OpenRgbSyncRequest,
+    RgbFollowRequest,
     SensorDashboardRequest,
     UpgradeRequest,
 )
@@ -284,21 +284,21 @@ def hdd_enabled(body: HddEnabledRequest,
     return result
 
 
-@router.get("/openrgb")
-def openrgb_status(request: Request) -> OpenRgbSyncResult:
-    """Whether OpenRGB's devices follow the cooler, and what they are doing."""
-    log.info("api GET /system/openrgb")
-    return request.app.state.trcc.dispatch(OpenRgbSync())
+@router.get("/rgb-follow")
+def rgb_follow_status(request: Request) -> RgbFollowResult:
+    """What follows the cooler's colours, and what it is doing (#160)."""
+    log.info("api GET /system/rgb-follow")
+    return request.app.state.trcc.dispatch(RgbFollow())
 
 
-@router.post("/openrgb")
-def openrgb_set(body: OpenRgbSyncRequest,
-                request: Request) -> OpenRgbSyncResult:
-    """Make OpenRGB's devices follow the cooler's colours, or stop (#160)."""
-    log.info("api POST /system/openrgb: enabled=%s host=%r port=%s",
-             body.enabled, body.host, body.port)
-    result = request.app.state.trcc.dispatch(SetOpenRgbSync(
-        enabled=body.enabled, host=body.host, port=body.port))
+@router.post("/rgb-follow")
+def rgb_follow_set(body: RgbFollowRequest,
+                   request: Request) -> RgbFollowResult:
+    """Pick what follows the cooler's colours: off, openrgb or ram (#160)."""
+    log.info("api POST /system/rgb-follow: mode=%s host=%r port=%s",
+             body.mode.value, body.host, body.port)
+    result = request.app.state.trcc.dispatch(SetRgbFollow(
+        mode=body.mode, host=body.host, port=body.port))
     http_error_if_failed(result)
     return result
 

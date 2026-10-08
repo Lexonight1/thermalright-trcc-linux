@@ -37,6 +37,7 @@ from ..core.models import (
     FitMode,
     OrientationState,
     OverlayElement,
+    RgbFollowMode,
     TempUnit,
 )
 from ..core.ports import Paths
@@ -88,10 +89,11 @@ class AppSettings:
     # rather than pretend the divergence is not there.
     active_disk: str | None = None
 
-    # OpenRGB follows the cooler (#160): TRCC sends the LED cooler's colours
-    # to the devices of the OpenRGB SDK server at host:port.  Off until the
-    # user turns it on -- it puts their OpenRGB devices in direct mode.
-    openrgb_enabled: bool = False
+    # What follows the cooler (#160): an ``RgbFollowMode`` value.  "openrgb"
+    # sends the LED cooler's colours to the devices of the OpenRGB SDK server
+    # at host:port; "ram" to Corsair RGB memory directly.  Off until the user
+    # picks one -- either takes over those devices' lighting.
+    rgb_follow: str = RgbFollowMode.OFF.value
     openrgb_host: str = "127.0.0.1"
     openrgb_port: int = 6742
 
@@ -741,13 +743,25 @@ class Settings:
             self.for_led(key).memory_ratio = clamped
             self._save()
 
-    def set_openrgb(self, enabled: bool, host: str, port: int) -> None:
-        """Turn OpenRGB following on or off, at *host*:*port* (#160)."""
-        log.info("set_openrgb: enabled=%s %s:%d", enabled, host, port)
+    def rgb_follow_mode(self) -> RgbFollowMode:
+        """What follows the cooler; a value this build does not know is OFF."""
+        value = self._app.rgb_follow
+        log.debug("rgb_follow_mode: %r", value)
+        try:
+            return RgbFollowMode(value)
+        except ValueError:
+            log.warning("rgb_follow_mode: unknown %r in the settings -- off",
+                        value)
+            return RgbFollowMode.OFF
+
+    def set_rgb_follow(self, mode: RgbFollowMode, host: str,
+                       port: int) -> None:
+        """Pick what follows the cooler, and OpenRGB's *host*:*port* (#160)."""
+        log.info("set_rgb_follow: %s %s:%d", mode.value, host, port)
         if not 0 < port < 65536:
             raise ValueError(f"port out of range (1-65535): {port}")
         with self._lock:
-            self._app.openrgb_enabled = enabled
+            self._app.rgb_follow = mode.value
             self._app.openrgb_host = host
             self._app.openrgb_port = port
             self._save()

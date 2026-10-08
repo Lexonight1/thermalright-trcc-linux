@@ -218,7 +218,8 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None: 
     import sys
 
     from trcc.app import App
-    from trcc.core.commands import ConnectDevice, RenderLed, SetOpenRgbSync
+    from trcc.core.commands import ConnectDevice, RenderLed, SetRgbFollow
+    from trcc.core.models import RgbFollowMode
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
     from tests.mock_platform import MockPlatform
@@ -227,7 +228,8 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None: 
     app = App(MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path))
     try:
         assert app.dispatch(ConnectDevice(key="0416:8001")).ok
-        assert app.dispatch(SetOpenRgbSync(enabled=True, port=server.port)).ok
+        assert app.dispatch(SetRgbFollow(mode=RgbFollowMode.OPENRGB,
+                                         port=server.port)).ok
         rendered = app.dispatch(RenderLed(key="0416:8001"))
         server.wait_for(1050)
         _, data = server.packets(1050)[0]

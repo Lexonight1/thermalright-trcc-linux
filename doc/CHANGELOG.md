@@ -9,9 +9,17 @@
   OpenRGB device -- motherboard, RAM, fans, strips -- so the whole PC matches.
   Start the server in OpenRGB's SDK Server tab, then turn it on in the
   settings panel (classic window), the LED panel's Advanced tab (new window),
-  `trcc system openrgb on`, or `POST /system/openrgb`. Off by default; it
-  puts the OpenRGB devices in direct mode while it runs. Built on OpenRGB's
+  `trcc system follow openrgb`, or `POST /system/rgb-follow`. Off by default;
+  it puts the OpenRGB devices in direct mode while it runs. Built on OpenRGB's
   SDK protocol (credited in the README).
+- **Corsair RGB RAM can follow the cooler's colours with no OpenRGB (#160).**
+  TRCC finds the sticks' lighting controller on the chipset SMBus by reading
+  its id, checks its device info, and sends the colours itself -- the same
+  bytes OpenRGB sends. It never touches the memory's SPD chips. Pick it in the
+  same places (`trcc system follow ram`); it is one choice with OpenRGB, so
+  the two never drive the same sticks. Linux; needs the `i2c-dev` module and
+  access to `/dev/i2c-*`. Adapted from OpenRGB's Corsair DRAM controller
+  (credited in the README).
 
 ### Fixed
 

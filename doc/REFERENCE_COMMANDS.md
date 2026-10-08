@@ -954,14 +954,6 @@ Enumerate every LED style the PM registry can resolve.
 
 Takes no arguments.
 
-### `OpenRgbSync`
-
-Whether OpenRGB follows the cooler, and what it is doing (#160).
-
-*Query* → `OpenRgbSyncResult`
-
-Takes no arguments.
-
 ### `RenderLed`
 
 Compute one LED frame from current settings + sensors and send it.
@@ -974,6 +966,14 @@ Compute one LED frame from current settings + sensors and send it.
 | `color` | `tuple[int, int, int] | None` | no |
 | `phase` | `int` | no |
 | `advance` | `bool` | no |
+
+### `RgbFollow`
+
+What follows the cooler, and what it is doing (#160).
+
+*Query* → `RgbFollowResult`
+
+Takes no arguments.
 
 ### `SelectZone`
 
@@ -1155,15 +1155,15 @@ Set the DDR memory multiplier (1, 2, or 4) for the LED memory gauge.
 | `key` | `str` | yes |
 | `ratio` | `int` | yes |
 
-### `SetOpenRgbSync`
+### `SetRgbFollow`
 
-Make OpenRGB's devices follow the LED cooler's colours, or stop (#160).
+Pick what follows the LED cooler's colours (#160): one at a time.
 
-*Command* → `OpenRgbSyncResult`
+*Command* → `RgbFollowResult`
 
 | Field | Type | Required |
 |---|---|---|
-| `enabled` | `bool` | yes |
+| `mode` | `RgbFollowMode` | yes |
 | `host` | `str` | no |
 | `port` | `int` | no |
 

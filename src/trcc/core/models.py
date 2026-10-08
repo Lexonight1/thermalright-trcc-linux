@@ -1482,6 +1482,18 @@ CUTTER_DEFAULT_FPS: int = 15
 ZT_MAX_DURATION_MS: int = 300_000
 
 
+class RgbFollowMode(str, Enum):
+    """What follows the LED cooler's colours (#160) -- one at a time.
+
+    ``OPENRGB``: the devices of an OpenRGB SDK server.  ``RAM``: Corsair RGB
+    memory, driven directly over the SMBus with no OpenRGB running.  One
+    choice, so TRCC and OpenRGB never drive the same sticks at once.
+    """
+    OFF = "off"
+    OPENRGB = "openrgb"
+    RAM = "ram"
+
+
 @dataclass(frozen=True, slots=True)
 class RgbMirrorDevice:
     """One device of another RGB system that follows the cooler (#160).
