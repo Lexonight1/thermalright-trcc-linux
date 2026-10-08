@@ -355,6 +355,11 @@ class App(CommandBus):
         # which the metrics / LED-animation loops and render observers resume on
         # their own.  Core-level so the daemon, GUI and CLI all recover.
         self.events.subscribe(SystemResumed, self._on_system_resumed)
+        # Cloud tiles: a video downloaded while ffmpeg was missing, or whose
+        # GIF failed, had a static tile for good.  Each landed install gives
+        # its resolution's videos their GIFs, off every caller's thread.
+        self._preview_backfill_lock = threading.Lock()
+        self.events.subscribe(DataInstalled, self._on_data_installed)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -571,6 +576,25 @@ class App(CommandBus):
             watcher.disarm()
         if forget:
             self._wanted.discard(key)
+
+    def _on_data_installed(self, event: Any) -> None:
+        """``DataInstalled`` -> backfill that resolution's cloud tile GIFs."""
+        log.debug("_on_data_installed: %s ok=%s", event.resolution, event.ok)
+        if not event.ok:
+            return
+        threading.Thread(target=self._backfill_previews,
+                         args=(event.resolution,), daemon=True,
+                         name="trcc-cloud-previews").start()
+
+    def _backfill_previews(self, resolution: tuple[int, int]) -> None:
+        """Both orientations' cloud videos; one backfill at a time."""
+        w, h = resolution
+        with self._preview_backfill_lock:
+            for size in dict.fromkeys(((w, h), (h, w))):
+                try:
+                    self.cloud_themes.backfill_previews(size)
+                except Exception:
+                    log.exception("_backfill_previews: %dx%d failed", *size)
 
     def _on_system_resumed(self, _event: Any) -> None:
         """``SystemResumed`` → reconnect every attached device after wake.

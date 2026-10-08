@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **Clicking a cloud background no longer stalls, and every downloaded one
+  gets its animated tile.** Clicking a cloud background whose animated tile
+  had once failed to generate ran ffmpeg again on every click, for up to 40
+  seconds. A click now only plays the video; tiles are made when the
+  background is downloaded, and TRCC fills in any missing ones in the
+  background after it checks its data at start. Without ffmpeg the tiles stay
+  still pictures, as in the Windows app.
+
 - **The overlay colour editor remembers your recent colours, per device.**
   The row of 11 small swatches did nothing. As in the Windows app, the colour
   you end an edit on is added to the front when you move to another element,

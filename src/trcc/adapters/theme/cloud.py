@@ -137,6 +137,14 @@ class CzhordeCatalog(CloudCatalog):
         log.debug("download_theme: theme_id=%s resolution=%s", theme_id, resolution)
         return self._fetch_cached(theme_id, ".mp4", resolution or self._resolution)
 
+    def downloaded(self, resolution: str) -> tuple[str, ...]:
+        """Ids of the ``.mp4`` videos already in *resolution*'s cache."""
+        folder = self._cache_dir / resolution.replace("x", "")
+        ids = tuple(sorted(p.stem for p in folder.glob("*.mp4")
+                           if _is_cached(p, ".mp4")))
+        log.debug("downloaded: %s -> %d video(s)", resolution, len(ids))
+        return ids
+
     # ── Internals ─────────────────────────────────────────────────────
 
     def _fetch_cached(self, theme_id: str, suffix: str, resolution: str) -> Path:

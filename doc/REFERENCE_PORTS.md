@@ -30,7 +30,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 1 |
-| [`CloudCatalog`](#cloudcatalog) | 3 | 0 | 1 |
 | [`CommandBus`](#commandbus) | 3 | 1 | 7 |
 | [`Device`](#device) | 3 | 14 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
@@ -41,6 +40,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
+| [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`Paths`](#paths) | 4 | 10 | 5 |
@@ -364,22 +364,6 @@ temp() -> float | None
 
 **Implementations (1):** `PsutilBoardTemp`
 
-## CloudCatalog
-
-`core/ports.py`
-
-Port for the hosted cloud theme catalog.
-
-**You implement (3):**
-
-```python
-categories() -> tuple[CloudCategory, ...]
-download_theme(theme_id: 'str', resolution: 'str | None' = None) -> Path
-list_themes(category: 'str' = 'all') -> list[CloudThemeEntry]
-```
-
-**Implementations (1):** `CzhordeCatalog`
-
 ## CommandBus
 
 `core/ports.py`
@@ -557,6 +541,23 @@ _release() -> None
 **You inherit (4):** `close` · `doRollover` · `emit` · `shouldRollover`
 
 **Implementations (2):** `PosixSharedLogHandler` · `WindowsSharedLogHandler`
+
+## CloudCatalog
+
+`core/ports.py`
+
+Port for the hosted cloud theme catalog.
+
+**You implement (4):**
+
+```python
+categories() -> tuple[CloudCategory, ...]
+download_theme(theme_id: 'str', resolution: 'str | None' = None) -> Path
+downloaded(resolution: 'str') -> tuple[str, ...]
+list_themes(category: 'str' = 'all') -> list[CloudThemeEntry]
+```
+
+**Implementations (1):** `CzhordeCatalog`
 
 ## MemorySource
 

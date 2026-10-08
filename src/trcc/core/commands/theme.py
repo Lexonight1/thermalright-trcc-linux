@@ -2099,8 +2099,8 @@ class DownloadCloudTheme(Command[CloudThemeLoadResult]):
     Until this Command existed that download was on no UI's bus — the GUI
     reached ``app.cloud_themes.materialise`` directly and cli / api could not
     pre-fetch at all.  ``materialise`` is documented idempotent: an already
-    cached MP4 is not re-downloaded, and the preview PNG + GIF are only
-    generated when missing, so calling this twice is cheap and safe.
+    cached MP4 is not re-downloaded, and ``ensure_previews`` makes the PNG +
+    GIF only when missing, so calling this twice is cheap and safe.
 
     ``resolution`` is the ORIENTED catalog size (854×480 ↔ 480×854), not the
     panel's native one — cloud backgrounds are catalogued per direction, and
@@ -2118,6 +2118,7 @@ class DownloadCloudTheme(Command[CloudThemeLoadResult]):
             mp4_path = app.cloud_themes.materialise(
                 self.theme_id, self.resolution,
             )
+            app.cloud_themes.ensure_previews(self.theme_id, self.resolution)
         except ValueError as e:
             log.warning("DownloadCloudTheme: ValueError materialising %s: %s",
                         self.theme_id, e)

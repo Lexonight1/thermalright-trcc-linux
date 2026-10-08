@@ -461,3 +461,108 @@ def test_a_failed_download_leaves_no_directory(tmp_path: Path) -> None:
         catalog.download_theme("a001")
 
     assert list(tmp_path.iterdir()) == []
+
+
+# ── A tile click runs no ffmpeg; the App backfills the tile GIFs ────────────
+#
+# ``materialise`` made the PNG + GIF itself, so LoadCloudTheme -- a tile
+# click -- re-ran up to 40 s of ffmpeg inside the dispatch for any video whose
+# GIF had once failed, every click.  And nothing ever made a GIF for a video
+# downloaded while ffmpeg was missing.
+
+def _cached(tmp_path: Path, ids: tuple[str, ...]):  # type: ignore[no-untyped-def]
+    paths = FakePaths(tmp_path)
+    folder = paths.cloud_theme_dir(320, 320)
+    folder.mkdir(parents=True)
+    for theme_id in ids:
+        (folder / f"{theme_id}.mp4").write_bytes(MP4 + b"video")
+    service = CloudThemeService(
+        catalog=CzhordeCatalog(http=FakeHttp(), cache_dir=paths.data_dir() / "web",
+                               resolution="320x320"),
+        paths=paths,
+    )
+    return service, folder
+
+
+@pytest.fixture
+def ffmpeg_calls(monkeypatch):  # type: ignore[no-untyped-def]
+    from trcc.services import cloud_theme
+
+    made: list[str] = []
+    monkeypatch.setattr(cloud_theme, "_generate_animated_gif",
+                        lambda mp4, gif: made.append(gif.name))
+    monkeypatch.setattr(cloud_theme, "_extract_first_frame_png",
+                        lambda mp4, png: made.append(png.name))
+    monkeypatch.setattr(cloud_theme.toolchain, "present", lambda tool: True)
+    return made
+
+
+def test_a_tile_click_runs_no_ffmpeg(tmp_path: Path, ffmpeg_calls) -> None:
+    service, _ = _cached(tmp_path, ("a004",))
+    service.materialise("a004", (320, 320))
+    assert ffmpeg_calls == []
+
+
+def test_the_backfill_makes_only_the_missing_gifs(tmp_path: Path,
+                                                  ffmpeg_calls) -> None:
+    service, folder = _cached(tmp_path, ("a001", "a002"))
+    (folder / "a002.gif").write_bytes(b"GIF89a")
+    for theme_id in ("a001", "a002"):           # first-frame PNGs are fresh
+        (folder / f"{theme_id}.png").write_bytes(b"png")
+    assert service.backfill_previews((320, 320)) == 2
+    assert ffmpeg_calls == ["a001.gif"]
+
+
+def test_the_backfill_without_ffmpeg_runs_nothing(tmp_path: Path,
+                                                  ffmpeg_calls,
+                                                  monkeypatch) -> None:
+    from trcc.services import cloud_theme
+
+    monkeypatch.setattr(cloud_theme.toolchain, "present", lambda tool: False)
+    service, _ = _cached(tmp_path, ("a001",))
+    service.backfill_previews((320, 320))
+    assert ffmpeg_calls == []
+
+
+def test_downloaded_names_only_cached_videos(tmp_path: Path) -> None:
+    service, folder = _cached(tmp_path, ("a002", "a001"))
+    (folder / "a003.mp4").write_bytes(b"<html>not a video</html>")
+    (folder / "a009.png").write_bytes(b"png")
+    assert service._catalog.downloaded("320x320") == ("a001", "a002")
+
+
+def test_a_landed_install_backfills_both_orientations(fake_platform,
+                                                      monkeypatch) -> None:
+    import time
+
+    from trcc.app import App
+    from trcc.core.events import DataInstalled
+
+    app = App(fake_platform)
+    seen: list = []
+    monkeypatch.setattr(app.cloud_themes, "backfill_previews", seen.append)
+    app.events.publish(DataInstalled(resolution=(854, 480), ok=False))
+    app.events.publish(DataInstalled(resolution=(854, 480), ok=True))
+    deadline = time.monotonic() + 5
+    while len(seen) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert seen == [(854, 480), (480, 854)]
+
+
+def test_the_explicit_download_still_makes_the_thumbnails(fake_platform,
+                                                          ffmpeg_calls) -> None:
+    from trcc.app import App
+    from trcc.core.commands import DownloadCloudTheme
+
+    app = App(fake_platform)
+    http = FakeHttp()
+    http.responses["http://www.czhorde.cc/tr/bj320320/a004.mp4"] = MP4 + b"v"
+    app.cloud_themes = CloudThemeService(
+        catalog=CzhordeCatalog(http=http,
+                               cache_dir=app.platform.paths().data_dir() / "web",
+                               resolution="320x320"),
+        paths=app.platform.paths(),
+    )
+    assert app.dispatch(DownloadCloudTheme(theme_id="a004",
+                                           resolution=(320, 320))).ok
+    assert sorted(ffmpeg_calls) == ["a004.gif", "a004.png"]

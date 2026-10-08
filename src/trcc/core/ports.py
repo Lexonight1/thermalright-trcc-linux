@@ -2218,6 +2218,11 @@ class CloudCatalog(ABC):
         """Fetch ``<theme_id>.mp4`` (cached); return its local path."""
         ...
 
+    @abstractmethod
+    def downloaded(self, resolution: str) -> tuple[str, ...]:
+        """Ids of the videos already cached for *resolution* (``"WxH"``)."""
+        ...
+
 
 
 # =========================================================================
