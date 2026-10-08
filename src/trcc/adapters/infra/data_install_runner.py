@@ -189,7 +189,8 @@ class ThreadDataInstallRunner(DataInstallRunner):
         log.info("_retry: %dx%d variant=%r mask=%r", *job[0], job[1], job[2])
         with self._timers_lock:
             # A Timer runs its callback on its own thread, so this is it.
-            self._timers.discard(threading.current_thread())
+            if isinstance(timer := threading.current_thread(), threading.Timer):
+                self._timers.discard(timer)
         self.submit(*job)
 
     def shutdown(self) -> None:
