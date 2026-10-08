@@ -905,6 +905,42 @@ def test_save_theme_references_cloud_video_from_library(
     assert resolved.read_bytes() == fake_mp4_bytes
 
 
+def test_save_theme_copies_a_video_out_of_the_cloud_library(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """A video picked from the REAL cloud library is copied, not referenced.
+
+    Cloud videos are per-click downloads (``CloudThemeService.materialise``
+    writes ``cloud_theme_dir/<id>.mp4``), and no data install ever puts one
+    back.  A ref into ``~/.trcc`` therefore loaded BLACK after a wipe or a
+    reinstall.  The test above uses a loose ``cloud_pool`` file, which takes
+    the copy branch whatever the cloud roots say, so it never saw this.
+
+    MUTATION CHECK -- give videos the cloud roots again in
+    ``_store_background`` and this fails.
+    """
+    import shutil
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
+
+    w, h = _TEST_RES
+    cloud_dir = app.platform.paths().cloud_theme_dir(w, h)
+    cloud_dir.mkdir(parents=True, exist_ok=True)
+    cloud_video = cloud_dir / "a077.mp4"
+    video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
+    cloud_video.write_bytes(video_bytes)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cloudvid")).ok
+    saved = user_theme_dir / "cloudvid"
+
+    shutil.rmtree(cloud_dir)                       # ~/.trcc wiped
+    resolved = app.themes.video_path(app.themes.load(saved))
+    assert resolved is not None and resolved.is_file()
+    assert resolved.is_relative_to(app.platform.paths().user_background_dir(w, h))
+    assert resolved.read_bytes() == video_bytes
+
 def test_resave_onto_self_keeps_referenced_background(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:

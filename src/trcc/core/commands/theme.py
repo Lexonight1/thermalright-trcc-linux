@@ -990,9 +990,18 @@ class SaveTheme(Command[ThemeResult]):
         # ``_resolve_asset_ref`` joins under the data dirs, so deriving is
         # both shorter and the only version that can carry a suffix without
         # being taught about one.
-        for root in (paths.user_background_dir(width, height),
-                     app.libraries(self.key).cloud_theme_dir(width, height),
-                     paths.cloud_theme_dir(width, height)):
+        #
+        # A cloud VIDEO is the exception: it is a per-click download
+        # (``CloudThemeService.materialise``) that no data install ever puts
+        # back, so a ref into the cloud library loads BLACK once ``~/.trcc`` is
+        # wiped or reinstalled.  It is copied into the user library like a
+        # custom asset.  Cloud stills keep their refs — the data install
+        # restores those.
+        roots = [paths.user_background_dir(width, height)]
+        if not is_video:
+            roots += [app.libraries(self.key).cloud_theme_dir(width, height),
+                      paths.cloud_theme_dir(width, height)]
+        for root in roots:
             # ``is_under`` resolves BOTH sides itself (the #261 symlink fix), so
             # pre-resolving here only asked the filesystem the same question
             # twice.

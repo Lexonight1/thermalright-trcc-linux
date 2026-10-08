@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A saved theme keeps its cloud video background after `~/.trcc` is wiped
+  or reinstalled.** Saving a theme whose background was a cloud video only
+  pointed at the downloaded file, and nothing downloads that file again, so
+  the theme loaded black. The video is now copied into your own library when
+  you save, as a custom background already was. Cloud images and masks still
+  point at the cloud library, which the data download restores.
+
 ## v9.10.6
 
 ### Changed
