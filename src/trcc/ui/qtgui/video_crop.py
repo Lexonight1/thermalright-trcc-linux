@@ -21,11 +21,10 @@ reads :meth:`output_path` to find it.  Cancel returns ``None``.
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -35,9 +34,9 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QPixmap,
-    QTransform,
 )
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -48,22 +47,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core import toolchain
 from ...core.commands import DeviceCanvas, ExportVideoClip, ProbeVideoDuration
-from ...core.geometry import fit_rect_for_mode
-from ...core.models import CUTTER_DEFAULT_FPS, CUTTER_FPS_CHOICES, FitMode
+from ...core.logs import per_frame
 from ...core.models import (
-    ZT_FPS as EXPORT_FPS,
+    CUTTER_DEFAULT_FPS,
+    CUTTER_FPS_CHOICES,
+    FitMode,
+    VideoExportRequest,
 )
 from ...core.models import (
     ZT_MAX_DURATION_MS as MAX_DURATION_MS,
 )
+from ..presentation.clip_preview import ClipPreview
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 #: The preview is sized to the PANEL's aspect (see ``_resize_preview``);
@@ -74,7 +76,8 @@ _PREVIEW_MAX_H = 300
 _TIMELINE_W = 480
 _TIMELINE_H = 22
 _HANDLE_W = 12
-_FRAME_INTERVAL_MS = int(1000 / EXPORT_FPS)
+#: How often a pending still is checked for -- the C#'s 15 ms Form1 timer.
+_STILL_POLL_MS = 15
 
 
 def _format_ms(ms: int) -> str:
@@ -259,7 +262,9 @@ class VideoCropDialog(QDialog):
         #: track a stranger's progress bar.
         self._token = ""
         self._playing = False
-        self._play_pos_ms = 0
+        # ClipPreview owns the ffmpeg; the timer only picks up what it has
+        # written -- frames while playing, else one still.
+        self._clip = ClipPreview()
         self._play_timer = QTimer(self)
         self._play_timer.timeout.connect(self._on_play_tick)
         self._build()
@@ -293,6 +298,7 @@ class VideoCropDialog(QDialog):
             log.warning("load_video: %s — %s", path, probe.message)
             self._info.setText(f"{path.name}: {probe.message}")
             return False
+        self._clip.load(path)
         self._target_label.setText(f"Source: {path.name}")
         self._duration_label.setText(_format_ms(self._duration_ms))
         self._timeline.set_range(self._duration_ms)
@@ -347,19 +353,15 @@ class VideoCropDialog(QDialog):
             self._fit_group.addAction(act)
             toolbar.addAction(act)
         self._fit_group.triggered.connect(self._on_fit_changed)
-        toolbar.addSeparator()
 
-        # The C#'s two frame-rate buttons (UCVideoCut.cs:2712-2723).
-        self._fps_group = QActionGroup(self)
-        self._fps_group.setExclusive(True)
+        # The C#'s two frame-rate buttons (UCVideoCut.cs:2712-2723).  A combo
+        # in the clock row, not the toolbar: there the second rate fell into
+        # the overflow menu at the dialog's width, where nobody sees it.
+        self._fps_box = QComboBox(self)
         for fps in CUTTER_FPS_CHOICES:
-            act = QAction(f"{fps} fps", self)
-            act.setCheckable(True)
-            act.setData(fps)
-            act.setChecked(fps == self._fps)
-            self._fps_group.addAction(act)
-            toolbar.addAction(act)
-        self._fps_group.triggered.connect(self._on_fps_changed)
+            self._fps_box.addItem(f"{fps} fps", fps)
+        self._fps_box.setCurrentIndex(CUTTER_FPS_CHOICES.index(self._fps))
+        self._fps_box.currentIndexChanged.connect(self._on_fps_changed)
 
         self._target_label = QLabel("Target: (load a video)", self)
         self._target_label.setStyleSheet("color: #aaa;")
@@ -389,6 +391,9 @@ class VideoCropDialog(QDialog):
         clock_row = QHBoxLayout()
         clock_row.addWidget(QLabel("Cursor:", self))
         clock_row.addWidget(self._current_label)
+        clock_row.addStretch(1)
+        clock_row.addWidget(QLabel("Frame rate:", self))
+        clock_row.addWidget(self._fps_box)
         clock_row.addStretch(1)
         clock_row.addWidget(QLabel("Duration:", self))
         clock_row.addWidget(self._duration_label)
@@ -469,65 +474,46 @@ class VideoCropDialog(QDialog):
         log.debug("_resize_preview: panel %dx%d -> label %dx%d", pw, ph, w, h)
         self._preview.setFixedSize(w, h)
 
-    def _compose_for_panel(self, img: QImage) -> QImage:
-        """The frame as the PANEL will show it — the export's own geometry.
-
-        Through the SAME :func:`fit_rect_for_mode` the exporter uses, which is
-        what makes the fit choice visible BEFORE Export and why the two cannot
-        disagree.  The canvas clips, which is exactly how a forced axis crops.
-
-        Without a known panel there is nothing to compose onto, so the raw
-        frame comes back and the caller's contain-fit still applies.
-        """
+    def _request(self, start_ms: int, end_ms: int) -> VideoExportRequest:
+        """The clip as Export would encode it -- what the preview shows."""
+        frame_log.debug("_request: %d-%d ms", start_ms, end_ms)
         pw, ph = self._canvas
-        if pw <= 0 or ph <= 0:
-            return img
-        rect = fit_rect_for_mode((img.width(), img.height()), (pw, ph),
-                                 self._fit_mode)
-        canvas = QImage(pw, ph, QImage.Format.Format_RGB32)
-        canvas.fill(Qt.GlobalColor.black)
-        painter = QPainter(canvas)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.drawImage(QRect(rect.x, rect.y, rect.width, rect.height), img)
-        painter.end()
-        log.debug("_compose_for_panel: mode=%s %s -> %dx%d canvas",
-                  self._fit_mode, rect, pw, ph)
-        return canvas
+        return VideoExportRequest(
+            source=self._video_path or Path(), start_ms=start_ms,
+            end_ms=end_ms, target_w=pw, target_h=ph, rotation=self._rotation,
+            fit_mode=self._fit_mode, fps=self._fps)
+
+    def _box(self) -> tuple[int, int]:
+        """The preview label's size, which ffmpeg shrinks each frame into."""
+        frame_log.debug("_box: %dx%d", self._preview.width(),
+                        self._preview.height())
+        return self._preview.width(), self._preview.height()
 
     def _seek_preview(self, ms: int) -> None:
+        """Show the frame at *ms*, composed exactly as Export will encode it.
+
+        Grabbed in the background by :class:`ClipPreview`, which keeps only
+        the newest request while one is in flight.  This used to run ffmpeg
+        here, on the GUI thread, for every scrub and every play tick.
+        """
         if self._video_path is None:
             return
-        try:
-            result = subprocess.run(
-                [
-                    toolchain.executable("ffmpeg"),
-                    "-ss", f"{ms / 1000.0}",
-                    "-i", str(self._video_path),
-                    "-vframes", "1",
-                    "-f", "image2pipe", "-vcodec", "bmp",
-                    "-v", "error", "-y", "-",
-                ],
-                capture_output=True, timeout=5, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as e:
-            log.debug("video preview seek failed: %s", e)
-            return
-        if result.returncode != 0 or not result.stdout:
-            return
-        img = QImage.fromData(result.stdout)
-        if img.isNull():
-            return
-        if self._rotation:
-            img = img.transformed(QTransform().rotate(self._rotation))
-        img = self._compose_for_panel(img)
-        scaled = img.scaled(
-            self._preview.width(), self._preview.height(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self._preview_pix = QPixmap.fromImage(scaled)
-        self._preview.setPixmap(self._preview_pix)
+        log.debug("_seek_preview: ms=%d", ms)
+        if self._playing:
+            self._stop_play()
         self._current_label.setText(_format_ms(ms))
+        self._clip.still(self._request(ms, ms + 1), self._box())
+        if not self._play_timer.isActive():
+            self._play_timer.start(_STILL_POLL_MS)
+
+    def _show_jpeg(self, data: bytes) -> None:
+        """Put one preview frame (already box-sized by ffmpeg) on screen."""
+        img = QImage.fromData(data)
+        if img.isNull():
+            log.debug("_show_jpeg: %d bytes did not decode", len(data))
+            return
+        self._preview_pix = QPixmap.fromImage(img)
+        self._preview.setPixmap(self._preview_pix)
 
     # ── Signal handlers ──────────────────────────────────────────────
 
@@ -539,14 +525,22 @@ class VideoCropDialog(QDialog):
         log.info("_on_end_changed: ms=%s", ms)
         self._end_label.setText(_format_ms(ms))
 
-    def _on_fps_changed(self, action: QAction) -> None:
-        """The clip's frame rate: what Export encodes at."""
-        log.info("_on_fps_changed: %s -> %s", self._fps, action.data())
-        self._fps = action.data()
+    def _on_fps_changed(self, index: int) -> None:
+        """The clip's frame rate: what Export encodes and Play plays at."""
+        fps = self._fps_box.itemData(index)
+        log.info("_on_fps_changed: %s -> %s", self._fps, fps)
+        self._fps = fps
+        if self._playing:
+            self._start_play()
 
     def _on_fit_changed(self, action: QAction) -> None:
         """Re-render at the new fit so the choice is visible before Export."""
-        self._fit_mode = action.data()
+        # QAction.setData stores a str enum as its plain string, so data()
+        # hands back 'width', not FitMode.WIDTH.  That string failed every
+        # ``is FitMode.X`` test -- the preview always took the HEIGHT arm --
+        # and ExportVideoClip refused it as an unknown fit (since 485f27b8).
+        data = action.data()
+        self._fit_mode = FitMode(data) if data else None
         log.info("_on_fit_changed: fit_mode=%s", self._fit_mode or "auto")
         start, _ = self._timeline.clip_ms()
         self._seek_preview(start)
@@ -565,28 +559,36 @@ class VideoCropDialog(QDialog):
             self._start_play()
 
     def _start_play(self) -> None:
-        log.debug("_start_play")
+        """Decode the trimmed range once, in the background, and play it."""
         if self._video_path is None:
             return
+        start, end = self._timeline.clip_ms()
+        log.info("_start_play: %d-%d ms at %d fps", start, end, self._fps)
         self._playing = True
         self._play_action.setText("Pause")
-        start, _ = self._timeline.clip_ms()
-        self._play_pos_ms = start
-        self._play_timer.start(_FRAME_INTERVAL_MS)
+        self._clip.play(self._request(start, end), self._box())
+        self._play_timer.start(int(1000 / self._fps))
 
     def _stop_play(self) -> None:
-        log.debug("_stop_play")
+        log.debug("_stop_play: playing=%s", self._playing)
         self._playing = False
         self._play_action.setText("Play")
         self._play_timer.stop()
+        self._clip.stop()
 
     def _on_play_tick(self) -> None:
-        log.debug("_on_play_tick")
-        start, end = self._timeline.clip_ms()
-        if self._play_pos_ms >= end:
-            self._play_pos_ms = start
-        self._seek_preview(self._play_pos_ms)
-        self._play_pos_ms += _FRAME_INTERVAL_MS
+        """Show what ClipPreview has ready: a playing frame or a still."""
+        data = self._clip.poll()
+        frame_log.debug("_on_play_tick: got=%s playing=%s", data is not None,
+                        self._playing)
+        if data is not None:
+            self._show_jpeg(data)
+            if self._playing:
+                start, _ = self._timeline.clip_ms()
+                self._current_label.setText(_format_ms(
+                    start + self._clip.shown * 1000 // self._fps))
+        if not self._playing and not self._clip.active:
+            self._play_timer.stop()
 
     # ── Export ───────────────────────────────────────────────────────
 
@@ -639,6 +641,12 @@ class VideoCropDialog(QDialog):
         self._token = ""
         self._stop_play()
         self.reject()
+
+    def done(self, result: int) -> None:
+        """Every way the dialog closes stops its preview ffmpeg."""
+        log.debug("done: result=%d", result)
+        self._stop_play()
+        super().done(result)
 
     def _on_export_progress(self, event: object) -> None:
         token = getattr(event, "token", "")

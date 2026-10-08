@@ -192,6 +192,40 @@ def test_qtgui_exports_at_the_frame_rate_chosen(qtbot) -> None:
         return [c for c in sent if isinstance(c, ExportVideoClip)][-1].fps
 
     assert exported_fps() == 15
-    by_fps = {a.data(): a for a in dialog._fps_group.actions()}
-    by_fps[24].trigger()
+    dialog._fps_box.setCurrentIndex(dialog._fps_box.findData(24))
     assert exported_fps() == 24
+
+
+def test_qtgui_sends_a_real_fit_mode(qtbot) -> None:
+    """QAction.data() returns a str enum as a plain str: 'width' equals
+    FitMode.WIDTH but is not one, so ExportVideoClip refused every qtgui
+    export with a fit chosen, and the preview took the HEIGHT arm."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    from trcc.core.commands import ExportVideoClip
+    from trcc.core.models import FitMode
+    from trcc.ui.qtgui.video_crop import VideoCropDialog
+
+    class _Bus(QObject):
+        video_export_progress = Signal(object)
+        video_export_finished = Signal(object)
+
+    sent: list = []
+
+    class _App:
+        def dispatch(self, cmd):
+            sent.append(cmd)
+            return SimpleNamespace(ok=False, message="recorded")
+
+    dialog = VideoCropDialog(_App(), _Bus(), "0402:3922")  # type: ignore[arg-type]
+    qtbot.addWidget(dialog)
+    dialog._video_path = Path("/nonexistent/clip.mp4")
+    by_mode = {a.data(): a for a in dialog._fit_group.actions()}
+    for mode in FitMode:
+        by_mode[mode.value].trigger()
+        dialog._on_export_clicked()
+        sent_fit = [c for c in sent if isinstance(c, ExportVideoClip)][-1].fit_mode
+        assert type(sent_fit) is FitMode and sent_fit is mode

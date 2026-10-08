@@ -90,10 +90,6 @@ _KNOWN: dict[str, str] = {
     "UCMengBanXianShi.button1": (
         "gap: the local-mask button sits at x=149 in the C#; ours are at 115 "
         "and 175"),
-    "UCVideoCut.button1": (
-        "gap: the video cutter's 15 fps choice (originalImageHz) is missing"),
-    "UCVideoCut.button2": (
-        "gap: the video cutter's 24 fps choice (originalImageHz) is missing"),
     "UCVideoCut.labelTimer": (
         "gap: the cutter's time labels sit elsewhere -- ours 150x16 at "
         "(32, 531), the C#'s 88x20"),
@@ -119,7 +115,7 @@ _KNOWN: dict[str, str] = {
 
 #: The ``gap:`` rows above and in ``_NOT_PORTED`` -- the LCD page's distance
 #: from the Windows app.  Only goes down.
-GAPS = 16    # 18 -> 16 (2026-10-07): buttonGame, textBoxCPU -- game mode
+GAPS = 14    # 16 -> 14 (2026-10-07): UCVideoCut.button1/2 -- the 15/24 fps choice
 
 
 def _reachable() -> dict[str, list[dict[str, Any]]]:

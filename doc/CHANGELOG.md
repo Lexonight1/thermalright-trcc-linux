@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- **The video trimmer's preview no longer freezes the window.** Playing or
+  dragging along the timeline started one ffmpeg per frame on the window's
+  own thread, which held it for 70-290 ms each time: the window froze and the
+  preview showed 3-6 frames a second. It now decodes the trimmed range once in
+  the background, as the Windows app does, and plays it at the chosen frame
+  rate; a drag shows where the mouse stopped. The preview is drawn by the same
+  steps as the export, so it shows exactly what Export makes. Measured on a
+  1080p clip: about 40 times less CPU while previewing.
+
+- **Fit width, Fit height and Stretch work in the new trimmer.** Exporting
+  with any of them was refused as an unknown fit, and the preview showed the
+  Fit height crop for all three.
+
 - **The video trimmer offers 15 or 24 frames per second, and starts at 15,
   as the Windows app does.** Every trimmed clip was 24 fps: the choice was
   never ported. It is the FPS row in the classic window, a "15 fps / 24 fps"
