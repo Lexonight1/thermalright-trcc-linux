@@ -394,9 +394,18 @@ class LinuxScsiTransport(ScsiTransport):
         fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
-        if _sg_failed(hdr, "read_cdb", self._path):
-            return b""
         actual = length - hdr.resid
+        if _sg_failed(hdr, "read_cdb", self._path):
+            # SCSI status GOOD with a host error is how the panel answers its
+            # handshake poll: host=7 (DID_ERROR) every time, with the reply
+            # delivered.  Dropping it read every 0402:3922 panel as FBL 100,
+            # "Frozen Warframe Pro" (#301, since #254's 3e3909e2).  Only
+            # ``status`` was tested before that commit, and in legacy.
+            if hdr.status == 0 and 0 < actual <= length:
+                log.warning("read_cdb on %s: keeping the %d byte(s) that "
+                            "arrived with SCSI status GOOD", self._path, actual)
+                return bytes(data_buf[:actual])
+            return b""
         return bytes(data_buf[:actual])
 
     def _alloc_write_bufs(self, cdb_len: int, data_len: int) -> tuple:

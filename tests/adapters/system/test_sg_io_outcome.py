@@ -68,10 +68,30 @@ def test_a_gone_device_raises_disconnect_class(transport, op: str) -> None:
     {"status": _CHECK_CONDITION, "masked_status": 1, "info": 1},
     {"host_status": _DID_ERROR, "info": 1},    # usb-storage: often transient
 ])
-def test_any_other_error_is_a_soft_failure(transport, outcome) -> None:
+def test_any_other_error_is_a_soft_failure_to_send(transport, outcome) -> None:
     """The DID_ERROR row read as SUCCESS: only ``status`` was tested."""
     transport.outcome = outcome
     assert transport.send_cdb(b"\x00" * 16, b"frame") is False
+
+
+def test_a_failed_scsi_status_reads_nothing(transport) -> None:
+    transport.outcome = {"status": _CHECK_CONDITION, "masked_status": 1,
+                         "info": 1, "resid": 0}
+    assert transport.read_cdb(b"\x00" * 16, 8) == b""
+
+
+def test_a_host_error_with_status_good_keeps_the_reply(transport) -> None:
+    """#301: the 0402:3922 handshake poll completes host=7 (DID_ERROR),
+    status 0, reply delivered -- on real glass, every time.  Dropping it read
+    every such panel as FBL 100, "Frozen Warframe Pro"."""
+    transport.outcome = {"status": 0, "host_status": _DID_ERROR, "info": 1,
+                         "resid": 6}
+    assert transport.read_cdb(b"\x00" * 16, 8) == b"\x00\x00"
+
+
+def test_a_host_error_with_nothing_delivered_reads_nothing(transport) -> None:
+    transport.outcome = {"status": 0, "host_status": _DID_ERROR, "info": 1,
+                         "resid": 8}
     assert transport.read_cdb(b"\x00" * 16, 8) == b""
 
 
