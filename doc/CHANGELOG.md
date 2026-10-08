@@ -23,6 +23,19 @@
 
 ### Fixed
 
+- **Changing a font no longer freezes the window's preview (#301).** Picking
+  a font in the classic window's overlay editor stopped its preview for good,
+  while the panel itself kept updating. The font dialog froze TRCC's other
+  threads while it was open, so the window stopped receiving frames from the
+  TRCC app, and the app stopped sending them. The dialog no longer blocks.
+
+- **SCSI panels are named from their own handshake again (#301).** Since
+  v9.10.6 TRCC threw away the reply to a 0402:3922 panel's first poll, because
+  the USB host reports an error alongside it. The panel's model byte was lost
+  and replaced by a default, which names a Frozen Warframe Pro. The reply is
+  kept again when the panel itself says the command
+  succeeded, as before v9.10.6.
+
 - **TRCC no longer crashes within seconds on Python 3.10 and 3.11.** PySide6
   6.12.0, released this week, has a bug on those Python versions that aborts
   the program after a few thousand drawing calls ("Fatal Python error:

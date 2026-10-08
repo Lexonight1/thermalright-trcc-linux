@@ -334,6 +334,39 @@ def test_no_shell_true_subprocess_anywhere() -> None:
     )
 
 
+def _static_font_dialog_calls(source: str) -> list[int]:
+    """Lines calling ``QFontDialog.getFont`` -- the static form."""
+    return [node.lineno for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "getFont"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "QFontDialog"]
+
+
+def test_no_static_font_dialog() -> None:
+    """PySide6's static ``QFontDialog.getFont`` holds the GIL while it is open.
+
+    Measured: a background thread ran 2 ticks in 1.6 s under it, ~150 under
+    every other static dialog TRCC uses.  It froze the daemon event reader, the
+    App evicted the stalled window, and the gui preview stopped for good while
+    the panel played on (#301).  Open a ``QFontDialog`` instance and ``exec()``.
+    """
+    offenders = [f"  {path.relative_to(_SRC)}:{line}"
+                 for path in _files_under("trcc")
+                 for line in _static_font_dialog_calls(
+                     path.read_text(encoding="utf-8"))]
+    assert not offenders, (
+        "QFontDialog.getFont freezes every other Python thread -- use "
+        "QFontDialog(font, parent).exec():\n" + "\n".join(offenders))
+
+
+def test_selftest_static_font_dialog_detector_sees_one() -> None:
+    assert _static_font_dialog_calls(
+        "ok, f = QFontDialog.getFont(QFont(), None)\n"
+        "d = QFontDialog(QFont()); d.exec()\n") == [1]
+
+
 def test_core_and_services_never_call_print() -> None:
     """CLAUDE.md Code Style: never ``print()`` — use the logger.
 

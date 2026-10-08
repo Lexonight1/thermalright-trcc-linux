@@ -417,9 +417,17 @@ class ColorPickerPanel(QFrame):
     def _pick_font(self):
         """Open font dialog (matches Windows FontDialog in UCXiTongXianShiColor)."""
         log.info("ColorPickerPanel._pick_font: opening QFontDialog")
-        from PySide6.QtWidgets import QFontDialog
+        from PySide6.QtWidgets import QDialog, QFontDialog
         current = QFont(self._current_font_name, self._current_font_size)
-        ok, font = QFontDialog.getFont(current, self, "Pick Font")
+        # An instance and exec(), never the static QFontDialog.getFont: that
+        # one holds the GIL for as long as the dialog is open (measured, 2
+        # ticks of a background thread in 1.6 s; every other static dialog we
+        # use runs ~150).  It froze the event-stream reader, the App evicted
+        # the stalled window, and its preview stopped for good (#301).
+        dialog = QFontDialog(current, self)
+        dialog.setWindowTitle("Pick Font")
+        ok = dialog.exec() == QDialog.DialogCode.Accepted
+        font = dialog.selectedFont()
         if ok:
             self._current_font_name = font.family()
             self._current_font_size = font.pointSize()
