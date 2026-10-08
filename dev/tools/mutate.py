@@ -91,10 +91,13 @@ def verdict(returncode: int, output: str, tests: tuple[str, ...]) -> Verdict:
         return Verdict(INVALID, f"exit {returncode}: {first or summary}")
     if " error" in summary:
         return Verdict(INVALID, f"errors, not failures: {summary}")
-    failed = [ln for ln in lines if ln.startswith("FAILED ")]
+    # "FAILED <id> - <message>": a parametrized id can hold spaces, so the
+    # id is everything up to the " - ", not the first whitespace token.
+    failed = [ln.removeprefix("FAILED ").split(" - ", 1)[0]
+              for ln in lines if ln.startswith("FAILED ")]
     named = [t for t in tests if "::" in t]
     missing = [t for t in named
-               if not any(ln.split()[1].startswith(t) for ln in failed)]
+               if not any(test_id.startswith(t) for test_id in failed)]
     if not failed or missing:
         return Verdict(INVALID, f"the named test did not fail: {missing or tests}")
     reason = next((ln.strip() for ln in lines if ln.startswith("E ")), summary)
@@ -223,6 +226,10 @@ _KILL = """FAILED tests/test_x.py::test_a - AssertionError: assert 1 == 2
 E   AssertionError: assert 1 == 2
 ============================== 1 failed in 0.70s ===============================
 """
+_KILL_SPACED = """FAILED tests/test_x.py::test_a[a b] - AssertionError
+E   AssertionError
+============================== 1 failed in 0.70s ===============================
+"""
 _OTHER_TEST = """FAILED tests/test_x.py::test_b - AssertionError
 ============================== 1 failed in 0.70s ===============================
 """
@@ -245,6 +252,9 @@ def gate() -> int:
         ("a failure of the named test is KILLED, with its E line",
          verdict(1, _KILL, named) == Verdict(
              KILLED, "E   AssertionError: assert 1 == 2")),
+        ("a parametrized id with a space is KILLED, not INVALID",
+         verdict(1, _KILL_SPACED, ("tests/test_x.py::test_a[a b]",)).kind
+         == KILLED),
         ("a failure of a DIFFERENT test is INVALID",
          verdict(1, _OTHER_TEST, named).kind == INVALID),
         ("a kill-shaped run that exited 3 is INVALID -- only the exit code "
