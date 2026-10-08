@@ -212,7 +212,6 @@ class AppProxy(CommandBus):
                 log.warning("AppProxy._read_events: stream failed after %d "
                             "event(s) — %s: %s", seen, type(e).__name__, e)
         finally:
-            self._stream_open = False
             self._stream_sock = None
             if self._closing:
                 log.info("AppProxy._read_events: stream closed on request "
@@ -221,6 +220,10 @@ class AppProxy(CommandBus):
                 log.warning("AppProxy._read_events: event stream CLOSED after "
                             "%d event(s); this client is no longer observing",
                             seen)
+            # Last, so whoever sees False can rely on the line above having
+            # been written.  It was first, and a test that waited for False
+            # then read the log lost the race under load.
+            self._stream_open = False
 
     # ── Whether the App is still there ───────────────────────────────────
 

@@ -125,16 +125,36 @@ def test_a_dead_daemon_is_surfaced_not_silent(daemon, caplog) -> None:
         time.sleep(0.02)
     assert proxy._stream_open, "the event stream never opened"
 
-    with caplog.at_level(logging.WARNING, logger="trcc.proxy"):
-        srv.shutdown()
-        deadline = time.monotonic() + 5.0
-        while proxy._stream_open and time.monotonic() < deadline:
-            time.sleep(0.05)
+    # What the flag said at the moment the CLOSED line was written.  The
+    # reader used to clear the flag FIRST, so a waiter could see False and
+    # read the log before the line existed -- a race that failed this test
+    # under load.  Recording the flag at emit time pins the order without
+    # needing the race to happen.
+    flag_at_close: list[bool] = []
+
+    class _Witness(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            if "event stream CLOSED" in record.getMessage():
+                flag_at_close.append(proxy._stream_open)
+
+    witness = _Witness()
+    logging.getLogger("trcc.proxy").addHandler(witness)
+    try:
+        with caplog.at_level(logging.WARNING, logger="trcc.proxy"):
+            srv.shutdown()
+            deadline = time.monotonic() + 5.0
+            while proxy._stream_open and time.monotonic() < deadline:
+                time.sleep(0.05)
+    finally:
+        logging.getLogger("trcc.proxy").removeHandler(witness)
 
     assert not proxy._stream_open
     assert any("event stream CLOSED" in r.message for r in caplog.records), (
         "the stream died silently — that is the failure mode this guards"
     )
+    assert flag_at_close == [True], (
+        "the flag dropped before the CLOSED line was written, so a waiter "
+        "can read the log too early")
 
 
 def test_dispatch_still_works_alongside_a_live_stream(daemon) -> None:
