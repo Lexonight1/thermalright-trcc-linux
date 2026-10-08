@@ -147,6 +147,8 @@ class ThreadDataInstallRunner(DataInstallRunner):
         self._attempts: dict[_Job, int] = {}
         self._timers: set[threading.Timer] = set()
         self._timers_lock = threading.Lock()
+        #: Set by shutdown, under the lock: no retry is scheduled after it.
+        self._closed = False
         self._worker: QueueWorker[_Job] = QueueWorker(
             "trcc-data-install", self._install,
             stall_hint="mid-download", join_timeout=join_timeout,
@@ -169,7 +171,8 @@ class ThreadDataInstallRunner(DataInstallRunner):
                 return
             attempt = self._attempts.get(job, 0)
             retry_in = (self._retry_delays_s[attempt]
-                        if attempt < len(self._retry_delays_s) else None)
+                        if attempt < len(self._retry_delays_s)
+                        and not self._closed else None)
             if retry_in is None:
                 self._attempts.pop(job, None)
             else:
@@ -195,10 +198,16 @@ class ThreadDataInstallRunner(DataInstallRunner):
 
     def shutdown(self) -> None:
         log.info("shutdown: stopping data-install worker")
+        # Closed first, under the lock: an install that fails AFTER this --
+        # it publishes DataInstalled before it schedules -- must not arm a
+        # retry on a shut-down runner.  CI caught that window (3.10, 394bdc4c).
         with self._timers_lock:
-            for timer in self._timers:
-                timer.cancel()
-            self._timers.clear()
+            self._closed = True
+            timers, self._timers = list(self._timers), set()
+        for timer in timers:
+            timer.cancel()
+            # Outside the lock: a timer firing now takes it in _retry.
+            timer.join(timeout=1.0)
         self._worker.shutdown()
 
 

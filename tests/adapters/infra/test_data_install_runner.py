@@ -369,6 +369,35 @@ def test_shutdown_cancels_a_pending_retry() -> None:
     assert not any(t.name == "trcc-data-install-retry" and t.is_alive()
                    for t in threading.enumerate())
 
+def test_a_failure_landing_during_shutdown_arms_no_retry() -> None:
+    """The window CI hit: DataInstalled is published BEFORE the retry is
+    scheduled, so a shutdown can land between the two.  Forced here: the
+    listener shuts the runner down from another thread and lets the worker
+    go on only once the runner is closed."""
+    bus = EventBus()
+    service = _Outcomes(False)
+    runner = ThreadDataInstallRunner(
+        service, bus, retry_delays_s=(30.0,),  # type: ignore[arg-type]
+    )
+    stopper: list[threading.Thread] = []
+
+    def shut_down_now(_event: object) -> None:
+        stopper.append(threading.Thread(target=runner.shutdown))
+        stopper[0].start()
+        deadline = time.monotonic() + _HANG_S
+        while not runner._closed and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    bus.subscribe(DataInstalled, shut_down_now)
+    runner.submit((320, 240))
+    deadline = time.monotonic() + _HANG_S
+    while not stopper and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stopper[0].join(timeout=_HANG_S)
+    assert not any(t.name == "trcc-data-install-retry" and t.is_alive()
+                   for t in threading.enumerate())
+
+
 # ── the invariant the spawn guard actually protects ──────────────────────
 
 
