@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **The LED carousel interval matches the Windows app.** Its number now
+  means what the Windows app's does (6 animation ticks each, so "2" is 1.8
+  seconds), where the classic window converted it about 10% differently. The
+  new window showed raw ticks; it now shows the same number as the classic
+  window and the Windows app. New devices default to 2, as on Windows.
+
 - **A saved video theme plays without ffmpeg installed.** A theme's
   `Theme.zt` holds ready JPEG frames and needs no ffmpeg to play, but TRCC
   refused to load one when ffmpeg was missing, leaving the panel black.

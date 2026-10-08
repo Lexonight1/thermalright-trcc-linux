@@ -4109,6 +4109,24 @@ def test_the_mask_browser_opens_on_the_apps_position_and_writes_only_changes(
     assert writes == [SetMaskPosition(key=_KEY_Q3, x=40, y=34)], writes
 
 
+def test_the_zone_tab_interval_is_in_the_csharps_unit(gui_app: App, qtbot) -> None:
+    """qtgui showed raw ticks (default 13); the C# and the gui show its unit.
+
+    MUTATION CHECK: dispatch the spin value as ticks again → this fails.
+    """
+    tab = _zone_tab_with(gui_app, qtbot, zones=3)
+    sent: list = []
+    real = tab._dispatch
+
+    def spy(command):
+        sent.append(command)
+        return real(command)
+
+    tab._dispatch = spy                               # pyright: ignore[reportAttributeAccessIssue]
+    assert (tab._interval_spin.value(), tab._interval_spin.suffix()) == (2, " s")
+    tab._interval_spin.setValue(3)
+    assert [getattr(c, "ticks", None) for c in sent] == [18], sent
+
 def test_the_zone_tab_interval_writes_only_a_change(gui_app: App, qtbot) -> None:
     tab = _zone_tab_with(gui_app, qtbot, zones=3)
     sent: list = []

@@ -6,6 +6,7 @@ source of truth.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Literal
@@ -13,7 +14,14 @@ from typing import Literal
 from .logs import per_frame
 from .models import LedStyle
 
+log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
+
+#: LED ticks per unit of the carousel interval, counted as the C# counts
+#: them: ``ValCount >= 6 * textBoxTimer`` (FormLED.cs:3489), one ``ValCount``
+#: per 150 ms LED tick.  So the C#'s "seconds" are 0.9 s, and its default
+#: "2" is 12 ticks.  Settings store ticks; a UI shows this unit.
+ZONE_SYNC_TICKS_PER_UNIT = 6
 
 # =========================================================================
 # LEDMode — the six color-cycling effects
@@ -82,7 +90,7 @@ class LedDeviceSettings:
     # FormLED starts (``LunBo1 = true``).
     zone_sync: bool = False
     zone_sync_zones: list[bool] = field(default_factory=list)
-    zone_sync_interval_ticks: int = 13     # ≈ 2 s at default ticker cadence
+    zone_sync_interval_ticks: int = 2 * ZONE_SYNC_TICKS_PER_UNIT  # C# "2"
 
     # Test mode — cycle through 4 reference colors
     test_mode: bool = False
@@ -282,6 +290,20 @@ def one_hot(index: int, size: int) -> list[bool]:
     """The zone/page mask that selects *index* alone, *size* entries long."""
     frame_log.debug("one_hot: %d of %d", index, size)
     return [i == index for i in range(size)]
+
+
+def zone_sync_units(ticks: int) -> int:
+    """The carousel interval as a UI shows it (the C#'s textBoxTimer)."""
+    units = max(1, round(ticks / ZONE_SYNC_TICKS_PER_UNIT))
+    log.debug("zone_sync_units: %d ticks -> %d", ticks, units)
+    return units
+
+
+def zone_sync_ticks(units: int) -> int:
+    """The ticks to store for an interval a UI was given."""
+    ticks = max(1, units) * ZONE_SYNC_TICKS_PER_UNIT
+    log.debug("zone_sync_ticks: %d -> %d ticks", units, ticks)
+    return ticks
 
 
 LED_STYLES: dict[LedStyle, LedStyleSpec] = {

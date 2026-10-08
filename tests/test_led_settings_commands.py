@@ -425,3 +425,37 @@ def test_a_saved_segment_mask_from_an_older_version_is_dropped() -> None:
     loaded = _led_settings_from_dict({"segment_on": [True, False], "mode": 2})
 
     assert "segment_on" not in dataclasses.asdict(loaded)
+
+
+def test_the_carousel_interval_counts_like_the_csharp() -> None:
+    """``ValCount >= 6 * textBoxTimer`` per 150 ms tick (FormLED.cs:3489).
+
+    The gui converted at 1000/150 = 6.67 ticks per unit and the default was
+    13 where the C#'s "2" is 12.  A stored 13 still reads back as 2.
+    MUTATION CHECK: set ``ZONE_SYNC_TICKS_PER_UNIT`` to 1000/150 → fails.
+    """
+    from trcc.core.led_models import (
+        LedDeviceSettings,
+        zone_sync_ticks,
+        zone_sync_units,
+    )
+
+    assert (zone_sync_ticks(2), zone_sync_ticks(10)) == (12, 60)
+    assert LedDeviceSettings().zone_sync_interval_ticks == 12
+    assert (zone_sync_units(12), zone_sync_units(13), zone_sync_units(1)) == (2, 2, 1)
+
+
+def test_the_gui_sends_the_carousel_interval_in_csharp_ticks() -> None:
+    """The gui's box shows the C# unit; 2 in it is 12 ticks, not 13.
+
+    MUTATION CHECK: put back ``int(secs * 1000 / 150)`` → this fails.
+    """
+    from types import SimpleNamespace
+
+    from trcc.ui.gui.led_handler import LEDHandler
+
+    sent: list = []
+    fake = SimpleNamespace(_device_key="0416:8001", _dispatch=sent.append)
+    LEDHandler._on_carousel_interval_changed(fake, 2)  # type: ignore[arg-type]
+
+    assert sent == [SetLedZoneSyncInterval(key="0416:8001", ticks=12)]

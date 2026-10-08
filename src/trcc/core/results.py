@@ -828,7 +828,7 @@ class LedSnapshotResult(Result):
     temp_source: str = "cpu"
     load_source: str = "cpu"
     zone_sync: bool = False
-    zone_sync_interval_ticks: int = 13
+    zone_sync_interval_ticks: int = 12
     selected_zone: int = 0
     zone_count: int = 0
     segment_count: int = 0

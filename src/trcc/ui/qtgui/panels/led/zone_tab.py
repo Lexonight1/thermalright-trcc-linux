@@ -46,7 +46,7 @@ from .....core.commands import (
     SetLedZoneSyncZones,
     ToggleLed,
 )
-from .....core.led_models import LEDMode
+from .....core.led_models import LEDMode, zone_sync_ticks, zone_sync_units
 from .....core.results import LedSnapshotResult
 from ....presentation.led_display import LedSelector, led_display_for
 from ._base import LedTabBase
@@ -227,9 +227,10 @@ class ZoneTab(LedTabBase):
         )
         self._sync_check.toggled.connect(self._on_sync_toggled)
         self._interval_spin = QSpinBox(self)
-        self._interval_spin.setRange(1, 600)
-        self._interval_spin.setValue(13)
-        self._interval_spin.setSuffix(" ticks")
+        # The C#'s unit and range: textBoxTimer, MaxLength 2, default "2".
+        self._interval_spin.setRange(1, 99)
+        self._interval_spin.setValue(2)
+        self._interval_spin.setSuffix(" s")
         self._interval_spin.setKeyboardTracking(False)
         self._interval_spin.valueChanged.connect(self._on_interval_changed)
         sync_form.addRow(self._sync_check)
@@ -311,7 +312,8 @@ class ZoneTab(LedTabBase):
         self._sync_check.blockSignals(False)
 
         self._interval_spin.blockSignals(True)
-        self._interval_spin.setValue(snapshot.zone_sync_interval_ticks)
+        self._interval_spin.setValue(
+            zone_sync_units(snapshot.zone_sync_interval_ticks))
         self._interval_spin.blockSignals(False)
 
         # The zones the App actually uses: a missing entry is off, and with
@@ -466,5 +468,5 @@ class ZoneTab(LedTabBase):
         if not key:
             return
         self._dispatch(SetLedZoneSyncInterval(
-            key=key, ticks=self._interval_spin.value(),
+            key=key, ticks=zone_sync_ticks(self._interval_spin.value()),
         ))

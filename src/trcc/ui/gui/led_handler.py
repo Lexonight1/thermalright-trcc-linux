@@ -34,7 +34,12 @@ from ...core.commands import (
     SetWeekStart,
     ToggleLed,
 )
-from ...core.led_models import LED_STYLES, LEGACY_STYLE_ID
+from ...core.led_models import (
+    LED_STYLES,
+    LEGACY_STYLE_ID,
+    zone_sync_ticks,
+    zone_sync_units,
+)
 from ...core.logs import per_frame
 from .base_handler import BaseHandler
 from .uc_led_control import UCLedControl
@@ -200,11 +205,10 @@ class LEDHandler(BaseHandler):
         # not a colour zone), so this must NOT gate on ``s.zones`` — it reads
         # ``zone_sync_zones``, the carousel's actual source of truth.  The zone
         # model clamps the mask to the configured slot count.
-        interval_secs = max(1, round(s.zone_sync_interval_ticks * 150 / 1000))
         self._panel.load_sync_state(
             s.zone_sync,
             list(s.zone_sync_zones),
-            interval_secs,
+            zone_sync_units(s.zone_sync_interval_ticks),
         )
 
     # ── Signal wiring ────────────────────────────────────────────────
@@ -309,11 +313,9 @@ class LEDHandler(BaseHandler):
         ))
 
     def _on_carousel_interval_changed(self, secs: int) -> None:
-        # secs → ticks (150 ms tick base): ticks = secs * 1000 / 150
         log.info("_on_carousel_interval_changed: secs=%s", secs)
-        ticks = max(1, int(secs * 1000 / 150))
         self._dispatch(SetLedZoneSyncInterval(
-            key=self._device_key, ticks=ticks,
+            key=self._device_key, ticks=zone_sync_ticks(secs),
         ))
 
     def _on_clock_format_changed(self, is_24h: bool) -> None:
