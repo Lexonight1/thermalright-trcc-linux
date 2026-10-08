@@ -424,6 +424,7 @@ class ConnectDevice(Command[ConnectResult]):
         app.events.publish(DeviceConnected(
             key=self.key, resolution=handshake.resolution,
         ))
+        _warn_if_it_cannot_draw(app, self.key, device)
         log.info("ConnectDevice %s: %s %dx%d (catalog: %s)", self.key,
                  device.info.product, w, h, catalog_product)
         return ConnectResult(
@@ -432,6 +433,26 @@ class ConnectDevice(Command[ConnectResult]):
             handshake=handshake,
             product=device.info.product, catalog_product=catalog_product,
         )
+
+
+def _warn_if_it_cannot_draw(app: App, key: str, device: Any) -> None:
+    """An LCD that connected to an App started with only LED coolers.
+
+    That App loaded no renderer (#299), and Qt cannot be started now: off
+    the main thread it crashes the process at exit.  Say so where the user
+    is looking, rather than leave the panel dark.
+    """
+    if (Capability.FRAME_RENDER not in device.info.capabilities
+            or app.has_renderer):
+        return
+    log.warning("_warn_if_it_cannot_draw: %s — no renderer, TRCC started "
+                "with only LED coolers", key)
+    app.events.publish(ErrorOccurred(
+        message=(f"{device.info.product} appeared after TRCC started with "
+                 "only LED coolers, so it has nothing to draw with. Restart "
+                 "TRCC (trcc kill, then open it again) to drive this panel."),
+        kind="render", key=key,
+    ))
 
 
 @dataclass(frozen=True, slots=True)

@@ -747,6 +747,12 @@ class App(CommandBus):
                   libs.mask_variant)
         return libs
 
+    @property
+    def has_renderer(self) -> bool:
+        """Whether a Renderer is attached -- an LED-only App has none (#299)."""
+        frame_log.debug("App.has_renderer: %s", self._renderer is not None)
+        return self._renderer is not None
+
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""
         log.info("set_renderer: renderer=%s", type(renderer).__name__)
@@ -1507,8 +1513,6 @@ class _DeviceRenderObserver:
         events (SensorsUpdated) re-render every connected device with
         an active theme — the new sensor reading affects every overlay.
         """
-        if self._app._renderer is None:  # pyright: ignore[reportPrivateUsage]
-            return
         keys: list[str]
         evt_key = getattr(event, "key", "")
         if evt_key:
@@ -1556,6 +1560,13 @@ class _DeviceRenderObserver:
                     "DeviceRenderObserver: skip %s for %s (draws no frames)",
                     type(event).__name__, key,
                 )
+                continue
+            # No renderer stops the FRAME path only.  This guard sat at the
+            # top and skipped the LED branch too, which never needed one --
+            # an LED-only App (#299) would have frozen its segment displays.
+            if not self._app.has_renderer:
+                frame_log.debug("DeviceRenderObserver: skip %s for %s (no "
+                                "renderer)", type(event).__name__, key)
                 continue
             theme = self._app.active_themes.get(key)
             if theme is None:

@@ -136,7 +136,14 @@ def _build_local_app(
 
     real_platform = platform if platform is not None else current_platform()
     real_renderer = renderer
-    if real_renderer is None and draws:
+    if real_renderer is None and draws and _led_coolers_only(real_platform):
+        # An LED cooler only shows its segment display -- the App sends the
+        # UIs a list of colours, never a picture -- so Qt here was ~30 MB
+        # held for nothing (#299).  Decided now, on the main thread, because
+        # Qt started from any other thread crashes the process at exit.
+        # Coolers sit inside the case, so the scan at start sees them all.
+        log.info("_build_local_app: only LED coolers found — no renderer")
+    elif real_renderer is None and draws:
         try:
             from .adapters.render.qt import QtRenderer
             real_renderer = QtRenderer()
@@ -146,3 +153,24 @@ def _build_local_app(
                 "until a renderer is attached", e,
             )
     return App(platform=real_platform, renderer=real_renderer)
+
+
+def _led_coolers_only(platform: Platform) -> bool:
+    """True when the scan finds coolers and every one is an LED cooler.
+
+    Nothing found, an unknown product or a failed scan all answer False:
+    the renderer is then built as it always was.
+    """
+    from .core.models import Kind
+    from .core.registry import find_product
+    try:
+        scan = platform.scan_devices()
+    except Exception as e:
+        log.warning("_led_coolers_only: scan failed (%s) — building the "
+                    "renderer", e)
+        return False
+    kinds = {product.kind if (product := find_product(i.vid, i.pid)) else None
+             for i in scan}
+    log.info("_led_coolers_only: %d device(s), kinds=%s", len(scan),
+             sorted(str(k) for k in kinds))
+    return bool(scan) and kinds == {Kind.LED}

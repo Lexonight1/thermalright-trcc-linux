@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **With only LED coolers, TRCC no longer loads its drawing engine (#299).**
+  An LED cooler shows a segment display, which needs no Qt rendering, but the
+  background service loaded it anyway: about 30 MB of memory for nothing
+  (58 MB instead of 90 MB, measured). It is still loaded whenever an LCD is
+  found. An LCD that appears after an LED-only start (unlikely, as coolers
+  sit inside the case) shows a message asking you to restart TRCC.
+
 - **Clicking a cloud background no longer stalls, and every downloaded one
   gets its animated tile.** Clicking a cloud background whose animated tile
   had once failed to generate ran ffmpeg again on every click, for up to 40
