@@ -41,6 +41,7 @@ def _commands(key: str, tmp: Path) -> list[Command[Any]]:
         C.SetMaskVisible(key=key, visible=False),
         C.SetBackgroundMode(key=key, mode="color"),
         C.SetOverlayBackground(key=key, color=(1, 2, 3)),
+        C.RememberColor(key=key, color=(1, 2, 3)),
         C.AddOverlayElement(key=key, element_id="e1"),
         C.UpdateOverlayElement(key=key, element_id="e1", x=5),
         C.DeleteOverlayElement(key=key, element_id="e1"),
