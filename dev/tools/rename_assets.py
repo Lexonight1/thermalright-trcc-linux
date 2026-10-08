@@ -19,13 +19,14 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
 from pathlib import Path
 
 # ============================================================================
 # Paths
 # ============================================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # The single asset tree.  qtgui shares this same colour set and greyscales at
 # runtime, so there's one source to rename (no separate qtgui copy).  (The
 # cutover moved ``src/trcc/gui/`` → ``src/trcc/ui/gui/``; this path used to be
@@ -708,6 +709,64 @@ def _build_code_replacements(full_map: dict[str, str]) -> list[tuple[str, str]]:
     return pairs
 
 
+def _literal_spans(source: bytes) -> list[tuple[int, int]]:
+    """Byte spans of the string literals an asset name can be loaded from.
+
+    Comments and docstrings are left out: they cite the C# resource names on
+    purpose (``P显示边框A`` is the C#'s own name for the art), and a rename
+    must not rewrite the citation.  An f-string counts as one literal.
+    """
+    tree = ast.parse(source)
+    docstrings = {
+        id(body[0].value) for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef))
+        and (body := node.body) and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    }
+    in_fstring = {id(part) for node in ast.walk(tree)
+                  if isinstance(node, ast.JoinedStr) for part in node.values}
+    line_starts = [0]
+    for line in source.splitlines(keepends=True):
+        line_starts.append(line_starts[-1] + len(line))
+    spans = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Constant, ast.JoinedStr)):
+            continue
+        if isinstance(node, ast.Constant) and not isinstance(node.value, str):
+            continue
+        if id(node) in docstrings or id(node) in in_fstring:
+            continue
+        assert node.end_lineno is not None and node.end_col_offset is not None
+        # col_offset is a UTF-8 BYTE offset, which is why this works on bytes.
+        spans.append((line_starts[node.lineno - 1] + node.col_offset,
+                      line_starts[node.end_lineno - 1] + node.end_col_offset))
+    # A string inside an f-string's braces (f"{d['k']}") lies within the
+    # f-string's own span; keep the outer one only.
+    outer: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        if outer and start < outer[-1][1]:
+            continue
+        outer.append((start, end))
+    return outer
+
+
+def _replace_in_literals(content: str,
+                         replacements: list[tuple[str, str]]) -> str:
+    """*content* with each replacement applied inside string literals only."""
+    source = content.encode('utf-8')
+    out, pos = [], 0
+    for start, end in _literal_spans(source):
+        literal = source[start:end].decode('utf-8')
+        for old, new in replacements:
+            literal = literal.replace(old, new)
+        out += [source[pos:start].decode('utf-8'), literal]
+        pos = end
+    out.append(source[pos:].decode('utf-8'))
+    return ''.join(out)
+
+
 def _update_code_files(replacements: list[tuple[str, str]],
                        code_dirs: list[Path], dry_run: bool) -> int:
     """Replace old asset names in Python source files. Returns files changed."""
@@ -716,10 +775,7 @@ def _update_code_files(replacements: list[tuple[str, str]],
     for code_dir in code_dirs:
         for py_file in sorted(code_dir.rglob('*.py')):
             content = py_file.read_text(encoding='utf-8')
-            new_content = content
-
-            for old, new in replacements:
-                new_content = new_content.replace(old, new)
+            new_content = _replace_in_literals(content, replacements)
 
             if new_content != content:
                 changed += 1
@@ -727,7 +783,7 @@ def _update_code_files(replacements: list[tuple[str, str]],
                 if dry_run:
                     # Show which replacements apply
                     for old, new in replacements:
-                        if old in content:
+                        if old in content and old not in new_content:
                             print(f"  WOULD REPLACE in {rel}: '{old}' → '{new}'")
                 else:
                     py_file.write_text(new_content, encoding='utf-8')
