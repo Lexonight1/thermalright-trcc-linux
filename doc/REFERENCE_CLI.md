@@ -499,6 +499,7 @@ trcc display export-video [OPTIONS] KEY PATH
 | `--end`, `-e` `END_MS` | Clip end in milliseconds (default: the whole clip). |
 | `--rotation`, `-r` `ROTATION` | Rotation in degrees: 0 / 90 / 180 / 270. |
 | `--fit`, `-f` `FIT` | Fit the clip to the panel: 'width' / 'height' pin that axis and crop the overflow, 'stretch' fills both. Omit for the auto fit -- scale inside the panel, never crop. A .zt is encoded AT canvas size, so this is baked in. |
+| `--fps` `FPS` | Frames per second: 15 (default, as the Windows app) or 24. |
 | `--wait` | Follow progress until the encode finishes (default), or print the token and return. |
 
 ### `trcc display game`

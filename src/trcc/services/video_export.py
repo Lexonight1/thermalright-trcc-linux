@@ -34,8 +34,6 @@ from ..core import toolchain
 from ..core.geometry import fit_rect_for_mode
 from ..core.models import (
     SUBPROCESS_NO_WINDOW,
-    ZT_FPS,
-    ZT_FRAME_INTERVAL_MS,
     ZT_MAGIC,
     ZT_MAX_DURATION_MS,
     ThemeDir,
@@ -122,6 +120,8 @@ class VideoExporter:
                 f"Clip is {(req.end_ms - req.start_ms) / 1000:.1f}s, "
                 f"max is {ZT_MAX_DURATION_MS / 1000:.0f}s.  Pick a shorter range.",
             )
+        if req.fps <= 0:
+            raise VideoExportError(f"Frame rate must be positive, got {req.fps}")
         if req.target_w <= 0 or req.target_h <= 0:
             raise VideoExportError(
                 f"Target resolution must be positive, got "
@@ -144,7 +144,7 @@ class VideoExporter:
             self._run_ffmpeg(req, frames_dir, progress)
             jpegs = self._collect_frames(frames_dir, progress)
             output_path = ThemeDir(temp_dir).zt
-            self._write_zt(output_path, jpegs, progress)
+            self._write_zt(output_path, jpegs, progress, req.fps)
             progress(100, "Done")
             return output_path
         except BaseException:
@@ -216,7 +216,7 @@ class VideoExporter:
             "-t", f"{(req.end_ms - req.start_ms) / 1000.0}",
             "-i", str(req.source),
             "-y",
-            "-r", str(ZT_FPS),
+            "-r", str(req.fps),
             *size_args,
         ]
         if vf:
@@ -270,17 +270,21 @@ class VideoExporter:
         output_path: Path,
         jpegs: list[bytes],
         progress: ProgressCallback,
+        fps: int,
     ) -> None:
-        log.debug("_write_zt: output_path=%s %d jpeg(s)", output_path, len(jpegs))
+        log.debug("_write_zt: output_path=%s %d jpeg(s) at %d fps",
+                  output_path, len(jpegs), fps)
+        interval_ms = 1000.0 / fps
         progress(85, "Writing Theme.zt…")
         try:
             with output_path.open("wb") as f:
                 f.write(struct.pack("B", ZT_MAGIC))
                 f.write(struct.pack("<i", len(jpegs)))
                 # Each frame's END time, as ``UCVideoCut.BmpToThemeFile``
-                # writes it: ``(int)(41.67 * i)`` for i = 1..n, never 0.
+                # writes it: ``(int)(1000.0 / fps * i)`` for i = 1..n,
+                # never 0 (``UCVideoCut.cs:1416-1418``, :1464-1468).
                 for i in range(1, len(jpegs) + 1):
-                    f.write(struct.pack("<i", int(ZT_FRAME_INTERVAL_MS * i)))
+                    f.write(struct.pack("<i", int(interval_ms * i)))
                 for jpeg in jpegs:
                     f.write(struct.pack("<i", len(jpeg)))
                     f.write(jpeg)

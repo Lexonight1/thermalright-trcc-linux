@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from functools import partial
 
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QIcon,
     QImage,
     QPainter,
     QPalette,
@@ -36,6 +38,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar, QWidget
 
 from ...core import toolchain
 from ...core.geometry import fit_rect_for_mode
+from ...core.models import CUTTER_DEFAULT_FPS, FitMode, panel_asset_dims
 from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from ...core.models import (
     ZT_FRAME_INTERVAL_MS as FRAME_INTERVAL_MS,
@@ -43,7 +46,6 @@ from ...core.models import (
 from ...core.models import (
     ZT_MAX_DURATION_MS as MAX_DURATION_MS,
 )
-from ...core.models import FitMode, panel_asset_dims
 from .assets import Assets
 from .base import make_icon_button
 
@@ -67,6 +69,10 @@ BTN_HEIGHT_FIT = (169, 656, 34, 26)
 BTN_WIDTH_FIT = (233, 656, 34, 26)
 BTN_ROTATE = (297, 656, 34, 26)
 BTN_EXPORT = (446, 656, 34, 26)
+
+# Frame-rate choice: the C#'s button1 / button2 (UCVideoCut.cs:2936-2962),
+# either side of the low-to-high wedge the background draws beside "FPS".
+BTN_FPS = {15: (40, 661, 14, 14), 24: (110, 661, 14, 14)}
 
 # Preview / Close buttons
 BTN_PREVIEW = (233, 513, 34, 20)
@@ -102,8 +108,8 @@ class UCVideoCut(QWidget):
     fit mode buttons, rotation, and Theme.zt export.
 
     Signals:
-        export_requested(int, int, int, object): (start_ms, end_ms,
-            rotation, fit_mode) — the window turns this into
+        export_requested(int, int, int, object, int): (start_ms, end_ms,
+            rotation, fit_mode, fps) — the window turns this into
             ``ExportVideoClip`` for the active device.  The panel does not
             know the device key or the canvas size, and does not need to:
             the Command resolves both.  ``fit_mode`` is a
@@ -113,7 +119,7 @@ class UCVideoCut(QWidget):
         video_cut_done(str): Emitted with Theme.zt path on export, or '' on cancel.
     """
 
-    export_requested = Signal(int, int, int, object)
+    export_requested = Signal(int, int, int, object, int)
     video_cut_done = Signal(str)
 
     def __init__(self, parent=None):
@@ -134,6 +140,8 @@ class UCVideoCut(QWidget):
         # export to forced-width.  None is the auto arm — fit inside, never
         # crop — which is what an untouched export has always done (#291).
         self._fit_mode: FitMode | None = None
+        # The clip's frame rate, 15 or 24 -- the C#'s originalImageHz.
+        self._clip_fps = CUTTER_DEFAULT_FPS
 
         # Timeline handles (pixel x positions)
         self._start_x = TIMELINE_X
@@ -207,6 +215,14 @@ class UCVideoCut(QWidget):
             self, BTN_ROTATE, 'display_mode_rotate.png', "R", self._on_rotate)
         self._btn_export = make_icon_button(
             self, BTN_EXPORT, 'display_mode_crop.png', "OK", self._on_export)
+
+        # Frame-rate choice (15 / 24), one checked at a time
+        self._fps_btns = {
+            fps: make_icon_button(self, rect, 'shared_checkbox_off.png',
+                                  str(fps), partial(self._on_fps, fps))
+            for fps, rect in BTN_FPS.items()
+        }
+        self._show_fps()
 
         # Preview button
         self._btn_preview = make_icon_button(
@@ -499,8 +515,24 @@ class UCVideoCut(QWidget):
         return canvas
 
     # =========================================================================
-    # Fit mode and rotation
+    # Frame rate, fit mode and rotation
     # =========================================================================
+
+    def _on_fps(self, fps, _checked=False):
+        """A frame-rate button: the C#'s button1_Click / button2_Click."""
+        log.info("_on_fps: %s -> %s", self._clip_fps, fps)
+        self._clip_fps = fps
+        self._show_fps()
+
+    def _show_fps(self):
+        """Check the chosen frame rate's box, clear the other."""
+        log.debug("_show_fps: %s", self._clip_fps)
+        for fps, btn in self._fps_btns.items():
+            name = ('shared_checkbox_on.png' if fps == self._clip_fps
+                    else 'shared_checkbox_off.png')
+            pix = Assets.load_pixmap(name, *BTN_FPS[fps][2:])
+            if not pix.isNull():
+                btn.setIcon(QIcon(pix))
 
     def _on_width_fit(self):
         log.info("_on_width_fit: fit_mode %s -> WIDTH", self._fit_mode)
@@ -549,9 +581,9 @@ class UCVideoCut(QWidget):
 
     def _on_export(self):
         """Ask the window to encode the current clip.  Does not encode."""
-        log.info("_on_export: video_path=%s start=%s end=%s rotation=%s",
-                 self._video_path, self._start_ms, self._end_ms,
-                 self._rotation)
+        log.info("_on_export: video_path=%s start=%s end=%s rotation=%s "
+                 "fps=%s", self._video_path, self._start_ms, self._end_ms,
+                 self._rotation, self._clip_fps)
         if self._is_processing or not self._video_path:
             log.debug("_on_export: busy=%s path=%s — ignored",
                       self._is_processing, self._video_path)
@@ -565,7 +597,8 @@ class UCVideoCut(QWidget):
         self._lbl_info.setText("Starting export...")
         self._lbl_info.setVisible(True)
         self.export_requested.emit(
-            self._start_ms, self._end_ms, self._rotation, self._fit_mode)
+            self._start_ms, self._end_ms, self._rotation, self._fit_mode,
+            self._clip_fps)
 
     def export_refused(self, message):
         """The window's dispatch was refused before anything was queued."""

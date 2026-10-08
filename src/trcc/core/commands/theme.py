@@ -29,7 +29,15 @@ from ..events import (
     ThemeSaved,
 )
 from ..geometry import content_is_portrait, save_folder_resolution
-from ..models import ZT_MAX_DURATION_MS, Capability, FitMode, ThemeDir, VideoExportRequest
+from ..models import (
+    CUTTER_DEFAULT_FPS,
+    CUTTER_FPS_CHOICES,
+    ZT_MAX_DURATION_MS,
+    Capability,
+    FitMode,
+    ThemeDir,
+    VideoExportRequest,
+)
 from ..ports import ContentStore
 from ..results import (
     CloudCategoryEntry,
@@ -2368,6 +2376,10 @@ class ExportVideoClip(Command[VideoExportResult]):
     letterboxed identically and looked broken (#291).  ``None`` keeps the
     load path — fit inside, never crop — so an export only changes for a
     user who presses one.
+
+    ``fps`` is the trimmer's 15/24 choice, 15 by default as in the C#
+    (``UCVideoCut.cs:120``).  Every export was 24 until 2026-10-07: the first
+    commit hardcoded it and the selector was never ported.
     """
     key: str
     path: Path
@@ -2375,6 +2387,7 @@ class ExportVideoClip(Command[VideoExportResult]):
     end_ms: int | None = None
     rotation: int = 0
     fit_mode: FitMode | None = None
+    fps: int = CUTTER_DEFAULT_FPS
 
     def execute(self, app: App) -> VideoExportResult:
         # ``fit_mode`` is logged WITHOUT touching ``.value``: the entry log
@@ -2382,9 +2395,9 @@ class ExportVideoClip(Command[VideoExportResult]):
         # as a plain ``str``.  Reading an attribute off it crashed the
         # Command before it could refuse the input politely.
         log.info("ExportVideoClip.execute: key=%s path=%s start_ms=%d "
-                 "end_ms=%s rotation=%d fit_mode=%s", self.key, self.path,
-                 self.start_ms, self.end_ms, self.rotation,
-                 self.fit_mode or "auto")
+                 "end_ms=%s rotation=%d fit_mode=%s fps=%s", self.key,
+                 self.path, self.start_ms, self.end_ms, self.rotation,
+                 self.fit_mode or "auto", self.fps)
         if not self.path.is_file():
             log.warning("ExportVideoClip.execute: %s not found", self.path)
             return VideoExportResult(
@@ -2449,6 +2462,15 @@ class ExportVideoClip(Command[VideoExportResult]):
                          f"{self.rotation}"),
             )
 
+        if self.fps not in CUTTER_FPS_CHOICES:
+            log.warning("ExportVideoClip.execute: bad fps %r", self.fps)
+            return VideoExportResult(
+                ok=False, source=str(self.path),
+                message=(f"Frame rate must be one of "
+                         f"{'/'.join(map(str, CUTTER_FPS_CHOICES))}, got "
+                         f"{self.fps!r}"),
+            )
+
         if self.fit_mode is not None and not isinstance(self.fit_mode, FitMode):
             # Reachable over IPC, where an unknown string falls through the
             # union coercion as itself rather than raising.  Say so instead of
@@ -2471,6 +2493,7 @@ class ExportVideoClip(Command[VideoExportResult]):
             target_h=target_h,
             rotation=self.rotation,
             fit_mode=self.fit_mode,
+            fps=self.fps,
         ))
         log.info("ExportVideoClip.execute: queued token=%s for %dx%d",
                  token, target_w, target_h)

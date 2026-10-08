@@ -1462,6 +1462,14 @@ ZT_FPS: int = 24
 #: the timestamp table is cumulative and rounding early accumulates.
 ZT_FRAME_INTERVAL_MS: float = 1000.0 / ZT_FPS
 
+#: The trimmer's frame-rate choice.  The C#'s two buttons set
+#: ``originalImageHz`` to 15 or 24 (``UCVideoCut.cs:2712-2723``), starting at
+#: 15 (:120), and it reaches the encoder's ``-r``, the ``.zt`` timestamps and
+#: the preview's rate.  :data:`ZT_FPS` stays the fixed rate of a whole-video
+#: bake, as the C#'s ``My_Video_To_Theme`` (``FormCZTV.cs:2663-2682``) is.
+CUTTER_FPS_CHOICES: tuple[int, ...] = (15, 24)
+CUTTER_DEFAULT_FPS: int = 15
+
 #: Longest clip the exporter will encode — the legacy soft cap.  UIs clamp
 #: their trim handles to it so a user cannot ask for a clip the encoder
 #: will refuse.
@@ -1481,6 +1489,9 @@ class VideoExportRequest:
     the exporter fit-resizes to them exactly, because the firmware does
     not crop.
 
+    ``fps`` is the trimmer's 15/24 choice; a whole-video bake keeps
+    :data:`ZT_FPS`.
+
     ``fit_mode`` is the trimmer's W/H button.  ``None`` is the load path —
     fit inside, never crop — which is what a user who never touches those
     buttons already gets, so nobody's export changes.  It is the enum rather
@@ -1493,6 +1504,8 @@ class VideoExportRequest:
     target_h: int
     rotation: int = 0
     fit_mode: FitMode | None = None
+    #: Frames per second extracted, and so the rate the timestamps encode.
+    fps: int = ZT_FPS
 
 
 # DC file (main_count, sub_count) → ``HardwareMetrics`` field name.

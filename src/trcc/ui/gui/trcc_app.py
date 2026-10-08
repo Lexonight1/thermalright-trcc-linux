@@ -67,6 +67,7 @@ from ...core.events import (
 )
 from ...core.logs import per_frame
 from ...core.models import (
+    CUTTER_DEFAULT_FPS,
     FitMode,
     HardwareMetrics,
     Kind,
@@ -2222,7 +2223,7 @@ class TRCCApp(QMainWindow):
 
     def _on_video_export_requested(
         self, start_ms: int, end_ms: int, rotation: int,
-        fit_mode: FitMode | None = None,
+        fit_mode: FitMode | None = None, fps: int = CUTTER_DEFAULT_FPS,
     ) -> None:
         """The trimmer asked for an encode — dispatch it for the active LCD.
 
@@ -2234,8 +2235,8 @@ class TRCCApp(QMainWindow):
         before it could be carried at all (#291).
         """
         log.info("_on_video_export_requested: start=%d end=%d rotation=%d "
-                 "fit_mode=%s", start_ms, end_ms, rotation,
-                 fit_mode.value if fit_mode else "auto")
+                 "fit_mode=%s fps=%d", start_ms, end_ms, rotation,
+                 fit_mode.value if fit_mode else "auto", fps)
         h = self._active_lcd()
         path = getattr(self.uc_video_cut, "_video_path", None)
         if h is None or not path:
@@ -2246,7 +2247,7 @@ class TRCCApp(QMainWindow):
         result = self._app.dispatch(ExportVideoClip(
             key=h.device_key, path=Path(path),
             start_ms=start_ms, end_ms=end_ms, rotation=rotation,
-            fit_mode=fit_mode,
+            fit_mode=fit_mode, fps=fps,
         ))
         if not result.ok:
             log.warning("_on_video_export_requested: refused — %s",

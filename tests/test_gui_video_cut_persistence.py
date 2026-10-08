@@ -136,3 +136,62 @@ def test_the_fit_buttons_carry_their_choice_out_of_the_panel(qtbot) -> None:
             "builds ExportVideoClip from these arguments"
         )
         assert sig.args[:3] == [0, 500, 0]
+
+
+def test_the_trimmer_exports_at_the_frame_rate_pressed(qtbot) -> None:
+    """The C#'s 15/24 buttons (UCVideoCut.cs:2712-2723), 15 untouched.
+
+    Every export was 24: the first commit hardcoded it and the selector was
+    never ported.  Driven through the real buttons and the real emitter.
+    """
+    from trcc.ui.gui.uc_video_cut import UCVideoCut
+
+    panel = UCVideoCut()
+    qtbot.addWidget(panel)
+    panel._video_path = "/nonexistent/clip.mp4"
+    panel._start_ms, panel._end_ms = 0, 500
+
+    for press, expected in ((None, 15), (24, 24), (15, 15)):
+        if press is not None:
+            panel._fps_btns[press].click()
+        panel._is_processing = False
+        with qtbot.waitSignal(panel.export_requested, timeout=1000) as sig:
+            panel._on_export()
+        assert sig.args[4] == expected
+
+
+def test_qtgui_exports_at_the_frame_rate_chosen(qtbot) -> None:
+    """qtgui's 15/24 actions reach ExportVideoClip, 15 untouched."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    from trcc.core.commands import DeviceCanvas, ExportVideoClip
+    from trcc.ui.qtgui.video_crop import VideoCropDialog
+
+    class _Bus(QObject):
+        video_export_progress = Signal(object)
+        video_export_finished = Signal(object)
+
+    sent: list = []
+
+    class _App:
+        def dispatch(self, cmd):
+            sent.append(cmd)
+            if isinstance(cmd, DeviceCanvas):
+                return SimpleNamespace(ok=False)
+            return SimpleNamespace(ok=False, message="recorded")
+
+    dialog = VideoCropDialog(_App(), _Bus(), "0402:3922")  # type: ignore[arg-type]
+    qtbot.addWidget(dialog)
+    dialog._video_path = Path("/nonexistent/clip.mp4")
+
+    def exported_fps() -> int:
+        dialog._on_export_clicked()
+        return [c for c in sent if isinstance(c, ExportVideoClip)][-1].fps
+
+    assert exported_fps() == 15
+    by_fps = {a.data(): a for a in dialog._fps_group.actions()}
+    by_fps[24].trigger()
+    assert exported_fps() == 24

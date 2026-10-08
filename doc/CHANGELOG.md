@@ -4,6 +4,17 @@
 
 ### Fixed
 
+- **The video trimmer offers 15 or 24 frames per second, and starts at 15,
+  as the Windows app does.** Every trimmed clip was 24 fps: the choice was
+  never ported. It is the FPS row in the classic window, a "15 fps / 24 fps"
+  pair in the new one, `--fps` on `trcc display export-video`, and `fps` in
+  the API's export body. 15 fps clips are smaller and decode faster on the
+  panel.
+
+- **Sensors read from HWiNFO no longer risk crashing TRCC on 64-bit Windows.**
+  The address of HWiNFO's shared memory was cut to 32 bits, so reading it
+  could crash the app instead of failing cleanly. Not yet checked on Windows.
+
 - **A screencast region is cast correctly on a scaled Wayland screen, and on
   a primary monitor that is not the leftmost.** On GNOME or KDE at 125% or
   200%, the panel showed the wrong part of the screen, smaller than the area

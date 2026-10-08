@@ -34,7 +34,7 @@ from trcc.core import toolchain
 from trcc.core.commands import ExportVideoClip, ProbeVideoDuration
 from trcc.core.events import VideoExportFinished, VideoExportProgress
 from trcc.core.models import (
-    ZT_FPS,
+    CUTTER_FPS_CHOICES,
     ZT_MAGIC,
     ZT_MAX_DURATION_MS,
     FitMode,
@@ -250,19 +250,21 @@ def private_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @needs_ffmpeg
+@pytest.mark.parametrize("fps", CUTTER_FPS_CHOICES)
 def test_real_encode_round_trips(app: App, events: list, clip: Path,
-                                 private_tmp: Path) -> None:
+                                 private_tmp: Path, fps: int) -> None:
     """Encode a real clip and read it back with the project's own decoder.
 
     Gating the round trip rather than the write half: the encoder and the
     ``ZtDecoder`` now share ``ZT_MAGIC`` and ``ZT_FRAME_INTERVAL_MS`` from
     ``core.models``, and only decoding what was encoded proves the two
-    halves still agree.
+    halves still agree -- at each of the trimmer's two frame rates, which
+    the decoder must read back from the timestamps alone.
     """
     from trcc.services.media import ZtDecoder
 
     result = app.dispatch(
-        ExportVideoClip(key=KEY, path=clip, start_ms=0, end_ms=1000),
+        ExportVideoClip(key=KEY, path=clip, start_ms=0, end_ms=1000, fps=fps),
     )
     assert result.ok is True
 
@@ -282,12 +284,28 @@ def test_real_encode_round_trips(app: App, events: list, clip: Path,
 
     decoder = ZtDecoder(out, (result.target_w, result.target_h))
     frames = decoder.decode()
-    assert len(frames) > 1
-    assert decoder.fps == ZT_FPS
-    # Each frame's END time, as UCVideoCut.BmpToThemeFile writes it
-    # (``(int)(41.666666666666664 * i)`` for i = 1..n) -- not its start.
-    assert decoder.timestamps == [int(41.666666666666664 * i)
+    # A 1 s clip holds ~fps frames: ffmpeg's -t rounding added 2 at both
+    # rates (17 at 15, 26 at 24, measured).  The timestamps alone cannot
+    # tell, since the decoder derives fps from them: this is what pins -r.
+    assert fps <= len(frames) <= fps + 2
+    assert decoder.fps == fps
+    # Each frame's END time, as UCVideoCut writes it
+    # (``(int)(1000.0 / originalImageHz * i)`` for i = 1..n) -- not its start.
+    assert decoder.timestamps == [int(1000.0 / fps * i)
                                   for i in range(1, len(frames) + 1)]
+
+
+def test_the_trimmer_defaults_to_the_csharps_15_fps() -> None:
+    """``UCVideoCut.cs:120``: ``originalImageHz = 15``."""
+    assert ExportVideoClip(key=KEY, path=Path("x.mp4")).fps == 15
+
+
+def test_a_frame_rate_the_trimmer_does_not_offer_is_refused(
+        app: App, clip: Path) -> None:
+    result = app.dispatch(ExportVideoClip(key=KEY, path=clip, start_ms=0,
+                                          end_ms=1000, fps=30))
+    assert result.ok is False
+    assert result.message == "Frame rate must be one of 15/24, got 30"
 
 
 @needs_ffmpeg

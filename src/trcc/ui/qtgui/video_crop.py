@@ -51,13 +51,13 @@ from PySide6.QtWidgets import (
 from ...core import toolchain
 from ...core.commands import DeviceCanvas, ExportVideoClip, ProbeVideoDuration
 from ...core.geometry import fit_rect_for_mode
+from ...core.models import CUTTER_DEFAULT_FPS, CUTTER_FPS_CHOICES, FitMode
 from ...core.models import (
     ZT_FPS as EXPORT_FPS,
 )
 from ...core.models import (
     ZT_MAX_DURATION_MS as MAX_DURATION_MS,
 )
-from ...core.models import FitMode
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
@@ -241,6 +241,8 @@ class VideoCropDialog(QDialog):
         self._app = app
         self._bus = bus
         self._fit_mode: FitMode | None = None
+        #: The clip's frame rate, 15 or 24 -- the C#'s originalImageHz.
+        self._fps = CUTTER_DEFAULT_FPS
         #: The panel's NATIVE canvas, asked of the bus rather than derived
         #: here.  ``(0, 0)`` means unknown, and the preview then falls back to
         #: a plain contain-fit -- exactly what it did before it composed.
@@ -345,6 +347,19 @@ class VideoCropDialog(QDialog):
             self._fit_group.addAction(act)
             toolbar.addAction(act)
         self._fit_group.triggered.connect(self._on_fit_changed)
+        toolbar.addSeparator()
+
+        # The C#'s two frame-rate buttons (UCVideoCut.cs:2712-2723).
+        self._fps_group = QActionGroup(self)
+        self._fps_group.setExclusive(True)
+        for fps in CUTTER_FPS_CHOICES:
+            act = QAction(f"{fps} fps", self)
+            act.setCheckable(True)
+            act.setData(fps)
+            act.setChecked(fps == self._fps)
+            self._fps_group.addAction(act)
+            toolbar.addAction(act)
+        self._fps_group.triggered.connect(self._on_fps_changed)
 
         self._target_label = QLabel("Target: (load a video)", self)
         self._target_label.setStyleSheet("color: #aaa;")
@@ -524,6 +539,11 @@ class VideoCropDialog(QDialog):
         log.info("_on_end_changed: ms=%s", ms)
         self._end_label.setText(_format_ms(ms))
 
+    def _on_fps_changed(self, action: QAction) -> None:
+        """The clip's frame rate: what Export encodes at."""
+        log.info("_on_fps_changed: %s -> %s", self._fps, action.data())
+        self._fps = action.data()
+
     def _on_fit_changed(self, action: QAction) -> None:
         """Re-render at the new fit so the choice is visible before Export."""
         self._fit_mode = action.data()
@@ -571,8 +591,9 @@ class VideoCropDialog(QDialog):
     # ── Export ───────────────────────────────────────────────────────
 
     def _on_export_clicked(self) -> None:
-        log.info("_on_export_clicked: key=%s rotation=%d fit_mode=%s",
-                 self._key, self._rotation, self._fit_mode or "auto")
+        log.info("_on_export_clicked: key=%s rotation=%d fit_mode=%s fps=%d",
+                 self._key, self._rotation, self._fit_mode or "auto",
+                 self._fps)
         if self._video_path is None:
             self._info.setText("Load a video first.")
             return
@@ -588,6 +609,7 @@ class VideoCropDialog(QDialog):
             end_ms=end,
             rotation=self._rotation,
             fit_mode=self._fit_mode,
+            fps=self._fps,
         ))
         if not result.ok:
             # Every guard answers here, at the click, rather than arriving

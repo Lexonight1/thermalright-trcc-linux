@@ -10,6 +10,7 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from ...core.models import (
+    CUTTER_DEFAULT_FPS,
     DEFAULT_REFRESH_INTERVAL_S,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
@@ -644,6 +645,8 @@ class ExportVideoRequest(BaseModel):
     #: encoded AT canvas size, so this choice is baked in and the device's
     #: render-time ``fit_mode`` cannot recover it afterwards.
     fit_mode: FitMode | None = None
+    #: Frames per second: 15 (the Windows app's default) or 24.
+    fps: int = Field(CUTTER_DEFAULT_FPS)
 
 
 # ── Control-center settings ──────────────────────────────────────────

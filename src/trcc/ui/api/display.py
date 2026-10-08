@@ -419,14 +419,14 @@ def export_video(key: str, body: ExportVideoRequest,
     """
     log.info(
         "api POST /devices/{key}/display/export-video: key=%s path=%s "
-        "start_ms=%s end_ms=%s rotation=%s fit_mode=%s",
+        "start_ms=%s end_ms=%s rotation=%s fit_mode=%s fps=%s",
         key, body.path, body.start_ms, body.end_ms, body.rotation,
-        body.fit_mode or "auto",
+        body.fit_mode or "auto", body.fps,
     )
     result = request.app.state.trcc.dispatch(ExportVideoClip(
         key=key, path=owned_path(request, body.path), start_ms=body.start_ms,
         end_ms=body.end_ms, rotation=body.rotation,
-        fit_mode=body.fit_mode,
+        fit_mode=body.fit_mode, fps=body.fps,
     ))
     http_error_if_failed(result)
     return result

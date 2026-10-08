@@ -60,7 +60,7 @@ from ...core.commands import (
     VideoStatus,
 )
 from ...core.errors import TrccError
-from ...core.models import MEDIA, FitMode, MediaKind
+from ...core.models import CUTTER_DEFAULT_FPS, MEDIA, FitMode, MediaKind
 from ..presentation.display_source import describe_game_mode, describe_source
 from ._ctx import (
     daemon_owns_the_panels,
@@ -337,6 +337,10 @@ def export_video(
              "auto fit -- scale inside the panel, never crop.  A .zt is "
              "encoded AT canvas size, so this is baked in.",
     ),
+    fps: int = typer.Option(
+        CUTTER_DEFAULT_FPS, "--fps",
+        help="Frames per second: 15 (default, as the Windows app) or 24.",
+    ),
     wait: bool = typer.Option(
         True, "--wait/--no-wait",
         help="Follow progress until the encode finishes (default), or "
@@ -356,8 +360,8 @@ def export_video(
     that is not doing the encoding.
     """
     log.info("cli display export-video: key=%s path=%s start_ms=%s end_ms=%s "
-             "rotation=%s wait=%s", key, path, start_ms, end_ms, rotation,
-             wait)
+             "rotation=%s fps=%s wait=%s", key, path, start_ms, end_ms,
+             rotation, fps, wait)
     app_obj = get_app()
     # Subscribe BEFORE dispatching: a fast encode can finish between the
     # dispatch returning and a later subscribe, and the finished event is
@@ -384,7 +388,7 @@ def export_video(
 
     result = app_obj.dispatch(ExportVideoClip(
         key=key, path=path, start_ms=start_ms, end_ms=end_ms,
-        rotation=rotation, fit_mode=fit,
+        rotation=rotation, fit_mode=fit, fps=fps,
     ))
     if not result.ok:
         typer.echo(result.message, err=True)
