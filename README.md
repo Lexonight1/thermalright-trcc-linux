@@ -341,6 +341,20 @@ If a probe goes `BAD`, that's the bug — fix in `src/`, re-run, see `PASS`. Eve
 | LY | pyusb bulk (chunked) | Trofeo Vision 9.16 LCD |
 | LED | pyusb HID | All LED segment display devices (13 styles) |
 
+## Built on the Work of
+
+TRCC Linux stands on other people's open-source work. Credit where it is due — every project here is one whose code, documentation or research we use, ported from, or learned from:
+
+- **[Thermalright TRCC](https://www.thermalright.com/)** (Windows) — the reference for how every device behaves. This project is an independent reimplementation and is not affiliated with Thermalright.
+- **[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)** (MPL-2.0) — the Windows build ships it and reads CPU and GPU sensors from its WMI namespace.
+- **[HWiNFO](https://www.hwinfo.com/)** — when it runs with Shared Memory Support, TRCC reads its sensors; the shared-memory layout comes from **[namazso's notes](https://gist.github.com/namazso/0c37be5a53863954c8c8279f66cfb1cc)**.
+- **[iSMC](https://github.com/dkorunic/iSMC)** (GPL-3.0) — the Apple Silicon temperature reading on macOS is ported from its `hid/get.go`.
+- **[macmon](https://github.com/vladkens/macmon)** and **[Stats](https://github.com/exelban/stats)** — how macOS sensors are read; we learned from both.
+- **[libusb-package](https://github.com/pyocd/libusb-package)** (pyOCD) — gives pip installs on Windows a working USB backend.
+- **[FFmpeg](https://ffmpeg.org/)** — video trimming, decoding and thumbnails; the Windows and macOS builds ship it.
+- **[7-Zip](https://www.7-zip.org/)** — unpacks the theme archives; the Windows and macOS builds ship it.
+- **[Qt for Python (PySide6)](https://www.qt.io/qt-for-python)** — both windows and the frame renderer.
+
 ## Code Contributors
 
 These folks didn't just report a problem — they opened the editor and sent a fix. On a solo project, a merged pull request is about the most generous thing you can do, and every one of these shipped to every user:
