@@ -1482,6 +1482,18 @@ CUTTER_DEFAULT_FPS: int = 15
 ZT_MAX_DURATION_MS: int = 300_000
 
 
+@dataclass(frozen=True, slots=True)
+class RgbMirrorDevice:
+    """One device of another RGB system that follows the cooler (#160).
+
+    ``index`` is the device's place in that system's list -- what every
+    later request names it by.  ``led_count`` is how many colours it takes.
+    """
+    index: int
+    name: str
+    led_count: int
+
+
 #: The overlay colour editor's recent-colour row: 11 swatches, Silver until
 #: a colour is remembered (``UCXiTongXianShiColor.cs:931``, ``Color.Silver``).
 RECENT_COLOR_SLOTS: int = 11

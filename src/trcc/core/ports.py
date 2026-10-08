@@ -22,6 +22,7 @@ from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
     FAN_SLOT_KEYWORDS,
     MIN_REFRESH_INTERVAL_S,
+    RgbMirrorDevice,
     TlsFiles,
     VideoExportRequest,
     format_device_key,
@@ -2187,6 +2188,38 @@ class DataInstaller(ABC):
         self, archive_name: str, target_dir: Path, *, subpath: str = "",
     ) -> bool:
         """Fetch *archive_name* and extract into *target_dir*; True if populated."""
+        ...
+
+
+# =========================================================================
+# RgbMirror — another RGB system that shows what the cooler shows (#160)
+# =========================================================================
+
+
+class RgbMirror(ABC):
+    """Another RGB system whose devices follow the cooler's colours.
+
+    TRCC leads: the colours a cooler shows are sent to the other system's
+    devices, so the whole PC matches.  Concrete: ``OpenRgbMirror``
+    (``adapters/rgb/openrgb.py``), a client of OpenRGB's SDK server.
+    Every method may raise ``OSError`` when the other system is unreachable;
+    the caller decides when to try again.
+    """
+
+    @abstractmethod
+    def devices(self) -> tuple[RgbMirrorDevice, ...]:
+        """The other system's devices, connecting first if needed."""
+        ...
+
+    @abstractmethod
+    def show(self, device: RgbMirrorDevice,
+             colors: Sequence[tuple[int, int, int]]) -> None:
+        """Show *colors* on *device*, stretched to its LED count."""
+        ...
+
+    @abstractmethod
+    def close(self) -> None:
+        """Drop the connection; the next call connects again."""
         ...
 
 

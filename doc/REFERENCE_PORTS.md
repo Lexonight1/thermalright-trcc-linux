@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-44 ports.
+45 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -37,6 +37,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
+| [`RgbMirror`](#rgbmirror) | 3 | 0 | 1 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -491,6 +492,22 @@ stop() -> None
 ```
 
 **Implementations (5):** `FreeBSDHotplugMonitor` · `LinuxHotplugMonitor` · `NoopHotplugMonitor` · `PollingHotplugMonitor` · `WindowsHotplugMonitor`
+
+## RgbMirror
+
+`core/ports.py`
+
+Another RGB system whose devices follow the cooler's colours.
+
+**You implement (3):**
+
+```python
+close() -> None
+devices() -> tuple[RgbMirrorDevice, ...]
+show(device: 'RgbMirrorDevice', colors: 'Sequence[tuple[int, int, int]]') -> None
+```
+
+**Implementations (1):** `OpenRgbMirror`
 
 ## SendScheduler
 
