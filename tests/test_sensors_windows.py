@@ -603,3 +603,74 @@ def test_a_failed_wmi_handle_is_remembered_on_its_thread(monkeypatch) -> None:
 
     assert seen == [None, None, None]
     assert tries == [1]
+
+
+# ── The HWiNFO mapping keeps a 64-bit view address ──────────────────────
+#
+# ctypes' default return type is a C int, so without restype=c_void_p a
+# 64-bit Windows process got MapViewOfFile's address truncated and read()
+# copied from wherever that pointed -- a crash, not an exception.  Legacy set
+# the prototypes; the rebuild dropped them.  Off Windows this cannot run the
+# real call, so it pins the prototypes and the address read() is handed.
+
+_HIGH_VIEW = 0x7FF6_1234_5000          # above 4 GiB: a C int cannot hold it
+
+
+class _FakeFn:
+    def __init__(self, result: int) -> None:
+        self.result = result
+        self.restype: Any = None
+        self.argtypes: Any = None
+        self.calls: list[tuple] = []
+
+    def __call__(self, *args: Any) -> int:
+        self.calls.append(args)
+        return self.result
+
+
+class _FakeKernel32:
+    def __init__(self) -> None:
+        self.OpenFileMappingW = _FakeFn(0x1F4)
+        self.MapViewOfFile = _FakeFn(_HIGH_VIEW)
+        self.UnmapViewOfFile = _FakeFn(1)
+        self.CloseHandle = _FakeFn(1)
+
+
+def _windows_mapping(monkeypatch) -> tuple[Any, _FakeKernel32, list]:
+    import ctypes
+    import sys as _sys
+
+    from trcc.adapters.sensors._hwinfo import _HWiNFOMapping
+
+    k32 = _FakeKernel32()
+    opened: list = []
+
+    def fake_windll(name: str, use_last_error: bool = False) -> _FakeKernel32:
+        opened.append((name, use_last_error))
+        return k32
+
+    copies: list = []
+    monkeypatch.setattr(_sys, "platform", "win32")
+    monkeypatch.setattr(ctypes, "WinDLL", fake_windll, raising=False)
+    monkeypatch.setattr(ctypes, "memmove",
+                        lambda dst, src, n: copies.append((src, n)))
+    mapping = _HWiNFOMapping()
+    return mapping, k32, [opened, copies]
+
+
+def test_the_hwinfo_view_address_is_never_truncated(monkeypatch) -> None:
+    import ctypes
+
+    mapping, k32, (opened, copies) = _windows_mapping(monkeypatch)
+    assert opened == [("kernel32", True)]
+    assert k32.OpenFileMappingW.restype is ctypes.c_void_p
+    assert k32.MapViewOfFile.restype is ctypes.c_void_p
+    assert k32.UnmapViewOfFile.argtypes == [ctypes.c_void_p]
+    assert k32.CloseHandle.argtypes == [ctypes.c_void_p]
+
+    mapping.read(16, 4)
+    assert copies == [(_HIGH_VIEW + 16, 4)]
+
+    mapping.close()
+    assert k32.UnmapViewOfFile.calls == [(_HIGH_VIEW,)]
+    assert k32.CloseHandle.calls == [(0x1F4,)]

@@ -145,6 +145,35 @@ class _BytesMapping(_MappingPort):
         pass
 
 
+def _kernel32_prototyped(ctypes: Any) -> Any:
+    """A private kernel32 whose four calls carry their real C prototypes.
+
+    ctypes' default return type is a C ``int``: on 64-bit Windows the address
+    ``MapViewOfFile`` returns was truncated to 32 bits, and ``read`` copied
+    from wherever that pointed -- a crash, not an exception, for anyone whose
+    sensors come from HWiNFO.  Legacy set these; the rebuild dropped them.
+    Without ``argtypes`` a 64-bit address passed back in overflows a C int.
+
+    A private ``WinDLL`` (not the shared ``windll.kernel32``) keeps these
+    prototypes out of process-wide state, and ``use_last_error`` is what makes
+    ``ctypes.get_last_error()`` report this call's error, not a stale one.
+    """
+    log.debug("_kernel32_prototyped: building a private kernel32")
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenFileMappingW.restype = ctypes.c_void_p
+    k32.OpenFileMappingW.argtypes = [ctypes.c_uint32, ctypes.c_int,
+                                     ctypes.c_wchar_p]
+    k32.MapViewOfFile.restype = ctypes.c_void_p
+    k32.MapViewOfFile.argtypes = [ctypes.c_void_p, ctypes.c_uint32,
+                                  ctypes.c_uint32, ctypes.c_uint32,
+                                  ctypes.c_size_t]
+    k32.UnmapViewOfFile.restype = ctypes.c_int
+    k32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
+    k32.CloseHandle.restype = ctypes.c_int
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    return k32
+
+
 class _HWiNFOMapping(_MappingPort):
     """Win32 file-mapping of ``Global\\HWiNFO_SENS_SM2`` via ctypes.
 
@@ -164,7 +193,7 @@ class _HWiNFOMapping(_MappingPort):
         # on non-Windows boxes don't trip on missing kernel32 attributes.
         import ctypes
 
-        self._kernel32 = ctypes.windll.kernel32     # type: ignore[attr-defined]
+        self._kernel32 = _kernel32_prototyped(ctypes)
         self._handle = self._kernel32.OpenFileMappingW(
             _FILE_MAP_READ, False, _MMF_NAME,
         )
