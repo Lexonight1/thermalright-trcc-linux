@@ -49,7 +49,7 @@ All features are tested and working on the `main` branch:
 **Bulk USB devices** — raw USB protocol:
 | USB ID | Devices |
 |--------|---------|
-| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro |
+| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro, Phantom Spirit 120 Vision EVO |
 
 **LY Bulk devices** — chunked bulk protocol:
 | USB ID | Devices |

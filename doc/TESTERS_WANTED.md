@@ -50,6 +50,7 @@ These devices have been tested on real Linux hardware by contributors:
 | PA120 DIGITAL LCD | `0416:8040` | HID | [lallemandgianni-boop](https://github.com/lallemandgianni-boop) |
 | Stream Vision | `87AD:70DB` | Bulk | [Me-shok](https://github.com/Me-shok) |
 | Wonder Vision 360 UB ARGB | `87AD:70DB` | Bulk | [Alb3e3](https://github.com/Alb3e3) (Windows) |
+| Phantom Spirit 120 Vision EVO | `87AD:70DB` | Bulk | [alan7383](https://github.com/alan7383) |
 
 ## Need Testers — Custom Overlay Masks (v8.3.8)
 

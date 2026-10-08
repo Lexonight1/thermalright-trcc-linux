@@ -26,6 +26,7 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | Trofeo Vision 9.16 LCD | LY (0416:5408) | — | [Mr-Renegade](https://github.com/Mr-Renegade) |
 | Hyper Vision 360 | Bulk (87AD:70DB) | 480x480 | [Seryogaberkut](https://github.com/Seryogaberkut) |
 | Peerless Vision 360 | Bulk (87AD:70DB) | 480x480 | [Ziusz](https://github.com/Ziusz) |
+| Phantom Spirit 120 Vision EVO | Bulk (87AD:70DB) | 480x480 | [alan7383](https://github.com/alan7383) |
 
 ### LED + Segment Display (RGB Fan Control, Temperature Readout)
 
