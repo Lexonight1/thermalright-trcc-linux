@@ -28,7 +28,14 @@ classifiers = [
 ]
 
 dependencies = [
-    "PySide6>=6.5.0",
+    # PySide6 6.12.0 releases Py_None one time too many on every call that
+    # returns nothing (measured: -1 refcount per QImage.fill / setPixel /
+    # QPainter.setPen).  None is immortal from Python 3.12, so only 3.10 and
+    # 3.11 suffer -- and there the process aborts ("none_dealloc: deallocating
+    # None") after ~5000 such calls, i.e. seconds into rendering.  6.11.2 is
+    # clean on both.  Lift the cap once a 6.12.x is measured clean on 3.10.
+    "PySide6>=6.5.0,<6.12; python_version < '3.12'",
+    "PySide6>=6.5.0; python_version >= '3.12'",
     "numpy>=1.24.0",
     "psutil>=5.9.0",
     "pyusb>=1.2.0",

@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **TRCC no longer crashes within seconds on Python 3.10 and 3.11.** PySide6
+  6.12.0, released this week, has a bug on those Python versions that aborts
+  the program after a few thousand drawing calls ("Fatal Python error:
+  none_dealloc"). A new install there, such as the legacy .deb on Ubuntu
+  22.04 or pipx on Python 3.10/3.11, picked it up. TRCC now asks for PySide6
+  older than 6.12 on Python 3.10 and 3.11; Python 3.12 and newer, the Windows
+  and macOS builds, and distro packages are not affected.
+
 - **With only LED coolers, TRCC no longer loads its drawing engine (#299).**
   An LED cooler shows a segment display, which needs no Qt rendering, but the
   background service loaded it anyway: about 30 MB of memory for nothing
