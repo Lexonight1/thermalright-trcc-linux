@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **A theme download that fails is tried again, and you are told (#309).**
+  When the first download of a panel's themes, cloud backgrounds or masks
+  failed (most often: TRCC started at login before the network was up), it
+  was never tried again until `trcc kill` or a replug, and the grids just
+  stayed empty. TRCC now retries after 30 seconds, 2 minutes and 10 minutes,
+  tries again whenever the panel reconnects, and shows the failure in the
+  window (a tray notice in the classic window, the status bar in the new one).
+
 - **A saved theme keeps its cloud video background after `~/.trcc` is wiped
   or reinstalled.** Saving a theme whose background was a cloud video only
   pointed at the downloaded file, and nothing downloads that file again, so

@@ -26,7 +26,7 @@ from trcc.adapters.infra.data_install_runner import (
 )
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
-from trcc.core.events import DataInstalled, EventBus
+from trcc.core.events import DataInstalled, ErrorOccurred, EventBus
 from trcc.services.data_install import EnsureDataResult
 
 _SCSI = "0402:3922"          # the panel in #275 (Frozen Warframe)
@@ -242,6 +242,132 @@ def test_submitting_after_shutdown_is_ignored() -> None:
 
     assert service.calls == []
 
+
+# ── #309: a failed download comes back, and the user hears about it ─────
+
+
+class _Outcomes:
+    """Install outcomes in order: each call takes the next, the last repeats."""
+
+    def __init__(self, *oks: bool) -> None:
+        self.oks = list(oks)
+        self.calls: list[tuple[int, int]] = []
+
+    def ensure_all(self, resolution: tuple[int, int], variant: str = "",
+                   mask_variant: str = "") -> EnsureDataResult:
+        ok = self.oks[min(len(self.calls), len(self.oks) - 1)]
+        self.calls.append(resolution)
+        return EnsureDataResult(resolution=resolution, themes_ok=ok,
+                                web_ok=True, masks_ok=ok)
+
+
+def _errors(bus: EventBus) -> list[ErrorOccurred]:
+    seen: list[ErrorOccurred] = []
+    bus.subscribe(ErrorOccurred, seen.append)
+    return seen
+
+
+def test_a_failed_install_is_tried_again_on_the_next_submit() -> None:
+    """The claim used to outlive a FAILED install, so nothing ever retried it.
+
+    The App outlives every window, so reopening the gui did not help either:
+    empty grids until ``trcc kill`` or a replug.  A success still installs
+    once (the test above).
+    MUTATION CHECK: drop ``release`` in ``SyncDataInstallRunner.submit`` →
+    this fails.
+    """
+    bus = EventBus()
+    service = _Outcomes(False, True)
+    runner = SyncDataInstallRunner(service, bus)  # type: ignore[arg-type]
+
+    runner.submit((320, 240))
+    runner.submit((320, 240))
+    runner.submit((320, 240))
+
+    assert service.calls == [(320, 240), (320, 240)]
+
+
+def test_a_failed_install_reaches_the_user_not_only_the_log() -> None:
+    """#309: the grids sat empty and nothing on screen said why."""
+    bus = EventBus()
+    errors = _errors(bus)
+    runner = SyncDataInstallRunner(_Outcomes(False), bus)  # type: ignore[arg-type]
+
+    runner.submit((320, 240))
+
+    assert [(e.kind, e.message) for e in errors] == [(
+        "download",
+        "Could not download the themes, masks for the 320x240 panel. "
+        "Check the network connection. "
+        "It will be tried again when the panel reconnects.",
+    )]
+
+
+def test_the_app_retries_a_failed_install_by_itself() -> None:
+    """An App autostarted before the network is up recovers without a replug.
+
+    MUTATION CHECK: never start the retry timer → the second install never
+    comes and this fails.
+    """
+    bus = EventBus()
+    service = _Outcomes(False, True)
+    seen, arrived = _listen(bus)
+    errors = _errors(bus)
+    runner = ThreadDataInstallRunner(
+        service, bus, retry_delays_s=(0.01,),  # type: ignore[arg-type]
+    )
+    try:
+        runner.submit((320, 240))
+        deadline = time.monotonic() + _HANG_S
+        while len(seen) < 2 and time.monotonic() < deadline:
+            arrived.wait(0.05)
+            arrived.clear()
+
+        assert [e.ok for e in seen] == [False, True]
+        assert service.calls == [(320, 240), (320, 240)]
+        assert errors[0].message.endswith("Retrying in 0 s.")
+    finally:
+        runner.shutdown()
+
+
+def test_the_retries_stop_after_the_last_delay() -> None:
+    """Three tries, not a loop that hammers GitHub for the App's lifetime."""
+    bus = EventBus()
+    service = _Outcomes(False)
+    seen, arrived = _listen(bus)
+    errors = _errors(bus)
+    runner = ThreadDataInstallRunner(
+        service, bus, retry_delays_s=(0.01,),  # type: ignore[arg-type]
+    )
+    try:
+        runner.submit((320, 240))
+        deadline = time.monotonic() + _HANG_S
+        while len(seen) < 2 and time.monotonic() < deadline:
+            arrived.wait(0.05)
+            arrived.clear()
+        time.sleep(0.3)   # a third try would land well inside this
+
+        assert len(service.calls) == 2
+        assert errors[-1].message.endswith(
+            "It will be tried again when the panel reconnects.")
+    finally:
+        runner.shutdown()
+
+
+def test_shutdown_cancels_a_pending_retry() -> None:
+    bus = EventBus()
+    service = _Outcomes(False)
+    _, arrived = _listen(bus)
+    runner = ThreadDataInstallRunner(
+        service, bus, retry_delays_s=(30.0,),  # type: ignore[arg-type]
+    )
+    runner.submit((320, 240))
+    assert arrived.wait(timeout=_HANG_S)
+
+    runner.shutdown()
+
+    assert not any(t.name == "trcc-data-install-retry" and t.is_alive()
+                   for t in threading.enumerate())
 
 # ── the invariant the spawn guard actually protects ──────────────────────
 
