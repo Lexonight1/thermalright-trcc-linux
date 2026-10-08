@@ -459,9 +459,9 @@ def test_an_offscreen_qt_never_supplies_a_capture(monkeypatch) -> None:
     MEASURED against ImageMagick ground truth on the same rectangle: offscreen
     scored a mean absolute error of 68.9, native xcb scored 0.0.
 
-    Reachable from every non-GUI face — ``_ensure_qt_app`` forces
-    ``QT_QPA_PLATFORM=offscreen`` for headless rendering without asking
-    whether a display exists.
+    Reachable from every non-GUI face — ``_ensure_qt_app`` builds the
+    headless app on the offscreen platform (``-platform offscreen``) without
+    asking whether a display exists.
     """
     cap = QtNativeCapture()
 

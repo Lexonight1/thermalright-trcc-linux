@@ -169,3 +169,58 @@ def test_the_canvas_dpi_is_pinned_whatever_the_screen_says(
     """
     for run in rendered:
         assert run["surface_logical_dpi"] == 96, run
+
+
+_DESKTOP_HARNESS = """
+import json, logging, os, re, sys
+logging.disable(logging.CRITICAL)
+sys.path.insert(0, %(src)r)
+from trcc.adapters.render.qt import QtRenderer
+from PySide6.QtGui import QGuiApplication
+QtRenderer()
+maps = open("/proc/self/maps").read() if os.path.exists("/proc/self/maps") else ""
+print(json.dumps({
+    "platform": QGuiApplication.platformName(),
+    "theme_plugin": sorted(set(re.findall(r"libq(gtk3|xdgdesktopportal)\\.so", maps))),
+    "env_platform": os.environ.get("QT_QPA_PLATFORM"),
+}))
+"""
+
+
+def test_the_headless_renderer_ignores_the_desktops_qt_settings() -> None:
+    """A daemon or CLI inherits the desktop's Qt settings; the renderer must not.
+
+    ``_ensure_qt_app`` used to ``setdefault`` ``QT_QPA_PLATFORM``, so an
+    inherited ``wayland`` WON: with no compositor to reach (a service, a
+    session that ended) the process dumped core on its first render, and
+    with one it bound itself to that session (#311).  An inherited platform
+    theme loaded as well -- gtk3 is +19 MB, a KDE theme pulls in the Quick and
+    Wayland libraries #299 measured.
+
+    The theme half is only meaningful where PySide6's gtk3 plugin can load
+    (this dev box); the platform half holds anywhere.
+    MUTATION CHECK: put back ``QGuiApplication(sys.argv)`` with the env
+    ``setdefault`` → this fails (core dump).
+    """
+    paths = [str(_REPO / "src")]
+    if site.USER_SITE:
+        paths.append(site.USER_SITE)
+    env = {
+        **os.environ,
+        "QT_QPA_PLATFORM": "wayland",
+        "WAYLAND_DISPLAY": "trcc-test-no-such-display",
+        "QT_QPA_PLATFORMTHEME": "gtk3",
+        "PYTHONPATH": os.pathsep.join(paths),
+    }
+    proc = subprocess.run(
+        [sys.executable, "-c", _DESKTOP_HARNESS % {"src": str(_REPO / "src")}],
+        capture_output=True, text=True, env=env, timeout=120, check=False,
+    )
+    assert proc.returncode == 0, (
+        f"the headless renderer died on the inherited desktop settings "
+        f"(rc={proc.returncode}):\n{proc.stderr[-2000:]}")
+    seen = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert seen == {"platform": "offscreen", "theme_plugin": [],
+                    "env_platform": "wayland"}, (
+        "offscreen, no desktop theme, and the inherited env left as it was "
+        "for child processes")

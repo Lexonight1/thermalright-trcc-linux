@@ -78,11 +78,21 @@ def _ensure_qt_app() -> None:
     QApplication is already running (GUI mode).
     """
     if QGuiApplication.instance() is None:
-        # Offscreen platform plugin = no window system needed
-        import os
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        log.info("QtRenderer: bootstrapping offscreen QGuiApplication (headless mode)")
-        QGuiApplication(sys.argv)
+        # Offscreen, and no desktop platform theme, on Qt's own command line
+        # — which beats the environment for this one app and changes nothing
+        # a child process inherits.  It used to ``setdefault`` the env var,
+        # so an inherited ``QT_QPA_PLATFORM=wayland`` WON: a daemon or CLI
+        # with no reachable compositor dumped core on its first render, and
+        # one started from a Wayland gui bound itself to that session (#311).
+        # An inherited platform theme loaded too: gtk3 alone is +19 MB, and
+        # a KDE one pulls in the Quick and Wayland libraries #299 measured.
+        # Measured on PySide6 6.11: both inherited, this gives offscreen,
+        # 49 MB, Core/Gui/DBus only.
+        argv = [sys.argv[0] if sys.argv else "trcc",
+                "-platform", "offscreen", "-platformtheme", "none"]
+        log.info("QtRenderer: bootstrapping offscreen QGuiApplication "
+                 "(headless mode) argv=%s", argv[1:])
+        QGuiApplication(argv)
     else:
         log.debug("QtRenderer: reusing existing QGuiApplication")
     _register_bundled_fonts()

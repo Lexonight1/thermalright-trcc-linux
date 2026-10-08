@@ -193,11 +193,9 @@ class QtNativeCapture(ScreenCapture):
         rectangle: offscreen scores a mean absolute error of 68.9, native
         xcb scores 0.0 -- pixel-identical.
 
-        Reachable from every non-GUI face: ``_ensure_qt_app`` forces
-        ``QT_QPA_PLATFORM=offscreen`` for headless rendering without asking
-        whether a display exists, and ``ui/qapp`` pops that variable back
-        off for windowed launches -- the same collision seen from the other
-        end.
+        Reachable from every non-GUI face: ``_ensure_qt_app`` builds the
+        headless app on the offscreen platform (``-platform offscreen``)
+        without asking whether a display exists.
         """
         app = QGuiApplication.instance()
         if not isinstance(app, QGuiApplication):

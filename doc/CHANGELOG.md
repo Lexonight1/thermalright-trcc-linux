@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **The background App and CLI no longer pick up the desktop's Qt settings
+  (#299, #311).** The headless renderer let an inherited
+  `QT_QPA_PLATFORM=wayland` win, so a service or a session that had ended
+  crashed on the first render, and an App started from a Wayland window tied
+  itself to that session. It also loaded the desktop's Qt theme plugin, which
+  for KDE brings in the Quick and Wayland libraries reported in #299 (+19 MB
+  for gtk3 alone). It now always renders offscreen with no theme plugin.
+
 - **A theme download that fails is tried again, and you are told (#309).**
   When the first download of a panel's themes, cloud backgrounds or masks
   failed (most often: TRCC started at login before the network was up), it
