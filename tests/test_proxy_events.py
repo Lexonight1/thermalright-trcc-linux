@@ -47,11 +47,28 @@ def _wait(seen: list, n: int = 1, timeout: float = 5.0) -> None:
         time.sleep(0.02)
 
 
+def _until(condition, timeout: float = 5.0) -> None:
+    """Poll *condition* until true; a fixed sleep is a guess under load."""
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert condition(), "timed out waiting"
+
+
+def _stream_up(proxy) -> None:
+    """Wait until the daemon has registered this client's subscription.
+
+    ``_stream_open`` is set only after the subscribe ack, and the server
+    registers before it acks, so an event published after this is delivered.
+    """
+    _until(lambda: proxy._stream_open)
+
+
 def test_a_proxy_observes_events_published_daemon_side(daemon) -> None:
     app, _srv, proxy = daemon
     seen: list = []
     proxy.events.subscribe(DeviceConnected, seen.append)
-    time.sleep(0.4)                      # reader attaches
+    _stream_up(proxy)
 
     app.events.publish(DeviceConnected(key="0402:3922", resolution=(320, 320)))
     _wait(seen)
@@ -65,7 +82,7 @@ def test_events_arrive_as_typed_instances_not_dicts(daemon) -> None:
     app, _srv, proxy = daemon
     seen: list = []
     proxy.events.subscribe(ThemeLoaded, seen.append)
-    time.sleep(0.4)
+    _stream_up(proxy)
 
     app.events.publish(ThemeLoaded(key="k", theme_name="Theme3"))
     _wait(seen)
@@ -81,7 +98,7 @@ def test_type_routing_is_preserved_across_the_wire(daemon) -> None:
     connects: list = []
     proxy.events.subscribe(ThemeLoaded, themes.append)
     proxy.events.subscribe(DeviceConnected, connects.append)
-    time.sleep(0.4)
+    _stream_up(proxy)
 
     app.events.publish(ThemeLoaded(key="k", theme_name="A"))
     _wait(themes)
@@ -98,15 +115,14 @@ def test_the_stream_is_lazy(daemon) -> None:
     assert not srv._subscribers, "the stream opened without anyone asking"
 
     proxy.events
-    time.sleep(0.4)
-    assert srv._subscribers, "accessing .events did not open the stream"
+    _until(lambda: srv._subscribers)
 
 
 def test_events_is_the_same_bus_every_time(daemon) -> None:
     """Two panels subscribing must land on ONE bus, not two streams."""
     _app, srv, proxy = daemon
     first, second = proxy.events, proxy.events
-    time.sleep(0.4)
+    _stream_up(proxy)
     assert first is second
     assert len(srv._subscribers) == 1
 
@@ -163,7 +179,7 @@ def test_dispatch_still_works_alongside_a_live_stream(daemon) -> None:
 
     _app, _srv, proxy = daemon
     proxy.events.subscribe(DeviceConnected, lambda _e: None)
-    time.sleep(0.4)
+    _stream_up(proxy)
 
     result = proxy.dispatch(ListLanguages())
     assert result.ok and result.languages
@@ -242,8 +258,7 @@ def test_close_stops_this_clients_reader_thread(daemon) -> None:
     """Otherwise every window that opens and closes leaks a thread and an fd."""
     _app, _srv, proxy = daemon
     proxy.events.subscribe(DeviceConnected, lambda _e: None)
-    time.sleep(0.4)
-    assert proxy._stream_open
+    _stream_up(proxy)
     reader = proxy._reader
     assert reader is not None and reader.is_alive()
 
@@ -311,7 +326,7 @@ def test_a_sent_frame_crosses_the_socket_as_a_picture(
     try:
         seen: list = []
         proxy.events.subscribe(FrameSent, seen.append)
-        time.sleep(0.4)
+        _stream_up(proxy)
         frame = QImage(320, 320, QImage.Format.Format_RGB888)
         frame.fill(QColor(0, 64, 128))
 
