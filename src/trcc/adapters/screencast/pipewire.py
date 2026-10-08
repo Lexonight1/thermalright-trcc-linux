@@ -167,8 +167,10 @@ class PipeWireScreenCast:
         self._glib_loop = None
         self._glib_thread = None
         self._frame_lock = threading.Lock()
-        #: What the portal said it is streaming, from the Start response.
+        #: What the portal said it is streaming, from the Start response --
+        #: in the compositor's LOGICAL coordinates, not buffer pixels.
         self._stream_size: tuple[int, int] | None = None
+        self._stream_position: tuple[int, int] | None = None
         self._latest_frame = None  # (width, height, bytes_rgb)
         self._running = False
         self._session_ready = threading.Event()
@@ -184,6 +186,15 @@ class PipeWireScreenCast:
     def is_running(self) -> bool:
         log.debug("is_running")
         return self._running
+
+    @property
+    def granted(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        """The shared area's logical ``(position, size)``, or None if unreported."""
+        frame_log.debug("granted: position=%s size=%s",
+                        self._stream_position, self._stream_size)
+        if self._stream_size is None:
+            return None
+        return self._stream_position or (0, 0), self._stream_size
 
     def start(self, timeout: float = 30.0) -> bool:
         """Start a portal screen capture session.
@@ -465,10 +476,15 @@ class PipeWireScreenCast:
         size = props.get("size")
         self._stream_size = ((int(size[0]), int(size[1]))
                              if size is not None else None)
-        log.info("PipeWire node ID: %d — the portal granted %s (source_type=%s)",
+        position = props.get("position")
+        self._stream_position = ((int(position[0]), int(position[1]))
+                                 if position is not None else None)
+        log.info("PipeWire node ID: %d — the portal granted %s at %s "
+                 "(source_type=%s)",
                  self._node_id,
                  f"{self._stream_size[0]}x{self._stream_size[1]}"
                  if self._stream_size else "an unreported size",
+                 self._stream_position or "an unreported position",
                  props.get("source_type", "?"))
 
         # Get PipeWire file descriptor
@@ -656,6 +672,39 @@ def capture_pipeline(source: str) -> str:
     )
 
 
+def map_region_to_buffer(
+    x: int, y: int, width: int, height: int,
+    granted: tuple[tuple[int, int], tuple[int, int]] | None,
+    buffer_size: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """A region in global logical desktop coordinates → stream-buffer pixels.
+
+    Every other capture backend takes the region as global logical
+    coordinates (Qt's root-window grab, ``grim -g``), and so does the picker.
+    The portal stream is the odd one: its ``position`` and ``size`` are
+    logical ("compositor coordinate space", the ScreenCast portal spec), but
+    its BUFFER is in device pixels -- mutter makes it ``logical x scale``
+    (meta-stream-source-monitor.c), KWin the output's ``pixelSize()``.  The
+    region was cropped straight out of the buffer, so at 200% scale it took
+    a quarter-size patch from the wrong place, silently.
+
+    ``granted`` is the stream's logical ``(position, size)``; without one the
+    region is used as it is, which is what happened before.
+    """
+    if granted is None:
+        frame_log.debug("map_region_to_buffer: no granted geometry — 1:1")
+        return x, y, width, height
+    (px, py), (lw, lh) = granted
+    bw, bh = buffer_size
+    sx, sy = bw / lw if lw else 1.0, bh / lh if lh else 1.0
+    mapped = (round((x - px) * sx), round((y - py) * sy),
+              round(width * sx), round(height * sy))
+    frame_log.debug("map_region_to_buffer: (%d,%d) %dx%d in %dx%d at (%d,%d) "
+                    "-> %s in a %dx%d buffer", x, y, width, height, lw, lh,
+                    px, py, mapped, bw, bh)
+    return mapped
+
+
 def crop_rgb24(
     data: bytes, src_w: int, src_h: int,
     x: int, y: int, width: int, height: int,
@@ -769,6 +818,9 @@ class PipeWireScreenCapture(ScreenCapture):
             raise CaptureNotReady(
                 "the portal session is up but has delivered no frame yet")
         src_w, src_h, data = latest
+        x, y, width, height = map_region_to_buffer(
+            x, y, width, height, getattr(session, "granted", None),
+            (src_w, src_h))
         self._warn_if_outside(src_w, src_h, x, y, width, height)
         return crop_rgb24(data, src_w, src_h, x, y, width, height)
 

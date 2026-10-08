@@ -340,8 +340,15 @@ class RegionSelectOverlay(DragSelectOverlay):
         self.cancelled.emit()
 
     def _confirm(self, sel: QRect) -> None:
-        log.info("RegionSelectOverlay._confirm: region %dx%d at (%d, %d)",
-                 sel.width(), sel.height(), sel.x(), sel.y())
+        # The overlay covers the PRIMARY screen and its coordinates start at
+        # that screen's corner; every capture backend takes global desktop
+        # coordinates, so a primary not at (0, 0) cast the wrong area.
+        screen = QApplication.primaryScreen()
+        origin = screen.geometry().topLeft() if screen is not None else QPoint()
+        log.info("RegionSelectOverlay._confirm: region %dx%d at (%d, %d) on a "
+                 "screen at (%d, %d)", sel.width(), sel.height(), sel.x(),
+                 sel.y(), origin.x(), origin.y())
         self.hide()
-        self.region_selected.emit(sel.x(), sel.y(), sel.width(), sel.height())
+        self.region_selected.emit(sel.x() + origin.x(), sel.y() + origin.y(),
+                                  sel.width(), sel.height())
         self.deleteLater()

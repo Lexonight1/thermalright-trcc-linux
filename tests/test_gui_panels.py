@@ -1946,6 +1946,34 @@ def test_region_overlay_constructs(qapp: object) -> None:
     assert hasattr(overlay, "cancelled")
 
 
+def test_a_picked_region_is_in_global_desktop_coordinates(
+    qapp: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The overlay covers the primary screen and counts from ITS corner.
+
+    Every capture backend takes global desktop coordinates, so a primary
+    screen right of another monitor cast the wrong area.
+    MUTATION CHECK: emit ``sel.x()`` without the origin → this fails.
+    """
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QApplication
+
+    from trcc.ui.screen_overlay import RegionSelectOverlay
+
+    class _Screen:
+        def geometry(self) -> QRect:
+            return QRect(1920, 120, 2560, 1440)
+
+    monkeypatch.setattr(QApplication, "primaryScreen", staticmethod(_Screen))
+    overlay = RegionSelectOverlay()
+    got: list[tuple[int, int, int, int]] = []
+    overlay.region_selected.connect(lambda *r: got.append(r))
+
+    overlay._confirm(QRect(10, 20, 300, 200))
+
+    assert got == [(1930, 140, 300, 200)]
+
+
 # =========================================================================
 # Drag-select overlays — ONE interaction, proven on BOTH skins
 #

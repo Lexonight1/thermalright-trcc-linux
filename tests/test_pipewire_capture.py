@@ -431,6 +431,73 @@ def test_the_granted_stream_size_is_logged(
     assert session._stream_size == (1895, 1008)
 
 
+
+# ── logical region → buffer pixels (HiDPI, monitor origin) ───────────
+
+
+@pytest.mark.parametrize(("region", "granted", "buffer", "expected"), [
+    # 200%: mutter's buffer is logical x 2 (meta-stream-source-monitor.c).
+    ((100, 50, 640, 360), ((0, 0), (1920, 1080)), (3840, 2160),
+     (200, 100, 1280, 720)),
+    # 125%, fractional: the whole logical screen is the whole buffer.
+    ((0, 0, 2048, 1152), ((0, 0), (2048, 1152)), (2560, 1440),
+     (0, 0, 2560, 1440)),
+    # A second monitor at x=1920: its own stream starts at its own corner.
+    ((2020, 10, 100, 100), ((1920, 0), (1280, 1024)), (1280, 1024),
+     (100, 10, 100, 100)),
+    # Nothing reported: used as given, the behaviour before.
+    ((5, 6, 7, 8), None, (1920, 1080), (5, 6, 7, 8)),
+], ids=["200pct", "125pct", "second-monitor", "unreported"])
+def test_a_logical_region_maps_onto_the_stream_buffer(
+    region: tuple[int, int, int, int],
+    granted: tuple[tuple[int, int], tuple[int, int]] | None,
+    buffer: tuple[int, int], expected: tuple[int, int, int, int],
+) -> None:
+    """The portal's position/size are logical; its buffer is device pixels.
+
+    MUTATION CHECK: return the region unmapped → the scaled and the
+    second-monitor cases fail.
+    """
+    from trcc.adapters.screencast.pipewire import map_region_to_buffer
+
+    assert map_region_to_buffer(*region, granted, buffer) == expected
+
+
+class _ScaledSession(_Session):
+    """A 2x2 logical screen streamed as a 4x4 buffer (200%)."""
+
+    granted = ((0, 0), (2, 2))
+
+
+def test_a_scaled_stream_crops_the_whole_picked_area(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """At 200% the old crop took a quarter of the picked area.
+
+    MUTATION CHECK: drop the ``map_region_to_buffer`` call in
+    ``grab_region`` → a 2x2 frame comes back and this fails.
+    """
+    monkeypatch.setattr(pw, "PIPEWIRE_AVAILABLE", True)
+    frame = (4, 4, bytes(range(48)))
+
+    got = _capture(_ScaledSession(running=True, frame=frame),
+                   _Fallback()).grab_region(0, 0, 2, 2)
+
+    assert (got.width, got.height, got.data) == (4, 4, bytes(range(48)))
+
+
+def test_the_granted_position_is_kept() -> None:
+    from trcc.adapters.screencast.pipewire import PipeWireScreenCast
+
+    session = PipeWireScreenCast()          # constructing it touches no portal
+    results = {"streams": [(77, {"size": (1280, 1024), "position": (1920, 0)})]}
+    try:
+        PipeWireScreenCast._on_start_response(session, 0, results)
+    except Exception:
+        pass                                # the pipeline half needs a portal
+
+    assert session.granted == ((1920, 0), (1280, 1024))
+
 # ── the restore token ─────────────────────────────────────────────────
 
 

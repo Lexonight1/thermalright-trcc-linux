@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **A screencast region is cast correctly on a scaled Wayland screen, and on
+  a primary monitor that is not the leftmost.** On GNOME or KDE at 125% or
+  200%, the panel showed the wrong part of the screen, smaller than the area
+  you picked; and a picked region was counted from the primary monitor's
+  corner, not the desktop's. Not yet checked on a real scaled session.
+
 - **The LED carousel interval matches the Windows app.** Its number now
   means what the Windows app's does (6 animation ticks each, so "2" is 1.8
   seconds), where the classic window converted it about 10% differently. The
