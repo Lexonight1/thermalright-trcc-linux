@@ -118,3 +118,17 @@ def test_a_gone_panel_is_marked_lost_by_the_recovery_policy(transport) -> None:
         assert device._send_with_recovery(write) is False
     with pytest.raises(DeviceDisconnectedError):
         device._send_with_recovery(write)
+
+
+def test_the_panels_normal_poll_answer_is_not_a_warning(
+        transport, caplog: pytest.LogCaptureFixture) -> None:
+    """host=7 with status GOOD is how the panel answers EVERY poll, so a
+    warning for it printed two WARNING lines on every connect, at the default
+    verbosity -- measured on the dev box's own 0402:3922, 2026-10-09.
+    MUTATION CHECK: route this case through ``_sg_failed`` again -> fails."""
+    transport.outcome = {"status": 0, "host_status": _DID_ERROR, "info": 1,
+                         "resid": 6}
+    with caplog.at_level("INFO", logger="trcc.adapters.system.linux"):
+        assert transport.read_cdb(b"\x00" * 16, 8) == b"\x00\x00"
+    assert [r.getMessage() for r in caplog.records if r.levelname == "WARNING"] == []
+    assert any("host=7" in r.getMessage() for r in caplog.records)

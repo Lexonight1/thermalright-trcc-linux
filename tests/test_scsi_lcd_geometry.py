@@ -224,3 +224,20 @@ def test_profile_property_is_none_pre_handshake(
     """Before connect(), profile is None — matches Device ABC default."""
     device = _make_scsi(fake_scsi)
     assert device.profile is None
+
+
+def test_a_poll_with_no_identity_byte_warns_about_its_guess(
+    fake_scsi: FakeScsiTransport, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An empty poll reply falls back to FBL 100 = 320x320; a 240x320 or
+    240x240 panel is then driven at the wrong size.  v9.10.6 did that to every
+    panel whose reply was dropped, with only a DEBUG line -- the report could
+    not show it.  USBLCD.exe classifies no panel from an empty byte."""
+    device = _make_scsi(fake_scsi)            # empty read_script: b"" replies
+
+    with caplog.at_level("WARNING"):
+        device.connect()
+
+    assert device.profile is not None and device.profile.resolution == (320, 320)
+    assert any("no identity byte" in r.getMessage() for r in caplog.records
+               if r.levelname == "WARNING")

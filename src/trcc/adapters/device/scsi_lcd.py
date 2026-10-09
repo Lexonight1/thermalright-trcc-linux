@@ -126,6 +126,14 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
 
         self._trace_reply(response)
         fbl = response[0] if response else (self.info.fbl or 100)
+        if not response:
+            # USBLCD.exe classifies no panel from an empty byte; we must draw
+            # something, so say what was assumed -- a 240x320 or 240x240 panel
+            # is driven at the wrong size by this guess (v9.10.6, #301).
+            log.warning("ScsiLcd %s: the poll returned no identity byte — "
+                        "assuming FBL %d; if the panel shows the picture at "
+                        "the wrong size, attach `trcc report`",
+                        self.info.key, fbl)
         log.debug("SCSI poll byte[0] = %d (FBL)", fbl)
 
         # Step 2: Init (data-out, 0xE100 zeros)

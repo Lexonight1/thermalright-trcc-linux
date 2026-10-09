@@ -395,16 +395,20 @@ class LinuxScsiTransport(ScsiTransport):
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
         actual = length - hdr.resid
+        # SCSI status GOOD with a host error is how the panel answers its
+        # handshake poll: host=7 (DID_ERROR) every time, with the reply
+        # delivered.  Dropping it read every 0402:3922 panel as FBL 100,
+        # "Frozen Warframe Pro" (#301, since #254's 3e3909e2).  It is the
+        # panel's NORMAL answer, so INFO: as a warning it printed two lines on
+        # every connect.  DID_NO_CONNECT still goes to ``_sg_failed`` (gone).
+        if (hdr.info & _SG_INFO_OK_MASK and hdr.status == 0
+                and hdr.host_status != _DID_NO_CONNECT
+                and 0 < actual <= length):
+            log.info("read_cdb on %s: %d byte(s) with SCSI status GOOD and "
+                     "host=%d — the panel's usual poll answer, kept",
+                     self._path, actual, hdr.host_status)
+            return bytes(data_buf[:actual])
         if _sg_failed(hdr, "read_cdb", self._path):
-            # SCSI status GOOD with a host error is how the panel answers its
-            # handshake poll: host=7 (DID_ERROR) every time, with the reply
-            # delivered.  Dropping it read every 0402:3922 panel as FBL 100,
-            # "Frozen Warframe Pro" (#301, since #254's 3e3909e2).  Only
-            # ``status`` was tested before that commit, and in legacy.
-            if hdr.status == 0 and 0 < actual <= length:
-                log.warning("read_cdb on %s: keeping the %d byte(s) that "
-                            "arrived with SCSI status GOOD", self._path, actual)
-                return bytes(data_buf[:actual])
             return b""
         return bytes(data_buf[:actual])
 
