@@ -1016,7 +1016,10 @@ class SingleInstance:
     _RAISE_MESSAGE = b'{"raise": true}\n'
     _CONNECT_TIMEOUT_S = 1.0
 
-    def __new__(cls, name: str) -> SingleInstance | None:  # type: ignore[misc]
+    def __new__(cls, name: str, *,  # type: ignore[misc]
+                raise_peer: bool = True) -> SingleInstance | None:
+        """*raise_peer* False: a peer is left alone, for a launch that means to
+        stay hidden (``--resume``: autostart, session restore)."""
         path = _instance_socket_path(name)
         if not hasattr(socket, "AF_UNIX"):
             # Legacy Windows fallback (build < 17063 / Windows 10 pre-1803).
@@ -1041,6 +1044,10 @@ class SingleInstance:
 
         # ── Peer alive? ──
         if _peer_alive(path, cls._CONNECT_TIMEOUT_S):
+            if not raise_peer:
+                log.info("SingleInstance(%r): peer alive — a hidden launch "
+                         "leaves its window as it is", name)
+                return None
             try:
                 _send_raise(path, cls._RAISE_MESSAGE, cls._CONNECT_TIMEOUT_S)
                 log.info("SingleInstance(%r): peer alive, raise sent", name)
@@ -1063,10 +1070,10 @@ class SingleInstance:
         instance._bind(name, path)
         return instance
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, raise_peer: bool = True) -> None:
         # __new__ does all the work; __init__ runs again on re-entry but
         # binding already happened.  Keep this idempotent.
-        log.debug("__init__: name=%s", name)
+        log.debug("__init__: name=%s raise_peer=%s", name, raise_peer)
         if not hasattr(self, "_name"):
             self._name = name
 
@@ -1143,7 +1150,11 @@ class SingleInstance:
                     continue
                 if isinstance(payload, dict) and payload.get("raise"):
                     cb = self.on_raise
-                    if cb is not None:
+                    if cb is None:
+                        # The window is still starting: nothing to raise yet.
+                        log.info("SingleInstance: raise request before the "
+                                 "window exists — dropped")
+                    else:
                         try:
                             cb()
                         except Exception:

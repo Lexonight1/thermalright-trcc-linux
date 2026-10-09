@@ -76,6 +76,39 @@ def test_a_second_launch_raises_the_running_window() -> None:
         inst.close()
 
 
+def test_a_hidden_launch_leaves_the_running_window_alone() -> None:
+    """``trcc gui --resume`` is autostart and session restore: a second one
+    must exit quietly, not pop the window the first one is keeping hidden.
+    MUTATION CHECK: send the raise whatever *raise_peer* says -> fails.
+    """
+    _needs_af_unix()
+    raised = threading.Event()
+    inst = _instance("gate-quiet")
+    inst.on_raise = raised.set
+    try:
+        assert SingleInstance("gate-quiet", raise_peer=False) is None
+        assert not raised.wait(0.5), "a hidden launch raised the window"
+        assert SingleInstance("gate-quiet") is None
+        assert raised.wait(3.0), "an ordinary second launch must still raise"
+    finally:
+        inst.close()
+
+
+def test_gui_resume_against_a_running_gui_raises_nothing() -> None:
+    """The UI half: ``GuiUI(start_hidden=True)`` asks for no raise."""
+    _needs_af_unix()
+    from trcc.ui._uis import GuiUI
+
+    raised = threading.Event()
+    inst = _instance("gui")
+    inst.on_raise = raised.set
+    try:
+        assert GuiUI(start_hidden=True).preflight() == 0
+        assert not raised.wait(0.5), "--resume popped the running window"
+    finally:
+        inst.close()
+
+
 def test_malformed_traffic_does_not_deafen_the_loop() -> None:
     """A bad peer must not cost every LATER launch its window-raise.
 

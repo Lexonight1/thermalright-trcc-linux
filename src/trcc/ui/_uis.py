@@ -284,9 +284,12 @@ class GuiUI(_QtUI, key="gui"):
             log.info("GuiUI.preflight: single-instance disabled (dev mock)")
             return None
         from ..ipc import SingleInstance
-        self._instance = SingleInstance("gui")
+        # A hidden launch (--resume) leaves a running window as it is.
+        self._instance = SingleInstance("gui", raise_peer=not self.start_hidden)
         if self._instance is None:
-            log.info("GuiUI.preflight: peer GUI raised — exiting cleanly")
+            log.info("GuiUI.preflight: a GUI is already running (%s) — "
+                     "exiting cleanly",
+                     "left hidden" if self.start_hidden else "raised")
             return 0
         return None
 
