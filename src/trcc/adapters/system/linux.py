@@ -664,7 +664,7 @@ class LinuxOS(BaseOS, key="linux"):
     def setup(self, dry_run: bool = False) -> int:
         """Run one-time Linux setup.
 
-        Four things happen here and none can silently no-op:
+        Five things happen here and none can silently no-op:
           1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
              every device in the registry + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
@@ -678,6 +678,9 @@ class LinuxOS(BaseOS, key="linux"):
              it the app installs, autostarts, and cannot be launched from
              the menu (#231).  Per-user, no root, skipped when a package
              already provides it.
+          5. Old polkit grants — remove the rule and policy older releases
+             wrote, which let any program run dmidecode/smartctl as root.
+             Root (re-execs via sudo); only files that name our actions.
 
         ``dry_run=True`` prints what would be done and returns 0
         without touching the system.
@@ -692,6 +695,7 @@ class LinuxOS(BaseOS, key="linux"):
             install_selinux_policy(dry_run=True)
             log.info("would install the desktop entry: %s",
                      XdgDesktopEntry().path)
+            retire_legacy_polkit(dry_run=True)
             return 0
 
         rc_udev = install_udev_rules(dry_run=False)
@@ -709,7 +713,8 @@ class LinuxOS(BaseOS, key="linux"):
         # Desktop integration is a convenience, never a reason to report
         # failure — the device still works from the CLI without a menu icon.
         XdgDesktopEntry().install()
-        return rc_udev or rc_selinux
+        rc_polkit = retire_legacy_polkit(dry_run=False)
+        return rc_udev or rc_selinux or rc_polkit
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
@@ -1010,29 +1015,111 @@ _DMI_MEMORY_FIELDS: frozenset[str] = frozenset({
 })
 
 _POLKIT_POLICY = '/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy'
+# Written by ``setup-polkit`` from v5.3.3 to v9.6.5: polkit.Result.YES for
+# dmidecode/smartctl in ANY session, SSH included.  Nothing owns it.
+_LEGACY_POLKIT_RULE = '/etc/polkit-1/rules.d/50-trcc.rules'
+_POLKIT_ACTION_PREFIX = 'com.github.lexonight1.trcc.'
 
-# Privileged MCHBAR reader (installed by the distro packages).  Intel family-6
-# Alder Lake (0x97/0x9A) + Raptor Lake (0xB7/0xBA/0xBF) share the register map.
+# The privileged helpers the distro packages install, each argv-locked: the
+# policy names these and nothing else.  Intel family-6 Alder Lake (0x97/0x9A)
+# + Raptor Lake (0xB7/0xBA/0xBF) share the MCHBAR register map.
 _IMC_HELPER = '/usr/bin/trcc-imc'
+_DMI_HELPER = '/usr/bin/trcc-dmi'
 _ADL_RPL_MODELS = frozenset({0x97, 0x9A, 0xB7, 0xBA, 0xBF})
 
 
-def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
-    """Build a command, wrapping in pkexec when polkit policy is installed."""
-    log.debug("_privileged_cmd: binary=%s args=%s", binary, args)
+def _pkexec_helper(helper: str) -> list[str] | None:
+    """``pkexec <helper>`` when a packaged helper + policy can run it, else None.
+
+    Only ever one of our argv-locked helpers, never a general-purpose program:
+    pkexec passes arguments through unchecked, so the policy grants a program,
+    not a command line.  None means no silent privilege path exists here (a
+    pip install has no helper), so nothing is spawned and nothing prompts.
+    """
     import shutil
-    if hasattr(os, 'geteuid') and os.geteuid() == 0:
-        return [binary, *args]
-    found = shutil.which(binary)
-    if found and Path(_POLKIT_POLICY).is_file() and shutil.which('pkexec'):
-        # The RESOLVED path: pkexec matches the policy's exec.path by exact
-        # string, and only newer pkexec resolves symlinks itself.  Resolving
-        # here means old and new pkexec both see the canonical path, which is
-        # what the policy declares (/usr/bin/ and /usr/sbin/ -- #312).
-        resolved = str(Path(found).resolve())
-        log.debug("_privileged_cmd: pkexec %s (found %s)", resolved, found)
-        return ['pkexec', resolved, *args]
-    return [binary, *args]
+    if not Path(helper).is_file():
+        log.debug("_pkexec_helper: %s not installed", helper)
+        return None
+    if not (Path(_POLKIT_POLICY).is_file() and shutil.which('pkexec')):
+        log.info("_pkexec_helper: %s present but no polkit policy/pkexec", helper)
+        return None
+    log.debug("_pkexec_helper: pkexec %s", helper)
+    return ['pkexec', helper]
+
+
+def _legacy_polkit_grants() -> list[Path]:
+    """The grants an older TRCC left on this host, by content, never by name.
+
+    The old rule only if it names our actions (the file name alone could be an
+    admin's own); the policy only if it hands pkexec a program that is not one
+    of our ``/usr/bin/trcc-*`` helpers.  Raises ``PermissionError`` when the
+    rules directory is unreadable (root-only on Fedora), so the caller can ask.
+    """
+    import xml.etree.ElementTree as ET
+    stale: list[Path] = []
+    rule = Path(_LEGACY_POLKIT_RULE)
+    try:
+        if _POLKIT_ACTION_PREFIX in rule.read_text(encoding='utf-8'):
+            stale.append(rule)
+    except FileNotFoundError:
+        pass
+    policy = Path(_POLKIT_POLICY)
+    try:
+        programs = {a.text or '' for a in ET.parse(policy).getroot().iter('annotate')
+                    if a.get('key') == 'org.freedesktop.policykit.exec.path'}
+    except FileNotFoundError:
+        programs = set()
+    except ET.ParseError as e:
+        log.warning("_legacy_polkit_grants: %s is not valid XML (%s) — left "
+                    "alone", policy, e)
+        programs = set()
+    if any(not p.startswith('/usr/bin/trcc-') for p in programs):
+        stale.append(policy)
+    log.info("_legacy_polkit_grants: %s", [str(p) for p in stale] or "none")
+    return stale
+
+
+def retire_legacy_polkit(dry_run: bool = False) -> int:
+    """Remove the polkit grants older releases left, which outlive an upgrade.
+
+    v5.3.3-v9.6.5 ``setup-polkit`` wrote a rule that answered YES for
+    dmidecode/smartctl in any session, SSH included, and a policy naming those
+    programs; on a pip install nothing ever replaced either.  Packages replace
+    the policy themselves and remove the rule in their install scripts.
+    Returns 0 on success or nothing to do; re-execs via sudo when it needs root.
+    """
+    log.info("retire_legacy_polkit: dry_run=%s", dry_run)
+    root = hasattr(os, 'geteuid') and os.geteuid() == 0
+    try:
+        stale = _legacy_polkit_grants()
+    except PermissionError:
+        if dry_run or root:
+            log.info("retire_legacy_polkit: %s unreadable — would check it as "
+                     "root", _LEGACY_POLKIT_RULE)
+            return 0 if dry_run else 1
+        return _retire_as_root()
+    if not stale:
+        log.info("retire_legacy_polkit: no old grant on this host")
+        return 0
+    if dry_run:
+        log.info("retire_legacy_polkit: would remove %s",
+                 ", ".join(map(str, stale)))
+        return 0
+    if not root:
+        return _retire_as_root()
+    for path in stale:
+        path.unlink()
+        log.warning("retire_legacy_polkit: removed %s — it let any program in "
+                    "the session run dmidecode/smartctl as root", path)
+    return 0
+
+
+def _retire_as_root() -> int:
+    """Run :func:`retire_legacy_polkit` again under sudo."""
+    log.info("_retire_as_root: the polkit files need root")
+    from ._elevate import reexec_as_root
+    return reexec_as_root("from trcc.adapters.system.linux import "
+                          "retire_legacy_polkit; sys.exit(retire_legacy_polkit())")
 
 
 def _enrich_with_spd_timings(slots: list[dict[str, str]]) -> None:
@@ -1102,12 +1189,11 @@ def _read_live_imc_timings() -> ImcTimings | None:
     if not _cpu_is_adl_rpl() or not Path(_IMC_HELPER).is_file():
         return None
 
-    import shutil
     import subprocess
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         cmd = [_IMC_HELPER]
-    elif Path(_POLKIT_POLICY).is_file() and shutil.which("pkexec"):
-        cmd = ["pkexec", _IMC_HELPER]
+    elif (pkexec := _pkexec_helper(_IMC_HELPER)) is not None:
+        cmd = pkexec
     else:
         return None             # no silent privilege path available
 
@@ -1248,22 +1334,35 @@ def _dmi_memory_slots() -> list[dict[str, str]]:
     ``trcc-imc`` enrichment — so the memory clock sensor can read the
     configured speed without a second privileged helper (#279).  Empty when
     dmidecode is missing, refused or fails.
+
+    Root reads ``dmidecode`` itself.  Anyone else goes through the argv-locked
+    ``trcc-dmi`` helper, or reads nothing: handing pkexec ``dmidecode`` made
+    every program in the session able to run it as root with any arguments.
     """
     log.debug("_dmi_memory_slots: called")
     import subprocess
+    if hasattr(os, 'geteuid') and os.geteuid() == 0:
+        cmd = ['dmidecode', '-t', '17']
+    elif (pkexec := _pkexec_helper(_DMI_HELPER)) is not None:
+        cmd = pkexec
+    else:
+        log.info("_dmi_memory_slots: no root and no %s — the configured "
+                 "memory speed is unavailable, the SPD nameplate is used",
+                 _DMI_HELPER)
+        return []
     slots: list[dict[str, str]] = []
     try:
-        result = subprocess.run(
-            _privileged_cmd('dmidecode', ['-t', 'memory']),
-            capture_output=True, text=True, timeout=5, check=False,
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                timeout=10, check=False)
         if result.returncode == 0:
             slots = _parse_dmi_memory(result.stdout)
         else:
-            log.debug("dmidecode -t memory exited %d — falling back",
-                      result.returncode)
+            # trcc-dmi: 3 = no dmidecode installed; pkexec: 126/127 = refused
+            # (e.g. not the active local session).
+            log.info("_dmi_memory_slots: %s exited %d — falling back to the "
+                     "SPD nameplate", cmd[-1], result.returncode)
     except (OSError, subprocess.SubprocessError) as e:
-        log.debug("dmidecode -t memory failed: %s", type(e).__name__)
+        log.info("_dmi_memory_slots: %s failed: %s", cmd[0], type(e).__name__)
     _prefer_configured_speed(slots)
     return slots
 
@@ -1333,12 +1432,18 @@ def _linux_disk_info() -> list[dict[str, str]]:
 
 
 def _smart_health(dev_name: str) -> str | None:
-    """SMART overall-health status via smartctl -H."""
+    """SMART overall-health status via smartctl -H.
+
+    Never elevated: no feature reads disk health today (``disk_info`` has no
+    caller), and a pkexec grant for smartctl was a grant of every smartctl
+    option, including the ones that change drive state.  As root it works;
+    otherwise smartctl refuses and the health is simply unknown.
+    """
     log.debug("_smart_health: dev=%s", dev_name)
     import subprocess
     try:
         result = subprocess.run(
-            _privileged_cmd('smartctl', ['-H', f'/dev/{dev_name}']),
+            ['smartctl', '-H', f'/dev/{dev_name}'],
             capture_output=True, text=True, timeout=5, check=False,
         )
         for line in result.stdout.splitlines():

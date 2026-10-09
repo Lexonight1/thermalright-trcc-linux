@@ -30,9 +30,9 @@ _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 
 # Binaries the packaging installs directly from ``src/trcc/assets/`` (NOT wheel
 # console scripts), so they legitimately appear in the file-lists without a
-# matching ``[project.scripts]`` entry.  ``trcc-imc`` is the standalone
-# privileged MCHBAR reader (pkexec target).
-_ASSET_HELPERS = frozenset({"trcc-imc"})
+# matching ``[project.scripts]`` entry.  ``trcc-imc`` (MCHBAR timings) and
+# ``trcc-dmi`` (DRAM slots) are the standalone privileged helpers (pkexec targets).
+_ASSET_HELPERS = frozenset({"trcc-imc", "trcc-dmi"})
 
 
 def _declared_scripts() -> set[str]:

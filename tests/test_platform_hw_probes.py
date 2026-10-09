@@ -392,7 +392,11 @@ def _memory_info(output: str, returncode: int = 0, monkeypatch=None):
     from trcc.adapters.system import linux
 
     fake = types.SimpleNamespace(returncode=returncode, stdout=output, stderr="")
+    # As root, so dmidecode itself runs whatever this host has installed: a
+    # user goes through the packaged trcc-dmi helper, and without it reads
+    # nothing at all.
     with patch.object(subprocess, "run", return_value=fake), \
+         patch.object(linux.os, "geteuid", lambda: 0), \
          patch.object(linux, "_enrich_with_spd_timings", lambda s: None), \
          patch.object(linux, "_enrich_with_live_imc_timings", lambda s: None):
         return linux._linux_memory_info()

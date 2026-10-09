@@ -1,0 +1,71 @@
+#!/usr/bin/python3 -I
+"""trcc-dmi — privileged DRAM-slot reader (run via pkexec).
+
+The SMBIOS tables are readable by root only, and the memory speed the
+controller actually runs (XMP/EXPO) lives there (#279).  TRCC used to get them
+by asking pkexec to run ``dmidecode`` itself, under a polkit action that let
+ANY program in the session run dmidecode as root with ANY arguments -- pkexec
+does no validation of the arguments it is given, and dmidecode ``--dump-bin
+FILE`` creates a root-owned file wherever it is told.  This helper is the whole
+privileged surface instead, kept as small as ``trcc-imc``:
+
+  * stdlib only — imports NOTHING from the trcc package, so running it as root
+    pulls in no untrusted code (``-I``: no user site, no PYTHON* variables).
+  * takes NO arguments — it can only ever run ``dmidecode -t 17``, from the two
+    fixed system paths, with a fixed environment.
+  * prints only the Memory Device fields TRCC reads (``FIELDS``); serial
+    numbers, asset tags and every other SMBIOS table stay where they are.
+  * fails closed: any error prints nothing and exits non-zero; the caller then
+    keeps the SPD nameplate speed.
+
+Exit codes: 0 ok · 1 dmidecode failed · 2 bad invocation · 3 no dmidecode.
+"""
+import subprocess
+import sys
+from pathlib import Path
+
+_DMIDECODE = ("/usr/sbin/dmidecode", "/usr/bin/dmidecode")
+
+# The Memory Device (type 17) fields TRCC parses; must equal
+# ``trcc.adapters.system.linux._DMI_MEMORY_FIELDS`` (gated by a test, since
+# this file may import nothing from trcc).
+FIELDS = frozenset({
+    "Manufacturer", "Part Number", "Type", "Speed", "Configured Memory Speed",
+    "Size", "Locator", "Form Factor", "Rank", "Data Width", "Total Width",
+    "Configured Voltage", "Minimum Voltage", "Maximum Voltage",
+    "Memory Technology",
+})
+
+
+def filter_memory_devices(output: str) -> str:
+    """Only the ``Memory Device`` headers and the lines named in ``FIELDS``."""
+    kept = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        key, sep, _ = stripped.partition(":")
+        if stripped == "Memory Device" or (sep and key.strip() in FIELDS):
+            kept.append(stripped)
+    return "\n".join(kept) + "\n"
+
+
+def main() -> int:
+    if len(sys.argv) > 1:              # argv-locked: nothing caller-supplied
+        return 2
+    exe = next((p for p in _DMIDECODE if Path(p).is_file()), None)
+    if exe is None:
+        return 3
+    try:
+        result = subprocess.run(
+            [exe, "-t", "17"], capture_output=True, text=True, timeout=10,
+            env={"PATH": "/usr/sbin:/usr/bin", "LC_ALL": "C"}, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 1
+    if result.returncode != 0:
+        return 1
+    sys.stdout.write(filter_memory_devices(result.stdout))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -79,8 +79,9 @@
             install -Dm644 src/trcc/assets/com.github.lexonight1.trcc.policy \
               $out/share/polkit-1/actions/com.github.lexonight1.trcc.policy
 
-            # privileged MCHBAR timing reader (pkexec target)
+            # privileged helpers (pkexec targets): MCHBAR timings, DRAM slots
             install -Dm755 src/trcc/assets/trcc-imc $out/bin/trcc-imc
+            install -Dm755 src/trcc/assets/trcc-dmi $out/bin/trcc-dmi
           '';
 
           meta = with pkgs.lib; {

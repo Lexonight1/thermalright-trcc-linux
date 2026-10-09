@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """trcc-imc — privileged Intel MCHBAR memory-timing reader (run via pkexec).
 
 Reads the live DDR5 timing registers from the integrated memory controller's

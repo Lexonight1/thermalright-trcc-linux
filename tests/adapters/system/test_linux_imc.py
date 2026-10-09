@@ -2,11 +2,12 @@
 and the privileged-helper path every root-only probe goes through (#312)."""
 from __future__ import annotations
 
-import ast
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -144,65 +145,268 @@ def test_enrich_noop_when_no_live(monkeypatch: pytest.MonkeyPatch) -> None:
     assert slots == [{"tcas": "40", "trfc": "709"}]
 
 
-# ── Privileged helpers and the polkit policy they need (#312) ────────────
+# ── Privileged helpers and the polkit policy they need ───────────────────
+#
+# pkexec does no validation of the ARGUMENTS it is given (``man 1 pkexec``), so
+# an ``allow_active=yes`` action on a general-purpose program hands every
+# process in the session that program as root, with any arguments: the old
+# policy did that for dmidecode (``--dump-bin FILE`` creates a root-owned file
+# anywhere) and smartctl (``-s``/``--set`` change drive state).  Measured on the
+# dev box before the fix: ``pkcheck --action-id
+# com.github.lexonight1.trcc.dmidecode --process $$`` -> ``polkit.result=yes``.
+# The policy may only name OUR helpers, each of which refuses every argument.
 
-_POLICY = (Path(linux.__file__).resolve().parents[2] / "assets"
-           / "com.github.lexonight1.trcc.policy")
+_ASSETS = Path(linux.__file__).resolve().parents[2] / "assets"
+_POLICY = _ASSETS / "com.github.lexonight1.trcc.policy"
 _EXEC_PATH = "org.freedesktop.policykit.exec.path"
+_RELEASE_YML = (Path(__file__).resolve().parents[3] / ".github" / "workflows"
+                / "release.yml")
 
 
 def _policy_exec_paths() -> set[str]:
-    """Every program the shipped policy lets pkexec run password-free."""
+    """Every program the shipped policy lets pkexec run."""
     return {a.text or "" for a in ET.parse(_POLICY).getroot().iter("annotate")
             if a.get("key") == _EXEC_PATH}
 
 
-def _privileged_tools() -> set[str]:
-    """Every tool the adapter hands ``_privileged_cmd`` — derived, not listed."""
-    tree = ast.parse(Path(linux.__file__).read_text(encoding="utf-8"))
-    return {call.args[0].value for call in ast.walk(tree)
-            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
-            and call.func.id == "_privileged_cmd" and call.args
-            and isinstance(call.args[0], ast.Constant)}
+def _load_helper(name: str) -> ModuleType:
+    """Import a helper script from ``assets/`` without running it."""
+    loader = SourceFileLoader(f"_helper_{name.replace('-', '_')}",
+                              str(_ASSETS / name))
+    module = ModuleType(loader.name)
+    loader.exec_module(module)
+    return module
 
 
-def test_every_privileged_tool_is_declared_at_both_homes() -> None:
-    """pkexec needs an exact match between the tool's resolved path and an
-    ``exec.path`` — and that path is /usr/sbin/ on Debian and Ubuntu but
-    /usr/bin/ where /usr/sbin is a symlink (Arch, Fedora 42+).  The policy
-    named /usr/bin alone, so every Debian/Ubuntu launch asked for a password.
-    MUTATION CHECK: drop a ``-sbin`` action from the policy → this fails.
-    """
-    tools = _privileged_tools()
-    assert {"dmidecode", "smartctl"} <= tools     # the instrument sees them
+def test_the_policy_runs_only_our_own_helpers() -> None:
+    """MUTATION CHECK: re-add a dmidecode action to the policy -> this fails."""
     paths = _policy_exec_paths()
+    assert paths, "the instrument read no exec.path from the policy"
 
-    missing = {f"{home}/{tool}" for tool in tools
-               for home in ("/usr/bin", "/usr/sbin")} - paths
+    foreign = {p for p in paths if not (p.startswith("/usr/bin/trcc-")
+                                        and (_ASSETS / Path(p).name).is_file())}
 
-    assert missing == set()
-    assert linux._IMC_HELPER in paths             # called by absolute path
+    assert foreign == set()
+    assert {linux._IMC_HELPER, linux._DMI_HELPER} <= paths
 
 
-def test_pkexec_is_handed_the_resolved_path(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Older pkexec compares the raw path it is given (no realpath), so a
-    PATH hit through a symlink (``/sbin`` -> ``/usr/sbin``) matched nothing.
-    MUTATION CHECK: pass ``shutil.which``'s result unresolved → this fails.
+@pytest.mark.parametrize("path", sorted(_policy_exec_paths()))
+def test_every_policy_helper_refuses_arguments(
+        path: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A caller-supplied argument is the whole attack, so the helper must stop
+    before it spawns or opens anything.
+    MUTATION CHECK: delete a helper's argv guard -> this fails.
     """
-    real = tmp_path / "usr" / "sbin" / "dmidecode"
-    real.parent.mkdir(parents=True)
-    real.write_text("")
-    link = tmp_path / "sbin" / "dmidecode"
-    link.parent.mkdir()
-    link.symlink_to(real)
+    helper = _load_helper(Path(path).name)
+
+    def _forbidden(*a, **k):
+        raise AssertionError("the helper acted on a refused invocation")
+
+    for module, attr in (("subprocess", "run"), ("os", "open")):
+        if hasattr(helper, module):        # patch what the helper imports
+            monkeypatch.setattr(getattr(helper, module), attr, _forbidden)
+    monkeypatch.setattr(helper.sys, "argv", [path, "--dump-bin", "/tmp/x"])
+
+    assert helper.main() == 2
+
+
+_DMIDECODE_17 = """\
+# dmidecode 3.6
+Getting SMBIOS data from sysfs.
+SMBIOS 3.5.0 present.
+
+Handle 0x0040, DMI type 17, 92 bytes
+Memory Device
+\tArray Handle: 0x003F
+\tTotal Width: 64 bits
+\tData Width: 64 bits
+\tSize: 16 GB
+\tForm Factor: DIMM
+\tLocator: DIMMA2
+\tType: DDR5
+\tSpeed: 4800 MT/s
+\tManufacturer: Corsair
+\tSerial Number: 00000000
+\tAsset Tag: 9876543210
+\tPart Number: CMH32GX5M2B6000C30
+\tRank: 1
+\tConfigured Memory Speed: 6000 MT/s
+\tConfigured Voltage: 1.4 V
+
+Handle 0x0041, DMI type 17, 92 bytes
+Memory Device
+\tSize: No Module Installed
+\tLocator: DIMMA1
+\tSerial Number: Not Specified
+"""
+
+
+def test_trcc_dmi_passes_only_the_fields_trcc_reads() -> None:
+    """The helper runs as root, so what it prints is what it discloses: the
+    memory fields, never a serial number or asset tag."""
+    out = _load_helper("trcc-dmi").filter_memory_devices(_DMIDECODE_17)
+
+    assert "Serial Number" not in out
+    assert "Asset Tag" not in out
+    assert "Array Handle" not in out
+    slots = linux._parse_dmi_memory(out)
+    assert len(slots) == 1
+    assert slots[0]["configured_memory_speed"] == "6000 MT/s"
+    assert slots[0]["part_number"] == "CMH32GX5M2B6000C30"
+
+
+def test_the_helper_and_the_parser_keep_the_same_fields() -> None:
+    """One fact in two files (the helper imports nothing from trcc): gated."""
+    fields = _load_helper("trcc-dmi").FIELDS
+    normalised = {f.lower().replace(" ", "_") for f in fields}
+
+    assert normalised == set(linux._DMI_MEMORY_FIELDS)
+
+
+def _record_run(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def _run(argv, *a, **k):
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, stdout="")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    return calls
+
+
+def test_a_user_reads_dmi_only_through_the_helper(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: hand pkexec ``dmidecode`` again -> this fails."""
+    helper = tmp_path / "trcc-dmi"
+    helper.write_text("")
     policy = tmp_path / "trcc.policy"
     policy.write_text("")
     monkeypatch.setattr(linux.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(linux, "_DMI_HELPER", str(helper))
     monkeypatch.setattr(linux, "_POLKIT_POLICY", str(policy))
-    monkeypatch.setattr(shutil, "which", lambda name: str(
-        link if name == "dmidecode" else tmp_path / "pkexec"))
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    calls = _record_run(monkeypatch)
 
-    cmd = linux._privileged_cmd("dmidecode", ["-t", "memory"])
+    linux._dmi_memory_slots()
 
-    assert cmd == ["pkexec", str(real.resolve()), "-t", "memory"]
+    assert calls == [["pkexec", str(helper)]]
+
+
+def test_without_the_helper_a_user_runs_nothing(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pip install has no helper: no spawn, so never a password prompt."""
+    monkeypatch.setattr(linux.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(linux, "_DMI_HELPER", str(tmp_path / "absent"))
+    calls = _record_run(monkeypatch)
+
+    assert linux._dmi_memory_slots() == []
+    assert calls == []
+
+
+def test_root_reads_dmidecode_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Root needs no helper, and a pip install run as root has none."""
+    monkeypatch.setattr(linux.os, "geteuid", lambda: 0)
+    calls = _record_run(monkeypatch)
+
+    linux._dmi_memory_slots()
+
+    assert calls == [["dmidecode", "-t", "17"]]
+
+
+def test_smartctl_is_never_elevated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(linux.os, "geteuid", lambda: 1000)
+    calls = _record_run(monkeypatch)
+
+    linux._smart_health("sda")
+
+    assert calls == [["smartctl", "-H", "/dev/sda"]]
+
+
+_OLD_RULE = """\
+// TRCC Linux — passwordless dmidecode/smartctl for installing user
+polkit.addRule(function(action, subject) {
+    if ((action.id == "com.github.lexonight1.trcc.dmidecode" ||
+         action.id == "com.github.lexonight1.trcc.smartctl") &&
+        subject.user == "someone") {
+        return polkit.Result.YES;
+    }
+});
+"""
+
+
+def _legacy_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                  rule: str, policy: str) -> tuple[Path, Path]:
+    rule_file = tmp_path / "50-trcc.rules"
+    rule_file.write_text(rule)
+    policy_file = tmp_path / "com.github.lexonight1.trcc.policy"
+    policy_file.write_text(policy)
+    monkeypatch.setattr(linux, "_LEGACY_POLKIT_RULE", str(rule_file))
+    monkeypatch.setattr(linux, "_POLKIT_POLICY", str(policy_file))
+    monkeypatch.setattr(linux.os, "geteuid", lambda: 0)
+    return rule_file, policy_file
+
+
+def test_setup_retires_the_old_grants(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """v5.3.3-v9.6.5 ``setup-polkit`` wrote a rule granting dmidecode/smartctl
+    in ANY session (SSH too), and a policy naming the programs themselves;
+    both outlive an upgrade on a pip install."""
+    old_policy = _POLICY.read_text(encoding="utf-8").replace(
+        "/usr/bin/trcc-dmi", "/usr/bin/dmidecode")
+    rule_file, policy_file = _legacy_paths(tmp_path, monkeypatch,
+                                           _OLD_RULE, old_policy)
+
+    assert linux.retire_legacy_polkit() == 0
+
+    assert not rule_file.exists()
+    assert not policy_file.exists()
+
+
+def test_setup_keeps_what_is_not_an_old_trcc_grant(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Somebody else's rule under our file name, and the current policy."""
+    rule_file, policy_file = _legacy_paths(
+        tmp_path, monkeypatch, "// the admin's own rule\n",
+        _POLICY.read_text(encoding="utf-8"))
+
+    assert linux.retire_legacy_polkit() == 0
+
+    assert rule_file.exists()
+    assert policy_file.exists()
+
+
+def _release_blocks() -> dict[str, str]:
+    """release.yml cut into the four package-build steps, by step name."""
+    text = _RELEASE_YML.read_text(encoding="utf-8")
+    steps = {"rpm": "- name: Build RPM (Fedora)",
+             "deb": "- name: Build DEB (Ubuntu/Debian)",
+             "legacy": "- name: Build DEB legacy",
+             "arch": "- name: Build Arch package"}
+    starts = {name: text.index(mark) for name, mark in steps.items()}
+    end = text.index("- name: Fix package directory permissions")
+    bounds = [*sorted(starts.values()), end]
+    return {name: text[at: bounds[bounds.index(at) + 1]]
+            for name, at in starts.items()}
+
+
+def test_every_package_installs_every_policy_helper() -> None:
+    """A policy action whose helper is not installed is a dead feature."""
+    helpers = {Path(p).name for p in _policy_exec_paths()}
+    blocks = _release_blocks()
+
+    for helper in helpers:
+        for name, block in blocks.items():
+            assert f"/src/src/trcc/assets/{helper} " in block, (
+                f"{name} does not install {helper}")
+        assert f"/usr/bin/{helper}\n" in blocks["rpm"], (
+            f"{helper} missing from the RPM %files")
+
+
+def test_every_package_removes_the_old_rule_and_names_dmidecode() -> None:
+    """The packages replace the policy file themselves; the old rule file in
+    /etc is nobody's, so each package's install script removes it -- only when
+    it names our actions."""
+    for name, block in _release_blocks().items():
+        assert "50-trcc.rules" in block, f"{name}: old rule not removed"
+        assert "com.github.lexonight1.trcc" in block, f"{name}: unsigned rm"
+        assert "dmidecode" in block, f"{name}: dmidecode not declared"

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- **TRCC's polkit policy no longer lets other programs run tools as root.**
+  To read your memory speed without a password, the policy allowed
+  `dmidecode` and `smartctl` to run as root for anything in your desktop
+  session -- and pkexec passes along whatever arguments it is given, so any
+  program could run those tools as root with arguments of its choosing
+  (`dmidecode` can create a root-owned file anywhere; `smartctl` can change
+  drive settings). The policy now names only TRCC's own helpers, which take no
+  arguments: the new `trcc-dmi` reads the memory-module table and passes back
+  only the fields TRCC shows, so serial numbers stay private too. `smartctl`
+  is no longer granted at all; nothing in TRCC used it. Installing the new
+  package, or running `trcc system setup` on a pip install, also removes
+  `/etc/polkit-1/rules.d/50-trcc.rules`, a rule that releases 5.3.3 to 9.6.5
+  wrote, which allowed the same tools in any session, SSH included. The
+  packages now declare `dmidecode`, which the memory speed needs.
+
 ## v9.10.7
 
 ### Added
