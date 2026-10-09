@@ -89,6 +89,9 @@ class AppProxy(CommandBus):
         # that died: the first is routine, the second is the thing a user
         # needs told about, and logging both the same way buries it.
         self._closing = False
+        # Set by ``close`` so a reader waiting to reopen a dropped stream
+        # wakes at once instead of finishing its wait.
+        self._wake = threading.Event()
         # The lifecycle watch (``on_app_gone``): its own stream and thread.
         self._watcher: threading.Thread | None = None
         self._watch_sock: socket.socket | None = None
@@ -174,15 +177,26 @@ class AppProxy(CommandBus):
         )
         self._reader.start()
 
-    def _read_events(self, bus: EventBus) -> None:
-        """Read the stream until EOF, republishing onto the local bus.
+    #: Wait before reopening a stream the App dropped; doubled after each
+    #: reopened stream that delivered nothing, up to the cap.
+    _REOPEN_FIRST_S = 0.2
+    _REOPEN_MAX_S = 10.0
 
-        EOF is SURFACED, not swallowed: a GUI whose daemon died would
-        otherwise sit there looking connected while every panel silently
+    def _read_events(self, bus: EventBus) -> None:
+        """Read the stream, republishing onto the local bus, for this client's life.
+
+        The App drops a subscriber that cannot take a line within half a
+        second (``ipc._SUBSCRIBER_SEND_TIMEOUT_S``).  A window that stalled
+        once -- a modal dialog holding the GIL did it (#301) -- used to stay
+        dropped: no frames, no state, for good, while the panel played on.
+        So a stream that ends while the App has not said it is stopping is
+        reopened, with a backoff.  What the App published in the gap is lost.
+
+        EOF for good is SURFACED, not swallowed: a GUI whose daemon died
+        would otherwise sit there looking connected while every panel silently
         stopped updating.  The warning names the count so a report shows how
         far it got.
         """
-        seen = 0
         try:
             sock = ipc.open_event_stream(timeout=self._timeout)
         except (OSError, ConnectionError) as e:
@@ -190,9 +204,44 @@ class AppProxy(CommandBus):
                         "(%s: %s) — this client will receive no events",
                         type(e).__name__, e)
             return
+        seen, delay = 0, self._REOPEN_FIRST_S
+        while True:
+            read, stopping = self._read_stream(sock, bus)
+            seen += read
+            if self._closing or stopping:
+                break
+            delay = (self._REOPEN_FIRST_S if read
+                     else min(delay * 2, self._REOPEN_MAX_S))
+            log.warning("AppProxy._read_events: the App dropped this client's "
+                        "event stream after %d event(s) — reopening in %.1f s; "
+                        "what it sent meanwhile is lost", read, delay)
+            if self._wake.wait(delay) or self._closing:
+                break
+            try:
+                sock = ipc.open_event_stream(timeout=self._timeout)
+            except (OSError, ConnectionError) as e:
+                log.warning("AppProxy._read_events: cannot reopen the event "
+                            "stream (%s: %s) — the App is gone",
+                            type(e).__name__, e)
+                break
+        self._end_stream(seen)
+
+    def _read_stream(self, sock: socket.socket,
+                     bus: EventBus) -> tuple[int, bool]:
+        """One stream until it ends: (events read, whether the App said it stops)."""
+        log.info("AppProxy._read_stream: observing the App")
         self._stream_sock = sock
         self._stream_open = True
+        seen, stopping = 0, False
         try:
+            # Published first, checked second: ``close`` sets ``_closing``
+            # before it reads ``_stream_sock``, so either it shuts this socket
+            # or this sees it closing.  A reopen it raced had no socket to shut.
+            if self._closing:
+                log.info("AppProxy._read_stream: closing — dropping the "
+                         "stream just opened")
+                sock.close()
+                return seen, stopping
             with sock, sock.makefile("rb") as reader:
                 for line in reader:
                     if not line.strip():
@@ -204,6 +253,7 @@ class AppProxy(CommandBus):
                                     "dropped (%s: %s)", type(e).__name__, e)
                         continue
                     seen += 1
+                    stopping = stopping or isinstance(event, AppStopping)
                     # Its own bus, not ``self._events``: ``close`` clears that,
                     # and a line can still arrive after it has.
                     bus.publish(event)
@@ -213,17 +263,21 @@ class AppProxy(CommandBus):
                             "event(s) — %s: %s", seen, type(e).__name__, e)
         finally:
             self._stream_sock = None
-            if self._closing:
-                log.info("AppProxy._read_events: stream closed on request "
-                         "after %d event(s)", seen)
-            else:
-                log.warning("AppProxy._read_events: event stream CLOSED after "
-                            "%d event(s); this client is no longer observing",
-                            seen)
-            # Last, so whoever sees False can rely on the line above having
-            # been written.  It was first, and a test that waited for False
-            # then read the log lost the race under load.
-            self._stream_open = False
+        return seen, stopping
+
+    def _end_stream(self, seen: int) -> None:
+        """Say how observing ended, then drop the flag."""
+        if self._closing:
+            log.info("AppProxy._read_events: stream closed on request "
+                     "after %d event(s)", seen)
+        else:
+            log.warning("AppProxy._read_events: event stream CLOSED after "
+                        "%d event(s); this client is no longer observing",
+                        seen)
+        # Last, so whoever sees False can rely on the line above having
+        # been written.  It was first, and a test that waited for False
+        # then read the log lost the race under load.
+        self._stream_open = False
 
     # ── Whether the App is still there ───────────────────────────────────
 
@@ -324,6 +378,7 @@ class AppProxy(CommandBus):
         log.info("AppProxy.close: leaving the daemon's devices attached; "
                  "closing this client's event stream")
         self._closing = True
+        self._wake.set()
         for sock, thread in ((self._stream_sock, self._reader),
                              (self._watch_sock, self._watcher)):
             if sock is not None:
@@ -342,6 +397,7 @@ class AppProxy(CommandBus):
         self._watcher = None
         self._events = None
         self._closing = False
+        self._wake.clear()
 
     def discover_and_connect(
         self, on_progress: Callable[[str], None] | None = None,

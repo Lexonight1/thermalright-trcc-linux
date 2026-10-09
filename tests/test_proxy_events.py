@@ -342,3 +342,78 @@ def test_a_sent_frame_crosses_the_socket_as_a_picture(
     finally:
         proxy.close()
         srv.shutdown()
+
+
+def test_a_dropped_client_reopens_its_stream_and_observes_again(daemon) -> None:
+    """The App evicts a subscriber that stalls past half a second.  A window
+    that stalled once -- a modal font dialog holding the GIL did it (#301) --
+    used to stay dropped for good: its preview froze while the panel played on.
+    """
+    app, srv, proxy = daemon
+    seen: list = []
+    proxy.events.subscribe(ThemeLoaded, seen.append)
+    _stream_up(proxy)
+    app.events.publish(ThemeLoaded(key="k", theme_name="before"))
+    _wait(seen, 1)
+
+    with srv._sub_lock:
+        (stalled,) = srv._subscribers
+    srv._evict(stalled)                        # what a write timeout does
+    _until(lambda: len(srv._subscribers) == 1 and srv._subscribers[0] is not stalled)
+
+    app.events.publish(ThemeLoaded(key="k", theme_name="after"))
+    _wait(seen, 2)
+    assert [e.theme_name for e in seen] == ["before", "after"]
+    assert proxy._stream_open
+
+
+def test_a_stopping_app_is_not_reopened(daemon) -> None:
+    """``AppStopping`` means the App is going: no reopen loop against it."""
+    _app, srv, proxy = daemon
+    proxy.events.subscribe(ThemeLoaded, lambda _e: None)
+    _stream_up(proxy)
+    reader = proxy._reader
+    srv.shutdown()
+    _until(lambda: not proxy._stream_open)
+    assert reader is not None
+    reader.join(timeout=2.0)
+    assert not reader.is_alive(), "the reader kept trying a stopping App"
+
+
+def test_close_during_a_reopen_stops_the_reader(daemon, monkeypatch) -> None:
+    """``close`` can land while a reopen is connecting: the old socket is gone
+    and the new one not yet published, so there is nothing for it to shut
+    down.  The reader must see ``_closing`` itself, or it reads the new stream
+    for good -- a leaked thread and a subscriber the App keeps writing to.
+    """
+    app, srv, proxy = daemon
+    proxy.events.subscribe(ThemeLoaded, lambda _e: None)
+    _stream_up(proxy)
+    reader = proxy._reader
+    assert reader is not None
+
+    from trcc import ipc
+    real_open = ipc.open_event_stream
+    connecting, release = threading.Event(), threading.Event()
+
+    def held_open(**kwargs):
+        connecting.set()
+        release.wait(5.0)
+        return real_open(**kwargs)
+
+    monkeypatch.setattr(ipc, "open_event_stream", held_open)
+    with srv._sub_lock:
+        (stalled,) = srv._subscribers
+    srv._evict(stalled)
+    assert connecting.wait(5.0), "the reader never tried to reopen"
+
+    closer = threading.Thread(target=proxy.close)
+    closer.start()
+    _until(lambda: proxy._closing)
+    release.set()
+    closer.join(timeout=5.0)
+
+    assert not reader.is_alive(), "the reader kept the reopened stream"
+    # The App prunes a gone subscriber on its next write, as for any client.
+    app.events.publish(ThemeLoaded(key="k", theme_name="after close"))
+    _until(lambda: not srv._subscribers)

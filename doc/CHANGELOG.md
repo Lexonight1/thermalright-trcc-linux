@@ -29,6 +29,13 @@
   threads while it was open, so the window stopped receiving frames from the
   TRCC app, and the app stopped sending them. The dialog no longer blocks.
 
+- **A window that stalls for a moment no longer stops updating for good.**
+  The TRCC app drops a window that hasn't taken its updates within half a
+  second, and the window never reconnected, so its preview and status stayed
+  frozen until it was reopened. It now reconnects by itself within a fraction
+  of a second; only the updates sent during the stall are missed. Opening an
+  update stream also no longer loses the first updates that arrive with it.
+
 - **SCSI panels are named from their own handshake again (#301).** Since
   v9.10.6 TRCC threw away the reply to a 0402:3922 panel's first poll, because
   the USB host reports an error alongside it. The panel's model byte was lost

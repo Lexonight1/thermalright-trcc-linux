@@ -604,3 +604,20 @@ def test_the_hint_cache_does_not_change_what_crosses_the_wire() -> None:
             for n, c in sorted(RESULT_TYPES.items())}
 
     assert cold == warm
+
+
+def test_the_subscribe_ack_leaves_the_events_behind_it_in_the_socket() -> None:
+    """The App writes events straight after the ack, often in the same read.
+    Reading the ack with ``_recv_json`` (64 KiB, keep line one) threw them
+    away: a reopened stream lost its first event 1 run in 7."""
+    import socket as _socket
+
+    from trcc.ipc import _recv_ack
+
+    app_side, client = _socket.socketpair()
+    with app_side, client:
+        app_side.sendall(b'{"ok": true, "subscribed": ["*"]}\n'
+                         b'{"event": "ThemeLoaded"}\n')
+        assert _recv_ack(client) == {"ok": True, "subscribed": ["*"]}
+        client.settimeout(1.0)
+        assert client.recv(4096) == b'{"event": "ThemeLoaded"}\n'

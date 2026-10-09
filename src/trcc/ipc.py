@@ -455,6 +455,31 @@ def _recv_json(sock: socket.socket, *, max_bytes: int = 8 * 1024 * 1024) -> dict
     return decoded
 
 
+def _recv_ack(sock: socket.socket, *, max_bytes: int = 4096) -> dict[str, Any]:
+    """Read the subscribe ack -- one line, and not one byte past it.
+
+    ``_recv_json`` reads 64 KiB and keeps the first line, which is right for
+    a request/response socket and wrong for a stream: events the App writes
+    straight after the ack arrive in the same read and were thrown away with
+    the rest of it.  Measured: a reopened stream lost the first event 1 run
+    in 7.  The ack is a few dozen bytes, so reading it a byte at a time costs
+    nothing and leaves every event in the socket for the reader.
+    """
+    log.debug("_recv_ack: max_bytes=%d", max_bytes)
+    line = bytearray()
+    while len(line) < max_bytes:
+        byte = sock.recv(1)
+        if not byte or byte == b"\n":
+            break
+        line += byte
+    if not line:
+        raise ConnectionError("peer closed without sending data")
+    decoded = json.loads(line.decode())
+    if not isinstance(decoded, dict):
+        raise ValueError("response was not a JSON object")
+    return decoded
+
+
 def one_shot_request(
     payload: dict[str, Any],
     *,
@@ -489,7 +514,7 @@ def open_event_stream(
         sock.settimeout(timeout)
         sock.connect(str(socket_path()))
         _send_json(sock, {"subscribe": wanted})
-        ack = _recv_json(sock)
+        ack = _recv_ack(sock)
     except OSError:
         sock.close()
         raise
