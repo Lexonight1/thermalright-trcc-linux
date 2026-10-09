@@ -449,17 +449,10 @@ def test_the_quirk_transport_is_tried_only_after_the_ordinary_one_fails(
     from trcc.adapters.device.hid_lcd import HidLcd
     from trcc.core.commands import ConnectDevice
     from trcc.core.errors import HandshakeError
-    from trcc.core.models import Wire
 
+    # The override transport comes from MockPlatform, scripted like the
+    # ordinary one, so no hidapi is needed for a test about the RETRY.
     app = _quirk_app(tmp_path, scanned=False)
-    # hidapi is not installed in the test environment, and this test is about
-    # the RETRY, not about hidapi — so stand the override transport in with the
-    # same scripted one the ordinary path uses.
-    monkeypatch.setattr(
-        "trcc.adapters.device.transport.HidApiTransport",
-        lambda vid, pid, serial=None, unit="": app.platform.open_transport(
-            Wire.HID, vid, pid, serial, unit),
-    )
     real_connect = HidLcd.connect
     attempts = []
 
@@ -478,6 +471,33 @@ def test_the_quirk_transport_is_tried_only_after_the_ordinary_one_fails(
     assert result.ok, f"the retry should have recovered: {result.message}"
 
 
+def test_the_quirk_transport_is_opened_by_the_platform(tmp_path, monkeypatch) -> None:
+    """The override transport comes from the Platform, so a stand-in scripts it.
+
+    MUTATION CHECK: build ``HidApiTransport`` in ``App.attach`` again -> the
+    sentinel below raises.
+    """
+    import trcc.adapters.device.transport as transport_mod
+
+    def real_hidapi(*a, **k):
+        raise AssertionError("a real hidapi transport was built")
+
+    monkeypatch.setattr(transport_mod, "HidApiTransport", real_hidapi)
+    app = _quirk_app(tmp_path, scanned=True)
+    asked: list[dict] = []
+    opener = app.platform.open_transport
+
+    def spy(*a, **k):
+        asked.append(k)
+        return opener(*a, **k)
+
+    monkeypatch.setattr(app.platform, "open_transport", spy)
+
+    app.attach(0x0416, 0x5302, quirk_transport=True)
+
+    assert asked and asked[-1].get("hid_reports") is True
+
+
 def test_the_quirk_retry_keeps_what_the_panel_shows(tmp_path, monkeypatch) -> None:
     """The retry rebuilds the DEVICE; the theme it was showing is not its to drop.
 
@@ -489,14 +509,9 @@ def test_the_quirk_retry_keeps_what_the_panel_shows(tmp_path, monkeypatch) -> No
     from trcc.adapters.device.hid_lcd import HidLcd
     from trcc.core.commands import ConnectDevice
     from trcc.core.errors import HandshakeError
-    from trcc.core.models import Theme, Wire
+    from trcc.core.models import Theme
 
     app = _quirk_app(tmp_path, scanned=False)
-    monkeypatch.setattr(
-        "trcc.adapters.device.transport.HidApiTransport",
-        lambda vid, pid, serial=None, unit="": app.platform.open_transport(
-            Wire.HID, vid, pid, serial, unit),
-    )
     real_connect = HidLcd.connect
     attempts: list[object] = []
 

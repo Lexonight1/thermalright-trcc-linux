@@ -402,7 +402,7 @@ class FakePlatform(Platform):
         return self.capture
 
     def open_transport(self, wire, vid, pid, serial=None,
-                       unit="") -> Transport:
+                       unit="", *, hid_reports=False) -> Transport:
         # *unit* accepted and ignored: one fake transport per wire is the
         # point of this double.  Tests that care WHICH unit was asked for
         # spy on this method (see test_usb_unit_path).

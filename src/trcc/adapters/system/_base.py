@@ -383,13 +383,20 @@ class BaseOS(Platform):
 
     def open_transport(self, wire: Wire, vid: int, pid: int,
                        serial: str | None = None,
-                       unit: str = "") -> Transport:
+                       unit: str = "", *,
+                       hid_reports: bool = False) -> Transport:
         """Return an unopened transport for *wire* — the port's one entry point.
 
         *unit* names WHICH of several identical devices to open (#287); empty
         is "the only one of this model", which is every single-device user and
         therefore the behaviour this signature had before the keyword existed.
+        *hid_reports* asks the USB opener for the firmware override (#228).
         """
+        if hid_reports:
+            log.info("%s.open_transport: wire=%s %04x:%04x unit=%s → "
+                     "_open_bulk(hid_reports)", type(self).__name__,
+                     wire.value, vid, pid, unit or "(only)")
+            return self._open_bulk(vid, pid, serial, unit, hid_reports=True)
         opener = self._transport_openers().get(wire, self._open_bulk)
         log.info("%s.open_transport: wire=%s %04x:%04x serial=%r unit=%s → %s",
                  type(self).__name__, wire.value, vid, pid, serial,
@@ -397,10 +404,20 @@ class BaseOS(Platform):
         return opener(vid, pid, serial, unit)
 
     def _open_bulk(self, vid: int, pid: int, serial: str | None = None,
-                   unit: str = "") -> Transport:
-        """Open a bulk transport — identical on every OS (libusb)."""
-        log.debug("%s._open_bulk: %04x:%04x serial=%r unit=%s",
-                  type(self).__name__, vid, pid, serial, unit or "(only)")
+                   unit: str = "", hid_reports: bool = False) -> Transport:
+        """The USB opener — identical on every OS: libusb bulk, or, for the
+        firmware-4.07 override, HID output reports through hidapi (#228).
+
+        One opener for both, so a stand-in platform that scripts USB scripts
+        the override too: when it was built outside the Platform, a mock run
+        retried a failed handshake on a REAL hidapi handle.
+        """
+        log.debug("%s._open_bulk: %04x:%04x serial=%r unit=%s hid_reports=%s",
+                  type(self).__name__, vid, pid, serial, unit or "(only)",
+                  hid_reports)
+        if hid_reports:
+            from ..device.transport import HidApiTransport
+            return HidApiTransport(vid, pid, serial, unit)
         return PyUsbBulkTransport(vid, pid, serial, unit)
 
     @abstractmethod

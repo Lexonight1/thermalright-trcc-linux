@@ -854,22 +854,19 @@ class App(CommandBus):
             )
         cls = DEVICES[info.wire]
         quirks = self._quirks_for(vid, pid, unit)
-        # Which transport a WIRE needs is the Platform's business — it owns the
-        # Wire→opener table, so this no longer branches on Wire.SCSI.  What
-        # remains is a FIRMWARE override: one revision accepts only HID output
-        # reports (#228), and that is keyed on (vid, pid, bcdDevice), not on
-        # wire — so it belongs here with the rest of quirk resolution.
-        if quirks.hid_reports and quirk_transport:
-            from .adapters.device.transport import HidApiTransport
+        # WHICH transport a firmware needs is quirk knowledge, keyed on
+        # (vid, pid, bcdDevice), so it is decided here.  OPENING it is the
+        # Platform's job, so a stand-in platform scripts it like any other --
+        # building HidApiTransport here let a mock reach a real panel.
+        hid_reports = quirks.hid_reports and quirk_transport
+        if hid_reports:
             log.info("attach: %04x:%04x retrying on HID output reports (quirk)",
                      vid, pid)
-            transport = HidApiTransport(vid, pid, unit=unit)
-        else:
-            if quirks.hid_reports:
-                log.debug("attach: %04x:%04x has a HID output-report quirk, "
-                          "trying the ordinary transport first", vid, pid)
-            transport = self.platform.open_transport(
-                info.wire, vid, pid, unit=unit)
+        elif quirks.hid_reports:
+            log.debug("attach: %04x:%04x has a HID output-report quirk, "
+                      "trying the ordinary transport first", vid, pid)
+        transport = self.platform.open_transport(
+            info.wire, vid, pid, unit=unit, hid_reports=hid_reports)
         device = cls(info, transport)
         # Hand down the OS-specific EACCES hint (resolved here, where Platform
         # is in scope) so the device's recovery tracker can surface it without

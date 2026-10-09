@@ -424,7 +424,7 @@ def test_attach_threads_the_unit_all_the_way_to_the_transport(tmp_path) -> None:
     app = _twin_app(tmp_path)
     real = app.platform.open_transport
 
-    def spy(wire, vid, pid, serial=None, unit=""):
+    def spy(wire, vid, pid, serial=None, unit="", **kw):
         seen.update(wire=wire, unit=unit)
         return real(wire, vid, pid, serial)
 
@@ -464,9 +464,9 @@ def _opened_units(app) -> list[str]:
     units: list[str] = []
     real = app.platform.open_transport
 
-    def spy(wire, vid, pid, serial=None, unit=""):
+    def spy(wire, vid, pid, serial=None, unit="", **kw):
         units.append(unit)
-        return real(wire, vid, pid, serial, unit)
+        return real(wire, vid, pid, serial, unit, **kw)
 
     app.platform.open_transport = spy          # type: ignore[assignment]
     return units

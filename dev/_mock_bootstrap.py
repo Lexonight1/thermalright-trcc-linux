@@ -573,9 +573,13 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
                        unit: str = "") -> ScsiTransport:
             return scripted_scsi_transport(by_key, vid, pid, self._reply_override)
 
+        # *hid_reports* is the firmware-4.07 override (#228): the same USB
+        # opener serves it, so it is scripted here too and a failed ordinary
+        # handshake can never retry on a REAL hidapi handle.
         def _open_bulk(self, vid: int, pid: int,
                        serial: str | None = None,
-                       unit: str = "") -> BulkTransport:
+                       unit: str = "",
+                       hid_reports: bool = False) -> BulkTransport:
             return scripted_bulk_transport(by_key, vid, pid, self._reply_override)
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",

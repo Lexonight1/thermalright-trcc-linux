@@ -2509,13 +2509,20 @@ class Platform(ABC):
     @abstractmethod
     def open_transport(self, wire: Wire, vid: int, pid: int,
                        serial: str | None = None,
-                       unit: str = "") -> Transport:
+                       unit: str = "", *,
+                       hid_reports: bool = False) -> Transport:
         """Return an unopened transport for *wire*.
 
         *unit* names WHICH physical device to open when several of the same
         model are plugged in — the USB port, as ``Platform.scan_devices``
         resolved it (#287).  Empty means "the only one of this model", which
         is what every caller meant before the keyword existed.
+
+        *hid_reports* asks for a firmware's override instead of the wire's
+        ordinary transport: HID output reports through hidapi (#228).  Which
+        firmware needs it is the App's quirk knowledge; opening it is still the
+        Platform's job, so a stand-in platform scripts this transport like
+        every other and a mock run can never reach a real device through it.
 
         **The port must not name a wire.**  It used to: separate
         ``open_bulk`` / ``open_scsi`` abstract methods meant every OS

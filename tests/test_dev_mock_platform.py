@@ -87,6 +87,34 @@ def test_the_dev_mock_opens_a_transport_with_the_ports_defaults() -> None:
     assert isinstance(transport, Transport)
 
 
+def test_the_dev_mock_scripts_the_hid_report_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The firmware-4.07 override transport is scripted like the other two.
+
+    It was not a platform opener at all: ``App.attach`` built ``HidApiTransport``
+    itself, so a dev mock whose ordinary handshake failed retried on a REAL
+    hidapi handle -- to any real 0416:5302 on the developer's desk.  The USB
+    opener serves it now, so scripting USB scripts the override.
+    MUTATION CHECK: give the dev mock's ``_open_bulk`` a path to the real
+    opener for ``hid_reports`` -> the sentinel raises.
+    """
+    import trcc.adapters.device.transport as transport_mod
+
+    def real_hidapi(*a, **k):
+        raise AssertionError("the dev mock built a real hidapi transport")
+
+    monkeypatch.setattr(transport_mod, "HidApiTransport", real_hidapi)
+    platform = _build_dev_platform([{
+        "type": "lcd", "name": "warframe se", "vid": "0416", "pid": "5302",
+        "pm": 58, "sub": 0, "bcd": "0x0407"}])
+
+    transport = platform.open_transport(Wire.HID, 0x0416, 0x5302, None, "",
+                                        hid_reports=True)
+
+    assert isinstance(transport, Transport)
+
+
 @pytest.mark.parametrize("specs", [None, [{"vid": "0402", "pid": "3922",
                                             "fbl": 100}]],
                          ids=["--hardware", "fleet"])

@@ -851,7 +851,7 @@ http_fetcher() -> HttpFetcher
 install_method() -> str
 memory_info() -> list[dict[str, str]]
 no_devices_hint() -> str
-open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '') -> Transport
+open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '', hid_reports: 'bool' = False) -> Transport
 package_manager() -> str
 packages() -> PackageManager
 paths() -> Paths
