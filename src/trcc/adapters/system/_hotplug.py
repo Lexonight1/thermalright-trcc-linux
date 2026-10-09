@@ -34,6 +34,7 @@ from ...core.events import (
     SystemResumed,
     SystemSuspending,
 )
+from ...core.logs import per_frame
 from ...core.models import format_device_key
 from ...core.ports import HotplugMonitor
 from ...core.registry import ALL_DEVICES
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
     from ...core.events import EventBus
 
 log = logging.getLogger(__name__)
+#: The poll's per-tick lines: once a second for the life of the App.
+frame_log = per_frame(__name__)
 
 
 # Shared registry set used by both Linux + Windows monitors.  Hex
@@ -910,13 +913,13 @@ class PollingHotplugMonitor(HotplugMonitor):
 
     def _registry_set(self) -> set[tuple[int, int]]:
         """Registry as int tuples, matching scan_devices's shape."""
-        log.debug("_registry_set")
+        frame_log.debug("_registry_set")
         return {(int(vid, 16), int(pid, 16)) for vid, pid in self._known}
 
     def _known_units(self) -> set[tuple[int, int, str]]:
         """This scan's units whose model is in the registry."""
         units = {u for u in self._scan() if u[:2] in self._registry_set()}
-        log.debug("_known_units: %d", len(units))
+        frame_log.debug("_known_units: %d", len(units))
         return units
 
     def _tick(self) -> None:

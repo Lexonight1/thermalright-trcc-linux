@@ -209,3 +209,75 @@ def test_start_is_idempotent() -> None:
         assert monitor._thread is first_thread
     finally:
         monitor.stop()
+
+
+# =========================================================================
+# macOS: the once-a-second poll is quiet (#283)
+# =========================================================================
+
+class _Panel:
+    """What pyusb hands back for a present device."""
+
+    def __init__(self, port: int) -> None:
+        self.bus, self.port_numbers, self.address = 1, (port,), port
+        self.iSerialNumber = 3
+        self.bcdDevice = 0x0407
+
+
+def _usb_with(monkeypatch: pytest.MonkeyPatch, panels: list[_Panel]) -> list:
+    """Every 0416:5302 lookup finds *panels*; return the serial reads made."""
+    import usb.util
+
+    from trcc.adapters.system import macos
+
+    monkeypatch.setattr(macos, "usb_find", lambda **kw: (
+        panels if (kw.get("idVendor"), kw.get("idProduct")) == (0x0416, 0x5302)
+        else []))
+    reads: list = []
+    monkeypatch.setattr(usb.util, "get_string", lambda *a: reads.append(a) or "SN")
+    return reads
+
+
+def test_a_quiet_poll_reads_no_serial_and_writes_no_log(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The #283 report holds 129 scan lines one second apart, each reading
+    the panel's serial string over USB: three INFO lines and ~a dozen DEBUG
+    lines a second into a log capped at 5 MB, and a control transfer to a
+    streaming panel every second.
+    MUTATION CHECK: read the serial or log at INFO in the poll -> fails;
+    poll through ``scan_devices`` again -> the next test fails.
+    """
+    import logging
+
+    from trcc.adapters.system import macos
+
+    reads = _usb_with(monkeypatch, [_Panel(2)])
+    monitor = PollingHotplugMonitor(scan=macos._present_units)
+    monitor._last_seen = monitor._known_units()
+
+    with caplog.at_level(logging.DEBUG):
+        monitor._tick()
+
+    assert reads == []
+    assert [r.getMessage() for r in caplog.records
+            if not r.name.startswith("trcc.frame")] == []
+    assert monitor._last_seen == {(0x0416, 0x5302, "")}
+
+
+def test_the_macos_hotplug_polls_the_quiet_enumeration() -> None:
+    from trcc.adapters.system import macos
+
+    monitor = macos.MacOSPlatform()._build_hotplug()
+
+    assert isinstance(monitor, PollingHotplugMonitor)
+    assert monitor._scan is macos._present_units
+
+
+def test_a_quiet_poll_still_tells_twins_apart(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.adapters.system import macos
+
+    _usb_with(monkeypatch, [_Panel(2), _Panel(3)])
+
+    assert macos._present_units() == {(0x0416, 0x5302, "1-2"),
+                                      (0x0416, 0x5302, "1-3")}
