@@ -12,6 +12,7 @@ and have the adapter see it — the attribute resolves at call time.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 from ...core.diagnostics import DoctorResult, GpuReaderState, HealthReport
@@ -48,10 +49,14 @@ class DiagnosticsAdapter(Diagnostics):
         log.info("DiagnosticsAdapter.render_doctor: %d check(s)", len(report.checks))
         return _doctor.render_doctor_output(report)
 
-    def debug_report(self, log_tail_lines: int) -> str:
-        log.info("DiagnosticsAdapter.debug_report: log_tail_lines=%d", log_tail_lines)
+    def debug_report(self, log_tail_lines: int, *,
+                     held: Mapping[str, Mapping[str, str]] | None = None,
+                     probe: bool = True) -> str:
+        log.info("DiagnosticsAdapter.debug_report: log_tail_lines=%d held=%s "
+                 "probe=%s", log_tail_lines, sorted(held or {}), probe)
         return _debug_report.build_debug_report(
             self._platform, log_tail_lines=log_tail_lines,
+            held=held, probe=probe,
         ).render_text()
 
     def write_debug_report(self, rendered: str, path: Path) -> Path:

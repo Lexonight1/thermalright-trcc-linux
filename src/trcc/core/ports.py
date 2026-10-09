@@ -2130,8 +2130,15 @@ class Diagnostics(ABC):
         ...
 
     @abstractmethod
-    def debug_report(self, log_tail_lines: int) -> str:
-        """Build the debug bundle and return its rendered, paste-ready text."""
+    def debug_report(self, log_tail_lines: int, *,
+                     held: Mapping[str, Mapping[str, str]] | None = None,
+                     probe: bool = True) -> str:
+        """Build the debug bundle and return its rendered, paste-ready text.
+
+        *held*: device key -> the handshake the running App reported; those
+        devices are not probed (a probe is a second handle on a driven panel).
+        *probe* False: probe nothing, for an App that is running but silent.
+        """
         ...
 
     @abstractmethod

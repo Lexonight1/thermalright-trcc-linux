@@ -31,6 +31,7 @@ import os
 import platform as py_platform
 import sys
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -111,8 +112,13 @@ def build_debug_report(
     settings_path: Path | None = None,
     log_tail_lines: int = 1000,
     log_action_lines: int = 500,
+    held: Mapping[str, Mapping[str, str]] | None = None,
+    probe: bool = True,
 ) -> DebugReport:
-    """Collect every section into a DebugReport."""
+    """Collect every section into a DebugReport.
+
+    *held* and *probe*: see :func:`_collect_devices`.
+    """
     log.info("build_debug_report: gathering sections "
              "(log_tail=%d actions=%d)", log_tail_lines, log_action_lines)
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -128,7 +134,7 @@ def build_debug_report(
 
     info = _collect_platform_info(platform)
     path_table = _collect_paths(platform)
-    devices, devices_err = _collect_devices(platform)
+    devices, devices_err = _collect_devices(platform, held=held, probe=probe)
     sensors, sensors_err = _collect_sensors(platform)
     powercap = _collect_powercap()
     live_settings = settings_path or resolve_config_path(platform.paths())
@@ -199,9 +205,19 @@ def _collect_paths(platform: Platform) -> dict[str, str]:
 
 def _collect_devices(
     platform: Platform,
+    held: Mapping[str, Mapping[str, str]] | None = None,
+    probe: bool = True,
 ) -> tuple[list[dict[str, str]], str]:
-    """Scan + enrich with product-registry metadata; return (rows, error)."""
-    log.debug("_collect_devices: called")
+    """Scan + enrich with product-registry metadata; return (rows, error).
+
+    *held* maps a device key to the handshake the running App reported for
+    it: that device is never probed, because a probe is a second handle on a
+    panel the App is driving.  *probe* False probes nothing at all -- what
+    the caller asks for when an App is running but did not answer, since it
+    may still hold every panel.
+    """
+    held = held or {}
+    log.debug("_collect_devices: held=%s probe=%s", sorted(held), probe)
     try:
         infos = platform.scan_devices()
     except (OSError, RuntimeError) as e:
@@ -246,12 +262,29 @@ def _collect_devices(
         # geometry.  Without this the report only has them if the connect-time
         # log line survived in the tail, which on a long session it never does.
         if product is not None:
-            handshake = _probe_handshake(platform, product, info.unit)
+            handshake = _device_handshake(platform, product, info,
+                                          held, probe)
             if handshake is not None:
                 row.update({f"hs_{k}": v for k, v in handshake.items()})
                 row["product"] = _identified_name(info, product, handshake)
         rows.append(row)
     return rows, ""
+
+
+def _device_handshake(
+    platform: Platform, product: ProductInfo, info: DeviceInfo,
+    held: Mapping[str, Mapping[str, str]], probe: bool,
+) -> dict[str, str] | None:
+    """The App's answer for a panel it holds, else a live probe if allowed."""
+    if (from_app := held.get(info.key)) is not None:
+        log.info("_device_handshake: %s held by the running App — its "
+                 "handshake, no second probe", info.key)
+        return dict(from_app)
+    if not probe:
+        log.info("_device_handshake: %s not probed — a running App did not "
+                 "answer and may hold it", info.key)
+        return None
+    return _probe_handshake(platform, product, info.unit)
 
 
 def _identified_name(info: DeviceInfo, product: ProductInfo,

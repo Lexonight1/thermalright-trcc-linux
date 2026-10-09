@@ -781,7 +781,9 @@ class GenerateDebugReport(Command[DebugReportPayload]):
     log_tail_lines: int = 1000
 
     def execute(self, app: App) -> DebugReportPayload:
-        rendered = app.diagnostics.debug_report(self.log_tail_lines)
+        held, probe = self._held_devices(app)
+        rendered = app.diagnostics.debug_report(self.log_tail_lines,
+                                                held=held, probe=probe)
         out: str = ""
         if self.output_path is not None:
             try:
@@ -804,6 +806,39 @@ class GenerateDebugReport(Command[DebugReportPayload]):
             message=(f"Wrote debug report to {out}" if out
                      else "Generated debug report (in-memory)"),
         )
+
+    @staticmethod
+    def _held_devices(app: App) -> tuple[dict[str, dict[str, str]], bool]:
+        """Handshakes of the panels an App holds, and whether to probe others.
+
+        This runs in the caller, so a live probe is a second handle on any
+        panel the App drives: busy at best, and on a HID-report panel the
+        probe's driver detach pulls usbhid from under the App.  The caller's
+        own App (an in-process gui) and a running App elsewhere both say what
+        they hold.  An App that runs but does not answer may hold every panel,
+        so then nothing is probed.
+        """
+        from ...daemon import held_devices, is_this_process_the_daemon
+        from ...ipc import daemon_running
+        from .device import DeviceState, ListDevices
+        states = [app.dispatch(DeviceState(key=entry.key))
+                  for entry in app.dispatch(ListDevices()).devices]
+        probe = True
+        if daemon_running() and not is_this_process_the_daemon():
+            if (theirs := held_devices()) is None:
+                probe = False
+            else:
+                states += theirs
+        held = {s.key: {
+            "pm": str(s.pm_byte), "sub": str(s.sub_byte),
+            "fbl": "?" if s.fbl is None else str(s.fbl),
+            "resolution": "x".join(map(str, s.resolution or (0, 0))),
+            "raw": "(held by the running App)",
+        } for s in states if s.ok and s.connected and s.pm_byte is not None}
+        log.info("GenerateDebugReport._held_devices: held=%s probe=%s",
+                 sorted(held), probe)
+        return held, probe
+
 
 @dataclass(frozen=True, slots=True)
 class ProvideApiTls(Command[ApiTlsResult]):

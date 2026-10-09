@@ -30,7 +30,7 @@ from . import ipc
 
 if TYPE_CHECKING:
     from .core.ports import Platform, Renderer
-    from .core.results import DaemonResult
+    from .core.results import DaemonResult, DeviceStateResult
 
 log = logging.getLogger(__name__)
 
@@ -227,6 +227,32 @@ def running_status() -> DaemonResult | None:
         proxy.close()
     log.info("running_status: %s", status)
     return status
+
+
+def held_devices() -> list[DeviceStateResult] | None:
+    """The devices the running App reports, each with its live state.
+
+    Over its socket, like :func:`running_status`: ``trcc report`` runs in the
+    caller, and a panel the App holds must be described by the App rather
+    than probed a second time.  None when the App does not answer.
+    """
+    from .core.commands import DeviceState, ListDevices
+    from .proxy import AppProxy
+    proxy = AppProxy(timeout=5.0)
+    try:
+        listing = proxy.dispatch(ListDevices())
+        states: list[DeviceStateResult] | None = [
+            proxy.dispatch(DeviceState(key=entry.key))
+            for entry in listing.devices]
+    except Exception as e:
+        log.warning("held_devices: the running App did not answer (%s: %s)",
+                    type(e).__name__, e)
+        states = None
+    finally:
+        proxy.close()
+    log.info("held_devices: %s",
+             None if states is None else [s.key for s in states])
+    return states
 
 
 def _running_version() -> str:

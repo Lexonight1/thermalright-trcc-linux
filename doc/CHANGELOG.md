@@ -19,6 +19,15 @@
   wrote, which allowed the same tools in any session, SSH included. The
   packages now declare `dmidecode`, which the memory speed needs.
 
+### Fixed
+
+- **`trcc report` no longer opens a panel TRCC is driving.** The report runs
+  in its own process and opened every LCD a second time to read its
+  handshake: while TRCC was running that usually failed (so the report showed
+  the catalog name instead of your cooler), and on some HID panels it could
+  disturb the panel TRCC was driving. It now asks the running TRCC app for
+  each panel it holds, and only probes panels nothing else is using.
+
 ## v9.10.7
 
 ### Added

@@ -730,7 +730,7 @@ Port for system diagnostics.  Concrete: ``DiagnosticsAdapter`` (``adapters/diagn
 **You implement (7):**
 
 ```python
-debug_report(log_tail_lines: 'int') -> str
+debug_report(log_tail_lines: 'int', held: 'Mapping[str, Mapping[str, str]] | None' = None, probe: 'bool' = True) -> str
 doctor() -> DoctorResult
 gpu_reader_state() -> GpuReaderState
 health() -> HealthReport

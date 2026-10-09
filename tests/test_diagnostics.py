@@ -3879,3 +3879,116 @@ def test_the_daemon_logs_the_clients_name(
     assert _dispatch_lines(caplog, "ListDevices") == [
         "[cli] dispatch ListDevices()", "[ipc] dispatch ListDevices()",
         "[ipc] dispatch ListDevices()"]
+
+
+# ── A report never opens a second handle on a panel the App holds ─────────
+#
+# ``trcc report`` runs in the caller's process and used to open a fresh
+# transport on every LCD.  Under the shared App that is a second owner of a
+# panel the App is driving: it usually failed busy (so the report showed the
+# catalog name), and on a HID-report panel the probe's kernel-driver detach
+# pulled usbhid from under the App's open hidraw handle.  The App knows each
+# device's handshake already, so the report asks it.
+
+_HELD_SPEC = {"type": "lcd", "name": "bulk panel", "vid": "87ad",
+              "pid": "70db", "pm": 4, "sub": 5}
+_HELD_BYTES = {"pm": "4", "sub": "5", "fbl": "?", "resolution": "480x480",
+               "raw": "(held by the running App)"}
+
+
+def _report_platform(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from .mock_platform import MockPlatform
+
+    platform = MockPlatform([_HELD_SPEC], tmp_path)
+
+    def no_second_handle(*a: Any, **k: Any) -> Any:
+        raise AssertionError("the report opened a panel the App holds")
+
+    monkeypatch.setattr(platform, "open_transport", no_second_handle)
+    return platform
+
+
+def test_a_held_panel_is_reported_from_the_app_not_probed(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: probe every device again -> the sentinel raises."""
+    from trcc.adapters.diagnostics.debug_report import _collect_devices
+
+    platform = _report_platform(tmp_path, monkeypatch)
+
+    rows, error = _collect_devices(platform, held={"87ad:70db": _HELD_BYTES})
+
+    assert error == ""
+    assert (rows[0]["hs_pm"], rows[0]["hs_sub"]) == ("4", "5")
+    assert rows[0]["product"].startswith("Peerless Vision 360")
+
+
+def test_a_silent_app_means_no_probe_at_all(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A running App that does not answer may still hold every panel."""
+    from trcc.adapters.diagnostics.debug_report import _collect_devices
+
+    platform = _report_platform(tmp_path, monkeypatch)
+
+    rows, _ = _collect_devices(platform, probe=False)
+
+    assert "hs_pm" not in rows[0]
+
+
+def _report_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                running: bool, answer: list | None):
+    """An App whose report call is recorded, with a running App elsewhere
+    (``running``) that answers ``answer`` (None = did not answer)."""
+    from trcc import daemon, ipc
+    from trcc.app import App
+
+    from .mock_platform import MockPlatform
+
+    app = App(platform=MockPlatform([_HELD_SPEC], tmp_path))
+    calls: list[dict] = []
+
+    def record(log_tail_lines: int, **kw: Any) -> str:
+        calls.append(kw)
+        return "report"
+
+    monkeypatch.setattr(app.diagnostics, "debug_report", record)
+    monkeypatch.setattr(ipc, "daemon_running", lambda: running)
+    monkeypatch.setattr(daemon, "is_this_process_the_daemon", lambda: False)
+    monkeypatch.setattr(daemon, "held_devices", lambda: answer)
+    return app, calls
+
+
+def test_the_report_asks_the_running_app_what_it_holds(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.core.commands import GenerateDebugReport
+    from trcc.core.results import DeviceStateResult
+
+    held = DeviceStateResult(ok=True, key="87ad:70db", connected=True,
+                             pm_byte=4, sub_byte=5, fbl=None,
+                             resolution=(480, 480))
+    app, calls = _report_app(tmp_path, monkeypatch, True, [held])
+
+    GenerateDebugReport().execute(app)
+
+    assert calls == [{"held": {"87ad:70db": _HELD_BYTES}, "probe": True}]
+
+
+def test_a_running_app_that_does_not_answer_stops_every_probe(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.core.commands import GenerateDebugReport
+
+    app, calls = _report_app(tmp_path, monkeypatch, True, None)
+
+    GenerateDebugReport().execute(app)
+
+    assert calls == [{"held": {}, "probe": False}]
+
+
+def test_with_no_app_elsewhere_the_report_probes_as_before(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.core.commands import GenerateDebugReport
+
+    app, calls = _report_app(tmp_path, monkeypatch, False, None)
+
+    GenerateDebugReport().execute(app)
+
+    assert calls == [{"held": {}, "probe": True}]
