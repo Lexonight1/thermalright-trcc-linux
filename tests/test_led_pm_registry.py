@@ -261,6 +261,51 @@ def test_led_probe_cache_falls_back_when_handshake_fails(
     assert hs.model_name == "LF12"
 
 
+def _twin_led(tmp_path: Path, unit: str, pm: int | None) -> Led:
+    """A cooler on *unit*; *pm* scripts its handshake, None = it says nothing."""
+    transport = FakeBulkTransport()
+    if pm is not None:
+        transport.read_script.append(_scripted_handshake_response(pm=pm, sub=0))
+    led = Led(_led_info(), transport)
+    led.set_state_dir(tmp_path)
+    led.set_unit(unit)
+    return led
+
+
+def test_two_coolers_on_one_id_each_keep_their_own_probe_cache(
+    tmp_path: Path,
+) -> None:
+    """Two DIFFERENT coolers on 0416:8001 (an AX120 and an LF12, say) shared
+    one cache entry: on a restart in the same power cycle -- when the firmware
+    no longer answers -- one of them was handed the other's PM, so the other's
+    style.
+    MUTATION CHECK: drop ``usb_path`` from either cache call -> this fails.
+    """
+    _twin_led(tmp_path, "1-2", pm=80).connect()
+    _twin_led(tmp_path, "1-3", pm=1).connect()
+
+    first = _twin_led(tmp_path, "1-2", pm=None).connect()
+    second = _twin_led(tmp_path, "1-3", pm=None).connect()
+
+    assert (first.pm_byte, second.pm_byte) == (80, 1)
+
+
+def test_a_twin_without_its_own_entry_says_whose_it_borrowed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An entry cached before the coolers were told apart may be the OTHER
+    unit's; it is still better than no device until a power cycle, but the
+    report has to show it was borrowed."""
+    _twin_led(tmp_path, "", pm=80).connect()          # single-cooler days
+
+    with caplog.at_level("WARNING"):
+        result = _twin_led(tmp_path, "1-3", pm=None).connect()
+
+    assert result.pm_byte == 80
+    assert any("1-3" in r.getMessage() and "may be the other" in r.getMessage()
+               for r in caplog.records if r.levelname == "WARNING")
+
+
 def test_led_probe_cache_handles_corrupt_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

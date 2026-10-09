@@ -81,7 +81,7 @@ def _probe_cache_key(vid: int, pid: int, usb_path: str = "") -> str:
     devices on different bus positions.  Caller looks up the
     specific path first, falls back to the VID/PID-only key.
     """
-    log.debug("_probe_cache_key: vid=%s pid=%s", vid, pid)
+    log.debug("_probe_cache_key: vid=%s pid=%s usb_path=%s", vid, pid, usb_path)
     if usb_path:
         return f"{vid:04x}_{pid:04x}_{usb_path}"
     return f"{vid:04x}_{pid:04x}"
@@ -104,8 +104,8 @@ def _probe_cache_save(
         "pm": pm, "sub": sub, "model_name": model_name,
     }
     write_state(path, cache)
-    log.info("probe cache: saved %04x:%04x pm=%d sub=%d → %s",
-             vid, pid, pm, sub, path)
+    log.info("probe cache: saved %s pm=%d sub=%d → %s",
+             _probe_cache_key(vid, pid, usb_path), pm, sub, path)
 
 
 def _probe_cache_load(
@@ -115,12 +115,18 @@ def _probe_cache_load(
 
     Looks up the usb_path-specific key first; falls back to the
     VID/PID-only key so a device that was originally cached without
-    a bus path still resolves.
+    a bus path still resolves.  That fallback is a guess for a twin: the
+    plain entry belongs to whichever cooler was cached before the two were
+    told apart, so it is said out loud.
     """
     cache = read_state(path)
     entry = cache.get(_probe_cache_key(vid, pid, usb_path))
     if entry is None and usb_path:
         entry = cache.get(_probe_cache_key(vid, pid))
+        if entry is not None:
+            log.warning("probe cache: %04x:%04x unit %s has no entry of its "
+                        "own — using the shared one, which may be the other "
+                        "cooler's", vid, pid, usb_path)
     if entry is None:
         return None
     try:
@@ -270,7 +276,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
         if (cache_file := self._probe_cache_file()) is not None:
             _probe_cache_save(
                 cache_file, self.info.vid, self.info.pid,
-                self._pm, self._sub, model_name,
+                self._pm, self._sub, model_name, usb_path=self._unit,
             )
         return HandshakeResult(
             resolution=(0, 0),        # LEDs have no screen resolution
@@ -290,7 +296,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
         cache_file = self._probe_cache_file()
         cached = (None if cache_file is None
                   else _probe_cache_load(cache_file, self.info.vid,
-                                         self.info.pid))
+                                         self.info.pid, usb_path=self._unit))
         if cached is None:
             raise failure
 

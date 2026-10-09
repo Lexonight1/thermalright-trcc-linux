@@ -102,26 +102,30 @@ class PyUsbBulkTransport(BulkTransport):
         log.debug("PyUsbBulkTransport.__init__: %04x:%04x serial=%s unit=%s",
                   vid, pid, serial or "(any)", unit or "(only)")
 
-    def open(self) -> bool:
+    def _find(self) -> Any:
+        """This transport's device, or None: its own unit when one is named.
+
+        A named unit is never satisfied by "whichever one libusb lists first"
+        — that is the bug (#287).  Missing means unplugged or moved, and the
+        sibling would be the wrong panel, or one another program holds.
+        """
         if self._unit:
-            # A named unit is never satisfied by "whichever one libusb lists
-            # first" — that is the bug (#287).  Missing means unplugged or
-            # moved, and opening the sibling would drive the wrong panel.
-            self._device = find_unit(self._vid, self._pid, self._unit)
-            if self._device is None:
-                log.error("USB device %04X:%04X not present at unit %s",
-                          self._vid, self._pid, self._unit)
-                return False
-        else:
-            kwargs: dict[str, Any] = {'idVendor': self._vid,
-                                      'idProduct': self._pid}
-            if self._serial:
-                kwargs['serial_number'] = self._serial
-            self._device = usb_find(**kwargs)
-            if self._device is None:
-                log.error("USB device %04X:%04X not found",
-                          self._vid, self._pid)
-                return False
+            log.debug("_find: %04X:%04X at unit %s",
+                      self._vid, self._pid, self._unit)
+            return find_unit(self._vid, self._pid, self._unit)
+        kwargs: dict[str, Any] = {'idVendor': self._vid,
+                                  'idProduct': self._pid}
+        if self._serial:
+            kwargs['serial_number'] = self._serial
+        log.debug("_find: %04X:%04X (the only one)", self._vid, self._pid)
+        return usb_find(**kwargs)
+
+    def open(self) -> bool:
+        self._device = self._find()
+        if self._device is None:
+            log.error("USB device %04X:%04X not found%s", self._vid, self._pid,
+                      f" at unit {self._unit}" if self._unit else "")
+            return False
 
         # 1. Detach kernel drivers from interfaces 0..3.  USB cooler
         # firmware presents multiple interfaces (vendor + HID + mass-
@@ -226,8 +230,11 @@ class PyUsbBulkTransport(BulkTransport):
         forces the kernel to re-enumerate; we then have to re-find
         because the original handle is now invalid, and re-detach
         kernel drivers on the new handle (the kernel will have
-        re-attached them during enumeration).
+        re-attached them during enumeration).  Re-found by the same rule as
+        :meth:`open`, so a reset of one twin never binds the other.
         """
+        log.info("_reset_and_refind: %04X:%04X unit=%s",
+                 self._vid, self._pid, self._unit or "(only)")
         try:
             self._device.reset()
         except usb.core.USBError as e:
@@ -236,16 +243,12 @@ class PyUsbBulkTransport(BulkTransport):
                 self._vid, self._pid, e,
             )
         time.sleep(_RESET_SETTLE_S)
-        kwargs: dict[str, Any] = {
-            'idVendor': self._vid, 'idProduct': self._pid,
-        }
-        if self._serial:
-            kwargs['serial_number'] = self._serial
-        new_device = usb_find(**kwargs)
+        new_device = self._find()
         if new_device is None:
             raise TransportError(
                 f"USB device {self._vid:04X}:{self._pid:04X} disappeared "
-                "after reset",
+                "after reset"
+                + (f" (unit {self._unit})" if self._unit else ""),
             )
         self._device = new_device
         self._detach_kernel_drivers()
@@ -591,9 +594,22 @@ class HidApiTransport(BulkTransport):
         # time (#267, and a second user on the same panel) -- which is direct
         # evidence that trying again is all it needed.
         last: BaseException | None = None
+        unplaced = False
         for attempt in range(1, _HID_OPEN_ATTEMPTS + 1):
+            path = binding.path_for_unit(self._vid, self._pid, self._unit)
+            # A NAMED unit hidapi cannot place is never opened by vid:pid:
+            # that takes whichever one hidapi lists first -- the twin, or a
+            # panel another program holds (#287).  Retried, since a panel
+            # re-enumerating is briefly absent too.
+            unplaced = path is None and bool(self._unit)
+            if unplaced:
+                log.debug("HidApiTransport.open: unit %s not placeable "
+                          "(attempt %d/%d)", self._unit, attempt,
+                          _HID_OPEN_ATTEMPTS)
+                if attempt < _HID_OPEN_ATTEMPTS:
+                    time.sleep(_HID_OPEN_RETRY_S)
+                continue
             try:
-                path = binding.path_for_unit(self._vid, self._pid, self._unit)
                 self._device = (
                     binding.open_path(path) if path is not None
                     else binding.open(self._vid, self._pid, self._serial)
@@ -611,6 +627,11 @@ class HidApiTransport(BulkTransport):
                               attempt, _HID_OPEN_ATTEMPTS, e, _HID_OPEN_RETRY_S)
                     time.sleep(_HID_OPEN_RETRY_S)
         else:
+            if unplaced:
+                raise TransportError(
+                    f"cannot open HID device {self._vid:04x}:{self._pid:04x} "
+                    f"at unit {self._unit}: hidapi cannot tell it from the "
+                    "other unit, and opening by id would drive that one (#287)")
             # hidapi reports "open failed" for absent, EACCES and a device
             # mid-reboot alike, so this states what happened and nothing more.
             # WHY is per-OS knowledge -- udev on Linux, WinUSB on Windows --

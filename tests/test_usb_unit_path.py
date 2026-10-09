@@ -18,6 +18,8 @@ exact shape, resolving to ``1-13`` and ``1-11``.
 """
 from __future__ import annotations
 
+import pytest
+
 from trcc.adapters.system._base import usb_path
 
 
@@ -368,6 +370,35 @@ def test_find_unit_never_falls_back_to_a_sibling(monkeypatch) -> None:
     assert _pyusb_find.find_unit(1, 2, "1-99") is None
 
 
+def test_a_reset_re_finds_its_own_unit_not_the_first_one_listed(
+        monkeypatch) -> None:
+    """After a USB reset the handle is stale and the device is looked up
+    again -- by vid/pid alone, so with two of one model it bound whichever
+    libusb listed first: the twin, or a panel another program holds (#317).
+    MUTATION CHECK: re-find with ``usb_find`` again -> the sibling is bound.
+    """
+    from trcc.adapters.device import _pyusb_find, transport
+
+    sibling = _Dev(bus=1, port_numbers=(13,), address=4)
+    mine = _Dev(bus=1, port_numbers=(11,), address=3)
+    resets: list[_Dev] = []
+    for dev in (sibling, mine):
+        dev.reset = lambda dev=dev: resets.append(dev)      # type: ignore[attr-defined]
+    monkeypatch.setattr(_pyusb_find, "find",
+                        lambda **kw: [sibling, mine] if kw.get("find_all")
+                        else sibling)
+    monkeypatch.setattr(transport, "usb_find", lambda **kw: sibling)
+    monkeypatch.setattr(transport.time, "sleep", lambda s: None)
+    bulk = transport.PyUsbBulkTransport(1, 2, None, "1-11")
+    monkeypatch.setattr(bulk, "_detach_kernel_drivers", lambda: False)
+    bulk._device = mine
+
+    bulk._reset_and_refind()
+
+    assert resets == [mine]
+    assert bulk._device is mine
+
+
 def test_an_empty_unit_is_not_a_match_all() -> None:
     """``find_unit`` must never answer a "give me any" question.
 
@@ -431,6 +462,50 @@ def test_attach_threads_the_unit_all_the_way_to_the_transport(tmp_path) -> None:
     app.platform.open_transport = spy          # type: ignore[assignment]
     app.attach(0x87AD, 0x70DB, unit="1-11")
     assert seen.get("unit") == "1-11"
+
+
+def _placing_binding(opened: list):
+    """A hid binding that cannot place any unit and records id opens."""
+    class _Binding:
+        @staticmethod
+        def path_for_unit(vid, pid, unit):
+            return None
+
+        @staticmethod
+        def open(vid, pid, serial):
+            opened.append((vid, pid))
+            return object()
+
+        @staticmethod
+        def open_path(path):
+            raise AssertionError("no path was found to open")
+
+        @staticmethod
+        def open_errors():
+            return (OSError,)
+    return _Binding
+
+
+def test_a_hid_transport_never_opens_a_unit_it_cannot_place(monkeypatch) -> None:
+    """``path_for_unit`` refuses to guess between two hid entries -- and then
+    ``open`` guessed anyway, by vid:pid: the coin flip it exists to avoid.
+    MUTATION CHECK: fall back to ``binding.open`` for a named unit -> fails.
+    """
+    from trcc.adapters.device import transport as t
+    from trcc.core.errors import TransportError
+
+    opened: list = []
+    binding = _placing_binding(opened)
+    monkeypatch.setattr(t, "HIDAPI_AVAILABLE", True)
+    monkeypatch.setattr(t._HidBinding, "detect", classmethod(lambda cls: binding))
+    monkeypatch.setattr(t.time, "sleep", lambda s: None)
+
+    with pytest.raises(TransportError, match="1-11"):
+        t.HidApiTransport(0x0416, 0x5302, None, "1-11").open()
+    assert opened == []
+
+    t.HidApiTransport(0x0416, 0x5302).open()      # the only one: as before
+    assert opened == [(0x0416, 0x5302)]
 
 
 def test_both_hid_bindings_declare_open_path() -> None:
