@@ -719,6 +719,37 @@ _CREATE_THEME_IMG_EXTS = MEDIA.exts(MediaKind.IMAGE)
 _CREATE_THEME_VID_EXTS = MEDIA.exts(MediaKind.ANIMATED)
 
 
+def _stage_upload(upload: UploadFile, uploads_dir: Path, suffix: str,
+                  staged: list[Path]) -> Path:
+    """Write *upload* to a fresh name in ``uploads/``, recorded for cleanup."""
+    path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
+    staged.append(path)
+    with path.open("wb") as f:
+        shutil.copyfileobj(upload.file, f)
+    log.debug("_stage_upload: %s -> %s", upload.filename, path.name)
+    return path
+
+
+def _overlay_elements(overlay: UploadFile | None) -> tuple[dict, ...] | None:
+    """The ``elements`` of an uploaded overlay JSON; None when none was sent."""
+    if overlay is None or overlay.file is None:
+        log.debug("_overlay_elements: no overlay uploaded")
+        return None
+    try:
+        overlay_config = json.loads(overlay.file.read())
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(400, f"invalid overlay JSON: {e}") from e
+    if not isinstance(overlay_config, dict):
+        raise HTTPException(400, "overlay JSON must be an object")
+    raw_elements = overlay_config.get("elements", [])
+    if not isinstance(raw_elements, list):
+        raise HTTPException(
+            400, "overlay JSON 'elements' must be a list of element dicts")
+    elements = tuple(e for e in raw_elements if isinstance(e, dict))
+    log.debug("_overlay_elements: %d element(s)", len(elements))
+    return elements
+
+
 @router.post("/create-theme", response_model=CreateThemeResponse)
 async def create_theme(
     key: str,
@@ -761,100 +792,88 @@ async def create_theme(
         loop,
     )
     uploads_dir = staging_dir(request)
-
-    bg_name = Path(background.filename or "background").name
-    bg_suffix = Path(bg_name).suffix.lower() or ".jpg"
-    if (bg_suffix not in _CREATE_THEME_IMG_EXTS
-            and bg_suffix not in _CREATE_THEME_VID_EXTS):
-        raise HTTPException(
-            400,
-            f"unsupported background extension {bg_suffix!r} "
-            f"(expected image {sorted(_CREATE_THEME_IMG_EXTS)} or "
-            f"video {sorted(_CREATE_THEME_VID_EXTS)})",
-        )
-    bg_path = uploads_dir / f"{uuid.uuid4().hex}{bg_suffix}"
-    with bg_path.open("wb") as f:
-        shutil.copyfileobj(background.file, f)
-
-    mask_path: Path | None = None
-    if mask is not None and mask.file is not None:
-        mask_suffix = Path(mask.filename or "mask.png").suffix.lower() or ".png"
-        if mask_suffix not in _CREATE_THEME_IMG_EXTS:
+    # Staged uploads a Command still reads stay: PlayVideo and ApplyMask
+    # persist the path they were given.  Everything else -- the image
+    # background LoadImage copied, anything a refused request staged --
+    # is removed: nothing else ever cleaned ``uploads/``.
+    staged: list[Path] = []
+    kept: set[Path] = set()
+    try:
+        bg_name = Path(background.filename or "background").name
+        bg_suffix = Path(bg_name).suffix.lower() or ".jpg"
+        if (bg_suffix not in _CREATE_THEME_IMG_EXTS
+                and bg_suffix not in _CREATE_THEME_VID_EXTS):
             raise HTTPException(
                 400,
-                f"unsupported mask extension {mask_suffix!r}",
+                f"unsupported background extension {bg_suffix!r} "
+                f"(expected image {sorted(_CREATE_THEME_IMG_EXTS)} or "
+                f"video {sorted(_CREATE_THEME_VID_EXTS)})",
             )
-        mask_target: Path = uploads_dir / f"{uuid.uuid4().hex}{mask_suffix}"
-        with mask_target.open("wb") as f:
-            shutil.copyfileobj(mask.file, f)
-        mask_path = mask_target
+        bg_path = _stage_upload(background, uploads_dir, bg_suffix, staged)
 
-    overlay_elements: tuple[dict, ...] | None = None
-    if overlay is not None and overlay.file is not None:
-        try:
-            overlay_config = json.loads(overlay.file.read())
-        except (json.JSONDecodeError, ValueError) as e:
-            raise HTTPException(
-                400, f"invalid overlay JSON: {e}",
-            ) from e
-        if not isinstance(overlay_config, dict):
-            raise HTTPException(400, "overlay JSON must be an object")
-        raw_elements = overlay_config.get("elements", [])
-        if not isinstance(raw_elements, list):
-            raise HTTPException(
-                400,
-                "overlay JSON 'elements' must be a list of element dicts",
+        mask_path: Path | None = None
+        if mask is not None and mask.file is not None:
+            mask_suffix = Path(mask.filename or "mask.png").suffix.lower() or ".png"
+            if mask_suffix not in _CREATE_THEME_IMG_EXTS:
+                raise HTTPException(
+                    400,
+                    f"unsupported mask extension {mask_suffix!r}",
+                )
+            mask_path = _stage_upload(mask, uploads_dir, mask_suffix, staged)
+
+        overlay_elements = _overlay_elements(overlay)
+
+        animated = bg_suffix in _CREATE_THEME_VID_EXTS
+        if animated:
+            # PlayVideo persists the background path itself (#249).
+            play_result = request.app.state.trcc.dispatch(
+                PlayVideo(key=key, path=bg_path),
             )
-        overlay_elements = tuple(
-            e for e in raw_elements if isinstance(e, dict)
-        )
+            http_error_if_failed(play_result)
+            kept.add(bg_path)
+            if not loop:
+                request.app.state.trcc.dispatch(
+                    LoopVideo(key=key, loop=False),
+                )
+        else:
+            load_result = request.app.state.trcc.dispatch(
+                LoadImage(key=key, path=bg_path),
+            )
+            http_error_if_failed(load_result)
 
-    animated = bg_suffix in _CREATE_THEME_VID_EXTS
-    if animated:
-        # PlayVideo persists the background path itself (#249).
-        play_result = request.app.state.trcc.dispatch(
-            PlayVideo(key=key, path=bg_path),
-        )
-        http_error_if_failed(play_result)
-        if not loop:
+        if mask_path is not None:
+            mask_result = request.app.state.trcc.dispatch(
+                ApplyMask(key=key, path=mask_path),
+            )
+            http_error_if_failed(mask_result)
+            kept.add(mask_path)
+
+        if overlay_elements is not None:
+            config_result = request.app.state.trcc.dispatch(
+                SetOverlayConfig(key=key, elements=overlay_elements),
+            )
+            http_error_if_failed(config_result)
             request.app.state.trcc.dispatch(
-                LoopVideo(key=key, loop=False),
+                EnableOverlay(key=key, enabled=True),
             )
-    else:
-        load_result = request.app.state.trcc.dispatch(
-            LoadImage(key=key, path=bg_path),
+
+        # The one ladder (DeviceCanvas); this route kept its own copy of it.
+        found = request.app.state.trcc.dispatch(DeviceCanvas(key=key))
+        w, h = (found.width, found.height) if found.ok else (0, 0)
+
+        return CreateThemeResponse(
+            ok=True,
+            key=key,
+            animated=animated,
+            resolution=f"{w}x{h}",
+            message=(f"theme created from {bg_name} "
+                     f"({'video' if animated else 'image'}, {w}x{h})"),
         )
-        http_error_if_failed(load_result)
-
-    if mask_path is not None:
-        mask_result = request.app.state.trcc.dispatch(
-            ApplyMask(key=key, path=mask_path),
-        )
-        http_error_if_failed(mask_result)
-
-    if overlay_elements is not None:
-        config_result = request.app.state.trcc.dispatch(
-            SetOverlayConfig(key=key, elements=overlay_elements),
-        )
-        http_error_if_failed(config_result)
-        request.app.state.trcc.dispatch(
-            EnableOverlay(key=key, enabled=True),
-        )
-
-    # The one ladder (DeviceCanvas); this route kept its own copy of it.
-    found = request.app.state.trcc.dispatch(DeviceCanvas(key=key))
-    w, h = (found.width, found.height) if found.ok else (0, 0)
-
-    return CreateThemeResponse(
-        ok=True,
-        key=key,
-        animated=animated,
-        resolution=f"{w}x{h}",
-        message=(f"theme created from {bg_name} "
-                 f"({'video' if animated else 'image'}, {w}x{h})"),
-    )
-
-
+    finally:
+        for path in staged:
+            if path not in kept:
+                path.unlink(missing_ok=True)
+                log.debug("create_theme: removed staged %s", path.name)
 @router.post("/color")
 def send_color(key: str, body: ColorRequest, request: Request) -> SendResult:
     """Push a solid-color frame to a connected LCD device."""

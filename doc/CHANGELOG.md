@@ -28,6 +28,24 @@
   disturb the panel TRCC was driving. It now asks the running TRCC app for
   each panel it holds, and only probes panels nothing else is using.
 
+- **Two of the same cooler no longer get each other's settings after a USB
+  hiccup (#287, #317).** Three places still picked "the first one listed"
+  instead of the unit they meant: the LED controller's saved identity (two
+  different LED coolers on one USB id could swap styles after a restart),
+  the re-connect after a USB reset, and the HID panel connection. Each now
+  uses its own unit, or refuses rather than drive the other one.
+- **Starting TRCC hidden no longer pops up the window that is already open.**
+  A second `trcc gui --resume` -- autostart, or the desktop restoring your
+  session -- brought the running window to the front; it now leaves it be.
+- **SCSI panels no longer print two warnings every time they connect.** The
+  panel's normal answer to TRCC's first question was logged as an error. When
+  a panel really does not answer it, TRCC now warns that it guessed the size.
+- **macOS: watching for plugged-in coolers no longer fills the log (#283).**
+  The once-a-second check wrote several lines each time and asked every panel
+  for its serial number; it now does neither. (Not yet confirmed to change
+  the panel resetting on macOS.)
+- **`POST /display/create-theme` no longer leaves every upload behind.**
+
 ## v9.10.7
 
 ### Added

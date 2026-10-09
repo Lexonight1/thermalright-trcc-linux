@@ -1621,6 +1621,42 @@ def test_send_image_keeps_nothing_on_disk(tmp_path: Path) -> None:
     assert "/devices/{key}/display/push-image" not in schema
 
 
+def test_create_theme_keeps_only_what_a_command_still_reads(tmp_path: Path) -> None:
+    """``create-theme`` staged every upload in ``uploads/`` and never removed
+    one.  An image background is COPIED by LoadImage, so its staged file is
+    debris at once; a refused request left everything it had staged.  A mask
+    stays: ApplyMask persists the path it was given.
+    MUTATION CHECK: drop the ``finally`` cleanup -> both halves fail.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.ui.api.main import build_app
+
+    from .mock_platform import MockPlatform
+
+    renderer = QtRenderer()
+    png = renderer.encode_png(renderer.create_surface(64, 64, color=(0, 0, 255, 255)))
+    trcc = App(MockPlatform([{"vid": "0402", "pid": "3922"}], tmp_path),
+               renderer=renderer)
+    route = "/devices/0402:3922/display/create-theme"
+    with loopback_client(build_app(trcc=trcc)) as client:
+        for _ in range(3):
+            resp = client.post(route, files={"background": ("bg.png", png, "image/png")})
+            assert resp.status_code == 200, resp.text
+        refused = client.post(route, files={
+            "background": ("bg.png", png, "image/png"),
+            "mask": ("mask.txt", b"not an image", "text/plain")})
+        assert refused.status_code == 400
+        with_mask = client.post(route, files={
+            "background": ("bg.png", png, "image/png"),
+            "mask": ("mask.png", png, "image/png")})
+        assert with_mask.status_code == 200, with_mask.text
+
+    uploads = trcc.platform.paths().user_content_dir() / "uploads"
+    mask = trcc.settings.for_device("0402:3922").mask_path
+    assert [p.name for p in uploads.iterdir()] == [Path(mask).name]
+
+
+
 def test_create_theme_reports_the_panels_size_not_the_catalogs(
     tmp_path: Path,
 ) -> None:
