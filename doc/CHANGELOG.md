@@ -15,7 +15,9 @@
     too) is split across the lights, or an LED cooler.
 
   While following an LCD, a live preview shows its picture and the colours
-  each light gets. "Find lights" searches for the memory and for OpenRGB at
+  each light gets. Under the two other sources, each stick is drawn running
+  its effect -- TRCC's drawing from the effect's settings, since the stick
+  runs it itself, so the real one may differ in detail. "Find lights" searches for the memory and for OpenRGB at
   the address you type. The same is `trcc system rgb`, `trcc system
   ram-effect` and `trcc system follow --source/--mapping/--target`, or
   `/system/rgb`, `/system/ram-effect` and `/system/rgb-follow` in the API.
