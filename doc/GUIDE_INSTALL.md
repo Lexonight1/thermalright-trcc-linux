@@ -1007,10 +1007,16 @@ not been restored. Remove the pieces directly:
 
 ```bash
 trcc system autostart disable                 # drop the autostart entry
+trcc system ram-lighting disable              # BEFORE uninstalling: take back the RAM-bus grant, if you enabled it
 pip uninstall trcc-linux                      # or your package manager
 sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules    # udev rule
+sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
 ```
+
+The distro packages (rpm, deb, Arch) remove the RAM-lighting grant themselves
+when uninstalled; a pip or source install cannot, so run `ram-lighting
+disable` first.
 
 `~/.trcc-user/` holds themes and backgrounds **you** authored — back it up
 first if you want to keep them.
@@ -1021,6 +1027,8 @@ first if you want to keep them.
 pip uninstall trcc-linux
 sudo rm /etc/udev/rules.d/99-trcc-lcd.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
+sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
+sudo rm -f /etc/udev/rules.d/70-trcc-ram-lighting.rules /etc/modules-load.d/trcc-i2c.conf   # RAM-lighting grant
 sudo udevadm control --reload-rules
 rm -rf ~/.config/trcc ~/.trcc
 rm -f ~/.config/autostart/trcc*.desktop
