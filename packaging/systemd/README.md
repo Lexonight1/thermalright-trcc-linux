@@ -122,6 +122,6 @@ After install, in any terminal:
 trcc detect
 
 # The IPC socket should exist:
-ls -la $XDG_RUNTIME_DIR/trcc-linux.sock      # Linux
-ls -la /tmp/trcc-linux.sock                  # macOS / fallback
+ls -la $XDG_RUNTIME_DIR/trcc.sock     # Linux with a login session
+ls -la ~/.cache/trcc.sock             # macOS, root, or no XDG_RUNTIME_DIR
 ```

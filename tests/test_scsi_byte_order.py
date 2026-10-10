@@ -7,7 +7,8 @@ unswapped.  We sent it little-endian, because FBL_PROFILES[51] is the HID
 wire's FBL 51 -- which IS little-endian on real glass (#65, #67).  So the rule
 lives on the SCSI wire, and the table keeps HID's answer.
 
-Unverified on a SCSI FBL 51 panel: none has ever been reported.
+Confirmed on a SCSI FBL 51 panel by @PourrezJ (#313): green showed pink
+until the frame went big-endian.
 """
 from __future__ import annotations
 

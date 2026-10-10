@@ -16,7 +16,7 @@ what produced the drift.
 
 MUTATION CHECK -- in ``ENCODE_ROTATIONS``, change ``(854, 480, _JPEG)`` from
 ``EncodeRotation(0, invert=False)`` to ``EncodeRotation(0)`` (the shape that
-shipped, and #203/#169/#171).  MEASURED 2026-10-01: **15 failures**, all
+shipped, and #203/#169).  MEASURED 2026-10-01: **15 failures**, all
 854x480 -- ``test_encode_angles_match_the_csharp_switch`` for SUB 1 and 3-7
 (SUB 0 and 2 meet a ``not_ported`` arm, which differs either way),
 ``test_854_takes_the_same_angles_at_every_sub`` for all 8, and
@@ -116,7 +116,7 @@ def test_encode_angles_match_the_csharp_switch(
         return
     assert ours == theirs, (
         f"{label}: we rotate {ours}, the C# rotates {theirs}.  A frame at the "
-        f"wrong angle is upside-down or sideways on the glass (#203/#169/#171)."
+        f"wrong angle is upside-down or sideways on the glass (#203/#169)."
     )
 
 

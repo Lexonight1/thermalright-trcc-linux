@@ -156,9 +156,8 @@ def create(
         key, name, background, mask, metric,
     )
     app_obj = get_app()
-    # This CLI process holds no attached devices; LoadImage → LoadTheme renders
-    # on the wire, so attach first or it fails "not connected".  Idempotent when
-    # a daemon/GUI already owns the device.  (#150)
+    # This CLI process holds no attached devices: ``LoadImage`` declares
+    # USES_DEVICE, so App.dispatch connects it first (#150).
 
     bg_result = app_obj.dispatch(LoadImage(key=key, path=background))
     if not bg_result.ok:

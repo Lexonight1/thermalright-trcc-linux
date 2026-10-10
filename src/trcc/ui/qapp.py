@@ -5,8 +5,8 @@ shipping GUI requires:
 
 * Silence two categories of Qt noise (``qt.qpa.services``,
   ``qt.qpa.theme.gnome``) that aren't actionable for users.
-* Disable High-DPI auto-scaling (legacy parity — the baked PNG
-  backgrounds are 1× and look broken under Qt's auto-scale).
+* No High-DPI override: Qt6 makes scaling mandatory (see the note in
+  ``configure_qt_environment`` — the old Qt5 variable did nothing).
 * Pick ``Microsoft YaHei`` as the global font with a ``Sans Serif``
   fallback so CJK glyphs land correctly on Windows-style overlays.
 * Set the freedesktop ``WMClass`` so wayland compositors match the

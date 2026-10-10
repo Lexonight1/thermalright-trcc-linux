@@ -136,7 +136,7 @@ The following models are listed on [Thermalright's official download page](https
 | Core Vision | HID LCD or LED | Need tester |
 | Levita Vision | HID LCD or LED | Need tester |
 | Peerless Assassin 140 Digital | HID LCD or LED | Need tester |
-| Phantom Spirit 120 Digital/Vision | HID LCD or LED | Need tester |
+| Phantom Spirit 120 Digital | HID LED | Need tester |
 | Rainbow Vision | HID LCD or LED | Need tester |
 | Royal Knight 130 Digital/Vision | HID LCD or LED | Need tester |
 | Royal Lord 120 Vision | HID LCD or LED | Need tester |

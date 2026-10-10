@@ -1,7 +1,7 @@
 [Unit]
 # trccd — TRCC Linux singleton background process.
 # Owns USB device(s), serves CLI/API/GUI clients over the IPC socket
-# at $XDG_RUNTIME_DIR/trcc-linux.sock.
+# at $XDG_RUNTIME_DIR/trcc.sock (else ~/.cache/trcc.sock).
 #
 # This is a USER unit. Install with:
 #     systemctl --user enable --now trccd.service

@@ -363,6 +363,8 @@ These folks didn't just report a problem — they opened the editor and sent a f
 - **[@jphilipb](https://github.com/jphilipb)** — [#215](https://github.com/Lexonight1/thermalright-trcc-linux/pull/215): reverse-engineered and hardware-validated the Thermalright Magic Qube (65-LED segment display) — a device that doesn't even exist in the Windows app — and wired up full support from scratch.
 - **[@Hythera](https://github.com/Hythera)** — [#209](https://github.com/Lexonight1/thermalright-trcc-linux/pull/209): had the flake read its version straight from `pyproject.toml`, killing an entire place I used to have to bump by hand every release.
 - **[@elsiedotcafe](https://github.com/elsiedotcafe)** — [#123](https://github.com/Lexonight1/thermalright-trcc-linux/pull/123): pinned the PySide6 package to a stable source so the build stops breaking.
+- **[@PourrezJ](https://github.com/PourrezJ)** — [#313](https://github.com/Lexonight1/thermalright-trcc-linux/pull/313): found, on his own 320x240 panel, that SCSI FBL 51 panels take big-endian colour — the same fix, made independently, that shipped in v9.10.5.
+- **[@alan7383](https://github.com/alan7383)** — [#271](https://github.com/Lexonight1/thermalright-trcc-linux/pull/271): confirmed the Phantom Spirit 120 Vision EVO, and found the bulk-panel screencast, video-override and reboot-surviving `.zt` fixes that shipped from his PR.
 
 Thank you all — genuinely. PRs are always welcome, and you'll land right here.
 
@@ -436,6 +438,10 @@ software for hardware plenty of us run Linux on; the more good answers to that, 
   Thermalright USB displays with live CPU/GPU monitoring, written from scratch on top of
   this project's protocol reverse engineering. GPL-3.0, and
   [on the AUR](https://aur.archlinux.org/packages/openthermalright).
+- **[retro-aio](https://github.com/lFiziXl/retro-aio-thermalright-hypervision-360)** by
+  [lFiziXl](https://github.com/lFiziXl) — a lightweight Rust daemon for the Hyper Vision 360
+  that draws a pixel mascot over a Matrix-style rain, both reacting to live CPU/GPU load.
+  Built on this project's protocol findings; GPL-3.0 ([#304](https://github.com/Lexonight1/thermalright-trcc-linux/issues/304)).
 
 Built something? Open an issue and I'll add it.
 

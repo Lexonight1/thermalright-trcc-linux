@@ -13,11 +13,12 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | FROZEN VISION V2 | SCSI (87CD:70DB) | 320x320 | Developer |
 | FROZEN WARFRAME | SCSI (0402:3922) | 320x320 | Developer |
 | FROZEN WARFRAME 240 | SCSI (0402:3922) | 320x240 | [gizbo](https://github.com/gizbo) |
-| FROZEN WARFRAME SE | HID (0416:5302) | 320x240 | [apj202-ops](https://github.com/apj202-ops) |
+| FROZEN WARFRAME SE | HID (0416:5302) | 320x240 | [apj202-ops](https://github.com/apj202-ops), [RenanASD](https://github.com/RenanASD) |
 | FROZEN WARFRAME 360 | HID (0416:5302) | — | [Edoardo-Rossi-EOS](https://github.com/Edoardo-Rossi-EOS), [edoargo1996](https://github.com/edoargo1996), [stephendesmond1-cmd](https://github.com/stephendesmond1-cmd) |
 | LC1, LC2, LC3, LC5 | SCSI (0416:5406) | 320x320 | Developer |
 | GrandVision 360 AIO | Bulk (87AD:70DB) | 480x480 | [bipobuilt](https://github.com/bipobuilt), [cadeon](https://github.com/cadeon) |
 | Mjolnir Vision 360 | Bulk (87AD:70DB) | 480x480 | [Pikarz](https://github.com/Pikarz) |
+| Levita Vision | Bulk (87AD:70DB) | 1600x720 | [oranura](https://github.com/oranura) |
 | Wonder Vision Pro 360 | Bulk (87AD:70DB) | — | [Civilgrain](https://github.com/Civilgrain) |
 | Trofeo Vision LCD | HID (0416:5302) | 1280x480 | [PantherX12max](https://github.com/PantherX12max), [N8ghtz](https://github.com/N8ghtz) |
 | Assassin Spirit 120 Vision ARGB | HID (0416:5302) | 240x240 | [michael-spinelli](https://github.com/michael-spinelli), [acioannina-wq](https://github.com/acioannina-wq) |
@@ -59,7 +60,6 @@ These have a full pixel LCD (240x240 to 1920x462) for custom themes, images, vid
 | Elite Vision | 精英视界 |
 | Stream Vision | 风擎视界 |
 | Rainbow Vision | 彩虹视界 |
-| Levita Vision | 悠浮视界 |
 | TL-M10 VISION | — |
 | TR-A70 Vision | — |
 | AS120 VISION | — |

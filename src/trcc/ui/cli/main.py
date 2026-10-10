@@ -216,8 +216,8 @@ def gui(
     log.info("cli gui: start_hidden=%s decorated=%s", start_hidden, want_frame)
     from ..gui import launch
     # SystemExit (not typer.Exit) — see qtgui above: this is a direct entry
-    # point too (the Windows trcc-gui.exe calls gui() outside typer), so
-    # typer.Exit would escape unhandled and crash the frozen build (#187).
+    # point too (the trcc-gui / trcc-lcd console scripts call gui() outside
+    # typer), so typer.Exit would escape unhandled (#187).
     raise SystemExit(launch(start_hidden=start_hidden, decorated=want_frame))
 
 

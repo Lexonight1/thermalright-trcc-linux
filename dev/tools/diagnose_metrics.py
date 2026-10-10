@@ -14,8 +14,11 @@ then reads the ACTUAL widget state (gauge ``_text`` + preview ``_colors``) — w
 the user sees — and prints it.  Answers "do metrics + preview populate for this
 device" with no guessing.
 
-    PYTHONPATH=src QT_QPA_PLATFORM=offscreen python3.12 dev/tools/diagnose_metrics.py
-    PYTHONPATH=src QT_QPA_PLATFORM=offscreen python3.12 dev/tools/diagnose_metrics.py 0416:8001 3
+    env -u WAYLAND_DISPLAY PYTHONPATH=src xvfb-run -a python3.12 dev/tools/diagnose_metrics.py
+    env -u WAYLAND_DISPLAY PYTHONPATH=src xvfb-run -a python3.12 dev/tools/diagnose_metrics.py 0416:8001 3
+
+Under Xvfb, never ``QT_QPA_PLATFORM=offscreen``: the app pops that variable
+(``ui/qapp.py``), so the window would open on the real desktop.
 """
 from __future__ import annotations
 
