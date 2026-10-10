@@ -115,7 +115,7 @@ dev = [
     # was declared nowhere and worked only because every machine that had run
     # the suite happened to have it installed already.  The first environment
     # that did not was the Windows CI job, on its first ever run.
-    "pytest-xdist>=3.0",
+    "pytest-xdist>=3.2",          # --dist worksteal arrived in 3.2
     "ruff>=0.4.0",
     # httpx2, not httpx: starlette.testclient does `try: import httpx2 / except:
     # import httpx` + a DeprecationWarning. Pinning the old one made the suite
@@ -195,7 +195,11 @@ pythonpath = ["src", "tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short -n auto"
+# --dist worksteal: an idle worker takes queued tests from a busy one.  The
+# default hands every worker its share up front, and the slow GUI tests left
+# one worker grinding while 15 sat idle.  Measured 2026-10-10 on the 3.12
+# venv, same 29,574 results either way: 211 s by default, 101 s stealing.
+addopts = "-v --tb=short -n auto --dist worksteal"
 # A test still running after this many seconds gets every thread's stack
 # printed, so a hang names itself.  Three CI runs (2026-10-09/10) sat silent
 # 21-25 minutes at 88-90% until the 45-minute job limit, with nothing in the
