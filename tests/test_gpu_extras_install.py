@@ -79,6 +79,7 @@ def test_setup_succeeds_when_only_gpu_extras_fail(
                         lambda vendors, dry_run: 1)         # GPU install fails
     monkeypatch.setattr(linux, "install_selinux_policy", lambda dry_run: 0)
     monkeypatch.setattr(linux, "retire_legacy_polkit", lambda dry_run: 0)
+    monkeypatch.setattr(linux, "install_polkit_files", lambda dry_run, owns: 0)
 
     rc = linux.LinuxOS().setup(dry_run=False)
 
@@ -95,6 +96,7 @@ def test_setup_fails_when_udev_fails(monkeypatch: pytest.MonkeyPatch) -> None:
                         lambda vendors, dry_run: 0)
     monkeypatch.setattr(linux, "install_selinux_policy", lambda dry_run: 0)
     monkeypatch.setattr(linux, "retire_legacy_polkit", lambda dry_run: 0)
+    monkeypatch.setattr(linux, "install_polkit_files", lambda dry_run, owns: 0)
 
     rc = linux.LinuxOS().setup(dry_run=False)
 

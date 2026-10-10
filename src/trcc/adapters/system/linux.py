@@ -47,6 +47,8 @@ from ..sensors.gpu_detect import (
 )
 from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
 from ._desktop_entry import XdgDesktopEntry
+from ._polkit_install import POLKIT_POLICY
+from ._polkit_install import install as install_polkit_files
 from ._ram_access import LinuxRamAccess
 from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
@@ -670,7 +672,7 @@ class LinuxOS(BaseOS, key="linux"):
     def setup(self, dry_run: bool = False) -> int:
         """Run one-time Linux setup.
 
-        Five things happen here and none can silently no-op:
+        Six things happen here and none can silently no-op:
           1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
              every device in the registry + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
@@ -687,6 +689,9 @@ class LinuxOS(BaseOS, key="linux"):
           5. Old polkit grants — remove the rule and policy older releases
              wrote, which let any program run dmidecode/smartctl as root.
              Root (re-execs via sudo); only files that name our actions.
+          6. TRCC's polkit policy + RAM-lighting helpers — what the packages
+             install, so a pip/source install gets TRCC's own short password
+             prompt and a password-free turn-off.  Never over a package's.
 
         ``dry_run=True`` prints what would be done and returns 0
         without touching the system.
@@ -702,6 +707,7 @@ class LinuxOS(BaseOS, key="linux"):
             log.info("would install the desktop entry: %s",
                      XdgDesktopEntry().path)
             retire_legacy_polkit(dry_run=True)
+            install_polkit_files(dry_run=True, owns=self.packages().owns)
             return 0
 
         rc_udev = install_udev_rules(dry_run=False)
@@ -720,7 +726,11 @@ class LinuxOS(BaseOS, key="linux"):
         # failure — the device still works from the CLI without a menu icon.
         XdgDesktopEntry().install()
         rc_polkit = retire_legacy_polkit(dry_run=False)
-        return rc_udev or rc_selinux or rc_polkit
+        # After the retirement above, which keeps a policy naming only our
+        # /usr/bin/trcc-* helpers -- exactly the one this installs.
+        rc_helpers = install_polkit_files(dry_run=False,
+                                          owns=self.packages().owns)
+        return rc_udev or rc_selinux or rc_polkit or rc_helpers
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
@@ -1061,7 +1071,7 @@ _DMI_MEMORY_FIELDS: frozenset[str] = frozenset({
     'minimum_voltage', 'maximum_voltage', 'memory_technology',
 })
 
-_POLKIT_POLICY = '/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy'
+_POLKIT_POLICY = str(POLKIT_POLICY)
 # Written by ``setup-polkit`` from v5.3.3 to v9.6.5: polkit.Result.YES for
 # dmidecode/smartctl in ANY session, SSH included.  Nothing owns it.
 _LEGACY_POLKIT_RULE = '/etc/polkit-1/rules.d/50-trcc.rules'

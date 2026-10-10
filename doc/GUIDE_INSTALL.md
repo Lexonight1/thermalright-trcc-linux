@@ -1011,6 +1011,8 @@ trcc system ram-lighting disable              # BEFORE uninstalling: take back t
 pip uninstall trcc-linux                      # or your package manager
 sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules    # udev rule
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
+sudo rm -f /usr/bin/trcc-ram-access /usr/bin/trcc-ram-access-off \
+           /usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy   # setup's polkit files (pip/source only)
 rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
 ```
 
