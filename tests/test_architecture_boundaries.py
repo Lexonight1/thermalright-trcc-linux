@@ -2333,7 +2333,7 @@ def test_unbridged_events_do_not_grow() -> None:
 #: Where a UI uses its OWN App instead of handing itself on.  The daemon's
 #: socket server dispatches for its clients (their names ride the envelope);
 #: gui's splash runs the coldplug before any window exists.
-_UI_OWN_APP_USES = frozenset({("DaemonUI", "run"), ("GuiUI", "bring_up")})
+_UI_OWN_APP_USES = frozenset({("DaemonUI", "bring_up"), ("GuiUI", "bring_up")})
 
 
 def test_every_ui_hands_itself_on_not_its_app() -> None:

@@ -386,3 +386,97 @@ def test_the_app_starts_in_root_not_in_the_first_uis_directory(
         daemon.ensure_daemon(timeout=0.1)
 
     assert popen.call_args.kwargs["cwd"] == "/"
+
+
+# ── One App per user, answering before its coldplug finishes (#314) ──────
+#
+# The App bound its socket only AFTER bring_up -- the device scan, every
+# handshake, the video prime -- while each UI waited 10 s for it and then
+# built an App of its own: two owners of one panel.  A first connect of a
+# firmware-4.07 HID panel spends 8 s in its probe alone.  Two UIs starting
+# together both spawned, and the second App unlinked the first one's socket.
+
+
+def test_the_app_answers_before_its_coldplug_finishes(
+    monkeypatch: pytest.MonkeyPatch, fake_platform,
+) -> None:
+    """MUTATION CHECK: bind in ``run`` again (after bring_up) -> fails."""
+    import threading
+    import time
+
+    from trcc.app import App
+    from trcc.ui._uis import DaemonUI
+
+    coldplug, finish = threading.Event(), threading.Event()
+
+    def slow_session(self) -> None:
+        coldplug.set()
+        finish.wait(10)
+
+    monkeypatch.setattr(App, "start_session", slow_session)
+    ui = DaemonUI()
+    worker = threading.Thread(target=ui.start, args=(fake_platform,), daemon=True)
+    worker.start()
+    try:
+        assert coldplug.wait(5), "bring_up never started"
+        deadline = time.monotonic() + 3
+        while not ipc.daemon_running() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ipc.daemon_running(), "no socket while the coldplug ran"
+    finally:
+        finish.set()
+        deadline = time.monotonic() + 5
+        while ui._server is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        ui.stop()
+        worker.join(10)
+    assert not worker.is_alive()
+
+
+def test_a_second_app_refuses_while_one_holds_the_lock() -> None:
+    """MUTATION CHECK: skip the lock in preflight -> a second App starts."""
+    from trcc.ui._uis import DaemonUI
+
+    holder = ipc.AppLock()
+    assert holder.acquire()
+    try:
+        assert DaemonUI().preflight() == 1
+    finally:
+        holder.release()
+
+
+def test_no_ui_spawns_an_app_while_one_is_starting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock held, socket not yet bound: that App is STARTING -- wait for it."""
+    holder = ipc.AppLock()
+    assert holder.acquire()
+
+    def no_spawn(*a, **k):
+        raise AssertionError("spawned a second App beside a starting one")
+
+    monkeypatch.setattr(daemon.subprocess, "Popen", no_spawn)
+    try:
+        assert daemon.ensure_daemon(timeout=0.3) is False
+    finally:
+        holder.release()
+
+
+def test_a_server_never_removes_a_socket_it_does_not_own(fake_platform) -> None:
+    """An orphaned App's shutdown deleted the LIVE App's socket file, so the
+    next UI found nothing and started a third."""
+    import socket as _socket
+
+    from trcc.app import App
+
+    first = ipc.IPCServer(App(fake_platform))
+    first.start()
+    path = ipc.socket_path()
+    path.unlink()                                 # a newer App took the path
+    other = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+    other.bind(str(path))
+    try:
+        first.shutdown()
+        assert path.exists(), "shutdown removed another server's socket"
+    finally:
+        other.close()

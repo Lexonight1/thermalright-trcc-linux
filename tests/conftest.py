@@ -756,6 +756,26 @@ def _home_is_never_the_real_one(
     monkeypatch.setenv("TRCC_DAEMON", "0")
 
 
+@pytest.fixture(autouse=True)
+def _runtime_dir_is_never_the_real_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """No test sees the developer's ``$XDG_RUNTIME_DIR``.  Autouse, for cause.
+
+    Every TRCC socket and the one-App lock live there, and the real one holds
+    the developer's RUNNING App: a test that asked ``daemon_running()`` got
+    True from it, and one that took the App lock would have refused to start
+    while the real App ran -- or stopped it from starting.  Per test, and
+    short: an AF_UNIX path stops at 107 bytes, which a ``tmp_path`` can pass.
+    """
+    import shutil
+    import tempfile
+    runtime = tempfile.mkdtemp(prefix="trcc-rt-")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", runtime)
+    yield
+    shutil.rmtree(runtime, ignore_errors=True)
+
+
 @pytest.fixture
 def tmp_home(tmp_path: Path) -> Path:
     """The per-test HOME as a value.

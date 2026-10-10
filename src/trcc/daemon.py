@@ -154,6 +154,11 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
                         "— using it", _REPLACE_TIMEOUT_S)
             return ipc.daemon_running()
 
+    if ipc.AppLock.held():
+        # An App is STARTING: it holds the lock and has not bound yet.  A
+        # second one beside it would own the same panels (#314).
+        log.info("ensure_daemon: an App is starting — waiting for it")
+        return ipc.wait_for_daemon(timeout=timeout)
     cmd = _daemon_spawn_cmd()
     log.info("Spawning the shared App: %s", " ".join(cmd))
     # Strip the daemon-mode flag from the child's env so the spawned daemon

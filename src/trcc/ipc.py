@@ -146,6 +146,60 @@ def daemon_running() -> bool:
         return False
 
 
+class AppLock:
+    """One App per user: an ``flock`` the App holds for its whole life.
+
+    The socket alone could not say "an App is starting": it appears only when
+    the App binds, and two UIs launched together both found none, both
+    spawned, and the second App unlinked the first one's socket (#314).  The
+    kernel releases the lock when the holder exits or crashes, so held means
+    alive.  Absent ``fcntl`` (Windows, where every UI runs its own App) it is
+    always free.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._path = path or runtime_dir() / "trcc.lock"
+        self._fd: int | None = None
+        log.debug("AppLock.__init__: %s", self._path)
+
+    def acquire(self) -> bool:
+        """Take the lock; False when another process holds it."""
+        try:
+            import fcntl
+        except ImportError:
+            log.debug("AppLock.acquire: no fcntl — nothing to hold")
+            return True
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self._path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            log.info("AppLock.acquire: %s is held by another App", self._path)
+            return False
+        os.ftruncate(fd, 0)
+        os.write(fd, f"{os.getpid()}\n".encode())
+        self._fd = fd
+        log.info("AppLock.acquire: %s held by pid %d", self._path, os.getpid())
+        return True
+
+    def release(self) -> None:
+        """Drop the lock (the kernel does it anyway when this process exits)."""
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+            log.info("AppLock.release: %s", self._path)
+
+    @classmethod
+    def held(cls) -> bool:
+        """True while some App -- starting, or serving -- holds the lock."""
+        probe = cls()
+        free = probe.acquire()
+        probe.release()
+        log.debug("AppLock.held: %s", not free)
+        return not free
+
+
 # =========================================================================
 # Class registries — discovered once at import
 # =========================================================================
@@ -580,6 +634,7 @@ class IPCServer:
         # if the environment moved between start and shutdown we would delete
         # a path we never owned -- plausibly a live daemon's socket.
         self._bound_path: Path | None = None
+        self._bound_ino = 0
         self._stop = False
         # Event fan-out state.  A subscriber connection is long-lived, unlike
         # the one-shot dispatch connections, so it is tracked here rather than
@@ -613,6 +668,8 @@ class IPCServer:
         path.chmod(0o600)
         self._sock = sock
         self._bound_path = path
+        # The file THIS server made, so shutdown never removes another's.
+        self._bound_ino = path.stat().st_ino
         log.info("IPC server listening on %s", path)
 
     def serve_forever(self) -> None:
@@ -678,11 +735,20 @@ class IPCServer:
         # Last: ``trcc kill`` returns when this file is gone, so every UI has
         # been told by then.
         path = self._bound_path
-        if path is not None and path.exists():
+        try:
+            ours = path is not None and path.stat().st_ino == self._bound_ino
+        except OSError:
+            ours = False
+        if path is not None and ours:
             try:
                 path.unlink()
             except OSError:
                 log.debug("shutdown: socket unlink failed", exc_info=True)
+        elif path is not None:
+            # An orphaned App removing the LIVE one's socket left no App to
+            # find, and the next UI started a third (#314).
+            log.info("shutdown: %s is not the socket this server made — "
+                     "left in place", path)
         self._bound_path = None
         log.info("IPC server shut down")
 

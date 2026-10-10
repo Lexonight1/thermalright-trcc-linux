@@ -25,6 +25,7 @@ or start the shared App, which a ``trcc --help`` never needed.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any
 
 from ._base import UserInterface
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
     from ..app import App
     from ..core.ports import Platform, Renderer
     from ..core.results import ApiTlsResult
-    from ..ipc import IPCServer, SingleInstance
+    from ..ipc import AppLock, IPCServer, SingleInstance
 
     # ``TYPE_CHECKING`` only: these names cost NOTHING at runtime, so the
     # module stays light while the faces keep real types.  A ``type: ignore``
@@ -126,6 +127,8 @@ class DaemonUI(UserInterface, key="daemon"):
         log.info("DaemonUI.__init__: renderer=%s", renderer is not None)
         self._renderer = renderer
         self._server: IPCServer | None = None
+        self._lock: AppLock | None = None
+        self._serving: threading.Thread | None = None
 
     def preflight(self) -> int | None:
         """Refuse to start if another daemon already owns the socket.
@@ -143,6 +146,14 @@ class DaemonUI(UserInterface, key="daemon"):
             log.warning("DaemonUI.preflight: another daemon already owns %s",
                         ipc.socket_path())
             return 1
+        # The socket says nothing while an App is still starting; the lock
+        # does, so two Apps launched together cannot both own USB (#314).
+        lock = ipc.AppLock()
+        if not lock.acquire():
+            log.warning("DaemonUI.preflight: another App is starting — "
+                        "this one exits")
+            return 1
+        self._lock = lock
         from ..daemon import mark_started
         mark_started()
         return None
@@ -165,27 +176,58 @@ class DaemonUI(UserInterface, key="daemon"):
         os.environ.pop(_ENV_FLAG, None)
         return _build_local_app(platform=platform, renderer=self._renderer)
 
+    def bring_up(self) -> bool:
+        """Serve FIRST, then coldplug.
+
+        Bound after the coldplug -- every handshake, the video prime -- the
+        socket did not exist for as long as that took, and a UI gave up after
+        10 s and built an App of its own: two owners of one panel (#314).  A
+        Command that arrives mid-coldplug waits on the App's connect lock; a
+        Query answers from what is connected so far.
+        """
+        from .. import ipc
+        self._server = server = ipc.IPCServer(self._app)
+        if self._stop_requested:
+            log.info("DaemonUI.bring_up: stopped before the server bound")
+            return True
+        server.start()
+        self._serving = threading.Thread(target=server.serve_forever,
+                                         name="trcc-ipc-serve", daemon=True)
+        self._serving.start()
+        log.info("DaemonUI.bring_up: serving %s before the coldplug",
+                 ipc.socket_path())
+        try:
+            return super().bring_up()
+        except BaseException:
+            server.shutdown()
+            raise
+
     def run(self) -> int:
-        """Bind the socket and serve Commands until shutdown.
+        """Serve Commands until shutdown (the server began in bring_up).
 
         ``App.close()`` is NOT called here: :meth:`UserInterface.start` owns
         it.  Closing in both places ran the whole detach-and-blank sequence
         twice -- the same double-teardown the GUI window had removed once
         already.
         """
-        log.info("DaemonUI.run: binding the IPC server")
-        from .. import ipc
-        self._server = server = ipc.IPCServer(self._app)
-        if self._stop_requested:
-            log.info("DaemonUI.run: stopped before the server bound")
-            return 0
-        server.start()
+        log.info("DaemonUI.run: serving until shutdown")
+        server, serving = self._server, self._serving
         try:
-            server.serve_forever()
+            # A timed join, so a stop signal still runs on this main thread.
+            while serving is not None and serving.is_alive():
+                serving.join(0.5)
         finally:
-            server.shutdown()
+            if server is not None:
+                server.shutdown()
         log.info("DaemonUI.run: served to completion")
         return 0
+
+    def teardown(self) -> None:
+        """Drop the one-App lock once this App has closed."""
+        log.info("DaemonUI.teardown: releasing the App lock")
+        if self._lock is not None:
+            self._lock.release()
+            self._lock = None
 
     def stop(self) -> None:
         """Stop serving: flip the server's flag and wake its accept loop."""

@@ -199,12 +199,17 @@ def test_every_policy_helper_refuses_arguments(
     """
     helper = _load_helper(Path(path).name)
 
-    def _forbidden(*a, **k):
-        raise AssertionError("the helper acted on a refused invocation")
+    class _Refused:
+        """Stands in for the helper's own ``os`` / ``subprocess`` binding --
+        never the global modules, which the rest of the process still uses."""
 
-    for module, attr in (("subprocess", "run"), ("os", "open")):
-        if hasattr(helper, module):        # patch what the helper imports
-            monkeypatch.setattr(getattr(helper, module), attr, _forbidden)
+        def __getattr__(self, name: str):
+            raise AssertionError(
+                f"the helper used {name} on a refused invocation")
+
+    for module in ("subprocess", "os"):
+        if hasattr(helper, module):
+            monkeypatch.setattr(helper, module, _Refused())
     monkeypatch.setattr(helper.sys, "argv", [path, "--dump-bin", "/tmp/x"])
 
     assert helper.main() == 2
