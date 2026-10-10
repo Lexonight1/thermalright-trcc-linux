@@ -6,19 +6,24 @@ selection and add/delete; each edit names its element by id.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QPushButton
 
-from ...core.models import OverlayElementConfig
+from ...core.logs import per_frame
+from ...core.models import OverlayElementConfig, OverlayMode
 from ..presentation.overlay_model import OverlayModel
+from ..presentation.overlay_serialization import tile_reading
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Sizes, Styles
 from .overlay_element import OverlayElementWidget
 
 log = logging.getLogger(__name__)
+#: The metrics tick reaches every cell, once a second.
+frame_log = per_frame(__name__)
 
 
 class OverlayGridPanel(QFrame):
@@ -48,6 +53,9 @@ class OverlayGridPanel(QFrame):
         # this panel is a thin View that delegates + renders + emits signals.
         self._model = OverlayModel()
         self._cells = []           # OverlayElementWidget instances (always 42)
+        # The last metrics tick, re-applied whenever cells change occupant.
+        self._readings: Mapping[str, float] = {}
+        self._temp_unit = "C"
 
         self._setup_toggle()
         self._setup_cells()
@@ -113,6 +121,31 @@ class OverlayGridPanel(QFrame):
             cell.config = configs[i] if i < len(configs) else None
             cell.set_selected(i == selected)
             cell.update()
+        self._apply_readings()
+
+    def update_metrics(self, readings: Mapping[str, float],
+                       temp_unit: str) -> None:
+        """A metrics tick: every hardware cell shows its live value (#301).
+
+        The C# refreshes each tile about once a second
+        (``UCXiTongXianShiTimer``); clock cells repaint so their time moves.
+        """
+        frame_log.debug("update_metrics: %d reading(s) temp_unit=%s",
+                        len(readings), temp_unit)
+        self._readings, self._temp_unit = readings, temp_unit
+        self._apply_readings()
+
+    def _apply_readings(self) -> None:
+        """Each occupied cell shows its own reading from the last tick."""
+        frame_log.debug("_apply_readings: %d cell(s)", len(self._cells))
+        for cell in self._cells:
+            if cell.config is None:
+                cell.show_reading(None)
+            elif cell.config.mode == OverlayMode.HARDWARE:
+                cell.show_reading(tile_reading(cell.config, self._readings,
+                                               self._temp_unit))
+            else:
+                cell.update()
 
     def _on_cell_clicked(self, index):
         count = len(self._model)
@@ -182,7 +215,7 @@ class OverlayGridPanel(QFrame):
         log.debug("update_element: index=%s", index)
         if self._model.update(index, config):
             self._cells[index].set_config(config)
-            self._cells[index].update()
+            self._apply_readings()
 
     def get_selected_index(self):
         return self._model.selected_index

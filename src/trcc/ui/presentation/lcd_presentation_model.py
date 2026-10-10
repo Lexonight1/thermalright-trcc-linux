@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .preview_geometry import (
     rotated_lcd_size,
@@ -55,7 +55,6 @@ class DeviceState:
     is_rotated: bool = False                     # 90° / 270° → True
     overlay_enabled: bool = False
     current_theme_path: Path | None = None
-    last_metrics: Any = None                     # cached for video-overlay updates
 
 
 class LcdPresentationModel:

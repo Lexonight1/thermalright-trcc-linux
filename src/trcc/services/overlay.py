@@ -11,7 +11,7 @@ Uses the Renderer port exclusively; knows nothing about Qt directly.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,36 @@ def _strip_metric_unit(text: str) -> str:
     for unit in _METRIC_UNITS:
         text = text.replace(unit, "")
     return text.strip()
+
+
+def metric_text(element: Mapping[str, Any], sensors: Mapping[str, float],
+                temp_unit: str = "C") -> str | None:
+    """The text a metric element shows, or None when nothing reads it.
+
+    The ONE rule for it, shared by the panel render and the gui's overlay
+    grid tile (#301): the reading by sensor id, a duty-only GPU fan as "%"
+    (never "RPM", #145), the °C glyph swapped when the user picked °F (the
+    value is already converted upstream by ``personalize_readings``), and the
+    unit stripped when the element hides it (the unit is in the theme art).
+    """
+    metric_id = str(element.get("metric", ""))
+    value: float | None = sensors.get(metric_id)
+    fmt = str(element.get("format", "{value}"))
+    if value is None and (value := percent_only(sensors, metric_id)) is not None:
+        fmt = fmt.replace(" RPM", "%").replace("RPM", "%")
+    if value is None:
+        frame_log.debug("metric_text: %s has no reading", metric_id)
+        return None
+    text = fmt.format(value=value)
+    # ``show_unit`` mirrors the Windows unit-switch (myModeSub == 1): when set
+    # the unit glyph (°C / % / MHz / RPM) follows the number; otherwise the
+    # bare number, because the unit is baked into the theme art (#150/#203).
+    if not bool(element.get("show_unit", True)):
+        text = _strip_metric_unit(text)
+    elif temp_unit.upper() == "F":
+        text = text.replace("°C", "°F").replace("℃", "℉")
+    frame_log.debug("metric_text: %s -> %r", metric_id, text)
+    return text
 
 
 def resolve_overlay_elements(
@@ -390,13 +420,8 @@ class OverlayService:
         temp_unit: str = "C",
     ) -> None:
         metric_id = str(element.get("metric", ""))
-        value: float | None = sensors.get(metric_id)
-        fmt = str(element.get("format", "{value}"))
-        if value is None and (value := percent_only(sensors, metric_id)) is not None:
-            # A GPU fan whose driver gives a duty percent only: draw it as
-            # one, never as "30 RPM" (#145).
-            fmt = fmt.replace(" RPM", "%").replace("RPM", "%")
-        if value is None:
+        text = metric_text(element, sensors, temp_unit)
+        if text is None:
             if metric_id in self._unsupported():
                 # Not a fault and not a slow tick: nothing on this host reads
                 # it, and it never will.  Saying so stops a reporter (and me)
@@ -416,20 +441,6 @@ class OverlayService:
                     list(sensors.keys())[:5],
                 )
             return
-        text = fmt.format(value=value)
-        # ``show_unit`` mirrors the Windows unit-switch (myModeSub == 1): when
-        # set, the unit glyph (°C / % / MHz / RPM) is drawn after the number;
-        # otherwise the bare number is drawn because the unit is baked into the
-        # theme art and drawing it here would double-print it (#150/#203).  89%
-        # of shipped masks show the unit; the 001-series (baked glyph) do not.
-        if bool(element.get("show_unit", True)):
-            # The value is already unit-converted upstream by
-            # ``personalize_readings`` (°F picked → value is Fahrenheit); swap
-            # the hard-coded °C glyph so the label matches the global unit.
-            if temp_unit.upper() == "F":
-                text = text.replace("°C", "°F").replace("℃", "℉")
-        else:
-            text = _strip_metric_unit(text)
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
         frame_log.debug("draw_metric %s: %s=%s at (%d, %d)",

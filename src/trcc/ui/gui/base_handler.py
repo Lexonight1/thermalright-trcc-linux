@@ -71,13 +71,13 @@ class BaseHandler:
 
     # ── Tick + push ───────────────────────────────────────────────────
 
-    def update_metrics(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: Any, temp_unit: str = "C") -> None:
         """Push the latest metrics snapshot to handler-local widgets."""
         # Per-tick; DEBUG.  Subclasses override — base no-op log marks
         # the rare case a handler didn't bother to override at all.
         log.debug("BaseHandler.update_metrics: view=%r dropped (base no-op)",
                   self._view)
-        del metrics
+        del metrics, temp_unit
 
     def handle_frame(self, image: Any) -> None:
         """Show a rendered frame in the preview.  Override per device kind."""

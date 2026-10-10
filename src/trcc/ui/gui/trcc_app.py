@@ -179,6 +179,9 @@ class TRCCApp(QMainWindow):
         # re-polls; a view-switch re-fans-out this cached object so a panel
         # opened between ticks populates immediately.
         self._last_metrics: HardwareMetrics = HardwareMetrics()
+        # The unit the readings are in (SensorsUpdated.temp_unit), for the
+        # tiles' glyph; the values themselves arrive already converted.
+        self._last_temp_unit = "C"
         self._ui_state.load()
 
         # NOTE: the saved GPU selection is applied universally by the App
@@ -557,6 +560,7 @@ class TRCCApp(QMainWindow):
         frame_log.debug("_on_bus_sensors_updated: %d readings",
                   len(event.metrics.readings))
         self._last_metrics = event.metrics
+        self._last_temp_unit = event.temp_unit
         self._fan_out_metrics(reason="bus")
 
     def _fan_out_metrics(self, *, reason: str) -> None:
@@ -605,7 +609,7 @@ class TRCCApp(QMainWindow):
 
         handler = self._handlers.get(self._active_key)
         if handler is not None:
-            handler.update_metrics(metrics)
+            handler.update_metrics(metrics, temp_unit=self._last_temp_unit)
 
     def notify_device_failures(self, failures: list[Any]) -> None:
         """Surface devices that were found but failed to connect.

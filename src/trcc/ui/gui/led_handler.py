@@ -156,7 +156,7 @@ class LEDHandler(BaseHandler):
         log.info("LED: cleanup")
         self._active = False
 
-    def update_metrics(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: Any, temp_unit: str = "C") -> None:
         """Update panel text (segment displays) on metrics tick."""
         log.debug("update_metrics")
         if not (self._active and self._app):

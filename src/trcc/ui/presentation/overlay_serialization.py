@@ -21,7 +21,8 @@ App holds, and is gone.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ...core.models import (
@@ -34,6 +35,7 @@ from ...core.models import (
 )
 from ...core.results import OverlayElementEntry
 from ...services import _dc as Dc
+from ...services.overlay import metric_text
 
 log = logging.getLogger(__name__)
 
@@ -124,3 +126,26 @@ def config_fields(cfg: OverlayElementConfig) -> dict[str, Any] | None:
             return None
     log.debug("config_fields: %s → %s", cfg.mode.name, fields["type"])
     return fields
+
+
+def tile_reading(cfg: OverlayElementConfig, readings: Mapping[str, float],
+                 temp_unit: str) -> tuple[str, str] | None:
+    """A hardware tile's live ``(number, unit)``, or None when it has none.
+
+    The C# grid tile shows the number in label2 and the unit in label3 --
+    the unit always, whatever the element's unit switch says
+    (``UCXiTongXianShiSub.UCXiTongXianShiSubTimer``, mode 0).  The text comes
+    from the function the panel draws with, so a tile cannot disagree with
+    the panel about °F or a duty-only fan (#301).
+    """
+    if cfg.mode != OverlayMode.HARDWARE or (fields := config_fields(cfg)) is None:
+        return None
+    text = metric_text({**fields, "show_unit": True}, readings, temp_unit)
+    if text is None:
+        return None
+    number = re.match(r"-?[\d.]+", text)
+    reading = ((number.group(), text[number.end():].strip()) if number
+               else (text, ""))
+    log.debug("tile_reading: %s -> %s", fields.get("metric"), reading)
+    return reading
+

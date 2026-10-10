@@ -901,11 +901,16 @@ class LCDHandler(BaseHandler):
                 "update_preview: dropped (ui_active=False, %s)", self._device_key,
             )
 
-    def update_metrics(self, metrics: Any) -> None:
-        """Metrics tick: cache for video-overlay redraws on next frame."""
-        # Per-tick on every metrics broadcast; DEBUG only.
-        self._pm.state.last_metrics = metrics
+    def update_metrics(self, metrics: Any, temp_unit: str = "C") -> None:
+        """Metrics tick: the overlay grid's tiles show the live values (#301).
+
+        It only cached them, under a docstring promising video-overlay redraws
+        nothing ever read, so every tile showed its sub-metric name.  Only the
+        device on show paints the shared grid.
+        """
         readings = getattr(metrics, 'readings', None) or {}
+        if self._pm.ui_active:
+            self._w['theme_setting'].update_metrics(readings, temp_unit)
         self.frame_log.debug(
             "update_metrics: %s readings=%d", self._device_key, len(readings),
         )

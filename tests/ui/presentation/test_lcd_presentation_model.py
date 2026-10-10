@@ -29,7 +29,6 @@ def test_device_state_defaults() -> None:
     assert s.is_rotated is False
     assert s.overlay_enabled is False
     assert s.current_theme_path is None
-    assert s.last_metrics is None
 
 
 def test_model_holds_key_and_fresh_state() -> None:

@@ -4452,17 +4452,38 @@ def test_a_grid_cell_shows_a_board_sensor_by_its_id(qtbot) -> None:
     """A cell for a sensor the DC table cannot name reads its value by id and
     names its group the way the picker does -- (0, 0) would otherwise show as
     the CPU, the C#'s main count 0."""
-    from trcc.core.models import HardwareMetrics, OverlayElementConfig, OverlayMode
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+    from trcc.ui.gui.overlay_grid import OverlayGridPanel
     from trcc.ui.presentation.sensor_display import source_label
 
-    cell = OverlayElementWidget(0)
-    qtbot.addWidget(cell)
-    cell.set_config(OverlayElementConfig(
+    grid = OverlayGridPanel()
+    qtbot.addWidget(grid)
+    grid.load_configs([OverlayElementConfig(
         mode=OverlayMode.HARDWARE, mode_sub=1, main_count=0, sub_count=0,
-        metric="board:nct6798_auxtin1:temp"))
+        metric="board:nct6798_auxtin1:temp")])
 
-    cell.update_metrics(HardwareMetrics(readings={"board:nct6798_auxtin1:temp": 31.0}))
+    grid.update_metrics({"board:nct6798_auxtin1:temp": 31.0}, "C")
 
+    cell = grid._cells[0]
     assert (cell._live_value, cell._live_unit) == ("31", "°C")
     assert source_label("board:nct6798_auxtin1:temp") == "Board"
+
+
+def test_a_refilled_grid_shows_each_cells_own_reading(qtbot) -> None:
+    """A delete shifts every later cell down one; each must show its NEW
+    occupant's value, not the one it showed before (#301)."""
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+    from trcc.ui.gui.overlay_grid import OverlayGridPanel
+
+    grid = OverlayGridPanel()
+    qtbot.addWidget(grid)
+    grid.load_configs([
+        OverlayElementConfig(mode=OverlayMode.HARDWARE, metric="cpu:temp"),
+        OverlayElementConfig(mode=OverlayMode.HARDWARE, metric="gpu:primary:temp"),
+    ])
+    grid.update_metrics({"cpu:temp": 52.0, "gpu:primary:temp": 61.0}, "C")
+
+    grid.delete_element(0)
+
+    assert grid._cells[0]._live_value == "61"
+    assert grid._cells[1]._live_value == ""

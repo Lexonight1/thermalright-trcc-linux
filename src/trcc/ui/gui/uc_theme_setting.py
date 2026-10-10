@@ -33,6 +33,7 @@ from ...core.commands import (
     DeleteOverlayElement,
     UpdateOverlayElement,
 )
+from ...core.logs import per_frame
 from ...core.models import OverlayElementConfig, OverlayMode
 from ..presentation.overlay_serialization import config_fields
 from .base import BasePanel
@@ -61,6 +62,7 @@ from .overlay_element import (  # noqa: F401
 from .overlay_grid import OverlayGridPanel
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # ============================================================================
 # Main settings container
@@ -99,6 +101,12 @@ class UCThemeSetting(BasePanel):
     def __init__(self, parent=None):
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
         self._setup_ui()
+
+    def update_metrics(self, readings: Any, temp_unit: str) -> None:
+        """A metrics tick for the overlay grid's tiles (#301)."""
+        frame_log.debug("UCThemeSetting.update_metrics: %d reading(s)",
+                        len(readings))
+        self.overlay_grid.update_metrics(readings, temp_unit)
 
     def _setup_ui(self):
         """Build UI with absolute positioning matching Windows."""
