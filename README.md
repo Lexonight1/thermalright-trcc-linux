@@ -32,7 +32,6 @@
 **Packages:**
 
 [![Fedora](https://img.shields.io/badge/Fedora-RPM-51A2DA?logo=fedora&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
-[![openSUSE](https://img.shields.io/badge/openSUSE-RPM-73BA25?logo=opensuse&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-DEB-E95420?logo=ubuntu&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
 [![Debian](https://img.shields.io/badge/Debian-DEB-A81D33?logo=debian&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
@@ -66,7 +65,8 @@ Pre-built packages are available for every major distro. No pip, no venv, no PEP
 
 | Distro | Install Guide |
 |--------|--------------|
-| Fedora / Nobara / openSUSE | [Fedora](doc/GUIDE_INSTALL.md#fedora--nobara) |
+| Fedora 43+ / Nobara | [Fedora](doc/GUIDE_INSTALL.md#fedora--nobara) |
+| openSUSE Tumbleweed / Leap | [openSUSE (pipx)](doc/GUIDE_INSTALL.md#opensuse-pip) |
 | Bazzite / Bluefin / Aurora / Universal Blue | [Immutable Fedora](doc/GUIDE_INSTALL.md#bazzite--aurora--bluefin--fedora-atomic) |
 | Ubuntu 25.10+ / Debian 13+ | [Ubuntu / Debian](doc/GUIDE_INSTALL.md#ubuntu--debian--mint--pop_os--zorin) |
 | Ubuntu 22.04 / 24.04 / Mint 21–22 / Pop!_OS / Zorin / Debian 12 | [Legacy DEB](doc/GUIDE_INSTALL.md#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb) |
@@ -179,7 +179,7 @@ trcc serve --host 0.0.0.0     # Listen on all interfaces (LAN access)
 trcc serve --token SECRET     # Require a bearer token (see `trcc api --token`)
 ```
 
-127 endpoints covering devices, display, LED, themes, and system metrics — every one listed in the **[API reference](doc/REFERENCE_API.md)**, or browse them live at `/docs` while the server runs.
+Endpoints covering devices, display, LED, themes, and system metrics — every one listed in the **[API reference](doc/REFERENCE_API.md)**, or browse them live at `/docs` while the server runs.
 
 Devices are addressed by **key** — the `vid:pid` string the CLI also uses.
 
@@ -206,7 +206,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | [Install Guide](doc/GUIDE_INSTALL.md) | Installation for all major distros |
 | [CLI Reference](doc/REFERENCE_CLI.md) | All CLI commands with options and examples |
 | [User Guide](doc/GUIDE_USER.md) | How to use everything — GUI, themes, overlays, media, LED |
-| [API Reference](doc/REFERENCE_API.md) | All 78 REST API endpoints with request/response models |
+| [API Reference](doc/REFERENCE_API.md) | Every REST API endpoint with request/response models |
 | [Troubleshooting](doc/GUIDE_TROUBLESHOOTING.md) | Common issues and fixes |
 | [New to Linux](doc/GUIDE_NEW_TO_LINUX.md) | Guide for Linux beginners |
 | [Changelog](doc/CHANGELOG.md) | Version history |
@@ -229,8 +229,8 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | Category | What you get |
 |----------|-------------|
 | **GUI** | Full PySide6 desktop app — theme browser, video player, overlay editor, LED control panel, 38 languages |
-| **CLI** | `trcc gui`, `trcc send`, `trcc video`, `trcc led-color`, `trcc screencast`, `trcc shell`, and more |
-| **REST API** | 78 endpoints — control everything remotely, build integrations, automate your setup |
+| **CLI** | `trcc gui`, `trcc display send-image`, `trcc display play-video`, `trcc led color`, `trcc display screencast`, `trcc shell`, and more |
+| **REST API** | Control everything remotely, build integrations, automate your setup |
 | **Themes** | Local, cloud, and masks — carousel mode, export/import as `.tr` files, custom mask upload with X/Y positioning, 5 starters + 120 masks per resolution |
 | **Media** | Video/GIF playback on LCD, video trimmer, image cropper, screen cast (X11 + Wayland), mic audio visualization |
 | **Overlay Editor** | Text, sensors, date/time overlays — font picker, dynamic scaling, color picker |
@@ -245,7 +245,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 ### What we do better than Windows TRCC
 
 - **38 languages** — Windows has 10 (baked into PNGs). We render text at runtime, community can add more
-- **CLI + REST API** — Windows is GUI-only. We have full CLI and 49 API endpoints for automation
+- **CLI + REST API** — Windows is GUI-only. We have a full CLI and REST API for automation
 - **Custom mask upload** — upload your own PNG overlay, position with X/Y controls, saved to `~/.trcc-user/`
 - **No admin required** — udev rules handle permissions. Windows needs "Run as Administrator"
 - **Open source** — read the code, fix bugs, add features. Windows TRCC is closed-source .NET

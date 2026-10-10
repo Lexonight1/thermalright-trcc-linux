@@ -246,7 +246,51 @@ def _user_facing_lines(path: Path):
     # gate that already listed the file (#247).
     if path.suffix in {".sh", ".ebuild", ".spec"} or path.name == "PKGBUILD":
         return _echoed_lines(text)
-    return _fenced_lines(text)
+    return [*_fenced_lines(text), *_inline_commands(text)]
+
+
+_SPAN = re.compile(r"`([^`\n]+)`")
+#: "There is no `trcc uninstall`" names a command to say it does NOT exist.
+_DENIED = re.compile(r"\bno\s*$", re.IGNORECASE)
+
+
+def _inline_commands(text: str):
+    """Yield (lineno, span) for each inline `trcc …` span in prose.
+
+    The fence reader alone let README's "`trcc send`, `trcc video`,
+    `trcc led-color`" sit beside three other dead commands (#247): a command
+    in backticks in a sentence is an instruction too.  Read per paragraph, so
+    a span whose "no" ends the previous line is still read as a denial.
+    """
+    paragraph: list[tuple[int, str]] = []
+    inside = False
+
+    def flush():
+        joined = " ".join(line for _, line in paragraph)
+        starts, at = [], 0
+        for number, line in paragraph:
+            starts.append((at, number))
+            at += len(line) + 1
+        for match in _SPAN.finditer(joined):
+            span = match.group(1).strip()
+            if (span.startswith("trcc ")
+                    and not _DENIED.search(joined[:match.start()])):
+                yield max(n for a, n in starts if a <= match.start()), span
+
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            inside = not inside
+            yield from flush()
+            paragraph = []
+            continue
+        if inside:
+            continue
+        if line.strip():
+            paragraph.append((number, line))
+        else:
+            yield from flush()
+            paragraph = []
+    yield from flush()
 
 
 @pytest.mark.parametrize("source", _SOURCES, ids=lambda p: p.name)

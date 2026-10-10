@@ -18,7 +18,7 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
 | Ubuntu 25.10+ / Debian 13+ | [Native DEB](#ubuntu--debian--mint--pop_os--zorin) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
 | Ubuntu 22.04 / 24.04, Mint 21–22, Pop!_OS, Zorin, Debian 12 | [Legacy DEB](#ubuntu-2204--2404--mint-21x--22x--debian-12-legacy-deb) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
 | Arch / CachyOS / Manjaro / EndeavourOS / Garuda | [Native pkg](#arch--cachyos--manjaro--endeavouros--garuda) | [pip](#arch--cachyos--manjaro--endeavouros--garuda-pip) |
-| openSUSE | [Native RPM](#opensuse) | [pip](#opensuse-pip) |
+| openSUSE | — | [pipx](#opensuse-pip) |
 | NixOS | [Flake](#nixos) | — |
 | Gentoo | [pipx](#gentoo) | — |
 | Bazzite / Bluefin / Aurora / Fedora Atomic | [rpm-ostree](#bazzite--aurora--bluefin--fedora-atomic) | — |
@@ -77,7 +77,7 @@ Once the terminal is open, you can paste commands with `Ctrl+Shift+V` (not `Ctrl
 
 ### Fedora / Nobara
 
-Covers: Fedora 39+, Nobara 39+
+Covers: Fedora 43+, and Nobara built on it. Older Fedora: use [pip](#fedora--nobara-pip) — the RPM is built for Fedora's current Python.
 
 **One-liner** (download + install in one command):
 ```bash
@@ -199,22 +199,10 @@ That's it! If your device isn't detected, restart your computer and try again �
 
 ### openSUSE
 
-Covers: openSUSE Tumbleweed, openSUSE Leap 15.5+
-
-**Step 1 — Download** the `.rpm` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest).
-
-**Step 2 — Open a terminal** and run:
-
-```bash
-cd ~/Downloads
-sudo zypper install ./trcc-linux-*.noarch.rpm
-```
-
-**Step 3 — Launch:**
-
-```bash
-trcc gui
-```
+There is no native openSUSE package: the `.rpm` on the releases page is built
+for Fedora, and on openSUSE `zypper` refuses it (`nothing provides 'libusb1'`),
+and its files target a different Python. Use **[pipx](#opensuse-pip)** —
+measured working on Tumbleweed.
 
 ---
 
@@ -543,7 +531,7 @@ sudo ./install.sh
 
 The script auto-detects your distro, installs system packages, Python deps, udev rules, and a desktop shortcut. After it finishes: restart your computer, then run `trcc gui`.
 
-To uninstall: `trcc uninstall` (or `sudo ./install.sh --uninstall`).
+To uninstall: `sudo ./install.sh --uninstall`.
 
 ---
 
@@ -774,7 +762,7 @@ Download [`trcc-latest-setup.exe`](https://github.com/Lexonight1/thermalright-tr
 **Requirements:**
 - Windows 10 or 11
 - For NVIDIA GPU sensors: install [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) — trcc reads its sensors automatically
-- For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc system setup-winusb` for guidance. SCSI devices (most models) work with the default Windows driver.
+- For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc system setup` for guidance. SCSI devices (most models) work with the default Windows driver.
 - Run as Administrator for full hardware access
 
 **Verify:**
@@ -1047,4 +1035,4 @@ rm -f ~/.local/share/applications/trcc*.desktop
 - See the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) for verifying your setup
 - Run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output — this gives us everything we need to help you
 - Check the [Troubleshooting Guide](GUIDE_TROUBLESHOOTING.md) for common issues and fixes
-- For verbose output: `trcc gui -v` (or `trcc gui -vv` for debug)
+- For verbose output: `trcc -v gui` (or `trcc -vv gui` for debug)

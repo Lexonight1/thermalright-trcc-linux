@@ -138,7 +138,7 @@ After the HID handshake, the sidebar button updates based on the PM (product mod
 ### GUI opens but device isn't in the sidebar
 
 1. Run `trcc detect` — if the device appears there but not in the GUI, it may be a routing issue
-2. Run `trcc gui -vv` for debug logging and share the terminal output
+2. Run `trcc -vv gui` for debug logging and share the terminal output
 
 ## What to Report
 

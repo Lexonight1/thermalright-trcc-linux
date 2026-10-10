@@ -267,7 +267,7 @@ curl http://localhost:9876/system/metrics
 
 Interactive Swagger docs at `http://localhost:9876/docs` when the server is running.
 
-See the full [API Reference](REFERENCE_API.md) for all 78 endpoints.
+See the full [API Reference](REFERENCE_API.md) for every endpoint.
 
 ---
 
@@ -343,7 +343,7 @@ The overlay editor uses system fonts. Install any TrueType font on your system a
 | [Install Guide](GUIDE_INSTALL.md) | Detailed installation instructions |
 | [User Guide](GUIDE_USER.md) | This document — how to use everything |
 | [CLI Reference](REFERENCE_CLI.md) | All 95 CLI commands |
-| [API Reference](REFERENCE_API.md) | All 78 REST API endpoints |
+| [API Reference](REFERENCE_API.md) | Every REST API endpoint |
 | [Troubleshooting](GUIDE_TROUBLESHOOTING.md) | Common problems and fixes |
 | [Device Testing](GUIDE_DEVICE_TESTING.md) | Testing with specific hardware |
 | [Supported Devices](REFERENCE_DEVICES.md) | Full device compatibility list |

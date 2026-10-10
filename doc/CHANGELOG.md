@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The overlay grid shows live values again -- or rather, for the first time
+  (#301).** Each tile in the classic window's overlay grid showed only its
+  sensor's name: the window received every sensor reading and never passed it
+  to the tiles. They now show the value and unit, refreshed with each reading
+  as the Windows app does, using the panel's own rule, so a °F user sees °F and
+  a GPU fan that reports only a percentage shows a percentage.
+- **The panel's fan readings follow the fan names again (#145).** A system
+  dashboard saved by TRCC before v9.10.0 held guessed fan assignments (any
+  motherboard fan, in order), and since v9.10.6 those guesses decided what the
+  panel's CPUFAN/GPUFAN/SSDFAN/FAN2 showed -- a case fan in place of the GPU's.
+  Such a dashboard now has its fan rows cleared once and re-matched by name.
+  If you picked fans by hand on v9.10.6 or v9.10.7, pick them again.
+- **Opening a TRCC window no longer starts a second TRCC app beside the first
+  (#314).** The background app opened its connection only after connecting
+  every cooler, which on some panels takes more than the 10 seconds a window
+  waited, so the window started an app of its own and the two fought over the
+  panel. The app now answers at once, and only one can run per user: two
+  windows opened together no longer start two.
+- **The Fedora package installs on Fedora 43.** It required
+  `python3-sounddevice`, which Fedora 43 does not have. The audio visualizer
+  is the only thing that needs it, so it is now recommended, not required.
+- **The Ubuntu/Debian package installs when `python3-sounddevice` is
+  already installed.** TRCC bundled its own copy and the two collided. It now
+  uses the system package (recommended) instead.
+- **`trcc api` works on Arch.** The package bundled the web server without
+  the libraries it needs; it now uses Arch's own `uvicorn` and
+  `python-websockets`.
+- **Starting the audio visualizer on a machine with no sound server no longer
+  fails with an error;** it switches the visualizer off and says why.
+- **openSUSE:** the install guide no longer offers the Fedora RPM, which
+  openSUSE refuses; it points to pipx, which works.
+- **The README and guides no longer name commands that do not exist (#247)**,
+  and `-v` / `-vv` are shown where the CLI accepts them (`trcc -vv gui`).
+
 ## v9.10.8
 
 ### Security
