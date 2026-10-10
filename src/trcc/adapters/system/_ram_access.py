@@ -5,12 +5,16 @@ can open.  ``trcc-ram-access`` (``assets/``, packaged to /usr/bin) installs or
 removes a udev rule that tags that one bus ``uaccess`` for the user at the
 seat; this adapter reports where the user stands and runs the helper:
 
-* packaged install, ordinary user: ``pkexec /usr/bin/trcc-ram-access`` -- the
-  desktop's own password prompt, every time (the polkit action is
-  ``auth_admin``);
-* already root (``sudo trcc system ram-lighting enable``, a pip install): the
-  same helper FILE from the package, run directly -- one writer, never two;
-* neither: the status says which command will.
+* packaged install: ``pkexec /usr/bin/trcc-ram-access`` -- TRCC's own polkit
+  action (``auth_admin``: the password every time);
+* any other install with polkit (pip, pipx, a source checkout): ``pkexec`` runs
+  the SAME helper file from the package (``python -I``), under polkit's
+  standard run-as-administrator action -- also the password every time;
+* already root: that helper file, directly;
+* no polkit at all: the status names the ``sudo`` command that will.
+  ``sudo trcc ...`` would not: sudo drops ``~/.local/bin`` from PATH and root's
+  Python cannot import a package installed for the user, so the command names
+  the interpreter and the helper file instead.
 
 ``status`` reads the filesystem only.  Nothing here touches the bus.
 """
@@ -18,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -37,7 +42,6 @@ HEADER = ("# TRCC RAM lighting -- written by trcc-ram-access; "
 HELPER = "/usr/bin/trcc-ram-access"
 #: The helper as the package ships it -- what root runs when /usr/bin has none.
 HELPER_ASSET = Path(__file__).resolve().parents[2] / "assets" / "trcc-ram-access"
-SUDO_COMMAND = "sudo trcc system ram-lighting {action}"
 
 # pkexec's own exits: the user dismissed the prompt, or polkit said no.
 _PKEXEC_DISMISSED, _PKEXEC_REFUSED = 126, 127
@@ -57,10 +61,12 @@ class LinuxRamAccess(RamAccess):
                  *, find: Callable[[], tuple[int, ...]] = find_smbus,
                  dev: Path = Path("/dev"), rule: Path = RULE_PATH,
                  run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-                 is_root: Callable[[], bool] = _effective_root) -> None:
+                 is_root: Callable[[], bool] = _effective_root,
+                 which: Callable[[str], str | None] = shutil.which) -> None:
         log.debug("LinuxRamAccess: rule=%s", rule)
         self._pkexec, self._find, self._dev = pkexec, find, dev
         self._rule, self._run, self._is_root = rule, run, is_root
+        self._which = which
 
     def status(self) -> RamAccessStatus:
         state = self._state()
@@ -109,25 +115,31 @@ class LinuxRamAccess(RamAccess):
 
     def _command_for(self, action: str) -> str:
         """Empty when this App can do *action* itself, else the command."""
-        can = self._is_root() or self._pkexec(HELPER) is not None
+        can = self._argv(action) is not None
         log.debug("_command_for: %s here=%s", action, can)
-        return "" if can else SUDO_COMMAND.format(action=action)
+        return "" if can else sudo_command(action)
 
     # ── Changing it ──────────────────────────────────────────────────
 
     def _argv(self, action: str) -> list[str] | None:
         """How to run the helper from here, or None if nothing can."""
+        helper_file = [sys.executable, "-I", str(HELPER_ASSET), action]
         if self._is_root():
             log.info("_argv: root runs the packaged helper file directly")
-            return [sys.executable, "-I", str(HELPER_ASSET), action]
-        pkexec = self._pkexec(HELPER)
-        log.info("_argv: pkexec available=%s", pkexec is not None)
-        return None if pkexec is None else [*pkexec, action]
+            return helper_file
+        if (packaged := self._pkexec(HELPER)) is not None:
+            log.info("_argv: pkexec, TRCC's own polkit action")
+            return [*packaged, action]
+        if (pkexec := self._which("pkexec")) is not None:
+            log.info("_argv: pkexec, polkit's run-as-administrator action")
+            return [pkexec, *helper_file]
+        log.info("_argv: no polkit here")
+        return None
 
     def _change(self, action: str) -> RamAccessStatus:
         argv = self._argv(action)
         if argv is None:
-            command = SUDO_COMMAND.format(action=action)
+            command = sudo_command(action)
             log.warning("LinuxRamAccess: cannot %s RAM access from here -- "
                         "run: %s", action, command)
             return RamAccessStatus(self._state(),
@@ -148,6 +160,13 @@ class LinuxRamAccess(RamAccess):
         state = self._state()
         return RamAccessStatus(state, _outcome(action, code, state),
                                self._command_for(action))
+
+
+def sudo_command(action: str) -> str:
+    """The terminal command that runs the helper as root, on any install."""
+    command = f"sudo {sys.executable} -I {HELPER_ASSET} {action}"
+    log.debug("sudo_command: %s", command)
+    return command
 
 
 _MESSAGES = {

@@ -28,8 +28,9 @@ class _Run:
 
 
 def _access(tmp_path: Path, *, buses=(3,), nodes=(3,), ours: bool | None = None,
-            pkexec: bool = True, root: bool = False, run: _Run | None = None
-            ) -> LinuxRamAccess:
+            pkexec: bool = True, polkit: bool = True, root: bool = False,
+            run: _Run | None = None) -> LinuxRamAccess:
+    """*pkexec*: TRCC's packaged helper + policy; *polkit*: pkexec at all."""
     dev = tmp_path / "dev"
     dev.mkdir(exist_ok=True)
     for n in nodes:
@@ -41,7 +42,8 @@ def _access(tmp_path: Path, *, buses=(3,), nodes=(3,), ours: bool | None = None,
     return LinuxRamAccess(
         lambda helper: ["pkexec", helper] if pkexec else None,
         find=lambda: tuple(buses), dev=dev, rule=rule,
-        run=run or _Run(), is_root=lambda: root)
+        run=run or _Run(), is_root=lambda: root,
+        which=lambda name: f"/usr/bin/{name}" if polkit else None)
 
 
 @pytest.mark.parametrize("kwargs, state", [
@@ -63,10 +65,26 @@ def test_root_reads_the_rule_not_its_own_access(tmp_path: Path) -> None:
     assert _access(tmp_path, root=True, ours=True).status().state is RamAccessState.ON
 
 
-def test_without_a_helper_the_status_names_the_command(tmp_path: Path) -> None:
+def test_without_polkit_the_status_names_a_command_that_works(tmp_path: Path) -> None:
+    """Not ``sudo trcc ...``: sudo drops ~/.local/bin, and root's Python
+    cannot import a package installed for the user."""
     assert _access(tmp_path, nodes=()).status().command == ""
-    off = _access(tmp_path, nodes=(), pkexec=False).status()
-    assert off.command == "sudo trcc system ram-lighting enable"
+    off = _access(tmp_path, nodes=(), pkexec=False, polkit=False).status()
+    assert off.command == (f"sudo {sys.executable} -I "
+                           f"{_ram_access.HELPER_ASSET} enable")
+
+
+def test_any_install_with_polkit_gets_the_password_prompt(tmp_path: Path) -> None:
+    """pip, pipx, a source checkout: no /usr/bin helper, so pkexec runs the
+    package's own helper file -- the same file, the same checks.
+
+    MUTATION CHECK: drop the ``which("pkexec")`` branch in ``_argv``."""
+    run = _Run(0)
+    access = _access(tmp_path, nodes=(), pkexec=False, run=run)
+    assert access.status().command == ""
+    access.enable()
+    assert run.argv == [["/usr/bin/pkexec", sys.executable, "-I",
+                         str(_ram_access.HELPER_ASSET), "enable"]]
 
 
 def test_enable_asks_pkexec_for_the_packaged_helper(tmp_path: Path) -> None:
@@ -93,9 +111,11 @@ def test_root_runs_the_packaged_helper_file_itself(tmp_path: Path) -> None:
 
 def test_nothing_can_enable_it_here_so_nothing_runs(tmp_path: Path) -> None:
     run = _Run(0)
-    status = _access(tmp_path, nodes=(), pkexec=False, run=run).enable()
+    status = _access(tmp_path, nodes=(), pkexec=False, polkit=False,
+                     run=run).enable()
     assert run.argv == []
-    assert status.message == "Run in a terminal: sudo trcc system ram-lighting enable"
+    assert status.message == (f"Run in a terminal: sudo {sys.executable} -I "
+                              f"{_ram_access.HELPER_ASSET} enable")
 
 
 def test_an_os_without_it_says_so(tmp_path: Path) -> None:
