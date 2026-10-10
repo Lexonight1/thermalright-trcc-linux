@@ -32,7 +32,7 @@ _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 # console scripts), so they legitimately appear in the file-lists without a
 # matching ``[project.scripts]`` entry.  ``trcc-imc`` (MCHBAR timings) and
 # ``trcc-dmi`` (DRAM slots) are the standalone privileged helpers (pkexec targets).
-_ASSET_HELPERS = frozenset({"trcc-imc", "trcc-dmi"})
+_ASSET_HELPERS = frozenset({"trcc-imc", "trcc-dmi", "trcc-ram-access"})
 
 
 def _declared_scripts() -> set[str]:

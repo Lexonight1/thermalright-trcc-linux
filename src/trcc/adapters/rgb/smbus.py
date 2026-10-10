@@ -25,6 +25,12 @@ I2C_SLAVE = 0x0703
 I2C_SMBUS = 0x0720
 _READ, _WRITE = 1, 0
 _BYTE_DATA, _BLOCK_DATA = 2, 5
+#: The chipset SMBus controllers' kernel names start with this -- ``SMBus I801
+#: adapter at efa0``, ``SMBus PIIX4 adapter port 0 at 0b00`` -- and the GPU's
+#: DDC and the DesignWare buses' never do.  The RAM-lighting udev rule matches
+#: the same prefix, so access is granted to exactly the bus TRCC drives.
+SMBUS_PREFIX = "SMBus"
+
 #: Every I2C bus and client the kernel knows.  Not ``/sys/class/i2c-adapter``:
 #: that class is gone on current kernels (absent on 7.2, measured 2026-10-08).
 ADAPTERS = Path("/sys/bus/i2c/devices")
@@ -57,7 +63,7 @@ def find_smbus(root: Path = ADAPTERS) -> tuple[int, ...]:
         except OSError as e:
             log.debug("find_smbus: %s unreadable (%s)", name_file, e)
             continue
-        if name.startswith("SMBus"):
+        if name.startswith(SMBUS_PREFIX):
             found.append(int(number))
     log.info("find_smbus: %s", found or "none")
     return tuple(found)

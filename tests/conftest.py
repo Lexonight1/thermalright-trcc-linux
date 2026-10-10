@@ -598,7 +598,8 @@ def _the_suite_is_hermetic() -> Iterator[None]:
 #: or read the host's firmware tables and disks (``dmidecode``/``smartctl``, and
 #: our own pkexec helpers ``trcc-dmi``/``trcc-imc``).
 _ELEVATORS = frozenset({"pkexec", "sudo", "doas"})
-_PRIVILEGED_TOOLS = frozenset({"dmidecode", "smartctl", "trcc-dmi", "trcc-imc"})
+_PRIVILEGED_TOOLS = frozenset({"dmidecode", "smartctl", "trcc-dmi", "trcc-imc",
+                               "trcc-ram-access"})
 #: Every refused attempt, as ``(PYTEST_CURRENT_TEST, command)``.
 _PRIVILEGED_ATTEMPTS: list[tuple[str, str]] = []
 

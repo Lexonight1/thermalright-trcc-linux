@@ -415,3 +415,128 @@ def test_every_package_removes_the_old_rule_and_names_dmidecode() -> None:
         assert "50-trcc.rules" in block, f"{name}: old rule not removed"
         assert "com.github.lexonight1.trcc" in block, f"{name}: unsigned rm"
         assert "dmidecode" in block, f"{name}: dmidecode not declared"
+
+
+# ── trcc-ram-access: the one helper that GRANTS something ───────────────────
+
+def _policy_action(action_id: str) -> ET.Element:
+    action = next((a for a in ET.parse(_POLICY).getroot().iter("action")
+                   if a.get("id") == action_id), None)
+    assert action is not None, f"no {action_id} in the policy"
+    return action
+
+
+def test_ram_access_asks_for_a_password_every_time() -> None:
+    """The action opens the memory's bus to the seat's user.  ``yes`` here
+    would let any program in the session grant itself that without a word.
+
+    MUTATION CHECK: set any default to ``yes`` or ``auth_admin_keep``."""
+    action = _policy_action("com.github.lexonight1.trcc.ram-access")
+    defaults_element = action.find("defaults")
+    assert defaults_element is not None
+    defaults = {d.tag: d.text for d in defaults_element}
+    assert defaults == {"allow_any": "auth_admin",
+                        "allow_inactive": "auth_admin",
+                        "allow_active": "auth_admin"}
+    exec_path = [a.text for a in action.iter("annotate")
+                 if a.get("key") == _EXEC_PATH]
+    assert exec_path == ["/usr/bin/trcc-ram-access"]
+
+
+def test_ram_access_grants_the_bus_trcc_drives_and_no_other() -> None:
+    """The rule's name match is the RAM driver's: access goes to exactly the
+    bus TRCC talks to -- never the GPU's DDC or the DesignWare buses."""
+    from trcc.adapters.rgb.smbus import SMBUS_PREFIX
+    helper = _load_helper("trcc-ram-access")
+    assert helper.SMBUS_PREFIX == SMBUS_PREFIX
+    rule = [line for line in helper.RULE_TEXT.splitlines()
+            if not line.startswith("#")]
+    assert rule == [
+        'SUBSYSTEM=="i2c-dev", ATTR{name}=="SMBus*", TAG+="uaccess"']
+    # Before 73-seat-late.rules, where udev turns the tag into an ACL.
+    assert helper.RULE_PATH.name < "73"
+    assert helper.MODULES_TEXT.splitlines()[1:] == ["i2c-dev"]
+
+
+def test_ram_access_writes_and_removes_only_its_own_files(tmp_path: Path) -> None:
+    helper = _load_helper("trcc-ram-access")
+    helper.write(tmp_path)
+    rule = tmp_path / "etc/udev/rules.d/70-trcc-ram-lighting.rules"
+    modules = tmp_path / "etc/modules-load.d/trcc-i2c.conf"
+    assert rule.read_text(encoding="utf-8") == helper.RULE_TEXT
+    assert modules.read_text(encoding="utf-8") == helper.MODULES_TEXT
+    assert oct(rule.stat().st_mode & 0o777) == "0o644"
+    helper.remove(tmp_path)
+    assert not rule.exists() and not modules.exists()
+    # An admin's file at the same path is not ours to delete.
+    rule.write_text("# my own rule\n", encoding="utf-8")
+    helper.remove(tmp_path)
+    assert rule.read_text(encoding="utf-8") == "# my own rule\n"
+
+
+def test_ram_access_finds_only_the_chipset_smbus(tmp_path: Path) -> None:
+    helper = _load_helper("trcc-ram-access")
+    for n, name in ((0, "Synopsys DesignWare I2C adapter"),
+                    (3, "SMBus I801 adapter at 0000:00:1f.4"),
+                    (4, "NVIDIA i2c adapter 1 at 1:00.0"),
+                    (9, "SMBus PIIX4 adapter port 0 at 0b00")):
+        (tmp_path / f"i2c-{n}").mkdir()
+        (tmp_path / f"i2c-{n}" / "name").write_text(name + "\n", encoding="utf-8")
+    assert helper.smbus_nodes(tmp_path) == ["/dev/i2c-3", "/dev/i2c-9"]
+
+
+def test_ram_access_disable_takes_the_access_back_now(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """udev only ever ADDS a uaccess grant, so disable strips the SMBus nodes'
+    ACLs before re-triggering -- otherwise access lasts until the next login.
+
+    MUTATION CHECK: drop the setfacl loop in ``apply``."""
+    helper = _load_helper("trcc-ram-access")
+    ran: list[tuple[str, ...]] = []
+    monkeypatch.setattr(helper, "_tool", lambda name: f"/x/{name}")
+    monkeypatch.setattr(helper, "_run", lambda *argv: ran.append(argv) or True)
+    monkeypatch.setattr(helper, "smbus_nodes", lambda: ["/dev/i2c-3"])
+    assert helper.apply(False)
+    assert ran == [
+        ("/x/udevadm", "control", "--reload"),
+        ("/x/setfacl", "-b", "/dev/i2c-3"),
+        ("/x/udevadm", "trigger", "--subsystem-match=i2c-dev", "--action=change"),
+        ("/x/udevadm", "settle", "--timeout=10")]
+    ran.clear()
+    assert helper.apply(True)
+    assert ran[0] == ("/x/modprobe", "i2c-dev")
+    assert not [r for r in ran if "setfacl" in r[0]]
+
+
+@pytest.mark.parametrize("argv, code", [
+    (["enable", "disable"], 2), (["ENABLE"], 2), ([], 2), (["enable"], 3)],
+    ids=["two-words", "wrong-case", "none", "not-root"])
+def test_ram_access_refuses_before_touching_anything(
+        argv: list[str], code: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    helper = _load_helper("trcc-ram-access")
+    monkeypatch.setattr(helper.sys, "argv", ["trcc-ram-access", *argv])
+    monkeypatch.setattr(helper.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(helper, "write", lambda *a: pytest.fail("wrote"))
+    monkeypatch.setattr(helper, "apply", lambda *a: pytest.fail("applied"))
+    assert helper.main() == code
+
+
+#: Each package's uninstall hook: the line that must run there, never on upgrade.
+_UNINSTALL_HOOKS = {
+    "rpm": ("%preun", "if [ \\$1 -eq 0 ]; then /usr/bin/trcc-ram-access disable"),
+    "deb": ("DEBIAN/prerm", 'if [ "\\$1" = remove ]; then /usr/bin/trcc-ram-access disable'),
+    "legacy": ("DEBIAN/prerm", 'if [ "\\$1" = remove ]; then /usr/bin/trcc-ram-access disable'),
+    "arch": ("pre_remove()", "/usr/bin/trcc-ram-access disable"),
+}
+
+
+@pytest.mark.parametrize("package", sorted(_UNINSTALL_HOOKS))
+def test_every_package_takes_the_ram_grant_back_on_uninstall(package: str) -> None:
+    """The helper writes its rule into /etc, where no package owns it: without
+    a hook, uninstalling TRCC would leave the RAM bus open to the seat's user.
+
+    MUTATION CHECK: delete any package's hook line."""
+    hook, line = _UNINSTALL_HOOKS[package]
+    block = _release_blocks()[package]
+    assert hook in block, f"{package}: no {hook}"
+    assert line in block.split(hook, 1)[1], f"{package}: {hook} lacks the disable"

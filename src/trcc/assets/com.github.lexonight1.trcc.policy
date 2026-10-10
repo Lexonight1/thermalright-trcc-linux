@@ -11,8 +11,9 @@
        an allow_active=yes action is that program as root, with any arguments,
        for every process in the session.  This file used to grant dmidecode
        (dump-bin FILE creates a root-owned file anywhere) and smartctl (its set
-       options change drive state).  Each helper takes no arguments and does one
-       fixed read.  The packages install them to /usr/bin on every distro, so
+       options change drive state).  The read helpers take no arguments and do
+       one fixed read; trcc-ram-access takes one of two words and writes two
+       fixed files.  The packages install them to /usr/bin on every distro, so
        there is one home per helper. -->
 
   <action id="com.github.lexonight1.trcc.dmi">
@@ -35,5 +36,20 @@
       <allow_active>yes</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/trcc-imc</annotate>
+  </action>
+
+  <!-- The one action that GRANTS something: it lets the user at this seat
+       open the chipset SMBus, beside the memory's own settings chips.  So it
+       asks for a password on every use.  allow_active=yes here would let any
+       program in the session grant itself that bus without a word. -->
+  <action id="com.github.lexonight1.trcc.ram-access">
+    <description>Turn RAM lighting access on or off</description>
+    <message>TRCC needs your password to change who can reach the memory's lighting chips.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/trcc-ram-access</annotate>
   </action>
 </policyconfig>

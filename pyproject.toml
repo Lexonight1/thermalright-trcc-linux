@@ -178,8 +178,10 @@ artifacts = [
     # Privileged helpers (no extension), the polkit policy's only targets —
     # distro packages install them to /usr/bin; shipped here so they are in
     # the sdist/wheel too.  trcc-imc: MCHBAR timings.  trcc-dmi: DRAM slots.
+    # trcc-ram-access: the opt-in RAM-lighting grant.
     "**/assets/trcc-imc",
     "**/assets/trcc-dmi",
+    "**/assets/trcc-ram-access",
     # SELinux policy source — `trcc system setup` builds + loads it on Fedora
     # so source/pip installs can pass the USB/SCSI ioctls (packages ship the
     # compiled .pp via the rpm).

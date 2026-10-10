@@ -1,0 +1,157 @@
+#!/usr/bin/python3 -I
+"""trcc-ram-access — turn RAM lighting access on or off (run via pkexec).
+
+RGB memory's lighting controller answers on the chipset SMBus, which only root
+can open.  ``enable`` lets the person logged in at this seat open that one bus
+-- and no other -- by installing a udev rule that tags it ``uaccess``, plus a
+modules-load entry for ``i2c-dev``, which creates the bus's device file.
+``disable`` removes both and takes the access back at once.  The access
+outlives a reboot: udev applies the rule at every login.
+
+Opt-in, because the bus also carries the memory's own settings chips (SPD) and,
+on DDR5, its power controllers.  Linux grants a whole bus, never an address, so
+every program the user runs could reach them -- TRCC's own driver never does.
+The polkit action asks for a password on every use (``auth_admin``): were it
+``yes``, any program in the session could grant itself the bus silently.
+
+Kept as small as ``trcc-dmi``:
+
+  * stdlib only — imports NOTHING from the trcc package, so running it as root
+    pulls in no untrusted code (``-I``: no user site, no PYTHON* variables).
+  * takes exactly one argument, ``enable`` or ``disable``; anything else is
+    refused before a file or a process is touched.
+  * writes only the two fixed files below, with fixed text, and removes only a
+    file that carries TRCC's header -- never one an admin wrote.
+  * runs only modprobe, udevadm and setfacl, from fixed system paths, with a
+    fixed environment.
+
+The rule and module text must equal ``trcc.adapters.system._udev``'s (gated by
+a test, since this file may import nothing from trcc).
+
+Exit codes: 0 ok · 1 a step failed · 2 bad invocation · 3 not root.
+"""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HEADER = ("# TRCC RAM lighting -- written by trcc-ram-access; "
+          "`trcc system ram-lighting disable` removes it.")
+#: The chipset SMBus controllers' kernel names start with this (i801, PIIX4);
+#: the graphics card's DDC buses and the DesignWare buses never do.
+SMBUS_PREFIX = "SMBus"
+RULE_PATH = Path("/etc/udev/rules.d/70-trcc-ram-lighting.rules")
+RULE_TEXT = (
+    f"{HEADER}\n"
+    "# Lets the user at this seat open the chipset SMBus, where RGB memory's\n"
+    "# lighting controller answers.  No other bus.\n"
+    f'SUBSYSTEM=="i2c-dev", ATTR{{name}}=="{SMBUS_PREFIX}*", TAG+="uaccess"\n'
+)
+MODULES_PATH = Path("/etc/modules-load.d/trcc-i2c.conf")
+MODULES_TEXT = f"{HEADER}\ni2c-dev\n"
+FILES = {RULE_PATH: RULE_TEXT, MODULES_PATH: MODULES_TEXT}
+
+_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+_TOOLS = {
+    "modprobe": ("/usr/sbin/modprobe", "/sbin/modprobe", "/usr/bin/modprobe"),
+    "udevadm": ("/usr/bin/udevadm", "/bin/udevadm", "/usr/sbin/udevadm",
+                "/sbin/udevadm"),
+    "setfacl": ("/usr/bin/setfacl", "/bin/setfacl"),
+}
+_I2C_DEV = Path("/sys/class/i2c-dev")
+
+
+def _tool(name: str) -> str | None:
+    return next((p for p in _TOOLS[name] if os.path.isfile(p)), None)
+
+
+def _run(*argv: str) -> bool:
+    try:
+        return subprocess.run(argv, env=_ENV, timeout=30, check=False,
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def write(root: Path = Path("/")) -> None:
+    """Both files, atomically, root-owned 0644."""
+    for path, text in FILES.items():
+        target = root / path.relative_to("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f".{target.name}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+
+
+def remove(root: Path = Path("/")) -> None:
+    """Both files -- each only if TRCC wrote it."""
+    for path in FILES:
+        target = root / path.relative_to("/")
+        try:
+            first = target.read_text(encoding="utf-8").partition("\n")[0]
+        except FileNotFoundError:
+            continue
+        if first == HEADER:
+            target.unlink()
+
+
+def smbus_nodes(sys_root: Path = _I2C_DEV) -> list[str]:
+    """``/dev/i2c-N`` of every chipset SMBus."""
+    nodes = []
+    for name_file in sorted(sys_root.glob("i2c-*/name")):
+        try:
+            name = name_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if name.startswith(SMBUS_PREFIX):
+            nodes.append(f"/dev/{name_file.parent.name}")
+    return nodes
+
+
+def apply(enabled: bool) -> bool:
+    """Make the files take effect now, without a reboot.
+
+    Disabling also strips the SMBus nodes' ACLs before re-triggering: udev
+    only ever ADDS a uaccess grant, so without this the access would last until
+    the next login.  Any other rule that tags the bus (OpenRGB's, say) grants it
+    again on the trigger -- which is the truth, and what status then reports.
+    """
+    udevadm = _tool("udevadm")
+    if udevadm is None:
+        return False
+    ok = True
+    if enabled and (modprobe := _tool("modprobe")) is not None:
+        ok &= _run(modprobe, "i2c-dev")
+    ok &= _run(udevadm, "control", "--reload")
+    if not enabled and (setfacl := _tool("setfacl")) is not None:
+        for node in smbus_nodes():
+            ok &= _run(setfacl, "-b", node)
+    ok &= _run(udevadm, "trigger", "--subsystem-match=i2c-dev",
+               "--action=change")
+    ok &= _run(udevadm, "settle", "--timeout=10")
+    return ok
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] not in ("enable", "disable"):
+        return 2                       # argv-locked: two words, nothing else
+    if os.geteuid() != 0:
+        return 3
+    enabled = sys.argv[1] == "enable"
+    try:
+        if enabled:
+            write()
+        else:
+            remove()
+    except OSError:
+        return 1
+    return 0 if apply(enabled) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

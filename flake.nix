@@ -79,9 +79,11 @@
             install -Dm644 src/trcc/assets/com.github.lexonight1.trcc.policy \
               $out/share/polkit-1/actions/com.github.lexonight1.trcc.policy
 
-            # privileged helpers (pkexec targets): MCHBAR timings, DRAM slots
+            # privileged helpers (pkexec targets): MCHBAR timings, DRAM slots,
+            # RAM-lighting access
             install -Dm755 src/trcc/assets/trcc-imc $out/bin/trcc-imc
             install -Dm755 src/trcc/assets/trcc-dmi $out/bin/trcc-dmi
+            install -Dm755 src/trcc/assets/trcc-ram-access $out/bin/trcc-ram-access
           '';
 
           meta = with pkgs.lib; {
