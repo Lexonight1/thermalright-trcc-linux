@@ -61,6 +61,15 @@ _ROUTING = frozenset({"key"})
 # ``test_ui_parity``).  The count is asserted below so the backlog is visible
 # and can only shrink by someone reading one.
 KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
+    ("SetRgbFollow", "gui"): (frozenset({"source", "mapping", "targets"}), (
+        "gap: the RGB page (plan step B6, 2026-10-10) is where a window picks "
+        "the source, the mapping and the lights; until it lands the settings "
+        "page's checkboxes keep the saved ones.  Never pushed with this entry."
+    )),
+    ("SetRgbFollow", "qtgui"): (frozenset({"source", "mapping", "targets"}), (
+        "gap: the RGB panel (plan step B6, 2026-10-10), as for gui.  Never "
+        "pushed with this entry."
+    )),
     ("AddOverlayElement", "qtgui"): (frozenset({"element_id"}), (
         "scoped: the id is auto-generated (UUID4) when omitted and returned in "
         "the Result; the editor never needs to choose one, while a script or a "

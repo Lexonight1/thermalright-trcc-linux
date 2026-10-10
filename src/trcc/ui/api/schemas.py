@@ -19,6 +19,7 @@ from ...core.models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     FitMode,
+    FollowMapping,
     RgbFollowMode,
 )
 from ...core.results import ConnectionIssuesResult, ConnectResult
@@ -223,6 +224,13 @@ class RgbFollowRequest(BaseModel):
     mode: RgbFollowMode
     host: str = Field("", max_length=253, pattern=r"^[A-Za-z0-9.:\-]*$")
     port: int = Field(0, ge=0, le=65535)
+    #: The device that leads -- an LCD's key, or "" for the first LED
+    #: cooler; None keeps the saved one.
+    source: str | None = Field(None, max_length=64,
+                               pattern=r"^([0-9a-fA-F]{4}:[0-9a-fA-F]{4}(@[\w.:-]+)?)?$")
+    mapping: FollowMapping | None = None
+    #: The lights that follow (refs); [] for every one; None keeps the saved.
+    targets: list[str] | None = Field(None, max_length=64)
 
 
 class RamLightingRequest(BaseModel):

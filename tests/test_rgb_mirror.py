@@ -28,8 +28,8 @@ from .mock_platform import (
 )
 
 OFF, OPENRGB, RAM_MODE = RgbFollowMode
-STRIP = RgbMirrorDevice(0, "Strip", 4)
-RAM = RgbMirrorDevice(1, "RAM", 2)
+STRIP = RgbMirrorDevice(0, "Strip", 4, "strip")
+RAM = RgbMirrorDevice(1, "RAM", 2, "ram")
 
 
 class FakeMirror(RamLights):
@@ -631,3 +631,127 @@ def test_a_client_waits_for_the_password_as_long_as_the_app_does(monkeypatch) ->
     proxy.dispatch(SetRamLighting(enabled=True))
     proxy.dispatch(RamLighting())
     assert waited == [None, 30.0]
+
+
+
+# ── Following an LCD's picture, on the lights the user picked ──────────────
+
+class _Frame:
+    """A FrameSent as the follower reads it: a key and a surface."""
+
+    def __init__(self, key: str, surface: object = "surface") -> None:
+        self.key, self.surface = key, surface
+
+
+def _grid(surface, cols: int, rows: int):  # type: ignore[no-untyped-def]
+    """Column c is colour (c, c, c), whatever the surface."""
+    return [[(c, c, c) for c in range(cols)] for _ in range(rows)]
+
+
+def _following(source: str = "0402:3922", **kw) -> tuple[RgbMirrorService, FakeMirror]:  # type: ignore[no-untyped-def]
+    service, made = _service()
+    service.configure(RAM_MODE, "", 0, source, **kw)
+    return service, made[-1] if made else service._ram  # type: ignore[return-value]
+
+
+def test_halves_give_each_light_its_own_column_of_the_picture() -> None:
+    from trcc.core.models import FollowMapping
+    service, mirror = _following(mapping=FollowMapping.HALVES)
+    service.on_frame(_Frame("0402:3922"), _grid)
+    _until(lambda: len(mirror.shown) >= 2)
+    assert mirror.shown[:2] == [("Strip", ((0, 0, 0),) * 10),
+                                ("RAM", ((1, 1, 1),) * 10)]
+    service.stop()
+
+
+def test_single_gives_every_light_the_one_colour() -> None:
+    from trcc.core.models import FollowMapping
+    service, mirror = _following(mapping=FollowMapping.SINGLE)
+    service.on_frame(_Frame("0402:3922"), _grid)
+    _until(lambda: len(mirror.shown) >= 2)
+    assert {colors for _name, colors in mirror.shown[:2]} == {((0, 0, 0),) * 10}
+    service.stop()
+
+
+def test_another_devices_frames_and_an_led_coolers_colours_are_ignored() -> None:
+    service, mirror = _following()
+    service.on_frame(_Frame("87ad:70db"), _grid)
+    service.on_colors(_colors("0416:8001", (9, 9, 9)))
+    time.sleep(0.1)
+    assert mirror.shown == []
+    service.stop()
+
+
+def test_a_fast_video_is_sampled_at_most_twenty_times_a_second() -> None:
+    """MUTATION CHECK: drop the FRAME_INTERVAL_S check in ``on_frame``."""
+    service, _mirror = _following()
+    sampled: list[int] = []
+
+    def counting(surface, cols, rows):  # type: ignore[no-untyped-def]
+        sampled.append(cols)
+        return _grid(surface, cols, rows)
+
+    for _ in range(10):                      # ten frames inside 50 ms
+        service.on_frame(_Frame("0402:3922"), counting)
+    assert len(sampled) == 1
+    service.stop()
+
+
+def test_only_the_picked_lights_follow() -> None:
+    """MUTATION CHECK: drop the targets filter in ``_send``."""
+    service, mirror = _following(targets=("ram",))
+    service.on_frame(_Frame("0402:3922"), _grid)
+    _until(lambda: bool(mirror.shown))
+    time.sleep(0.05)
+    assert [name for name, _c in mirror.shown] == ["RAM"]
+    assert mirror.shown[0][1] == ((0, 0, 0),) * 10   # the only light: column 0
+    service.stop()
+
+
+def test_the_choice_is_kept_and_a_damaged_targets_setting_means_all(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trcc.core.models import FollowMapping
+
+    app, made = _app(tmp_path)
+    result = app.dispatch(SetRgbFollow(mode=OPENRGB, source="0402:3922",
+                                       mapping=FollowMapping.SINGLE,
+                                       targets=("Board",)))
+    assert (result.source, result.mapping, result.targets) == (
+        "0402:3922", FollowMapping.SINGLE, ("Board",))
+    kept = app.dispatch(SetRgbFollow(mode=OFF))         # None keeps each
+    assert (kept.source, kept.targets) == ("0402:3922", ("Board",))
+    assert not app.dispatch(SetRgbFollow(mode=OFF, source="nope")).ok
+    app.settings.app.rgb_follow_targets = "Board"        # a hand-edited string
+    assert app.settings.rgb_follow_targets() == ()
+    app.close()
+
+
+def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """FrameSent -> App -> the renderer's sampler -> one column per light."""
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.events import FrameSent
+
+    made: list[FakeMirror] = []
+
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    app = App(MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path),
+              renderer=QtRenderer(), make_rgb_mirror=make)
+    assert app.dispatch(SetRgbFollow(mode=OPENRGB, source="0402:3922")).ok
+    frame = QImage(320, 320, QImage.Format.Format_ARGB32)
+    frame.fill(QColor(0, 0, 255))
+    left = QImage(160, 320, QImage.Format.Format_ARGB32)
+    left.fill(QColor(255, 0, 0))
+    from PySide6.QtGui import QPainter
+    painter = QPainter(frame)
+    painter.drawImage(0, 0, left)
+    painter.end()
+    app.events.publish(FrameSent(key="0402:3922", bytes_sent=1, surface=frame))
+    _until(lambda: len(made[-1].shown) >= 2)
+    strip, ram = made[-1].shown[:2]
+    assert strip[1][0][0] > 200 and strip[1][0][2] < 60     # left half: red
+    assert ram[1][0][2] > 200 and ram[1][0][0] < 60         # right half: blue
+    app.close()

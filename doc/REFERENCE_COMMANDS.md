@@ -1184,6 +1184,9 @@ Pick what follows the LED cooler's colours (#160): one at a time.
 | `mode` | `RgbFollowMode` | yes |
 | `host` | `str` | no |
 | `port` | `int` | no |
+| `source` | `str | None` | no |
+| `mapping` | `FollowMapping | None` | no |
+| `targets` | `tuple[str, Ellipsis] | None` | no |
 
 ### `SetWeekStart`
 

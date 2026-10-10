@@ -8,8 +8,11 @@ render.  Only the newest
 colours are kept -- a frame that could not be sent in time is replaced, not
 queued.
 
-One cooler leads: the first whose colours arrive after following starts.
-Two LED coolers following at once would alternate on every device.
+One cooler leads: the first whose colours arrive after following starts --
+or the device the user picked as the source.  An LCD can be the source too:
+its frames are sampled into a column of colours per device, so with the
+"halves" mapping the left of the panel lights the first stick and the right
+the second, top to bottom; with "single", one colour each.
 
 The same service owns the RAM for its built-in effects.  Commands arrive on
 one thread per connected UI and the follower sends from its own, so every use
@@ -26,21 +29,38 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from ..core.logs import per_frame
-from ..core.models import RamEffectSettings, RgbFollowMode, RgbMirrorDevice
+from ..core.models import (
+    FollowMapping,
+    RamEffectSettings,
+    RgbFollowMode,
+    RgbMirrorDevice,
+)
 from ..core.ports import RamLights, RgbMirror
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 Rgb = tuple[int, int, int]
+#: A sampler: (surface, columns, rows) -> rows of columns of colours.  The
+#: Renderer port's ``get_pixels_rgb``.
+Sampler = Callable[[Any, int, int], list[list[Rgb]]]
+
+#: Rows a frame is sampled into: one per LED of a 10-LED stick; each device
+#: stretches its column to its own LED count.
+FRAME_ROWS = 10
+#: An LCD frame is sampled at most this often -- a 15-30 fps video gives
+#: every one it can, a still theme the rare frame it sends.
+FRAME_INTERVAL_S = 1 / 20
 
 
 @dataclass(frozen=True, slots=True)
 class MirrorStatus:
     """What following is doing, for a Query to report."""
     mode: RgbFollowMode = RgbFollowMode.OFF
+    source: str = ""
     connected: bool = False
     devices: tuple[str, ...] = ()
     lead: str = ""
@@ -61,7 +81,14 @@ class RgbMirrorService:
         self._make = make_mirror
         self._retry_s = retry_s
         self._cond = threading.Condition()
-        self._pending: tuple[Rgb, ...] | None = None
+        # One column of colours per device, newest only; a single column
+        # (an LED cooler's colours) goes to every device.
+        self._pending: tuple[tuple[Rgb, ...], ...] | None = None
+        self._source = ""
+        self._mapping = FollowMapping.HALVES
+        self._targets: tuple[str, ...] = ()
+        self._last_frame = 0.0
+        self._device_count = 2
         self._mirror: RgbMirror | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -77,13 +104,20 @@ class RgbMirrorService:
         frame_log.debug("RgbMirrorService.status: %s", self._status)
         return self._status
 
-    def configure(self, mode: RgbFollowMode, host: str, port: int) -> None:
+    def configure(self, mode: RgbFollowMode, host: str, port: int,
+                  source: str = "",
+                  mapping: FollowMapping = FollowMapping.HALVES,
+                  targets: tuple[str, ...] = ()) -> None:
         """Stop following; start again with *mode* unless it is OFF.
 
         *host* and *port* are OpenRGB's SDK server; RAM ignores them.
+        *source* is the device that leads -- empty for the first LED cooler
+        whose colours arrive; an LCD's key to follow its picture.  *targets*
+        are the refs of the devices that follow -- empty for every one.
         """
-        log.info("RgbMirrorService.configure: %s %s:%d", mode.value, host,
-                 port)
+        log.info("RgbMirrorService.configure: %s %s:%d source=%r %s "
+                 "targets=%s", mode.value, host, port, source, mapping.value,
+                 targets or "all")
         with self._switch:
             self._stop_following()
             if mode is RgbFollowMode.OFF:
@@ -95,8 +129,11 @@ class RgbMirrorService:
                 mirror = self._make(mode, host, port)
             with self._cond:
                 self._mirror = mirror
-                self._running, self._lead, self._retry_at = True, "", 0.0
-                self._status = MirrorStatus(mode=mode)
+                self._running, self._lead, self._retry_at = True, source, 0.0
+                self._source, self._mapping = source, mapping
+                self._targets = targets
+                self._last_frame = 0.0
+                self._status = MirrorStatus(mode=mode, source=source)
             self._thread = threading.Thread(target=self._run, daemon=True,
                                             name="trcc-rgb-mirror")
             self._thread.start()
@@ -115,8 +152,35 @@ class RgbMirrorService:
                 log.info("RgbMirrorService: %s leads", key)
             if key != self._lead:
                 return
-            self._pending = tuple(colors)
+            self._pending = (tuple(colors),)
             self._cond.notify()
+
+    def on_frame(self, event: object, sample: Sampler) -> None:
+        """``FrameSent`` of the source LCD -> a column of colours per device.
+
+        Sampled on the publishing thread, outside the lock: 0.06 ms for a
+        320x320 frame (measured 2026-10-10), well under a frame's budget.
+        """
+        key = getattr(event, "key", "")
+        surface = getattr(event, "surface", None)
+        with self._cond:
+            if (not self._running or not self._source or key != self._source
+                    or surface is None):
+                return
+            now = time.monotonic()
+            if now - self._last_frame < FRAME_INTERVAL_S:
+                return
+            self._last_frame = now
+            columns = (1 if self._mapping is FollowMapping.SINGLE
+                       else max(1, self._device_count))
+        grid = sample(surface, columns, FRAME_ROWS)
+        frame_log.debug("RgbMirrorService.on_frame: %s %dx%d", key, columns,
+                        FRAME_ROWS)
+        sampled = tuple(tuple(row[c] for row in grid) for c in range(columns))
+        with self._cond:
+            if self._running:
+                self._pending = sampled
+                self._cond.notify()
 
     def stop(self) -> None:
         """Stop following.  The RAM stays open for its effects."""
@@ -208,18 +272,22 @@ class RgbMirrorService:
                     self._cond.wait()
                 if not self._running:
                     return
-                colors, self._pending = self._pending, None
+                columns, self._pending = self._pending, None
                 mirror = self._mirror
             if mirror is not None and time.monotonic() >= self._retry_at:
                 with self._bus:
-                    self._send(mirror, colors or ())
+                    self._send(mirror, columns or ((),))
 
-    def _send(self, mirror: RgbMirror, colors: tuple[Rgb, ...]) -> None:
-        frame_log.debug("RgbMirrorService._send: %d colour(s)", len(colors))
+    def _send(self, mirror: RgbMirror,
+              columns: tuple[tuple[Rgb, ...], ...]) -> None:
+        """Device *i* gets column *i* -- one column goes to every device."""
+        frame_log.debug("RgbMirrorService._send: %d column(s)", len(columns))
         try:
-            devices = mirror.devices()
-            for device in devices:
-                mirror.show(device, colors)
+            devices = tuple(d for d in mirror.devices()
+                            if not self._targets or d.ref in self._targets)
+            self._device_count = len(devices) or self._device_count
+            for i, device in enumerate(devices):
+                mirror.show(device, columns[i % len(columns)])
         except OSError as e:
             self._failed(mirror, e)
             return
@@ -233,7 +301,8 @@ class RgbMirrorService:
         else:
             frame_log.debug("RgbMirrorService: sent to %d device(s)",
                             len(names))
-        self._status = MirrorStatus(mode=self._status.mode, connected=True,
+        self._status = MirrorStatus(mode=self._status.mode,
+                                    source=self._source, connected=True,
                                     devices=names, lead=self._lead)
 
     def _failed(self, mirror: RgbMirror, error: OSError) -> None:
@@ -246,5 +315,6 @@ class RgbMirrorService:
             frame_log.debug("RgbMirrorService: still unreachable")
         mirror.close()
         self._retry_at = time.monotonic() + self._retry_s
-        self._status = MirrorStatus(mode=self._status.mode, lead=self._lead,
+        self._status = MirrorStatus(mode=self._status.mode,
+                                    source=self._source, lead=self._lead,
                                     error=message)

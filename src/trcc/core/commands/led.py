@@ -28,7 +28,12 @@ from ..led_models import (
     one_hot,
 )
 from ..logs import per_frame
-from ..models import RamAccessState, RamAccessStatus, RgbFollowMode
+from ..models import (
+    FollowMapping,
+    RamAccessState,
+    RamAccessStatus,
+    RgbFollowMode,
+)
 from ..results import (
     ClockFormatResult,
     HddEnabledResult,
@@ -1086,6 +1091,9 @@ def _rgb_follow_result(app: App, message: str) -> RgbFollowResult:
     return RgbFollowResult(
         ok=True, mode=mode,
         host=settings.openrgb_host, port=settings.openrgb_port,
+        source=settings.rgb_follow_source,
+        mapping=app.settings.rgb_follow_mapping(),
+        targets=app.settings.rgb_follow_targets(),
         connected=status.connected, devices=status.devices,
         lead=status.lead, error=status.error, message=message,
     )
@@ -1111,22 +1119,40 @@ class SetRgbFollow(Command[RgbFollowResult]):
     device, in OpenRGB's direct mode.  ``RAM``: TRCC sends them to Corsair RGB
     memory over the SMBus itself, with no OpenRGB running.  ``OFF`` stops.
     An empty host or a port of 0 keeps the one saved.
+
+    ``source`` is the device that leads: empty for the first LED cooler, an
+    LCD's key to follow its picture, mapped by ``mapping``.  ``targets`` are
+    the lights that follow (refs; empty for every one).  None keeps each
+    saved.
     """
     mode: RgbFollowMode
     host: str = ""
     port: int = 0
+    source: str | None = None
+    mapping: FollowMapping | None = None
+    targets: tuple[str, ...] | None = None
 
     def execute(self, app: App) -> RgbFollowResult:
         current = app.settings.app
         host = self.host or current.openrgb_host
         port = self.port or current.openrgb_port
-        log.info("SetRgbFollow: %s %s:%d", self.mode.value, host, port)
+        source = (current.rgb_follow_source if self.source is None
+                  else self.source)
+        mapping = (app.settings.rgb_follow_mapping() if self.mapping is None
+                   else self.mapping)
+        targets = (app.settings.rgb_follow_targets() if self.targets is None
+                   else self.targets)
+        log.info("SetRgbFollow: %s %s:%d source=%r %s targets=%s",
+                 self.mode.value, host, port, source, mapping.value,
+                 list(targets) or "all")
         try:
-            app.settings.set_rgb_follow(self.mode, host, port)
+            app.settings.set_rgb_follow(self.mode, host, port, source,
+                                        mapping, targets)
         except ValueError as e:
             log.warning("SetRgbFollow: refused — %s", e)
             return RgbFollowResult(ok=False, message=str(e))
-        app.rgb_mirror.configure(self.mode, host, port)
+        app.rgb_mirror.configure(self.mode, host, port, source, mapping,
+                                 targets)
         app.events.publish(RgbFollowChanged(mode=self.mode))
         return _rgb_follow_result(
             app, _rgb_follow_label(self.mode, host, port))

@@ -141,20 +141,33 @@ def fake():  # type: ignore[no-untyped-def]
 def test_a_current_openrgb_lists_its_devices_at_protocol_1(fake) -> None:
     server, mirror = fake([("ASUS Aura Motherboard", 8), ("RAM", 5)])
     devices = mirror.devices()
-    assert devices == (RgbMirrorDevice(0, "ASUS Aura Motherboard", 8),
-                       RgbMirrorDevice(1, "RAM", 5))
+    assert devices == (
+        RgbMirrorDevice(0, "ASUS Aura Motherboard", 8, "ASUS Aura Motherboard"),
+        RgbMirrorDevice(1, "RAM", 5, "RAM"))
     assert server.packets(40) == [(0, struct.pack("<I", 1))]
     assert server.packets(50) == [(0, b"TRCC Linux\0")]
     assert server.packets(1) == [(0, struct.pack("<I", 1)),
                                  (1, struct.pack("<I", 1))]
-    server.wait_for(1100, 2)
-    assert server.packets(1100) == [(0, b""), (1, b"")]
+
+
+def test_only_a_device_sent_colours_is_taken_over(fake) -> None:
+    """Listing takes nothing over: a device the user left out of following
+    keeps its own lighting.  The first colours sent switch that device --
+    and only that one -- to direct mode, once.
+
+    MUTATION CHECK: switch every device to direct mode in ``_list`` again."""
+    server, mirror = fake([("ASUS Aura Motherboard", 8), ("RAM", 5)])
+    board, _ram = mirror.devices()
+    mirror.show(board, [(255, 0, 0)])
+    mirror.show(board, [(0, 255, 0)])
+    server.wait_for(1050, 2)
+    assert server.packets(1100) == [(0, b"")]
 
 
 def test_a_protocol_0_server_is_asked_without_a_version(fake) -> None:
     server, mirror = fake([("Old strip", 3)], protocol=None)
     devices = mirror.devices()
-    assert devices == (RgbMirrorDevice(0, "Old strip", 3),)
+    assert devices == (RgbMirrorDevice(0, "Old strip", 3, "Old strip"),)
     assert server.packets(1) == [(0, b"")]
 
 
@@ -241,3 +254,13 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None: 
         assert sent == want
     finally:
         app.close()
+
+
+
+def test_twin_devices_get_names_that_survive_a_reorder() -> None:
+    """OpenRGB's index follows detection order; a ticked light must not."""
+    from trcc.adapters.rgb.openrgb import named_by_ref
+    devices = named_by_ref([RgbMirrorDevice(0, "Fan", 4),
+                            RgbMirrorDevice(1, "Board", 8),
+                            RgbMirrorDevice(2, "Fan", 4)])
+    assert [d.ref for d in devices] == ["Fan #1", "Board", "Fan #2"]

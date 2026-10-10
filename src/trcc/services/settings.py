@@ -35,10 +35,12 @@ from ..core.models import (
     TIME_FORMATS,
     DeviceSettings,
     FitMode,
+    FollowMapping,
     OrientationState,
     OverlayElement,
     RgbFollowMode,
     TempUnit,
+    parse_device_key,
 )
 from ..core.ports import Paths
 
@@ -96,6 +98,14 @@ class AppSettings:
     rgb_follow: str = RgbFollowMode.OFF.value
     openrgb_host: str = "127.0.0.1"
     openrgb_port: int = 6742
+    # The device that leads: empty for the first LED cooler, as before; an
+    # LCD's key to follow its picture, mapped by ``rgb_follow_mapping`` (a
+    # ``FollowMapping`` value).
+    rgb_follow_source: str = ""
+    rgb_follow_mapping: str = FollowMapping.HALVES.value
+    # Refs of the lights that follow (a stick's "i2c-3/0x19", an OpenRGB
+    # device's name); empty for every one.
+    rgb_follow_targets: list[str] = field(default_factory=list)
 
 
 # =========================================================================
@@ -754,16 +764,50 @@ class Settings:
                         value)
             return RgbFollowMode.OFF
 
-    def set_rgb_follow(self, mode: RgbFollowMode, host: str,
-                       port: int) -> None:
-        """Pick what follows the cooler, and OpenRGB's *host*:*port* (#160)."""
-        log.info("set_rgb_follow: %s %s:%d", mode.value, host, port)
+    def rgb_follow_mapping(self) -> FollowMapping:
+        """How an LCD's picture maps onto the followers; unknown is halves."""
+        value = self._app.rgb_follow_mapping
+        log.debug("rgb_follow_mapping: %r", value)
+        try:
+            return FollowMapping(value)
+        except ValueError:
+            log.warning("rgb_follow_mapping: unknown %r in the settings -- "
+                        "halves", value)
+            return FollowMapping.HALVES
+
+    def rgb_follow_targets(self) -> tuple[str, ...]:
+        """The lights that follow (refs); anything not a list of text is all.
+
+        Settings load JSON as it is, so a hand-edited string here would
+        otherwise become one target per character."""
+        value = self._app.rgb_follow_targets
+        log.debug("rgb_follow_targets: %r", value)
+        if not isinstance(value, list) or not all(isinstance(t, str)
+                                                  for t in value):
+            log.warning("rgb_follow_targets: %r is not a list of names -- "
+                        "every light follows", value)
+            return ()
+        return tuple(value)
+
+    def set_rgb_follow(self, mode: RgbFollowMode, host: str, port: int,
+                       source: str, mapping: FollowMapping,
+                       targets: tuple[str, ...]) -> None:
+        """Pick what follows, OpenRGB's *host*:*port*, and the device that
+        leads (#160): empty *source* for the first LED cooler, else a key."""
+        log.info("set_rgb_follow: %s %s:%d source=%r %s targets=%s",
+                 mode.value, host, port, source, mapping.value,
+                 list(targets) or "all")
         if not 0 < port < 65536:
             raise ValueError(f"port out of range (1-65535): {port}")
+        if source:
+            parse_device_key(source)       # ValueError for a malformed key
         with self._lock:
             self._app.rgb_follow = mode.value
             self._app.openrgb_host = host
             self._app.openrgb_port = port
+            self._app.rgb_follow_source = source
+            self._app.rgb_follow_mapping = mapping.value
+            self._app.rgb_follow_targets = list(targets)
             self._save()
 
     def set_hdd_enabled(self, enabled: bool) -> None:

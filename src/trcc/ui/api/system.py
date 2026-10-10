@@ -302,7 +302,9 @@ def rgb_follow_set(body: RgbFollowRequest,
     log.info("api POST /system/rgb-follow: mode=%s host=%r port=%s",
              body.mode.value, body.host, body.port)
     result = request.app.state.trcc.dispatch(SetRgbFollow(
-        mode=body.mode, host=body.host, port=body.port))
+        mode=body.mode, host=body.host, port=body.port, source=body.source,
+        mapping=body.mapping,
+        targets=None if body.targets is None else tuple(body.targets)))
     http_error_if_failed(result)
     return result
 

@@ -2172,15 +2172,39 @@ def test_system_follow_status_and_off(cli_runner: CliRunner, cli_app) -> None:
     assert status.exit_code == 0, status.output
     assert status.output == (
         "Nothing follows the cooler\n"
-        "  following: off (OpenRGB at 127.0.0.1:6742)\n")
+        "  following: off (OpenRGB at 127.0.0.1:6742)\n"
+        "  source   : the first LED cooler\n"
+        "  lights   : all\n")
     off = cli_runner.invoke(_app(), ["system", "follow", "off",
                                      "--port", "6800"])
     assert off.exit_code == 0, off.output
     assert off.output == (
         "Nothing follows the cooler\n"
-        "  following: off (OpenRGB at 127.0.0.1:6800)\n")
+        "  following: off (OpenRGB at 127.0.0.1:6800)\n"
+        "  source   : the first LED cooler\n"
+        "  lights   : all\n")
     bad = cli_runner.invoke(_app(), ["system", "follow", "maybe"])
     assert bad.exit_code != 0
+
+
+def test_system_follow_an_lcd_on_chosen_lights(cli_runner: CliRunner, cli_app) -> None:
+    """An LCD's picture as the source, on the lights the user picked -- kept
+    until changed; '--target all' gives every light back."""
+    del cli_app
+    picked = cli_runner.invoke(_app(), [
+        "system", "follow", "off", "--source", "0402:3922",
+        "--mapping", "single", "--target", "i2c-3/0x19",
+        "--target", "ASUS Aura Motherboard"])
+    assert picked.exit_code == 0, picked.output
+    assert picked.output.endswith(
+        "  source   : 0402:3922 (single)\n"
+        "  lights   : i2c-3/0x19, ASUS Aura Motherboard\n")
+    kept = cli_runner.invoke(_app(), ["system", "follow"])
+    assert kept.output.endswith("  lights   : i2c-3/0x19, ASUS Aura Motherboard\n")
+    every = cli_runner.invoke(_app(), ["system", "follow", "off", "--target", "all"])
+    assert every.output.endswith("  lights   : all\n")
+    bad = cli_runner.invoke(_app(), ["system", "follow", "off", "--source", "not-a-key"])
+    assert bad.exit_code == 1
 
 
 def test_listing_the_api_routes_starts_no_app(

@@ -1494,6 +1494,17 @@ class RgbFollowMode(str, Enum):
     RAM = "ram"
 
 
+class FollowMapping(str, Enum):
+    """How an LCD's picture lights the devices that follow it.
+
+    ``HALVES``: the panel split into a column per device, left to right; each
+    device shows its column top to bottom.  ``SINGLE``: one colour each, the
+    panel's average.
+    """
+    HALVES = "halves"
+    SINGLE = "single"
+
+
 @dataclass(frozen=True, slots=True)
 class RgbMirrorDevice:
     """One device of another RGB system that follows the cooler (#160).

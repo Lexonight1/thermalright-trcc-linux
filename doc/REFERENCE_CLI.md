@@ -1600,7 +1600,7 @@ trcc system first-run-status
 
 ### `trcc system follow`
 
-Make other RGB follow the LED cooler's colours (#160). 'openrgb': TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's SDK Server tab -- and sends the cooler's colours to every OpenRGB device, in OpenRGB's direct mode. 'ram': TRCC sends them to Corsair RGB memory itself, with no OpenRGB -- close OpenRGB first, so the two never drive the same sticks. 'off' stops.
+Make other RGB follow the LED cooler's colours -- or an LCD's picture (#160). 'openrgb': TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's SDK Server tab -- and sends the cooler's colours to every OpenRGB device, in OpenRGB's direct mode. 'ram': TRCC sends them to Corsair RGB memory itself, with no OpenRGB -- close OpenRGB first, so the two never drive the same sticks. 'off' stops.
 
 ```bash
 trcc system follow [OPTIONS] [MODE]
@@ -1614,6 +1614,9 @@ trcc system follow [OPTIONS] [MODE]
 |---|---|
 | `--host` `HOST` | OpenRGB's SDK server (default: the saved one, 127.0.0.1 at first). |
 | `--port` `PORT` | Its port (default: the saved one, 6742 at first). |
+| `--source` `SOURCE` | The device that leads: an LCD's key (e.g. 0402:3922) to follow its picture, or '' for the first LED cooler. Default: the saved one. |
+| `--mapping` `MAPPING` | An LCD's picture on the followers: 'halves' (left to the first, right to the second) or 'single' (one colour each). Default: the saved one. |
+| `--target` `TARGET` | A light that follows (a stick's 'i2c-3/0x19', an OpenRGB device's name); repeat for more. '--target all' for every one. Default: the saved ones. |
 
 ### `trcc system hdd-enabled`
 

@@ -45,6 +45,7 @@ from ...core.commands import (
 )
 from ...core.models import (
     AUTOSTART_TARGETS,
+    FollowMapping,
     PanelConfig,
     RamAccessState,
     RgbFollowMode,
@@ -516,8 +517,20 @@ def follow(
                            "127.0.0.1 at first)."),
     port: int = typer.Option(
         0, "--port", help="Its port (default: the saved one, 6742 at first)."),
+    source: str | None = typer.Option(
+        None, "--source", help="The device that leads: an LCD's key "
+        "(e.g. 0402:3922) to follow its picture, or '' for the first LED "
+        "cooler.  Default: the saved one."),
+    mapping: FollowMapping | None = typer.Option(
+        None, "--mapping", help="An LCD's picture on the followers: 'halves' "
+        "(left to the first, right to the second) or 'single' (one colour "
+        "each).  Default: the saved one."),
+    target: list[str] | None = typer.Option(
+        None, "--target", help="A light that follows (a stick's "
+        "'i2c-3/0x19', an OpenRGB device's name); repeat for more.  "
+        "'--target all' for every one.  Default: the saved ones."),
 ) -> None:
-    """Make other RGB follow the LED cooler's colours (#160).
+    """Make other RGB follow the LED cooler's colours -- or an LCD's picture (#160).
 
     'openrgb': TRCC connects to OpenRGB's SDK server -- start it in OpenRGB's
     SDK Server tab -- and sends the cooler's colours to every OpenRGB device,
@@ -525,7 +538,8 @@ def follow(
     itself, with no OpenRGB -- close OpenRGB first, so the two never drive the
     same sticks.  'off' stops.
     """
-    log.info("cli system follow: mode=%s host=%r port=%s", mode, host, port)
+    log.info("cli system follow: mode=%s host=%r port=%s source=%r "
+             "mapping=%s target=%s", mode, host, port, source, mapping, target)
     choice = mode.lower()
     modes = [m.value for m in RgbFollowMode]
     if choice != "status" and choice not in modes:
@@ -534,12 +548,18 @@ def follow(
             f"got {mode!r}")
     result = get_app().dispatch(
         RgbFollow() if choice == "status" else
-        SetRgbFollow(mode=RgbFollowMode(choice), host=host, port=port))
+        SetRgbFollow(mode=RgbFollowMode(choice), host=host, port=port,
+                     source=source, mapping=mapping,
+                     targets=(None if target is None else
+                              () if target == ["all"] else tuple(target))))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
     typer.echo(f"  following: {result.mode.value} "
                f"(OpenRGB at {result.host}:{result.port})")
+    typer.echo(f"  source   : {result.source or 'the first LED cooler'}"
+               + (f" ({result.mapping.value})" if result.source else ""))
+    typer.echo(f"  lights   : {', '.join(result.targets) or 'all'}")
     if result.lead:
         typer.echo(f"  cooler   : {result.lead}")
     if result.devices:

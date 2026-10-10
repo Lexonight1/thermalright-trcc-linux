@@ -30,8 +30,10 @@ from .core.events import (
     DeviceDetached,
     DeviceDisconnected,
     ErrorOccurred,
+    Event,
     EventBus,
     FitModeChanged,
+    FrameSent,
     LedColorsChanged,
     LedSettingsChanged,
     MaskApplied,
@@ -374,9 +376,14 @@ class App(CommandBus):
         self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
             make_mirror, smbuses=platform.smbuses))
         self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
+        # An LCD as the source: its frames, sampled by the renderer.
+        self.events.subscribe(FrameSent, self._follow_frame)
         prefs = self.settings.app
         self.rgb_mirror.configure(self.settings.rgb_follow_mode(),
-                                  prefs.openrgb_host, prefs.openrgb_port)
+                                  prefs.openrgb_host, prefs.openrgb_port,
+                                  prefs.rgb_follow_source,
+                                  self.settings.rgb_follow_mapping(),
+                                  self.settings.rgb_follow_targets())
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -769,6 +776,14 @@ class App(CommandBus):
         """Whether a Renderer is attached -- an LED-only App has none (#299)."""
         frame_log.debug("App.has_renderer: %s", self._renderer is not None)
         return self._renderer is not None
+
+    def _follow_frame(self, event: Event) -> None:
+        """A sent frame to the RGB follower, when it follows that LCD."""
+        renderer = self._renderer
+        frame_log.debug("App._follow_frame: %s renderer=%s",
+                        type(event).__name__, renderer is not None)
+        if isinstance(event, FrameSent) and renderer is not None:
+            self.rgb_mirror.on_frame(event, renderer.get_pixels_rgb)
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

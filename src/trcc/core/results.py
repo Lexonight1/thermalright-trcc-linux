@@ -18,6 +18,7 @@ from .models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     DeviceInfo,
+    FollowMapping,
     HandshakeResult,
     HardwareMetrics,
     LedHandshakeResult,
@@ -628,6 +629,12 @@ class RgbFollowResult(Result):
     mode: RgbFollowMode = RgbFollowMode.OFF
     host: str = ""
     port: int = 0
+    #: The device that leads -- empty for the first LED cooler -- how an
+    #: LCD's picture maps onto the followers, and which lights follow (refs;
+    #: empty for every one).
+    source: str = ""
+    mapping: FollowMapping = FollowMapping.HALVES
+    targets: tuple[str, ...] = ()
     connected: bool = False
     devices: tuple[str, ...] = ()
     lead: str = ""

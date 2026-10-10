@@ -25,10 +25,12 @@ version request is protocol 0, and is spoken to as such.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import select
 import socket
 import struct
+from collections import Counter
 from collections.abc import Sequence
 
 from ...core.logs import per_frame
@@ -141,6 +143,22 @@ def parse_device(index: int, data: bytes, protocol: int) -> RgbMirrorDevice:
     return RgbMirrorDevice(index=index, name=name, led_count=r.take("<H"))
 
 
+def named_by_ref(devices: Sequence[RgbMirrorDevice]) -> tuple[RgbMirrorDevice, ...]:
+    """Each device with a stable ``ref``: its name, ``#2``, ``#3``... after
+    a name another device shares.  OpenRGB's index can change between runs
+    (detection order); the name a user ticked must not."""
+    log.debug("named_by_ref: %d device(s)", len(devices))
+    totals = Counter(d.name for d in devices)
+    seen: Counter[str] = Counter()
+    named = []
+    for device in devices:
+        seen[device.name] += 1
+        ref = (device.name if totals[device.name] == 1
+               else f"{device.name} #{seen[device.name]}")
+        named.append(dataclasses.replace(device, ref=ref))
+    return tuple(named)
+
+
 class OpenRgbMirror(RgbMirror):
     """A client of one OpenRGB SDK server."""
 
@@ -151,6 +169,9 @@ class OpenRgbMirror(RgbMirror):
         self._sock: socket.socket | None = None
         self._protocol = 0
         self._devices: tuple[RgbMirrorDevice, ...] | None = None
+        # Devices TRCC has put in direct mode: only those it sends colours,
+        # so a device the user left out keeps its own lighting.
+        self._custom: set[int] = set()
 
     def devices(self) -> tuple[RgbMirrorDevice, ...]:
         """Connect if needed; list again after OpenRGB says the list changed."""
@@ -164,6 +185,10 @@ class OpenRgbMirror(RgbMirror):
     def show(self, device: RgbMirrorDevice,
              colors: Sequence[tuple[int, int, int]]) -> None:
         sock = self._connect()
+        if device.index not in self._custom:
+            log.info("OpenRgbMirror: %s to direct mode", device.name)
+            sock.sendall(header(device.index, SET_CUSTOM_MODE, 0))
+            self._custom.add(device.index)
         payload = update_leds_payload(stretch(colors, device.led_count))
         frame_log.debug("OpenRgbMirror.show: %s %d LED(s)", device.name,
                         device.led_count)
@@ -174,6 +199,7 @@ class OpenRgbMirror(RgbMirror):
         if self._sock is not None:
             self._sock.close()
         self._sock, self._devices = None, None
+        self._custom.clear()
 
     # ── Internals ─────────────────────────────────────────────────────
 
@@ -223,12 +249,10 @@ class OpenRgbMirror(RgbMirror):
             self._sock.sendall(header(index, REQUEST_CONTROLLER_DATA,
                                       len(request)) + request)
             _, data = self._receive(REQUEST_CONTROLLER_DATA)
-            device = parse_device(index, data, self._protocol)
-            self._sock.sendall(header(index, SET_CUSTOM_MODE, 0))
-            found.append(device)
+            found.append(parse_device(index, data, self._protocol))
         log.info("OpenRgbMirror: %d device(s): %s", len(found),
                  ", ".join(f"{d.name} ({d.led_count})" for d in found))
-        return tuple(found)
+        return named_by_ref(found)
 
     def _receive(self, wanted: int) -> tuple[int, bytes]:
         """The next packet with id *wanted*; notices a list change on the way."""
@@ -251,6 +275,7 @@ class OpenRgbMirror(RgbMirror):
         if pkt_id == DEVICE_LIST_UPDATED:
             log.info("OpenRgbMirror: OpenRGB's device list changed")
             self._devices = None
+            self._custom.clear()       # indexes may now name other devices
         else:
             log.debug("OpenRgbMirror: ignoring packet %d", pkt_id)
 
