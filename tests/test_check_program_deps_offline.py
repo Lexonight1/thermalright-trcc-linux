@@ -54,6 +54,14 @@ def test_mdapi_says_absent_with_a_400(monkeypatch) -> None:
     assert deps.in_fedora("python3-nvidia-ml-py") is None
 
 
+#: ``check()`` reads pyproject with ``tomllib``, which is 3.11+.  The tool
+#: runs on 3.12 (the dev gate); importing it works on 3.10, these two do not.
+#: e9eae2f2 fixed the import and left these, hidden by a cancelled CI run.
+needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11),
+                                   reason="tomllib is Python 3.11+")
+
+
+@needs_tomllib
 def test_an_unreachable_index_makes_no_stale_row(monkeypatch, capsys) -> None:
     _network_down(monkeypatch)
 
@@ -63,6 +71,7 @@ def test_an_unreachable_index_makes_no_stale_row(monkeypatch, capsys) -> None:
     assert {f.severity for f in findings} == {"UNVERIFIED"}
 
 
+@needs_tomllib
 def test_a_deliberately_optional_dep_is_not_a_gap(monkeypatch, capsys) -> None:
     """Every index answers "present"; the optional deps stay quiet."""
     for probe in ("in_arch", "in_fedora", "in_ubuntu", "in_debian"):
