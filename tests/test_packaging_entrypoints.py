@@ -421,3 +421,16 @@ def test_the_deb_brings_what_the_websocket_routes_import() -> None:
 
     assert depends is not None
     assert "python3-websockets" in depends.group(1)
+
+
+def test_the_legacy_deb_brings_the_library_its_qt_wheel_links() -> None:
+    """The legacy deb pip-installs PySide6 into a venv, and that wheel links
+    libEGL.so.1, which no Depends brought: on a minimal Ubuntu 24.04 ``import
+    PySide6.QtWidgets`` failed, so the renderer -- and with it the App --
+    could not start (measured 2026-10-09 by the release's install test).
+    MUTATION CHECK: drop libegl1 -> fails."""
+    legacy = _step("Build DEB legacy")
+    depends = re.search(r"^\s*Depends: (python3[^\n]+)", legacy, re.M)
+
+    assert depends is not None
+    assert "libegl1" in depends.group(1)

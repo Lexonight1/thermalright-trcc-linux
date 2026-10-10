@@ -34,6 +34,9 @@
 - **The API's live preview and event stream work on Debian/Ubuntu and Arch.**
   Neither package installed the WebSocket library, so `/events` and the live
   preview stream answered 404; both now depend on it.
+- **The Ubuntu 22.04 / 24.04 (legacy) package starts on a minimal install.**
+  Its Qt needs `libEGL`, which the package did not ask for; a desktop usually
+  has it, a minimal or server install did not, and TRCC could not start.
 - **Starting the audio visualizer on a machine with no sound server no longer
   fails with an error;** it switches the visualizer off and says why.
 - **openSUSE:** the install guide no longer offers the Fedora RPM, which

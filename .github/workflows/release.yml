@@ -391,7 +391,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pip, python3-venv, libportaudio2, libusb-1.0-0, sg3-utils, libxcb-cursor0
+          Depends: python3 (>= 3.9), python3-pip, python3-venv, libportaudio2, libusb-1.0-0, sg3-utils, libxcb-cursor0, libegl1
           Recommends: p7zip-full, ffmpeg, python3-dbus, python3-gi, dmidecode
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
