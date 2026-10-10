@@ -33,8 +33,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
-    QLineEdit,
     QRadioButton,
     QVBoxLayout,
 )
@@ -42,24 +40,16 @@ from PySide6.QtWidgets import (
 from .....core.commands import (
     EnableLedTestMode,
     ListDiskSensors,
-    RgbFollow,
     SetClockFormat,
     SetDiskDevice,
     SetLedLoadSource,
     SetLedTempSource,
     SetMemoryRatio,
-    SetRgbFollow,
     SetWeekStart,
 )
-from .....core.models import RgbFollowMode
 from .....core.results import LedSnapshotResult
 from ....presentation.led_panel import LedPanelModel
-from ....presentation.openrgb_address import (
-    format_openrgb_address,
-    parse_openrgb_address,
-)
 from ._base import LedTabBase
-from .ram_access import RamAccessControl
 
 log = logging.getLogger(__name__)
 
@@ -157,38 +147,6 @@ class AdvancedTab(LedTabBase):
         misc_form.addRow("Disk sensor:", self._disk_selector)
         misc_form.addRow("DDR multiplier:", self._memory_ratio)
         root.addWidget(misc_box)
-
-        # ── OpenRGB follows the cooler (#160) -- app-wide ────────────
-        openrgb_box = QGroupBox("Other RGB follows", self)
-        openrgb_layout = QVBoxLayout(openrgb_box)
-        self._openrgb_check = QCheckBox(
-            "OpenRGB's devices follow the cooler's colours", self)
-        self._openrgb_check.setToolTip(
-            "Sends this cooler's colours to every device of OpenRGB's SDK "
-            "server (start it in OpenRGB's SDK Server tab) and puts them in "
-            "direct mode.  Applies app-wide, not just to this device.")
-        self._openrgb_check.toggled.connect(self._on_openrgb_toggled)
-        self._openrgb_addr = QLineEdit("127.0.0.1:6742", self)
-        self._openrgb_addr.setToolTip("OpenRGB's SDK server, host:port")
-        # Corsair RAM directly -- the same one choice: ticking one unticks
-        # the other, because the App follows with one at a time.
-        self._ram_check = QCheckBox(
-            "Corsair RGB RAM follows the cooler's colours (directly)", self)
-        self._ram_check.setToolTip(
-            "Sends this cooler's colours to Corsair RGB memory over the "
-            "SMBus, with no OpenRGB.  Close OpenRGB first.  Applies "
-            "app-wide, not just to this device.")
-        self._ram_check.toggled.connect(self._on_ram_toggled)
-        self._openrgb_status = QLabel("", self)
-        self._openrgb_status.setWordWrap(True)
-        openrgb_layout.addWidget(self._openrgb_check)
-        openrgb_layout.addWidget(self._openrgb_addr)
-        openrgb_layout.addWidget(self._ram_check)
-        # Whether TRCC may reach the RAM at all: the opt-in grant.
-        self._ram_access = RamAccessControl(self._app, self)
-        openrgb_layout.addWidget(self._ram_access)
-        openrgb_layout.addWidget(self._openrgb_status)
-        root.addWidget(openrgb_box)
 
         root.addStretch(1)
 
@@ -330,64 +288,6 @@ class AdvancedTab(LedTabBase):
         key = self.current_key()
         if key:
             self._dispatch(SetLedLoadSource(key=key, source=source))
-
-    def show_openrgb(self) -> None:
-        """Show what follows the cooler and what it is doing -- sends nothing."""
-        result = self._dispatch(RgbFollow())
-        mode = RgbFollowMode(result.mode)
-        log.debug("show_openrgb: %s connected=%s", mode.value,
-                  result.connected)
-        self._ram_access.refresh()
-        self._show_switches(mode)
-        if result.host:
-            self._openrgb_addr.setText(
-                format_openrgb_address(result.host, result.port))
-        if mode is RgbFollowMode.OFF:
-            text = ""
-        elif result.error:
-            text = f"Not reachable — {result.error}"
-        elif result.connected:
-            text = f"Following on: {', '.join(result.devices) or 'no devices'}"
-        else:
-            text = "Waiting for the cooler's colours"
-        self._openrgb_status.setText(text)
-
-    def show_openrgb_switch_only(self) -> None:
-        """Put the switches back to the App's state, keeping the status line."""
-        mode = RgbFollowMode(self._dispatch(RgbFollow()).mode)
-        log.debug("show_openrgb_switch_only: %s", mode.value)
-        self._show_switches(mode)
-
-    def _show_switches(self, mode: RgbFollowMode) -> None:
-        log.debug("_show_switches: %s", mode.value)
-        for check, on in ((self._openrgb_check, mode is RgbFollowMode.OPENRGB),
-                          (self._ram_check, mode is RgbFollowMode.RAM)):
-            check.blockSignals(True)
-            check.setChecked(on)
-            check.blockSignals(False)
-
-    def _on_ram_toggled(self, checked: bool) -> None:
-        log.info("_on_ram_toggled: checked=%s", checked)
-        self._follow(RgbFollowMode.RAM if checked else RgbFollowMode.OFF)
-
-    def _on_openrgb_toggled(self, checked: bool) -> None:
-        address = parse_openrgb_address(self._openrgb_addr.text())
-        log.info("_on_openrgb_toggled: checked=%s address=%s", checked, address)
-        if address is None:
-            self._openrgb_status.setText(
-                "Address must be host:port, e.g. 127.0.0.1:6742")
-            self.show_openrgb_switch_only()
-            return
-        self._follow(RgbFollowMode.OPENRGB if checked else RgbFollowMode.OFF,
-                     *address)
-
-    def _follow(self, mode: RgbFollowMode, host: str = "",
-                port: int = 0) -> None:
-        log.info("_follow: %s %s:%d", mode.value, host, port)
-        result = self._dispatch(SetRgbFollow(mode=mode, host=host, port=port))
-        if not result.ok:
-            log.warning("_follow: refused — %s", result.message)
-        self.show_openrgb()
 
     def _on_test_mode_toggled(self, checked: bool) -> None:
         log.info("_on_test_mode_toggled: checked=%s", checked)

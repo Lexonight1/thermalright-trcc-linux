@@ -29,7 +29,7 @@ from ...presentation.rgb_page import (
 from ...qt_ram_access import RamAccessRow
 from ...qt_rgb_page import RgbPageView
 from ..base import BasePanel
-from .led.ram_access import RamAccessControl
+from .ram_access import RamAccessControl
 
 log = logging.getLogger(__name__)
 

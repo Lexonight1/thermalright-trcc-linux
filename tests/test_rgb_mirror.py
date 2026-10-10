@@ -291,76 +291,7 @@ def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:  # type: ignore[n
         linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
 
 
-# ── Every UI: the switch, its state from the App, and the event ────────────
-
-def test_the_new_window_switch_follows_the_app(tmp_path, qtbot) -> None:  # type: ignore[no-untyped-def]
-    """qtgui's Advanced tab: a toggle dispatches; a refresh only shows."""
-    from trcc.ui.qtgui.panels.led import AdvancedTab
-
-    app, made = _app(tmp_path)
-    tab = AdvancedTab(app, lambda: "")
-    qtbot.addWidget(tab)
-    tab.show_openrgb()
-    assert not tab._openrgb_check.isChecked()
-    tab._openrgb_check.setChecked(True)
-    assert app.settings.app.rgb_follow == "openrgb" and made
-    assert tab._openrgb_status.text() == "Waiting for the cooler's colours"
-    # Ticking RAM unticks OpenRGB: one choice.
-    tab._ram_check.setChecked(True)
-    assert app.settings.app.rgb_follow == "ram"
-    assert tab._ram_check.isChecked() and not tab._openrgb_check.isChecked()
-    # Another UI turns it off: the refresh shows it and sends nothing.
-    app.dispatch(SetRgbFollow(mode=OFF))
-    before = len(made)
-    tab.show_openrgb()
-    assert not tab._ram_check.isChecked() and len(made) == before
-    app.close()
-
-
-#: Every UCAbout this module builds, alive for the whole session.  A UCAbout
-#: starts an update-check thread whose target is a bound method, so the thread
-#: holds the panel: when the test's own reference goes first, the panel's LAST
-#: reference is dropped on that thread and Qt destroys a widget off the GUI
-#: thread -- SIGSEGV in pytest-qt's event processing, 5 runs in 10 (measured
-#: 2026-10-08).  The app keeps its one UCAbout for its lifetime, so it cannot.
-_KEEP_ALIVE: list = []
-
-
-def test_the_classic_window_switch_and_status(qapp) -> None:  # type: ignore[no-untyped-def]
-    """Built like the existing UCAbout test (``qapp``, assets set, never handed
-    to qtbot to destroy) -- and kept alive: see ``_KEEP_ALIVE``."""
-    from trcc.core.results import RgbFollowResult
-    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
-    from trcc.ui.gui.uc_about import UCAbout
-
-    del qapp
-    set_assets_dir(_PKG_ASSETS_DIR)
-    about = UCAbout()
-    _KEEP_ALIVE.append(about)
-    asked: list = []
-    about.rgb_follow_changed.connect(lambda *a: asked.append(a))
-    about._openrgb_addr.setText("192.168.1.5:6800")
-    about.openrgb_btn.click()
-    assert asked == [("openrgb", "192.168.1.5", 6800)]
-    about.openrgb_btn.click()                  # off
-    about._openrgb_addr.setText("http://x")
-    about.openrgb_btn.click()                  # a bad address sends nothing
-    assert len(asked) == 2 and not about.openrgb_btn.isChecked()
-    about.ram_btn.click()
-    assert asked[-1] == ("ram", "", 0)
-    about.show_openrgb(RgbFollowResult(
-        ok=True, mode=OPENRGB, host="127.0.0.1", port=6742, connected=True,
-        devices=("Motherboard", "RAM")))
-    assert about.openrgb_btn.isChecked() and not about.ram_btn.isChecked()
-    assert about._openrgb_status.text() == "Following on: Motherboard, RAM"
-    about.show_openrgb(RgbFollowResult(
-        ok=True, mode=RAM_MODE,
-        error="PermissionError: [Errno 13] Permission denied"))
-    assert about.ram_btn.isChecked() and not about.openrgb_btn.isChecked()
-    assert about._openrgb_status.text() == (
-        "Corsair RAM not reachable — "
-        "PermissionError: [Errno 13] Permission denied")
-
+# ── Every UI hears of a change; the page's own tests are test_rgb_page_view
 
 def test_a_change_from_any_ui_reaches_the_windows(qtbot) -> None:  # type: ignore[no-untyped-def]
     from trcc.core.events import EventBus, RgbFollowChanged
@@ -371,20 +302,6 @@ def test_a_change_from_any_ui_reaches_the_windows(qtbot) -> None:  # type: ignor
     with qtbot.waitSignal(bridge.app_settings_changed, timeout=1000) as sig:
         bus.publish(RgbFollowChanged(mode=RAM_MODE))
     assert isinstance(sig.args[0], RgbFollowChanged)
-
-
-def test_the_new_window_sends_the_address_typed(tmp_path, qtbot) -> None:  # type: ignore[no-untyped-def]
-    from trcc.ui.qtgui.panels.led import AdvancedTab
-
-    app, made = _app(tmp_path)
-    tab = AdvancedTab(app, lambda: "")
-    qtbot.addWidget(tab)
-    tab._openrgb_addr.setText("10.0.0.2:7000")
-    tab._openrgb_check.setChecked(True)
-    assert made[-1].address == ("10.0.0.2", 7000)
-    assert (app.settings.app.openrgb_host, app.settings.app.openrgb_port) == (
-        "10.0.0.2", 7000)
-    app.close()
 
 
 def test_the_address_field_parses_like_the_api() -> None:

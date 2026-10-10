@@ -50,7 +50,6 @@ from ...core.commands import (
     ListLanguages,
     RecentColors,
     RememberColor,
-    RgbFollow,
     SetBackground,
     SetGpuDevice,
     SetHddEnabled,
@@ -58,7 +57,6 @@ from ...core.commands import (
     SetMaskVisible,
     SetMediaPlayer,
     SetRefreshInterval,
-    SetRgbFollow,
     SetScreencastRegion,
     SetTempUnit,
     StartScreencast,
@@ -78,7 +76,6 @@ from ...core.models import (
     FitMode,
     HardwareMetrics,
     Kind,
-    RgbFollowMode,
     ThemeDir,
 )
 from ...core.results import ControlCenterSnapshotResult, LanguageEntry
@@ -527,13 +524,8 @@ class TRCCApp(QMainWindow):
                 self.uc_led_control.show_disk_identity()
             case SensorDashboardChanged():
                 self.uc_system_info.show_dashboard()
-            case RamLightingChanged() | RgbLightsChanged():
-                if self.uc_about.ram_access is not None:
-                    self.uc_about.ram_access.refresh()
+            case RamLightingChanged() | RgbLightsChanged() | RgbFollowChanged():
                 self.uc_rgb.page.on_app_event(event)
-            case RgbFollowChanged():
-                self.uc_rgb.page.on_app_event(event)
-                self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
             case _:
                 self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
 
@@ -548,7 +540,6 @@ class TRCCApp(QMainWindow):
                  "hdd=%s", cc.temp_unit, cc.language, cc.active_gpu,
                  cc.refresh_interval_s, cc.hdd_enabled)
         self.uc_about.show_app_settings(cc)
-        self.uc_about.show_openrgb(self._app.dispatch(RgbFollow()))
         self.uc_system_info.set_temp_unit(code)
         self.uc_led_control.set_temp_unit(code)
         self._show_language(cc.language)
@@ -1551,7 +1542,6 @@ class TRCCApp(QMainWindow):
         self.uc_about.language_changed.connect(self._set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
-        self.uc_about.rgb_follow_changed.connect(self._on_rgb_follow_changed)
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
         self.uc_about.gpu_changed.connect(self._on_gpu_changed)
 
@@ -2496,15 +2486,6 @@ class TRCCApp(QMainWindow):
     def _on_hdd_toggle_changed(self, on: bool) -> None:
         log.debug("_on_hdd_toggle_changed: on=%s", on)
         result = self._app.dispatch(SetHddEnabled(enabled=on))
-        self.uc_preview.set_status(result.message)
-
-    def _on_rgb_follow_changed(self, mode: str, host: str, port: int) -> None:
-        """The settings panel's OpenRGB / Corsair RAM switches (#160)."""
-        log.info("_on_rgb_follow_changed: %s %s:%d", mode, host, port)
-        result = self._app.dispatch(SetRgbFollow(
-            mode=RgbFollowMode(mode), host=host, port=port))
-        self.uc_about.show_openrgb(result if result.ok
-                                   else self._app.dispatch(RgbFollow()))
         self.uc_preview.set_status(result.message)
 
     def _on_refresh_changed(self, interval: int) -> None:

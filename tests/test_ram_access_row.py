@@ -35,7 +35,7 @@ class _Bus:
 
 def _rows() -> list[Any]:
     from trcc.ui.gui.uc_ram_access import UCRamAccess
-    from trcc.ui.qtgui.panels.led.ram_access import RamAccessControl
+    from trcc.ui.qtgui.panels.ram_access import RamAccessControl
     return [UCRamAccess, RamAccessControl]
 
 

@@ -1,4 +1,4 @@
-"""The settings page's RAM-lighting row: the shared view, this skin's Commands."""
+"""The RGB page's RAM-lighting row: the shared view, this skin's Commands."""
 from __future__ import annotations
 
 import logging
@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 
 class UCRamAccess(RamAccessRow):
-    """Under the "Corsair RGB RAM follows" checkbox, in the page's colours."""
+    """On the RGB page's lights card, in the page's colours."""
 
     def __init__(self, app: CommandBus, parent: QWidget | None = None) -> None:
         super().__init__(

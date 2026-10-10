@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- **An RGB Lighting page, in both windows.** The classic window has an RGB
+  button above Control Center; the new window has an "RGB Lighting" entry.
+  It lists your RGB memory and OpenRGB's devices, each with a tick for
+  whether it takes part, and offers three sources:
+  - **Leave alone:** TRCC sends nothing.
+  - **Built-in effect:** one of the memory's own ten effects, saved on the
+    stick. It shows only the controls that effect takes.
+  - **Follow a device:** any connected LCD, whose live picture (a video
+    too) is split across the lights, or an LED cooler.
+
+  While following an LCD, a live preview shows its picture and the colours
+  each light gets. "Find lights" searches for the memory and for OpenRGB at
+  the address you type. The same is `trcc system rgb`, `trcc system
+  ram-effect` and `trcc system follow --source/--mapping/--target`, or
+  `/system/rgb`, `/system/ram-effect` and `/system/rgb-follow` in the API.
+  The OpenRGB and RAM switches on the settings panel (classic window) and the
+  LED panel's Advanced tab (new window) moved here.
+
 ### Fixed
 
 - **The overlay grid shows live values again -- or rather, for the first time
