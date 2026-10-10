@@ -74,14 +74,15 @@ def _until(check, timeout: float = 5.0) -> None:  # type: ignore[no-untyped-def]
     assert check(), "timed out"
 
 
-def _service(retry_s: float = 10.0) -> tuple[RgbMirrorService, list[FakeMirror]]:
+def _service(retry_s: float = 10.0,
+             on_sent=None) -> tuple[RgbMirrorService, list[FakeMirror]]:  # type: ignore[no-untyped-def]
     made: list[FakeMirror] = []
 
     def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
         made.append(FakeMirror(mode, host, port))
         return made[-1]
 
-    return RgbMirrorService(make, retry_s=retry_s), made
+    return RgbMirrorService(make, retry_s=retry_s, on_sent=on_sent), made
 
 
 def _colors(key: str, *rgb: tuple[int, int, int]) -> LedColorsChanged:
@@ -554,16 +555,22 @@ def test_a_client_waits_for_the_password_as_long_as_the_app_does(monkeypatch) ->
 
 # ── Following an LCD's picture, on the lights the user picked ──────────────
 
-class _Frame:
-    """A FrameSent as the follower reads it: a key and a surface."""
-
-    def __init__(self, key: str, surface: object = "surface") -> None:
-        self.key, self.surface = key, surface
+RED, BLUE = (255, 0, 0), (0, 0, 255)      # 0 and 255 pass the LED gamma as-is
 
 
-def _grid(surface, cols: int, rows: int):  # type: ignore[no-untyped-def]
-    """Column c is colour (c, c, c), whatever the surface."""
-    return [[(c, c, c) for c in range(cols)] for _ in range(rows)]
+def _pixels(left: tuple[int, int, int] = RED,
+            right: tuple[int, int, int] = BLUE, width: int = 40,
+            height: int = 20):  # type: ignore[no-untyped-def]
+    """A ``raw_argb32`` stand-in: *left* half, *right* half, whatever the
+    surface -- in the host's native ARGB32 order, as Qt lays it out."""
+    import sys
+
+    def word(rgb: tuple[int, int, int]) -> bytes:
+        r, g, b = rgb
+        return (0xFF000000 | r << 16 | g << 8 | b).to_bytes(4, sys.byteorder)
+
+    line = word(left) * (width // 2) + word(right) * (width // 2)
+    return lambda surface: (line * height, width, height, width * 4)
 
 
 def _following(source: str = "0402:3922", **kw) -> tuple[RgbMirrorService, FakeMirror]:  # type: ignore[no-untyped-def]
@@ -572,28 +579,56 @@ def _following(source: str = "0402:3922", **kw) -> tuple[RgbMirrorService, FakeM
     return service, made[-1] if made else service._ram  # type: ignore[return-value]
 
 
-def test_halves_give_each_light_its_own_column_of_the_picture() -> None:
+def test_halves_give_each_light_its_own_edge_of_the_picture() -> None:
     from trcc.core.models import FollowMapping
     service, mirror = _following(mapping=FollowMapping.HALVES)
-    service.on_frame(_Frame("0402:3922"), _grid)
+    service.on_frame("0402:3922", "surface", _pixels())
     _until(lambda: len(mirror.shown) >= 2)
-    assert mirror.shown[:2] == [("Strip", ((0, 0, 0),) * 10),
-                                ("RAM", ((1, 1, 1),) * 10)]
+    assert mirror.shown[:2] == [("Strip", (RED,) * 10), ("RAM", (BLUE,) * 10)]
     service.stop()
 
 
 def test_single_gives_every_light_the_one_colour() -> None:
     from trcc.core.models import FollowMapping
     service, mirror = _following(mapping=FollowMapping.SINGLE)
-    service.on_frame(_Frame("0402:3922"), _grid)
+    service.on_frame("0402:3922", "surface", _pixels())
     _until(lambda: len(mirror.shown) >= 2)
-    assert {colors for _name, colors in mirror.shown[:2]} == {((0, 0, 0),) * 10}
+    (_a, first), (_b, second) = mirror.shown[:2]
+    assert first == second
+    service.stop()
+
+
+def test_a_pictures_colours_reach_the_leds_ungammad_and_are_reported_as_seen(
+        ) -> None:
+    """(152, 18, 23) on screen is (82, 1, 1) of LED light -- the pair seen on
+    the maintainer's sticks.  The report carries the screen colour, so a
+    window's preview looks like the lights."""
+    sent: list = []
+    service, made = _service(on_sent=lambda source, columns: sent.append(
+        (source, columns)))
+    service.configure(RAM_MODE, "", 0, "0402:3922")
+    mirror = made[-1] if made else service._ram
+    dark_red = (152, 18, 23)
+    service.on_frame("0402:3922", "surface", _pixels(dark_red, dark_red))
+    _until(lambda: bool(sent))
+    assert mirror.shown[0][1] == ((82, 1, 1),) * 10
+    assert sent[0] == ("0402:3922", ((dark_red,) * 10, (dark_red,) * 10))
+    service.stop()
+
+
+def test_a_coolers_colours_are_sent_as_they_are() -> None:
+    service, made = _service()
+    service.configure(RAM_MODE, "", 0)
+    mirror = made[-1] if made else service._ram
+    service.on_colors(_colors("0416:8001", (152, 18, 23)))
+    _until(lambda: bool(mirror.shown))
+    assert mirror.shown[0][1] == ((152, 18, 23),)
     service.stop()
 
 
 def test_another_devices_frames_and_an_led_coolers_colours_are_ignored() -> None:
     service, mirror = _following()
-    service.on_frame(_Frame("87ad:70db"), _grid)
+    service.on_frame("87ad:70db", "surface", _pixels())
     service.on_colors(_colors("0416:8001", (9, 9, 9)))
     time.sleep(0.1)
     assert mirror.shown == []
@@ -603,26 +638,26 @@ def test_another_devices_frames_and_an_led_coolers_colours_are_ignored() -> None
 def test_a_fast_video_is_sampled_at_most_twenty_times_a_second() -> None:
     """MUTATION CHECK: drop the FRAME_INTERVAL_S check in ``on_frame``."""
     service, _mirror = _following()
-    sampled: list[int] = []
+    read: list[object] = []
+    pixels = _pixels()
 
-    def counting(surface, cols, rows):  # type: ignore[no-untyped-def]
-        sampled.append(cols)
-        return _grid(surface, cols, rows)
+    def counting(surface):  # type: ignore[no-untyped-def]
+        read.append(surface)
+        return pixels(surface)
 
     for _ in range(10):                      # ten frames inside 50 ms
-        service.on_frame(_Frame("0402:3922"), counting)
-    assert len(sampled) == 1
+        service.on_frame("0402:3922", "surface", counting)
+    assert len(read) == 1
     service.stop()
 
 
 def test_only_the_picked_lights_follow() -> None:
     """MUTATION CHECK: drop the targets filter in ``_send``."""
     service, mirror = _following(targets=("ram",))
-    service.on_frame(_Frame("0402:3922"), _grid)
+    service.on_frame("0402:3922", "surface", _pixels())
     _until(lambda: bool(mirror.shown))
     time.sleep(0.05)
     assert [name for name, _c in mirror.shown] == ["RAM"]
-    assert mirror.shown[0][1] == ((0, 0, 0),) * 10   # the only light: column 0
     service.stop()
 
 
@@ -672,6 +707,43 @@ def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:  # typ
     strip, ram = made[-1].shown[:2]
     assert strip[1][0][0] > 200 and strip[1][0][2] < 60     # left half: red
     assert ram[1][0][2] > 200 and ram[1][0][0] < 60         # right half: blue
+    app.close()
+
+
+def test_the_app_follows_the_picture_under_the_overlay_and_says_what_it_sent(
+        tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The App samples ``background_surface`` -- the frame without its text --
+    and publishes the colours sent, for every window's preview."""
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.events import FrameSent, RgbFollowSent
+
+    made: list[FakeMirror] = []
+
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    def filled(rgb: tuple[int, int, int]) -> QImage:
+        image = QImage(320, 320, QImage.Format.Format_ARGB32)
+        image.fill(QColor(*rgb))
+        return image
+
+    app = App(MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path),
+              renderer=QtRenderer(), make_rgb_mirror=make)
+    under = filled(BLUE)
+    monkeypatch.setattr(app.display, "background_surface",
+                        lambda key: under if key == "0402:3922" else None)
+    reported: list[RgbFollowSent] = []
+    app.events.subscribe(RgbFollowSent, reported.append)
+    assert app.dispatch(SetRgbFollow(mode=OPENRGB, source="0402:3922")).ok
+    app.events.publish(FrameSent(key="0402:3922", bytes_sent=1,
+                                 surface=filled((255, 255, 255))))  # "text"
+    _until(lambda: bool(reported))
+    assert {colors for _name, colors in made[-1].shown[:2]} == {(BLUE,) * 10}
+    assert reported[0] == RgbFollowSent(source="0402:3922",
+                                        columns=((BLUE,) * 10, (BLUE,) * 10))
     app.close()
 
 

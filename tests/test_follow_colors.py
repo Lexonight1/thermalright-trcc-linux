@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from typing import Any
 
 import pytest
 
-from trcc.core.follow_colors import (
+from trcc.core.models import FollowColors
+from trcc.services.follow_colors import (
     SAMPLES,
     for_leds,
     frame_columns,
+    regions,
     strip_spans,
 )
-from trcc.core.models import FollowColors
 
 RED, YELLOW, BLACK = (150, 0, 10), (255, 220, 0), (0, 0, 0)
 
@@ -58,20 +58,17 @@ def test_vivid_keeps_a_small_bright_star_that_smooth_drowns() -> None:
 
 
 def test_a_big_panel_is_read_on_a_bounded_grid() -> None:
-    read: list[Any] = []
+    """A 1600x720 strip is 80 px wide and 72 px a region: read on a grid of
+    at most 16 x 32, whatever the panel."""
+    import numpy as np
     pixels, stride = _frame(1600, 720, lambda x, y: RED)
-    original = bytes.__getitem__
-
-    class Counting(bytes):
-        def __getitem__(self, item: Any) -> Any:
-            read.append(item)
-            return original(self, item)
-
-    columns = frame_columns(Counting(pixels), 1600, 720, stride, 2, 10,
-                            FollowColors.VIVID)
-    assert columns == ((RED,) * 10,) * 2
-    lines_per_region = SAMPLES[1]
-    assert len(read) <= 2 * 10 * lines_per_region
+    picture = np.frombuffer(pixels, dtype=np.uint8).reshape(720, 1600, 4)
+    (x, span), _ = strip_spans(1600, 2)
+    sampled = regions(picture[:, x:x + span], 10)
+    assert sampled.shape == (10, 16 * 24, 3)         # 80/5 across, 72/3 down
+    assert sampled.shape[1] <= SAMPLES[0] * SAMPLES[1]
+    assert frame_columns(pixels, 1600, 720, stride, 2, 10,
+                         FollowColors.VIVID) == ((RED,) * 10,) * 2
 
 
 def test_screen_colours_are_ungamma_d_for_the_leds() -> None:

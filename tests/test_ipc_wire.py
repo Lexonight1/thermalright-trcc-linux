@@ -456,6 +456,22 @@ def test_event_registry_covers_every_bus_bridge_subscription() -> None:
     assert declared <= set(EVENT_TYPES), declared - set(EVENT_TYPES)
 
 
+def test_what_following_sent_crosses_the_socket_as_tuples() -> None:
+    """``RgbFollowSent`` reaches a window's preview through JSON: columns of
+    colours, three levels deep, must come back as the same tuples."""
+    import json
+
+    from trcc.core.events import RgbFollowSent
+    event = RgbFollowSent(source="0402:3922",
+                          columns=(((152, 18, 23),) * 10, ((0, 0, 255),) * 10))
+
+    rebuilt = decode_event(json.loads(json.dumps(encode_event(event))))
+
+    assert rebuilt == event
+    assert isinstance(rebuilt, RgbFollowSent)
+    assert isinstance(rebuilt.columns[0][0], tuple)
+
+
 def test_frame_sent_keeps_its_colours_as_tuples() -> None:
     """``display_colors`` carries ``(r, g, b)`` triples.  Annotated bare
     ``list`` they came back as lists — equal-looking, but the coercion had

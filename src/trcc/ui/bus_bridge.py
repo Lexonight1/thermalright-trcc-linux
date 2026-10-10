@@ -53,6 +53,7 @@ from ..core.events import (
     RamLightingChanged,
     RefreshIntervalChanged,
     RgbFollowChanged,
+    RgbFollowSent,
     RgbLightsChanged,
     ScreencastRegionChanged,
     ScreencastStarted,
@@ -99,6 +100,7 @@ class BusBridge(QObject):
     brightness_changed = Signal(object)        # BrightnessChanged
     theme_loaded = Signal(object)              # ThemeLoaded
     led_colors_changed = Signal(object)        # LedColorsChanged
+    rgb_follow_sent = Signal(object)           # RgbFollowSent
     sensors_updated = Signal(object)           # SensorsUpdated
     error_occurred = Signal(object)            # ErrorOccurred
     mask_applied = Signal(object)              # MaskApplied
@@ -203,6 +205,7 @@ class BusBridge(QObject):
             (BrightnessChanged, self.brightness_changed),
             (ThemeLoaded, self.theme_loaded),
             (LedColorsChanged, self.led_colors_changed),
+            (RgbFollowSent, self.rgb_follow_sent),
             (SensorsUpdated, self.sensors_updated),
             (ErrorOccurred, self.error_occurred),
             (MaskApplied, self.mask_applied),

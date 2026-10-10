@@ -471,6 +471,20 @@ class RgbFollowChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class RgbFollowSent(Event):
+    """The colours following just sent (#160): light *i* got column *i*
+    (wrapping), top to bottom.
+
+    As a screen shows them -- before the LEDs' gamma -- so a window's preview
+    looks like the lights.  ``source`` is the device that led: the followed
+    LCD's key, or the cooler's.  Published only after a send succeeded, at
+    most as often as the follower sends.
+    """
+    source: str
+    columns: tuple[tuple[tuple[int, int, int], ...], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class HddEnabledChanged(Event):
     """User toggled HDD-metrics inclusion in the broadcast.
 

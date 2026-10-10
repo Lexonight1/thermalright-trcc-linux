@@ -11,8 +11,11 @@ queued.
 One cooler leads: the first whose colours arrive after following starts --
 or the device the user picked as the source.  An LCD can be the source too:
 its frames are sampled into a column of colours per device, so with the
-"halves" mapping the left of the panel lights the first stick and the right
-the second, top to bottom; with "single", one colour each.
+"halves" mapping the left edge of the panel lights the first stick and the
+right edge the second, top to bottom; with "single", one colour each.  What is
+sampled is the frame's background -- not the overlay's text -- and the colours
+are un-gamma'd for the LEDs (``core.follow_colors``).  Every send is reported
+with the screen colours it carried, so a window's preview shows the truth.
 
 The same service owns the RAM for its built-in effects.  Commands arrive on
 one thread per connected UI and the follower sends from its own, so every use
@@ -33,20 +36,25 @@ from typing import Any
 
 from ..core.logs import per_frame
 from ..core.models import (
+    FollowColors,
     FollowMapping,
     RamEffectSettings,
     RgbFollowMode,
     RgbMirrorDevice,
 )
 from ..core.ports import RamLights, RgbMirror
+from .follow_colors import for_leds, frame_columns
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 Rgb = tuple[int, int, int]
-#: A sampler: (surface, columns, rows) -> rows of columns of colours.  The
-#: Renderer port's ``get_pixels_rgb``.
-Sampler = Callable[[Any, int, int], list[list[Rgb]]]
+Columns = tuple[tuple[Rgb, ...], ...]
+#: A surface's ARGB32 pixels: ``(bytes, width, height, stride)``.  The
+#: Renderer port's ``raw_argb32``.
+Pixels = Callable[[Any], tuple[bytes, int, int, int]]
+#: Told of every send: the device that led, and the screen colours sent.
+Sent = Callable[[str, Columns], None]
 
 #: Rows a frame is sampled into: one per LED of a 10-LED stick; each device
 #: stretches its column to its own LED count.
@@ -76,16 +84,20 @@ class RgbMirrorService:
     def __init__(self,
                  make_mirror: Callable[[RgbFollowMode, str, int], RgbMirror],
                  *,
-                 retry_s: float = RETRY_S) -> None:
+                 retry_s: float = RETRY_S,
+                 on_sent: Sent | None = None) -> None:
         log.debug("RgbMirrorService.__init__: retry %.1f s", retry_s)
         self._make = make_mirror
         self._retry_s = retry_s
+        self._on_sent = on_sent
         self._cond = threading.Condition()
         # One column of colours per device, newest only; a single column
-        # (an LED cooler's colours) goes to every device.
-        self._pending: tuple[tuple[Rgb, ...], ...] | None = None
+        # (an LED cooler's colours) goes to every device.  With it, whether
+        # they are a picture's -- screen colours, un-gamma'd before sending.
+        self._pending: tuple[Columns, bool] | None = None
         self._source = ""
         self._mapping = FollowMapping.HALVES
+        self._how = FollowColors.VIVID
         self._targets: tuple[str, ...] = ()
         self._last_frame = 0.0
         self._device_count = 2
@@ -156,17 +168,16 @@ class RgbMirrorService:
                 log.info("RgbMirrorService: %s leads", key)
             if key != self._lead:
                 return
-            self._pending = (tuple(colors),)
+            self._pending = ((tuple(colors),), False)
             self._cond.notify()
 
-    def on_frame(self, event: object, sample: Sampler) -> None:
-        """``FrameSent`` of the source LCD -> a column of colours per device.
+    def on_frame(self, key: str, surface: Any, pixels: Pixels) -> None:
+        """A frame of LCD *key* -> a column of colours per device, when *key*
+        leads.  *surface* is the picture to follow -- its background, without
+        the overlay's text.
 
-        Sampled on the publishing thread, outside the lock: 0.06 ms for a
-        320x320 frame (measured 2026-10-10), well under a frame's budget.
+        Sampled on the publishing thread, outside the lock.
         """
-        key = getattr(event, "key", "")
-        surface = getattr(event, "surface", None)
         with self._cond:
             if (not self._running or not self._source or key != self._source
                     or surface is None):
@@ -177,13 +188,13 @@ class RgbMirrorService:
             self._last_frame = now
             columns = (1 if self._mapping is FollowMapping.SINGLE
                        else max(1, self._device_count))
-        grid = sample(surface, columns, FRAME_ROWS)
-        frame_log.debug("RgbMirrorService.on_frame: %s %dx%d", key, columns,
-                        FRAME_ROWS)
-        sampled = tuple(tuple(row[c] for row in grid) for c in range(columns))
+            how = self._how
+        sampled = frame_columns(*pixels(surface), columns, FRAME_ROWS, how)
+        frame_log.debug("RgbMirrorService.on_frame: %s %dx%d %s", key, columns,
+                        FRAME_ROWS, how.value)
         with self._cond:
             if self._running:
-                self._pending = sampled
+                self._pending = (sampled, True)
                 self._cond.notify()
 
     def stop(self) -> None:
@@ -302,28 +313,36 @@ class RgbMirrorService:
             with self._cond:
                 while self._running and self._pending is None:
                     self._cond.wait()
-                if not self._running:
+                if not self._running or self._pending is None:
                     return
-                columns, self._pending = self._pending, None
+                (columns, picture), self._pending = self._pending, None
                 mirror = self._mirror
             if mirror is not None and time.monotonic() >= self._retry_at:
                 with self._bus:
-                    self._send(mirror, columns or ((),))
+                    self._send(mirror, columns or ((),), picture)
 
-    def _send(self, mirror: RgbMirror,
-              columns: tuple[tuple[Rgb, ...], ...]) -> None:
-        """Device *i* gets column *i* -- one column goes to every device."""
-        frame_log.debug("RgbMirrorService._send: %d column(s)", len(columns))
+    def _send(self, mirror: RgbMirror, columns: Columns,
+              picture: bool) -> None:
+        """Device *i* gets column *i* -- one column goes to every device.
+
+        A *picture*'s columns are screen colours, un-gamma'd for the LEDs;
+        a cooler's are LED colours already.
+        """
+        frame_log.debug("RgbMirrorService._send: %d column(s) picture=%s",
+                        len(columns), picture)
+        leds = tuple(map(for_leds, columns)) if picture else columns
         try:
             devices = tuple(d for d in mirror.devices()
                             if not self._targets or d.ref in self._targets)
             self._device_count = len(devices) or self._device_count
             for i, device in enumerate(devices):
-                mirror.show(device, columns[i % len(columns)])
+                mirror.show(device, leds[i % len(leds)])
         except OSError as e:
             self._failed(mirror, e)
             return
         self._connected(devices)
+        if self._on_sent is not None:
+            self._on_sent(self._source or self._lead, columns)
 
     def _connected(self, devices: tuple[RgbMirrorDevice, ...]) -> None:
         names = tuple(d.name for d in devices)

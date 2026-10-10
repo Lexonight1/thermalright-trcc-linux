@@ -41,6 +41,7 @@ from .core.events import (
     MaskVisibilityChanged,
     OrientationChanged,
     OverlayChanged,
+    RgbFollowSent,
     SensorsUpdated,
     SplitModeChanged,
     SystemResumed,
@@ -94,7 +95,7 @@ from .services.migration import LibraryMigration
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.reconnect_watcher import ReconnectWatcher
-from .services.rgb_mirror import RgbMirrorService
+from .services.rgb_mirror import Columns, RgbMirrorService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
 from .services.video_loop import VideoLoop
@@ -374,9 +375,10 @@ class App(CommandBus):
         # The RAM follower reaches the SMBus only through ``platform``, so a
         # stand-in platform's scripted sticks are all a test or mock can touch.
         self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
-            make_mirror, smbuses=platform.smbuses))
+            make_mirror, smbuses=platform.smbuses), on_sent=self._follow_sent)
         self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
-        # An LCD as the source: its frames, sampled by the renderer.
+        # An LCD as the source: its frames' backgrounds, read through the
+        # renderer.
         self.events.subscribe(FrameSent, self._follow_frame)
         prefs = self.settings.app
         self.rgb_mirror.configure(self.settings.rgb_follow_mode(),
@@ -778,12 +780,29 @@ class App(CommandBus):
         return self._renderer is not None
 
     def _follow_frame(self, event: Event) -> None:
-        """A sent frame to the RGB follower, when it follows that LCD."""
+        """A sent frame to the RGB follower, when it follows that LCD.
+
+        The follower takes the picture under the overlay: a theme's clock
+        and readings are white text, and the lights should take the video's
+        colours.  A frame not drawn on a theme (an image, a cast) has no
+        separate background, so it is followed as sent.
+        """
         renderer = self._renderer
         frame_log.debug("App._follow_frame: %s renderer=%s",
                         type(event).__name__, renderer is not None)
-        if isinstance(event, FrameSent) and renderer is not None:
-            self.rgb_mirror.on_frame(event, renderer.get_pixels_rgb)
+        if not isinstance(event, FrameSent) or renderer is None:
+            return
+        surface = self.display.background_surface(event.key)
+        if surface is None:
+            surface = event.surface
+        if surface is not None:
+            self.rgb_mirror.on_frame(event.key, surface, renderer.raw_argb32)
+
+    def _follow_sent(self, source: str, columns: Columns) -> None:
+        """What following just sent, for every window's preview."""
+        frame_log.debug("App._follow_sent: %s %d column(s)", source,
+                        len(columns))
+        self.events.publish(RgbFollowSent(source=source, columns=columns))
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

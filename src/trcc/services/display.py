@@ -112,7 +112,10 @@ class SceneCache:
     misses a cache of one on every tick because its cursor is part of
     the key.  It lives in ``BgMaskCache`` instead, which holds a bounded
     cycle of them.  One layer, one owner: a second copy here would be a
-    second answer to "what background is current".
+    second answer to "what background is current".  ``background`` is not
+    a copy and never serves a build: it is the very surface the last frame
+    was drawn on, kept so the RGB follower can read the picture without
+    the overlay's text (``background_surface``).
     """
 
     # overlay layer
@@ -129,6 +132,10 @@ class SceneCache:
     # whole pipeline a second time per tick (see ``rendered_surface``) —
     # it's byte-for-byte what the device received.
     preview_surface: Any = None
+
+    # The background (+ mask) layer the last frame was drawn on -- the frame
+    # without its overlay text.  See ``background_surface``.
+    background: Any = None
 
 
 # =========================================================================
@@ -371,7 +378,7 @@ class DisplayService:
             self._scenes[info.key] = SceneCache(
                 overlay_surface=overlay_surface, overlay_key=overlay_key,
                 frame_key=frame_key, frame_bytes=encoded,
-                preview_surface=preview_surface,
+                preview_surface=preview_surface, background=bg_surface,
             )
             return encoded
 
@@ -427,7 +434,7 @@ class DisplayService:
         self._scenes[info.key] = SceneCache(
             overlay_surface=overlay_surface, overlay_key=overlay_key,
             frame_key=frame_key, frame_bytes=encoded,
-            preview_surface=preview_surface,
+            preview_surface=preview_surface, background=bg_surface,
         )
         return encoded
 
@@ -475,6 +482,7 @@ class DisplayService:
         )
         self._scenes[info.key] = SceneCache(
             overlay_surface=overlay_surface, overlay_key=overlay_key,
+            background=bg_surface,
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
@@ -796,8 +804,11 @@ class DisplayService:
         """
         frame_log.debug("_remember_preview: key=%s", key)
         scene = self._scenes.get(key)
+        # Not drawn on a theme's background: an earlier theme's must not be
+        # taken for this frame's (``background_surface``).
         self._scenes[key] = (
-            replace(scene, preview_surface=surface) if scene is not None
+            replace(scene, preview_surface=surface, background=None)
+            if scene is not None
             else SceneCache(overlay_surface=None, overlay_key=(),
                             preview_surface=surface)
         )
@@ -915,6 +926,21 @@ class DisplayService:
         surface = scene.preview_surface if scene is not None else None
         frame_log.debug("rendered_surface: key=%s available=%s",
                   key, surface is not None)
+        return surface
+
+    def background_surface(self, key: str) -> Any | None:
+        """The background (+ mask) the last frame for *key* was drawn on --
+        the picture without the overlay's text -- or None.
+
+        What the RGB follower samples: a theme's clock and readings are
+        white text, and a light following the picture should take the
+        video's colours, not the digits'.  Upright, before brightness and
+        any wire rotation.
+        """
+        scene = self._scenes.get(key)
+        surface = scene.background if scene is not None else None
+        frame_log.debug("background_surface: key=%s available=%s", key,
+                        surface is not None)
         return surface
 
     def _bg_cache(self, key: str) -> BgMaskCache:

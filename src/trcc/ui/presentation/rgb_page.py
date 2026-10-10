@@ -88,8 +88,11 @@ HINTS: dict[RgbSource, str] = {
     RgbSource.EFFECT: ("Saved on the stick itself -- it keeps running after "
                        "TRCC closes and after a reboot.  Written once when you "
                        "press Apply, never on a timer."),
-    RgbSource.FOLLOW: ("Live only -- nothing is saved on the stick.  When TRCC "
-                       "stops, each stick goes back to its saved effect."),
+    # Seen on Corsair Vengeance DDR5, 2026-10-10: a stick stopped following
+    # keeps its last colours -- it does not go back to its saved effect.
+    RgbSource.FOLLOW: ("Live only -- nothing is saved on the stick.  When "
+                       "following stops, each stick keeps the last colours "
+                       "it was sent; pick an effect to change them."),
 }
 
 

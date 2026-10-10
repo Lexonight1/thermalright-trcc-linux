@@ -938,6 +938,49 @@ def test_rendered_surface_exposes_sent_frame_for_preview(
     assert display.rendered_surface(_KEY) is None       # cleared with the scene
 
 
+def test_the_background_is_the_frame_without_its_overlay_text(
+    tmp_home: Path,
+) -> None:
+    """What the RGB follower samples: the video under a theme's white text.
+
+    A theme's clock and readings turned the maintainer's RAM white at the
+    top and bottom while it followed a red video (2026-10-10).
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    media = MediaService()
+    media._playbacks[_KEY] = Playback(frames=[_encoded_frame(0xFF5A5A5A)],
+                                      fps=15)
+    display = DisplayService(
+        renderer=renderer, themes=FileContentStore(),
+        overlay=OverlayService(renderer),
+        settings=Settings(FakePaths(tmp_home)),
+        media=media, backgrounds=BackgroundSlot(), paths=FakePaths(tmp_home),
+    )
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922, vendor="ALi Corp", product="LCD",
+        wire=Wire.SCSI, kind=Kind.LCD, device_type=1, fbl=100,
+        native_resolution=(320, 320), orientations=(0,),
+    )
+    theme = Theme(path=tmp_home / "theme", name="t", resolution=(320, 320),
+                  config={"elements": [
+                      {"id": "t", "type": "text", "text": "8888", "x": 160,
+                       "y": 160, "size": 80, "color": "#ffffff"}]})
+    assert display.background_surface(_KEY) is None    # nothing built yet
+    display.build_frame(info=info, theme=theme, sensors={},
+                        profile=get_profile(100))
+
+    def white(surface: object) -> int:
+        pixels, width, height, stride = renderer.raw_argb32(surface)
+        return sum(pixels[y * stride + 4 * x:y * stride + 4 * x + 3]
+                   == b"\xff\xff\xff"
+                   for y in range(0, height, 2) for x in range(0, width, 2))
+
+    assert white(display.rendered_surface(_KEY)) > 100     # the text is sent
+    assert white(display.background_surface(_KEY)) == 0    # and not followed
+
+
 # ── TickDisplay vs RenderAndSend — the two tick ROLES ─────────────────
 #
 # TickDisplay is the ANIMATION tick; RenderAndSend is the RE-RENDER tick.  They

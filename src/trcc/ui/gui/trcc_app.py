@@ -397,9 +397,12 @@ class TRCCApp(QMainWindow):
         self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
         self._bus.follow_previews(self.uc_preview, self.uc_led_control,
                                   self.uc_rgb.page.follow_preview)
-        # A followed cooler's colours, for the RGB page's preview.
+        # A followed cooler's colours, and what following sent the lights,
+        # for the RGB page's preview.
         self._bus.led_colors_changed.connect(self.uc_rgb.page.on_led_colors,
                                              type=qconn)
+        self._bus.rgb_follow_sent.connect(self.uc_rgb.page.on_follow_sent,
+                                          type=qconn)
 
     def _on_bus_frame_sent(self, event: Any) -> None:
         """A frame just went out on the wire.

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtGui import QImage
 
 from trcc.core.commands import (
     ListDevices,
@@ -33,7 +33,6 @@ from trcc.core.results import (
     RgbLightsResult,
 )
 from trcc.ui.presentation.rgb_page import RgbSource, strip_legend
-from trcc.ui.qt_rgb_page import sample_grid
 
 LCD = "0402:3922"
 STICKS = (RgbLight("i2c-3/0x19", "Stick A", 10, LightKind.RAM),
@@ -138,15 +137,23 @@ def test_only_the_followed_lcd_reaches_the_preview(view: Any) -> None:
     assert view._follow.preview._image is picture
 
 
-@pytest.mark.parametrize("columns", [1, 2, 3])
-def test_the_preview_samples_as_the_app_does(columns: int) -> None:
-    from trcc.adapters.render.qt import QtRenderer
-    image = QImage(320, 240, QImage.Format.Format_ARGB32)
-    for x in range(320):
-        for y in range(240):
-            image.setPixelColor(x, y, QColor(x * 255 // 319, y, (x + y) % 256))
-    assert sample_grid(image, columns, 10) == QtRenderer().get_pixels_rgb(
-        image, columns, 10)
+def test_the_strips_show_what_the_app_sent_from_what_is_followed(
+        view: Any) -> None:
+    """The window never samples: the App samples the picture under the
+    overlay, which no window sees, and reports what it sent."""
+    from trcc.core.events import RgbFollowChanged, RgbFollowSent
+    from trcc.core.models import RgbFollowMode
+
+    view._source_buttons[RgbSource.FOLLOW].click()
+    view._follow._on_source(view._follow._source.findData(LCD))
+    preview = view._follow.preview
+    red, blue = ((200, 0, 0),) * 10, ((0, 0, 200),) * 10
+    view.on_follow_sent(RgbFollowSent(source="0402:9999", columns=(blue,)))
+    assert preview._sent == ()                 # not what this page follows
+    view.on_follow_sent(RgbFollowSent(source=LCD, columns=(red, blue)))
+    assert preview._sent == (red, blue)
+    view.on_app_event(RgbFollowChanged(mode=RgbFollowMode.OFF))
+    assert preview._sent == ()                 # following changed: stale
 
 
 def test_a_followed_cooler_reaches_the_preview_as_the_follower_gets_it(
