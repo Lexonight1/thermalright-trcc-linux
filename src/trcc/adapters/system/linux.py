@@ -723,11 +723,18 @@ class LinuxOS(BaseOS, key="linux"):
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
         log.info("LinuxOS.check_permissions: probing")
+        from ._udev import rules_state
         warnings: list[str] = []
-        if not Path("/etc/udev/rules.d/99-trcc-lcd.rules").exists():
+        state = rules_state()
+        if state.path is None:
             warnings.append(
                 "udev rules not installed — device access may require root. "
-                "Run 'python -m trcc system setup' to install them."
+                "Run `trcc system setup` to install them."
+            )
+        elif state.current is False:
+            warnings.append(
+                f"the udev rules in {state.path} are from an older TRCC — run "
+                "`trcc doctor` for how to bring them up to date"
             )
         log.info("LinuxOS.check_permissions: %d warning(s)", len(warnings))
         return warnings
@@ -954,10 +961,10 @@ class LinuxOS(BaseOS, key="linux"):
         which sends a user to fix something that is not broken.  (This lived
         in the transport, on every OS, until #173.)
         """
-        from ._udev import RULES_PATH
-        installed = RULES_PATH.is_file()
-        log.debug("LinuxOS.permission_denied_hint: rules %s installed=%s",
-                  RULES_PATH, installed)
+        from ._udev import rules_state
+        installed = rules_state().path is not None
+        log.debug("LinuxOS.permission_denied_hint: rules installed=%s",
+                  installed)
         if not installed:
             return "run 'trcc system setup' to install udev rules"
         return ("udev rules are installed, so this is not permissions — the "

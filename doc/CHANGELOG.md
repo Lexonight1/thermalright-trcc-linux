@@ -35,6 +35,14 @@
   fails with an error;** it switches the visualizer off and says why.
 - **openSUSE:** the install guide no longer offers the Fedora RPM, which
   openSUSE refuses; it points to pipx, which works.
+- **Package installs are no longer told their udev rules are missing, and a
+  stale copy no longer blocks rule updates (#201).** The deb and Arch
+  packages put the rules in `/lib` or `/usr/lib`, but a failed connect only
+  looked in `/etc` and told you to run setup -- which then wrote an `/etc`
+  copy that hides the packaged rules for good, so later fixes never applied.
+  Every check now looks where udev does; `trcc doctor` names an outdated copy
+  and the command to remove it; and `trcc system setup` leaves a current
+  packaged rule in force, removing only an `/etc` copy TRCC wrote itself.
 - **The README and guides no longer name commands that do not exist (#247)**,
   and `-v` / `-vv` are shown where the CLI accepts them (`trcc -vv gui`).
 

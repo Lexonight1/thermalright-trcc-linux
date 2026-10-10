@@ -25,11 +25,21 @@ from trcc.adapters.system._udev import RULES_DIRS, RULES_PATH
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux-only check")
+def _current_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every stubbed rule file reads as THIS version's.  These tests are about
+    WHERE the rule is found; unstubbed, the check read the dev box's real
+    /etc copy -- an older package's -- and called it stale (it is)."""
+    from trcc.adapters.system._udev import build_udev_rules
+    current = build_udev_rules()
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: current)
+
+
 def test_check_finds_the_file_the_writer_writes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The exact path `trcc system setup` creates must read as installed."""
     monkeypatch.setattr(Path, "is_file", lambda self: self == RULES_PATH)
+    _current_content(monkeypatch)
 
     result = health.check_udev_rules_linux()
 
@@ -49,6 +59,7 @@ def test_check_finds_the_rule_in_every_directory_udev_reads(
     """
     installed = directory / RULES_PATH.name
     monkeypatch.setattr(Path, "is_file", lambda self: self == installed)
+    _current_content(monkeypatch)
 
     result = health.check_udev_rules_linux()
 

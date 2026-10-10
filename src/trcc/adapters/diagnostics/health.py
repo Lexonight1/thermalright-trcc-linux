@@ -407,10 +407,33 @@ def check_udev_rules_linux() -> HealthCheckResult:
             fix_hint=f"Run `trcc system setup` (or install via the distro "
                      f"package) to lay down {RULES_PATH}",
         )
+    from ..system._udev import rules_state
+    state = rules_state()
+    if state.path is not None and state.current is False:
+        # udev reads only the highest-priority copy, so a stale one in /etc
+        # hides every rule fix a package ships (#201).
+        current_below = [p for p in state.shadowed if p.read_text(
+            encoding="utf-8", errors="replace") == _current_rules()]
+        return HealthCheckResult(
+            name="udev-rules", severity="WARN",
+            message=f"udev rules in {state.path} are from an older TRCC"
+                    + (f" and hide the current {current_below[0]}"
+                       if current_below else ""),
+            fix_hint=(f"sudo rm {state.path} && sudo udevadm control "
+                      "--reload-rules && sudo udevadm trigger"
+                      if current_below else "Run `trcc system setup`"),
+        )
     return HealthCheckResult(
         name="udev-rules", severity="OK",
-        message=f"udev rules installed: {found[0]}",
+        message=f"udev rules installed: {state.path or found[0]}",
     )
+
+
+def _current_rules() -> str:
+    """The rule file this version generates."""
+    from ..system._udev import build_udev_rules
+    log.debug("_current_rules: called")
+    return build_udev_rules()
 
 
 def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
