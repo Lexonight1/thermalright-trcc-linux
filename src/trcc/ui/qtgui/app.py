@@ -271,7 +271,7 @@ class MainWindow(QMainWindow):
         # send another for a while.
         self._bus.frames_resumed.connect(self._preview_surface.refresh)
         self._bus.follow_previews(self._preview_surface,
-                                  self._rgb_panel.page.follow_preview)
+                                  self._rgb_panel.page.follow.preview)
 
         container = QWidget(self)
         row = QHBoxLayout(container)

@@ -110,9 +110,9 @@ def test_apply_saves_the_effect_with_only_what_it_takes(view: Any,
 def test_apply_follows_with_the_source_the_mapping_and_the_lights(
         view: Any, qtbot: Any) -> None:
     view._source_buttons[RgbSource.FOLLOW].click()
-    view._follow._on_source(view._follow._source.findData(LCD))
-    view._follow._mapping._buttons[FollowMapping.SINGLE].click()
-    view._follow._colors._buttons[FollowColors.SMOOTH].click()
+    view.follow._on_source(view.follow._source.findData(LCD))
+    view.follow._mapping._buttons[FollowMapping.SINGLE].click()
+    view.follow._colors._buttons[FollowColors.SMOOTH].click()
     view._lights_column._on_light_toggled(STICKS[0].ref, False)
     view._apply.click()
     _answered(view, qtbot)
@@ -132,12 +132,12 @@ def test_leave_alone_turns_following_off(view: Any, qtbot: Any) -> None:
 
 def test_only_the_followed_lcd_reaches_the_preview(view: Any) -> None:
     view._source_buttons[RgbSource.FOLLOW].click()
-    view._follow._on_source(view._follow._source.findData(LCD))
+    view.follow._on_source(view.follow._source.findData(LCD))
     picture = QImage(32, 32, QImage.Format.Format_RGB32)
-    view.on_frame(FrameSent(key="0402:9999", bytes_sent=0, surface=picture))
-    assert view._follow.preview._image is None
-    view.on_frame(FrameSent(key=LCD, bytes_sent=0, surface=picture))
-    assert view._follow.preview._image is picture
+    view.follow.on_frame(FrameSent(key="0402:9999", bytes_sent=0, surface=picture))
+    assert view.follow.preview._image is None
+    view.follow.on_frame(FrameSent(key=LCD, bytes_sent=0, surface=picture))
+    assert view.follow.preview._image is picture
 
 
 def test_the_strips_show_what_the_app_sent_from_what_is_followed(
@@ -148,12 +148,12 @@ def test_the_strips_show_what_the_app_sent_from_what_is_followed(
     from trcc.core.models import RgbFollowMode
 
     view._source_buttons[RgbSource.FOLLOW].click()
-    view._follow._on_source(view._follow._source.findData(LCD))
-    preview = view._follow.preview
+    view.follow._on_source(view.follow._source.findData(LCD))
+    preview = view.follow.preview
     red, blue = ((200, 0, 0),) * 10, ((0, 0, 200),) * 10
-    view.on_follow_sent(RgbFollowSent(source="0402:9999", columns=(blue,)))
+    view.follow.on_follow_sent(RgbFollowSent(source="0402:9999", columns=(blue,)))
     assert preview._sent == ()                 # not what this page follows
-    view.on_follow_sent(RgbFollowSent(source=LCD, columns=(red, blue)))
+    view.follow.on_follow_sent(RgbFollowSent(source=LCD, columns=(red, blue)))
     assert preview._sent == (red, blue)
     view.on_app_event(RgbFollowChanged(mode=RgbFollowMode.OFF))
     assert preview._sent == ()                 # following changed: stale
@@ -167,19 +167,19 @@ def test_a_followed_cooler_reaches_the_preview_as_the_follower_gets_it(
     from trcc.core.led_models import stretch
 
     view._source_buttons[RgbSource.FOLLOW].click()
-    view._follow._on_source(view._follow._source.findData(""))
+    view.follow._on_source(view.follow._source.findData(""))
     colors = tuple((i * 8, 0, 255 - i * 8) for i in range(30))
-    preview = view._follow.preview
-    view.on_led_colors(LedColorsChanged(key="0416:8001", color_count=30,
+    preview = view.follow.preview
+    view.follow.on_led_colors(LedColorsChanged(key="0416:8001", color_count=30,
                                         colors=colors))
     assert preview._colors == colors
-    view.on_led_colors(LedColorsChanged(key="0416:8002", color_count=1,
+    view.follow.on_led_colors(LedColorsChanged(key="0416:8002", color_count=1,
                                         colors=((1, 1, 1),)))
     assert preview._colors == colors          # not the cooler that leads
     assert stretch(colors, 10) == [colors[i * 3] for i in range(10)]
     # An LCD followed: a cooler's colours are not its picture.
-    view._follow._on_source(view._follow._source.findData(LCD))
-    view.on_led_colors(LedColorsChanged(key="0416:8001", color_count=1,
+    view.follow._on_source(view.follow._source.findData(LCD))
+    view.follow.on_led_colors(LedColorsChanged(key="0416:8001", color_count=1,
                                         colors=((9, 9, 9),)))
     assert preview._colors == ()
 

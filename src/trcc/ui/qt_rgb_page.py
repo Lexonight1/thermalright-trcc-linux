@@ -616,10 +616,14 @@ class _EffectPreview(QWidget):
 class _FollowForm(QWidget):
     """Which device the lights follow, and how its picture is spread."""
 
-    def __init__(self, page: RgbPage, changed: Callable[[], None]) -> None:
+    def __init__(self, page: RgbPage, changed: Callable[[], None],
+                 following: Callable[[], RgbFollowResult]) -> None:
         super().__init__()
         log.debug("_FollowForm.__init__")
         self._page, self._changed = page, changed
+        self._following = following
+        self._status_at = 0.0
+        self.lead = ""                    # the first cooler heard from
         self._source = QComboBox(self)
         self._source.setMinimumWidth(340)
         self._source.activated.connect(self._on_source)
@@ -688,6 +692,55 @@ class _FollowForm(QWidget):
         self.show_page()
         self._changed()
 
+    # ── The live feed: what the windows hand the preview ──────────────
+
+    def on_frame(self, event: object) -> None:
+        """``FrameSent``: the followed LCD's frame goes to the preview."""
+        key = getattr(event, "key", "")
+        surface = getattr(event, "surface", None)
+        if (key != self._page.follow_source or not isinstance(surface, QImage)
+                or not self.preview.isVisible()):
+            return
+        frame_log.debug("_FollowForm.on_frame: %s", key)
+        self.preview.show_frame(surface)
+        self._status_due()
+
+    def on_led_colors(self, event: object) -> None:
+        """``LedColorsChanged``: a followed cooler's colours -- the very ones
+        the follower takes, before the cooler's segment mask."""
+        key = getattr(event, "key", "")
+        colors = getattr(event, "colors", ())
+        source = self._page.follow_source
+        if (self.preview.follows_picture or not colors
+                or not self.preview.isVisible()
+                or key != (source or self.lead or key)):
+            return
+        frame_log.debug("_FollowForm.on_led_colors: %s %d", key, len(colors))
+        self.lead = self.lead or key       # "the first cooler": the first heard
+        self.preview.show_colors(colors)
+        self._status_due()
+
+    def on_follow_sent(self, event: object) -> None:
+        """``RgbFollowSent``: the colours the App just sent the lights --
+        drawn on the strips when they come from what this page follows."""
+        source = getattr(event, "source", "")
+        columns = getattr(event, "columns", ())
+        followed = self._page.follow_source
+        if (not self.preview.isVisible()
+                or source != (followed or self.lead or source)):
+            return
+        frame_log.debug("_FollowForm.on_follow_sent: %s %d", source,
+                        len(columns))
+        self.preview.show_sent(columns)
+
+    def _status_due(self) -> None:
+        """Re-read what following is doing, every few seconds while shown."""
+        if (now := time.monotonic()) - self._status_at >= STATUS_EVERY_S:
+            log.debug("_FollowForm._status_due")
+            self._status_at = now
+            self._page.follow_now(self._following())
+            self.show_status()
+
     def _on_colors(self, colors: object) -> None:
         log.info("_FollowForm._on_colors: %s", colors)
         self._page.colors = FollowColors(colors)
@@ -711,8 +764,6 @@ class RgbPageView(QWidget):
         self.setObjectName("rgb-page")
         self.page = RgbPage()
         self._busy = False
-        self._status_at = 0.0
-        self._lead = ""                   # the first cooler heard from
         self._access = self._access_row()
         self._lights_column = _LightsColumn(self.page, self._access,
                                             self._on_changed)
@@ -721,12 +772,13 @@ class RgbPageView(QWidget):
         self._sources = QButtonGroup(self)
         self._source_buttons: dict[RgbSource, QRadioButton] = {}
         self._effect = _EffectForm(self.page.effect_picks, self._on_changed)
-        self._follow = _FollowForm(self.page, self._on_changed)
+        self.follow = _FollowForm(self.page, self._on_changed,
+                                  self._following)
         self._previews: list[_EffectPreview] = []
         self._stack = QStackedWidget(self)
         self._stack.addWidget(self._with_strips(None))
         self._stack.addWidget(self._with_strips(self._effect))
-        self._stack.addWidget(self._follow)
+        self._stack.addWidget(self.follow)
         self._hint = _muted()
         self._problem = QLabel("", self)
         self._problem.setObjectName("rgb-problem")
@@ -835,67 +887,14 @@ class RgbPageView(QWidget):
         log.debug("RgbPageView.on_app_event: %s visible=%s",
                   type(event).__name__, self.isVisible())
         if isinstance(event, RgbFollowChanged):
-            self._follow.preview.clear_sent()     # new colours are coming
+            self.follow.preview.clear_sent()     # new colours are coming
         if self.isVisible() and not self._busy:
             self.refresh()
-
-    @property
-    def follow_preview(self) -> QWidget:
-        """The live picture -- frames are wanted while it is on screen."""
-        log.debug("RgbPageView.follow_preview")
-        return self._follow.preview
-
-    def on_frame(self, event: object) -> None:
-        """``FrameSent``: the followed LCD's frame goes to the preview."""
-        key = getattr(event, "key", "")
-        surface = getattr(event, "surface", None)
-        if (key != self.page.follow_source or not isinstance(surface, QImage)
-                or not self._follow.preview.isVisible()):
-            return
-        frame_log.debug("RgbPageView.on_frame: %s", key)
-        self._follow.preview.show_frame(surface)
-        self._status_due()
-
-    def on_led_colors(self, event: object) -> None:
-        """``LedColorsChanged``: a followed cooler's colours -- the very ones
-        the follower takes, before the cooler's segment mask."""
-        key = getattr(event, "key", "")
-        colors = getattr(event, "colors", ())
-        source = self.page.follow_source
-        preview = self._follow.preview
-        if (preview.follows_picture or not colors or not preview.isVisible()
-                or key != (source or self._lead or key)):
-            return
-        frame_log.debug("RgbPageView.on_led_colors: %s %d", key, len(colors))
-        self._lead = self._lead or key     # "the first cooler": the first heard
-        self._follow.preview.show_colors(colors)
-        self._status_due()
-
-    def on_follow_sent(self, event: object) -> None:
-        """``RgbFollowSent``: the colours the App just sent the lights --
-        drawn on the strips when they come from what this page follows."""
-        source = getattr(event, "source", "")
-        columns = getattr(event, "columns", ())
-        followed = self.page.follow_source
-        if (not self._follow.preview.isVisible()
-                or source != (followed or self._lead or source)):
-            return
-        frame_log.debug("RgbPageView.on_follow_sent: %s %d", source,
-                        len(columns))
-        self._follow.preview.show_sent(columns)
-
-    def _status_due(self) -> None:
-        """Re-read what following is doing, every few seconds while shown."""
-        if (now := time.monotonic()) - self._status_at >= STATUS_EVERY_S:
-            log.debug("RgbPageView._status_due")
-            self._status_at = now
-            self.page.follow_now(self._following())
-            self._follow.show_status()
 
     def refresh(self) -> None:
         """Start again from the App -- three reads, no bus traffic."""
         log.info("RgbPageView.refresh")
-        self._lead = ""
+        self.follow.lead = ""
         self._access.refresh()
         self.page.load(self._lights(), self._following(), self._devices())
         self._show()
@@ -909,7 +908,7 @@ class RgbPageView(QWidget):
             button.setChecked(source is page.source)
         self._stack.setCurrentIndex(list(RgbSource).index(page.source))
         self._effect.show_page()
-        self._follow.show_page()
+        self.follow.show_page()
         self._on_changed()
 
     def _on_changed(self) -> None:
@@ -919,7 +918,7 @@ class RgbPageView(QWidget):
         log.debug("RgbPageView._on_changed: problem=%s busy=%s", problem,
                   self._busy)
         self._hint.setText(page.hint)
-        self._follow.show_layout()
+        self.follow.show_layout()
         strips = page.effect_strips()
         for preview in self._previews:
             preview.show_strips(strips)

@@ -396,12 +396,12 @@ class TRCCApp(QMainWindow):
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
         self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
         self._bus.follow_previews(self.uc_preview, self.uc_led_control,
-                                  self.uc_rgb.page.follow_preview)
+                                  self.uc_rgb.page.follow.preview)
         # A followed cooler's colours, and what following sent the lights,
         # for the RGB page's preview.
-        self._bus.led_colors_changed.connect(self.uc_rgb.page.on_led_colors,
+        self._bus.led_colors_changed.connect(self.uc_rgb.page.follow.on_led_colors,
                                              type=qconn)
-        self._bus.rgb_follow_sent.connect(self.uc_rgb.page.on_follow_sent,
+        self._bus.rgb_follow_sent.connect(self.uc_rgb.page.follow.on_follow_sent,
                                           type=qconn)
 
     def _on_bus_frame_sent(self, event: Any) -> None:
@@ -415,7 +415,7 @@ class TRCCApp(QMainWindow):
         re-render.  Only the active device writes the shared preview.
         """
         frame_log.debug("_on_bus_frame_sent")  # per-frame — DEBUG so reports aren't flooded
-        self.uc_rgb.page.on_frame(event)      # the RGB page follows any LCD
+        self.uc_rgb.page.follow.on_frame(event)   # the RGB page follows any LCD
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)
