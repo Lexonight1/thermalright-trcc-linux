@@ -31,6 +31,9 @@
 - **`trcc api` works on Arch.** The package bundled the web server without
   the libraries it needs; it now uses Arch's own `uvicorn` and
   `python-websockets`.
+- **The API's live preview and event stream work on Debian/Ubuntu and Arch.**
+  Neither package installed the WebSocket library, so `/events` and the live
+  preview stream answered 404; both now depend on it.
 - **Starting the audio visualizer on a machine with no sound server no longer
   fails with an error;** it switches the visualizer off and says why.
 - **openSUSE:** the install guide no longer offers the Fedora RPM, which

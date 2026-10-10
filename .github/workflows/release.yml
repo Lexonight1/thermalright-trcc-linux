@@ -323,7 +323,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils
+          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-websockets, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils
           Recommends: p7zip-full, ffmpeg, python3-pynvml, python3-dbus, dmidecode, python3-sounddevice
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux

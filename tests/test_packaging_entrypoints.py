@@ -408,3 +408,16 @@ def test_the_deb_does_not_bundle_what_ubuntu_ships() -> None:
 
     assert not re.search(r"pip install [^\n]*sounddevice", deb)
     assert re.search(r"Recommends:[^\n]*python3-sounddevice", deb)
+
+
+def test_the_deb_brings_what_the_websocket_routes_import() -> None:
+    """uvicorn's WebSocket support is the ``websockets`` library, which
+    ``python3-uvicorn`` does not pull in: in clean Debian 13 and Ubuntu 26.04
+    containers ``import websockets`` failed, so /events and the live preview
+    stream were dead on every deb install (measured 2026-10-09).
+    MUTATION CHECK: drop python3-websockets from Depends -> fails."""
+    deb = _step("Build DEB (Ubuntu/Debian)")
+    depends = re.search(r"^\s*Depends: (python3[^\n]+)", deb, re.M)
+
+    assert depends is not None
+    assert "python3-websockets" in depends.group(1)
