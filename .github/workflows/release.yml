@@ -565,6 +565,52 @@ jobs:
       - name: Fix package directory permissions
         run: sudo chown -R "$(id -u):$(id -g)" packages/
 
+      - name: Install-test the packages in clean containers
+        # Each package goes into the distro it is built for and must import what
+        # the GUI and trcc api need, BEFORE anything is uploaded.  Measured
+        # 2026-10-09: packages that built green still failed here -- the RPM on
+        # Fedora 43, the deb beside python3-sounddevice on Ubuntu 26.04, and the
+        # Arch and deb packages without websockets.  Imports and --version only:
+        # a CI container has no USB device.
+        run: |
+          set -e
+          P="${{ github.workspace }}/packages"
+          IMPORTS="import trcc, trcc.ui.api.main, uvicorn.protocols.http.h11_impl, websockets, PySide6.QtWidgets"
+          for img in fedora:43 fedora:latest; do
+            echo "=== RPM on $img"
+            docker run --rm -v "$P:/p:ro" -e IMPORTS="$IMPORTS" "$img" bash -c '
+              set -e
+              dnf install -y -q /p/noarch/*.rpm
+              python3 -c "$IMPORTS"
+              trcc --version'
+          done
+          for img in debian:trixie ubuntu:26.04; do
+            echo "=== DEB on $img (with the distro sounddevice where it exists)"
+            docker run --rm -v "$P:/p:ro" -e IMPORTS="$IMPORTS" "$img" bash -c '
+              set -e
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq
+              apt-get install -y -qq python3-sounddevice || true
+              apt-get install -y -qq /p/trcc-linux_*-1_all.deb
+              python3 -c "$IMPORTS"
+              trcc --version'
+          done
+          echo "=== legacy DEB on ubuntu:24.04"
+          docker run --rm -v "$P:/p:ro" -e IMPORTS="$IMPORTS" ubuntu:24.04 bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq /p/trcc-linux_*.legacy_all.deb
+            /opt/trcc-linux/bin/python -c "$IMPORTS"
+            trcc --version'
+          echo "=== Arch"
+          docker run --rm -v "$P:/p:ro" -e IMPORTS="$IMPORTS" archlinux:latest bash -c '
+            set -e
+            pacman -Syu --noconfirm >/dev/null
+            pacman -U --noconfirm /p/trcc-linux-*-any.pkg.tar.zst
+            python -c "$IMPORTS"
+            trcc --version'
+
       - name: Generate SHA256 checksums
         run: |
           cd packages

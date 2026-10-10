@@ -157,6 +157,21 @@ jobs:
           }
           Write-Host "PASSED — trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb, LibreHardwareMonitor OK"
 
+      - name: Smoke-run the frozen CLI
+        # The checks above prove files exist, not that the frozen program
+        # starts: #166, #187 and #188 were all launch crashes of a bundle that
+        # passed them.  The integrity level is logged because trcc.exe carries
+        # --uac-admin, which fails with error 740 on a non-elevated runner.
+        run: |
+          whoami /groups | Select-String "Mandatory Label"
+          $out = & dist\trcc\trcc.exe --version 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch "trcc \d+\.\d+\.\d+") {
+            Write-Error "FAILED — the frozen trcc.exe did not run (exit $LASTEXITCODE)"
+            exit 1
+          }
+          Write-Host "PASSED — the frozen trcc.exe runs"
+
       - name: Extract version
         id: version
         run: |
