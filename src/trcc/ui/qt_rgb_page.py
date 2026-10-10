@@ -54,6 +54,7 @@ from ..core.logs import per_frame
 from ..core.models import (
     EffectDirection,
     EffectSpeed,
+    FollowColors,
     FollowMapping,
     LightKind,
     RamEffect,
@@ -64,6 +65,7 @@ from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
 from ..services.follow_colors import Rgb, strip_spans
 from .presentation.effect_preview import APPROXIMATE, LEDS, effect_frame
 from .presentation.rgb_page import (
+    COLORS_LABELS,
     DIRECTION_LABELS,
     EFFECT_LABELS,
     MAPPING_LABELS,
@@ -623,6 +625,8 @@ class _FollowForm(QWidget):
         self._source.activated.connect(self._on_source)
         self._mapping_label = QLabel("Mapping", self)
         self._mapping = _ChoiceButtons(MAPPING_LABELS, self._on_mapping)
+        self._colors_label = QLabel("Colours", self)
+        self._colors = _ChoiceButtons(COLORS_LABELS, self._on_colors)
         self.preview = _FollowPreview()
         self._legend = _muted()
         self._status = _muted()
@@ -636,9 +640,11 @@ class _FollowForm(QWidget):
                               "sends its own colours."), 1, 1)
         grid.addWidget(self._mapping_label, 2, 0)
         grid.addWidget(self._mapping, 2, 1)
-        grid.addWidget(self.preview, 3, 1)
-        grid.addWidget(self._legend, 4, 1)
-        grid.addWidget(self._status, 5, 1)
+        grid.addWidget(self._colors_label, 3, 0)
+        grid.addWidget(self._colors, 3, 1)
+        grid.addWidget(self.preview, 4, 1)
+        grid.addWidget(self._legend, 5, 1)
+        grid.addWidget(self._status, 6, 1)
         grid.setColumnStretch(1, 1)
 
     def show_page(self) -> None:
@@ -653,6 +659,9 @@ class _FollowForm(QWidget):
         self._mapping_label.setVisible(applies)
         self._mapping.setVisible(applies)
         self._mapping.show_values(tuple(FollowMapping), page.mapping)
+        self._colors_label.setVisible(applies)
+        self._colors.setVisible(applies)
+        self._colors.show_values(tuple(FollowColors), page.colors)
         self._legend.setText("   ".join(
             f"{chr(ord('A') + i)}: {name}"
             for i, name in enumerate(page.preview_lights)))
@@ -677,6 +686,11 @@ class _FollowForm(QWidget):
             self.preview.clear()
         self._page.follow_source = key
         self.show_page()
+        self._changed()
+
+    def _on_colors(self, colors: object) -> None:
+        log.info("_FollowForm._on_colors: %s", colors)
+        self._page.colors = FollowColors(colors)
         self._changed()
 
     def _on_mapping(self, mapping: object) -> None:

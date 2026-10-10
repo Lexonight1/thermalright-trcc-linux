@@ -18,6 +18,7 @@ from .models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     DeviceInfo,
+    FollowColors,
     FollowMapping,
     HandshakeResult,
     HardwareMetrics,
@@ -649,6 +650,8 @@ class RgbFollowResult(Result):
     source: str = ""
     mapping: FollowMapping = FollowMapping.HALVES
     targets: tuple[str, ...] = ()
+    #: How a region of that picture becomes a light's colour.
+    colors: FollowColors = FollowColors.VIVID
     connected: bool = False
     devices: tuple[str, ...] = ()
     lead: str = ""

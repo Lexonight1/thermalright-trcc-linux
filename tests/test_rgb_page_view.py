@@ -18,6 +18,7 @@ from trcc.core.commands import (
 )
 from trcc.core.events import FrameSent
 from trcc.core.models import (
+    FollowColors,
     FollowMapping,
     LightKind,
     RamAccessState,
@@ -111,12 +112,14 @@ def test_apply_follows_with_the_source_the_mapping_and_the_lights(
     view._source_buttons[RgbSource.FOLLOW].click()
     view._follow._on_source(view._follow._source.findData(LCD))
     view._follow._mapping._buttons[FollowMapping.SINGLE].click()
+    view._follow._colors._buttons[FollowColors.SMOOTH].click()
     view._lights_column._on_light_toggled(STICKS[0].ref, False)
     view._apply.click()
     _answered(view, qtbot)
     assert view._app.commands(SetRgbFollow) == [SetRgbFollow(
         mode=RgbFollowMode.RAM, host="127.0.0.1", port=6742, source=LCD,
-        mapping=FollowMapping.SINGLE, targets=(STICKS[1].ref,))]
+        mapping=FollowMapping.SINGLE, targets=(STICKS[1].ref,),
+        colors=FollowColors.SMOOTH)]
 
 
 def test_leave_alone_turns_following_off(view: Any, qtbot: Any) -> None:

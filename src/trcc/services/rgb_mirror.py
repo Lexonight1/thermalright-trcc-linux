@@ -123,17 +123,19 @@ class RgbMirrorService:
     def configure(self, mode: RgbFollowMode, host: str, port: int,
                   source: str = "",
                   mapping: FollowMapping = FollowMapping.HALVES,
-                  targets: tuple[str, ...] = ()) -> None:
+                  targets: tuple[str, ...] = (), *,
+                  colors: FollowColors = FollowColors.VIVID) -> None:
         """Stop following; start again with *mode* unless it is OFF.
 
         *host* and *port* are OpenRGB's SDK server; RAM ignores them.
         *source* is the device that leads -- empty for the first LED cooler
         whose colours arrive; an LCD's key to follow its picture.  *targets*
         are the refs of the devices that follow -- empty for every one.
+        *colors* is how a region of a picture becomes one colour.
         """
-        log.info("RgbMirrorService.configure: %s %s:%d source=%r %s "
+        log.info("RgbMirrorService.configure: %s %s:%d source=%r %s %s "
                  "targets=%s", mode.value, host, port, source, mapping.value,
-                 targets or "all")
+                 colors.value, targets or "all")
         with self._switch:
             self._stop_following()
             if mode is RgbFollowMode.OFF:
@@ -147,7 +149,7 @@ class RgbMirrorService:
                 self._mirror = mirror
                 self._running, self._lead, self._retry_at = True, source, 0.0
                 self._source, self._mapping = source, mapping
-                self._targets = targets
+                self._targets, self._how = targets, colors
                 self._last_frame = 0.0
                 self._status = MirrorStatus(mode=mode, source=source)
             self._thread = threading.Thread(target=self._run, daemon=True,

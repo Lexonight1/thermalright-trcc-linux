@@ -74,7 +74,7 @@ class QtRgbPage(RgbPageView):
                 return self._app.dispatch(SetRgbFollow(
                     mode=plan.mode, host=plan.host, port=plan.port,
                     source=plan.source, mapping=plan.mapping,
-                    targets=plan.targets))
+                    colors=plan.colors, targets=plan.targets))
 
 
 class RgbPanel(BasePanel):

@@ -37,6 +37,7 @@ from ..core.models import (
     EffectDirection,
     EffectSpeed,
     FitMode,
+    FollowColors,
     FollowMapping,
     OrientationState,
     OverlayElement,
@@ -107,6 +108,9 @@ class AppSettings:
     # ``FollowMapping`` value).
     rgb_follow_source: str = ""
     rgb_follow_mapping: str = FollowMapping.HALVES.value
+    # How a region of that picture becomes a light's colour (a
+    # ``FollowColors`` value): its brightest pixels, or its average.
+    rgb_follow_colors: str = FollowColors.VIVID.value
     # Refs of the lights that follow (a stick's "i2c-3/0x19", an OpenRGB
     # device's name); empty for every one.
     rgb_follow_targets: list[str] = field(default_factory=list)
@@ -782,6 +786,18 @@ class Settings:
                         "halves", value)
             return FollowMapping.HALVES
 
+    def rgb_follow_colors(self) -> FollowColors:
+        """How a region of an LCD's picture becomes a light's colour; unknown
+        is vivid."""
+        value = self._app.rgb_follow_colors
+        log.debug("rgb_follow_colors: %r", value)
+        try:
+            return FollowColors(value)
+        except ValueError:
+            log.warning("rgb_follow_colors: unknown %r in the settings -- "
+                        "vivid", value)
+            return FollowColors.VIVID
+
     def ram_effect(self, ref: str) -> RamEffectSettings | None:
         """The effect TRCC last saved on stick *ref*, or None -- a damaged
         record is None too, never a guess."""
@@ -836,11 +852,13 @@ class Settings:
 
     def set_rgb_follow(self, mode: RgbFollowMode, host: str, port: int,
                        source: str, mapping: FollowMapping,
-                       targets: tuple[str, ...]) -> None:
+                       targets: tuple[str, ...], *,
+                       colors: FollowColors) -> None:
         """Pick what follows, OpenRGB's *host*:*port*, and the device that
-        leads (#160): empty *source* for the first LED cooler, else a key."""
-        log.info("set_rgb_follow: %s %s:%d source=%r %s targets=%s",
-                 mode.value, host, port, source, mapping.value,
+        leads (#160): empty *source* for the first LED cooler, else a key.
+        *colors* is required by name, so no caller drops the saved one."""
+        log.info("set_rgb_follow: %s %s:%d source=%r %s %s targets=%s",
+                 mode.value, host, port, source, mapping.value, colors.value,
                  list(targets) or "all")
         if not 0 < port < 65536:
             raise ValueError(f"port out of range (1-65535): {port}")
@@ -852,6 +870,7 @@ class Settings:
             self._app.openrgb_port = port
             self._app.rgb_follow_source = source
             self._app.rgb_follow_mapping = mapping.value
+            self._app.rgb_follow_colors = colors.value
             self._app.rgb_follow_targets = list(targets)
             self._save()
 

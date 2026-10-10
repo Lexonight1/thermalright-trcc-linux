@@ -23,6 +23,7 @@ from ...core.models import (
     EffectDirection,
     EffectSpeed,
     EffectTraits,
+    FollowColors,
     FollowMapping,
     Kind,
     LightKind,
@@ -76,6 +77,10 @@ MAPPING_LABELS: dict[FollowMapping, str] = {
     FollowMapping.HALVES: "Split left to right",
     FollowMapping.SINGLE: "Same on every light",
 }
+COLORS_LABELS: dict[FollowColors, str] = {
+    FollowColors.VIVID: "Vivid",
+    FollowColors.SMOOTH: "Smooth",
+}
 #: The colours an effect starts with before the user picks any.
 DEFAULT_COLORS: tuple[Rgb, Rgb] = ((255, 32, 64), (32, 128, 255))
 #: The follow choice for "whichever LED cooler sends colours first".
@@ -125,6 +130,7 @@ class FollowDevice:
     port: int
     source: str
     mapping: FollowMapping
+    colors: FollowColors
     targets: tuple[str, ...]
 
 
@@ -247,6 +253,7 @@ class RgbPage:
         self.effect_picks = EffectPicks()
         self.follow_source = FIRST_COOLER
         self.mapping = FollowMapping.HALVES
+        self.colors = FollowColors.VIVID
         self.address = format_openrgb_address("127.0.0.1", 6742)
         self.message = ""
 
@@ -272,6 +279,7 @@ class RgbPage:
             self.address = format_openrgb_address(follow.host, follow.port)
         self.follow_source = follow.source
         self.mapping = follow.mapping
+        self.colors = follow.colors
         saved = next((light.effect for light in self._ram_lights()
                       if light.effect is not None), None)
         if saved is not None:
@@ -512,6 +520,6 @@ class RgbPage:
             kind = (LightKind.RAM if mode is RgbFollowMode.RAM
                     else LightKind.OPENRGB)
             plan = FollowDevice(mode, *address, self.follow_source,
-                                self.mapping, self._targets(kind))
+                                self.mapping, self.colors, self._targets(kind))
         log.info("RgbPage.apply: %s", plan)
         return plan

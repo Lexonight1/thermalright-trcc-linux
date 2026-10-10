@@ -305,11 +305,12 @@ def rgb_follow_status(request: Request) -> RgbFollowResult:
 def rgb_follow_set(body: RgbFollowRequest,
                    request: Request) -> RgbFollowResult:
     """Pick what follows the cooler's colours: off, openrgb or ram (#160)."""
-    log.info("api POST /system/rgb-follow: mode=%s host=%r port=%s",
-             body.mode.value, body.host, body.port)
+    log.info("api POST /system/rgb-follow: mode=%s host=%r port=%s "
+             "mapping=%s colors=%s", body.mode.value, body.host, body.port,
+             body.mapping, body.colors)
     result = request.app.state.trcc.dispatch(SetRgbFollow(
         mode=body.mode, host=body.host, port=body.port, source=body.source,
-        mapping=body.mapping,
+        mapping=body.mapping, colors=body.colors,
         targets=None if body.targets is None else tuple(body.targets)))
     http_error_if_failed(result)
     return result

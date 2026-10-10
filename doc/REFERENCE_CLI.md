@@ -1616,6 +1616,7 @@ trcc system follow [OPTIONS] [MODE]
 | `--port` `PORT` | Its port (default: the saved one, 6742 at first). |
 | `--source` `SOURCE` | The device that leads: an LCD's key (e.g. 0402:3922) to follow its picture, or '' for the first LED cooler. Default: the saved one. |
 | `--mapping` `MAPPING` | An LCD's picture on the followers: 'halves' (left to the first, right to the second) or 'single' (one colour each). Default: the saved one. |
+| `--colors` `COLORS` | How a region of an LCD's picture becomes a light's colour: 'vivid' (its brightest pixels -- small bright details show) or 'smooth' (its average -- steadier). Default: the saved one, vivid at first. |
 | `--target` `TARGET` | A light that follows (a stick's 'i2c-3/0x19', an OpenRGB device's name); repeat for more. '--target all' for every one. Default: the saved ones. |
 
 ### `trcc system hdd-enabled`

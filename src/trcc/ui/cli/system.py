@@ -50,6 +50,7 @@ from ...core.models import (
     AUTOSTART_TARGETS,
     EffectDirection,
     EffectSpeed,
+    FollowColors,
     FollowMapping,
     PanelConfig,
     RamAccessState,
@@ -532,6 +533,11 @@ def follow(
         None, "--mapping", help="An LCD's picture on the followers: 'halves' "
         "(left to the first, right to the second) or 'single' (one colour "
         "each).  Default: the saved one."),
+    colors: FollowColors | None = typer.Option(
+        None, "--colors", help="How a region of an LCD's picture becomes a "
+        "light's colour: 'vivid' (its brightest pixels -- small bright "
+        "details show) or 'smooth' (its average -- steadier).  Default: the "
+        "saved one, vivid at first."),
     target: list[str] | None = typer.Option(
         None, "--target", help="A light that follows (a stick's "
         "'i2c-3/0x19', an OpenRGB device's name); repeat for more.  "
@@ -546,7 +552,8 @@ def follow(
     same sticks.  'off' stops.
     """
     log.info("cli system follow: mode=%s host=%r port=%s source=%r "
-             "mapping=%s target=%s", mode, host, port, source, mapping, target)
+             "mapping=%s colors=%s target=%s", mode, host, port, source,
+             mapping, colors, target)
     choice = mode.lower()
     modes = [m.value for m in RgbFollowMode]
     if choice != "status" and choice not in modes:
@@ -556,7 +563,7 @@ def follow(
     result = get_app().dispatch(
         RgbFollow() if choice == "status" else
         SetRgbFollow(mode=RgbFollowMode(choice), host=host, port=port,
-                     source=source, mapping=mapping,
+                     source=source, mapping=mapping, colors=colors,
                      targets=(None if target is None else
                               () if target == ["all"] else tuple(target))))
     typer.echo(result.message)
@@ -565,7 +572,8 @@ def follow(
     typer.echo(f"  following: {result.mode.value} "
                f"(OpenRGB at {result.host}:{result.port})")
     typer.echo(f"  source   : {result.source or 'the first LED cooler'}"
-               + (f" ({result.mapping.value})" if result.source else ""))
+               + (f" ({result.mapping.value}, {result.colors.value})"
+                  if result.source else ""))
     typer.echo(f"  lights   : {', '.join(result.targets) or 'all'}")
     if result.lead:
         typer.echo(f"  cooler   : {result.lead}")

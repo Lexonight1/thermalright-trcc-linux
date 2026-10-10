@@ -678,6 +678,24 @@ def test_the_choice_is_kept_and_a_damaged_targets_setting_means_all(tmp_path) ->
     app.close()
 
 
+def test_the_colours_choice_is_kept_reaches_the_follower_and_damage_is_vivid(
+        tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """MUTATION CHECK: drop ``colors`` from ``configure`` in SetRgbFollow."""
+    from trcc.core.models import FollowColors
+
+    app, _made = _app(tmp_path)
+    assert app.settings.rgb_follow_colors() is FollowColors.VIVID   # default
+    result = app.dispatch(SetRgbFollow(mode=OPENRGB, source="0402:3922",
+                                       colors=FollowColors.SMOOTH))
+    assert result.colors is FollowColors.SMOOTH
+    assert app.rgb_mirror._how is FollowColors.SMOOTH
+    kept = app.dispatch(SetRgbFollow(mode=OPENRGB))         # None keeps it
+    assert kept.colors is FollowColors.SMOOTH
+    app.settings.app.rgb_follow_colors = "garish"           # hand-edited
+    assert app.settings.rgb_follow_colors() is FollowColors.VIVID
+    app.close()
+
+
 def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:  # type: ignore[no-untyped-def]
     """FrameSent -> App -> the renderer's sampler -> one column per light."""
     from PySide6.QtGui import QColor, QImage
@@ -880,7 +898,8 @@ def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None
         "10.0.0.5", 6800)
     assert moved == []                    # not following OpenRGB: nothing moves
     app.settings.set_rgb_follow(RgbFollowMode.OPENRGB, "10.0.0.5", 6800, "",
-                                app.settings.rgb_follow_mapping(), ())
+                                app.settings.rgb_follow_mapping(), (),
+                                colors=app.settings.rgb_follow_colors())
     app.dispatch(ScanRgbLights(host="10.0.0.6"))
     assert moved == [(RgbFollowMode.OPENRGB, "10.0.0.6", 6800)]
     app.dispatch(ScanRgbLights())         # empty keeps the saved address

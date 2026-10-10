@@ -385,7 +385,8 @@ class App(CommandBus):
                                   prefs.openrgb_host, prefs.openrgb_port,
                                   prefs.rgb_follow_source,
                                   self.settings.rgb_follow_mapping(),
-                                  self.settings.rgb_follow_targets())
+                                  self.settings.rgb_follow_targets(),
+                                  colors=self.settings.rgb_follow_colors())
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.

@@ -21,6 +21,7 @@ from ...core.models import (
     EffectDirection,
     EffectSpeed,
     FitMode,
+    FollowColors,
     FollowMapping,
     RamEffect,
     RgbFollowMode,
@@ -232,6 +233,9 @@ class RgbFollowRequest(BaseModel):
     source: str | None = Field(None, max_length=64,
                                pattern=r"^([0-9a-fA-F]{4}:[0-9a-fA-F]{4}(@[\w.:-]+)?)?$")
     mapping: FollowMapping | None = None
+    #: How a region of that picture becomes a light's colour; None keeps
+    #: the saved one.
+    colors: FollowColors | None = None
     #: The lights that follow (refs); [] for every one; None keeps the saved.
     targets: list[str] | None = Field(None, max_length=64)
 

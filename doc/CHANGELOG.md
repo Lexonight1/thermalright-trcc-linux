@@ -12,7 +12,14 @@
   - **Built-in effect:** one of the memory's own ten effects, saved on the
     stick. It shows only the controls that effect takes.
   - **Follow a device:** any connected LCD, whose live picture (a video
-    too) is split across the lights, or an LED cooler.
+    too) lights them, or an LED cooler. Each light takes a thin strip at
+    its edge of the picture, one region per LED, top to bottom. The theme's
+    clock and readings are left out, so a light follows the video, not the
+    digits. **Colours** picks how a region becomes one colour: *Vivid* (its
+    brightest pixels, so small bright details such as stars still show) or
+    *Smooth* (its average, steadier). The colours are corrected for LEDs,
+    which would otherwise show a screen's deep red as pinkish white. When
+    following stops, each light keeps its last colours.
 
   While following an LCD, a live preview shows its picture and the colours
   each light gets. Under the two other sources, each stick is drawn running

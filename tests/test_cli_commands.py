@@ -2197,7 +2197,7 @@ def test_system_follow_an_lcd_on_chosen_lights(cli_runner: CliRunner, cli_app) -
         "--target", "ASUS Aura Motherboard"])
     assert picked.exit_code == 0, picked.output
     assert picked.output.endswith(
-        "  source   : 0402:3922 (single)\n"
+        "  source   : 0402:3922 (single, vivid)\n"
         "  lights   : i2c-3/0x19, ASUS Aura Motherboard\n")
     kept = cli_runner.invoke(_app(), ["system", "follow"])
     assert kept.output.endswith("  lights   : i2c-3/0x19, ASUS Aura Motherboard\n")

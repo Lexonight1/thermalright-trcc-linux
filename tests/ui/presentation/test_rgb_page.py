@@ -7,6 +7,7 @@ from trcc.core.models import (
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,
+    FollowColors,
     FollowMapping,
     LightKind,
     RamAccessState,
@@ -224,8 +225,10 @@ def test_ticked_sticks_follow_the_ram_way() -> None:
     page.set_source(RgbSource.FOLLOW)
     page.follow_source = LCD.key
     page.mapping = FollowMapping.SINGLE
+    page.colors = FollowColors.SMOOTH
     assert page.apply() == FollowDevice(RgbFollowMode.RAM, "127.0.0.1", 6742,
-                                        LCD.key, FollowMapping.SINGLE, ())
+                                        LCD.key, FollowMapping.SINGLE,
+                                        FollowColors.SMOOTH, ())
     page.set_checked(STICK_A.ref, False)
     plan = page.apply()
     assert isinstance(plan, FollowDevice) and plan.targets == (STICK_B.ref,)
@@ -237,7 +240,8 @@ def test_ticked_openrgb_devices_follow_through_openrgb() -> None:
     page.set_checked(STICK_A.ref, False)
     page.address = "10.1.1.1:6743"
     assert page.apply() == FollowDevice(RgbFollowMode.OPENRGB, "10.1.1.1",
-                                        6743, "", FollowMapping.HALVES, ())
+                                        6743, "", FollowMapping.HALVES,
+                                        FollowColors.VIVID, ())
 
 
 @pytest.mark.parametrize("untick, problem", [
@@ -257,9 +261,11 @@ def test_following_both_kinds_or_none_is_refused(untick: tuple[str, ...],
 
 def test_following_with_nothing_listed_keeps_the_mode_that_runs() -> None:
     page = _page(follow=RgbFollowResult(mode=RgbFollowMode.OPENRGB,
-                                        host="h", port=9))
+                                        host="h", port=9,
+                                        colors=FollowColors.SMOOTH))
     assert page.apply() == FollowDevice(RgbFollowMode.OPENRGB, "h", 9, "",
-                                        FollowMapping.HALVES, ())
+                                        FollowMapping.HALVES,
+                                        FollowColors.SMOOTH, ())
 
 
 def test_a_bad_address_stops_following_from_applying() -> None:

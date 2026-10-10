@@ -107,13 +107,15 @@ class ScanRgbLights(Command[RgbLightsResult]):
         mode = settings.rgb_follow_mode()
         log.info("ScanRgbLights: OpenRGB moves to %s:%d (following %s)", host,
                  port, mode.value)
+        colors = settings.rgb_follow_colors()
         settings.set_rgb_follow(mode, host, port, prefs.rgb_follow_source,
                                 settings.rgb_follow_mapping(),
-                                settings.rgb_follow_targets())
+                                settings.rgb_follow_targets(), colors=colors)
         if mode is RgbFollowMode.OPENRGB:
             app.rgb_mirror.configure(mode, host, port, prefs.rgb_follow_source,
                                      settings.rgb_follow_mapping(),
-                                     settings.rgb_follow_targets())
+                                     settings.rgb_follow_targets(),
+                                     colors=colors)
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +168,8 @@ class SetRamEffect(Command[RgbLightsResult]):
         settings.set_rgb_follow(
             RgbFollowMode.OFF, prefs.openrgb_host, prefs.openrgb_port,
             prefs.rgb_follow_source, settings.rgb_follow_mapping(),
-            settings.rgb_follow_targets())
+            settings.rgb_follow_targets(),
+            colors=settings.rgb_follow_colors())
         app.rgb_mirror.configure(RgbFollowMode.OFF, prefs.openrgb_host,
                                  prefs.openrgb_port)
         app.events.publish(RgbFollowChanged(mode=RgbFollowMode.OFF))
