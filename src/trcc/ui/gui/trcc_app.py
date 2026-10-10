@@ -391,12 +391,15 @@ class TRCCApp(QMainWindow):
     def _follow_frames(self, qconn: Qt.ConnectionType) -> None:
         """Frames, and the previews that want them: the LCD, the LED and the
         RGB page's follow preview.  Frames flow only while one of those is on
-        screen (see the bridge)."""
+        screen (see the bridge); a cooler's colours always do."""
         log.debug("_follow_frames")
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
         self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
         self._bus.follow_previews(self.uc_preview, self.uc_led_control,
                                   self.uc_rgb.page.follow_preview)
+        # A followed cooler's colours, for the RGB page's preview.
+        self._bus.led_colors_changed.connect(self.uc_rgb.page.on_led_colors,
+                                             type=qconn)
 
     def _on_bus_frame_sent(self, event: Any) -> None:
         """A frame just went out on the wire.

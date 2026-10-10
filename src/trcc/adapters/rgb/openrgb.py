@@ -33,6 +33,7 @@ import struct
 from collections import Counter
 from collections.abc import Sequence
 
+from ...core.led_models import stretch
 from ...core.logs import per_frame
 from ...core.models import RgbMirrorDevice
 from ...core.ports import RgbMirror
@@ -74,15 +75,6 @@ def update_leds_payload(colors: Sequence[tuple[int, int, int]]) -> bytes:
     body = struct.pack("<H", len(colors)) + b"".join(
         struct.pack("<I", r | g << 8 | b << 16) for r, g, b in colors)
     return struct.pack("<I", 4 + len(body)) + body
-
-
-def stretch(colors: Sequence[tuple[int, int, int]],
-            count: int) -> list[tuple[int, int, int]]:
-    """*colors* over *count* LEDs: each takes the source colour at its place."""
-    frame_log.debug("stretch: %d -> %d", len(colors), count)
-    if not colors or count <= 0:
-        return []
-    return [colors[i * len(colors) // count] for i in range(count)]
 
 
 class _Reader:

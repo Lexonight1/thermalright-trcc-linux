@@ -7,6 +7,7 @@ source of truth.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Literal
@@ -480,3 +481,16 @@ class _PmRegistryShim:
 
 
 PmRegistry = _PmRegistryShim()
+
+
+def stretch(colors: Sequence[tuple[int, int, int]],
+            count: int) -> list[tuple[int, int, int]]:
+    """*colors* over *count* LEDs: each takes the source colour at its place.
+
+    How every follower fits the colours it is sent to its own LEDs (the RAM
+    and OpenRGB drivers), and how the RGB page previews it -- one rule.
+    """
+    frame_log.debug("stretch: %d -> %d", len(colors), count)
+    if not colors or count <= 0:
+        return []
+    return [colors[i * len(colors) // count] for i in range(count)]

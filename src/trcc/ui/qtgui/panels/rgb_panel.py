@@ -89,9 +89,12 @@ class RgbPanel(BasePanel):
         self._bus.app_settings_changed.connect(
             self._on_app_settings_changed,
             type=Qt.ConnectionType.QueuedConnection)
-        # The followed LCD's frames, for the live preview.
+        # A followed LCD's frames and a followed cooler's colours, for the
+        # live preview.
         self._bus.frame_sent.connect(self.page.on_frame,
                                      type=Qt.ConnectionType.QueuedConnection)
+        self._bus.led_colors_changed.connect(
+            self.page.on_led_colors, type=Qt.ConnectionType.QueuedConnection)
 
     def _on_app_settings_changed(self, event: object) -> None:
         log.debug("RgbPanel._on_app_settings_changed: %s", type(event).__name__)

@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..core.led_models import stretch
 from ..core.models import (
     EffectDirection,
     EffectSpeed,
@@ -381,18 +382,21 @@ def sample_grid(image: QImage, columns: int, rows: int
 
 
 class _FollowPreview(QWidget):
-    """The followed LCD's live picture, cut into the columns the lights take,
-    and beside it each light's LEDs in the colours it would get now."""
+    """What the lights follow, and each light's LEDs in the colours it gets
+    now: an LCD's live picture cut into the columns the lights take, or an
+    LED cooler's own colours, the same on every light."""
 
     PICTURE = 220
     CELL = (22, 16)
     STRIP_GAP = 40
+    COOLER_ROW = 10              # the cooler's LEDs drawn ten to a row
 
     def __init__(self, page: RgbPage) -> None:
         super().__init__()
         log.debug("_FollowPreview.__init__")
         self._page = page
         self._image: QImage | None = None
+        self._colors: tuple[tuple[int, int, int], ...] = ()
         self.setFixedHeight(self.PICTURE + 26)
 
     def show_frame(self, image: QImage) -> None:
@@ -401,40 +405,74 @@ class _FollowPreview(QWidget):
         self._image = image
         self.update()
 
+    def show_colors(self, colors: Sequence[tuple[int, int, int]]) -> None:
+        log.debug("_FollowPreview.show_colors: %d", len(colors))
+        self._colors = tuple(colors)
+        self.update()
+
     def clear(self) -> None:
         log.debug("_FollowPreview.clear")
-        self._image = None
+        self._image, self._colors = None, ()
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         page = self._page
-        columns, lights = page.preview_columns, page.preview_lights
-        log.debug("_FollowPreview.paintEvent: %d column(s) %d light(s) "
-                  "frame=%s", columns, len(lights), self._image is not None)
+        log.debug("_FollowPreview.paintEvent: picture=%s",
+                  page.mapping_applies)
         p = QPainter(self)
-        frame = QRect(0, 0, self.PICTURE, self.PICTURE)
-        grid = None
-        if self._image is None or self._image.isNull():
-            p.setPen(QPen(QColor("#5a5a62"), 1, Qt.PenStyle.DashLine))
-            p.drawRect(frame.adjusted(0, 0, -1, -1))
-            p.setPen(QColor("#9a9aa2"))
-            p.drawText(frame, Qt.AlignmentFlag.AlignCenter
-                       | Qt.TextFlag.TextWordWrap,
-                       "Waiting for the device's\nnext frame...")
+        if page.mapping_applies:
+            columns, grid, right = self._paint_picture(p)
         else:
-            picture = self._image.scaled(
-                frame.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation)
-            frame = QRect(0, 0, picture.width(), picture.height())
-            p.drawImage(frame, picture)
-            grid = sample_grid(self._image, columns, page.PREVIEW_ROWS)
+            columns, grid, right = 1, self._paint_cooler(p), self.PICTURE
+        self._paint_strips(p, right + self.STRIP_GAP, page.preview_lights,
+                           columns, grid)
+        p.end()
+
+    def _paint_waiting(self, p: QPainter, text: str) -> None:
+        log.debug("_FollowPreview._paint_waiting: %s", text)
+        frame = QRect(0, 0, self.PICTURE, self.PICTURE)
+        p.setPen(QPen(QColor("#5a5a62"), 1, Qt.PenStyle.DashLine))
+        p.drawRect(frame.adjusted(0, 0, -1, -1))
+        p.setPen(QColor("#9a9aa2"))
+        p.drawText(frame, Qt.AlignmentFlag.AlignCenter
+                   | Qt.TextFlag.TextWordWrap, text)
+
+    def _paint_picture(self, p: QPainter
+                       ) -> tuple[int, list[list[tuple[int, int, int]]] | None,
+                                  int]:
+        """The LCD's frame and the column lines: (columns, grid, right edge)."""
+        columns = self._page.preview_columns
+        log.debug("_FollowPreview._paint_picture: %d column(s)", columns)
+        if self._image is None or self._image.isNull():
+            self._paint_waiting(p, "Waiting for the device's\nnext frame...")
+            return columns, None, self.PICTURE
+        picture = self._image.scaled(
+            self.PICTURE, self.PICTURE, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+        frame = QRect(0, 0, picture.width(), picture.height())
+        p.drawImage(frame, picture)
         p.setPen(QPen(QColor("#d9b45a"), 1, Qt.PenStyle.DashLine))
         for i in range(1, columns):
             x = frame.left() + frame.width() * i // columns
             p.drawLine(x, frame.top(), x, frame.bottom())
-        self._paint_strips(p, frame.right() + self.STRIP_GAP, lights, columns,
-                           grid)
-        p.end()
+        return (columns, sample_grid(self._image, columns,
+                                     self._page.PREVIEW_ROWS), frame.right())
+
+    def _paint_cooler(self, p: QPainter
+                      ) -> list[list[tuple[int, int, int]]] | None:
+        """The cooler's LEDs, ten to a row; the one column every light gets
+        -- stretched over its LEDs as the drivers stretch it."""
+        log.debug("_FollowPreview._paint_cooler: %d LED(s)", len(self._colors))
+        if not self._colors:
+            self._paint_waiting(p, "Waiting for the cooler's\ncolours...")
+            return None
+        size = self.PICTURE // self.COOLER_ROW
+        for i, rgb in enumerate(self._colors):
+            row, col = divmod(i, self.COOLER_ROW)
+            p.fillRect(QRect(col * size + 2, row * size + 2, size - 4,
+                             size - 4), QColor(*rgb))
+        return [[rgb] for rgb in stretch(self._colors,
+                                         self._page.PREVIEW_ROWS)]
 
     def _paint_strips(self, p: QPainter, left: int, lights: Sequence[str],
                       columns: int,
@@ -497,8 +535,6 @@ class _FollowForm(QWidget):
         self._mapping_label.setVisible(applies)
         self._mapping.setVisible(applies)
         self._mapping.show_values(tuple(FollowMapping), page.mapping)
-        self.preview.setVisible(applies)
-        self._legend.setVisible(applies)
         self._legend.setText("   ".join(
             f"{chr(ord('A') + i)}: {name}"
             for i, name in enumerate(page.preview_lights)))
@@ -538,6 +574,7 @@ class RgbPageView(QWidget):
         self.page = RgbPage()
         self._busy = False
         self._status_at = 0.0
+        self._lead = ""                   # the first cooler heard from
         self._access = self._access_row()
         self._lights_column = _LightsColumn(self.page, self._access,
                                             self._on_changed)
@@ -660,7 +697,27 @@ class RgbPageView(QWidget):
             return
         log.debug("RgbPageView.on_frame: %s", key)
         self._follow.preview.show_frame(surface)
+        self._status_due()
+
+    def on_led_colors(self, event: object) -> None:
+        """``LedColorsChanged``: a followed cooler's colours -- the very ones
+        the follower takes, before the cooler's segment mask."""
+        key = getattr(event, "key", "")
+        colors = getattr(event, "colors", ())
+        source = self.page.follow_source
+        if (self.page.mapping_applies or not colors
+                or not self._follow.preview.isVisible()
+                or key != (source or self._lead or key)):
+            return
+        log.debug("RgbPageView.on_led_colors: %s %d", key, len(colors))
+        self._lead = self._lead or key     # "the first cooler": the first heard
+        self._follow.preview.show_colors(colors)
+        self._status_due()
+
+    def _status_due(self) -> None:
+        """Re-read what following is doing, every few seconds while shown."""
         if (now := time.monotonic()) - self._status_at >= STATUS_EVERY_S:
+            log.debug("RgbPageView._status_due")
             self._status_at = now
             self.page.follow_now(self._following())
             self._follow.show_status()
@@ -668,6 +725,7 @@ class RgbPageView(QWidget):
     def refresh(self) -> None:
         """Start again from the App -- three reads, no bus traffic."""
         log.info("RgbPageView.refresh")
+        self._lead = ""
         self._access.refresh()
         self.page.load(self._lights(), self._following(), self._devices())
         self._show()

@@ -147,3 +147,28 @@ def test_the_preview_samples_as_the_app_does(columns: int) -> None:
             image.setPixelColor(x, y, QColor(x * 255 // 319, y, (x + y) % 256))
     assert sample_grid(image, columns, 10) == QtRenderer().get_pixels_rgb(
         image, columns, 10)
+
+
+def test_a_followed_cooler_reaches_the_preview_as_the_follower_gets_it(
+        view: Any) -> None:
+    """The first cooler heard leads, as in the App; the strips are its
+    colours stretched over each light's LEDs, the drivers' own rule."""
+    from trcc.core.events import LedColorsChanged
+    from trcc.core.led_models import stretch
+
+    view._source_buttons[RgbSource.FOLLOW].click()
+    view._follow._on_source(view._follow._source.findData(""))
+    colors = tuple((i * 8, 0, 255 - i * 8) for i in range(30))
+    preview = view._follow.preview
+    view.on_led_colors(LedColorsChanged(key="0416:8001", color_count=30,
+                                        colors=colors))
+    assert preview._colors == colors
+    view.on_led_colors(LedColorsChanged(key="0416:8002", color_count=1,
+                                        colors=((1, 1, 1),)))
+    assert preview._colors == colors          # not the cooler that leads
+    assert stretch(colors, 10) == [colors[i * 3] for i in range(10)]
+    # An LCD followed: a cooler's colours are not its picture.
+    view._follow._on_source(view._follow._source.findData(LCD))
+    view.on_led_colors(LedColorsChanged(key="0416:8001", color_count=1,
+                                        colors=((9, 9, 9),)))
+    assert preview._colors == ()

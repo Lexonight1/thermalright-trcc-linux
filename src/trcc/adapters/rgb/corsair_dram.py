@@ -45,6 +45,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from ...core.led_models import stretch
 from ...core.logs import per_frame
 from ...core.models import (
     EFFECT_TRAITS,
@@ -56,7 +57,6 @@ from ...core.models import (
 )
 from ...core.ports import SMBUS_BLOCK_MAX, RamLights, SmBus
 from ...core.ram_effects import effect_problem
-from .openrgb import stretch
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
