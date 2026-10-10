@@ -568,6 +568,12 @@ class EventBus:
         except ValueError:
             pass
 
+    def subscriber_count(self, event_type: type[Event]) -> int:
+        """How many handlers listen for *event_type* -- whether anyone does."""
+        count = len(self._handlers.get(event_type, ()))
+        log.debug("subscriber_count: %s -> %d", event_type.__name__, count)
+        return count
+
     def publish(self, event: Event) -> None:
         """Fan out *event* to every handler subscribed to its type.
 

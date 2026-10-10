@@ -587,6 +587,10 @@ def test_a_frame_from_the_socket_is_shown_without_asking_for_another(
 
     from trcc.core.events import FrameSent
 
+    # Frames reach a window only while its preview is on screen.
+    window.show()
+    qtbot.waitUntil(lambda: window._bus._frames_on, timeout=3000)
+    qtbot.wait(50)       # let the queued "frames resumed" redraw run first
     frame = QImage(320, 320, QImage.Format.Format_RGB888)
     frame.fill(QColor(0, 64, 128))
     jpeg = QtRenderer().encode_jpeg(frame, 95)
@@ -606,3 +610,38 @@ def test_a_frame_from_the_socket_is_shown_without_asking_for_another(
 
     assert [(i.width(), i.height()) for i in shown] == [(320, 320)]
     assert asked == []
+
+
+def test_the_window_takes_frames_only_while_a_preview_shows(
+    window: Any, qtbot: Any,
+) -> None:
+    """Legacy's ``is_app_visible`` gate, restored: a window hidden in the tray
+    or on its settings page takes no frames, so the App encodes none for it.
+
+    MUTATION CHECK: delete ``follow_previews`` from ``TRCCApp``."""
+    assert not window._bus._frames_on, "frames before the window is shown"
+    window.show()
+    qtbot.waitUntil(lambda: window._bus._frames_on, timeout=3000)
+    window._show_view("about")                   # the settings page
+    qtbot.waitUntil(lambda: not window._bus._frames_on, timeout=3000)
+    window._show_view("form")
+    qtbot.waitUntil(lambda: window._bus._frames_on, timeout=3000)
+    window.hide()                                # closed to the tray
+    qtbot.waitUntil(lambda: not window._bus._frames_on, timeout=3000)
+
+
+def test_the_new_window_takes_frames_only_while_shown(
+    make_window: Any, fake_platform: Any, qtbot: Any,
+) -> None:
+    """qtgui's preview is permanent while its window is open, so it follows
+    the window.  MUTATION CHECK: delete ``follow_previews`` from MainWindow."""
+    app = App(fake_platform)
+    try:
+        qt_window = make_window(app)
+        assert not qt_window._bus._frames_on
+        qt_window.show()
+        qtbot.waitUntil(lambda: qt_window._bus._frames_on, timeout=3000)
+        qt_window.hide()
+        qtbot.waitUntil(lambda: not qt_window._bus._frames_on, timeout=3000)
+    finally:
+        app.close()

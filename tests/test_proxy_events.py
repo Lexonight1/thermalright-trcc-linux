@@ -61,7 +61,12 @@ def _stream_up(proxy) -> None:
     ``_stream_open`` is set only after the subscribe ack, and the server
     registers before it acks, so an event published after this is delivered.
     """
-    _until(lambda: proxy._stream_open)
+    _until(lambda: proxy._main.open)
+
+
+def _frames_up(proxy) -> None:
+    """Wait until this client's frames stream is subscribed too."""
+    _until(lambda: proxy._frames is not None and proxy._frames.open)
 
 
 def test_a_proxy_observes_events_published_daemon_side(daemon) -> None:
@@ -137,9 +142,9 @@ def test_a_dead_daemon_is_surfaced_not_silent(daemon, caplog) -> None:
     # load the stream was not open yet, the close loop below exited at once,
     # and no "CLOSED" line could ever be logged (2 of 8 under 12 burners).
     deadline = time.monotonic() + 5.0
-    while not proxy._stream_open and time.monotonic() < deadline:
+    while not proxy._main.open and time.monotonic() < deadline:
         time.sleep(0.02)
-    assert proxy._stream_open, "the event stream never opened"
+    assert proxy._main.open, "the event stream never opened"
 
     # What the flag said at the moment the CLOSED line was written.  The
     # reader used to clear the flag FIRST, so a waiter could see False and
@@ -151,7 +156,7 @@ def test_a_dead_daemon_is_surfaced_not_silent(daemon, caplog) -> None:
     class _Witness(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
             if "event stream CLOSED" in record.getMessage():
-                flag_at_close.append(proxy._stream_open)
+                flag_at_close.append(proxy._main.open)
 
     witness = _Witness()
     logging.getLogger("trcc.proxy").addHandler(witness)
@@ -159,12 +164,12 @@ def test_a_dead_daemon_is_surfaced_not_silent(daemon, caplog) -> None:
         with caplog.at_level(logging.WARNING, logger="trcc.proxy"):
             srv.shutdown()
             deadline = time.monotonic() + 5.0
-            while proxy._stream_open and time.monotonic() < deadline:
+            while proxy._main.open and time.monotonic() < deadline:
                 time.sleep(0.05)
     finally:
         logging.getLogger("trcc.proxy").removeHandler(witness)
 
-    assert not proxy._stream_open
+    assert not proxy._main.open
     assert any("event stream CLOSED" in r.message for r in caplog.records), (
         "the stream died silently — that is the failure mode this guards"
     )
@@ -259,14 +264,14 @@ def test_close_stops_this_clients_reader_thread(daemon) -> None:
     _app, _srv, proxy = daemon
     proxy.events.subscribe(DeviceConnected, lambda _e: None)
     _stream_up(proxy)
-    reader = proxy._reader
+    reader = proxy._main.thread
     assert reader is not None and reader.is_alive()
 
     proxy.close()
 
-    assert not proxy._stream_open
+    assert not proxy._main.open
     assert not reader.is_alive(), "the reader thread outlived close()"
-    assert proxy._reader is None
+    assert proxy._main.thread is None
 
 
 def test_a_relative_path_crosses_the_socket_absolute(
@@ -327,6 +332,7 @@ def test_a_sent_frame_crosses_the_socket_as_a_picture(
         seen: list = []
         proxy.events.subscribe(FrameSent, seen.append)
         _stream_up(proxy)
+        _frames_up(proxy)
         frame = QImage(320, 320, QImage.Format.Format_RGB888)
         frame.fill(QColor(0, 64, 128))
 
@@ -364,7 +370,7 @@ def test_a_dropped_client_reopens_its_stream_and_observes_again(daemon) -> None:
     app.events.publish(ThemeLoaded(key="k", theme_name="after"))
     _wait(seen, 2)
     assert [e.theme_name for e in seen] == ["before", "after"]
-    assert proxy._stream_open
+    assert proxy._main.open
 
 
 def test_a_stopping_app_is_not_reopened(daemon) -> None:
@@ -372,9 +378,9 @@ def test_a_stopping_app_is_not_reopened(daemon) -> None:
     _app, srv, proxy = daemon
     proxy.events.subscribe(ThemeLoaded, lambda _e: None)
     _stream_up(proxy)
-    reader = proxy._reader
+    reader = proxy._main.thread
     srv.shutdown()
-    _until(lambda: not proxy._stream_open)
+    _until(lambda: not proxy._main.open)
     assert reader is not None
     reader.join(timeout=2.0)
     assert not reader.is_alive(), "the reader kept trying a stopping App"
@@ -389,7 +395,7 @@ def test_close_during_a_reopen_stops_the_reader(daemon, monkeypatch) -> None:
     app, srv, proxy = daemon
     proxy.events.subscribe(ThemeLoaded, lambda _e: None)
     _stream_up(proxy)
-    reader = proxy._reader
+    reader = proxy._main.thread
     assert reader is not None
 
     from trcc import ipc
@@ -417,3 +423,59 @@ def test_close_during_a_reopen_stops_the_reader(daemon, monkeypatch) -> None:
     # The App prunes a gone subscriber on its next write, as for any client.
     app.events.publish(ThemeLoaded(key="k", theme_name="after close"))
     _until(lambda: not srv._subscribers)
+
+
+# ── Frames ride their own stream, open only while someone listens ──────────
+
+def test_no_frame_listener_means_the_app_encodes_nothing(
+    fake_platform, tmp_path, monkeypatch,
+) -> None:
+    """Every frame the App sends a window is a JPEG encode -- ~19% of a core at
+    video rate, measured 2026-10-10 with the window hidden in the tray.  A
+    client whose bus has no ``FrameSent`` listener must not cost that.
+
+    MUTATION CHECK: put ``FrameSent`` back on the main stream's types."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.events import FrameSent
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    app = App(fake_platform, renderer=QtRenderer())
+    encoded: list[object] = []
+    monkeypatch.setattr(app.display, "encode_jpeg",
+                        lambda surface, *a: encoded.append(surface) or b"jpeg")
+    srv = IPCServer(app)
+    srv.start()
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    proxy = AppProxy()
+    try:
+        themes: list = []
+        proxy.events.subscribe(ThemeLoaded, themes.append)
+        _stream_up(proxy)
+        app.events.publish(FrameSent(key="k", bytes_sent=1, surface=object()))
+        app.events.publish(ThemeLoaded(key="k", theme_name="after the frame"))
+        _wait(themes)
+        assert encoded == [], "a frame was encoded for a client not showing it"
+        assert proxy._frames is None
+
+        frames: list = []
+        proxy.events.subscribe(FrameSent, frames.append)
+        _frames_up(proxy)
+        app.events.publish(FrameSent(key="k", bytes_sent=1, surface=object()))
+        _wait(frames)
+        assert len(encoded) == 1 and frames[0].image == b"jpeg"
+
+        proxy.events.unsubscribe(FrameSent, frames.append)
+        assert proxy._frames is None
+        # The App learns a stream is gone on its next write to it: that one
+        # frame is encoded, the write fails, the subscriber is dropped.
+        app.events.publish(FrameSent(key="k", bytes_sent=1, surface=object()))
+        _until(lambda: len(srv._subscribers) == 1)
+        after_hide = len(encoded)
+        assert after_hide <= 2
+        app.events.publish(FrameSent(key="k", bytes_sent=1, surface=object()))
+        app.events.publish(ThemeLoaded(key="k", theme_name="last"))
+        _until(lambda: themes[-1].theme_name == "last")
+        assert len(encoded) == after_hide, "the stream outlived its last listener"
+    finally:
+        proxy.close()
+        srv.shutdown()

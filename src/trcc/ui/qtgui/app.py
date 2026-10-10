@@ -32,6 +32,7 @@ from ...core.commands import (
     MarkFirstRunDone,
     RefreshAutostart,
 )
+from ...core.logs import per_frame
 from ...core.ports import CommandBus
 
 if TYPE_CHECKING:
@@ -65,6 +66,7 @@ from .panels import (
 from .preview_surface import FRAME_EDGE, PreviewSurface
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -230,7 +232,7 @@ class MainWindow(QMainWindow):
         self._status.showMessage(f"Disconnected: {event.key}", 5000)
 
     def _on_frame_sent(self, event: FrameSent) -> None:
-        log.info("_on_frame_sent")
+        frame_log.debug("_on_frame_sent: %s", event.key)     # per frame
         self._status.showMessage(f"Frame sent: {event.bytes_sent} bytes", 2000)
 
     def _on_error(self, event: ErrorOccurred) -> None:
@@ -259,6 +261,11 @@ class MainWindow(QMainWindow):
         # The state read-out reports the size of the render the surface just
         # produced rather than dispatching a second BuildPreview of its own.
         self._preview_surface.rendered.connect(self._state_panel.set_render_size)
+        # Frames only while the preview is on screen (it always is while the
+        # window is); on its return, the current one -- a still theme may not
+        # send another for a while.
+        self._bus.frames_resumed.connect(self._preview_surface.refresh)
+        self._bus.follow_previews(self._preview_surface)
 
         container = QWidget(self)
         row = QHBoxLayout(container)

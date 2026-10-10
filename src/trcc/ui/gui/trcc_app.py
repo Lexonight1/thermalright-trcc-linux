@@ -235,6 +235,9 @@ class TRCCApp(QMainWindow):
         self._bus.device_connected.connect(self._on_bus_device_connected, type=qconn)
         self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
+        # Frames only while the LCD or LED preview is on screen (see the bridge).
+        self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
+        self._bus.follow_previews(self.uc_preview, self.uc_led_control)
         self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
         # The frame round each casting device's region (C# FormScreenshot),
         # shared with qtgui and following the App, not this window.
@@ -413,6 +416,17 @@ class TRCCApp(QMainWindow):
         elif colors:
             handler.handle_frame({"display_colors": list(colors)})
         else:
+            handler.rebuild_preview()
+
+    def _on_frames_resumed(self) -> None:
+        """Back on screen: show the selected LCD's current frame at once.
+
+        A video's next frame is a few milliseconds away, but a still theme
+        may not send another until something changes.
+        """
+        handler = self._handlers.get(self._active_key)
+        log.info("_on_frames_resumed: %s", self._active_key or "no device")
+        if isinstance(handler, LCDHandler):
             handler.rebuild_preview()
 
     def _on_bus_video_started(self, event: Any) -> None:

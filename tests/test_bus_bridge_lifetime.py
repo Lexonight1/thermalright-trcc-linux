@@ -63,3 +63,64 @@ def test_a_publish_after_a_bridge_is_freed_logs_no_error(
     with caplog.at_level(logging.ERROR, logger="trcc.core.events"):
         app.events.publish(ScreencastStopped(key="0000:0000"))
     assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
+
+
+# ── Frames only while a preview is on screen ────────────────────────────────
+
+def _frame_listeners(bus: Any) -> int:
+    from trcc.core.events import FrameSent
+    return bus.subscriber_count(FrameSent)
+
+
+def test_frames_follow_the_preview_on_screen(qtbot: Any) -> None:
+    """Legacy skipped the preview while the window was not visible
+    (``is_app_visible`` -> ``lcd_handler.py:548``); the cutover dropped it and
+    a window in the tray cost the App a fifth of a core.  Off while no preview
+    shows: before the first show, on hide, when its window hides, minimised,
+    and on another page.  On again -- with one "frames resumed" -- when back.
+
+    MUTATION CHECK: make ``_sync_frames`` always True."""
+    from PySide6.QtWidgets import QStackedWidget, QWidget
+
+    from trcc.core.events import EventBus
+
+    bus = EventBus()
+    bridge = BusBridge(bus)
+    window = QStackedWidget()
+    qtbot.addWidget(window)
+    preview, other = QWidget(), QWidget()
+    window.addWidget(preview)
+    window.addWidget(other)
+    resumed: list[bool] = []
+    bridge.frames_resumed.connect(lambda: resumed.append(True))
+
+    bridge.follow_previews(preview)
+    assert _frame_listeners(bus) == 0, "nothing on screen yet"
+
+    window.show()
+    qtbot.waitUntil(lambda: _frame_listeners(bus) == 1)
+    assert resumed == [True]
+
+    window.setCurrentWidget(other)                     # another page
+    qtbot.waitUntil(lambda: _frame_listeners(bus) == 0)
+    window.setCurrentWidget(preview)
+    qtbot.waitUntil(lambda: _frame_listeners(bus) == 1)
+
+    window.hide()                                      # closed to the tray
+    qtbot.waitUntil(lambda: _frame_listeners(bus) == 0)
+    window.show()
+    qtbot.waitUntil(lambda: _frame_listeners(bus) == 1)
+
+    window.showMinimized()
+    qtbot.waitUntil(lambda: _frame_listeners(bus) == 0)
+    assert len(resumed) == 3
+
+
+def test_a_bridge_with_no_preview_to_follow_takes_every_frame() -> None:
+    """A headless tool or a test builds a bridge with no window at all."""
+    from trcc.core.events import EventBus
+
+    bus = EventBus()
+    bridge = BusBridge(bus)
+    assert _frame_listeners(bus) == 1
+    del bridge

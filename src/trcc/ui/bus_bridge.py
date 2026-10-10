@@ -20,8 +20,9 @@ import dataclasses
 import logging
 from functools import partial
 
-from PySide6.QtCore import QObject, Signal, SignalInstance
+from PySide6.QtCore import QEvent, QObject, Signal, SignalInstance
 from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QWidget
 
 from ..core.events import (
     AutostartChanged,
@@ -126,19 +127,76 @@ class BusBridge(QObject):
     # holds instead of keeping a slot per setting; every one carries ``key``.
     # Not ``LedColorsChanged``: every render publishes it.
     settings_changed = Signal(object)
+    # Frames flow again after the window was hidden: show the current one
+    # now, since a still panel may not send another for a while.
+    frames_resumed = Signal()
 
     def __init__(self, bus: EventBus) -> None:
         super().__init__()
         self._bus = bus
+        self._frames = _FrameForwarder(self.frame_sent, FrameSent.__name__)
+        self._frames_on = False
+        self._previews: tuple[QWidget, ...] = ()
         log.info("BusBridge.__init__: wiring EventBus → Qt signals")
         self._wire()
+
+    def follow_previews(self, *previews: QWidget) -> None:
+        """Take frames only while one of *previews* is on screen.
+
+        A frame is a picture the App encodes for this window and the window
+        decodes -- work for nobody when no preview is showing: the window
+        hidden in the tray or minimised, or another page open (settings,
+        system info).  Measured 2026-10-10 with the window hidden: the App at
+        26-27% and the window at 7-10%; with no window, the App at 8%.  qtgui
+        already paused its preview timers this way per panel
+        (``TicksWhileShown``); this does it for the frames themselves, in both
+        skins.  Every other event keeps flowing, so nothing is stale on return.
+
+        Qt sends a hide event to every visible child of a widget it hides, so
+        watching the previews themselves also catches the window hiding.
+        Minimised windows still count as visible to Qt; their state change is
+        watched on each preview's window.
+        """
+        log.info("BusBridge.follow_previews: %s",
+                 [type(w).__name__ for w in previews])
+        self._previews = previews
+        for widget in {*previews, *(w.window() for w in previews)}:
+            widget.installEventFilter(self)
+        self._sync_frames()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Show, hide and minimise of a followed preview or its window."""
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Hide,
+                            QEvent.Type.WindowStateChange):
+            log.debug("BusBridge.eventFilter: %s %s", type(watched).__name__,
+                      event.type().name)
+            self._sync_frames()
+        return False
+
+    def _sync_frames(self) -> None:
+        """Frames on while any followed preview is on screen."""
+        on = any(w.isVisible() and not w.window().isMinimized()
+                 for w in self._previews)
+        log.debug("BusBridge._sync_frames: %s -> %s", self._frames_on, on)
+        self._set_frames(on)
+
+    def _set_frames(self, on: bool) -> None:
+        """Subscribe or drop the frame forwarder; announce frames resuming."""
+        if on == self._frames_on:
+            return
+        log.info("BusBridge: frames %s", "on" if on else "off (window hidden)")
+        self._frames_on = on
+        if on:
+            self._bus.subscribe(FrameSent, self._frames)
+            self.frames_resumed.emit()
+        else:
+            self._bus.unsubscribe(FrameSent, self._frames)
 
     def _wire(self) -> None:
         pairs: tuple[tuple[type[Event], SignalInstance], ...] = (
             (DeviceDiscovered, self.device_discovered),
             (DeviceConnected, self.device_connected),
             (DeviceDisconnected, self.device_disconnected),
-            (FrameSent, self.frame_sent),
             (OrientationChanged, self.orientation_changed),
             (BrightnessChanged, self.brightness_changed),
             (ThemeLoaded, self.theme_loaded),
@@ -187,18 +245,21 @@ class BusBridge(QObject):
             (LedSettingsChanged, self.settings_changed),
         )
         subscribed = tuple(
-            (event_type, (_FrameForwarder if event_type is FrameSent
-                          else _SignalForwarder)(signal, event_type.__name__))
+            (event_type, _SignalForwarder(signal, event_type.__name__))
             for event_type, signal in pairs)
         for event_type, forwarder in subscribed:
             self._bus.subscribe(event_type, forwarder)
+        # Frames are on until a followed window says otherwise, so a bridge
+        # with no window (a test, a headless tool) still sees every frame.
+        self._set_frames(True)
+        subscribed = (*subscribed, (FrameSent, self._frames))
         # A freed bridge takes its subscriptions with it.  Left on the bus,
         # every forwarder raises "Signal source has been deleted" and the bus
         # logs a traceback per dead bridge per publish -- measured: one dead
         # bridge left 40 handlers.  The slot is a module function over the bus
         # and the pairs, never ``self``, so it cannot keep the bridge alive.
         self.destroyed.connect(partial(_unsubscribe, self._bus, subscribed))
-        log.info("BusBridge._wire: subscribed %d event types", len(pairs))
+        log.info("BusBridge._wire: subscribed %d event types", len(pairs) + 1)
 
 
 def _unsubscribe(bus: EventBus,
