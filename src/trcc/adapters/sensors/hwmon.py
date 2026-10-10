@@ -934,7 +934,15 @@ def discover_dram_temp(devices: list[HwmonDevice]) -> list[DramSource]:
         if dev.driver not in _DRAM_DRIVERS:
             continue
         if dev.read_temp(1) is None:
-            log.debug("discover_dram_temp: %s has no temp1_input — skip", dev.driver)
+            if (dev.attrs / "temp1_input").exists():
+                # There, and not answering: the memory's SPD hub is stuck --
+                # seen 2026-10-09 after another program probed the bus.
+                log.warning("discover_dram_temp: %s at %s does not answer -- "
+                            "the memory's SPD hub is stuck; a full power-off "
+                            "(not a restart) clears it", dev.driver, dev.attrs)
+            else:
+                log.debug("discover_dram_temp: %s has no temp1_input — skip",
+                          dev.driver)
             continue
         label = _read_text(dev.attrs / "temp1_label")
         dram.append(HwmonDram(dev, label))

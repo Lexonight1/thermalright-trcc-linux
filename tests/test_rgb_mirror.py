@@ -277,6 +277,8 @@ def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:  # type: ignore[n
             opened.append(self)
 
     monkeypatch.setattr(linux, "LinuxSmBus", _Bus)
+    # Never the host's own sensors: a stuck hub on the dev box failed this.
+    monkeypatch.setattr(linux, "silent_memory_sensors", lambda: [])
     monkeypatch.setattr(linux, "find_smbus", lambda: (3, 5))
     assert [b.number for b in linux.LinuxOS.smbuses(object())] == [3, 5]  # type: ignore[arg-type]
     monkeypatch.setattr(linux, "find_smbus", lambda: (3, 7))
@@ -519,3 +521,22 @@ def test_stopping_follow_keeps_the_ram_closing_releases_it() -> None:
     assert not bus.closed and service.ram_sticks() is not None
     service.close()
     assert bus.closed and service.ram_sticks() is None
+
+
+def test_linux_will_not_open_a_bus_whose_spd_hub_is_stuck(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A stuck SPD hub on the bus is no place to add traffic: the follower and
+    the effects are refused, with the cure, until a power-off clears it.
+
+    MUTATION CHECK: drop the stuck-hub refusal from ``LinuxOS.smbuses``."""
+    from trcc.adapters.system import linux
+
+    opened: list[int] = []
+    monkeypatch.setattr(linux, "LinuxSmBus", lambda n: opened.append(n))
+    monkeypatch.setattr(linux, "find_smbus", lambda: (3,))
+    monkeypatch.setattr(linux, "silent_memory_sensors", lambda: ["3-0051"])
+    with pytest.raises(OSError, match="3-0051 are not answering.*power-off"):
+        linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
+    assert opened == []
+    # A stuck sensor on ANOTHER bus is not this bus's business.
+    monkeypatch.setattr(linux, "silent_memory_sensors", lambda: ["9-0050"])
+    assert len(linux.LinuxOS.smbuses(object())) == 1  # type: ignore[arg-type]

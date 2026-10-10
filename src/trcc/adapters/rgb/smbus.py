@@ -69,6 +69,33 @@ def find_smbus(root: Path = ADAPTERS) -> tuple[int, ...]:
     return tuple(found)
 
 
+#: The memory's own temperature sensors, bound by the kernel on the bus the
+#: RGB controllers share: DDR5's SPD hub, DDR4's thermal sensor.
+MEMORY_SENSOR_DRIVERS = Path("/sys/bus/i2c/drivers")
+_MEMORY_SENSORS = ("spd5118", "jc42")
+
+
+def silent_memory_sensors(drivers: Path = MEMORY_SENSOR_DRIVERS) -> list[str]:
+    """The memory sensors (``3-0051``) whose temperature reads fail.
+
+    A sensor that is bound and will not answer is a stuck SPD hub -- what
+    another program's probe left on 2026-10-09.  Reading it is the kernel
+    driver's ordinary path, the same one every temperature display takes.
+    """
+    silent = []
+    for driver in _MEMORY_SENSORS:
+        for device in sorted((drivers / driver).glob("*-00*")):
+            for temp in device.glob("hwmon/hwmon*/temp1_input"):
+                try:
+                    temp.read_text(encoding="utf-8")
+                except OSError as e:
+                    log.warning("silent_memory_sensors: %s %s -- %s", driver,
+                                device.name, e)
+                    silent.append(device.name)
+    log.info("silent_memory_sensors: %s", silent or "none")
+    return silent
+
+
 class LinuxSmBus(SmBus):
     """``/dev/i2c-<bus>``.  Every failure is an ``OSError``."""
 

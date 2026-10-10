@@ -39,7 +39,7 @@ from ...core.ports import (
     SensorEnumerator,
     SmBus,
 )
-from ..rgb.smbus import LinuxSmBus, find_smbus
+from ..rgb.smbus import LinuxSmBus, find_smbus, silent_memory_sensors
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
     detect_gpu_vendors,
@@ -1012,6 +1012,15 @@ class LinuxOS(BaseOS, key="linux"):
         if not numbers:
             raise OSError("no SMBus controller found -- is the i2c-dev "
                           "module loaded?")
+        # A stuck SPD hub on a bus is no place to add traffic.
+        stuck = [s for s in silent_memory_sensors()
+                 if s.partition("-")[0].isdigit()
+                 and int(s.partition("-")[0]) in numbers]
+        if stuck:
+            raise OSError(f"the memory's SPD hub(s) {', '.join(stuck)} are not "
+                          "answering -- TRCC will not use that bus until a "
+                          "full power-off (shut down, switch the power supply "
+                          "off for 30 s) clears them")
         opened: list[SmBus] = []
         try:
             for number in numbers:

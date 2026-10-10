@@ -1753,3 +1753,23 @@ def test_intel_power_comes_from_the_energy_counter(
     assert gpu.power() == 45.0
     counter.write_text("5")                        # wrapped
     assert gpu.power() is None
+
+
+def test_a_stuck_spd_hub_is_a_warning_not_a_missing_file(
+        tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """``temp1_input`` there and failing is a stuck SPD hub, not a DIMM with no
+    sensor.  It used to log "has no temp1_input" at DEBUG -- invisible in a
+    report, and wrong (2026-10-09, after another program probed the bus).
+
+    MUTATION CHECK: drop the ``exists()`` branch in ``discover_dram_temp``."""
+    import logging
+    stuck = _hwmon_dir(tmp_path, "hwmon2", "spd5118")
+    (tmp_path / "hwmon2" / "temp1_input").mkdir()     # reads fail, like ENXIO
+    absent = _hwmon_dir(tmp_path, "hwmon3", "jc42")    # no sensor file at all
+    caplog.set_level(logging.DEBUG, logger="trcc.adapters.sensors.hwmon")
+
+    assert hwmon.discover_dram_temp([stuck, absent]) == []
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1 and "does not answer" in warnings[0]
+    assert "power-off" in warnings[0]

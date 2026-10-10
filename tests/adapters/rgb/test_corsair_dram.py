@@ -251,3 +251,22 @@ def test_a_byte_lost_on_the_bus_is_never_saved() -> None:
                             _effect(effect=RamEffect.RAINBOW))
     assert ("write", 0x19, 0x82) not in bus.touched
     assert bus.chips[0x19].effect == b""
+
+
+def _memory_sensor(drivers: Path, driver: str, device: str, answers: bool) -> None:
+    temp = drivers / driver / device / "hwmon" / "hwmon7" / "temp1_input"
+    temp.parent.mkdir(parents=True)
+    if answers:
+        temp.write_text("31500\n", encoding="utf-8")
+    else:
+        temp.mkdir()           # reading it fails, as a stuck hub's ENXIO does
+
+
+def test_a_stuck_memory_sensor_is_named(tmp_path: Path) -> None:
+    """Measured on the maintainer's box 2026-10-10: both spd5118 hubs ENXIO."""
+    from trcc.adapters.rgb.smbus import silent_memory_sensors
+    _memory_sensor(tmp_path, "spd5118", "3-0051", answers=False)
+    _memory_sensor(tmp_path, "spd5118", "3-0053", answers=True)
+    _memory_sensor(tmp_path, "jc42", "7-0018", answers=False)
+    assert silent_memory_sensors(tmp_path) == ["3-0051", "7-0018"]
+    assert silent_memory_sensors(tmp_path / "absent") == []
