@@ -40,6 +40,7 @@ not ported: they are listed in the log and left alone.
 """
 from __future__ import annotations
 
+import errno
 import logging
 import time
 from collections.abc import Callable, Sequence
@@ -79,7 +80,10 @@ _REG_SET_BINARY_DATA = 0x20
 _REG_STATUS, _STATUS_BUSY = 0x30, 0x08
 _REG_WRITE_CONFIGURATION = 0x82
 _CONFIG_EFFECT, _CONFIG_COLORS = 1, 2
-_READY_TRIES, _READY_GAP_S = 5, 0.010
+#: How long a stick may stay off the bus while it saves.  The maintainer's
+#: Vengeance DDR5 (0x0701) refuses EVERY access for 118 ms after a commit
+#: (measured twice, 2026-10-10) -- OpenRGB polls 50 ms and ignores the rest.
+_SAVE_TIMEOUT_S, _READY_GAP_S = 1.0, 0.005
 
 _EFFECT_BYTES: dict[RamEffect, int] = {
     RamEffect.COLOR_SHIFT: 0x00, RamEffect.COLOR_PULSE: 0x01,
@@ -296,16 +300,30 @@ class CorsairDramMirror(RamLights):
         self._wait_ready(bus, address)
 
     def _wait_ready(self, bus: SmBus, address: int) -> None:
-        """Until the stick has stored the configuration -- briefly."""
-        for _ in range(_READY_TRIES):
-            status = bus.read_byte_data(address, _REG_STATUS)
-            if not status & _STATUS_BUSY:
-                log.debug("_wait_ready: 0x%02x ready (0x%02x)", address, status)
-                return
+        """Until the stick has stored the configuration.
+
+        A saving stick is off the bus -- it refuses every read -- so a refused
+        read means "still saving", not an error.  ``OSError`` only if it is
+        not back and ready within ``_SAVE_TIMEOUT_S``.
+        """
+        start, refused = time.monotonic(), 0
+        while time.monotonic() - start < _SAVE_TIMEOUT_S:
+            try:
+                status = bus.read_byte_data(address, _REG_STATUS)
+            except OSError:
+                refused += 1
+            else:
+                if not status & _STATUS_BUSY:
+                    log.info("_wait_ready: 0x%02x saved in %d ms (%d refused "
+                             "read(s), status 0x%02x)", address,
+                             (time.monotonic() - start) * 1000, refused, status)
+                    return
             time.sleep(_READY_GAP_S)
-        log.warning("CorsairDramMirror: 0x%02x still busy after %d ms -- "
-                    "carrying on, as OpenRGB does", address,
-                    int(_READY_TRIES * _READY_GAP_S * 1000))
+        log.warning("_wait_ready: 0x%02x not ready %d ms after saving (%d "
+                    "refused read(s))", address, _SAVE_TIMEOUT_S * 1000, refused)
+        raise OSError(errno.ETIMEDOUT,
+                      f"0x{address:02x} was not ready "
+                      f"{int(_SAVE_TIMEOUT_S * 1000)} ms after saving")
 
     # ── Finding the sticks ────────────────────────────────────────────
 

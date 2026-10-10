@@ -25,6 +25,7 @@ point them at these helpers).
 """
 from __future__ import annotations
 
+import errno
 import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -564,13 +565,18 @@ class ScriptedCorsairStick:
     colours (2), and 0x31 / 0x32 take a direct colour packet.  Any other
     read raises: a script that is asked something it never answered is a
     protocol change, and should fail loudly.
+
+    After a commit it refuses the next *saving* accesses, as a real stick
+    is off the bus for ~118 ms while it saves (measured on Vengeance DDR5).
     """
 
     def __init__(self, info: bytes = CORSAIR_STICK_INFO,
                  checksum: int | None = None,
-                 ids: tuple[int, int] = (0x1B, 0x04)) -> None:
+                 ids: tuple[int, int] = (0x1B, 0x04),
+                 saving: int = 3) -> None:
         log.debug("ScriptedCorsairStick: ids %s", ids)
         self.info, self.ids = info, ids
+        self.saving_for, self.saving = saving, 0
         self.checksum = crc8(info) if checksum is None else checksum
         self.at = 0
         self.reading = True               # info selected; False: write buffer
@@ -579,8 +585,16 @@ class ScriptedCorsairStick:
         self.effect = b""                 # the committed effect configuration
         self.colors = b""                 # the committed colour data
 
+    def _off_the_bus_while_saving(self) -> None:
+        if self.saving:
+            log.debug("ScriptedCorsairStick: saving, %d refusal(s) left",
+                      self.saving)
+            self.saving -= 1
+            raise OSError(errno.ENXIO, "No such device or address")
+
     def read(self, register: int) -> int:
         log.debug("ScriptedCorsairStick.read: 0x%02x", register)
+        self._off_the_bus_while_saving()
         match register:
             case 0x43:
                 return self.ids[0]
@@ -597,6 +611,7 @@ class ScriptedCorsairStick:
 
     def write(self, register: int, value: int) -> None:
         log.debug("ScriptedCorsairStick.write: 0x%02x = 0x%02x", register, value)
+        self._off_the_bus_while_saving()
         match register:
             case 0x61:
                 self.reading = True
@@ -607,9 +622,9 @@ class ScriptedCorsairStick:
             case 0x20:
                 self.buffer.append(value)
             case 0x82 if value == 1:
-                self.effect = bytes(self.buffer)
+                self.effect, self.saving = bytes(self.buffer), self.saving_for
             case 0x82 if value == 2:
-                self.colors = bytes(self.buffer)
+                self.colors, self.saving = bytes(self.buffer), self.saving_for
             case _:
                 raise AssertionError(
                     f"unexpected write of 0x{value:02x} to 0x{register:02x}")

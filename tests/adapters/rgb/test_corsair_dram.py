@@ -14,6 +14,7 @@ from tests.mock_platform import (
     ScriptedCorsairStick,
     ScriptedSmBus,
 )
+from trcc.adapters.rgb import corsair_dram
 from trcc.adapters.rgb.corsair_dram import (
     ADDRESSES,
     MODELS,
@@ -207,7 +208,8 @@ def test_settings_the_effect_cannot_take_write_nothing(settings, message) -> Non
 
 
 def test_an_effect_is_written_checked_then_committed() -> None:
-    """Reset, rewind, 20 bytes through 0x20, the stick's CRC, commit, ready."""
+    """Reset, rewind, 20 bytes through 0x20, the stick's CRC, commit, then
+    status until the stick is back from saving -- off the bus meanwhile."""
     mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
     stick = mirror.devices()[0]
     start = len(bus.touched)
@@ -216,7 +218,8 @@ def test_an_effect_is_written_checked_then_committed() -> None:
     assert bus.touched[start:] == [
         ("write", 0x19, 0x0B), ("write", 0x19, 0x21),
         *[("write", 0x19, 0x20)] * 20,
-        ("read", 0x19, 0x42), ("write", 0x19, 0x82), ("read", 0x19, 0x30)]
+        ("read", 0x19, 0x42), ("write", 0x19, 0x82),
+        *[("read", 0x19, 0x30)] * 4]          # 3 refused while saving, ready
     assert bus.chips[0x19].effect == effect_packet(settings)
     assert not [t for t in bus.touched if t[1] in SPD_HUBS]
 
@@ -228,6 +231,17 @@ def test_static_saves_its_colours_after_the_effect() -> None:
     chip = bus.chips[0x19]
     assert chip.effect[0] == 0x10
     assert chip.colors == bytes([255, 0, 0, 0xFF] * 10)
+
+
+def test_a_stick_that_does_not_come_back_from_saving_is_an_error(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(corsair_dram, "_SAVE_TIMEOUT_S", 0.02)
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick(saving=10**6)})
+    with pytest.raises(OSError, match="0x19 was not ready 20 ms after saving"):
+        mirror.apply_effect(mirror.devices()[0],
+                            _effect(effect=RamEffect.RAINBOW))
+    assert bus.chips[0x19].effect == effect_packet(_effect(
+        effect=RamEffect.RAINBOW))           # committed; only the wait failed
 
 
 def test_reversed_models_save_their_colours_backwards() -> None:
