@@ -1505,6 +1505,17 @@ class FollowMapping(str, Enum):
     SINGLE = "single"
 
 
+class FollowColors(str, Enum):
+    """How a region of an LCD's picture becomes one light's colour.
+
+    ``VIVID``: its brightest pixels -- a small yellow star in a red sky still
+    shows.  ``SMOOTH``: all of it, averaged -- steadier, but small bright
+    details drown.  Picked between on the maintainer's sticks, 2026-10-10.
+    """
+    VIVID = "vivid"
+    SMOOTH = "smooth"
+
+
 @dataclass(frozen=True, slots=True)
 class RgbMirrorDevice:
     """One device of another RGB system that follows the cooler (#160).
