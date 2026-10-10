@@ -7,6 +7,12 @@ effect's name and settings -- its colours, speed, direction and brightness
 with real sticks it can be corrected effect by effect; until then it shows
 what kind of effect each is, not the exact frame on the glass.
 
+Compared with the maintainer's Vengeance DDR5 (PID 0x0701), 2026-10-10:
+Colour Pulse, Rainbow Wave and Static as drawn; Colour Wave as bands of one
+colour, dark, the other, dark; Marquee and Sequential a steady colour -- the
+bytes sent match OpenRGB's, so that is this firmware, and other Corsair
+models may animate them.  The rest are still drawn from their names.
+
 ``effect_frame(settings, t, stick, sticks)`` gives one stick's LEDs, top to
 bottom, at *t* seconds.  Left / right effects travel across the sticks, so
 each stick needs its place among them.
@@ -129,9 +135,15 @@ def _rainbow_wave(f: _Frame, led: int) -> Rgb:
     return _hue(f.place(led) - f.phase * _RAINBOW_WAVE_TURNS)
 
 
+#: Colour Wave's bands, in the order they travel: each half a stick long.
+_WAVE_BANDS = 4
+
+
 def _color_wave(f: _Frame, led: int) -> Rgb:
     frame_log.debug("_color_wave")
-    return _mix(f.a, f.b, (1 + math.sin((f.place(led) - f.phase) * math.tau)) / 2)
+    # A, dark, B, dark -- travelling, as the DDR5 sticks show it.
+    at = (f.place(led) / 2 - f.phase) % 1.0
+    return (f.a, _BLACK, f.b, _BLACK)[int(at * _WAVE_BANDS)]
 
 
 def _visor(f: _Frame, led: int) -> Rgb:
@@ -151,22 +163,6 @@ def _rain(f: _Frame, led: int) -> Rgb:
     return _scale(f.a if int(f.phase + seed) % 2 == 0 else f.b, tail)
 
 
-def _marquee(f: _Frame, led: int) -> Rgb:
-    frame_log.debug("_marquee")
-    # Every third LED lit, stepping along.
-    return f.a if (led + int(f.phase * LEDS)) % 3 == 0 else _BLACK
-
-
-def _sequential(f: _Frame, led: int) -> Rgb:
-    frame_log.debug("_sequential")
-    # Fills one LED at a time with A, then with B over it.
-    filled = (f.phase % 1.0) >= f.place(led)
-    second = int(f.phase) % 2 == 1
-    if filled:
-        return f.b if second else f.a
-    return f.a if second else _BLACK
-
-
 _DRAW: dict[RamEffect, Callable[[_Frame, int], Rgb]] = {
     RamEffect.STATIC: _static,
     RamEffect.COLOR_SHIFT: _color_shift,
@@ -176,8 +172,9 @@ _DRAW: dict[RamEffect, Callable[[_Frame, int], Rgb]] = {
     RamEffect.COLOR_WAVE: _color_wave,
     RamEffect.VISOR: _visor,
     RamEffect.RAIN: _rain,
-    RamEffect.MARQUEE: _marquee,
-    RamEffect.SEQUENTIAL: _sequential,
+    # Steady on the DDR5 sticks, as Static is (see the module docstring).
+    RamEffect.MARQUEE: _static,
+    RamEffect.SEQUENTIAL: _static,
 }
 
 

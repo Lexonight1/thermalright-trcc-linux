@@ -39,16 +39,34 @@ def test_every_effect_draws_a_stick_of_real_colours(effect: RamEffect) -> None:
         assert all(0 <= c <= 255 for led in leds for c in led)
 
 
-@pytest.mark.parametrize("effect", [e for e in RamEffect
-                                    if e is not RamEffect.STATIC])
-def test_every_effect_but_static_moves(effect: RamEffect) -> None:
+#: Steady on the maintainer's Vengeance DDR5 (0x0701), seen 2026-10-10.
+STEADY = (RamEffect.STATIC, RamEffect.MARQUEE, RamEffect.SEQUENTIAL)
+
+
+@pytest.mark.parametrize("effect", [e for e in RamEffect if e not in STEADY])
+def test_every_moving_effect_moves(effect: RamEffect) -> None:
     frames = {tuple(effect_frame(_settings(effect), t)) for t in TIMES}
     assert len(frames) > 1
 
 
-def test_static_is_its_colour_on_every_led_at_every_moment() -> None:
+@pytest.mark.parametrize("effect", STEADY)
+def test_a_steady_effect_is_its_colour_on_every_led_at_every_moment(
+        effect: RamEffect) -> None:
     for t in TIMES:
-        assert effect_frame(_settings(RamEffect.STATIC), t) == [RED] * LEDS
+        assert effect_frame(_settings(effect), t) == [RED] * LEDS
+
+
+def test_colour_wave_is_one_colour_dark_the_other_dark_travelling() -> None:
+    """As the DDR5 sticks show it: bands, not a blend."""
+    wave = _settings(RamEffect.COLOR_WAVE, direction=EffectDirection.DOWN)
+    seen = {led for t in TIMES for led in effect_frame(wave, t)}
+    assert seen == {RED, BLUE, (0, 0, 0)}          # never a mix of the two
+    # The pattern spans two sticks, so one LED is 1/20 of a cycle -- 0.1 s
+    # at Medium.  Start off a band edge so rounding cannot decide it.
+    start, one_led = 0.013, PERIOD_S[EffectSpeed.MEDIUM] / 20
+    first = effect_frame(wave, start)
+    later = effect_frame(wave, start + one_led)
+    assert later[1:] == first[:-1]                 # moved one LED down
 
 
 def test_up_draws_down_upside_down() -> None:
