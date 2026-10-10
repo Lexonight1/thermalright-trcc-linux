@@ -1787,6 +1787,27 @@ Show platform info (distro, install method, config dir, permissions).
 trcc system platform-info
 ```
 
+### `trcc system ram-effect`
+
+Save one of the memory's own effects on the sticks. The stick keeps it after TRCC closes and through a reboot. If the RAM was following a device, following turns off first.
+
+```bash
+trcc system ram-effect [OPTIONS] EFFECT
+```
+
+| Argument | Description |
+|---|---|
+| `EFFECT` | The effect to save on the RAM. |
+
+| Option | Description |
+|---|---|
+| `--stick` `STICK` | A stick by ref (see `trcc system rgb`); repeat for more. Default: every stick. |
+| `--speed` `SPEED` | -- |
+| `--direction` `DIRECTION` | -- |
+| `--color` `COLOR` | R,G,B; repeat for a second colour. |
+| `--random` | Let the stick pick the colours. |
+| `--brightness` `BRIGHTNESS` | -- |
+
 ### `trcc system ram-lighting`
 
 Let TRCC reach RGB memory's lighting -- opt-in, asks for a password. RGB memory's lighting chips sit on the motherboard's SMBus, beside the chips that hold the memory's own settings. Linux can only open the whole bus, so enabling lets programs you run reach all of it, not just TRCC. Only the person logged in at this computer gets access, and only that bus. 'disable' removes it completely. It lasts across reboots. Your desktop asks for the password; the answer comes when you type it or close the prompt.
@@ -1798,6 +1819,18 @@ trcc system ram-lighting [ACTION]
 | Argument | Description |
 |---|---|
 | `ACTION` | 'enable', 'disable' or 'status' *(optional)* |
+
+### `trcc system rgb`
+
+The RGB lights TRCC can drive or hand colours to.
+
+```bash
+trcc system rgb [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--scan` | Look for the lights first: RGB memory on the SMBus, and OpenRGB's devices. |
 
 ### `trcc system sensors`
 

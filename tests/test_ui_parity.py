@@ -65,6 +65,9 @@ def _commands_dispatched_by(package: str) -> set[str]:
 # close).  A ``gap`` is not permission to leave it; it is a promise it is known.
 
 KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
+    "RgbLights": (frozenset({"cli", "api"}), "gap: the RGB page (plan step B6, 2026-10-10) is where both windows reach it; never pushed with this entry"),
+    "ScanRgbLights": (frozenset({"cli", "api"}), "gap: the RGB page (plan step B6, 2026-10-10) is where both windows reach it; never pushed with this entry"),
+    "SetRamEffect": (frozenset({"cli", "api"}), "gap: the RGB page (plan step B6, 2026-10-10) is where both windows reach it; never pushed with this entry"),
     # ── Turned by a service task, so NO UI dispatches them ────────────────
     "CaptureScreencastFrame": (frozenset(), (
         "scoped: ScreencastDriver turns it; every UI reaches the capability "

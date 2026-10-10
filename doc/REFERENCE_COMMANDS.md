@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**146 total: 105 Commands and 41 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**149 total: 107 Commands and 42 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1590,3 +1590,37 @@ Ask a running daemon to shut down.
 | Field | Type | Required |
 |---|---|---|
 | `timeout` | `float` | no |
+
+## rgb
+
+### `RgbLights`
+
+The lights the RGB page lists, from the last scan -- touches no bus.
+
+*Query* → `RgbLightsResult`
+
+Takes no arguments.
+
+### `ScanRgbLights`
+
+Look for the lights: RGB memory on the SMBus, and OpenRGB's devices.
+
+*Command* → `RgbLightsResult`
+
+Takes no arguments.
+
+### `SetRamEffect`
+
+Save one of the memory's own effects on the sticks named by ``refs`` (every stick when empty).
+
+*Command* → `RgbLightsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `effect` | `RamEffect` | yes |
+| `refs` | `tuple[str, Ellipsis]` | no |
+| `speed` | `EffectSpeed` | no |
+| `direction` | `EffectDirection | None` | no |
+| `colors` | `tuple[tuple[int, int, int], Ellipsis]` | no |
+| `random_colors` | `bool` | no |
+| `brightness` | `int` | no |

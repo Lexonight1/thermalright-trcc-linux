@@ -26,6 +26,7 @@ from .models import (
     ProductInfo,
     RamAccessState,
     RgbFollowMode,
+    RgbLight,
     SensorReading,
     WebPreviewInfo,
 )
@@ -605,6 +606,19 @@ class BootAnimationResult(Result):
     key: str = ""
     frames_uploaded: int = 0
     frames_total: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class RgbLightsResult(Result):
+    """The lights the RGB page lists, from the last scan -- no bus traffic.
+
+    ``scanned`` is whether the RAM has been looked for yet; ``openrgb_error``
+    why OpenRGB's devices could not be listed, if they could not.
+    """
+    lights: tuple[RgbLight, ...] = ()
+    scanned: bool = False
+    openrgb_error: str = ""
+    ram_access: RamAccessState = RamAccessState.UNSUPPORTED
 
 
 @dataclass(frozen=True, slots=True)

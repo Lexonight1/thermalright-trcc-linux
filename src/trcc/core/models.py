@@ -1630,6 +1630,27 @@ class RamEffectSettings:
     brightness: int = 255
 
 
+class LightKind(str, Enum):
+    """What drives a light: TRCC itself (RGB memory) or OpenRGB."""
+    RAM = "ram"
+    OPENRGB = "openrgb"
+
+
+@dataclass(frozen=True, slots=True)
+class RgbLight:
+    """One light the RGB page lists: a RAM stick, or one of OpenRGB's devices.
+
+    ``ref`` names it across scans (a stick's ``i2c-3/0x19``, an OpenRGB
+    device's name).  ``effect`` is, for a RAM stick, the effect TRCC last
+    saved on it -- what TRCC set, not read back from the stick.
+    """
+    ref: str
+    name: str
+    led_count: int
+    kind: LightKind
+    effect: RamEffectSettings | None = None
+
+
 #: The overlay colour editor's recent-colour row: 11 swatches, Silver until
 #: a colour is remembered (``UCXiTongXianShiColor.cs:931``, ``Color.Silver``).
 RECENT_COLOR_SLOTS: int = 11

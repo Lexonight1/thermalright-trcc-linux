@@ -98,6 +98,10 @@ class RgbMirrorService:
         self._bus = threading.Lock()        # one use of the bus at a time
         self._switch = threading.Lock()     # one configure / stop at a time
         self._ram: RamLights | None = None  # shared by following and effects
+        # OpenRGB's devices from the last scan, None before any; and why the
+        # last scan could not list them.
+        self._openrgb: tuple[RgbMirrorDevice, ...] | None = None
+        self._openrgb_error = ""
 
     @property
     def status(self) -> MirrorStatus:
@@ -236,6 +240,34 @@ class RgbMirrorService:
             for stick in targets:
                 ram.apply_effect(stick, settings)
         return targets
+
+    def openrgb_lights(self) -> tuple[tuple[RgbMirrorDevice, ...] | None, str]:
+        """OpenRGB's devices from the last scan (None before any), and why
+        that scan failed -- no network traffic."""
+        log.debug("RgbMirrorService.openrgb_lights: %s",
+                  None if self._openrgb is None else len(self._openrgb))
+        return self._openrgb, self._openrgb_error
+
+    def scan_openrgb(self, host: str, port: int) -> None:
+        """Ask OpenRGB at *host*:*port* for its devices -- a user's "Find".
+
+        Listing takes no device over (``OpenRgbMirror`` switches one to direct
+        mode only when it is sent colours), so a scan changes no lighting.
+        """
+        log.info("RgbMirrorService.scan_openrgb: %s:%d", host, port)
+        with self._bus:
+            following = (self._mirror if self._status.mode is
+                         RgbFollowMode.OPENRGB else None)
+            mirror = following or self._make(RgbFollowMode.OPENRGB, host, port)
+            try:
+                self._openrgb, self._openrgb_error = mirror.devices(), ""
+            except OSError as e:
+                self._openrgb = None
+                self._openrgb_error = f"{type(e).__name__}: {e}"
+                log.info("scan_openrgb: none -- %s", self._openrgb_error)
+            finally:
+                if following is None:
+                    mirror.close()
 
     def _ram_lights(self) -> RamLights:
         """The one RAM driver, made on first use.  Caller holds the bus."""

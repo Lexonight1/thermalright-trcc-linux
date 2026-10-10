@@ -34,10 +34,14 @@ from ..core.models import (
     RECENT_COLOR_SLOTS,
     TIME_FORMATS,
     DeviceSettings,
+    EffectDirection,
+    EffectSpeed,
     FitMode,
     FollowMapping,
     OrientationState,
     OverlayElement,
+    RamEffect,
+    RamEffectSettings,
     RgbFollowMode,
     TempUnit,
     parse_device_key,
@@ -106,6 +110,9 @@ class AppSettings:
     # Refs of the lights that follow (a stick's "i2c-3/0x19", an OpenRGB
     # device's name); empty for every one.
     rgb_follow_targets: list[str] = field(default_factory=list)
+    # The effect TRCC last saved on each RAM stick, by ref -- what it set,
+    # not read back.  Plain JSON; ``ram_effect`` validates it on the way out.
+    ram_effects: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 # =========================================================================
@@ -774,6 +781,44 @@ class Settings:
             log.warning("rgb_follow_mapping: unknown %r in the settings -- "
                         "halves", value)
             return FollowMapping.HALVES
+
+    def ram_effect(self, ref: str) -> RamEffectSettings | None:
+        """The effect TRCC last saved on stick *ref*, or None -- a damaged
+        record is None too, never a guess."""
+        record = (self._app.ram_effects.get(ref)
+                  if isinstance(self._app.ram_effects, dict) else None)
+        log.debug("ram_effect: %s -> %r", ref, record)
+        if not isinstance(record, dict):
+            return None
+        colors = _rgb_list(record.get("colors", []))
+        try:
+            return RamEffectSettings(
+                effect=RamEffect(record["effect"]),
+                speed=EffectSpeed(record.get("speed", EffectSpeed.MEDIUM.value)),
+                direction=(EffectDirection(record["direction"])
+                           if record.get("direction") else None),
+                colors=tuple(colors) if isinstance(colors, list) else (),
+                random_colors=bool(record.get("random_colors", False)),
+                brightness=int(record.get("brightness", 255)))
+        except (KeyError, ValueError, TypeError) as e:
+            log.warning("ram_effect: %s's saved effect is unreadable (%s) -- "
+                        "shown as unknown", ref, e)
+            return None
+
+    def set_ram_effect(self, ref: str, effect: RamEffectSettings) -> None:
+        """Remember the effect TRCC saved on stick *ref*."""
+        log.info("set_ram_effect: %s %s", ref, effect.effect.value)
+        record = {"effect": effect.effect.value, "speed": effect.speed.value,
+                  "direction": (effect.direction.value if effect.direction
+                                else None),
+                  "colors": [list(c) for c in effect.colors],
+                  "random_colors": effect.random_colors,
+                  "brightness": effect.brightness}
+        with self._lock:
+            if not isinstance(self._app.ram_effects, dict):
+                self._app.ram_effects = {}
+            self._app.ram_effects[ref] = record
+            self._save()
 
     def rgb_follow_targets(self) -> tuple[str, ...]:
         """The lights that follow (refs); anything not a list of text is all.

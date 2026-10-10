@@ -755,3 +755,120 @@ def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:  # typ
     assert strip[1][0][0] > 200 and strip[1][0][2] < 60     # left half: red
     assert ram[1][0][2] > 200 and ram[1][0][0] < 60         # right half: blue
     app.close()
+
+
+# ── The RGB page's Commands: lights, Find, effects ─────────────────────────
+
+def _lights_app(tmp_path: Path) -> tuple[App, _PlatformWithRam, list]:
+    from trcc.core.events import RgbFollowChanged, RgbLightsChanged
+    platform = _PlatformWithRam(tmp_path)
+    app = App(platform)
+    seen: list = []
+    app.events.subscribe(RgbLightsChanged, seen.append)
+    app.events.subscribe(RgbFollowChanged, seen.append)
+    return app, platform, seen
+
+
+def test_the_lights_are_read_without_the_bus_until_find(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trcc.core.commands import RgbLights, ScanRgbLights
+
+    app, platform, seen = _lights_app(tmp_path)
+    before = app.dispatch(RgbLights())
+    assert (before.scanned, before.lights) == (False, ())
+    assert platform.ram.touched == []
+    found = app.dispatch(ScanRgbLights())
+    assert found.ok and found.scanned
+    assert [(light.kind.value, light.ref) for light in found.lights] == [
+        ("ram", "i2c-3/0x19"), ("ram", "i2c-3/0x1b")]
+    assert found.message.startswith("Found 2 RGB memory stick(s); OpenRGB: ")
+    assert found.openrgb_error            # no OpenRGB in a test: said, not hidden
+    assert [type(e).__name__ for e in seen] == ["RgbLightsChanged"]
+    touched = len(platform.ram.touched)
+    assert app.dispatch(RgbLights()).lights == found.lights
+    assert len(platform.ram.touched) == touched
+    app.close()
+
+
+def test_an_effect_is_saved_on_the_sticks_and_remembered(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trcc.core.commands import RgbLights, ScanRgbLights, SetRamEffect
+    from trcc.core.models import EffectSpeed, RamEffect
+
+    app, platform, _seen = _lights_app(tmp_path)
+    app.dispatch(ScanRgbLights())
+    result = app.dispatch(SetRamEffect(effect=RamEffect.RAINBOW_WAVE,
+                                       refs=("i2c-3/0x1b",),
+                                       speed=EffectSpeed.FAST))
+    assert result.ok and result.message == "rainbow-wave saved on 1 stick(s)"
+    assert platform.ram.chips[0x1B].effect[:2] == bytes([0x03, 0x02])
+    assert platform.ram.chips[0x19].effect == b""
+    lights = {light.ref: light.effect for light in app.dispatch(RgbLights()).lights}
+    assert lights["i2c-3/0x19"] is None
+    assert lights["i2c-3/0x1b"] is not None
+    assert lights["i2c-3/0x1b"].speed is EffectSpeed.FAST
+    app.close()
+
+
+def test_an_effect_the_stick_cannot_take_changes_nothing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Refused BEFORE following stops: a bad request turns nothing off.
+
+    MUTATION CHECK: check the effect after stopping the follow."""
+    from trcc.core.commands import ScanRgbLights, SetRamEffect
+    from trcc.core.models import EffectDirection, RamEffect
+
+    app, platform, seen = _lights_app(tmp_path)
+    app.dispatch(ScanRgbLights())
+    app.dispatch(SetRgbFollow(mode=RAM_MODE))
+    seen.clear()
+    result = app.dispatch(SetRamEffect(
+        effect=RamEffect.RAIN, direction=EffectDirection.LEFT,
+        colors=((1, 1, 1), (2, 2, 2))))
+    assert (result.ok, result.message) == (False, "rain cannot move left")
+    assert app.settings.rgb_follow_mode() is RAM_MODE
+    assert seen == []
+    assert not any(c.effect for c in platform.ram.chips.values())
+    app.close()
+
+
+def test_an_effect_stops_ram_following_first_and_says_so(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trcc.core.commands import ScanRgbLights, SetRamEffect
+    from trcc.core.models import RamEffect
+
+    app, _platform, seen = _lights_app(tmp_path)
+    app.dispatch(ScanRgbLights())
+    app.dispatch(SetRgbFollow(mode=RAM_MODE, source="0402:3922"))
+    seen.clear()
+    result = app.dispatch(SetRamEffect(effect=RamEffect.RAINBOW))
+    assert result.message == ("rainbow saved on 2 stick(s) -- RAM following "
+                              "turned off")
+    assert app.settings.rgb_follow_mode() is OFF
+    assert app.settings.app.rgb_follow_source == "0402:3922"   # kept for later
+    assert [type(e).__name__ for e in seen] == ["RgbFollowChanged",
+                                                "RgbLightsChanged"]
+    app.close()
+
+
+def test_a_bus_that_cannot_be_used_is_said_not_hidden(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """No access, a stuck SPD hub: the scan says why, and nothing is listed."""
+    from trcc.core.commands import ScanRgbLights
+
+    platform = _PlatformWithRam(tmp_path)
+
+    def stuck() -> tuple[SmBus, ...]:
+        raise OSError("the memory's SPD hub(s) 3-0051 are not answering")
+
+    platform.smbuses = stuck  # type: ignore[method-assign]
+    app = App(platform)                 # the App takes the bus from here
+    result = app.dispatch(ScanRgbLights())
+    assert not result.ok
+    assert result.message.startswith("RAM: the memory's SPD hub(s) 3-0051")
+    assert [light for light in result.lights if light.kind.value == "ram"] == []
+    app.close()
+
+
+def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    app, _platform, _seen = _lights_app(tmp_path)
+    app.settings.app.ram_effects = {"i2c-3/0x19": {"effect": "disco"},
+                                    "i2c-3/0x1b": "not even a dict"}
+    assert app.settings.ram_effect("i2c-3/0x19") is None
+    assert app.settings.ram_effect("i2c-3/0x1b") is None
+    app.close()

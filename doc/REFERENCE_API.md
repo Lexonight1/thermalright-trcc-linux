@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**137 endpoints.**
+**140 endpoints.**
 
 ## Running it
 
@@ -159,10 +159,13 @@ Interactive docs are served at `/docs` while the API is running.
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
+| `POST /system/ram-effect` | `RgbLightsResult` | Save one of the memory's own effects on the sticks. |
 | `GET /system/ram-lighting` | `RamLightingResult` | Whether TRCC may reach RGB memory -- read from files, no bus traffic. |
 | `POST /system/ram-lighting` | `RamLightingResult` | Switch RAM lighting on or off: a password prompt at the desktop, answered when it is typed or closed. |
+| `GET /system/rgb` | `RgbLightsResult` | The RGB lights from the last scan -- no bus traffic. |
 | `GET /system/rgb-follow` | `RgbFollowResult` | What follows the cooler's colours, and what it is doing (#160). |
 | `POST /system/rgb-follow` | `RgbFollowResult` | Pick what follows the cooler's colours: off, openrgb or ram (#160). |
+| `POST /system/rgb/scan` | `RgbLightsResult` | Look for the lights: RGB memory, and OpenRGB's devices. |
 | `GET /system/sensors` | `SensorsResult` | — |
 | `GET /system/sensors/catalog` | `SensorsListResult` | Every sensor this machine can measure — identities, no values. |
 | `GET /system/sensors/{category}` | `SensorsResult` | Filter the live sensor list by category prefix. |

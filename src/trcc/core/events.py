@@ -447,6 +447,12 @@ class TempUnitChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class RgbLightsChanged(Event):
+    """The RGB lights or their effects changed -- a scan, an effect saved --
+    from any UI; every window re-reads ``RgbLights``."""
+
+
+@dataclass(frozen=True, slots=True)
 class RamLightingChanged(Event):
     """RAM lighting was switched on or off, from any UI -- so every window
     shows the new state, not only the one whose button was pressed."""

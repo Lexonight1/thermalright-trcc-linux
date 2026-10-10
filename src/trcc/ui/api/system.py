@@ -30,13 +30,16 @@ from ...core.commands import (
     ReadSensors,
     RefreshAutostart,
     RgbFollow,
+    RgbLights,
     RunDoctor,
     RunHealthCheck,
     RunQuickstart,
     RunSetup,
     RunUpgrade,
+    ScanRgbLights,
     SetDiskDevice,
     SetHddEnabled,
+    SetRamEffect,
     SetRamLighting,
     SetRgbFollow,
     SetSensorDashboard,
@@ -62,6 +65,7 @@ from ...core.results import (
     QuickstartResult,
     RamLightingResult,
     RgbFollowResult,
+    RgbLightsResult,
     SensorDashboardResult,
     SensorsListResult,
     SensorsResult,
@@ -77,6 +81,7 @@ from .schemas import (
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
+    RamEffectRequest,
     RamLightingRequest,
     RgbFollowRequest,
     SensorDashboardRequest,
@@ -305,6 +310,35 @@ def rgb_follow_set(body: RgbFollowRequest,
         mode=body.mode, host=body.host, port=body.port, source=body.source,
         mapping=body.mapping,
         targets=None if body.targets is None else tuple(body.targets)))
+    http_error_if_failed(result)
+    return result
+
+
+@router.get("/rgb")
+def rgb_lights(request: Request) -> RgbLightsResult:
+    """The RGB lights from the last scan -- no bus traffic."""
+    log.info("api GET /system/rgb")
+    return request.app.state.trcc.dispatch(RgbLights())
+
+
+@router.post("/rgb/scan")
+def rgb_scan(request: Request) -> RgbLightsResult:
+    """Look for the lights: RGB memory, and OpenRGB's devices."""
+    log.info("api POST /system/rgb/scan")
+    result = request.app.state.trcc.dispatch(ScanRgbLights())
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/ram-effect")
+def ram_effect_set(body: RamEffectRequest, request: Request) -> RgbLightsResult:
+    """Save one of the memory's own effects on the sticks."""
+    log.info("api POST /system/ram-effect: %s sticks=%s", body.effect.value,
+             body.sticks)
+    result = request.app.state.trcc.dispatch(SetRamEffect(
+        effect=body.effect, refs=tuple(body.sticks), speed=body.speed,
+        direction=body.direction, colors=tuple(body.colors),
+        random_colors=body.random_colors, brightness=body.brightness))
     http_error_if_failed(result)
     return result
 

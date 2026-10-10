@@ -2242,3 +2242,20 @@ def test_system_ram_lighting_on_an_os_without_it(cli_runner: CliRunner, cli_app)
     assert enable.exit_code == 1, enable.output
     bad = cli_runner.invoke(_app(), ["system", "ram-lighting", "maybe"])
     assert bad.exit_code != 0
+
+
+def test_system_rgb_and_ram_effect_on_an_os_without_the_bus(cli_runner: CliRunner, cli_app) -> None:
+    """The test platform has no SMBus: the scan says so and fails; listing
+    without a scan touches nothing; a bad colour is refused by the CLI."""
+    del cli_app
+    listed = cli_runner.invoke(_app(), ["system", "rgb"])
+    assert listed.exit_code == 0, listed.output
+    assert "(not searched yet -- `trcc system rgb --scan`)" in listed.output
+    scanned = cli_runner.invoke(_app(), ["system", "rgb", "--scan"])
+    assert scanned.exit_code == 1
+    assert "\nRAM: no SMBus access on FakePlatform" in scanned.output
+    effect = cli_runner.invoke(_app(), ["system", "ram-effect", "rainbow"])
+    assert effect.exit_code == 1
+    bad = cli_runner.invoke(_app(), ["system", "ram-effect", "static",
+                                     "--color", "300,0"])
+    assert bad.exit_code != 0

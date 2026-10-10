@@ -2113,3 +2113,17 @@ def test_system_ram_lighting_on_an_os_without_it(api_client: TestClient) -> None
     assert resp.status_code == 400
     assert resp.json()["detail"] == "RAM lighting is not available on FakePlatform yet"
     assert api_client.post("/system/ram-lighting", json={}).status_code == 422
+
+
+def test_system_rgb_routes_on_an_os_without_the_bus(api_client: TestClient) -> None:
+    listed = api_client.get("/system/rgb").json()
+    assert (listed["scanned"], listed["lights"]) == (False, [])
+    scan = api_client.post("/system/rgb/scan")
+    assert scan.status_code == 400
+    assert scan.json()["detail"].startswith("RAM: no SMBus access on FakePlatform")
+    effect = api_client.post("/system/ram-effect", json={"effect": "rainbow"})
+    assert effect.status_code == 400
+    assert api_client.post("/system/ram-effect",
+                           json={"effect": "disco"}).status_code == 422
+    assert api_client.post("/system/ram-effect", json={
+        "effect": "static", "brightness": 999}).status_code == 422

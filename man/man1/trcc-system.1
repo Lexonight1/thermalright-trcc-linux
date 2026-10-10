@@ -515,6 +515,43 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS ram\-effect
+.PP
+\fBtrcc system ram\-effect\fR \fIEFFECT\fR [\fIOPTIONS\fR]
+.PP
+Save one of the memory's own effects on the sticks. The stick keeps it after TRCC closes and through a reboot. If the RAM was following a device, following turns off first.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBEFFECT\fR
+The effect to save on the RAM.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-stick \fISTICK\fR\fR
+A stick by ref (see trcc system rgb); repeat for more. Default: every stick.
+.TP
+\fB\-\-speed \fISPEED\fR\fR
+(no description)
+.TP
+\fB\-\-direction \fIDIRECTION\fR\fR
+(no description)
+.TP
+\fB\-\-color \fICOLOR\fR\fR
+R,G,B; repeat for a second colour.
+.TP
+\fB\-\-random\fR
+Let the stick pick the colours.
+.TP
+\fB\-\-brightness \fIBRIGHTNESS\fR\fR
+(no description)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS ram\-lighting
 .PP
 \fBtrcc system ram\-lighting\fR [\fIACTION\fR]
@@ -530,6 +567,21 @@ Arguments:
 .PP
 Options:
 .RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS rgb
+.PP
+\fBtrcc system rgb\fR [\fIOPTIONS\fR]
+.PP
+The RGB lights TRCC can drive or hand colours to.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-scan\fR
+Look for the lights first: RGB memory on the SMBus, and OpenRGB's devices.
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

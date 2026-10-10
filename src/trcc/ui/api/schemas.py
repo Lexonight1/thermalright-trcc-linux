@@ -18,8 +18,11 @@ from ...core.models import (
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
+    EffectDirection,
+    EffectSpeed,
     FitMode,
     FollowMapping,
+    RamEffect,
     RgbFollowMode,
 )
 from ...core.results import ConnectionIssuesResult, ConnectResult
@@ -231,6 +234,19 @@ class RgbFollowRequest(BaseModel):
     mapping: FollowMapping | None = None
     #: The lights that follow (refs); [] for every one; None keeps the saved.
     targets: list[str] | None = Field(None, max_length=64)
+
+
+class RamEffectRequest(BaseModel):
+    """One of the memory's own effects, saved on the sticks named by
+    ``sticks`` (refs; [] for every stick)."""
+    effect: RamEffect
+    sticks: list[str] = Field(default_factory=list, max_length=16)
+    speed: EffectSpeed = EffectSpeed.MEDIUM
+    direction: EffectDirection | None = None
+    colors: list[tuple[int, int, int]] = Field(default_factory=list,
+                                               max_length=2)
+    random_colors: bool = False
+    brightness: int = Field(255, ge=0, le=255)
 
 
 class RamLightingRequest(BaseModel):

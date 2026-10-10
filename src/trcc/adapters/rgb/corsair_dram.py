@@ -55,6 +55,7 @@ from ...core.models import (
     RgbMirrorDevice,
 )
 from ...core.ports import SMBUS_BLOCK_MAX, RamLights, SmBus
+from ...core.ram_effects import effect_problem
 from .openrgb import stretch
 
 log = logging.getLogger(__name__)
@@ -169,20 +170,13 @@ def effect_packet(settings: RamEffectSettings) -> bytes:
     """
     traits = EFFECT_TRAITS[settings.effect]
     log.debug("effect_packet: %s", settings)
-    if not 0 <= settings.brightness <= 255:
-        raise ValueError(f"brightness is 0-255, not {settings.brightness}")
-    if not traits.directions:
-        direction = _NO_DIRECTION
-    elif (way := settings.direction or traits.directions[0]) in traits.directions:
-        direction = _DIRECTION_BYTES[way]
-    else:
-        raise ValueError(f"{settings.effect.value} cannot move {way.value}")
+    if (problem := effect_problem(settings)) is not None:
+        raise ValueError(problem)
+    direction = (_DIRECTION_BYTES[settings.direction or traits.directions[0]]
+                 if traits.directions else _NO_DIRECTION)
     random = traits.random and settings.random_colors
     colors: list[tuple[int, int, int]] = [_BLACK, _BLACK]
     if traits.colors and settings.effect is not RamEffect.STATIC and not random:
-        if len(settings.colors) < traits.colors:
-            raise ValueError(f"{settings.effect.value} takes {traits.colors} "
-                             f"colour(s), got {len(settings.colors)}")
         colors[:traits.colors] = settings.colors[:traits.colors]
     brightness = settings.brightness if traits.brightness else 0
     return bytes([

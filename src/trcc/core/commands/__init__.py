@@ -99,6 +99,7 @@ from .led import (
     SetWeekStart,
     ToggleLed,
 )
+from .rgb import RgbLights, ScanRgbLights, SetRamEffect
 from .system import (
     AdvanceSlideshow,
     CheckForUpdate,
@@ -250,12 +251,14 @@ __all__ = [
     "ResolveThemeDirectories",
     "RestoreDeviceState",
     "RgbFollow",
+    "RgbLights",
     "RunDoctor",
     "RunHealthCheck",
     "RunQuickstart",
     "RunSetup",
     "RunUpgrade",
     "SaveTheme",
+    "ScanRgbLights",
     "SeekVideo",
     "SelectZone",
     "SendColor",
@@ -292,6 +295,7 @@ __all__ = [
     "SetOrientation",
     "SetOverlayBackground",
     "SetOverlayConfig",
+    "SetRamEffect",
     "SetRamLighting",
     "SetRefreshInterval",
     "SetRgbFollow",

@@ -34,23 +34,30 @@ from ...core.commands import (
     ReadSensors,
     RefreshAutostart,
     RgbFollow,
+    RgbLights,
     RunDoctor,
     RunHealthCheck,
     RunSetup,
     RunUpgrade,
+    ScanRgbLights,
     SetHddEnabled,
+    SetRamEffect,
     SetRamLighting,
     SetRgbFollow,
     SetSensorDashboard,
 )
 from ...core.models import (
     AUTOSTART_TARGETS,
+    EffectDirection,
+    EffectSpeed,
     FollowMapping,
     PanelConfig,
     RamAccessState,
+    RamEffect,
     RgbFollowMode,
     SensorBinding,
 )
+from ...core.results import RgbLightsResult
 from ._ctx import emit_json, get_app
 
 if TYPE_CHECKING:
@@ -596,6 +603,77 @@ def ram_lighting(
     if result.command and result.state not in (RamAccessState.ON,
                                                RamAccessState.ELSEWHERE):
         typer.echo(f"  to enable: {result.command}")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+def _echo_lights(result: RgbLightsResult) -> None:
+    """The lights, one per line, with what TRCC last saved on each stick."""
+    log.debug("_echo_lights: %d", len(result.lights))
+    if result.message:
+        typer.echo(result.message)
+    if not result.scanned:
+        typer.echo("  (not searched yet -- `trcc system rgb --scan`)")
+    for light in result.lights:
+        effect = (f"  effect: {light.effect.effect.value} (last set by TRCC)"
+                  if light.effect else "")
+        typer.echo(f"  {light.kind.value:<7} {light.ref:<24} {light.name} "
+                   f"({light.led_count} LEDs){effect}")
+    if result.openrgb_error:
+        typer.echo(f"  OpenRGB: {result.openrgb_error}")
+    typer.echo(f"  RAM access: {result.ram_access.value}")
+
+
+@app.command("rgb")
+def rgb(
+    scan: bool = typer.Option(
+        False, "--scan", help="Look for the lights first: RGB memory on the "
+        "SMBus, and OpenRGB's devices."),
+) -> None:
+    """The RGB lights TRCC can drive or hand colours to."""
+    log.info("cli system rgb: scan=%s", scan)
+    result = get_app().dispatch(ScanRgbLights() if scan else RgbLights())
+    _echo_lights(result)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+def _parse_rgb(text: str) -> tuple[int, int, int]:
+    """``255,0,0`` -> (255, 0, 0)."""
+    log.debug("_parse_rgb: %r", text)
+    parts = text.split(",")
+    if len(parts) != 3 or not all(p.strip().isdigit() for p in parts):
+        raise typer.BadParameter(f"a colour is R,G,B -- got {text!r}")
+    r, g, b = (int(p) for p in parts)
+    return r, g, b
+
+
+@app.command("ram-effect")
+def ram_effect(
+    effect: RamEffect = typer.Argument(..., help="The effect to save on the RAM."),
+    stick: list[str] | None = typer.Option(
+        None, "--stick", help="A stick by ref (see `trcc system rgb`); "
+        "repeat for more.  Default: every stick."),
+    speed: EffectSpeed = typer.Option(EffectSpeed.MEDIUM, "--speed"),
+    direction: EffectDirection | None = typer.Option(None, "--direction"),
+    color: list[str] | None = typer.Option(
+        None, "--color", help="R,G,B; repeat for a second colour."),
+    random_colors: bool = typer.Option(
+        False, "--random", help="Let the stick pick the colours."),
+    brightness: int = typer.Option(255, "--brightness", min=0, max=255),
+) -> None:
+    """Save one of the memory's own effects on the sticks.
+
+    The stick keeps it after TRCC closes and through a reboot.  If the RAM
+    was following a device, following turns off first.
+    """
+    log.info("cli system ram-effect: %s sticks=%s", effect.value, stick)
+    result = get_app().dispatch(SetRamEffect(
+        effect=effect, refs=tuple(stick or ()), speed=speed,
+        direction=direction,
+        colors=tuple(_parse_rgb(c) for c in color or ()),
+        random_colors=random_colors, brightness=brightness))
+    _echo_lights(result)
     if not result.ok:
         raise typer.Exit(code=1)
 
