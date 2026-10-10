@@ -510,7 +510,9 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     # (tests.mock_platform) so there is exactly one source for it.
     from tests.mock_platform import (
         DeviceSpec,
+        ScriptedAuraController,
         ScriptedRamAccess,
+        is_aura,
         scripted_bulk_transport,
         scripted_ram,
         scripted_scsi_transport,
@@ -533,6 +535,9 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
             self.ram = scripted_ram()
             #: Its grant: switched in memory, never through the host's polkit.
             self.ram_grant = ScriptedRamAccess()
+            #: The board's Aura lighting controller -- scripted, so a mock
+            #: run with the fan following never lights the host's real one.
+            self.aura = ScriptedAuraController()
 
         def paths(self) -> Paths:
             return dev_paths
@@ -587,7 +592,10 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
         def _open_bulk(self, vid: int, pid: int,
                        serial: str | None = None,
                        unit: str = "",
-                       hid_reports: bool = False) -> BulkTransport:
+                       hid_reports: bool = False,
+                       report_id: int = 0x00) -> BulkTransport:
+            if hid_reports and is_aura(vid, pid):
+                return self.aura
             return scripted_bulk_transport(by_key, vid, pid, self._reply_override)
 
         # The SMBus is a seam too: the RAM follower writes colours to whatever

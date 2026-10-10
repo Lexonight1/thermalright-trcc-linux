@@ -556,7 +556,8 @@ class HidApiTransport(BulkTransport):
     """
 
     def __init__(self, vid: int, pid: int,
-                 serial: str | None = None, unit: str = "") -> None:
+                 serial: str | None = None, unit: str = "", *,
+                 report_id: int = 0x00) -> None:
         if not HIDAPI_AVAILABLE:
             raise ImportError(
                 "no hid binding installed — install EITHER python-hidapi or "
@@ -570,10 +571,14 @@ class HidApiTransport(BulkTransport):
         self._serial = serial
         #: Which physical unit (#287); empty means "the only one".
         self._unit = unit
+        #: The report every write goes out as: 0x00, the default report, for
+        #: the coolers; a device that numbers its reports names its own.
+        self._report_id = report_id
         self._device: Any = None
         self._is_open = False
-        log.debug("HidApiTransport.__init__: %04x:%04x serial=%s unit=%s",
-                  vid, pid, serial or "(any)", unit or "(only)")
+        log.debug("HidApiTransport.__init__: %04x:%04x serial=%s unit=%s "
+                  "report=0x%02x", vid, pid, serial or "(any)",
+                  unit or "(only)", report_id)
 
     def open(self) -> bool:
         binding = _HidBinding.detect()
@@ -666,9 +671,10 @@ class HidApiTransport(BulkTransport):
             log.warning("HidApiTransport.write: transport not open "
                         "(%04x:%04x)", self._vid, self._pid)
             raise TransportError("Transport not open")
-        # hidapi prepends a report ID byte (0x00 for default); bytes(data)
-        # normalizes any buffer (incl. a memoryview slice) before concat.
-        sent = self._device.write(bytes([0x00]) + bytes(data))
+        # hidapi takes the report ID as the first byte (0x00 for the default
+        # report); bytes(data) normalizes any buffer (incl. a memoryview
+        # slice) before concat.
+        sent = self._device.write(bytes([self._report_id]) + bytes(data))
         frame_log.debug("HidApiTransport.write: %d byte(s) + report id -> %s",
                         len(data), sent)
         return sent

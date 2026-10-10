@@ -2637,7 +2637,8 @@ class Platform(ABC):
     def open_transport(self, wire: Wire, vid: int, pid: int,
                        serial: str | None = None,
                        unit: str = "", *,
-                       hid_reports: bool = False) -> Transport:
+                       hid_reports: bool = False,
+                       report_id: int = 0x00) -> Transport:
         """Return an unopened transport for *wire*.
 
         *unit* names WHICH physical device to open when several of the same
@@ -2650,6 +2651,9 @@ class Platform(ABC):
         firmware needs it is the App's quirk knowledge; opening it is still the
         Platform's job, so a stand-in platform scripts this transport like
         every other and a mock run can never reach a real device through it.
+        *report_id* is the HID report that transport writes: 0x00, the
+        default report, for the coolers; a lighting controller such as ASUS
+        Aura (0xEC) numbers its reports.
 
         **The port must not name a wire.**  It used to: separate
         ``open_bulk`` / ``open_scsi`` abstract methods meant every OS

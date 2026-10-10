@@ -38,7 +38,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
-| [`RgbMirror`](#rgbmirror) | 3 | 0 | 2 |
+| [`RgbMirror`](#rgbmirror) | 3 | 0 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -526,7 +526,7 @@ devices() -> tuple[RgbMirrorDevice, ...]
 show(device: 'RgbMirrorDevice', colors: 'Sequence[tuple[int, int, int]]') -> None
 ```
 
-**Implementations (2):** `CorsairDramMirror` · `OpenRgbMirror`
+**Implementations (3):** `AuraMainboard` · `CorsairDramMirror` · `OpenRgbMirror`
 
 ## SendScheduler
 
@@ -887,7 +887,7 @@ http_fetcher() -> HttpFetcher
 install_method() -> str
 memory_info() -> list[dict[str, str]]
 no_devices_hint() -> str
-open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '', hid_reports: 'bool' = False) -> Transport
+open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None, unit: 'str' = '', hid_reports: 'bool' = False, report_id: 'int' = 0) -> Transport
 package_manager() -> str
 packages() -> PackageManager
 paths() -> Paths

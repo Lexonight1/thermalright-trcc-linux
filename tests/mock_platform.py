@@ -37,6 +37,7 @@ from trcc.adapters.device.hid_lcd import (
 )
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
+from trcc.adapters.rgb.asus_aura import AURA_VID, MAINBOARD_PIDS, REPORT_ID
 from trcc.adapters.rgb.corsair_dram import crc8
 from trcc.adapters.system._base import disambiguate
 from trcc.core.models import (
@@ -51,6 +52,7 @@ from trcc.core.ports import (
     SensorEnumerator,
     SmBus,
     Transport,
+    WriteBuffer,
 )
 from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.registry import find_product
@@ -491,6 +493,8 @@ class MockPlatform(FakePlatform):
             s.key: s for s in self._specs
         }
         self._reply_override: ReplyOverride = {}
+        #: The board's lighting controller: what an Aura follower writes to.
+        self.aura = ScriptedAuraController()
         log.info("MockPlatform: %d spec(s) loaded, root=%s",
                  len(self._specs), root)
 
@@ -531,7 +535,8 @@ class MockPlatform(FakePlatform):
     def open_transport(self, wire: Wire, vid: int, pid: int,
                        serial: str | None = None,
                        unit: str = "", *,
-                       hid_reports: bool = False) -> Transport:
+                       hid_reports: bool = False,
+                       report_id: int = 0x00) -> Transport:
         """Hand back the scripted transport for *wire* (see Platform.open_transport).
 
         *unit* is accepted and not used to pick a script: two units of one
@@ -540,6 +545,8 @@ class MockPlatform(FakePlatform):
         ``App.attach`` now provides.  *hid_reports* (the firmware-override
         transport) replays the same scripted bulk reply.
         """
+        if hid_reports and is_aura(vid, pid):
+            return self.aura
         if wire is Wire.SCSI:
             return scripted_scsi_transport(
                 self._by_key, vid, pid, self._reply_override)
@@ -697,3 +704,64 @@ class ScriptedRamAccess(RamAccess):
         log.info("ScriptedRamAccess.disable")
         self.state = RamAccessState.OFF
         return self.status()
+
+
+# ── Scripted ASUS Aura motherboard controller (USB HID, report 0xEC) ────────
+
+def is_aura(vid: int, pid: int) -> bool:
+    """Whether *vid*:*pid* is an Aura motherboard controller."""
+    log.debug("is_aura: %04x:%04x", vid, pid)
+    return vid == AURA_VID and pid in MAINBOARD_PIDS
+
+
+#: The config table the maintainer's PRIME Z790-V AX (0b05:19af, firmware
+#: AULA3-AR32-0304) returned on 2026-10-10: 3 ARGB headers, 1 onboard LED,
+#: and a 12 V count of 2 -- more than the LEDs, so read as none.  The first
+#: 36 bytes as read (the log line showed no more); the rest zero, unread.
+AURA_BOARD_TABLE = bytes.fromhex(
+    "1e9f03010000783c00010000783c00010000783c000000000000000104020"
+    "1f400000000").ljust(60, b"\x00")
+
+
+class ScriptedAuraController(FakeBulkTransport):
+    """An Aura motherboard controller: answers the firmware (0x82) and config
+    table (0xB0) requests as the real one does -- report id first, then the
+    reply marker -- and records every report written, so a test reads back
+    exactly what reached the board.  A request it does not know is answered
+    with nothing, as a silent device would.
+
+    By default it is the maintainer's board, reply for reply; a test that
+    needs another shape passes the counts.
+    """
+
+    FIRMWARE = "AULA3-AR32-0304"
+
+    def __init__(self, argb_headers: int | None = None,
+                 onboard_leds: int | None = None,
+                 rgb_headers: int | None = None) -> None:
+        super().__init__()
+        self.table = bytearray(AURA_BOARD_TABLE)
+        for at, value in ((0x02, argb_headers), (0x1B, onboard_leds),
+                          (0x1D, rgb_headers)):
+            if value is not None:
+                self.table[at] = value
+        log.debug("ScriptedAuraController: %d ARGB, %d onboard, %d 12V",
+                  self.table[0x02], self.table[0x1B], self.table[0x1D])
+
+    def write(self, endpoint: int, data: WriteBuffer, timeout_ms: int = 100) -> int:
+        sent = super().write(endpoint, data, timeout_ms)
+        match bytes(data)[:1]:
+            case b"\x82":
+                self.read_script.append(
+                    bytes([REPORT_ID, 0x02]) + self.FIRMWARE.encode().ljust(16, b"\x00"))
+            case b"\xb0":
+                self.read_script.append(
+                    bytes([REPORT_ID, 0x30, 0, 0]) + bytes(self.table))
+        return sent
+
+    def reports(self, opcode: int) -> list[bytes]:
+        """Every report written that starts with *opcode*."""
+        found = [data for _ep, data in self.writes if data[:1] == bytes([opcode])]
+        log.debug("ScriptedAuraController.reports: 0x%02x -> %d", opcode,
+                  len(found))
+        return found
