@@ -118,9 +118,15 @@ def set_pairing_code(code: str | None) -> None:
              "set" if code else "cleared (pairing disabled)")
 
 
-def build_app(trcc: CommandBus | None = None) -> FastAPI:
-    """Build the FastAPI app.  Creates a default App if none passed."""
-    if trcc is None:
+def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
+    """Build the FastAPI app.  Creates a default App if none passed.
+
+    ``serve=False`` builds the routes and nothing else -- no App, no static
+    mount -- for a caller that only lists them (``trcc system list-endpoints``,
+    which used to find or START the shared App to print a list).
+    """
+    log.info("build_app: trcc=%s serve=%s", trcc is not None, serve)
+    if trcc is None and serve:
         # Build through the canonical factory so the API server becomes
         # a daemon client when TRCC_DAEMON=1 instead of fighting
         # the daemon for USB (audit bug B4).
@@ -233,18 +239,23 @@ def build_app(trcc: CommandBus | None = None) -> FastAPI:
     # (/static/web/{w}{h}/<id>.png — and masks under zt{w}{h}/) resolve.
     # Created if absent so the mount succeeds before the first
     # /theme/init download; StaticFiles serves whatever lands there.
-    try:
-        data_dir = trcc.dispatch(GetPaths()).data_dir
-        if not data_dir:
-            raise RuntimeError("GetPaths returned no data_dir")
-        web_root = Path(data_dir) / "web"
-        web_root.mkdir(parents=True, exist_ok=True)
-        api.mount(
-            "/static/web", StaticFiles(directory=str(web_root)), name="static-web",
-        )
-        log.info("static: mounted /static/web → %s", web_root)
-    except (OSError, AttributeError) as e:
-        log.warning("static: /static/web mount skipped — %s", e)
+    if trcc is None:
+        log.info("static: routes only — /static/web not mounted")
+    else:
+        try:
+            data_dir = trcc.dispatch(GetPaths()).data_dir
+            if not data_dir:
+                raise RuntimeError("GetPaths returned no data_dir")
+            web_root = Path(data_dir) / "web"
+            web_root.mkdir(parents=True, exist_ok=True)
+            api.mount(
+                "/static/web", StaticFiles(directory=str(web_root)), name="static-web",
+            )
+            log.info("static: mounted /static/web → %s", web_root)
+        except (OSError, AttributeError, RuntimeError) as e:
+            # RuntimeError is the no-data_dir case raised just above; it was
+            # not caught, so it crashed the API at startup instead of skipping.
+            log.warning("static: /static/web mount skipped — %s", e)
 
     @api.get("/", tags=["meta"])
     def root() -> dict:
