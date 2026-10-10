@@ -84,6 +84,7 @@ from .schemas import (
     RamEffectRequest,
     RamLightingRequest,
     RgbFollowRequest,
+    RgbScanRequest,
     SensorDashboardRequest,
     UpgradeRequest,
 )
@@ -322,10 +323,14 @@ def rgb_lights(request: Request) -> RgbLightsResult:
 
 
 @router.post("/rgb/scan")
-def rgb_scan(request: Request) -> RgbLightsResult:
+def rgb_scan(request: Request,
+             body: RgbScanRequest | None = None) -> RgbLightsResult:
     """Look for the lights: RGB memory, and OpenRGB's devices."""
-    log.info("api POST /system/rgb/scan")
-    result = request.app.state.trcc.dispatch(ScanRgbLights())
+    scan = body or RgbScanRequest()
+    log.info("api POST /system/rgb/scan: openrgb %s:%d", scan.host or "(saved)",
+             scan.port)
+    result = request.app.state.trcc.dispatch(
+        ScanRgbLights(host=scan.host, port=scan.port))
     http_error_if_failed(result)
     return result
 

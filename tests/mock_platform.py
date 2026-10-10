@@ -38,8 +38,15 @@ from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
 from trcc.adapters.rgb.corsair_dram import crc8
 from trcc.adapters.system._base import disambiguate
-from trcc.core.models import DeviceInfo, ProductInfo, Wire
+from trcc.core.models import (
+    DeviceInfo,
+    ProductInfo,
+    RamAccessState,
+    RamAccessStatus,
+    Wire,
+)
 from trcc.core.ports import (
+    RamAccess,
     SensorEnumerator,
     SmBus,
     Transport,
@@ -650,3 +657,28 @@ def scripted_ram() -> ScriptedSmBus:
     log.info("scripted_ram: two Corsair sticks on a scripted i2c-3")
     return ScriptedSmBus({0x19: ScriptedCorsairStick(),
                           0x1B: ScriptedCorsairStick()})
+
+
+class ScriptedRamAccess(RamAccess):
+    """The RAM-lighting grant, in memory: switching it asks nobody for a
+    password and writes no udev rule -- a mock window's "Enable" must never
+    reach the host's polkit."""
+
+    def __init__(self, state: RamAccessState = RamAccessState.ON) -> None:
+        log.info("ScriptedRamAccess: starts %s", state.value)
+        self.state = state
+
+    def status(self) -> RamAccessStatus:
+        log.debug("ScriptedRamAccess.status: %s", self.state.value)
+        return RamAccessStatus(self.state,
+                               f"RAM lighting is {self.state.value} (scripted)")
+
+    def enable(self) -> RamAccessStatus:
+        log.info("ScriptedRamAccess.enable")
+        self.state = RamAccessState.ON
+        return self.status()
+
+    def disable(self) -> RamAccessStatus:
+        log.info("ScriptedRamAccess.disable")
+        self.state = RamAccessState.OFF
+        return self.status()

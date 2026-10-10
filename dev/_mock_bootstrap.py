@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         HotplugMonitor,
         HttpFetcher,
         Platform,
+        RamAccess,
         ScsiTransport,
         SmBus,
     )
@@ -509,6 +510,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     # (tests.mock_platform) so there is exactly one source for it.
     from tests.mock_platform import (
         DeviceSpec,
+        ScriptedRamAccess,
         scripted_bulk_transport,
         scripted_ram,
         scripted_scsi_transport,
@@ -529,6 +531,8 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
             self._reply_override: dict[tuple[int, int], tuple[int, int, int]] = {}
             #: The fleet's RAM: what the RGB follower and effects write to.
             self.ram = scripted_ram()
+            #: Its grant: switched in memory, never through the host's polkit.
+            self.ram_grant = ScriptedRamAccess()
 
         def paths(self) -> Paths:
             return dev_paths
@@ -592,6 +596,10 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
         def smbuses(self) -> tuple[SmBus, ...]:
             log.info("DevMockPlatform.smbuses: the scripted sticks, not the host's")
             return (self.ram,)
+
+        def ram_access(self) -> RamAccess:
+            log.debug("DevMockPlatform.ram_access: scripted, not the host's")
+            return self.ram_grant
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",
              len(parsed), host_cls.__name__)

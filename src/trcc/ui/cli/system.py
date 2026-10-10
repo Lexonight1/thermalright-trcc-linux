@@ -629,10 +629,19 @@ def rgb(
     scan: bool = typer.Option(
         False, "--scan", help="Look for the lights first: RGB memory on the "
         "SMBus, and OpenRGB's devices."),
+    host: str = typer.Option(
+        "", "--host", help="With --scan: look for OpenRGB here, and save it "
+                           "(default: the saved one, 127.0.0.1 at first)."),
+    port: int = typer.Option(
+        0, "--port", help="With --scan: OpenRGB's port (default: the saved "
+                          "one, 6742 at first)."),
 ) -> None:
     """The RGB lights TRCC can drive or hand colours to."""
-    log.info("cli system rgb: scan=%s", scan)
-    result = get_app().dispatch(ScanRgbLights() if scan else RgbLights())
+    log.info("cli system rgb: scan=%s host=%r port=%s", scan, host, port)
+    if (host or port) and not scan:
+        raise typer.BadParameter("--host and --port go with --scan")
+    result = get_app().dispatch(ScanRgbLights(host=host, port=port) if scan
+                                else RgbLights())
     _echo_lights(result)
     if not result.ok:
         raise typer.Exit(code=1)

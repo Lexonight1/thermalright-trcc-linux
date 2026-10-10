@@ -2171,7 +2171,7 @@ def test_system_follow_status_and_off(cli_runner: CliRunner, cli_app) -> None:
     status = cli_runner.invoke(_app(), ["system", "follow"])
     assert status.exit_code == 0, status.output
     assert status.output == (
-        "Nothing follows the cooler\n"
+        "Nothing follows -- TRCC sends no colours to other lights\n"
         "  following: off (OpenRGB at 127.0.0.1:6742)\n"
         "  source   : the first LED cooler\n"
         "  lights   : all\n")
@@ -2179,7 +2179,7 @@ def test_system_follow_status_and_off(cli_runner: CliRunner, cli_app) -> None:
                                      "--port", "6800"])
     assert off.exit_code == 0, off.output
     assert off.output == (
-        "Nothing follows the cooler\n"
+        "Nothing follows -- TRCC sends no colours to other lights\n"
         "  following: off (OpenRGB at 127.0.0.1:6800)\n"
         "  source   : the first LED cooler\n"
         "  lights   : all\n")
@@ -2254,6 +2254,13 @@ def test_system_rgb_and_ram_effect_on_an_os_without_the_bus(cli_runner: CliRunne
     scanned = cli_runner.invoke(_app(), ["system", "rgb", "--scan"])
     assert scanned.exit_code == 1
     assert "\nRAM: no SMBus access on FakePlatform" in scanned.output
+    lone = cli_runner.invoke(_app(), ["system", "rgb", "--host", "10.0.0.2"])
+    assert lone.exit_code != 0        # an address only means something to a scan
+    moved = cli_runner.invoke(_app(), ["system", "rgb", "--scan", "--host",
+                                       "10.0.0.2", "--port", "6800"])
+    assert "; OpenRGB: not reachable" in moved.output
+    follow = cli_runner.invoke(_app(), ["system", "follow", "status"])
+    assert "(OpenRGB at 10.0.0.2:6800)" in follow.output
     effect = cli_runner.invoke(_app(), ["system", "ram-effect", "rainbow"])
     assert effect.exit_code == 1
     bad = cli_runner.invoke(_app(), ["system", "ram-effect", "static",

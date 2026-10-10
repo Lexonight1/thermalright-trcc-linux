@@ -1831,6 +1831,8 @@ trcc system rgb [OPTIONS]
 | Option | Description |
 |---|---|
 | `--scan` | Look for the lights first: RGB memory on the SMBus, and OpenRGB's devices. |
+| `--host` `HOST` | With --scan: look for OpenRGB here, and save it (default: the saved one, 127.0.0.1 at first). |
+| `--port` `PORT` | With --scan: OpenRGB's port (default: the saved one, 6742 at first). |
 
 ### `trcc system sensors`
 

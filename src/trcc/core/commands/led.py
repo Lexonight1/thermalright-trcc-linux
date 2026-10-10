@@ -1099,15 +1099,17 @@ def _rgb_follow_result(app: App, message: str) -> RgbFollowResult:
     )
 
 
-def _rgb_follow_label(mode: RgbFollowMode, host: str, port: int) -> str:
-    """What follows the cooler, in words."""
-    log.debug("_rgb_follow_label: %s", mode.value)
+def _rgb_follow_label(mode: RgbFollowMode, host: str, port: int,
+                      source: str = "") -> str:
+    """What follows which device, in words -- *source* empty is the cooler."""
+    log.debug("_rgb_follow_label: %s source=%r", mode.value, source)
+    lead = f"device {source}" if source else "the cooler"
     match mode:
         case RgbFollowMode.OPENRGB:
-            return f"OpenRGB at {host}:{port} follows the cooler"
+            return f"OpenRGB at {host}:{port} follows {lead}"
         case RgbFollowMode.RAM:
-            return "Corsair RAM follows the cooler"
-    return "Nothing follows the cooler"
+            return f"Corsair RAM follows {lead}"
+    return "Nothing follows -- TRCC sends no colours to other lights"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1155,7 +1157,7 @@ class SetRgbFollow(Command[RgbFollowResult]):
                                  targets)
         app.events.publish(RgbFollowChanged(mode=self.mode))
         return _rgb_follow_result(
-            app, _rgb_follow_label(self.mode, host, port))
+            app, _rgb_follow_label(self.mode, host, port, source))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1167,7 +1169,7 @@ class RgbFollow(Query[RgbFollowResult]):
         current = app.settings.app
         return _rgb_follow_result(app, _rgb_follow_label(
             app.settings.rgb_follow_mode(), current.openrgb_host,
-            current.openrgb_port))
+            current.openrgb_port, current.rgb_follow_source))
 
 
 def _ram_lighting_result(status: RamAccessStatus, *,

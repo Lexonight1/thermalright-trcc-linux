@@ -2092,7 +2092,8 @@ def test_system_rgb_follow_status_and_off(api_client: TestClient) -> None:
                            json={"mode": "off", "port": 6800})
     assert resp.status_code == 200
     assert (resp.json()["mode"], resp.json()["port"]) == ("off", 6800)
-    assert resp.json()["message"] == "Nothing follows the cooler"
+    assert resp.json()["message"] == (
+        "Nothing follows -- TRCC sends no colours to other lights")
 
 
 def test_system_rgb_follow_takes_a_host_not_a_url(api_client: TestClient) -> None:
@@ -2121,6 +2122,12 @@ def test_system_rgb_routes_on_an_os_without_the_bus(api_client: TestClient) -> N
     scan = api_client.post("/system/rgb/scan")
     assert scan.status_code == 400
     assert scan.json()["detail"].startswith("RAM: no SMBus access on FakePlatform")
+    moved = api_client.post("/system/rgb/scan",
+                            json={"host": "10.0.0.2", "port": 6800})
+    assert moved.status_code == 400   # still no SMBus -- but the address moved
+    assert api_client.get("/system/rgb-follow").json()["host"] == "10.0.0.2"
+    assert api_client.post("/system/rgb/scan",
+                           json={"host": "http://x/"}).status_code == 422
     effect = api_client.post("/system/ram-effect", json={"effect": "rainbow"})
     assert effect.status_code == 400
     assert api_client.post("/system/ram-effect",

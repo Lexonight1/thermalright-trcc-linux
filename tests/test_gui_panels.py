@@ -2247,6 +2247,7 @@ def test_uc_device_spec_matches_the_layout_table() -> None:
     expected = {
         "sensor_btn": Layout.SENSOR_BTN,
         "about_btn": Layout.ABOUT_BTN,
+        "rgb_btn": Layout.RGB_BTN,
         "no_devices_label": Layout.NO_DEVICES_LABEL,
         "hint_label": Layout.HINT_LABEL,
     }

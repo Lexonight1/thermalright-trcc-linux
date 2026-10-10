@@ -183,7 +183,8 @@ def test_the_command_saves_the_setting_and_starts_following(tmp_path) -> None:  
     assert made[-1].mode is RAM_MODE and made[0].closed == 1
     off = app.dispatch(SetRgbFollow(mode=OFF))
     assert off.ok and off.mode is OFF and off.port == 7000
-    assert off.message == "Nothing follows the cooler"
+    assert off.message == (
+        "Nothing follows -- TRCC sends no colours to other lights")
     assert app.dispatch(RgbFollow()).mode is OFF
     app.close()
 
@@ -871,4 +872,32 @@ def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:  # typ
                                     "i2c-3/0x1b": "not even a dict"}
     assert app.settings.ram_effect("i2c-3/0x19") is None
     assert app.settings.ram_effect("i2c-3/0x1b") is None
+    app.close()
+
+
+def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The page's address box reaches the App through Find, so the setting,
+    the scan and an OpenRGB follower never point at different servers."""
+    from trcc.core.commands import ScanRgbLights
+    from trcc.core.models import RgbFollowMode
+
+    app, _platform, _seen = _lights_app(tmp_path)
+    moved: list = []
+    real = app.rgb_mirror.configure
+    app.rgb_mirror.configure = lambda *a, **k: (  # type: ignore[method-assign]
+        moved.append(a[:3]), real(*a, **k))
+    app.dispatch(ScanRgbLights(host="10.0.0.5", port=6800))
+    assert (app.settings.app.openrgb_host, app.settings.app.openrgb_port) == (
+        "10.0.0.5", 6800)
+    assert moved == []                    # not following OpenRGB: nothing moves
+    app.settings.set_rgb_follow(RgbFollowMode.OPENRGB, "10.0.0.5", 6800, "",
+                                app.settings.rgb_follow_mapping(), ())
+    app.dispatch(ScanRgbLights(host="10.0.0.6"))
+    assert moved == [(RgbFollowMode.OPENRGB, "10.0.0.6", 6800)]
+    app.dispatch(ScanRgbLights())         # empty keeps the saved address
+    assert app.settings.app.openrgb_host == "10.0.0.6"
+    refused = app.dispatch(ScanRgbLights(port=70000))
+    assert not refused.ok
+    assert refused.message == "port out of range (1-65535): 70000"
+    assert app.settings.app.openrgb_port == 6800
     app.close()

@@ -68,6 +68,8 @@ from ...core.events import (
     AutostartChanged,
     DiskDeviceChanged,
     RamLightingChanged,
+    RgbFollowChanged,
+    RgbLightsChanged,
     SensorDashboardChanged,
 )
 from ...core.logs import per_frame
@@ -98,6 +100,7 @@ from .uc_device import UCDevice
 from .uc_image_cut import UCImageCut
 from .uc_led_control import UCLedControl
 from .uc_preview import UCPreview
+from .uc_rgb import UCRgb
 from .uc_system_info import UCSystemInfo
 from .uc_theme_local import UCThemeLocal
 from .uc_theme_mask import UCThemeMask
@@ -235,10 +238,7 @@ class TRCCApp(QMainWindow):
         self._bus.screencast_stopped.connect(self._on_bus_cast_changed, type=qconn)
         self._bus.device_connected.connect(self._on_bus_device_connected, type=qconn)
         self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
-        self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
-        # Frames only while the LCD or LED preview is on screen (see the bridge).
-        self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
-        self._bus.follow_previews(self.uc_preview, self.uc_led_control)
+        self._follow_frames(qconn)
         self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
         # The frame round each casting device's region (C# FormScreenshot),
         # shared with qtgui and following the App, not this window.
@@ -391,6 +391,16 @@ class TRCCApp(QMainWindow):
         log.debug("_on_bus_device_disconnected: key=%s", event.key)
         self._remove_handler(event.key)
 
+    def _follow_frames(self, qconn: Qt.ConnectionType) -> None:
+        """Frames, and the previews that want them: the LCD, the LED and the
+        RGB page's follow preview.  Frames flow only while one of those is on
+        screen (see the bridge)."""
+        log.debug("_follow_frames")
+        self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
+        self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
+        self._bus.follow_previews(self.uc_preview, self.uc_led_control,
+                                  self.uc_rgb.page.follow_preview)
+
     def _on_bus_frame_sent(self, event: Any) -> None:
         """A frame just went out on the wire.
 
@@ -402,6 +412,7 @@ class TRCCApp(QMainWindow):
         re-render.  Only the active device writes the shared preview.
         """
         frame_log.debug("_on_bus_frame_sent")  # per-frame — DEBUG so reports aren't flooded
+        self.uc_rgb.page.on_frame(event)      # the RGB page follows any LCD
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)
@@ -516,9 +527,13 @@ class TRCCApp(QMainWindow):
                 self.uc_led_control.show_disk_identity()
             case SensorDashboardChanged():
                 self.uc_system_info.show_dashboard()
-            case RamLightingChanged():
+            case RamLightingChanged() | RgbLightsChanged():
                 if self.uc_about.ram_access is not None:
                     self.uc_about.ram_access.refresh()
+                self.uc_rgb.page.on_app_event(event)
+            case RgbFollowChanged():
+                self.uc_rgb.page.on_app_event(event)
+                self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
             case _:
                 self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
 
@@ -1049,6 +1064,11 @@ class TRCCApp(QMainWindow):
         # ``SensorEnumerator`` plus a ``SysInfoConfig`` built here, which it
         # then passed on to the sensor picker; both are gone, so nothing in
         # this window holds a sensor port any more.
+        # RGB Lighting -- the memory's own effects, and what follows a device.
+        self.uc_rgb = UCRgb(self._app, central)
+        self.uc_rgb.setGeometry(*Layout.FORM_CONTAINER)
+        self.uc_rgb.setVisible(False)
+
         self.uc_system_info = UCSystemInfo(self._app, parent=central)
         self.uc_system_info.setGeometry(*Layout.SYSINFO_PANEL)
         self.uc_system_info.setVisible(False)
@@ -1419,6 +1439,10 @@ class TRCCApp(QMainWindow):
         log.info("_on_about_clicked")
         self._show_view('about')
 
+    def _on_rgb_clicked(self) -> None:
+        log.info("_on_rgb_clicked")
+        self._show_view('rgb')
+
     # ── Download status slots ───────────────────────────────────────
 
     def _on_theme_download_started(self, theme_id: str) -> None:
@@ -1456,6 +1480,7 @@ class TRCCApp(QMainWindow):
             self._active_key = ''  # allow re-selecting same device on return
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
+        self.uc_rgb.setVisible(view == 'rgb')
         self.uc_system_info.setVisible(view == 'sysinfo')
         self.uc_led_control.setVisible(view == 'led')
         self.uc_activity_sidebar.setVisible(False)
@@ -1476,6 +1501,7 @@ class TRCCApp(QMainWindow):
         self.uc_device.device_clicked.connect(self._on_device_picked)
         self.uc_device.home_clicked.connect(self._on_home_clicked)
         self.uc_device.about_clicked.connect(self._on_about_clicked)
+        self.uc_device.rgb_clicked.connect(self._on_rgb_clicked)
 
         self.uc_theme_local.theme_selected.connect(self._on_local_theme_clicked)
         self.uc_theme_local.delete_requested.connect(self._on_delete_theme)

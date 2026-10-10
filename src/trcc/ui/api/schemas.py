@@ -236,6 +236,15 @@ class RgbFollowRequest(BaseModel):
     targets: list[str] | None = Field(None, max_length=64)
 
 
+class RgbScanRequest(BaseModel):
+    """Where to look for OpenRGB -- a hostname or IP address only, as in
+    ``RgbFollowRequest``.  Empty keeps the saved address, ``port`` 0 likewise;
+    a new one is saved."""
+    host: str = Field(default="", max_length=253,
+                      pattern=r"^[A-Za-z0-9.:\-]*$")
+    port: int = Field(default=0, ge=0, le=65535)
+
+
 class RamEffectRequest(BaseModel):
     """One of the memory's own effects, saved on the sticks named by
     ``sticks`` (refs; [] for every stick)."""

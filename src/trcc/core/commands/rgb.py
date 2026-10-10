@@ -62,11 +62,27 @@ class ScanRgbLights(Command[RgbLightsResult]):
     Only ever because a user asked ("Find lights") -- the RAM probe reads
     the chipset bus.  It is refused while the memory's SPD hubs are stuck
     (``LinuxOS.smbuses``), and without access to the bus.
+
+    ``host``:``port`` is where OpenRGB is looked for; an empty host or a port
+    of 0 keeps the saved address.  A new address is saved -- and handed to
+    following, when it follows OpenRGB -- so the page, the setting and the
+    follower never point at different servers.
     """
+    host: str = ""
+    port: int = 0
 
     def execute(self, app: App) -> RgbLightsResult:
-        log.info("ScanRgbLights")
+        log.info("ScanRgbLights: openrgb %s:%d", self.host or "(saved)",
+                 self.port)
         prefs = app.settings.app
+        host = self.host or prefs.openrgb_host
+        port = self.port or prefs.openrgb_port
+        if (host, port) != (prefs.openrgb_host, prefs.openrgb_port):
+            try:
+                self._move_openrgb(app, host, port)
+            except ValueError as e:
+                log.warning("ScanRgbLights: refused -- %s", e)
+                return _lights(app, message=str(e), ok=False)
         ram_error = ""
         try:
             sticks = app.rgb_mirror.scan_ram()
@@ -74,7 +90,7 @@ class ScanRgbLights(Command[RgbLightsResult]):
             sticks = ()
             ram_error = str(e)
             log.warning("ScanRgbLights: the RAM could not be searched -- %s", e)
-        app.rgb_mirror.scan_openrgb(prefs.openrgb_host, prefs.openrgb_port)
+        app.rgb_mirror.scan_openrgb(host, port)
         app.events.publish(RgbLightsChanged())
         openrgb, _error = app.rgb_mirror.openrgb_lights()
         message = (f"RAM: {ram_error}" if ram_error else
@@ -82,6 +98,22 @@ class ScanRgbLights(Command[RgbLightsResult]):
         message += (f"; OpenRGB: {len(openrgb)} device(s)" if openrgb is not None
                     else "; OpenRGB: not reachable")
         return _lights(app, message=message, ok=not ram_error)
+
+    @staticmethod
+    def _move_openrgb(app: App, host: str, port: int) -> None:
+        """Save OpenRGB's new address; a follower of it moves there too."""
+        settings = app.settings
+        prefs = settings.app
+        mode = settings.rgb_follow_mode()
+        log.info("ScanRgbLights: OpenRGB moves to %s:%d (following %s)", host,
+                 port, mode.value)
+        settings.set_rgb_follow(mode, host, port, prefs.rgb_follow_source,
+                                settings.rgb_follow_mapping(),
+                                settings.rgb_follow_targets())
+        if mode is RgbFollowMode.OPENRGB:
+            app.rgb_mirror.configure(mode, host, port, prefs.rgb_follow_source,
+                                     settings.rgb_follow_mapping(),
+                                     settings.rgb_follow_targets())
 
 
 @dataclass(frozen=True, slots=True)

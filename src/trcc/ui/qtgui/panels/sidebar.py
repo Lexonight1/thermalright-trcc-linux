@@ -60,6 +60,7 @@ _ENTRIES: tuple[_Entry, ...] = (
     _Entry("screencast", "Screencast"),
     _Entry("config",     "Configuration"),
     _Entry("led",        "LED"),
+    _Entry("rgb",        "RGB Lighting"),
     _Entry("status",     "Status"),
     _Entry("system",     "System"),
     _Entry("about",      "About"),

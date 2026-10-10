@@ -1498,8 +1498,8 @@ class FollowMapping(str, Enum):
     """How an LCD's picture lights the devices that follow it.
 
     ``HALVES``: the panel split into a column per device, left to right; each
-    device shows its column top to bottom.  ``SINGLE``: one colour each, the
-    panel's average.
+    device shows its column top to bottom.  ``SINGLE``: the whole panel as one
+    column, top to bottom, the same on every device.
     """
     HALVES = "halves"
     SINGLE = "single"

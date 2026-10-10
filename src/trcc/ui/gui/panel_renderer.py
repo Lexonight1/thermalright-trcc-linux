@@ -47,7 +47,8 @@ def _asset(name: str) -> str:
     than via an ``Assets`` attribute, and warning about those would be
     noise about correct code.
     """
-    if "." in name:
+    if not name or "." in name:
+        log.debug("_asset: %r passes through", name)
         return name
     value = getattr(Assets, name, None)
     if value is None:

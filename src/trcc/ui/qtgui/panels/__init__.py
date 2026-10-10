@@ -10,6 +10,7 @@ from .local_theme_browser import LocalThemeBrowser
 from .mask_browser import MaskBrowser
 from .overlay_editor import OverlayEditorPanel
 from .preview_panel import PreviewPanel
+from .rgb_panel import RgbPanel
 from .screencast_panel import ScreencastPanel
 from .sidebar import ActivitySidebar
 from .status_panel import StatusPanel
@@ -27,6 +28,7 @@ __all__ = [
     "MaskBrowser",
     "OverlayEditorPanel",
     "PreviewPanel",
+    "RgbPanel",
     "ScreencastPanel",
     "StatusPanel",
     "SystemPanel",

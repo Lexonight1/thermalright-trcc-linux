@@ -1607,7 +1607,10 @@ Look for the lights: RGB memory on the SMBus, and OpenRGB's devices.
 
 *Command* → `RgbLightsResult`
 
-Takes no arguments.
+| Field | Type | Required |
+|---|---|---|
+| `host` | `str` | no |
+| `port` | `int` | no |
 
 ### `SetRamEffect`
 

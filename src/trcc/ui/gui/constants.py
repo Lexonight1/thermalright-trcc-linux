@@ -217,7 +217,9 @@ class Layout:
     # Sensor button (within sidebar)
     SENSOR_BTN = (25, 100, 140, 50)
     ABOUT_BTN = (25, 730, 140, 50)
-    DEVICE_AREA = (0, 160, 180, 560)
+    # RGB Lighting sits above About; the device list scrolls in what is left.
+    RGB_BTN = (25, 670, 140, 50)
+    DEVICE_AREA = (0, 160, 180, 500)
     NO_DEVICES_LABEL = (25, 10, 140, 50)
     HINT_LABEL = (15, 55, 150, 40)
 
