@@ -141,17 +141,16 @@ def test_run_health_check_delegates_to_the_diagnostics_port(tmp_path) -> None:  
         app.close()
 
 
-def test_run_upgrade_dry_run_reads_pm_from_the_port(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """The package manager comes from the injected port, not a direct import."""
+def test_run_upgrade_reads_the_hint_from_the_platform_port(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The command comes from the injected Platform, not a direct import."""
     from trcc.core.commands import RunUpgrade
 
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
-        app.diagnostics = _fake_diagnostics()  # type: ignore[assignment]
+        app.platform.upgrade_hint = lambda: "sentinel-hint"  # type: ignore[method-assign]
         result = app.dispatch(RunUpgrade(dry_run=True))
-        # The sentinel pm has no upgrade recipe (so ok=False), but it lands in
-        # ``package_manager`` — proving the command read it from the injected port.
-        assert result.package_manager == "sentinel-pm"
+        assert result.ok and result.message.endswith("sentinel-hint")
+        assert result.command == []
     finally:
         app.close()
 

@@ -5,6 +5,7 @@ is why they sit together and away from the live readouts.
 """
 from __future__ import annotations
 
+import html
 import logging
 
 from PySide6.QtCore import Qt
@@ -13,7 +14,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
 )
 
@@ -135,32 +135,15 @@ class MaintenanceBox(SystemBox):
             self._status.setText(f"Up to date ({r.local_version}).")
 
     def _on_upgrade(self) -> None:
-        """Run the package-manager upgrade, after showing exactly what runs.
+        """Show the command that upgrades this install (nothing is run).
 
-        ``RunUpgrade`` shells out through the system package manager under
-        sudo, so it is confirmed first -- the CLI refuses the same Command
-        without ``--yes`` for this reason.  ``dry_run`` asks the Command
-        itself what it WOULD run, so the confirmation quotes the real command
-        line instead of a UI's guess at it.
+        It used to confirm, then run the package manager as root -- which
+        upgraded everything but TRCC.  ``RunUpgrade`` now answers with the
+        right command for how TRCC was installed.
         """
-        log.info("_on_upgrade: asking the Command what it would run")
-        preview = self.dispatch(RunUpgrade(dry_run=True))
-        if not preview.ok:
-            log.warning("_on_upgrade: unavailable — %s", preview.message)
-            self._status.setText(f"Upgrade unavailable: {preview.message}")
-            return
-        answer = QMessageBox.question(
-            self, "Upgrade TRCC",
-            f"{preview.message}\n\nThis runs as root. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer is not QMessageBox.StandardButton.Yes:
-            log.info("_on_upgrade: declined by the user")
-            self._status.setText("Upgrade cancelled.")
-            return
-        log.info("_on_upgrade: confirmed — running")
-        r = self.dispatch(RunUpgrade(dry_run=False))
-        self._status.setText(
-            r.message if r.ok else f"Upgrade failed: {r.message}",
-        )
+        r = self.dispatch(RunUpgrade())
+        log.info("_on_upgrade: %s", r.message)
+        self._status.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        # The label renders rich text (release links); the command has "&&".
+        self._status.setText(html.escape(r.message).replace("\n", "<br>"))

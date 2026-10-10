@@ -1819,7 +1819,7 @@ trcc system snapshot [OPTIONS]
 
 ### `trcc system upgrade`
 
-Upgrade trcc-linux via the detected package manager.
+Print the command that upgrades this TRCC install.
 
 ```bash
 trcc system upgrade [OPTIONS]
@@ -1827,8 +1827,8 @@ trcc system upgrade [OPTIONS]
 
 | Option | Description |
 |---|---|
-| `--yes`, `-y` | Skip confirmation and run the upgrade subprocess. |
-| `--dry-run` | Print the command that would run, don't execute it. |
+| `--yes`, `-y` | Accepted for older scripts; nothing is run. |
+| `--dry-run` | Accepted for older scripts; nothing is run. |
 
 ## `trcc theme`
 

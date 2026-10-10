@@ -42,7 +42,7 @@ from ..sensors.gpu_detect import (
     detect_gpu_vendors,
     install_matching_gpu_extras,
 )
-from ._base import BaseOS, BasePaths
+from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
 from ._desktop_entry import XdgDesktopEntry
 from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
@@ -468,8 +468,9 @@ class LinuxFamily:
     manager: str
     #: Install one-liner with a ``{pkg}`` slot.
     install_cmd: str
-    #: Argv that upgrades trcc-linux, or empty where there is no single line.
-    upgrade_cmd: tuple[str, ...] = ()
+    #: The command that installs the release's own package for this family,
+    #: or "" where we ship none (the hint then points at the release page).
+    package_upgrade: str = ""
     #: tool -> this family's package name, where it differs from
     #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
     #: "same as Debian" — guessing is what #207 was.
@@ -483,7 +484,7 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
     LinuxFamily(
         name="Fedora-family", manager="dnf",
         install_cmd="sudo dnf install {pkg}",
-        upgrade_cmd=("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
+        package_upgrade=f"sudo dnf install {RELEASES_URL}/download/trcc-linux-latest.noarch.rpm",
         # Advised by BINARY PATH, not package name.  Both shared names are
         # wrong here and both fail in a way that looks like success:
         #   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z
@@ -499,36 +500,34 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
     LinuxFamily(
         name="Debian-family", manager="apt",
         install_cmd="sudo apt install {pkg}",
-        upgrade_cmd=("sudo", "apt", "upgrade", "-y", "trcc-linux"),
+        package_upgrade=download_and_install("trcc-linux-latest_all.deb",
+                                             "sudo apt install"),
         packages={"pynvml": "python3-pynvml"},
     ),
     LinuxFamily(
         name="Arch-family", manager="pacman",
         install_cmd="sudo pacman -S {pkg}",
-        upgrade_cmd=("sudo", "pacman", "-Syu", "--noconfirm", "trcc-linux"),
+        package_upgrade=download_and_install("trcc-linux-latest-any.pkg.tar.zst",
+                                             "sudo pacman -U"),
         # Arch names it differently, and advising Debian's name here is #207.
         packages={"pynvml": "python-nvidia-ml-py"},
     ),
     LinuxFamily(
         name="SUSE-family", manager="zypper",
         install_cmd="sudo zypper install {pkg}",
-        upgrade_cmd=("sudo", "zypper", "update", "-y", "trcc-linux"),
         packages={"pynvml": "python3-pynvml"},
     ),
     LinuxFamily(
         name="Void", manager="xbps-install",
         install_cmd="sudo xbps-install {pkg}",
-        upgrade_cmd=("sudo", "xbps-install", "-u", "trcc-linux"),
     ),
     LinuxFamily(
         name="Alpine", manager="apk",
         install_cmd="sudo apk add {pkg}",
-        upgrade_cmd=("sudo", "apk", "upgrade", "trcc-linux"),
     ),
     LinuxFamily(
         name="NixOS", manager="nix-env",
         install_cmd="nix-env -iA nixpkgs.{pkg}",
-        upgrade_cmd=(),            # flake-managed; there is no one upgrade line
     ),
 )
 
@@ -542,7 +541,6 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
 _EL_FAMILY = LinuxFamily(
     name="EL-family", manager="dnf",
     install_cmd="sudo dnf install {pkg}",
-    upgrade_cmd=("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
     packages={"pynvml": "python3-pynvml",
               "7z": "/usr/bin/7z",
               "ffmpeg": "/usr/bin/ffmpeg"},
@@ -906,10 +904,13 @@ class LinuxOS(BaseOS, key="linux"):
         log.debug("package_manager: %s", self._family.manager or "(none)")
         return self._family.manager
 
-    def upgrade_command(self) -> tuple[str, ...]:
-        """Argv that upgrades trcc-linux on this family, or empty if unknown."""
-        log.debug("upgrade_command: %s", self._family.upgrade_cmd)
-        return self._family.upgrade_cmd
+    def upgrade_hint(self) -> str:
+        """A package install upgrades by installing the release's package."""
+        if self.install_method() == "package" and self._family.package_upgrade:
+            log.info("upgrade_hint: %s package -> %s", self._family.name,
+                     self._family.package_upgrade)
+            return self._family.package_upgrade
+        return super().upgrade_hint()
 
     def software_install_hint(self, tool: str) -> str:
         """Install line for a logical tool, in this family's package manager.

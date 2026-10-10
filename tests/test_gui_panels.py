@@ -2623,83 +2623,26 @@ def test_toggling_hdd_persists_it(gui_app: App, qtbot) -> None:
     assert gui_app.settings.app.hdd_enabled is box._hdd_check.isChecked()
 
 
-def _drive_upgrade(gui_app: App, qtbot, monkeypatch, *, confirm: bool):
-    """Press Upgrade with the confirmation answered *confirm*.
+def test_the_upgrade_button_shows_the_command_and_runs_nothing(
+    gui_app: App, qtbot, monkeypatch,
+) -> None:
+    """It confirmed, then ran the package manager as root -- which upgraded
+    everything but TRCC.  It now shows the command for this install, and the
+    label (rich text, for release links) escapes the command's ``&&``."""
+    import subprocess
 
-    ``hasattr(box, "_upgrade_btn")`` was the first version of this and it is
-    worthless: it proves a button exists, not that the button is safe.  The
-    safety-critical behaviour is that NOTHING runs until the user agrees --
-    ``RunUpgrade(dry_run=False)`` spawns a package-manager subprocess under
-    sudo.
-    """
-    from PySide6.QtWidgets import QMessageBox
+    def no_spawn(*a, **k):
+        raise AssertionError("the upgrade button spawned a process")
 
+    monkeypatch.setattr(subprocess, "run", no_spawn)
+    monkeypatch.setattr(gui_app.platform, "upgrade_hint",
+                        lambda: "wget -O /tmp/x URL && sudo pacman -U /tmp/x")
     box = _maintenance_box(gui_app, qtbot)
-    # A host with no package manager makes the DRY RUN fail, and the box
-    # correctly bails before confirming -- which is right, and would leave the
-    # confirm path untested everywhere.  Give it a manager so the gate can
-    # reach the branch it exists to guard.
-    monkeypatch.setattr(gui_app.diagnostics, "package_manager",
-                        lambda: "pacman")
-    monkeypatch.setattr(gui_app.platform, "upgrade_command",
-                        lambda: ["true", "-upgrade"])
-    answer = (QMessageBox.StandardButton.Yes if confirm
-              else QMessageBox.StandardButton.No)
-    monkeypatch.setattr(QMessageBox, "question",
-                        staticmethod(lambda *a, **k: answer))
-    sent: list[bool] = []
-    real = box.dispatch
 
-    def spy(cmd):
-        if type(cmd).__name__ == "RunUpgrade":
-            sent.append(cmd.dry_run)
-        return real(cmd)
-
-    box.dispatch = spy                        # pyright: ignore[reportAttributeAccessIssue]
     box._on_upgrade()
-    return sent
 
-
-def test_declining_the_upgrade_runs_nothing(
-    gui_app: App, qtbot, monkeypatch,
-) -> None:
-    sent = _drive_upgrade(gui_app, qtbot, monkeypatch, confirm=False)
-
-    assert sent == [True], (
-        "saying No must leave ONLY the dry run — a False in this list is a "
-        f"sudo subprocess the user declined, got {sent}"
-    )
-
-
-def test_confirming_the_upgrade_runs_it(
-    gui_app: App, qtbot, monkeypatch,
-) -> None:
-    sent = _drive_upgrade(gui_app, qtbot, monkeypatch, confirm=True)
-
-    assert sent == [True, False], (
-        f"expected a dry run, then the real one; got {sent}"
-    )
-
-
-def test_the_confirmation_quotes_the_command_that_will_run(
-    gui_app: App, qtbot,
-) -> None:
-    """The dialog must show the REAL argv, not a UI's guess at it.
-
-    ``RunUpgrade(dry_run=True)`` exists for exactly this: it returns
-    ``message="Would run: ..."`` plus the ``command`` list, so the text the
-    user approves is the text the Command would execute.
-    """
-    box = _maintenance_box(gui_app, qtbot)
-    from trcc.core.commands import RunUpgrade
-
-    preview = box.dispatch(RunUpgrade(dry_run=True))
-
-    if preview.ok:
-        assert preview.command, "dry run reported ok with no command to show"
-        assert " ".join(preview.command) in preview.message
-    else:
-        assert preview.message, "a refusal must say why, it is shown to the user"
+    assert "To upgrade TRCC" in box._status.text()
+    assert "&amp;&amp; sudo pacman -U" in box._status.text()
 
 
 def test_the_date_format_reaches_the_bus(gui_app: App, qtbot) -> None:

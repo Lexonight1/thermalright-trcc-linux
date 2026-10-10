@@ -446,27 +446,19 @@ def check_update() -> None:
 def upgrade(
     yes: bool = typer.Option(
         False, "--yes", "-y",
-        help="Skip confirmation and run the upgrade subprocess.",
+        help="Accepted for older scripts; nothing is run.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run",
-        help="Print the command that would run, don't execute it.",
+        help="Accepted for older scripts; nothing is run.",
     ),
 ) -> None:
-    """Upgrade trcc-linux via the detected package manager."""
+    """Print the command that upgrades this TRCC install."""
     log.info("cli system upgrade: yes=%s dry_run=%s", yes, dry_run)
-    if not yes and not dry_run:
-        typer.echo("Refusing to run upgrade without --yes (sudo subprocess).")
-        typer.echo("Re-run with --dry-run to see the command, or --yes to confirm.")
-        raise typer.Exit(code=2)
     r = get_app().dispatch(RunUpgrade(dry_run=dry_run))
     typer.echo(r.message)
-    if r.stdout:
-        typer.echo(r.stdout)
-    if r.stderr:
-        typer.echo(r.stderr, err=True)
     if not r.ok:
-        raise typer.Exit(code=r.exit_code or 1)
+        raise typer.Exit(code=1)
 
 
 @app.command("first-run-status")

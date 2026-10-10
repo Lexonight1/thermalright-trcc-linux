@@ -1171,14 +1171,14 @@ def test_system_debug_report_to_file(
 # --- Final backend batch ----------------------------------------------------
 
 
-def test_system_upgrade_refuses_without_yes(
+def test_system_upgrade_prints_the_command(
     cli_runner: CliRunner, cli_app,
 ) -> None:
-    """Upgrade is a sudo subprocess — refuses to run without --yes."""
+    """Nothing runs, so nothing needs --yes: it prints the command."""
     del cli_app
     result = cli_runner.invoke(_app(), ["system", "upgrade"])
-    assert result.exit_code == 2
-    assert "Refusing" in result.output
+    assert result.exit_code == 0
+    assert "To upgrade TRCC" in result.output
 
 
 def test_system_upgrade_dry_run_emits_command(

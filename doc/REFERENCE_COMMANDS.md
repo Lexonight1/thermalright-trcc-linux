@@ -1461,7 +1461,7 @@ OS-specific one-time setup (udev, WinUSB guide, etc.).
 
 ### `RunUpgrade`
 
-Run the OS package-manager upgrade for trcc-linux.
+Say how to upgrade this install -- the command, for the user to run.
 
 *Command* → `UpgradeResult`
 

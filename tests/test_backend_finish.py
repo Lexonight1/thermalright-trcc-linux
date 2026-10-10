@@ -219,13 +219,10 @@ def test_run_upgrade_dry_run_returns_command(_trcc_app) -> None:
     from trcc.core.commands import RunUpgrade
 
     result = _trcc_app.dispatch(RunUpgrade(dry_run=True))
-    # On a system with a detected pm, command is populated; otherwise
-    # we get a structured no-pm error.  Either is a valid pass.
-    if result.ok:
-        assert result.command
-        assert result.command[0] == "sudo"
-    else:
-        assert "package manager" in result.message.lower()
+    # Nothing to run, ever: the answer is the command for the user.
+    assert result.ok
+    assert result.command == []
+    assert result.message.startswith("To upgrade TRCC")
 
 
 def test_set_slideshow_persists_state(_trcc_app) -> None:

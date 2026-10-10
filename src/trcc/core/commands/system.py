@@ -987,65 +987,28 @@ class CheckForUpdate(Query[UpdateCheckResult]):
 
 @dataclass(frozen=True, slots=True)
 class RunUpgrade(Command[UpgradeResult]):
-    """Run the OS package-manager upgrade for trcc-linux.
+    """Say how to upgrade this install -- the command, for the user to run.
 
-    Maps the detected package manager to the right command and spawns a
-    subprocess.  We never pipe untrusted input — the argv is a fixed
-    list per package manager.  ``dry_run=True`` returns the command
-    without executing it so UIs can show the user what would run.
+    It used to RUN the OS package manager under sudo, and trcc-linux is in no
+    distro repo: ``apt upgrade -y trcc-linux`` upgraded the whole system and
+    reported success with trcc unchanged (measured: "23 upgraded", rc 0),
+    pacman did a partial ``-Syu`` then "target not found", and the API ran it
+    from an HTTP POST.  The Platform names the right command for how TRCC was
+    installed; nothing is executed, so ``dry_run`` changes nothing and stays
+    only so older clients' requests still parse.
     """
-    #: ``sudo`` needs the user's terminal; and it outlasts the 30 s dispatch.
+    #: The install that matters is the caller's -- the one the user typed into.
     RUNS_IN_CALLER: ClassVar[bool] = True
     dry_run: bool = False
 
     def execute(self, app: App) -> UpgradeResult:
-        import subprocess
-
-        # pm is observed (the diagnostics port reports it, and now delegates to
-        # the OS for the answer); the RECIPE comes from the OS itself, which
-        # used to be a module table keyed on the probed string.
-        pm = app.diagnostics.package_manager()
-        if not pm:
-            log.warning("RunUpgrade.execute: no package manager detected — "
-                        "cannot self-upgrade on this system")
-            return UpgradeResult(
-                ok=False, package_manager="",
-                message="No supported package manager detected on this system",
-            )
-        cmd = app.platform.upgrade_command()
-        if not cmd:
-            log.warning("RunUpgrade.execute: package manager %r has no upgrade "
-                        "recipe", pm)
-            return UpgradeResult(
-                ok=False, package_manager=pm,
-                message=f"No upgrade recipe for package manager {pm!r}",
-            )
-        log.info("RunUpgrade.execute: pm=%s cmd=%s", pm, cmd)
-        if self.dry_run:
-            return UpgradeResult(
-                ok=True, package_manager=pm, command=list(cmd),
-                message=f"Would run: {' '.join(cmd)}",
-            )
-        try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True,
-                timeout=600.0, check=False,
-            )
-        except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
-            return UpgradeResult(
-                ok=False, package_manager=pm, command=list(cmd),
-                message=f"Upgrade subprocess failed: {type(e).__name__}: {e}",
-            )
+        method = app.platform.install_method()
+        hint = app.platform.upgrade_hint()
+        log.info("RunUpgrade.execute: %s install -> %s (shown, not run)",
+                 method, hint)
         return UpgradeResult(
-            ok=proc.returncode == 0,
-            package_manager=pm,
-            command=list(cmd),
-            stdout=proc.stdout,
-            stderr=proc.stderr,
-            exit_code=proc.returncode,
-            message=(f"Upgrade completed (exit {proc.returncode})"
-                     if proc.returncode == 0
-                     else f"Upgrade failed (exit {proc.returncode})"),
+            ok=True, package_manager=app.platform.package_manager(),
+            message=f"To upgrade TRCC ({method} install), run:\n  {hint}",
         )
 
 @dataclass(frozen=True, slots=True)

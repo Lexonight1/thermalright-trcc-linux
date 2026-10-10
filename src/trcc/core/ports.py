@@ -2723,8 +2723,12 @@ class Platform(ABC):
         """The system package manager, or "" when this OS has none of ours."""
 
     @abstractmethod
-    def upgrade_command(self) -> tuple[str, ...]:
-        """Argv that upgrades trcc on this OS, or empty when there is none."""
+    def upgrade_hint(self) -> str:
+        """The command that upgrades this install, for the user to run.
+
+        Never run by TRCC: no distro repo carries trcc-linux, so a package
+        manager "upgrade" upgraded everything else and reported success.
+        """
 
     @classmethod
     def resolve(cls) -> type[Platform]:

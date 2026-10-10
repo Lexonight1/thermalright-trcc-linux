@@ -474,8 +474,8 @@ class FakePlatform(Platform):
     def package_manager(self) -> str:
         return ""
 
-    def upgrade_command(self) -> Tuple[str, ...]:
-        return ()
+    def upgrade_hint(self) -> str:
+        return ""
 
     def software_install_hint(self, tool: str) -> str:
         return f"fake platform: install {tool}"

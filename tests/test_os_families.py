@@ -52,16 +52,53 @@ def test_linux_family_uses_its_own_manager(family: LinuxFamily) -> None:
             f"{family.name} emits {other}'s command: {hint!r}")
 
 
+#: The one native package each family can install -- the release's fixed-name
+#: download, never the family's repo: no distro repo carries trcc-linux.
+_NATIVE_PACKAGE = {"dnf": "trcc-linux-latest.noarch.rpm",
+                   "apt": "trcc-linux-latest_all.deb",
+                   "pacman": "trcc-linux-latest-any.pkg.tar.zst"}
+
+
 @pytest.mark.parametrize("family", _FAMILIES, ids=lambda f: f.name)
-def test_linux_family_upgrade_targets_our_package(family: LinuxFamily) -> None:
-    """Every family that has an upgrade recipe upgrades trcc-linux with it."""
-    cmd = LinuxOS(family).upgrade_command()
-    if not cmd:                       # NixOS is flake-managed — no single line
-        assert family.manager == "nix-env", (
-            f"{family.name} has no upgrade command and is not NixOS")
-        return
-    assert "trcc-linux" in cmd
-    assert family.manager in cmd or family.manager.split("-")[0] in cmd
+def test_a_package_install_is_told_how_to_upgrade_itself(
+        family: LinuxFamily, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``trcc system upgrade`` ran ``sudo apt upgrade -y trcc-linux`` and the
+    like, and trcc-linux is in no distro repo: apt upgraded the WHOLE system
+    and reported success (measured: "23 upgraded", trcc unchanged, rc 0);
+    pacman did a partial -Syu, then "target not found".  The hint now names
+    the release's own package, or the release page where we ship none.
+    MUTATION CHECK: hand back the old repo-upgrade line -> fails."""
+    monkeypatch.setattr(LinuxOS, "install_method", lambda self: "package")
+
+    hint = LinuxOS(family).upgrade_hint()
+
+    assert "upgrade -y" not in hint and "-Syu" not in hint
+    if (package := _NATIVE_PACKAGE.get(family.manager)) is not None:
+        assert package in hint
+    else:
+        assert "github.com/Lexonight1/thermalright-trcc-linux/releases" in hint
+
+
+@pytest.mark.parametrize(("method", "expected"), [
+    ("pipx", "pipx upgrade trcc-linux"),
+    ("pyinstaller", "github.com/Lexonight1/thermalright-trcc-linux/releases"),
+])
+def test_how_it_was_installed_decides_the_hint(
+        method: str, expected: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(LinuxOS, "install_method", lambda self: method)
+
+    assert expected in LinuxOS(_FAMILIES[0]).upgrade_hint()
+
+
+def test_the_legacy_deb_venv_is_told_to_install_the_legacy_deb(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The legacy deb pip-installs into /opt/trcc-linux, so it reads as "pip";
+    a pip upgrade there would fight the package that owns the venv."""
+    import sys
+    monkeypatch.setattr(LinuxOS, "install_method", lambda self: "pip")
+    monkeypatch.setattr(sys, "prefix", "/opt/trcc-linux")
+
+    assert "trcc-linux-latest.legacy_all.deb" in LinuxOS(_FAMILIES[0]).upgrade_hint()
 
 
 def test_unrecognised_linux_says_so_rather_than_guessing() -> None:

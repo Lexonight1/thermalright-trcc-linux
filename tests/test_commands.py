@@ -981,3 +981,24 @@ def test_each_app_wide_setting_announces_its_change(fake_platform) -> None:
         SensorDashboardChanged(panels=1),
         AutostartChanged(enabled=True), AutostartChanged(enabled=False),
     ]
+
+
+def test_run_upgrade_runs_nothing_and_says_what_to_run(fake_platform, monkeypatch) -> None:
+    """It spawned a root package-manager upgrade (through the API too, from an
+    HTTP POST); it now answers with the command for this install, and runs
+    nothing.  MUTATION CHECK: subprocess.run again -> the sentinel raises."""
+    import subprocess
+
+    from trcc.app import App
+    from trcc.core.commands import RunUpgrade
+
+    def no_spawn(*a, **k):
+        raise AssertionError("RunUpgrade spawned a process")
+
+    monkeypatch.setattr(subprocess, "run", no_spawn)
+    monkeypatch.setattr(fake_platform, "upgrade_hint", lambda: "pipx upgrade trcc-linux")
+
+    result = App(fake_platform).dispatch(RunUpgrade())
+
+    assert result.ok
+    assert "pipx upgrade trcc-linux" in result.message

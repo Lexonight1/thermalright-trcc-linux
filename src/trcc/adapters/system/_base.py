@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
@@ -150,6 +151,26 @@ def disambiguate(infos: list[DeviceInfo]) -> list[DeviceInfo]:
     return out
 
 
+#: Where every TRCC release lives; ``latest/download/<alias>`` is each
+#: package's fixed-name copy, so an upgrade line never names a version.
+RELEASES_URL = "https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest"
+#: The legacy deb's own venv: it reads as a "pip" install, but pip must not
+#: upgrade a venv a package owns.
+_LEGACY_DEB_VENV = "/opt/trcc-linux"
+
+
+def download_and_install(asset: str, installer: str) -> str:
+    """One copy-paste line: fetch the release's *asset*, install it.
+
+    ``wget -O``, never ``-c``: continuing onto a stale file of the same name
+    corrupts it or keeps the old one (measured, the #181 symptom).
+    """
+    line = (f"wget -O /tmp/{asset} {RELEASES_URL}/download/{asset} && "
+            f"{installer} /tmp/{asset}")
+    log.debug("download_and_install: %s", line)
+    return line
+
+
 class BaseOS(Platform):
     """Shared skeleton for every concrete OS :class:`Platform`.
 
@@ -234,10 +255,27 @@ class BaseOS(Platform):
         log.debug("%s.package_manager: none", type(self).__name__)
         return ""
 
-    def upgrade_command(self) -> tuple[str, ...]:
-        """Argv that upgrades trcc on this OS, or empty when there is none."""
-        log.debug("%s.upgrade_command: none", type(self).__name__)
-        return ()
+    def upgrade_hint(self) -> str:
+        """The command that upgrades THIS install -- shown, never run.
+
+        It used to be argv that ``RunUpgrade`` ran under sudo: ``apt upgrade
+        -y trcc-linux`` upgraded the whole system and reported success,
+        because no distro repo carries trcc-linux.  How TRCC got here decides
+        the answer; the OS adds its native package (``LinuxOS``).
+        """
+        method = self.install_method()
+        if method == "pipx":
+            hint = "pipx upgrade trcc-linux"
+        elif method == "pip" and sys.prefix == _LEGACY_DEB_VENV:
+            hint = download_and_install("trcc-linux-latest.legacy_all.deb",
+                                        "sudo apt install")
+        elif method == "pip":
+            hint = f"{sys.executable} -m pip install --upgrade trcc-linux"
+        else:
+            hint = f"download the latest release from {RELEASES_URL}"
+        log.info("%s.upgrade_hint: %s install -> %s", type(self).__name__,
+                 method, hint)
+        return hint
 
     def usb_power_state(self, vid: int, pid: int,
                         unit: str = "") -> UsbPowerState | None:

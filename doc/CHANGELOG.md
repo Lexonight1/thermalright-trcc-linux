@@ -49,6 +49,13 @@
   Every check now looks where udev does; `trcc doctor` names an outdated copy
   and the command to remove it; and `trcc system setup` leaves a current
   packaged rule in force, removing only an `/etc` copy TRCC wrote itself.
+- **`trcc system upgrade` no longer upgrades your whole system.** It ran the
+  distro's own upgrade for `trcc-linux` -- a package no distro repo carries --
+  so on Debian/Ubuntu it upgraded every other package and reported success
+  with TRCC unchanged, and on Arch it did a partial system upgrade. It now
+  prints the exact command for how you installed TRCC (pipx, pip, the release
+  package for your distro, or the download page), and runs nothing; the
+  window's update button shows the same command.
 - **The README and guides no longer name commands that do not exist (#247)**,
   and `-v` / `-vv` are shown where the CLI accepts them (`trcc -vv gui`).
 

@@ -790,7 +790,7 @@ permission_denied_hint() -> str
 setup(dry_run: 'bool' = False) -> int
 ```
 
-**You inherit (18):** `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
+**You inherit (18):** `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_hint` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
@@ -861,7 +861,7 @@ screen_capture() -> ScreenCapture
 sensors() -> SensorEnumerator
 setup(dry_run: 'bool' = False) -> int
 software_install_hint(tool: 'str') -> str
-upgrade_command() -> tuple[str, ...]
+upgrade_hint() -> str
 usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | None
 worker_thread_context() -> AbstractContextManager[None]
 ```

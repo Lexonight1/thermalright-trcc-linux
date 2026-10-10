@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
     QToolTip,
 )
@@ -178,7 +179,6 @@ class UCAbout(BasePanel):
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
     _update_available = Signal(str)       # latest version
-    _upgrade_finished = Signal(bool)     # True=success, False=failure
 
     def __init__(self, parent=None,
                  gpu_list: list[tuple[str, str]] | None = None,
@@ -330,7 +330,6 @@ class UCAbout(BasePanel):
         self.update_btn.installEventFilter(self._tooltip_filter)
         self.update_btn.clicked.connect(self._on_update_clicked)
         self._update_available.connect(self._on_update_result)
-        self._upgrade_finished.connect(self._on_upgrade_done)
         self._latest_version: str | None = None
         self._install_method, self._distro = _get_install_info(self._app, self._ui_state)
 
@@ -666,25 +665,20 @@ class UCAbout(BasePanel):
         if not self._latest_version:
             return
 
-        self._update_overlay.hide()
-        self._update_tooltip = "Updating..."
-        log.info("Starting %s upgrade to %s",
+        log.info("_on_update_clicked: %s install, %s available",
                  self._install_method, self._latest_version)
-        Thread(target=self._run_upgrade, daemon=True).start()
-
-    def _run_upgrade(self):
-        """Background thread: dispatch RunUpgrade via the App."""
         if self._app is None:
-            log.error("_run_upgrade: no App — widget constructed without it")
-            self._upgrade_finished.emit(False)
+            log.error("_on_update_clicked: no App — widget constructed without it")
             return
         from ...core.commands import RunUpgrade
         result = self._app.dispatch(RunUpgrade())
-        if result.ok:
-            log.info("%s", result.message)
-        else:
-            log.error("Upgrade failed: %s", result.message)
-        self._upgrade_finished.emit(result.ok)
+        # The command for THIS install, to run -- TRCC no longer runs a
+        # package manager that upgraded everything but itself.
+        box = QMessageBox(QMessageBox.Icon.Information, "Upgrade TRCC",
+                          f"Version {self._latest_version} is available.\n\n"
+                          f"{result.message}", parent=self)
+        box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.exec()
 
     # --- Diagnostics ---
 
@@ -724,16 +718,6 @@ class UCAbout(BasePanel):
         else:
             log.error("Diagnostic report failed: %s", r.message)
             QToolTip.showText(center, f"Report failed: {r.message}")
-
-    def _on_upgrade_done(self, success: bool):
-        """Post-upgrade: show restart message or re-enable button on failure."""
-        log.info("_on_upgrade_done: success=%s", success)
-        if success:
-            self._update_tooltip = "Updated — restart to apply"
-        else:
-            self._update_tooltip = (
-                f"Version {self._latest_version} available — click to retry")
-            self._update_overlay.show()
 
     # --- Close ---
 
