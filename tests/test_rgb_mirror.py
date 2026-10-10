@@ -540,3 +540,94 @@ def test_linux_will_not_open_a_bus_whose_spd_hub_is_stuck(monkeypatch) -> None: 
     # A stuck sensor on ANOTHER bus is not this bus's business.
     monkeypatch.setattr(linux, "silent_memory_sensors", lambda: ["9-0050"])
     assert len(linux.LinuxOS.smbuses(object())) == 1  # type: ignore[arg-type]
+
+
+# ── RAM lighting: the opt-in grant, through the App ────────────────────────
+
+class _FakeRamAccess:
+    """Answers like the Linux adapter, without pkexec or /etc."""
+
+    def __init__(self) -> None:
+        from trcc.core.models import RamAccessState, RamAccessStatus
+        self.status_ = RamAccessStatus(RamAccessState.OFF, "RAM lighting is off")
+        self.cancel = False
+        self.calls: list[str] = []
+
+    def status(self):  # type: ignore[no-untyped-def]
+        return self.status_
+
+    def enable(self):  # type: ignore[no-untyped-def]
+        from trcc.core.models import RamAccessState, RamAccessStatus
+        self.calls.append("enable")
+        if self.cancel:
+            return RamAccessStatus(RamAccessState.OFF,
+                                   "Cancelled -- nothing was changed")
+        self.status_ = RamAccessStatus(RamAccessState.ON, "RAM lighting is on")
+        return self.status_
+
+    def disable(self):  # type: ignore[no-untyped-def]
+        from trcc.core.models import RamAccessState, RamAccessStatus
+        self.calls.append("disable")
+        self.status_ = RamAccessStatus(RamAccessState.OFF, "RAM lighting is off")
+        return self.status_
+
+
+def _ram_app(tmp_path: Path) -> tuple[App, _FakeRamAccess, list]:
+    from trcc.core.events import RamLightingChanged
+    access = _FakeRamAccess()
+    platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
+    platform.ram_access = lambda: access  # type: ignore[method-assign]
+    app = App(platform)
+    seen: list = []
+    app.events.subscribe(RamLightingChanged, seen.append)
+    return app, access, seen
+
+
+def test_switching_ram_lighting_tells_every_ui(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trcc.core.commands import RamLighting, SetRamLighting
+    from trcc.core.models import RamAccessState
+
+    app, access, seen = _ram_app(tmp_path)
+    assert app.dispatch(RamLighting()).state is RamAccessState.OFF
+    on = app.dispatch(SetRamLighting(enabled=True))
+    assert (on.ok, on.state, on.message) == (True, RamAccessState.ON,
+                                             "RAM lighting is on")
+    off = app.dispatch(SetRamLighting(enabled=False))
+    assert (off.ok, off.state) == (True, RamAccessState.OFF)
+    assert [e.state for e in seen] == [RamAccessState.ON, RamAccessState.OFF]
+    assert access.calls == ["enable", "disable"]
+    app.close()
+
+
+def test_a_closed_password_prompt_is_not_ok(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trcc.core.commands import SetRamLighting
+    from trcc.core.models import RamAccessState
+
+    app, access, _seen = _ram_app(tmp_path)
+    access.cancel = True
+    result = app.dispatch(SetRamLighting(enabled=True))
+    assert (result.ok, result.state, result.message) == (
+        False, RamAccessState.OFF, "Cancelled -- nothing was changed")
+    app.close()
+
+
+def test_a_client_waits_for_the_password_as_long_as_the_app_does(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The answer comes when the password is typed or the prompt closed --
+    never a fixed 30 s that reports a failure that has not happened.
+
+    MUTATION CHECK: drop ``WAITS_ON_USER`` from ``SetRamLighting``."""
+    from trcc import ipc
+    from trcc.core.commands import RamLighting, SetRamLighting
+    from trcc.proxy import AppProxy
+
+    waited: list[object] = []
+
+    def answer(envelope, *, timeout):  # type: ignore[no-untyped-def]
+        waited.append(timeout)
+        return {"type": "RamLightingResult", "ok": True}
+
+    monkeypatch.setattr(ipc, "one_shot_request", answer)
+    proxy = AppProxy(timeout=30.0)
+    proxy.dispatch(SetRamLighting(enabled=True))
+    proxy.dispatch(RamLighting())
+    assert waited == [None, 30.0]

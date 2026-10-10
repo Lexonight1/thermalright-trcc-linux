@@ -30,6 +30,7 @@ from ...core.commands import (
     ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
+    RamLighting,
     ReadSensors,
     RefreshAutostart,
     RgbFollow,
@@ -38,12 +39,14 @@ from ...core.commands import (
     RunSetup,
     RunUpgrade,
     SetHddEnabled,
+    SetRamLighting,
     SetRgbFollow,
     SetSensorDashboard,
 )
 from ...core.models import (
     AUTOSTART_TARGETS,
     PanelConfig,
+    RamAccessState,
     RgbFollowMode,
     SensorBinding,
 )
@@ -543,6 +546,36 @@ def follow(
         typer.echo(f"  devices  : {', '.join(result.devices)}")
     if result.error:
         typer.echo(f"  problem  : {result.error}")
+
+
+@app.command("ram-lighting")
+def ram_lighting(
+    action: str = typer.Argument(
+        "status", help="'enable', 'disable' or 'status'"),
+) -> None:
+    """Let TRCC reach RGB memory's lighting -- opt-in, asks for a password.
+
+    RGB memory's lighting chips sit on the motherboard's SMBus, beside the
+    chips that hold the memory's own settings.  Linux can only open the whole
+    bus, so enabling lets programs you run reach all of it, not just TRCC.
+    Only the person logged in at this computer gets access, and only that
+    bus.  'disable' removes it completely.  It lasts across reboots.
+    """
+    log.info("cli system ram-lighting: %s", action)
+    choice = action.lower()
+    if choice not in ("enable", "disable", "status"):
+        raise typer.BadParameter(
+            f"action must be 'enable', 'disable' or 'status', got {action!r}")
+    result = get_app().dispatch(
+        RamLighting() if choice == "status" else
+        SetRamLighting(enabled=choice == "enable"))
+    typer.echo(result.message)
+    typer.echo(f"  state: {result.state.value}")
+    if result.command and result.state not in (RamAccessState.ON,
+                                               RamAccessState.ELSEWHERE):
+        typer.echo(f"  to enable: {result.command}")
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("snapshot")

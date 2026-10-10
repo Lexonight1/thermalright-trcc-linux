@@ -59,6 +59,7 @@ from ....presentation.openrgb_address import (
     parse_openrgb_address,
 )
 from ._base import LedTabBase
+from .ram_access import RamAccessControl
 
 log = logging.getLogger(__name__)
 
@@ -183,6 +184,9 @@ class AdvancedTab(LedTabBase):
         openrgb_layout.addWidget(self._openrgb_check)
         openrgb_layout.addWidget(self._openrgb_addr)
         openrgb_layout.addWidget(self._ram_check)
+        # Whether TRCC may reach the RAM at all: the opt-in grant.
+        self._ram_access = RamAccessControl(self._app, self)
+        openrgb_layout.addWidget(self._ram_access)
         openrgb_layout.addWidget(self._openrgb_status)
         root.addWidget(openrgb_box)
 
@@ -333,6 +337,7 @@ class AdvancedTab(LedTabBase):
         mode = RgbFollowMode(result.mode)
         log.debug("show_openrgb: %s connected=%s", mode.value,
                   result.connected)
+        self._ram_access.refresh()
         self._show_switches(mode)
         if result.host:
             self._openrgb_addr.setText(

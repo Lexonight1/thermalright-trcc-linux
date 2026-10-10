@@ -13,7 +13,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .logs import per_frame
-from .models import IN_PROCESS_ONLY, HardwareMetrics, RgbFollowMode, TempUnit
+from .models import (
+    IN_PROCESS_ONLY,
+    HardwareMetrics,
+    RamAccessState,
+    RgbFollowMode,
+    TempUnit,
+)
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -438,6 +444,13 @@ class ErrorOccurred(Event):
 @dataclass(frozen=True, slots=True)
 class TempUnitChanged(Event):
     unit: str   # "C" or "F"
+
+
+@dataclass(frozen=True, slots=True)
+class RamLightingChanged(Event):
+    """RAM lighting was switched on or off, from any UI -- so every window
+    shows the new state, not only the one whose button was pressed."""
+    state: RamAccessState
 
 
 @dataclass(frozen=True, slots=True)

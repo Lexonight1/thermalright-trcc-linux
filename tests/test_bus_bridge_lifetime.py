@@ -124,3 +124,17 @@ def test_a_bridge_with_no_preview_to_follow_takes_every_frame() -> None:
     bridge = BusBridge(bus)
     assert _frame_listeners(bus) == 1
     del bridge
+
+
+def test_ram_lighting_switched_anywhere_reaches_every_window(qtbot: Any) -> None:
+    """A switch from the CLI, the API or the other window shows in this one.
+
+    MUTATION CHECK: drop RamLightingChanged from the bridge's pairs."""
+    from trcc.core.events import EventBus, RamLightingChanged
+    from trcc.core.models import RamAccessState
+
+    bus = EventBus()
+    bridge = BusBridge(bus)
+    with qtbot.waitSignal(bridge.app_settings_changed, timeout=2000) as got:
+        bus.publish(RamLightingChanged(state=RamAccessState.ON))
+    assert got.args[0].state is RamAccessState.ON

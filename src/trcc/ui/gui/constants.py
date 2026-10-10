@@ -329,6 +329,7 @@ class Layout:
     # OpenRGB row above it, so ticking one unticks the other.
     ABOUT_RAM = (297, 602, 14, 14)
     ABOUT_RAM_LABEL = (320, 596, 640, 26)
+    ABOUT_RAM_ACCESS = (320, 624, 760, 28)
     ABOUT_CHECKBOX_SIZE = 14
 
     # Re-export from i18n — single source of truth for locale→suffix mapping

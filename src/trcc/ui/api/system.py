@@ -26,6 +26,7 @@ from ...core.commands import (
     ListMemorySlots,
     ListSensors,
     MarkFirstRunDone,
+    RamLighting,
     ReadSensors,
     RefreshAutostart,
     RgbFollow,
@@ -36,6 +37,7 @@ from ...core.commands import (
     RunUpgrade,
     SetDiskDevice,
     SetHddEnabled,
+    SetRamLighting,
     SetRgbFollow,
     SetSensorDashboard,
 )
@@ -58,6 +60,7 @@ from ...core.results import (
     LanguagesListResult,
     MemorySlotsResult,
     QuickstartResult,
+    RamLightingResult,
     RgbFollowResult,
     SensorDashboardResult,
     SensorsListResult,
@@ -74,6 +77,7 @@ from .schemas import (
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
+    RamLightingRequest,
     RgbFollowRequest,
     SensorDashboardRequest,
     UpgradeRequest,
@@ -299,6 +303,25 @@ def rgb_follow_set(body: RgbFollowRequest,
              body.mode.value, body.host, body.port)
     result = request.app.state.trcc.dispatch(SetRgbFollow(
         mode=body.mode, host=body.host, port=body.port))
+    http_error_if_failed(result)
+    return result
+
+
+@router.get("/ram-lighting")
+def ram_lighting_status(request: Request) -> RamLightingResult:
+    """Whether TRCC may reach RGB memory -- read from files, no bus traffic."""
+    log.info("api GET /system/ram-lighting")
+    return request.app.state.trcc.dispatch(RamLighting())
+
+
+@router.post("/ram-lighting")
+def ram_lighting_set(body: RamLightingRequest,
+                     request: Request) -> RamLightingResult:
+    """Switch RAM lighting on or off: a password prompt at the desktop,
+    answered when it is typed or closed."""
+    log.info("api POST /system/ram-lighting: enabled=%s", body.enabled)
+    result = request.app.state.trcc.dispatch(
+        SetRamLighting(enabled=body.enabled))
     http_error_if_failed(result)
     return result
 

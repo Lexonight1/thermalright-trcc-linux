@@ -67,6 +67,7 @@ from ...core.commands import (
 from ...core.events import (
     AutostartChanged,
     DiskDeviceChanged,
+    RamLightingChanged,
     SensorDashboardChanged,
 )
 from ...core.logs import per_frame
@@ -515,6 +516,9 @@ class TRCCApp(QMainWindow):
                 self.uc_led_control.show_disk_identity()
             case SensorDashboardChanged():
                 self.uc_system_info.show_dashboard()
+            case RamLightingChanged():
+                if self.uc_about.ram_access is not None:
+                    self.uc_about.ram_access.refresh()
             case _:
                 self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
 

@@ -38,7 +38,6 @@ HELPER = "/usr/bin/trcc-ram-access"
 #: The helper as the package ships it -- what root runs when /usr/bin has none.
 HELPER_ASSET = Path(__file__).resolve().parents[2] / "assets" / "trcc-ram-access"
 SUDO_COMMAND = "sudo trcc system ram-lighting {action}"
-_PASSWORD_WAIT_S = 300            # long enough to type a password
 
 # pkexec's own exits: the user dismissed the prompt, or polkit said no.
 _PKEXEC_DISMISSED, _PKEXEC_REFUSED = 126, 127
@@ -134,8 +133,12 @@ class LinuxRamAccess(RamAccess):
             return RamAccessStatus(self._state(),
                                    f"Run in a terminal: {command}", command)
         try:
+            # No timeout: pkexec returns when the password is typed (0), the
+            # prompt is closed or cancelled (126), refused (127), or there is
+            # no prompt to show at all (127, at once).  A cap would report a
+            # failure that has not happened to someone who stepped away.
             result = self._run(argv, capture_output=True, text=True,
-                               timeout=_PASSWORD_WAIT_S, check=False)
+                               check=False)
             code = result.returncode
         except (OSError, subprocess.SubprocessError) as e:
             log.warning("LinuxRamAccess: %s failed to run -- %s: %s", argv[0],

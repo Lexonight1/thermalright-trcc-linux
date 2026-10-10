@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**144 total: 104 Commands and 40 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**146 total: 105 Commands and 41 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -954,6 +954,14 @@ Enumerate every LED style the PM registry can resolve.
 
 Takes no arguments.
 
+### `RamLighting`
+
+Whether TRCC may reach RGB memory's bus -- read from files, no bus.
+
+*Query* → `RamLightingResult`
+
+Takes no arguments.
+
 ### `RenderLed`
 
 Compute one LED frame from current settings + sensors and send it.
@@ -1154,6 +1162,16 @@ Set the DDR memory multiplier (1, 2, or 4) for the LED memory gauge.
 |---|---|---|
 | `key` | `str` | yes |
 | `ratio` | `int` | yes |
+
+### `SetRamLighting`
+
+Switch the opt-in RAM-lighting grant on or off.
+
+*Command* → `RamLightingResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `enabled` | `bool` | yes |
 
 ### `SetRgbFollow`
 

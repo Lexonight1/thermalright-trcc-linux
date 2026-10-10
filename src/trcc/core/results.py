@@ -23,6 +23,7 @@ from .models import (
     LedHandshakeResult,
     PanelConfig,
     ProductInfo,
+    RamAccessState,
     RgbFollowMode,
     SensorReading,
     WebPreviewInfo,
@@ -603,6 +604,17 @@ class BootAnimationResult(Result):
     key: str = ""
     frames_uploaded: int = 0
     frames_total: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class RamLightingResult(Result):
+    """Whether TRCC may reach RGB memory, and how to change it from here.
+
+    ``command`` is empty when this App can switch it itself (a password
+    prompt); otherwise it is the terminal command that will.
+    """
+    state: RamAccessState = RamAccessState.UNSUPPORTED
+    command: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,6 +16,7 @@ from ..events import (
     FrameSent,
     HddEnabledChanged,
     LedColorsChanged,
+    RamLightingChanged,
     RgbFollowChanged,
 )
 from ..led_models import (
@@ -27,7 +28,7 @@ from ..led_models import (
     one_hot,
 )
 from ..logs import per_frame
-from ..models import RgbFollowMode
+from ..models import RamAccessState, RamAccessStatus, RgbFollowMode
 from ..results import (
     ClockFormatResult,
     HddEnabledResult,
@@ -38,6 +39,7 @@ from ..results import (
     LedStylesListResult,
     LedZoneEntry,
     MemoryRatioResult,
+    RamLightingResult,
     RgbFollowResult,
     WeekStartResult,
 )
@@ -1140,6 +1142,52 @@ class RgbFollow(Query[RgbFollowResult]):
         return _rgb_follow_result(app, _rgb_follow_label(
             app.settings.rgb_follow_mode(), current.openrgb_host,
             current.openrgb_port))
+
+
+def _ram_lighting_result(status: RamAccessStatus, *,
+                         ok: bool = True) -> RamLightingResult:
+    """A ``RamAccessStatus`` as the Result every UI reads."""
+    log.debug("_ram_lighting_result: %s ok=%s", status, ok)
+    return RamLightingResult(ok=ok, state=status.state, message=status.message,
+                             command=status.command)
+
+
+@dataclass(frozen=True, slots=True)
+class RamLighting(Query[RamLightingResult]):
+    """Whether TRCC may reach RGB memory's bus -- read from files, no bus."""
+
+    def execute(self, app: App) -> RamLightingResult:
+        log.debug("RamLighting: query")
+        return _ram_lighting_result(app.platform.ram_access().status())
+
+
+@dataclass(frozen=True, slots=True)
+class SetRamLighting(Command[RamLightingResult]):
+    """Switch the opt-in RAM-lighting grant on or off.
+
+    The grant lets the user at this seat open the chipset SMBus, where RGB
+    memory's lighting controller answers -- beside the memory's own settings
+    chips, which is why it is never on by default and asks for a password
+    every time.  ``ok`` says whether the asked-for state was reached: a
+    closed password prompt changes nothing and answers ``ok=False``.
+    """
+    #: Answers when the person types the password or closes the prompt.
+    WAITS_ON_USER: ClassVar[bool] = True
+    enabled: bool
+
+    def execute(self, app: App) -> RamLightingResult:
+        log.info("SetRamLighting: %s", "on" if self.enabled else "off")
+        access = app.platform.ram_access()
+        status = access.enable() if self.enabled else access.disable()
+        reached = (status.state in (RamAccessState.ON, RamAccessState.ELSEWHERE)
+                   if self.enabled else
+                   status.state not in (RamAccessState.ON,
+                                        RamAccessState.NOT_APPLIED))
+        if not reached:
+            log.warning("SetRamLighting: still %s -- %s", status.state.value,
+                        status.message)
+        app.events.publish(RamLightingChanged(state=status.state))
+        return _ram_lighting_result(status, ok=reached)
 
 
 @dataclass(frozen=True, slots=True)

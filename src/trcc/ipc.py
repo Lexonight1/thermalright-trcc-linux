@@ -538,7 +538,7 @@ def _recv_ack(sock: socket.socket, *, max_bytes: int = 4096) -> dict[str, Any]:
 def one_shot_request(
     payload: dict[str, Any],
     *,
-    timeout: float = _DEFAULT_TIMEOUT_S,
+    timeout: float | None = _DEFAULT_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Send one envelope over the daemon socket, return the response."""
     frame_log.debug("one_shot_request: keys=%s timeout=%s",

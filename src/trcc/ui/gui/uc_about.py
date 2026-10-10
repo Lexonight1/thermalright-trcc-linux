@@ -54,6 +54,7 @@ from ..presentation.openrgb_address import (
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
+from .uc_ram_access import UCRamAccess
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -486,6 +487,11 @@ class UCAbout(BasePanel):
         self._ram_label.setGeometry(*Layout.ABOUT_RAM_LABEL)
         self._ram_label.setStyleSheet(
             "color: white; font-size: 10pt; background: transparent;")
+        # Whether TRCC may reach the RAM at all: the opt-in grant.
+        self.ram_access: UCRamAccess | None = None
+        if self._app is not None:
+            self.ram_access = UCRamAccess(self._app, self)
+            self.ram_access.setGeometry(*Layout.ABOUT_RAM_ACCESS)
 
 
     def _on_openrgb_clicked(self):

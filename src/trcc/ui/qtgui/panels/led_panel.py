@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import DeviceState, LedSnapshot
-from ....core.events import DiskDeviceChanged, RgbFollowChanged
+from ....core.events import DiskDeviceChanged, RamLightingChanged, RgbFollowChanged
 from ....core.led_models import LEGACY_STYLE_ID, LedStyle
 from ...presentation.led_panel import led_panel_for
 from ..base import BasePanel
@@ -110,7 +110,7 @@ class LedPanel(BasePanel):
         log.debug("_on_app_settings_changed: %s", type(event).__name__)
         if isinstance(event, DiskDeviceChanged):
             self._advanced_tab.show_disk_sensors()
-        elif isinstance(event, RgbFollowChanged):
+        elif isinstance(event, (RgbFollowChanged, RamLightingChanged)):
             self._advanced_tab.show_openrgb()
 
     # ── Key plumbing ─────────────────────────────────────────────────

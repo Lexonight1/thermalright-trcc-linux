@@ -506,6 +506,25 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS ram\-lighting
+.PP
+\fBtrcc system ram\-lighting\fR [\fIACTION\fR]
+.PP
+Let TRCC reach RGB memory's lighting \-\- opt\-in, asks for a password. RGB memory's lighting chips sit on the motherboard's SMBus, beside the chips that hold the memory's own settings. Linux can only open the whole bus, so enabling lets programs you run reach all of it, not just TRCC. Only the person logged in at this computer gets access, and only that bus. 'disable' removes it completely. It lasts across reboots.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBACTION\fR
+\&'enable', 'disable' or 'status'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS sensors
 .PP
 \fBtrcc system sensors\fR

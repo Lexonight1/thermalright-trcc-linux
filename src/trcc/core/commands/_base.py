@@ -66,6 +66,11 @@ class Command(ABC, Generic[R_co]):
     #: and ``SetBackground`` and wrote LCD settings under its key, and a device
     #: that is neither (TR-VISION) has its own set.
     REQUIRES: ClassVar[Capability | None] = None
+    #: The Command waits on the PERSON, not the machine -- a password prompt
+    #: -- so a client waits for its answer as long as the App does, instead of
+    #: the transport's usual limit.  The App's own wait always ends: the
+    #: person answers, closes the prompt, or there is no prompt to show.
+    WAITS_ON_USER: ClassVar[bool] = False
 
     @abstractmethod
     def execute(self, app: App) -> R_co: ...

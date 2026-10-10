@@ -2204,3 +2204,17 @@ def test_listing_the_api_routes_starts_no_app(
     assert result.exit_code == 0, result.output
     assert "endpoint(s)." in result.output
     assert int(result.output.rsplit("\n", 2)[-2].split()[0]) > 100
+
+
+def test_system_ram_lighting_on_an_os_without_it(cli_runner: CliRunner, cli_app) -> None:
+    """The opt-in RAM grant: status by default; enable fails plainly where the
+    OS has none (the test platform), never pretending it worked."""
+    del cli_app
+    status = cli_runner.invoke(_app(), ["system", "ram-lighting"])
+    assert status.exit_code == 0, status.output
+    assert status.output == ("RAM lighting is not available on FakePlatform yet\n"
+                             "  state: unsupported\n")
+    enable = cli_runner.invoke(_app(), ["system", "ram-lighting", "enable"])
+    assert enable.exit_code == 1, enable.output
+    bad = cli_runner.invoke(_app(), ["system", "ram-lighting", "maybe"])
+    assert bad.exit_code != 0

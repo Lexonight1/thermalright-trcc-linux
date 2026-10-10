@@ -1784,6 +1784,18 @@ Show platform info (distro, install method, config dir, permissions).
 trcc system platform-info
 ```
 
+### `trcc system ram-lighting`
+
+Let TRCC reach RGB memory's lighting -- opt-in, asks for a password. RGB memory's lighting chips sit on the motherboard's SMBus, beside the chips that hold the memory's own settings. Linux can only open the whole bus, so enabling lets programs you run reach all of it, not just TRCC. Only the person logged in at this computer gets access, and only that bus. 'disable' removes it completely. It lasts across reboots.
+
+```bash
+trcc system ram-lighting [ACTION]
+```
+
+| Argument | Description |
+|---|---|
+| `ACTION` | 'enable', 'disable' or 'status' *(optional)* |
+
 ### `trcc system sensors`
 
 Print current sensor readings.

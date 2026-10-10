@@ -225,6 +225,12 @@ class RgbFollowRequest(BaseModel):
     port: int = Field(0, ge=0, le=65535)
 
 
+class RamLightingRequest(BaseModel):
+    """Switch the opt-in RAM-lighting grant on or off.  The App asks for the
+    password at the desktop; the API cannot grant the bus by itself."""
+    enabled: bool
+
+
 class SensorBindingRequest(BaseModel):
     """One dashboard row: a display label bound to a sensor id."""
     label: str = ""
