@@ -144,6 +144,37 @@ def test_sync_scheduler_drives_and_removes() -> None:
     assert dev.sent == [b"X"]     # removed → no longer driven
 
 
+def test_a_waiting_send_under_the_sync_scheduler_is_served_at_once() -> None:
+    """No worker thread exists, so the waiter runs the write itself: the
+    device's real answer, now -- not ``False`` after the whole timeout.
+    Before, every ``App.close`` in the suite sat out 5 s per connected device
+    blanking it (2026-10-10: ~20 tests at 5.2 s, teardowns at 10.0 s).
+
+    MUTATION CHECK: drop ``task.runs_on_caller()`` from
+    ``SyncSendScheduler.add`` -- the send times out and this fails.
+    """
+    dev = FakeDevice()
+    sender = DeviceSender(dev, volatile=False)
+    SyncSendScheduler().add(sender)
+    started = time.monotonic()
+    assert sender.submit(b"X", wait=True, timeout=2.0) is True
+    dev.fail = True
+    assert sender.submit(b"Y", wait=True, timeout=2.0) is False   # its answer
+    assert time.monotonic() - started < 1.0
+    assert dev.sent == [b"X"]
+
+
+def test_a_waiting_send_under_the_sync_scheduler_raises_the_wire_error() -> None:
+    class Boom(FakeDevice):
+        def send(self, payload: bytes) -> bool:
+            raise RuntimeError("wire boom")
+
+    sender = DeviceSender(Boom(), volatile=False)
+    SyncSendScheduler().add(sender)
+    with pytest.raises(RuntimeError, match="wire boom"):
+        sender.submit(b"X", wait=True, timeout=2.0)
+
+
 # ── ThreadSendScheduler: the single-consumer guarantee ───────────────────
 
 

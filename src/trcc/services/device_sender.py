@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -102,6 +103,9 @@ class DeviceSender(SendTask):
         # worker fills ``box["ok"]`` or ``box["exc"]`` — so a wire exception
         # propagates back to the caller's existing ``except`` (no Command churn).
         self._waiter: tuple[threading.Event, dict[str, Any]] | None = None
+        # No scheduler thread (``SyncSendScheduler``): a waiting submit runs
+        # the write itself, on the caller's thread.
+        self._on_caller = False
         log.info(
             "DeviceSender %s: created (volatile=%s interval=%.3fs)",
             device.key, volatile, keepalive_interval,
@@ -119,6 +123,12 @@ class DeviceSender(SendTask):
         frame_log.debug("wait: timeout=%s", timeout)
         self._wake.wait(timeout)
         self._wake.clear()
+
+    def runs_on_caller(self) -> None:
+        """No worker drives this sender: ``submit(wait=True)`` writes inline."""
+        log.debug("DeviceSender %s: runs on the caller's thread",
+                  self._device.key)
+        self._on_caller = True
 
     def wake(self) -> None:
         """Interrupt a pending :meth:`wait` (scheduler teardown)."""
@@ -223,6 +233,8 @@ class DeviceSender(SendTask):
         self._wake.set()
         if done is None:
             return True
+        if self._on_caller:
+            self.run_once(time.monotonic())     # the worker is us
         if not done.wait(timeout):
             log.warning("DeviceSender %s: submit(wait) timed out after %.1fs",
                         self._device.key, timeout)

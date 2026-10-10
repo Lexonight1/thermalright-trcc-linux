@@ -3030,6 +3030,16 @@ class SendTask(ABC):
         Returns the maximum seconds to wait before the next ``run_once``.
         """
 
+    def runs_on_caller(self) -> None:
+        """No scheduler thread drives this task: a producer that WAITS for its
+        work must run it itself.  ``SyncSendScheduler`` says so on ``add``.
+
+        Default: nothing here waits, so nothing changes.  Without it a waiting
+        send under the synchronous test scheduler sat out its whole timeout --
+        5 s per connected device on every ``App.close`` in the suite.
+        """
+        log.debug("%s.runs_on_caller: nothing waits", type(self).__name__)
+
 
 class SendScheduler(ABC):
     """Drives :class:`SendTask` instances.  One impl per execution model.

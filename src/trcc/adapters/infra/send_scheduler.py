@@ -110,6 +110,7 @@ class SyncSendScheduler(SendScheduler):
 
     def add(self, task: SendTask) -> None:
         log.debug("SyncSendScheduler: add %s", task.key)
+        task.runs_on_caller()           # no thread here: a waiter runs it
         self._tasks[task.key] = task
 
     def remove(self, key: str) -> None:

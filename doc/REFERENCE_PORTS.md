@@ -46,7 +46,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`Paths`](#paths) | 4 | 10 | 5 |
-| [`SendTask`](#sendtask) | 4 | 0 | 6 |
+| [`SendTask`](#sendtask) | 4 | 1 | 6 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
@@ -664,6 +664,8 @@ run_once(now: 'float') -> float
 wait(timeout: 'float') -> None
 wake() -> None
 ```
+
+**You inherit (1):** `runs_on_caller`
 
 **Implementations (6):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver`
 
