@@ -102,7 +102,7 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
     "certifi":          ("python-certifi", "python3-certifi", "python3-certifi"),
     "nvidia-ml-py":     ("python-nvidia-ml-py", "python3-nvidia-ml-py",
                          "python3-pynvml"),
-    "uvicorn":          ("python-uvicorn", "python3-uvicorn", "python3-uvicorn"),
+    "uvicorn":          ("uvicorn", "python3-uvicorn", "python3-uvicorn"),
     "sounddevice":      ("python-sounddevice", "python3-sounddevice",
                          "python3-sounddevice"),
 }
@@ -123,7 +123,7 @@ _IMPORT_NAME = {
 # Arch packages we knowingly do NOT declare, because Arch has no official
 # package and a `depend =` line would make `pacman -U` fail for everyone.
 # This tool exists to tell us when an entry here stops being true.
-ARCH_UNAVAILABLE = {"python-uvicorn", "python-sounddevice"}
+ARCH_UNAVAILABLE = {"python-sounddevice"}
 
 # Hard pyproject deps we DELIBERATELY do not declare for a distro, with the
 # reason.  Distinct from "unavailable": the package EXISTS, and depending on it
@@ -154,6 +154,14 @@ DELIBERATELY_OPTIONAL: dict[str, str] = {
         "it. The deb and rpm need nothing from it -- the system store is right "
         "there."
     ),
+    "sounddevice": (
+        "only the audio visualizer uses it, and services/audio.py says so when "
+        "it is missing. Fedora 43 and Debian 13 have no package, so requiring "
+        "it made the RPM uninstallable on Fedora 43; bundling it instead "
+        "collided with the distro package where one exists (Ubuntu 26.04's "
+        "dpkg refused the deb, rc 100). A Recommends on the rpm and deb; Arch, "
+        "which has no package, still bundles it (2026-10-09)."
+    ),
     "nvidia-ml-py": (
         "pulls nvidia-utils (~938 MB) on Arch / libnvidia-ml1 from contrib on "
         "Debian -- an NVIDIA driver stack for every AMD and Intel owner (#216). "
@@ -172,7 +180,7 @@ FEDORA_VENDORED = {"nvidia-ml-py"}
 # Hard deps the STANDARD deb bundles instead of declaring: its build step
 # ``pip install``s them into the payload (release.yml, "not in Ubuntu/Debian
 # repos").  Recorded so the matrix says "vendor" rather than a false NO.
-DEB_VENDORED = {"sounddevice"}
+DEB_VENDORED: set[str] = set()      # sounddevice: a Recommends since 2026-10-09
 
 
 def pyproject_runtime_deps(include_win32: bool = False) -> list[str]:

@@ -131,9 +131,12 @@ jobs:
           # to claim — sounddevice.py, _sounddevice.py, their __pycache__
           # entries and the dist-info.  Two packages owning one file is an RPM
           # file conflict, so installing the RPM FAILED for any user who
-          # already had python3-sounddevice for another reason.  We depend on
-          # it now; dev/tools/check_program_deps.py found this, and it is the
-          # only thing that could have.
+          # already had python3-sounddevice for another reason.
+          # It is a Recommends, not a Requires (2026-10-09): Fedora 43 has no
+          # python3-sounddevice, and requiring it -- by hand AND through the
+          # python3.Xdist requirement rpm generates from the wheel -- made the
+          # RPM uninstallable there.  It only drives the audio visualizer,
+          # which says so when it is missing.
           pip install --root="$PKG" --prefix=/usr --no-deps nvidia-ml-py
           rm -f "$PKG"/usr/lib/python*/site-packages/example.py \
                 "$PKG"/usr/lib/python*/site-packages/__pycache__/example.*
@@ -164,6 +167,7 @@ jobs:
           SITELIB="/usr/lib/python${PYVER}/site-packages"
 
           cat > /tmp/trcc.spec << SPEC
+          %global __requires_exclude ^python3[.][0-9]+dist[(]sounddevice[)]
           Name:       trcc-linux
           Version:    ${VER}
           Release:    1%{?dist}
@@ -185,7 +189,6 @@ jobs:
           Requires:   python3-python-multipart
           Requires:   python3-prompt-toolkit
           Requires:   portaudio
-          Requires:   python3-sounddevice
           Requires:   libusb1
           Requires:   sg3_utils
           Requires:   python3-hidapi
@@ -193,6 +196,7 @@ jobs:
           Recommends: ffmpeg
           Recommends: python3-dbus
           Recommends: dmidecode
+          Recommends: python3-sounddevice
           %description
           Controls LCD displays and LED segment displays on Thermalright CPU coolers.
           %files
@@ -264,8 +268,10 @@ jobs:
           # (modern Fedora/Ubuntu ship only python3 by default). #157
           find "$PKG" -name "trcc*" -path "*/bin/*" -exec sed -i "1s|^#\!.*/python[0-9.]*|#!/usr/bin/python3|" {} +
 
-          # Bundle sounddevice (not in Ubuntu/Debian repos)
-          pip install --root="$PKG" --prefix=/usr --no-deps sounddevice
+          # sounddevice is NOT bundled: Ubuntu 26.04 ships python3-sounddevice,
+          # and a bundled copy overwrote its files, so dpkg refused the deb
+          # (rc 100) for anyone who had it.  A Recommends below instead; Debian
+          # 13 has no package, and only the audio visualizer needs it.
 
           # Relocate the installed modules to the version-agnostic
           # /usr/lib/python3/dist-packages. installer + pip land them under a
@@ -318,7 +324,7 @@ jobs:
           Priority: optional
           Architecture: all
           Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils
-          Recommends: p7zip-full, ffmpeg, python3-pynvml, python3-dbus, dmidecode
+          Recommends: p7zip-full, ffmpeg, python3-pynvml, python3-dbus, dmidecode, python3-sounddevice
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
           Description: Thermalright LCD/LED Control Center for Linux
@@ -443,7 +449,7 @@ jobs:
             -v "${{ github.workspace }}/packages:/output" \
             archlinux bash -c '
           set -e
-          pacman -Sy --noconfirm python python-pip python-installer python-packaging zstd >/dev/null 2>&1
+          pacman -Syu --noconfirm python python-pip python-installer python-packaging zstd >/dev/null 2>&1
           echo "=== Arch Build Environment ==="
           echo "Arch: $(cat /etc/arch-release 2>/dev/null || echo rolling)"
           echo "Python: $(python --version)"
@@ -458,8 +464,10 @@ jobs:
           # (modern Fedora/Ubuntu ship only python3 by default). #157
           find "$PKG" -name "trcc*" -path "*/bin/*" -exec sed -i "1s|^#\!.*/python[0-9.]*|#!/usr/bin/python3|" {} +
 
-          # Bundle uvicorn + sounddevice (not in official Arch repos)
-          pip install --root="$PKG" --prefix=/usr --no-deps uvicorn sounddevice
+          # Bundle sounddevice (not in the official Arch repos).  uvicorn is NOT
+          # bundled: Arch ships it, and the --no-deps copy came without h11 or
+          # websockets, so trcc api could not start (measured 2026-10-09).
+          pip install --root="$PKG" --prefix=/usr --no-deps sounddevice
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
@@ -500,6 +508,8 @@ jobs:
           depend = python-click
           depend = python-typer
           depend = python-fastapi
+          depend = uvicorn
+          depend = python-websockets
           depend = python-cryptography
           depend = python-prompt_toolkit
           depend = python-python-multipart

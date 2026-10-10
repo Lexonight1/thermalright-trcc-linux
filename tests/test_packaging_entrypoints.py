@@ -101,10 +101,10 @@ def test_release_docker_comments_have_no_quote_breakers() -> None:
 # live distro repos.  Imported rather than copied: a second copy would drift
 # from the one being checked, and then neither is trustworthy.
 #
-# Recorded consequence of ARCH_UNAVAILABLE, rather than hidden: on Arch,
-# `trcc api` has no uvicorn and audio has no sounddevice unless the user pulls
-# them from the AUR.  Fedora solves the same problem by vendoring via pip;
-# Arch does not.  That gap is real and unfixed.
+# ARCH_UNAVAILABLE is only sounddevice now, which the Arch package bundles.
+# uvicorn left it on 2026-10-09: Arch ships it as ``uvicorn`` (the
+# python-uvicorn name it was checked under does not exist), and the bundled
+# --no-deps copy came without h11, so `trcc api` could not start.
 _DEV_TOOLS_DIR = _ROOT / "dev" / "tools"
 if str(_DEV_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_DEV_TOOLS_DIR))
@@ -361,3 +361,50 @@ def test_the_nix_flake_carries_every_linux_dependency() -> None:
     listed = {line.split("#", 1)[0].strip() for line in block.splitlines()} - {""}
 
     assert linux - listed == set(), f"missing from flake.nix: {sorted(linux - listed)}"
+
+
+# ── Packages that install, measured in containers (2026-10-09, v9.10.8) ──
+
+def _step(name: str) -> str:
+    """The body of one release.yml package-build step."""
+    text = _RELEASE_YML.read_text(encoding="utf-8")
+    start = text.index(f"- name: {name}")
+    end = text.index("\n      - name:", start + 1)
+    return text[start:end]
+
+
+def test_the_arch_package_brings_what_trcc_api_imports() -> None:
+    """Bundling uvicorn with ``--no-deps`` shipped it without h11 or
+    websockets: in a clean archlinux container ``trcc api`` died with
+    ``No module named 'h11'``, and the WebSocket routes 404'd.  Arch ships
+    uvicorn itself (``uvicorn``, depends python-h11); a bundled copy also
+    collided with it.
+    MUTATION CHECK: bundle uvicorn again, or drop either depend -> fails."""
+    arch = _step("Build Arch package")
+    bundled = re.search(r"pip install [^\n]*--no-deps ([^\n]+)", arch)
+
+    assert bundled is not None and "uvicorn" not in bundled.group(1)
+    assert {"uvicorn", "python-websockets"} <= _arch_depends()
+
+
+def test_the_rpm_installs_where_fedora_has_no_sounddevice() -> None:
+    """Fedora 43 has no python3-sounddevice; the RPM required it twice --
+    by hand and through rpm's generated ``python3.14dist(sounddevice)`` --
+    so ``dnf install`` failed.  It only drives the audio visualizer.
+    MUTATION CHECK: require it again, or drop the generated-dep filter."""
+    rpm = _step("Build RPM (Fedora)")
+
+    assert not re.search(r"Requires:\s+python3-sounddevice", rpm)
+    assert re.search(r"Recommends:\s+python3-sounddevice", rpm)
+    assert re.search(r"__requires_exclude\s+\^python3[^\n]*dist[^\n]*sounddevice", rpm)
+
+
+def test_the_deb_does_not_bundle_what_ubuntu_ships() -> None:
+    """The deb copied sounddevice into dist-packages; on Ubuntu 26.04 with
+    python3-sounddevice installed, dpkg refused: "trying to overwrite
+    '/usr/lib/python3/dist-packages/_sounddevice.py'" (rc 100).
+    MUTATION CHECK: bundle it again -> fails."""
+    deb = _step("Build DEB (Ubuntu/Debian)")
+
+    assert not re.search(r"pip install [^\n]*sounddevice", deb)
+    assert re.search(r"Recommends:[^\n]*python3-sounddevice", deb)
