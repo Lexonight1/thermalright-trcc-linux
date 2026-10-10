@@ -2181,3 +2181,26 @@ def test_system_follow_status_and_off(cli_runner: CliRunner, cli_app) -> None:
         "  following: off (OpenRGB at 127.0.0.1:6800)\n")
     bad = cli_runner.invoke(_app(), ["system", "follow", "maybe"])
     assert bad.exit_code != 0
+
+
+def test_listing_the_api_routes_starts_no_app(
+    cli_runner: CliRunner, cli_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``list-endpoints`` built the API app with no App, which in the default
+    mode found or STARTED the shared App -- USB and all -- to print a list of
+    routes.  MUTATION CHECK: call build_app() bare again -> the sentinel raises."""
+    from trcc import daemon
+
+    del cli_app
+
+    def no_app(**kw):
+        raise AssertionError("listing routes started the shared App")
+
+    monkeypatch.setenv("TRCC_DAEMON", "1")
+    monkeypatch.setattr(daemon, "ensure_daemon", no_app)
+
+    result = cli_runner.invoke(_app(), ["system", "list-endpoints"])
+
+    assert result.exit_code == 0, result.output
+    assert "endpoint(s)." in result.output
+    assert int(result.output.rsplit("\n", 2)[-2].split()[0]) > 100

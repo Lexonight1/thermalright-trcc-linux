@@ -1701,7 +1701,7 @@ trcc system list-disks
 
 ### `trcc system list-endpoints`
 
-Enumerate every HTTP route the REST API exposes. Builds the FastAPI app (no uvicorn) and walks its router so the output reflects what `trcc api` / `trcc serve` would serve.
+Enumerate every HTTP route the REST API exposes. Builds the FastAPI app (no uvicorn) and walks its router so the output reflects what `trcc api` / `trcc serve` would serve. On a local App that draws nothing and touches no device: `build_app()` bare found or STARTED the shared App -- USB and all -- to print a list.
 
 ```bash
 trcc system list-endpoints

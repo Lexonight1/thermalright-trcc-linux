@@ -755,17 +755,24 @@ def list_endpoints() -> None:
     """Enumerate every HTTP route the REST API exposes.
 
     Builds the FastAPI app (no uvicorn) and walks its router so the
-    output reflects what ``trcc api`` / ``trcc serve`` would serve.
+    output reflects what ``trcc api`` / ``trcc serve`` would serve.  On a
+    local App that draws nothing and touches no device: ``build_app()`` bare
+    found or STARTED the shared App -- USB and all -- to print a list.
     """
     log.info("cli system list-endpoints")
+    from ..._boot import _build_local_app
     from ...ui.api.main import api_routes, build_app
 
     rows: list[tuple[str, str]] = []
-    for route in api_routes(build_app()):
-        path = getattr(route, "path", "")
-        methods = getattr(route, "methods", None) or set()
-        for method in sorted(m for m in methods if m != "HEAD"):
-            rows.append((method, path))
+    app = _build_local_app(draws=False)
+    try:
+        for route in api_routes(build_app(app)):
+            path = getattr(route, "path", "")
+            methods = getattr(route, "methods", None) or set()
+            for method in sorted(m for m in methods if m != "HEAD"):
+                rows.append((method, path))
+    finally:
+        app.close()
     rows.sort()
     for method, path in rows:
         typer.echo(f"  {method:6} {path}")
