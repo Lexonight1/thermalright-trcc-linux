@@ -66,6 +66,12 @@ class AudioCapture:
         except ImportError:
             log.warning("sounddevice not installed — audio visualization disabled")
             return False
+        except Exception as e:
+            # Distro builds initialise PortAudio AT IMPORT and raise when no
+            # sound server answers (Ubuntu 26.04, headless): same outcome.
+            log.warning("sounddevice could not start PortAudio (%s: %s) — "
+                        "audio visualization disabled", type(e).__name__, e)
+            return False
         try:
             self._stream = sd.InputStream(
                 device=device,
