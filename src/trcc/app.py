@@ -46,6 +46,7 @@ from .core.events import (
     SplitModeChanged,
     SystemResumed,
     TempUnitChanged,
+    UpdateChecked,
     VideoStarted,
     VideoStopped,
 )
@@ -79,7 +80,7 @@ from .core.ports import (
 )
 from .core.protocol import background_variant, mask_variant, theme_variant
 from .core.registry import find_product
-from .core.results import ConnectResult, Result
+from .core.results import ConnectResult, Result, UpdateCheckResult
 from .services.audio import AudioCapture
 from .services.background import BackgroundSlot
 from .services.cloud_theme import CloudThemeService
@@ -98,6 +99,7 @@ from .services.reconnect_watcher import ReconnectWatcher
 from .services.rgb_mirror import Columns, RgbMirrorService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
+from .services.update_watch import UpdateWatch
 from .services.video_loop import VideoLoop
 
 log = logging.getLogger(__name__)
@@ -377,6 +379,10 @@ class App(CommandBus):
         self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
             make_mirror, smbuses=platform.smbuses), on_sent=self._follow_sent)
         self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
+        # Whether a newer TRCC exists: asked here, for every window, from
+        # start_session on -- never by a window (services/update_watch.py).
+        self.update_watch = UpdateWatch(self._check_for_update,
+                                        self._update_checked)
         # An LCD as the source: its frames' backgrounds, read through the
         # renderer.
         self.events.subscribe(FrameSent, self._follow_frame)
@@ -1085,6 +1091,24 @@ class App(CommandBus):
         self.metrics_loop.start()
         self.led_animation_loop.start()
         self.video_loop.start()
+        self.update_watch.start()
+
+    def _check_for_update(self) -> UpdateCheckResult:
+        """The watch's check: the one Command every UI's check goes through."""
+        log.debug("App._check_for_update")
+        from .core.commands import CheckForUpdate
+        return self.dispatch(CheckForUpdate())
+
+    def _update_checked(self, result: UpdateCheckResult) -> None:
+        """Each answer, for every window."""
+        log.info("App._update_checked: ok=%s available=%s latest=%s",
+                 result.ok, result.update_available, result.latest_version)
+        self.events.publish(UpdateChecked(
+            ok=result.ok, local_version=result.local_version,
+            latest_version=result.latest_version,
+            release_url=result.release_url,
+            update_available=result.update_available,
+            message=result.message))
 
     def _prime_all(self, _event: Any = None) -> None:
         """Session-only: prime every attached panel (see :meth:`_prime`)."""
@@ -1142,6 +1166,7 @@ class App(CommandBus):
         alive past ``QApplication.quit()``.
         """
         log.info("close: devices=%d", len(self.devices))
+        self.update_watch.stop()
         self.rgb_mirror.close()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()

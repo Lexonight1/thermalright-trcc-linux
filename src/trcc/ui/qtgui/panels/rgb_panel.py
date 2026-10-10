@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout
 
 from ....core.commands import (
+    Command,
     ListDevices,
     RgbFollow,
     RgbLights,
@@ -18,7 +20,7 @@ from ....core.commands import (
 )
 from ....core.events import RamLightingChanged, RgbFollowChanged, RgbLightsChanged
 from ....core.models import RgbFollowMode
-from ....core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
+from ....core.results import DeviceEntry, RgbFollowResult, RgbLightsResult
 from ...presentation.rgb_page import (
     ApplyPlan,
     FindLights,
@@ -56,25 +58,25 @@ class QtRgbPage(RgbPageView):
         log.debug("QtRgbPage._devices")
         return self._app.dispatch(ListDevices()).devices
 
-    def _find(self, plan: FindLights) -> Result:
+    def _find(self, plan: FindLights) -> Command[Any]:
         log.info("QtRgbPage._find: %s", plan)
-        return self._app.dispatch(ScanRgbLights(host=plan.host, port=plan.port))
+        return ScanRgbLights(host=plan.host, port=plan.port)
 
-    def _send(self, plan: ApplyPlan) -> Result:
+    def _send(self, plan: ApplyPlan) -> Command[Any]:
         log.info("QtRgbPage._send: %s", plan)
         match plan:
             case LeaveLights():
-                return self._app.dispatch(SetRgbFollow(mode=RgbFollowMode.OFF))
+                return SetRgbFollow(mode=RgbFollowMode.OFF)
             case SaveEffect(refs=refs, settings=s):
-                return self._app.dispatch(SetRamEffect(
+                return SetRamEffect(
                     effect=s.effect, refs=refs, speed=s.speed,
                     direction=s.direction, colors=s.colors,
-                    random_colors=s.random_colors, brightness=s.brightness))
+                    random_colors=s.random_colors, brightness=s.brightness)
             case FollowDevice():
-                return self._app.dispatch(SetRgbFollow(
+                return SetRgbFollow(
                     mode=plan.mode, host=plan.host, port=plan.port,
                     source=plan.source, mapping=plan.mapping,
-                    colors=plan.colors, targets=plan.targets))
+                    colors=plan.colors, targets=plan.targets)
 
 
 class RgbPanel(BasePanel):

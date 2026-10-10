@@ -207,6 +207,29 @@ def test_uc_about_gpu_widget_label_and_dropdown(qapp: object) -> None:
     assert two._gpu_combo.count() == 2
 
 
+def test_uc_about_shows_the_apps_update_answer_and_starts_no_thread(
+        gui_app: App, qapp: object) -> None:
+    """The App checks for updates; the panel reads its last answer on open
+    and shows each new one.  It used to start a thread that held the panel,
+    which deadlocked Qt when a window was dropped mid-check (2026-10-10)."""
+    import threading
+
+    from trcc.core.events import UpdateChecked
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_about import UCAbout
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    before = {t.ident for t in threading.enumerate()}
+    panel = UCAbout(app=gui_app)
+    started = [t.name for t in threading.enumerate() if t.ident not in before]
+    assert started == []                                 # no thread of its own
+    assert not panel._update_overlay.isVisibleTo(panel)  # "Not checked yet"
+    panel.on_update_checked(UpdateChecked(ok=True, latest_version="999.0.0",
+                                          update_available=True))
+    assert panel._update_overlay.isVisibleTo(panel)
+    assert panel._latest_version == "999.0.0"
+
+
 def test_sensor_picker_renders_hardware_metrics(
     gui_app: App, qapp: object,
 ) -> None:
@@ -398,6 +421,47 @@ def _maintenance_box(gui_app: App, qtbot):
     box = MaintenanceBox(gui_app, _bus(gui_app))
     qtbot.addWidget(box)
     return box
+
+
+def test_maintenance_box_shows_the_apps_update_answer(gui_app: App,
+                                                      qtbot) -> None:
+    """The App's answer, published as ``UpdateChecked``, reaches this box
+    as it reaches the classic window -- one truth, every window."""
+    from trcc.core.events import UpdateChecked
+
+    box = _maintenance_box(gui_app, qtbot)
+    gui_app.events.publish(UpdateChecked(
+        ok=True, local_version="9.10.8", latest_version="9.11.0",
+        release_url="https://example.invalid/r", update_available=True))
+    qtbot.waitUntil(lambda: "9.11.0" in box._status.text(), timeout=2000)
+    assert box._status.text().startswith("Update available: 9.11.0 (you have 9.10.8)")
+
+
+def test_check_for_updates_does_not_wait_on_the_gui_thread(
+        gui_app: App, qtbot, monkeypatch) -> None:
+    """The button used to dispatch CheckForUpdate on the GUI thread, so the
+    window froze while GitHub answered."""
+    import threading
+
+    from trcc.core.commands import CheckForUpdate
+    from trcc.core.results import UpdateCheckResult
+
+    box = _maintenance_box(gui_app, qtbot)
+    asked_on: list[str] = []
+    real = gui_app.dispatch
+
+    def dispatch(cmd):  # type: ignore[no-untyped-def]
+        if isinstance(cmd, CheckForUpdate):
+            asked_on.append(threading.current_thread().name)
+            return UpdateCheckResult(ok=True, local_version="9.10.8",
+                                     latest_version="9.10.8")
+        return real(cmd)
+
+    monkeypatch.setattr(gui_app, "dispatch", dispatch)
+    box._update_btn.click()
+    qtbot.waitUntil(lambda: box._status.text() == "Up to date (9.10.8).",
+                    timeout=2000)
+    assert asked_on == ["trcc-CheckForUpdate"]          # not the GUI thread
 
 
 def test_autostart_picker_offers_every_target(gui_app: App, qtbot) -> None:

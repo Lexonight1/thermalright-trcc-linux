@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from PySide6.QtWidgets import QWidget
 
-from ...core.commands import RamLighting, SetRamLighting
+from ...core.commands import Command, RamLighting, SetRamLighting
 from ...core.ports import CommandBus
 from ...core.results import RamLightingResult
 from ..qt_ram_access import RamAccessRow
@@ -30,6 +31,6 @@ class UCRamAccess(RamAccessRow):
         log.debug("UCRamAccess._status")
         return self._app.dispatch(RamLighting())
 
-    def _switch(self, enabled: bool) -> RamLightingResult:
+    def _switch(self, enabled: bool) -> Command[Any]:
         log.info("UCRamAccess._switch: %s", enabled)
-        return self._app.dispatch(SetRamLighting(enabled=enabled))
+        return SetRamLighting(enabled=enabled)

@@ -371,6 +371,12 @@ def mislocated(ui_root: Path | None = None,
                     reexport[(pkg, alias.name)] = f"{pkg}.{node.module}"
 
     consumers: dict[str, set[str]] = {}
+    # shared module -> the shared modules that import it.  A skin reaching a
+    # module THROUGH another shared module uses it too: ``qt_background`` is
+    # imported by qtgui directly and by the shared ``qt_rgb_page`` and
+    # ``qt_ram_access`` that both skins build on.  Counted direct-only, it
+    # read as qtgui's alone (2026-10-10).
+    shared_importers: dict[str, set[str]] = {}
     for path, tree in trees.items():
         this = _module_name(path, anchor)
         src = _area(this, ui_pkg, skins)
@@ -382,8 +388,21 @@ def mislocated(ui_root: Path | None = None,
                 continue
             for alias in node.names:
                 real = reexport.get((target, alias.name), target)
-                if real != this and src in skins:
+                if real == this:
+                    continue
+                if src in skins:
                     consumers.setdefault(real, set()).add(src)
+                elif src == "shared" and path.name != "__init__.py":
+                    shared_importers.setdefault(real, set()).add(this)
+    # What a shared importer serves, its imports serve -- to a fixed point.
+    changed = True
+    while changed:
+        changed = False
+        for module, importers in shared_importers.items():
+            reached = set().union(*(consumers.get(i, set()) for i in importers))
+            if not reached <= consumers.get(module, set()):
+                consumers.setdefault(module, set()).update(reached)
+                changed = True
 
     out: list[tuple[str, int, str]] = []
     for path in files:

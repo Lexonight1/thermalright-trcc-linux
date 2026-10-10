@@ -142,6 +142,7 @@ from .system import (
     SetTempUnit,
     SetTimeFormat,
     StopDaemon,
+    UpdateStatus,
 )
 from .theme import (
     DeleteTheme,
@@ -316,6 +317,7 @@ __all__ = [
     "ToggleLed",
     "ToggleVideo",
     "UpdateOverlayElement",
+    "UpdateStatus",
     "UploadBootAnimation",
     "UploadCustomMask",
     "VideoStatus",

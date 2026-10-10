@@ -20,10 +20,9 @@ import logging
 import weakref
 import webbrowser
 from pathlib import Path
-from threading import Thread
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal
 from PySide6.QtGui import QIcon, QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
@@ -173,7 +172,6 @@ class UCAbout(BasePanel):
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
-    _update_available = Signal(str)       # latest version
 
     def __init__(self, parent=None,
                  gpu_list: list[tuple[str, str]] | None = None,
@@ -322,15 +320,15 @@ class UCAbout(BasePanel):
             self._on_update_btn_tooltip, self.update_btn)
         self.update_btn.installEventFilter(self._tooltip_filter)
         self.update_btn.clicked.connect(self._on_update_clicked)
-        self._update_available.connect(self._on_update_result)
         self._latest_version: str | None = None
         self._install_method, self._distro = _get_install_info(self._app, self._ui_state)
 
-        # Check GitHub for updates in background, then every hour
-        self._update_timer = QTimer(self)
-        self._update_timer.timeout.connect(self._start_update_check)
-        self._update_timer.start(60 * 60 * 1000)  # 1 hour
-        Thread(target=self._check_for_update, daemon=True).start()
+        # The App checks for updates (UpdateWatch) -- at session start, then
+        # hourly -- and this panel shows its answer: the last one now, each
+        # new one through ``on_update_checked``.  It starts no thread: the
+        # one it used to start held this widget and deadlocked Qt when a
+        # window was dropped mid-check.
+        self._show_last_update()
 
         # === GPU selection (below language row) ===
         self._setup_gpu_widget()
@@ -397,10 +395,6 @@ class UCAbout(BasePanel):
     def _on_website_clicked(self) -> None:
         log.info("_on_website_clicked")
         webbrowser.open('https://www.thermalright.com')
-
-    def _start_update_check(self) -> None:
-        """Kick a background update check — slot fired by the 1-hour QTimer."""
-        Thread(target=self._check_for_update, daemon=True).start()
 
     def _set_temp(self, mode: str):
         """Toggle temperature unit (radio behavior)."""
@@ -545,37 +539,37 @@ class UCAbout(BasePanel):
 
     # --- Software update ---
 
-    def _check_for_update(self):
-        """Background thread: ask the bus whether a newer release exists.
-
-        One path, the same one cli / api / qtgui take.  A direct
-        ``urlopen`` of the GitHub API used to sit behind an ``app is None``
-        fallback here, with its own asset-URL parsing and a ``pkexec``
-        install table — the whole download-it-yourself mechanism that
-        ``RunUpgrade`` replaced.  Production never reached it (``TRCCApp``
-        takes a non-optional ``App`` and passes it), so the only callers
-        were two tests that construct this panel bare, which is why the
-        suite talked to GitHub.
-        """
+    def _show_last_update(self) -> None:
+        """The App's last answer about updates -- read once, no network."""
         if self._app is None:
-            log.warning("_check_for_update: no App injected — skipping the "
-                        "update check")
+            log.debug("_show_last_update: no App -- nothing to show")
             return
-        from ...core.commands import CheckForUpdate
-        r = self._app.dispatch(CheckForUpdate())
-        log.info("_check_for_update: ok=%s available=%s latest=%s",
-                 r.ok, r.update_available, r.latest_version)
-        if r.ok and r.update_available and r.latest_version:
-            self._update_available.emit(r.latest_version)
+        from ...core.commands import UpdateStatus
+        r = self._app.dispatch(UpdateStatus())
+        log.debug("_show_last_update: ok=%s available=%s latest=%s",
+                  r.ok, r.update_available, r.latest_version)
+        self._show_update(r.ok and r.update_available, r.latest_version)
 
-    def _on_update_result(self, latest: str):
-        """Handle version check result (runs on main thread via signal)."""
+    def on_update_checked(self, event: object) -> None:
+        """``UpdateChecked``: the App's newest answer, on the GUI thread."""
+        available = bool(getattr(event, "ok", False)
+                         and getattr(event, "update_available", False))
+        latest = str(getattr(event, "latest_version", ""))
+        log.info("on_update_checked: available=%s latest=%s", available,
+                 latest)
+        self._show_update(available, latest)
+
+    def _show_update(self, available: bool, latest: str) -> None:
+        """Show the update button when *latest* is newer than this TRCC."""
         from trcc.__version__ import __version__
-        if parse_version(latest) > parse_version(__version__):
-            self._latest_version = latest
-            self._update_tooltip = f"Version {latest} available — click to update"
-            self._update_overlay.show()
-            log.info("Update available: %s → %s", __version__, latest)
+        if not (available and latest
+                and parse_version(latest) > parse_version(__version__)):
+            log.debug("_show_update: nothing newer than %s", __version__)
+            return
+        self._latest_version = latest
+        self._update_tooltip = f"Version {latest} available — click to update"
+        self._update_overlay.show()
+        log.info("Update available: %s → %s", __version__, latest)
 
     def _on_update_clicked(self):
         """Perform update based on install method."""

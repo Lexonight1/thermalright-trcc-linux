@@ -485,6 +485,18 @@ class RgbFollowSent(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class UpdateChecked(Event):
+    """The App asked whether a newer TRCC exists (at session start, then
+    hourly); every window shows the answer -- none asks for itself."""
+    ok: bool
+    local_version: str = ""
+    latest_version: str = ""
+    release_url: str = ""
+    update_available: bool = False
+    message: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class HddEnabledChanged(Event):
     """User toggled HDD-metrics inclusion in the broadcast.
 

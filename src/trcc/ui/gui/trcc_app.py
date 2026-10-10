@@ -257,6 +257,9 @@ class TRCCApp(QMainWindow):
         self._bus.settings_changed.connect(self._on_bus_settings_changed, type=qconn)
         self._bus.app_settings_changed.connect(
             self._on_bus_app_settings_changed, type=qconn)
+        # The App's answer about updates; the panel never asks for itself.
+        self._bus.update_checked.connect(self.uc_about.on_update_checked,
+                                         type=qconn)
         # Live errors → transient tray balloon (spam-safe; render/transport
         # errors can fire per-tick, so a dialog here would storm).
         self._bus.error_occurred.connect(self._on_bus_error, type=qconn)

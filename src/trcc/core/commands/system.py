@@ -986,6 +986,25 @@ class CheckForUpdate(Query[UpdateCheckResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class UpdateStatus(Query[UpdateCheckResult]):
+    """What the App last heard about updates -- no network.
+
+    The App checks at session start and hourly (``UpdateWatch``); a window
+    opening reads this, then follows ``UpdateChecked``.  Before the first
+    answer: ``ok=False``, "not checked yet".
+    """
+
+    def execute(self, app: App) -> UpdateCheckResult:
+        latest = app.update_watch.latest
+        log.debug("UpdateStatus: %s", latest)
+        if latest is not None:
+            return latest
+        from ... import __version__ as local
+        return UpdateCheckResult(ok=False, local_version=local,
+                                 message="Not checked yet")
+
+
+@dataclass(frozen=True, slots=True)
 class RunUpgrade(Command[UpgradeResult]):
     """Say how to upgrade this install -- the command, for the user to run.
 

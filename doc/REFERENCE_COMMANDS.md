@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**149 total: 107 Commands and 42 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**150 total: 107 Commands and 43 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1591,6 +1591,14 @@ Ask a running daemon to shut down.
 | Field | Type | Required |
 |---|---|---|
 | `timeout` | `float` | no |
+
+### `UpdateStatus`
+
+What the App last heard about updates -- no network.
+
+*Query* → `UpdateCheckResult`
+
+Takes no arguments.
 
 ## rgb
 

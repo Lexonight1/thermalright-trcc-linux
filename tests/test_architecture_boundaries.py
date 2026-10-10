@@ -560,7 +560,14 @@ MAX_CROSS_SKIN = 4
 #: nine are in ``ui/presentation`` and all nine serve gui, 1361 of that
 #: package's 1756 lines.  Deleting ``ui/gui`` takes this to zero; until then it
 #: may not grow.
-MAX_SINGLE_SKIN_SHARED = 8     # 9 → 8 (2026-10-02): qtgui picks LED pages via led_display
+#:
+#: 9 again (2026-10-10), not ground given back: the count now follows use
+#: THROUGH shared modules.  Direct-only, a module reached solely via another
+#: shared module had zero consumers and was never listed -- preview_geometry
+#: (gui, via lcd_presentation_model) was always gui-only and always hidden.
+#: The same blind spot misread the new qt_background as qtgui's alone, when
+#: both skins reach it through qt_rgb_page and qt_ram_access.
+MAX_SINGLE_SKIN_SHARED = 9     # 9 → 8 (2026-10-02): qtgui picks LED pages via led_display
 
 
 def test_no_skin_reaches_into_another_skin() -> None:
@@ -623,6 +630,28 @@ def test_shared_ui_modules_really_are_shared() -> None:
         f"MAX_SINGLE_SKIN_SHARED to {len(stranded)} so the ground is not "
         f"given back"
     )
+
+
+def test_a_module_reached_through_a_shared_module_serves_its_skins(
+        tmp_path: Path) -> None:
+    """``mislocated`` follows use through shared modules: a helper only a
+    shared module imports serves every skin that module serves.  Counted
+    direct-only it read as one skin's (or as nobody's, and went unlisted)."""
+    ui = tmp_path / "trcc" / "ui"
+    for d in ("gui", "qtgui"):
+        (ui / d).mkdir(parents=True)
+        (ui / d / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "trcc" / "__init__.py").write_text("", encoding="utf-8")
+    (ui / "__init__.py").write_text("", encoding="utf-8")
+    (ui / "helper.py").write_text("X = 1\n", encoding="utf-8")
+    (ui / "page.py").write_text("from .helper import X\n", encoding="utf-8")
+    (ui / "gui" / "a.py").write_text("from ..page import X\n", encoding="utf-8")
+    (ui / "qtgui" / "b.py").write_text("from ..page import X\n", encoding="utf-8")
+    assert ui_contract.mislocated(ui, frozenset({"gui", "qtgui"})) == []
+    (ui / "qtgui" / "b.py").write_text("", encoding="utf-8")       # gui only now
+    assert [(m, s) for m, _lines, s in ui_contract.mislocated(
+        ui, frozenset({"gui", "qtgui"}))] == [
+        ("trcc.ui.helper", "gui"), ("trcc.ui.page", "gui")]
 
 
 def test_presentation_layer_is_qt_app_and_adapter_free() -> None:
@@ -2369,3 +2398,47 @@ def test_every_ui_hands_itself_on_not_its_app() -> None:
         f"unexpected {sorted(found - _UI_OWN_APP_USES)}, "
         f"gone {sorted(_UI_OWN_APP_USES - found)}"
     )
+
+
+def _threads_holding_self(tree: ast.AST) -> list[int]:
+    """Lines of every ``Thread(target=self.<x>)`` / ``threading.Thread(...)``."""
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = (func.id if isinstance(func, ast.Name)
+                else func.attr if isinstance(func, ast.Attribute) else "")
+        if name != "Thread":
+            continue
+        for kw in node.keywords:
+            target = kw.value
+            if (kw.arg == "target" and isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"):
+                found.append(node.lineno)
+    return found
+
+
+def test_no_ui_thread_holds_its_widget() -> None:
+    """A UI never hands a worker thread its own bound method.
+
+    ``Thread(target=self._work)`` keeps the widget alive on the worker; a
+    window dropped mid-wait then loses its LAST reference on that thread and
+    PySide tears Qt objects down off the GUI thread -- a SIGSEGV (2026-10-08)
+    and a GIL vs Qt-mutex deadlock that hung the suite, locally and three
+    times on CI (2026-10-09/10).  Three windows did it.  Work that waits goes
+    through ``ui/qt_background.dispatch_in_background``, whose worker holds
+    the App connection and the Command, never a widget.
+
+    MUTATION CHECK: put ``threading.Thread(target=self._x).start()`` back in
+    any ui/ module -- this names the file and line.
+    """
+    offenders = [
+        f"{path.relative_to(_SRC)}:{line}"
+        for path in sorted((_SRC / "trcc" / "ui").rglob("*.py"))
+        for line in _threads_holding_self(ast.parse(path.read_text(encoding="utf-8")))
+    ]
+    assert offenders == [], (
+        "a UI thread holds its widget -- use qt_background.dispatch_in_background:\n  "
+        + "\n  ".join(offenders))

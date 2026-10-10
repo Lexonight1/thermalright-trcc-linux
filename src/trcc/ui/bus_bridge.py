@@ -69,6 +69,7 @@ from ..core.events import (
     ThemeImported,
     ThemeLoaded,
     ThemeSaved,
+    UpdateChecked,
     VideoAdvanced,
     VideoExportFinished,
     VideoExportProgress,
@@ -101,6 +102,7 @@ class BusBridge(QObject):
     theme_loaded = Signal(object)              # ThemeLoaded
     led_colors_changed = Signal(object)        # LedColorsChanged
     rgb_follow_sent = Signal(object)           # RgbFollowSent
+    update_checked = Signal(object)            # UpdateChecked
     sensors_updated = Signal(object)           # SensorsUpdated
     error_occurred = Signal(object)            # ErrorOccurred
     mask_applied = Signal(object)              # MaskApplied
@@ -206,6 +208,7 @@ class BusBridge(QObject):
             (ThemeLoaded, self.theme_loaded),
             (LedColorsChanged, self.led_colors_changed),
             (RgbFollowSent, self.rgb_follow_sent),
+            (UpdateChecked, self.update_checked),
             (SensorsUpdated, self.sensors_updated),
             (ErrorOccurred, self.error_occurred),
             (MaskApplied, self.mask_applied),

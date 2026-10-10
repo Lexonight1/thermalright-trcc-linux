@@ -14,7 +14,6 @@ and an effect waits on the stick -- and the window stays usable meanwhile.
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from functools import partial
@@ -48,6 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..core.commands import Command
 from ..core.events import RgbFollowChanged
 from ..core.led_models import stretch
 from ..core.logs import per_frame
@@ -79,6 +79,7 @@ from .presentation.rgb_page import (
     RgbSource,
     strip_legend,
 )
+from .qt_background import dispatch_in_background
 from .qt_ram_access import RamAccessRow
 
 log = logging.getLogger(__name__)
@@ -755,7 +756,6 @@ class _FollowForm(QWidget):
 class RgbPageView(QWidget):
     """The page; a skin's subclass names the Commands and the access row."""
 
-    _answered = Signal(object, bool)        # Result, from the worker; reload?
 
     def __init__(self, app: CommandBus, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -764,6 +764,7 @@ class RgbPageView(QWidget):
         self.setObjectName("rgb-page")
         self.page = RgbPage()
         self._busy = False
+        self._reload = False            # the running job: a scan reloads
         self._access = self._access_row()
         self._lights_column = _LightsColumn(self.page, self._access,
                                             self._on_changed)
@@ -795,7 +796,6 @@ class RgbPageView(QWidget):
         layout.addWidget(self._lights_column)
         layout.addSpacing(70)
         layout.addLayout(self._source_column(), 1)
-        self._answered.connect(self._on_answered)
 
     def _with_strips(self, form: QWidget | None) -> QWidget:
         """*form* (if any) above the animated sticks and what they run."""
@@ -862,14 +862,14 @@ class RgbPageView(QWidget):
         log.error("RgbPageView._devices: %s names no Query", type(self).__name__)
         raise NotImplementedError
 
-    def _find(self, plan: FindLights) -> Result:
-        """``ScanRgbLights`` for *plan*."""
+    def _find(self, plan: FindLights) -> Command[Any]:
+        """``ScanRgbLights`` for *plan* -- named, not dispatched."""
         log.error("RgbPageView._find: %s names no Command (%s)",
                   type(self).__name__, plan)
         raise NotImplementedError
 
-    def _send(self, plan: ApplyPlan) -> Result:
-        """The Command *plan* stands for."""
+    def _send(self, plan: ApplyPlan) -> Command[Any]:
+        """The Command *plan* stands for -- named, not dispatched."""
         log.error("RgbPageView._send: %s names no Command (%s)",
                   type(self).__name__, plan)
         raise NotImplementedError
@@ -939,38 +939,28 @@ class RgbPageView(QWidget):
         if (plan := self.page.find()) is None:
             self._on_changed()
             return
-        self._run(partial(self._find, plan), reload=True)
+        self._run(self._find(plan), reload=True)
 
     def _on_apply(self) -> None:
         plan = self.page.apply()
         log.info("RgbPageView._on_apply: %s", plan)
         if plan is not None:
-            self._run(partial(self._send, plan), reload=False)
+            self._run(self._send(plan), reload=False)
 
-    def _run(self, work: Callable[[], Result], *, reload: bool) -> None:
-        """*work* on a worker thread; its answer comes back to the UI."""
-        log.info("RgbPageView._run: reload=%s", reload)
-        self._busy = True
+    def _run(self, command: Command[Any], *, reload: bool) -> None:
+        """*command* off the GUI thread -- a scan or a password prompt can
+        wait -- its answer back to ``_on_answered``.  One at a time: the page
+        is busy until it comes."""
+        log.info("RgbPageView._run: %s reload=%s", type(command).__name__,
+                 reload)
+        self._busy, self._reload = True, reload
         self._on_changed()
-        threading.Thread(target=self._work, args=(work, reload), daemon=True,
-                         name="trcc-rgb-page").start()
+        dispatch_in_background(self._app, command, self._on_answered)
 
-    def _work(self, work: Callable[[], Result], reload: bool) -> None:
-        log.info("RgbPageView._work: started")
-        try:
-            result = work()
-        except Exception as e:            # the App went away meanwhile
-            log.warning("RgbPageView._work: failed -- %s: %s",
-                        type(e).__name__, e)
-            result = Result(ok=False, message=f"Could not reach TRCC: {e}")
-        try:
-            self._answered.emit(result, reload)
-        except RuntimeError:              # the window closed while it ran
-            log.info("RgbPageView._work: answered after the window closed")
-
-    def _on_answered(self, result: Result, reload: bool) -> None:
+    def _on_answered(self, result: Result) -> None:
         """Show the answer; a found light, or a change made, reloads -- a
         refusal keeps the user's picks to correct."""
+        reload = self._reload
         log.info("RgbPageView._on_answered: ok=%s reload=%s", result.ok, reload)
         self._busy = False
         self.page.answered(result)
