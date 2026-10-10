@@ -22,6 +22,8 @@ from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
     FAN_SLOT_KEYWORDS,
     MIN_REFRESH_INTERVAL_S,
+    RamAccessState,
+    RamAccessStatus,
     RamEffectSettings,
     RgbMirrorDevice,
     TlsFiles,
@@ -2283,6 +2285,50 @@ class RgbMirror(ABC):
         ...
 
 
+class RamAccess(ABC):
+    """The opt-in grant that lets this user reach RGB memory's bus.
+
+    Concrete: ``LinuxRamAccess`` (``adapters/system/_ram_access.py``).  The
+    bus also carries the memory's own settings chips, so access is never
+    given by default: ``enable`` asks for a password.  ``status`` reads files
+    only -- it never touches the bus.
+    """
+
+    @abstractmethod
+    def status(self) -> RamAccessStatus:
+        """Where this user stands, from the filesystem alone."""
+
+    @abstractmethod
+    def enable(self) -> RamAccessStatus:
+        """Install the grant -- a password prompt -- and say what changed."""
+
+    @abstractmethod
+    def disable(self) -> RamAccessStatus:
+        """Remove the grant and take the access back."""
+
+
+class _NoRamAccess(RamAccess):
+    """An OS TRCC cannot open the memory's bus on yet: every answer says so."""
+
+    def __init__(self, os_name: str) -> None:
+        log.debug("_NoRamAccess: %s", os_name)
+        self._status = RamAccessStatus(
+            RamAccessState.UNSUPPORTED,
+            f"RAM lighting is not available on {os_name} yet")
+
+    def status(self) -> RamAccessStatus:
+        log.debug("_NoRamAccess.status")
+        return self._status
+
+    def enable(self) -> RamAccessStatus:
+        log.info("_NoRamAccess.enable: %s", self._status.message)
+        return self._status
+
+    def disable(self) -> RamAccessStatus:
+        log.info("_NoRamAccess.disable: %s", self._status.message)
+        return self._status
+
+
 class RamLights(RgbMirror):
     """RGB memory TRCC drives itself: it follows, and it keeps effects.
 
@@ -2919,6 +2965,11 @@ class Platform(ABC):
         """
         log.info("smbuses: %s has no SMBus access", type(self).__name__)
         raise OSError(f"no SMBus access on {type(self).__name__}")
+
+    def ram_access(self) -> RamAccess:
+        """The opt-in grant to reach RGB memory -- on an OS that has one."""
+        log.debug("ram_access: %s has none", type(self).__name__)
+        return _NoRamAccess(type(self).__name__)
 
 
 # =========================================================================

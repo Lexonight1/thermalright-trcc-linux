@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-47 ports.
+48 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -37,6 +37,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
+| [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
 | [`RgbMirror`](#rgbmirror) | 3 | 0 | 2 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
@@ -55,7 +56,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 1 | 8 |
+| [`Platform`](#platform) | 25 | 2 | 8 |
 | [`ContentStore`](#contentstore) | 27 | 0 | 1 |
 
 ---
@@ -495,6 +496,22 @@ stop() -> None
 
 **Implementations (5):** `FreeBSDHotplugMonitor` · `LinuxHotplugMonitor` · `NoopHotplugMonitor` · `PollingHotplugMonitor` · `WindowsHotplugMonitor`
 
+## RamAccess
+
+`core/ports.py`
+
+The opt-in grant that lets this user reach RGB memory's bus.
+
+**You implement (3):**
+
+```python
+disable() -> RamAccessStatus
+enable() -> RamAccessStatus
+status() -> RamAccessStatus
+```
+
+**Implementations (2):** `LinuxRamAccess` · `_NoRamAccess`
+
 ## RgbMirror
 
 `core/ports.py`
@@ -885,7 +902,7 @@ usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | Non
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**You inherit (1):** `smbuses`
+**You inherit (2):** `ram_access` · `smbuses`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 

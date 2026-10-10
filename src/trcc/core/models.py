@@ -1510,6 +1510,35 @@ class RgbMirrorDevice:
     ref: str = ""
 
 
+class RamAccessState(str, Enum):
+    """Whether this user may reach RGB memory's bus (the chipset SMBus).
+
+    ``ON``: TRCC's opt-in grant is installed and in effect.  ``ELSEWHERE``:
+    access comes from another rule (OpenRGB's, say), not TRCC's.  ``OFF``: no
+    access; enabling grants it.  ``NOT_APPLIED``: TRCC's grant is installed but
+    this session did not get it (log out and back in).  ``NO_BUS``: no chipset
+    SMBus here.  ``UNSUPPORTED``: not on this OS yet.
+    """
+    ON = "on"
+    ELSEWHERE = "elsewhere"
+    OFF = "off"
+    NOT_APPLIED = "not-applied"
+    NO_BUS = "no-bus"
+    UNSUPPORTED = "unsupported"
+
+
+@dataclass(frozen=True, slots=True)
+class RamAccessStatus:
+    """The state, said in words, and how to change it from here.
+
+    ``command`` is empty when this App can enable it itself (a password
+    prompt); otherwise it is the terminal command that will.
+    """
+    state: RamAccessState
+    message: str
+    command: str = ""
+
+
 class RamEffect(str, Enum):
     """An effect Corsair RGB memory runs by itself, saved on the stick."""
     STATIC = "static"

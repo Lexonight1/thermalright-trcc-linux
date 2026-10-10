@@ -540,3 +540,14 @@ def test_every_package_takes_the_ram_grant_back_on_uninstall(package: str) -> No
     block = _release_blocks()[package]
     assert hook in block, f"{package}: no {hook}"
     assert line in block.split(hook, 1)[1], f"{package}: {hook} lacks the disable"
+
+
+def test_trcc_reads_the_rule_the_helper_writes() -> None:
+    """The helper may import nothing from trcc, so the path, header and
+    install location are spelled twice -- and must agree."""
+    from trcc.adapters.system import _ram_access
+    helper = _load_helper("trcc-ram-access")
+    assert _ram_access.RULE_PATH == helper.RULE_PATH
+    assert _ram_access.HEADER == helper.HEADER
+    assert _ram_access.HELPER == "/usr/bin/trcc-ram-access"
+    assert _ram_access.HELPER_ASSET == _ASSETS / "trcc-ram-access"

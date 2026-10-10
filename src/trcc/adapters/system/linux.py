@@ -34,6 +34,7 @@ from ...core.ports import (
     HotplugMonitor,
     PackageManager,
     Paths,
+    RamAccess,
     ScsiTransport,
     SensorEnumerator,
     SmBus,
@@ -46,6 +47,7 @@ from ..sensors.gpu_detect import (
 )
 from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
 from ._desktop_entry import XdgDesktopEntry
+from ._ram_access import LinuxRamAccess
 from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
 
@@ -997,6 +999,11 @@ class LinuxOS(BaseOS, key="linux"):
         disks = _linux_disk_info()
         log.info("LinuxOS.disk_info: %d disk(s)", len(disks))
         return disks
+
+    def ram_access(self) -> RamAccess:
+        """The opt-in grant to reach RGB memory's bus (``trcc-ram-access``)."""
+        log.debug("LinuxOS.ram_access")
+        return LinuxRamAccess(_pkexec_helper)
 
     def smbuses(self) -> tuple[SmBus, ...]:
         """Every chipset SMBus, through i2c-dev; all or none."""
