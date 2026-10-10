@@ -738,8 +738,12 @@ class ScriptedAuraController(FakeBulkTransport):
 
     def __init__(self, argb_headers: int | None = None,
                  onboard_leds: int | None = None,
-                 rgb_headers: int | None = None) -> None:
+                 rgb_headers: int | None = None, *,
+                 piece: int = 0) -> None:
         super().__init__()
+        #: Bytes per read: 0 for a whole 65-byte report (hidraw), 32 as
+        #: libusb delivered it on the maintainer's board -- 32, 32, 1.
+        self.piece = piece
         self.table = bytearray(AURA_BOARD_TABLE)
         for at, value in ((0x02, argb_headers), (0x1B, onboard_leds),
                           (0x1D, rgb_headers)):
@@ -752,12 +756,20 @@ class ScriptedAuraController(FakeBulkTransport):
         sent = super().write(endpoint, data, timeout_ms)
         match bytes(data)[:1]:
             case b"\x82":
-                self.read_script.append(
-                    bytes([REPORT_ID, 0x02]) + self.FIRMWARE.encode().ljust(16, b"\x00"))
+                self._answer(bytes([REPORT_ID, 0x02])
+                             + self.FIRMWARE.encode().ljust(63, b"\x00"))
             case b"\xb0":
-                self.read_script.append(
-                    bytes([REPORT_ID, 0x30, 0, 0]) + bytes(self.table))
+                self._answer(bytes([REPORT_ID, 0x30, 0, 0]) + bytes(self.table)
+                             + b"\x00")
         return sent
+
+    def _answer(self, report: bytes) -> None:
+        """Queue *report*, whole or in pieces."""
+        log.debug("ScriptedAuraController._answer: %d byte(s), piece %d",
+                  len(report), self.piece)
+        size = self.piece or len(report)
+        self.read_script.extend(report[i:i + size]
+                                for i in range(0, len(report), size))
 
     def reports(self, opcode: int) -> list[bytes]:
         """Every report written that starts with *opcode*."""

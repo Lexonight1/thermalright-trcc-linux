@@ -40,6 +40,16 @@ def test_the_maintainers_board_reads_as_it_did_on_the_glass() -> None:
         "aura/onboard", "aura/argb1", "aura/argb2", "aura/argb3"]
 
 
+def test_a_reply_in_32_byte_pieces_is_read_whole() -> None:
+    """Through libusb -- pip's hidapi wheel -- the board's 65-byte replies
+    came as 32, 32 and 1: read short, the config request got the firmware
+    reply's leftovers (on the glass, twice: its second half, then its last
+    byte)."""
+    controller = ScriptedAuraController(piece=32)
+    board = AuraMainboard(lambda: controller)
+    assert board.layout() == AuraLayout("AULA3-AR32-0304", 1, 0, 3)
+
+
 def test_the_layout_is_read_from_the_two_replies() -> None:
     board, controller = _board(argb_headers=3, onboard_leds=4, rgb_headers=1)
     assert board.layout() == AuraLayout("AULA3-AR32-0304", 4, 1, 3)

@@ -13,7 +13,11 @@ arrives here from outside (``argb_leds``).
 
 Every report is 65 bytes: report id 0xEC, then 64 of payload.  A request
 (0x82 firmware, 0xB0 config table) is answered on the same pipe; replies are
-read with a timeout -- OpenRGB's blocks forever on a silent device.
+read with a timeout -- OpenRGB's blocks forever on a silent device -- and
+read until whole -- all 65 bytes: through the kernel's hidraw a reply is
+one read, through libusb (the hidapi wheel pip installs) it arrives as 32,
+32 and 1 (measured on the maintainer's board, 2026-10-10).  Stopping short
+leaves the last byte at the front of the next reply.
 
 **Direct**: colours go out in packets of at most 20 LEDs per channel, the
 last one flagged APPLY; a channel shows them once it has been switched to
@@ -217,11 +221,18 @@ class AuraMainboard(RgbMirror):
         return self._hid
 
     def _ask(self, hid: BulkTransport, opcode: int) -> bytes:
-        """Send request *opcode*; its reply, report id first."""
+        """Send request *opcode*; its whole reply, report id first -- read
+        until all 65 bytes have come, or nothing more does."""
         hid.write(0, request(opcode))
-        reply = hid.read(0, PAYLOAD + 1, READ_TIMEOUT_MS)
-        log.debug("AuraMainboard._ask: 0x%02x -> %d byte(s)", opcode,
-                  len(reply))
+        reply, reads = b"", 0
+        while len(reply) < PAYLOAD + 1:
+            piece = hid.read(0, PAYLOAD + 1, READ_TIMEOUT_MS)
+            reads += 1
+            if not piece:
+                break
+            reply += piece
+        log.debug("AuraMainboard._ask: 0x%02x -> %d byte(s) in %d read(s)",
+                  opcode, len(reply), reads)
         return reply
 
     def _make_channels(self, layout: AuraLayout) -> tuple[_Channel, ...]:
