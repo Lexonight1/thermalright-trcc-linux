@@ -148,7 +148,7 @@ def test_run_upgrade_reads_the_hint_from_the_platform_port(tmp_path) -> None:  #
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
         app.platform.upgrade_hint = lambda: "sentinel-hint"  # type: ignore[method-assign]
-        result = app.dispatch(RunUpgrade(dry_run=True))
+        result = app.dispatch(RunUpgrade())
         assert result.ok and result.message.endswith("sentinel-hint")
         assert result.command == []
     finally:

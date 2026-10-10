@@ -455,7 +455,7 @@ def upgrade(
 ) -> None:
     """Print the command that upgrades this TRCC install."""
     log.info("cli system upgrade: yes=%s dry_run=%s", yes, dry_run)
-    r = get_app().dispatch(RunUpgrade(dry_run=dry_run))
+    r = get_app().dispatch(RunUpgrade())
     typer.echo(r.message)
     if not r.ok:
         raise typer.Exit(code=1)

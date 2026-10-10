@@ -167,7 +167,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/setup` | `SetupResult` | — |
 | `GET /system/snapshot` | `ControlCenterSnapshotResult` | Return the AppSettings snapshot. |
 | `GET /system/status` | `AppStatusResponse` | Unified snapshot: app-level prefs + per-device attach list. |
-| `POST /system/upgrade` | `UpgradeResult` | Upgrade trcc-linux via the detected package manager. |
+| `POST /system/upgrade` | `UpgradeResult` | The command that upgrades this TRCC install — returned, never run. |
 
 ## Preferences
 

@@ -218,7 +218,7 @@ def test_check_for_update_network_failure(_trcc_app) -> None:
 def test_run_upgrade_dry_run_returns_command(_trcc_app) -> None:
     from trcc.core.commands import RunUpgrade
 
-    result = _trcc_app.dispatch(RunUpgrade(dry_run=True))
+    result = _trcc_app.dispatch(RunUpgrade())
     # Nothing to run, ever: the answer is the command for the user.
     assert result.ok
     assert result.command == []

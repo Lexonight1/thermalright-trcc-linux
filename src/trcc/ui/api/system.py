@@ -500,15 +500,14 @@ def check_update(request: Request) -> UpdateCheckResult:
 @router.post("/upgrade")
 def upgrade(body: UpgradeRequest,
             request: Request) -> UpgradeResult:
-    """Upgrade trcc-linux via the detected package manager.
+    """The command that upgrades this TRCC install — returned, never run.
 
-    Pass ``dry_run=true`` to get the command without executing it —
-    GUIs should always probe with dry-run first and confirm before
-    running with sudo.
+    It used to run the OS package manager as root from this request.
+    ``dry_run`` in the body is still accepted and changes nothing.
     """
     log.info("api POST /system/upgrade: dry_run=%s", body.dry_run)
     result = request.app.state.trcc.dispatch(
-        RunUpgrade(dry_run=body.dry_run),
+        RunUpgrade(),
     )
     return result
 

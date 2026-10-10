@@ -1465,9 +1465,7 @@ Say how to upgrade this install -- the command, for the user to run.
 
 *Command* → `UpgradeResult`
 
-| Field | Type | Required |
-|---|---|---|
-| `dry_run` | `bool` | no |
+Takes no arguments.
 
 ### `SetDateFormat`
 

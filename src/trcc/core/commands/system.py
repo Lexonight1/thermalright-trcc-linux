@@ -994,12 +994,12 @@ class RunUpgrade(Command[UpgradeResult]):
     reported success with trcc unchanged (measured: "23 upgraded", rc 0),
     pacman did a partial ``-Syu`` then "target not found", and the API ran it
     from an HTTP POST.  The Platform names the right command for how TRCC was
-    installed; nothing is executed, so ``dry_run`` changes nothing and stays
-    only so older clients' requests still parse.
+    installed, and nothing is executed -- so the old ``dry_run`` field is
+    gone.  (It runs in the caller, so no older client sends it over IPC; the
+    CLI flag and the API body field are still accepted.)
     """
     #: The install that matters is the caller's -- the one the user typed into.
     RUNS_IN_CALLER: ClassVar[bool] = True
-    dry_run: bool = False
 
     def execute(self, app: App) -> UpgradeResult:
         method = app.platform.install_method()

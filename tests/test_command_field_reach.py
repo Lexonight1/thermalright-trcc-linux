@@ -126,9 +126,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("PlayVideo", "qtgui"): (frozenset({"fps"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("RunUpgrade", "gui"): (frozenset({"dry_run"}), (
-        "unclassified: measured 2026-09-22, not traced"
-    )),
 }
 
 
@@ -234,7 +231,7 @@ def test_every_record_is_tagged(pair: tuple[str, str]) -> None:
 #: 18 → 17 on 2026-10-02: the gui stopped dispatching ImportTheme.  It
 #: dispatches it again since 94c16024 (2026-10-05, UCThemeLocal's export/import
 #: pair), and its record came back CLASSIFIED ("scoped:", above) -- so 17 stands.
-UNCLASSIFIED = 17
+UNCLASSIFIED = 16   # RunUpgrade.gui left 2026-10-09: the dry_run field itself is gone
 
 
 def test_the_unclassified_backlog_does_not_grow() -> None:
@@ -272,5 +269,5 @@ _RECORDED = frozenset({
     ("ImportTheme", "qtgui"), ("ListCloudThemes", "api"),
     ("ListCloudThemes", "cli"), ("ListMasks", "api"), ("ListMasks", "gui"),
     ("ListMasks", "qtgui"), ("ListThemes", "gui"), ("ListThemes", "qtgui"),
-    ("LoadVideo", "qtgui"), ("PlayVideo", "qtgui"), ("RunUpgrade", "gui"),
+    ("LoadVideo", "qtgui"), ("PlayVideo", "qtgui"),
 })
