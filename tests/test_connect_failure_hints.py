@@ -239,4 +239,7 @@ def test_linux_advice_matches_whether_the_rules_are_installed(
     if installed:
         rules.write_text("# rules\n")
     monkeypatch.setattr(_udev, "RULES_PATH", rules)
+    # Every directory udev reads is checked now, so pin them all: with only
+    # the path pinned, the dev box's real installed rule read as "installed".
+    monkeypatch.setattr(_udev, "RULES_DIRS", (tmp_path,))
     assert expected in LinuxOS.permission_denied_hint(object())  # type: ignore[arg-type]
