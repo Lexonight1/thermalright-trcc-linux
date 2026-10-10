@@ -53,6 +53,7 @@ import sys
 import tarfile
 import tomllib
 import urllib.error
+import time
 import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -64,7 +65,7 @@ _PYPROJECT = _ROOT / "pyproject.toml"
 _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 
 _FEDORA_RELEASE = "f44"
-_UBUNTU_SERIES = "questing"
+_UBUNTU_SERIES = "resolute"      # 26.04 LTS: what the standard deb targets
 #: Alpine stable branch.  Pinned like the two above: "edge" would make
 #: the answer depend on the day the tool ran, and users are on a release.
 _ALPINE_BRANCH = "v3.22"
@@ -257,9 +258,38 @@ def _get(url: str) -> str | None:
         return None
 
 
+class Unreachable(Exception):
+    """A package index did not answer -- which says NOTHING about the package."""
+
+
+def _fetch(url: str, attempts: int = 3,
+           absent: tuple[int, ...] = (404,)) -> str | None:
+    """*url*'s body; None ONLY when the index says "not found" (*absent*).
+
+    ``_get`` returns None for every failure, and the package probes read that
+    as "absent": one dropped request to Fedora's mdapi on 2026-10-09 became a
+    STALE row for a package Fedora ships -- and a STALE row blocks a release.
+    A failure that is not a 404 is retried, then raised as ``Unreachable``.
+    """
+    reason = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=_TIMEOUT) as r:
+                return r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if e.code in absent:
+                return None
+            reason = f"HTTP {e.code}"
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            reason = f"{type(e).__name__}: {e}"
+        if attempt < attempts:
+            time.sleep(2 * attempt)
+    raise Unreachable(f"{url} did not answer ({reason})")
+
+
 def in_arch(pkg: str) -> str | None:
     """Repo name if Arch ships *pkg* officially, else None."""
-    body = _get(f"https://archlinux.org/packages/search/json/?name={pkg}")
+    body = _fetch(f"https://archlinux.org/packages/search/json/?name={pkg}")
     if not body:
         return None
     try:
@@ -270,7 +300,9 @@ def in_arch(pkg: str) -> str | None:
 
 
 def in_fedora(pkg: str) -> str | None:
-    body = _get(f"https://mdapi.fedoraproject.org/{_FEDORA_RELEASE}/pkg/{pkg}")
+    # mdapi answers "400 Bad Request" for a package it does not have.
+    body = _fetch(f"https://mdapi.fedoraproject.org/{_FEDORA_RELEASE}/pkg/{pkg}",
+                  absent=(400, 404))
     if not body:
         return None
     try:
@@ -289,7 +321,7 @@ def in_ubuntu(pkg: str) -> str | None:
     stay green over #221 -- a bug the reporter found by hand. One wrong archive
     is the whole failure.
     """
-    body = _get(
+    body = _fetch(
         "https://api.launchpad.net/1.0/ubuntu/+archive/primary"
         "?ws.op=getPublishedBinaries&exact_match=true&status=Published"
         f"&binary_name={pkg}"
@@ -314,7 +346,7 @@ def in_debian(pkg: str) -> str | None:
     checker was blind to precisely the component our NVIDIA advice lives in,
     so it blessed whatever was written there.  Match the prefix.
     """
-    body = _get(
+    body = _fetch(
         f"https://api.ftp-master.debian.org/madison?package={pkg}&f=json"
     )
     if not body:
@@ -1517,12 +1549,19 @@ def check() -> list[Finding]:
             print(f"  {dep:16} {'(unmapped)':22}")
             continue
         a_name, f_name, d_name = names
-        a, f = in_arch(a_name), in_fedora(f_name)
-        # The deb targets Ubuntu 24.04+ AND Debian 13+ — two archives with
-        # different package sets.  Available in EITHER means the deb can and
-        # must declare it.  Checking Debian alone read python3-pynvml as
-        # 'absent', skipped the assertion, and stayed green over #221.
-        d_ubuntu, d_debian = in_ubuntu(d_name), in_debian(d_name)
+        try:
+            a, f = in_arch(a_name), in_fedora(f_name)
+            # The deb targets Ubuntu 24.04+ AND Debian 13+ — two archives
+            # with different package sets.  Available in EITHER means the deb
+            # can and must declare it.  Checking Debian alone read
+            # python3-pynvml as 'absent', skipped the assertion, and stayed
+            # green over #221.
+            d_ubuntu, d_debian = in_ubuntu(d_name), in_debian(d_name)
+        except Unreachable as e:
+            findings.append(Finding(
+                "UNVERIFIED", dep, f"not checked this run — {e}; rerun"))
+            print(f"  {dep:16} {'(an index did not answer)':22}")
+            continue
         d = d_ubuntu or d_debian
         d_src = "ubuntu" if d_ubuntu and not d_debian else ("debian" if d_debian else "")
         d_cell = f"{d} [{d_src}]" if d and d_src else (d or "— absent")
@@ -1545,7 +1584,9 @@ def check() -> list[Finding]:
                 f"ARCH_UNAVAILABLE and add `depend = {a_name}`"))
 
         # 3. A hard dep Arch ships but we never declare.
-        if a and a_name not in declared and a_name not in ARCH_UNAVAILABLE:
+        optional = dep in DELIBERATELY_OPTIONAL      # on record, with why
+        if (a and a_name not in declared and a_name not in ARCH_UNAVAILABLE
+                and not optional):
             findings.append(Finding(
                 "GAP", dep,
                 f"Arch ships {a_name} in [{a}] but release.yml does not "
@@ -1564,13 +1605,14 @@ def check() -> list[Finding]:
         #    --no-install-recommends) and a reporter found it by hand (#221),
         #    the day after the identical Arch `optdepend` bug (#207). One distro
         #    checked is not the class checked.
-        if d and d_name not in deb_declared:
+        if d and d_name not in deb_declared and not optional:
             findings.append(Finding(
                 "GAP", dep,
                 f"Debian/Ubuntu ships {d_name} ({d}) but the deb does not "
                 f"`Depends:` it — apt may skip it and the feature goes silently "
                 f"missing"))
-        if f and f_name not in rpm_declared and dep not in _RPM_VENDORED_OK:
+        if (f and f_name not in rpm_declared and dep not in _RPM_VENDORED_OK
+                and not optional):
             findings.append(Finding(
                 "GAP", dep,
                 f"Fedora ships {f_name} ({f}) but the RPM does not `Requires:` "
@@ -1667,14 +1709,21 @@ def main() -> int:
     findings = check() + check_pip_resolved_targets()
     print()
     print("Install hints — does the command we print deliver the binary?\n")
-    findings += check_install_hints()
+    try:
+        findings += check_install_hints()
+    except Unreachable as e:
+        findings.append(Finding("UNVERIFIED", "install hints",
+                                f"not checked this run — {e}; rerun"))
     print()
     if not findings:
         print("All packaging claims still hold.")
         return 0
     for f in findings:
         print(f"  [{f.severity}] {f.dep}: {f.message}")
-    print(f"\n{len(findings)} claim(s) need attention.")
+    unverified = sum(f.severity == "UNVERIFIED" for f in findings)
+    print(f"\n{len(findings)} claim(s) need attention"
+          + (f" — {unverified} only because an index did not answer: rerun "
+             "before reading them as findings" if unverified else "") + ".")
     return 1
 
 
