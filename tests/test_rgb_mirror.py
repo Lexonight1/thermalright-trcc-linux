@@ -1,7 +1,9 @@
 """Other RGB follows the cooler (#160): the App service, Command and Query."""
 from __future__ import annotations
 
+import threading
 import time
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -9,19 +11,31 @@ import pytest
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, RenderLed, RgbFollow, SetRgbFollow
 from trcc.core.events import LedColorsChanged
-from trcc.core.models import RgbFollowMode, RgbMirrorDevice
-from trcc.core.ports import RgbMirror, SmBus
+from trcc.core.models import (
+    RamEffect,
+    RamEffectSettings,
+    RgbFollowMode,
+    RgbMirrorDevice,
+)
+from trcc.core.ports import RamLights, SmBus
 from trcc.services.rgb_mirror import RgbMirrorService
 
-from .mock_platform import MockPlatform, ScriptedSmBus, scripted_ram
+from .mock_platform import (
+    MockPlatform,
+    ScriptedCorsairStick,
+    ScriptedSmBus,
+    scripted_ram,
+)
 
 OFF, OPENRGB, RAM_MODE = RgbFollowMode
 STRIP = RgbMirrorDevice(0, "Strip", 4)
 RAM = RgbMirrorDevice(1, "RAM", 2)
 
 
-class FakeMirror(RgbMirror):
-    """Records what it is shown; ``down`` makes every call fail."""
+class FakeMirror(RamLights):
+    """Records what it is shown and the effects it keeps; ``down`` makes
+    every call fail.  A ``RamLights`` because the service's RAM factory
+    promises one -- the follow half alone would not keep its contract."""
 
     def __init__(self, mode: RgbFollowMode = RgbFollowMode.OPENRGB,
                  host: str = "", port: int = 0) -> None:
@@ -30,17 +44,27 @@ class FakeMirror(RgbMirror):
         self.shown: list[tuple[str, tuple]] = []
         self.down = False
         self.closed = 0
+        self.scanned = False
+        self.effects: list[tuple[str, RamEffectSettings]] = []
 
     def devices(self) -> tuple[RgbMirrorDevice, ...]:
         if self.down:
             raise ConnectionRefusedError("nothing on 6742")
+        self.scanned = True
         return (STRIP, RAM)
+
+    def found(self) -> tuple[RgbMirrorDevice, ...] | None:
+        return (STRIP, RAM) if self.scanned else None
+
+    def apply_effect(self, device, settings) -> None:  # type: ignore[no-untyped-def]
+        self.effects.append((device.name, settings))
 
     def show(self, device, colors) -> None:  # type: ignore[no-untyped-def]
         self.shown.append((device.name, tuple(colors)))
 
     def close(self) -> None:
         self.closed += 1
+        self.scanned = False
 
 
 def _until(check, timeout: float = 5.0) -> None:  # type: ignore[no-untyped-def]
@@ -368,3 +392,130 @@ def test_the_address_field_parses_like_the_api() -> None:
     assert parse_openrgb_address("localhost") == ("localhost", 6742)
     for bad in ("http://x", "a b:1", "h:0", "h:70000", "h:x", ":6742"):
         assert parse_openrgb_address(bad) is None, bad
+
+
+# ── One owner of the RAM: follow and effects share it, one at a time ───────
+
+class _SlowStickBus(ScriptedSmBus):
+    """Two scripted sticks; the first effect byte holds the bus for a moment,
+    the window a follow write would land in if nothing kept them apart."""
+
+    def __init__(self) -> None:
+        super().__init__({0x19: ScriptedCorsairStick(),
+                          0x1B: ScriptedCorsairStick()})
+        self.effect_started = threading.Event()
+
+    def write_byte_data(self, address: int, register: int, value: int) -> None:
+        super().write_byte_data(address, register, value)
+        if register == 0x20 and not self.effect_started.is_set():
+            self.effect_started.set()
+            time.sleep(0.1)
+
+
+def _ram_service(bus: ScriptedSmBus) -> RgbMirrorService:
+    from trcc.adapters.rgb import make_mirror
+    return RgbMirrorService(partial(make_mirror, smbuses=lambda: (bus,)))
+
+
+def test_a_follow_write_never_lands_inside_an_effect() -> None:
+    """MUTATION CHECK -- drop ``with self._bus`` around the worker's send and
+    the colour block lands between the effect's bytes."""
+    bus = _SlowStickBus()
+    service = _ram_service(bus)
+    service.configure(RAM_MODE, "", 0)
+    service.on_colors(_colors("0416:8001", (1, 2, 3)))
+    _until(lambda: bool(bus.chips[0x19].blocks))
+    effect = threading.Thread(target=service.apply_effect, args=(
+        ("i2c-3/0x19",), RamEffectSettings(effect=RamEffect.RAINBOW)))
+    effect.start()
+    assert bus.effect_started.wait(5)
+    service.on_colors(_colors("0416:8001", (4, 5, 6)))
+    effect.join(5)
+    _until(lambda: len(bus.chips[0x19].blocks) >= 2)
+    start = bus.touched.index(("write", 0x19, 0x0B))
+    end = bus.touched.index(("read", 0x19, 0x30), start)
+    inside = bus.touched[start:end + 1]
+    assert inside == [("write", 0x19, 0x0B), ("write", 0x19, 0x21),
+                      *[("write", 0x19, 0x20)] * 20, ("read", 0x19, 0x42),
+                      ("write", 0x19, 0x82), ("read", 0x19, 0x30)]
+    service.close()
+
+
+def test_two_ui_switching_at_once_leave_one_follower() -> None:
+    """Each UI's Command runs on its own thread.  Unlocked, both stopped
+    nothing, both started a worker, and the first was orphaned for good.
+
+    MUTATION CHECK -- drop ``with self._switch`` in ``configure``."""
+    made: list[FakeMirror] = []
+
+    def slow_make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        time.sleep(0.05)
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    service = RgbMirrorService(slow_make)
+    switches = [threading.Thread(target=service.configure,
+                                 args=(OPENRGB, "h", n)) for n in (1, 2)]
+    for t in switches:
+        t.start()
+    for t in switches:
+        t.join(5)
+    workers = [t for t in threading.enumerate() if t.name == "trcc-rgb-mirror"]
+    assert len(workers) == 1
+    assert len(made) == 2 and made[0].closed == 1 and made[1].closed == 0
+    service.stop()
+    assert not [t for t in threading.enumerate() if t.name == "trcc-rgb-mirror"]
+
+
+def test_the_stick_list_never_asks_the_bus() -> None:
+    """MUTATION CHECK -- answer ``ram_sticks`` with ``devices()`` and the
+    driver made (but not yet scanned) by switching RAM on probes the bus."""
+    bus = ScriptedSmBus({0x19: ScriptedCorsairStick()})
+    service = _ram_service(bus)
+    assert service.ram_sticks() is None
+    service.configure(RAM_MODE, "", 0)      # makes the driver, scans nothing
+    service.stop()
+    assert service.ram_sticks() is None
+    assert bus.touched == []
+    found = service.scan_ram()
+    touched = len(bus.touched)
+    assert [s.ref for s in found] == ["i2c-3/0x19"]
+    assert service.ram_sticks() == found
+    assert len(bus.touched) == touched
+    service.close()
+
+
+def test_an_effect_goes_to_the_named_sticks_only() -> None:
+    bus = scripted_ram()
+    service = _ram_service(bus)
+    rainbow = RamEffectSettings(effect=RamEffect.RAINBOW)
+    applied = service.apply_effect(("i2c-3/0x1b",), rainbow)
+    assert [s.ref for s in applied] == ["i2c-3/0x1b"]
+    assert bus.chips[0x1B].effect and not bus.chips[0x19].effect
+    every = service.apply_effect((), rainbow)
+    assert [s.ref for s in every] == ["i2c-3/0x19", "i2c-3/0x1b"]
+    service.close()
+
+
+def test_an_unknown_stick_writes_nothing() -> None:
+    bus = scripted_ram()
+    service = _ram_service(bus)
+    with pytest.raises(ValueError, match="no stick i2c-3/0x55"):
+        service.apply_effect(("i2c-3/0x19", "i2c-3/0x55"),
+                             RamEffectSettings(effect=RamEffect.RAINBOW))
+    # The scan's own info-select writes (0x61, 0x21) happen; no effect does.
+    assert not [t for t in bus.touched if t[2] in (0x0B, 0x20, 0x82)]
+    assert not [c.effect for c in bus.chips.values() if c.effect]
+    service.close()
+
+
+def test_stopping_follow_keeps_the_ram_closing_releases_it() -> None:
+    bus = scripted_ram()
+    service = _ram_service(bus)
+    service.configure(RAM_MODE, "", 0)
+    service.on_colors(_colors("0416:8001", (9, 9, 9)))
+    _until(lambda: bool(bus.chips[0x19].blocks))
+    service.stop()
+    assert not bus.closed and service.ram_sticks() is not None
+    service.close()
+    assert bus.closed and service.ram_sticks() is None

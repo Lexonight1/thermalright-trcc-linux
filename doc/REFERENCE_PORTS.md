@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-46 ports.
+47 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -48,6 +48,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SendTask`](#sendtask) | 4 | 0 | 6 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
+| [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
@@ -683,6 +684,24 @@ write(endpoint: 'int', data: 'WriteBuffer', timeout_ms: 'int' = 100) -> int
 ```
 
 **Implementations (2):** `HidApiTransport` · `PyUsbBulkTransport`
+
+## RamLights
+
+`core/ports.py`
+
+RGB memory TRCC drives itself: it follows, and it keeps effects.
+
+**You implement (5):**
+
+```python
+apply_effect(device: 'RgbMirrorDevice', settings: 'RamEffectSettings') -> None
+close() -> None
+devices() -> tuple[RgbMirrorDevice, ...]
+found() -> tuple[RgbMirrorDevice, ...] | None
+show(device: 'RgbMirrorDevice', colors: 'Sequence[tuple[int, int, int]]') -> None
+```
+
+**Implementations (1):** `CorsairDramMirror`
 
 ## ScsiTransport
 

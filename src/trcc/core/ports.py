@@ -22,6 +22,7 @@ from .models import (
     DEFAULT_REFRESH_INTERVAL_S,
     FAN_SLOT_KEYWORDS,
     MIN_REFRESH_INTERVAL_S,
+    RamEffectSettings,
     RgbMirrorDevice,
     TlsFiles,
     VideoExportRequest,
@@ -2268,6 +2269,29 @@ class RgbMirror(ABC):
     def close(self) -> None:
         """Drop the connection; the next call connects again."""
         ...
+
+
+class RamLights(RgbMirror):
+    """RGB memory TRCC drives itself: it follows, and it keeps effects.
+
+    Concrete: ``CorsairDramMirror`` (``adapters/rgb/corsair_dram.py``).  The
+    follow half is ``RgbMirror``'s; this adds what only memory TRCC drives
+    directly can do.
+    """
+
+    @abstractmethod
+    def found(self) -> tuple[RgbMirrorDevice, ...] | None:
+        """The sticks of the last scan, None before any.  Never touches the
+        bus -- what a page shows without asking the hardware anything."""
+
+    @abstractmethod
+    def apply_effect(self, device: RgbMirrorDevice,
+                     settings: RamEffectSettings) -> None:
+        """Save *settings* on *device* as its own effect.
+
+        ``ValueError`` for settings the effect cannot take, before anything
+        is written; ``OSError`` when the stick does not take it.
+        """
 
 
 # =========================================================================

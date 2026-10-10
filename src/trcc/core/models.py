@@ -1500,10 +1500,14 @@ class RgbMirrorDevice:
 
     ``index`` is the device's place in that system's list -- what every
     later request names it by.  ``led_count`` is how many colours it takes.
+    ``ref`` names it across scans, which ``index`` cannot: a rescan renumbers.
+    Corsair RAM's is its bus and address, ``i2c-3/0x19``; empty where the
+    other system has no stable name.
     """
     index: int
     name: str
     led_count: int
+    ref: str = ""
 
 
 class RamEffect(str, Enum):

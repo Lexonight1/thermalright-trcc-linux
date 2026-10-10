@@ -1107,7 +1107,7 @@ class App(CommandBus):
         alive past ``QApplication.quit()``.
         """
         log.info("close: devices=%d", len(self.devices))
-        self.rgb_mirror.stop()
+        self.rgb_mirror.close()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
         self.video_loop.stop()

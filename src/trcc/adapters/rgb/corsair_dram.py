@@ -54,7 +54,7 @@ from ...core.models import (
     RamEffectSettings,
     RgbMirrorDevice,
 )
-from ...core.ports import SMBUS_BLOCK_MAX, RgbMirror, SmBus
+from ...core.ports import SMBUS_BLOCK_MAX, RamLights, SmBus
 from .openrgb import stretch
 
 log = logging.getLogger(__name__)
@@ -213,7 +213,7 @@ class _Stick:
     device: RgbMirrorDevice
 
 
-class CorsairDramMirror(RgbMirror):
+class CorsairDramMirror(RamLights):
     """Every Corsair RGB stick on the chipset SMBus, driven directly.
 
     *open_buses* is ``Platform.smbuses``: the platform opens the bus, so a
@@ -226,6 +226,12 @@ class CorsairDramMirror(RgbMirror):
         self._open, self._gap = open_buses, probe_gap_s
         self._buses: dict[int, SmBus] = {}
         self._sticks: tuple[_Stick, ...] | None = None
+
+    def found(self) -> tuple[RgbMirrorDevice, ...] | None:
+        """The last scan's sticks, None before any -- no bus access."""
+        log.debug("CorsairDramMirror.found: scanned=%s", self._sticks is not None)
+        return None if self._sticks is None else tuple(
+            s.device for s in self._sticks)
 
     def devices(self) -> tuple[RgbMirrorDevice, ...]:
         """The sticks, found once; again only after ``close``."""
@@ -358,7 +364,8 @@ class CorsairDramMirror(RgbMirror):
                         "drive directly", where, vid, pid, protocol)
             return None
         device = RgbMirrorDevice(index=index, name=f"{model.name} ({where})",
-                                 led_count=model.led_count)
+                                 led_count=model.led_count,
+                                 ref=f"i2c-{number}/0x{address:02x}")
         return _Stick(number, address, model, device)
 
     def _device_info(self, bus: SmBus, address: int) -> bytes:

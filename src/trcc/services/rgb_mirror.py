@@ -10,6 +10,14 @@ queued.
 
 One cooler leads: the first whose colours arrive after following starts.
 Two LED coolers following at once would alternate on every device.
+
+The same service owns the RAM for its built-in effects.  Commands arrive on
+one thread per connected UI and the follower sends from its own, so every use
+of the bus -- a follow send, an effect, a scan -- holds one lock: an effect is
+some 25 transfers, and a follow write landing between two of them would go to
+whichever stick the bus was last pointed at.  Switching following on or off
+holds another, so two UIs switching at once cannot leave a worker running
+that nothing can stop.
 """
 from __future__ import annotations
 
@@ -20,8 +28,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..core.logs import per_frame
-from ..core.models import RgbFollowMode, RgbMirrorDevice
-from ..core.ports import RgbMirror
+from ..core.models import RamEffectSettings, RgbFollowMode, RgbMirrorDevice
+from ..core.ports import RamLights, RgbMirror
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -60,6 +68,9 @@ class RgbMirrorService:
         self._lead = ""
         self._retry_at = 0.0
         self._status = MirrorStatus()
+        self._bus = threading.Lock()        # one use of the bus at a time
+        self._switch = threading.Lock()     # one configure / stop at a time
+        self._ram: RamLights | None = None  # shared by following and effects
 
     @property
     def status(self) -> MirrorStatus:
@@ -73,16 +84,22 @@ class RgbMirrorService:
         """
         log.info("RgbMirrorService.configure: %s %s:%d", mode.value, host,
                  port)
-        self.stop()
-        if mode is RgbFollowMode.OFF:
-            return
-        with self._cond:
-            self._mirror = self._make(mode, host, port)
-            self._running, self._lead, self._retry_at = True, "", 0.0
-            self._status = MirrorStatus(mode=mode)
-        self._thread = threading.Thread(target=self._run, daemon=True,
-                                        name="trcc-rgb-mirror")
-        self._thread.start()
+        with self._switch:
+            self._stop_following()
+            if mode is RgbFollowMode.OFF:
+                return
+            if mode is RgbFollowMode.RAM:
+                with self._bus:
+                    mirror: RgbMirror = self._ram_lights()
+            else:
+                mirror = self._make(mode, host, port)
+            with self._cond:
+                self._mirror = mirror
+                self._running, self._lead, self._retry_at = True, "", 0.0
+                self._status = MirrorStatus(mode=mode)
+            self._thread = threading.Thread(target=self._run, daemon=True,
+                                            name="trcc-rgb-mirror")
+            self._thread.start()
 
     def on_colors(self, event: object) -> None:
         """``LedColorsChanged`` -> the newest colours to send."""
@@ -102,17 +119,83 @@ class RgbMirrorService:
             self._cond.notify()
 
     def stop(self) -> None:
-        """Stop the thread and drop the connection."""
+        """Stop following.  The RAM stays open for its effects."""
         log.debug("RgbMirrorService.stop: running=%s", self._running)
+        with self._switch:
+            self._stop_following()
+
+    def close(self) -> None:
+        """Stop following and release the RAM -- the App is closing."""
+        log.info("RgbMirrorService.close: ram=%s", self._ram is not None)
+        self.stop()
+        with self._bus:
+            if self._ram is not None:
+                self._ram.close()
+                self._ram = None
+
+    # ── The RAM: what it holds, and its effects ───────────────────────
+
+    def ram_sticks(self) -> tuple[RgbMirrorDevice, ...] | None:
+        """The sticks the last scan found, None before any.  No bus access:
+        a page can show this as often as it likes."""
+        ram = self._ram
+        found = None if ram is None else ram.found()
+        log.debug("RgbMirrorService.ram_sticks: %s",
+                  None if found is None else len(found))
+        return found
+
+    def scan_ram(self) -> tuple[RgbMirrorDevice, ...]:
+        """Look for the sticks again -- only ever because a user asked."""
+        log.info("RgbMirrorService.scan_ram")
+        with self._bus:
+            ram = self._ram_lights()
+            ram.close()
+            return ram.devices()
+
+    def apply_effect(self, refs: tuple[str, ...],
+                     settings: RamEffectSettings) -> tuple[RgbMirrorDevice, ...]:
+        """Save *settings* on the sticks named by *refs* -- every stick when
+        empty.  Returns the sticks it was saved on.
+
+        ``ValueError`` for a stick no scan found, or settings the effect cannot
+        take -- either before anything is written; ``OSError`` from the bus.
+        """
+        log.info("RgbMirrorService.apply_effect: %s on %s",
+                 settings.effect.value, refs or "every stick")
+        with self._bus:
+            ram = self._ram_lights()
+            sticks = ram.devices()
+            if unknown := set(refs) - {s.ref for s in sticks}:
+                raise ValueError(f"no stick {', '.join(sorted(unknown))} -- "
+                                 f"found {[s.ref for s in sticks] or 'none'}")
+            targets = tuple(s for s in sticks if not refs or s.ref in refs)
+            for stick in targets:
+                ram.apply_effect(stick, settings)
+        return targets
+
+    def _ram_lights(self) -> RamLights:
+        """The one RAM driver, made on first use.  Caller holds the bus."""
+        if self._ram is None:
+            made = self._make(RgbFollowMode.RAM, "", 0)
+            if not isinstance(made, RamLights):
+                raise TypeError(f"the RAM follower {type(made).__name__} "
+                                "cannot keep effects")
+            self._ram = made
+            log.info("RgbMirrorService: RAM driver %s", type(made).__name__)
+        return self._ram
+
+    def _stop_following(self) -> None:
+        """Stop the worker and drop the follower.  Caller holds the switch."""
+        log.debug("_stop_following: thread=%s", self._thread is not None)
         with self._cond:
             self._running = False
             self._cond.notify()
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
-        if self._mirror is not None:
+        if self._mirror is not None and self._mirror is not self._ram:
             self._mirror.close()
-            self._mirror = None
+        self._mirror = None
         self._status = MirrorStatus()
 
     # ── The worker ────────────────────────────────────────────────────
@@ -128,7 +211,8 @@ class RgbMirrorService:
                 colors, self._pending = self._pending, None
                 mirror = self._mirror
             if mirror is not None and time.monotonic() >= self._retry_at:
-                self._send(mirror, colors or ())
+                with self._bus:
+                    self._send(mirror, colors or ())
 
     def _send(self, mirror: RgbMirror, colors: tuple[Rgb, ...]) -> None:
         frame_log.debug("RgbMirrorService._send: %d colour(s)", len(colors))
