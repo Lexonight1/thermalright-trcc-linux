@@ -118,9 +118,15 @@ def _rainbow(f: _Frame, led: int) -> Rgb:
     return _hue(f.phase * 0.25)
 
 
+#: Rainbow Wave's colours an LED passes per effect cycle.  Compared with the
+#: maintainer's Vengeance DDR5 at Medium (2026-10-10): the whole rainbow down
+#: the stick, ~1 s per colour -- about 6 s round, where 0.5 drew 4 s.
+_RAINBOW_WAVE_TURNS = 1 / 3
+
+
 def _rainbow_wave(f: _Frame, led: int) -> Rgb:
     frame_log.debug("_rainbow_wave")
-    return _hue(f.place(led) - f.phase * 0.5)
+    return _hue(f.place(led) - f.phase * _RAINBOW_WAVE_TURNS)
 
 
 def _color_wave(f: _Frame, led: int) -> Rgb:

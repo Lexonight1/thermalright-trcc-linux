@@ -25,6 +25,12 @@ def _settings(effect: RamEffect, speed: EffectSpeed = EffectSpeed.MEDIUM,
                              brightness=brightness)
 
 
+def _same(a: list[tuple[int, int, int]], b: list[tuple[int, int, int]]) -> bool:
+    """Equal to a colour step: float maths rounds a hue a step either way."""
+    return all(abs(x - y) <= 1
+               for p, q in zip(a, b, strict=True) for x, y in zip(p, q, strict=True))
+
+
 @pytest.mark.parametrize("effect", list(RamEffect))
 def test_every_effect_draws_a_stick_of_real_colours(effect: RamEffect) -> None:
     for t in TIMES:
@@ -49,10 +55,7 @@ def test_up_draws_down_upside_down() -> None:
     up = _settings(RamEffect.RAINBOW_WAVE, direction=EffectDirection.UP)
     down = _settings(RamEffect.RAINBOW_WAVE, direction=EffectDirection.DOWN)
     for t in TIMES:
-        # Equal to a colour step: 1 - x and x round apart in the last bit.
-        pairs = zip(effect_frame(up, t), effect_frame(down, t)[::-1],
-                    strict=True)
-        assert all(abs(a - b) <= 1 for u, d in pairs for a, b in zip(u, d, strict=True))
+        assert _same(effect_frame(up, t), effect_frame(down, t)[::-1])
 
 
 def test_left_and_right_travel_across_the_sticks() -> None:
@@ -79,3 +82,10 @@ def test_brightness_dims_only_effects_that_take_it() -> None:
     # Static takes no brightness: it is drawn at full whatever is saved.
     assert effect_frame(_settings(RamEffect.STATIC, brightness=10),
                         0.3) == [RED] * LEDS
+
+
+def test_rainbow_wave_at_medium_comes_round_in_six_seconds() -> None:
+    """As the maintainer's sticks run it: ~1 s per colour, six colours."""
+    wave = _settings(RamEffect.RAINBOW_WAVE)
+    assert _same(effect_frame(wave, 6.0), effect_frame(wave, 0.0))
+    assert not _same(effect_frame(wave, 3.0), effect_frame(wave, 0.0))
