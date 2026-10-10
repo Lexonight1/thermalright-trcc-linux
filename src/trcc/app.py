@@ -126,7 +126,7 @@ class App(CommandBus):
                  data_install_runner: DataInstallRunner | None = None,
                  video_export_runner: VideoExportRunner | None = None,
                  make_rgb_mirror: Callable[[RgbFollowMode, str, int],
-                                           RgbMirror] = make_mirror,
+                                           RgbMirror] | None = None,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
         self.platform = platform
@@ -369,7 +369,10 @@ class App(CommandBus):
         self.events.subscribe(DataInstalled, self._on_data_installed)
         # Other RGB follows the cooler (#160): the LED render's colours go to
         # OpenRGB's devices or to Corsair RAM, from the follower's own thread.
-        self.rgb_mirror = RgbMirrorService(make_rgb_mirror)
+        # The RAM follower reaches the SMBus only through ``platform``, so a
+        # stand-in platform's scripted sticks are all a test or mock can touch.
+        self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
+            make_mirror, smbuses=platform.smbuses))
         self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
         prefs = self.settings.app
         self.rgb_mirror.configure(self.settings.rgb_follow_mode(),

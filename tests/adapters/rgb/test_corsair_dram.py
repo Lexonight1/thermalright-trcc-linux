@@ -1,7 +1,7 @@
 """Corsair RGB memory follows the cooler directly (#160) -- on a fake SMBus.
 
-The info block below is the one the maintainer's own stick at 0x19 returned
-(2026-10-08), and the 38-byte red packet is the one that turned it red.
+``CORSAIR_STICK_INFO`` is the info block the maintainer's own stick at 0x19
+returned (2026-10-08), and the 38-byte red packet is the one that turned it red.
 """
 from __future__ import annotations
 
@@ -9,6 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.mock_platform import (
+    CORSAIR_STICK_INFO,
+    ScriptedCorsairStick,
+    ScriptedSmBus,
+)
 from trcc.adapters.rgb.corsair_dram import (
     ADDRESSES,
     MODELS,
@@ -16,80 +21,19 @@ from trcc.adapters.rgb.corsair_dram import (
     crc8,
     direct_packet,
 )
-from trcc.adapters.rgb.smbus import SmBus, find_smbus
+from trcc.adapters.rgb.smbus import find_smbus
 
-#: 0x19's device info, as read on real glass; its checksum register said 0xee.
-REAL_INFO = bytes.fromhex(
-    "1c1b010708000600020109000dc00316" "0484cbafcef91964c61b00f504000000")
 SPD_HUBS = range(0x50, 0x58)
 
 
-class FakeChip:
-    """A Corsair lighting controller: id registers and an info buffer."""
-
-    def __init__(self, info: bytes = REAL_INFO, checksum: int | None = None,
-                 ids: tuple[int, int] = (0x1B, 0x04)) -> None:
-        self.info, self.ids = info, ids
-        self.checksum = crc8(info) if checksum is None else checksum
-        self.at = 0
-        self.blocks: list[tuple[int, bytes]] = []
-
-    def read(self, register: int) -> int:
-        match register:
-            case 0x43:
-                return self.ids[0]
-            case 0x44:
-                return self.ids[1]
-            case 0x40:
-                self.at += 1
-                return self.info[self.at - 1]
-            case 0x42:
-                return self.checksum
-        raise AssertionError(f"unexpected read of 0x{register:02x}")
-
-
-class FakeBus(SmBus):
-    """Chips by address; every access is recorded, an empty address NACKs."""
-
-    def __init__(self, chips: dict[int, FakeChip]) -> None:
-        self.chips = chips
-        self.touched: list[tuple[str, int, int]] = []
-        self.closed = False
-
-    def _chip(self, address: int) -> FakeChip:
-        if address not in self.chips:
-            raise OSError(6, "No such device or address")
-        return self.chips[address]
-
-    def read_byte_data(self, address: int, register: int) -> int:
-        self.touched.append(("read", address, register))
-        return self._chip(address).read(register)
-
-    def write_byte_data(self, address: int, register: int, value: int) -> None:
-        self.touched.append(("write", address, register))
-        chip = self._chip(address)
-        if register == 0x21:
-            chip.at = 0
-
-    def write_block_data(self, address: int, register: int,
-                         data: bytes) -> None:
-        self.touched.append(("block", address, register))
-        assert len(data) <= 32
-        self._chip(address).blocks.append((register, bytes(data)))
-
-    def close(self) -> None:
-        self.closed = True
-
-
-def _mirror(chips: dict[int, FakeChip]) -> tuple[CorsairDramMirror, FakeBus]:
-    bus = FakeBus(chips)
-    return CorsairDramMirror(open_bus=lambda n: bus, find=lambda: (3,),
-                             probe_gap_s=0), bus
+def _mirror(chips: dict[int, ScriptedCorsairStick]) -> tuple[CorsairDramMirror, ScriptedSmBus]:
+    bus = ScriptedSmBus(chips)
+    return CorsairDramMirror(lambda: (bus,), probe_gap_s=0), bus
 
 
 def test_the_checksum_is_crc8_smbus() -> None:
     assert crc8(b"123456789") == 0xF4                 # CRC-8/SMBUS check value
-    assert crc8(REAL_INFO) == 0xEE                    # what the stick reported
+    assert crc8(CORSAIR_STICK_INFO) == 0xEE                    # what the stick reported
 
 
 def test_the_packet_that_turned_the_sticks_red() -> None:
@@ -108,7 +52,7 @@ def test_reverse_models_run_their_leds_backwards() -> None:
 
 
 def test_the_maintainers_sticks_are_found_and_named() -> None:
-    mirror, bus = _mirror({0x19: FakeChip(), 0x1B: FakeChip()})
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick(), 0x1B: ScriptedCorsairStick()})
     devices = mirror.devices()
     assert [d.name for d in devices] == [
         "Corsair Vengeance RGB DDR5 (i2c-3 0x19)",
@@ -120,28 +64,28 @@ def test_the_maintainers_sticks_are_found_and_named() -> None:
 
 
 def test_the_spd_hubs_are_never_touched() -> None:
-    mirror, bus = _mirror({0x19: FakeChip()})
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
     mirror.devices()
     mirror.show(mirror.devices()[0], [(1, 2, 3)])
     assert not [t for t in bus.touched if t[1] in SPD_HUBS]
 
 
 def test_nothing_is_written_to_an_address_that_is_not_corsair() -> None:
-    other = FakeChip(ids=(0x00, 0x04))
-    mirror, bus = _mirror({0x19: FakeChip(), 0x1A: other})
+    other = ScriptedCorsairStick(ids=(0x00, 0x04))
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick(), 0x1A: other})
     mirror.devices()
     written = {t[1] for t in bus.touched if t[0] != "read"}
     assert written == {0x19}
 
 
 def test_ten_leds_go_in_one_block_twelve_in_two() -> None:
-    mirror, bus = _mirror({0x19: FakeChip()})
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
     stick = mirror.devices()[0]
     mirror.show(stick, [(255, 0, 0)])
     assert bus.chips[0x19].blocks == [
         (0x31, bytes([10] + [255, 0, 0] * 10 + [crc8(bytes([10] + [255, 0, 0] * 10))]))]
-    dominator = REAL_INFO[:2] + b"\x00\x06" + REAL_INFO[4:]
-    mirror, bus = _mirror({0x19: FakeChip(dominator)})
+    dominator = CORSAIR_STICK_INFO[:2] + b"\x00\x06" + CORSAIR_STICK_INFO[4:]
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick(dominator)})
     mirror.show(mirror.devices()[0], [(255, 0, 0)])
     assert bus.chips[0x19].blocks == [
         (0x31, bytes([0x0C] + [0xFF, 0, 0] * 10 + [0xFF])),
@@ -149,25 +93,26 @@ def test_ten_leds_go_in_one_block_twelve_in_two() -> None:
 
 
 @pytest.mark.parametrize("info, checksum, why", [
-    (REAL_INFO, 0x00, "a wrong checksum"),
-    (REAL_INFO[:28] + b"\x03" + REAL_INFO[29:], None, "protocol 3"),
-    (REAL_INFO[:2] + b"\x99\x99" + REAL_INFO[4:], None, "an unknown product"),
-    (b"\x00\x00" + REAL_INFO[2:], None, "not Corsair's vendor id"),
+    (CORSAIR_STICK_INFO, 0x00, "a wrong checksum"),
+    (CORSAIR_STICK_INFO[:28] + b"\x03" + CORSAIR_STICK_INFO[29:], None, "protocol 3"),
+    (CORSAIR_STICK_INFO[:2] + b"\x99\x99" + CORSAIR_STICK_INFO[4:], None, "an unknown product"),
+    (b"\x00\x00" + CORSAIR_STICK_INFO[2:], None, "not Corsair's vendor id"),
 ], ids=["bad-checksum", "protocol-3", "unknown-product", "not-corsair"])
 def test_a_stick_it_cannot_drive_is_left_alone(info, checksum, why) -> None:  # type: ignore[no-untyped-def]
-    mirror, bus = _mirror({0x19: FakeChip(info, checksum)})
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick(info, checksum)})
     assert mirror.devices() == (), why
     assert not [t for t in bus.touched if t[0] == "block"], why
 
 
 def test_no_smbus_is_an_error_to_retry() -> None:
-    mirror = CorsairDramMirror(open_bus=lambda n: FakeBus({}), find=lambda: ())
-    with pytest.raises(OSError, match="i2c-dev"):
-        mirror.devices()
+    def refuse() -> tuple[ScriptedSmBus, ...]:
+        raise OSError("no SMBus controller found")
+    with pytest.raises(OSError, match="no SMBus"):
+        CorsairDramMirror(refuse).devices()
 
 
 def test_close_releases_the_bus_and_finds_again() -> None:
-    mirror, bus = _mirror({0x19: FakeChip()})
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
     mirror.devices()
     mirror.close()
     assert bus.closed

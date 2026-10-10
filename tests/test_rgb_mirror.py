@@ -4,14 +4,16 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, RenderLed, RgbFollow, SetRgbFollow
 from trcc.core.events import LedColorsChanged
 from trcc.core.models import RgbFollowMode, RgbMirrorDevice
-from trcc.core.ports import RgbMirror
+from trcc.core.ports import RgbMirror, SmBus
 from trcc.services.rgb_mirror import RgbMirrorService
 
-from .mock_platform import MockPlatform
+from .mock_platform import MockPlatform, ScriptedSmBus, scripted_ram
 
 OFF, OPENRGB, RAM_MODE = RgbFollowMode
 STRIP = RgbMirrorDevice(0, "Strip", 4)
@@ -199,6 +201,67 @@ def test_an_led_render_reaches_the_follower(tmp_path) -> None:  # type: ignore[n
     assert name == "Strip"
     assert list(colors) == rendered.colors
     app.close()
+
+
+
+# ── The bus is the platform's: nothing else can reach the RAM ──────────────
+
+class _PlatformWithRam(MockPlatform):
+    """A stand-in fleet that also brings two scripted Corsair sticks."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__([{"vid": "0416", "pid": "8001", "pm": 1}], root)
+        self.ram = scripted_ram()
+
+    def smbuses(self) -> tuple[SmBus, ...]:
+        return (self.ram,)
+
+
+def test_the_app_lights_the_ram_its_platform_hands_out(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The App builds the RAM follower from ``platform.smbuses`` -- the one
+    way a test or a mock fleet keeps its writes off the host's memory."""
+    platform = _PlatformWithRam(tmp_path)
+    app = App(platform)
+    assert app.dispatch(SetRgbFollow(mode=RAM_MODE)).ok
+    app.events.publish(_colors("0416:8001", (255, 0, 0)))
+    _until(lambda: all(c.blocks for c in platform.ram.chips.values()))
+    red = bytes([10] + [255, 0, 0] * 10)
+    assert [c.blocks[0][1][:-1] for c in platform.ram.chips.values()] == [red, red]
+    app.close()
+
+
+def test_a_platform_without_an_smbus_refuses(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The base port refuses; only an OS that has the bus opens it."""
+    from .conftest import FakePlatform
+
+    with pytest.raises(OSError, match="no SMBus access on FakePlatform"):
+        FakePlatform(tmp_path).smbuses()
+
+
+def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A bus that fails to open closes the ones already open, and no bus at
+    all names the module the user is missing."""
+    from trcc.adapters.system import linux
+
+    opened: list[_Bus] = []
+
+    class _Bus(ScriptedSmBus):
+        def __init__(self, number: int) -> None:
+            if number == 7:
+                raise PermissionError(13, "Permission denied", "/dev/i2c-7")
+            super().__init__({}, number)
+            opened.append(self)
+
+    monkeypatch.setattr(linux, "LinuxSmBus", _Bus)
+    monkeypatch.setattr(linux, "find_smbus", lambda: (3, 5))
+    assert [b.number for b in linux.LinuxOS.smbuses(object())] == [3, 5]  # type: ignore[arg-type]
+    monkeypatch.setattr(linux, "find_smbus", lambda: (3, 7))
+    with pytest.raises(PermissionError):
+        linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
+    assert opened[-1].number == 3 and opened[-1].closed
+    monkeypatch.setattr(linux, "find_smbus", lambda: ())
+    with pytest.raises(OSError, match="i2c-dev"):
+        linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
 
 
 # ── Every UI: the switch, its state from the App, and the event ────────────

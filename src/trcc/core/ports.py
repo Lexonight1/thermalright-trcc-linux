@@ -2199,6 +2199,44 @@ class DataInstaller(ABC):
 
 
 # =========================================================================
+# SmBus — the chipset bus RGB memory's lighting controller answers on
+# =========================================================================
+
+#: The longest SMBus block: 32 bytes after its length byte.
+SMBUS_BLOCK_MAX = 32
+
+
+class SmBus(ABC):
+    """One SMBus: byte reads and writes, and block writes, to one address.
+
+    Concrete: ``LinuxSmBus`` (``adapters/rgb/smbus.py``, ``/dev/i2c-N``),
+    opened by ``Platform.smbuses``.  Every failure is an ``OSError``.
+    """
+
+    def __init__(self, number: int) -> None:
+        log.debug("SmBus.__init__: i2c-%d", number)
+        #: The OS's number for this bus -- ``i2c-3`` is 3.
+        self.number = number
+
+    @abstractmethod
+    def read_byte_data(self, address: int, register: int) -> int:
+        """One byte from *register* of the chip at *address*."""
+
+    @abstractmethod
+    def write_byte_data(self, address: int, register: int, value: int) -> None:
+        """One byte to *register* of the chip at *address*."""
+
+    @abstractmethod
+    def write_block_data(self, address: int, register: int,
+                         data: bytes) -> None:
+        """Up to ``SMBUS_BLOCK_MAX`` bytes to *register*, as one block write."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release the bus."""
+
+
+# =========================================================================
 # RgbMirror — another RGB system that shows what the cooler shows (#160)
 # =========================================================================
 
@@ -2833,6 +2871,18 @@ class Platform(ABC):
         because a Query must reach the filesystem through this port rather
         than importing a probe into ``core``.
         """
+
+    def smbuses(self) -> tuple[SmBus, ...]:
+        """The chipset SMBus controllers, opened -- where RGB memory sits.
+
+        Its own Platform method for the reason ``open_transport`` is: a
+        stand-in platform scripts the bus, so no test or mock run can ever
+        write to the memory of the machine it runs on.  An OS with no SMBus
+        access refuses here, in the base, with an ``OSError`` the RGB
+        follower already reports and retries.
+        """
+        log.info("smbuses: %s has no SMBus access", type(self).__name__)
+        raise OSError(f"no SMBus access on {type(self).__name__}")
 
 
 # =========================================================================

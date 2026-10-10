@@ -36,10 +36,12 @@ from trcc.adapters.device.hid_lcd import (
 )
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
+from trcc.adapters.rgb.corsair_dram import crc8
 from trcc.adapters.system._base import disambiguate
 from trcc.core.models import DeviceInfo, ProductInfo, Wire
 from trcc.core.ports import (
     SensorEnumerator,
+    SmBus,
     Transport,
 )
 from trcc.core.protocol import get_profile, pm_to_fbl
@@ -535,3 +537,116 @@ class MockPlatform(FakePlatform):
                 self._by_key, vid, pid, self._reply_override)
         return scripted_bulk_transport(
             self._by_key, vid, pid, self._reply_override)
+
+
+# ── Scripted Corsair RGB memory (the SMBus a stand-in platform hands out) ────
+
+#: The device info the maintainer's stick at 0x19 returned on 2026-10-08:
+#: Corsair (0x1B1C), Vengeance RGB DDR5 (0x0701), protocol 4; checksum 0xee.
+CORSAIR_STICK_INFO = bytes.fromhex(
+    "1c1b010708000600020109000dc00316" "0484cbafcef91964c61b00f504000000")
+
+
+class ScriptedCorsairStick:
+    """A Corsair lighting controller, register for register.
+
+    Reads: the id pair (0x43 / 0x44), the active buffer one byte at a time
+    (0x40), its checksum (0x42) and a ready status (0x30).  Writes: 0x61
+    selects the device info, 0x0B resets the write buffer, 0x21 rewinds,
+    0x20 appends a byte, 0x82 commits the buffer as the effect (1) or the
+    colours (2), and 0x31 / 0x32 take a direct colour packet.  Any other
+    read raises: a script that is asked something it never answered is a
+    protocol change, and should fail loudly.
+    """
+
+    def __init__(self, info: bytes = CORSAIR_STICK_INFO,
+                 checksum: int | None = None,
+                 ids: tuple[int, int] = (0x1B, 0x04)) -> None:
+        log.debug("ScriptedCorsairStick: ids %s", ids)
+        self.info, self.ids = info, ids
+        self.checksum = crc8(info) if checksum is None else checksum
+        self.at = 0
+        self.reading = True               # info selected; False: write buffer
+        self.buffer = bytearray()
+        self.blocks: list[tuple[int, bytes]] = []
+        self.effect = b""                 # the committed effect configuration
+        self.colors = b""                 # the committed colour data
+
+    def read(self, register: int) -> int:
+        log.debug("ScriptedCorsairStick.read: 0x%02x", register)
+        match register:
+            case 0x43:
+                return self.ids[0]
+            case 0x44:
+                return self.ids[1]
+            case 0x40:
+                self.at += 1
+                return self.info[self.at - 1]
+            case 0x42:
+                return self.checksum if self.reading else crc8(self.buffer)
+            case 0x30:
+                return 0x00
+        raise AssertionError(f"unexpected read of 0x{register:02x}")
+
+    def write(self, register: int, value: int) -> None:
+        log.debug("ScriptedCorsairStick.write: 0x%02x = 0x%02x", register, value)
+        match register:
+            case 0x61:
+                self.reading = True
+            case 0x21:
+                self.at = 0
+            case 0x0B:
+                self.reading, self.buffer = False, bytearray()
+            case 0x20:
+                self.buffer.append(value)
+            case 0x82 if value == 1:
+                self.effect = bytes(self.buffer)
+            case 0x82 if value == 2:
+                self.colors = bytes(self.buffer)
+            case _:
+                raise AssertionError(
+                    f"unexpected write of 0x{value:02x} to 0x{register:02x}")
+
+
+class ScriptedSmBus(SmBus):
+    """Scripted sticks by address; every access is recorded, an empty
+    address NACKs as real hardware does."""
+
+    def __init__(self, chips: dict[int, ScriptedCorsairStick],
+                 number: int = 3) -> None:
+        super().__init__(number)
+        log.debug("ScriptedSmBus: i2c-%d sticks at %s", number,
+                  [hex(a) for a in chips])
+        self.chips = chips
+        self.touched: list[tuple[str, int, int]] = []
+        self.closed = False
+
+    def _chip(self, address: int) -> ScriptedCorsairStick:
+        if address not in self.chips:
+            raise OSError(6, "No such device or address")
+        return self.chips[address]
+
+    def read_byte_data(self, address: int, register: int) -> int:
+        self.touched.append(("read", address, register))
+        return self._chip(address).read(register)
+
+    def write_byte_data(self, address: int, register: int, value: int) -> None:
+        self.touched.append(("write", address, register))
+        self._chip(address).write(register, value)
+
+    def write_block_data(self, address: int, register: int,
+                         data: bytes) -> None:
+        self.touched.append(("block", address, register))
+        assert len(data) <= 32
+        self._chip(address).blocks.append((register, bytes(data)))
+
+    def close(self) -> None:
+        log.debug("ScriptedSmBus.close: i2c-%d", self.number)
+        self.closed = True
+
+
+def scripted_ram() -> ScriptedSmBus:
+    """The maintainer's two Vengeance RGB DDR5 sticks, at 0x19 and 0x1B."""
+    log.info("scripted_ram: two Corsair sticks on a scripted i2c-3")
+    return ScriptedSmBus({0x19: ScriptedCorsairStick(),
+                          0x1B: ScriptedCorsairStick()})

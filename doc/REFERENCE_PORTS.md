@@ -54,7 +54,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 13 | 8 | 1 |
-| [`Platform`](#platform) | 25 | 0 | 8 |
+| [`Platform`](#platform) | 25 | 1 | 8 |
 | [`ContentStore`](#contentstore) | 27 | 0 | 1 |
 
 ---
@@ -651,7 +651,7 @@ wake() -> None
 
 ## SmBus
 
-`adapters/rgb/smbus.py`
+`core/ports.py`
 
 One SMBus: byte reads and writes, and block writes, to one address.
 
@@ -865,6 +865,8 @@ upgrade_hint() -> str
 usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | None
 worker_thread_context() -> AbstractContextManager[None]
 ```
+
+**You inherit (1):** `smbuses`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 

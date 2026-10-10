@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -313,3 +314,34 @@ def test_a_dev_platforms_login_entry_is_not_the_users(
     platform = _build_dev_platform(specs)
 
     assert Path(platform.autostart().entry_location()).is_relative_to(DEV_TRCC)
+
+
+def test_a_mock_fleet_lights_only_its_own_ram(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The RAM follower writes to ``platform.smbuses``.  Inherited from the
+    host, a mock run with "RAM follows" on would light the dev box's own
+    memory, so the fleet scripts its sticks.  The host's opener is a tripwire
+    here: a fleet that reached for the real bus fails without touching it.
+
+    MUTATION CHECK -- delete ``DevMockPlatform.smbuses`` and this fails on the
+    tripwire (Linux) or on the base port's refusal (any other host).
+    """
+    from trcc.adapters import rgb
+    from trcc.adapters.system import linux
+    from trcc.core.models import RgbFollowMode
+
+    def tripwire(number: int) -> None:
+        raise AssertionError(f"the mock opened the REAL /dev/i2c-{number}")
+
+    monkeypatch.setattr(linux, "LinuxSmBus", tripwire)
+    monkeypatch.setattr(linux, "find_smbus", lambda: (3,))
+    platform: Any = _build_dev_platform([_SCSI])
+    mirror = rgb.make_mirror(RgbFollowMode.RAM, "", 0, smbuses=platform.smbuses)
+    sticks = mirror.devices()
+    for stick in sticks:
+        mirror.show(stick, [(0, 255, 0)])
+    assert [d.name for d in sticks] == [
+        "Corsair Vengeance RGB DDR5 (i2c-3 0x19)",
+        "Corsair Vengeance RGB DDR5 (i2c-3 0x1b)"]
+    assert all(chip.blocks for chip in platform.ram.chips.values())

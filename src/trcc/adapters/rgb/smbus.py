@@ -13,10 +13,10 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
-from abc import ABC, abstractmethod
 from pathlib import Path
 
 from ...core.logs import per_frame
+from ...core.ports import SMBUS_BLOCK_MAX, SmBus
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -25,9 +25,6 @@ I2C_SLAVE = 0x0703
 I2C_SMBUS = 0x0720
 _READ, _WRITE = 1, 0
 _BYTE_DATA, _BLOCK_DATA = 2, 5
-#: The longest SMBus block: 32 bytes after its length byte.
-BLOCK_MAX = 32
-
 #: Every I2C bus and client the kernel knows.  Not ``/sys/class/i2c-adapter``:
 #: that class is gone on current kernels (absent on 7.2, measured 2026-10-08).
 ADAPTERS = Path("/sys/bus/i2c/devices")
@@ -35,7 +32,7 @@ ADAPTERS = Path("/sys/bus/i2c/devices")
 
 class _Data(ctypes.Union):
     _fields_ = [("byte", ctypes.c_uint8), ("word", ctypes.c_uint16),
-                ("block", ctypes.c_uint8 * (BLOCK_MAX + 2))]
+                ("block", ctypes.c_uint8 * (SMBUS_BLOCK_MAX + 2))]
 
 
 class _Request(ctypes.Structure):
@@ -66,32 +63,12 @@ def find_smbus(root: Path = ADAPTERS) -> tuple[int, ...]:
     return tuple(found)
 
 
-class SmBus(ABC):
-    """One SMBus: byte reads and writes, and block writes, to one address."""
-
-    @abstractmethod
-    def read_byte_data(self, address: int, register: int) -> int:
-        """One byte from *register* of the chip at *address*."""
-
-    @abstractmethod
-    def write_byte_data(self, address: int, register: int, value: int) -> None:
-        """One byte to *register* of the chip at *address*."""
-
-    @abstractmethod
-    def write_block_data(self, address: int, register: int,
-                         data: bytes) -> None:
-        """Up to 32 bytes to *register*, as one SMBus block write."""
-
-    @abstractmethod
-    def close(self) -> None:
-        """Release the bus."""
-
-
 class LinuxSmBus(SmBus):
     """``/dev/i2c-<bus>``.  Every failure is an ``OSError``."""
 
     def __init__(self, bus: int, dev: Path = Path("/dev")) -> None:
         log.info("LinuxSmBus: opening i2c-%d", bus)
+        super().__init__(bus)
         import fcntl  # POSIX only; this adapter is reached on Linux alone
         self._ioctl = fcntl.ioctl
         self._fd = os.open(dev / f"i2c-{bus}", os.O_RDWR)
@@ -114,8 +91,8 @@ class LinuxSmBus(SmBus):
                          data: bytes) -> None:
         frame_log.debug("write_block_data: 0x%02x reg 0x%02x %d byte(s)",
                         address, register, len(data))
-        if not 0 < len(data) <= BLOCK_MAX:
-            raise ValueError(f"an SMBus block is 1-{BLOCK_MAX} bytes, "
+        if not 0 < len(data) <= SMBUS_BLOCK_MAX:
+            raise ValueError(f"an SMBus block is 1-{SMBUS_BLOCK_MAX} bytes, "
                              f"not {len(data)}")
         block = _Data()
         block.block[0] = len(data)

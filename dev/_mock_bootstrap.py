@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         HttpFetcher,
         Platform,
         ScsiTransport,
+        SmBus,
     )
 
 from _refuse import refuse_while_trcc_runs
@@ -509,6 +510,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     from tests.mock_platform import (
         DeviceSpec,
         scripted_bulk_transport,
+        scripted_ram,
         scripted_scsi_transport,
     )
     parsed = [DeviceSpec.parse(s) for s in specs]
@@ -525,6 +527,8 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
             # Exact handshake reply the dev console pins per vid:pid.  Read at
             # open_*() time, so a set_active_reply() + reconnect re-presents.
             self._reply_override: dict[tuple[int, int], tuple[int, int, int]] = {}
+            #: The fleet's RAM: what the RGB follower and effects write to.
+            self.ram = scripted_ram()
 
         def paths(self) -> Paths:
             return dev_paths
@@ -581,6 +585,13 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
                        unit: str = "",
                        hid_reports: bool = False) -> BulkTransport:
             return scripted_bulk_transport(by_key, vid, pid, self._reply_override)
+
+        # The SMBus is a seam too: the RAM follower writes colours to whatever
+        # bus this returns.  Inherited, a mock run with "RAM follows" on would
+        # light the dev box's own memory -- so the fleet brings its own sticks.
+        def smbuses(self) -> tuple[SmBus, ...]:
+            log.info("DevMockPlatform.smbuses: the scripted sticks, not the host's")
+            return (self.ram,)
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",
              len(parsed), host_cls.__name__)

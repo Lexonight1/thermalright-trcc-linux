@@ -34,9 +34,8 @@ from dataclasses import dataclass
 
 from ...core.logs import per_frame
 from ...core.models import RgbMirrorDevice
-from ...core.ports import RgbMirror
+from ...core.ports import SMBUS_BLOCK_MAX, RgbMirror, SmBus
 from .openrgb import stretch
-from .smbus import BLOCK_MAX, LinuxSmBus, SmBus, find_smbus
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -122,13 +121,16 @@ class _Stick:
 
 
 class CorsairDramMirror(RgbMirror):
-    """Every Corsair RGB stick on the chipset SMBus, driven directly."""
+    """Every Corsair RGB stick on the chipset SMBus, driven directly.
 
-    def __init__(self, open_bus: Callable[[int], SmBus] = LinuxSmBus,
-                 find: Callable[[], tuple[int, ...]] = find_smbus,
+    *open_buses* is ``Platform.smbuses``: the platform opens the bus, so a
+    stand-in platform's scripted sticks are all a test or mock run can reach.
+    """
+
+    def __init__(self, open_buses: Callable[[], tuple[SmBus, ...]],
                  probe_gap_s: float = _PROBE_GAP_S) -> None:
         log.debug("CorsairDramMirror.__init__")
-        self._open, self._find, self._gap = open_bus, find, probe_gap_s
+        self._open, self._gap = open_buses, probe_gap_s
         self._buses: dict[int, SmBus] = {}
         self._sticks: tuple[_Stick, ...] | None = None
 
@@ -146,10 +148,10 @@ class CorsairDramMirror(RgbMirror):
                         stick.address, len(packet))
         bus = self._buses[stick.bus]
         bus.write_block_data(stick.address, _REG_COLOR_BLOCK_1,
-                             packet[:BLOCK_MAX])
-        if len(packet) > BLOCK_MAX:
+                             packet[:SMBUS_BLOCK_MAX])
+        if len(packet) > SMBUS_BLOCK_MAX:
             bus.write_block_data(stick.address, _REG_COLOR_BLOCK_2,
-                                 packet[BLOCK_MAX:])
+                                 packet[SMBUS_BLOCK_MAX:])
 
     def close(self) -> None:
         log.debug("CorsairDramMirror.close: %d bus(es)", len(self._buses))
@@ -166,14 +168,10 @@ class CorsairDramMirror(RgbMirror):
         return self._sticks
 
     def _scan(self) -> tuple[_Stick, ...]:
-        numbers = self._find()
-        if not numbers:
-            raise OSError("no SMBus controller found -- is the i2c-dev "
-                          "module loaded?")
+        self._buses = {bus.number: bus for bus in self._open()}
+        log.debug("_scan: bus(es) %s", sorted(self._buses))
         found: list[_Stick] = []
-        for number in numbers:
-            bus = self._buses.get(number) or self._open(number)
-            self._buses[number] = bus
+        for number, bus in self._buses.items():
             for address in ADDRESSES:
                 if stick := self._identify(bus, number, address, len(found)):
                     found.append(stick)

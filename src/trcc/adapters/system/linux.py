@@ -36,7 +36,9 @@ from ...core.ports import (
     Paths,
     ScsiTransport,
     SensorEnumerator,
+    SmBus,
 )
+from ..rgb.smbus import LinuxSmBus, find_smbus
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
     detect_gpu_vendors,
@@ -995,6 +997,23 @@ class LinuxOS(BaseOS, key="linux"):
         disks = _linux_disk_info()
         log.info("LinuxOS.disk_info: %d disk(s)", len(disks))
         return disks
+
+    def smbuses(self) -> tuple[SmBus, ...]:
+        """Every chipset SMBus, through i2c-dev; all or none."""
+        numbers = find_smbus()
+        log.info("LinuxOS.smbuses: %s", numbers or "none")
+        if not numbers:
+            raise OSError("no SMBus controller found -- is the i2c-dev "
+                          "module loaded?")
+        opened: list[SmBus] = []
+        try:
+            for number in numbers:
+                opened.append(LinuxSmBus(number))
+        except OSError:
+            for bus in opened:
+                bus.close()
+            raise
+        return tuple(opened)
 
 
 # =========================================================================
