@@ -84,6 +84,7 @@
             install -Dm755 src/trcc/assets/trcc-imc $out/bin/trcc-imc
             install -Dm755 src/trcc/assets/trcc-dmi $out/bin/trcc-dmi
             install -Dm755 src/trcc/assets/trcc-ram-access $out/bin/trcc-ram-access
+            install -Dm755 src/trcc/assets/trcc-ram-access-off $out/bin/trcc-ram-access-off
           '';
 
           meta = with pkgs.lib; {

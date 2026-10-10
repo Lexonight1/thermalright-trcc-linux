@@ -551,3 +551,35 @@ def test_trcc_reads_the_rule_the_helper_writes() -> None:
     assert _ram_access.HEADER == helper.HEADER
     assert _ram_access.HELPER == "/usr/bin/trcc-ram-access"
     assert _ram_access.HELPER_ASSET == _ASSETS / "trcc-ram-access"
+
+
+def test_the_off_helper_can_only_ever_disable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Password-free for the person at the seat, so it must be unable to do
+    anything but take the grant away -- whatever its caller passes."""
+    helper = _load_helper("trcc-ram-access-off")
+    ran: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(helper.os, "execv", lambda path, argv: ran.append((path, argv)))
+    monkeypatch.setattr(helper.os.path, "isfile", lambda path: True)
+    monkeypatch.setattr(helper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(helper.sys, "argv", ["trcc-ram-access-off"])
+    helper.main()
+    assert ran == [("/usr/bin/trcc-ram-access",
+                    ["/usr/bin/trcc-ram-access", "disable"])]
+    monkeypatch.setattr(helper.sys, "argv", ["trcc-ram-access-off", "enable"])
+    assert helper.main() == 2 and len(ran) == 1
+    monkeypatch.setattr(helper.sys, "argv", ["trcc-ram-access-off"])
+    monkeypatch.setattr(helper.os, "geteuid", lambda: 1000)
+    assert helper.main() == 3 and len(ran) == 1
+
+
+def test_only_turning_off_is_password_free() -> None:
+    """MUTATION CHECK: set the ON action's allow_active to yes."""
+    off = _policy_action("com.github.lexonight1.trcc.ram-access-off")
+    on = _policy_action("com.github.lexonight1.trcc.ram-access")
+    off_defaults = off.find("defaults")
+    on_defaults = on.find("defaults")
+    assert off_defaults is not None and on_defaults is not None
+    assert {d.tag: d.text for d in off_defaults} == {
+        "allow_any": "auth_admin_keep", "allow_inactive": "auth_admin_keep",
+        "allow_active": "yes"}
+    assert {d.tag: d.text for d in on_defaults}["allow_active"] == "auth_admin"

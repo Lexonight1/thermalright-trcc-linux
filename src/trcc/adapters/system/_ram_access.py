@@ -40,6 +40,9 @@ RULE_PATH = Path("/etc/udev/rules.d/70-trcc-ram-lighting.rules")
 HEADER = ("# TRCC RAM lighting -- written by trcc-ram-access; "
           "`trcc system ram-lighting disable` removes it.")
 HELPER = "/usr/bin/trcc-ram-access"
+#: Turning OFF only takes access away, so its own polkit action asks the
+#: person at the seat for no password (``assets/trcc-ram-access-off``).
+HELPER_OFF = "/usr/bin/trcc-ram-access-off"
 #: The helper as the package ships it -- what root runs when /usr/bin has none.
 HELPER_ASSET = Path(__file__).resolve().parents[2] / "assets" / "trcc-ram-access"
 
@@ -127,6 +130,10 @@ class LinuxRamAccess(RamAccess):
         if self._is_root():
             log.info("_argv: root runs the packaged helper file directly")
             return helper_file
+        if (action == "disable"
+                and (off := self._pkexec(HELPER_OFF)) is not None):
+            log.info("_argv: pkexec, the password-free turn-off")
+            return off
         if (packaged := self._pkexec(HELPER)) is not None:
             log.info("_argv: pkexec, TRCC's own polkit action")
             return [*packaged, action]

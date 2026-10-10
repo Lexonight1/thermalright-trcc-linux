@@ -1,0 +1,36 @@
+#!/usr/bin/python3 -I
+"""trcc-ram-access-off — turn RAM lighting access OFF (run via pkexec).
+
+Its polkit action needs no password from the person at the seat: this can
+only take the RAM-bus grant away, never give it.  The worst a program that
+runs it can do is switch the user's RAM lighting off.  Turning it ON stays
+``trcc-ram-access enable``, which asks for the password every time -- and
+polkit grants a PROGRAM, not its arguments, which is why "off" is a program
+of its own rather than a password-free ``trcc-ram-access disable``.
+
+  * stdlib only, ``-I`` — no user site, no PYTHON* variables, no trcc import.
+  * takes NO arguments — anything caller-supplied is refused.
+  * does nothing itself: it runs the packaged ``trcc-ram-access disable``, the
+    one place that knows which files are TRCC's and how to remove them.
+
+Exit codes: the helper's own · 2 bad invocation · 3 not root · 4 no helper.
+"""
+import os
+import sys
+
+HELPER = "/usr/bin/trcc-ram-access"
+
+
+def main() -> int:
+    if len(sys.argv) > 1:              # argv-locked: nothing caller-supplied
+        return 2
+    if os.geteuid() != 0:
+        return 3
+    if not os.path.isfile(HELPER):
+        return 4
+    os.execv(HELPER, [HELPER, "disable"])
+    return 1                           # not reached: execv replaces this process
+
+
+if __name__ == "__main__":
+    sys.exit(main())

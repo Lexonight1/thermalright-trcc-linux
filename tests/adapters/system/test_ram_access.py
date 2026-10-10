@@ -122,3 +122,16 @@ def test_an_os_without_it_says_so(tmp_path: Path) -> None:
     from tests.conftest import FakePlatform
     status = FakePlatform(tmp_path).ram_access().status()
     assert status.state is RamAccessState.UNSUPPORTED
+
+
+def test_turning_off_takes_the_password_free_helper(tmp_path: Path) -> None:
+    """Off only takes access away: its own program, its own polkit action.
+    On still goes through the password-every-time one.
+
+    MUTATION CHECK: drop the HELPER_OFF branch in ``_argv``."""
+    run = _Run(0)
+    access = _access(tmp_path, ours=True, run=run)
+    access.disable()
+    access.enable()
+    assert run.argv == [["pkexec", _ram_access.HELPER_OFF],
+                        ["pkexec", HELPER, "enable"]]
