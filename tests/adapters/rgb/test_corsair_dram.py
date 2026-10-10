@@ -18,10 +18,19 @@ from trcc.adapters.rgb.corsair_dram import (
     ADDRESSES,
     MODELS,
     CorsairDramMirror,
+    color_data,
     crc8,
     direct_packet,
+    effect_packet,
 )
 from trcc.adapters.rgb.smbus import find_smbus
+from trcc.core.models import (
+    EFFECT_TRAITS,
+    EffectDirection,
+    EffectSpeed,
+    RamEffect,
+    RamEffectSettings,
+)
 
 SPD_HUBS = range(0x50, 0x58)
 
@@ -134,3 +143,111 @@ def test_the_bus_is_found_where_current_kernels_list_it() -> None:
     """``/sys/class/i2c-adapter`` is gone on kernel 7.2; the bus list is here."""
     from trcc.adapters.rgb.smbus import ADAPTERS
     assert Path("/sys/bus/i2c/devices") == ADAPTERS
+
+
+# ── Effects: saved on the stick, byte for byte as OpenRGB's ─────────────────
+
+def _effect(**kw):  # type: ignore[no-untyped-def]
+    return RamEffectSettings(**kw)
+
+
+#: Each expected packet is worked out from OpenRGB's ``DeviceUpdateMode`` +
+#: ``SetEffect`` by hand, not from this code: mode, speed, random/custom,
+#: direction, colour 1, brightness, colour 2, brightness, then 8 zeros.
+@pytest.mark.parametrize("settings, expected", [
+    # OpenRGB's own defaults: speed slow, direction down, no colours, and a
+    # brightness of 0 -- Rainbow Wave declares none.
+    (_effect(effect=RamEffect.RAINBOW_WAVE, speed=EffectSpeed.SLOW),
+     [0x03, 0x00, 0x01, 0x01, 0, 0, 0, 0, 0, 0, 0, 0]),
+    # No direction: OpenRGB's mode default (LEFT) maps to the stick's 0x02.
+    (_effect(effect=RamEffect.COLOR_SHIFT, speed=EffectSpeed.FAST,
+             colors=((255, 0, 0), (0, 0, 255))),
+     [0x00, 0x02, 0x01, 0x02, 255, 0, 0, 255, 0, 0, 255, 255]),
+    (_effect(effect=RamEffect.COLOR_PULSE, random_colors=True, brightness=128,
+             colors=((1, 2, 3), (4, 5, 6))),
+     [0x01, 0x01, 0x00, 0x02, 0, 0, 0, 128, 0, 0, 0, 128]),
+    (_effect(effect=RamEffect.VISOR, direction=EffectDirection.HORIZONTAL,
+             colors=((9, 9, 9), (8, 8, 8))),
+     [0x05, 0x01, 0x01, 0x03, 9, 9, 9, 255, 8, 8, 8, 255]),
+    (_effect(effect=RamEffect.MARQUEE, colors=((0, 255, 0), (7, 7, 7))),
+     [0x07, 0x01, 0x01, 0x02, 0, 255, 0, 255, 0, 0, 0, 255]),
+    (_effect(effect=RamEffect.RAIN, direction=EffectDirection.UP,
+             colors=((1, 1, 1), (2, 2, 2))),
+     [0x06, 0x01, 0x01, 0x00, 1, 1, 1, 255, 2, 2, 2, 255]),
+    # Static's colours are per LED, written after it: its packet carries none.
+    (_effect(effect=RamEffect.STATIC, colors=((255, 0, 0),)),
+     [0x10, 0x00, 0x01, 0x02, 0, 0, 0, 0, 0, 0, 0, 0]),
+], ids=["rainbow-wave-defaults", "color-shift", "pulse-random", "visor-h",
+        "marquee-one-colour", "rain-up", "static"])
+def test_the_effect_packet_is_openrgbs(settings, expected) -> None:  # type: ignore[no-untyped-def]
+    assert effect_packet(settings) == bytes(expected + [0] * 8)
+
+
+def test_every_effect_has_a_byte_and_traits() -> None:
+    assert set(EFFECT_TRAITS) == set(RamEffect)
+    for effect in RamEffect:
+        colors = ((1, 2, 3), (4, 5, 6))
+        assert len(effect_packet(_effect(effect=effect, colors=colors))) == 20
+
+
+@pytest.mark.parametrize("settings, message", [
+    (_effect(effect=RamEffect.RAIN, direction=EffectDirection.LEFT,
+             colors=((1, 1, 1), (2, 2, 2))), "rain cannot move left"),
+    (_effect(effect=RamEffect.COLOR_WAVE, colors=((1, 1, 1),)),
+     "color-wave takes 2 colour"),
+    (_effect(effect=RamEffect.RAINBOW, brightness=256), "brightness is 0-255"),
+], ids=["direction", "colours", "brightness"])
+def test_settings_the_effect_cannot_take_write_nothing(settings, message) -> None:  # type: ignore[no-untyped-def]
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
+    stick = mirror.devices()[0]
+    before = len(bus.touched)
+    with pytest.raises(ValueError, match=message):
+        mirror.apply_effect(stick, settings)
+    assert len(bus.touched) == before
+
+
+def test_an_effect_is_written_checked_then_committed() -> None:
+    """Reset, rewind, 20 bytes through 0x20, the stick's CRC, commit, ready."""
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
+    stick = mirror.devices()[0]
+    start = len(bus.touched)
+    settings = _effect(effect=RamEffect.RAINBOW_WAVE, speed=EffectSpeed.FAST)
+    mirror.apply_effect(stick, settings)
+    assert bus.touched[start:] == [
+        ("write", 0x19, 0x0B), ("write", 0x19, 0x21),
+        *[("write", 0x19, 0x20)] * 20,
+        ("read", 0x19, 0x42), ("write", 0x19, 0x82), ("read", 0x19, 0x30)]
+    assert bus.chips[0x19].effect == effect_packet(settings)
+    assert not [t for t in bus.touched if t[1] in SPD_HUBS]
+
+
+def test_static_saves_its_colours_after_the_effect() -> None:
+    mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
+    mirror.apply_effect(mirror.devices()[0],
+                        _effect(effect=RamEffect.STATIC, colors=((255, 0, 0),)))
+    chip = bus.chips[0x19]
+    assert chip.effect[0] == 0x10
+    assert chip.colors == bytes([255, 0, 0, 0xFF] * 10)
+
+
+def test_reversed_models_save_their_colours_backwards() -> None:
+    dominator = MODELS[0x0600]
+    data = color_data([(1, 0, 0)] + [(0, 0, 2)] * 11, dominator)
+    assert data[-4:] == bytes([1, 0, 0, 0xFF]) and len(data) == 48
+
+
+class _LossyStick(ScriptedCorsairStick):
+    """A stick that lost a byte: its checksum of the buffer is off by one."""
+
+    def read(self, register: int) -> int:
+        value = super().read(register)
+        return value ^ 0x01 if register == 0x42 and not self.reading else value
+
+
+def test_a_byte_lost_on_the_bus_is_never_saved() -> None:
+    mirror, bus = _mirror({0x19: _LossyStick()})
+    with pytest.raises(OSError, match="not saved"):
+        mirror.apply_effect(mirror.devices()[0],
+                            _effect(effect=RamEffect.RAINBOW))
+    assert ("write", 0x19, 0x82) not in bus.touched
+    assert bus.chips[0x19].effect == b""

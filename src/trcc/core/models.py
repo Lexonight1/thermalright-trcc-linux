@@ -1506,6 +1506,86 @@ class RgbMirrorDevice:
     led_count: int
 
 
+class RamEffect(str, Enum):
+    """An effect Corsair RGB memory runs by itself, saved on the stick."""
+    STATIC = "static"
+    COLOR_SHIFT = "color-shift"
+    COLOR_PULSE = "color-pulse"
+    RAINBOW = "rainbow"
+    RAINBOW_WAVE = "rainbow-wave"
+    COLOR_WAVE = "color-wave"
+    VISOR = "visor"
+    RAIN = "rain"
+    MARQUEE = "marquee"
+    SEQUENTIAL = "sequential"
+
+
+class EffectSpeed(str, Enum):
+    """The three speeds the stick knows."""
+    SLOW = "slow"
+    MEDIUM = "medium"
+    FAST = "fast"
+
+
+class EffectDirection(str, Enum):
+    """Which way an effect moves along the stick."""
+    UP = "up"
+    DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
+    VERTICAL = "vertical"
+    HORIZONTAL = "horizontal"
+
+
+@dataclass(frozen=True, slots=True)
+class EffectTraits:
+    """What an effect takes -- the controls a UI shows for it.
+
+    ``colors`` is how many it needs (0-2); ``random`` whether the stick can
+    pick them itself; ``directions`` the ways it can move, the first being
+    its default.
+    """
+    speed: bool
+    colors: int
+    random: bool
+    brightness: bool
+    directions: tuple[EffectDirection, ...] = ()
+
+
+_UD = (EffectDirection.DOWN, EffectDirection.UP)
+_UDLR = (*_UD, EffectDirection.LEFT, EffectDirection.RIGHT)
+
+#: Each effect's controls, as OpenRGB's ``RGBController_CorsairDRAM.cpp``
+#: declares them (credited in ``adapters/rgb/corsair_dram.py``).
+EFFECT_TRAITS: dict[RamEffect, EffectTraits] = {
+    RamEffect.STATIC: EffectTraits(speed=False, colors=1, random=False,
+                                   brightness=False),
+    RamEffect.COLOR_SHIFT: EffectTraits(True, 2, True, True),
+    RamEffect.COLOR_PULSE: EffectTraits(True, 2, True, True),
+    RamEffect.RAINBOW: EffectTraits(True, 0, False, False),
+    RamEffect.RAINBOW_WAVE: EffectTraits(True, 0, False, False, _UDLR),
+    RamEffect.COLOR_WAVE: EffectTraits(True, 2, True, True, _UDLR),
+    RamEffect.VISOR: EffectTraits(
+        True, 2, True, True,
+        (EffectDirection.VERTICAL, EffectDirection.HORIZONTAL)),
+    RamEffect.RAIN: EffectTraits(True, 2, True, True, _UD),
+    RamEffect.MARQUEE: EffectTraits(True, 1, False, True),
+    RamEffect.SEQUENTIAL: EffectTraits(True, 1, True, True, _UD),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class RamEffectSettings:
+    """One effect, as the user set it.  ``direction`` None is the effect's
+    default; ``colors`` holds as many as its traits ask for."""
+    effect: RamEffect
+    speed: EffectSpeed = EffectSpeed.MEDIUM
+    direction: EffectDirection | None = None
+    colors: tuple[tuple[int, int, int], ...] = ()
+    random_colors: bool = False
+    brightness: int = 255
+
+
 #: The overlay colour editor's recent-colour row: 11 swatches, Silver until
 #: a colour is remembered (``UCXiTongXianShiColor.cs:931``, ``Color.Silver``).
 RECENT_COLOR_SLOTS: int = 11

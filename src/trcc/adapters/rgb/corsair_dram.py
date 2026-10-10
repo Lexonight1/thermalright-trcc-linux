@@ -1,10 +1,16 @@
-"""Corsair RGB memory follows the cooler, with no OpenRGB running (#160).
+"""Corsair RGB memory, driven directly with no OpenRGB running (#160).
 
 The sticks' lighting controller sits on the chipset SMBus beside the memory's
 own SPD hub, at 0x18-0x1F or 0x58-0x5F.  TRCC finds it by READING two id
 registers, confirms it from its device-info block (checksum, Corsair's vendor
 id, a known product id, protocol 4 or newer), and only then writes colours.
 It never addresses 0x50-0x57, where the SPD hubs live.
+
+Two ways to light a stick.  **Direct**: a packet of colours, shown at once
+and kept nowhere -- what following the cooler sends many times a second.
+**Effect**: one of the stick's own animations, written to its configuration
+and SAVED there, so it outlives TRCC and a reboot.  An effect is written only
+when asked for, never on a timer.
 
 **Credit.**  Adapted, with thanks, from OpenRGB
 (https://gitlab.com/CalcProgrammer1/OpenRGB, GPL-2.0-or-later),
@@ -16,7 +22,14 @@ Adam Honse (CalcProgrammer1) and Erik Gilling (konkers):
 * ``CorsairDRAMController.cpp`` ``ReadDeviceInfo`` -- 0x61 and 0x21, 32 reads
   of 0x40, the CRC-8 at 0x42, where the vendor, product and protocol sit;
   ``SetLEDColors`` -- the direct packet (LED count, R G B per LED, CRC-8) and
-  its two block writes, 0x31 then 0x32;
+  its two block writes, 0x31 then 0x32; ``SetEffect`` -- the 20-byte effect,
+  its mode / speed / direction / colour bytes, written a byte at a time
+  through 0x20 and committed with 0x82 only when the stick's CRC agrees;
+  ``SetColorsPerLED`` -- the same path for per-LED colours (R G B 0xFF);
+  ``WaitReady`` -- polling 0x30 until bit 3 clears;
+* ``RGBController_CorsairDRAM.cpp`` -- each effect's speed, colours,
+  directions and brightness, and the defaults it sends for what an effect
+  does not take (direction "left", brightness 0, speed slow);
 * ``CorsairDRAMDevices.cpp`` -- each product id's name, LED count, and
   whether its LEDs run in reverse.
 
@@ -33,7 +46,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from ...core.logs import per_frame
-from ...core.models import RgbMirrorDevice
+from ...core.models import (
+    EFFECT_TRAITS,
+    EffectDirection,
+    EffectSpeed,
+    RamEffect,
+    RamEffectSettings,
+    RgbMirrorDevice,
+)
 from ...core.ports import SMBUS_BLOCK_MAX, RgbMirror, SmBus
 from .openrgb import stretch
 
@@ -53,6 +73,33 @@ _REG_GET_CHECKSUM = 0x42
 _REG_COLOR_BLOCK_1 = 0x31
 _REG_COLOR_BLOCK_2 = 0x32
 _INFO_SIZE = 32
+_REG_RESET_BUFFER = 0x0B
+_REG_SET_BINARY_DATA = 0x20
+_REG_STATUS, _STATUS_BUSY = 0x30, 0x08
+_REG_WRITE_CONFIGURATION = 0x82
+_CONFIG_EFFECT, _CONFIG_COLORS = 1, 2
+_READY_TRIES, _READY_GAP_S = 5, 0.010
+
+_EFFECT_BYTES: dict[RamEffect, int] = {
+    RamEffect.COLOR_SHIFT: 0x00, RamEffect.COLOR_PULSE: 0x01,
+    RamEffect.RAINBOW_WAVE: 0x03, RamEffect.COLOR_WAVE: 0x04,
+    RamEffect.VISOR: 0x05, RamEffect.RAIN: 0x06, RamEffect.MARQUEE: 0x07,
+    RamEffect.RAINBOW: 0x08, RamEffect.SEQUENTIAL: 0x09,
+    RamEffect.STATIC: 0x10,
+}
+_SPEED_BYTES = {EffectSpeed.SLOW: 0x00, EffectSpeed.MEDIUM: 0x01,
+                EffectSpeed.FAST: 0x02}
+_DIRECTION_BYTES = {
+    EffectDirection.UP: 0x00, EffectDirection.DOWN: 0x01,
+    EffectDirection.LEFT: 0x02, EffectDirection.RIGHT: 0x03,
+    EffectDirection.VERTICAL: 0x01, EffectDirection.HORIZONTAL: 0x03,
+}
+#: What OpenRGB sends for an effect with no direction: its mode's default,
+#: ``MODE_DIRECTION_LEFT``, mapped to the stick's "left".
+_NO_DIRECTION = _DIRECTION_BYTES[EffectDirection.LEFT]
+#: The stick's "pick the colours yourself" / "use mine" byte.
+_RANDOM, _CUSTOM = 0x00, 0x01
+_BLACK = (0, 0, 0)
 
 CORSAIR_VID = 0x1B1C
 #: The first protocol that takes a whole direct-colour packet.
@@ -112,6 +159,52 @@ def direct_packet(colors: Sequence[tuple[int, int, int]],
     return body + bytes([crc8(body)])
 
 
+
+def effect_packet(settings: RamEffectSettings) -> bytes:
+    """The 20-byte effect configuration, byte for byte as OpenRGB's.
+
+    ``ValueError`` when *settings* asks for something the effect does not
+    take: a direction it cannot move in, too few colours, a brightness
+    outside 0-255.
+    """
+    traits = EFFECT_TRAITS[settings.effect]
+    log.debug("effect_packet: %s", settings)
+    if not 0 <= settings.brightness <= 255:
+        raise ValueError(f"brightness is 0-255, not {settings.brightness}")
+    if not traits.directions:
+        direction = _NO_DIRECTION
+    elif (way := settings.direction or traits.directions[0]) in traits.directions:
+        direction = _DIRECTION_BYTES[way]
+    else:
+        raise ValueError(f"{settings.effect.value} cannot move {way.value}")
+    random = traits.random and settings.random_colors
+    colors: list[tuple[int, int, int]] = [_BLACK, _BLACK]
+    if traits.colors and settings.effect is not RamEffect.STATIC and not random:
+        if len(settings.colors) < traits.colors:
+            raise ValueError(f"{settings.effect.value} takes {traits.colors} "
+                             f"colour(s), got {len(settings.colors)}")
+        colors[:traits.colors] = settings.colors[:traits.colors]
+    brightness = settings.brightness if traits.brightness else 0
+    return bytes([
+        _EFFECT_BYTES[settings.effect],
+        _SPEED_BYTES[settings.speed] if traits.speed else 0x00,
+        _RANDOM if random else _CUSTOM,
+        direction,
+        *colors[0], brightness,
+        *colors[1], brightness,
+        *bytes(8),
+    ])
+
+
+def color_data(colors: Sequence[tuple[int, int, int]],
+               model: DramModel) -> bytes:
+    """Per-LED colours for the stick's saved configuration: R G B 0xFF."""
+    log.debug("color_data: %s %d colour(s)", model.name, len(colors))
+    leds = stretch(colors, model.led_count)
+    if model.reverse:
+        leds.reverse()
+    return bytes(c for rgb in leds for c in (*rgb, 0xFF))
+
 @dataclass(frozen=True, slots=True)
 class _Stick:
     bus: int
@@ -153,11 +246,66 @@ class CorsairDramMirror(RgbMirror):
             bus.write_block_data(stick.address, _REG_COLOR_BLOCK_2,
                                  packet[SMBUS_BLOCK_MAX:])
 
+    def apply_effect(self, device: RgbMirrorDevice,
+                     settings: RamEffectSettings) -> None:
+        """Save *settings* on the stick as its own effect.
+
+        Static is the one effect with colours of its own: its colour data is
+        written after it, the same checked way.  ``ValueError`` for settings
+        the effect does not take, before anything is written; ``OSError`` if
+        the stick does not take it.
+        """
+        stick = self._found()[device.index]
+        packet = effect_packet(settings)
+        log.info("CorsairDramMirror.apply_effect: 0x%02x %s %s",
+                 stick.address, settings.effect.value, packet.hex())
+        bus = self._buses[stick.bus]
+        self._configure(bus, stick.address, packet, _CONFIG_EFFECT)
+        if settings.effect is RamEffect.STATIC:
+            colors = color_data(settings.colors or ((255, 255, 255),),
+                                stick.model)
+            self._configure(bus, stick.address, colors, _CONFIG_COLORS)
+
     def close(self) -> None:
         log.debug("CorsairDramMirror.close: %d bus(es)", len(self._buses))
         for bus in self._buses.values():
             bus.close()
         self._buses, self._sticks = {}, None
+
+    # ── Saving a configuration ────────────────────────────────────────
+
+    def _configure(self, bus: SmBus, address: int, data: bytes,
+                   which: int) -> None:
+        """Fill the stick's buffer with *data*, then commit it as *which*.
+
+        Committed only when the stick's checksum of what it received matches
+        ours -- a byte lost on the bus is never saved.
+        """
+        log.debug("_configure: 0x%02x config %d, %d byte(s)", address, which,
+                  len(data))
+        bus.write_byte_data(address, _REG_RESET_BUFFER, 0x00)
+        bus.write_byte_data(address, _REG_BINARY_START, 0x00)
+        for value in data:
+            bus.write_byte_data(address, _REG_SET_BINARY_DATA, value)
+        received = bus.read_byte_data(address, _REG_GET_CHECKSUM)
+        if received != crc8(data):
+            raise OSError(f"0x{address:02x} received config {which} with "
+                          f"checksum 0x{received:02x}, sent 0x{crc8(data):02x}"
+                          " -- not saved")
+        bus.write_byte_data(address, _REG_WRITE_CONFIGURATION, which)
+        self._wait_ready(bus, address)
+
+    def _wait_ready(self, bus: SmBus, address: int) -> None:
+        """Until the stick has stored the configuration -- briefly."""
+        for _ in range(_READY_TRIES):
+            status = bus.read_byte_data(address, _REG_STATUS)
+            if not status & _STATUS_BUSY:
+                log.debug("_wait_ready: 0x%02x ready (0x%02x)", address, status)
+                return
+            time.sleep(_READY_GAP_S)
+        log.warning("CorsairDramMirror: 0x%02x still busy after %d ms -- "
+                    "carrying on, as OpenRGB does", address,
+                    int(_READY_TRIES * _READY_GAP_S * 1000))
 
     # ── Finding the sticks ────────────────────────────────────────────
 
