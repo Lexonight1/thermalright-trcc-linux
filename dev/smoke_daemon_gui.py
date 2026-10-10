@@ -128,20 +128,25 @@ def main() -> int:
                getattr(bright, "message", ""))
 
         # ── TEST 4: the event crossed the socket as a typed instance ──────
+        # Ours, not the first: the App answers before its own coldplug (#314),
+        # so the fleet's other panel can connect -- and publish -- first.
+        # Reading observed[0] made this fail whenever it did.
+        def ours() -> list[object]:
+            return [e for e in observed if getattr(e, "key", None) == key]
+
         deadline = time.time() + 5.0
-        while not observed and time.time() < deadline:
+        while not ours() and time.time() < deadline:
             time.sleep(0.05)
         _check(bool(observed),
                "TEST 4: DeviceConnected arrived over the event stream",
                "no event received — the observe half is not working")
-        if observed:
-            evt = observed[0]
-            _check(isinstance(evt, DeviceConnected),
-                   "TEST 4: it decoded to a typed Event, not a dict",
-                   f"got {type(evt).__name__}")
-            _check(getattr(evt, "key", None) == key,
-                   "TEST 4: the event's key survived the wire",
-                   f"expected {key}, got {getattr(evt, 'key', None)!r}")
+        _check(all(isinstance(e, DeviceConnected) for e in observed),
+               "TEST 4: it decoded to a typed Event, not a dict",
+               f"got {[type(e).__name__ for e in observed]}")
+        _check(bool(ours()),
+               "TEST 4: the event's key survived the wire",
+               f"no DeviceConnected for {key}; got keys "
+               f"{[getattr(e, 'key', None) for e in observed]}")
 
         if _FAILURES:
             print(f"\nFAIL: {len(_FAILURES)} assertion(s) failed: {_FAILURES}")

@@ -51,7 +51,6 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import tomllib
 import urllib.error
 import time
 import urllib.request
@@ -192,6 +191,10 @@ def pyproject_runtime_deps(include_win32: bool = False) -> list[str]:
     passes True so wmi / tzdata / libusb-package stop being invisible: they are
     real dependencies of a real target, and nothing checked them before.
     """
+    # Here, not at the top: tomllib is 3.11+, and importing this module (its
+    # offline tests do) must work on the 3.10 the package still supports.
+    # The tool itself runs on 3.12, the dev gate.
+    import tomllib
     data = tomllib.loads(_PYPROJECT.read_text())
     out: list[str] = []
     for spec in data["project"]["dependencies"]:
