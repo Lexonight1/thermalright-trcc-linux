@@ -112,3 +112,56 @@ def test_the_dashboard_fan_rows_bind_to_the_panels_own_slots(tmp_path: Path) -> 
     assert [b.sensor_id for b in fan_panel.sensors] == [
         "fan:cpu", "fan:gpu", "fan:ssd", "fan:sys2"]
     assert {r.sensor_id: r.label for r in readings}["fan:cpu"] == "CPUFAN (auto)"
+
+
+# ── #145: a dashboard saved before fan pins existed must not pin the LCD ──
+#
+# Before v9.10.0 the gui auto-mapped and SAVED positional guesses into the FAN
+# rows (any motherboard fan, in order).  v9.10.6 made a bound FAN row pin the
+# LCD's fan slot, so those old guesses started driving the panel: #145's
+# GPUFAN showed a Corsair case fan.  Every file ever written says version 1,
+# and a guess cannot be told from a choice, so a version-1 file loses its FAN
+# rows once and is re-saved as version 2.
+
+_REPORTER_ROWS = ["fan:hwmon:corsaircpro:fan1:rpm", "fan:hwmon:corsaircpro:fan2:rpm",
+                  "fan:hwmon:corsaircpro:fan3:rpm", "fan:hwmon:nct6798:fan1:rpm"]
+
+
+def _saved_dashboard(tmp_path: Path, version: int) -> Path:
+    import json
+
+    from trcc.core.models import FAN_PANEL_CATEGORY
+    path = tmp_path / "system_config.json"
+    path.write_text(json.dumps({"version": version, "panels": [
+        {"category_id": 0, "name": "CPU", "sensors": [
+            {"label": "TEMP", "sensor_id": "cpu:temp", "unit": "°C"}]},
+        {"category_id": FAN_PANEL_CATEGORY, "name": "FAN", "sensors": [
+            {"label": label, "sensor_id": sid, "unit": "RPM"}
+            for label, sid in zip(("CPUFAN", "GPUFAN", "SSDFAN", "FAN2"),
+                                  _REPORTER_ROWS, strict=True)]},
+    ]}), encoding="utf-8")
+    return path
+
+
+def test_an_old_dashboard_pins_no_fan(tmp_path: Path) -> None:
+    """MUTATION CHECK: skip the version check -> the four pins come back."""
+    import json
+
+    from trcc.core.commands._helpers import fan_slot_pins
+
+    path = _saved_dashboard(tmp_path, version=1)
+
+    panels = SysInfoConfig(path).load()
+
+    assert fan_slot_pins(panels) == {}
+    assert panels[0].sensors[0].sensor_id == "cpu:temp"     # only FAN rows
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 2
+
+
+def test_a_current_dashboard_keeps_its_fan_choices(tmp_path: Path) -> None:
+    from trcc.core.commands._helpers import fan_slot_pins
+
+    panels = SysInfoConfig(_saved_dashboard(tmp_path, version=2)).load()
+
+    assert fan_slot_pins(panels) == dict(zip(
+        ("fan:cpu", "fan:gpu", "fan:ssd", "fan:sys2"), _REPORTER_ROWS, strict=True))

@@ -33,6 +33,9 @@ from ...core.models import (
 
 log = logging.getLogger(__name__)
 
+#: 2: FAN rows are deliberate choices, not pre-v9.10.0 positional guesses.
+_VERSION = 2
+
 
 # (panel.category_id, row_index) → sensor_id from the aggregator.
 #
@@ -149,6 +152,8 @@ class SysInfoConfig:
                     ))
                 if panels:
                     self.panels = panels
+                    if int(data.get("version", 1)) < _VERSION:
+                        self._unbind_guessed_fans()
                     return self.panels
             except (TypeError, AttributeError, ValueError) as e:
                 log.error("Failed to parse sysinfo config %s: %s", self._path, e)
@@ -156,11 +161,32 @@ class SysInfoConfig:
         self.panels = self.defaults()
         return self.panels
 
+    def _unbind_guessed_fans(self) -> None:
+        """A version-1 file's FAN rows are guesses, so they pin nothing (#145).
+
+        Before v9.10.0 the gui auto-mapped and SAVED any motherboard fan into
+        these rows by position; v9.10.6 made a bound FAN row pin the LCD's fan
+        slot, so the guesses started driving the panel (GPUFAN showed a case
+        fan).  A guess cannot be told from a choice, so the rows are unbound
+        once and the file re-saved: the next auto_map binds what a fresh
+        install would.
+        """
+        dropped = {binding.label: binding.sensor_id
+                   for panel in self.panels if panel.category_id == FAN_PANEL_CATEGORY
+                   for binding in panel.sensors if binding.sensor_id}
+        for panel in self.panels:
+            if panel.category_id == FAN_PANEL_CATEGORY:
+                for binding in panel.sensors:
+                    binding.sensor_id = ""
+        log.info("load: a version-1 dashboard predates fan pins (#145) — "
+                 "unbound its FAN rows %s", dropped or "(none were bound)")
+        self.save()
+
     def save(self) -> None:
         log.info("save: path=%s panels=%d", self._path, len(self.panels))
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "version": 1,
+            "version": _VERSION,
             "panels": [asdict(p) for p in self.panels],
         }
         # Atomic write — write to a sibling tempfile + rename.
