@@ -54,7 +54,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
-| [`Renderer`](#renderer) | 13 | 8 | 1 |
+| [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 1 | 8 |
 | [`ContentStore`](#contentstore) | 27 | 0 | 1 |
 
@@ -837,7 +837,7 @@ surface_nbytes(surface: 'Any') -> int
 surface_size(surface: 'Any') -> tuple[int, int]
 ```
 
-**You inherit (8):** `bg_fit` · `build_frame` · `draw_spectrum` · `encode_payload` · `encode_png` · `fill_rect` · `get_pixels_rgb` · `list_fonts`
+**You inherit (9):** `bg_fit` · `build_frame` · `draw_spectrum` · `encode_payload` · `encode_png` · `fill_rect` · `get_pixels_rgb` · `list_fonts` · `raw_argb32`
 
 **Implementations (1):** `QtRenderer`
 

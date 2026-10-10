@@ -345,6 +345,14 @@ class QtRenderer(Renderer):
             return words.tobytes()
         return data
 
+    def raw_argb32(self, surface: Any) -> tuple[bytes, int, int, int]:
+        """QImage → its ARGB32 bytes, converted only if it is not already."""
+        frame_log.debug("raw_argb32: format=%s", surface.format())
+        if surface.format() != QImage.Format.Format_ARGB32:
+            surface = surface.convertToFormat(QImage.Format.Format_ARGB32)
+        return (bytes(surface.constBits()), surface.width(), surface.height(),
+                surface.bytesPerLine())
+
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes:
         """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size."""

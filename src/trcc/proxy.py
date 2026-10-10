@@ -30,7 +30,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar, cast
 
-from . import ipc
+from . import frame_share, ipc
 from .core.commands import Command, DiscoverDevices
 from .core.errors import DaemonUnavailableError, RemoteCommandError
 from .core.events import AppStopping, Event, EventBus, FrameSent
@@ -87,9 +87,12 @@ class _EventStream:
     without closing the client.
     """
 
-    def __init__(self, name: str, types: list[str]) -> None:
-        log.debug("_EventStream: %s, %d type(s)", name, len(types))
+    def __init__(self, name: str, types: list[str],
+                 shared_frames: bool = False) -> None:
+        log.debug("_EventStream: %s, %d type(s), shared frames %s", name,
+                  len(types), shared_frames)
         self.name, self.types = name, types
+        self.shared_frames = shared_frames
         self.sock: socket.socket | None = None
         self.thread: threading.Thread | None = None
         self.open = False
@@ -141,6 +144,8 @@ class AppProxy(CommandBus):
         # Everything but frames, for the client's life; frames on demand.
         self._main = _EventStream("main", _MAIN_EVENTS)
         self._frames: _EventStream | None = None
+        # Opened on the first shared frame (``trcc.frame_share``).
+        self._frame_reader: frame_share.FrameReader | None = None
         # Set by ``close``.  Distinguishes a deliberate shutdown from a daemon
         # that died: the first is routine, the second is the thing a user
         # needs told about, and logging both the same way buries it.
@@ -238,7 +243,9 @@ class AppProxy(CommandBus):
         log.info("AppProxy._frames_wanted: %s", wanted)
         bus = self._events
         if wanted and bus is not None:
-            self._frames = _EventStream("frames", _FRAME_EVENTS)
+            self._frames = _EventStream(
+                "frames", _FRAME_EVENTS,
+                shared_frames=frame_share.shared_frames_available())
             self._start(self._frames, bus)
         elif not wanted:
             self._stop(self._frames)
@@ -302,7 +309,8 @@ class AppProxy(CommandBus):
         """
         try:
             sock = ipc.open_event_stream(types=stream.types,
-                                         timeout=self._timeout)
+                                         timeout=self._timeout,
+                                         shared_frames=stream.shared_frames)
         except (OSError, ConnectionError) as e:
             log.warning("AppProxy._read_events: cannot open the %s stream "
                         "(%s: %s) — this client will receive no events",
@@ -324,8 +332,9 @@ class AppProxy(CommandBus):
                     or self._ended(stream)):
                 break
             try:
-                sock = ipc.open_event_stream(types=stream.types,
-                                             timeout=self._timeout)
+                sock = ipc.open_event_stream(
+                    types=stream.types, timeout=self._timeout,
+                    shared_frames=stream.shared_frames)
             except (OSError, ConnectionError) as e:
                 log.warning("AppProxy._read_events: cannot reopen the %s "
                             "stream (%s: %s) — the App is gone", stream.name,
@@ -365,6 +374,11 @@ class AppProxy(CommandBus):
                     # main stream carries it to the bus for everyone.
                     if isinstance(event, AppStopping) and stream is not self._main:
                         continue
+                    if isinstance(event, FrameSent) and event.shared_seq:
+                        framed = self._with_pixels(event)
+                        if framed is None:      # overwritten or gone: skip it
+                            continue
+                        event = framed
                     # Its own bus, not ``self._events``: ``close`` clears that,
                     # and a line can still arrive after it has.
                     bus.publish(event)
@@ -376,6 +390,19 @@ class AppProxy(CommandBus):
         finally:
             stream.sock = None
         return seen, stopping
+
+    def _with_pixels(self, event: FrameSent) -> FrameSent | None:
+        """*event* with the pixels its slot of the shared frame file holds."""
+        if self._frame_reader is None:
+            self._frame_reader = frame_share.FrameReader(
+                ipc.runtime_dir() / "trcc" / "frames")
+        width, height, stride = event.shared_shape
+        pixels = self._frame_reader.read(event.key, event.shared_seq, width,
+                                         height, stride)
+        frame_log.debug("AppProxy._with_pixels: %s seq=%d %s", event.key,
+                        event.shared_seq, "read" if pixels else "dropped")
+        return None if pixels is None else dataclasses.replace(
+            event, pixels=pixels)
 
     def _end_stream(self, stream: _EventStream, seen: int) -> None:
         """Say how observing ended, then drop the flag."""
@@ -508,6 +535,9 @@ class AppProxy(CommandBus):
                             watcher.name)
         self._main = _EventStream("main", _MAIN_EVENTS)
         self._frames = None
+        if self._frame_reader is not None:
+            self._frame_reader.close()
+            self._frame_reader = None
         self._watcher = None
         self._events = None
         self._closing = False

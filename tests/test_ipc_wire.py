@@ -408,9 +408,14 @@ def _sample(hint: object, field_name: str) -> object:
 
 
 def _populated(cls: type) -> object:
+    """Every WIRE field set to a non-default value.  In-process-only fields
+    keep their defaults: they never cross by design, which
+    ``test_a_live_surface_stays_in_its_process_quietly`` checks on its own."""
+    from trcc.core.models import IN_PROCESS_ONLY_KEY
     hints = typing.get_type_hints(cls)
     return cls(**{f.name: _sample(hints[f.name], f.name)
-                  for f in dataclasses.fields(cls)})
+                  for f in dataclasses.fields(cls)
+                  if not f.metadata.get(IN_PROCESS_ONLY_KEY)})
 
 
 @pytest.mark.parametrize("name", sorted(EVENT_TYPES))
@@ -477,13 +482,18 @@ def test_a_live_surface_stays_in_its_process_quietly(caplog) -> None:
     """
     import logging
     caplog.set_level(logging.WARNING)
-    event = FrameSent(key="0402:3922", bytes_sent=12, surface=object())
+    event = FrameSent(key="0402:3922", bytes_sent=12, surface=object(),
+                      pixels=b"\x01\x02\x03\x04")
 
     envelope = encode_event(event)
     json.dumps(envelope)
 
+    # The shared frame's pixels are read from the frame file on the far side;
+    # 400 KB of them in every JSON line is the cost frame_share removed.
     assert "surface" not in envelope["fields"]
-    assert decode_event(envelope).surface is None
+    assert "pixels" not in envelope["fields"]
+    decoded = decode_event(envelope)
+    assert decoded.surface is None and decoded.pixels == b""
     assert caplog.records == [], [r.getMessage() for r in caplog.records]
 
 

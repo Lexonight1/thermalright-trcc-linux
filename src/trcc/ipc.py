@@ -66,6 +66,7 @@ from .core.events import AppStopping, Event, FrameSent
 from .core.logs import dispatch_origin, per_frame, recurring_warning
 from .core.models import IN_PROCESS_ONLY_KEY
 from .core.results import Result
+from .frame_share import FrameWriter
 
 if TYPE_CHECKING:
     from .app import App
@@ -553,6 +554,7 @@ def open_event_stream(
     types: list[str] | None = None,
     *,
     timeout: float = _DEFAULT_TIMEOUT_S,
+    shared_frames: bool = False,
 ) -> socket.socket:
     """Connect, subscribe, and hand back the still-open stream socket.
 
@@ -562,12 +564,16 @@ def open_event_stream(
     stay silent forever.
     """
     wanted = types or ["*"]
-    log.info("open_event_stream: types=%s", wanted)
+    log.info("open_event_stream: types=%s shared_frames=%s", wanted,
+             shared_frames)
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         sock.settimeout(timeout)
         sock.connect(str(socket_path()))
-        _send_json(sock, {"subscribe": wanted})
+        request: dict[str, Any] = {"subscribe": wanted}
+        if shared_frames:
+            request["frames"] = "shared"     # pixels via trcc.frame_share
+        _send_json(sock, request)
         ack = _recv_ack(sock)
     except OSError:
         sock.close()
@@ -599,14 +605,19 @@ class _Subscriber:
     encodes for N clients is still N times nothing for no reason).
     """
 
-    __slots__ = ("sock", "types", "wants_all")
+    __slots__ = ("shared_frames", "sock", "types", "wants_all")
 
-    def __init__(self, sock: socket.socket, types: set[str]) -> None:
+    def __init__(self, sock: socket.socket, types: set[str],
+                 shared_frames: bool = False) -> None:
         self.sock = sock
         self.types = types
         self.wants_all = "*" in types
-        log.info("_Subscriber: %d type(s)%s",
-                 len(types), " (all)" if self.wants_all else "")
+        # Frames as a slot of the shared frame file, not JPEG: a client on
+        # this machine that asked for it (``trcc.frame_share``).
+        self.shared_frames = shared_frames
+        log.info("_Subscriber: %d type(s)%s%s",
+                 len(types), " (all)" if self.wants_all else "",
+                 ", shared frames" if shared_frames else "")
 
     def close(self) -> None:
         log.info("_Subscriber.close: dropping subscriber")
@@ -640,6 +651,9 @@ class IPCServer:
         # the one-shot dispatch connections, so it is tracked here rather than
         # living and dying inside ``_serve_client``.
         self._subscribers: list[_Subscriber] = []
+        # The shared frame files, made on the first shared frame; deleted on
+        # shutdown.  Only the fan-out thread writes them.
+        self._frame_writer: FrameWriter | None = None
         self._sub_lock = threading.Lock()
         self._event_q: queue.Queue[Event] = queue.Queue(maxsize=EVENT_QUEUE_MAX)
         self._fanout_thread: threading.Thread | None = None
@@ -723,6 +737,9 @@ class IPCServer:
             fanout.join(timeout=1.0)
         with self._sub_lock:
             subs, self._subscribers = self._subscribers, []
+        if self._frame_writer is not None:
+            self._frame_writer.close()
+            self._frame_writer = None
         # The last line of every stream says WHY it ends, so a UI can tell a
         # quit (close with it) from a crash (the stream just stops).
         notice = json.dumps(encode_event(AppStopping())).encode() + b"\n"
@@ -763,7 +780,9 @@ class IPCServer:
                 # A stream, not a request/response: hand the socket over and
                 # return WITHOUT closing it (the ``finally`` below is skipped
                 # via ``keep_open``).  The fan-out thread owns it from here.
-                keep_open = self._handle_subscribe(client, envelope["subscribe"])
+                keep_open = self._handle_subscribe(
+                    client, envelope["subscribe"],
+                    shared_frames=envelope.get("frames") == "shared")
                 return
             if envelope.get("kill") is True:
                 _send_json(client, {"ok": True, "message": "shutting down"})
@@ -794,7 +813,8 @@ class IPCServer:
 
     # ── Event fan-out ────────────────────────────────────────────────
 
-    def _handle_subscribe(self, client: socket.socket, raw: Any) -> bool:
+    def _handle_subscribe(self, client: socket.socket, raw: Any, *,
+                          shared_frames: bool = False) -> bool:
         """Turn *client* into a long-lived event subscriber.
 
         Returns True when the stream was ACCEPTED and this server now owns the
@@ -825,7 +845,7 @@ class IPCServer:
 
         wanted = set(names)
         self._bridge_events(wanted)
-        sub = _Subscriber(client, wanted)
+        sub = _Subscriber(client, wanted, shared_frames)
         # Register and acknowledge under ONE lock, registration first.  Each
         # ordering on its own breaks a different invariant:
         #   ack-then-register loses every event published in the gap, to a
@@ -921,13 +941,59 @@ class IPCServer:
                            if s.wants_all or name in s.types]
             if not targets:
                 continue
-            # ONE encode, N writes -- the whole reason the fan-out is central.
-            line = json.dumps(encode_event(self._for_the_wire(event))).encode() + b"\n"
-            frame_log.debug("_fanout_loop: %s -> %d subscriber(s), %d bytes",
-                            name, len(targets), len(line))
+            # ONE encode per kind, N writes -- the whole reason the fan-out
+            # is central.
+            lines = self._wire_lines(event, targets)
+            frame_log.debug("_fanout_loop: %s -> %d subscriber(s), %s bytes",
+                            name, len(targets),
+                            [len(line) for line in lines.values()])
             for sub in targets:
-                self._write_or_evict(sub, line)
+                self._write_or_evict(sub, lines[sub.shared_frames])
         log.info("_fanout_loop: stopped")
+
+    def _wire_lines(self, event: Event,
+                    targets: list[_Subscriber]) -> dict[bool, bytes]:
+        """The line each kind of subscriber gets, keyed by ``shared_frames``.
+
+        Only a ``FrameSent`` with a picture differs: shared-frame subscribers
+        get a slot of the frame file, the rest a JPEG -- each built only if
+        someone of that kind is listening.
+        """
+        frame_log.debug("_wire_lines: %s", type(event).__name__)
+        kinds = {sub.shared_frames for sub in targets}
+        framed = (isinstance(event, FrameSent) and event.surface is not None
+                  and not event.image)
+        if not framed:
+            line = json.dumps(encode_event(event)).encode() + b"\n"
+            return dict.fromkeys(kinds, line)
+        lines: dict[bool, bytes] = {}
+        if True in kinds:
+            shared = self._shared_frame(event)
+            lines[True] = json.dumps(encode_event(
+                shared if shared is not None else self._for_the_wire(event)
+            )).encode() + b"\n"
+        if False in kinds:
+            lines[False] = json.dumps(encode_event(
+                self._for_the_wire(event))).encode() + b"\n"
+        return lines
+
+    def _shared_frame(self, event: Event) -> Event | None:
+        """The frame written to its device's shared file, or None to fall back."""
+        assert isinstance(event, FrameSent)
+        try:
+            pixels, width, height, stride = self._app.display.raw_argb32(
+                event.surface)
+            if self._frame_writer is None:
+                self._frame_writer = FrameWriter(runtime_dir() / "trcc" / "frames")
+            seq = self._frame_writer.write(event.key, pixels, width, height,
+                                           stride)
+        except Exception as e:
+            recurring_warning(log, "_shared_frame: %s falls back to JPEG — "
+                              "%s: %s", event.key, type(e).__name__, e)
+            return None
+        frame_log.debug("_shared_frame: %s seq=%d", event.key, seq)
+        return dataclasses.replace(event, shared_seq=seq,
+                                   shared_shape=(width, height, stride))
 
     def _for_the_wire(self, event: Event) -> Event:
         """Carry what the socket cannot: a ``FrameSent``'s picture, as JPEG.

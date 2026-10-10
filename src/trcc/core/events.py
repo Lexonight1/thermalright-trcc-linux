@@ -64,6 +64,14 @@ class FrameSent(Event):
     # remote preview re-rendered and PNG-encoded every frame itself -- 25-29%
     # of a core in the daemon with the gui open (measured 2026-10-06).
     image: bytes = field(default=b"", repr=False)
+    # ``image`` without the encode, for an observer on the same machine: the
+    # slot of the device's shared frame file that holds this frame
+    # (``trcc.frame_share``) -- its sequence number and (width, height,
+    # stride).  Zero for a subscriber that did not ask for shared frames.
+    shared_seq: int = 0
+    shared_shape: tuple[int, int, int] = (0, 0, 0)
+    # The ARGB32 pixels the proxy read from that slot.  In-process only.
+    pixels: bytes = field(default=b"", repr=False, metadata=IN_PROCESS_ONLY)
     # LED twin of ``surface``: an LED render has no image, it has per-LED
     # colors.  Carried on the SAME event so LED uses the SAME preview path as
     # LCD (one render → FrameSent → handle_frame → preview), not a parallel

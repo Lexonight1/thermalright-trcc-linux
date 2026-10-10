@@ -309,6 +309,16 @@ class _FrameForwarder(_SignalForwarder):
 
     def __call__(self, event: Event) -> None:
         if (isinstance(event, FrameSent) and event.surface is None
+                and event.pixels):
+            # Shared memory (``trcc.frame_share``): the raw pixels, no decode.
+            # ``copy`` so the image owns them past this call.
+            width, height, stride = event.shared_shape
+            picture = QImage(event.pixels, width, height, stride,
+                             QImage.Format.Format_ARGB32).copy()
+            frame_log.debug("BusBridge: FrameSent %s shared %dx%d", event.key,
+                            width, height)
+            event = dataclasses.replace(event, surface=picture)
+        elif (isinstance(event, FrameSent) and event.surface is None
                 and event.image):
             picture = QImage.fromData(event.image)
             if picture.isNull():

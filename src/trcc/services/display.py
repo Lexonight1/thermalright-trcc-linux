@@ -1013,6 +1013,11 @@ class DisplayService:
         frame_log.debug("encode_png: encoding preview surface")
         return self._r.encode_png(surface)
 
+    def raw_argb32(self, surface: Any) -> tuple[bytes, int, int, int]:
+        """A preview surface's raw pixels, for a window on the same machine."""
+        frame_log.debug("raw_argb32")
+        return self._r.raw_argb32(surface)
+
     def encode_jpeg(self, surface: Any, quality: int = 95) -> bytes:
         """JPEG-encode a preview surface (the WebSocket preview stream)."""
         frame_log.debug("encode_jpeg: quality=%d", quality)

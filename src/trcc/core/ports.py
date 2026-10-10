@@ -1942,6 +1942,18 @@ class Renderer(ABC):
         del surface
         raise NotImplementedError("encode_png not implemented on this Renderer")
 
+    def raw_argb32(self, surface: Any) -> tuple[bytes, int, int, int]:
+        """The surface's pixels as ARGB32 (``bytes, width, height, stride``).
+
+        No encode: the frame a window on the same machine shows is these
+        bytes, copied through shared memory (``trcc.frame_share``).
+        Non-abstract, like :meth:`get_pixels_rgb` -- a renderer without it
+        leaves windows on the JPEG path.
+        """
+        log.debug("raw_argb32: surface=%s", surface)
+        del surface
+        raise NotImplementedError("raw_argb32 not implemented on this Renderer")
+
     def get_pixels_rgb(
         self, surface: Any, cols: int, rows: int,
     ) -> list[list[tuple[int, int, int]]]:

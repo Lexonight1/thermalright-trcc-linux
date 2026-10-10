@@ -319,10 +319,13 @@ def test_a_sent_frame_crosses_the_socket_as_a_picture(
     """
     from PySide6.QtGui import QColor, QImage
 
+    from trcc import frame_share
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.events import FrameSent
 
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    # Where shared frames are not available (macOS, root): JPEG.
+    monkeypatch.setattr(frame_share, "shared_frames_available", lambda: False)
     app = App(fake_platform, renderer=QtRenderer())
     srv = IPCServer(app)
     srv.start()
@@ -443,6 +446,10 @@ def test_no_frame_listener_means_the_app_encodes_nothing(
     encoded: list[object] = []
     monkeypatch.setattr(app.display, "encode_jpeg",
                         lambda surface, *a: encoded.append(surface) or b"jpeg")
+    # The shared path's work counts the same: a frame copied for nobody.
+    monkeypatch.setattr(app.display, "raw_argb32",
+                        lambda surface: encoded.append(surface)
+                        or (b"\0" * 16, 2, 2, 8))
     srv = IPCServer(app)
     srv.start()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -462,7 +469,7 @@ def test_no_frame_listener_means_the_app_encodes_nothing(
         _frames_up(proxy)
         app.events.publish(FrameSent(key="k", bytes_sent=1, surface=object()))
         _wait(frames)
-        assert len(encoded) == 1 and frames[0].image == b"jpeg"
+        assert len(encoded) == 1 and frames[0].pixels == b"\0" * 16
 
         proxy.events.unsubscribe(FrameSent, frames.append)
         assert proxy._frames is None
@@ -477,5 +484,95 @@ def test_no_frame_listener_means_the_app_encodes_nothing(
         _until(lambda: themes[-1].theme_name == "last")
         assert len(encoded) == after_hide, "the stream outlived its last listener"
     finally:
+        proxy.close()
+        srv.shutdown()
+
+
+
+# ── Shared frames: the pixels, not a JPEG (trcc.frame_share) ────────────────
+
+def _frame_daemon(fake_platform, tmp_path, monkeypatch):  # type: ignore[no-untyped-def]
+    from trcc.adapters.render.qt import QtRenderer
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    app = App(fake_platform, renderer=QtRenderer())
+    srv = IPCServer(app)
+    srv.start()
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return app, srv
+
+
+def test_a_frame_crosses_as_shared_pixels_without_an_encode(
+    fake_platform, tmp_path, monkeypatch,
+) -> None:
+    """Same machine, same user: the raw pixels through a 0600 file in a 0700
+    directory, no JPEG and no decode -- ~52 M instructions a frame down to ~1 M.
+
+    MUTATION CHECK: always take ``_for_the_wire`` in ``_wire_lines``."""
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.core.events import FrameSent
+
+    app, srv = _frame_daemon(fake_platform, tmp_path, monkeypatch)
+    jpegs: list[object] = []
+    real_jpeg = app.display.encode_jpeg
+    monkeypatch.setattr(app.display, "encode_jpeg",
+                        lambda *a: jpegs.append(a) or real_jpeg(*a))
+    proxy = AppProxy()
+    try:
+        seen: list = []
+        proxy.events.subscribe(FrameSent, seen.append)
+        _stream_up(proxy)
+        _frames_up(proxy)
+        frame = QImage(320, 240, QImage.Format.Format_ARGB32)
+        frame.fill(QColor(10, 64, 128))
+        app.events.publish(FrameSent(key="0402:3922", bytes_sent=1, surface=frame))
+        _wait(seen)
+
+        assert jpegs == [], "a shared-frame client cost a JPEG encode"
+        got = seen[0]
+        assert (got.image, got.surface) == (b"", None)
+        assert got.shared_shape == (320, 240, 1280)
+        picture = QImage(got.pixels, 320, 240, 1280, QImage.Format.Format_ARGB32)
+        assert picture == frame
+        frames_dir = tmp_path / "trcc" / "frames"
+        assert oct(frames_dir.stat().st_mode & 0o777) == "0o700"
+        assert oct((frames_dir / "0402_3922.frame").stat().st_mode & 0o777) == "0o600"
+    finally:
+        proxy.close()
+        srv.shutdown()
+    assert not (tmp_path / "trcc" / "frames" / "0402_3922.frame").exists(), (
+        "the App left its frame file behind")
+
+
+def test_a_shared_and_a_jpeg_client_each_get_theirs(
+    fake_platform, tmp_path, monkeypatch,
+) -> None:
+    """A window on this machine and one that cannot share (an older client)
+    watch the same App: one copy and one encode per frame, never one per
+    client."""
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc import ipc
+    from trcc.core.events import FrameSent
+
+    app, srv = _frame_daemon(fake_platform, tmp_path, monkeypatch)
+    proxy = AppProxy()
+    jpeg_sock = ipc.open_event_stream(["FrameSent"], timeout=5)
+    try:
+        seen: list = []
+        proxy.events.subscribe(FrameSent, seen.append)
+        _frames_up(proxy)
+        frame = QImage(64, 64, QImage.Format.Format_ARGB32)
+        frame.fill(QColor(200, 0, 0))
+        app.events.publish(FrameSent(key="k", bytes_sent=1, surface=frame))
+        _wait(seen)
+        jpeg_sock.settimeout(5)
+        line = jpeg_sock.makefile("rb").readline()
+        jpeg_event = ipc.decode_event(__import__("json").loads(line))
+        assert seen[0].pixels and not seen[0].image
+        assert jpeg_event.image and not jpeg_event.shared_seq
+    finally:
+        jpeg_sock.close()
         proxy.close()
         srv.shutdown()
