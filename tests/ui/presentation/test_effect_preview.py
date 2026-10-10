@@ -1,0 +1,81 @@
+"""TRCC's drawing of each built-in RAM effect -- no Qt."""
+from __future__ import annotations
+
+import pytest
+
+from trcc.core.models import (
+    EFFECT_TRAITS,
+    EffectDirection,
+    EffectSpeed,
+    RamEffect,
+    RamEffectSettings,
+)
+from trcc.ui.presentation.effect_preview import LEDS, PERIOD_S, effect_frame
+
+RED, BLUE = (255, 0, 0), (0, 0, 255)
+TIMES = [i * 0.13 for i in range(40)]
+
+
+def _settings(effect: RamEffect, speed: EffectSpeed = EffectSpeed.MEDIUM,
+              direction: EffectDirection | None = None,
+              brightness: int = 255) -> RamEffectSettings:
+    """*effect* in red then blue, as many colours as it takes."""
+    colors = (RED, BLUE)[:EFFECT_TRAITS[effect].colors]
+    return RamEffectSettings(effect, speed, direction, colors,
+                             brightness=brightness)
+
+
+@pytest.mark.parametrize("effect", list(RamEffect))
+def test_every_effect_draws_a_stick_of_real_colours(effect: RamEffect) -> None:
+    for t in TIMES:
+        leds = effect_frame(_settings(effect), t, 1, 2)
+        assert len(leds) == LEDS
+        assert all(0 <= c <= 255 for led in leds for c in led)
+
+
+@pytest.mark.parametrize("effect", [e for e in RamEffect
+                                    if e is not RamEffect.STATIC])
+def test_every_effect_but_static_moves(effect: RamEffect) -> None:
+    frames = {tuple(effect_frame(_settings(effect), t)) for t in TIMES}
+    assert len(frames) > 1
+
+
+def test_static_is_its_colour_on_every_led_at_every_moment() -> None:
+    for t in TIMES:
+        assert effect_frame(_settings(RamEffect.STATIC), t) == [RED] * LEDS
+
+
+def test_up_draws_down_upside_down() -> None:
+    up = _settings(RamEffect.RAINBOW_WAVE, direction=EffectDirection.UP)
+    down = _settings(RamEffect.RAINBOW_WAVE, direction=EffectDirection.DOWN)
+    for t in TIMES:
+        # Equal to a colour step: 1 - x and x round apart in the last bit.
+        pairs = zip(effect_frame(up, t), effect_frame(down, t)[::-1],
+                    strict=True)
+        assert all(abs(a - b) <= 1 for u, d in pairs for a, b in zip(u, d, strict=True))
+
+
+def test_left_and_right_travel_across_the_sticks() -> None:
+    wave = _settings(RamEffect.COLOR_WAVE, direction=EffectDirection.RIGHT)
+    t = PERIOD_S[EffectSpeed.MEDIUM] / 8
+    first, second = effect_frame(wave, t, 0, 2), effect_frame(wave, t, 1, 2)
+    assert first != second
+    # Each stick is one place along the travel: one colour top to bottom.
+    assert len(set(first)) == 1 and len(set(second)) == 1
+
+
+def test_faster_runs_more_cycles_in_the_same_time() -> None:
+    t = PERIOD_S[EffectSpeed.FAST] / 2        # half a fast cycle
+    slow = _settings(RamEffect.COLOR_SHIFT, speed=EffectSpeed.SLOW)
+    fast = _settings(RamEffect.COLOR_SHIFT, speed=EffectSpeed.FAST)
+    assert effect_frame(fast, t) == [BLUE] * LEDS     # all the way to B
+    assert effect_frame(slow, t) != [BLUE] * LEDS
+
+
+def test_brightness_dims_only_effects_that_take_it() -> None:
+    full = effect_frame(_settings(RamEffect.COLOR_WAVE), 0.3)
+    half = effect_frame(_settings(RamEffect.COLOR_WAVE, brightness=128), 0.3)
+    assert half == [tuple(round(c * 128 / 255) for c in led) for led in full]
+    # Static takes no brightness: it is drawn at full whatever is saved.
+    assert effect_frame(_settings(RamEffect.STATIC, brightness=10),
+                        0.3) == [RED] * LEDS

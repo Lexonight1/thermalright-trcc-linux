@@ -128,6 +128,17 @@ class FollowDevice:
 ApplyPlan = LeaveLights | SaveEffect | FollowDevice
 
 
+def strip_legend(strips: Sequence[tuple[str, RamEffectSettings | None]]
+                 ) -> str:
+    """The effect preview's legend: what each lettered strip is and runs."""
+    log.debug("strip_legend: %d", len(strips))
+    unknown = "not known -- its factory default, or set by another program"
+    return "\n".join(
+        f"{chr(ord('A') + i)}: {name} -- "
+        f"{EFFECT_LABELS[settings.effect] if settings else unknown}"
+        for i, (name, settings) in enumerate(strips))
+
+
 @dataclass(frozen=True, slots=True)
 class LightRow:
     """One light as the list shows it."""
@@ -396,6 +407,23 @@ class RgbPage:
             status = f"{who} is waiting for colours."
         log.debug("RgbPage.follow_status: %s", status)
         return status
+
+    def effect_strips(self) -> tuple[tuple[str, RamEffectSettings | None], ...]:
+        """The effect preview's strips: each stick's name and what it runs.
+
+        Built-in effect: the effect being set, on the ticked sticks.  Leave
+        alone: what TRCC last saved on each stick -- None where it never saved
+        one, so the stick runs its factory default or another program's.
+        """
+        if self.source is RgbSource.EFFECT:
+            settings = self.effect_picks.settings()
+            strips = tuple((row.title, settings)
+                           for row in self.rows(LightKind.RAM) if row.checked)
+        else:
+            strips = tuple((light.name, light.effect)
+                           for light in self._ram_lights())
+        log.debug("RgbPage.effect_strips: %d", len(strips))
+        return strips
 
     #: LEDs per strip in the follow preview: the rows the App samples a
     #: frame into, one per LED of a 10-LED stick.

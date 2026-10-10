@@ -20,8 +20,16 @@ from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent, QPen, QShowEvent
+from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QHideEvent,
+    QImage,
+    QPainter,
+    QPaintEvent,
+    QPen,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -41,15 +49,18 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.led_models import stretch
+from ..core.logs import per_frame
 from ..core.models import (
     EffectDirection,
     EffectSpeed,
     FollowMapping,
     LightKind,
     RamEffect,
+    RamEffectSettings,
 )
 from ..core.ports import CommandBus
 from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
+from .presentation.effect_preview import APPROXIMATE, LEDS, effect_frame
 from .presentation.rgb_page import (
     DIRECTION_LABELS,
     EFFECT_LABELS,
@@ -62,10 +73,12 @@ from .presentation.rgb_page import (
     LightRow,
     RgbPage,
     RgbSource,
+    strip_legend,
 )
 from .qt_ram_access import RamAccessRow
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 ACCESS_OFF_TEXT = (
     "TRCC needs permission to reach the memory's lighting chips.  Nothing is "
@@ -493,6 +506,109 @@ class _FollowPreview(QWidget):
             log.debug("_FollowPreview: strip %s is %s", chr(ord("A") + i), name)
 
 
+Strips = Sequence[tuple[str, RamEffectSettings | None]]
+
+
+class _EffectStrips(QWidget):
+    """Each stick's LEDs running its effect -- TRCC's drawing of it.
+
+    Paints the strips it was last given and asks the page nothing, so a
+    frame costs only the drawing.  Animates only while on screen with an
+    effect to run; a stick whose effect is not known stays grey and still.
+    """
+
+    CELL = (22, 16)
+    TICK_MS = 50                 # 20 frames a second: smooth, and cheap
+
+    def __init__(self) -> None:
+        super().__init__()
+        log.debug("_EffectStrips.__init__")
+        self._strips: Strips = ()
+        self._start = time.monotonic()
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.TICK_MS)
+        self._timer.timeout.connect(self._tick)
+        self.setFixedHeight(LEDS * (self.CELL[1] + 4) + 26)
+
+    @property
+    def animating(self) -> bool:
+        running = self._timer.isActive()
+        log.debug("_EffectStrips.animating: %s", running)
+        return running
+
+    def set_strips(self, strips: Strips) -> None:
+        log.debug("_EffectStrips.set_strips: %d -> %d", len(self._strips),
+                  len(strips))
+        self._strips = tuple(strips)
+        self._sync_timer()
+        self.update()
+
+    def _sync_timer(self) -> None:
+        run = self.isVisible() and any(s for _, s in self._strips)
+        log.debug("_EffectStrips._sync_timer: %s", "run" if run else "still")
+        if run and not self._timer.isActive():
+            self._timer.start()
+        elif not run:
+            self._timer.stop()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        log.debug("_EffectStrips.showEvent")
+        super().showEvent(event)
+        self._sync_timer()
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        log.debug("_EffectStrips.hideEvent")
+        super().hideEvent(event)
+        self._timer.stop()
+
+    def _tick(self) -> None:
+        frame_log.debug("_EffectStrips._tick")     # per frame: the trace rung
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        strips = self._strips
+        frame_log.debug("_EffectStrips.paintEvent: %d strip(s)", len(strips))
+        t = time.monotonic() - self._start
+        width, height = self.CELL
+        p = QPainter(self)
+        for i, (_name, settings) in enumerate(strips):
+            x = i * (width + 24)
+            leds = (effect_frame(settings, t, i, len(strips))
+                    if settings is not None else None)
+            for led in range(LEDS):
+                color = QColor(*leds[led]) if leds else QColor("#3a3a40")
+                p.fillRect(QRect(x, 4 + led * (height + 4), width, height),
+                           color)
+            p.setPen(self.palette().windowText().color())   # either skin
+            p.drawText(QRect(x - 12, LEDS * (height + 4) + 6, width + 24, 20),
+                       Qt.AlignmentFlag.AlignCenter,
+                       chr(ord("A") + i) + ("" if leds else "?"))
+        p.end()
+
+
+class _EffectPreview(QWidget):
+    """The animated sticks, what each runs, and that TRCC drew them --
+    hidden when there is no stick to show."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        log.debug("_EffectPreview.__init__")
+        self.strips = _EffectStrips()
+        self.legend = _muted()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self.strips)
+        layout.addWidget(self.legend)
+        layout.addWidget(_muted(APPROXIMATE))
+
+    def show_strips(self, strips: Strips) -> None:
+        log.debug("_EffectPreview.show_strips: %d", len(strips))
+        self.strips.set_strips(strips)
+        self.legend.setText(strip_legend(strips))
+        self.setVisible(bool(strips))
+
+
 class _FollowForm(QWidget):
     """Which device the lights follow, and how its picture is spread."""
 
@@ -584,9 +700,10 @@ class RgbPageView(QWidget):
         self._source_buttons: dict[RgbSource, QRadioButton] = {}
         self._effect = _EffectForm(self.page.effect_picks, self._on_changed)
         self._follow = _FollowForm(self.page, self._on_changed)
+        self._previews: list[_EffectPreview] = []
         self._stack = QStackedWidget(self)
-        self._stack.addWidget(QWidget(self))
-        self._stack.addWidget(self._effect)
+        self._stack.addWidget(self._with_strips(None))
+        self._stack.addWidget(self._with_strips(self._effect))
         self._stack.addWidget(self._follow)
         self._hint = _muted()
         self._problem = QLabel("", self)
@@ -605,6 +722,22 @@ class RgbPageView(QWidget):
         layout.addSpacing(70)
         layout.addLayout(self._source_column(), 1)
         self._answered.connect(self._on_answered)
+
+    def _with_strips(self, form: QWidget | None) -> QWidget:
+        """*form* (if any) above the animated sticks and what they run."""
+        log.debug("RgbPageView._with_strips: %s", type(form).__name__)
+        holder = QWidget(self)
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        if form is not None:
+            layout.addWidget(form)
+            layout.addSpacing(8)
+        preview = _EffectPreview()
+        self._previews.append(preview)
+        layout.addWidget(preview)
+        layout.addStretch(1)
+        return holder
 
     def _source_column(self) -> QVBoxLayout:
         log.debug("RgbPageView._source_column")
@@ -749,6 +882,9 @@ class RgbPageView(QWidget):
         log.debug("RgbPageView._on_changed: problem=%s busy=%s", problem,
                   self._busy)
         self._hint.setText(page.hint)
+        strips = page.effect_strips()
+        for preview in self._previews:
+            preview.show_strips(strips)
         self._problem.setText(problem or "")
         self._problem.setVisible(problem is not None)
         self._message.setText(WORKING if self._busy else page.message)

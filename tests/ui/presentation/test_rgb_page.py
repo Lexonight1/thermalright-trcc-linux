@@ -26,6 +26,7 @@ from trcc.ui.presentation.rgb_page import (
     RgbPage,
     RgbSource,
     SaveEffect,
+    strip_legend,
 )
 
 STICK_A = RgbLight("i2c-3/0x19", "Vengeance A", 10, LightKind.RAM)
@@ -279,3 +280,32 @@ def test_a_bad_address_stops_following_from_applying() -> None:
 def test_follow_status_says_what_the_app_said(follow: RgbFollowResult,
                                               status: str) -> None:
     assert _page(follow=follow).follow_status == status
+
+
+# ── The effect preview's strips ──────────────────────────────────────
+
+def test_the_effect_preview_runs_the_picked_effect_on_ticked_sticks() -> None:
+    page = _page(STICK_A, STICK_B)
+    page.set_source(RgbSource.EFFECT)
+    page.effect_picks.set_effect(RamEffect.RAIN)
+    page.set_checked(STICK_A.ref, False)
+    assert page.effect_strips() == (
+        (STICK_B.name, page.effect_picks.settings()),)
+
+
+def test_leave_alone_previews_what_trcc_last_saved_on_each_stick() -> None:
+    saved = RamEffectSettings(RamEffect.VISOR)
+    page = _page(STICK_A, RgbLight(STICK_B.ref, STICK_B.name, 10,
+                                   LightKind.RAM, saved), FAN)
+    page.set_source(RgbSource.LEAVE)
+    assert page.effect_strips() == ((STICK_A.name, None),
+                                    (STICK_B.name, saved))
+
+
+def test_the_legend_letters_each_strip_and_says_what_it_runs() -> None:
+    legend = strip_legend(((STICK_A.name, RamEffectSettings(RamEffect.RAIN)),
+                           (STICK_B.name, None)))
+    assert legend == (
+        "A: Vengeance A -- Rain\n"
+        "B: Vengeance B -- not known -- its factory default, or set by "
+        "another program")

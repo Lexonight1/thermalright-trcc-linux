@@ -32,7 +32,7 @@ from trcc.core.results import (
     RgbFollowResult,
     RgbLightsResult,
 )
-from trcc.ui.presentation.rgb_page import RgbSource
+from trcc.ui.presentation.rgb_page import RgbSource, strip_legend
 from trcc.ui.qt_rgb_page import sample_grid
 
 LCD = "0402:3922"
@@ -172,3 +172,39 @@ def test_a_followed_cooler_reaches_the_preview_as_the_follower_gets_it(
     view.on_led_colors(LedColorsChanged(key="0416:8001", color_count=1,
                                         colors=((9, 9, 9),)))
     assert preview._colors == ()
+
+
+# ── The effect preview ──────────────────────────────────────────────
+
+def _strips(view: Any, source: RgbSource) -> Any:
+    return view._previews[list(RgbSource).index(source)].strips
+
+
+def test_the_effect_preview_animates_only_while_it_is_on_screen(
+        view: Any, qtbot: Any) -> None:
+    view._source_buttons[RgbSource.EFFECT].click()
+    strips = _strips(view, RgbSource.EFFECT)
+    qtbot.waitUntil(lambda: strips.animating, timeout=1000)
+    view._source_buttons[RgbSource.FOLLOW].click()
+    assert not strips.animating
+    view._source_buttons[RgbSource.EFFECT].click()
+    assert strips.animating
+    view.hide()
+    assert not strips.animating
+
+
+def test_sticks_with_no_known_effect_are_drawn_still(view: Any) -> None:
+    # The fake App's sticks carry no saved effect.
+    view._source_buttons[RgbSource.LEAVE].click()
+    strips = _strips(view, RgbSource.LEAVE)
+    assert strips.isVisible() and not strips.animating
+    assert view._previews[0].legend.text() == strip_legend(
+        tuple((stick.name, None) for stick in STICKS))
+
+
+def test_no_sticks_no_preview(view: Any) -> None:
+    view._source_buttons[RgbSource.EFFECT].click()
+    for row in view.page.rows(LightKind.RAM):
+        view._lights_column._on_light_toggled(row.ref, False)
+    preview = view._previews[1]
+    assert not preview.isVisible() and not preview.strips.animating
