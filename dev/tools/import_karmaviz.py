@@ -44,6 +44,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -112,7 +113,10 @@ class Shader:
 
     @property
     def stem(self) -> str:
-        return self.path.stem
+        """The file name, folded to ASCII (``möbius`` -> ``mobius``): macOS
+        stores a non-ASCII name in another Unicode form than the one asked
+        for, and packaging tools disagree about them."""
+        return unicodedata.normalize("NFKD", self.path.stem).encode("ascii", "ignore").decode()
 
 
 def read_shader(root: Path, path: Path) -> Shader:
@@ -297,8 +301,10 @@ def write_data(root: Path, names: set[tuple[bool, str]], commit: str,
         for is_wave, kind, ref in ((True, "waveform", wave), (False, "warp map", warp)):
             if ref and (is_wave, ref) not in names:
                 raise ValueError(f"{p.name}: its {kind} {ref!r} was not imported")
+        # The author's disk: paths, and which warp maps were installed then.
         for machine_local in ("file_path", "thumbnail_path"):
             data.pop(machine_local, None)
+        data["warp_map_info"].pop("available_warp_maps", None)
         (ASSETS / "presets" / f"{p.stem}.json").write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         presets += 1
@@ -312,7 +318,9 @@ def write_data(root: Path, names: set[tuple[bool, str]], commit: str,
         "- shaders: converted from .kvwf/.kvwm to .glsl; one per name;\n"
         "  the waveform line skeleton written once (line.glsl), the entries\n"
         "  under lines/ keeping only their shaping lines;\n"
-        "- presets: decoded from gzipped JSON; machine-local paths removed.\n\n"
+        "- names folded to ASCII (mobius_strip_topology);\n"
+        "- presets: decoded from gzipped JSON; machine-local state removed\n"
+        "  (file paths, the warp maps installed when each was saved).\n\n"
         + "\n".join(f"- {n}" for n in notes) + "\n", encoding="utf-8")
     return palettes, presets
 

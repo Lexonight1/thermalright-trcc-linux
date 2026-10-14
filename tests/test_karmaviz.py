@@ -69,6 +69,15 @@ def test_each_folder_holds_one_kind_of_shader(folder: str, defines: str) -> None
     assert "waveform_value_at(x_coord, y_coord, norm_x, sample)" in line
 
 
+def test_every_name_is_ascii() -> None:
+    """macOS stores a non-ASCII file name in another Unicode form than the one
+    asked for, and packaging tools disagree about them -- KarmaViz shipped
+    ``möbius_strip_topology``."""
+    names = [p.name for p in GLSL.rglob("*") if p.is_file()]
+    names += [p.name for p in DATA.rglob("*") if p.is_file()]
+    assert [n for n in names if not n.isascii()] == []
+
+
 def test_a_waveform_is_whole_or_a_line_entry_never_both() -> None:
     assert _names("waveforms") & _names("lines") == set()
 
@@ -83,6 +92,7 @@ def test_every_preset_names_shaders_that_exist(path: Path) -> None:
     assert wave in _names("waveforms") | _names("lines")
     assert not warp or warp in _names("warps")
     assert not {"file_path", "thumbnail_path"} & preset.keys()   # the author's disk
+    assert "available_warp_maps" not in preset["warp_map_info"]
 
 
 @pytest.mark.parametrize("path", sorted((DATA / "palettes").glob("*.json")),

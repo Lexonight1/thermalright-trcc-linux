@@ -7,7 +7,9 @@ Changed from the original:
 - shaders: converted from .kvwf/.kvwm to .glsl; one per name;
   the waveform line skeleton written once (line.glsl), the entries
   under lines/ keeping only their shaping lines;
-- presets: decoded from gzipped JSON; machine-local paths removed.
+- names folded to ASCII (mobius_strip_topology);
+- presets: decoded from gzipped JSON; machine-local state removed
+  (file paths, the warp maps installed when each was saved).
 
 - dropped warp_maps/basic/conveyor_belt.kvwm -- the same shader as warp_maps/motion/conveyor_belt.kvwm
 - dropped warp_maps/basic/fibonacci_rectangles.kvwm -- the same shader as warp_maps/geometric/fibonacci_rectangles.kvwm
