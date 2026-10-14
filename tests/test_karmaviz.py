@@ -109,3 +109,164 @@ def test_the_licence_travels_with_it() -> None:
     assert "MIT License" in licence
     assert "Jason Swint" in licence
     assert "dev/tools/import_karmaviz.py" in (DATA / "NOTICE").read_text(encoding="utf-8")
+
+
+# ── the visual ───────────────────────────────────────────────────────
+
+def _music(frame: int, rate: int, fps: int) -> bytes:
+    """A 120 BPM kick over a chord, stereo float32 -- one panel frame's worth."""
+    import numpy as np
+
+    n = rate // fps
+    t = (np.arange(n) + frame * n) / rate
+    kick = np.exp(-((t * 2.0) % 1.0) * 8.0)
+    sound = (0.7 * kick * np.sin(2 * np.pi * 50 * t) + 0.2 * np.sin(2 * np.pi * 220 * t)
+             + 0.15 * np.sin(2 * np.pi * 330 * t) + 0.1 * np.sin(2 * np.pi * 1760 * t))
+    return np.repeat(sound.astype("<f4"), 2).tobytes()
+
+
+def test_every_shader_compiles_in_the_frame_it_is_drawn_in() -> None:
+    """All 237, each composed into the ported frame shader exactly as the
+    visual composes it, through the one program() and its header rule --
+    on this host's OpenGL (Mesa's software one in CI)."""
+    from trcc.adapters.system import host_platform_class
+    from trcc.adapters.visual._gl import program, shader
+    from trcc.adapters.visual._karmaviz_gl import frame_source, warp_names, waveform_names
+
+    surface = host_platform_class().VISUALS["karmaviz"].SURFACE.open()  # pyright: ignore[reportAttributeAccessIssue]
+    gl, vertex = surface.gl, shader("quad_vertex.glsl")
+    refused = []
+    try:
+        for wave, warp in [(w, None) for w in waveform_names()] + [
+                ("sine_wave", w) for w in warp_names()]:
+            try:
+                gl.glDeleteProgram(program(gl, vertex, frame_source(wave, warp), ("corner", "uv")))
+            except OSError as e:
+                refused.append(f"{wave} + {warp}: {e}")
+    finally:
+        surface.close()
+    assert (len(waveform_names()), len(warp_names()), refused) == (114, 123, [])
+
+
+@pytest.mark.parametrize("preset", sorted(p.name for p in (DATA / "presets").glob("*.json")),
+                         ids=lambda n: n.removesuffix(".json"))
+def test_every_preset_draws(preset: str) -> None:
+    """Two seconds of music through the real engine, on this host's OpenGL:
+    a picture of the panel's size, and not a black one."""
+    import random
+
+    import numpy as np
+
+    from trcc.adapters.system import host_platform_class
+    from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+
+    engine_class = host_platform_class().VISUALS["karmaviz"]
+    random.seed(3)
+    engine = engine_class()
+    engine.open(VisualSpec("karmaviz", 96, 96, preset=engine_class.preset(Path(), preset)))
+    try:
+        for i in range(2 * VISUAL_FPS):
+            engine.feed(_music(i, SOUND_RATE, VISUAL_FPS))
+            frame = engine.render()
+    finally:
+        engine.close()
+    pixels = np.frombuffer(bytes(frame.data), np.uint8).reshape(96, 96, 3)
+    assert (frame.width, frame.height) == (96, 96)
+    assert (pixels.max(axis=2) > 24).mean() > 0.002          # something is drawn
+
+
+def test_the_ear_hears_each_kick_of_a_120_bpm_beat() -> None:
+    """KarmaViz's beat detector, chunk by chunk: a 120 BPM kick is a beat on
+    every half second -- all but the first, while its adaptive threshold
+    settles.  (A steady chord under the kick hides most of them: KarmaViz's
+    decibel scale tops out at 0 dB, so loud tones fill the bass bands.  That
+    is its arithmetic, kept.)"""
+    import numpy as np
+
+    from trcc.adapters.visual.karmaviz import Ear
+    from trcc.core.models import SOUND_RATE, VISUAL_FPS
+
+    ear = Ear()
+    n = SOUND_RATE // VISUAL_FPS
+    heard = []
+    for i in range(10 * VISUAL_FPS):
+        t = (np.arange(n) + i * n) / SOUND_RATE
+        kick = 0.7 * np.exp(-((t * 2.0) % 1.0) * 8.0) * np.sin(2 * np.pi * 50 * t)
+        ear.hear(np.repeat(kick.astype("<f4"), 2).tobytes())
+        heard += [i / VISUAL_FPS] * ear.take_beats()
+    assert heard == [k / 2 for k in range(1, 20)]
+
+
+class _Painter:
+    """What KarmaViz asks its painter to draw -- no OpenGL."""
+
+    def __init__(self) -> None:
+        self.looks: list[tuple[str, str | None]] = []
+
+    def use(self, wave: str, warp: str | None) -> None:
+        self.looks.append((wave, warp))
+
+
+@pytest.mark.parametrize(("every", "changes"), [(0, 0), (4, 3), (6, 2)])
+def test_change_every_n_beats(every: int, changes: int) -> None:
+    """KarmaViz's beat transitions: a new waveform and warp map on every Nth
+    beat -- and none at 0, the default, so a tile keeps its look."""
+    from trcc.adapters.visual.karmaviz import Colours, KarmaViz, Look
+
+    visual = KarmaViz()
+    visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
+    visual._colours = Colours(visual._palettes, None)
+    painter = _Painter()
+    visual._painter = painter  # type: ignore[assignment]  # pyright: ignore[reportAttributeAccessIssue]
+    visual._wave, visual._warp = "led_matrix", "thirds_vortex"
+    visual.adjust({"change_beats": float(every)})
+    for _ in range(12):
+        visual._step(1)
+    assert len(painter.looks) == changes
+    assert all(wave in _names("waveforms") | _names("lines") and warp in _names("warps")
+               for wave, warp in painter.looks)
+    assert all(a != b for a, b in zip([("led_matrix", "thirds_vortex"), *painter.looks],
+                                      painter.looks, strict=False))
+
+
+@pytest.mark.parametrize("name", ["", "../presets/groovy_lamp.json", "/etc/passwd",
+                                  "groovy_lamp", "no_such_preset.json"])
+def test_a_preset_is_one_of_its_own_files_or_nothing(name: str) -> None:
+    from trcc.adapters.visual.karmaviz import KarmaViz
+
+    assert KarmaViz.preset(Path(), name) is None
+
+
+def test_the_presets_are_its_own_whatever_the_folder(tmp_path: Path) -> None:
+    from trcc.adapters.visual.karmaviz import KarmaViz
+
+    (tmp_path / "mine.json").write_text("{}")
+    listed = KarmaViz.presets(tmp_path)
+    assert (len(listed), listed[0], "mine.json" in listed) == (19, "cosmic_weedwhacker.json",
+                                                               False)
+    assert KarmaViz.preset(tmp_path, "groovy_lamp.json") == DATA / "presets" / "groovy_lamp.json"
+
+
+def test_the_sliders() -> None:
+    from trcc.adapters.visual.karmaviz import KarmaViz
+
+    visual = KarmaViz()
+    visual.adjust({"speed": 2.0, "warp": 0.5, "beat_sensitivity": 3.0, "change_beats": 7.6})
+    assert (visual._speed, visual._warp_scale, visual._ear.sensitivity,
+            visual._change_beats) == (2.0, 0.5, 3.0, 8)
+    visual.adjust({})
+    assert (visual._speed, visual._warp_scale, visual._ear.sensitivity,
+            visual._change_beats) == (1.0, 1.0, 1.5, 0)
+
+
+def test_the_frame_carries_the_waveform_and_warp_it_was_asked_for() -> None:
+    """Without the warp the frame still compiles and draws -- its dispatcher
+    falls back to no warp -- so only this can tell."""
+    from trcc.adapters.visual._karmaviz_gl import frame_source
+
+    warp = (GLSL / "warps" / "spiral.glsl").read_text(encoding="utf-8")
+    line = (GLSL / "lines" / "sine_wave.glsl").read_text(encoding="utf-8")
+    warped = frame_source("sine_wave", "spiral")
+    assert (warp in warped, line in warped, "return get_pattern(pos, t);" in warped) == (
+        True, True, True)
+    assert "get_pattern" not in frame_source("sine_wave", None)

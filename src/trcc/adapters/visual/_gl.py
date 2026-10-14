@@ -59,8 +59,10 @@ GL_TEXTURE_2D, GL_TEXTURE0 = 0x0DE1, 0x84C0
 GL_TEXTURE_MIN_FILTER, GL_TEXTURE_MAG_FILTER = 0x2801, 0x2800
 GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T = 0x2802, 0x2803
 GL_NEAREST, GL_LINEAR, GL_CLAMP_TO_EDGE = 0x2600, 0x2601, 0x812F
+GL_REPEAT = 0x2901
 GL_ARRAY_BUFFER, GL_STREAM_DRAW = 0x8892, 0x88E0
 GL_FRAMEBUFFER, GL_READ_FRAMEBUFFER = 0x8D40, 0x8CA8
+GL_DRAW_FRAMEBUFFER = 0x8CA9
 GL_RENDERBUFFER, GL_COLOR_ATTACHMENT0 = 0x8D41, 0x8CE0
 GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_COMPLETE = 0x8D00, 0x8CD5
 GL_PACK_ALIGNMENT, GL_UNPACK_ALIGNMENT = 0x0D05, 0x0CF5
@@ -129,6 +131,8 @@ _PROTOTYPES: dict[str, tuple[Any, ...]] = {
     "glBindFramebuffer": (None, c_uint, c_uint),
     "glFramebufferTexture2D": (None, c_uint, c_uint, c_uint, c_uint, c_int),
     "glCheckFramebufferStatus": (c_uint, c_uint),
+    "glBlitFramebuffer": (None, c_int, c_int, c_int, c_int, c_int, c_int,
+                          c_int, c_int, c_uint, c_uint),
     "glDeleteFramebuffers": (None, c_int, _UINTS),
     "glGenRenderbuffers": (None, c_int, _UINTS),
     "glBindRenderbuffer": (None, c_uint, c_uint),

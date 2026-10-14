@@ -16,6 +16,9 @@ it -- and writes:
       ``waveform_value_at()``.  A file is factored only when its opening and
       ending match the skeleton exactly, and the entry is proven to put the
       original back together.
+* ``frame_fragment.glsl`` -- KarmaViz's frame shader (``shaders/shaders.py``),
+  ported: no mouse and no click effects (a panel has no pointer), our quad's
+  ``v_uv`` in and ``FRAG_COLOUR`` out, its ``#version`` left to ``program()``.
 * ``src/trcc/assets/karmaviz/`` -- ``palettes/``, ``presets/`` (KarmaViz's
   own, decoded from gzipped JSON; its loader can also ``pickle.loads`` a
   preset, so that loader is never ported), its ``LICENSE`` and a ``NOTICE``
@@ -273,6 +276,59 @@ def write_shaders(chosen: dict[tuple[bool, str], Shader], commit: str,
     return counts
 
 
+#: The frame shader, ported: (KarmaViz's text, ours) -- each must match once.
+PORT = (
+    ("#version 330\n", ""),
+    ("uniform vec2 mouse_position;  // Add mouse position uniform\n", ""),
+    ("uniform bool mouse_enabled;  // Add mouse interaction toggle\n", ""),
+    ("uniform float mouse_intensity;  // Add mouse interaction intensity\n", ""),
+    ("uniform float[20] shockwave_data;  // Shockwave data: [x,y,age,intensity] * 5\n", ""),
+    ("uniform float[20] ripple_data;     // Ripple data: [x,y,age,intensity] * 5\n", ""),
+    ("in vec2 uv;\nout vec4 fragColor;\n", "in vec2 v_uv;\n"),
+    ("    vec2 pos = uv;", "    vec2 pos = v_uv;"),
+    ("    // Add mouse glow effect only if enabled\n    if (mouse_enabled) {\n"
+     "        float mouse_glow = mouse_influence * 0.005;\n"
+     "        color.rgb += vec3(mouse_glow);\n    }\n\n", ""),
+    ("    fragColor = vec4(color.rgb, trail_alpha);",
+     "    FRAG_COLOUR = vec4(color.rgb, trail_alpha);"),
+)
+#: Whole stretches with no use on a panel: the click effects' two functions,
+#: and main()'s mouse and click block.
+PORT_CUT = (
+    (r"// Function to calculate shockwave displacement\n.*?(?=void main\(\) \{)", ""),
+    (r"    // Store original position for mouse calculations \(after rotation\)\n"
+     r".*?    pos \+= apply_ripples\(pos\);\n\n", ""),
+)
+
+
+def port_frame(root: Path, commit: str) -> None:
+    """KarmaViz's frame shader, ported -- see ``PORT`` and ``PORT_CUT``."""
+    text = (root / "shaders" / "shaders.py").read_text(encoding="utf-8")
+    found = re.search(r'FRAGMENT_SHADER = """//glsl\n(.*?)"""', text, re.DOTALL)
+    if found is None:
+        raise ValueError("KarmaViz's shaders.py has no FRAGMENT_SHADER")
+    frame = found.group(1)
+    for theirs, ours in PORT:
+        if frame.count(theirs) != 1:
+            raise ValueError(f"the frame shader changed: {theirs[:50]!r}")
+        frame = frame.replace(theirs, ours)
+    for pattern, ours in PORT_CUT:
+        frame, n = re.subn(pattern, ours, frame, flags=re.DOTALL)
+        if n != 1:
+            raise ValueError(f"the frame shader changed: {pattern[:50]!r}")
+    for gone in ("mouse", "shockwave", "ripple_data", "fragColor", " uv;", "#version"):
+        if gone in frame:
+            raise ValueError(f"the port left {gone!r} in the frame shader")
+    (OUT / "frame_fragment.glsl").write_text(
+        "// KarmaViz's frame shader: the last frame, warped, mirrored and\n"
+        "// faded, with the waveform drawn on it.  The placeholders are filled\n"
+        "// by adapters/visual/karmaviz.py.\n"
+        f"// From KarmaViz {commit} shaders/shaders.py, MIT (c) 2025 Jason\n"
+        "// Swint: see assets/karmaviz/LICENSE.  Changed: no mouse, no click\n"
+        "// effects (shockwaves, ripples); v_uv in, FRAG_COLOUR out.\n"
+        + frame.rstrip("\n") + "\n", encoding="utf-8")
+
+
 def write_data(root: Path, names: set[tuple[bool, str]], commit: str,
                notes: list[str]) -> tuple[int, int]:
     """Palettes verbatim; KarmaViz's own presets decoded; the licence; a NOTICE."""
@@ -341,6 +397,7 @@ def main() -> int:
     try:
         chosen, notes = choose(shaders, compiler)
         counts = write_shaders(chosen, commit, compiler)
+        port_frame(root, commit)
     finally:
         compiler.close()
     palettes, presets = write_data(root, set(chosen), commit, notes)

@@ -51,12 +51,12 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Paths`](#paths) | 4 | 11 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
-| [`BaseVisual`](#basevisual) | 5 | 0 | 14 |
+| [`BaseVisual`](#basevisual) | 5 | 0 | 15 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
-| [`GlVisual`](#glvisual) | 5 | 0 | 1 |
+| [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
-| [`VisualEngine`](#visualengine) | 5 | 0 | 14 |
+| [`VisualEngine`](#visualengine) | 5 | 0 | 15 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
@@ -756,7 +756,7 @@ open(spec: 'VisualSpec') -> None
 render() -> RawFrame
 ```
 
-**Implementations (14):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `MilkdropVisual` · `TrccPipes`
+**Implementations (15):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `KarmaViz` · `MilkdropVisual` · `TrccPipes`
 
 ## BulkTransport
 
@@ -792,7 +792,7 @@ open(spec: 'VisualSpec') -> None
 render() -> RawFrame
 ```
 
-**Implementations (1):** `TrccPipes`
+**Implementations (2):** `KarmaViz` · `TrccPipes`
 
 ## RamLights
 
@@ -846,7 +846,7 @@ open(spec: 'VisualSpec') -> None
 render() -> RawFrame
 ```
 
-**Implementations (14):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `MilkdropVisual` · `TrccPipes`
+**Implementations (15):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `KarmaViz` · `MilkdropVisual` · `TrccPipes`
 
 ## AutostartManager
 

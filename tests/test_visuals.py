@@ -113,7 +113,8 @@ def test_milkdrop_is_offered_only_where_projectm_can_draw(
     monkeypatch.setattr(projectm_module, "EglSurface", _FakeSurface)
     kinds = [info.kind for info in catalog()
              if not info.kind.startswith("cavalier-")]
-    assert kinds == (["trcc-pipes", "milkdrop"] if offered else ["trcc-pipes"])
+    assert kinds == (["trcc-pipes", "karmaviz", "milkdrop"] if offered
+                     else ["trcc-pipes", "karmaviz"])
     assert lib.destroyed == (1 if offered else 0)
 
 
@@ -264,15 +265,21 @@ def _preset(app: App, name: str = "Fractal/one.milk") -> str:
     return name
 
 
+#: KarmaViz's presets ship with TRCC: whatever the user's visuals folder holds.
+_KARMAVIZ_PRESETS = tuple(sorted(
+    p.name for p in (Path(__file__).resolve().parents[1]
+                     / "src/trcc/assets/karmaviz/presets").glob("*.json")))
+
+
 def test_the_gallery_lists_every_visual_and_the_preset_files(app: App) -> None:
     _preset(app)
     listed = app.dispatch(ListVisuals())
     kinds = [v.kind for v in listed.visuals]
-    assert (kinds[0], kinds[-1], len(kinds)) == ("trcc-pipes", "milkdrop", 13)
+    assert (kinds[0], kinds[-1], len(kinds)) == ("trcc-pipes", "milkdrop", 14)
     assert [a.name for a in listed.visuals[0].adjustments] == [
         "growth", "thickness", "center_size"]       # Fire is the picture's
     assert [(v.kind, v.presets) for v in listed.visuals if v.presets] == [
-        ("milkdrop", ("Fractal/one.milk",))]
+        ("karmaviz", _KARMAVIZ_PRESETS), ("milkdrop", ("Fractal/one.milk",))]
 
 
 def test_each_visual_lists_only_its_own_presets(
@@ -307,6 +314,7 @@ def test_each_visual_lists_only_its_own_presets(
     listed = app.dispatch(ListVisuals())
 
     assert [(v.kind, v.presets) for v in listed.visuals if v.uses_presets] == [
+        ("karmaviz", _KARMAVIZ_PRESETS),
         ("milkdrop", ("Fractal/one.milk",)),
         ("second", ("built-in/one.json", "built-in/two.json"))]
     assert all(v.presets == () for v in listed.visuals if not v.uses_presets)
@@ -699,7 +707,13 @@ class _Silence(ScriptedSound):
                                                 (ScriptedSound, True)])
 def test_the_reader_knows_silence_from_sound(
         monkeypatch: pytest.MonkeyPatch, sound: type, hearing: bool) -> None:
-    """The real reader: silence is how a blocked capture looks on every OS."""
+    """The real reader: silence is how a blocked capture looks on every OS.
+
+    Waited for, not slept on: the reader is a thread drawing on OpenGL, and
+    under a busy machine (the suite's other GL tests) a fixed 0.6 s let a
+    late read look like 0.3 s of silence -- 2 failures in 3 runs.  A reader
+    that never hears, or never notices silence, still fails at the deadline.
+    """
     from trcc.services import visual_stream
     from trcc.services.visual_stream import VisualReader
 
@@ -707,6 +721,9 @@ def test_the_reader_knows_silence_from_sound(
     reader = VisualReader(VisualSpec("trcc-pipes", 32, 32), sound, TrccPipes)
     try:
         time.sleep(0.6)
+        deadline = time.monotonic() + 5.0
+        while reader.hearing is not hearing and time.monotonic() < deadline:
+            time.sleep(0.05)
         assert reader.hearing is hearing
     finally:
         reader.close()
