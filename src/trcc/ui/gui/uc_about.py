@@ -212,15 +212,9 @@ class UCAbout(BasePanel):
         self._setup_ui()
         self._apply_localized_background()
 
-    def _apply_localized_background(self):
-        """Set background image (no tiling)."""
-        set_background_pixmap(self, Assets.ABOUT_BG)
-
-    def _setup_ui(self):
-        """Build UI with invisible click targets over background image text."""
-        log.debug("UCAbout._setup_ui")
-        # The top bar: "Control Center", and About beside it (the About page).
-        # Built first, so the close button stays on top of it.
+    def _setup_title_bar(self) -> None:
+        """The top bar: "Control Center", and About beside it (the About page)."""
+        log.debug("UCAbout._setup_title_bar")
         bar = QFrame(self)
         bar.setObjectName("titleBar")
         bar.setGeometry(TITLE_BAR)
@@ -242,6 +236,16 @@ class UCAbout(BasePanel):
         row.addWidget(self.title_label)
         row.addWidget(self.about_link)
         row.addStretch(1)
+
+    def _apply_localized_background(self):
+        """Set background image (no tiling)."""
+        set_background_pixmap(self, Assets.ABOUT_BG)
+
+    def _setup_ui(self):
+        """Build UI with invisible click targets over background image text."""
+        log.debug("UCAbout._setup_ui")
+        # Built first, so the close button stays on top of it.
+        self._setup_title_bar()
 
         # Close / logout button (top-right)
         self.close_btn = create_image_button(

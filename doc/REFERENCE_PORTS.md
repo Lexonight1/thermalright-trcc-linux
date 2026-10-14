@@ -48,7 +48,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
-| [`Paths`](#paths) | 4 | 11 | 5 |
+| [`Paths`](#paths) | 4 | 12 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 15 |
@@ -63,7 +63,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 6 | 8 |
-| [`ContentStore`](#contentstore) | 27 | 0 | 1 |
+| [`ContentStore`](#contentstore) | 29 | 0 | 1 |
 
 ---
 
@@ -700,7 +700,7 @@ log_file() -> Path
 user_content_dir() -> Path
 ```
 
-**You inherit (11):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_screencast_dir` · `user_theme_dir` · `visuals_dir`
+**You inherit (12):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_screencast_dir` · `user_theme_dir` · `user_visual_background_dir` · `visuals_dir`
 
 **Implementations (5):** `BSDPaths` · `BasePaths` · `LinuxPaths` · `MacOSPaths` · `WindowsPaths`
 
@@ -1022,7 +1022,7 @@ worker_thread_context() -> AbstractContextManager[None]
 
 Where themes, masks, backgrounds and capture configs are kept.
 
-**You implement (27):**
+**You implement (29):**
 
 ```python
 background_path(theme: 'Theme') -> Path | None
@@ -1048,8 +1048,10 @@ store_background(data: 'bytes', ext: 'str', width: 'int', height: 'int') -> str
 store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None, name: 'str | None' = None) -> str
 store_media_player(uri: 'str') -> str
 store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
+store_visual(visual: 'str', preset: 'str', settings: 'Mapping[str, float]') -> str
 tile_path(theme_dir: 'Path') -> Path | None
 video_path(theme: 'Theme') -> Path | None
+visual(theme: 'Theme') -> tuple[str, str, dict[str, float]] | None
 write_manifest(theme_dir: 'Path', manifest: 'dict') -> Path
 write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 ```

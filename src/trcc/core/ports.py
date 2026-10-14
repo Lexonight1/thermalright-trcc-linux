@@ -1482,6 +1482,13 @@ class Paths(ABC):
         log.debug("user_media_player_dir")
         return self.user_data_dir() / "media_player"
 
+    def user_visual_background_dir(self) -> Path:
+        """User audio-visual backgrounds (which visual, its preset and its
+        sliders) that a saved theme's ``background`` references.  Not
+        resolution-keyed -- a visual draws at the panel's size."""
+        log.debug("user_visual_background_dir")
+        return self.user_data_dir() / "visual_background"
+
 
 # =========================================================================
 # ContentStore — the filesystem port
@@ -1611,6 +1618,13 @@ class ContentStore(ABC):
         """Store a media-player source URI; return its ref.  The URI may be a
         local path or a URL/stream — it is stored verbatim."""
 
+    @abstractmethod
+    def store_visual(self, visual: str, preset: str,
+                     settings: Mapping[str, float]) -> str:
+        """Store an audio-visual background -- which visual, its preset and
+        its sliders -- as JSON; return the ref a theme's ``background``
+        carries."""
+
     # ── Readers ───────────────────────────────────────────────────────
 
     @abstractmethod
@@ -1674,6 +1688,11 @@ class ContentStore(ABC):
     @abstractmethod
     def media_player_uri(self, theme: Theme) -> str | None:
         """Resolve *theme*'s media-player ref → its source URI."""
+
+    @abstractmethod
+    def visual(self, theme: Theme) -> tuple[str, str, dict[str, float]] | None:
+        """*theme*'s background as an audio visual -- ``(visual, preset,
+        sliders)`` -- or None when its background is not one."""
 
     @abstractmethod
     def background_path(self, theme: Theme) -> Path | None:

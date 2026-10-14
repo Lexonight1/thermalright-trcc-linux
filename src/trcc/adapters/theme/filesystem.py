@@ -37,7 +37,7 @@ import logging
 import shutil
 import tempfile
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,6 +63,9 @@ if TYPE_CHECKING:
 
 
 log = logging.getLogger(__name__)
+#: The library folder -- and a theme ``background`` ref's prefix -- for an
+#: audio visual: a background drawn from what is playing, not a file.
+_VISUAL_BACKGROUND = "visual_background"
 #: ``video_path`` is asked once per frame by the background resolver.
 frame_log = per_frame(__name__)
 
@@ -393,106 +396,119 @@ class FileContentStore(ContentStore):
         log.debug("resolve_ref: %r", ref)
         return self._resolve_asset_ref(ref)
 
-    def store_screencast(
-        self, region: tuple[int, int, int, int, bool],
-    ) -> str:
-        """Store a screencast region config in the user library; return its ref.
-
-        Writes ``{x, y, w, h, audio}`` as JSON to
-        ``user_screencast_dir()/<id>/config.json`` (``<id>`` = content hash, so
-        identical regions dedup) and returns the ref ``screencast/<id>`` that
-        :meth:`screencast_region` resolves back through ``_resolve_asset_ref``.
-        A screencast is a live capture, so it is not resolution-keyed.
-        """
-        if self._paths is None:
-            raise RuntimeError("store_screencast requires paths injection")
-        x, y, w, h, audio = region
-        blob = json.dumps(
-            {"x": x, "y": y, "w": w, "h": h, "audio": bool(audio)},
-            sort_keys=True,
-        ).encode("utf-8")
+    def _store_config(self, folder: Path, payload: dict) -> str:
+        """Write *payload* as ``folder/<id>/config.json`` -- ``<id>`` its
+        content hash, so identical configs dedup -- and return the ref
+        (``<folder name>/<id>``) that :meth:`_read_config` resolves back."""
+        blob = json.dumps(payload, sort_keys=True).encode("utf-8")
         asset_id = self._content_id(blob)
-        dest_dir = self._paths.user_screencast_dir() / asset_id
-        ref = f"screencast/{asset_id}"
+        dest_dir = folder / asset_id
+        ref = f"{folder.name}/{asset_id}"
         cfg = ThemeDir(dest_dir).legacy_json
         if cfg.exists():
-            log.info("store_screencast: dedup hit %s → %s", asset_id, dest_dir)
+            log.info("_store_config: dedup hit %s", ref)
             return ref
         dest_dir.mkdir(parents=True, exist_ok=True)
         cfg.write_bytes(blob)
-        log.info("store_screencast: wrote %s → %s (ref=%s)",
-                 region, dest_dir, ref)
+        log.info("_store_config: wrote %s -> %s", payload, ref)
         return ref
+
+    def _read_config(self, theme: Theme, field: str, folder: str) -> dict | None:
+        """The config a :meth:`_store_config` ref in *theme*'s *field* names,
+        when it points into *folder* -- else None, and a bad one is said."""
+        ref = theme.config.get(field)
+        if not (isinstance(ref, str) and ref.startswith(f"{folder}/")):
+            return None
+        resolved = self._resolve_asset_ref(ref)
+        if resolved is None:
+            log.warning("_read_config: %s %s ref %r did not resolve",
+                        theme.name, field, ref)
+            return None
+        cfg = ThemeDir(resolved).legacy_json if resolved.is_dir() else resolved
+        try:
+            data = json.loads(cfg.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            log.warning("_read_config: bad config %s (%s)", cfg, e)
+            return None
+        log.debug("_read_config: %s %s -> %s", theme.name, field, data)
+        return data if isinstance(data, dict) else None
+
+    def _paths_for(self, writer: str) -> Paths:
+        if self._paths is None:
+            raise RuntimeError(f"{writer} requires paths injection")
+        log.debug("_paths_for: %s", writer)
+        return self._paths
+
+    def store_screencast(
+        self, region: tuple[int, int, int, int, bool],
+    ) -> str:
+        """Store a screencast region config ``{x, y, w, h, audio}`` in the
+        user library; return its ``screencast/<id>`` ref.  A screencast is a
+        live capture, so it is not resolution-keyed."""
+        x, y, w, h, audio = region
+        log.info("store_screencast: %s", region)
+        return self._store_config(
+            self._paths_for("store_screencast").user_screencast_dir(),
+            {"x": x, "y": y, "w": w, "h": h, "audio": bool(audio)})
 
     def screencast_region(
         self, theme: Theme,
     ) -> tuple[int, int, int, int, bool] | None:
         """Resolve a theme's ``screencast`` ref → (x, y, w, h, audio), or None.
-
-        Reads the ``config.json`` written by :meth:`store_screencast`.  Used by
-        LoadTheme to resume a saved screencast.
-        """
-        ref = theme.config.get("screencast")
-        if not (isinstance(ref, str) and ref):
+        Used by LoadTheme to resume a saved screencast."""
+        d = self._read_config(theme, "screencast", "screencast")
+        if d is None:
             return None
-        resolved = self._resolve_asset_ref(ref)
-        if resolved is None:
-            log.warning("screencast_region: %s ref %r did not resolve",
-                        theme.name, ref)
-            return None
-        cfg = ThemeDir(resolved).legacy_json if resolved.is_dir() else resolved
         try:
-            d = json.loads(cfg.read_text(encoding="utf-8"))
             return (int(d["x"]), int(d["y"]), int(d["w"]),
                     int(d["h"]), bool(d["audio"]))
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            log.warning("screencast_region: bad config %s (%s)", cfg, e)
+        except (ValueError, KeyError, TypeError) as e:
+            log.warning("screencast_region: %s bad config %s (%s)", theme.name, d, e)
             return None
 
     def store_media_player(self, uri: str) -> str:
-        """Store a media-player source URI in the user library; return its ref.
-
-        Writes ``{uri}`` as JSON to ``user_media_player_dir()/<id>/config.json``
-        (``<id>`` = content hash, so identical sources dedup) and returns the
-        ref ``media_player/<id>`` that :meth:`media_player_uri` resolves back.
-        The URI may be a local path or a URL/stream — it is stored verbatim.
-        """
-        if self._paths is None:
-            raise RuntimeError("store_media_player requires paths injection")
-        blob = json.dumps({"uri": uri}, sort_keys=True).encode("utf-8")
-        asset_id = self._content_id(blob)
-        dest_dir = self._paths.user_media_player_dir() / asset_id
-        ref = f"media_player/{asset_id}"
-        cfg = ThemeDir(dest_dir).legacy_json
-        if cfg.exists():
-            log.info("store_media_player: dedup hit %s → %s", asset_id, dest_dir)
-            return ref
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        cfg.write_bytes(blob)
-        log.info("store_media_player: wrote %r → %s (ref=%s)", uri, dest_dir, ref)
-        return ref
+        """Store a media-player source URI -- a local path or a URL/stream,
+        verbatim -- in the user library; return its ``media_player/<id>`` ref."""
+        log.info("store_media_player: %r", uri)
+        return self._store_config(
+            self._paths_for("store_media_player").user_media_player_dir(),
+            {"uri": uri})
 
     def media_player_uri(self, theme: Theme) -> str | None:
         """Resolve a theme's ``media_player`` ref → its source URI, or None.
+        Used by LoadTheme to resume a saved media-player source."""
+        d = self._read_config(theme, "media_player", "media_player")
+        uri = d.get("uri") if d is not None else None
+        log.debug("media_player_uri: %s -> %r", theme.name, uri)
+        return str(uri) if uri else None
 
-        Reads the ``config.json`` written by :meth:`store_media_player`.  Used
-        by LoadTheme to resume a saved media-player source.
-        """
-        ref = theme.config.get("media_player")
-        if not (isinstance(ref, str) and ref):
+    def store_visual(self, visual: str, preset: str,
+                     settings: Mapping[str, float]) -> str:
+        """Store an audio-visual background -- ``{visual, preset, settings}``
+        -- in the user library; return the ``visual_background/<id>`` ref a
+        theme's ``background`` carries."""
+        log.info("store_visual: %s %r %s", visual, preset, dict(settings))
+        return self._store_config(
+            self._paths_for("store_visual").user_visual_background_dir(),
+            {"visual": visual, "preset": preset, "settings": dict(settings)})
+
+    def visual(self, theme: Theme) -> tuple[str, str, dict[str, float]] | None:
+        """*theme*'s background as an audio visual -- ``(visual, preset,
+        sliders)`` -- or None.  A malformed one is None, and said."""
+        d = self._read_config(theme, "background", _VISUAL_BACKGROUND)
+        if d is None:
             return None
-        resolved = self._resolve_asset_ref(ref)
-        if resolved is None:
-            log.warning("media_player_uri: %s ref %r did not resolve",
-                        theme.name, ref)
-            return None
-        cfg = ThemeDir(resolved).legacy_json if resolved.is_dir() else resolved
         try:
-            uri = json.loads(cfg.read_text(encoding="utf-8"))["uri"]
-            return str(uri) if uri else None
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            log.warning("media_player_uri: bad config %s (%s)", cfg, e)
+            visual, preset = d["visual"], d.get("preset", "")
+            sliders = {str(k): float(v) for k, v in d.get("settings", {}).items()}
+            if not (isinstance(visual, str) and visual and isinstance(preset, str)):
+                raise TypeError(f"visual={visual!r} preset={preset!r}")
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            log.warning("visual: %s has a malformed visual background %s (%s)",
+                        theme.name, d, e)
             return None
+        log.debug("visual: %s -> %s %r %s", theme.name, visual, preset, sliders)
+        return visual, preset, sliders
 
     def load(self, path: Path) -> Theme:
         """Load a theme directory into a Theme dataclass.
@@ -680,6 +696,10 @@ class FileContentStore(ContentStore):
         ship the thumbnail to the device).
         """
         ref = theme.config.get("background")
+        if isinstance(ref, str) and ref.startswith(f"{_VISUAL_BACKGROUND}/"):
+            log.debug("background_path: %s → an audio visual (%s), no file",
+                      theme.name, ref)
+            return None
         if isinstance(ref, str) and ref:
             resolved = self._resolve_asset_ref(ref)
             if resolved is not None:

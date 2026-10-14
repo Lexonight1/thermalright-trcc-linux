@@ -88,6 +88,7 @@ from .device import (
     StartScreencast,
     StopScreencast,
     StopVideo,
+    _publish_background,
 )
 
 if TYPE_CHECKING:
@@ -254,6 +255,16 @@ class LoadTheme(Command[ThemeResult]):
                 "in place, not stopping it first",
                 theme.name, video_path.name,
             )
+        # An audio visual is a background like a picture or a video: a theme
+        # picked without one ends the one playing, and a restart does not bring
+        # it back over the theme.  Its driver ends itself within a tick.
+        visual = app.themes.visual(theme)
+        if (self.reset_overrides and visual is None
+                and app.settings.for_device(self.key).visual is not None):
+            log.info("LoadTheme: %s has no audio visual — ending the one "
+                     "playing", theme.name)
+            app.settings.set_visual(self.key, None)
+            _publish_background(app, self.key)
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
             "LoadTheme: %s loaded — prior playback + cloud-bg override "
@@ -489,6 +500,24 @@ class LoadTheme(Command[ThemeResult]):
             log.info("LoadTheme: %s carries a media-player source %r — "
                      "dispatching SetMediaPlayer", theme.name, media_uri)
             app.dispatch(SetMediaPlayer(key=self.key, uri=media_uri))
+
+        # Visual-backed theme: its background is the audio visual, the mask and
+        # metrics drawn on top.  Picked, it plays; on a restore the device's
+        # own choice stands (``RestoreDeviceState`` resumes it).  A visual this
+        # computer cannot play leaves the mask and metrics, and says why.
+        if visual is not None and self.reset_overrides:
+            from .visual import PlayVisual
+            kind, preset, sliders = visual
+            log.info("LoadTheme: %s has the audio visual %s %r — dispatching "
+                     "PlayVisual", theme.name, kind, preset)
+            played = app.dispatch(PlayVisual(key=self.key, visual=kind,
+                                             preset=preset, settings=sliders))
+            if played.ok:
+                return self._loaded(
+                    theme, theme_path_str, ok=True,
+                    message=f"Theme '{theme.name}' loaded — {played.message}")
+            log.warning("LoadTheme: %s's audio visual cannot play (%s) — "
+                        "showing the theme without it", theme.name, played.message)
 
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
         # PlayVideo pipeline so the same VideoStarted event fires for
@@ -855,7 +884,11 @@ class SaveTheme(Command[ThemeResult]):
         """
         manifest = self._live_manifest(app, theme, s, self.name,
                                        width, height)
-        bg_ref = self._store_background(app, theme, s, width, height)
+        # The background is one thing: a picture, a video -- or an audio
+        # visual, its settings in its own JSON like any library asset.
+        bg_ref = (app.themes.store_visual(s.visual, s.visual_preset,
+                                          s.visual_settings) if s.visual
+                  else self._store_background(app, theme, s, width, height))
         if bg_ref is not None:
             manifest["background"] = bg_ref
         mask_ref = self._store_mask(app, theme, s, width, height)

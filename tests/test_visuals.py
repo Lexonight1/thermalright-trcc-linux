@@ -9,6 +9,7 @@ would -- Mesa's software one in CI.
 """
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterator
 from itertools import pairwise
@@ -32,8 +33,10 @@ from trcc.core.commands import (
     ConnectDevice,
     LcdSnapshot,
     ListVisuals,
+    LoadTheme,
     PlayVisual,
     RestoreDeviceState,
+    SaveTheme,
     SetMediaPlayer,
     SetVisualCenter,
     SetVisualPicture,
@@ -41,7 +44,7 @@ from trcc.core.commands import (
     StopVisual,
     VisualTile,
 )
-from trcc.core.events import ErrorOccurred
+from trcc.core.events import BackgroundChanged, ErrorOccurred
 from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
 from trcc.core.ports import CaptureNotReady
 from trcc.services.media import MediaService
@@ -1036,3 +1039,94 @@ def test_the_api_switches_the_picture(app: App, tmp_path: Path) -> None:
         False, 0.5)
     assert client.post("/display/visual-picture",
                        json={"fire": 2.0}).status_code == 422
+
+
+# ── A visual is a theme's background ─────────────────────────────────
+
+def _theme(root: Path, name: str) -> Path:
+    """A plain theme folder: a picture background, no visual."""
+    folder = root / "themes" / name
+    folder.mkdir(parents=True)
+    (folder / "trcc.json").write_text(json.dumps(
+        {"name": name, "width": 320, "height": 320, "elements": []}))
+    picture = QImage(320, 320, QImage.Format.Format_RGB888)
+    picture.fill(0x336699)
+    picture.save(str(folder / "00.png"))
+    return folder
+
+
+def test_a_saved_theme_keeps_its_visual_and_plays_it_when_picked(
+        app: App, tmp_path: Path) -> None:
+    """The visual IS the saved theme's background: ``background`` names its
+    JSON -- which visual, its preset, its sliders.  Picked again, it plays,
+    the mask and metrics on top as over any background."""
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Start"))).ok
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes", settings={"growth": 2.0}))
+    saved = app.dispatch(SaveTheme(key=_KEY, name="Viz"))
+    manifest = json.loads((Path(saved.theme_path) / "trcc.json").read_text())
+    ref = manifest["background"]
+    assert (ref.split("/")[0], "visual" in manifest) == ("visual_background", False)
+    stored = app.platform.paths().user_data_dir() / ref / "config.json"
+    assert json.loads(stored.read_text()) == {
+        "visual": "trcc-pipes", "preset": "", "settings": {"growth": 2.0}}
+    assert _reader(app).spec.kind == "trcc-pipes"           # saving kept it on
+
+    app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Plain")))
+    assert _reader(app) is None
+    assert app.dispatch(LoadTheme(key=_KEY, path=Path(saved.theme_path))).ok
+    assert (_reader(app).spec.kind, dict(_reader(app).spec.settings)) == (
+        "trcc-pipes", {"growth": 2.0})
+    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "visual"
+
+
+def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
+        app: App, tmp_path: Path) -> None:
+    """The panel shows what was picked last.  MUTATION CHECK: drop the
+    ``set_visual(None)`` in LoadTheme -- the visual came back at restart."""
+    heard: list[str] = []
+    app.events.subscribe(BackgroundChanged, lambda e: heard.append(e.key))
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    heard.clear()
+    app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Plain")))
+    assert app.settings.for_device(_KEY).visual is None
+    assert _KEY in heard                                    # every UI hears
+    app.media.close_visual(_KEY)                            # what a restart leaves
+    assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
+    assert _reader(app) is None
+
+
+def _visual_theme(app: App, root: Path, payload: object) -> Path:
+    """A theme whose background is a visual JSON holding *payload*."""
+    folder = _theme(root, "Visual")
+    stored = app.platform.paths().user_visual_background_dir() / "x"
+    stored.mkdir(parents=True)
+    (stored / "config.json").write_text(json.dumps(payload))
+    manifest = json.loads((folder / "trcc.json").read_text())
+    manifest["background"] = "visual_background/x"
+    (folder / "trcc.json").write_text(json.dumps(manifest))
+    (folder / "00.png").unlink()
+    return folder
+
+
+def test_a_visual_this_computer_cannot_play_leaves_the_theme_without_it(
+        app: App, tmp_path: Path) -> None:
+    folder = _visual_theme(app, tmp_path, {"visual": "no-such-visual"})
+    assert app.dispatch(LoadTheme(key=_KEY, path=folder)).ok
+    assert _reader(app) is None
+
+
+@pytest.mark.parametrize(("payload", "expected"), [
+    ({"visual": "milkdrop", "preset": "a/b.milk", "settings": {"x": 1}},
+     ("milkdrop", "a/b.milk", {"x": 1.0})),
+    ({"visual": "trcc-pipes"}, ("trcc-pipes", "", {})),
+    ({"visual": ""}, None),
+    ({"preset": "a.milk"}, None),
+    ({"visual": "trcc-pipes", "settings": {"x": "loud"}}, None),
+    ("trcc-pipes", None),
+])
+def test_a_visual_background_is_read_or_refused(
+        app: App, tmp_path: Path, payload: object, expected: object) -> None:
+    folder = _visual_theme(app, tmp_path, payload)
+    theme = app.themes.load(folder)
+    assert (app.themes.visual(theme), app.themes.background_path(theme)) == (
+        expected, None)                                     # drawn, never a file
