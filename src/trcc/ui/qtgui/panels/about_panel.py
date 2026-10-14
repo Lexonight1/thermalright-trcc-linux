@@ -9,7 +9,7 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QLabel, QVBoxLayout
+from PySide6.QtWidgets import QLabel, QTextBrowser, QVBoxLayout
 
 from ..base import BasePanel
 
@@ -63,16 +63,27 @@ class AboutPanel(BasePanel):
 
         # About: the open-source work TRCC is built on -- core.credits, the
         # list every UI shows.
-        from ....core.credits import CREDITS
-        thanks = QLabel("Thanks to open source", self)
-        thanks.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addSpacing(16)
-        layout.addWidget(thanks)
-        self._credits = QLabel("\n".join(c.line for c in CREDITS), self)
-        self._credits.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._credits.setWordWrap(True)
-        layout.addWidget(self._credits)
-        log.info("AboutPanel: %d credit(s)", len(CREDITS))
+        import html
+
+        from ....core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES
+        parts = ["<h3>Inspired by</h3>"]
+        parts += [f"<p><b>{html.escape(p.name)}</b> &mdash; {html.escape(p.did)}</p>"
+                  for p in INSPIRATIONS]
+        parts += [f"<p>{html.escape(WHAT_TRCC_DOES)}</p>", f"<h2>{html.escape(WE_LOVE)}</h2>"]
+        for title, credits in GROUPS:
+            parts.append(f"<h3>{html.escape(title)}</h3>")
+            for c in credits:
+                licence = html.escape(c.licence)
+                if c.licence_url and licence:
+                    licence = f"<a href='{html.escape(c.licence_url, quote=True)}'>{licence}</a>"
+                who = ", ".join(part for part in (html.escape(c.author), licence) if part)
+                used = f"<br>{html.escape(c.used_for)}" if c.used_for else ""
+                parts.append(f"<p><b>{html.escape(c.name)}</b> {who}{used}</p>")
+        self._credits = QTextBrowser(self)
+        self._credits.setOpenExternalLinks(True)
+        self._credits.setHtml("".join(parts))
+        layout.addWidget(self._credits, 6)
+        log.info("AboutPanel: %d group(s)", len(GROUPS))
 
         layout.addStretch(2)
 

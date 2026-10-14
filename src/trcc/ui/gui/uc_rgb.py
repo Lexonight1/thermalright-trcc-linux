@@ -24,6 +24,7 @@ from ...core.commands import (
     SetRamEffect,
     SetRgbFollow,
 )
+from ...core.logs import per_frame
 from ...core.models import RgbFollowMode
 from ...core.ports import CommandBus
 from ...core.results import DeviceEntry, RgbFollowResult, RgbLightsResult
@@ -41,6 +42,7 @@ from .constants import Colors, Sizes
 from .uc_ram_access import UCRamAccess
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 GOLD = "#b49653"
 ACCENT = "#d9b45a"
@@ -155,8 +157,6 @@ class UCRgb(QWidget):
 
     #: The title bar and the framed body, in this view's coordinates -- where
     #: a device page's gold bar and the settings page's frame sit.
-    TITLE_BAR = QRect(10, 20, 1254, 48)
-    BODY_FRAME = QRect(12, 98, 1250, 680)
     BODY = (50, 120, 1170, 630)
 
     def __init__(self, app: CommandBus, parent: QWidget | None = None) -> None:
@@ -169,21 +169,33 @@ class UCRgb(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         log.debug("UCRgb.paintEvent")
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(Colors.WINDOW_BG))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(GOLD))
-        p.drawRoundedRect(self.TITLE_BAR, 6, 6)
-        title = QFont()
-        title.setPixelSize(30)
-        title.setBold(True)
-        p.setFont(title)
-        p.setPen(QColor("#3a3a3a"))
-        p.drawText(self.TITLE_BAR.adjusted(20, 0, 0, 0),
-                   Qt.AlignmentFlag.AlignVCenter, "RGB Lighting")
-        p.setPen(QPen(QColor(FRAME), 3))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRoundedRect(self.BODY_FRAME, 6, 6)
-        p.end()
+        paint_page(self, "RGB Lighting")
+
+
+#: A page's gold title bar and framed body, in its own coordinates -- the
+#: RGB Lighting page's and the About page's.
+TITLE_BAR = QRect(10, 20, 1254, 48)
+BODY_FRAME = QRect(12, 98, 1250, 680)
+
+
+def paint_page(widget: QWidget, title: str) -> None:
+    """*widget*'s page: the window's colour, the gold title bar with *title*
+    on it, the framed body."""
+    frame_log.debug("paint_page: %s", title)
+    p = QPainter(widget)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.fillRect(widget.rect(), QColor(Colors.WINDOW_BG))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(GOLD))
+    p.drawRoundedRect(TITLE_BAR, 6, 6)
+    font = QFont()
+    font.setPixelSize(30)
+    font.setBold(True)
+    p.setFont(font)
+    p.setPen(QColor("#3a3a3a"))
+    p.drawText(TITLE_BAR.adjusted(20, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, title)
+    p.setPen(QPen(QColor(FRAME), 3))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(BODY_FRAME, 6, 6)
+    p.end()
 

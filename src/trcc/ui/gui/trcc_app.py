@@ -99,6 +99,7 @@ from .uc_led_control import UCLedControl
 from .uc_preview import UCPreview
 from .uc_rgb import UCRgb
 from .uc_system_info import UCSystemInfo
+from .uc_thanks import UCThanks
 from .uc_theme_local import UCThemeLocal
 from .uc_theme_mask import UCThemeMask
 from .uc_theme_setting import UCThemeSetting
@@ -1075,6 +1076,10 @@ class TRCCApp(QMainWindow):
         self.uc_rgb = UCRgb(self._app, central)
         self.uc_rgb.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_rgb.setVisible(False)
+        # About -- inspired by, what TRCC does, thanks to the community.
+        self.uc_thanks = UCThanks(central)
+        self.uc_thanks.setGeometry(*Layout.FORM_CONTAINER)
+        self.uc_thanks.setVisible(False)
 
         self.uc_system_info = UCSystemInfo(self._app, parent=central)
         self.uc_system_info.setGeometry(*Layout.SYSINFO_PANEL)
@@ -1228,7 +1233,6 @@ class TRCCApp(QMainWindow):
     def _create_i18n_overlays(self) -> None:
         from ...core.i18n import (
             ABOUT_AUTOSTART_POS,
-            ABOUT_CREDITS_POS,
             ABOUT_GPU_POS,
             ABOUT_HDD_POS,
             ABOUT_HDD_WARN_POS,
@@ -1267,7 +1271,7 @@ class TRCCApp(QMainWindow):
         )
         lang = self._app.dispatch(ControlCenterSnapshot()).language
         log.info("_create_i18n_overlays: lang=%s", lang)
-        self._i18n_labels: list[tuple[QLabel, str | None]] = []
+        self._i18n_labels: list[tuple[QLabel | QPushButton, str | None]] = []
 
         def _lbl(parent: QWidget, text: str, x: int, y: int, w: int, h: int,
                  pt: int, key: str | None = None,
@@ -1317,11 +1321,18 @@ class TRCCApp(QMainWindow):
         s.background_panel.set_title(tr('Background', lang))
         s.screencast_panel.set_title(tr('Screencast', lang))
         s.video_panel.set_title(tr('Media Player', lang))
+        self.uc_thanks.set_title(tr('About', lang))
+        # The Control Center's top bar: its name, and About beside it.
+        for widget, key in ((self.uc_about.title_label, 'Control Center'),
+                            (self.uc_about.about_link, 'About')):
+            widget.setText(tr(key, lang))
+            self._i18n_labels.append((widget, key))
         self._i18n_panel_tables = [
             (s.mask_panel, 'Layer Mask'),
             (s.background_panel, 'Background'),
             (s.screencast_panel, 'Screencast'),
             (s.video_panel, 'Media Player'),
+            (self.uc_thanks, 'About'),
         ]
 
         mp = s.mask_panel
@@ -1380,7 +1391,6 @@ class TRCCApp(QMainWindow):
             ('Software Update', ABOUT_UPDATE_POS),
             ('Language selection', ABOUT_LANG_POS),
             ('Graphics card', ABOUT_GPU_POS),
-            ('About', ABOUT_CREDITS_POS),
             ('Software version:', ABOUT_VERSION_POS),
         ]
         for key, pos in about_items:
@@ -1456,6 +1466,10 @@ class TRCCApp(QMainWindow):
         log.info("_on_rgb_clicked")
         self._show_view('rgb')
 
+    def _on_thanks_clicked(self) -> None:
+        log.info("_on_thanks_clicked")
+        self._show_view('thanks')
+
     # ── Download status slots ───────────────────────────────────────
 
     def _on_theme_download_started(self, theme_id: str) -> None:
@@ -1494,6 +1508,7 @@ class TRCCApp(QMainWindow):
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_rgb.setVisible(view == 'rgb')
+        self.uc_thanks.setVisible(view == 'thanks')
         self.uc_system_info.setVisible(view == 'sysinfo')
         self.uc_led_control.setVisible(view == 'led')
         self.uc_activity_sidebar.setVisible(False)
@@ -1567,6 +1582,7 @@ class TRCCApp(QMainWindow):
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
         self.uc_about.gpu_changed.connect(self._on_gpu_changed)
+        self.uc_about.about_requested.connect(self._on_thanks_clicked)
 
     # ── Device Selection ────────────────────────────────────────────
 

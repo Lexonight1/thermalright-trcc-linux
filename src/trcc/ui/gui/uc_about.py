@@ -27,6 +27,8 @@ from PySide6.QtGui import QIcon, QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
@@ -44,12 +46,12 @@ from ...core.commands import (
     GetPlatformInfo,
     RefreshAutostart,
 )
-from ...core.credits import CREDITS
 from ...core.models import DEFAULT_REFRESH_INTERVAL_S
 from ...core.results import ControlCenterSnapshotResult
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
+from .uc_rgb import GOLD, TITLE_BAR
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -173,6 +175,7 @@ class UCAbout(BasePanel):
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
+    about_requested = Signal()           # the About page
 
     def __init__(self, parent=None,
                  gpu_list: list[tuple[str, str]] | None = None,
@@ -215,6 +218,31 @@ class UCAbout(BasePanel):
 
     def _setup_ui(self):
         """Build UI with invisible click targets over background image text."""
+        log.debug("UCAbout._setup_ui")
+        # The top bar: "Control Center", and About beside it (the About page).
+        # Built first, so the close button stays on top of it.
+        bar = QFrame(self)
+        bar.setObjectName("titleBar")
+        bar.setGeometry(TITLE_BAR)
+        bar.setStyleSheet(f"QFrame#titleBar {{ background: {GOLD}; border-radius: 6px; }}")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(20, 0, 0, 0)
+        row.setSpacing(40)
+        self.title_label = QLabel("Control Center", bar)
+        self.title_label.setStyleSheet(
+            "background: transparent; color: #3a3a3a; font-size: 30px; font-weight: bold;")
+        self.about_link = QPushButton("About", bar)
+        self.about_link.setFlat(True)
+        self.about_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.about_link.setStyleSheet(
+            "QPushButton { background: transparent; border: none; color: #3a3a3a;"
+            " font-size: 30px; font-weight: bold; }"
+            "QPushButton:hover { color: white; }")
+        self.about_link.clicked.connect(self.about_requested)
+        row.addWidget(self.title_label)
+        row.addWidget(self.about_link)
+        row.addStretch(1)
+
         # Close / logout button (top-right)
         self.close_btn = create_image_button(
             self, *Layout.ABOUT_CLOSE_BTN,
@@ -333,9 +361,6 @@ class UCAbout(BasePanel):
 
         # === GPU selection (below language row) ===
         self._setup_gpu_widget()
-
-        # === About: the open-source work TRCC is built on (below the GPU) ===
-        self._setup_credits()
 
     def _show_update_tooltip(self):
         """Show tooltip to the right of the update button, vertically centered."""
@@ -479,22 +504,6 @@ class UCAbout(BasePanel):
         return self._refresh_interval
 
     # --- GPU selection ---
-
-    def _setup_credits(self) -> None:
-        """Thanks to open source: every project TRCC is built on, by name --
-        language-neutral, so every language shows the same list.  Hover for
-        each one's author, licence and what TRCC takes from it.  The list is
-        ``core.credits.CREDITS``, the one every UI reads."""
-        x, y, w, h = Layout.ABOUT_CREDITS
-        self._credits = QLabel(" \u00b7 ".join(c.name for c in CREDITS), self)
-        self._credits.setGeometry(x, y, w, h)
-        self._credits.setWordWrap(True)
-        self._credits.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._credits.setStyleSheet(
-            "color: #b3b3b3; font-family: 'Microsoft YaHei'; font-size: 10pt;"
-            " background: transparent;")
-        self._credits.setToolTip("\n".join(c.line for c in CREDITS))
-        log.info("UCAbout._setup_credits: %d project(s)", len(CREDITS))
 
     def _setup_gpu_widget(self):
         """Create GPU label or dropdown depending on GPU count."""

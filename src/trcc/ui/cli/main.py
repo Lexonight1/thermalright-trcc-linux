@@ -608,14 +608,31 @@ def _version() -> None:
     typer.echo(f"trcc {__version__}")
 
 
-@app.command("credits", rich_help_panel="Diagnostics")
-def _credits() -> None:
-    """Print the open-source work TRCC is built on -- thank you."""
-    log.info("cli credits")
-    from ...core.credits import CREDITS
-    typer.echo("TRCC Linux is built on open-source work -- thank you:")
-    for credit in CREDITS:
-        typer.echo(f"  {credit.line}")
+@app.command("thanks")
+def _thanks() -> None:
+    """Thank the open-source work TRCC is built on."""
+    log.info("cli thanks")
+    from ...core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES
+    typer.echo()
+    typer.secho("  Inspired by", fg="yellow", bold=True)
+    for person in INSPIRATIONS:
+        typer.echo("    " + typer.style(person.name, bold=True) + f" -- {person.did}")
+    typer.echo()
+    typer.echo(f"  {WHAT_TRCC_DOES}")
+    typer.echo()
+    typer.secho(f"  {WE_LOVE}", bold=True)
+    for title, credits in GROUPS:
+        typer.echo()
+        typer.secho(f"  {title}", fg="yellow", bold=True)
+        for credit in credits:
+            who = ", ".join(part for part in (credit.author, credit.licence) if part)
+            typer.echo("    " + typer.style(credit.name, fg="cyan", bold=True)
+                       + (typer.style(f"  {who}", dim=True) if who else ""))
+            if credit.used_for:
+                typer.echo(f"        {credit.used_for}")
+            if credit.licence_url:
+                typer.secho(f"        {credit.licence_url}", dim=True)
+    typer.echo()
 
 
 def _version_callback(value: bool) -> None:

@@ -519,13 +519,23 @@ def refresh_autostart(request: Request) -> AutostartResult:
 
 
 @router.get("/credits")
-def credits() -> list[dict[str, str]]:
-    """The open-source work TRCC is built on -- ``core.credits.CREDITS``, the
-    list every UI shows."""
-    from ...core.credits import CREDITS
-    log.info("api GET /system/credits: %d", len(CREDITS))
-    return [{"name": c.name, "author": c.author, "licence": c.licence,
-             "used_for": c.used_for} for c in CREDITS]
+def credits() -> dict[str, object]:
+    """The About every UI shows -- ``core.credits``: who TRCC is inspired by,
+    what it does, and the licensing of every work it uses."""
+    from ...core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES
+    log.info("api GET /system/credits: %d group(s)", len(GROUPS))
+    return {
+        "inspired_by": [{"name": p.name, "did": p.did, "picture_by": p.picture_by,
+                         "picture_licence": p.picture_licence,
+                         "picture_page": p.picture_page} for p in INSPIRATIONS],
+        "what_trcc_does": WHAT_TRCC_DOES,
+        "we_love": WE_LOVE,
+        "groups": [{"title": title,
+                    "credits": [{"name": c.name, "author": c.author, "licence": c.licence,
+                                 "licence_url": c.licence_url, "used_for": c.used_for}
+                                for c in credits]}
+                   for title, credits in GROUPS],
+    }
 
 
 @router.get("/health")
