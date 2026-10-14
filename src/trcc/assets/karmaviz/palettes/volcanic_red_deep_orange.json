@@ -1,0 +1,43 @@
+{
+  "name": "Volcanic Red Deep Orange",
+  "energy_level": "high",
+  "warmth": "cool",
+  "colors": [
+    [
+      255,
+      0,
+      0
+    ],
+    [
+      255,
+      30,
+      0
+    ],
+    [
+      255,
+      0,
+      30
+    ],
+    [
+      255,
+      0,
+      0
+    ],
+    [
+      255,
+      20,
+      0
+    ],
+    [
+      255,
+      0,
+      20
+    ],
+    [
+      255,
+      0,
+      50
+    ]
+  ],
+  "description": "Volcanic Red/Deep Orange palette"
+}

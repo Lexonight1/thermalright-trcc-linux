@@ -1,0 +1,43 @@
+{
+  "name": "Rich Turquoise",
+  "energy_level": "moderate",
+  "warmth": "cool",
+  "colors": [
+    [
+      84,
+      255,
+      228
+    ],
+    [
+      147,
+      255,
+      232
+    ],
+    [
+      122,
+      255,
+      190
+    ],
+    [
+      70,
+      255,
+      195
+    ],
+    [
+      120,
+      255,
+      210
+    ],
+    [
+      100,
+      255,
+      170
+    ],
+    [
+      100,
+      255,
+      240
+    ]
+  ],
+  "description": "Rich Turquoise palette"
+}

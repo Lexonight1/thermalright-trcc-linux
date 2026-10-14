@@ -1,0 +1,43 @@
+{
+  "name": "Bright Arctic Blue",
+  "energy_level": "low",
+  "warmth": "warm",
+  "colors": [
+    [
+      180,
+      200,
+      255
+    ],
+    [
+      160,
+      190,
+      255
+    ],
+    [
+      140,
+      170,
+      255
+    ],
+    [
+      170,
+      195,
+      255
+    ],
+    [
+      150,
+      180,
+      255
+    ],
+    [
+      130,
+      160,
+      255
+    ],
+    [
+      175,
+      205,
+      255
+    ]
+  ],
+  "description": "Bright Arctic Blue palette"
+}

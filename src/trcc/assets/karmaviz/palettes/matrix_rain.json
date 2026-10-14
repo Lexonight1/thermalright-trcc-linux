@@ -1,0 +1,39 @@
+{
+  "name": "Matrix Rain",
+  "energy_level": "moderate",
+  "warmth": "warm",
+  "colors": [
+    [
+      0,
+      85,
+      0
+    ],
+    [
+      0,
+      170,
+      0
+    ],
+    [
+      0,
+      255,
+      0
+    ],
+    [
+      0,
+      170,
+      0
+    ],
+    [
+      0,
+      85,
+      0
+    ],
+    [
+      0,
+      255,
+      0
+    ]
+  ],
+  "description": "",
+  "is_builtin": false
+}

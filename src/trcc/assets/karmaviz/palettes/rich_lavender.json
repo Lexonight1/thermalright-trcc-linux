@@ -1,0 +1,43 @@
+{
+  "name": "Rich Lavender",
+  "energy_level": "moderate",
+  "warmth": "cool",
+  "colors": [
+    [
+      190,
+      170,
+      255
+    ],
+    [
+      210,
+      190,
+      255
+    ],
+    [
+      170,
+      150,
+      255
+    ],
+    [
+      160,
+      140,
+      255
+    ],
+    [
+      180,
+      160,
+      255
+    ],
+    [
+      150,
+      130,
+      255
+    ],
+    [
+      200,
+      180,
+      255
+    ]
+  ],
+  "description": "Rich Lavender palette"
+}

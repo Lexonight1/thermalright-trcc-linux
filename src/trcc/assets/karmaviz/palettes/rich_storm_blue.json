@@ -1,0 +1,43 @@
+{
+  "name": "Rich Storm Blue",
+  "energy_level": "moderate",
+  "warmth": "warm",
+  "colors": [
+    [
+      80,
+      120,
+      255
+    ],
+    [
+      100,
+      140,
+      255
+    ],
+    [
+      120,
+      160,
+      255
+    ],
+    [
+      70,
+      110,
+      255
+    ],
+    [
+      90,
+      130,
+      255
+    ],
+    [
+      110,
+      150,
+      255
+    ],
+    [
+      90,
+      130,
+      255
+    ]
+  ],
+  "description": "Rich Storm Blue palette"
+}

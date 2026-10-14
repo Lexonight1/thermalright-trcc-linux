@@ -1,0 +1,39 @@
+{
+  "name": "Pastel Rainbow",
+  "energy_level": "high",
+  "warmth": "cool",
+  "colors": [
+    [
+      255,
+      85,
+      127
+    ],
+    [
+      255,
+      170,
+      0
+    ],
+    [
+      255,
+      255,
+      127
+    ],
+    [
+      85,
+      255,
+      127
+    ],
+    [
+      85,
+      255,
+      255
+    ],
+    [
+      85,
+      85,
+      255
+    ]
+  ],
+  "description": "Pastel rainbow palette",
+  "is_builtin": false
+}

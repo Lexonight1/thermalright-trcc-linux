@@ -1,0 +1,43 @@
+{
+  "name": "Rich Autumn",
+  "energy_level": "moderate",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      120,
+      40
+    ],
+    [
+      255,
+      160,
+      70
+    ],
+    [
+      255,
+      100,
+      50
+    ],
+    [
+      255,
+      100,
+      30
+    ],
+    [
+      255,
+      130,
+      60
+    ],
+    [
+      255,
+      80,
+      40
+    ],
+    [
+      255,
+      140,
+      50
+    ]
+  ],
+  "description": "Rich Autumn palette"
+}

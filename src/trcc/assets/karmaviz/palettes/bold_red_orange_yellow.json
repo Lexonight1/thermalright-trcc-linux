@@ -1,0 +1,43 @@
+{
+  "name": "Bold Red Orange Yellow",
+  "energy_level": "high",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      0,
+      0
+    ],
+    [
+      255,
+      100,
+      0
+    ],
+    [
+      255,
+      255,
+      0
+    ],
+    [
+      255,
+      0,
+      50
+    ],
+    [
+      255,
+      150,
+      0
+    ],
+    [
+      255,
+      220,
+      0
+    ],
+    [
+      255,
+      30,
+      0
+    ]
+  ],
+  "description": "Bold Red/Orange/Yellow palette"
+}

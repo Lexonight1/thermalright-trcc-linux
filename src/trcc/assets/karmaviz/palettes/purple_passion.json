@@ -1,0 +1,39 @@
+{
+  "name": "Purple Passion",
+  "energy_level": "high",
+  "warmth": "warm",
+  "colors": [
+    [
+      85,
+      0,
+      127
+    ],
+    [
+      103,
+      0,
+      154
+    ],
+    [
+      123,
+      0,
+      184
+    ],
+    [
+      147,
+      0,
+      220
+    ],
+    [
+      170,
+      0,
+      255
+    ],
+    [
+      170,
+      85,
+      255
+    ]
+  ],
+  "description": "",
+  "is_builtin": false
+}

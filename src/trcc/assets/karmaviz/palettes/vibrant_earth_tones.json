@@ -1,0 +1,43 @@
+{
+  "name": "Vibrant Earth Tones",
+  "energy_level": "low",
+  "warmth": "warm",
+  "colors": [
+    [
+      200,
+      150,
+      100
+    ],
+    [
+      220,
+      180,
+      120
+    ],
+    [
+      210,
+      160,
+      110
+    ],
+    [
+      190,
+      140,
+      90
+    ],
+    [
+      215,
+      170,
+      115
+    ],
+    [
+      205,
+      155,
+      105
+    ],
+    [
+      200,
+      150,
+      100
+    ]
+  ],
+  "description": "Vibrant Earth Tones palette"
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Rich Rose Gold",
+  "energy_level": "moderate",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      180,
+      160
+    ],
+    [
+      255,
+      160,
+      140
+    ],
+    [
+      255,
+      200,
+      180
+    ],
+    [
+      255,
+      150,
+      130
+    ],
+    [
+      255,
+      130,
+      110
+    ],
+    [
+      255,
+      170,
+      150
+    ],
+    [
+      255,
+      190,
+      170
+    ]
+  ],
+  "description": "Rich Rose Gold palette"
+}

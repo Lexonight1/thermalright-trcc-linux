@@ -1,0 +1,43 @@
+{
+  "name": "Sunset Red Orange",
+  "energy_level": "high",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      50,
+      50
+    ],
+    [
+      255,
+      120,
+      0
+    ],
+    [
+      255,
+      180,
+      0
+    ],
+    [
+      255,
+      30,
+      30
+    ],
+    [
+      255,
+      100,
+      0
+    ],
+    [
+      255,
+      150,
+      0
+    ],
+    [
+      255,
+      70,
+      70
+    ]
+  ],
+  "description": "Sunset Red/Orange palette"
+}

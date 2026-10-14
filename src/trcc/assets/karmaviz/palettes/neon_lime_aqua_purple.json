@@ -1,0 +1,43 @@
+{
+  "name": "Neon Lime Aqua Purple",
+  "energy_level": "high",
+  "warmth": "cool",
+  "colors": [
+    [
+      150,
+      255,
+      0
+    ],
+    [
+      0,
+      255,
+      150
+    ],
+    [
+      200,
+      0,
+      255
+    ],
+    [
+      100,
+      255,
+      0
+    ],
+    [
+      0,
+      255,
+      100
+    ],
+    [
+      180,
+      0,
+      255
+    ],
+    [
+      180,
+      255,
+      0
+    ]
+  ],
+  "description": "Neon Lime/Aqua/Purple palette"
+}

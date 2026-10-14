@@ -1,0 +1,43 @@
+{
+  "name": "Rich Night Sky",
+  "energy_level": "low",
+  "warmth": "cool",
+  "colors": [
+    [
+      40,
+      60,
+      200
+    ],
+    [
+      50,
+      70,
+      210
+    ],
+    [
+      60,
+      80,
+      220
+    ],
+    [
+      30,
+      50,
+      190
+    ],
+    [
+      40,
+      60,
+      200
+    ],
+    [
+      50,
+      70,
+      210
+    ],
+    [
+      40,
+      60,
+      200
+    ]
+  ],
+  "description": "Rich Night Sky palette"
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Cyan Blue Green",
+  "energy_level": "high",
+  "warmth": "cool",
+  "colors": [
+    [
+      0,
+      255,
+      255
+    ],
+    [
+      0,
+      150,
+      255
+    ],
+    [
+      0,
+      255,
+      100
+    ],
+    [
+      0,
+      255,
+      200
+    ],
+    [
+      0,
+      180,
+      255
+    ],
+    [
+      50,
+      255,
+      50
+    ],
+    [
+      0,
+      255,
+      255
+    ]
+  ],
+  "description": "Cyan/Blue/Green palette"
+}

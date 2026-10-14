@@ -1,0 +1,43 @@
+{
+  "name": "Vibrant Coral",
+  "energy_level": "moderate",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      120,
+      90
+    ],
+    [
+      255,
+      160,
+      80
+    ],
+    [
+      255,
+      180,
+      140
+    ],
+    [
+      255,
+      100,
+      80
+    ],
+    [
+      255,
+      140,
+      60
+    ],
+    [
+      255,
+      160,
+      130
+    ],
+    [
+      255,
+      140,
+      110
+    ]
+  ],
+  "description": "Vibrant Coral palette"
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Rich Forest",
+  "energy_level": "moderate",
+  "warmth": "cool",
+  "colors": [
+    [
+      54,
+      255,
+      54
+    ],
+    [
+      115,
+      255,
+      255
+    ],
+    [
+      105,
+      255,
+      67
+    ],
+    [
+      45,
+      255,
+      45
+    ],
+    [
+      95,
+      255,
+      255
+    ],
+    [
+      85,
+      255,
+      55
+    ],
+    [
+      65,
+      255,
+      65
+    ]
+  ],
+  "description": "Rich Forest palette"
+}

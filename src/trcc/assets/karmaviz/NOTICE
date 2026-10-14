@@ -1,0 +1,39 @@
+KarmaViz 67e8a15 -- https://github.com/karmatripping/KarmaViz
+MIT (c) 2025 Jason Swint; the licence is LICENSE, beside this file.
+It covers these palettes and presets, and the GLSL under
+assets/shaders/karmaviz/.  Imported by dev/tools/import_karmaviz.py.
+
+Changed from the original:
+- shaders: converted from .kvwf/.kvwm to .glsl; one per name;
+  the waveform line skeleton written once (line.glsl), the entries
+  under lines/ keeping only their shaping lines;
+- presets: decoded from gzipped JSON; machine-local paths removed.
+
+- dropped warp_maps/basic/conveyor_belt.kvwm -- the same shader as warp_maps/motion/conveyor_belt.kvwm
+- dropped warp_maps/basic/fibonacci_rectangles.kvwm -- the same shader as warp_maps/geometric/fibonacci_rectangles.kvwm
+- dropped warp_maps/basic/fractal.kvwm -- the same shader as warp_maps/experimental/fractal.kvwm
+- dropped warp_maps/mathematical/kaleidoscope_distortion.kvwm -- the same shader as warp_maps/geometric/kaleidoscope_distortion.kvwm
+- renamed warp_maps/basic/kaleidoscope_distortion.kvwm to kaleidoscope_distortion_basic -- a different shader under the same name
+- dropped warp_maps/basic/mandelbrot_flythrough.kvwm -- the same shader as warp_maps/fractal/mandelbrot_flythrough.kvwm
+- dropped warp_maps/mathematical/mandelbrot_zoom.kvwm -- the same shader as warp_maps/fractal/mandelbrot_zoom.kvwm
+- dropped warp_maps/basic/mandelbrot_zoom.kvwm -- the same shader as warp_maps/fractal/mandelbrot_zoom.kvwm
+- dropped warp_maps/basic/mirror_ripple.kvwm -- does not compile: 0(317) : error C1503: undefined variable "si1"
+- dropped warp_maps/basic/multibrot.kvwm -- does not compile: 0(338) : error C1115: unable to find compatible overloaded function "tan(float, float)"
+- renamed warp_maps/basic/new_warp_map.kvwm to new_warp_map_basic -- a different shader under the same name
+- dropped warp_maps/basic/number_theory.kvwm -- the same shader as warp_maps/mathematical/number_theory.kvwm
+- dropped warp_maps/basic/phoenix_rising.kvwm -- the same shader as warp_maps/custom/phoenix_rising.kvwm
+- dropped warp_maps/basic/rain_on_water.kvwm -- the same shader as warp_maps/organic/rain_on_water.kvwm
+- dropped warp_maps/basic/seismic_waves.kvwm -- the same shader as warp_maps/motion/seismic_waves.kvwm
+- dropped warp_maps/basic/spiral_wave.kvwm -- does not compile: 0(320) : error C0000: syntax error, unexpected floating point constant, expecting ')' at token "<float-const>"
+- dropped warp_maps/basic/temporal_paradox.kvwm -- the same shader as warp_maps/experimental/temporal_paradox.kvwm
+- dropped waveforms/organic/crystalline.kvwf -- does not compile: 0(599) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/organic/crystalline_resonance.kvwf -- does not compile: 0(615) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/experimental/dna_helix.kvwf -- does not compile: 0(569) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/basic/exponential.kvwf -- does not compile: 0(587) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/fractal/fractal.kvwf -- does not compile: 0(599) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/mathematical/neural_network.kvwf -- does not compile: 0(633) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- renamed waveforms/organic/neural_network.kvwf to neural_network_organic -- a different shader under the same name
+- dropped waveforms/organic/ocean_waves.kvwf -- does not compile: 0(568) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/futuristic/plasma.kvwf -- does not compile: 0(566) : error C1503: undefined variable "compute_waveform_intensity_at_xy"
+- dropped waveforms/digital/simple_bars.kvwf -- the same shader as waveforms/Digital/simple_bars.kvwf
+- dropped waveforms/experimental/vocal_formant.kvwf -- does not compile: 0(692) : error C1503: undefined variable "compute_waveform_intensity_at_xy"

@@ -1,0 +1,43 @@
+{
+  "name": "Fiery Orange Yellow",
+  "energy_level": "high",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      40,
+      0
+    ],
+    [
+      255,
+      140,
+      0
+    ],
+    [
+      255,
+      200,
+      0
+    ],
+    [
+      255,
+      20,
+      0
+    ],
+    [
+      255,
+      120,
+      0
+    ],
+    [
+      255,
+      180,
+      0
+    ],
+    [
+      255,
+      60,
+      0
+    ]
+  ],
+  "description": "Fiery Orange/Yellow palette"
+}

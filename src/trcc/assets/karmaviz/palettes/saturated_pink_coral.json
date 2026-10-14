@@ -1,0 +1,43 @@
+{
+  "name": "Saturated Pink Coral",
+  "energy_level": "low",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      180,
+      200
+    ],
+    [
+      255,
+      170,
+      160
+    ],
+    [
+      255,
+      160,
+      175
+    ],
+    [
+      255,
+      170,
+      185
+    ],
+    [
+      255,
+      160,
+      155
+    ],
+    [
+      255,
+      155,
+      170
+    ],
+    [
+      255,
+      175,
+      190
+    ]
+  ],
+  "description": "Saturated Pink/Coral palette"
+}

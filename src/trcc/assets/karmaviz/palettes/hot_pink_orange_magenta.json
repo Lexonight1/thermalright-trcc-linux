@@ -1,0 +1,43 @@
+{
+  "name": "Hot Pink Orange Magenta",
+  "energy_level": "high",
+  "warmth": "warm",
+  "colors": [
+    [
+      255,
+      0,
+      150
+    ],
+    [
+      255,
+      50,
+      0
+    ],
+    [
+      255,
+      0,
+      255
+    ],
+    [
+      255,
+      0,
+      100
+    ],
+    [
+      255,
+      80,
+      0
+    ],
+    [
+      255,
+      0,
+      200
+    ],
+    [
+      255,
+      0,
+      128
+    ]
+  ],
+  "description": "Hot Pink/Orange/Magenta palette"
+}

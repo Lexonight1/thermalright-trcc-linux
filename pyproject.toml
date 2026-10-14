@@ -183,6 +183,10 @@ artifacts = [
     "**/assets/**/*.svg",
     # Every visual's GLSL (adapters/visual/_gl.py SHADERS) -- read at runtime.
     "**/assets/**/*.glsl",
+    # KarmaViz's palettes and presets, its licence and what we changed.
+    "**/assets/karmaviz/**/*.json",
+    "**/assets/karmaviz/LICENSE",
+    "**/assets/karmaviz/NOTICE",
     # Privileged helpers (no extension), the polkit policy's only targets —
     # distro packages install them to /usr/bin; shipped here so they are in
     # the sdist/wheel too.  trcc-imc: MCHBAR timings.  trcc-dmi: DRAM slots.

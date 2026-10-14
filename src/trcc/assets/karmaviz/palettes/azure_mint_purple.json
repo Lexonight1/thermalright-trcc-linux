@@ -1,0 +1,43 @@
+{
+  "name": "Azure Mint Purple",
+  "energy_level": "high",
+  "warmth": "cool",
+  "colors": [
+    [
+      0,
+      255,
+      255
+    ],
+    [
+      0,
+      255,
+      150
+    ],
+    [
+      180,
+      0,
+      255
+    ],
+    [
+      0,
+      200,
+      255
+    ],
+    [
+      0,
+      255,
+      100
+    ],
+    [
+      150,
+      0,
+      255
+    ],
+    [
+      0,
+      255,
+      255
+    ]
+  ],
+  "description": "Azure/Mint/Purple palette"
+}
