@@ -518,6 +518,16 @@ def refresh_autostart(request: Request) -> AutostartResult:
     return request.app.state.trcc.dispatch(RefreshAutostart())
 
 
+@router.get("/credits")
+def credits() -> list[dict[str, str]]:
+    """The open-source work TRCC is built on -- ``core.credits.CREDITS``, the
+    list every UI shows."""
+    from ...core.credits import CREDITS
+    log.info("api GET /system/credits: %d", len(CREDITS))
+    return [{"name": c.name, "author": c.author, "licence": c.licence,
+             "used_for": c.used_for} for c in CREDITS]
+
+
 @router.get("/health")
 def health(request: Request) -> HealthReportResult:
     """Run the health check suite + return structured results."""

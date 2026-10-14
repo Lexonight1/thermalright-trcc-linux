@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**147 endpoints.**
+**148 endpoints.**
 
 ## Running it
 
@@ -146,6 +146,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/autostart` | `AutostartResult` | Toggle the OS autostart entry (per-user, no sudo). |
 | `POST /system/autostart/refresh` | `AutostartResult` | Re-render an existing autostart entry so it picks up a new launch path. |
 | `GET /system/check-update` | `UpdateCheckResult` | Ask GitHub whether a newer version of trcc-linux is published. |
+| `GET /system/credits` | `list` | The open-source work TRCC is built on -- ``core.credits.CREDITS``, the list every UI shows. |
 | `GET /system/dashboard` | `SensorDashboardResult` | The sensor-dashboard layout — the grid the GUI's System Info screen edits. |
 | `POST /system/dashboard` | `SensorDashboardResult` | Replace the sensor-dashboard layout wholesale. |
 | `POST /system/debug-report` | `DebugReportPayload` | Generate a debug report; the rendered text comes back in the body. |

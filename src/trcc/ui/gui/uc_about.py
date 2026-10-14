@@ -44,6 +44,7 @@ from ...core.commands import (
     GetPlatformInfo,
     RefreshAutostart,
 )
+from ...core.credits import CREDITS
 from ...core.models import DEFAULT_REFRESH_INTERVAL_S
 from ...core.results import ControlCenterSnapshotResult
 from .assets import Assets
@@ -333,6 +334,9 @@ class UCAbout(BasePanel):
         # === GPU selection (below language row) ===
         self._setup_gpu_widget()
 
+        # === About: the open-source work TRCC is built on (below the GPU) ===
+        self._setup_credits()
+
     def _show_update_tooltip(self):
         """Show tooltip to the right of the update button, vertically centered."""
         tip_pos = self.mapToGlobal(
@@ -475,6 +479,22 @@ class UCAbout(BasePanel):
         return self._refresh_interval
 
     # --- GPU selection ---
+
+    def _setup_credits(self) -> None:
+        """Thanks to open source: every project TRCC is built on, by name --
+        language-neutral, so every language shows the same list.  Hover for
+        each one's author, licence and what TRCC takes from it.  The list is
+        ``core.credits.CREDITS``, the one every UI reads."""
+        x, y, w, h = Layout.ABOUT_CREDITS
+        self._credits = QLabel(" \u00b7 ".join(c.name for c in CREDITS), self)
+        self._credits.setGeometry(x, y, w, h)
+        self._credits.setWordWrap(True)
+        self._credits.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self._credits.setStyleSheet(
+            "color: #b3b3b3; font-family: 'Microsoft YaHei'; font-size: 10pt;"
+            " background: transparent;")
+        self._credits.setToolTip("\n".join(c.line for c in CREDITS))
+        log.info("UCAbout._setup_credits: %d project(s)", len(CREDITS))
 
     def _setup_gpu_widget(self):
         """Create GPU label or dropdown depending on GPU count."""

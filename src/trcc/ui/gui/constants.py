@@ -322,6 +322,8 @@ class Layout:
         (657, 443, 'ko'),      # 한국어
     ]
     ABOUT_GPU_COMBO = (297, 456, 250, 28)
+    #: Under the graphics card, beside its "About" label: the open-source credits.
+    ABOUT_CREDITS = (297, 503, 940, 190)
     ABOUT_CHECKBOX_SIZE = 14
 
     # Re-export from i18n — single source of truth for locale→suffix mapping

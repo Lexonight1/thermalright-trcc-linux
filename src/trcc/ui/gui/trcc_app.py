@@ -1228,6 +1228,7 @@ class TRCCApp(QMainWindow):
     def _create_i18n_overlays(self) -> None:
         from ...core.i18n import (
             ABOUT_AUTOSTART_POS,
+            ABOUT_CREDITS_POS,
             ABOUT_GPU_POS,
             ABOUT_HDD_POS,
             ABOUT_HDD_WARN_POS,
@@ -1379,6 +1380,7 @@ class TRCCApp(QMainWindow):
             ('Software Update', ABOUT_UPDATE_POS),
             ('Language selection', ABOUT_LANG_POS),
             ('Graphics card', ABOUT_GPU_POS),
+            ('About', ABOUT_CREDITS_POS),
             ('Software version:', ABOUT_VERSION_POS),
         ]
         for key, pos in about_items:

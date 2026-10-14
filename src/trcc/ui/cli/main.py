@@ -608,6 +608,16 @@ def _version() -> None:
     typer.echo(f"trcc {__version__}")
 
 
+@app.command("credits", rich_help_panel="Diagnostics")
+def _credits() -> None:
+    """Print the open-source work TRCC is built on -- thank you."""
+    log.info("cli credits")
+    from ...core.credits import CREDITS
+    typer.echo("TRCC Linux is built on open-source work -- thank you:")
+    for credit in CREDITS:
+        typer.echo(f"  {credit.line}")
+
+
 def _version_callback(value: bool) -> None:
     """Eager ``--version`` handler — prints and exits before any subcommand.
 

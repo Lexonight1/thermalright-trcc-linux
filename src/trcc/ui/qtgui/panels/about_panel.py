@@ -61,6 +61,19 @@ class AboutPanel(BasePanel):
         )
         layout.addWidget(links)
 
+        # About: the open-source work TRCC is built on -- core.credits, the
+        # list every UI shows.
+        from ....core.credits import CREDITS
+        thanks = QLabel("Thanks to open source", self)
+        thanks.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addSpacing(16)
+        layout.addWidget(thanks)
+        self._credits = QLabel("\n".join(c.line for c in CREDITS), self)
+        self._credits.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._credits.setWordWrap(True)
+        layout.addWidget(self._credits)
+        log.info("AboutPanel: %d credit(s)", len(CREDITS))
+
         layout.addStretch(2)
 
     @staticmethod

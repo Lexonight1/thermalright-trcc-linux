@@ -23,6 +23,7 @@ trcc [OPTIONS] COMMAND [ARGS]...
 ## Contents
 
 - [`trcc api`](#trcc-api)
+- [`trcc credits`](#trcc-credits)
 - [`trcc daemon`](#trcc-daemon)
 - [`trcc daemon-status`](#trcc-daemon-status)
 - [`trcc detect`](#trcc-detect)
@@ -64,6 +65,14 @@ trcc api [OPTIONS]
 | `--tls` | Serve HTTPS with a self-signed certificate, made once and kept in the config directory. Its SHA-256 fingerprint is printed so a client can pin it. |
 | `--tls-cert` `TLS_CERT` | Your own certificate (PEM). Needs --tls-key; implies --tls. |
 | `--tls-key` `TLS_KEY` | Your own private key (PEM). Needs --tls-cert; implies --tls. |
+
+### `trcc credits`
+
+Print the open-source work TRCC is built on -- thank you.
+
+```bash
+trcc credits
+```
 
 ### `trcc daemon`
 
