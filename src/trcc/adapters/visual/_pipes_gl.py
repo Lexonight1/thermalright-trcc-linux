@@ -50,6 +50,7 @@ from ._gl import (
     GlSurface,
     program,
     read_rgb,
+    shader,
     texture,
     uniforms,
 )
@@ -67,166 +68,6 @@ _VERTEX_FLOATS = 2 + 11           # a corner, then the shape's first 11 fields
 #: The quad's corners as two triangles, by the box's (x, y) column pairs.
 _CORNERS = ((11, 12), (13, 12), (13, 14), (11, 12), (13, 14), (11, 14))
 
-_SHAPES_VERTEX = """
-in vec2 corner;
-in vec3 start;
-in vec3 finish;
-in vec4 shape;
-in float material;
-uniform vec2 canvas;
-out vec3 v_start;
-out vec3 v_finish;
-out vec4 v_shape;
-flat out int v_material;
-void main() {
-    v_start = start;
-    v_finish = finish;
-    v_shape = shape;
-    v_material = int(material + 0.5);
-    // A screen pixel's centre, top row first, to OpenGL's -1..1, bottom first.
-    gl_Position = vec4((corner.x + 0.5) / canvas.x * 2.0 - 1.0,
-                       1.0 - (corner.y + 0.5) / canvas.y * 2.0, 0.0, 1.0);
-}
-"""
-
-_SHAPES_FRAGMENT = """
-in vec3 v_start;
-in vec3 v_finish;
-in vec4 v_shape;
-flat in int v_material;
-uniform vec2 canvas;
-uniform vec3 light;
-uniform vec3 halfway;
-uniform vec3 ambient[16];
-uniform vec3 diffuse[16];
-uniform vec3 specular[16];
-uniform float shininess[16];
-uniform float gain;
-uniform float glow;
-uniform float far;
-void main() {
-    // This pixel as the CPU counted it: column, then row from the top.
-    vec2 s = vec2(gl_FragCoord.x - 0.5, canvas.y - gl_FragCoord.y - 0.5);
-    vec3 n;
-    float depth;
-    if (v_shape.w > 0.5) {                       // a ball
-        vec2 o = (s - v_start.xy) / (v_shape.x + 0.5);
-        float d2 = dot(o, o);
-        if (d2 > 1.0) discard;
-        float nz = sqrt(max(1.0 - d2, 0.0));
-        n = vec3(o, nz);
-        depth = v_start.z - nz * v_shape.z;
-    } else {                                     // a tube
-        vec2 d = v_finish.xy - v_start.xy;
-        float len = length(d);
-        vec2 p = s - v_start.xy;
-        float t = dot(p, d) / (len * len);
-        float across = (p.y * d.x - p.x * d.y) / len
-                       / (v_shape.x + (v_shape.y - v_shape.x) * t);
-        if (t < 0.0 || t > 1.0 || abs(across) >= 1.0) discard;
-        float nz = sqrt(clamp(1.0 - across * across, 0.0, 1.0));
-        n = vec3(-d.y / len * across, d.x / len * across, nz);
-        depth = v_start.z + (v_finish.z - v_start.z) * t - nz * v_shape.z;
-    }
-    int m = v_material;
-    float nl = clamp(dot(n, light), 0.0, 1.0);
-    float nh = clamp(dot(n, halfway), 0.0, 1.0);
-    vec3 c = (ambient[m] + nl * diffuse[m]
-              + pow(nh, shininess[m]) * specular[m]) * gain;
-    if (glow > 0.0) {                            // _fire.burn
-        float shine = (c.r + c.g + c.b) / 3.0 * 0.7 + 0.3;
-        c = c * (1.0 - glow) + vec3(1.0, 0.22, 0.05) * shine * glow * 1.25;
-    }
-    gl_FragDepth = clamp(depth / far, 0.0, 1.0);
-    FRAG_COLOUR = vec4(clamp(c, 0.0, 1.0), 1.0);
-}
-"""
-
-#: A quad given in OpenGL's -1..1 already, with its picture coordinates.
-_QUAD_VERTEX = """
-in vec2 corner;
-in vec2 uv;
-out vec2 v_uv;
-void main() {
-    v_uv = uv;
-    gl_Position = vec4(corner, 0.0, 1.0);
-}
-"""
-
-_FIRE_FRAGMENT = """
-uniform sampler2D heat;
-uniform sampler2D pipes;
-uniform sampler2D picture;
-uniform vec2 canvas;
-uniform ivec2 half_size;
-uniform int frame;
-uniform int lift;
-uniform float bass;
-uniform float pipe_heat;
-uniform float cooling;
-uniform vec4 placed;          // centre x, y; tilt; size -- size 0: none
-float flicker(ivec2 q) {
-    uint h = uint(q.x) * 73856093u ^ uint(q.y) * 19349663u
-             ^ uint(frame) * 83492791u;
-    h ^= h >> 13u;
-    h *= 1274126177u;
-    h ^= h >> 16u;
-    return float(h & 65535u) / 65535.0;
-}
-float seed(ivec2 q) {
-    float s = texelFetch(pipes, q * 2, 0).a * pipe_heat;
-    if (placed.w > 0.0) {
-        vec2 screen = vec2(2.0 * float(q.x) + 1.0,
-                           canvas.y - 2.0 * float(q.y) - 1.0);
-        vec2 uv = vec2((screen.x - placed.x) / placed.z, screen.y - placed.y)
-                  / placed.w + 0.5;
-        if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))))
-            s = max(s, texture(picture, uv).a);
-    }
-    return s;
-}
-float heated(ivec2 q) {
-    if (q.y < 0) return 0.0;
-    q.x = (q.x + half_size.x) % half_size.x;
-    float f = flicker(q);
-    return max(texelFetch(heat, q, 0).r,
-               seed(q) * (0.6 + 0.4 * f) * (0.7 + 0.5 * min(bass, 1.3)));
-}
-void main() {
-    ivec2 p = ivec2(gl_FragCoord.xy);
-    ivec2 below = p - ivec2(0, lift);
-    float spread = heated(below) + heated(below - ivec2(1, 0))
-                   + heated(below + ivec2(1, 0)) + heated(below - ivec2(0, 1));
-    FRAG_COLOUR = vec4(spread / 4.0 * pow(0.955 - 0.03 * flicker(p), cooling),
-                       0.0, 0.0, 1.0);
-}
-"""
-
-_FRAME_FRAGMENT = """
-uniform sampler2D pipes;
-uniform sampler2D heat;
-uniform float strength;
-void main() {
-    ivec2 p = ivec2(gl_FragCoord.xy);
-    vec4 pipe = texelFetch(pipes, p, 0);
-    vec3 c = pipe.rgb;
-    if (pipe.a < 0.5 && strength > 0.0) {        // _fire's palette
-        float level = floor(clamp(texelFetch(heat, p / 2, 0).r * 1.4 * strength,
-                                  0.0, 1.0) * 255.0) / 255.0;
-        c = clamp(vec3(level * 3.0, level * 3.0 - 1.0, level * 3.0 - 2.0),
-                  0.0, 1.0);
-    }
-    FRAG_COLOUR = vec4(c, 1.0);
-}
-"""
-
-_PICTURE_FRAGMENT = """
-in vec2 v_uv;
-uniform sampler2D picture;
-void main() {
-    FRAG_COLOUR = texture(picture, v_uv);
-}
-"""
 
 #: The whole frame, as two triangles: corner, then picture coordinates.
 _FULL = np.array([-1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1,
@@ -250,11 +91,15 @@ class PipesPainter:
         self._w, self._h = width, height
         self._half = ((width + 1) // 2, (height + 1) // 2)
         self._frame = 0
-        self._shapes = program(gl, _SHAPES_VERTEX, _SHAPES_FRAGMENT,
+        self._shapes = program(gl, shader("pipes/shapes_vertex.glsl"),
+                               shader("pipes/shapes_fragment.glsl"),
                                ("corner", "start", "finish", "shape", "material"))
-        self._fire = program(gl, _QUAD_VERTEX, _FIRE_FRAGMENT, ("corner", "uv"))
-        self._compose = program(gl, _QUAD_VERTEX, _FRAME_FRAGMENT, ("corner", "uv"))
-        self._paste = program(gl, _QUAD_VERTEX, _PICTURE_FRAGMENT, ("corner", "uv"))
+        quad = shader("quad_vertex.glsl")
+        self._fire = program(gl, quad, shader("pipes/fire_fragment.glsl"), ("corner", "uv"))
+        self._compose = program(gl, quad, shader("pipes/frame_fragment.glsl"),
+                                ("corner", "uv"))
+        self._paste = program(gl, quad, shader("pipes/picture_fragment.glsl"),
+                              ("corner", "uv"))
         self._u = uniforms(gl, self._shapes, "canvas", "light", "halfway",
                            "ambient", "diffuse", "specular", "shininess",
                            "gain", "glow", "far")

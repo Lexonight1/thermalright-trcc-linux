@@ -435,3 +435,49 @@ def test_the_legacy_deb_brings_the_library_its_qt_wheel_links() -> None:
 
     assert depends is not None
     assert "libegl1" in depends.group(1)
+
+
+#: Files under ``src/trcc/assets/`` that are deliberately NOT in the wheel --
+#: each a build input nothing reads at runtime.  The Windows build copies the
+#: first two from the source tree (windows.yml), never from an installed
+#: package.
+_NOT_IN_THE_WHEEL = {
+    "LibreHardwareMonitor.config": "windows.yml copies it into dist/trcc/lhm",
+    "icons/app.ico": "the Windows exe's icon, used by PyInstaller at build time",
+    "fonts/README.md": "notes on the fonts' licences, for people reading the tree",
+}
+
+
+def _wheel_pattern_variants(pattern: str) -> set[str]:
+    """*pattern* as ``fnmatch`` patterns: each ``**/`` either matches no
+    folders or some -- gitignore's rule, which hatch's ``artifacts`` follow."""
+    variants = {pattern}
+    while any("**/" in v for v in variants):
+        variants = {w for v in variants
+                    for w in ((v.replace("**/", "", 1), v.replace("**/", "*/", 1))
+                              if "**/" in v else (v,))}
+    return variants
+
+
+def test_every_runtime_asset_is_in_the_wheel() -> None:
+    """The wheel takes assets by an explicit list of patterns, so a new kind of
+    file -- the visuals' ``.glsl`` shaders were the first -- is left out
+    silently, and the deb, rpm and pip installs start without it.  Every file
+    under ``src/trcc/assets/`` must match a pattern or be named above.
+
+    MUTATION CHECK: drop the ``*.glsl`` pattern and the shaders are named.
+    """
+    import fnmatch
+
+    wheel = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
+    patterns = {v for p in wheel["tool"]["hatch"]["build"]["targets"]["wheel"]["artifacts"]
+                for v in _wheel_pattern_variants(p)}
+    assets = _ROOT / "src" / "trcc" / "assets"
+    left_out = sorted(
+        rel for f in assets.rglob("*")
+        if f.is_file() and "__pycache__" not in f.parts
+        and (rel := f.relative_to(assets).as_posix()) not in _NOT_IN_THE_WHEEL
+        and not any(fnmatch.fnmatchcase(f.relative_to(_ROOT).as_posix(), v)
+                    for v in patterns))
+    assert left_out == []
+
