@@ -564,6 +564,71 @@ def test_the_activity_list_is_the_dashboard_and_adds_any_sensor(
         ("HARDWARE", "board:nct6798_auxtin1:temp")]
 
 
+def _system_info_with(gui_app: App, qtbot, custom):
+    """The classic gui's dashboard, showing the defaults plus *custom*."""
+    from trcc.core.commands import GetSensorDashboard, SetSensorDashboard
+    from trcc.ui.gui.uc_system_info import UCSystemInfo
+
+    panels = list(gui_app.dispatch(GetSensorDashboard()).panels)
+    gui_app.dispatch(SetSensorDashboard(panels=(*panels, custom)))
+    widget = UCSystemInfo(gui_app)
+    qtbot.addWidget(widget)
+    widget.show()
+    return widget
+
+
+def _saved_labels(gui_app: App) -> list[str]:
+    from trcc.core.commands import GetSensorDashboard
+
+    return [b.label for b in gui_app.dispatch(GetSensorDashboard()).panels[-1].sensors]
+
+
+def test_a_custom_panel_s_rows_can_be_named_and_the_name_is_saved(
+        qtbot, gui_app: App) -> None:
+    """#223: a custom panel's art leaves its row names blank, and the C# puts a
+    12-character text box on every row (UCSystemInfoOptionsOne.cs:307-356).
+    The gui had none, so a custom row could never carry a name."""
+    from PySide6.QtCore import Qt
+
+    from trcc.core.models import PanelConfig
+
+    widget = _system_info_with(gui_app, qtbot, PanelConfig.custom("5070 ti"))
+    stock, custom = widget._panels_list[0], widget._panels_list[-1]
+    box = custom._row_edits[2]
+
+    box.selectAll()
+    qtbot.keyClicks(box, "VRAM used by the card")    # typed past the limit
+    qtbot.keyClick(box, Qt.Key.Key_Return)
+
+    assert not hasattr(stock, "_row_edits")          # stock names are in the art
+    assert [e.text() for e in custom._row_edits] == [
+        "Sensor 1", "Sensor 2", "VRAM used by", "Sensor 4"]
+    assert _saved_labels(gui_app) == ["Sensor 1", "Sensor 2", "VRAM used by", "Sensor 4"]
+
+
+def test_clicking_through_a_long_row_name_does_not_save_it_cut(
+        qtbot, gui_app: App) -> None:
+    """A bind fills an empty name from the sensor's label, which may run past
+    12.  The box cuts it to 12 on display, so finishing an edit the user never
+    typed in must save nothing -- or a click would truncate the name."""
+    from PySide6.QtCore import Qt
+
+    from trcc.core.models import PanelConfig, SensorBinding
+
+    custom = PanelConfig.custom("Probes")
+    custom.sensors[0] = SensorBinding("DIMM 1 Temperature", "cpu:temp", "°C")
+    widget = _system_info_with(gui_app, qtbot, custom)
+    box = widget._panels_list[-1]._row_edits[0]
+    shown_from = box.cursorPosition()                 # as built: from its start
+
+    box.end(False)                                    # the cursor left at the tail
+    qtbot.keyClick(box, Qt.Key.Key_Return)            # finished, nothing typed
+
+    assert box.text() == "DIMM 1 Tempe"
+    assert (shown_from, box.cursorPosition()) == (0, 0)
+    assert _saved_labels(gui_app)[0] == "DIMM 1 Temperature"
+
+
 def test_activity_sidebar_emits_selection(gui_app: App) -> None:
     """Sidebar click → selected signal fires with the entry key.
 
@@ -3185,6 +3250,40 @@ def test_renaming_a_panel_takes_the_dialogs_answer(
 
     rename_with("   ", True)                # accepted but blank
     assert box._panels[0].name == "Water loop"
+
+
+def test_renaming_a_row_takes_the_dialogs_answer_up_to_twelve(
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#223, the qtgui half: the C#'s row text box takes 12 characters and may
+    be emptied.  The dialog cannot cap typing, so 13 is refused, not cut."""
+    from trcc.core.commands import GetSensorDashboard
+    from trcc.ui.qtgui.panels.system import dashboard_box as mod
+
+    box = _dashboard_box(gui_app, qtbot)
+
+    def rename_with(value: str, ok: bool) -> None:
+        _select_row(box, 0, 1)                        # _redraw drops it
+        assert box._selected_binding() == (0, 1)
+        monkeypatch.setattr(mod.QInputDialog, "getText",
+                            staticmethod(lambda *a, **k: (value, ok)))
+        box._on_rename_row()
+
+    rename_with("VRAM", True)
+    assert box._panels[0].sensors[1].label == "VRAM"
+    assert box._tree.topLevelItem(0).child(1).text(0) == "VRAM"  # pyright: ignore[reportOptionalMemberAccess]
+
+    rename_with("Discarded", False)                   # cancelled
+    assert box._panels[0].sensors[1].label == "VRAM"
+
+    rename_with("x" * 13, True)                       # over the limit
+    assert box._panels[0].sensors[1].label == "VRAM"
+
+    rename_with("", True)                             # cleared, as in the C#
+    assert box._panels[0].sensors[1].label == ""
+
+    box._on_save()
+    assert gui_app.dispatch(GetSensorDashboard()).panels[0].sensors[1].label == ""
 
 
 def test_panel_verbs_refuse_politely_with_no_selection(

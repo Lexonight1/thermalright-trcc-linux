@@ -244,7 +244,7 @@ def dashboard(
     result = get_app().dispatch(GetSensorDashboard())
     typer.echo(result.message)
     for index, panel in enumerate(result.panels):
-        # The index is what ``dashboard-delete`` / ``-rename`` / ``-bind``
+        # The index is what ``dashboard-delete`` / ``-rename`` / ``-bind`` / ``-label``
         # take.  Names are NOT unique -- every added panel is called "Custom"
         # until renamed -- so position is the only unambiguous handle.
         typer.echo(f"  {index}  [{panel.category_id}] {panel.name}")
@@ -292,6 +292,18 @@ def _panel_at(panels: list[PanelConfig], index: int) -> PanelConfig:
             f"(0..{len(panels) - 1}).  Run `trcc system dashboard` to list.",
         )
     return panels[index]
+
+
+def _row_at(panel: PanelConfig, row: int) -> SensorBinding:
+    """The binding at *row* of *panel*, or a usable error naming the range."""
+    log.debug("_row_at: panel=%r row=%d of %d", panel.name, row,
+              len(panel.sensors))
+    if not 0 <= row < len(panel.sensors):
+        raise typer.BadParameter(
+            f"no row {row} in {panel.name!r} — it has "
+            f"{len(panel.sensors)} (0..{len(panel.sensors) - 1})",
+        )
+    return panel.sensors[row]
 
 
 @app.command("dashboard-add")
@@ -361,18 +373,40 @@ def dashboard_bind(
         )
     with _dashboard_edit() as panels:
         panel = _panel_at(panels, index)
-        if not 0 <= row < len(panel.sensors):
-            raise typer.BadParameter(
-                f"no row {row} in {panel.name!r} — it has "
-                f"{len(panel.sensors)} (0..{len(panel.sensors) - 1})",
-            )
-        binding = panel.sensors[row]
+        binding = _row_at(panel, row)
         panel.sensors[row] = SensorBinding(
             label=binding.label or sensor.label or sensor_id,
             sensor_id=sensor_id,
             unit=sensor.unit,
         )
         typer.echo(f"Bound {panel.name!r} row {row} -> {sensor_id}")
+
+
+@app.command("dashboard-label")
+def dashboard_label(
+    index: int = typer.Argument(..., help="Panel index from `dashboard`."),
+    row: int = typer.Argument(..., help="Row within the panel (0-based)."),
+    name: str = typer.Argument(
+        ..., help=f"The row's name, at most {SensorBinding.LABEL_MAX} "
+                  'characters; "" clears it.'),
+) -> None:
+    """Name one dashboard row — the text beside its value (#223).
+
+    The Windows app gives every row a 12-character text box; this is that
+    box.  A blank name is allowed, as there.
+    """
+    log.info("cli system dashboard-label: index=%d row=%d name=%r",
+             index, row, name)
+    if len(name) > SensorBinding.LABEL_MAX:
+        raise typer.BadParameter(
+            f"{name!r} is {len(name)} characters — a row name is at most "
+            f"{SensorBinding.LABEL_MAX}",
+        )
+    with _dashboard_edit() as panels:
+        panel = _panel_at(panels, index)
+        binding = _row_at(panel, row)
+        typer.echo(f"Named {panel.name!r} row {row}: {binding.label!r} -> {name!r}")
+        binding.label = name
 
 
 @app.command("list-languages")

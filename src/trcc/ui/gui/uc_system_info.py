@@ -66,6 +66,11 @@ SELECTOR_POSITIONS = [
     (245, 154, 16, 30),
 ]
 
+# Row name boxes on a custom panel -- the C#'s textBox1..4
+# (UCSystemInfoOptionsOne.cs:307-356): x, first y, row pitch, width, height.
+# The rect is exactly the dark slot the art leaves blank on a custom panel.
+ROW_NAME_X, ROW_NAME_Y, ROW_NAME_PITCH, ROW_NAME_W, ROW_NAME_H = 39, 55, 35, 96, 19
+
 # Page nav button positions (bottom center)
 PAGE_PREV_POS = (570, 655, 64, 24)
 PAGE_NEXT_POS = (650, 655, 64, 24)
@@ -83,6 +88,7 @@ class SystemInfoPanel(QWidget):
     sensor_select_requested = Signal(object, int)  # (self, row_index)
     delete_requested = Signal(object)              # self
     name_changed = Signal(object, str)             # (self, new_name)
+    row_name_changed = Signal(object, int, str)    # (self, row, new_name)
 
     def __init__(self, config: PanelConfig, parent=None):
         super().__init__(parent)
@@ -174,6 +180,31 @@ class SystemInfoPanel(QWidget):
             )
             self._name_edit.editingFinished.connect(self._on_name_edited)
 
+            # Row names.  A stock panel's names are painted into its art; a
+            # custom panel's art leaves the slots blank, and the C# gives every
+            # row a text box so the user can name it (#223).
+            self._row_edits: list[QLineEdit] = []
+            row_font = QFont('Microsoft YaHei', 10)   # the C#'s 微软雅黑 10.5pt
+            for i, binding in enumerate(config.sensors[:4]):
+                edit = QLineEdit(binding.label, self)
+                edit.setMaxLength(SensorBinding.LABEL_MAX)
+                # Twelve wide letters overflow the C#'s 96 px, and ``setText``
+                # leaves the cursor at the END, so a long name showed its tail
+                # with the first letter cut.  Read from the start.
+                edit.setCursorPosition(0)
+                edit.setFont(row_font)
+                edit.setGeometry(ROW_NAME_X, ROW_NAME_Y + i * ROW_NAME_PITCH,
+                                 ROW_NAME_W, ROW_NAME_H)
+                edit.setToolTip("Row name")
+                edit.setStyleSheet(
+                    f"QLineEdit {{ background: transparent; border: none; "
+                    f"color: {self._color}; }}"
+                    "QLineEdit:focus { border-bottom: 1px solid #9375FF; }"
+                )
+                edit.setProperty('row_idx', i)
+                edit.editingFinished.connect(self._on_row_name_edited)
+                self._row_edits.append(edit)
+
     def _on_selector_clicked(self, *_qt_args) -> None:
         """Selector-button slot — reads row_idx from sender's property."""
         sender = self.sender()
@@ -197,6 +228,30 @@ class SystemInfoPanel(QWidget):
         log.info("SystemInfoPanel._on_name_edited: %r → %r",
                  self.config.name, new_name)
         self.name_changed.emit(self, new_name)
+
+    def _on_row_name_edited(self) -> None:
+        """editingFinished slot for a row name box.
+
+        Emits only when the user TYPED: ``setMaxLength`` cuts a longer name
+        (one filled in from a sensor's label on bind) the moment it is shown,
+        so emitting on every focus-out would save that cut on a mere click.
+        ``isModified`` is set by typing alone, never by ``setText``.
+        """
+        sender = self.sender()
+        if not isinstance(sender, QLineEdit):
+            log.debug("SystemInfoPanel._on_row_name_edited: sender is %r", sender)
+            return
+        row = sender.property('row_idx')
+        sender.setCursorPosition(0)        # show the name from its start again
+        if not sender.isModified():
+            log.debug("SystemInfoPanel._on_row_name_edited: panel=%r row=%s "
+                      "not typed in — nothing to save", self.config.name, row)
+            return
+        sender.setModified(False)
+        log.info("SystemInfoPanel._on_row_name_edited: panel=%r row=%s %r → %r",
+                 self.config.name, row, self.config.sensors[row].label,
+                 sender.text())
+        self.row_name_changed.emit(self, row, sender.text())
 
     def update_values(self, sensor_readings: dict[str, float]):
         """Update displayed values from sensor_id → value mapping."""
@@ -397,6 +452,7 @@ class UCSystemInfo(QWidget):
             panel.sensor_select_requested.connect(self._on_selector_clicked)
             panel.delete_requested.connect(self._on_delete_clicked)
             panel.name_changed.connect(self._on_name_changed)
+            panel.row_name_changed.connect(self._on_row_name_changed)
             panel.show()
             self._panels_list.append(panel)
 
@@ -624,6 +680,18 @@ class UCSystemInfo(QWidget):
         log.info("UCSystemInfo._on_name_changed: %r → %r",
                  panel.config.name, new_name)
         panel.config.name = new_name
+        self._save()
+
+    def _on_row_name_changed(self, panel: SystemInfoPanel, row: int,
+                             new_name: str) -> None:
+        """Name one row of a panel and save the layout."""
+        binding = panel.config.sensors[row]
+        log.info("UCSystemInfo._on_row_name_changed: %r row=%d %r → %r",
+                 panel.config.name, row, binding.label, new_name)
+        if new_name == binding.label:
+            log.info("UCSystemInfo._on_row_name_changed: unchanged — not saved")
+            return
+        binding.label = new_name
         self._save()
 
     def start_updates(self) -> None:

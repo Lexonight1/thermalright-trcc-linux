@@ -1648,6 +1648,20 @@ trcc system dashboard-delete INDEX
 |---|---|
 | `INDEX` | Panel index from `dashboard`. |
 
+### `trcc system dashboard-label`
+
+Name one dashboard row — the text beside its value (#223). The Windows app gives every row a 12-character text box; this is that box. A blank name is allowed, as there.
+
+```bash
+trcc system dashboard-label INDEX ROW NAME
+```
+
+| Argument | Description |
+|---|---|
+| `INDEX` | Panel index from `dashboard`. |
+| `ROW` | Row within the panel (0-based). |
+| `NAME` | The row's name, at most 12 characters; "" clears it. |
+
 ### `trcc system dashboard-rename`
 
 Rename a sensor-dashboard panel.

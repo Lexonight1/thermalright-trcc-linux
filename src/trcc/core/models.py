@@ -2134,6 +2134,12 @@ class SensorBinding:
     sensor_id: str
     unit: str
 
+    #: The longest name a user can TYPE for a row -- the C#'s row text box
+    #: (``UCSystemInfoOptionsOne.cs:308``, ``MaxLength = 12``).  A typing
+    #: limit, not a data rule: a name filled in from a sensor's own label on
+    #: bind may be longer, and the layout keeps it.
+    LABEL_MAX: ClassVar[int] = 12
+
 
 @dataclass(slots=True)
 class PanelConfig:

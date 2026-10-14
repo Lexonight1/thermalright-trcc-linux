@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .....core.commands import GetSensorDashboard, SetSensorDashboard
-from .....core.models import PanelConfig
+from .....core.models import PanelConfig, SensorBinding
 from ...sensor_picker import SensorPickerWidget
 from ._base import SystemBox
 
@@ -72,6 +72,9 @@ class DashboardBox(SystemBox):
         bind = QPushButton("Bind selected row", self)
         bind.clicked.connect(self._on_bind)
         row.addWidget(bind)
+        rename_row = QPushButton("Rename row…", self)
+        rename_row.clicked.connect(self._on_rename_row)
+        row.addWidget(rename_row)
         save = QPushButton("Save layout", self)
         save.clicked.connect(self._on_save)
         row.addWidget(save)
@@ -243,6 +246,40 @@ class DashboardBox(SystemBox):
         panel.name = name
         self._redraw()
         self._status.setText(f"Renamed to {name} — unsaved")
+
+    def _on_rename_row(self) -> None:
+        """Name the selected row — unsaved until "Save layout" (#223).
+
+        The C# gives every row a text box of 12 characters; a blank name is
+        allowed, as there.  The dialog cannot cap typing, so a longer name is
+        refused here rather than cut.
+        """
+        addr = self._selected_binding()
+        log.info("_on_rename_row: addr=%s", addr)
+        if addr is None:
+            log.warning("_on_rename_row: a panel heading has no row address")
+            self._status.setText("Pick a row, not a panel heading.")
+            return
+        p_i, s_i = addr
+        binding = self._panels[p_i].sensors[s_i]
+        name, ok = QInputDialog.getText(
+            self, "Rename row", "Row name:", text=binding.label,
+        )
+        if not ok:
+            log.info("_on_rename_row: cancelled")
+            return
+        if len(name) > SensorBinding.LABEL_MAX:
+            log.warning("_on_rename_row: %r is %d characters, over %d",
+                        name, len(name), SensorBinding.LABEL_MAX)
+            self._status.setText(
+                f"A row name is at most {SensorBinding.LABEL_MAX} characters.",
+            )
+            return
+        log.info("_on_rename_row: panel=%d row=%d %r -> %r",
+                 p_i, s_i, binding.label, name)
+        binding.label = name
+        self._redraw()
+        self._status.setText(f"Renamed row to {name!r} — unsaved")
 
     def _on_save(self) -> None:
         """Persist the WHOLE layout — one bulk verb, not a per-row rebind."""

@@ -168,6 +168,31 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS dashboard\-label
+.PP
+\fBtrcc system dashboard\-label\fR \fIINDEX\fR \fIROW\fR \fINAME\fR
+.PP
+Name one dashboard row  \-  the text beside its value (#223). The Windows app gives every row a 12\-character text box; this is that box. A blank name is allowed, as there.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBINDEX\fR
+Panel index from dashboard.
+.TP
+\fBROW\fR
+Row within the panel (0\-based).
+.TP
+\fBNAME\fR
+The row's name, at most 12 characters; "" clears it.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS dashboard\-rename
 .PP
 \fBtrcc system dashboard\-rename\fR \fIINDEX\fR \fINAME\fR

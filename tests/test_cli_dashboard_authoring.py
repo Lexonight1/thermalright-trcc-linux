@@ -234,6 +234,66 @@ def test_bind_refuses_a_row_that_is_not_there_and_writes_NOTHING(
     assert [b.sensor_id for b in _panels(cli_app)[0].sensors] == before
 
 
+# ── label ────────────────────────────────────────────────────────────────
+
+
+def _labels(app: App, panel: int) -> list[str]:
+    return [b.label for b in _panels(app)[panel].sensors]
+
+
+def test_label_names_that_row_only(
+    cli_runner: CliRunner, cli_app: App,
+) -> None:
+    """#223: the name beside a row's value -- the C#'s row text box."""
+    others = [_labels(cli_app, i) for i in range(len(_panels(cli_app))) if i != 1]
+    before = _labels(cli_app, 1)
+
+    result = _run(cli_runner, "dashboard-label", "1", "2", "VRAM")
+
+    assert result.exit_code == 0, result.output
+    assert _labels(cli_app, 1) == [*before[:2], "VRAM", *before[3:]]
+    assert [_labels(cli_app, i) for i in range(len(_panels(cli_app)))
+            if i != 1] == others
+
+
+def test_label_takes_twelve_characters_and_refuses_thirteen(
+    cli_runner: CliRunner, cli_app: App,
+) -> None:
+    """The C#'s ``MaxLength = 12`` -- the one limit, from the model."""
+    assert SensorBinding.LABEL_MAX == 12
+    before = _labels(cli_app, 0)
+
+    refused = _run(cli_runner, "dashboard-label", "0", "0", "x" * 13)
+    assert refused.exit_code != 0
+    assert _labels(cli_app, 0) == before
+
+    taken = _run(cli_runner, "dashboard-label", "0", "0", "y" * 12)
+    assert taken.exit_code == 0, taken.output
+    assert _labels(cli_app, 0)[0] == "y" * 12
+
+
+def test_label_may_clear_a_name_as_the_c_sharp_box_can(
+    cli_runner: CliRunner, cli_app: App,
+) -> None:
+    result = _run(cli_runner, "dashboard-label", "0", "1", "")
+
+    assert result.exit_code == 0, result.output
+    assert _labels(cli_app, 0)[1] == ""
+
+
+def test_label_refuses_a_row_or_panel_that_is_not_there_and_writes_NOTHING(
+    cli_runner: CliRunner, cli_app: App,
+) -> None:
+    before = [_labels(cli_app, i) for i in range(len(_panels(cli_app)))]
+
+    no_row = _run(cli_runner, "dashboard-label", "0", "9", "X")
+    no_panel = _run(cli_runner, "dashboard-label", "99", "0", "X")
+
+    assert no_row.exit_code != 0 and "no row 9" in no_row.output
+    assert no_panel.exit_code != 0 and "no panel 99" in no_panel.output
+    assert [_labels(cli_app, i) for i in range(len(_panels(cli_app)))] == before
+
+
 # ── the helper's own contract ────────────────────────────────────────────
 
 
