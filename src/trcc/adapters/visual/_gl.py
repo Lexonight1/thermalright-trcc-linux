@@ -744,6 +744,45 @@ class Framebuffer:
             gl.glDeleteRenderbuffers(1, ctypes.byref(c_uint(self._depth)))
 
 
+#: Every pixel, as two triangles: OpenGL's corner (-1..1), then the
+#: picture's (0..1) -- what a full-frame pass draws.
+FULL_QUAD = np.array([-1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1,
+                      -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1], dtype=np.float32)
+
+
+def vertex_array(gl: Gl, sizes: tuple[int, ...]) -> tuple[int, int]:
+    """A vertex array whose vertices are *sizes* floats after floats --
+    attribute 0, 1, ... in order -- over a buffer of its own."""
+    vao, vbo = c_uint(), c_uint()
+    gl.glGenVertexArrays(1, ctypes.byref(vao))
+    gl.glBindVertexArray(vao.value)
+    gl.glGenBuffers(1, ctypes.byref(vbo))
+    gl.glBindBuffer(GL_ARRAY_BUFFER, vbo.value)
+    stride, offset = sum(sizes) * 4, 0
+    for location, size in enumerate(sizes):
+        gl.glVertexAttribPointer(location, size, GL_FLOAT, 0, stride,
+                                 ctypes.c_void_p(offset))
+        gl.glEnableVertexAttribArray(location)
+        offset += size * 4
+    log.debug("vertex_array: %s -> %d", sizes, vao.value)
+    return vao.value, vbo.value
+
+
+def upload(gl: Gl, buffer: int, floats: np.ndarray) -> None:
+    """*floats* into vertex buffer *buffer*."""
+    frame_log.debug("upload: %d float(s)", floats.size)
+    gl.glBindBuffer(GL_ARRAY_BUFFER, buffer)
+    gl.glBufferData(GL_ARRAY_BUFFER, floats.nbytes, floats.ctypes.data,
+                    GL_STREAM_DRAW)
+
+
+def c_floats(values: np.ndarray) -> Any:
+    """*values* as a C array of floats, for a ``glUniform*v``."""
+    flat = np.ascontiguousarray(values, dtype=np.float32).ravel()
+    log.debug("c_floats: %d", flat.size)
+    return (ctypes.c_float * flat.size)(*flat.tolist())
+
+
 def read_rgb(gl: Gl, framebuffer: int, width: int, height: int) -> bytes:
     """*framebuffer*'s picture as RGB24, top row first -- OpenGL's first
     row is the bottom one, a panel's the top."""

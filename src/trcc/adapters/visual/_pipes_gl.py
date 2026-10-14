@@ -30,29 +30,30 @@ import numpy as np
 
 from ...core.logs import per_frame
 from ._gl import (
-    GL_ARRAY_BUFFER,
+    FULL_QUAD,
     GL_BLEND,
     GL_COLOR_BUFFER_BIT,
     GL_DEPTH_BUFFER_BIT,
     GL_DEPTH_TEST,
-    GL_FLOAT,
     GL_LESS,
     GL_ONE_MINUS_SRC_ALPHA,
     GL_RGBA,
     GL_RGBA8,
     GL_SRC_ALPHA,
-    GL_STREAM_DRAW,
     GL_TEXTURE0,
     GL_TEXTURE_2D,
     GL_TRIANGLES,
     GL_UNSIGNED_BYTE,
     Framebuffer,
     GlSurface,
+    c_floats,
     program,
     read_rgb,
     shader,
     texture,
     uniforms,
+    upload,
+    vertex_array,
 )
 
 log = logging.getLogger(__name__)
@@ -68,10 +69,6 @@ _VERTEX_FLOATS = 2 + 11           # a corner, then the shape's first 11 fields
 #: The quad's corners as two triangles, by the box's (x, y) column pairs.
 _CORNERS = ((11, 12), (13, 12), (13, 14), (11, 12), (13, 14), (11, 14))
 
-
-#: The whole frame, as two triangles: corner, then picture coordinates.
-_FULL = np.array([-1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1,
-                  -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1], dtype=np.float32)
 
 
 class PipesPainter:
@@ -114,11 +111,10 @@ class PipesPainter:
         self._picture = texture(gl, 1, 1, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE,
                                 bytes(4))
         self._picture_size = (1, 1)
-        self._shape_vao, self._shape_vbo = self._vertex_array(
-            (2, 3, 3, 4, 1))
-        self._quad_vao, self._quad_vbo = self._vertex_array((2, 2))
-        self._paste_vao, self._paste_vbo = self._vertex_array((2, 2))
-        self._upload(self._quad_vbo, _FULL)
+        self._shape_vao, self._shape_vbo = vertex_array(gl, (2, 3, 3, 4, 1))
+        self._quad_vao, self._quad_vbo = vertex_array(gl, (2, 2))
+        self._paste_vao, self._paste_vbo = vertex_array(gl, (2, 2))
+        upload(self._gl, self._quad_vbo, FULL_QUAD)
         self._lit(materials, light, halfway, far)
         lift, cooling, pipe_heat = fire_rule
         gl.glUseProgram(self._fire)
@@ -131,32 +127,6 @@ class PipesPainter:
             gl.glClearColor(0.0, 0.0, 0.0, 0.0)
             gl.glClear(GL_COLOR_BUFFER_BIT)
 
-    def _vertex_array(self, sizes: tuple[int, ...]) -> tuple[int, int]:
-        """A vertex array whose vertices are *sizes* floats after floats --
-        attribute 0, 1, ... in order -- over a buffer of its own."""
-        gl = self._gl
-        vao, vbo = ctypes.c_uint(), ctypes.c_uint()
-        gl.glGenVertexArrays(1, ctypes.byref(vao))
-        gl.glBindVertexArray(vao.value)
-        gl.glGenBuffers(1, ctypes.byref(vbo))
-        gl.glBindBuffer(GL_ARRAY_BUFFER, vbo.value)
-        stride, offset = sum(sizes) * 4, 0
-        for location, size in enumerate(sizes):
-            gl.glVertexAttribPointer(location, size, GL_FLOAT, 0, stride,
-                                     ctypes.c_void_p(offset))
-            gl.glEnableVertexAttribArray(location)
-            offset += size * 4
-        log.debug("PipesPainter._vertex_array: %s -> %d", sizes, vao.value)
-        return vao.value, vbo.value
-
-    def _upload(self, buffer: int, floats: np.ndarray) -> None:
-        """*floats* into vertex buffer *buffer*."""
-        frame_log.debug("PipesPainter._upload: %d float(s)", floats.size)
-        gl = self._gl
-        gl.glBindBuffer(GL_ARRAY_BUFFER, buffer)
-        gl.glBufferData(GL_ARRAY_BUFFER, floats.nbytes, floats.ctypes.data,
-                        GL_STREAM_DRAW)
-
     def _lit(self, materials: list[tuple[Any, ...]], light: np.ndarray,
              halfway: np.ndarray, far: float) -> None:
         """The shapes' light, materials and depth range -- fixed for good."""
@@ -165,12 +135,12 @@ class PipesPainter:
         gl.glUseProgram(self._shapes)
         gl.glUniform2f(u["canvas"], float(self._w), float(self._h))
         for name, value in (("light", light), ("halfway", halfway)):
-            gl.glUniform3fv(u[name], 1, _floats(value))
+            gl.glUniform3fv(u[name], 1, c_floats(value))
         for index, name in enumerate(("ambient", "diffuse", "specular")):
-            gl.glUniform3fv(u[name], len(materials), _floats(
+            gl.glUniform3fv(u[name], len(materials), c_floats(
                 np.concatenate([m[index] for m in materials])))
         gl.glUniform1fv(u["shininess"], len(materials),
-                        _floats(np.array([m[3] for m in materials])))
+                        c_floats(np.array([m[3] for m in materials])))
         gl.glUniform1f(u["far"], far)
         gl.glUseProgram(self._fire)
         gl.glUniform2f(self._uf["canvas"], float(self._w), float(self._h))
@@ -222,7 +192,7 @@ class PipesPainter:
         vertices = np.concatenate(
             [corners.reshape(-1, 2),
              np.repeat(shapes[:, :11], len(_CORNERS), axis=0)], axis=1)
-        self._upload(self._shape_vbo, np.ascontiguousarray(vertices, np.float32))
+        upload(self._gl, self._shape_vbo, np.ascontiguousarray(vertices, np.float32))
         gl.glUseProgram(self._shapes)
         gl.glUniform1f(self._u["gain"], gain)
         gl.glUniform1f(self._u["glow"], glow)
@@ -269,7 +239,7 @@ class PipesPainter:
         corners = np.array([x0, y0, 0, 0, x1, y0, 1, 0, x1, y1, 1, 1,
                             x0, y0, 0, 0, x1, y1, 1, 1, x0, y1, 0, 1],
                            dtype=np.float32)
-        self._upload(self._paste_vbo, corners)
+        upload(self._gl, self._paste_vbo, corners)
         gl.glUseProgram(self._paste)
         self._textures(self._pipes.colour, self._heat[0].colour, self._picture)
         gl.glEnable(GL_BLEND)
@@ -307,10 +277,3 @@ class PipesPainter:
                          (self._paste_vao, self._paste_vbo)):
             gl.glDeleteVertexArrays(1, ctypes.byref(ctypes.c_uint(vao)))
             gl.glDeleteBuffers(1, ctypes.byref(ctypes.c_uint(vbo)))
-
-
-def _floats(values: np.ndarray) -> Any:
-    """*values* as a C array of floats, for a ``glUniform*v``."""
-    flat = np.ascontiguousarray(values, dtype=np.float32).ravel()
-    log.debug("_floats: %d", flat.size)
-    return (ctypes.c_float * flat.size)(*flat.tolist())
