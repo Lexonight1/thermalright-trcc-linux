@@ -1316,8 +1316,8 @@ def visuals(
         sliders = ", ".join(f"{a.name} {a.minimum:g}-{a.maximum:g}"
                             for a in info.adjustments)
         typer.echo(f"  {info.kind:<12} {info.title}  ({sliders})")
-    for name in result.presets:
-        typer.echo(f"    preset: {name}")
+        for name in info.presets:
+            typer.echo(f"    preset: {name}")
     typer.echo(f"  centre picture: {result.center or 'none'}")
     if key:
         sliders = ", ".join(f"{n} {v:g}" for n, v in result.sliders.items())

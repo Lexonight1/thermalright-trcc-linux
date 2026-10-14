@@ -601,11 +601,10 @@ class VisualResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class VisualsResult(Result):
-    """``ListVisuals``: every audio visual this machine can draw, the preset
-    files (relative to the visuals' folder) for those that draw presets, and
-    the user's centre picture ("" for none)."""
+    """``ListVisuals``: every audio visual this machine can draw -- each with
+    its own preset files (``VisualInfo.presets``) -- and the user's centre
+    picture ("" for none)."""
     visuals: tuple[VisualInfo, ...] = ()
-    presets: tuple[str, ...] = ()
     center: str = ""
     #: Asked for one panel (``ListVisuals(key=...)``): the visual it plays
     #: ("" for none), that visual's preset and its slider values.

@@ -1348,6 +1348,11 @@ class VisualInfo:
     #: Why it cannot play on this computer -- "" when it can.  Filled by
     #: ``ListVisuals``; a class's own ``INFO`` leaves it empty.
     problem: str = ""
+    #: The preset files THIS visual draws -- one gallery tile each.  Filled
+    #: by ``ListVisuals`` like ``problem``.  Each visual carries its own:
+    #: they were one flat list, which gave every visual that draws presets
+    #: all of them.
+    presets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

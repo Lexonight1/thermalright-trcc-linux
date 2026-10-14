@@ -271,7 +271,45 @@ def test_the_gallery_lists_every_visual_and_the_preset_files(app: App) -> None:
     assert (kinds[0], kinds[-1], len(kinds)) == ("trcc-pipes", "milkdrop", 13)
     assert [a.name for a in listed.visuals[0].adjustments] == [
         "growth", "thickness", "center_size"]       # Fire is the picture's
-    assert listed.presets == ("Fractal/one.milk",)
+    assert [(v.kind, v.presets) for v in listed.visuals if v.presets] == [
+        ("milkdrop", ("Fractal/one.milk",))]
+
+
+def test_each_visual_lists_only_its_own_presets(
+        app: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The presets were ONE flat list, and the gallery gave every visual that
+    draws presets all of it: harmless while MilkDrop was the only one, wrong
+    the moment a second arrives -- each would show the other's tiles."""
+    from trcc.core.models import VisualInfo
+
+    _preset(app)
+    platform = app.platform
+    real_catalog, real_class = platform.visual_catalog, platform.visual_class
+
+    class Second:
+        """A second visual that draws presets -- only what ListVisuals asks."""
+
+        @classmethod
+        def problem(cls) -> str:
+            return ""
+
+        @classmethod
+        def presets(cls, folder: Path) -> tuple[str, ...]:
+            del folder
+            return ("built-in/one.json", "built-in/two.json")
+
+    second = VisualInfo("second", "Second", "Test", uses_presets=True)
+    monkeypatch.setattr(platform, "visual_catalog",
+                        lambda: (*real_catalog(), second))
+    monkeypatch.setattr(platform, "visual_class",
+                        lambda kind: Second if kind == "second" else real_class(kind))
+
+    listed = app.dispatch(ListVisuals())
+
+    assert [(v.kind, v.presets) for v in listed.visuals if v.uses_presets] == [
+        ("milkdrop", ("Fractal/one.milk",)),
+        ("second", ("built-in/one.json", "built-in/two.json"))]
+    assert all(v.presets == () for v in listed.visuals if not v.uses_presets)
 
 
 def test_a_visual_plays_as_the_panel_s_background(app: App) -> None:
@@ -424,12 +462,15 @@ def test_the_gallery_lists_trcc_pipes_first_and_one_tile_per_preset() -> None:
 
     listed = VisualsResult(ok=True, visuals=(
         VisualInfo("trcc-pipes", "TRCC Pipes", "TRCC"),
-        VisualInfo("milkdrop", "MilkDrop", "MilkDrop", uses_presets=True)),
-        presets=("geiss/Swirl.milk", "Flexi - Rain.milk"))
+        VisualInfo("milkdrop", "MilkDrop", "MilkDrop", uses_presets=True,
+                   presets=("geiss/Swirl.milk", "Flexi - Rain.milk")),
+        VisualInfo("second", "Second", "Test", uses_presets=True,
+                   presets=("built-in/one.json",))))
     assert gallery_items(listed) == [
         VisualItem("trcc-pipes", "", "TRCC Pipes"),
         VisualItem("milkdrop", "geiss/Swirl.milk", "Swirl"),
-        VisualItem("milkdrop", "Flexi - Rain.milk", "Flexi - Rain")]
+        VisualItem("milkdrop", "Flexi - Rain.milk", "Flexi - Rain"),
+        VisualItem("second", "built-in/one.json", "one")]
 
 
 def test_a_tile_is_what_the_visual_draws_for_noise(app: App) -> None:

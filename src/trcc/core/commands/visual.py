@@ -106,18 +106,19 @@ class ListVisuals(Query[VisualsResult]):
 
     def execute(self, app: App) -> VisualsResult:
         problem = _sound_problem(app)
-        visuals = tuple(replace(v, problem=problem or app.platform.visual_class(
-            v.kind).problem()) for v in app.platform.visual_catalog())
         base = app.platform.paths().visuals_dir()
-        presets = tuple(name for v in visuals if v.uses_presets
-                        for name in app.platform.visual_class(v.kind).presets(base))
+        visuals = tuple(
+            replace(v, problem=problem or cls.problem(), presets=cls.presets(base))
+            for v in app.platform.visual_catalog()
+            for cls in (app.platform.visual_class(v.kind),))
         center, shown, _fire = app.settings.visual_picture()
         s = app.settings.for_device(self.key) if self.key else None
         reader = app.media.visual(self.key) if self.key else None
-        log.info("ListVisuals: %s, %d preset(s), centre %s, %s plays %s",
-                 [v.kind for v in visuals], len(presets), center,
-                 self.key or "-", s.visual if s else None)
-        return VisualsResult(ok=True, visuals=visuals, presets=presets,
+        log.info("ListVisuals: %s, presets %s, centre %s, %s plays %s",
+                 [v.kind for v in visuals],
+                 {v.kind: len(v.presets) for v in visuals if v.uses_presets},
+                 center, self.key or "-", s.visual if s else None)
+        return VisualsResult(ok=True, visuals=visuals,
                              center=str(center or ""), center_shown=shown,
                              center_fire=app.settings.visual_center_fire(),
                              playing=(s.visual or "") if s else "",
@@ -318,7 +319,7 @@ class SetVisualCenter(Command[VisualsResult]):
         _restart_centred(app, "SetVisualCenter")
         listed = app.dispatch(ListVisuals())
         return VisualsResult(ok=True, visuals=listed.visuals,
-                             presets=listed.presets, center=listed.center,
+                             center=listed.center,
                              message=("centre picture set" if self.path
                                       else "no centre picture"))
 

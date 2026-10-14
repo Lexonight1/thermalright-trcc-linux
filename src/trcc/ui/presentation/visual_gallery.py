@@ -1,9 +1,9 @@
 """The audio visuals gallery, as items -- the same in every window.
 
-``ListVisuals`` answers with the visuals this computer can draw and the
-preset files of those that draw presets.  A gallery shows one tile for a
-visual that draws itself (TRCC Pipes) and one per preset for a visual that
-draws presets (MilkDrop), in the App's order -- TRCC Pipes first.  Both
+``ListVisuals`` answers with the visuals this computer can draw, each
+carrying its own preset files.  A gallery shows one tile for a visual that
+draws itself (TRCC Pipes) and one per preset of a visual that draws presets
+(MilkDrop), in the App's order -- TRCC Pipes first.  Both
 windows build their tiles from :func:`gallery_items`, so they cannot list
 the visuals differently.
 """
@@ -33,7 +33,7 @@ def gallery_items(listed: VisualsResult) -> list[VisualItem]:
     items = [item for info in listed.visuals
              for item in ([VisualItem(info.kind, preset, PurePath(preset).stem,
                                       info.problem)
-                           for preset in listed.presets]
+                           for preset in info.presets]
                           if info.uses_presets
                           else [VisualItem(info.kind, "", info.title,
                                            info.problem)])]
