@@ -13,6 +13,7 @@ from __future__ import annotations
 from trcc.app import App
 from trcc.core.commands import RenderLed
 from trcc.core.events import SystemResumed
+from trcc.core.models import DeviceQuirks
 
 from .conftest import FakePlatform, _CliRenderer
 from .test_render_led import _LED_KEY, _attach_and_connect, _scripted_handshake
@@ -97,3 +98,22 @@ def test_resume_actually_REBUILDS_the_device(fake_platform: FakePlatform) -> Non
         "identity means the handler never ran (or is unsubscribed)")
     assert not before.is_connected, "the stale instance must be released"
     assert after.is_connected
+
+
+def test_a_single_session_panel_keeps_its_session_through_a_wake(
+    fake_platform: FakePlatform,
+) -> None:
+    """#283: a 4.07 panel came back after a wake while nothing reopened it,
+    and went black once the wake reopened it -- a reopen wedges that firmware
+    (#228).  Its device, transport and sender stay exactly as they were.
+    MUTATION CHECK: drop the single-session ``continue`` in
+    ``_on_system_resumed`` -- the device is rebuilt."""
+    app = _app(fake_platform, pm=1)
+    before = app.get(_LED_KEY)
+    before.set_quirks(DeviceQuirks(single_session=True))
+    sender = app.senders.get(_LED_KEY)
+
+    app.events.publish(SystemResumed())
+
+    assert (app.get(_LED_KEY) is before, before.is_connected,
+            app.senders.get(_LED_KEY) is sender) == (True, True, True)

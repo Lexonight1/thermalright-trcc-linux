@@ -663,6 +663,9 @@ class App(CommandBus):
         repaint the same content on the next tick.  So both the LED segment
         displays and the LCD panels recover without a manual restart (#189).
 
+        A single-session panel (``DeviceQuirks.single_session``) is left alone:
+        its session outlives the sleep, and a reopen is what wedges it (#283).
+
         The reconnect is :meth:`connect_unit`, the replug's own path, so a
         panel whose node is late after the wake is retried by the reconnect
         watcher.  It used to be one ``ConnectDevice``: a node not back yet
@@ -675,6 +678,13 @@ class App(CommandBus):
         for key in keys:
             with self._connect_lock:
                 old = self.devices.get(key)
+                if old is not None and old.quirks.single_session:
+                    # A reopen wedges it (#228) and blacked #283's panel after
+                    # every wake.  Its session survives the sleep: the sender
+                    # keeps streaming and the panel comes back by itself.
+                    log.info("_on_system_resumed: %s keeps its session -- a "
+                             "reopen wedges this firmware", key)
+                    continue
                 log.info("_on_system_resumed: %s — stale transport after "
                          "suspend, stop sender + reopen", key)
                 self.stop_sender(key)

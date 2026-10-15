@@ -278,23 +278,21 @@ def _write_after_stale(dev, transport) -> bool:
     return ok, transport.opens - opens
 
 
-def test_a_407_panel_that_answers_the_handshake_may_reconnect(
+def test_a_407_panel_that_answers_the_handshake_still_never_reopens(
     tmp_path, monkeypatch,
 ) -> None:
-    """#283: a 0416:5302 firmware-4.07 panel that is NOT the Warframe SE --
-    silent to the probe, then a full PM 52 reply to the ordinary handshake --
-    got the SE's "never reconnect", so one stale handle meant 0 frames until
-    a replug.  Taking the init packet proves it is not that firmware."""
+    """#283: a 4.07 panel that answers the ordinary handshake (PM 52) was let
+    reopen after a failed send, and went black after every wake.  It keeps
+    its session like the Warframe SE: a failed write soft-fails, the
+    keepalive resends, nothing reopens.  MUTATION CHECK: drop
+    ``single_session`` from the 4.07 row -- the write reopens."""
     full = bytearray(512)
     full[0:4] = b"\xda\xdb\xdc\xdd"
     full[4], full[5], full[12] = 0, 52, 0x01
-    # probe: silent; handshake; then the reconnect's handshake
-    dev, transport = _quirked(tmp_path, monkeypatch,
-                              [b"", bytes(full), bytes(full)])
+    dev, transport = _quirked(tmp_path, monkeypatch, [b"", bytes(full)])
 
-    assert dev.quirks.single_session is False
-    assert dev.needs_keepalive is True          # resending stays: it blanks
-    assert _write_after_stale(dev, transport) == (True, 1)
+    assert (dev.quirks.single_session, dev.needs_keepalive) == (True, True)
+    assert _write_after_stale(dev, transport) == (False, 0)
 
 
 def test_the_warframe_se_still_never_reconnects(tmp_path, monkeypatch) -> None:
