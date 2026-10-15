@@ -600,7 +600,11 @@ def _the_suite_is_hermetic() -> Iterator[None]:
 #: our own pkexec helpers ``trcc-dmi``/``trcc-imc``).
 _ELEVATORS = frozenset({"pkexec", "sudo", "doas"})
 _PRIVILEGED_TOOLS = frozenset({"dmidecode", "smartctl", "trcc-dmi", "trcc-imc",
-                               "trcc-ram-access", "trcc-ram-access-off"})
+                               "trcc-ram-access", "trcc-ram-access-off",
+                               # not root, but the developer's REAL user
+                               # manager: `systemctl --user enable --now`
+                               # would start a service on their machine.
+                               "systemctl"})
 #: Every refused attempt, as ``(PYTEST_CURRENT_TEST, command)``.
 _PRIVILEGED_ATTEMPTS: list[tuple[str, str]] = []
 
@@ -681,6 +685,19 @@ def _no_privileged_commands() -> Iterator[list[tuple[str, str]]]:
     assert not elsewhere, (
         f"a fixture tried to run privileged commands, which the suite "
         f"refuses: {elsewhere}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_user_manager() -> Iterator[None]:
+    """The two places TRCC asks the systemd user manager answer "no systemd"
+    in every test -- the guard above refuses ``systemctl`` outright; this is
+    what code under test meets instead of a refusal."""
+    from trcc.adapters.system import _autostart, linux
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(_autostart, "_systemctl_user", lambda *args: 127)
+        mp.setattr(linux, "_user_manager_environment", lambda: "")
+        yield
 
 
 @pytest.hookimpl(wrapper=True)

@@ -15,6 +15,9 @@ The daemon auto-spawns when any UI calls it, so installing `trccd.service` is
 
 ## Linux (systemd user unit)
 
+`trcc setup` installs and starts `trccd.service` for you, with `ExecStart`
+pointed at your own install.  By hand:
+
 ```bash
 # Install the unit (one-time)
 mkdir -p ~/.config/systemd/user

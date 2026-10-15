@@ -3165,6 +3165,15 @@ class Platform(ABC):
     #: ``RGB_HARDWARE``.  None: no sound for audio visuals on this OS yet.
     SOUND_INPUT: ClassVar[type[SoundInput] | None] = None
 
+    @staticmethod
+    def adopt_session() -> object:
+        """Learn the desktop before the screen capture is built -- for a
+        process that started before it, as an App the systemd user service
+        runs at boot.  An OS replaces it by assignment, as it names
+        ``SOUND_INPUT``.  By default this OS's processes always have it."""
+        log.debug("Platform.adopt_session: nothing to adopt")
+        return None
+
     def sound_input(self) -> SoundInput:
         """What an audio visual hears.  ``OSError`` on an OS without one; a
         stand-in platform scripts it, so no test hears the host."""

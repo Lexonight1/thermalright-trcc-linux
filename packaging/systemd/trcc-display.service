@@ -10,8 +10,8 @@
 # want exclusive USB access and will fight over the interface.
 Description=TRCC Linux LCD stats ticker
 Documentation=https://github.com/Lexonight1/thermalright-trcc-linux
-After=graphical-session.target
-PartOf=graphical-session.target
+# Not tied to graphical-session.target: a logout into another session
+# (Steam's Gamescope) must not stop it (#311).
 # The device is often not enumerated yet at login, and only one process may
 # hold the interface — so Restart= below retries forever instead of tripping
 # the start-rate limit.

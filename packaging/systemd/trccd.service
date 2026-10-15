@@ -6,14 +6,14 @@
 # This is a USER unit. Install with:
 #     systemctl --user enable --now trccd.service
 #
-# Prefer `trcc setup` if it has been wired to install + enable this
-# unit (Phase 11). The unit is opt-in — auto-spawn from any client
-# UI continues to work without it; this just makes the daemon
-# survive reboots.
+# `trcc setup` writes this unit for you, ExecStart pointed at your own
+# install (pipx, venv or package), and enables it.  Opt-in -- any TRCC
+# window still starts the App without it; this keeps it running across
+# a logout into another session (Steam's Gamescope, #311).
 Description=TRCC Linux background service
 Documentation=https://github.com/Lexonight1/thermalright-trcc-linux
-After=graphical-session.target
-PartOf=graphical-session.target
+# Not tied to graphical-session.target: that stopped the App on a logout
+# into Gamescope and nothing started it again (#311).
 
 [Service]
 Type=simple

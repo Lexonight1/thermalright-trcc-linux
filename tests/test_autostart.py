@@ -298,3 +298,108 @@ def test_refresh_removes_an_old_entry_without_turning_autostart_on(
 
     assert not old.exists()
     assert not auto.is_enabled()
+
+
+# ── #311: the App as the user's systemd service ─────────────────────
+
+def _service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+             answers: list[int] | None = None):
+    from trcc.adapters.system import _autostart
+
+    monkeypatch.setattr(_autostart, "launch_argv",
+                        lambda sub, *a: ["/opt/my trcc/bin/trcc", sub, *a])
+    calls: list[tuple[str, ...]] = []
+    replies = iter(answers or [0, 0])
+
+    def systemctl(*args: str) -> int:
+        calls.append(args)
+        return next(replies)
+    return _autostart.SystemdUserService(tmp_path, systemctl), calls
+
+
+def test_the_unit_runs_this_install_and_outlives_the_desktop_session(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#311: a unit PartOf graphical-session.target was stopped by the logout
+    into Gamescope.  MUTATION CHECK: bind it to graphical-session.target."""
+    service, _calls = _service(tmp_path, monkeypatch)
+    text = service.render()
+    assert 'ExecStart="/opt/my trcc/bin/trcc" daemon\n' in text
+    assert "WantedBy=default.target\n" in text
+    assert "graphical-session" not in text
+
+
+def test_install_writes_enables_and_starts_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service, calls = _service(tmp_path, monkeypatch)
+    assert service.install() is True
+    assert service.path == tmp_path / "systemd" / "user" / "trccd.service"
+    assert service.path.read_text() == service.render()
+    assert calls == [("daemon-reload",), ("enable", "--now", "trccd.service")]
+
+
+def test_install_says_when_systemd_would_not_start_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service, calls = _service(tmp_path, monkeypatch, answers=[0, 1])
+    assert service.install() is False
+    assert len(calls) == 2
+
+
+def test_setup_as_root_leaves_the_users_service_alone(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A per-user service written as root would land in root's home."""
+    from trcc.adapters.system import linux
+
+    monkeypatch.setattr(linux.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(linux, "SystemdUserService",
+                        lambda: pytest.fail("installed as root"))
+    linux._install_user_service()
+
+
+def test_the_shipped_units_are_not_tied_to_the_desktop_session() -> None:
+    root = Path(__file__).resolve().parents[1] / "packaging" / "systemd"
+    for unit in ("trccd.service", "trcc-display.service"):
+        lines = (root / unit).read_text().splitlines()
+        assert not [ln for ln in lines if ln.startswith(("PartOf=", "After="))
+                    and "graphical-session" in ln], unit
+
+
+@pytest.mark.parametrize(("env", "shown", "adopted"), [
+    # Started by systemd at boot: nothing here, the desktop's in the manager.
+    ({}, "WAYLAND_DISPLAY=wayland-0\nXDG_SESSION_TYPE=wayland\nHOME=/h\n",
+     ["WAYLAND_DISPLAY", "XDG_SESSION_TYPE"]),
+    # Started by a window: it already has a display -- nothing changes.
+    ({"DISPLAY": ":0"}, "WAYLAND_DISPLAY=wayland-0\n", []),
+    # No desktop logged in yet, or no systemd.
+    ({}, "", []),
+])
+def test_a_boot_started_app_learns_the_desktop_from_the_user_manager(
+        monkeypatch: pytest.MonkeyPatch, env: dict[str, str], shown: str,
+        adopted: list[str]) -> None:
+    """MUTATION CHECK: skip the adoption in LinuxOS._build_screen_capture --
+    a service-started App casts nothing; here, return [] always."""
+    from trcc.adapters.system import linux
+
+    for name in linux._SESSION_VARS:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    assert linux.adopt_user_session_environment(lambda: shown) == adopted
+    assert all(linux.os.environ[n] for n in adopted)
+    assert "HOME" not in adopted
+
+
+def test_the_capture_is_built_after_the_desktop_is_adopted(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The join: adoption is worthless unless the capture chain is built
+    after it.  MUTATION CHECK: drop the ``adopt_session`` call in
+    ``BaseOS._build_screen_capture``."""
+    from trcc.adapters import screencast
+    from trcc.adapters.system import linux
+
+    order: list[str] = []
+    monkeypatch.setattr(linux.LinuxOS, "adopt_session",
+                        staticmethod(lambda: order.append("adopt") or []))
+    monkeypatch.setattr(screencast, "build_screen_capture",
+                        lambda session, config: order.append("build"))
+    linux.LinuxOS()._build_screen_capture()
+    assert order == ["adopt", "build"]

@@ -62,7 +62,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 18 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 6 | 8 |
+| [`Platform`](#platform) | 25 | 7 | 8 |
 | [`ContentStore`](#contentstore) | 29 | 0 | 1 |
 
 ---
@@ -1012,7 +1012,7 @@ usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | Non
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**You inherit (6):** `ram_access` · `rgb_hardware` · `smbuses` · `sound_input` · `visual_catalog` · `visual_class`
+**You inherit (7):** `adopt_session` · `ram_access` · `rgb_hardware` · `smbuses` · `sound_input` · `visual_catalog` · `visual_class`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 

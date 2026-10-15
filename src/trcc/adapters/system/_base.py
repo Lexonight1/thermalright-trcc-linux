@@ -399,6 +399,7 @@ class BaseOS(Platform):
 
         log.info("%s._build_screen_capture: delegating to the shared backend "
                  "chooser", type(self).__name__)
+        self.adopt_session()
         return build_screen_capture(self.display_session(),
                                     self.paths().config_dir())
 

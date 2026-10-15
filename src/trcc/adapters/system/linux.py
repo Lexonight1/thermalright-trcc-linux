@@ -18,7 +18,8 @@ import logging
 import os
 import re
 import shutil
-from collections.abc import Mapping
+import subprocess
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,6 +48,7 @@ from ..sensors.gpu_detect import (
 )
 from ..visual import EglSurface, drawn_on
 from ..visual.sound import MonitorSoundInput
+from ._autostart import SystemdUserService
 from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
 from ._desktop_entry import XdgDesktopEntry
 from ._polkit_install import POLKIT_POLICY
@@ -628,6 +630,64 @@ def _is_enterprise_linux(text: str | None = None) -> bool:
     return hit
 
 
+def _install_user_service() -> None:
+    """Setup's per-user step: the App as this user's systemd service, so it
+    keeps the panels going through a logout into another session (#311).
+    A convenience like the menu entry -- never a reason to fail setup."""
+    if os.geteuid() == 0:
+        who = os.environ.get("SUDO_USER")
+        log.warning("setup: the App's user service is per user -- run "
+                    "`trcc setup` as %s, not as root, to install it",
+                    who or "your own user")
+        return
+    service = SystemdUserService()
+    if service.install():
+        log.warning("setup: the App now runs as your user service and keeps "
+                    "your panels going across logouts.  To remove it: %s",
+                    service.removal_command())
+    else:
+        log.warning("setup: could not start the App's user service (%s) -- "
+                    "the App still starts with any TRCC window", service.path)
+
+
+#: What a desktop gives the systemd user manager at login -- and what a
+#: screen capture needs to reach that desktop.
+_SESSION_VARS = ("WAYLAND_DISPLAY", "DISPLAY", "XDG_SESSION_TYPE",
+                 "XDG_CURRENT_DESKTOP", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS")
+
+
+def _user_manager_environment() -> str:
+    """``systemctl --user show-environment``, or "" when it cannot answer."""
+    try:
+        out = subprocess.run(["systemctl", "--user", "show-environment"],
+                             capture_output=True, text=True, timeout=5,
+                             check=False).stdout
+    except (OSError, subprocess.SubprocessError) as e:
+        log.info("_user_manager_environment: %s", e)
+        out = ""
+    log.debug("_user_manager_environment: %d line(s)", len(out.splitlines()))
+    return out
+
+
+def adopt_user_session_environment(
+        shown: Callable[[], str] | None = None) -> list[str]:
+    """Take the desktop's variables from the user manager when this process
+    has none -- an App the systemd user service started before anyone logged
+    in (#311).  Only names missing here are set.  Returns those it set."""
+    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"):
+        log.debug("adopt_user_session_environment: this process has a display")
+        return []
+    text = (shown or _user_manager_environment)()
+    pairs = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+    adopted = [name for name in _SESSION_VARS
+               if pairs.get(name) and not os.environ.get(name)]
+    for name in adopted:
+        os.environ[name] = pairs[name]
+    log.info("adopt_user_session_environment: %s",
+             {n: pairs[n] for n in adopted} or "nothing to adopt")
+    return adopted
+
+
 class LinuxOS(BaseOS, key="linux"):
     """Linux implementation — same OS contract; only internals below differ.
 
@@ -640,6 +700,9 @@ class LinuxOS(BaseOS, key="linux"):
     #: Audio visuals: what is playing (the PulseAudio/PipeWire monitor),
     #: drawn off-screen on EGL -- no display needed.
     SOUND_INPUT = MonitorSoundInput
+    #: An App the user service started at boot learns the desktop from the
+    #: systemd user manager before it builds the screen capture (#311).
+    adopt_session = staticmethod(adopt_user_session_environment)
     VISUALS = drawn_on(EglSurface)
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
@@ -657,6 +720,7 @@ class LinuxOS(BaseOS, key="linux"):
         log.debug("_build_autostart")
         from ._autostart import XdgDesktopAutostart
         return XdgDesktopAutostart()
+
 
     def _build_hotplug(self) -> HotplugMonitor:
         log.debug("_build_hotplug")
@@ -726,6 +790,8 @@ class LinuxOS(BaseOS, key="linux"):
             install_selinux_policy(dry_run=True)
             log.info("would install the desktop entry: %s",
                      XdgDesktopEntry().path)
+            log.info("would install and start the App's user service: %s",
+                     SystemdUserService().path)
             retire_legacy_polkit(dry_run=True)
             install_polkit_files(dry_run=True, owns=self.packages().owns)
             return 0
@@ -745,6 +811,7 @@ class LinuxOS(BaseOS, key="linux"):
         # Desktop integration is a convenience, never a reason to report
         # failure — the device still works from the CLI without a menu icon.
         XdgDesktopEntry().install()
+        _install_user_service()
         rc_polkit = retire_legacy_polkit(dry_run=False)
         # After the retirement above, which keeps a policy naming only our
         # /usr/bin/trcc-* helpers -- exactly the one this installs.

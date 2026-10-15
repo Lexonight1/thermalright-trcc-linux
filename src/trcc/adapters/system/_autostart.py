@@ -338,6 +338,97 @@ def gui_launch_command(*args: str) -> str:
 
 
 # =========================================================================
+# systemd user service — the App itself, outliving the desktop session
+# =========================================================================
+
+_SERVICE_NAME = "trccd.service"
+
+#: Bound to ``default.target``, never to ``graphical-session.target``: a
+#: logout into another session -- Steam's Gamescope, which CachyOS reaches by
+#: a real logout -- stopped a session-bound App and left the panel dark
+#: (#311).  The user manager starts this again at the next login, and the App
+#: shows the saved display by itself.
+_SERVICE_TEMPLATE = """\
+[Unit]
+Description=TRCC Linux -- the App that drives your panels
+Documentation=https://github.com/Lexonight1/thermalright-trcc-linux
+
+[Service]
+Type=simple
+ExecStart={exec_cmd}
+Restart=on-failure
+RestartSec=5
+Environment=QT_QPA_PLATFORM=offscreen
+
+[Install]
+WantedBy=default.target
+"""
+
+
+def _systemctl_user(*args: str) -> int:
+    """``systemctl --user ARGS``; its exit code, or 127 without systemd."""
+    if shutil.which("systemctl") is None:
+        log.warning("_systemctl_user: no systemctl -- this system does not "
+                    "run systemd")
+        return 127
+    try:
+        done = subprocess.run(["systemctl", "--user", *args], check=False,
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("_systemctl_user %s: %s", " ".join(args), e)
+        return 1
+    log.info("_systemctl_user %s -> %d %s", " ".join(args), done.returncode,
+             done.stderr.strip())
+    return done.returncode
+
+
+class SystemdUserService:
+    """The App as this user's systemd service, so it keeps the panels going
+    through a logout into another session (#311).  Per-user: no root.
+
+    ``ExecStart`` is this install's own launch command -- the one the
+    autostart entry uses -- so pipx, venv and package installs all work.
+    """
+
+    def __init__(self, config_home: Path | None = None,
+                 systemctl: Any = None) -> None:
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        base = config_home or (Path(xdg) if xdg else Path.home() / ".config")
+        self._path = base / "systemd" / "user" / _SERVICE_NAME
+        self._systemctl = systemctl or _systemctl_user
+        log.info("SystemdUserService: unit path = %s", self._path)
+
+    @property
+    def path(self) -> Path:
+        log.debug("SystemdUserService.path -> %s", self._path)
+        return self._path
+
+    def render(self) -> str:
+        """The unit, its ``ExecStart`` pointed at this install."""
+        exec_cmd = " ".join(f'"{a}"' if " " in a else a
+                            for a in launch_argv("daemon"))
+        log.info("SystemdUserService.render: ExecStart=%s", exec_cmd)
+        return _SERVICE_TEMPLATE.format(exec_cmd=exec_cmd)
+
+    def install(self) -> bool:
+        """Write the unit, then enable and start it.  True when running."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(self.render(), encoding="utf-8")
+        log.info("SystemdUserService.install: wrote %s", self._path)
+        started = (self._systemctl("daemon-reload") == 0
+                   and self._systemctl("enable", "--now", _SERVICE_NAME) == 0)
+        log.info("SystemdUserService.install: enabled and started=%s", started)
+        return started
+
+    @staticmethod
+    def removal_command() -> str:
+        """The one line that takes it out again."""
+        log.debug("SystemdUserService.removal_command")
+        return (f"systemctl --user disable --now {_SERVICE_NAME} && "
+                f"rm ~/.config/systemd/user/{_SERVICE_NAME}")
+
+
+# =========================================================================
 # Windows — HKCU Run key
 # =========================================================================
 
