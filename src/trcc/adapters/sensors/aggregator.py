@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -118,11 +119,22 @@ def _store(readings: dict[str, float], key: str, value: float | None) -> None:
 _Row = tuple[str, str, str, str]
 
 
-def _cpu_keys() -> list[_Row]:
-    """The 4 CPU readings."""
-    log.debug("_cpu_keys")
+def _numbers_in_order(source: object) -> tuple[object, ...]:
+    """Sort key: a name's numbers as numbers -- Core 2 before Core 10 (#301)."""
+    name = str(getattr(source, "name", ""))
+    key = tuple(int(part) if part.isdigit() else part.lower()
+                for part in re.split(r"(\d+)", name))
+    frame_log.debug("_numbers_in_order: %r", name)
+    return key
+
+
+def _cpu_keys(temp_label: str = "") -> list[_Row]:
+    """The 4 CPU readings.  *temp_label* names what the temperature reads
+    ("Package id 0", "Tctl"), so the picker says it is the package (#301)."""
+    log.debug("_cpu_keys: temp_label=%r", temp_label)
     return [
-        ("cpu:temp", "temperature", "°C", "Temperature"),
+        ("cpu:temp", "temperature", "°C",
+         f"Temperature ({temp_label})" if temp_label else "Temperature"),
         ("cpu:usage", "usage", "%", "Usage"),
         ("cpu:freq", "clock", "MHz", "Clock"),
         ("cpu:power", "power", "W", "Power"),
@@ -406,7 +418,7 @@ class BaselineSensors(SensorEnumerator):
                     unit=unit, label=f"{device} {quantity}".strip(),
                 ))
 
-        add(_cpu_keys(), self._cpu.name)
+        add(_cpu_keys(self._cpu.temp_label()), self._cpu.name)
         add(_memory_keys(), "Memory")
         for dimm in self._dram:
             add([(f"memory:{dimm.key}:temp", "temperature", "°C",
@@ -434,7 +446,7 @@ class BaselineSensors(SensorEnumerator):
         # like fans -- and read off the SAME chip, which is the part that made
         # the gap invisible: we already opened an nct6xxx for its fans and
         # walked past its dozen temperature inputs (#259, #282).
-        for board in self._board:
+        for board in sorted(self._board, key=_numbers_in_order):
             key = f"board:{board.key}:temp"
             readings.append(SensorReading(
                 sensor_id=key, category="temperature",

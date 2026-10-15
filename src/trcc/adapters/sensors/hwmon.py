@@ -378,6 +378,13 @@ class HwmonCpu(CpuSource):
         frame_log.debug("name")
         return self._psutil.name
 
+    def temp_label(self) -> str:
+        """``temp1_label`` -- the input ``temp`` reads."""
+        label = (_read_text(self._temp_device.attrs / "temp1_label") or ""
+                 if self._temp_device is not None else "")
+        frame_log.debug("HwmonCpu.temp_label: %r", label)
+        return label
+
     def temp(self) -> float | None:
         frame_log.debug("temp")
         if self._temp_device is None:

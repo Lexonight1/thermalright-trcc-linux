@@ -1773,3 +1773,41 @@ def test_a_stuck_spd_hub_is_a_warning_not_a_missing_file(
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1 and "does not answer" in warnings[0]
     assert "power-off" in warnings[0]
+
+
+# ── #301: the picker says the CPU reading is the package ──────────────
+
+@pytest.mark.parametrize(("driver", "label", "shown"), [
+    ("coretemp", "Package id 0", "CPU Temperature (Package id 0)"),   # Intel
+    ("k10temp", "Tctl", "CPU Temperature (Tctl)"),                     # AMD
+    ("zenpower", None, "CPU Temperature"),                             # no label
+])
+def test_the_cpu_temperature_says_what_it_reads(
+        tmp_path: Path, driver: str, label: str | None, shown: str) -> None:
+    """tensaiteki asked for "CPU Package" as Windows shows it (#301): the
+    reading always was the package, the picker just never said.  MUTATION
+    CHECK: drop the label from _cpu_keys."""
+    from trcc.adapters.sensors.aggregator import _cpu_keys
+    from trcc.adapters.sensors.psutil_sources import PsutilCpu
+
+    device = _hwmon_dir(tmp_path, "hwmon0", driver, temp1_milli=45000,
+                        temp1_label=label)
+    cpu = hwmon.HwmonCpu(PsutilCpu(), device)
+    row = next(r for r in _cpu_keys(cpu.temp_label()) if r[0] == "cpu:temp")
+    assert f"CPU {row[3]}" == shown
+
+
+def test_cores_are_listed_in_number_order() -> None:
+    """Core 2 before Core 10 -- they came out 8, 12, 16, 0, 20 (#301).
+    MUTATION CHECK: sort the board list by plain text."""
+    from types import SimpleNamespace
+
+    from trcc.adapters.sensors.aggregator import _numbers_in_order
+
+    names = ["Core 8 (coretemp)", "Core 12 (coretemp)", "Core 0 (coretemp)",
+             "Core 2 (coretemp)", "SYSTIN (nct6798)"]
+    ordered = sorted((SimpleNamespace(name=n) for n in names),
+                     key=_numbers_in_order)
+    assert [s.name for s in ordered] == [
+        "Core 0 (coretemp)", "Core 2 (coretemp)", "Core 8 (coretemp)",
+        "Core 12 (coretemp)", "SYSTIN (nct6798)"]

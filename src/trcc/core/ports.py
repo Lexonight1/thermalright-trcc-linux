@@ -626,6 +626,13 @@ class CpuSource(QuantitySource, ABC):
     @abstractmethod
     def name(self) -> str: ...
 
+    def temp_label(self) -> str:
+        """What the CPU temperature reads, as the chip names it ("Package id
+        0" on Intel, "Tctl" on AMD) -- so a picker can say it is the package
+        reading (#301).  "" when the backend cannot say."""
+        frame_log.debug("%s.temp_label: unnamed", type(self).__name__)
+        return ""
+
     def temp(self) -> float | None:
         """CPU package temperature in °C.
 
