@@ -70,6 +70,7 @@ from .core.ports import (
     DataInstallRunner,
     Device,
     Diagnostics,
+    LedColorStream,
     Platform,
     Renderer,
     RgbMirror,
@@ -133,6 +134,7 @@ class App(CommandBus):
                  video_export_runner: VideoExportRunner | None = None,
                  make_rgb_mirror: Callable[[RgbFollowMode, str, int],
                                            RgbMirror] | None = None,
+                 led_stream: LedColorStream | None = None,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
         self.platform = platform
@@ -167,7 +169,13 @@ class App(CommandBus):
         # cleared by DisconnectDevice.  Not persisted — these are tick
         # phase counters, not user prefs.
         self.led_runtime: dict[str, LedRuntimeState] = {}
-        self.led_effects = LEDEffectEngine()
+        # OpenRGB's colours for the OPENRGB LED mode, over DDP (#160): a
+        # listener opens only while a cooler is in that mode.
+        if led_stream is None:
+            from .adapters.infra.ddp_receiver import DdpReceiver
+            led_stream = DdpReceiver()
+        self.led_stream = led_stream
+        self.led_effects = LEDEffectEngine(led_stream)
         # Latest RAW sensor sample, cached from the MetricsLoop broadcast
         # (once per refresh_interval_s).  Per-tick consumers — RenderLed driven
         # by the 150 ms LedAnimationLoop — read THIS instead of re-polling the
@@ -1199,6 +1207,7 @@ class App(CommandBus):
         self.rgb_mirror.close()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
+        self.led_stream.stop()
         self.video_loop.stop()
         self.stop_hotplug()
         # Blank every panel before releasing it so it goes dark on shutdown

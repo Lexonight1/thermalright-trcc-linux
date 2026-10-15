@@ -420,7 +420,9 @@ class RenderLed(Command[LedColorsResult]):
             # spatial rainbow but collapse each metric digit to one color so the
             # number reads cohesively (#193) — a post-effect pass that leaves
             # every non-digit LED on its per-LED spread.
-            if display.digit_groups is not None:
+            # Not in the OpenRGB mode: there each LED shows OpenRGB's own pixel.
+            if (display.digit_groups is not None
+                    and effective_settings.mode is not LEDMode.OPENRGB):
                 colors = app.led_effects.cohere_digit_groups(
                     colors, display.digit_groups,
                 )

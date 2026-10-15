@@ -37,6 +37,7 @@ class LEDMode(IntEnum):
     RAINBOW = 3      # 768-entry table shift across segments (CHMS_Timer)
     TEMP_LINKED = 4  # color from CPU/GPU temp gradient (WDLD_Timer)
     LOAD_LINKED = 5  # color from CPU/GPU load gradient (FZLD_Timer)
+    OPENRGB = 6      # TRCC's own: the colours OpenRGB sends over DDP (#160)
 
 
 # =========================================================================
@@ -431,7 +432,7 @@ LED_PRESET_ASSETS: list[str] = [
 # Six animation-mode buttons; the LED panel renders these as a row.
 LED_MODE_LABELS: list[str] = [
     "Solid", "Breathe", "Color Cycle", "Rainbow",
-    "Temp Linked", "Load Linked",
+    "Temp Linked", "Load Linked", "OpenRGB",
 ]
 
 # Segments that are OFF by default per legacy style.  Keys are the

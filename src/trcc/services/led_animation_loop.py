@@ -36,6 +36,7 @@ _TICK_INTERVAL_S = 0.15
 # sensor-linked modes don't — TEMP/LOAD_LINKED follow the slow sensor broadcast.
 _ANIMATED_MODES = frozenset({
     LEDMode.BREATHING, LEDMode.COLORFUL, LEDMode.RAINBOW,
+    LEDMode.OPENRGB,      # OpenRGB's effects move as fast as it sends them
 })
 
 
@@ -80,6 +81,14 @@ class LedAnimationLoop:
 
     # ── Worker ────────────────────────────────────────────────────────
 
+    def _shows_openrgb(self) -> bool:
+        """Whether any cooler, or any zone of one, is in the OpenRGB mode."""
+        frame_log.debug("_shows_openrgb")
+        return any(s.mode is LEDMode.OPENRGB
+                   or any(z.mode is LEDMode.OPENRGB for z in s.zones)
+                   for key, device in self._app.devices.items() if device.is_led
+                   for s in (self._app.settings.for_led(key),))
+
     def animating_keys(self) -> list[str]:
         """Connected LED devices whose mode / carousel / test is moving.
 
@@ -116,8 +125,14 @@ class LedAnimationLoop:
         return keys
 
     def tick(self) -> None:
-        """Re-render every animating LED once (one effect step)."""
+        """Re-render every animating LED once (one effect step) -- and close
+        OpenRGB's listener once no cooler shows it (#160)."""
         from ..core.commands import RenderLed
+        stream = self._app.led_stream
+        if stream.listening and not self._shows_openrgb():
+            log.info("LedAnimationLoop: no cooler shows OpenRGB -- closing "
+                     "its listener")
+            stream.stop()
         for key in self.animating_keys():
             if not self._first_tick_logged:
                 log.info("LedAnimationLoop: animating %s (first tick)", key)

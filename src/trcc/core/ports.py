@@ -2455,6 +2455,29 @@ class CloudCatalog(ABC):
 # =========================================================================
 
 
+class LedColorStream(ABC):
+    """Colours another program streams for a cooler's LEDs -- OpenRGB, over
+    DDP (#160).  The ``OPENRGB`` LED mode shows them; nothing listens until a
+    cooler is in that mode.
+
+    Concrete: ``DdpReceiver`` (``adapters/infra/ddp_receiver.py``).
+    """
+
+    @abstractmethod
+    def colors(self, count: int) -> list[tuple[int, int, int]]:
+        """The newest frame's first *count* colours, black past its end.
+        Starts listening on first use."""
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop listening (idempotent)."""
+
+    @property
+    @abstractmethod
+    def listening(self) -> bool:
+        """Whether a listener is open."""
+
+
 class SoundInput(ABC):
     """What an audio visual hears: the computer's sound, live.
 

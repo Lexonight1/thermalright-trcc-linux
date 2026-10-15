@@ -32,6 +32,7 @@ from typing import ClassVar
 
 from ..core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
 from ..core.logs import per_frame
+from ..core.ports import LedColorStream
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -174,7 +175,14 @@ class LEDEffectEngine:
     flat ``dict[str, float]`` so the engine never depends on a specific
     SensorEnumerator implementation; ``RenderLed`` builds the dict from
     ``Platform.sensors()`` before calling here.
+
+    *stream* is where the ``OPENRGB`` mode reads its colours; without one
+    that mode is dark.
     """
+
+    def __init__(self, stream: LedColorStream | None = None) -> None:
+        log.debug("LEDEffectEngine: stream=%s", type(stream).__name__)
+        self._stream = stream
 
     def tick(
         self,
@@ -199,7 +207,10 @@ class LEDEffectEngine:
         if settings.test_mode:
             return self._tick_test(runtime, led_count)
 
-        if color_groups is not None:
+        if settings.mode is LEDMode.OPENRGB:
+            # LED i shows OpenRGB's pixel i -- no digit grouping (#160).
+            colors = self._openrgb(led_count)
+        elif color_groups is not None:
             colors = self._color_groups(
                 settings.mode, settings.color, runtime, sensors,
                 color_groups, led_count,
@@ -277,6 +288,9 @@ class LEDEffectEngine:
                 if zone_color_groups is not None and zi < len(zone_color_groups)
                 else None
             )
+            if zone.mode is LEDMode.OPENRGB:
+                self._openrgb_zone(colors, led_indices, zone.brightness)
+                continue
             if groups is not None:
                 # One color per digit-group, gentle gradient between digits.
                 group_colors = self._scale_brightness(
@@ -304,6 +318,25 @@ class LEDEffectEngine:
         # ONE advance for the whole frame, after every zone has read its phase.
         self.advance_phases(runtime)
         return colors
+
+    def _openrgb_zone(self, colors: list[tuple[int, int, int]],
+                      led_indices: tuple[int, ...], brightness: int) -> None:
+        """Put OpenRGB's pixels at this zone's OWN LED indices into *colors*,
+        so four zones do not all repeat the start of its frame (#160)."""
+        frame_log.debug("_openrgb_zone: %d LEDs", len(led_indices))
+        frame = self._openrgb(len(colors))
+        own = self._scale_brightness([frame[i] for i in led_indices
+                                      if i < len(colors)], brightness)
+        for idx, color in zip((i for i in led_indices if i < len(colors)),
+                              own, strict=True):
+            colors[idx] = color
+
+    def _openrgb(self, led_count: int) -> list[tuple[int, int, int]]:
+        """OpenRGB's newest frame, one colour per LED; dark without a stream."""
+        frame_log.debug("_openrgb: %d LEDs", led_count)
+        if self._stream is None:
+            return [(0, 0, 0)] * led_count
+        return self._stream.colors(led_count)
 
     @staticmethod
     def next_sync_zone(zone_sync_zones: list[bool], current: int) -> int:

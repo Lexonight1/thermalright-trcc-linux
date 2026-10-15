@@ -688,6 +688,18 @@ def _no_privileged_commands() -> Iterator[list[tuple[str, str]]]:
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _no_real_ddp_port() -> Iterator[None]:
+    """A cooler in the OpenRGB LED mode opens a DDP listener; in the suite it
+    takes a port the OS picks, never 4048 -- the developer's own OpenRGB or
+    WLED tools may be on it, and parallel workers would fight for it."""
+    from trcc.adapters.infra import ddp_receiver
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(ddp_receiver, "DDP_PORT", 0)
+        yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _no_user_manager() -> Iterator[None]:
     """The two places TRCC asks the systemd user manager answer "no systemd"
     in every test -- the guard above refuses ``systemctl`` outright; this is

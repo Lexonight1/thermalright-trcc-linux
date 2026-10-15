@@ -86,10 +86,12 @@ PANEL_HEIGHT = 800
 PREVIEW_X, PREVIEW_Y = 36, 128
 PREVIEW_W, PREVIEW_H = 460, 460
 
-# Mode buttons — C#: buttonDSCL..FZLD at (590..1105, 227) each 93x62
+# Mode buttons — C#: buttonDSCL..FZLD at (590..1105, 227) each 93x62.  The
+# seventh, OpenRGB (#160), is TRCC's own: the seven share the C#'s six-button
+# span (590..1198), each 78 wide.
 MODE_Y = 227
 MODE_X_START = 590
-MODE_W, MODE_H = 93, 62
+MODE_W, MODE_H = 78, 62
 MODE_SPACING = 10
 
 # Color wheel — C#: ucColorA1 at (617, 335) 216x216, shown for ALL styles

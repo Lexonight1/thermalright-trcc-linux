@@ -56,6 +56,10 @@ _MODE_LABELS: tuple[tuple[LEDMode, str, str], ...] = (
     (LEDMode.LOAD_LINKED,
      "Load-linked",
      "Colour follows CPU or GPU load (pick the source on the Advanced tab)."),
+    (LEDMode.OPENRGB,
+     "OpenRGB",
+     "The colours OpenRGB sends: add a DDP device in OpenRGB at 127.0.0.1, "
+     "port 4048, with this cooler's LED count."),
 )
 
 
