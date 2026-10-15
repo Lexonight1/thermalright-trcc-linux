@@ -47,8 +47,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
+from ...core.errors import TrccError
 from ...core.led_models import stretch
 from ...core.logs import per_frame
 from ...core.models import AURA_HEADER_REF, RgbMirrorDevice
@@ -75,6 +76,18 @@ READ_TIMEOUT_MS = 500
 
 _FIRMWARE, _FIRMWARE_REPLY = 0x82, 0x02
 _CONFIG, _CONFIG_REPLY = 0xB0, 0x30
+#: Read pairs Armoury Crate uses, decoded from its USB captures (OpenRGB
+#: issue #3929, posted by TenkenNoSoujiro): select record *n* (``EC 31 n``),
+#: then fetch it (``EC B1``).  A 0x31 record says what it is -- type 0x10 an
+#: onboard zone, 0x20 + k ARGB header k + 1; a 0x32 record is one effect
+#: channel -- the bitmask of 0x31 records it drives (byte 5) and the effect
+#: it runs (byte 6).  On the boards measured every ARGB header shares one
+#: effect channel, which OpenRGB's channel-per-header mapping misses.
+_RECORD, _RECORD_FETCH = 0x31, 0xB1
+_TABLE, _TABLE_FETCH = 0x32, 0xB2
+_HEADER_TYPE = 0x20
+#: How many records and effect channels are read at most.
+_MAX_RECORDS, _MAX_TABLE = 0x10, 0x08
 _EFFECT, _DIRECT_MODE = 0x35, 0xFF
 _DIRECT, _APPLY, _PAST_255 = 0x40, 0x80, 0x10
 _LEDS_PER_PACKET = 20
@@ -86,17 +99,47 @@ _ARGB_HEADERS, _ONBOARD_LEDS, _RGB_HEADERS = 0x02, 0x1B, 0x1D
 
 @dataclass(frozen=True, slots=True)
 class AuraLayout:
-    """What the controller says it has."""
+    """What the controller says it has.
+
+    *header_effects* is the effect channel driving each ARGB header (header
+    number from 1), and *effects* the effect each channel ran when read --
+    both from the chip's own tables; empty where it answers none.
+    """
     firmware: str
     onboard_leds: int
     rgb_headers: int
     argb_headers: int
+    header_effects: Mapping[int, int] = field(default_factory=dict)
+    effects: Mapping[int, int] = field(default_factory=dict)
 
 
-def request(opcode: int) -> bytes:
-    """A request's payload: *opcode*, then zeros."""
-    log.debug("request: 0x%02x", opcode)
-    return bytes([opcode]).ljust(PAYLOAD, b"\x00")
+def request(opcode: int, *args: int) -> bytes:
+    """A request's payload: *opcode*, its *args*, then zeros."""
+    log.debug("request: 0x%02x %s", opcode, list(args))
+    return bytes([opcode, *args]).ljust(PAYLOAD, b"\x00")
+
+
+def header_records(replies: Sequence[bytes]) -> dict[int, int]:
+    """Each ARGB header's record number, from the 0x31 records in order --
+    header k is the record of type 0x20 + k - 1."""
+    headers = {reply[3] - _HEADER_TYPE + 1: n for n, reply in enumerate(replies)
+               if reply[3] & 0xF0 == _HEADER_TYPE}
+    log.debug("header_records: %s", headers)
+    return headers
+
+
+def effect_table(replies: Sequence[bytes], records: Mapping[int, int]
+                 ) -> tuple[dict[int, int], dict[int, int]]:
+    """From the 0x32 records: the effect channel driving each header in
+    *records*, and the effect each channel runs."""
+    header_effects: dict[int, int] = {}
+    effects: dict[int, int] = {}
+    for channel, reply in enumerate(replies):
+        mask, effects[channel] = reply[5], reply[6]
+        header_effects.update({header: channel for header, record
+                               in records.items() if mask >> record & 1})
+    log.debug("effect_table: headers %s, effects %s", header_effects, effects)
+    return header_effects, effects
 
 
 def parse_firmware(reply: bytes) -> str:
@@ -181,11 +224,17 @@ class AuraMainboard(RgbMirror):
         if self._layout is None:
             hid = self._connected()
             firmware = parse_firmware(self._ask(hid, _FIRMWARE))
-            self._layout = parse_config(self._ask(hid, _CONFIG), firmware)
+            layout = parse_config(self._ask(hid, _CONFIG), firmware)
+            records = header_records(self._read_all(hid, _RECORD, _RECORD_FETCH,
+                                                    _MAX_RECORDS))
+            header_effects, effects = effect_table(
+                self._read_all(hid, _TABLE, _TABLE_FETCH, _MAX_TABLE), records)
+            self._layout = replace(layout, header_effects=header_effects,
+                                   effects=effects)
             log.info("AuraMainboard: %s -- %d onboard LED(s), %d 12V header(s),"
-                     " %d ARGB header(s)", self._layout.firmware,
-                     self._layout.onboard_leds, self._layout.rgb_headers,
-                     self._layout.argb_headers)
+                     " %d ARGB header(s), header effect channels %s",
+                     layout.firmware, layout.onboard_leds, layout.rgb_headers,
+                     layout.argb_headers, header_effects or "(not reported)")
         return self._layout
 
     def devices(self) -> tuple[RgbMirrorDevice, ...]:
@@ -197,9 +246,11 @@ class AuraMainboard(RgbMirror):
         return devices
 
     def show(self, device: RgbMirrorDevice, colors: Sequence[Rgb]) -> None:
-        """*colors* on *device*, stretched to its LEDs; a header with none
-        is skipped."""
-        channel = next((c for c in self._channels if c.device == device), None)
+        """*colors* on *device*, stretched to *its* LED count -- the light
+        is matched by ref, so a caller may name more LEDs than the user set.
+        A header with none is skipped."""
+        channel = next((c for c in self._channels
+                        if c.device.ref == device.ref), None)
         if channel is None:
             raise OSError(f"Aura: no channel {device.ref!r}")
         if not device.led_count or not colors:
@@ -216,6 +267,24 @@ class AuraMainboard(RgbMirror):
         frame_log.debug("AuraMainboard.show: %s %d LED(s)", device.ref,
                         device.led_count)
 
+    def release(self) -> None:
+        """Each effect channel TRCC switched to direct goes back to the
+        effect the chip reported when it was read -- unsaved, as nothing
+        TRCC sends is.  A channel with none reported is left as it is."""
+        effects = self._layout.effects if self._layout else {}
+        log.info("AuraMainboard.release: direct %s, effects %s",
+                 sorted(self._direct), dict(effects))
+        if self._hid is None:
+            return
+        for channel in sorted(self._direct):
+            effect = effects.get(channel)
+            if effect is None or effect == _DIRECT_MODE:
+                log.warning("AuraMainboard.release: effect channel %d has no "
+                            "effect to go back to -- left as it is", channel)
+                continue
+            self._hid.write(0, effect_packet(channel, effect))
+        self._direct = set()
+
     def close(self) -> None:
         log.debug("AuraMainboard.close: open=%s", self._hid is not None)
         if self._hid is not None:
@@ -224,12 +293,35 @@ class AuraMainboard(RgbMirror):
         self._direct = set()
 
     def _connected(self) -> BulkTransport:
+        """The controller, opened once.  A refused open -- no permission, no
+        hidapi -- becomes the ``OSError`` an ``RgbMirror`` promises, so Find
+        lists the board's reason instead of failing whole."""
         if self._hid is None:
             hid = self._open()
             log.info("AuraMainboard: opening the controller")
-            hid.open()
+            try:
+                hid.open()
+            except (TrccError, ImportError) as e:
+                log.warning("AuraMainboard: the controller cannot be opened "
+                            "-- %s", e)
+                raise OSError(f"cannot open the RGB controller: {e}") from e
             self._hid = hid
         return self._hid
+
+    def _read_all(self, hid: BulkTransport, select: int, fetch: int,
+                  most: int) -> list[bytes]:
+        """Records 0, 1, ... of a select/fetch pair, up to the first empty
+        one -- none when the controller does not answer the pair."""
+        replies: list[bytes] = []
+        for n in range(most):
+            hid.write(0, request(select, n))
+            reply = self._ask(hid, fetch)
+            if len(reply) < 7 or reply[1] != select or not any(reply[3:]):
+                break
+            replies.append(reply)
+        log.debug("AuraMainboard._read_all: 0x%02x -> %d record(s)", select,
+                  len(replies))
+        return replies
 
     def _ask(self, hid: BulkTransport, opcode: int) -> bytes:
         """Send request *opcode*; its whole reply, report id first -- read
@@ -259,5 +351,7 @@ class AuraMainboard(RgbMirror):
                 len(channels), f"{self._label} -- ARGB header {header}",
                 self._argb_leds.get(header, 0),
                 AURA_HEADER_REF.format(header)),
-                effect=len(channels), direct=header - 1))
+                # The chip's own table; OpenRGB's mapping where it has none.
+                effect=layout.header_effects.get(header, len(channels)),
+                direct=header - 1))
         return tuple(channels)

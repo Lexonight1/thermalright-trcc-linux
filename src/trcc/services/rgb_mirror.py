@@ -31,11 +31,12 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ..core.logs import per_frame
 from ..core.models import (
+    MAX_ARGB_LEDS,
     FollowColors,
     FollowMapping,
     RamEffectSettings,
@@ -62,6 +63,11 @@ FRAME_ROWS = 10
 #: An LCD frame is sampled at most this often -- a 15-30 fps video gives
 #: every one it can, a still theme the rare frame it sends.
 FRAME_INTERVAL_S = 1 / 20
+#: A blink: dim white -- full white on a long strip can draw more than an
+#: ARGB header's 3 A -- then off, every 250 ms, for 2 s.
+BLINK_COLOR = (64, 64, 64)
+BLINK_STEP_S = 0.25
+BLINK_STEPS = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,10 +91,13 @@ class RgbMirrorService:
                  make_mirror: Callable[[RgbFollowMode, str, int], RgbMirror],
                  *,
                  retry_s: float = RETRY_S,
+                 blink_step_s: float = BLINK_STEP_S,
                  on_sent: Sent | None = None) -> None:
-        log.debug("RgbMirrorService.__init__: retry %.1f s", retry_s)
+        log.debug("RgbMirrorService.__init__: retry %.1f s, blink step %.2f s",
+                  retry_s, blink_step_s)
         self._make = make_mirror
         self._retry_s = retry_s
+        self._blink_step_s = blink_step_s
         self._on_sent = on_sent
         self._cond = threading.Condition()
         # One column of colours per device, newest only; a single column
@@ -144,7 +153,14 @@ class RgbMirrorService:
                 with self._bus:
                     mirror: RgbMirror = self._ram_lights()
             else:
-                mirror = self._make(mode, host, port)
+                try:
+                    mirror = self._make(mode, host, port)
+                except OSError as e:     # e.g. no motherboard RGB to follow
+                    log.warning("RgbMirrorService.configure: nothing to "
+                                "follow in %s -- %s", mode.value, e)
+                    self._status = MirrorStatus(mode=mode, source=source,
+                                                error=str(e))
+                    return
             with self._cond:
                 self._mirror = mirror
                 self._running, self._lead, self._retry_at = True, source, 0.0
@@ -271,16 +287,61 @@ class RgbMirrorService:
         with self._bus:
             following = (self._mirror if self._status.mode is
                          RgbFollowMode.OPENRGB else None)
-            mirror = following or self._make(RgbFollowMode.OPENRGB, host, port)
+            mirror: RgbMirror | None = following
             try:
+                # Made inside: a platform with no OpenRGB client says so.
+                mirror = mirror or self._make(RgbFollowMode.OPENRGB, host, port)
                 self._openrgb, self._openrgb_error = mirror.devices(), ""
             except OSError as e:
                 self._openrgb = None
                 self._openrgb_error = f"{type(e).__name__}: {e}"
                 log.info("scan_openrgb: none -- %s", self._openrgb_error)
             finally:
+                if following is None and mirror is not None:
+                    mirror.close()
+
+    # ── The motherboard: which header is which ───────────────────────
+
+    def blink(self, ref: str) -> RgbMirrorDevice:
+        """Blink the motherboard light *ref* so the user can see which one
+        it is.  Returns the light blinked.
+
+        A header with no LED count blinks the most a header drives: blinking
+        is how the user finds the fan, before its count is known, and colours
+        past the last LED fall off the end of the strip.  While the board is
+        followed the follower's own driver blinks it and the next frame
+        paints over it; otherwise a driver opened for the blink hands the
+        board back to its own effect and closes.
+
+        ``ValueError`` for a light the board does not have; ``OSError`` when
+        the board cannot be reached.
+        """
+        log.info("RgbMirrorService.blink: %s", ref)
+        with self._switch:              # no configure or stop mid-blink
+            following = (self._mirror if self._status.mode is
+                         RgbFollowMode.BOARD else None)
+            mirror = following or self._make(RgbFollowMode.BOARD, "", 0)
+            try:
+                with self._bus:
+                    device = next((d for d in mirror.devices()
+                                   if d.ref == ref), None)
+                    if device is None:
+                        raise ValueError(f"the motherboard has no light {ref!r}")
+                    lit = replace(device, led_count=device.led_count
+                                  or MAX_ARGB_LEDS)
+                    log.info("RgbMirrorService.blink: %s, %d LED(s), %s",
+                             ref, lit.led_count,
+                             "following" if following else "own driver")
+                    for step in range(BLINK_STEPS):
+                        mirror.show(lit, (BLINK_COLOR if step % 2 == 0
+                                          else (0, 0, 0),))
+                        time.sleep(self._blink_step_s)
+                    if following is None:
+                        self._release(mirror)
+            finally:
                 if following is None:
                     mirror.close()
+        return device
 
     def _ram_lights(self) -> RamLights:
         """The one RAM driver, made on first use.  Caller holds the bus."""
@@ -294,7 +355,8 @@ class RgbMirrorService:
         return self._ram
 
     def _stop_following(self) -> None:
-        """Stop the worker and drop the follower.  Caller holds the switch."""
+        """Stop the worker, hand the lights back to their own system, and
+        drop the follower.  Caller holds the switch."""
         log.debug("_stop_following: thread=%s", self._thread is not None)
         with self._cond:
             self._running = False
@@ -302,10 +364,24 @@ class RgbMirrorService:
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
-        if self._mirror is not None and self._mirror is not self._ram:
-            self._mirror.close()
+        if self._mirror is not None:
+            with self._bus:
+                self._release(self._mirror)
+            if self._mirror is not self._ram:
+                self._mirror.close()
         self._mirror = None
         self._status = MirrorStatus()
+
+    @staticmethod
+    def _release(mirror: RgbMirror) -> None:
+        """*mirror*'s lights back to their own system; an unreachable one
+        cannot be handed anything, and stopping goes on."""
+        log.info("RgbMirrorService._release: %s", type(mirror).__name__)
+        try:
+            mirror.release()
+        except OSError as e:
+            log.warning("RgbMirrorService._release: %s could not be handed "
+                        "back -- %s", type(mirror).__name__, e)
 
     # ── The worker ────────────────────────────────────────────────────
 

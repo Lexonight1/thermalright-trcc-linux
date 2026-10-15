@@ -220,7 +220,7 @@ class HddEnabledRequest(BaseModel):
 
 
 class RgbFollowRequest(BaseModel):
-    """Pick what follows the cooler (#160): off, openrgb or ram.
+    """Pick what follows the cooler (#160): off, openrgb, ram or board.
 
     ``host`` is OpenRGB's, a hostname or IP address only -- no scheme, path
     or port -- so the API cannot point TRCC at an arbitrary URL.  Empty keeps
@@ -254,6 +254,11 @@ class AuraLedsRequest(BaseModel):
     """How many LEDs ASUS Aura ARGB ``header`` (from 1) drives."""
     header: int = Field(..., ge=1, le=16)
     leds: int = Field(..., ge=0, le=MAX_ARGB_LEDS)
+
+
+class AuraBlinkRequest(BaseModel):
+    """ASUS Aura ARGB ``header`` (from 1) to blink."""
+    header: int = Field(..., ge=1, le=16)
 
 
 class RamEffectRequest(BaseModel):

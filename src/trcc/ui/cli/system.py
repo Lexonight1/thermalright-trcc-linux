@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from ...core.commands import (
+    BlinkAuraHeader,
     CheckForUpdate,
     ControlCenterSnapshot,
     DeviceState,
@@ -558,7 +559,7 @@ def hdd_enabled(
 @app.command("follow")
 def follow(
     mode: str = typer.Argument(
-        "status", help="'off', 'openrgb', 'ram' or 'status'"),
+        "status", help="'off', 'openrgb', 'ram', 'board' or 'status'"),
     host: str = typer.Option(
         "", "--host", help="OpenRGB's SDK server (default: the saved one, "
                            "127.0.0.1 at first)."),
@@ -750,6 +751,22 @@ def aura_leds(
     """
     log.info("cli system aura-leds: header %d -> %d", header, leds)
     result = get_app().dispatch(SetAuraLeds(header=header, leds=leds))
+    _echo_lights(result)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("aura-blink")
+def aura_blink(
+    header: int = typer.Argument(..., min=1, help="The ARGB header, from 1 "
+                                 "(see `trcc system rgb`)."),
+) -> None:
+    """Blink an ASUS Aura ARGB header for two seconds, to see which it is.
+
+    Nothing is saved: the header goes back to its own effect after.
+    """
+    log.info("cli system aura-blink: header %d", header)
+    result = get_app().dispatch(BlinkAuraHeader(header=header))
     _echo_lights(result)
     if not result.ok:
         raise typer.Exit(code=1)

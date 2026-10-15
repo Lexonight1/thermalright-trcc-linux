@@ -2299,9 +2299,10 @@ class RgbMirror(ABC):
 
     TRCC leads: the colours a cooler shows are sent to the other system's
     devices, so the whole PC matches.  Concrete: ``OpenRgbMirror``
-    (``adapters/rgb/openrgb.py``), a client of OpenRGB's SDK server, and
+    (``adapters/rgb/openrgb.py``), a client of OpenRGB's SDK server,
     ``CorsairDramMirror`` (``adapters/rgb/corsair_dram.py``), Corsair RGB
-    memory over the SMBus.
+    memory over the SMBus, and ``AuraMainboard``
+    (``adapters/rgb/asus_aura.py``), an ASUS motherboard's own RGB.
     Every method may raise ``OSError`` when the other system is unreachable;
     the caller decides when to try again.
     """
@@ -2316,6 +2317,13 @@ class RgbMirror(ABC):
              colors: Sequence[tuple[int, int, int]]) -> None:
         """Show *colors* on *device*, stretched to its LED count."""
         ...
+
+    def release(self) -> None:
+        """Hand every light TRCC drove back to what its own system ran
+        before -- without saving anything.  Called when following stops.
+        Nothing to hand back by default: OpenRGB keeps its own state, and
+        the RAM shows its last colours until an effect is chosen."""
+        log.debug("%s.release: nothing to hand back", type(self).__name__)
 
     @abstractmethod
     def close(self) -> None:
@@ -3320,6 +3328,21 @@ class Platform(ABC):
         infos = ranked_visuals(type(self).VISUALS.values())
         log.debug("visual_catalog: %s", [i.kind for i in infos])
         return infos
+
+    #: The OS adapter's OpenRGB SDK client, made with the server's host and
+    #: port -- a table entry like ``RGB_HARDWARE``.  None on a stand-in
+    #: platform, so no test or mock run reaches an OpenRGB on this machine.
+    OPENRGB: ClassVar[Callable[[str, int], RgbMirror] | None] = None
+
+    def openrgb(self, host: str, port: int) -> RgbMirror:
+        """A client for OpenRGB at *host*:*port*, not connected yet.
+        ``OSError`` on a platform with none."""
+        made = type(self).OPENRGB
+        log.debug("openrgb: %s %s:%d -> %s", type(self).__name__, host, port,
+                  getattr(made, "__name__", None))
+        if made is None:
+            raise OSError(f"no OpenRGB client on {type(self).__name__}")
+        return made(host, port)
 
     def rgb_hardware(self) -> RgbHardware:
         """What Find reads to spot RGB controllers -- it opens nothing.  A

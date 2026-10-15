@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout
 
 from ....core.commands import (
+    BlinkAuraHeader,
     Command,
     ListDevices,
     RgbFollow,
@@ -67,6 +68,10 @@ class QtRgbPage(RgbPageView):
     def _leds(self, plan: HeaderLeds) -> Command[Any]:
         log.info("QtRgbPage._leds: %s", plan)
         return SetAuraLeds(header=plan.header, leds=plan.leds)
+
+    def _blink(self, header: int) -> Command[Any]:
+        log.info("QtRgbPage._blink: header %d", header)
+        return BlinkAuraHeader(header=header)
 
     def _send(self, plan: ApplyPlan) -> Command[Any]:
         log.info("QtRgbPage._send: %s", plan)

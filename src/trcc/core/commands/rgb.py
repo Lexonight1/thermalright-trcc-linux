@@ -42,8 +42,10 @@ def _lights(app: App, message: str = "", *, ok: bool = True) -> RgbLightsResult:
     openrgb, openrgb_error = app.rgb_mirror.openrgb_lights()
     boards = app.rgb_boards.last()
     lights: list[RgbLight] = []
+    # A board Find could not read lists its last record, not nothing.
+    driven = boards.driven if boards and not boards.error else None
     for kind, found in ((LightKind.RAM, sticks), (LightKind.OPENRGB, openrgb),
-                        (LightKind.BOARD, boards and boards.driven),
+                        (LightKind.BOARD, driven),
                         (LightKind.FOUND, boards and boards.found)):
         remembered = found is None
         devices = app.settings.found_lights(kind) if found is None else found
@@ -245,3 +247,29 @@ class SetAuraLeds(Command[RgbLightsResult]):
         if boards.error:
             message += f" -- saved, but {boards.error}"
         return _lights(app, message=message, ok=not boards.error)
+
+
+@dataclass(frozen=True, slots=True)
+class BlinkAuraHeader(Command[RgbLightsResult]):
+    """Blink an ASUS Aura ARGB header for two seconds, so the user can see
+    which header the fan or strip is on -- before its LED count is known.
+
+    Nothing is saved: the board goes back to its own effect afterwards, or,
+    while it is followed, to what the follower sends next.
+    """
+    header: int
+
+    def execute(self, app: App) -> RgbLightsResult:
+        ref = AURA_HEADER_REF.format(self.header)
+        log.info("BlinkAuraHeader: %s", ref)
+        try:
+            device = app.rgb_mirror.blink(ref)
+        except ValueError:
+            log.warning("BlinkAuraHeader: refused -- no %s on the board", ref)
+            return _lights(app, ok=False,
+                           message=f"the motherboard has no ARGB header "
+                                   f"{self.header}")
+        except OSError as e:
+            log.warning("BlinkAuraHeader: %s could not be blinked -- %s", ref, e)
+            return _lights(app, ok=False, message=f"cannot blink: {e}")
+        return _lights(app, message=f"{device.name} blinked")

@@ -260,8 +260,8 @@ def test_ticked_openrgb_devices_follow_through_openrgb() -> None:
 
 
 @pytest.mark.parametrize("untick, problem", [
-    ((), "Following drives RAM or OpenRGB lights, one at a time -- untick "
-         "one kind."),
+    ((), "Following drives one kind of light at a time -- RAM, OpenRGB or "
+         "the motherboard; untick the others."),
     ((STICK_A.ref, FAN.ref), "Tick the lights that should follow."),
 ])
 def test_following_both_kinds_or_none_is_refused(untick: tuple[str, ...],
@@ -340,19 +340,66 @@ MYSTIC = RgbLight("usb/1462:7e06", "MSI MAG B650 (MSI Mystic Light MS_7E06)",
                   0, LightKind.FOUND)
 
 
-def test_motherboard_lights_are_listed_but_take_no_part_yet() -> None:
-    """Listed, never ticked: following a stick with the board present is
-    not "two kinds at once".
+def test_motherboard_lights_start_unticked_so_a_stick_still_follows() -> None:
+    """Tickable, but not ticked at first: following a stick with the board
+    present is not "two kinds at once".  A found board never takes part.
 
-    MUTATION CHECK: tick every light again (drop ``TICKABLE`` from load)."""
+    MUTATION CHECK: tick every tickable light at first again in load."""
     page = _page(STICK_A, HEADER, ONBOARD, MYSTIC)
     rows = page.rows(LightKind.BOARD) + page.rows(LightKind.FOUND)
     assert [(r.detail, r.checked, r.checkable) for r in rows] == [
-        ("direct · LED count not set", False, False),
-        ("direct · 1 LED", False, False),
+        ("direct · LED count not set", False, True),
+        ("direct · 1 LED", False, True),
         ("found -- TRCC does not drive it; another app may", False, False)]
     page.set_source(RgbSource.FOLLOW)
     assert page.problem is None
     assert page.apply() == FollowDevice(RgbFollowMode.RAM, "127.0.0.1", 6742,
                                         "", FollowMapping.HALVES,
                                         FollowColors.VIVID, ())
+
+
+LIT_HEADER = RgbLight("aura/argb2", "ASUS PRIME Z790-V AX -- ARGB header 2",
+                      12, LightKind.BOARD)
+
+
+def test_a_ticked_header_with_leds_follows_the_board_way() -> None:
+    """Only the ticked header follows; the other board light is left alone.
+
+    MUTATION CHECK: drop BOARD from FOLLOWS."""
+    page = _page(STICK_A, HEADER, LIT_HEADER)
+    page.set_source(RgbSource.FOLLOW)
+    page.set_checked(STICK_A.ref, False)
+    page.set_checked(LIT_HEADER.ref, True)
+    assert page.problem is None
+    assert page.apply() == FollowDevice(RgbFollowMode.BOARD, "127.0.0.1", 6742,
+                                        "", FollowMapping.HALVES,
+                                        FollowColors.VIVID, (LIT_HEADER.ref,))
+    assert page.preview_lights == (LIT_HEADER.name,)
+
+
+def test_a_ticked_header_without_leds_is_refused() -> None:
+    """MUTATION CHECK: drop the ``silent`` branch from ``problem``."""
+    page = _page(HEADER, LIT_HEADER)
+    page.set_source(RgbSource.FOLLOW)
+    page.set_checked(HEADER.ref, True)
+    page.set_checked(LIT_HEADER.ref, True)
+    assert page.problem == f"Give {HEADER.name} its number of LEDs first."
+    assert page.apply() is None
+
+
+def test_a_stick_and_a_header_together_are_two_kinds() -> None:
+    page = _page(STICK_A, LIT_HEADER)
+    page.set_source(RgbSource.FOLLOW)
+    page.set_checked(LIT_HEADER.ref, True)
+    assert page.problem == ("Following drives one kind of light at a time -- "
+                            "RAM, OpenRGB or the motherboard; untick the others.")
+    assert page.apply() is None
+
+
+def test_following_the_board_starts_on_its_saved_headers() -> None:
+    follow = RgbFollowResult(mode=RgbFollowMode.BOARD, host="127.0.0.1",
+                             port=6742, targets=(LIT_HEADER.ref,))
+    page = _page(STICK_A, HEADER, LIT_HEADER, follow=follow)
+    assert page.source is RgbSource.FOLLOW
+    assert [r.checked for r in page.rows(LightKind.BOARD)] == [False, True]
+    assert not page.rows(LightKind.RAM)[0].checked

@@ -8,6 +8,7 @@ import pytest
 from PySide6.QtGui import QImage
 
 from trcc.core.commands import (
+    BlinkAuraHeader,
     ListDevices,
     RamLighting,
     RgbFollow,
@@ -55,7 +56,8 @@ class _Bus:
         match cmd:
             case RamLighting():
                 return RamLightingResult(state=RamAccessState.ON, message="on")
-            case RgbLights() | ScanRgbLights() | SetRamEffect() | SetAuraLeds():
+            case (RgbLights() | ScanRgbLights() | SetRamEffect() | SetAuraLeds()
+                  | BlinkAuraHeader()):
                 return RgbLightsResult(lights=(*STICKS, HEADER), scanned=True,
                                        ram_access=RamAccessState.ON,
                                        message="done")
@@ -124,6 +126,14 @@ def test_apply_follows_with_the_source_the_mapping_and_the_lights(
         mode=RgbFollowMode.RAM, host="127.0.0.1", port=6742, source=LCD,
         mapping=FollowMapping.SINGLE, targets=(STICKS[1].ref,),
         colors=FollowColors.SMOOTH)]
+
+
+def test_blink_sends_the_headers_number(view: Any, qtbot: Any) -> None:
+    from PySide6.QtWidgets import QPushButton
+    (button,) = view.findChildren(QPushButton, "rgb-blink")
+    button.click()
+    _answered(view, qtbot)
+    assert view._app.commands(BlinkAuraHeader) == [BlinkAuraHeader(header=1)]
 
 
 def test_leave_alone_turns_following_off(view: Any, qtbot: Any) -> None:

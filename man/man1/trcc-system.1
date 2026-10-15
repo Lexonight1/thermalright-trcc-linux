@@ -6,6 +6,25 @@ trcc\-system \- System\-level operations (setup, sensors, info)
 .SH DESCRIPTION
 System\-level operations (setup, sensors, info).
 .SH SUBCOMMANDS
+.SS aura\-blink
+.PP
+\fBtrcc system aura\-blink\fR \fIHEADER\fR
+.PP
+Blink an ASUS Aura ARGB header for two seconds, to see which it is. Nothing is saved: the header goes back to its own effect after.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBHEADER\fR
+The ARGB header, from 1 (see trcc system rgb).
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS aura\-leds
 .PP
 \fBtrcc system aura\-leds\fR \fIHEADER\fR \fILEDS\fR
@@ -289,7 +308,7 @@ Arguments:
 .RS 4
 .TP
 \fBMODE\fR
-\&'off', 'openrgb', 'ram' or 'status'
+\&'off', 'openrgb', 'ram', 'board' or 'status'
 .RE
 .PP
 Options:

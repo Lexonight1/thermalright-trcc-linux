@@ -100,8 +100,8 @@ class MotherboardFinder:
 
     def scan(self) -> BoardScan:
         """Look for the boards' controllers -- only ever because a user
-        asked.  A driver that cannot be read lists its controller as found
-        and says why."""
+        asked.  A driver that cannot be read says why, and is not listed as
+        found: "found" means another program drives it."""
         log.info("MotherboardFinder.scan")
         with self._lock:
             hardware = self._hardware()
@@ -115,10 +115,11 @@ class MotherboardFinder:
                 try:
                     driven += driver.devices()
                 except OSError as e:
+                    # Not "found": that says another program drives it.  The
+                    # page keeps the last Find's lights and shows *e*.
                     log.warning("MotherboardFinder.scan: %s could not be "
                                 "read -- %s", board.label, e)
                     errors.append(f"{board.label}: {e}")
-                    found.append(found_light(board))
                 finally:
                     driver.close()
             self._last = BoardScan(tuple(driven), tuple(found),
@@ -127,3 +128,16 @@ class MotherboardFinder:
                  len(driven), len(found),
                  f" -- {self._last.error}" if self._last.error else "")
         return self._last
+
+    def driver(self) -> RgbMirror:
+        """The motherboard RGB TRCC drives, for following its lights --
+        ``OSError`` when none is plugged in.  Spotted afresh from what the
+        system lists (nothing is opened here), so a board is followed
+        whether or not a Find ran since the App started."""
+        hardware = self._hardware()
+        for board in spot(hardware.hid_interfaces(), hardware.board()):
+            if (driver := self._driver(board)) is not None:
+                log.info("MotherboardFinder.driver: %s", board.label)
+                return driver
+        log.warning("MotherboardFinder.driver: no motherboard RGB TRCC drives")
+        raise OSError("no motherboard RGB that TRCC drives was found")

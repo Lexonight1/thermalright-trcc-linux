@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from trcc.adapters.rgb import make_board_driver
 from trcc.app import App
 from trcc.core.commands import RgbLights, ScanRgbLights
+from trcc.core.errors import PermissionError_, TransportError
 from trcc.core.models import (
     BoardIdentity,
     FoundBoard,
@@ -21,8 +24,14 @@ from .mock_platform import (
     AURA_INTERFACE,
     MAINTAINER_BOARD,
     MockPlatform,
+    ScriptedAuraController,
     ScriptedRgbHardware,
 )
+
+#: Every request a Find may send the Aura controller: firmware, config,
+#: and the select/fetch pairs of its header and effect-channel records --
+#: never a colour (0x40), an effect (0x35) or a save (0x3F).
+READ_REQUESTS = {b"\x82", b"\xb0", b"\x31", b"\xb1", b"\x32", b"\xb2"}
 
 MSI = HidInterface(0x1462, 0x7E06, 0, 0x0001, 0x0000, "MSI MYSTIC LIGHT")
 MSI_BOARD = BoardIdentity("Micro-Star International Co., Ltd.",
@@ -91,7 +100,7 @@ def test_find_lists_the_boards_lights_and_a_restart_remembers_them(tmp_path) -> 
          "MSI PRIME Z790-V AX (MSI Mystic Light MS_7E06)", 0)]
     assert found.message.endswith(
         "; motherboard: 4 light(s), 1 controller(s) TRCC does not drive")
-    assert [bytes(w[1])[:1] for w in platform.aura.writes] == [b"\x82", b"\xb0"]
+    assert {bytes(w[1])[:1] for w in platform.aura.writes} <= READ_REQUESTS
     assert not platform.aura.is_open                   # Find leaves nothing open
     app.close()
     again = App(_platform(tmp_path))
@@ -119,7 +128,10 @@ class _Unreadable(RgbMirror):
         self.closed = True
 
 
-def test_a_board_that_cannot_be_read_is_listed_as_found_and_says_why() -> None:
+def test_a_board_that_cannot_be_read_says_why_and_is_not_called_found() -> None:
+    """"Found" tells the user another program drives it -- not why TRCC
+    could not read it.  MUTATION CHECK: append found_light(board) again in
+    MotherboardFinder.scan's except."""
     unreadable = _Unreadable()
 
     def driver(board: FoundBoard) -> RgbMirror:
@@ -127,8 +139,7 @@ def test_a_board_that_cannot_be_read_is_listed_as_found_and_says_why() -> None:
 
     finder = MotherboardFinder(lambda: ScriptedRgbHardware(), driver)
     scan = finder.scan()
-    assert scan.driven == ()
-    assert [light.ref for light in scan.found] == ["usb/0b05:19af"]
+    assert (scan.driven, scan.found) == ((), ())
     assert scan.error == ("ASUS PRIME Z790-V AX: permission denied: "
                           "/dev/hidraw0")
     assert unreadable.closed
@@ -146,6 +157,48 @@ def test_a_failed_board_read_keeps_the_last_find(tmp_path) -> None:  # type: ign
     assert failed.message.endswith("; motherboard: ASUS PRIME Z790-V AX: "
                                    "permission denied: /dev/hidraw0")
     assert app.settings.found_lights(LightKind.BOARD) == saved
+    app.close()
+
+
+class _RefusingAura(ScriptedAuraController):
+    """The maintainer's controller, but its open raises what the real HID
+    transport raises -- not the builtin OSError a fake would."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self.error = error
+
+    def open(self) -> bool:
+        raise self.error
+
+
+@pytest.mark.parametrize("error", [
+    PermissionError_("permission denied: /dev/hidraw0"),
+    TransportError("no such device"),
+    ImportError("no hidapi"),
+])
+def test_a_controller_that_refuses_to_open_leaves_find_working(
+        tmp_path: Path, error: Exception) -> None:
+    """The real transport raises PermissionError_ (a TrccError) or
+    ImportError, and they escaped Find: the RAM and OpenRGB records were
+    saved, no RgbLightsChanged, and the window said "Could not reach TRCC".
+    Now Find answers, says why, and the last Find's board lights stay.
+    MUTATION CHECK: drop the except in AuraMainboard._connected."""
+    platform = _platform(tmp_path, AURA_INTERFACE)
+    app = App(platform)
+    app.dispatch(ScanRgbLights())
+    platform.aura = _RefusingAura(error)
+    failed = app.dispatch(ScanRgbLights())
+    assert not failed.ok
+    assert failed.message.endswith(
+        f"; motherboard: ASUS PRIME Z790-V AX: cannot open the RGB "
+        f"controller: {error}")
+    assert [(light.ref, light.kind, light.remembered) for light in failed.lights
+            if light.kind in (LightKind.BOARD, LightKind.FOUND)] == [
+        ("aura/onboard", LightKind.BOARD, True),
+        ("aura/argb1", LightKind.BOARD, True),
+        ("aura/argb2", LightKind.BOARD, True),
+        ("aura/argb3", LightKind.BOARD, True)]
     app.close()
 
 
@@ -181,7 +234,7 @@ def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> No
     assert app.settings.aura_argb_leds() == {}
     result = app.dispatch(SetAuraLeds(header=1, leds=8))
     assert (result.ok, result.message) == (True, "ARGB header 1: 8 LED(s)")
-    assert {bytes(w[1])[:1] for w in platform.aura.writes} == {b"\x82", b"\xb0"}
+    assert {bytes(w[1])[:1] for w in platform.aura.writes} <= READ_REQUESTS
     app.close()
     again = App(_platform(tmp_path))
     assert [(light.ref, light.led_count) for light in

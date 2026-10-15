@@ -8,26 +8,37 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.rgb.asus_aura import effect_packet
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, RenderLed, RgbFollow, SetRgbFollow
+from trcc.core.commands import (
+    BlinkAuraHeader,
+    ConnectDevice,
+    RenderLed,
+    RgbFollow,
+    ScanRgbLights,
+    SetAuraLeds,
+    SetRgbFollow,
+)
 from trcc.core.events import LedColorsChanged
 from trcc.core.models import (
+    MAX_ARGB_LEDS,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbMirrorDevice,
 )
 from trcc.core.ports import RamLights, SmBus
-from trcc.services.rgb_mirror import RgbMirrorService
+from trcc.services.rgb_mirror import BLINK_COLOR, BLINK_STEPS, RgbMirrorService
 
 from .mock_platform import (
     MockPlatform,
     ScriptedCorsairStick,
+    ScriptedRgbHardware,
     ScriptedSmBus,
     scripted_ram,
 )
 
-OFF, OPENRGB, RAM_MODE = RgbFollowMode
+OFF, OPENRGB, RAM_MODE, BOARD = RgbFollowMode
 STRIP = RgbMirrorDevice(0, "Strip", 4, "strip")
 RAM = RgbMirrorDevice(1, "RAM", 2, "ram")
 
@@ -46,6 +57,9 @@ class FakeMirror(RamLights):
         self.closed = 0
         self.scanned = False
         self.effects: list[tuple[str, RamEffectSettings]] = []
+        #: "release" and "close", in the order they came.
+        self.steps: list[str] = []
+        self.release_fails = False
 
     def devices(self) -> tuple[RgbMirrorDevice, ...]:
         if self.down:
@@ -62,7 +76,13 @@ class FakeMirror(RamLights):
     def show(self, device, colors) -> None:  # type: ignore[no-untyped-def]
         self.shown.append((device.name, tuple(colors)))
 
+    def release(self) -> None:
+        self.steps.append("release")
+        if self.release_fails:
+            raise ConnectionResetError("gone mid-release")
+
     def close(self) -> None:
+        self.steps.append("close")
         self.closed += 1
         self.scanned = False
 
@@ -99,6 +119,57 @@ def test_the_leading_coolers_colours_reach_every_device() -> None:
     assert service.status.connected and service.status.devices == ("Strip", "RAM")
     assert service.status.lead == "0416:8001"
     service.stop()
+
+
+def test_stopping_hands_the_lights_back_then_lets_go() -> None:
+    """The service decides it, through the port alone -- no chip.
+    MUTATION CHECK: drop the _release call in _stop_following."""
+    service, made = _service()
+    service.configure(BOARD, "", 0)
+    service.stop()
+    assert made[0].steps == ["release", "close"]
+
+
+def test_lights_that_cannot_be_handed_back_are_still_let_go() -> None:
+    service, made = _service()
+    service.configure(BOARD, "", 0)
+    made[0].release_fails = True
+    service.stop()
+    assert made[0].steps == ["release", "close"]
+
+
+def test_nothing_to_follow_says_why_and_does_not_fail() -> None:
+    """With "board" saved and no board plugged in, the App still starts."""
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        raise OSError("no motherboard RGB that TRCC drives was found")
+
+    service = RgbMirrorService(make)
+    service.configure(BOARD, "", 0)
+    assert (service.status.mode, service.status.error) == (
+        BOARD, "no motherboard RGB that TRCC drives was found")
+    service.stop()
+
+
+def test_the_app_lights_the_motherboard_and_hands_it_back(tmp_path: Path) -> None:
+    """The maintainer's board, scripted reply for reply: header 1's 8 LEDs
+    take the cooler's colours through effect channel 1 -- the one the chip
+    says drives it -- and stopping puts channel 1 back on its Rainbow,
+    unsaved."""
+    platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
+    platform.rgb = ScriptedRgbHardware()
+    app = App(platform)
+    app.dispatch(ScanRgbLights())                     # Find lists the headers
+    assert app.dispatch(SetAuraLeds(header=1, leds=8)).ok
+    assert app.dispatch(SetRgbFollow(mode=BOARD, targets=("aura/argb1",))).ok
+    app.events.publish(_colors("0416:8001", (255, 0, 0)))
+    _until(lambda: bool(platform.aura.reports(0x40)))
+    assert platform.aura.reports(0x40)[0][:28] == (
+        bytes([0x40, 0x80, 0, 8]) + bytes([255, 0, 0] * 8))
+    app.dispatch(SetRgbFollow(mode=OFF))
+    assert platform.aura.reports(0x35) == [effect_packet(1, 0xFF),
+                                           effect_packet(1, 0x05)]
+    assert platform.aura.reports(0x3F) == []
+    app.close()
 
 
 def test_a_second_cooler_does_not_fight_the_lead() -> None:
@@ -333,9 +404,18 @@ class _SlowStickBus(ScriptedSmBus):
             time.sleep(0.1)
 
 
+def _no_board() -> FakeMirror:
+    raise OSError("no motherboard RGB that TRCC drives was found")
+
+
+def _no_openrgb(host: str, port: int) -> FakeMirror:
+    raise AssertionError("RAM following never asks for OpenRGB")
+
+
 def _ram_service(bus: ScriptedSmBus) -> RgbMirrorService:
     from trcc.adapters.rgb import make_mirror
-    return RgbMirrorService(partial(make_mirror, smbuses=lambda: (bus,)))
+    return RgbMirrorService(partial(make_mirror, smbuses=lambda: (bus,),
+                                    board=_no_board, openrgb=_no_openrgb))
 
 
 def test_a_follow_write_never_lands_inside_an_effect() -> None:
@@ -989,3 +1069,117 @@ def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None
     assert refused.message == "port out of range (1-65535): 70000"
     assert app.settings.app.openrgb_port == 6800
     app.close()
+
+
+# ── Blink: which header is which ─────────────────────────────────────
+
+DIM, OFF_RGB = BLINK_COLOR, (0, 0, 0)
+BLINKED = [("Strip", (DIM,)), ("Strip", (OFF_RGB,))] * (BLINK_STEPS // 2)
+
+
+def test_a_blink_flashes_the_light_then_hands_the_board_back() -> None:
+    """Not following: a driver opened for the blink, released and closed.
+
+    MUTATION CHECK: drop the ``_release`` call in ``blink``."""
+    made: list[FakeMirror] = []
+
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    service = RgbMirrorService(make, blink_step_s=0)
+    assert service.blink("strip") == STRIP
+    assert [m.mode for m in made] == [BOARD]
+    assert made[0].shown == BLINKED
+    assert made[0].steps == ["release", "close"]
+
+
+def test_blinking_a_light_the_board_lacks_is_refused_and_closes() -> None:
+    made: list[FakeMirror] = []
+    service = RgbMirrorService(lambda *a: made.append(FakeMirror(*a))
+                               or made[-1], blink_step_s=0)
+    with pytest.raises(ValueError, match="no light 'aura/argb9'"):
+        service.blink("aura/argb9")
+    assert made[0].shown == [] and made[0].steps == ["close"]
+
+
+def test_a_blink_while_following_borrows_the_followers_driver() -> None:
+    """One driver, kept open and not released: the follower paints next.
+
+    MUTATION CHECK: always make a fresh driver in ``blink``."""
+    made: list[FakeMirror] = []
+    service = RgbMirrorService(lambda *a: made.append(FakeMirror(*a))
+                               or made[-1], blink_step_s=0)
+    service.configure(BOARD, "", 0)
+    service.blink("strip")
+    assert len(made) == 1 and made[0].shown == BLINKED
+    assert made[0].steps == [] and service.status.mode is BOARD
+    service.stop()
+
+
+def test_the_app_blinks_a_header_whose_leds_are_not_set(tmp_path: Path) -> None:
+    """The maintainer's board, scripted: header 2 has no count, so the most
+    a header drives (120) blink dim white then off, through effect channel 1,
+    which goes back to its Rainbow -- unsaved, and nothing left open.
+
+    MUTATION CHECK: match the Aura channel by device again, not by ref."""
+    platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
+    platform.rgb = ScriptedRgbHardware()
+    app = App(platform)
+    app.rgb_mirror._blink_step_s = 0
+    result = app.dispatch(BlinkAuraHeader(header=2))
+    assert (result.ok, result.message) == (
+        True, "ASUS PRIME Z790-V AX -- ARGB header 2 blinked")
+    direct = platform.aura.reports(0x40)
+    per_show = MAX_ARGB_LEDS // 20
+    assert len(direct) == BLINK_STEPS * per_show
+    assert {bytes(p[1:2]) for p in direct} == {b"\x01", b"\x81"}  # header 2
+    assert [p[4:7] for p in direct[::per_show]] == [
+        bytes(DIM), bytes(OFF_RGB)] * (BLINK_STEPS // 2)
+    assert platform.aura.reports(0x35) == [effect_packet(1, 0xFF),
+                                           effect_packet(1, 0x05)]
+    assert platform.aura.reports(0x3F) == []
+    assert not platform.aura.is_open
+    refused = app.dispatch(BlinkAuraHeader(header=9))
+    assert (refused.ok, refused.message) == (
+        False, "the motherboard has no ARGB header 9")
+    app.close()
+
+
+# ── OpenRGB is reached through the platform ──────────────────────────
+
+def test_a_stand_in_platform_reaches_no_openrgb(tmp_path: Path,
+                                                monkeypatch: pytest.MonkeyPatch
+                                                ) -> None:
+    """Find and following on a test platform say OpenRGB is not there.
+    They used to open 127.0.0.1:6742 and list whatever real OpenRGB the
+    machine ran.  Every connect is recorded and refused, so even a broken
+    build reaches nothing.
+
+    MUTATION CHECK: build ``OpenRgbMirror`` in ``make_mirror`` again."""
+    import socket
+    opened: list[object] = []
+
+    def refuse(_sock: object, address: object) -> None:
+        opened.append(address)
+        raise ConnectionRefusedError("refused by the test")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    app, platform, _ = _lights_app(tmp_path)
+    found = app.dispatch(ScanRgbLights())
+    assert found.openrgb_error == (
+        f"OSError: no OpenRGB client on {type(platform).__name__}")
+    app.dispatch(SetRgbFollow(mode=OPENRGB, host="127.0.0.1", port=6742))
+    assert app.dispatch(RgbFollow()).error == (
+        f"no OpenRGB client on {type(platform).__name__}")
+    assert opened == []
+    app.close()
+
+
+def test_every_os_platform_names_the_real_openrgb_client() -> None:
+    from trcc.adapters.rgb.openrgb import OpenRgbMirror
+    from trcc.adapters.system import host_platform_class
+    from trcc.core.ports import Platform
+
+    assert Platform.OPENRGB is None
+    assert host_platform_class().OPENRGB is OpenRgbMirror

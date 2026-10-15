@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**161 total: 115 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**162 total: 116 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1622,6 +1622,16 @@ Switch module *key* on or off -- remembered, and every UI hears it. A module tha
 | `enabled` | `bool` | yes |
 
 ## rgb
+
+### `BlinkAuraHeader`
+
+Blink an ASUS Aura ARGB header for two seconds, so the user can see which header the fan or strip is on -- before its LED count is known.
+
+*Command* → `RgbLightsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `header` | `int` | yes |
 
 ### `RgbLights`
 

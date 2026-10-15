@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**150 endpoints.**
+**151 endpoints.**
 
 ## Running it
 
@@ -141,6 +141,7 @@ Interactive docs are served at `/docs` while the API is running.
 
 | Endpoint | Returns | Description |
 |---|---|---|
+| `POST /system/aura-blink` | `RgbLightsResult` | Blink an ASUS Aura ARGB header for two seconds, to see which it is. |
 | `POST /system/aura-leds` | `RgbLightsResult` | Say how many LEDs an ASUS Aura ARGB header drives. |
 | `GET /system/autostart` | `AutostartResult` | Snapshot the autostart entry — whether it's installed + its path. |
 | `POST /system/autostart` | `AutostartResult` | Toggle the OS autostart entry (per-user, no sudo). |
@@ -174,7 +175,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/ram-lighting` | `RamLightingResult` | Switch RAM lighting on or off: a password prompt at the desktop, answered when it is typed or closed. |
 | `GET /system/rgb` | `RgbLightsResult` | The RGB lights from the last scan -- no bus traffic. |
 | `GET /system/rgb-follow` | `RgbFollowResult` | What follows the cooler's colours, and what it is doing (#160). |
-| `POST /system/rgb-follow` | `RgbFollowResult` | Pick what follows the cooler's colours: off, openrgb or ram (#160). |
+| `POST /system/rgb-follow` | `RgbFollowResult` | Pick what follows the cooler's colours: off, openrgb, ram or board (#160). |
 | `POST /system/rgb/scan` | `RgbLightsResult` | Look for the lights: RGB memory, and OpenRGB's devices. |
 | `GET /system/sensors` | `SensorsResult` | — |
 | `GET /system/sensors/catalog` | `SensorsListResult` | Every sensor this machine can measure — identities, no values. |

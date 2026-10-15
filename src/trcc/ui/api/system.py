@@ -7,6 +7,7 @@ from dataclasses import replace
 from fastapi import APIRouter, Request
 
 from ...core.commands import (
+    BlinkAuraHeader,
     CheckForUpdate,
     ControlCenterSnapshot,
     DisableAutostart,
@@ -82,6 +83,7 @@ from ._shared import http_error_if_failed
 from .schemas import (
     AppStatusEntry,
     AppStatusResponse,
+    AuraBlinkRequest,
     AuraLedsRequest,
     AutostartRequest,
     DebugReportRequest,
@@ -330,7 +332,7 @@ def rgb_follow_status(request: Request) -> RgbFollowResult:
 @router.post("/rgb-follow")
 def rgb_follow_set(body: RgbFollowRequest,
                    request: Request) -> RgbFollowResult:
-    """Pick what follows the cooler's colours: off, openrgb or ram (#160)."""
+    """Pick what follows the cooler's colours: off, openrgb, ram or board (#160)."""
     log.info("api POST /system/rgb-follow: mode=%s host=%r port=%s "
              "mapping=%s colors=%s", body.mode.value, body.host, body.port,
              body.mapping, body.colors)
@@ -369,6 +371,15 @@ def aura_leds_set(body: AuraLedsRequest, request: Request) -> RgbLightsResult:
              body.leds)
     result = request.app.state.trcc.dispatch(SetAuraLeds(header=body.header,
                                                          leds=body.leds))
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/aura-blink")
+def aura_blink(body: AuraBlinkRequest, request: Request) -> RgbLightsResult:
+    """Blink an ASUS Aura ARGB header for two seconds, to see which it is."""
+    log.info("api POST /system/aura-blink: header %d", body.header)
+    result = request.app.state.trcc.dispatch(BlinkAuraHeader(header=body.header))
     http_error_if_failed(result)
     return result
 

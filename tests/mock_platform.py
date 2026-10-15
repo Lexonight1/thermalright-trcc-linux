@@ -745,6 +745,34 @@ AURA_BOARD_TABLE = bytes.fromhex(
     "1e9f03010000783c00010000783c00010000783c000000000000000104020"
     "1f400000000").ljust(60, b"\x00")
 
+#: The maintainer's PRIME Z790-V AX, as it answered dev/tools/aura_probe.py
+#: on 2026-10-15 -- each record after its type byte (0x31) or number (0x32).
+_FF3, _ZERO7 = [0xFF] * 3, [0x00] * 7
+#: 0x31, an onboard zone (type 0x10): 1 LED.
+AURA_ZONE_TAIL = bytes([0x00, 0x01, 0x11, *_FF3, *_ZERO7, 0x01, 0x00, 0x00, 0xFF, 0xFF])
+#: 0x31, an ARGB header (type 0x20 + k - 1): 120 LEDs at most, 0 detected.
+AURA_HEADER_TAIL = bytes([0x00, 0x78, 0x25, *_FF3, *_ZERO7, 0x78, 0x00, 0x00, 0x00, 0x78])
+
+
+def aura_records(onboard_zones: int, argb_headers: int) -> list[bytes]:
+    """The 0x31 records a board of this shape answers, after their number:
+    its onboard zones, then its ARGB headers."""
+    log.debug("aura_records: %d zone(s), %d header(s)", onboard_zones,
+              argb_headers)
+    return ([bytes([0x10]) + AURA_ZONE_TAIL] * onboard_zones
+            + [bytes([0x20 + k]) + AURA_HEADER_TAIL for k in range(argb_headers)])
+
+
+def aura_effect_channels(onboard_zones: int, argb_headers: int) -> list[bytes]:
+    """The 0x32 records, after their number: channel 0 drives the onboard
+    zones and channel 1 every ARGB header -- one shared channel, as on the
+    maintainer's board -- each running effect 0x05 (Rainbow)."""
+    masks = ((1 << onboard_zones) - 1,
+             ((1 << argb_headers) - 1) << onboard_zones)
+    log.debug("aura_effect_channels: masks %s", [hex(m) for m in masks])
+    return [bytes([0x00, 0x00, mask, 0x05, 0x00, 0x00, 0x00, mask, 0x05,
+                   0x00, 0x00, 0x7A]) for mask in masks if mask]
+
 
 #: The maintainer's board as DMI names it, and its Aura controller's HID
 #: interface as sysfs listed it on 2026-10-12.
@@ -801,6 +829,11 @@ class ScriptedAuraController(FakeBulkTransport):
                           (0x1D, rgb_headers)):
             if value is not None:
                 self.table[at] = value
+        zones = 1 if self.table[0x1B] else 0
+        #: The 0x31 and 0x32 records it answers, and the one last selected.
+        self.records = {0x31: aura_records(zones, self.table[0x02]),
+                        0x32: aura_effect_channels(zones, self.table[0x02])}
+        self.selected = 0
         log.debug("ScriptedAuraController: %d ARGB, %d onboard, %d 12V",
                   self.table[0x02], self.table[0x1B], self.table[0x1D])
 
@@ -813,6 +846,15 @@ class ScriptedAuraController(FakeBulkTransport):
             case b"\xb0":
                 self._answer(bytes([REPORT_ID, 0x30, 0, 0]) + bytes(self.table)
                              + b"\x00")
+            case b"\x31" | b"\x32":                 # select record n
+                self.selected = bytes(data)[1]
+            case b"\xb1" | b"\xb2":                 # fetch it; past the end, empty
+                kind = bytes(data)[0] - 0x80
+                records = self.records[kind]
+                record = (records[self.selected]
+                          if self.selected < len(records) else b"")
+                self._answer(bytes([REPORT_ID, kind, self.selected])
+                             + record.ljust(62, b"\x00"))
         return sent
 
     def _answer(self, report: bytes) -> None:

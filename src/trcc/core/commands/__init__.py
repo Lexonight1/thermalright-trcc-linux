@@ -103,7 +103,13 @@ from .modules import (
     ListModules,
     SetModuleEnabled,
 )
-from .rgb import RgbLights, ScanRgbLights, SetAuraLeds, SetRamEffect
+from .rgb import (
+    BlinkAuraHeader,
+    RgbLights,
+    ScanRgbLights,
+    SetAuraLeds,
+    SetRamEffect,
+)
 from .system import (
     AdvanceSlideshow,
     CheckForUpdate,
@@ -186,6 +192,7 @@ __all__ = [
     "AddOverlayElement",
     "AdvanceSlideshow",
     "ApplyMask",
+    "BlinkAuraHeader",
     "BuildPreview",
     "CaptureScreencastFrame",
     "CaptureStreamFrame",

@@ -1113,6 +1113,8 @@ def _rgb_follow_label(mode: RgbFollowMode, host: str, port: int,
             return f"OpenRGB at {host}:{port} follows {lead}"
         case RgbFollowMode.RAM:
             return f"Corsair RAM follows {lead}"
+        case RgbFollowMode.BOARD:
+            return f"The motherboard's RGB follows {lead}"
     return "Nothing follows -- TRCC sends no colours to other lights"
 
 
@@ -1123,7 +1125,9 @@ class SetRgbFollow(Command[RgbFollowResult]):
     TRCC leads.  ``OPENRGB``: TRCC connects to the OpenRGB SDK server at
     host:port as a client and sends the cooler's colours to every OpenRGB
     device, in OpenRGB's direct mode.  ``RAM``: TRCC sends them to Corsair RGB
-    memory over the SMBus itself, with no OpenRGB running.  ``OFF`` stops.
+    memory over the SMBus itself, with no OpenRGB running.  ``BOARD``: to the
+    motherboard's own RGB -- its LEDs and ARGB headers -- directly; stopping
+    hands each header back to the effect it ran, unsaved.  ``OFF`` stops.
     An empty host or a port of 0 keeps the one saved.
 
     ``source`` is the device that leads: empty for the first LED cooler, an

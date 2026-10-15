@@ -88,12 +88,17 @@ DEFAULT_COLORS: tuple[Rgb, Rgb] = ((255, 32, 64), (32, 128, 255))
 FIRST_COOLER = ""
 BAD_ADDRESS = "OpenRGB's address is host:port, e.g. 127.0.0.1:6742"
 #: Under the motherboard's lights: what the list means, for anyone.
-BOARD_NOTE = ("TRCC drives ASUS Aura boards itself; give each ARGB header the "
-              "number of LEDs plugged into it.  A board TRCC lists as found "
-              "is driven by its own software -- TRCC leaves it alone.")
+BOARD_NOTE = ("TRCC drives ASUS Aura boards itself: tick a header to have it "
+              "follow, and give it the number of LEDs plugged into it.  When "
+              "following stops, each header goes back to its own effect.  A "
+              "board TRCC lists as found is driven by its own software -- "
+              "TRCC leaves it alone.")
 #: Beside an ARGB header's LED count: what to enter, for anyone.
 LEDS_TIP = ("How many LEDs are on the fan or strip plugged into this header "
             "-- it is on the box or spec sheet.  The board cannot tell.")
+#: Beside an ARGB header's Blink button: what it does, for anyone.
+BLINK_TIP = ("Flashes this header dim white for two seconds, so you can see "
+             "which fan or strip is on it.  Nothing is saved.")
 #: Under sticks listed from the settings, before this App looked for them.
 REMEMBERED_NOTE = ("Found at the last search -- press Find lights to check "
                    "again.")
@@ -181,9 +186,20 @@ class HeaderLeds:
     leds: int
 
 
-#: The kinds a light can be ticked for: following, effects.  A motherboard's
-#: lights are listed, and wait for their own increment.
-TICKABLE = frozenset({LightKind.RAM, LightKind.OPENRGB})
+#: Which follower drives each kind of light that can follow -- one kind at
+#: a time.  These are the kinds a light can be ticked for.
+FOLLOWS: dict[LightKind, RgbFollowMode] = {
+    LightKind.RAM: RgbFollowMode.RAM,
+    LightKind.OPENRGB: RgbFollowMode.OPENRGB,
+    LightKind.BOARD: RgbFollowMode.BOARD,
+}
+TICKABLE = frozenset(FOLLOWS)
+#: Ticked when nothing says otherwise.  A motherboard's headers start
+#: unticked: which one has a fan on it is the user's to say.
+TICKED_AT_FIRST = frozenset({LightKind.RAM, LightKind.OPENRGB})
+#: Who is following, in the status line.
+_FOLLOWER_NAMES = {RgbFollowMode.OPENRGB: "OpenRGB", RgbFollowMode.RAM: "The RAM",
+                   RgbFollowMode.BOARD: "The motherboard"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,9 +329,13 @@ class RgbPage:
         self.ram_access = lights.ram_access
         self._follow = follow
         self._devices = tuple(devices)
+        following = next((k for k, m in FOLLOWS.items() if m is follow.mode),
+                         None)
+        first = {following} if following else TICKED_AT_FIRST
         refs = {light.ref for light in self._lights if light.kind in TICKABLE}
         self._checked = (set(follow.targets) & refs if follow.targets
-                         else refs)
+                         else {light.ref for light in self._lights
+                               if light.kind in first})
         if follow.host:
             self.address = format_openrgb_address(follow.host, follow.port)
         self.follow_source = follow.source
@@ -456,7 +476,7 @@ class RgbPage:
     def follow_status(self) -> str:
         """What following is doing now, as the App last said."""
         follow = self._follow
-        who = "OpenRGB" if follow.mode is RgbFollowMode.OPENRGB else "The RAM"
+        who = _FOLLOWER_NAMES.get(follow.mode, "")
         if follow.mode is RgbFollowMode.OFF:
             status = "Not following."
         elif follow.error:
@@ -493,9 +513,8 @@ class RgbPage:
     def preview_lights(self) -> tuple[str, ...]:
         """The lights the follow preview draws a strip for, in the order the
         App sends them -- the ticked ones of the kind that would follow."""
-        kind = {RgbFollowMode.RAM: LightKind.RAM,
-                RgbFollowMode.OPENRGB: LightKind.OPENRGB,
-                }.get(self._follow_mode() or RgbFollowMode.OFF)
+        mode = self._follow_mode()
+        kind = next((k for k, m in FOLLOWS.items() if m is mode), None)
         names = (tuple(row.title for row in self.rows(kind) if row.checked)
                  if kind is not None else ())
         log.debug("RgbPage.preview_lights: %s", names)
@@ -511,15 +530,14 @@ class RgbPage:
         return columns
 
     def _follow_mode(self) -> RgbFollowMode | None:
-        """RAM or OpenRGB, from the ticked lights; None for none or both."""
+        """The follower for the ticked lights; None for none, or for more
+        than one kind."""
         log.debug("RgbPage._follow_mode: %d ticked", len(self._checked))
         kinds = {light.kind for light in self._lights
                  if light.ref in self._checked}
         if not self._lights and self._follow.mode is not RgbFollowMode.OFF:
             return self._follow.mode     # nothing listed yet: keep what runs
-        return {frozenset({LightKind.RAM}): RgbFollowMode.RAM,
-                frozenset({LightKind.OPENRGB}): RgbFollowMode.OPENRGB,
-                }.get(frozenset(kinds))
+        return FOLLOWS.get(kinds.pop()) if len(kinds) == 1 else None
 
     def _targets(self, kind: LightKind) -> tuple[str, ...]:
         """The ticked lights of *kind*; empty when every one is ticked, so a
@@ -542,9 +560,13 @@ class RgbPage:
         elif self.source is RgbSource.FOLLOW:
             kinds = {light.kind for light in self._lights
                      if light.ref in self._checked}
+            silent = [row.title for row in self.rows(LightKind.BOARD)
+                      if row.checked and not row.leds]
             if len(kinds) > 1:
-                problem = ("Following drives RAM or OpenRGB lights, one at a "
-                           "time -- untick one kind.")
+                problem = ("Following drives one kind of light at a time -- "
+                           "RAM, OpenRGB or the motherboard; untick the others.")
+            elif silent:
+                problem = f"Give {silent[0]} its number of LEDs first."
             elif self._follow_mode() is None:
                 problem = "Tick the lights that should follow."
             elif parse_openrgb_address(self.address) is None:
@@ -566,8 +588,7 @@ class RgbPage:
             plan = SaveEffect(self._targets(LightKind.RAM),
                               self.effect_picks.settings())
         elif mode is not None and address is not None:
-            kind = (LightKind.RAM if mode is RgbFollowMode.RAM
-                    else LightKind.OPENRGB)
+            kind = next(k for k, m in FOLLOWS.items() if m is mode)
             plan = FollowDevice(mode, *address, self.follow_source,
                                 self.mapping, self.colors, self._targets(kind))
         log.info("RgbPage.apply: %s", plan)

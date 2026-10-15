@@ -2145,3 +2145,13 @@ def test_system_aura_leds_route(api_client: TestClient) -> None:
     for body in ({"header": 0, "leds": 8}, {"header": 1, "leds": 121},
                  {"header": 1}):
         assert api_client.post("/system/aura-leds", json=body).status_code == 422
+
+
+def test_system_aura_blink_route(api_client: TestClient) -> None:
+    """Dispatches BlinkAuraHeader; FakePlatform has no board to blink."""
+    refused = api_client.post("/system/aura-blink", json={"header": 1})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "cannot blink: no motherboard RGB that TRCC drives was found")
+    for body in ({"header": 0}, {"header": 17}, {}):
+        assert api_client.post("/system/aura-blink", json=body).status_code == 422

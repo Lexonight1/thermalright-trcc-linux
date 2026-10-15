@@ -2293,3 +2293,13 @@ def test_system_aura_leds_refuses_a_header_no_find_listed(cli_runner: CliRunner,
             ) in refused.output
     zero = cli_runner.invoke(_app(), ["system", "aura-leds", "0", "8"])
     assert zero.exit_code != 0                 # headers count from 1
+
+
+def test_system_aura_blink_says_why_with_no_board(cli_runner: CliRunner, cli_app) -> None:
+    """The CLI dispatches BlinkAuraHeader; FakePlatform has no board."""
+    del cli_app
+    refused = cli_runner.invoke(_app(), ["system", "aura-blink", "1"])
+    assert refused.exit_code == 1
+    assert ("\ncannot blink: no motherboard RGB that TRCC drives was found\n"
+            ) in refused.output
+    assert cli_runner.invoke(_app(), ["system", "aura-blink", "0"]).exit_code != 0

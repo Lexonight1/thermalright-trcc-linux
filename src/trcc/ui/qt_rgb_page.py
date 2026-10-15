@@ -68,6 +68,7 @@ from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
 from ..services.follow_colors import Rgb, strip_spans
 from .presentation.effect_preview import APPROXIMATE, LEDS, effect_frame
 from .presentation.rgb_page import (
+    BLINK_TIP,
     BOARD_NOTE,
     COLORS_LABELS,
     DIRECTION_LABELS,
@@ -135,7 +136,8 @@ class _LightCard(QFrame):
     """One light: its tick (does it take part?), its name and where it is."""
 
     def __init__(self, row: LightRow, toggled: Callable[[str, bool], None],
-                 leds_set: Callable[[int, int], None] | None = None) -> None:
+                 leds_set: Callable[[int, int], None] | None = None,
+                 blink: Callable[[int], None] | None = None) -> None:
         super().__init__()
         log.debug("_LightCard.__init__: %s checked=%s", row.ref, row.checked)
         self.setObjectName("rgb-card")
@@ -154,10 +156,10 @@ class _LightCard(QFrame):
             layout.addWidget(title)
         layout.addWidget(_muted(row.detail))
         if row.header is not None and leds_set is not None:
-            layout.addLayout(self._leds_box(row, leds_set))
+            layout.addLayout(self._leds_box(row, leds_set, blink))
 
-    def _leds_box(self, row: LightRow, leds_set: Callable[[int, int], None]
-                  ) -> QHBoxLayout:
+    def _leds_box(self, row: LightRow, leds_set: Callable[[int, int], None],
+                  blink: Callable[[int], None] | None) -> QHBoxLayout:
         """How many LEDs the header drives -- the board cannot say."""
         log.debug("_LightCard._leds_box: header %s, %d LED(s)", row.header,
                   row.leds)
@@ -172,6 +174,12 @@ class _LightCard(QFrame):
         line = QHBoxLayout()
         line.addWidget(_muted("LEDs on this header"))
         line.addWidget(box)
+        if blink is not None:
+            button = QPushButton("Blink", self)
+            button.setObjectName("rgb-blink")
+            button.setToolTip(BLINK_TIP)
+            button.clicked.connect(partial(blink, header))
+            line.addWidget(button)
         line.addStretch(1)
         return line
 
@@ -191,6 +199,7 @@ class _LightsColumn(QWidget):
 
     find_clicked = Signal()
     leds_set = Signal(int, int)
+    blinked = Signal(int)
 
     def __init__(self, page: RgbPage, access: RamAccessRow,
                  changed: Callable[[], None]) -> None:
@@ -261,7 +270,8 @@ class _LightsColumn(QWidget):
         board = page.rows(LightKind.BOARD) + page.rows(LightKind.FOUND)
         for row in board:
             self._board_rows.addWidget(_LightCard(row, self._on_light_toggled,
-                                                  self.leds_set.emit))
+                                                  self.leds_set.emit,
+                                                  self.blinked.emit))
         self._board_box.setVisible(bool(board))
         reachable = page.ram_reachable
         self._ram_note.setText(page.ram_note if reachable else "")
@@ -834,6 +844,7 @@ class RgbPageView(QWidget):
         self._lights_column.setFixedWidth(400)
         self._lights_column.find_clicked.connect(self._on_find)
         self._lights_column.leds_set.connect(self._on_leds)
+        self._lights_column.blinked.connect(self._on_blink)
         self._sources = QButtonGroup(self)
         self._source_buttons: dict[RgbSource, QRadioButton] = {}
         self._effect = _EffectForm(self.page.effect_picks, self._on_changed)
@@ -958,6 +969,12 @@ class RgbPageView(QWidget):
                   type(self).__name__, plan)
         raise NotImplementedError
 
+    def _blink(self, header: int) -> Command[Any]:
+        """``BlinkAuraHeader`` for ARGB *header* -- named, not dispatched."""
+        log.error("RgbPageView._blink: %s names no Command (header %d)",
+                  type(self).__name__, header)
+        raise NotImplementedError
+
     # ── The page ─────────────────────────────────────────────────────
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -1030,6 +1047,12 @@ class RgbPageView(QWidget):
         reloaded -- off the GUI thread, like Find."""
         log.info("RgbPageView._on_leds: header %d -> %d", header, leds)
         self._run(self._leds(HeaderLeds(header, leds)), reload=True)
+
+    def _on_blink(self, header: int) -> None:
+        """Blink a header -- two seconds, off the GUI thread; the page is
+        busy until it is done."""
+        log.info("RgbPageView._on_blink: header %d", header)
+        self._run(self._blink(header), reload=False)
 
     def _on_apply(self) -> None:
         plan = self.page.apply()

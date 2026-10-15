@@ -385,13 +385,6 @@ class App(CommandBus, ModuleHost):
         # its resolution's videos their GIFs, off every caller's thread.
         self._preview_backfill_lock = threading.Lock()
         self.events.subscribe(DataInstalled, self._on_data_installed)
-        # Other RGB follows the cooler (#160): the LED render's colours go to
-        # OpenRGB's devices or to Corsair RAM, from the follower's own thread.
-        # The RAM follower reaches the SMBus only through ``platform``, so a
-        # stand-in platform's scripted sticks are all a test or mock can touch.
-        self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
-            make_mirror, smbuses=platform.smbuses), on_sent=self._follow_sent)
-        self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
         # Motherboard RGB, found the way OpenRGB finds it -- only on a Find.
         # Read through ``platform``, so a stand-in's scripted board is all a
         # test or mock run sees; each header's LED count is the user's.
@@ -399,6 +392,15 @@ class App(CommandBus, ModuleHost):
             platform.rgb_hardware,
             partial(make_board_driver, open_transport=platform.open_transport,
                     argb_leds=self.settings.aura_argb_leds))
+        # Other RGB follows the cooler (#160): the LED render's colours go to
+        # OpenRGB's devices, Corsair RAM or the motherboard's own RGB, from
+        # the follower's own thread.  RAM, board and OpenRGB are reached only
+        # through ``platform``, so a stand-in's are all a test touches.
+        self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
+            make_mirror, smbuses=platform.smbuses,
+            board=self.rgb_boards.driver, openrgb=platform.openrgb),
+            on_sent=self._follow_sent)
+        self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
         # Whether a newer TRCC exists: asked here, for every window, from
         # start_session on -- never by a window (services/update_watch.py).
         self.update_watch = UpdateWatch(self._check_for_update,

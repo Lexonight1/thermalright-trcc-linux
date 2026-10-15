@@ -1546,6 +1546,18 @@ trcc led zone-sync-zones KEY ZONES
 
 System-level operations (setup, sensors, info).
 
+### `trcc system aura-blink`
+
+Blink an ASUS Aura ARGB header for two seconds, to see which it is. Nothing is saved: the header goes back to its own effect after.
+
+```bash
+trcc system aura-blink HEADER
+```
+
+| Argument | Description |
+|---|---|
+| `HEADER` | The ARGB header, from 1 (see `trcc system rgb`). |
+
 ### `trcc system aura-leds`
 
 Say how many LEDs an ASUS Aura ARGB header drives. The board cannot tell: the header's data line runs one way. The board is read again after, so the new count is listed.
@@ -1736,7 +1748,7 @@ trcc system follow [OPTIONS] [MODE]
 
 | Argument | Description |
 |---|---|
-| `MODE` | 'off', 'openrgb', 'ram' or 'status' *(optional)* |
+| `MODE` | 'off', 'openrgb', 'ram', 'board' or 'status' *(optional)* |
 
 | Option | Description |
 |---|---|

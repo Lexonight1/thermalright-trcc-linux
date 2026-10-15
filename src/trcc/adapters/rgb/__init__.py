@@ -8,21 +8,26 @@ from ...core.models import FoundBoard, RgbFollowMode, Wire
 from ...core.ports import BulkTransport, RgbMirror, SmBus, Transport
 from .asus_aura import MAINBOARD_DETECTOR, REPORT_ID, AuraMainboard
 from .corsair_dram import CorsairDramMirror
-from .openrgb import OpenRgbMirror
 
 log = logging.getLogger(__name__)
 
 
 def make_mirror(mode: RgbFollowMode, host: str, port: int, *,
-                smbuses: Callable[[], tuple[SmBus, ...]]) -> RgbMirror:
-    """The follower for *mode*: OpenRGB at *host*:*port*, or Corsair RAM on
-    the buses *smbuses* opens (``Platform.smbuses``)."""
+                smbuses: Callable[[], tuple[SmBus, ...]],
+                board: Callable[[], RgbMirror],
+                openrgb: Callable[[str, int], RgbMirror]) -> RgbMirror:
+    """The follower for *mode*: OpenRGB at *host*:*port* through *openrgb*
+    (``Platform.openrgb``), Corsair RAM on the buses *smbuses* opens
+    (``Platform.smbuses``), or the motherboard's RGB *board* hands out
+    (``MotherboardFinder.driver``)."""
     log.info("make_mirror: %s", mode.value)
     match mode:
         case RgbFollowMode.OPENRGB:
-            return OpenRgbMirror(host, port)
+            return openrgb(host, port)
         case RgbFollowMode.RAM:
             return CorsairDramMirror(smbuses)
+        case RgbFollowMode.BOARD:
+            return board()
     raise ValueError(f"nothing follows in mode {mode.value!r}")
 
 

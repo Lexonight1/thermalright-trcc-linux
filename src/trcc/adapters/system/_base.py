@@ -55,6 +55,7 @@ from ...core.registry import ALL_DEVICES
 from ..device._pyusb_find import find as usb_find
 from ..device._pyusb_find import usb_path
 from ..device.transport import PyUsbBulkTransport
+from ..rgb.openrgb import OpenRgbMirror
 from ..visual import VISUALS as _VISUALS
 
 if TYPE_CHECKING:
@@ -185,6 +186,8 @@ class BaseOS(Platform):
 
     #: Every audio visual TRCC has: the ``VISUALS`` registry.
     VISUALS = _VISUALS
+    #: OpenRGB's SDK client -- plain TCP, the same on every OS.
+    OPENRGB = OpenRgbMirror
 
     def __init_subclass__(cls, key: str | None = None, **kwargs: Any) -> None:
         """Register the subclass under the ``key=`` it declares.

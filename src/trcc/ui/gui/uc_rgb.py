@@ -15,6 +15,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from ...core.commands import (
+    BlinkAuraHeader,
     Command,
     ListDevices,
     RgbFollow,
@@ -134,6 +135,10 @@ class UCRgbPage(RgbPageView):
     def _leds(self, plan: HeaderLeds) -> Command[Any]:
         log.info("UCRgbPage._leds: %s", plan)
         return SetAuraLeds(header=plan.header, leds=plan.leds)
+
+    def _blink(self, header: int) -> Command[Any]:
+        log.info("UCRgbPage._blink: header %d", header)
+        return BlinkAuraHeader(header=header)
 
     def _send(self, plan: ApplyPlan) -> Command[Any]:
         log.info("UCRgbPage._send: %s", plan)
