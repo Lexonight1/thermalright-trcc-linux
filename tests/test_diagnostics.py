@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import socket
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,6 +24,7 @@ from trcc.adapters.diagnostics.doctor import (
 from trcc.adapters.diagnostics.health import (
     MIN_PYTHON,
     HealthCheckResult,
+    check_fan_chip_linux,
     check_gpu_sensors,
     check_log_writable,
     check_python_version,
@@ -3992,3 +3994,46 @@ def test_with_no_app_elsewhere_the_report_probes_as_before(
     GenerateDebugReport().execute(app)
 
     assert calls == [{"held": {}, "probe": True}]
+
+
+# ── fan-chip: the motherboard's fans need their chip's driver (#301) ──
+
+def _sysfs(root: Path, chips: list[str], chassis: str) -> tuple[Path, Path]:
+    """A /sys/class/hwmon of *chips* and a DMI chassis type."""
+    hwmon = root / "hwmon"
+    for n, chip in enumerate(chips):
+        (hwmon / f"hwmon{n}").mkdir(parents=True)
+        (hwmon / f"hwmon{n}" / "name").write_text(f"{chip}\n")
+    (root / "chassis_type").write_text(f"{chassis}\n")
+    return hwmon, root / "chassis_type"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-only check")
+@pytest.mark.parametrize(("chips", "chassis", "severity"), [
+    # The maintainer's ASUS desktop: nct6798 loaded by lm_sensors.
+    (["acpitz", "nvme", "spd5118", "asus", "coretemp", "nct6798"], "3", "OK"),
+    # #301: an ASUS desktop with no Super I/O driver -- asusec is not it.
+    (["k10temp", "amdgpu", "asusec", "nvme"], "3", "WARN"),
+    (["it8686", "k10temp"], "3", "OK"),
+    (["asus_wmi_sensors"], "3", "OK"),
+    (["coretemp", "thinkpad"], "10", "OK"),                  # a laptop
+    (["coretemp"], "", "WARN"),                              # chassis unreadable
+])
+def test_the_fan_chip_check(tmp_path: Path, fake_platform: Any,
+                            chips: list[str], chassis: str, severity: str) -> None:
+    hwmon, kind = _sysfs(tmp_path, chips, chassis)
+    assert check_fan_chip_linux(fake_platform, hwmon, kind).severity == severity
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-only check")
+def test_a_missing_fan_chip_says_how_to_find_its_driver(
+        tmp_path: Path, fake_platform: Any,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    hwmon, kind = _sysfs(tmp_path, ["k10temp", "asusec"], "3")
+    monkeypatch.setattr(health_mod.shutil, "which",
+                        lambda name: "/usr/bin/sensors-detect")
+    assert check_fan_chip_linux(fake_platform, hwmon, kind).fix_hint == (
+        "sudo sensors-detect, then load the module it names")
+    monkeypatch.setattr(health_mod.shutil, "which", lambda name: None)
+    assert check_fan_chip_linux(fake_platform, hwmon, kind).fix_hint == (
+        "fake platform: install sensors-detect, then: sudo sensors-detect")

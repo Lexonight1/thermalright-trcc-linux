@@ -504,14 +504,16 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         # On RHEL/Rocky/Alma both are EPEL-only (el9/el10_2/el10_3).
         packages={"pynvml": "python3-pynvml",
                   "7z": "/usr/bin/7z",
-                  "ffmpeg": "/usr/bin/ffmpeg"},
+                  "ffmpeg": "/usr/bin/ffmpeg",
+                  # By name: Fedora ships it in /usr/bin, EL in /usr/sbin.
+                  "sensors-detect": "lm_sensors"},
     ),
     LinuxFamily(
         name="Debian-family", manager="apt",
         install_cmd="sudo apt install {pkg}",
         package_upgrade=download_and_install("trcc-linux-latest_all.deb",
                                              "sudo apt install"),
-        packages={"pynvml": "python3-pynvml"},
+        packages={"pynvml": "python3-pynvml", "sensors-detect": "lm-sensors"},
     ),
     LinuxFamily(
         name="Arch-family", manager="pacman",
@@ -519,24 +521,29 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         package_upgrade=download_and_install("trcc-linux-latest-any.pkg.tar.zst",
                                              "sudo pacman -U"),
         # Arch names it differently, and advising Debian's name here is #207.
-        packages={"pynvml": "python-nvidia-ml-py"},
+        packages={"pynvml": "python-nvidia-ml-py", "sensors-detect": "lm_sensors"},
     ),
     LinuxFamily(
         name="SUSE-family", manager="zypper",
         install_cmd="sudo zypper install {pkg}",
-        packages={"pynvml": "python3-pynvml"},
+        packages={"pynvml": "python3-pynvml", "sensors-detect": "sensors"},
     ),
     LinuxFamily(
         name="Void", manager="xbps-install",
         install_cmd="sudo xbps-install {pkg}",
+        # Its index lists no commands for lm_sensors; it run-depends on perl,
+        # and sensors-detect is the package's one Perl script.
+        packages={"sensors-detect": "lm_sensors"},
     ),
     LinuxFamily(
         name="Alpine", manager="apk",
         install_cmd="sudo apk add {pkg}",
+        packages={"sensors-detect": "lm-sensors-detect"},   # split out of lm-sensors
     ),
     LinuxFamily(
         name="NixOS", manager="nix-env",
         install_cmd="nix-env -iA nixpkgs.{pkg}",
+        packages={"sensors-detect": "lm_sensors"},
     ),
 )
 
@@ -552,7 +559,8 @@ _EL_FAMILY = LinuxFamily(
     install_cmd="sudo dnf install {pkg}",
     packages={"pynvml": "python3-pynvml",
               "7z": "/usr/bin/7z",
-              "ffmpeg": "/usr/bin/ffmpeg"},
+              "ffmpeg": "/usr/bin/ffmpeg",
+              "sensors-detect": "lm_sensors"},     # AppStream, /usr/sbin
 )
 
 #: ``ID=`` values that mean Enterprise Linux, and the ``ID_LIKE`` token that
@@ -574,6 +582,8 @@ _GENERIC_FAMILY = LinuxFamily(name="Linux", manager="", install_cmd="")
 #: right and fails (#207).
 _UNCONFIRMED_FALLBACK: dict[str, str] = {
     "pynvml": "pip install nvidia-ml-py",
+    # lm-sensors (Debian), lm_sensors (Fedora, Arch), sensors (openSUSE).
+    "sensors-detect": "install lm-sensors (lm_sensors) with your package manager",
 }
 
 # Tools whose package name DIFFERS per distro.  One name for all of Linux is a

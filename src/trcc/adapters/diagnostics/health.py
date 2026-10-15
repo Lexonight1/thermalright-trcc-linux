@@ -18,6 +18,7 @@ go through that function, so registration = inclusion.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -429,6 +430,67 @@ def check_udev_rules_linux() -> HealthCheckResult:
     )
 
 
+#: hwmon driver names of the motherboard fan chips -- the Super I/O, or
+#: ASUS's WMI view of it -- where the CPU, pump and case fan headers sit.
+_FAN_CHIP = re.compile(r"^(nct\d|it8|f71|f81|w83|sch5|asus_wmi_sensors)")
+#: DMI chassis types of portables, whose fans belong to the embedded
+#: controller and never to a Super I/O.
+_PORTABLE_CHASSIS = frozenset({8, 9, 10, 11, 14, 30, 31, 32})
+_HWMON = Path("/sys/class/hwmon")
+_CHASSIS = Path("/sys/class/dmi/id/chassis_type")
+
+
+def check_fan_chip_linux(platform: Platform, hwmon: Path = _HWMON,
+                         chassis: Path = _CHASSIS) -> HealthCheckResult:
+    """Linux desktops: is the motherboard's fan chip readable?
+
+    Linux does not load its driver by itself -- ``sensors-detect`` finds which
+    one a board needs.  Without it the CPU, pump and case fans are invisible,
+    and what is left reads zero (a GPU fan stopped at idle, an empty optional
+    header), which looked like a TRCC bug (#301).
+    """
+    log.info("check_fan_chip_linux: called")
+    if sys.platform != "linux":
+        return HealthCheckResult(name="fan-chip", severity="OK",
+                                 message="Not applicable on this OS")
+    try:
+        kind = int(chassis.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        kind = 0
+    if kind in _PORTABLE_CHASSIS:
+        log.info("check_fan_chip_linux: chassis %d is portable -- skipped", kind)
+        return HealthCheckResult(name="fan-chip", severity="OK",
+                                 message="A laptop: its fans are the embedded controller's")
+    chips = sorted(name for d in hwmon.glob("hwmon*")
+                   if (name := _read_name(d / "name")))
+    found = [c for c in chips if _FAN_CHIP.match(c)]
+    log.info("check_fan_chip_linux: chassis=%d chips=%s fan chips=%s",
+             kind, chips, found)
+    if found:
+        return HealthCheckResult(name="fan-chip", severity="OK",
+                                 message=f"motherboard fan chip: {', '.join(found)}")
+    detect = shutil.which("sensors-detect")
+    return HealthCheckResult(
+        name="fan-chip", severity="WARN",
+        message="The motherboard's fan chip has no driver, so its CPU, pump "
+                "and case fans cannot be read",
+        fix_hint=("sudo sensors-detect, then load the module it names" if detect
+                  else _install_advice(platform, "sensors-detect",
+                                       "/usr/bin/sensors-detect")
+                  + ", then: sudo sensors-detect"),
+    )
+
+
+def _read_name(path: Path) -> str:
+    """A hwmon chip's driver name, or "" when it cannot be read."""
+    try:
+        name = path.read_text(encoding="ascii", errors="replace").strip()
+    except OSError:
+        name = ""
+    log.debug("_read_name: %s -> %r", path, name)
+    return name
+
+
 def _current_rules() -> str:
     """The rule file this version generates."""
     from ..system._udev import build_udev_rules
@@ -488,6 +550,7 @@ def run_health_checks(
         check_ffmpeg_present(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
+        check_fan_chip_linux(platform),
         check_seven_zip_present(platform),
     ]
     for c in checks:

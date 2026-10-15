@@ -401,6 +401,7 @@ def in_debian(pkg: str) -> str | None:
 _HINT_BINARIES: dict[str, tuple[str, ...]] = {
     "ffmpeg": ("ffmpeg", "ffprobe"),
     "7z": ("7z",),
+    "sensors-detect": ("sensors-detect",),
     "python": (),
     "pynvml": (),
 }
@@ -669,7 +670,9 @@ class RpmRepoChannel(Channel):
                 capture_output=True, text=True, timeout=240, check=False).stdout
         except (OSError, subprocess.SubprocessError):
             return []
-        return [ln.strip() for ln in out.splitlines() if "/bin/" in ln]
+        # /sbin too: EL and openSUSE install sensors-detect in /usr/sbin.
+        return [ln.strip() for ln in out.splitlines()
+                if "/bin/" in ln or "/sbin/" in ln]
 
     def binaries(self, pkg: str) -> list[str] | None:
         """Binaries *pkg* ships, from the first repo that carries it."""
@@ -1022,6 +1025,11 @@ class VoidChannel(Channel):
                 for c in (record.get("provides") or []) if c.startswith("cmd:")]
         if cmds:
             return sorted(set(cmds))
+        # The index's cmd: list is not complete: lm_sensors lists none and
+        # ships /usr/bin/sensors-detect (measured 2026-10-14).  Read the
+        # package's own file list before calling it a dummy.
+        if shipped := self._package_binaries(found[0], record):
+            return shipped
         # Transitional dummy: follow what it depends on, bounded.
         if _depth < 2:
             for dep in (record.get("run_depends") or []):
@@ -1029,6 +1037,26 @@ class VoidChannel(Channel):
                 if found:
                     return found
         return []
+
+    def _package_binaries(self, repo: str, record: dict) -> list[str]:
+        """The executables the package itself installs: its archive's file
+        list, read in memory and never extracted."""
+        base = self.REPOS[repo].rsplit("/", 1)[0]
+        url = (f"{base}/{record.get('pkgver')}."
+               f"{record.get('architecture', 'x86_64')}.xbps")
+        try:
+            with urllib.request.urlopen(url, timeout=180) as r:
+                blob = r.read()
+            raw = subprocess.run(["zstd", "-d", "-c"], input=blob,
+                                 capture_output=True, timeout=180,
+                                 check=False).stdout
+            with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
+                names = tar.getnames()
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                OSError, subprocess.SubprocessError, tarfile.TarError):
+            return []
+        return sorted({n.rsplit("/", 1)[-1] for n in names
+                       if "/bin/" in n or "/sbin/" in n})
 
     def provenance(self, pkg: str) -> str | None:
         """current / nonfree / multilib — which index answered."""
