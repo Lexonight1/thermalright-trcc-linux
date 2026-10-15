@@ -288,6 +288,11 @@ class QtRenderer(Renderer):
         font.setPointSize(size)
         font.setBold(bold)
         font.setItalic(italic)
+        # Pinned: Qt picks hinting from the SCREEN, and turns it off on a
+        # scaled one, so letter edges on the panel moved with the desktop's
+        # scaling.  Vertical is what an unscaled desktop gets by default
+        # (measured: identical pixels), so nothing changes at 1x (#220).
+        font.setHintingPreference(QFont.HintingPreference.PreferVerticalHinting)
         _FONT_CACHE[cache_key] = font
         return font
 

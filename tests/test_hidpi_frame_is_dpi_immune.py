@@ -60,7 +60,7 @@ _REPO = Path(__file__).resolve().parents[1]
 #: Reports what the renderer would put on the wire, plus the dpr it saw, so the
 #: comparison can prove the inputs really differed.
 _HARNESS = r"""
-import json, sys
+import hashlib, json, sys
 sys.path.insert(0, %(src)r)
 from PySide6.QtGui import QGuiApplication, QImage
 app = QGuiApplication(sys.argv)
@@ -90,6 +90,7 @@ print(json.dumps({
     "surface_logical_dpi": surface.logicalDpiX(),
     "surface": [surface.width(), surface.height()],
     "wire_len": len(wire),
+    "wire_sha": hashlib.sha256(wire).hexdigest(),
     "metrics": metrics,
 }))
 """
@@ -155,6 +156,17 @@ def test_the_canvas_and_the_wire_do_not_move(rendered: tuple[dict, dict]) -> Non
     one, two = rendered
     assert one["surface"] == two["surface"] == [320, 240]
     assert one["wire_len"] == two["wire_len"] == 320 * 240 * 2
+
+
+def test_the_wire_pixels_do_not_change_with_scaling(
+    rendered: tuple[dict, dict],
+) -> None:
+    """Same text, same place -- and the same PIXELS.  Qt turns font hinting
+    off on a scaled screen, so letter edges on the panel moved with the
+    desktop's scaling (found driving #220).  MUTATION CHECK: drop the
+    ``setHintingPreference`` in ``QtRenderer._get_font``."""
+    one, two = rendered
+    assert one["wire_sha"] == two["wire_sha"]
 
 
 def test_the_canvas_dpi_is_pinned_whatever_the_screen_says(

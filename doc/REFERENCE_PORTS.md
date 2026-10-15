@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-54 ports.
+55 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -39,6 +39,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
+| [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
 | [`RgbMirror`](#rgbmirror) | 3 | 0 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
@@ -533,6 +534,22 @@ stop() -> None
 ```
 
 **Implementations (5):** `FreeBSDHotplugMonitor` · `LinuxHotplugMonitor` · `NoopHotplugMonitor` · `PollingHotplugMonitor` · `WindowsHotplugMonitor`
+
+## LedColorStream
+
+`core/ports.py`
+
+Colours another program streams for a cooler's LEDs -- OpenRGB, over DDP (#160).  The ``OPENRGB`` LED mode shows them; nothing listens until a cooler is in that mode.
+
+**You implement (3):**
+
+```python
+colors(count: 'int') -> list[tuple[int, int, int]]
+listening() -> bool
+stop() -> None
+```
+
+**Implementations (1):** `DdpReceiver`
 
 ## RamAccess
 
