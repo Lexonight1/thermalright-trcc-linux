@@ -52,12 +52,14 @@ def test_the_target_accepts_one_file_and_reports_the_drop(qtbot: Any) -> None:
     actions = Qt.DropAction.CopyAction
     buttons, mods = Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier
 
-    at = QPointF(widget.rect().center())
+    # A drag enters at a QPoint; a drop lands at a QPointF (PySide6 6.11).
+    point = widget.rect().center()
+    at = QPointF(point)
     # An event holds only a pointer to its mime data: keep each one alive.
     video, text = _mime("/v/c.mp4"), _mime("/d/x.txt")
-    enter = QDragEnterEvent(at, actions, video, buttons, mods)
+    enter = QDragEnterEvent(point, actions, video, buttons, mods)
     QApplication.sendEvent(widget, enter)
-    nope = QDragEnterEvent(at, actions, text, buttons, mods)
+    nope = QDragEnterEvent(point, actions, text, buttons, mods)
     QApplication.sendEvent(widget, nope)
     # Qt delivers a drop only after an accepted drag: the video's.
     QApplication.sendEvent(widget, QDropEvent(at, actions, video, buttons, mods))
