@@ -111,6 +111,7 @@ if TYPE_CHECKING:
     from ...core.ports import CommandBus
 
 from ...core.models import MEDIA, MediaKind
+from ..qt_file_drop import FileDropTarget
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -1545,6 +1546,10 @@ class TRCCApp(QMainWindow):
         self.uc_theme_mask.download_finished.connect(self._on_mask_download_finished)
 
         self.uc_preview.delegate.connect(self._on_preview_delegate)
+        # A file dropped on the preview: what its picker would do (#265).
+        self._file_drop = FileDropTarget(self.uc_preview)
+        self._file_drop.dropped.connect(self._on_file_dropped)
+        self._file_drop.refused.connect(self.uc_preview.set_status)
         self.uc_preview.element_drag_start.connect(self._on_drag_start)
         self.uc_preview.element_drag_move.connect(self._on_drag_move)
         self.uc_preview.element_drag_end.connect(self._on_drag_end_noop)
@@ -2066,6 +2071,12 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if not path or not h:
             return
+        self._play_media_file(h, path)
+
+    def _play_media_file(self, h: Any, path: str) -> None:
+        """The media player plays *path* -- from its picker, or dropped on the
+        preview (#265)."""
+        log.info("_play_media_file: %s on %s", path, h.device_key)
         # The media player's Command, as the CLI's and the API's: the App
         # records it AS a media player (save, restore, every UI's switch) and
         # ends a running cast itself.  This window used to play it as a
@@ -2126,14 +2137,33 @@ class TRCCApp(QMainWindow):
             f"Image Files ({MEDIA.patterns(MediaKind.IMAGE)});;All Files (*)")
         h = self._active_lcd()
         if path and h:
-            from PySide6.QtGui import QImage as _QImage
-            img = _QImage(path)
-            if img.isNull():
-                self.uc_preview.set_status("Error: could not load image")
-            else:
-                w, hw = h.lcd_size
-                self.uc_image_cut.load_image(img, w, hw)
-                self._show_cutter('image')
+            self._open_image_cutter(h, path)
+
+    def _open_image_cutter(self, h: Any, path: str) -> None:
+        """Crop *path* to the panel as its background -- from the picker, or
+        dropped on the preview (#265)."""
+        log.info("_open_image_cutter: %s on %s", path, h.device_key)
+        self._cut_mode = 'background'
+        from PySide6.QtGui import QImage as _QImage
+        img = _QImage(path)
+        if img.isNull():
+            self.uc_preview.set_status("Error: could not load image")
+        else:
+            w, hw = h.lcd_size
+            self.uc_image_cut.load_image(img, w, hw)
+            self._show_cutter('image')
+
+    def _on_file_dropped(self, path: Path, kind: MediaKind) -> None:
+        """A file dropped on the preview does what its picker does: a video
+        plays in the media player, an image opens the cropper (#265)."""
+        log.info("_on_file_dropped: %s (%s)", path, kind.value)
+        h = self._active_lcd()
+        if h is None:
+            self.uc_preview.set_status("Select an LCD first")
+        elif kind is MediaKind.ANIMATED:
+            self._play_media_file(h, str(path))
+        else:
+            self._open_image_cutter(h, str(path))
 
     def _on_mask_upload_clicked(self) -> None:
         log.info("_on_mask_upload_clicked")

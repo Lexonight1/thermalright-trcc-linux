@@ -31,8 +31,11 @@ from ...core.commands import (
     GetPlatformInfo,
     MarkFirstRunDone,
     RefreshAutostart,
+    SetBackground,
+    SetMediaPlayer,
 )
 from ...core.logs import per_frame
+from ...core.models import MediaKind
 from ...core.ports import CommandBus
 
 if TYPE_CHECKING:
@@ -44,6 +47,7 @@ from ...core.events import (
     FrameSent,
 )
 from ..bus_bridge import BusBridge
+from ..qt_file_drop import FileDropTarget
 from ..qt_tray import TrayController
 from ..viewfinder import ViewfinderFleet
 from .device_selection import DeviceSelection
@@ -275,6 +279,10 @@ class MainWindow(QMainWindow):
         self._bus.frames_resumed.connect(self._preview_surface.refresh)
         self._bus.follow_previews(self._preview_surface,
                                   self._rgb_panel.page.follow.preview)
+        # A file dropped on the preview: what this window's pickers do (#265).
+        self._file_drop = FileDropTarget(self._preview_surface)
+        self._file_drop.dropped.connect(self._on_file_dropped)
+        self._file_drop.refused.connect(self._on_drop_refused)
 
         container = QWidget(self)
         row = QHBoxLayout(container)
@@ -284,6 +292,24 @@ class MainWindow(QMainWindow):
         row.addWidget(self._preview_surface)
         row.addWidget(content, 1)
         return container
+
+    def _on_drop_refused(self, reason: str) -> None:
+        """Say why a file dragged over the preview cannot be dropped."""
+        log.info("_on_drop_refused: %s", reason)
+        self._status.showMessage(reason, 5000)
+
+    def _on_file_dropped(self, path: Path, kind: MediaKind) -> None:
+        """A video or GIF plays in the media player, an image becomes the
+        background -- the Commands the Display panel's pickers send (#265)."""
+        key = self._lcd_selection.key
+        log.info("_on_file_dropped: %s (%s) on %r", path, kind.value, key)
+        if not key:
+            self._status.showMessage("Select an LCD first", 5000)
+            return
+        result = (self._app.dispatch(SetMediaPlayer(key=key, uri=str(path)))
+                  if kind is MediaKind.ANIMATED
+                  else self._app.dispatch(SetBackground(key=key, path=path)))
+        self._status.showMessage(result.message, 5000)
 
     def _wire_device_selection(self, sidebar: ActivitySidebar) -> None:
         """Make the rail the one place a device is chosen.
