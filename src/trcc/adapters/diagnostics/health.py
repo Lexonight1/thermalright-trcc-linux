@@ -424,6 +424,15 @@ def check_udev_rules_linux() -> HealthCheckResult:
                       "--reload-rules && sudo udevadm trigger"
                       if current_below else "Run `trcc system setup`"),
         )
+    from ..system._udev import RGB_RULES_PATH
+    if rules_state(RGB_RULES_PATH).current is not True:
+        log.info("udev-rules: %s missing or stale", RGB_RULES_PATH.name)
+        return HealthCheckResult(
+            name="udev-rules", severity="WARN",
+            message=f"motherboard RGB udev rules ({RGB_RULES_PATH.name}) are "
+                    "missing or from an older TRCC",
+            fix_hint="Run `trcc system setup`",
+        )
     return HealthCheckResult(
         name="udev-rules", severity="OK",
         message=f"udev rules installed: {state.path or found[0]}",

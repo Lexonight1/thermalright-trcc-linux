@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from trcc.adapters.diagnostics import health
-from trcc.adapters.system._udev import RULES_DIRS, RULES_PATH
+from trcc.adapters.system._udev import RGB_RULES_PATH, RULES_DIRS, RULES_PATH
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux-only check")
@@ -29,16 +29,25 @@ def _current_content(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every stubbed rule file reads as THIS version's.  These tests are about
     WHERE the rule is found; unstubbed, the check read the dev box's real
     /etc copy -- an older package's -- and called it stale (it is)."""
-    from trcc.adapters.system._udev import build_udev_rules
-    current = build_udev_rules()
-    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: current)
+    from trcc.adapters.system._udev import build_rgb_udev_rules, build_udev_rules
+    current = {RULES_PATH.name: build_udev_rules(),
+               RGB_RULES_PATH.name: build_rgb_udev_rules()}
+    monkeypatch.setattr(Path, "read_text",
+                        lambda self, *a, **k: current.get(self.name, ""))
+
+
+def _installed(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> None:
+    """Only *paths*, and a current motherboard RGB rule, exist -- these
+    tests are about the devices' rule; the RGB rule has its own below."""
+    present = {*paths, RGB_RULES_PATH}
+    monkeypatch.setattr(Path, "is_file", lambda self: self in present)
 
 
 def test_check_finds_the_file_the_writer_writes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The exact path `trcc system setup` creates must read as installed."""
-    monkeypatch.setattr(Path, "is_file", lambda self: self == RULES_PATH)
+    _installed(monkeypatch, RULES_PATH)
     _current_content(monkeypatch)
 
     result = health.check_udev_rules_linux()
@@ -58,7 +67,7 @@ def test_check_finds_the_rule_in_every_directory_udev_reads(
     the next directory added there is covered here without anyone remembering.
     """
     installed = directory / RULES_PATH.name
-    monkeypatch.setattr(Path, "is_file", lambda self: self == installed)
+    _installed(monkeypatch, installed)
     _current_content(monkeypatch)
 
     result = health.check_udev_rules_linux()
@@ -107,9 +116,30 @@ def test_warns_when_nothing_is_installed(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_a_legacy_rules_file_still_counts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Boxes carrying an older install's file are still configured."""
     legacy = Path("/etc/udev/rules.d/99-trcc.rules")
-    monkeypatch.setattr(Path, "is_file", lambda self: self == legacy)
+    _installed(monkeypatch, legacy)
+    _current_content(monkeypatch)
 
     assert health.check_udev_rules_linux().severity == "OK"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-only check")
+@pytest.mark.parametrize("rgb", ["missing", "stale"])
+def test_a_missing_or_old_motherboard_rgb_rule_is_reported(
+    rgb: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The devices' rule is current; the RGB rule is what setup must add.
+    MUTATION CHECK: drop the RGB check in check_udev_rules_linux."""
+    present = {RULES_PATH} | ({RGB_RULES_PATH} if rgb == "stale" else set())
+    monkeypatch.setattr(Path, "is_file", lambda self: self in present)
+    from trcc.adapters.system._udev import build_udev_rules
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: (
+        build_udev_rules() if self.name == RULES_PATH.name else "# older\n"))
+
+    result = health.check_udev_rules_linux()
+
+    assert (result.severity, result.message, result.fix_hint) == (
+        "WARN", "motherboard RGB udev rules (70-trcc-rgb.rules) are missing "
+        "or from an older TRCC", "Run `trcc system setup`")
 
 
 def test_no_user_facing_text_names_a_rules_file_we_never_write() -> None:

@@ -142,6 +142,7 @@ jobs:
                 "$PKG"/usr/lib/python*/site-packages/__pycache__/example.*
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/etc/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/etc/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
@@ -203,6 +204,7 @@ jobs:
           Controls LCD displays and LED segment displays on Thermalright CPU coolers.
           %files
           /etc/udev/rules.d/99-trcc-lcd.rules
+          /etc/udev/rules.d/70-trcc-rgb.rules
           /etc/modprobe.d/trcc-lcd.conf
           /etc/modules-load.d/trcc-sg.conf
           /etc/modules-load.d/trcc-rapl.conf
@@ -304,6 +306,7 @@ jobs:
           find "$PKG/usr/lib" "$PKG/usr/local/lib" -maxdepth 1 -type d -name 'python3.*' -empty -delete 2>/dev/null || true
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
@@ -389,6 +392,7 @@ jobs:
           mkdir -p "$PKG/DEBIAN"
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
@@ -491,6 +495,7 @@ jobs:
           pip install --root="$PKG" --prefix=/usr --no-deps sounddevice
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/usr/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/usr/lib/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/usr/lib/modules-load.d/trcc-rapl.conf"

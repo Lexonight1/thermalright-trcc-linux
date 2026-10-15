@@ -688,6 +688,7 @@ exit
 sudo steamos-readonly disable
 base=https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/packaging
 sudo curl -fsSLo /etc/udev/rules.d/99-trcc-lcd.rules "$base/udev/99-trcc-lcd.rules"
+sudo curl -fsSLo /etc/udev/rules.d/70-trcc-rgb.rules "$base/udev/70-trcc-rgb.rules"
 sudo curl -fsSLo /etc/modprobe.d/trcc-lcd.conf "$base/modprobe/trcc-lcd.conf"
 sudo curl -fsSLo /etc/modules-load.d/trcc-sg.conf "$base/modprobe/trcc-sg.conf"
 sudo curl -fsSLo /etc/modules-load.d/trcc-rapl.conf "$base/modprobe/trcc-rapl.conf"
@@ -1009,7 +1010,7 @@ not been restored. Remove the pieces directly:
 trcc system autostart disable                 # drop the autostart entry
 trcc system ram-lighting disable              # BEFORE uninstalling: take back the RAM-bus grant, if you enabled it
 pip uninstall trcc-linux                      # or your package manager
-sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules    # udev rule
+sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules   # udev rules
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 sudo rm -f /usr/bin/trcc-ram-access /usr/bin/trcc-ram-access-off \
            /usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy   # setup's polkit files (pip/source only)
@@ -1027,7 +1028,7 @@ first if you want to keep them.
 
 ```bash
 pip uninstall trcc-linux
-sudo rm /etc/udev/rules.d/99-trcc-lcd.rules
+sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 sudo rm -f /etc/udev/rules.d/70-trcc-ram-lighting.rules /etc/modules-load.d/trcc-i2c.conf   # RAM-lighting grant

@@ -758,7 +758,8 @@ class LinuxOS(BaseOS, key="linux"):
 
         Six things happen here and none can silently no-op:
           1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
-             every device in the registry + modprobe quirks + sg autoload.
+             every device in the registry, 70-trcc-rgb.rules for the
+             motherboard RGB TRCC drives, + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
           2. GPU Python extras — detect GPU vendors via PCI sysfs and
              pip install matching libs (e.g., nvidia-ml-py for NVIDIA).
@@ -822,7 +823,7 @@ class LinuxOS(BaseOS, key="linux"):
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
         log.info("LinuxOS.check_permissions: probing")
-        from ._udev import rules_state
+        from ._udev import RGB_RULES_PATH, rules_state
         warnings: list[str] = []
         state = rules_state()
         if state.path is None:
@@ -834,6 +835,11 @@ class LinuxOS(BaseOS, key="linux"):
             warnings.append(
                 f"the udev rules in {state.path} are from an older TRCC — run "
                 "`trcc doctor` for how to bring them up to date"
+            )
+        elif rules_state(RGB_RULES_PATH).current is not True:
+            warnings.append(
+                f"the motherboard RGB udev rules ({RGB_RULES_PATH.name}) are "
+                "missing or from an older TRCC — run `trcc system setup`"
             )
         log.info("LinuxOS.check_permissions: %d warning(s)", len(warnings))
         return warnings

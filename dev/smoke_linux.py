@@ -167,11 +167,12 @@ def _probe_linux_specifics() -> Section:
         except BaseException as exc:
             s.fail('rapl', exc)
 
-    udev = Path('/etc/udev/rules.d/99-trcc-lcd.rules')
-    if udev.is_file():
-        s.ok('udev rule', f'{udev} present')
-    else:
-        s.skip('udev rule', f'{udev} absent — run "sudo trcc setup-udev" for non-root device access')
+    from trcc.adapters.system._udev import rule_files
+    for udev in rule_files():
+        if udev.is_file():
+            s.ok('udev rule', f'{udev} present')
+        else:
+            s.skip('udev rule', f'{udev} absent — run "trcc system setup" for non-root device access')
     return s
 
 

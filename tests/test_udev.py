@@ -196,3 +196,37 @@ def test_packaged_setup_files_are_what_setup_writes() -> None:
     assert shipped == set(gen_packaging_setup.generate()), (
         f"packaged files setup does not write: "
         f"{sorted(map(str, shipped - set(gen_packaging_setup.generate())))}")
+
+
+def test_the_rgb_rule_grants_the_seat_every_aura_board_trcc_drives() -> None:
+    """Derived from the catalog by detector, never typed: hidraw + usb,
+    uaccess only -- no MODE (that would be every user) and no power line
+    (the controller is the board's)."""
+    from trcc.adapters.rgb.asus_aura import MAINBOARD_DETECTOR
+    from trcc.adapters.system._udev import build_rgb_udev_rules
+    from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
+
+    ids = sorted({(c.vid, c.pid) for c in MOTHERBOARD_CONTROLLERS
+                  if c.detector == MAINBOARD_DETECTOR})
+    assert (0x0B05, 0x19AF) in ids                     # the maintainer's board
+    rules = [ln for ln in build_rgb_udev_rules().splitlines()
+             if ln and not ln.startswith("#")]
+    assert rules == [
+        f'SUBSYSTEM=="{s}", {a}{{idVendor}}=="{v:04x}", {a}{{idProduct}}=="{p:04x}", '
+        f'TAG+="uaccess"'
+        for v, p in ids for s, a in (("hidraw", "ATTRS"), ("usb", "ATTR"))]
+
+
+def test_every_uaccess_rule_file_runs_before_seat_late() -> None:
+    """uaccess is a tag that 73-seat-late.rules turns into an ACL; a file
+    sorting after it tags too late and grants nothing.  The first draft of
+    the RGB rule sat in 99-trcc-lcd.rules and would have shipped dead.
+
+    MUTATION CHECK: point RGB_RULES_PATH at a 99- name."""
+    from trcc.adapters.system._udev import rule_files
+
+    uaccess = [path.name for path, build in rule_files().items()
+               if 'TAG+="uaccess"' in build()]
+    assert uaccess, "no rule file grants uaccess"
+    late = [name for name in uaccess if name >= "73-seat-late.rules"]
+    assert not late, f"{late} tag uaccess after 73-seat-late.rules applies it"

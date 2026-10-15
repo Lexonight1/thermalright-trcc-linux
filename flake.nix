@@ -60,6 +60,8 @@
             # udev rules
             install -Dm644 packaging/udev/99-trcc-lcd.rules \
               $out/lib/udev/rules.d/99-trcc-lcd.rules
+            install -Dm644 packaging/udev/70-trcc-rgb.rules \
+              $out/lib/udev/rules.d/70-trcc-rgb.rules
 
             # modprobe config
             install -Dm644 packaging/modprobe/trcc-lcd.conf \
@@ -133,6 +135,14 @@
               builtins.replaceStrings
                 [ "/bin/chmod" ] [ "${pkgs.coreutils}/bin/chmod" ]
                 (builtins.readFile ./packaging/udev/99-trcc-lcd.rules);
+
+            # The motherboard RGB rule tags uaccess, which 73-seat-late.rules
+            # applies -- extraRules land in 99-local.rules, too late, so it
+            # goes in as its own 70- rule package.
+            services.udev.packages = [
+              (pkgs.writeTextDir "lib/udev/rules.d/70-trcc-rgb.rules"
+                (builtins.readFile ./packaging/udev/70-trcc-rgb.rules))
+            ];
 
             boot.kernelModules = [ "sg" ];
 
