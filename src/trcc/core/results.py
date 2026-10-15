@@ -23,6 +23,7 @@ from .models import (
     HandshakeResult,
     HardwareMetrics,
     LedHandshakeResult,
+    ModuleInfo,
     PanelConfig,
     ProductInfo,
     RamAccessState,
@@ -587,6 +588,19 @@ class ScreencastResult(Result):
     w: int = 0
     h: int = 0
     audio: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ModulesResult(Result):
+    """``ListModules``: every module, on or off."""
+    modules: tuple[ModuleInfo, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleResult(Result):
+    """``SetModuleEnabled``: the module and whether it is now on."""
+    key: str = ""
+    enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)

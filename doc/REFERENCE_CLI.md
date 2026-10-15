@@ -1895,6 +1895,42 @@ List DRAM slots — size/type/speed/manufacturer, plus timings on Linux. Timings
 trcc system memory-slots
 ```
 
+### `trcc system modules`
+
+Modules: list them, switch one on or off.
+
+#### `trcc system modules list`
+
+Every module, on or off, and why one cannot run here.
+
+```bash
+trcc system modules list
+```
+
+#### `trcc system modules off`
+
+Switch a module off.
+
+```bash
+trcc system modules off KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | The module's key |
+
+#### `trcc system modules on`
+
+Switch a module on.
+
+```bash
+trcc system modules on KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | The module's key |
+
 ### `trcc system paths`
 
 Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`. With `--key` the answer is that device's: the resolution comes from its handshake (oriented) and the theme/cloud dirs name its per-SKU library, so the output points at the directories the app actually opens for it.

@@ -9,6 +9,7 @@ from .display_panel import DisplayPanel
 from .led_panel import LedPanel
 from .local_theme_browser import LocalThemeBrowser
 from .mask_browser import MaskBrowser
+from .modules_panel import ModulesPanel
 from .overlay_editor import OverlayEditorPanel
 from .preview_panel import PreviewPanel
 from .rgb_panel import RgbPanel
@@ -28,6 +29,7 @@ __all__ = [
     "LedPanel",
     "LocalThemeBrowser",
     "MaskBrowser",
+    "ModulesPanel",
     "OverlayEditorPanel",
     "PreviewPanel",
     "RgbPanel",

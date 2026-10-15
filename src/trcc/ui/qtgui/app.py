@@ -62,6 +62,7 @@ from .panels import (
     LedPanel,
     LocalThemeBrowser,
     MaskBrowser,
+    ModulesPanel,
     OverlayEditorPanel,
     PreviewPanel,
     RgbPanel,
@@ -145,6 +146,7 @@ class MainWindow(QMainWindow):
             "status":  StatusPanel(app, self._bus, self,
                                     selection=self._lcd_selection),
             "system":  SystemPanel(app, self._bus, self),
+            "modules": ModulesPanel(app, self._bus, self),
             "about":   AboutPanel(app, self._bus, self),
         }
         for widget in self._panels.values():

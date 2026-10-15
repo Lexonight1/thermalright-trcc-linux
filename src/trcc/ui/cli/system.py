@@ -60,6 +60,7 @@ from ...core.models import (
     SensorBinding,
 )
 from ...core.results import RgbLightsResult
+from . import module
 from ._ctx import emit_json, get_app
 
 if TYPE_CHECKING:
@@ -69,6 +70,9 @@ log = logging.getLogger(__name__)
 
 app = typer.Typer(help="System-level operations (setup, sensors, info).",
                   no_args_is_help=True)
+# The Control Center's Modules page, where every UI keeps it:
+# `trcc system modules`, as the API's /system/modules.
+app.add_typer(module.app, name="modules")
 
 
 @app.command("setup")

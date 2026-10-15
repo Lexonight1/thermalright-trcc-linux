@@ -96,6 +96,7 @@ from .uc_brightness import UCBrightness
 from .uc_device import UCDevice
 from .uc_image_cut import UCImageCut
 from .uc_led_control import UCLedControl
+from .uc_modules import UCModules
 from .uc_preview import UCPreview
 from .uc_rgb import UCRgb
 from .uc_system_info import UCSystemInfo
@@ -218,6 +219,8 @@ class TRCCApp(QMainWindow):
         self._mask_upload_filename = ''
         self._pixmap_refs: list = []
 
+        # EventBus → Qt signals, before the UI: a page follows the App as built.
+        self._bus = BusBridge(app.events)
         # Build UI
         self._apply_dark_theme()
         self._setup_ui()
@@ -225,9 +228,6 @@ class TRCCApp(QMainWindow):
         # Connect widget signals
         self._connect_view_signals()
 
-        # ── EventBus → BusBridge → Qt signals (QueuedConnection ensures
-        # delivery on the Qt main thread regardless of publish thread).
-        self._bus = BusBridge(app.events)
         #: Token of the export THIS window started, so a second
         #: client's export cannot drive this progress bar.
         self._video_export_token = ""
@@ -1081,6 +1081,10 @@ class TRCCApp(QMainWindow):
         self.uc_thanks = UCThanks(central)
         self.uc_thanks.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_thanks.setVisible(False)
+        # Modules -- every module, switched on or off.
+        self.uc_modules = UCModules(self._app.dispatch, self._bus, central)
+        self.uc_modules.setGeometry(*Layout.FORM_CONTAINER)
+        self.uc_modules.setVisible(False)
 
         self.uc_system_info = UCSystemInfo(self._app, parent=central)
         self.uc_system_info.setGeometry(*Layout.SYSINFO_PANEL)
@@ -1323,8 +1327,10 @@ class TRCCApp(QMainWindow):
         s.screencast_panel.set_title(tr('Screencast', lang))
         s.video_panel.set_title(tr('Media Player', lang))
         self.uc_thanks.set_title(tr('About', lang))
-        # The Control Center's top bar: its name, and About beside it.
+        self.uc_modules.set_title(tr('Modules', lang))
+        # The Control Center's top bar: its name, then Modules and About.
         for widget, key in ((self.uc_about.title_label, 'Control Center'),
+                            (self.uc_about.modules_link, 'Modules'),
                             (self.uc_about.about_link, 'About')):
             widget.setText(tr(key, lang))
             self._i18n_labels.append((widget, key))
@@ -1334,6 +1340,7 @@ class TRCCApp(QMainWindow):
             (s.screencast_panel, 'Screencast'),
             (s.video_panel, 'Media Player'),
             (self.uc_thanks, 'About'),
+            (self.uc_modules, 'Modules'),
         ]
 
         mp = s.mask_panel
@@ -1471,6 +1478,10 @@ class TRCCApp(QMainWindow):
         log.info("_on_thanks_clicked")
         self._show_view('thanks')
 
+    def _on_modules_clicked(self) -> None:
+        log.info("_on_modules_clicked")
+        self._show_view('modules')
+
     # ── Download status slots ───────────────────────────────────────
 
     def _on_theme_download_started(self, theme_id: str) -> None:
@@ -1510,6 +1521,7 @@ class TRCCApp(QMainWindow):
         self.uc_about.setVisible(view == 'about')
         self.uc_rgb.setVisible(view == 'rgb')
         self.uc_thanks.setVisible(view == 'thanks')
+        self.uc_modules.setVisible(view == 'modules')
         self.uc_system_info.setVisible(view == 'sysinfo')
         self.uc_led_control.setVisible(view == 'led')
         self.uc_activity_sidebar.setVisible(False)
@@ -1588,6 +1600,7 @@ class TRCCApp(QMainWindow):
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
         self.uc_about.gpu_changed.connect(self._on_gpu_changed)
         self.uc_about.about_requested.connect(self._on_thanks_clicked)
+        self.uc_about.modules_requested.connect(self._on_modules_clicked)
 
     # ── Device Selection ────────────────────────────────────────────
 

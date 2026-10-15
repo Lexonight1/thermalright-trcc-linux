@@ -99,6 +99,10 @@ from .led import (
     SetWeekStart,
     ToggleLed,
 )
+from .modules import (
+    ListModules,
+    SetModuleEnabled,
+)
 from .rgb import RgbLights, ScanRgbLights, SetAuraLeds, SetRamEffect
 from .system import (
     AdvanceSlideshow,
@@ -235,6 +239,7 @@ __all__ = [
     "ListLedStyles",
     "ListMasks",
     "ListMemorySlots",
+    "ListModules",
     "ListSensors",
     "ListThemes",
     "ListVisuals",
@@ -307,6 +312,7 @@ __all__ = [
     "SetMaskVisible",
     "SetMediaPlayer",
     "SetMemoryRatio",
+    "SetModuleEnabled",
     "SetOrientation",
     "SetOverlayBackground",
     "SetOverlayConfig",

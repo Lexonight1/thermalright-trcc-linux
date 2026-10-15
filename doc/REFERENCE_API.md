@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**148 endpoints.**
+**150 endpoints.**
 
 ## Running it
 
@@ -166,6 +166,8 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/mark-setup-done` | `FirstRunStatusResult` | Mark the first-run flow as completed. |
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |
+| `GET /system/modules` | `ModulesResult` | Every module, on or off -- the API's Modules page. |
+| `POST /system/modules/{key}` | `ModuleResult` | Switch module *key* on or off; 404 for a key no module has. |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
 | `POST /system/ram-effect` | `RgbLightsResult` | Save one of the memory's own effects on the sticks. |
 | `GET /system/ram-lighting` | `RamLightingResult` | Whether TRCC may reach RGB memory -- read from files, no bus traffic. |

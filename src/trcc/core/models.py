@@ -1340,6 +1340,17 @@ class VisualAdjustment:
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleInfo:
+    """One module as the Modules page shows it: its tile and its switch.
+    ``problem`` says why it cannot run here; "" when it can."""
+    key: str
+    title: str
+    summary: str
+    enabled: bool
+    problem: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class VisualInfo:
     """What an audio visual is, for the gallery: its registry key, its
     title and category, whether it draws preset files or a centre picture,

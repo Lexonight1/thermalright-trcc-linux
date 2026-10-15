@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**159 total: 114 Commands and 45 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**161 total: 115 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1599,6 +1599,27 @@ What the App last heard about updates -- no network.
 *Query* → `UpdateCheckResult`
 
 Takes no arguments.
+
+## modules
+
+### `ListModules`
+
+Every module, on or off, with why one cannot run here.
+
+*Query* → `ModulesResult`
+
+Takes no arguments.
+
+### `SetModuleEnabled`
+
+Switch module *key* on or off -- remembered, and every UI hears it. A module that cannot run here refuses, and nothing changes.
+
+*Command* → `ModuleResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `enabled` | `bool` | yes |
 
 ## rgb
 

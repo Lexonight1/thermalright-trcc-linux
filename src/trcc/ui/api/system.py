@@ -24,6 +24,7 @@ from ...core.commands import (
     ListGpus,
     ListLanguages,
     ListMemorySlots,
+    ListModules,
     ListSensors,
     MarkFirstRunDone,
     RamLighting,
@@ -40,6 +41,7 @@ from ...core.commands import (
     SetAuraLeds,
     SetDiskDevice,
     SetHddEnabled,
+    SetModuleEnabled,
     SetRamEffect,
     SetRamLighting,
     SetRgbFollow,
@@ -63,6 +65,8 @@ from ...core.results import (
     LanguageResult,
     LanguagesListResult,
     MemorySlotsResult,
+    ModuleResult,
+    ModulesResult,
     QuickstartResult,
     RamLightingResult,
     RgbFollowResult,
@@ -83,6 +87,7 @@ from .schemas import (
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
+    ModuleSwitchRequest,
     RamEffectRequest,
     RamLightingRequest,
     RgbFollowRequest,
@@ -247,6 +252,25 @@ def list_disk_sensors(request: Request) -> DiskSensorsResult:
     """Drive thermal sensors — the list ``disk_temp`` comes from."""
     log.info("api GET /system/disk-sensors")
     return request.app.state.trcc.dispatch(ListDiskSensors())
+
+
+@router.get("/modules")
+def list_modules(request: Request) -> ModulesResult:
+    """Every module, on or off -- the API's Modules page."""
+    log.info("api GET /system/modules")
+    return request.app.state.trcc.dispatch(ListModules())
+
+
+@router.post("/modules/{key}")
+def set_module(key: str, body: ModuleSwitchRequest,
+               request: Request) -> ModuleResult:
+    """Switch module *key* on or off; 404 for a key no module has."""
+    log.info("api POST /system/modules/%s: enabled=%s", key, body.enabled)
+    result = request.app.state.trcc.dispatch(
+        SetModuleEnabled(key=key, enabled=body.enabled))
+    http_error_if_failed(
+        result, status_code=404 if result.message == f"no module {key!r}" else 409)
+    return result
 
 
 @router.post("/disk-sensors/active")

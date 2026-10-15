@@ -128,6 +128,9 @@ class AppSettings:
     # 1 (JSON keys are text).  The board cannot say: the header's data line
     # runs one way.  ``aura_argb_leds`` validates.
     aura_argb_leds: dict[str, int] = field(default_factory=dict)
+    # Modules the user switched, key -> on.  One never switched is absent and
+    # takes its own ``default_on``.
+    modules: dict[str, bool] = field(default_factory=dict)
     # The user's centre picture for audio visuals -- any image; ``None``
     # shows none.  Kept while switched off, so switching it on brings it
     # back; its fire belongs to it (0 to 1).
@@ -629,6 +632,23 @@ class Settings:
         fire = float(self._app.visual_center_fire)
         log.debug("visual_center_fire: %.2f", fire)
         return fire
+
+    def module_enabled(self, key: str, default: bool) -> bool:
+        """Whether the user has module *key* on; *default* if never chosen."""
+        chosen = self._app.modules.get(key) if isinstance(
+            self._app.modules, dict) else None
+        enabled = chosen if isinstance(chosen, bool) else default
+        log.debug("module_enabled: %s -> %s", key, enabled)
+        return enabled
+
+    def set_module_enabled(self, key: str, enabled: bool) -> None:
+        """Remember the user switched module *key* on or off."""
+        log.info("set_module_enabled: %s -> %s", key, enabled)
+        with self._lock:
+            if not isinstance(self._app.modules, dict):
+                self._app.modules = {}
+            self._app.modules[key] = enabled
+            self._save()
 
     def set_visual_picture(self, shown: bool | None = None,
                            fire: float | None = None) -> None:

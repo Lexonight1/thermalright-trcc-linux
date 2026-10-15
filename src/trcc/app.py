@@ -8,19 +8,20 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from functools import partial
 from pathlib import Path
 from typing import Any, TypeVar
 
 from .adapters.device import DEVICES
+from .adapters.modules import MODULES
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.rgb import make_board_driver, make_mirror
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
-from .core.errors import DeviceNotFoundError, TransportError
+from .core.errors import DeviceNotFoundError, ModuleUnavailable, TransportError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
@@ -71,6 +72,8 @@ from .core.ports import (
     Device,
     Diagnostics,
     LedColorStream,
+    Module,
+    ModuleHost,
     Platform,
     Renderer,
     RgbMirror,
@@ -116,7 +119,7 @@ R = TypeVar("R", bound=Result)
 # =========================================================================
 
 
-class App(CommandBus):
+class App(CommandBus, ModuleHost):
     """Application hub.
 
     * `platform` — the OS (Linux/Windows/macOS/BSD), DI'd at construction.
@@ -135,6 +138,7 @@ class App(CommandBus):
                  make_rgb_mirror: Callable[[RgbFollowMode, str, int],
                                            RgbMirror] | None = None,
                  led_stream: LedColorStream | None = None,
+                 modules: Mapping[str, type[Module]] | None = None,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
         self.platform = platform
@@ -446,6 +450,34 @@ class App(CommandBus):
             self.sysinfo.load()
             if pins := fan_slot_pins(self.sysinfo.panels):
                 self.platform.sensors().set_fan_slot_pins(pins)
+        # Every module, and the ones the user has on switched on: last, so a
+        # module's enable meets an App that is otherwise whole.
+        self.modules: dict[str, Module] = {
+            key: cls() for key, cls in (MODULES if modules is None
+                                        else modules).items()}
+        self.enabled_modules: set[str] = set()
+        self._enable_saved_modules()
+
+    def publish(self, event: Any) -> None:
+        """``ModuleHost``: a module tells every UI something happened."""
+        log.info("publish (module): %s", type(event).__name__)
+        self.events.publish(event)
+
+    def _enable_saved_modules(self) -> None:
+        """Switch on each module the user has on -- or that is on by default.
+        One that cannot run here stays off, and the choice is kept."""
+        for key, module in self.modules.items():
+            if not self.settings.module_enabled(key, module.default_on):
+                log.info("_enable_saved_modules: %s is off", key)
+                continue
+            try:
+                module.enable(self)
+            except ModuleUnavailable as e:
+                log.warning("_enable_saved_modules: %s cannot run here: %s",
+                            key, e)
+                continue
+            self.enabled_modules.add(key)
+        log.info("_enable_saved_modules: on: %s", sorted(self.enabled_modules))
 
     def _persist_user_mask_dc(self, event: Any) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active
@@ -1208,6 +1240,13 @@ class App(CommandBus):
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
         self.led_stream.stop()
+        # Each module ends what it runs; the user's choice stays saved.
+        for key in sorted(self.enabled_modules):
+            try:
+                self.modules[key].disable(self)
+            except Exception:
+                log.exception("close: module %s did not switch off cleanly", key)
+        self.enabled_modules.clear()
         self.video_loop.stop()
         self.stop_hotplug()
         # Blank every panel before releasing it so it goes dark on shutdown

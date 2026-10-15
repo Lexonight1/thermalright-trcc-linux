@@ -103,6 +103,10 @@ class ThemeError(TrccError):
     """Theme load / parse / export failed."""
 
 
+class ModuleUnavailable(TrccError):
+    """A module cannot run on this machine -- its ``pre_enable`` says why."""
+
+
 class HttpFetchError(RuntimeError):
     """Raised on any transport or HTTP-level fetch failure.
 

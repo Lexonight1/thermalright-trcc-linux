@@ -6,23 +6,26 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-55 ports.
+58 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 6 |
-| [`Command`](#command) | 1 | 1 | 159 |
-| [`CpuSource`](#cpusource) | 1 | 4 | 10 |
+| [`Command`](#command) | 1 | 1 | 161 |
+| [`CpuSource`](#cpusource) | 1 | 5 | 10 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
-| [`Query`](#query) | 1 | 0 | 45 |
+| [`ModuleHost`](#modulehost) | 1 | 0 | 1 |
+| [`Query`](#query) | 1 | 0 | 46 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 3 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
+| [`BaseModule`](#basemodule) | 2 | 0 | 0 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`GlSurface`](#glsurface) | 2 | 1 | 3 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 19 |
+| [`Module`](#module) | 2 | 7 | 0 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
@@ -98,7 +101,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (159):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BuildPreview` · `CaptureScreencastFrame` · `CaptureStreamFrame` · `CaptureVisualFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `StopVisual` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
+**Implementations (161):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BuildPreview` · `CaptureScreencastFrame` · `CaptureStreamFrame` · `CaptureVisualFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `StopVisual` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
 
 ## CpuSource
 
@@ -112,7 +115,7 @@ Primary CPU.  usage/freq nearly always present; temp/power may be None.
 name() -> str
 ```
 
-**You inherit (4):** `freq` · `power` · `temp` · `usage`
+**You inherit (5):** `freq` · `power` · `temp` · `temp_label` · `usage`
 
 **Implementations (10):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `LhmCpu` · `MacosHidCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
 
@@ -158,6 +161,20 @@ resolve(name: 'str', key: 'K', table: 'Mapping[K, V]') -> V
 
 **Implementations (2):** `FallBackTo` · `Reject`
 
+## ModuleHost
+
+`core/ports.py`
+
+What a module may do to the App -- and nothing more.
+
+**You implement (1):**
+
+```python
+publish(event: 'Event') -> None
+```
+
+**Implementations (1):** `App`
+
 ## Query
 
 `core/commands/_base.py`
@@ -170,7 +187,7 @@ A question.  Answers, and changes nothing.
 execute(app: 'App') -> R_co
 ```
 
-**Implementations (45):** `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
+**Implementations (46):** `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
 
 ## ScreenCapture
 
@@ -220,6 +237,21 @@ run() -> int
 
 **Implementations (2):** `GuiUI` · `QtGuiUI`
 
+## BaseModule
+
+`adapters/modules/_base.py`
+
+What a module extends: registers itself under the ``key=`` it names. ``key=None`` is an intermediate base, not registered.
+
+**You implement (2):**
+
+```python
+_disable(host: 'ModuleHost') -> None
+_enable(host: 'ModuleHost') -> None
+```
+
+**Implementations (0):** _none yet_
+
 ## DataInstallRunner
 
 `core/ports.py`
@@ -266,6 +298,23 @@ name() -> str
 ```
 
 **Implementations (19):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
+
+## Module
+
+`core/ports.py`
+
+One feature a user switches on or off on the Modules page -- in every UI, through ``SetModuleEnabled``.
+
+**You implement (2):**
+
+```python
+_disable(host: 'ModuleHost') -> None
+_enable(host: 'ModuleHost') -> None
+```
+
+**You inherit (7):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem`
+
+**Implementations (0):** _none yet_
 
 ## RgbHardware
 

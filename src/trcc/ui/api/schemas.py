@@ -771,6 +771,11 @@ class DateFormatRequest(BaseModel):
     key: str | None = None
 
 
+class ModuleSwitchRequest(BaseModel):
+    """Body for ``POST /system/modules/{key}``."""
+    enabled: bool
+
+
 class DiskDeviceRequest(BaseModel):
     """Body for ``POST /system/disk-sensors/active``."""
     disk_key: str = ""

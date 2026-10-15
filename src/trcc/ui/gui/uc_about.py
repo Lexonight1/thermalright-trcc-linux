@@ -176,6 +176,7 @@ class UCAbout(BasePanel):
     refresh_changed = Signal(int)        # refresh interval (seconds)
     gpu_changed = Signal(str)            # gpu_key for metrics
     about_requested = Signal()           # the About page
+    modules_requested = Signal()         # the Modules page
 
     def __init__(self, parent=None,
                  gpu_list: list[tuple[str, str]] | None = None,
@@ -213,7 +214,8 @@ class UCAbout(BasePanel):
         self._apply_localized_background()
 
     def _setup_title_bar(self) -> None:
-        """The top bar: "Control Center", and About beside it (the About page)."""
+        """The top bar: "Control Center", then Modules and About -- each opens
+        its own page."""
         log.debug("UCAbout._setup_title_bar")
         bar = QFrame(self)
         bar.setObjectName("titleBar")
@@ -225,17 +227,27 @@ class UCAbout(BasePanel):
         self.title_label = QLabel("Control Center", bar)
         self.title_label.setStyleSheet(
             "background: transparent; color: #3a3a3a; font-size: 30px; font-weight: bold;")
-        self.about_link = QPushButton("About", bar)
-        self.about_link.setFlat(True)
-        self.about_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.about_link.setStyleSheet(
+        self.modules_link = self._bar_link("Modules", bar)
+        self.modules_link.clicked.connect(self.modules_requested)
+        self.about_link = self._bar_link("About", bar)
+        self.about_link.clicked.connect(self.about_requested)
+        row.addWidget(self.title_label)
+        row.addWidget(self.modules_link)
+        row.addWidget(self.about_link)
+        row.addStretch(1)
+
+    @staticmethod
+    def _bar_link(text: str, bar: QFrame) -> QPushButton:
+        """A clickable word on the gold bar, in the bar's own lettering."""
+        log.debug("UCAbout._bar_link: %s", text)
+        link = QPushButton(text, bar)
+        link.setFlat(True)
+        link.setCursor(Qt.CursorShape.PointingHandCursor)
+        link.setStyleSheet(
             "QPushButton { background: transparent; border: none; color: #3a3a3a;"
             " font-size: 30px; font-weight: bold; }"
             "QPushButton:hover { color: white; }")
-        self.about_link.clicked.connect(self.about_requested)
-        row.addWidget(self.title_label)
-        row.addWidget(self.about_link)
-        row.addStretch(1)
+        return link
 
     def _apply_localized_background(self):
         """Set background image (no tiling)."""

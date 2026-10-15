@@ -64,6 +64,7 @@ _ENTRIES: tuple[_Entry, ...] = (
     _Entry("rgb",        "RGB Lighting"),
     _Entry("status",     "Status"),
     _Entry("system",     "System"),
+    _Entry("modules",    "Modules"),
     _Entry("about",      "About"),
 )
 

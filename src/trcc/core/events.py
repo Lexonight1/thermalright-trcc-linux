@@ -328,6 +328,13 @@ class ScreencastStopped(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleChanged(Event):
+    """A module was switched on or off -- every UI's Modules page follows."""
+    key: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class VisualHearingChanged(Event):
     """A panel's audio visual started -- or stopped -- hearing anything.
     Published on the change only.  Silence is how every OS reports blocked

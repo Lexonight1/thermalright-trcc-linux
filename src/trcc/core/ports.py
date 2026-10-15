@@ -46,7 +46,7 @@ WriteBuffer = bytes | bytearray | memoryview
 if TYPE_CHECKING:
     from .commands._base import Command
     from .diagnostics import DoctorResult, GpuReaderState, HealthReport
-    from .events import EventBus
+    from .events import Event, EventBus
     from .models import (
         CloudCategory,
         CloudThemeEntry,
@@ -2453,6 +2453,93 @@ class CloudCatalog(ABC):
 # =========================================================================
 # ScreenCapture — grab a region of the user's desktop as raw RGB bytes
 # =========================================================================
+
+
+class ModuleHost(ABC):
+    """What a module may do to the App -- and nothing more.
+
+    A module gets this, never the App: it cannot reach devices, settings or
+    anything private.  Grows one capability at a time, when a module first
+    needs it (adding a visual, an LED colour source, ...).  The App is the
+    host; a test passes a fake.
+    """
+
+    @abstractmethod
+    def publish(self, event: Event) -> None:
+        """Tell every UI something happened."""
+
+
+class Module(ABC):
+    """One feature a user switches on or off on the Modules page -- in every
+    UI, through ``SetModuleEnabled``.
+
+    A Template Method, like a device's ``connect()`` around its
+    ``_do_handshake()``: :meth:`enable` and :meth:`disable` are the fixed
+    order, and a module fills in only what it needs.
+
+    * ``pre_enable`` -- can it run here?  Raise ``ModuleUnavailable`` and
+      nothing changes.
+    * ``_enable`` / ``_disable`` -- the module's own work: register (or take
+      out) its visuals, LED modes, feeds.
+    * ``pre_disable`` -- end what it is running before it goes.
+    * ``post_enable`` / ``post_disable`` -- after the change.
+
+    A module names its key in its class line (``class X(BaseModule,
+    key="x")``) and registers into ``MODULES`` (``adapters/modules``), the
+    way a device or an OS does.
+    """
+
+    #: Its registry key; set by the registration.
+    key: ClassVar[str] = ""
+    #: The tile's name and one line on what it does.
+    title: ClassVar[str] = ""
+    summary: ClassVar[str] = ""
+    #: On for a user who never chose.
+    default_on: ClassVar[bool] = True
+
+    def enable(self, host: ModuleHost) -> None:
+        """Switch it on: the hooks around the module's own work."""
+        log.info("Module %s: enabling", self.key)
+        self.pre_enable(host)
+        self._enable(host)
+        self.post_enable(host)
+
+    def disable(self, host: ModuleHost) -> None:
+        """Switch it off: the hooks around the module's own work."""
+        log.info("Module %s: disabling", self.key)
+        self.pre_disable(host)
+        self._disable(host)
+        self.post_disable(host)
+
+    @abstractmethod
+    def _enable(self, host: ModuleHost) -> None:
+        """Put its features into the App."""
+
+    @abstractmethod
+    def _disable(self, host: ModuleHost) -> None:
+        """Take its features back out."""
+
+    def pre_enable(self, host: ModuleHost) -> None:
+        """Before switching on: raise ``ModuleUnavailable`` to refuse."""
+        log.debug("Module %s: pre_enable", self.key)
+
+    def post_enable(self, host: ModuleHost) -> None:
+        """After switching on."""
+        log.debug("Module %s: post_enable", self.key)
+
+    def pre_disable(self, host: ModuleHost) -> None:
+        """Before switching off: end what it is running."""
+        log.debug("Module %s: pre_disable", self.key)
+
+    def post_disable(self, host: ModuleHost) -> None:
+        """After switching off."""
+        log.debug("Module %s: post_disable", self.key)
+
+    def problem(self) -> str:
+        """Why it cannot run on this machine -- shown on its tile.  ""
+        when it can."""
+        log.debug("Module %s: no problem", self.key)
+        return ""
 
 
 class LedColorStream(ABC):
