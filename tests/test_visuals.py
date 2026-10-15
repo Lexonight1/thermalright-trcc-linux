@@ -116,8 +116,8 @@ def test_milkdrop_is_offered_only_where_projectm_can_draw(
     monkeypatch.setattr(projectm_module, "EglSurface", _FakeSurface)
     kinds = [info.kind for info in catalog()
              if not info.kind.startswith("cavalier-")]
-    assert kinds == (["trcc-pipes", "karmaviz", "milkdrop"] if offered
-                     else ["trcc-pipes", "karmaviz"])
+    assert kinds == (["trcc-pipes", "trcc-spikes", "karmaviz", "milkdrop"]
+                     if offered else ["trcc-pipes", "trcc-spikes", "karmaviz"])
     assert lib.destroyed == (1 if offered else 0)
 
 
@@ -278,7 +278,7 @@ def test_the_gallery_lists_every_visual_and_the_preset_files(app: App) -> None:
     _preset(app)
     listed = app.dispatch(ListVisuals())
     kinds = [v.kind for v in listed.visuals]
-    assert (kinds[0], kinds[-1], len(kinds)) == ("trcc-pipes", "milkdrop", 14)
+    assert (kinds[0], kinds[-1], len(kinds)) == ("trcc-pipes", "milkdrop", 15)
     assert [a.name for a in listed.visuals[0].adjustments] == [
         "growth", "thickness", "center_size"]       # Fire is the picture's
     assert [(v.kind, v.presets) for v in listed.visuals if v.presets] == [

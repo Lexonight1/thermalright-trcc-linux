@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-58 ports.
+59 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -52,15 +52,16 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
+| [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 12 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
-| [`BaseVisual`](#basevisual) | 5 | 0 | 15 |
+| [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
-| [`VisualEngine`](#visualengine) | 5 | 0 | 15 |
+| [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
@@ -749,6 +750,25 @@ provides(path: 'str') -> str | None
 
 **Implementations (2):** `NoPackageManager` · `Rpm`
 
+## PaintedVisual
+
+`adapters/visual/_painted.py`
+
+A frame painted over ``BACKGROUND``, the picture's fire behind it.
+
+**You implement (4):**
+
+```python
+_bass() -> float
+_paint(painter: 'Any') -> None
+adjust(settings: 'Mapping[str, float]') -> None
+feed(pcm: 'bytes') -> None
+```
+
+**You inherit (3):** `close` · `open` · `render`
+
+**Implementations (13):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `SpikeCircle`
+
 ## Paths
 
 `core/ports.py`
@@ -822,7 +842,7 @@ open(spec: 'VisualSpec') -> None
 render() -> RawFrame
 ```
 
-**Implementations (15):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `KarmaViz` · `MilkdropVisual` · `TrccPipes`
+**Implementations (16):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `KarmaViz` · `MilkdropVisual` · `SpikeCircle` · `TrccPipes`
 
 ## BulkTransport
 
@@ -912,7 +932,7 @@ open(spec: 'VisualSpec') -> None
 render() -> RawFrame
 ```
 
-**Implementations (15):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `KarmaViz` · `MilkdropVisual` · `TrccPipes`
+**Implementations (16):** `CavalierBars` · `CavalierBarsCircle` · `CavalierLevels` · `CavalierLevelsCircle` · `CavalierParticles` · `CavalierParticlesCircle` · `CavalierSpine` · `CavalierSpineCircle` · `CavalierSplitter` · `CavalierVisual` · `CavalierWave` · `CavalierWaveCircle` · `KarmaViz` · `MilkdropVisual` · `SpikeCircle` · `TrccPipes`
 
 ## AutostartManager
 

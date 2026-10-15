@@ -69,14 +69,11 @@ from ...core.logs import per_frame
 from ...core.models import (
     SOUND_CHANNELS,
     SOUND_RATE,
-    RawFrame,
     VisualAdjustment,
     VisualInfo,
-    VisualSpec,
 )
-from ._base import BaseVisual
 from ._cava import Cava, monstercat
-from ._fire import Fire, burned_picture
+from ._painted import PaintedVisual
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -84,7 +81,6 @@ frame_log = per_frame(__name__)
 #: Cavalier's colours: ``ColorProfile``'s foreground ``#3584e4`` -- as a hue
 #: the slider turns, keeping its saturation and value -- on ``#242424``.
 _HUE, _SATURATION, _VALUE = 213.0, 0.768, 0.894
-_BACKGROUND = (0x24, 0x24, 0x24)
 #: CAVA as Cavalier runs it (``CAVA.cs``).
 _NOISE_REDUCTION = 0.77
 _LOW_HZ, _HIGH_HZ = 50, 10000
@@ -393,7 +389,7 @@ def _info(kind: str, title: str, *extra: VisualAdjustment) -> VisualInfo:
                       adjustments=(_BARS, _COLOUR, _MIRROR, *extra))
 
 
-class CavalierVisual(BaseVisual):
+class CavalierVisual(PaintedVisual):
     """One of Cavalier's modes: CAVA's bars, drawn by ``SHAPE``.  A box
     shape returns a path this fills (and clips the picture into); a circle
     shape paints itself round the middle."""
@@ -402,37 +398,17 @@ class CavalierVisual(BaseVisual):
     SHAPE: ClassVar[Callable[..., Any]]
     CIRCLE: ClassVar[bool] = False
     RANK = 10                     # after TRCC Pipes, before MilkDrop
+    BACKGROUND = (0x24, 0x24, 0x24)
 
     def __init__(self) -> None:
         log.debug("%s.__init__", type(self).__name__)
-        self._w = self._h = 0
+        super().__init__()
         self._pairs = 0
         self._cava: Cava | None = None
         self._sample = np.zeros(2)
-        self._picture: Any = None
         self._look = _Look()
         self._color: Any = None
         self._mirror = 0
-        self._fire = 0.0
-        self._flames = Fire(0, 0)
-        self._seed = np.zeros((0, 0), dtype=np.float32)
-        self._burning: list[Any] = []
-
-    def open(self, spec: VisualSpec) -> None:
-        from PySide6.QtGui import QImage
-        log.info("%s.open: %dx%d picture=%s settings=%s", type(self).__name__,
-                 spec.width, spec.height, spec.center, dict(spec.settings))
-        self._w, self._h = spec.width, spec.height
-        self.adjust(spec.settings)
-        if spec.center is not None and spec.center.is_file():
-            image = QImage(str(spec.center))
-            self._picture = None if image.isNull() else image
-        # The fire is the picture's (the user's call): no picture, no fire.
-        self._fire = spec.center_fire if self._picture is not None else 0.0
-        if self._picture is not None:
-            self._picture = burned_picture(self._picture, self._fire)
-        self._flames = Fire(self._w, self._h)
-        self._seed = np.zeros(self._flames.half, dtype=np.float32)
 
     def adjust(self, settings: Mapping[str, float]) -> None:
         """The sliders: each at *settings*' value, else its default."""
@@ -469,26 +445,11 @@ class CavalierVisual(BaseVisual):
         # ReverseOrder turns each half round: bass at the outer edges.
         self._sample = np.concatenate([left, right[::-1]])
 
-    def render(self) -> RawFrame:
-        from PySide6.QtGui import QImage, QPainter
-        frame_log.debug("%s.render", type(self).__name__)
-        frame = np.empty((self._h, self._w, 3), dtype=np.uint8)
-        frame[:] = _BACKGROUND
-        if self._fire > 0:
-            # Behind the shapes: flames rising from where the picture was.
-            np.maximum(frame, self._flames.flames(self._seed, self._fire,
-                                                  self._bass()), out=frame)
-        image = QImage(frame.data, self._w, self._h, 3 * self._w,
-                       QImage.Format.Format_RGB888)
-        painter = QPainter(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self._burning = []
+    def _paint(self, painter: Any) -> None:
+        """Each mirrored half (or the whole), in its shape."""
+        frame_log.debug("%s._paint", type(self).__name__)
         for sample, y, height, up in self._halves():
             self._draw(painter, sample, float(y), float(height), up)
-        painter.end()
-        if self._fire > 0:
-            self._seed = self._flames.seed_from(self._burning)
-        return RawFrame(data=frame.tobytes(), width=self._w, height=self._h)
 
     def _bass(self) -> float:
         """How hard the bass hits now: its bars sit at both outer edges."""
@@ -519,7 +480,9 @@ class CavalierVisual(BaseVisual):
         if self.CIRCLE:
             type(self).SHAPE(painter, sample, 0.0, y, float(self._w), height,
                              self._look, self._color)
-            self._picture_in_circle(painter, y, height)
+            # TRCC's addition: the user's picture inside the inner circle.
+            _full, inner = _radii(float(self._w), height, self._look)
+            self._picture_in_circle(painter, self._w / 2, y + height / 2, inner)
             return
         path = type(self).SHAPE(sample, 0.0, y, float(self._w), height, up,
                                 self._look)
@@ -531,41 +494,10 @@ class CavalierVisual(BaseVisual):
             self._draw_picture(painter, 0.0, 0.0, float(self._w), float(self._h))
             painter.restore()
 
-    def _picture_in_circle(self, painter: Any, y: float, height: float) -> None:
-        """TRCC's addition: the user's picture inside the inner circle."""
-        from PySide6.QtCore import QPointF
-        from PySide6.QtGui import QPainterPath
-        if self._picture is None:
-            frame_log.debug("_picture_in_circle: no picture")
-            return
-        _full, inner = _radii(float(self._w), height, self._look)
-        middle = QPointF(self._w / 2, y + height / 2)
-        circle = QPainterPath()
-        circle.addEllipse(middle, inner, inner)
-        self._burning.append(circle)
-        painter.save()
-        painter.setClipPath(circle)
-        self._draw_picture(painter, middle.x() - inner, middle.y() - inner,
-                           2 * inner, 2 * inner)
-        painter.restore()
-        frame_log.debug("_picture_in_circle: radius %.0f", inner)
-
-    def _draw_picture(self, painter: Any, x: float, y: float, w: float,
-                      h: float) -> None:
-        """The picture covering the area, centred -- Renderer.Draw's
-        foreground image (scale = max of the two ratios)."""
-        from PySide6.QtCore import QRectF
-        picture = self._picture
-        scale = max(w / picture.width(), h / picture.height())
-        pw, ph = picture.width() * scale, picture.height() * scale
-        frame_log.debug("_draw_picture: %.0fx%.0f", pw, ph)
-        painter.drawImage(QRectF(x + (w - pw) / 2, y + (h - ph) / 2, pw, ph),
-                          picture)
-
     def close(self) -> None:
         log.info("%s.close", type(self).__name__)
+        super().close()
         self._cava = None
-        self._picture = None
 
 
 class CavalierWave(CavalierVisual, key="cavalier-wave"):

@@ -93,18 +93,19 @@ def _pixels(frame: object) -> np.ndarray:
         frame.height, frame.width, 3)  # type: ignore[attr-defined]
 
 
-def test_cavaliers_eleven_modes_come_after_trcc_pipes() -> None:
+def test_cavaliers_eleven_modes_come_after_trccs_own() -> None:
     """The gallery's order is a rank, not the order modules loaded -- on
-    the path the App lists from, the platform's catalog.  MUTATION CHECK:
-    drop the sort in ranked_visuals and Cavalier's modes come first."""
+    the path the App lists from, the platform's catalog: TRCC Pipes, the
+    Spike Circle, then Cavalier.  MUTATION CHECK: drop the sort in
+    ranked_visuals and Cavalier's modes come first."""
     from trcc.adapters.system import current_platform
 
     assert [i.kind for i in catalog()] == [
         i.kind for i in current_platform().visual_catalog()]
     kinds = [info.kind for info in current_platform().visual_catalog()]
-    assert kinds[0] == "trcc-pipes"
+    assert kinds[:2] == ["trcc-pipes", "trcc-spikes"]
     assert len(_MODES) == 11
-    assert kinds[1:12] == [k for k in kinds if k.startswith("cavalier-")]
+    assert kinds[2:13] == [k for k in kinds if k.startswith("cavalier-")]
 
 
 @pytest.mark.parametrize("kind", _MODES)

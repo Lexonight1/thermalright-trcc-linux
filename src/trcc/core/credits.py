@@ -172,6 +172,9 @@ BUILT_FROM: tuple[Credit, ...] = (
            "how the visuals open OpenGL on each OS"),
     Credit("Cavalier", "Fyodor Sobolev", "MIT", "the eleven Cavalier visuals"),
     Credit("CAVA", "Karl Stavestrand", "MIT", "the audio engine under them"),
+    Credit("XMMS", "Peter Alm, Mikael Alm, Olle Hallnäs, Thomas Nilsson, "
+           "4Front Technologies", "GPL-2.0-or-later",
+           "the feel of the Spike Circle's EQ: instant rise, steady fall"),
     Credit("KarmaViz", "Jason Swint", "MIT",
            "the KarmaViz visual: its shaders, palettes and presets"),
 )
