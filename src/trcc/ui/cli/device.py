@@ -150,7 +150,13 @@ def canvas(
 
 @app.command("disconnect")
 def disconnect(key: str = typer.Argument(...)) -> None:
-    """Close the transport and drop the device."""
+    """Let a device go, and leave it to any other program.
+
+    TRCC stops driving it and does not take it back on its own -- not after
+    a restart, a replug or a wake -- until `trcc device connect KEY`.  Two
+    identical units are told apart by USB port: moved to another port, a
+    unit is a new one to TRCC.
+    """
     log.info("cli device disconnect: key=%s", key)
     result = get_app().dispatch(DisconnectDevice(key=key))
     typer.echo(result.message)

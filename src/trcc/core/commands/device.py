@@ -262,7 +262,14 @@ class ConnectDevice(Command[ConnectResult]):
                      "the ordinary one did not", self.key)
             return result
 
+    def _take_back(self, app: App) -> None:
+        """An explicit connect ends a release: the user wants it again (#317)."""
+        if app.settings.for_device(self.key).released:
+            log.info("ConnectDevice %s: taking back a released unit", self.key)
+            app.settings.set_released(self.key, False)
+
     def execute(self, app: App) -> ConnectResult:
+        self._take_back(app)
         try:
             vid, pid, unit = parse_device_key(self.key)
         except ValueError:
@@ -505,7 +512,9 @@ class DeviceConnectionIssues(Query[ConnectionIssuesResult]):
 
 @dataclass(frozen=True, slots=True)
 class DisconnectDevice(Command[DisconnectResult]):
-    """Close the transport and drop the device."""
+    """Let a device go: close the transport, drop the device, and leave it
+    released -- no start-up, hotplug, wake or Command connects it again until
+    :class:`ConnectDevice` takes it back (#317)."""
     key: str
 
     def execute(self, app: App) -> DisconnectResult:
@@ -534,8 +543,10 @@ class DisconnectDevice(Command[DisconnectResult]):
             log.debug("DisconnectDevice %s: blank skipped — %s",
                       self.key, blank.message)
         app.detach(self.key)
-        # The user let it go: never bring it back behind their back.
+        # The user let it go: never bring it back behind their back -- not
+        # after a restart or a hotplug either (#317).
         app.stop_watching(self.key, forget=True)
+        app.settings.set_released(self.key, True)
         app.events.publish(DeviceDisconnected(key=self.key))
         return DisconnectResult(ok=True, key=self.key, message="Disconnected")
 

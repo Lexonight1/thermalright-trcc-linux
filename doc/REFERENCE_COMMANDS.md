@@ -157,7 +157,7 @@ Report what a device is — identity, connection, handshake geometry.
 
 ### `DisconnectDevice`
 
-Close the transport and drop the device.
+Let a device go: close the transport, drop the device, and leave it released -- no start-up, hotplug, wake or Command connects it again until :class:`ConnectDevice` takes it back (#317).
 
 *Command* → `DisconnectResult`
 

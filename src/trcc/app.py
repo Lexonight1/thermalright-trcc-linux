@@ -567,7 +567,18 @@ class App(CommandBus):
         A panel that does not come up is waited for (:meth:`watch_for_return`):
         a usb add can land before its SCSI node exists, and a panel a VM holds
         has none until it is handed back -- with no event to say so.
+
+        A unit the user released (``DeviceSettings.released``) is left alone:
+        every automatic connect comes through here, and only ``ConnectDevice``
+        takes it back (#317).
         """
+        if self.settings.for_device(key).released:
+            log.info("connect_unit: %s was released by the user -- left alone",
+                     key)
+            return ConnectResult(
+                ok=False, key=key,
+                message=f"{key} is released -- `trcc device connect {key}` "
+                        "takes it back")
         with self._connect_lock:
             existing = self.devices.get(key)
             if existing is not None and existing.is_connected:

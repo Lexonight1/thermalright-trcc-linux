@@ -818,6 +818,10 @@ class DeviceSettings:
     # box holds two digits, so 0-99.
     game_enabled: bool = False
     game_threshold: int = 75
+    # Let go by the user (``DisconnectDevice``): no start-up, hotplug, wake or
+    # Command connects it again until ``ConnectDevice`` takes it back -- so a
+    # unit another program drives is left to it (#317).
+    released: bool = False
     # Per-orientation memory -- the C#'s per-folder ``Theme.dc``.  The fields
     # above are the folder the panel is in (``active_catalog``); every OTHER
     # folder this panel has shown keeps its own theme, brightness, split mode,

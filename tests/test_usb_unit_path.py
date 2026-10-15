@@ -857,3 +857,57 @@ def test_a_twin_that_leaves_is_not_waited_for(tmp_path) -> None:
 
     assert not app._watchers[gone].armed
     assert _connected(app) == ["87ad:70db"]
+
+
+# ── #317: a unit the user let go stays let go ───────────────────────
+
+_NEWS = "87ad:70db@1-2"
+
+
+def _released_then_restarted(tmp_path):
+    """Both twins up, the second disconnected, then a fresh App on the same
+    config -- what a reboot does."""
+    from trcc.core.commands import DisconnectDevice
+
+    first = _twin_app(tmp_path)
+    first.discover_and_connect()
+    assert first.dispatch(DisconnectDevice(key=_NEWS)).ok
+    first.close()
+    app = _twin_app(tmp_path)
+    return app, _opened_units(app)
+
+
+def test_a_released_twin_is_left_alone_after_a_restart(tmp_path) -> None:
+    """#317: ``trcc serve`` kept grabbing the panel another program drives.
+    MUTATION CHECK: drop the ``released`` gate in ``App.connect_unit``."""
+    app, opened = _released_then_restarted(tmp_path)
+
+    app.discover_and_connect()
+
+    assert (sorted(app.devices), opened) == (["87ad:70db@1-1"], ["1-1"])
+
+
+def test_neither_a_hotplug_nor_a_command_takes_it_back(tmp_path) -> None:
+    from trcc.core.commands import SendColor
+
+    app, opened = _released_then_restarted(tmp_path)
+    app.discover_and_connect()
+
+    app._reconcile(0x87AD, 0x70DB, fallback="")            # a hotplug add
+    sent = app.dispatch(SendColor(key=_NEWS, r=255, g=0, b=0))
+
+    assert (sent.ok, _NEWS in app.devices, opened) == (False, False, ["1-1"])
+
+
+def test_connect_takes_it_back_for_good(tmp_path) -> None:
+    """MUTATION CHECK: drop the clear in ``ConnectDevice`` -- the unit is
+    released again after the next restart."""
+    from trcc.core.commands import ConnectDevice
+
+    app, _opened = _released_then_restarted(tmp_path)
+    assert app.dispatch(ConnectDevice(key=_NEWS)).ok
+    app.close()
+
+    again = _twin_app(tmp_path)
+    again.discover_and_connect()
+    assert sorted(again.devices) == ["87ad:70db@1-1", _NEWS]

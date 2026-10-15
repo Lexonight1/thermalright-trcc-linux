@@ -30,7 +30,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `GET /devices/{key}` | `ProductSchema` | Detail for one discovered device — 404 if not currently present. |
 | `GET /devices/{key}/canvas` | `DeviceCanvasResult` | The panel's NATIVE pixels — the size to AUTHOR an asset for. |
 | `POST /devices/{key}/connect` | `ConnectView` | Connect *key*.  Returns the full handshake — including the raw device response as hex, the field issue triage always asks for. |
-| `POST /devices/{key}/disconnect` | `DisconnectResult` | — |
+| `POST /devices/{key}/disconnect` | `DisconnectResult` | Let a device go: TRCC leaves it alone -- across restarts, replugs and wakes -- until ``POST /devices/{key}/connect`` takes it back. |
 | `POST /devices/{key}/reset` | `DisconnectResult` | Power-cycle the device: disconnect, reconnect, restore its display. |
 | `GET /devices/{key}/state` | `DeviceStateResult` | What an attached device IS: the cooler its handshake identified (``product``, ``resolution``) beside the catalog's guess for its USB id (``catalog_product``, ``catalog_resolution``), plus the handshake bytes. |
 

@@ -130,6 +130,8 @@ def reset(key: str, request: Request) -> DisconnectResult:
 
 @router.post("/{key}/disconnect")
 def disconnect(key: str, request: Request) -> DisconnectResult:
+    """Let a device go: TRCC leaves it alone -- across restarts, replugs and
+    wakes -- until ``POST /devices/{key}/connect`` takes it back."""
     log.info("api POST /devices/{key}/disconnect: key=%s", key)
     result = request.app.state.trcc.dispatch(DisconnectDevice(key=key))
     http_error_if_failed(result, status_code=404)

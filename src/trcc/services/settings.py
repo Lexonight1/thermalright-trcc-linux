@@ -501,6 +501,13 @@ class Settings:
             dev.mask_path = path
             self._save()
 
+    def set_released(self, key: str, released: bool) -> None:
+        """Mark *key* let go by the user, or taken back (#317)."""
+        log.info("set_released: key=%s released=%s", key, released)
+        with self._lock:
+            self.for_device(key).released = released
+            self._save()
+
     def set_mask_visible(self, key: str, visible: bool) -> None:
         """Toggle mask visibility for the device."""
         log.info("set_mask_visible: key=%s visible=%s", key, visible)
