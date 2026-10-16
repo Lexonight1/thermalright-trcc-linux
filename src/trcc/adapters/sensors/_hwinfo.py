@@ -10,7 +10,7 @@ Wire format (reverse-engineered by ``namazso``):
 https://gist.github.com/namazso/0c37be5a53863954c8c8279f66cfb1cc
 
   Header  (44 bytes)
-      magic 0x49576853 'SiWH', version, last_update, sec_off, sec_size,
+      magic 0x53695748 ('HWiS' as stored bytes), version, last_update, sec_off, sec_size,
       sec_count, ent_off, ent_size, ent_count.
   Sensor  (264 bytes)
       id (u32), instance (u32), name_orig[128], name_user[128].
@@ -51,7 +51,7 @@ frame_log = per_frame(__name__)
 
 _MMF_NAME = "Global\\HWiNFO_SENS_SM2"
 _FILE_MAP_READ = 0x0004
-_HWINFO_MAGIC = 0x49576853                  # 'SiWH' little-endian
+_HWINFO_MAGIC = 0x53695748                  # bytes b'HWiS' read as <I
 _NAME_LEN = 128                             # HWINFO_SENSORS_STRING_LEN2
 _UNIT_LEN = 16                              # HWINFO_UNIT_STRING_LEN
 

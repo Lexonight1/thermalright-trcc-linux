@@ -373,6 +373,21 @@ def test_hwinfo_parse_header_decodes_magic() -> None:
     assert header.magic == _HWINFO_MAGIC
 
 
+def test_hwinfo_parse_header_accepts_real_hwinfo_signature() -> None:
+    """The first header bytes HWiNFO 8.x actually writes are b"HWiS".
+
+    Captured from a live ``Global\\HWiNFO_SENS_SM2`` (HWiNFO64 8.54):
+    ``48 57 69 53 02 00 00 00 01 00 00 00``.  Built from raw bytes rather
+    than from ``_HWINFO_MAGIC`` so a byte-swapped constant can't pass.
+    """
+    rest = struct.pack(
+        _HEADER_FMT[0] + _HEADER_FMT[2:],
+        2, 1, 0, _HEADER_SIZE, 0, 0, _HEADER_SIZE, 0, 0,
+    )
+    header = _parse_header(b"HWiS" + rest)
+    assert header.version == 2
+
+
 def test_hwinfo_parse_header_rejects_short_buffer() -> None:
     import pytest
 
