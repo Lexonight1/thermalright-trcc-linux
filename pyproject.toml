@@ -67,6 +67,10 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "sounddevice>=0.4.6",
     "wmi>=1.5.1; sys_platform == 'win32'",
+    # Windows: the named pipe every UI reaches the shared App through
+    # (adapters/infra/named_pipe.py) -- CPython has no AF_UNIX on Windows.
+    # wmi already pulls it in; declared because TRCC imports it directly.
+    "pywin32>=306; sys_platform == 'win32'",
     # Windows audio visuals: what is playing, by WASAPI loopback (ffmpeg has no
     # WASAPI input).  BSD-3, pure Python over cffi (~44 KB), numpy already here.
     "soundcard>=0.4.6; sys_platform == 'win32'",

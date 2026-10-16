@@ -20,9 +20,10 @@ from typing import IO, Any, NamedTuple
 
 import pytest
 
+from trcc import ipc
 from trcc.app import App
 from trcc.core.events import DeviceConnected, FrameSent, SensorsUpdated
-from trcc.ipc import IPCServer, decode_event, socket_path
+from trcc.ipc import IPCServer, decode_event
 
 
 def _server(app: App) -> IPCServer:
@@ -84,9 +85,9 @@ def connect(server):
     opened: list[_Client] = []
 
     def _open() -> _Client:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(5.0)
-        sock.connect(str(socket_path()))
+        channel = ipc.channel()
+        assert channel is not None
+        sock = channel.connect(5.0)
         client = _Client(sock, sock.makefile("rb"))
         opened.append(client)
         return client

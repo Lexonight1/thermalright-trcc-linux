@@ -144,7 +144,7 @@ class DaemonUI(UserInterface, key="daemon"):
         from .. import ipc
         if ipc.daemon_running():
             log.warning("DaemonUI.preflight: another daemon already owns %s",
-                        ipc.socket_path())
+                        ipc.address())
             return 1
         # The socket says nothing while an App is still starting; the lock
         # does, so two Apps launched together cannot both own USB (#314).
@@ -195,7 +195,7 @@ class DaemonUI(UserInterface, key="daemon"):
                                          name="trcc-ipc-serve", daemon=True)
         self._serving.start()
         log.info("DaemonUI.bring_up: serving %s before the coldplug",
-                 ipc.socket_path())
+                 ipc.address())
         try:
             return super().bring_up()
         except BaseException:

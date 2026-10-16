@@ -44,6 +44,7 @@ LIBRARIES: tuple[tuple[str, str, str], ...] = (
     ('python-dotenv', 'Saurabh Kumar (python-dotenv), 2013, Ted Tieken (django-dotenv-rw), 2013, Jacob Kaplan-Moss (django-dotenv)', 'BSD-3-Clause'),
     ('python-multipart', 'Andrew Dunham', 'Apache-2.0'),
     ('pyudev', 'Sebastian Wiesner', 'LGPL-2.1-or-later'),
+    ('pywin32', 'Mark Hammond (et al)', 'Python Software Foundation License'),
     ('pyusb', 'Wander Lairson Costa', 'BSD License'),
     ('PyYAML', 'Ingy döt Net', 'MIT License'),
     ('rich', 'Will McGugan', 'MIT License'),

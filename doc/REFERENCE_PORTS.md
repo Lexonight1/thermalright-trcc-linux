@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-60 ports.
+61 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -42,6 +42,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 11 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
+| [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
@@ -66,7 +67,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
-| [`BaseOS`](#baseos) | 12 | 19 | 8 |
+| [`BaseOS`](#baseos) | 12 | 20 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 8 | 8 |
 | [`ContentStore`](#contentstore) | 29 | 0 | 1 |
@@ -586,6 +587,24 @@ stop() -> None
 
 **Implementations (5):** `FreeBSDHotplugMonitor` · `LinuxHotplugMonitor` · `NoopHotplugMonitor` · `PollingHotplugMonitor` · `WindowsHotplugMonitor`
 
+## IpcChannel
+
+`core/ports.py`
+
+The channel every UI uses to reach the one App (``ipc.py``).
+
+**You implement (3):**
+
+```python
+address() -> str
+connect(timeout: 'float | None') -> Any
+listen() -> Any
+```
+
+**You inherit (1):** `reachable`
+
+**Implementations (2):** `NamedPipeChannel` · `UnixSocketChannel`
+
 ## LedColorStream
 
 `core/ports.py`
@@ -1041,7 +1060,7 @@ permission_denied_hint() -> str
 setup(dry_run: 'bool' = False) -> int
 ```
 
-**You inherit (19):** `OPENRGB` · `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_hint` · `usb_power_state` · `worker_thread_context`
+**You inherit (20):** `IPC_CHANNEL` · `OPENRGB` · `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_hint` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 

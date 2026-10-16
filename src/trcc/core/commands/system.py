@@ -638,10 +638,10 @@ class DaemonStatus(Query[DaemonResult]):
         import os
 
         from ...daemon import is_this_process_the_daemon, running_status, uptime_s
-        from ...ipc import daemon_running, socket_path
+        from ...ipc import address, daemon_running
 
         running = daemon_running()
-        path = socket_path()
+        path = address()
         if (running and not self.here and not is_this_process_the_daemon()
                 and (theirs := running_status()) is not None):
             log.info("DaemonStatus.execute: the running App answered for "
@@ -659,7 +659,7 @@ class DaemonStatus(Query[DaemonResult]):
                  "uptime=%ds socket=%s version=%s", running, am_daemon, pid,
                  uptime, path, __version__)
         return DaemonResult(
-            ok=True, running=running, socket_path=str(path),
+            ok=True, running=running, socket_path=path,
             pid=pid, uptime_seconds=uptime, version=__version__,
             message=("Daemon is running" if running
                      else "No daemon is running"),
@@ -679,7 +679,7 @@ class StopDaemon(Command[DaemonResult]):
     def execute(self, app: App) -> DaemonResult:
         del app
         from ...daemon import kill_daemon
-        from ...ipc import daemon_running, socket_path
+        from ...ipc import address, daemon_running
 
         was_running = daemon_running()
         log.info("StopDaemon.execute: timeout=%.1fs was_running=%s",
@@ -689,7 +689,7 @@ class StopDaemon(Command[DaemonResult]):
             log.warning("StopDaemon.execute: daemon still reachable after "
                         "%.1fs", self.timeout)
         return DaemonResult(
-            ok=stopped, running=not stopped, socket_path=str(socket_path()),
+            ok=stopped, running=not stopped, socket_path=address(),
             message=(f"Daemon still running after {self.timeout:.0f}s"
                      if not stopped else "TRCC App stopped" if was_running
                      else "No TRCC App was running"),

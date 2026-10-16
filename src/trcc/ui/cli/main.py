@@ -513,7 +513,7 @@ def daemon_status() -> None:
     """
     log.info("cli daemon-status")
     result = get_app().dispatch(DaemonStatus())
-    typer.echo(f"{result.message} (socket: {result.socket_path}).")
+    typer.echo(f"{result.message} ({result.socket_path}).")
     if not result.running:
         raise typer.Exit(code=1)
 

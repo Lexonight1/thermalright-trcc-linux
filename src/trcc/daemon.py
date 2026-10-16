@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import ipc
@@ -213,8 +214,19 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
         close_fds=True,
+        creationflags=_detached_flags(),
     )
     return ipc.wait_for_daemon(timeout=timeout)
+
+
+def _detached_flags() -> int:
+    """Windows' ``start_new_session``: no console window of its own, and out
+    of the launching console's process group -- so closing that terminal or
+    pressing Ctrl+C in it does not stop the App.  0 elsewhere."""
+    flags = (getattr(subprocess, "CREATE_NO_WINDOW", 0)
+             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+    log.debug("_detached_flags: 0x%x", flags)
+    return flags
 
 
 def kill_daemon(*, timeout: float = 5.0) -> bool:
@@ -319,12 +331,17 @@ def _daemon_spawn_cmd() -> list[str]:
     The running interpreter, not the first ``trcc`` on PATH: with two installs
     (pipx + a distro package), a UI could start a daemon of the other one --
     and with a version check, replace it forever.  A frozen build (Windows,
-    macOS) has no ``-m``; it keeps the console-script lookup until the daemon
-    is verified there.
+    macOS) has no ``-m``.  On Windows it is the installed ``trcc-gui.exe``,
+    the windowed twin of ``trcc.exe`` beside it: a console exe would open a
+    terminal window for the App's whole life.  macOS keeps the console-script
+    lookup until the daemon is verified there.
     """
     log.debug("_daemon_spawn_cmd: frozen=%s", getattr(sys, "frozen", False))
     if not getattr(sys, "frozen", False):
         return [sys.executable, "-m", "trcc", "daemon"]
+    windowed = Path(sys.executable).with_name("trcc-gui.exe")
+    if sys.platform == "win32" and windowed.is_file():
+        return [str(windowed), "daemon"]
     from shutil import which
     if (trcc_bin := which("trcc")) is not None:
         return [trcc_bin, "daemon"]

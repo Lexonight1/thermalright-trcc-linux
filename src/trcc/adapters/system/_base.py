@@ -55,6 +55,7 @@ from ...core.registry import ALL_DEVICES
 from ..device._pyusb_find import find as usb_find
 from ..device._pyusb_find import usb_path
 from ..device.transport import PyUsbBulkTransport
+from ..infra.unix_socket import UnixSocketChannel
 from ..rgb.openrgb import OpenRgbMirror
 from ..visual import VISUALS as _VISUALS
 
@@ -188,6 +189,8 @@ class BaseOS(Platform):
     VISUALS = _VISUALS
     #: OpenRGB's SDK client -- plain TCP, the same on every OS.
     OPENRGB = OpenRgbMirror
+    #: The shared App's channel: a socket file wherever there is AF_UNIX.
+    IPC_CHANNEL = UnixSocketChannel
 
     def __init_subclass__(cls, key: str | None = None, **kwargs: Any) -> None:
         """Register the subclass under the ``key=`` it declares.

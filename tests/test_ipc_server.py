@@ -4,8 +4,9 @@ Spins up an IPCServer on a real socket bound to an App built with
 FakePlatform.  AppProxy dispatches a Command through ``one_shot_request``
 and we assert the typed Result comes back across the wire.
 
-These tests live behind the ``hasattr(socket, 'AF_UNIX')`` gate so they
-skip on platforms without Unix domain sockets.
+They run wherever ``ipc.channel()`` has a channel: the Unix socket, or on
+Windows the named pipe (``adapters/infra/named_pipe.py``) -- the CI Windows
+job runs this file, so the pipe is tested by the same round trips.
 """
 from __future__ import annotations
 
@@ -37,10 +38,8 @@ from trcc.proxy import AppProxy
 
 from .conftest import FakePlatform
 
-_HAS_AF_UNIX = hasattr(socket, "AF_UNIX")
-
 pytestmark = pytest.mark.skipif(
-    not _HAS_AF_UNIX, reason="IPC requires AF_UNIX (POSIX)",
+    ipc.channel() is None, reason="no IPC transport on this platform",
 )
 
 
@@ -103,16 +102,22 @@ class _TestRenderer(Renderer):
 # ── Server-lifecycle fixture ─────────────────────────────────────────
 
 
+def _private_channel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A socket of this test's own.  AF_UNIX paths are capped at ~108 bytes
+    on Linux, so pytest's tmp_path is too deep -- /tmp directly with a unique
+    suffix.  Windows already has a pipe of its own (conftest, autouse)."""
+    if hasattr(socket, "AF_UNIX"):
+        sock_path = Path(f"/tmp/trcc-test-{id(tmp_path):x}.sock")
+        monkeypatch.setattr(ipc, "socket_path", lambda: sock_path)
+
+
+
 @pytest.fixture
 def running_server(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[tuple[ipc.IPCServer, App]]:
     """Bind a fresh IPCServer to a unique socket + serve in a thread."""
-    # Per-test socket — AF_UNIX paths are capped at ~108 bytes on Linux,
-    # so pytest's tmp_path is too deep.  Use /tmp directly + a unique
-    # suffix and clean up in teardown.
-    sock_path = Path(f"/tmp/trcc-test-{id(tmp_path):x}.sock")
-    monkeypatch.setattr(ipc, "socket_path", lambda: sock_path)
+    _private_channel(tmp_path, monkeypatch)
 
     # Settle the post-init delay so the FakePlatform handshake doesn't sleep
     monkeypatch.setattr(

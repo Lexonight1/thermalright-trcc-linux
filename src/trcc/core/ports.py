@@ -2770,6 +2770,56 @@ class HttpFetcher(ABC):
 
 
 # =========================================================================
+# IpcChannel — how this OS carries the shared App's socket
+# =========================================================================
+
+
+class IpcChannel(ABC):
+    """The channel every UI uses to reach the one App (``ipc.py``).
+
+    Adapters: ``UnixSocketChannel`` (``ipc.py``) and ``NamedPipeChannel``
+    (``adapters/infra/named_pipe.py``) -- CPython has no ``AF_UNIX`` on
+    Windows at any version, so Windows speaks the same JSON lines over a
+    named pipe only this user may open.
+
+    Both hand back socket-shaped streams: ``sendall``, ``recv``,
+    ``settimeout``, ``makefile("rb")``, ``shutdown`` (wakes a blocked reader
+    with EOF), ``close`` and ``with``.  A listener has ``accept()`` returning
+    ``(stream, address)`` and ``close()``, which wakes a blocked ``accept``.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """*path*: this user's socket file (``ipc.socket_path``).  A channel
+        that uses no file ignores it.  ``ImportError`` where the channel
+        cannot work at all -- the caller then runs its own App."""
+        frame_log.debug("%s: path=%s", type(self).__name__, path)
+
+    @property
+    @abstractmethod
+    def address(self) -> str:
+        """Where the App is reached, for logs and ``trcc daemon-status``."""
+
+    @abstractmethod
+    def connect(self, timeout: float | None) -> Any:
+        """A stream to the running App; ``OSError`` when none answers."""
+
+    @abstractmethod
+    def listen(self) -> Any:
+        """Start serving: a listener, or ``OSError`` when another App serves."""
+
+    def reachable(self) -> bool:
+        """True when an App accepts a connection right now."""
+        try:
+            with self.connect(0.5):
+                pass
+        except OSError as e:
+            log.debug("%s.reachable: no -- %s", type(self).__name__, e)
+            return False
+        log.debug("%s.reachable: yes", type(self).__name__)
+        return True
+
+
+# =========================================================================
 # AutostartManager — OS-specific boot-time launch configuration
 # =========================================================================
 
@@ -3289,6 +3339,11 @@ class Platform(ABC):
     #: The OS adapter's ``SoundInput`` class -- a table entry like
     #: ``RGB_HARDWARE``.  None: no sound for audio visuals on this OS yet.
     SOUND_INPUT: ClassVar[type[SoundInput] | None] = None
+
+    #: How every UI reaches the shared App on this OS -- a table entry like
+    #: ``SOUND_INPUT``, built with the per-user socket path (a channel that
+    #: uses no file ignores it).  None: each UI runs its own App.
+    IPC_CHANNEL: ClassVar[type[IpcChannel] | None] = None
 
     @staticmethod
     def adopt_session() -> object:

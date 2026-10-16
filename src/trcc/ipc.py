@@ -48,6 +48,7 @@ import logging
 import os
 import queue
 import socket
+import sys
 import threading
 import time
 import types
@@ -65,6 +66,7 @@ from .core.commands._base import Query
 from .core.events import AppStopping, Event, FrameSent
 from .core.logs import dispatch_origin, per_frame, recurring_warning
 from .core.models import IN_PROCESS_ONLY_KEY
+from .core.ports import IpcChannel
 from .core.results import Result
 from .frame_share import FrameWriter
 
@@ -132,19 +134,71 @@ def socket_path() -> Path:
     return runtime_dir() / _SOCK_NAME
 
 
-def daemon_running() -> bool:
-    """True iff a daemon socket exists and accepts a connection."""
-    log.debug("daemon_running: called")
-    path = socket_path()
-    if not path.exists():
-        return False
+def channel() -> IpcChannel | None:
+    """How this process reaches the shared App, or None where it cannot.
+
+    The OS decides (``Platform.IPC_CHANNEL``): a Unix socket, or on Windows a
+    named pipe.  Asked on every call, so a test can stand another in.  A
+    channel that cannot work here -- no ``AF_UNIX``, no pywin32 -- refuses
+    with ``ImportError``, and every UI then runs its own App.
+    """
+    made = _host_platform(sys.platform).IPC_CHANNEL
+    if made is None:
+        log.info("channel: this OS names no channel")
+        return None
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            s.connect(str(path))
-        return True
-    except OSError:
-        return False
+        chan = made(socket_path())
+    except ImportError as e:
+        log.warning("channel: %s cannot work here (%s) -- every UI runs its "
+                    "own App", made.__name__, e)
+        return None
+    frame_log.debug("channel: %s", type(chan).__name__)
+    return chan
+
+
+@functools.cache
+def _host_platform(key: str) -> Any:
+    """This OS's Platform class, looked up once per ``sys.platform``: a
+    remote preview asks for the channel every frame, and the lookup writes
+    three records (gated by test_the_remote_preview_writes_no_record_per_frame).
+    Keyed, so a test that sets ``sys.platform`` still gets that OS's class."""
+    from .adapters.system import host_platform_class
+    log.debug("_host_platform: %s", key)
+    return host_platform_class()
+
+
+def address() -> str:
+    """Where this process would reach the App: the socket file, or on
+    Windows the pipe's name."""
+    chan = channel()
+    where = chan.address if chan is not None else str(socket_path())
+    frame_log.debug("address: %s", where)
+    return where
+
+
+def daemon_running() -> bool:
+    """True iff a daemon accepts a connection right now."""
+    log.debug("daemon_running: called")
+    chan = channel()
+    return chan is not None and chan.reachable()
+
+
+def _lock_exclusive(fd: int) -> None:
+    """Lock *fd* for this process, without waiting; ``OSError`` when held.
+
+    ``flock`` where it exists; Windows locks the file's first byte with
+    ``msvcrt``.  Either way the system releases it when the process ends.
+    """
+    try:
+        import fcntl
+    except ImportError:
+        import msvcrt  # pyright: ignore[reportMissingImports]
+        log.debug("_lock_exclusive: msvcrt fd=%d", fd)
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
+        return
+    log.debug("_lock_exclusive: flock fd=%d", fd)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
 class AppLock:
@@ -154,8 +208,8 @@ class AppLock:
     the App binds, and two UIs launched together both found none, both
     spawned, and the second App unlinked the first one's socket (#314).  The
     kernel releases the lock when the holder exits or crashes, so held means
-    alive.  Absent ``fcntl`` (Windows, where every UI runs its own App) it is
-    always free.
+    alive.  Windows has no ``fcntl``; it takes the same lock with
+    ``msvcrt.locking``, which the system also drops when the holder exits.
     """
 
     def __init__(self, path: Path | None = None) -> None:
@@ -165,15 +219,10 @@ class AppLock:
 
     def acquire(self) -> bool:
         """Take the lock; False when another process holds it."""
-        try:
-            import fcntl
-        except ImportError:
-            log.debug("AppLock.acquire: no fcntl — nothing to hold")
-            return True
         self._path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(self._path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_exclusive(fd)
         except OSError:
             os.close(fd)
             log.info("AppLock.acquire: %s is held by another App", self._path)
@@ -543,11 +592,18 @@ def one_shot_request(
     """Send one envelope over the daemon socket, return the response."""
     frame_log.debug("one_shot_request: keys=%s timeout=%s",
              sorted(payload), timeout)
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
-        sock.connect(str(socket_path()))
+    with _connect(timeout) as sock:
         _send_json(sock, payload)
         return _recv_json(sock)
+
+
+def _connect(timeout: float | None) -> Any:
+    """A stream to the running App over this OS's transport."""
+    frame_log.debug("_connect: timeout=%s", timeout)
+    chan = channel()
+    if chan is None:
+        raise ConnectionRefusedError("no way to reach a shared App here")
+    return chan.connect(timeout)
 
 
 def open_event_stream(
@@ -555,7 +611,7 @@ def open_event_stream(
     *,
     timeout: float = _DEFAULT_TIMEOUT_S,
     shared_frames: bool = False,
-) -> socket.socket:
+) -> Any:
     """Connect, subscribe, and hand back the still-open stream socket.
 
     The caller owns the socket and reads newline-delimited event envelopes
@@ -566,10 +622,8 @@ def open_event_stream(
     wanted = types or ["*"]
     log.info("open_event_stream: types=%s shared_frames=%s", wanted,
              shared_frames)
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock = _connect(timeout)
     try:
-        sock.settimeout(timeout)
-        sock.connect(str(socket_path()))
         request: dict[str, Any] = {"subscribe": wanted}
         if shared_frames:
             request["frames"] = "shared"     # pixels via trcc.frame_share
@@ -639,13 +693,8 @@ class IPCServer:
     def __init__(self, app: App) -> None:
         log.debug("__init__: app=%s", app)
         self._app = app
-        self._sock: socket.socket | None = None
-        # The path we actually BOUND.  ``shutdown`` must unlink this, not a
-        # freshly-computed ``socket_path()``: that reads XDG_RUNTIME_DIR, and
-        # if the environment moved between start and shutdown we would delete
-        # a path we never owned -- plausibly a live daemon's socket.
-        self._bound_path: Path | None = None
-        self._bound_ino = 0
+        # The transport's listener (``_UnixListener`` or a named pipe's).
+        self._sock: Any = None
         self._stop = False
         # Event fan-out state.  A subscriber connection is long-lived, unlike
         # the one-shot dispatch connections, so it is tracked here rather than
@@ -664,27 +713,18 @@ class IPCServer:
     def start(self) -> None:
         """Bind + listen.  Caller is responsible for serving (see ``serve_forever``)."""
         log.info("start: called")
-        if not hasattr(socket, "AF_UNIX"):
-            # Windows has no AF_UNIX — the GUI/daemon simply runs in-process,
-            # hosting no socket.  Legacy degraded here; the cutover changed this
-            # to `raise`, which crashed the Windows GUI on launch (#187 follow-on,
-            # surfaced once the libusb fix let the GUI boot far enough to reach it).
-            log.info("start: AF_UNIX unavailable (Windows) — IPC server skipped; "
+        chan = channel()
+        if chan is None:
+            # No way for another process to reach this App -- it runs
+            # in-process, hosting nothing.  Legacy degraded here; the cutover
+            # changed this to `raise`, which crashed the Windows GUI on launch
+            # (#187 follow-on, surfaced once the libusb fix let the GUI boot
+            # far enough to reach it).
+            log.info("start: no IPC transport here — IPC server skipped; "
                      "running in-process")
             return
-        path = socket_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            path.unlink()
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.bind(str(path))
-        sock.listen(8)
-        path.chmod(0o600)
-        self._sock = sock
-        self._bound_path = path
-        # The file THIS server made, so shutdown never removes another's.
-        self._bound_ino = path.stat().st_ino
-        log.info("IPC server listening on %s", path)
+        self._sock = chan.listen()
+        log.info("IPC server listening (%s)", type(chan).__name__)
 
     def serve_forever(self) -> None:
         """Accept connections until ``shutdown`` is called or a kill arrives."""
@@ -697,11 +737,22 @@ class IPCServer:
         if self._sock is None:
             raise RuntimeError("serve_forever called before start")
         while not self._stop:
-            try:
-                client, _ = self._sock.accept()
-            except OSError:
-                # listening socket closed — that's our exit signal
+            listener = self._sock
+            if listener is None:
                 break
+            try:
+                client, _ = listener.accept()
+            except OSError as e:
+                if self._stop or self._sock is None:
+                    break         # closed on purpose -- the exit signal
+                # Anything else is one client's trouble, not the App's: a
+                # Windows probe that connects and leaves at once fails the
+                # pipe's accept, and treating it as "closed" took the whole
+                # App down (VM, 2026-10-16).  A full fd table is the Unix twin.
+                recurring_warning(log, "serve_forever: accept failed (%s) — "
+                                  "still serving", e)
+                time.sleep(0.05)
+                continue
             t = threading.Thread(
                 target=self._serve_client, args=(client,),
                 daemon=True, name="trcc-ipc",
@@ -718,14 +769,9 @@ class IPCServer:
         """Stop accepting + clean up the socket file."""
         log.info("shutdown: called")
         self._stop = True
-        if self._sock is not None:
-            try:
-                self._sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                log.debug("shutdown: SHUT_RDWR on listening socket failed",
-                          exc_info=True)
-            self._sock.close()
-            self._sock = None
+        listener, self._sock = self._sock, None
+        if listener is not None:
+            listener.close()
         # Joined first: it re-reads ``_stop`` every 0.25 s, and a write it
         # still has in flight must not interleave with the notice below.
         # Alive only: ``_ensure_fanout`` assigns the thread a moment before it
@@ -749,24 +795,10 @@ class IPCServer:
         if subs:
             log.info("shutdown: told %d subscriber stream(s) the App is "
                      "stopping, then closed them", len(subs))
-        # Last: ``trcc kill`` returns when this file is gone, so every UI has
+        # Last: ``trcc kill`` returns when the App is gone, so every UI has
         # been told by then.
-        path = self._bound_path
-        try:
-            ours = path is not None and path.stat().st_ino == self._bound_ino
-        except OSError:
-            ours = False
-        if path is not None and ours:
-            try:
-                path.unlink()
-            except OSError:
-                log.debug("shutdown: socket unlink failed", exc_info=True)
-        elif path is not None:
-            # An orphaned App removing the LIVE one's socket left no App to
-            # find, and the next UI started a third (#314).
-            log.info("shutdown: %s is not the socket this server made — "
-                     "left in place", path)
-        self._bound_path = None
+        if listener is not None:
+            listener.remove()
         log.info("IPC server shut down")
 
     def _serve_client(self, client: socket.socket) -> None:
@@ -787,13 +819,9 @@ class IPCServer:
             if envelope.get("kill") is True:
                 _send_json(client, {"ok": True, "message": "shutting down"})
                 self._stop = True
-                # Wake the accept() loop by closing the listening socket
+                # Wake the accept() loop; ``shutdown`` closes the rest.
                 if self._sock is not None:
-                    try:
-                        self._sock.shutdown(socket.SHUT_RDWR)
-                    except OSError:
-                        log.debug("kill: SHUT_RDWR on listening socket failed",
-                                  exc_info=True)
+                    self._sock.wake()
                 return
             response = self._dispatch_envelope(envelope)
             _send_json(client, response)

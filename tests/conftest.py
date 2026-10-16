@@ -798,13 +798,29 @@ def _runtime_dir_is_never_the_real_one(
     True from it, and one that took the App lock would have refused to start
     while the real App ran -- or stopped it from starting.  Per test, and
     short: an AF_UNIX path stops at 107 bytes, which a ``tmp_path`` can pass.
+
+    Windows reaches its App through a pipe named for the user, not a
+    directory, so there the test gets a pipe name of its own instead.
     """
     import shutil
     import tempfile
     runtime = tempfile.mkdtemp(prefix="trcc-rt-")
     monkeypatch.setenv("XDG_RUNTIME_DIR", runtime)
+    if not hasattr(socket, "AF_UNIX"):
+        _private_pipe(Path(runtime).name, monkeypatch)
     yield
     shutil.rmtree(runtime, ignore_errors=True)
+
+
+def _private_pipe(tag: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Windows, ``ipc.transport`` becomes a pipe only this test uses."""
+    from trcc import ipc
+    try:
+        from trcc.adapters.infra.named_pipe import NamedPipeChannel
+    except ImportError:
+        return                                    # not Windows: no pipe either
+    pipe = NamedPipeChannel(name=rf"\\.\pipe\trcc-test-{tag}")
+    monkeypatch.setattr(ipc, "channel", lambda: pipe)
 
 
 @pytest.fixture

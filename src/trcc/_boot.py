@@ -6,7 +6,8 @@ and hands back an ``AppProxy``.  A local, in-process ``App`` is built only for
 a stated reason:
 
     TRCC_DAEMON=0            the caller asked (tests, dev mocks, profilers)
-    no AF_UNIX               CPython has no AF_UNIX on Windows, at any build
+    no IPC transport         no AF_UNIX and no named pipe (Windows without
+                             pywin32); Windows itself uses a named pipe
     elevated from a user     sudo / run0 / pkexec / doas: the shared App is
                              that user's, and a root App started here would
                              outlive ``sudo trcc system setup`` holding USB.
@@ -24,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import os
-import socket
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -49,9 +49,10 @@ def _local_reason(platform: Platform | None = None) -> str | None:
     other class is a stand-in.  "A platform was injected" is NOT the test --
     that rule (2026-10-02) put the real gui on its own App and blanked a panel.
     """
+    from . import ipc
     flag = os.environ.get(_ENV_FLAG, "1")
     reason = (f"{_ENV_FLAG}={flag}" if flag != "1"
-              else "no AF_UNIX on this platform" if not hasattr(socket, "AF_UNIX")
+              else "no IPC transport on this platform" if ipc.channel() is None
               else _elevated() or _stand_in(platform))
     log.debug("_local_reason: %s", reason)
     return reason
@@ -67,7 +68,11 @@ def _elevated() -> str | None:
     headless Pi) with no App to keep a panel lit and a root service with
     clients that could not reach it (#150 #246 #267).
     """
-    if os.geteuid() != 0:
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is None or geteuid() != 0:
+        # Windows has no geteuid -- and no sudo-style root to name.  It never
+        # got here before named pipes: "no AF_UNIX" answered first.
+        log.debug("_elevated: not root (geteuid=%s)", geteuid is not None)
         return None
     by = next((var for var in _ELEVATED_BY if os.environ.get(var)), None)
     log.debug("_elevated: root, elevator variable %s", by)

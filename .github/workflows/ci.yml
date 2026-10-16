@@ -126,6 +126,15 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest tests/test_diagnostics.py tests/test_logging_coverage.py -q --tb=short
 
+      # The shared App's channel on Windows is a named pipe
+      # (adapters/infra/named_pipe.py); these are the Unix socket's own
+      # round trips -- dispatch, event streams, eviction, kill -- over it.
+      # All 22 passed on the win11 VM 2026-10-16 before this step existed.
+      - name: IPC over the named pipe
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/test_ipc_transport.py tests/test_ipc_server.py tests/test_ipc_events.py -q --tb=short -n 0
+
       # The one thing only Windows can answer: whether a rotation actually
       # succeeds while other processes are writing the same log.
       - name: Multi-process log rotation

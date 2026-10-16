@@ -31,6 +31,7 @@ from ...core.ports import (
     ScsiTransport,
     SensorEnumerator,
 )
+from ..infra.named_pipe import NamedPipeChannel
 from ..sensors.windows import build_windows_sensors
 from ..visual import WglSurface, drawn_on
 from ..visual.loopback import LoopbackSoundInput
@@ -377,6 +378,8 @@ class WindowsPlatform(BaseOS, key="win32"):
     #: output (``adapters/visual/loopback.py``), drawn on WGL behind a
     #: hidden window -- headless too.
     SOUND_INPUT = LoopbackSoundInput
+    #: CPython has no AF_UNIX on Windows: the App is reached by a named pipe.
+    IPC_CHANNEL = NamedPipeChannel
     VISUALS = drawn_on(WglSurface)
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
