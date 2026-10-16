@@ -759,10 +759,11 @@ Download [`trcc-latest-setup.exe`](https://github.com/Lexonight1/thermalright-tr
 - **TRCC** shortcut in Start Menu — launches the GUI
 - **`trcc`** command in Command Prompt/PowerShell — CLI access (installer adds it to PATH)
 - **7z, ffmpeg, libusb** bundled — no extra downloads needed
+- **[PawnIO](https://pawnio.eu)** — the installer lays down this signed driver (skipped if another app already did), and TRCC reads your CPU's temperature and power through it. It is shared with other monitoring tools, so uninstalling TRCC leaves it; remove it from Windows' **Apps** list if you want it gone. FACEIT's anti-cheat currently refuses PawnIO's driver, so FACEIT players may need to uninstall it while they play.
 
 **Requirements:**
 - Windows 10 or 11
-- For NVIDIA GPU sensors: install [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) — trcc reads its sensors automatically
+- NVIDIA GPU sensors work with nothing extra — they come from NVIDIA's own driver
 - For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc system setup` for guidance. SCSI devices (most models) work with the default Windows driver.
 - Run as Administrator for full hardware access
 

@@ -346,8 +346,9 @@ If a probe goes `BAD`, that's the bug — fix in `src/`, re-run, see `PASS`. Eve
 TRCC Linux stands on other people's open-source work. Credit where it is due — every project here is one whose code, documentation or research we use, ported from, or learned from:
 
 - **[Thermalright TRCC](https://www.thermalright.com/)** (Windows) — the reference for how every device behaves. This project is an independent reimplementation and is not affiliated with Thermalright.
-- **[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)** (MPL-2.0) — the Windows build ships it and reads CPU and GPU sensors from its WMI namespace.
+- **[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)** (MPL-2.0) — when you run LibreHardwareMonitor 0.9.4 or older, TRCC reads its sensors from the WMI namespace it publishes; its CPU readers were a reference for reading the CPU's registers through PawnIO.
 - **[HWiNFO](https://www.hwinfo.com/)** — when it runs with Shared Memory Support, TRCC reads its sensors; the shared-memory layout comes from **[namazso's notes](https://gist.github.com/namazso/0c37be5a53863954c8c8279f66cfb1cc)**.
+- **[PawnIO](https://pawnio.eu)** (GPL-2.0; modules LGPL-2.1) by namazso — the signed driver the Windows installer lays down. TRCC reads the CPU's temperature and power through its signed `IntelMSR` and `AMDFamily17` modules, talking to the driver only through Windows' device-control calls; what the registers mean is checked against the Linux kernel's `coretemp` and `k10temp` and LibreHardwareMonitor's readers.
 - **[iSMC](https://github.com/dkorunic/iSMC)** (GPL-3.0) — the Apple Silicon temperature reading on macOS is ported from its `hid/get.go`.
 - **[macmon](https://github.com/vladkens/macmon)** and **[Stats](https://github.com/exelban/stats)** — how macOS sensors are read; we learned from both.
 - **[libusb-package](https://github.com/pyocd/libusb-package)** (pyOCD) — gives pip installs on Windows a working USB backend.

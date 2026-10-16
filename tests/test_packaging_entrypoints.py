@@ -438,11 +438,9 @@ def test_the_legacy_deb_brings_the_library_its_qt_wheel_links() -> None:
 
 
 #: Files under ``src/trcc/assets/`` that are deliberately NOT in the wheel --
-#: each a build input nothing reads at runtime.  The Windows build copies the
-#: first two from the source tree (windows.yml), never from an installed
-#: package.
+#: each a build input nothing reads at runtime.  The Windows build takes the
+#: icon from the source tree (windows.yml), never from an installed package.
 _NOT_IN_THE_WHEEL = {
-    "LibreHardwareMonitor.config": "windows.yml copies it into dist/trcc/lhm",
     "icons/app.ico": "the Windows exe's icon, used by PyInstaller at build time",
     "fonts/README.md": "notes on the fonts' licences, for people reading the tree",
 }

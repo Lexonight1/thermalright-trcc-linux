@@ -146,9 +146,12 @@ class Credit:
 BUILT_FROM: tuple[Credit, ...] = (
     Credit("LibreHardwareMonitor",
            "LibreHardwareMonitor and Contributors; Michael M\u00f6ller (Open Hardware Monitor)",
-           "MPL-2.0", "Windows CPU and GPU sensors"),
+           "MPL-2.0", "Windows sensors from a user's own LHM, and how CPU "
+           "registers are read"),
     Credit("HWiNFO", "namazso (the shared-memory notes)", "",
            "its shared sensors, read from namazso's notes"),
+    Credit("PawnIO", "namazso", "GPL-2.0-or-later (modules LGPL-2.1)",
+           "Windows CPU temperature and power: the signed driver and modules"),
     Credit("iSMC", "Dinko Korunic", "GPL-3.0-only", "Apple Silicon temperatures"),
     Credit("macmon", "vladkens", "MIT", "how macOS sensors are read"),
     Credit("Stats", "Serhiy Mytrovtsiy", "MIT", "how macOS sensors are read"),

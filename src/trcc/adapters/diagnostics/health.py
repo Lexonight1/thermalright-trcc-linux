@@ -22,11 +22,13 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from ...core import toolchain
 from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
 from ...core.ports import Paths, Platform
+from ..sensors._pawnio_cpu import PawnioCpu
 from ..sensors.nvml import NVML_RELOAD_HINT, GpuStateFn, nvml_init_state
 from .install import collect_install_info
 
@@ -449,6 +451,44 @@ _HWMON = Path("/sys/class/hwmon")
 _CHASSIS = Path("/sys/class/dmi/id/chassis_type")
 
 
+#: What to do about each reason PawnIO gives no CPU reading, by its start.
+_PAWNIO_FIXES = (
+    ("PawnIO is not installed", "Reinstall TRCC -- its installer lays down "
+     "PawnIO -- or install PawnIO from https://pawnio.eu"),
+    ("PawnIO admits only administrators", "Start TRCC as administrator; it "
+     "asks when it launches"),
+    ("IntelMSR.bin not loaded", "Reinstall TRCC: the pawnio folder beside "
+     "trcc.exe is missing"),
+)
+
+
+def check_cpu_sensors_windows(
+        make_cpu: Callable[[], PawnioCpu] = PawnioCpu) -> HealthCheckResult:
+    """Windows-only: does PawnIO give TRCC the CPU's own temperature?
+
+    The one source on Windows that needs nothing running: when it answers
+    nothing, the panel shows no CPU temperature or power unless HWiNFO is
+    open, so the reason -- and what fixes it -- belongs in the report."""
+    log.info("check_cpu_sensors_windows: platform=%s", sys.platform)
+    if sys.platform != "win32":
+        return HealthCheckResult(name="cpu-sensors", severity="OK",
+                                 message="Not applicable on this OS")
+    cpu = make_cpu()
+    temp = cpu.temp()
+    if temp is not None:
+        return HealthCheckResult(
+            name="cpu-sensors", severity="OK",
+            message=f"CPU temperature through PawnIO: {temp:.0f} °C "
+                    f"({cpu.temp_label()})")
+    fix = next((hint for start, hint in _PAWNIO_FIXES
+                if cpu.reason.startswith(start)), "")
+    log.warning("check_cpu_sensors_windows: %s", cpu.reason)
+    return HealthCheckResult(
+        name="cpu-sensors", severity="WARN",
+        message=f"No CPU temperature or power from PawnIO: {cpu.reason}",
+        fix_hint=fix)
+
+
 def check_fan_chip_linux(platform: Platform, hwmon: Path = _HWMON,
                          chassis: Path = _CHASSIS) -> HealthCheckResult:
     """Linux desktops: is the motherboard's fan chip readable?
@@ -560,6 +600,7 @@ def run_health_checks(
         check_qt_importable(),
         check_udev_rules_linux(),
         check_fan_chip_linux(platform),
+        check_cpu_sensors_windows(),
         check_seven_zip_present(platform),
     ]
     for c in checks:

@@ -6,13 +6,13 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-59 ports.
+60 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 6 |
 | [`Command`](#command) | 1 | 1 | 162 |
-| [`CpuSource`](#cpusource) | 1 | 5 | 10 |
+| [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
@@ -48,6 +48,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`SoundInput`](#soundinput) | 3 | 0 | 3 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
+| [`_DeviceIoPort`](#_deviceioport) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
@@ -118,7 +119,7 @@ name() -> str
 
 **You inherit (5):** `freq` · `power` · `temp` · `temp_label` · `usage`
 
-**Implementations (10):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `LhmCpu` · `MacosHidCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
+**Implementations (11):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `LhmCpu` · `MacosHidCpu` · `PawnioCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
 
 ## DataInstaller
 
@@ -682,6 +683,22 @@ volts() -> float | None
 ```
 
 **Implementations (1):** `HwmonVoltage`
+
+## _DeviceIoPort
+
+`adapters/sensors/_pawnio.py`
+
+The three Win32 calls PawnIO needs -- a seam, so a test scripts them.
+
+**You implement (3):**
+
+```python
+close(handle: 'int') -> None
+ioctl(handle: 'int', code: 'int', payload: 'bytes', out_size: 'int') -> bytes
+open(path: 'str') -> int
+```
+
+**Implementations (1):** `_Kernel32DeviceIo`
 
 ## _SharedRotatingFileHandler
 

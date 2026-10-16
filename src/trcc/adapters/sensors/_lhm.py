@@ -1,35 +1,21 @@
 """LibreHardwareMonitor sensor sources — read live values from LHM's WMI.
 
-When ``LibreHardwareMonitor.exe`` is running (user-installed or
-TRCC-bundled), it publishes the full sensor tree to the
-``root\\LibreHardwareMonitor`` WMI namespace.  This module reads from
-that namespace and exposes the data through next/'s ``CpuSource`` /
-``GpuSource`` ABCs.
+When a ``LibreHardwareMonitor.exe`` the user runs publishes the sensor tree
+to the ``root\\LibreHardwareMonitor`` WMI namespace, this module reads it
+through the ``CpuSource`` / ``GpuSource`` / ``DiskSource`` ports.
 
-Subprocess auto-spawn (:class:`LhmSubprocess`) launches the bundled
-``LibreHardwareMonitor.exe`` when NO LHM is present — the PyInstaller
-dist drops the binary at ``<exe-dir>/lhm/`` and the spawned process
-registers the namespace within a few seconds.  Already-running LHM
-(manually installed, autostart, sibling process) is reused: detection
-is namespace-first, then process-name — a foreign LHM whose WMI
-namespace has not yet registered (cold-start publish lag, or WMI
-publishing disabled) is still recognised by its running process, so we
-consume it instead of launching our bundled, older copy beside it.
-``stop()`` only terminates processes WE spawned.
+TRCC no longer ships or launches LHM (#319): LHM 0.9.5 removed its WMI
+provider, so only an LHM 0.9.4 or older still publishes here.  CPU
+temperature and power come from PawnIO (``_pawnio_cpu``) instead.
 
 Wire format ported from legacy ``src/trcc/adapters/system/windows/
 sources/lhm.py``.
 """
 from __future__ import annotations
 
-import atexit
 import logging
-import subprocess
-import sys
 import threading
-import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from ...core.logs import per_frame, recurring_failure
@@ -42,13 +28,6 @@ frame_log = per_frame(__name__)
 
 
 _LHM_NAMESPACE = "root\\LibreHardwareMonitor"
-_LHM_PROCESS_NAME = "LibreHardwareMonitor.exe"
-
-# Window between spawn and the WMI namespace becoming queryable.  On a
-# warm system LHM registers in ~2 s; first-run JIT can push it past
-# that, hence the 10 s ceiling.
-_WMI_READY_TIMEOUT_SEC = 10.0
-_WMI_READY_INTERVAL_SEC = 0.5
 
 # Sensor.SensorType strings emitted by LHM.  Stable across LHM versions.
 _TYPE_TEMP = "Temperature"
@@ -92,305 +71,48 @@ def _probe_wmi_namespace() -> Any:
     return ns
 
 
-def _lhm_process_running(process_name: str = _LHM_PROCESS_NAME) -> bool:
-    """True when a ``LibreHardwareMonitor.exe`` process is already running.
+class _UserLhm:
+    """Whether the user's own LibreHardwareMonitor publishes WMI -- asked
+    once per process.
 
-    Detects a user-installed / autostarted LHM whose WMI namespace has NOT
-    (yet) registered — the case ``_probe_wmi_namespace`` misses while the
-    process is very much alive (cold-start publish lag, or WMI publishing
-    switched off).  When this is true we must consume that instance and never
-    spawn our bundled, older copy alongside it.
-
-    Uses ``psutil`` (already a hard dependency) for a portable process-table
-    scan — the canonical pattern, avoiding fragile ``tasklist`` parsing and
-    the per-thread COM init a ``Win32_Process`` WMI query would need.  Returns
-    ``False`` when ``psutil`` is missing or the scan raises, so a probe failure
-    degrades to "spawn as before" rather than crashing the sensor chain.
-    """
-    log.debug("_lhm_process_running: scanning for %s", process_name)
-    try:
-        import psutil  # pyright: ignore[reportMissingImports]
-    except ImportError:
-        log.debug("_lhm_process_running: psutil unavailable")
-        return False
-    needle = process_name.lower()
-    needle_stem = needle.removesuffix(".exe")
-    try:
-        for proc in psutil.process_iter(["name"]):
-            name = (proc.info.get("name") or "").lower()
-            if name == needle or name.removesuffix(".exe") == needle_stem:
-                log.info("_lhm_process_running: found running %s", process_name)
-                return True
-    except Exception:
-        log.debug("_lhm_process_running: process scan failed", exc_info=True)
-    return False
-
-
-def _lhm_exe_path() -> Path | None:
-    """Locate the bundled ``LibreHardwareMonitor.exe``.
-
-    Searches ``<exe-dir>/lhm/`` (PyInstaller dist layout) then the
-    current working directory (dev mode).  Returns ``None`` when no
-    bundled exe is present — graceful degradation rather than crash.
-    """
-    log.debug("_lhm_exe_path")
-    candidates = [
-        Path(sys.executable).parent / "lhm" / _LHM_PROCESS_NAME,
-        Path.cwd() / "lhm" / _LHM_PROCESS_NAME,
-    ]
-    for c in candidates:
-        if c.is_file():
-            return c
-    return None
-
-
-def _spawn_lhm() -> subprocess.Popen[bytes] | None:
-    """Launch the bundled LHM with a hidden window.
-
-    Detached + no-console so it survives parent shutdown cleanly and
-    doesn't flash a window.  Returns ``None`` when the bundled exe
-    isn't shipped or ``Popen`` raises.
-    """
-    exe = _lhm_exe_path()
-    if exe is None:
-        log.debug("LHM exe not found in expected locations")
-        return None
-
-    creationflags = 0
-    startupinfo = None
-    if sys.platform == "win32":
-        # CREATE_NO_WINDOW (0x08000000) — no console window
-        # DETACHED_PROCESS (0x00000008) — independent of TRCC's console
-        creationflags = 0x08000000
-        # SW_HIDE — belt-and-suspenders for the WinForms main window.
-        startupinfo = subprocess.STARTUPINFO()  # pyright: ignore[reportAttributeAccessIssue]
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW  # pyright: ignore[reportAttributeAccessIssue]
-        startupinfo.wShowWindow = 0  # SW_HIDE
-
-    try:
-        return subprocess.Popen(
-            [str(exe)],
-            cwd=str(exe.parent),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=creationflags,
-            startupinfo=startupinfo,
-            close_fds=True,
-        )
-    except (OSError, subprocess.SubprocessError) as e:
-        log.warning("Failed to spawn LibreHardwareMonitor: %s", e)
-        return None
-
-
-def _wait_for_wmi_namespace(
-    *,
-    probe: Callable[[], Any] = _probe_wmi_namespace,
-    timeout_s: float = _WMI_READY_TIMEOUT_SEC,
-    interval_s: float = _WMI_READY_INTERVAL_SEC,
-    clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
-) -> Any:
-    """Poll for the LHM namespace until it registers or we time out.
-
-    Used after spawning the bundled exe: the WinForms process takes a
-    couple of seconds to wire up its WMI publisher.  DI seams on every
-    blocking call keep the polling loop testable.
-    """
-    log.debug("_wait_for_wmi_namespace")
-    deadline = clock() + timeout_s
-    while clock() < deadline:
-        handle = probe()
-        if handle is not None:
-            return handle
-        sleep(interval_s)
-    return None
-
-
-class LhmSubprocess:
-    """Owns the bundled LHM lifecycle: probe → spawn → wait → handle.
-
-    Detection is namespace-first, then process-name: if
-    ``root\\LibreHardwareMonitor`` is already populated (manual install,
-    autostart, sibling TRCC) we reuse it and never spawn.  If the
-    namespace probe misses but a ``LibreHardwareMonitor.exe`` process is
-    running (its WMI publisher not up yet, or disabled), we STILL never
-    spawn — we consume the running instance and let the namespace probe
-    pick it up when it registers.  Falls back to spawning the bundled
-    exe only when NO LHM is present at all.  ``stop()`` terminates only
-    what we ourselves spawned — reused processes are left running for
-    whoever owns them.
-
-    DI seams (``probe`` / ``spawn`` / ``wait`` / ``process_running``)
-    keep the lifecycle fully testable from the Linux dev box.
+    TRCC no longer ships or launches LHM: 0.9.5 removed its WMI provider
+    (".NET 10 doesn't support it", LHM #2143), so a bundled copy gave TRCC
+    nothing while costing a background process.  An LHM 0.9.4 or older the
+    user runs still publishes, and is read.  Asked once, as the old launch
+    was settled once: probing a namespace that is not there costs a WMI
+    round-trip a tick on every machine without one.
     """
 
-    __slots__ = (
-        "_foreign_lhm_running",
-        "_lock",
-        "_namespace_handle",
-        "_owned_process",
-        "_probe",
-        "_process_running",
-        "_spawn",
-        "_unavailable",
-        "_wait",
-    )
-
-    def __init__(
-        self,
-        *,
-        probe: Callable[[], Any] = _probe_wmi_namespace,
-        spawn: Callable[[], subprocess.Popen[bytes] | None] = _spawn_lhm,
-        wait: Callable[[], Any] = _wait_for_wmi_namespace,
-        process_running: Callable[[], bool] = _lhm_process_running,
-    ) -> None:
-        log.debug("__init__")
+    def __init__(self, probe: Callable[[], Any] = _probe_wmi_namespace) -> None:
+        log.debug("_UserLhm.__init__")
         self._probe = probe
-        self._spawn = spawn
-        self._wait = wait
-        self._process_running = process_running
-        self._owned_process: subprocess.Popen[bytes] | None = None
-        self._namespace_handle: Any = None
-        # True once a spawn attempt found no bundled exe — stops us
-        # re-attempting (and re-warning) on every poll.
-        self._unavailable = False
-        # True once we've seen a foreign LibreHardwareMonitor.exe running —
-        # latches the decision so start() (a per-frame hot path) scans the
-        # process table and waits on the foreign namespace at most once, never
-        # spawns our bundled copy, and lets the step-2 probe pick the foreign
-        # namespace up when it registers.
-        self._foreign_lhm_running = False
-        # start() decides, spawns and waits as ONE step: sensor build and the
-        # poll thread call it concurrently, and four callers racing a slow
-        # CreateProcess launched four LibreHardwareMonitor windows (#191).
         self._lock = threading.Lock()
+        self._available: bool | None = None
 
-    @property
-    def namespace(self) -> Any:
-        log.debug("namespace")
-        return self._namespace_handle
-
-    def start(self) -> Any:
-        """Return the WMI namespace handle, spawning LHM if needed.
-
-        Idempotent AND spawn-safe — once a handle is cached, subsequent
-        ``start()`` calls just return it; and we NEVER spawn a second LHM
-        while one we already launched is still pending (the bug behind the
-        "multiple LibreHardwareMonitor windows", #191).
-
-        Reuse is namespace-first, then process-name: if the namespace probe
-        misses but a foreign ``LibreHardwareMonitor.exe`` is already running,
-        we wait on ITS namespace exactly as we would on one we spawned, and
-        never launch our bundled copy.  The decision latches, so the process
-        table is scanned and the wait paid at most once; later polls rely on
-        the namespace probe above to pick the foreign namespace up whenever
-        it registers.
-
-        Returns ``None`` when the namespace is not (yet) queryable AND either
-        no LHM is present and the bundled exe is unavailable, or the LHM we
-        wait on — ours or a foreign one — did not register within the timeout.
-        """
-        frame_log.debug("LhmSubprocess.start: cached=%s", self._namespace_handle is not None)
+    def available(self) -> bool:
+        """True when an LHM's namespace answered the one probe."""
         with self._lock:
-            return self._start_locked()
-
-    def _start_locked(self) -> Any:
-        """:meth:`start`'s body; the caller holds ``_lock``."""
-        if self._namespace_handle is not None:
-            return self._namespace_handle
-
-        existing = self._probe()
-        if existing is not None:
-            log.info("LibreHardwareMonitor already running; reusing WMI namespace")
-            self._namespace_handle = existing
-            return existing
-
-        # Already decided this session: we spawned LHM (never a second copy),
-        # a foreign one is running (never one beside it), or there is no
-        # bundled exe (never re-warn).  Each was waited on at most ONCE; the
-        # probe above picks the namespace up the moment it registers.  Waiting
-        # again here blocked every LHM read 10 s -- ~20 s inside sensor setup
-        # and ~90 s per poll when the namespace never came (#191).  Cleared by
-        # stop() so a fresh session can try again.
-        if self._owned_process is not None or self._foreign_lhm_running or self._unavailable:
-            log.debug("LhmSubprocess.start: namespace not up; already waited once")
-            return None
-
-        # Whose process do we wait on?  A running foreign LHM (WMI publisher
-        # still initializing, or never coming) is consumed, not duplicated —
-        # the process table is scanned once and the answer latched.  Otherwise
-        # we spawn the bundled exe and own it.  Either way the wait below is
-        # the same, and so is the warning when it times out.
-        if self._process_running():
-            self._foreign_lhm_running = True
-            log.info(
-                "LibreHardwareMonitor already running (process detected); "
-                "waiting on its WMI namespace, not spawning the bundled copy",
-            )
-        else:
-            self._owned_process = self._spawn()
-            if self._owned_process is None:
-                log.warning(
-                    "LibreHardwareMonitor not running and bundled exe not "
-                    "found; LHM sensor source unavailable",
-                )
-                self._unavailable = True
-                return None
-            log.info("Spawned LibreHardwareMonitor (pid=%d)",
-                     self._owned_process.pid)
-
-        self._namespace_handle = self._wait()
-        if self._namespace_handle is None:
-            log.warning(
-                "LibreHardwareMonitor WMI namespace did not register "
-                "within %.0fs; LHM sensor source unavailable",
-                _WMI_READY_TIMEOUT_SEC,
-            )
-        return self._namespace_handle
-
-    def stop(self) -> None:
-        """Terminate the LHM subprocess if WE spawned it; else no-op."""
-        self._namespace_handle = None
-        self._unavailable = False
-        self._foreign_lhm_running = False
-        if self._owned_process is None:
-            return
-        try:
-            self._owned_process.terminate()
-            self._owned_process.wait(timeout=3)
-        except (subprocess.TimeoutExpired, OSError) as e:
-            log.debug("LHM terminate failed (%s); killing", e)
-            try:
-                self._owned_process.kill()
-            except OSError:
-                pass
-        self._owned_process = None
+            if self._available is None:
+                self._available = self._probe() is not None
+                log.info("_UserLhm: %s", "a running LHM publishes WMI"
+                         if self._available else
+                         "no LHM WMI namespace -- LHM sources stay empty")
+            return self._available
 
 
-# Module-level singleton.  Lazy-started by ``_default_handle_factory``
-# below so importing this module costs nothing on platforms without LHM.
-# ``atexit`` cleanup terminates only spawned processes — reused
-# user-installed LHM stays alive.
-_SHARED_LHM = LhmSubprocess()
-atexit.register(_SHARED_LHM.stop)
-
-
+_USER_LHM = _UserLhm()
 _handle_local = threading.local()
 
 
 def _default_handle_factory() -> Any:
-    """Return a per-thread LHM WMI namespace handle, spawning LHM once.
+    """A per-thread handle on the user's LHM namespace, or None without one.
 
-    The spawn (launching ``LibreHardwareMonitor.exe``) stays process-global
-    via the shared :class:`LhmSubprocess`.  The WMI handle, however, is
-    COM-apartment-bound — a handle created on the main thread can't be read
-    from the poll thread (issue #131) — so each thread gets its OWN
-    ``wmi.WMI(namespace=...)``, cached thread-local for cheap repeat reads.
-
-    Tests inject a custom ``handle_factory`` per source, or replace the
-    entire ``_SHARED_LHM`` for end-to-end coverage.
+    The WMI handle is COM-apartment-bound -- one made on the main thread
+    cannot be read from the poll thread (#131) -- so each thread gets its
+    OWN ``wmi.WMI(namespace=...)``, cached thread-local for cheap repeats.
+    Tests inject a custom ``handle_factory`` per source.
     """
-    if _SHARED_LHM.start() is None:
+    if not _USER_LHM.available():
         return None
     handle = getattr(_handle_local, "lhm_ns", None)
     if handle is not None:

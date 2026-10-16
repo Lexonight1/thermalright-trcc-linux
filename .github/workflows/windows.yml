@@ -56,17 +56,27 @@ jobs:
           echo "LIBUSB_PATH=$libusb" >> $env:GITHUB_OUTPUT
         id: libusb
 
-      # LibreHardwareMonitor — bundled subprocess for sensor reads via WMI.
-      # MPL-2.0, redistributable. Pinned to v0.9.6 (Feb 2026 stable, net472).
-      # The .NET 4.7.2 runtime is on every Windows 10+ install by default.
-      - name: Download LibreHardwareMonitor
+      # PawnIO (namazso) — the signed driver TRCC reads CPU temperature and
+      # power through (#319), its installer, and the two signed modules TRCC
+      # runs on it.  Modules: PawnIO.Modules 0.2.11, LGPL-2.1.  Installer:
+      # PawnIO.Setup 2.2.0, redistribution allowed.  Pinned by SHA-256: each
+      # value is GitHub's own asset digest, and the installer's matches winget's.
+      - name: Download PawnIO
         run: |
-          $url = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip"
-          Invoke-WebRequest -Uri $url -OutFile lhm.zip
-          New-Item -ItemType Directory -Force -Path lhm-extracted | Out-Null
-          Expand-Archive -Path lhm.zip -DestinationPath lhm-extracted -Force
-          Write-Host "LHM extracted contents:"
-          Get-ChildItem lhm-extracted -Recurse | Select-Object FullName, Length
+          $mods = "https://github.com/namazso/PawnIO.Modules/releases/download/0.2.11/release_0_2_11.zip"
+          Invoke-WebRequest -Uri $mods -OutFile pawnio-modules.zip
+          $hash = (Get-FileHash pawnio-modules.zip -Algorithm SHA256).Hash
+          if ($hash -ne "43608CB89BC84247FEF1368A139013F7D043E17DB6D6C8DFC9B46BF0905A81F4") {
+            throw "PawnIO.Modules 0.2.11 hash mismatch: $hash"
+          }
+          Expand-Archive -Path pawnio-modules.zip -DestinationPath pawnio-modules -Force
+          $setup = "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe"
+          New-Item -ItemType Directory -Force -Path installer/pawnio | Out-Null
+          Invoke-WebRequest -Uri $setup -OutFile installer/pawnio/PawnIO_setup.exe
+          $hash = (Get-FileHash installer/pawnio/PawnIO_setup.exe -Algorithm SHA256).Hash
+          if ($hash -ne "1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032") {
+            throw "PawnIO_setup 2.2.0 hash mismatch: $hash"
+          }
 
       # Build CLI exe (with console) and GUI exe (without console)
       - name: Build CLI with PyInstaller
@@ -115,12 +125,11 @@ jobs:
           if ("${{ steps.libusb.outputs.LIBUSB_PATH }}") {
             Copy-Item -Path "${{ steps.libusb.outputs.LIBUSB_PATH }}" -Destination dist/trcc/ -Force
           }
-          # Bundle LibreHardwareMonitor — TRCC launches it as a subprocess and
-          # reads sensors via the root\LibreHardwareMonitor WMI namespace.
-          New-Item -ItemType Directory -Force -Path dist/trcc/lhm | Out-Null
-          Copy-Item -Path lhm-extracted/* -Destination dist/trcc/lhm/ -Recurse -Force
-          # Pre-seed config so first launch starts minimized to tray (no window flicker).
-          Copy-Item -Path src/trcc/assets/LibreHardwareMonitor.config -Destination dist/trcc/lhm/LibreHardwareMonitor.config -Force
+          # Bundle the PawnIO modules beside trcc.exe (_pawnio_cpu.module_dir).
+          New-Item -ItemType Directory -Force -Path dist/trcc/pawnio | Out-Null
+          foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "COPYING") {
+            Copy-Item -Path "pawnio-modules/$f" -Destination dist/trcc/pawnio/ -Force
+          }
 
       - name: Log build environment
         run: |
@@ -151,13 +160,15 @@ jobs:
           if (-not (Test-Path "dist/trcc/ffmpeg.exe")) { $missing += "ffmpeg.exe" }
           $libusb = Get-ChildItem "dist/trcc/libusb*" -ErrorAction SilentlyContinue
           if (-not $libusb) { $missing += "libusb-1.0.dll" }
-          if (-not (Test-Path "dist/trcc/lhm/LibreHardwareMonitor.exe")) { $missing += "lhm/LibreHardwareMonitor.exe" }
-          if (-not (Test-Path "dist/trcc/lhm/LibreHardwareMonitor.config")) { $missing += "lhm/LibreHardwareMonitor.config" }
+          foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "COPYING") {
+            if (-not (Test-Path "dist/trcc/pawnio/$f")) { $missing += "pawnio/$f" }
+          }
+          if (-not (Test-Path "installer/pawnio/PawnIO_setup.exe")) { $missing += "installer/pawnio/PawnIO_setup.exe" }
           if ($missing.Count -gt 0) {
             Write-Error "FAILED — Missing: $($missing -join ', ')"
             exit 1
           }
-          Write-Host "PASSED — trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb, LibreHardwareMonitor OK"
+          Write-Host "PASSED — trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb, PawnIO OK"
 
       - name: Smoke-run the frozen CLI
         # The checks above prove files exist, not that the frozen program

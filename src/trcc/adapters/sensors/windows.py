@@ -3,9 +3,12 @@
 Priority order (matches legacy ``WindowsSensorSource.in_priority_order``):
 
   1. HWiNFO64 shared memory — best quality when the user runs HWiNFO.
-  2. LibreHardwareMonitor WMI namespace — broad CPU + GPU coverage.
-  3. MSAcpi ACPI thermal zone — Windows-native fallback, temp-only.
-  4. psutil / pynvml — universal baseline.
+  2. PawnIO — the CPU's own registers through the signed PawnIO driver the
+     installer lays down: package temperature and power, nothing to run.
+  3. LibreHardwareMonitor WMI namespace — a user's own LHM 0.9.4 or older
+     (0.9.5 removed WMI).
+  4. MSAcpi ACPI thermal zone — Windows-native fallback, temp-only.
+  5. psutil / pynvml — universal baseline.
 
 Each strategy returns ``None`` when its backend isn't present, so the
 chain naturally degrades.
@@ -20,6 +23,7 @@ from ...core.ports import CpuSource, GpuSource
 from ._hwinfo import HwinfoCpu, discover_hwinfo_gpus
 from ._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
+from ._pawnio_cpu import PawnioCpu
 from ._wmi_gpu import discover_wmi_gpus
 from .aggregator import BaselineSensors
 from .chain import CpuSourceChain, GpuSourceChain
@@ -41,6 +45,7 @@ def build_windows_sensors(
     log.info("build_windows_sensors: called")
     cpu: CpuSource = CpuSourceChain([
         HwinfoCpu(),
+        PawnioCpu(),
         LhmCpu(),
         WmiAcpiCpu(),
         PsutilCpu(),

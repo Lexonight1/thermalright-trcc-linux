@@ -47,3 +47,36 @@ def test_setup_broadcasts_the_path_change() -> None:
 
     assert "Session Manager\\Environment" in iss          # it does edit PATH
     assert "ChangesEnvironment=yes" in setup.splitlines()
+
+
+def test_setup_installs_pawnio_silently_unless_it_is_there() -> None:
+    """Without PawnIO, Windows gives TRCC no CPU temperature or power (#319),
+    so setup lays it down -- no question asked, skipped when another app
+    already did, and never removed: other monitors share it."""
+    iss = _ISS.read_text(encoding="utf-8")
+    assert ('Filename: "{tmp}\\PawnIO_setup.exe"; Parameters: "-install -silent"'
+            in iss)
+    assert "Check: not PawnIOInstalled" in iss
+    assert ("RegKeyExists(HKLM, 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion"
+            "\\Uninstall\\PawnIO')") in iss
+    uninstall = iss.split("[UninstallRun]", 1)[1].split("[Code]", 1)[0]
+    assert "PawnIO" not in uninstall
+
+
+def test_the_build_ships_the_modules_where_the_code_looks() -> None:
+    """The folder and file names live in the code and in windows.yml; this
+    is what keeps the two from drifting apart.  Both downloads stay pinned.
+
+    MUTATION CHECK: rename _IntelPackage.MODULE."""
+    from trcc.adapters.sensors._pawnio_cpu import (
+        MODULE_DIR_NAME,
+        _AmdPackage,
+        _IntelPackage,
+    )
+    workflow = (_ISS.parent.parent / ".github" / "workflows"
+                / "windows.yml").read_text(encoding="utf-8")
+    for module in (_IntelPackage.MODULE, _AmdPackage.MODULE):
+        assert f'"{module}"' in workflow
+        assert f"dist/trcc/{MODULE_DIR_NAME}/$f" in workflow
+    assert "43608CB89BC84247FEF1368A139013F7D043E17DB6D6C8DFC9B46BF0905A81F4" in workflow
+    assert "1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032" in workflow

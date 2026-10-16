@@ -50,6 +50,9 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 Type: filesandordirs; Name: "{app}\_internal"
 Type: files; Name: "{app}\trcc.exe"
 Type: files; Name: "{app}\trcc-gui.exe"
+; LibreHardwareMonitor, which older versions shipped and launched; 0.9.5 dropped
+; the WMI TRCC read it through, so nothing uses it now (#319)
+Type: filesandordirs; Name: "{app}\lhm"
 
 [Files]
 ; PyInstaller output directory (all DLLs, Python runtime, Qt, app code)
@@ -57,6 +60,11 @@ Source: "..\dist\trcc\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; WinUSB driver .inf kept for reference — not auto-installed (requires signed cert)
 ; Users needing WinUSB (bulk/HID devices) are guided to Zadig via `trcc doctor`
 Source: "trcc-usb.inf"; DestDir: "{app}\driver"; Flags: ignoreversion
+; PawnIO (namazso, https://pawnio.eu): the signed driver TRCC reads CPU
+; temperature and power through (#319).  Downloaded and hash-checked by
+; windows.yml; run below, then deleted.  Redistribution of its installer is
+; allowed.
+Source: "pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\TRCC"; Filename: "{app}\trcc-gui.exe"; Comment: "Thermalright LCD Control Center"
@@ -66,6 +74,12 @@ Name: "{commondesktop}\TRCC"; Filename: "{app}\trcc-gui.exe"; Tasks: desktopicon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\TRCC"; Filename: "{app}\trcc-gui.exe"; Tasks: quicklaunchicon
 
 [Run]
+; PawnIO, silently, unless it is already there (another app may have put it).
+; Without it Windows gives TRCC no CPU temperature or power.  It is shared,
+; so TRCC's uninstaller leaves it; it uninstalls from Windows' Apps list.
+Filename: "{tmp}\PawnIO_setup.exe"; Parameters: "-install -silent"; \
+    StatusMsg: "Installing PawnIO (CPU temperature and power)..."; \
+    Flags: waituntilterminated; Check: not PawnIOInstalled
 ; WinUSB driver not auto-installed (requires signed certificate).
 ; Users with bulk/HID devices are guided to Zadig via `trcc doctor`.
 Filename: "{app}\trcc-gui.exe"; Description: "{cm:LaunchProgram,TRCC}"; Flags: nowait postinstall skipifsilent shellexec
@@ -90,6 +104,12 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM trcc-gui.exe"; Flags: runhid
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM trcc.exe"; Flags: runhidden; RunOnceId: "KillCLI"
 
 [Code]
+function PawnIOInstalled: Boolean;
+begin
+  { PawnIO's own installer registers this key; LibreHardwareMonitor checks it too }
+  Result := RegKeyExists(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO');
+end;
+
 procedure KillRunningProcesses;
 var
   ResultCode: Integer;

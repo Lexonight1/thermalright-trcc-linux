@@ -461,7 +461,7 @@ def test_hwinfo_value_offset_constant_matches_layout() -> None:
 
 
 def test_build_windows_sensors_constructs_chain(monkeypatch) -> None:
-    """build_windows_sensors composes the four-strategy chain.
+    """build_windows_sensors composes the five-strategy chain, in order.
 
     We can't actually exercise HWiNFO/LHM/MSAcpi on Linux, but we can
     verify the factory wires them up without crashing — each strategy
@@ -488,6 +488,12 @@ def test_build_windows_sensors_constructs_chain(monkeypatch) -> None:
 
     sensors = win_factory.build_windows_sensors()
     cpu = sensors.cpu()
+    # PawnIO second: a running HWiNFO still wins, a user's old LHM still reads
+    # (MUTATION CHECK: drop PawnioCpu from the chain).
+    from trcc.adapters.sensors.chain import CpuSourceChain
+    assert isinstance(cpu, CpuSourceChain)
+    assert [type(s).__name__ for s in cpu._sources] == [
+        "HwinfoCpu", "PawnioCpu", "LhmCpu", "WmiAcpiCpu", "PsutilCpu"]
     # The chain falls through to PsutilCpu, which always answers usage on linux/win
     assert cpu.usage() is not None      # psutil baseline
     # Temp may be None on a VM/dev box; just verify no exception

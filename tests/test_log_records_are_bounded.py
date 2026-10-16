@@ -313,7 +313,7 @@ def test_a_missing_lhm_namespace_writes_its_traceback_once(
     monkeypatch.setattr(logs, "_REPORTED", set())
     monkeypatch.setitem(sys.modules, "wmi", SimpleNamespace(WMI=no_namespace))
     # LHM "up", its namespace not: the per-thread handle path runs.
-    monkeypatch.setattr(_lhm, "_SHARED_LHM", SimpleNamespace(start=object))
+    monkeypatch.setattr(_lhm, "_USER_LHM", SimpleNamespace(available=lambda: True))
     monkeypatch.setattr(_lhm._handle_local, "lhm_ns", None, raising=False)
     caplog.set_level(logging.DEBUG)
 
@@ -337,7 +337,7 @@ def test_a_missing_lhm_namespace_writes_its_traceback_once(
 #: tracebacks per sweep (2026-10-06).  Both it and the per-thread handle now use
 #: ``recurring_failure``.
 KNOWN_SENSOR_TRACEBACKS: dict[str, int] = {
-    "_lhm.py": 4, "_macos_hid.py": 2, "_msacpi.py": 1, "_powermetrics.py": 1,
+    "_lhm.py": 3, "_macos_hid.py": 2, "_msacpi.py": 1, "_powermetrics.py": 1,
     "_smc.py": 1, "_sysctl.py": 1, "nvml.py": 3,
 }
 
