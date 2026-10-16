@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -41,6 +41,23 @@ def _mime(*names: str) -> QMimeData:
     return mime
 
 
+_DRAG = (Qt.DropAction.CopyAction, Qt.MouseButton.LeftButton,
+         Qt.KeyboardModifier.NoModifier)
+
+
+def _enter(point: QPoint, mime: QMimeData) -> QDragEnterEvent:
+    """A drag entering at *point*, in whichever form this PySide6 binds.
+
+    PySide6 6.12 takes a QPointF and deprecates the QPoint form -- an error
+    under this suite's warning filter; 6.11.1 binds only the QPoint form, so
+    a QPointF there is a TypeError.  Measured on both, 2026-10-15."""
+    actions, buttons, mods = _DRAG
+    try:
+        return QDragEnterEvent(QPointF(point), actions, mime, buttons, mods)
+    except TypeError:
+        return QDragEnterEvent(point, actions, mime, buttons, mods)
+
+
 def test_the_target_accepts_one_file_and_reports_the_drop(qtbot: Any) -> None:
     widget = QWidget()
     qtbot.addWidget(widget)
@@ -49,20 +66,17 @@ def test_the_target_accepts_one_file_and_reports_the_drop(qtbot: Any) -> None:
     refused: list[str] = []
     target.dropped.connect(lambda p, k: got.append((p, k)))
     target.refused.connect(refused.append)
-    actions = Qt.DropAction.CopyAction
-    buttons, mods = Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier
-
-    # A drag enters at a QPoint; a drop lands at a QPointF (PySide6 6.11).
+    actions, buttons, mods = _DRAG
     point = widget.rect().center()
-    at = QPointF(point)
     # An event holds only a pointer to its mime data: keep each one alive.
     video, text = _mime("/v/c.mp4"), _mime("/d/x.txt")
-    enter = QDragEnterEvent(point, actions, video, buttons, mods)
+    enter = _enter(point, video)
     QApplication.sendEvent(widget, enter)
-    nope = QDragEnterEvent(point, actions, text, buttons, mods)
+    nope = _enter(point, text)
     QApplication.sendEvent(widget, nope)
     # Qt delivers a drop only after an accepted drag: the video's.
-    QApplication.sendEvent(widget, QDropEvent(at, actions, video, buttons, mods))
+    QApplication.sendEvent(widget, QDropEvent(QPointF(point), actions, video,
+                                              buttons, mods))
 
     assert (widget.acceptDrops(), enter.isAccepted(), nope.isAccepted()) == (
         True, True, False)
