@@ -83,7 +83,13 @@ def _defines(tree: ast.Module) -> set[str]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(node.name)
         elif isinstance(node, ast.Assign):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+            # ``A, B = 1, 2`` binds both: every name stored anywhere in a
+            # target, not just a bare one -- that miss called ``HOLD`` and
+            # ``GL_FRAGMENT_SHADER`` stale while their importers ran fine.
+            names.update(n.id for target in node.targets
+                         for n in ast.walk(target)
+                         if isinstance(n, ast.Name)
+                         and isinstance(n.ctx, ast.Store))
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -309,6 +315,10 @@ _MUST_RESOLVE = [
      "registry-dispatched via PLATFORMS[key]"),
     ("trcc.adapters.diagnostics.health", "package_install_hint",
      "DEAD but present — deadness is a different question from existence"),
+    ("trcc.adapters.visual._spectrum", "HOLD",
+     "bound by tuple assignment: HOLD, GRAVITY = 0.35, 5.0"),
+    ("trcc.adapters.visual._gl", "GL_FRAGMENT_SHADER",
+     "bound by tuple assignment beside GL_VERTEX_SHADER"),
 ]
 
 _MUST_BE_STALE = [
