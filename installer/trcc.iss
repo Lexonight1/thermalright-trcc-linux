@@ -94,8 +94,11 @@ Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environmen
 ; The app directory.  (Autostart is removed in CurUninstallStepChanged: the
 ; sign-in task and the Run values.  Nothing ever wrote to the Startup folder.)
 Type: filesandordirs; Name: "{app}"
-; Remove user config and data (~/.trcc)
-; ~/.trcc-user is intentionally kept — contains user-created custom content
+; TRCC's own config and data: %APPDATA%\trcc (WindowsPaths), and the ~/.trcc
+; versions before it used.  Only ~/.trcc was named here until 2026-10-16, so an
+; uninstall left %APPDATA%\trcc behind.  %LOCALAPPDATA%\trcc-user is KEPT: it
+; holds the themes and backgrounds the user made.
+Type: filesandordirs; Name: "{userappdata}\trcc"
 Type: filesandordirs; Name: "{%USERPROFILE}\.trcc"
 
 [UninstallRun]
@@ -118,6 +121,15 @@ begin
        SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM trcc.exe', '',
        SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // The LibreHardwareMonitor an older TRCC launched from its lhm folder: the
+  // taskkill above gives TRCC no chance to stop it, so it lives on orphaned,
+  // holding the folder [InstallDelete] removes (seen in the VM 2026-10-16).
+  // Matched by path, so an LHM the user runs from anywhere else is left alone.
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+       '-NoProfile -Command "Get-Process LibreHardwareMonitor -ErrorAction ' +
+       'SilentlyContinue | Where-Object { $_.Path -like ''' +
+       ExpandConstant('{app}') + '\lhm\*'' } | Stop-Process -Force"',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

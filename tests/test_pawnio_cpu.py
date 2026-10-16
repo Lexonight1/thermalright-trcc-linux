@@ -205,3 +205,36 @@ def test_doctor_says_what_fixes_a_missing_reading(
     result = check_cpu_sensors_windows(
         lambda: PawnioCpu(open_module=refuse, pci_bus=lambda: nullcontext))
     assert (result.severity, result.fix_hint) == ("WARN", fix)
+
+
+def test_a_cpu_with_no_tjmax_gives_no_reading_and_says_why() -> None:
+    """A QEMU vCPU, measured 2026-10-16 in the win11 VM: PawnIO opened and
+    IntelMSR loaded, but MSR 0x1A2 read 0 -- and its energy registers read 0,
+    which TRCC would have shown as 0 W.  coretemp treats TjMax 0 as unreadable.
+
+    MUTATION CHECK: drop the TjMax-0 refusal in _IntelPackage."""
+    vm = dict(I9_12900K)
+    vm.update({("ioctl_read_msr", 0x1A2): 0, ("ioctl_read_msr", 0x606): 0,
+               ("ioctl_read_msr", 0x611): 0, ("ioctl_read_msr", 0x1B1): 0})
+    device = _FakePawnIo("IntelMSR.bin", vm)
+    cpu = _cpu(device)
+    assert (cpu.temp(), cpu.power(), cpu.power()) == (None, None, None)
+    assert cpu.reason == ("the CPU reports no TjMax (MSR 0x1A2 reads 0) -- a "
+                          "virtual machine does")
+    assert device.closed == 1
+
+
+def test_doctor_never_ends_on_an_empty_reason(monkeypatch) -> None:
+    """In the VM it printed "No CPU temperature or power from PawnIO:" and
+    nothing: PawnIO loaded, so there was no reason, but no valid reading."""
+    import sys
+
+    from trcc.adapters.diagnostics.health import check_cpu_sensors_windows
+    invalid = dict(I9_12900K)
+    invalid[("ioctl_read_msr", 0x1B1)] = 0x002F_0000          # bit 31 clear
+    monkeypatch.setattr(sys, "platform", "win32")
+    result = check_cpu_sensors_windows(
+        lambda: _cpu(_FakePawnIo("IntelMSR.bin", invalid)))
+    assert result.message == ("No CPU temperature or power from PawnIO: PawnIO "
+                              "reads the CPU, but its package temperature is "
+                              "not valid yet")

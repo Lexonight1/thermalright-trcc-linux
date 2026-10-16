@@ -480,12 +480,16 @@ def check_cpu_sensors_windows(
             name="cpu-sensors", severity="OK",
             message=f"CPU temperature through PawnIO: {temp:.0f} °C "
                     f"({cpu.temp_label()})")
+    # No reason means PawnIO loaded and read the CPU, but the reading itself
+    # was not valid -- say that, rather than a colon with nothing after it.
+    reason = cpu.reason or ("PawnIO reads the CPU, but its package "
+                            "temperature is not valid yet")
     fix = next((hint for start, hint in _PAWNIO_FIXES
-                if cpu.reason.startswith(start)), "")
-    log.warning("check_cpu_sensors_windows: %s", cpu.reason)
+                if reason.startswith(start)), "")
+    log.warning("check_cpu_sensors_windows: %s", reason)
     return HealthCheckResult(
         name="cpu-sensors", severity="WARN",
-        message=f"No CPU temperature or power from PawnIO: {cpu.reason}",
+        message=f"No CPU temperature or power from PawnIO: {reason}",
         fix_hint=fix)
 
 

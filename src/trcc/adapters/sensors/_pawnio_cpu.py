@@ -82,9 +82,16 @@ class _IntelPackage:
         log.debug("_IntelPackage.__init__")
         self._module = module
         self._tjmax = intel_tjmax(_read_msr(module, INTEL_TEMPERATURE_TARGET))
+        log.info("_IntelPackage: TjMax %d degC", self._tjmax)
+        if not self._tjmax:
+            # coretemp treats 0 as unreadable too (coretemp.c:294).  Taken as
+            # a TjMax it would read -N degC -- and a CPU that answers 0 here
+            # answers 0 for energy too, which would read as 0 W.  Seen on a
+            # QEMU vCPU, which emulates none of these registers.
+            raise PawnIoError(0, "the CPU reports no TjMax (MSR 0x1A2 reads "
+                                 "0) -- a virtual machine does")
         self._energy = EnergyMeter(energy_unit(
             _read_msr(module, INTEL_RAPL_POWER_UNIT)))
-        log.info("_IntelPackage: TjMax %d degC", self._tjmax)
 
     def temp(self) -> float | None:
         frame_log.debug("_IntelPackage.temp")
