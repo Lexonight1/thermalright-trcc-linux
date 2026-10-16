@@ -16,8 +16,8 @@ class _StubCpu(CpuSource):
                  temp: float | None = None,
                  usage: float | None = None,
                  freq: float | None = None,
-                 power: float | None = None) -> None:
-        self._name = name
+                 power: float | None = None, label: str = "") -> None:
+        self._name, self._label = name, label
         self._temp, self._usage, self._freq, self._power = temp, usage, freq, power
 
     @property
@@ -26,6 +26,9 @@ class _StubCpu(CpuSource):
 
     def temp(self) -> float | None:
         return self._temp
+
+    def temp_label(self) -> str:
+        return self._label
 
     def usage(self) -> float | None:
         return self._usage
@@ -78,6 +81,12 @@ class _StubGpu(GpuSource):
 
     def vram_total(self) -> float | None:
         return self._r.get("vram_total")
+
+    def hotspot(self) -> float | None:
+        return self._r.get("hotspot")
+
+    def mem_temp(self) -> float | None:
+        return self._r.get("mem_temp")
 
 
 class _StubMemory(MemorySource):
@@ -201,6 +210,44 @@ def test_gpu_chain_readings_cascade() -> None:
     assert chain.fan_rpm() == 2400.0
     assert chain.vram_used() == 8192.0
     assert chain.vram_total() == 24576.0
+
+
+def _declared_readings(port: type) -> list[str]:
+    """Every reading *port* declares: its public, non-abstract methods."""
+    return sorted(name for name, value in vars(port).items()
+                  if callable(value) and not name.startswith("_")
+                  and not getattr(value, "__isabstractmethod__", False))
+
+
+@pytest.mark.parametrize(("port", "chain"), [(CpuSource, CpuSourceChain),
+                                             (GpuSource, GpuSourceChain)],
+                         ids=["cpu", "gpu"])
+def test_a_chain_forwards_every_reading_its_port_declares(port: type,
+                                                           chain: type) -> None:
+    """A reading the chain leaves out answers the port's default, whatever its
+    members read -- GpuSourceChain dropped hotspot and mem_temp while its
+    provides() said yes, so the picker offered sensors that always read
+    empty.  Derived from the port, so the next reading added is covered
+    without anyone remembering.
+
+    MUTATION CHECK: delete GpuSourceChain.hotspot."""
+    assert [name for name in _declared_readings(port)
+            if name not in vars(chain)] == []
+
+
+def test_gpu_chain_forwards_hotspot_and_memory_temperature() -> None:
+    chain = GpuSourceChain([_StubGpu(temp=60.0),
+                            _StubGpu(hotspot=81.5, mem_temp=74.0)])
+    assert (chain.hotspot(), chain.mem_temp()) == (81.5, 74.0)
+
+
+def test_cpu_chain_labels_the_temperature_by_the_source_that_reads_it() -> None:
+    """The picker's "Temperature (Package)" names what the reading IS: the
+    label of the member whose temp() answered, not of the first member."""
+    chain = CpuSourceChain([_StubCpu(label="Tctl"),
+                            _StubCpu(temp=55.0, label="Package")])
+    assert chain.temp_label() == "Package"
+    assert CpuSourceChain([_StubCpu(label="Tctl")]).temp_label() == ""
 
 
 # ── MemorySourceChain ───────────────────────────────────────────────

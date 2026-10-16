@@ -81,6 +81,17 @@ class CpuSourceChain(CpuSource):
         frame_log.debug("CpuSourceChain.temp: called")
         return _first_not_none(self._sources, "temp")
 
+    def temp_label(self) -> str:
+        """What the temperature reads -- the label of the member whose
+        ``temp()`` answers, so "Package" or "Tctl" names the reading actually
+        shown.  Empty when no member reads one yet: a member that merely
+        COULD read (HWiNFO not running) would name the wrong sensor."""
+        frame_log.debug("CpuSourceChain.temp_label: called")
+        for source in self._sources:
+            if source.temp() is not None:
+                return source.temp_label()
+        return ""
+
     def usage(self) -> float | None:
         frame_log.debug("CpuSourceChain.usage: called")
         return _first_not_none(self._sources, "usage")
@@ -182,6 +193,14 @@ class GpuSourceChain(GpuSource):
     def vram_total(self) -> float | None:
         frame_log.debug("GpuSourceChain.vram_total: key=%s", self._sources[0].key)
         return _first_not_none(self._sources, "vram_total")
+
+    def hotspot(self) -> float | None:
+        frame_log.debug("GpuSourceChain.hotspot: key=%s", self._sources[0].key)
+        return _first_not_none(self._sources, "hotspot")
+
+    def mem_temp(self) -> float | None:
+        frame_log.debug("GpuSourceChain.mem_temp: key=%s", self._sources[0].key)
+        return _first_not_none(self._sources, "mem_temp")
 
 
 class MemorySourceChain(MemorySource):
