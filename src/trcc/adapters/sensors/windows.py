@@ -35,17 +35,19 @@ log = logging.getLogger(__name__)
 
 def build_windows_sensors(
     thread_context: Callable[[], AbstractContextManager[None]] = nullcontext,
+    pawnio: PawnioCpu | None = None,
 ) -> BaselineSensors:
     """Construct a BaselineSensors with the full Windows source chain.
 
     ``thread_context`` is the OS poll-thread setup (Windows passes its COM
     apartment so WMI reads work off the main thread); defaults to a no-op
-    so the builder stays callable without a Platform.
+    so the builder stays callable without a Platform.  *pawnio* is the
+    platform's choice -- through TRCC's service when not elevated.
     """
-    log.info("build_windows_sensors: called")
+    log.info("build_windows_sensors: pawnio=%s", "given" if pawnio else "direct")
     cpu: CpuSource = CpuSourceChain([
         HwinfoCpu(),
-        PawnioCpu(),
+        pawnio or PawnioCpu(),
         LhmCpu(),
         WmiAcpiCpu(),
         PsutilCpu(),

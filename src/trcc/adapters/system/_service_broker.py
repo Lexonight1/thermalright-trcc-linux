@@ -204,7 +204,13 @@ class PrivilegedBroker:
             return self._run(session, op, header, body)
         except Refused as e:
             return {"ok": False, "refused": True, "error": str(e)}, b""
-        except (OSError, ValueError, KeyError, TypeError) as e:
+        except OSError as e:
+            # The Windows error travels with it: PawnIO's "not for this CPU"
+            # (50) is how the App picks the Intel or the AMD module.
+            code = getattr(e, "code", None) or e.errno or 0
+            log.warning("PrivilegedBroker: %s failed: code %s: %s", op, code, e)
+            return {"ok": False, "code": code, "error": str(e)}, b""
+        except (ValueError, KeyError, TypeError) as e:
             log.warning("PrivilegedBroker: %s failed: %s: %s", op,
                         type(e).__name__, e)
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}, b""
@@ -306,7 +312,14 @@ def serve_connection(broker: PrivilegedBroker, stream: Any,
 # ── The client side ──────────────────────────────────────────────────
 
 class ServiceError(OSError):
-    """The service answered no -- refused, or the hardware failed there."""
+    """The service answered no -- refused, or the hardware failed there.
+    ``code`` is the Windows error it failed with there, 0 for a refusal."""
+
+    def __init__(self, message: str, code: int = 0, refused: bool = False) -> None:
+        log.debug("ServiceError: code %d refused=%s %s", code, refused, message)
+        super().__init__(message)
+        self.code = code
+        self.refused = refused
 
 
 class ServiceClient:
@@ -325,7 +338,9 @@ class ServiceClient:
             send_message(self._stream, header, body)
             reply, data = recv_message(self._stream)
         if not reply.get("ok"):
-            raise ServiceError(reply.get("error", "the service said no"))
+            raise ServiceError(str(reply.get("error", "the service said no")),
+                               int(reply.get("code") or 0),
+                               bool(reply.get("refused")))
         return reply, data
 
     def close(self) -> None:

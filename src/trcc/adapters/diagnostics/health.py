@@ -457,13 +457,22 @@ _PAWNIO_FIXES = (
      "PawnIO -- or install PawnIO from https://pawnio.eu"),
     ("PawnIO admits only administrators", "Start TRCC as administrator; it "
      "asks when it launches"),
+    ("TRCC's Windows service", "Reinstall TRCC: its installer sets up the "
+     "TRCC service, which reads the CPU for it"),
     ("IntelMSR.bin not loaded", "Reinstall TRCC: the pawnio folder beside "
      "trcc.exe is missing"),
 )
 
 
+def _platform_pawnio() -> PawnioCpu:
+    """PawnIO as the App reaches it on this machine (``windows.make_pawnio_cpu``)."""
+    from ..system.windows import make_pawnio_cpu
+    log.debug("_platform_pawnio")
+    return make_pawnio_cpu()
+
+
 def check_cpu_sensors_windows(
-        make_cpu: Callable[[], PawnioCpu] = PawnioCpu) -> HealthCheckResult:
+        make_cpu: Callable[[], PawnioCpu] = _platform_pawnio) -> HealthCheckResult:
     """Windows-only: does PawnIO give TRCC the CPU's own temperature?
 
     The one source on Windows that needs nothing running: when it answers

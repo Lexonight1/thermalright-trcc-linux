@@ -1,0 +1,164 @@
+"""The App's side of TRCC's Windows service: the same ports, through it.
+
+A non-elevated TRCC cannot open a SCSI panel's drive or the PawnIO driver
+itself (measured on the win11 VM: ERROR_ACCESS_DENIED, PawnIO code 5).
+``WindowsPlatform`` then hands out these instead of the direct ones -- the
+same ``ScsiTransport`` port and the same PawnIO module shape -- and every
+byte goes through the SYSTEM service (``win_service.py``), which checks it
+against what TRCC does (``_service_broker.py``).
+"""
+from __future__ import annotations
+
+import logging
+from collections.abc import Sequence
+from typing import Any
+
+from ...core.errors import TransportError
+from ...core.logs import per_frame
+from ...core.ports import ScsiTransport
+from ..sensors._pawnio import PawnIoError
+from ._service_broker import (
+    SERVICE_NAME,
+    SERVICE_PIPE,
+    SERVICE_SDDL,
+    ServiceClient,
+    ServiceError,
+)
+
+log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
+
+#: What a user is told when the service is not there to answer.
+NOT_RUNNING = (f"TRCC's Windows service ({SERVICE_NAME}) is not running -- "
+               "reinstall TRCC, or run it as administrator")
+
+
+def connect_service(timeout: float = 5.0) -> ServiceClient:
+    """A connection to the service; ``ConnectionRefusedError`` naming the fix
+    when it is not installed or not started."""
+    from ..infra.named_pipe import NamedPipeChannel
+    log.debug("connect_service: timeout=%s", timeout)
+    try:
+        stream = NamedPipeChannel.for_service(
+            SERVICE_PIPE, SERVICE_SDDL).connect(timeout)
+    except ConnectionRefusedError as e:
+        log.warning("connect_service: %s", NOT_RUNNING)
+        raise ConnectionRefusedError(NOT_RUNNING) from e
+    return ServiceClient(stream)
+
+
+class ServiceScsiTransport(ScsiTransport):
+    """A SCSI panel, driven by the service: it finds and opens the drive."""
+
+    def __init__(self, vid: int, pid: int) -> None:
+        self._vid, self._pid = vid, pid
+        self._client: ServiceClient | None = None
+        self._handle = 0
+        log.info("ServiceScsiTransport: %04x:%04x through %s", vid, pid,
+                 SERVICE_NAME)
+
+    @property
+    def is_open(self) -> bool:
+        frame_log.debug("ServiceScsiTransport.is_open")
+        return self._client is not None
+
+    def open(self) -> bool:
+        """Ask the service for the panel; ``TransportError`` saying why not."""
+        log.info("ServiceScsiTransport.open: %04x:%04x", self._vid, self._pid)
+        if self._client is not None:
+            return True
+        try:
+            client = connect_service()
+            reply, _ = client.call({"op": "scsi.open", "vid": self._vid,
+                                    "pid": self._pid})
+        except ConnectionRefusedError as e:
+            raise TransportError(str(e)) from e
+        except ServiceError as e:
+            client.close()
+            log.warning("ServiceScsiTransport.open: %s", e)
+            raise TransportError(f"{self._vid:04x}:{self._pid:04x}: {e}") from e
+        self._client, self._handle = client, int(reply["handle"])
+        return True
+
+    def close(self) -> None:
+        log.info("ServiceScsiTransport.close: %04x:%04x", self._vid, self._pid)
+        client, self._client = self._client, None
+        if client is None:
+            return
+        try:
+            client.call({"op": "scsi.close", "handle": self._handle})
+        except OSError as e:
+            log.debug("ServiceScsiTransport.close: %s", e)
+        client.close()
+
+    def _live(self) -> ServiceClient:
+        frame_log.debug("ServiceScsiTransport._live")
+        if self._client is None:
+            raise TransportError(f"{self._vid:04x}:{self._pid:04x} is not open")
+        return self._client
+
+    def send_cdb(self, cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
+        frame_log.debug("ServiceScsiTransport.send_cdb: %d bytes", len(data))
+        try:
+            reply, _ = self._live().call(
+                {"op": "scsi.send", "handle": self._handle,
+                 "timeout_ms": timeout_ms}, bytes(cdb) + bytes(data))
+        except ServiceError as e:
+            raise TransportError(f"the service could not send: {e}") from e
+        return bool(reply.get("sent"))
+
+    def read_cdb(self, cdb: bytes, length: int, timeout_ms: int = 5000) -> bytes:
+        frame_log.debug("ServiceScsiTransport.read_cdb: %d", length)
+        try:
+            _, data = self._live().call(
+                {"op": "scsi.read", "handle": self._handle, "length": length,
+                 "timeout_ms": timeout_ms}, bytes(cdb))
+        except ServiceError as e:
+            raise TransportError(f"the service could not read: {e}") from e
+        return data
+
+
+class ServicePawnModule:
+    """A PawnIO module the service loaded -- ``PawnIoModule``'s shape."""
+
+    def __init__(self, client: ServiceClient, handle: int, name: str) -> None:
+        self._client, self._handle, self._name = client, handle, name
+        log.debug("ServicePawnModule: %s as %d", name, handle)
+
+    def execute(self, function: str, inputs: Sequence[int],
+                outputs: int) -> tuple[int, ...]:
+        frame_log.debug("ServicePawnModule.execute: %s %s", function, inputs)
+        try:
+            reply, _ = self._client.call(
+                {"op": "pawnio.execute", "handle": self._handle,
+                 "function": function, "inputs": list(inputs)})
+        except ServiceError as e:
+            raise PawnIoError(e.code, str(e)) from e
+        return tuple(int(v) for v in reply["outputs"][:outputs])
+
+    def close(self) -> None:
+        log.debug("ServicePawnModule.close: %s", self._name)
+        try:
+            self._client.call({"op": "pawnio.close", "handle": self._handle})
+        except OSError as e:
+            log.debug("ServicePawnModule.close: %s", e)
+        self._client.close()
+
+
+def open_service_module(file_name: str) -> Any:
+    """``PawnioCpu``'s *open_module*, through the service: ``IntelMSR.bin``
+    -> the service loads ``IntelMSR``.  Failures arrive as ``PawnIoError``
+    with the driver's own code, so "not for this CPU" still means "try the
+    next module"."""
+    name = file_name.removesuffix(".bin")
+    log.info("open_service_module: %s", name)
+    try:
+        client = connect_service()
+    except ConnectionRefusedError as e:
+        raise PawnIoError(0, NOT_RUNNING) from e
+    try:
+        reply, _ = client.call({"op": "pawnio.load", "module": name})
+    except ServiceError as e:
+        client.close()
+        raise PawnIoError(e.code, str(e)) from e
+    return ServicePawnModule(client, int(reply["handle"]), name)

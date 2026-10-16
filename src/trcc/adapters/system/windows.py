@@ -32,6 +32,7 @@ from ...core.ports import (
     SensorEnumerator,
 )
 from ..infra.named_pipe import NamedPipeChannel
+from ..sensors._pawnio_cpu import PawnioCpu
 from ..sensors.windows import build_windows_sensors
 from ..visual import WglSurface, drawn_on
 from ..visual.loopback import LoopbackSoundInput
@@ -133,6 +134,18 @@ def _is_elevated() -> bool:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())  # pyright: ignore[reportAttributeAccessIssue]
     except (OSError, AttributeError):
         return True
+
+
+def make_pawnio_cpu() -> PawnioCpu:
+    """PawnIO as this process can reach it: directly when elevated, else
+    through TRCC's SYSTEM service (the driver admits only administrators).
+    The one place that decides -- the sensors and ``trcc doctor`` both ask."""
+    if _is_elevated():
+        log.info("make_pawnio_cpu: elevated -- PawnIO directly")
+        return PawnioCpu()
+    from ._service_client import open_service_module
+    log.info("make_pawnio_cpu: not elevated -- PawnIO through TRCC's service")
+    return PawnioCpu(open_module=open_service_module)
 
 
 def _find_physical_drive(vid: int, pid: int) -> str | None:
@@ -391,7 +404,8 @@ class WindowsPlatform(BaseOS, key="win32"):
     def _build_sensors(self) -> SensorEnumerator:
         """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
         log.debug("_build_sensors")
-        return build_windows_sensors(thread_context=self.worker_thread_context)
+        return build_windows_sensors(thread_context=self.worker_thread_context,
+                                     pawnio=make_pawnio_cpu())
 
     def _build_autostart(self) -> AutostartManager:
         """A sign-in task for the installer build; the Run key for pip.
@@ -429,6 +443,12 @@ class WindowsPlatform(BaseOS, key="win32"):
         """
         log.info("open_scsi: %04x:%04x serial=%r unit=%s",
                  vid, pid, serial, unit or "(only)")
+        if not _is_elevated():
+            # A drive admits only administrators: TRCC's SYSTEM service opens
+            # it, and checks every command against what TRCC sends.
+            from ._service_client import ServiceScsiTransport
+            log.info("open_scsi: not elevated -- through TRCC's service")
+            return ServiceScsiTransport(vid, pid)
         if unit:
             log.warning(
                 "open_scsi: Windows cannot yet target a specific unit — "

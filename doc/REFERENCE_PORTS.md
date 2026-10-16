@@ -62,7 +62,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
-| [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
+| [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
@@ -952,7 +952,7 @@ read_cdb(cdb: 'bytes', length: 'int', timeout_ms: 'int' = 5000) -> bytes
 send_cdb(cdb: 'bytes', data: 'bytes', timeout_ms: 'int' = 5000) -> bool
 ```
 
-**Implementations (3):** `LinuxScsiTransport` · `UsbBotScsiTransport` · `WindowsScsiTransport`
+**Implementations (4):** `LinuxScsiTransport` · `ServiceScsiTransport` · `UsbBotScsiTransport` · `WindowsScsiTransport`
 
 ## VisualEngine
 
