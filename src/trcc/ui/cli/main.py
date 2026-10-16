@@ -398,6 +398,29 @@ def daemon() -> None:
     raise typer.Exit(code=run_daemon())
 
 
+@app.command("service", hidden=True)
+def service(
+    foreground: bool = typer.Option(
+        False, "--foreground",
+        help="Serve in this terminal (elevated) instead of under Windows.",
+    ),
+) -> None:
+    """Windows only: TRCC's SYSTEM service, which drives SCSI panels and
+    reads PawnIO for an App that is not running as administrator.
+
+    The installer registers ``trcc-gui.exe service``; Windows starts it.
+    """
+    log.info("cli service: foreground=%s", foreground)
+    from ...adapters.system.win_service import NOT_STARTED_BY_WINDOWS, run_service
+    code = run_service(foreground=foreground)
+    if code == NOT_STARTED_BY_WINDOWS:
+        typer.echo("This is the TRCC Windows service.  To test it in this "
+                   "terminal: trcc service --foreground", err=True)
+    elif code:
+        typer.echo("The TRCC service exists on Windows only.", err=True)
+    raise typer.Exit(code=code)
+
+
 @app.command("kill")
 def kill() -> None:
     """Ask the running daemon to shut down, return when its socket is gone."""

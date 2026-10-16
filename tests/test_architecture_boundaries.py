@@ -1743,6 +1743,10 @@ _UI_ADAPTER_COMPOSITION_ROOTS: frozenset[tuple[str, str]] = frozenset({
     ("trcc/ui/qapp.py", "trcc.adapters.render.qt"),
     ("trcc/ui/gui/__init__.py", "trcc.adapters.system"),
     ("trcc/ui/cli/main.py", "trcc.adapters.infra.logging"),
+    # 2026-10-16: ``trcc service`` is the entry point of ANOTHER process --
+    # Windows' SYSTEM service (SCSI + PawnIO for a non-elevated App).  It
+    # builds no App and dispatches no Command; there is no bus to go through.
+    ("trcc/ui/cli/main.py", "trcc.adapters.system.win_service"),
 })
 
 #: Real breaches, to burn down.  Delete an entry when its call site moves to the

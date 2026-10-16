@@ -80,6 +80,20 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\TRCC"; Filename: "
 Filename: "{tmp}\PawnIO_setup.exe"; Parameters: "-install -silent"; \
     StatusMsg: "Installing PawnIO (CPU temperature and power)..."; \
     Flags: waituntilterminated; Check: not PawnIOInstalled
+; TRCC's Windows service (TRCCService), as SYSTEM: drives SCSI panels and
+; reads PawnIO for an App that is not administrator (win_service.py).  No
+; extra exe -- Windows runs "trcc-gui.exe service".  create fails harmlessly
+; on an upgrade, where config points the existing service at this install.
+; A crash restarts it after 5 s.
+Filename: "{sys}\sc.exe"; Parameters: "create TRCCService binPath= ""\""{app}\trcc-gui.exe\"" service"" start= auto DisplayName= ""TRCC hardware access"""; \
+    StatusMsg: "Installing the TRCC service..."; Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "config TRCCService binPath= ""\""{app}\trcc-gui.exe\"" service"" start= auto"; \
+    Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "description TRCCService ""Lets TRCC drive SCSI LCD panels and read CPU temperature without running as administrator."""; \
+    Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "failure TRCCService reset= 86400 actions= restart/5000"; \
+    Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "start TRCCService"; Flags: runhidden waituntilterminated
 ; WinUSB driver not auto-installed (requires signed certificate).
 ; Users with bulk/HID devices are guided to Zadig via `trcc doctor`.
 Filename: "{app}\trcc-gui.exe"; Description: "{cm:LaunchProgram,TRCC}"; Flags: nowait postinstall skipifsilent shellexec
@@ -102,6 +116,10 @@ Type: filesandordirs; Name: "{userappdata}\trcc"
 Type: filesandordirs; Name: "{%USERPROFILE}\.trcc"
 
 [UninstallRun]
+; The service first, cleanly (net stop waits for it), then gone -- it runs as
+; trcc-gui.exe, so the taskkill below would otherwise end it mid-request.
+Filename: "{sys}\net.exe"; Parameters: "stop TRCCService"; Flags: runhidden waituntilterminated; RunOnceId: "StopService"
+Filename: "{sys}\sc.exe"; Parameters: "delete TRCCService"; Flags: runhidden waituntilterminated; RunOnceId: "DeleteService"
 ; Kill TRCC processes before uninstall
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM trcc-gui.exe"; Flags: runhidden; RunOnceId: "KillGUI"
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM trcc.exe"; Flags: runhidden; RunOnceId: "KillCLI"
@@ -117,6 +135,10 @@ procedure KillRunningProcesses;
 var
   ResultCode: Integer;
 begin
+  // TRCC's service runs as trcc-gui.exe and holds the files an upgrade
+  // replaces: stop it cleanly first (net stop waits); [Run] starts it again.
+  Exec(ExpandConstant('{sys}\net.exe'), 'stop TRCCService', '',
+       SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM trcc-gui.exe', '',
        SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM trcc.exe', '',

@@ -63,6 +63,13 @@ _FIRST_PIPE_INSTANCE = 0x00080000
 _REJECT_REMOTE_CLIENTS = 0x00000008
 _SECURITY_SQOS_PRESENT = 0x00100000
 _SECURITY_IDENTIFICATION = 0x00010000
+#: What a client asks for: read and write the stream, read its attributes
+#: and its owner, wait on it.  NOT generic write, whose FILE_APPEND_DATA bit
+#: is FILE_CREATE_PIPE_INSTANCE -- a pipe can refuse it (the service's does)
+#: and still admit every client.  Measured on the VM, 2026-10-16.
+CLIENT_ACCESS = 0x00120083
+#: SYSTEM's SID: the owner of the service's pipe (``win_service.py``).
+SYSTEM_SID = "S-1-5-18"
 _ERROR_FILE_NOT_FOUND = 2
 _ERROR_BROKEN_PIPE = 109
 _ERROR_PIPE_BUSY = 231
@@ -337,24 +344,37 @@ class _PipeListener:
 
 
 class NamedPipeChannel(IpcChannel):
-    """``\\\\.\\pipe\\trcc-<user SID>``: this user's App, on Windows."""
+    """``\\\\.\\pipe\\trcc-<user SID>``: this user's App, on Windows.
 
-    def __init__(self, path: Path | None = None, name: str | None = None) -> None:
+    The same pipe code serves the SYSTEM service's channel
+    (:meth:`for_service`): another name, another audience, another owner.
+    """
+
+    def __init__(self, path: Path | None = None, name: str | None = None, *,
+                 sddl: str | None = None, owner: str | None = None) -> None:
         """*path* is the Unix socket's and unused here: a pipe is named for the
-        user.  *name* only for tests, which must not take a running App's pipe.
+        user.  *name* only for tests, which must not take a running App's
+        pipe.  *sddl* and *owner* (a SID string) only for the service's pipe.
 
-        ``ImportError`` without pywin32 -- ``ipc.transport`` then says so and
+        ``ImportError`` without pywin32 -- ``ipc.channel`` then says so and
         the UI runs its own App."""
         if _PYWIN32 is not None:
             raise ImportError(f"pywin32 is not importable: {_PYWIN32}")
-        self._sid = _user_sid()
-        sid = win32security.ConvertSidToStringSid(self._sid)
+        sid = win32security.ConvertSidToStringSid(_user_sid())
         self.name = name or rf"\\.\pipe\trcc-{sid}"
         # Owner + DACL: this user and SYSTEM, nobody inherits in.  Label:
         # Medium, no-write-up, so an elevated App admits its user's
         # non-elevated UIs.
-        self._sddl = f"O:{sid}D:P(A;;GA;;;{sid})(A;;GA;;;SY)S:(ML;;NW;;;ME)"
-        log.debug("NamedPipeChannel: %s", self.name)
+        self._sddl = sddl or f"O:{sid}D:P(A;;GA;;;{sid})(A;;GA;;;SY)S:(ML;;NW;;;ME)"
+        self._owner = win32security.ConvertStringSidToSid(owner or sid)
+        log.debug("NamedPipeChannel: %s owner=%s", self.name, owner or sid)
+
+    @classmethod
+    def for_service(cls, name: str, sddl: str) -> NamedPipeChannel:
+        """The SYSTEM service's pipe: owned by SYSTEM, which no other
+        account can make itself -- so a client never speaks to an impostor."""
+        log.debug("NamedPipeChannel.for_service: %s", name)
+        return cls(name=name, sddl=sddl, owner=SYSTEM_SID)
 
     @property
     def address(self) -> str:
@@ -367,8 +387,7 @@ class NamedPipeChannel(IpcChannel):
         while True:
             try:
                 handle = win32file.CreateFile(
-                    self.name,
-                    win32file.GENERIC_READ | win32file.GENERIC_WRITE,
+                    self.name, CLIENT_ACCESS,
                     0, None, win32file.OPEN_EXISTING,
                     win32file.FILE_FLAG_OVERLAPPED | _SECURITY_SQOS_PRESENT
                     | _SECURITY_IDENTIFICATION, None)
@@ -406,13 +425,14 @@ class NamedPipeChannel(IpcChannel):
             handle, win32security.SE_KERNEL_OBJECT,
             win32security.OWNER_SECURITY_INFORMATION,
         ).GetSecurityDescriptorOwner()
-        if owner != self._sid:
+        if owner != self._owner:
             win32api.CloseHandle(handle)
-            log.warning("NamedPipeChannel: %s is owned by %s, not this "
-                        "user -- refused", self.name,
-                        win32security.ConvertSidToStringSid(owner))
+            log.warning("NamedPipeChannel: %s is owned by %s, not %s -- "
+                        "refused", self.name,
+                        win32security.ConvertSidToStringSid(owner),
+                        win32security.ConvertSidToStringSid(self._owner))
             raise PermissionError(f"{self.name} belongs to another account")
-        frame_log.debug("NamedPipeChannel._check_owner: ours")
+        frame_log.debug("NamedPipeChannel._check_owner: as expected")
 
     def listen(self) -> _PipeListener:
         log.info("NamedPipeChannel.listen: %s", self.name)
