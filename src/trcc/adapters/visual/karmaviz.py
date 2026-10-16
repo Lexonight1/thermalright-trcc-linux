@@ -370,6 +370,10 @@ class KarmaViz(GlVisual, key="karmaviz"):
         self._last_beat = -math.inf
         self._beat_gaps: deque[float] = deque(maxlen=8)
         self._beat_count = 0
+        #: Beats since the look last changed -- or since "change every N
+        #: beats" was moved.  Counting from the start instead changed the
+        #: look the moment a new N divided the running total.
+        self._beats_since_change = 0
         self._turn = 1
         self._bounce_height = self._bounce_speed = 0.0
         self._last_bounce = 0.0
@@ -406,7 +410,12 @@ class KarmaViz(GlVisual, key="karmaviz"):
         self._speed = float(values["speed"])
         self._warp_scale = float(values["warp"])
         self._ear.sensitivity = float(values["beat_sensitivity"])
-        self._change_beats = round(values["change_beats"])
+        change_beats = round(values["change_beats"])
+        if change_beats != self._change_beats:
+            log.info("KarmaViz.adjust: change every %d beats, counting from now",
+                     change_beats)
+            self._beats_since_change = 0
+        self._change_beats = change_beats
 
     def feed(self, pcm: bytes) -> None:
         frame_log.debug("KarmaViz.feed: %d byte(s)", len(pcm))
@@ -486,8 +495,11 @@ class KarmaViz(GlVisual, key="karmaviz"):
             self._last_bounce = self._clock
         if look.rotation_mode == 3:
             self._turn = -self._turn
-        frame_log.debug("KarmaViz._on_beat: %d", self._beat_count)
-        if self._change_beats > 0 and self._beat_count % self._change_beats == 0:
+        self._beats_since_change += 1
+        frame_log.debug("KarmaViz._on_beat: %d (%d since a change)",
+                        self._beat_count, self._beats_since_change)
+        if 0 < self._change_beats <= self._beats_since_change:
+            self._beats_since_change = 0
             wave = random.choice([w for w in self._waves if w != self._wave] or [self._wave])
             warp = random.choice([w for w in self._warps if w != self._warp] or [self._warp])
             if look.symmetry == -1:

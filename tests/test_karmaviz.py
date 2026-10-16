@@ -229,6 +229,49 @@ def test_change_every_n_beats(every: int, changes: int) -> None:
                                       painter.looks, strict=False))
 
 
+def test_moving_the_change_slider_waits_its_beats_before_changing() -> None:
+    """The maintainer, 2026-10-16: "changing settings changes the visual".
+    The count was beats since the visual STARTED, so a new N that divided it
+    changed the look at once -- his log: N 9 at beat 162, N 13 at beat 13,
+    N 35 at beat 140, each a jump the moment the slider moved.  Beats are
+    now counted since the last change, and moving this slider starts over.
+
+    MUTATION CHECK: count beats since the start again."""
+    from trcc.adapters.visual.karmaviz import Colours, KarmaViz, Look
+
+    visual = KarmaViz()
+    visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
+    visual._colours = Colours(visual._palettes, None)
+    painter = _Painter()
+    visual._painter = painter  # type: ignore[assignment]  # pyright: ignore[reportAttributeAccessIssue]
+    visual._wave, visual._warp = "led_matrix", "thirds_vortex"
+    for _ in range(161):
+        visual._step(1)
+    visual.adjust({"change_beats": 9.0})
+    visual._step(1)
+    assert painter.looks == []                      # beat 162: not yet
+    for _ in range(8):
+        visual._step(1)
+    assert len(painter.looks) == 1                  # the 9th beat since
+
+
+def test_another_slider_does_not_restart_the_count() -> None:
+    from trcc.adapters.visual.karmaviz import Colours, KarmaViz, Look
+
+    visual = KarmaViz()
+    visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
+    visual._colours = Colours(visual._palettes, None)
+    painter = _Painter()
+    visual._painter = painter  # type: ignore[assignment]  # pyright: ignore[reportAttributeAccessIssue]
+    visual._wave, visual._warp = "led_matrix", "thirds_vortex"
+    visual.adjust({"change_beats": 4.0})
+    for _ in range(3):
+        visual._step(1)
+    visual.adjust({"change_beats": 4.0, "warp": 1.5})
+    visual._step(1)
+    assert len(painter.looks) == 1
+
+
 @pytest.mark.parametrize("name", ["", "../presets/groovy_lamp.json", "/etc/passwd",
                                   "groovy_lamp", "no_such_preset.json"])
 def test_a_preset_is_one_of_its_own_files_or_nothing(name: str) -> None:
