@@ -195,6 +195,33 @@ _GONE_ERRORS: dict[int, str] = {
 #: at all -- it reads the identity byte straight out of the buffer.
 _ERROR_SEM_TIMEOUT = 121
 
+#: The single-owner claim on a drive, like Linux's flock: a named SEMAPHORE of
+#: count 1.  Not a mutex -- a mutex belongs to the thread that took it, and the
+#: transport may close on another thread.  Windows deletes the object when the
+#: last handle closes, so a process that dies frees the panel, as flock does.
+#: Global\ spans sessions: the service runs in session 0, an elevated App in
+#: the user's.
+_CLAIM_PREFIX = "Global\\TRCC-scsi-"
+_WAIT_OBJECT_0, _WAIT_TIMEOUT = 0x0, 0x102
+#: Who may share the claim: SYSTEM (the service) and Administrators (an elevated
+#: App), SEMAPHORE_ALL_ACCESS each.  Without it the object takes its creator's
+#: default DACL, and an elevated App got ERROR_ACCESS_DENIED opening the
+#: service's claim -- so it ran unguarded beside it (win11 VM, 2026-10-18).  A
+#: non-admin App never opens a drive; it goes through the service.
+_CLAIM_SDDL = "D:(A;;0x1F0003;;;SY)(A;;0x1F0003;;;BA)"
+
+
+class _SECURITY_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [("nLength", ctypes.c_uint32),
+                ("lpSecurityDescriptor", ctypes.c_void_p),
+                ("bInheritHandle", ctypes.c_int)]
+
+
+def _advapi32() -> Any:
+    """advapi32, for the claim's security descriptor (Windows-only)."""
+    log.debug("_advapi32: called")
+    return ctypes.windll.advapi32  # pyright: ignore[reportAttributeAccessIssue]
+
 
 def _spt_result(ok: bool, err: int, scsi_status: int, transferred: int,
                 data: bytes = b"") -> CdbResult:
@@ -226,6 +253,7 @@ class WindowsScsiTransport(BaseScsiTransport):
         self._handle: int | None = None
         # {data_len: (sptd_with_sense, data_buf)} -- one set per size class.
         self._bufs: dict[int, tuple[Any, Any]] = {}
+        self._claim_handle: int | None = None
         log.debug("WindowsScsiTransport.__init__: %s", device_path)
         super().__init__(device_path)
 
@@ -256,6 +284,58 @@ class WindowsScsiTransport(BaseScsiTransport):
             return False
         self._handle = handle
         return True
+
+    def _claim(self) -> bool:
+        """Take the drive's single-owner claim, or refuse the open.
+
+        Two owners interleave frames on this wire with no error anywhere --
+        Linux's flock exists because that was measured.  An error that is not
+        "someone holds it" degrades to running without the guard rather than
+        failing a panel we could otherwise drive, as on Linux.
+        """
+        name = _CLAIM_PREFIX + self._path.rsplit("\\", 1)[-1].upper()
+        k32 = _kernel32()
+        descriptor = ctypes.c_void_p()
+        if not _advapi32().ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                _CLAIM_SDDL, 1, ctypes.byref(descriptor), None):
+            log.warning("WindowsScsiTransport: claim descriptor failed (WinError "
+                        "%d) — continuing WITHOUT the single-owner guard",
+                        ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
+            return True
+        attributes = _SECURITY_ATTRIBUTES(ctypes.sizeof(_SECURITY_ATTRIBUTES),
+                                          descriptor, 0)
+        handle = k32.CreateSemaphoreW(ctypes.byref(attributes), 1, 1, name)
+        k32.LocalFree(descriptor)
+        if not handle:
+            log.warning("WindowsScsiTransport: claim %s unavailable (WinError %d) "
+                        "— continuing WITHOUT the single-owner guard", name,
+                        ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
+            return True
+        waited = k32.WaitForSingleObject(handle, 0)
+        if waited == _WAIT_OBJECT_0:
+            self._claim_handle = handle
+            log.info("WindowsScsiTransport: claimed %s (%s)", self._path, name)
+            return True
+        k32.CloseHandle(handle)
+        if waited == _WAIT_TIMEOUT:
+            log.warning(
+                "WindowsScsiTransport: %s is already claimed by another TRCC "
+                "process (GUI, App or service) — refusing to open it.  Two "
+                "owners interleave frames on this wire, so close the other one, "
+                "or run `trcc kill` if an App holds it.", self._path)
+            return False
+        log.warning("WindowsScsiTransport: claim %s wait returned %#x — "
+                    "continuing WITHOUT the single-owner guard", name, waited)
+        return True
+
+    def _release(self) -> None:
+        """Give the claim back; the last handle closing deletes it."""
+        handle, self._claim_handle = self._claim_handle, None
+        log.debug("WindowsScsiTransport._release: %s", handle)
+        if handle is not None:
+            k32 = _kernel32()
+            k32.ReleaseSemaphore(handle, 1, None)
+            k32.CloseHandle(handle)
 
     def _close_handle(self) -> None:
         log.debug("WindowsScsiTransport._close_handle: %s", self._handle)

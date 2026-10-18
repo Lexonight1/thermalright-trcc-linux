@@ -57,12 +57,45 @@ class _PassThrough:
     def __init__(self, err: int = 0, status: int = 0,
                  reply: bytes = b"") -> None:
         self.err, self.status, self.reply = err, status, reply
+        self.claims, self.semaphores = {}, {}
         self.calls: list[tuple[int, bytes, int]] = []   # (ioctl, data-out, address)
 
     def CreateFileW(self, *_args: Any) -> int:
         return 7
 
-    def CloseHandle(self, _handle: int) -> int:
+    def CloseHandle(self, handle: int) -> int:
+        self.semaphores.pop(handle, None)
+        return 1
+
+    # The single-owner claim: named semaphores of count 1, shared by name.
+    claims: dict[str, int] = {}
+    semaphores: dict[int, str] = {}
+
+    def LocalFree(self, _mem: Any) -> int:
+        return 0
+
+    # advapi32: the claim's security descriptor, recorded for the test.
+    def ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            self, sddl: str, _rev: int, _out: Any, _size: Any) -> int:
+        self.sddl = sddl
+        return 1
+
+    def CreateSemaphoreW(self, sa: Any, _init: int, _max: int, name: str) -> int:
+        assert sa is not None, "the claim must carry its own security descriptor"
+        self.claims.setdefault(name, 1)
+        handle = 1000 + len(self.semaphores) + 1
+        self.semaphores[handle] = name
+        return handle
+
+    def WaitForSingleObject(self, handle: int, _ms: int) -> int:
+        name = self.semaphores[handle]
+        if self.claims[name] == 0:
+            return 0x102                                  # WAIT_TIMEOUT
+        self.claims[name] -= 1
+        return 0
+
+    def ReleaseSemaphore(self, handle: int, count: int, _prev: Any) -> int:
+        self.claims[self.semaphores[handle]] += count
         return 1
 
     def DeviceIoControl(self, _handle: int, code: int, inbuf: Any, *_rest: Any) -> int:
@@ -83,6 +116,7 @@ class _PassThrough:
 
 def _open(monkeypatch: pytest.MonkeyPatch, drive: _PassThrough) -> Any:
     monkeypatch.setattr(windows, "_kernel32", lambda: drive)
+    monkeypatch.setattr(windows, "_advapi32", lambda: drive)
     monkeypatch.setattr(ctypes, "GetLastError", lambda: drive.err, raising=False)
     transport = windows.WindowsScsiTransport(r"\\.\PhysicalDrive3")
     assert transport.open()
@@ -162,3 +196,23 @@ def test_a_timeout_that_delivered_nothing_keeps_nothing(
 def test_any_other_failed_read_keeps_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     transport = _open(monkeypatch, _PassThrough(err=31, reply=b"\x64" * 8))
     assert transport.read_cdb(b"\xf5" + b"\x00" * 15, 0xE100) == b""
+
+
+def test_a_second_owner_of_the_drive_is_refused_until_the_first_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Linux's flock, on Windows: two owners would interleave frames.
+
+    MUTATION CHECK: make ``_claim`` return True always -- the second opens."""
+    drive = _PassThrough()
+    first = _open(monkeypatch, drive)
+    second = windows.WindowsScsiTransport(r"\\.\PhysicalDrive3")
+
+    assert second.open() is False
+    first.close()
+    assert second.open() is True
+    second.close()
+    assert drive.claims == {"Global\\TRCC-scsi-PHYSICALDRIVE3": 1}
+    # SYSTEM (the service) and Administrators (an elevated App) share it: with
+    # the creator's default DACL an elevated App got ERROR_ACCESS_DENIED.
+    assert drive.sddl == "D:(A;;0x1F0003;;;SY)(A;;0x1F0003;;;BA)"
