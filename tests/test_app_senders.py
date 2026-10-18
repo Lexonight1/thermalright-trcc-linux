@@ -89,6 +89,53 @@ def test_a_second_connect_closes_the_first_handle_before_reopening(
         app.close()
 
 
+def test_two_connects_at_once_never_open_the_panel_together(tmp_path: Path) -> None:
+    """A UI's connect and the App's own ran side by side at start-up and the
+    single-owner claim refused one (Linux and Windows, 2026-10-18).  Every
+    connect now holds the App's connect lock.
+
+    MUTATION CHECK: drop ``with app.connecting()`` from ConnectDevice -- the
+    two opens overlap."""
+    import threading
+
+    platform = MockPlatform(_SPECS, tmp_path)
+    real_open = platform.open_transport
+    inside, peak = [0], [0]
+    count = threading.Lock()
+
+    def slow_open(wire, vid, pid, *args, **kwargs):
+        transport = real_open(wire, vid, pid, *args, **kwargs)
+        real_transport_open = transport.open
+
+        def open_() -> bool:
+            with count:
+                inside[0] += 1
+                peak[0] = max(peak[0], inside[0])
+            time.sleep(0.2)
+            with count:
+                inside[0] -= 1
+            return real_transport_open()
+
+        transport.open = open_  # type: ignore[method-assign]
+        return transport
+
+    platform.open_transport = slow_open  # type: ignore[method-assign]
+    app = App(platform, send_scheduler=SyncSendScheduler())
+    try:
+        results: list[bool] = []
+        threads = [threading.Thread(
+            target=lambda: results.append(app.dispatch(ConnectDevice(key=_SCSI)).ok))
+            for _ in range(2)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(10)
+        assert results == [True, True]
+        assert peak[0] == 1
+    finally:
+        app.close()
+
+
 def test_app_send_routes_to_sender(tmp_path: Path) -> None:
     app = _app(tmp_path)
     try:

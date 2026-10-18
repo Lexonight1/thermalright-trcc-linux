@@ -596,6 +596,11 @@ class App(CommandBus, ModuleHost):
         for key in live:
             self.connect_unit(key)
 
+    def connecting(self) -> AbstractContextManager[bool]:
+        """Held around every connect: one at a time per App (reentrant)."""
+        log.debug("connecting: the App's connect lock")
+        return self._connect_lock
+
     def connect_unit(self, key: str) -> ConnectResult:
         """Connect one unit unless it already is; release a dead one first.
 

@@ -284,6 +284,20 @@ class ConnectDevice(Command[ConnectResult]):
             app.settings.set_released(self.key, False)
 
     def execute(self, app: App) -> ConnectResult:
+        """One connect at a time per App -- a UI's beside the App's own.
+
+        ``connect_unit`` (hotplug, wake, the watcher, the start-up coldplug)
+        always held the App's connect lock, but a ConnectDevice dispatched by a
+        UI did not: `trcc device connect` ran beside the App's coldplug, both
+        opened the panel, and the single-owner claim refused one (Linux and
+        Windows, 2026-10-18).  The lock is reentrant, so connect_unit ->
+        ConnectDevice on one thread still nests.
+        """
+        log.debug("ConnectDevice %s: waiting for the App's connect lock", self.key)
+        with app.connecting():
+            return self._connect(app)
+
+    def _connect(self, app: App) -> ConnectResult:
         self._take_back(app)
         try:
             vid, pid, unit = parse_device_key(self.key)
