@@ -54,16 +54,12 @@ class Wire(str, Enum):
     LED = "led"
 
 
-# Whether a panel's firmware latches a frame is a property of the PANEL, so it
-# is declared per device on ``ProductInfo.volatile_frames`` — not here.
-#
-# It lived here as a ``VOLATILE_FRAME_WIRES`` set keyed on ``Wire`` until
-# 2026-08-19.  That read as though the wire caused the behaviour, and it made
-# the wire load-bearing for something it does not describe: two devices sharing
-# a protocol could not share a class if their firmware differed, and moving a
-# device between wires silently changed whether we kept its screen alive.
-# ``Device.needs_keepalive`` already OR-ed a per-firmware quirk alongside it,
-# so half the fact was per-device already.
+# Whether a panel needs its frame resent is ``Device.needs_keepalive`` -- yes by
+# default, overridden by a device that holds its frame.  It was a
+# ``VOLATILE_FRAME_WIRES`` set here until 2026-08-19, then a per-product
+# ``volatile_frames`` flag plus a ``keepalive_stream`` quirk until 2026-10-18,
+# when SCSI -- assumed to latch -- was seen dropping to standby, and every
+# family turned out to give up its picture without a stream.
 
 
 class Kind(str, Enum):
@@ -326,14 +322,6 @@ class ProductInfo:
     native_resolution: tuple[int, int] = (0, 0)
     orientations: tuple[int, ...] = (0,)
     led_style: LedStyle | None = None
-    # True when the firmware does NOT latch a frame — it reverts to the built-in
-    # Thermalright logo after ~2-3 s unless frames keep arriving, so the send
-    # worker keepalive-resends the last frame.  A panel fact, declared per
-    # device for the bulk / LY families; a whole family that never latches
-    # overrides ``Device.needs_keepalive`` instead (``ScsiLcd``).  HID panels are
-    # believed to latch (never measured idle); LED has no screen.  Read by
-    # ``Device.needs_keepalive``, which OR-s it with the ``keepalive_stream`` quirk.
-    volatile_frames: bool = False
     model: str = "CZTV"                 # GUI sidebar button-image lookup
     button_image: str = "A1CZTV"        # asset base name (no .png)
 
@@ -472,7 +460,6 @@ class DeviceQuirks:
     skip_init: bool = False         # do NOT send the wire's init packet (reboots panel)
     short_handshake: bool = False   # accept the firmware's short (<20-byte) reply
     portrait_native: bool = False   # device self-orients: 240×320 raster, no pre-rotate
-    keepalive_stream: bool = False  # resend the last frame while idle (panel blanks when idle)
     # Never reopen -- not after a failed send, not after a wake: a close→reopen
     # wedges the panel until a replug (#228).  Every 4.07 panel keeps it: one
     # allowed to reopen (#283's, which answers the ordinary handshake) went
@@ -487,11 +474,12 @@ DEVICE_QUIRKS: dict[tuple[int, int, int], DeviceQuirks] = {
     # Frozen Warframe SE, firmware bcdDevice 4.07 (#228, adamkoehler1990):
     # reverse-engineered — needs HID output reports (pyusb bulk is ignored),
     # no init packet, an 8-byte handshake reply, a portrait-native 240×320
-    # raster (no pre-rotate), a continuous frame stream (blanks when idle),
-    # and one session -- a reopen wedges it.
+    # raster (no pre-rotate), and one session -- a reopen wedges it.  (It
+    # also blanks when idle; every device is kept fed now, see
+    # ``Device.needs_keepalive``.)
     (0x0416, 0x5302, 0x0407): DeviceQuirks(
         hid_reports=True, skip_init=True, short_handshake=True,
-        portrait_native=True, keepalive_stream=True, single_session=True,
+        portrait_native=True, single_session=True,
     ),
 }
 

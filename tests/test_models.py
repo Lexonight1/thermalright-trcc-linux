@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import Any, cast
 
 import pytest
 
@@ -12,6 +13,7 @@ from trcc.core.models import (
     oriented_resolution,
     parse_resolution,
 )
+from trcc.core.registry import ALL_DEVICES
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -42,44 +44,43 @@ def test_oriented_resolution(
     assert oriented_resolution(native, orientation) == expected
 
 
-# ── volatile_frames — a panel fact, gated across the whole registry ──────
+# ── keepalive — every registered device keeps its panel fed ──────────────
 
 
-# Exactly the panels whose firmware reverts to the boot logo unless frames keep
-# arriving.  Stated as a literal set so BOTH directions are gated: a device that
-# stops being volatile fails, and a device that silently becomes volatile fails
-# too.  Parametrising over ALL_DEVICES instead would only ever re-assert
-# whatever the registry currently says, which gates nothing.
-#
-# MEASURED 2026-08-19, because it is tempting to claim more than is true: today
-# NO wire carries both kinds (bulk 1/0, bulk_ali 1/0, ly 2/0, hid 0/3, scsi 0/2,
-# led 0/1), so volatility IS still derivable from the wire.  The old
-# wire-keyed set was not wrong about current hardware.  It becomes wrong the
-# moment 0416:5406 moves to Wire.HID, where every other panel latches — which
-# is precisely the merge this flag unblocks.
-#
-# This existed as VOLATILE_FRAME_WIRES keyed on Wire until 2026-08-19.  Only two
-# of the four devices were covered by any test then (test_app_senders pinned
-# 87ad:70db volatile and 0402:3922 not), so the LY pair and the Ali panel could
-# have lost their keepalive with the suite still green — and a keepalive that
-# stops being requested is invisible until someone's screen goes dark.
-_VOLATILE_DEVICES = {
-    (0x0416, 0x5406),   # Elite Vision 360 ARGB  (F5 protocol)
+@pytest.mark.parametrize("key", sorted(ALL_DEVICES))
+def test_every_registered_device_keeps_its_panel_fed(key) -> None:
+    """Asked of the device class the registry builds, never of a flag.
+
+    Every family gives up its picture without a stream (SCSI, bulk, LY, LED,
+    HID 4.07 -- measured or reported) and the C# re-sends every family.  A
+    class that overrides ``needs_keepalive`` to False fails here until its
+    firmware is shown to hold a frame.  MUTATION CHECK: make the base default
+    False -- every row fails.
+    """
+    from trcc.adapters.device import DEVICES
+
+    info = ALL_DEVICES[key]
+    device = DEVICES[info.wire](info, cast(Any, None))
+    assert device.needs_keepalive is True
+
+
+# The families whose firmware reverts in ~2-3 s keep the C#'s ~150 ms; every
+# other device resends after 1 s.  Literal, so drift in EITHER direction fails.
+_FAST_REVERT = {
+    (0x87AD, 0x70DB),   # GrandVision 360 AIO    (bulk)
     (0x0416, 0x5408),   # Trofeo Vision 9.16     (LY)
     (0x0416, 0x5409),   # Trofeo Vision 9.16     (LY)
-    (0x87AD, 0x70DB),   # GrandVision 360 AIO    (bulk)
 }
 
 
-def test_exactly_these_devices_declare_volatile_frames() -> None:
-    """The volatile set is a fact about panels, not about wires."""
-    from trcc.core.registry import ALL_DEVICES
+@pytest.mark.parametrize("key", sorted(ALL_DEVICES))
+def test_every_registered_device_resends_inside_its_timeout(key) -> None:
+    """MUTATION CHECK: drop ``BulkLcd.keepalive_interval`` -- the bulk row fails."""
+    from trcc.adapters.device import DEVICES
 
-    declared = {key for key, p in ALL_DEVICES.items() if p.volatile_frames}
-    assert declared == _VOLATILE_DEVICES, (
-        "volatile_frames drifted — a panel that needs a keepalive and stopped "
-        "asking for one goes dark with no error anywhere"
-    )
+    info = ALL_DEVICES[key]
+    device = DEVICES[info.wire](info, cast(Any, None))
+    assert device.keepalive_interval == (0.150 if key in _FAST_REVERT else 1.0)
 
 
 # =========================================================================

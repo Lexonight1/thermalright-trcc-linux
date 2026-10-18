@@ -345,17 +345,30 @@ class Device(ABC, Generic[T]):
 
     @property
     def needs_keepalive(self) -> bool:
-        """True if this device's firmware drops frames and needs a periodic
-        resend.  Drives the send worker's keepalive.
+        """Whether the send worker resends the last frame while nothing new comes.
 
-        Two per-device sources, never the wire: the panel's own
-        ``volatile_frames`` (registry) and the per-firmware ``keepalive_stream``
-        quirk (resolved from ``bcdDevice``).  The first used to be a set of
-        Wires, which made a protocol choice decide whether we kept a screen
-        alive — see ``ProductInfo.volatile_frames``.
+        Yes by default: every family we drive gives up its picture without a
+        stream -- SCSI to USB standby inside ~30 s (on glass, 2026-10-18), bulk
+        and LY to the logo in ~2-3 s, LED in ~3-10 s (#15, #80), HID 4.07 to the
+        logo (#228) -- and the C# re-sends every family every ~150 ms whether
+        the picture changed or not (Form1.cs:502, FormCZTV.cs ``ImageCount``).
+        A device whose firmware is shown to hold its frame overrides this.
         """
-        log.debug("needs_keepalive")
-        return (self.info.volatile_frames or self._quirks.keepalive_stream)
+        log.debug("needs_keepalive: %s -> True", self.info.key)
+        return True
+
+    @property
+    def keepalive_interval(self) -> float:
+        """Seconds of silence before the send worker resends the last frame.
+
+        1 s by default: under every timeout seen -- LED ~3-10 s (#15, #80),
+        SCSI ~30 s, HID 4.07 kept alive at 1 fps (#228) -- at a seventh of the
+        C#'s ~150 ms, which matters because one HID resend is ~300 USB writes
+        (measured 2026-10-18).  A family that gives up its picture faster
+        overrides it (``BulkLcd``, ``LyLcd``).
+        """
+        log.debug("keepalive_interval: %s -> 1.0 s", self.info.key)
+        return 1.0
 
     @property
     def profile(self) -> DeviceProfile | None:

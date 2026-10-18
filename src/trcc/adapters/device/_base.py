@@ -87,6 +87,9 @@ def write_state(path: Path, state: dict[str, Any]) -> None:
     except OSError as e:
         log.warning("write_state: %s failed: %s: %s", path, type(e).__name__, e)
 _HANDSHAKE_RETRY_DELAY_S = 0.5
+# Resend cadence for the bulk and LY families, whose firmware reverts to the
+# logo ~2-3 s after the last frame -- the C#'s ~150 ms, which they have always had.
+FAST_REVERT_KEEPALIVE_S = 0.150
 _DELAY_PRE_INIT_S = 0.050
 _DELAY_POST_INIT_S = 0.200
 

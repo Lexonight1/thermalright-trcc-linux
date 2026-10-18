@@ -1302,6 +1302,7 @@ class App(CommandBus, ModuleHost):
             self.stop_sender(key)
         sender = DeviceSender(
             device, volatile=device.needs_keepalive,
+            keepalive_interval=device.keepalive_interval,
             on_failure=self._on_sender_failure,
         )
         self._lost.discard(key)
@@ -1309,7 +1310,8 @@ class App(CommandBus, ModuleHost):
         self._was_connected.add(key)
         self.senders[key] = sender
         self._send_scheduler.add(sender)
-        log.info("start_sender: %s volatile=%s", key, device.needs_keepalive)
+        log.info("start_sender: %s volatile=%s interval=%.3fs", key,
+                 device.needs_keepalive, device.keepalive_interval)
 
     def _on_sender_failure(self, key: str, exc: BaseException | None) -> None:
         """A worker's fire-and-forget write failed — publish the same events a

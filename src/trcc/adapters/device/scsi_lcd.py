@@ -206,16 +206,6 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
             offset += size
         return True
 
-    # ── Keepalive ─────────────────────────────────────────────────────
-
-    @property
-    def needs_keepalive(self) -> bool:
-        """Left idle, a SCSI panel drops to its USB-standby screen inside ~30 s
-        (0402:3922, measured 2026-10-18); the C# re-sends even an unchanged
-        picture every ~150 ms (Form1.cs:502, FormCZTV.cs ``ImageCount``)."""
-        log.debug("needs_keepalive: %s -> True (SCSI firmware)", self.info.key)
-        return True
-
     # ── Boot animation ────────────────────────────────────────────────
 
     @property

@@ -1759,8 +1759,12 @@ def test_the_blanking_note_names_what_actually_keeps_the_panel_lit(
     assert keep_it_lit(reason) == advice
 
 
-def test_a_panel_that_holds_its_image_gets_no_note(tmp_path, cli_runner) -> None:
-    """The same 0416:5302 as the Warframe SE above, minus its 4.07 firmware."""
+def test_a_panel_that_holds_its_image_gets_no_note(
+        tmp_path, cli_runner, monkeypatch) -> None:
+    """No device we drive holds its frame today, so a class that says it
+    does stands in: the note follows ``needs_keepalive``, nothing else."""
+    from trcc.adapters.device.hid_lcd import HidLcd
+    monkeypatch.setattr(HidLcd, "needs_keepalive", property(lambda _: False))
     spec = {"type": "lcd", "name": "LCD", "vid": "0416", "pid": "5302",
             "pm": 58}
     out = _cli_on(tmp_path, cli_runner, spec,

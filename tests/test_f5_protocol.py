@@ -202,7 +202,4 @@ def test_elite_vision_360_is_a_hid_type3_panel() -> None:
     assert product is not None
     assert product.wire is Wire.HID
     assert product.device_type == 3, "must select the F5 (type 3) variant"
-    assert product.volatile_frames is True, (
-        "its firmware still drops frames — the keepalive moved to the device, "
-        "it was not dropped with the wire")
     assert DEVICES[product.wire] is HidLcd

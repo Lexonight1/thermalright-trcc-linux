@@ -32,7 +32,7 @@ def test_warframe_se_407_opts_into_every_quirk() -> None:
     q = quirks_for(*_WF_SE)
     assert q == DeviceQuirks(
         hid_reports=True, skip_init=True, short_handshake=True,
-        portrait_native=True, keepalive_stream=True, single_session=True,
+        portrait_native=True, single_session=True,
     )
 
 
@@ -229,9 +229,10 @@ def test_a_remembered_unit_that_stops_answering_is_forgotten(tmp_path, monkeypat
 # ── Seam 5: keepalive ─────────────────────────────────────────────────
 
 
-def test_keepalive_stream_quirk_marks_needs_keepalive() -> None:
+def test_a_hid_panel_is_kept_fed_with_or_without_the_407_quirks() -> None:
+    """Keeping a panel fed is the base-class default, not a quirk."""
     dev = _make_type2(FakeBulkTransport())
-    assert dev.needs_keepalive is False           # HID wire is not volatile
+    assert dev.needs_keepalive is True
     dev.set_quirks(quirks_for(*_WF_SE))
     assert dev.needs_keepalive is True
 
@@ -322,7 +323,6 @@ def test_normal_type2_still_uses_full_handshake(monkeypatch) -> None:
     # The normal path DID write the init packet and used the >=20-byte reply.
     assert len(transport.writes) == 1
     assert result.resolution == (320, 240)        # landscape, rotate=True path
-    assert dev.needs_keepalive is False
 
 
 # ── A quirk must not depend on which OTHER command ran first (#267) ──
@@ -369,7 +369,7 @@ def test_quirks_resolve_on_a_direct_connect_with_no_prior_discovery(
 
     assert quirks.skip_init, "the SE's init packet reboots it — must be skipped"
     assert quirks.hid_reports and quirks.short_handshake
-    assert quirks.portrait_native and quirks.keepalive_stream
+    assert quirks.portrait_native and quirks.single_session
 
 
 def test_a_prior_discovery_is_still_honoured_and_costs_no_rescan(

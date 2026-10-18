@@ -28,7 +28,7 @@ from ...core.errors import (
 from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
-from ._base import BaseBulkDevice
+from ._base import FAST_REVERT_KEEPALIVE_S, BaseBulkDevice
 from .bulk_lcd import bulk_profile
 
 log = logging.getLogger(__name__)
@@ -229,6 +229,13 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
                         "canvas -- a pattern every known panel follows.  "
                         "Please open an issue with `trcc report` (#248).",
                         self.info.key, *derived, canvas)
+
+    @property
+    def keepalive_interval(self) -> float:
+        """This family reverts to the logo ~2-3 s after the last frame."""
+        log.debug("keepalive_interval: %s -> %.3f s", self.info.key,
+                  FAST_REVERT_KEEPALIVE_S)
+        return FAST_REVERT_KEEPALIVE_S
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """The PID picks the variant (LY vs LY1) — worth having on the record."""

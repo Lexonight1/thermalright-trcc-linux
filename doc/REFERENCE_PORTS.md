@@ -36,7 +36,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 1 |
 | [`CommandBus`](#commandbus) | 3 | 1 | 7 |
-| [`Device`](#device) | 3 | 14 | 5 |
+| [`Device`](#device) | 3 | 15 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
@@ -499,7 +499,7 @@ disconnect() -> None
 send(payload: 'Any') -> bool
 ```
 
-**You inherit (14):** `can_boot_animate` · `handshake` · `is_connected` · `is_led` · `key` · `led_handshake` · `needs_keepalive` · `profile` · `quirks` · `send_boot_animation` · `set_permission_hint` · `set_quirks` · `set_state_dir` · `set_unit`
+**You inherit (15):** `can_boot_animate` · `handshake` · `is_connected` · `is_led` · `keepalive_interval` · `key` · `led_handshake` · `needs_keepalive` · `profile` · `quirks` · `send_boot_animation` · `set_permission_hint` · `set_quirks` · `set_state_dir` · `set_unit`
 
 **Implementations (5):** `BulkLcd` · `HidLcd` · `Led` · `LyLcd` · `ScsiLcd`
 

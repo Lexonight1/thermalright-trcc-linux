@@ -56,11 +56,9 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         # HidLcd's type 3 speaks for 0418:5303/5304 (identical init packet,
         # frame header and identity bytes; see adapters/device/_f5.py).  It had
         # its own Wire and its own class until 2026-08-19; the only thing
-        # keeping them apart was a keepalive policy keyed on the wire, which is
-        # now the per-device volatile_frames below.
+        # keeping them apart was a keepalive policy keyed on the wire.
         wire=Wire.HID, kind=Kind.LCD,
         device_type=3, fbl=100,
-        volatile_frames=True,
         native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),
     ),
@@ -134,7 +132,6 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         product="GrandVision 360 AIO",
         wire=Wire.BULK, kind=Kind.LCD,
         device_type=4, fbl=72,
-        volatile_frames=True,
         native_resolution=(480, 480),
         orientations=(0, 90, 180, 270),
         model="GRAND_VISION",
@@ -155,7 +152,6 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         product="Trofeo Vision 9.16 LCD",
         wire=Wire.LY, kind=Kind.LCD,
         device_type=5, fbl=192,
-        volatile_frames=True,
         native_resolution=(1920, 462),
         orientations=(0, 90, 180, 270),
     ),
@@ -165,7 +161,6 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         product="Trofeo Vision 9.16 LCD",
         wire=Wire.LY, kind=Kind.LCD,
         device_type=5, fbl=192,
-        volatile_frames=True,
         native_resolution=(1920, 462),
         orientations=(0, 90, 180, 270),
     ),

@@ -30,7 +30,7 @@ from ...core.protocol import (
     resolve_encode_base,
     resolve_encode_rotation,
 )
-from ._base import BaseBulkDevice
+from ._base import FAST_REVERT_KEEPALIVE_S, BaseBulkDevice
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -199,6 +199,13 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
             fbl=fbl,
             raw_response=bytes(resp),
         )
+
+    @property
+    def keepalive_interval(self) -> float:
+        """This family reverts to the logo ~2-3 s after the last frame."""
+        log.debug("keepalive_interval: %s -> %.3f s", self.info.key,
+                  FAST_REVERT_KEEPALIVE_S)
+        return FAST_REVERT_KEEPALIVE_S
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """Which encoder the PM byte selected, and how the panel is mounted.

@@ -33,11 +33,12 @@ def test_connect_creates_sender_disconnect_drops_it(tmp_path: Path) -> None:
         assert app.dispatch(ConnectDevice(key=_SCSI)).ok
         assert set(app.senders) == {_BULK, _SCSI}
 
-        # Asked of the real device: the bulk panel's registry fact, and
-        # ScsiLcd's own override (USB standby when idle, 2026-10-18).
-        # MUTATION CHECK: delete ScsiLcd.needs_keepalive.
+        # Asked of the real device: the base-class default, every family.
         assert app.devices[_BULK].needs_keepalive is True
         assert app.devices[_SCSI].needs_keepalive is True
+        # ...and each sender idles at its device's own interval.
+        assert app.senders[_BULK].run_once(0.0) == 0.150
+        assert app.senders[_SCSI].run_once(0.0) == 1.0
 
         app.dispatch(DisconnectDevice(key=_BULK))
         assert _BULK not in app.senders
