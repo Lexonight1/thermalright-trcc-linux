@@ -1608,6 +1608,7 @@ def test_debug_report_captures_live_handshake(tmp_path: Path) -> None:
     # surfaces the ground truth so the *resolver* bug is visible, not hidden.
     assert re.fullmatch(r"\d+x\d+", dev["hs_resolution"])
     assert dev["hs_raw"]  # first handshake bytes, hex — ground truth for offsets
+    assert len(dev["hs_raw"]) <= 128, "raw[0:64] is 64 bytes, not the reply"
 
     text = report.render_text()
     assert "handshake: PM=50 SUB=0" in text

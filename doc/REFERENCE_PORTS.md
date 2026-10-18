@@ -51,7 +51,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_DeviceIoPort`](#_deviceioport) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
-| [`BaseScsiTransport`](#basescsitransport) | 4 | 5 | 1 |
+| [`BaseScsiTransport`](#basescsitransport) | 4 | 5 | 2 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
@@ -755,7 +755,7 @@ _send(cdb: 'bytes', data: 'bytes', timeout_ms: 'int') -> CdbResult
 
 **You inherit (5):** `close` · `is_open` · `open` · `read_cdb` · `send_cdb`
 
-**Implementations (1):** `LinuxScsiTransport`
+**Implementations (2):** `LinuxScsiTransport` · `WindowsScsiTransport`
 
 ## CloudCatalog
 

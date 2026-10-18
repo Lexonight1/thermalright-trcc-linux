@@ -350,7 +350,9 @@ def _probe_handshake(
         "sub": str(result.sub_byte),
         "fbl": str(result.fbl) if result.fbl is not None else "?",
         "resolution": f"{result.resolution[0]}x{result.resolution[1]}",
-        "raw": result.raw_response.hex(),
+        # The first 64 bytes, as the report's label says: a Windows poll keeps
+        # its whole 57,600-byte reply, which printed as 113 KB of hex.
+        "raw": result.raw_response[:64].hex(),
     }
     log.info("_probe_handshake: %s → PM=%s SUB=%s fbl=%s resolution=%s",
              key, handshake["pm"], handshake["sub"], handshake["fbl"],
