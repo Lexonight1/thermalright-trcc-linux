@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ...core.errors import PermissionError_, TransportError
+from ...core.logs import per_frame
 from ...core.models import (
     DisplayServer,
     DisplaySession,
@@ -31,6 +32,7 @@ from ...core.ports import (
     ScsiTransport,
     SensorEnumerator,
 )
+from ..device.scsi_transport import BaseScsiTransport, CdbResult
 from ..infra.named_pipe import NamedPipeChannel
 from ..sensors._pawnio_cpu import PawnioCpu
 from ..sensors.windows import build_windows_sensors
@@ -40,6 +42,7 @@ from ._base import BaseOS, BasePaths
 from ._windows_wmi import wmi_handle
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =========================================================================
@@ -63,8 +66,9 @@ class WindowsPaths(BasePaths):
 # DeviceIoControl — Windows SCSI passthrough
 # =========================================================================
 
-_IOCTL_SCSI_PASS_THROUGH_DIRECT = 0x4D014  # METHOD_OUT_DIRECT — DMA writes
-_IOCTL_SCSI_PASS_THROUGH        = 0x4D004  # METHOD_BUFFERED   — reads
+# Both directions, as USBLCD.exe (USBLCD.exe.c:16684): the buffered form
+# (0x4D004) is for transfers under 16 KB, and the poll reads 57,600 bytes.
+_IOCTL_SCSI_PASS_THROUGH_DIRECT = 0x4D014
 _SCSI_IOCTL_DATA_OUT = 0
 _SCSI_IOCTL_DATA_IN = 1
 _SENSE_LENGTH = 32
@@ -95,28 +99,10 @@ class _SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER(ctypes.Structure):
     ]
 
 
-class _SCSI_PASS_THROUGH(ctypes.Structure):
-    """Buffered variant — layout: [struct][sense][data]."""
-    _fields_ = [
-        ("Length", ctypes.c_uint16),
-        ("ScsiStatus", ctypes.c_uint8),
-        ("PathId", ctypes.c_uint8),
-        ("TargetId", ctypes.c_uint8),
-        ("Lun", ctypes.c_uint8),
-        ("CdbLength", ctypes.c_uint8),
-        ("SenseInfoLength", ctypes.c_uint8),
-        ("DataIn", ctypes.c_uint8),
-        ("DataTransferLength", ctypes.c_uint32),
-        ("TimeOutValue", ctypes.c_uint32),
-        ("DataBufferOffset", ctypes.c_size_t),   # ULONG_PTR on x64
-        ("SenseInfoOffset", ctypes.c_uint32),
-        ("Cdb", ctypes.c_uint8 * 16),
-    ]
-
-
 def _kernel32() -> Any:
-    """Access kernel32 only when needed (Windows-only attribute)."""
-    log.debug("_kernel32: called")
+    """Access kernel32 only when needed (Windows-only attribute).  Called on
+    every SCSI command, so its line is per-frame."""
+    frame_log.debug("_kernel32: called")
     return ctypes.windll.kernel32  # pyright: ignore[reportAttributeAccessIssue]
 
 
@@ -190,24 +176,61 @@ _WIN_OPEN_ERRORS: dict[int, str] = {
     32: "ERROR_SHARING_VIOLATION — another process holds the device open",
 }
 
+# GetLastError codes that mean the drive is gone -- no retry will reach it, so
+# the base raises disconnect-class and the recovery threshold marks the panel
+# lost (Linux: DID_NO_CONNECT).  ERROR_GEN_FAILURE (31) is NOT here: USBLCD.exe
+# retries it (USBLCD.exe.c:16684-16695).  To be confirmed on the VM by detaching
+# the panel mid-stream.
+_GONE_ERRORS: dict[int, str] = {
+    433:  "ERROR_NO_SUCH_DEVICE",
+    1167: "ERROR_DEVICE_NOT_CONNECTED",
+    1617: "ERROR_DEVICE_REMOVED",
+}
 
-class WindowsScsiTransport(ScsiTransport):
-    """SCSI passthrough via DeviceIoControl on Windows."""
+#: How the panel answers its handshake poll on Windows: ERROR_SEM_TIMEOUT with
+#: SCSI status GOOD -- and the reply delivered anyway.  Measured on 0402:3922
+#: (win11 VM, 2026-10-18): the buffer, pre-filled with 0xAA, came back with all
+#: 57,600 bytes written and byte 0 = 0x64, its FBL.  Linux sees the same poll as
+#: host=7 with the data delivered (#301), and USBLCD.exe never checks the call
+#: at all -- it reads the identity byte straight out of the buffer.
+_ERROR_SEM_TIMEOUT = 121
+
+
+def _spt_result(ok: bool, err: int, scsi_status: int, transferred: int,
+                data: bytes = b"") -> CdbResult:
+    """What one DeviceIoControl pass-through did -- no policy here."""
+    if ok and scsi_status == 0:
+        return CdbResult(ok=True, data=data)     # the per-frame path: no log
+    frame_log.debug("_spt_result: ok=%s err=%d status=%d transferred=%d",
+                    ok, err, scsi_status, transferred)
+    if not ok and err in _GONE_ERRORS:
+        return CdbResult(ok=False, gone=True, detail=_GONE_ERRORS[err])
+    if ok:
+        return CdbResult(ok=False, detail=f"SCSI status {scsi_status}")
+    return CdbResult(ok=False, detail=f"WinError {err} (transferred {transferred})")
+
+
+class WindowsScsiTransport(BaseScsiTransport):
+    r"""SCSI over ``\\.\PhysicalDriveN``: one DeviceIoControl per CDB.
+
+    Both directions go through IOCTL_SCSI_PASS_THROUGH_DIRECT, as USBLCD.exe
+    does for frames AND the poll (USBLCD.exe.c:16684) -- the buffered form is
+    meant for transfers under 16 KB, and the poll reads 57,600 bytes.  Write
+    buffers are cached by size and filled with one memmove, like Linux: they
+    were rebuilt byte by byte, ~298 M instructions per 320x320 frame
+    (measured 2026-10-18).  Logging, the failure policy and open/close are
+    ``BaseScsiTransport``'s.
+    """
 
     def __init__(self, device_path: str) -> None:
-        self._path = device_path
         self._handle: int | None = None
-        log.info("WindowsScsiTransport: bound to %s", device_path)
+        # {data_len: (sptd_with_sense, data_buf)} -- one set per size class.
+        self._bufs: dict[int, tuple[Any, Any]] = {}
+        log.debug("WindowsScsiTransport.__init__: %s", device_path)
+        super().__init__(device_path)
 
-    @property
-    def is_open(self) -> bool:
-        log.debug("is_open")
-        return self._handle is not None
-
-    def open(self) -> bool:
-        log.info("open: path=%s", self._path)
-        if self._handle is not None:
-            return True
+    def _open_handle(self) -> bool:
+        log.debug("WindowsScsiTransport._open_handle: %s", self._path)
         try:
             GENERIC_READ_WRITE = 0xC0000000
             FILE_SHARE_READ_WRITE = 0x3
@@ -216,112 +239,99 @@ class WindowsScsiTransport(ScsiTransport):
                 self._path, GENERIC_READ_WRITE, FILE_SHARE_READ_WRITE,
                 None, OPEN_EXISTING, 0, None,
             )
-            if handle == -1:
-                err = ctypes.GetLastError()  # pyright: ignore[reportAttributeAccessIssue]
-                detail = _WIN_OPEN_ERRORS.get(
-                    err, "see Microsoft 'System Error Codes'")
-                log.error("CreateFileW failed for %s — WinError %d: %s",
-                          self._path, err, detail)
-                if err == _ERROR_ACCESS_DENIED:
-                    # Raised, like every other transport: a plain False read
-                    # as "not answering yet", so the reconnect watcher retried
-                    # a panel only elevation can open, without saying so.
-                    raise PermissionError_(f"{self._path}: {detail}")
-                return False
-            self._handle = handle
-            return True
-        except PermissionError_:
-            raise
         except Exception:
             log.exception("Failed to open %s", self._path)
             return False
+        if handle == -1:
+            err = ctypes.GetLastError()  # pyright: ignore[reportAttributeAccessIssue]
+            detail = _WIN_OPEN_ERRORS.get(
+                err, "see Microsoft 'System Error Codes'")
+            log.error("CreateFileW failed for %s — WinError %d: %s",
+                      self._path, err, detail)
+            if err == _ERROR_ACCESS_DENIED:
+                # Raised, like every other transport: a plain False read as
+                # "not answering yet", so the reconnect watcher retried a panel
+                # only elevation can open, without saying so.
+                raise PermissionError_(f"{self._path}: {detail}")
+            return False
+        self._handle = handle
+        return True
 
-    def close(self) -> None:
-        log.info("close: path=%s", self._path)
-        if self._handle is not None:
-            try:
-                _kernel32().CloseHandle(self._handle)
-            except Exception:
-                pass
-            self._handle = None
+    def _close_handle(self) -> None:
+        log.debug("WindowsScsiTransport._close_handle: %s", self._handle)
+        handle, self._handle = self._handle, None
+        self._bufs.clear()
+        if handle is not None and not _kernel32().CloseHandle(handle):
+            log.warning("CloseHandle %s failed: WinError %d", self._path,
+                        ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
 
-    def send_cdb(self, cdb: bytes, data: bytes,
-                 timeout_ms: int = 5000) -> bool:
-        log.debug("send_cdb: cdb_len=%d data_len=%d timeout=%dms",
-                  len(cdb), len(data), timeout_ms)
-        if self._handle is None:
-            raise TransportError(f"WindowsScsiTransport {self._path} not open")
+    def _buffers(self, length: int) -> tuple[Any, Any]:
+        """The cached pass-through block and data buffer for *length* bytes."""
+        bufs = self._bufs.get(length)
+        if bufs is None:
+            frame_log.debug("WindowsScsiTransport._buffers: new size %d", length)
+            bufs = (_SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER(),
+                    (ctypes.c_uint8 * max(1, length))())
+            self._bufs[length] = bufs
+        return bufs
 
-        data_buf = (ctypes.c_uint8 * len(data))(*data) if data else (ctypes.c_uint8 * 1)()
-        sptdwb = _SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER()
+    def _pass_through(self, cdb: bytes, length: int, data_in: bool,
+                      timeout_ms: int) -> tuple[bool, int, Any, Any]:
+        """One IOCTL_SCSI_PASS_THROUGH_DIRECT; the caller filled data-out."""
+        sptdwb, data_buf = self._buffers(length)
         sptd = sptdwb.sptd
         sptd.Length = ctypes.sizeof(_SCSI_PASS_THROUGH_DIRECT)
-        sptd.CdbLength = len(cdb)
+        sptd.CdbLength = min(len(cdb), 16)
         sptd.SenseInfoLength = _SENSE_LENGTH
-        sptd.DataIn = _SCSI_IOCTL_DATA_OUT
-        sptd.DataTransferLength = len(data)
+        sptd.DataIn = _SCSI_IOCTL_DATA_IN if data_in else _SCSI_IOCTL_DATA_OUT
+        sptd.DataTransferLength = length
         sptd.TimeOutValue = max(1, timeout_ms // 1000)   # Windows wants seconds
         sptd.DataBuffer = ctypes.addressof(data_buf)
         sptd.SenseInfoOffset = ctypes.sizeof(_SCSI_PASS_THROUGH_DIRECT)
-        for i, b in enumerate(cdb[:16]):
-            sptd.Cdb[i] = b
-
+        ctypes.memmove(sptd.Cdb, bytes(cdb[:16]).ljust(16, b"\0"), 16)
         returned = ctypes.c_uint32(0)
-        ok = _kernel32().DeviceIoControl(
-            self._handle,
-            _IOCTL_SCSI_PASS_THROUGH_DIRECT,
+        ok = bool(_kernel32().DeviceIoControl(
+            self._handle, _IOCTL_SCSI_PASS_THROUGH_DIRECT,
             ctypes.byref(sptdwb), ctypes.sizeof(sptdwb),
             ctypes.byref(sptdwb), ctypes.sizeof(sptdwb),
             ctypes.byref(returned), None,
-        )
+        ))
+        err = 0 if ok else ctypes.GetLastError()  # pyright: ignore[reportAttributeAccessIssue]
         if not ok:
-            log.error("DeviceIoControl send_cdb failed: error %d",
-                      ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
-            return False
-        if sptd.ScsiStatus != 0:
-            log.warning("SCSI status %d", sptd.ScsiStatus)
-            return False
-        return True
+            log.debug("WindowsScsiTransport._pass_through: WinError %d", err)
+        return ok, err, sptd, data_buf
 
-    def read_cdb(self, cdb: bytes, length: int,
-                 timeout_ms: int = 5000) -> bytes:
-        log.debug("read_cdb: cdb_len=%d length=%d timeout=%dms",
-                  len(cdb), length, timeout_ms)
-        if self._handle is None:
-            raise TransportError(f"WindowsScsiTransport {self._path} not open")
+    def _send(self, cdb: bytes, data: bytes, timeout_ms: int) -> CdbResult:
+        """CDB + data-out: one memmove into the cached buffer, one ioctl."""
+        _sptdwb, data_buf = self._buffers(len(data))
+        if data:
+            ctypes.memmove(data_buf, data, len(data))
+        else:
+            log.debug("WindowsScsiTransport._send: no data phase")
+        ok, err, sptd, _ = self._pass_through(cdb, len(data), False, timeout_ms)
+        return _spt_result(ok, err, sptd.ScsiStatus, sptd.DataTransferLength)
 
-        spt_size = ctypes.sizeof(_SCSI_PASS_THROUGH)
-        sense_offset = spt_size
-        data_offset = sense_offset + _SENSE_LENGTH
-        total = data_offset + length
-        buf = (ctypes.c_uint8 * total)()
+    def _read(self, cdb: bytes, length: int, timeout_ms: int) -> CdbResult:
+        """CDB + data-in, DIRECT like USBLCD.exe.
 
-        spt = _SCSI_PASS_THROUGH.from_buffer(buf)
-        spt.Length = spt_size
-        spt.CdbLength = len(cdb)
-        spt.SenseInfoLength = _SENSE_LENGTH
-        spt.DataIn = _SCSI_IOCTL_DATA_IN
-        spt.DataTransferLength = length
-        spt.TimeOutValue = max(1, timeout_ms // 1000)
-        spt.SenseInfoOffset = sense_offset
-        spt.DataBufferOffset = data_offset
-        for i, b in enumerate(cdb[:16]):
-            spt.Cdb[i] = b
-
-        returned = ctypes.c_uint32(0)
-        ok = _kernel32().DeviceIoControl(
-            self._handle, _IOCTL_SCSI_PASS_THROUGH,
-            buf, total, buf, total,
-            ctypes.byref(returned), None,
-        )
-        if not ok:
-            log.error("DeviceIoControl read_cdb failed: error %d",
-                      ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
-            return b""
-        if spt.ScsiStatus != 0:
-            log.warning("SCSI read status %d", spt.ScsiStatus)
-            return b""
-        return bytes(buf[data_offset:data_offset + length])
+        The buffer is zeroed first, so a reply can only be what this read
+        delivered.  The poll's ERROR_SEM_TIMEOUT with status GOOD carries its
+        reply (``_ERROR_SEM_TIMEOUT``), which is kept; nothing else that
+        failed is.
+        """
+        log.debug("WindowsScsiTransport._read: length=%d", length)
+        _sptdwb, data_buf = self._buffers(length)
+        ctypes.memset(data_buf, 0, length)
+        ok, err, sptd, _ = self._pass_through(cdb, length, True, timeout_ms)
+        if ok:
+            moved = min(sptd.DataTransferLength, length)
+            return _spt_result(ok, err, sptd.ScsiStatus, moved,
+                               bytes(data_buf[:moved]))
+        reply = bytes(data_buf[:length])
+        if err == _ERROR_SEM_TIMEOUT and sptd.ScsiStatus == 0 and any(reply):
+            return CdbResult(ok=False, data=reply,
+                             detail="WinError 121 with SCSI status GOOD")
+        return _spt_result(ok, err, sptd.ScsiStatus, 0)
 
 
 # =========================================================================
