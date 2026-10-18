@@ -135,6 +135,16 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest tests/test_ipc_transport.py tests/test_ipc_server.py tests/test_ipc_events.py -q --tb=short -n 0
 
+      # TRCC's Windows service (SCSI panels + PawnIO for a non-admin App) and
+      # its clients: the real broker and the real ScsiLcd / PawnioCpu over the
+      # real wire, with only the drive and the driver faked.  They ran on Linux
+      # alone until 2026-10-18, when the win11 VM found a test asserting the
+      # Linux answer that nothing had ever run on Windows.
+      - name: TRCC service broker + clients
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/test_service_broker.py tests/test_service_client.py tests/test_pawnio_cpu.py -q --tb=short -n 0
+
       # The one thing only Windows can answer: whether a rotation actually
       # succeeds while other processes are writing the same log.
       - name: Multi-process log rotation

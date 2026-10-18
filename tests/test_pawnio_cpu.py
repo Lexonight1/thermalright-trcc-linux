@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import struct
+import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
@@ -28,6 +29,12 @@ I9_12900K = {("ioctl_read_msr", 0x1A2): 0x0064_1400,
 RYZEN = {("ioctl_read_smn", 0x59800): 440 << 21,         # Tctl 55 degC
          ("ioctl_read_msr", 0xC0010299): 0x000A_1003,    # 1/65536 J
          ("ioctl_read_msr", 0xC001029B): 1_000_000}
+
+
+# On Windows these ask the real platform -- which may reach a real TRCCService
+# and a real PawnIO (measured on the win11 VM, 2026-10-18).
+off_windows = pytest.mark.skipif(sys.platform == "win32",
+                                 reason="asserts the non-Windows answer")
 
 
 class _FakePawnIo(_DeviceIoPort):
@@ -157,6 +164,7 @@ def test_a_module_whose_first_reads_fail_is_closed() -> None:
     assert device.closed == 1
 
 
+@off_windows
 def test_off_windows_there_is_simply_no_reading() -> None:
     """The real defaults on Linux: no module file beside the interpreter."""
     cpu = PawnioCpu()
@@ -166,6 +174,7 @@ def test_off_windows_there_is_simply_no_reading() -> None:
 
 # ── trcc doctor ──────────────────────────────────────────────────────
 
+@off_windows
 def test_doctor_is_silent_off_windows() -> None:
     from trcc.adapters.diagnostics.health import check_cpu_sensors_windows
     assert check_cpu_sensors_windows().message == "Not applicable on this OS"
