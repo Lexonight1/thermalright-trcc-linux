@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-61 ports.
+62 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -51,6 +51,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_DeviceIoPort`](#_deviceioport) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
+| [`BaseScsiTransport`](#basescsitransport) | 4 | 5 | 1 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
@@ -736,6 +737,25 @@ _release() -> None
 **You inherit (4):** `close` · `doRollover` · `emit` · `shouldRollover`
 
 **Implementations (2):** `PosixSharedLogHandler` · `WindowsSharedLogHandler`
+
+## BaseScsiTransport
+
+`adapters/device/scsi_transport.py`
+
+Open/close, the per-frame log, failure policy and single owner -- once.
+
+**You implement (4):**
+
+```python
+_close_handle() -> None
+_open_handle() -> bool
+_read(cdb: 'bytes', length: 'int', timeout_ms: 'int') -> CdbResult
+_send(cdb: 'bytes', data: 'bytes', timeout_ms: 'int') -> CdbResult
+```
+
+**You inherit (5):** `close` · `is_open` · `open` · `read_cdb` · `send_cdb`
+
+**Implementations (1):** `LinuxScsiTransport`
 
 ## CloudCatalog
 

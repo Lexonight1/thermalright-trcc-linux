@@ -262,6 +262,21 @@ class ConnectDevice(Command[ConnectResult]):
                      "the ordinary one did not", self.key)
             return result
 
+    def _release_attached(self, app: App) -> None:
+        """Close the handle this connect replaces, before it re-handshakes.
+
+        A connect re-handshakes (the dev console's inject-reply relies on it).
+        Replacing an attached device left its transport to garbage collection
+        and its worker registered, which logged an "unstable replug" warning
+        for a deliberate command.
+        """
+        if self.key not in app.devices:
+            log.debug("ConnectDevice %s: nothing attached to release", self.key)
+            return
+        log.info("ConnectDevice %s: already attached — releasing it before "
+                 "a fresh handshake", self.key)
+        app.release_device(self.key)    # the device, not what it shows
+
     def _take_back(self, app: App) -> None:
         """An explicit connect ends a release: the user wants it again (#317)."""
         if app.settings.for_device(self.key).released:
@@ -279,14 +294,7 @@ class ConnectDevice(Command[ConnectResult]):
                          "(expected 'vvvv:pppp' or 'vvvv:pppp@unit')"),
             )
 
-        if self.key in app.devices:
-            # A connect re-handshakes (the dev console's inject-reply relies on
-            # it).  Close the old handle first: replacing it left the transport
-            # to garbage collection and its worker registered, which logged an
-            # "unstable replug" warning for a deliberate command.
-            log.info("ConnectDevice %s: already attached — releasing it before "
-                     "a fresh handshake", self.key)
-            app.release_device(self.key)    # the device, not what it shows
+        self._release_attached(app)
 
         try:
             device = app.attach(vid, pid, unit=unit)
