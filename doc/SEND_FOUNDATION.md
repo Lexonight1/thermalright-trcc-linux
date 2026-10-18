@@ -50,6 +50,12 @@ the latest-wins slot.
 | 11 | Daemon + CLI + GUI all create senders via the `ConnectDevice` chokepoint (daemon: `start_hotplug` → `DeviceAttached` → `_on_device_attached` → `ConnectDevice` → `start_sender`); `App.close` shuts the scheduler. Uniform, no per-UI wiring | **DONE** 2026-06-04 — verified by design (single chokepoint) + daemon path read | ✓ |
 | 12 | `dev/smoke_keepalive.py` + send-touching tests updated (render_led helper, backend_finish, device_sender, app_senders) | **DONE** 2026-06-04 — suite 1248; no "no sender" warnings in logs | ✓ |
 
+**2026-10-18: SCSI is volatile too.** The "SCSI +0" above was correct for the code
+and wrong for the panel: an idle SCSI panel drops to its USB-standby screen inside
+~30 s (0402:3922, on glass), and the C# re-sends every ~150 ms.  `ScsiLcd`
+overrides `Device.needs_keepalive`; `dev/smoke_keepalive.py` now expects both to
+resend.
+
 **Phase 1 complete (12/12).** The freeze is fixed; the per-device send-worker actor owns every wire write, serializes by construction, keepalives volatile wires, surfaces failures, and runs uniformly across GUI/CLI/API/daemon.
 
 ## Phase 2 — deferred, tracked (each has a trigger; do NOT drop)

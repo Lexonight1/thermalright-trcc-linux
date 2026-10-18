@@ -329,9 +329,10 @@ class ProductInfo:
     # True when the firmware does NOT latch a frame — it reverts to the built-in
     # Thermalright logo after ~2-3 s unless frames keep arriving, so the send
     # worker keepalive-resends the last frame.  A panel fact, declared per
-    # device: SCSI and HID panels latch, LED has no screen, and the bulk / LY
-    # families do not.  Read by ``Device.needs_keepalive``, which OR-s it with
-    # the per-firmware ``keepalive_stream`` quirk.
+    # device for the bulk / LY families; a whole family that never latches
+    # overrides ``Device.needs_keepalive`` instead (``ScsiLcd``).  HID panels are
+    # believed to latch (never measured idle); LED has no screen.  Read by
+    # ``Device.needs_keepalive``, which OR-s it with the ``keepalive_stream`` quirk.
     volatile_frames: bool = False
     model: str = "CZTV"                 # GUI sidebar button-image lookup
     button_image: str = "A1CZTV"        # asset base name (no .png)
@@ -471,7 +472,7 @@ class DeviceQuirks:
     skip_init: bool = False         # do NOT send the wire's init packet (reboots panel)
     short_handshake: bool = False   # accept the firmware's short (<20-byte) reply
     portrait_native: bool = False   # device self-orients: 240×320 raster, no pre-rotate
-    keepalive_stream: bool = False  # never skip an unchanged frame (panel blanks when idle)
+    keepalive_stream: bool = False  # resend the last frame while idle (panel blanks when idle)
     # Never reopen -- not after a failed send, not after a wake: a close→reopen
     # wedges the panel until a replug (#228).  Every 4.07 panel keeps it: one
     # allowed to reopen (#283's, which answers the ordinary handshake) went

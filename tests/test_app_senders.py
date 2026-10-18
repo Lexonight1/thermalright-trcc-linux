@@ -33,9 +33,11 @@ def test_connect_creates_sender_disconnect_drops_it(tmp_path: Path) -> None:
         assert app.dispatch(ConnectDevice(key=_SCSI)).ok
         assert set(app.senders) == {_BULK, _SCSI}
 
-        # Volatility comes from the wire, via the real device.
+        # Asked of the real device: the bulk panel's registry fact, and
+        # ScsiLcd's own override (USB standby when idle, 2026-10-18).
+        # MUTATION CHECK: delete ScsiLcd.needs_keepalive.
         assert app.devices[_BULK].needs_keepalive is True
-        assert app.devices[_SCSI].needs_keepalive is False
+        assert app.devices[_SCSI].needs_keepalive is True
 
         app.dispatch(DisconnectDevice(key=_BULK))
         assert _BULK not in app.senders

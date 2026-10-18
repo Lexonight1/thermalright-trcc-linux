@@ -23,7 +23,7 @@ from _mock_bootstrap import DEV_TRCC  # also puts src/ + repo on sys.path
 from tests.mock_platform import MockPlatform
 
 _BULK = "87ad:70db"   # scripted 854x480 — volatile
-_SCSI = "0402:3922"   # 320x320 — non-volatile
+_SCSI = "0402:3922"   # 320x320 — USB standby when idle (2026-10-18)
 _SPECS = [
     {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 11, "sub": 5},
     {"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100},
@@ -73,14 +73,15 @@ def main() -> int:
     bulk_growth = bulk_after - bulk_before
     scsi_growth = scsi_after - scsi_before
     print(f"Bulk (volatile):     {bulk_before} -> {bulk_after}  (+{bulk_growth})")
-    print(f"SCSI (non-volatile): {scsi_before} -> {scsi_after}  (+{scsi_growth})")
+    print(f"SCSI (volatile):     {scsi_before} -> {scsi_after}  (+{scsi_growth})")
 
-    # ~1 s idle at 150 ms cadence ⇒ several Bulk resends; SCSI must stay flat.
-    ok = bulk_growth >= 3 and scsi_growth == 0
+    # ~1 s idle at 150 ms cadence ⇒ several resends on both.  SCSI stayed flat
+    # until 2026-10-18, when an idle SCSI panel was seen dropping to standby.
+    ok = bulk_growth >= 3 and scsi_growth >= 3
     if ok:
-        print("PASS — Bulk keepalive resends; SCSI silent")
+        print("PASS — Bulk and SCSI keepalive resend")
         return 0
-    print("FAIL — expected Bulk to resend (>=3) and SCSI flat (0)")
+    print("FAIL — expected Bulk and SCSI to resend (>=3 each)")
     return 1
 
 

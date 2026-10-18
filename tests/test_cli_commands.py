@@ -724,9 +724,9 @@ def test_display_restore_theme_no_persisted(
         _app(), ["display", "restore-theme", "0402:3922"],
     )
     assert result.exit_code == 1
-    assert result.output.splitlines()[-1] == (
-        "No theme available for this device — install themes or load a "
-        "theme first")
+    # Not the last line: a SCSI panel gets the "goes blank" note after it.
+    assert ("No theme available for this device — install themes or load a "
+            "theme first") in result.output.splitlines()
 
 
 def test_system_snapshot(cli_runner: CliRunner, cli_app) -> None:
@@ -1760,11 +1760,21 @@ def test_the_blanking_note_names_what_actually_keeps_the_panel_lit(
 
 
 def test_a_panel_that_holds_its_image_gets_no_note(tmp_path, cli_runner) -> None:
+    """The same 0416:5302 as the Warframe SE above, minus its 4.07 firmware."""
+    spec = {"type": "lcd", "name": "LCD", "vid": "0416", "pid": "5302",
+            "pm": 58}
+    out = _cli_on(tmp_path, cli_runner, spec,
+                  ["display", "color", "0416:5302", "ff0000"])
+    assert "goes blank when frames stop" not in out, out
+
+
+def test_a_one_shot_on_a_scsi_panel_says_it_goes_blank(tmp_path, cli_runner) -> None:
+    """SCSI drops to USB standby when frames stop (measured 2026-10-18)."""
     spec = {"type": "lcd", "name": "LCD", "vid": "0402", "pid": "3922",
             "pm": 32, "fbl": 100}
     out = _cli_on(tmp_path, cli_runner, spec,
                   ["display", "color", "0402:3922", "ff0000"])
-    assert "goes blank when frames stop" not in out, out
+    assert "0402:3922 goes blank when frames stop" in out, out
 
 
 @pytest.mark.parametrize("remote", [False, True])
