@@ -65,7 +65,8 @@ _LOG_FUNCTIONS = frozenset({"trace", "recurring_failure", "recurring_warning"})
 #: name-only test would have accepted.  ``sink`` is ``app.dispatch``'s
 #: ``frame_log if ... else log`` alias; ``log`` on an attribute covers
 #: ``self.log = logging.getLogger(f"{__name__}.{key}")``.
-_LOGGER_RECEIVERS = frozenset({"log", "frame_log", "logger", "_log", "sink"})
+_LOGGER_RECEIVERS = frozenset({"log", "frame_log", "logger", "_log", "_frame_log",
+                               "sink"})
 
 #: Invoked by the logging machinery itself while formatting a record — a log
 #: call inside one of these recurses until the stack ends.

@@ -22,7 +22,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ._imc_timings import ImcTimings
@@ -40,6 +40,7 @@ from ...core.ports import (
     SensorEnumerator,
     SmBus,
 )
+from ..device.scsi_transport import BaseScsiTransport, CdbResult
 from ..rgb.smbus import LinuxSmBus, find_smbus, silent_memory_sensors
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
@@ -144,28 +145,31 @@ _DID_NO_CONNECT = 0x01
 _SG_INFO_OK_MASK = 0x1
 
 
-def _sg_failed(hdr: _SgIoHdr, op: str, path: str) -> bool:
-    """Whether a completed SG_IO failed; raise when the device is gone.
+def _sg_result(hdr: _SgIoHdr, data: bytes = b"") -> CdbResult:
+    """What a completed SG_IO did, read off its header -- no policy here.
 
-    ``status`` alone was tested, and a removed or offlined panel completes
-    with ``status`` 0 and ``host_status`` DID_NO_CONNECT -- so every frame to
-    a dead panel counted as SENT, nothing escalated, and the panel stayed
-    "connected" (#254).  That one is raised as disconnect-class (ENODEV), so
-    the recovery threshold marks it lost; any other error is a soft failure,
-    as USBLCD.exe treats every write.
+    ``status`` alone was tested once, and a removed or offlined panel
+    completes with ``status`` 0 and ``host_status`` DID_NO_CONNECT -- so every
+    frame to a dead panel counted as SENT and the panel stayed "connected"
+    (#254).  That one is ``gone``.  SCSI status GOOD with any other host error
+    is how the panel answers its handshake poll: host=7 (DID_ERROR) every time,
+    reply delivered (#301) -- so the delivered *data* rides along, and
+    ``BaseScsiTransport`` keeps it.
     """
     if hdr.host_status == _DID_NO_CONNECT:
-        log.warning("SG_IO %s on %s: DID_NO_CONNECT -- the device is gone",
-                    op, path)
-        raise TransportError(
-            f"SG_IO {op} on {path}: device gone (DID_NO_CONNECT)",
-        ) from OSError(errno.ENODEV, "DID_NO_CONNECT")
-    if hdr.info & _SG_INFO_OK_MASK:
-        log.warning("SG_IO %s on %s failed: status=%d host=%d driver=%d "
-                    "info=%#x", op, path, hdr.status, hdr.host_status,
-                    hdr.driver_status, hdr.info)
-        return True
-    return False
+        frame_log.debug("_sg_result: DID_NO_CONNECT")
+        return CdbResult(ok=False, gone=True, detail="DID_NO_CONNECT")
+    if not hdr.info & _SG_INFO_OK_MASK:
+        return CdbResult(ok=True, data=data)     # the per-frame path: no log
+    frame_log.debug("_sg_result: status=%d host=%d driver=%d info=%#x data=%d",
+                    hdr.status, hdr.host_status, hdr.driver_status, hdr.info,
+                    len(data))
+    if hdr.status == 0 and data:
+        return CdbResult(ok=False, data=data,
+                         detail=f"SCSI status GOOD and host={hdr.host_status}")
+    return CdbResult(ok=False, detail=(
+        f"status={hdr.status} host={hdr.host_status} "
+        f"driver={hdr.driver_status} info={hdr.info:#x}"))
 
 
 def _resolve_scsi_path(vid: int, pid: int,
@@ -234,37 +238,30 @@ def _walk_sysfs_for_vid_pid(
     return (None, "")
 
 
-class LinuxScsiTransport(ScsiTransport):
-    """SCSI transport over /dev/sgN using SG_IO ioctl.
+class LinuxScsiTransport(BaseScsiTransport):
+    """SCSI over /dev/sgN: one SG_IO ioctl per CDB.
 
-    One ioctl per CDB — the kernel bundles CDB, data phase, and status.
-    Buffer allocations are cached by data-length so the per-frame hot
-    path does only memmoves + one ioctl (no Python-side allocation).
+    The kernel bundles CDB, data phase and status in that one call.  Write
+    buffers are cached by data length, so the per-frame path is memmoves and
+    one ioctl -- no Python-side allocation.  Everything else (logging, the
+    failure policy, open/close) is ``BaseScsiTransport``'s.
     """
 
     def __init__(self, device_path: str) -> None:
-        self._path = device_path
         self._fd: int | None = None
         # /dev/sd* is the root-only block fallback used when the sg module
         # isn't loaded; it takes neither the advisory claim nor the sg hint.
         self._is_block = device_path.startswith("/dev/sd")
-        # Cache for send_cdb: {data_len: (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)}
+        # Cache for _send: {data_len: (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)}
         self._write_bufs: dict[int, tuple] = {}
-        log.info("LinuxScsiTransport: bound to %s", device_path)
+        log.debug("LinuxScsiTransport.__init__: %s block=%s", device_path,
+                  self._is_block)
+        super().__init__(device_path)
 
-    @property
-    def is_open(self) -> bool:
-        opened = self._fd is not None
-        frame_log.debug("LinuxScsiTransport.is_open → %s (fd=%s)", opened, self._fd)
-        return opened
-
-    def open(self) -> bool:
-        if self._fd is not None:
-            log.debug("LinuxScsiTransport.open: %s already open (fd=%d)",
-                      self._path, self._fd)
-            return True
+    def _open_handle(self) -> bool:
+        log.debug("LinuxScsiTransport._open_handle: %s", self._path)
         try:
-            fd = os.open(self._path, os.O_RDWR | os.O_NONBLOCK)
+            self._fd = os.open(self._path, os.O_RDWR | os.O_NONBLOCK)
         except OSError as e:
             log.error("LinuxScsiTransport: open failed for %s: %s", self._path, e)
             if e.errno == errno.EACCES:
@@ -284,14 +281,16 @@ class LinuxScsiTransport(ScsiTransport):
                 # for as long as TRCC ran, and the connect lost the hint.
                 raise PermissionError_(hint) from e
             return False
-        if not self._claim(fd):
-            os.close(fd)
-            return False
-        self._fd = fd
-        log.info("LinuxScsiTransport: opened %s (fd=%d)", self._path, fd)
         return True
 
-    def _claim(self, fd: int) -> bool:
+    def _close_handle(self) -> None:
+        log.debug("LinuxScsiTransport._close_handle: fd=%s", self._fd)
+        fd, self._fd = self._fd, None
+        self._write_bufs.clear()
+        if fd is not None:
+            os.close(fd)
+
+    def _claim(self) -> bool:
         """Take the advisory whole-device lock, or refuse the open.
 
         SCSI generic has NO kernel-level exclusion: two processes can each
@@ -307,15 +306,15 @@ class LinuxScsiTransport(ScsiTransport):
         verified.  A lock error that isn't "busy" degrades to today's
         behaviour rather than failing a device we could otherwise drive.
         """
-        log.debug("_claim: fd=%d path=%s is_block=%s",
-                  fd, self._path, self._is_block)
+        log.debug("_claim: fd=%s path=%s is_block=%s",
+                  self._fd, self._path, self._is_block)
         if self._is_block:
             log.info("_claim: %s is a block node — advisory claim skipped",
                      self._path)
             return True
         import fcntl  # Linux-only stdlib -- lazy so linux.py imports on Windows (#166)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(cast(int, self._fd), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as e:
             if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
                 log.warning(
@@ -333,30 +332,16 @@ class LinuxScsiTransport(ScsiTransport):
         log.info("LinuxScsiTransport: claimed %s (advisory flock)", self._path)
         return True
 
-    def close(self) -> None:
-        if self._fd is None:
-            log.debug("LinuxScsiTransport.close: %s already closed", self._path)
-            return
-        log.info("LinuxScsiTransport: closing %s (fd=%d)", self._path, self._fd)
-        try:
-            os.close(self._fd)
-        except OSError as e:
-            log.warning("LinuxScsiTransport: os.close raised %s — continuing", e)
-        self._fd = None
-        self._write_bufs.clear()
+    def _release(self) -> None:
+        """Nothing to do: the kernel drops the flock when the fd closes."""
+        log.debug("LinuxScsiTransport._release: the fd close releases the flock")
 
-    def send_cdb(self, cdb: bytes, data: bytes,
-                 timeout_ms: int = 5000) -> bool:
-        """SCSI CDB + data-out via single SG_IO ioctl.  True when it
-        completed clean; raises once the device is gone (:func:`_sg_failed`)."""
-        frame_log.debug("LinuxScsiTransport.send_cdb: cdb_len=%d data_len=%d timeout=%dms",
-                  len(cdb), len(data), timeout_ms)
-        if self._fd is None:
-            log.error("LinuxScsiTransport.send_cdb: %s not open", self._path)
-            raise TransportError(f"LinuxScsiTransport {self._path} not open")
-
+    def _send(self, cdb: bytes, data: bytes, timeout_ms: int) -> CdbResult:
+        """CDB + data-out through the cached buffers and one SG_IO.  Logs only
+        on the first CDB of a size: it runs four times per frame."""
         bufs = self._write_bufs.get(len(data))
         if bufs is None:
+            frame_log.debug("LinuxScsiTransport._send: new size %d", len(data))
             bufs = self._alloc_write_bufs(len(cdb), len(data))
             self._write_bufs[len(data)] = bufs
         cdb_buf, data_buf, _sense, hdr, ioctl_buf = bufs
@@ -367,23 +352,14 @@ class LinuxScsiTransport(ScsiTransport):
         hdr.timeout = timeout_ms
         ctypes.memmove(ioctl_buf, ctypes.addressof(hdr), _SG_HDR_SIZE)
         import fcntl  # Linux-only stdlib — lazy so linux.py imports on Windows (#166)
-        fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
+        fcntl.ioctl(cast(int, self._fd), _SG_IO, ioctl_buf)  # open: the base checked
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
+        return _sg_result(hdr)
 
-        return not _sg_failed(hdr, "send_cdb", self._path)
-
-    def read_cdb(self, cdb: bytes, length: int,
-                 timeout_ms: int = 5000) -> bytes:
-        """SCSI CDB + data-in via single SG_IO ioctl.  Empty bytes on error.
-
-        Not cached — reads happen only at handshake/poll, not per frame.
-        """
-        log.debug("LinuxScsiTransport.read_cdb: cdb_len=%d length=%d timeout=%dms",
-                  len(cdb), length, timeout_ms)
-        if self._fd is None:
-            log.error("LinuxScsiTransport.read_cdb: %s not open", self._path)
-            raise TransportError(f"LinuxScsiTransport {self._path} not open")
-
+    def _read(self, cdb: bytes, length: int, timeout_ms: int) -> CdbResult:
+        """CDB + data-in, one SG_IO.  Not cached: reads happen only at
+        handshake/poll, not per frame."""
+        log.debug("LinuxScsiTransport._read: length=%d", length)
         cdb_buf = (ctypes.c_ubyte * len(cdb)).from_buffer_copy(cdb)
         data_buf = (ctypes.c_ubyte * length)()
         sense_buf = (ctypes.c_ubyte * _SENSE_BUF_LEN)()
@@ -402,26 +378,12 @@ class LinuxScsiTransport(ScsiTransport):
         ioctl_buf = ctypes.create_string_buffer(_SG_HDR_SIZE)
         ctypes.memmove(ioctl_buf, ctypes.addressof(hdr), _SG_HDR_SIZE)
         import fcntl  # Linux-only stdlib — lazy so linux.py imports on Windows (#166)
-        fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
+        fcntl.ioctl(cast(int, self._fd), _SG_IO, ioctl_buf)  # open: the base checked
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
         actual = length - hdr.resid
-        # SCSI status GOOD with a host error is how the panel answers its
-        # handshake poll: host=7 (DID_ERROR) every time, with the reply
-        # delivered.  Dropping it read every 0402:3922 panel as FBL 100,
-        # "Frozen Warframe Pro" (#301, since #254's 3e3909e2).  It is the
-        # panel's NORMAL answer, so INFO: as a warning it printed two lines on
-        # every connect.  DID_NO_CONNECT still goes to ``_sg_failed`` (gone).
-        if (hdr.info & _SG_INFO_OK_MASK and hdr.status == 0
-                and hdr.host_status != _DID_NO_CONNECT
-                and 0 < actual <= length):
-            log.info("read_cdb on %s: %d byte(s) with SCSI status GOOD and "
-                     "host=%d — the panel's usual poll answer, kept",
-                     self._path, actual, hdr.host_status)
-            return bytes(data_buf[:actual])
-        if _sg_failed(hdr, "read_cdb", self._path):
-            return b""
-        return bytes(data_buf[:actual])
+        delivered = bytes(data_buf[:actual]) if 0 < actual <= length else b""
+        return _sg_result(hdr, delivered)
 
     def _alloc_write_bufs(self, cdb_len: int, data_len: int) -> tuple:
         """Build a (cdb, data, sense, hdr, ioctl) buffer set for one size class."""
