@@ -279,6 +279,15 @@ class ConnectDevice(Command[ConnectResult]):
                          "(expected 'vvvv:pppp' or 'vvvv:pppp@unit')"),
             )
 
+        if self.key in app.devices:
+            # A connect re-handshakes (the dev console's inject-reply relies on
+            # it).  Close the old handle first: replacing it left the transport
+            # to garbage collection and its worker registered, which logged an
+            # "unstable replug" warning for a deliberate command.
+            log.info("ConnectDevice %s: already attached — releasing it before "
+                     "a fresh handshake", self.key)
+            app.release_device(self.key)    # the device, not what it shows
+
         try:
             device = app.attach(vid, pid, unit=unit)
         except DeviceNotFoundError as e:
