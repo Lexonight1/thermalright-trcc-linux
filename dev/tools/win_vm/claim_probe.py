@@ -5,7 +5,7 @@ import ctypes
 import sys
 
 sys.path.insert(0, r"C:\trccdev\tree\src")
-import trcc.adapters.system.windows as w  # noqa: E402
+import trcc.adapters.system.windows as w
 
 path = w._find_physical_drive(0x0402, 0x3922)
 print("drive:", path)

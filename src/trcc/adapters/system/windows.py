@@ -135,32 +135,16 @@ def make_pawnio_cpu() -> PawnioCpu:
 
 
 def _find_physical_drive(vid: int, pid: int) -> str | None:
-    """Map VID:PID → \\\\.\\PhysicalDriveN via WMI.
+    r"""Map VID:PID -> ``\\.\PhysicalDriveN`` through SetupAPI (``_windows_drives``).
 
-    LCD devices report tiny capacity (< 1MB) because they have no real
-    storage, which distinguishes them from flash drives and HDDs.
+    It went through WMI, matched the drive by "USBSTOR and under 1 MB", and
+    WMI's COM connection failed inside TRCC's service with an RPC internal
+    error (2026-10-18).  SetupAPI walks the disk up to its USB parent and
+    reads the VID:PID -- the Linux sysfs walk -- with no access rights.
     """
-    log.info("_find_physical_drive: %04x:%04x", vid, pid)
-    vid_tag = f"VID_{vid:04X}"
-    pid_tag = f"PID_{pid:04X}"
-    try:
-        w = wmi_handle()
-        for rel in w.Win32_USBControllerDevice():
-            dep = str(rel.Dependent or "").upper()
-            if vid_tag in dep and pid_tag in dep:
-                break
-        else:
-            log.debug("VID/PID %04x:%04x not present in USB tree", vid, pid)
-            return None
-        for disk in w.Win32_DiskDrive():
-            pnp = (disk.PNPDeviceID or "").upper()
-            if not pnp.startswith("USBSTOR"):
-                continue
-            if int(disk.Size or 0) < 1_000_000:
-                return disk.DeviceID
-    except Exception:
-        log.exception("WMI lookup failed for %04x:%04x", vid, pid)
-    return None
+    from ._windows_drives import find_physical_drive
+    log.debug("_find_physical_drive: %04x:%04x", vid, pid)
+    return find_physical_drive(vid, pid)
 
 
 # Common CreateFileW failures when opening \\.\PhysicalDriveN for SCSI
