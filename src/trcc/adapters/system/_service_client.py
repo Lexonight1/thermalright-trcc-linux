@@ -15,7 +15,7 @@ from typing import Any
 
 from ...core.errors import TransportError
 from ...core.logs import per_frame
-from ...core.ports import ScsiTransport
+from ..device.scsi_transport import BaseScsiTransport, CdbResult
 from ..sensors._pawnio import PawnIoError
 from ._service_broker import (
     SERVICE_NAME,
@@ -47,8 +47,13 @@ def connect_service(timeout: float = 5.0) -> ServiceClient:
     return ServiceClient(stream)
 
 
-class ServiceScsiTransport(ScsiTransport):
-    """A SCSI panel, driven by the service: it finds and opens the drive."""
+class ServiceScsiTransport(BaseScsiTransport):
+    """A SCSI panel, driven by the service: it finds and opens the drive.
+
+    The service's answer is the raw command: ``gone`` crosses the pipe, so a
+    drive that left raises disconnect-class here as it would in-process.
+    Logging, the failure policy and open/close are ``BaseScsiTransport``'s.
+    """
 
     def __init__(self, vid: int, pid: int) -> None:
         self._vid, self._pid = vid, pid
@@ -56,23 +61,18 @@ class ServiceScsiTransport(ScsiTransport):
         self._handle = 0
         log.info("ServiceScsiTransport: %04x:%04x through %s", vid, pid,
                  SERVICE_NAME)
+        super().__init__(f"{vid:04x}:{pid:04x} via {SERVICE_NAME}")
 
-    @property
-    def is_open(self) -> bool:
-        frame_log.debug("ServiceScsiTransport.is_open")
-        return self._client is not None
-
-    def open(self) -> bool:
+    def _open_handle(self) -> bool:
         """Ask the service for the panel; ``TransportError`` saying why not."""
         log.info("ServiceScsiTransport.open: %04x:%04x", self._vid, self._pid)
-        if self._client is not None:
-            return True
         try:
             client = connect_service()
-            reply, _ = client.call({"op": "scsi.open", "vid": self._vid,
-                                    "pid": self._pid})
         except ConnectionRefusedError as e:
             raise TransportError(str(e)) from e
+        try:
+            reply, _ = client.call({"op": "scsi.open", "vid": self._vid,
+                                    "pid": self._pid})
         except ServiceError as e:
             client.close()
             log.warning("ServiceScsiTransport.open: %s", e)
@@ -80,7 +80,7 @@ class ServiceScsiTransport(ScsiTransport):
         self._client, self._handle = client, int(reply["handle"])
         return True
 
-    def close(self) -> None:
+    def _close_handle(self) -> None:
         log.info("ServiceScsiTransport.close: %04x:%04x", self._vid, self._pid)
         client, self._client = self._client, None
         if client is None:
@@ -97,25 +97,35 @@ class ServiceScsiTransport(ScsiTransport):
             raise TransportError(f"{self._vid:04x}:{self._pid:04x} is not open")
         return self._client
 
-    def send_cdb(self, cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
-        frame_log.debug("ServiceScsiTransport.send_cdb: %d bytes", len(data))
+    def _send(self, cdb: bytes, data: bytes, timeout_ms: int) -> CdbResult:
+        frame_log.debug("ServiceScsiTransport._send: %d bytes", len(data))
         try:
             reply, _ = self._live().call(
                 {"op": "scsi.send", "handle": self._handle,
                  "timeout_ms": timeout_ms}, bytes(cdb) + bytes(data))
         except ServiceError as e:
-            raise TransportError(f"the service could not send: {e}") from e
-        return bool(reply.get("sent"))
+            return _service_failure(e, "send")
+        return CdbResult(ok=bool(reply.get("sent")),
+                         detail="the service's send did not complete")
 
-    def read_cdb(self, cdb: bytes, length: int, timeout_ms: int = 5000) -> bytes:
-        frame_log.debug("ServiceScsiTransport.read_cdb: %d", length)
+    def _read(self, cdb: bytes, length: int, timeout_ms: int) -> CdbResult:
+        frame_log.debug("ServiceScsiTransport._read: %d", length)
         try:
             _, data = self._live().call(
                 {"op": "scsi.read", "handle": self._handle, "length": length,
                  "timeout_ms": timeout_ms}, bytes(cdb))
         except ServiceError as e:
-            raise TransportError(f"the service could not read: {e}") from e
-        return data
+            return _service_failure(e, "read")
+        return CdbResult(ok=True, data=data)
+
+
+def _service_failure(e: ServiceError, op: str) -> CdbResult:
+    """A gone drive is a result; anything else the service refused is raised,
+    as it always was."""
+    log.debug("_service_failure: %s gone=%s %s", op, e.gone, e)
+    if e.gone:
+        return CdbResult(ok=False, gone=True, detail=f"the service: {e}")
+    raise TransportError(f"the service could not {op}: {e}") from e
 
 
 class ServicePawnModule:

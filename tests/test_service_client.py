@@ -99,6 +99,35 @@ def test_a_panel_connects_and_draws_through_the_service(monkeypatch) -> None:
     assert written == frame
 
 
+@pytest.mark.parametrize(("errno_val", "gone"), [(19, True), (110, False)])
+def test_a_drive_gone_in_the_service_is_gone_in_the_app(
+        monkeypatch, errno_val: int, gone: bool) -> None:
+    """A TransportError is not an OSError, so the broker let it escape and end
+    the connection; "gone" never reached the App.  Now it crosses the pipe:
+    ENODEV in the service raises disconnect-class here (the recovery threshold
+    counts it); anything else stays an ordinary TransportError.
+
+    MUTATION CHECK: drop the broker's ``except TransportError`` -- the
+    connection dies and the App sees a closed pipe, not a gone drive."""
+    from trcc.core.device_recovery import is_disconnect_error
+
+    drive = FakeScsiTransport()
+
+    def fail(*_a: object) -> bool:
+        raise TransportError("the write failed") from OSError(errno_val, "x")
+
+    monkeypatch.setattr(drive, "send_cdb", fail)
+    _scsi_service(monkeypatch, drive)
+    transport = ServiceScsiTransport(0x0402, 0x3922)
+    transport.open()
+    frame_cdb = struct.pack("<I", 0x0101F5) + bytes(8) + struct.pack("<I", 0x10000)
+    with pytest.raises(TransportError) as raised:
+        transport.send_cdb(frame_cdb, bytes(0x10000))
+    assert "not a TRCC panel command" not in str(raised.value)   # it reached the drive
+    assert is_disconnect_error(raised.value) is gone
+    transport.close()
+
+
 def test_closing_the_transport_releases_the_drive(monkeypatch) -> None:
     drive = FakeScsiTransport()
     _scsi_service(monkeypatch, drive)

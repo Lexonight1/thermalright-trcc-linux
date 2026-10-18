@@ -33,6 +33,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ...core.device_recovery import is_disconnect_error
+from ...core.errors import TransportError
 from ...core.logs import per_frame
 from ...core.models import Wire
 from ...core.registry import ALL_DEVICES
@@ -204,6 +206,12 @@ class PrivilegedBroker:
             return self._run(session, op, header, body)
         except Refused as e:
             return {"ok": False, "refused": True, "error": str(e)}, b""
+        except TransportError as e:
+            # Not an OSError, so it used to escape and end the connection.
+            # "gone" crosses the pipe, and the App raises disconnect-class.
+            gone = is_disconnect_error(e)
+            log.warning("PrivilegedBroker: %s failed (gone=%s): %s", op, gone, e)
+            return {"ok": False, "gone": gone, "error": str(e)}, b""
         except OSError as e:
             # The Windows error travels with it: PawnIO's "not for this CPU"
             # (50) is how the App picks the Intel or the AMD module.
@@ -315,11 +323,14 @@ class ServiceError(OSError):
     """The service answered no -- refused, or the hardware failed there.
     ``code`` is the Windows error it failed with there, 0 for a refusal."""
 
-    def __init__(self, message: str, code: int = 0, refused: bool = False) -> None:
-        log.debug("ServiceError: code %d refused=%s %s", code, refused, message)
+    def __init__(self, message: str, code: int = 0, refused: bool = False,
+                 gone: bool = False) -> None:
+        log.debug("ServiceError: code %d refused=%s gone=%s %s", code, refused,
+                  gone, message)
         super().__init__(message)
         self.code = code
         self.refused = refused
+        self.gone = gone
 
 
 class ServiceClient:
@@ -340,7 +351,8 @@ class ServiceClient:
         if not reply.get("ok"):
             raise ServiceError(str(reply.get("error", "the service said no")),
                                int(reply.get("code") or 0),
-                               bool(reply.get("refused")))
+                               bool(reply.get("refused")),
+                               bool(reply.get("gone")))
         return reply, data
 
     def close(self) -> None:
