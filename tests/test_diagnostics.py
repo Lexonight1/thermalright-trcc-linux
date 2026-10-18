@@ -1853,7 +1853,9 @@ def _records_by_site(log_file: Path, start: _Mark) -> dict[str, int]:
     with log_file.open("r", encoding="utf-8", errors="replace") as fh:
         fh.seek(start.offset)
         for line in fh:
-            m = re.match(r"^\S+ \w+\s+(\S+?):(\S+?):(\d+):", line)
+            # ``[pid]`` after the level since 2026-10-18; optional, so an older
+            # log still parses.
+            m = re.match(r"^\S+ \w+\s+(?:\[\d+\]\s+)?(\S+?):(\S+?):(\d+):", line)
             if m is not None:
                 site = ":".join(m.groups())
                 counts[site] = counts.get(site, 0) + 1
@@ -4038,3 +4040,25 @@ def test_a_missing_fan_chip_says_how_to_find_its_driver(
     monkeypatch.setattr(health_mod.shutil, "which", lambda name: None)
     assert check_fan_chip_linux(fake_platform, hwmon, kind).fix_hint == (
         "fake platform: install sensors-detect, then: sudo sensors-detect")
+
+
+def test_every_log_line_names_its_process_and_keeps_the_level_second() -> None:
+    """The App and every UI write one file; ``[pid]`` tells their lines apart.
+    The report's parser reads the level as the SECOND token, so the pid goes
+    after it.  MUTATION CHECK: drop ``[%(process)d]`` -- the first assert fails."""
+    import logging
+    import os
+
+    from trcc.adapters.infra.logging import (
+        _LOG_DATEFMT,
+        _LOG_FORMAT,
+        _log_level_of,
+    )
+
+    record = logging.LogRecord("trcc.app", logging.WARNING, __file__, 1,
+                               "two connects", None, None)
+    record.classname = "App."
+    line = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT).format(record)
+
+    assert f" [{os.getpid()}] trcc.app:App." in line
+    assert _log_level_of(line) == "WARNING"

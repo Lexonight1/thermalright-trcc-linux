@@ -44,8 +44,12 @@ _HANDLER_TAG = "_trcc_handler"
 # Result per line: ``trcc.core.commands.device:SetBrightness.execute:208``
 # — so any log line (including a bare error) pins the exact class +
 # method + line that emitted it, with no per-method annotation.
+# ``[pid]``: the App and every UI write the SAME file, and without it a
+# report could not say which process a line came from -- two connects racing
+# at start-up read as one (2026-10-18).  It sits AFTER the level, which
+# ``_log_level_of`` reads as the second token.
 _LOG_FORMAT = (
-    "%(asctime)s %(levelname)-7s "
+    "%(asctime)s %(levelname)-7s [%(process)d] "
     "%(name)s:%(classname)s%(funcName)s:%(lineno)d: %(message)s"
 )
 _LOG_DATEFMT = "%Y-%m-%dT%H:%M:%S"
