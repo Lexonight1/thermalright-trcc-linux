@@ -17,8 +17,6 @@ import pytest
 from trcc.adapters.system._autostart import (
     NoopAutostart,
     WindowsAutostart,
-    WindowsTaskAutostart,
-    _render_task_xml,
 )
 
 # =========================================================================
@@ -282,7 +280,8 @@ def test_refresh_rewrites_a_stale_command() -> None:
 def test_refresh_does_not_enable_autostart_nobody_asked_for() -> None:
     """The invariant every refresh shares: never create an entry."""
     reg = _FakeWinreg()
-    autostart = WindowsAutostart(command="X", registry=reg)
+    autostart = WindowsAutostart(command="X", registry=reg,
+                                 schtasks=_FakeSchtasks())
 
     autostart.refresh()
 
@@ -327,55 +326,69 @@ def test_refresh_preserves_a_non_default_target() -> None:
 
 
 # =========================================================================
-# WindowsTaskAutostart — the sign-in task the installer build needs
+# The sign-in task the elevated builds used — carried over, never written
 # =========================================================================
 #
-# Measured on the win11 VM: the installer's exes are --uac-admin, and a Run
-# entry for one was present, the user signed in, and nothing started — Windows
-# blocks elevation in the sign-in path.  The C# oracle uses a task at the
-# highest run level (Form1.cs:271).
+# Builds before TRCC's service were --uac-admin, which Windows will not start
+# from the Run key, so they autostarted from a task at the highest run level
+# (the C# oracle's way, Form1.cs:271).  No build is elevated now: the Run key
+# starts every one, and an upgraded install's task is the user's choice to
+# carry over.  The App only READS it -- measured on the win11 VM 2026-10-19, a
+# normal process gets "Access is denied" deleting a task made elevated, so the
+# installer deletes it.
 
 
 _PROGRAM = Path(r"C:\Program Files\TRCC\trcc-gui.exe")
 
 
-class _FakeSchtasks:
-    """In-memory ``schtasks.exe``: keeps each task's XML as Windows returns it.
+def _task_xml(arguments: str) -> str:
+    """A task as ``schtasks /query /xml`` hands it back, declaration and all."""
+    return (
+        '<?xml version="1.0" encoding="UTF-16"?>\n'
+        '<Task version="1.2" '
+        'xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n'
+        '  <Principals><Principal id="Author">'
+        '<RunLevel>HighestAvailable</RunLevel></Principal></Principals>\n'
+        '  <Actions Context="Author"><Exec>'
+        f'<Command>{_PROGRAM}</Command><Arguments>{arguments}</Arguments>'
+        '</Exec></Actions>\n'
+        '</Task>\n'
+    )
 
-    ``/query /xml`` hands back the whole document INCLUDING its
-    ``encoding="UTF-16"`` declaration, as the real one does — a parser that
-    cannot take that is a parser that fails on Windows.
+
+class _FakeSchtasks:
+    """In-memory ``schtasks.exe`` that answers queries, as a normal user's does.
+
+    Keeps each task's XML as Windows returns it -- INCLUDING its
+    ``encoding="UTF-16"`` declaration: a parser that cannot take that is a
+    parser that fails on Windows.  Records every call, so a test can prove
+    the App never tried to write one.
     """
 
-    def __init__(self, *, fail_create: bool = False) -> None:
-        self.tasks: dict[str, str] = {}
-        self.fail_create = fail_create
+    def __init__(self, tasks: dict[str, str] | None = None) -> None:
+        self.tasks = dict(tasks or {})
+        self.calls: list[list[str]] = []
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        def done(code: int, out: str = "", err: str = ""):
-            return subprocess.CompletedProcess(args, code, out, err)
+        self.calls.append(args)
         match args:
-            case ["/create", "/tn", name, "/xml", path, "/f"]:
-                if self.fail_create:
-                    return done(1, err="ERROR: Access is denied.")
-                self.tasks[name] = Path(path).read_text(encoding="utf-16")
-                return done(0, "SUCCESS")
             case ["/query", "/tn", name, "/xml"]:
                 if name not in self.tasks:
-                    return done(1, err="ERROR: The system cannot find the file specified.")
-                return done(0, self.tasks[name])
-            case ["/delete", "/tn", name, "/f"]:
-                return done(0 if self.tasks.pop(name, None) is not None else 1)
-        raise AssertionError(f"unexpected schtasks call: {args}")
+                    return subprocess.CompletedProcess(
+                        args, 1, "",
+                        "ERROR: The system cannot find the file specified.")
+                return subprocess.CompletedProcess(args, 0, self.tasks[name], "")
+        raise AssertionError(f"the App wrote to Task Scheduler: {args}")
 
 
-def _task_autostart(**kw: Any) -> tuple[WindowsTaskAutostart, _FakeSchtasks, _FakeWinreg]:
-    schtasks = kw.pop("schtasks", None) or _FakeSchtasks()
+def _upgraded(arguments: str | None, **kw: Any) -> tuple[WindowsAutostart,
+                                                         _FakeSchtasks,
+                                                         _FakeWinreg]:
+    """An install upgraded from an elevated build whose task ran *arguments*."""
+    schtasks = _FakeSchtasks({} if arguments is None
+                             else {"TRCC Linux": _task_xml(arguments)})
     reg = _FakeWinreg()
-    legacy = WindowsAutostart(command='"C:\\py\\pythonw.exe" -m trcc gui --resume',
-                              registry=reg)
-    return (WindowsTaskAutostart(program=kw.pop("program", _PROGRAM),
-                                 run=schtasks, legacy=legacy),
+    return (WindowsAutostart(registry=reg, schtasks=schtasks, **kw),
             schtasks, reg)
 
 
@@ -389,111 +402,97 @@ def _run_key(reg: _FakeWinreg) -> dict[str, str]:
         ("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run"), {})
 
 
-def test_the_task_is_what_the_oracle_ends_up_with() -> None:
-    """Highest run level (no UAC prompt at sign-in), no 72 h kill, no battery
-    rule, one instance — the settings the C# rewrites into its task XML."""
-    import xml.etree.ElementTree as ET
-    xml = _render_task_xml(r"C:\A & B\trcc-gui.exe", "gui --resume", r"PC\me")
-    task = ET.fromstring(xml.split("?>", 1)[1])
-    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+@pytest.mark.parametrize("target", ["gui", "qtgui", "api", "daemon"])
+def test_refresh_carries_the_old_task_over_for_the_same_target(
+    target: str,
+) -> None:
+    """The upgrade path: the task IS the user's choice, so it becomes a Run
+    value for the same target.
 
-    def text(path: str) -> str | None:
-        return task.findtext(path, None, ns)
+    MUTATION CHECK: drop the task branch from refresh and nothing is written.
+    """
+    from trcc.core.models import AUTOSTART_TARGETS
+    autostart, _, reg = _upgraded(" ".join([target, *AUTOSTART_TARGETS[target]]))
 
-    assert text("t:Triggers/t:LogonTrigger/t:UserId") == r"PC\me"
-    assert text("t:Principals/t:Principal/t:RunLevel") == "HighestAvailable"
-    assert text("t:Principals/t:Principal/t:LogonType") == "InteractiveToken"
-    assert text("t:Settings/t:ExecutionTimeLimit") == "PT0S"
-    assert text("t:Settings/t:DisallowStartIfOnBatteries") == "false"
-    assert text("t:Settings/t:StopIfGoingOnBatteries") == "false"
-    assert text("t:Settings/t:MultipleInstancesPolicy") == "IgnoreNew"
-    assert text("t:Actions/t:Exec/t:Command") == r"C:\A & B\trcc-gui.exe"
-    assert text("t:Actions/t:Exec/t:Arguments") == "gui --resume"
+    autostart.refresh()
+
+    assert autostart.installed_target() == target
+    assert autostart.is_enabled()
+    assert list(_run_key(reg)) == ["TRCCNext"]
 
 
-def test_enable_creates_the_task_and_removes_the_run_entry_it_replaces() -> None:
-    autostart, schtasks, reg = _task_autostart()
-    _run_key(reg)["TRCCNext"] = '"C:\\Program Files\\TRCC\\trcc.exe" gui --resume'
+def test_the_app_only_reads_the_task() -> None:
+    """Deleting it would fail for the App anyway -- the installer does it."""
+    autostart, schtasks, _ = _upgraded("gui --resume")
 
-    autostart.enable()
+    autostart.refresh()
 
+    assert schtasks.calls == [["/query", "/tn", "TRCC Linux", "/xml"]]
     assert "TRCC Linux" in schtasks.tasks
-    assert autostart.is_enabled()
-    assert autostart.installed_target() == "gui"
-    assert "TRCCNext" not in _run_key(reg), "the dead Run entry was left behind"
 
 
-def test_is_enabled_false_before_enable() -> None:
-    autostart, _, _ = _task_autostart()
-    assert not autostart.is_enabled()
-    assert autostart.installed_target() is None
-
-
-def test_a_task_for_a_moved_install_reads_as_disabled() -> None:
-    """The gui re-enables what reads disabled, so the entry heals itself."""
-    autostart, schtasks, _ = _task_autostart()
-    autostart.enable()
-    moved, _, _ = _task_autostart(schtasks=schtasks,
-                                  program=Path(r"D:\TRCC\trcc-gui.exe"))
-    assert not moved.is_enabled()
-
-
-def test_disable_removes_the_task_and_the_run_entry() -> None:
-    autostart, schtasks, reg = _task_autostart()
-    autostart.enable()
-    _run_key(reg)["TRCCNext"] = "stale"
-
-    autostart.disable()
-
-    assert schtasks.tasks == {}
-    assert "TRCCNext" not in _run_key(reg)
-    assert not autostart.is_enabled()
-
-
-def test_a_failed_create_keeps_the_run_entry() -> None:
-    """Never strand a user: the old entry goes only once the task exists."""
-    autostart, _, reg = _task_autostart(schtasks=_FakeSchtasks(fail_create=True))
-    _run_key(reg)["TRCCNext"] = "old"
-
-    autostart.enable()
-
-    assert _run_key(reg)["TRCCNext"] == "old"
-    assert not autostart.is_enabled()
-
-
-def test_refresh_migrates_a_run_entry_to_a_task_for_the_same_target() -> None:
-    """An upgrade from the Run-key era: the old value IS the user's choice."""
-    autostart, schtasks, reg = _task_autostart()
-    _run_key(reg)["TRCCNext"] = '"C:\\Program Files\\TRCC\\trcc.exe" qtgui --resume'
-
-    autostart.refresh()
-
-    assert autostart.installed_target() == "qtgui"
-    assert autostart.is_enabled()
-    assert "TRCCNext" not in _run_key(reg)
-
-
-def test_refresh_does_not_enable_a_task_nobody_asked_for() -> None:
-    autostart, schtasks, _ = _task_autostart()
-    autostart.refresh()
-    assert schtasks.tasks == {}
-
-
-def test_refresh_keeps_the_installed_target() -> None:
-    autostart, _, _ = _task_autostart()
+def test_a_run_value_already_there_wins_over_the_task() -> None:
+    """The Run value is the newer record: the task is never consulted."""
+    autostart, schtasks, reg = _upgraded("qtgui --resume")
     autostart.enable("daemon")
+
     autostart.refresh()
+
     assert autostart.installed_target() == "daemon"
+    assert schtasks.calls == []
 
 
-@pytest.mark.parametrize(("frozen", "kind"), [
-    (True, WindowsTaskAutostart), (False, WindowsAutostart)])
-def test_the_installer_build_gets_the_task_and_pip_the_run_key(
-    monkeypatch: pytest.MonkeyPatch, frozen: bool, kind: type,
+@pytest.mark.parametrize("task", [None, "--log-file x gui", "not xml at all"])
+def test_no_task_or_one_we_cannot_read_enables_nothing(task: str | None) -> None:
+    """A wrong target is worse than none: never guess the user's choice."""
+    schtasks = _FakeSchtasks({} if task is None else {
+        "TRCC Linux": task if task == "not xml at all" else _task_xml(task)})
+    reg = _FakeWinreg()
+    autostart = WindowsAutostart(registry=reg, schtasks=schtasks)
+
+    autostart.refresh()
+
+    assert not autostart.is_enabled()
+    assert _run_key(reg) == {}
+
+
+def test_a_missing_schtasks_reads_as_no_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Windows without schtasks.exe on its path must not fail a refresh."""
+    from trcc.adapters.system import _autostart
+
+    def gone(*args: Any, **kw: Any) -> Any:
+        raise FileNotFoundError(2, "No such file", str(_autostart._SCHTASKS))
+    monkeypatch.setattr(_autostart.subprocess, "run", gone)
+
+    result = _autostart._run_schtasks(["/query", "/tn", "TRCC Linux", "/xml"])
+
+    assert result.returncode == 1
+
+
+@pytest.mark.parametrize("frozen", [True, False])
+def test_every_build_autostarts_from_the_run_key(
+    monkeypatch: pytest.MonkeyPatch, frozen: bool,
 ) -> None:
     from trcc.adapters.system.windows import WindowsPlatform
     monkeypatch.setattr(sys, "frozen", frozen, raising=False)
-    assert type(WindowsPlatform()._build_autostart()) is kind
+    assert type(WindowsPlatform()._build_autostart()) is WindowsAutostart
+
+
+@pytest.mark.parametrize(("target", "tail"), [
+    ("gui", "gui --resume"), ("daemon", "daemon")])
+def test_the_installer_build_runs_its_windowed_exe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str, tail: str,
+) -> None:
+    """``trcc-gui.exe`` beside whichever exe is running, never ``trcc.exe``:
+    that is a console program and would open a terminal at every sign-in."""
+    from trcc.adapters.system import _autostart
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(_autostart.sys, "executable", str(tmp_path / "trcc.exe"))
+
+    assert _autostart._resolve_command(target) == (
+        f'"{tmp_path / "trcc-gui.exe"}" {tail}')
 
 
 # =========================================================================
@@ -545,7 +544,8 @@ def test_the_legacy_run_value_trcc_wrote_is_removed(action: str) -> None:
     """
     reg = _FakeWinreg()
     reg.store[_RUN] = {"TRCC Linux": '"C:\\Users\\u\\AppData\\trcc.exe" gui --resume'}
-    autostart = WindowsAutostart(command='"C:\\trcc.exe" gui', registry=reg)
+    autostart = WindowsAutostart(command='"C:\\trcc.exe" gui', registry=reg,
+                                 schtasks=_FakeSchtasks())
 
     getattr(autostart, action)()
 
@@ -562,13 +562,13 @@ def test_a_run_value_of_that_name_for_another_program_stays() -> None:
     assert reg.store[_RUN] == {"TRCC Linux": '"C:\\Other\\app.exe"'}
 
 
-def test_the_installer_build_retires_it_even_with_nothing_to_refresh() -> None:
-    """The task class returns early when there is no task and no TRCCNext
-    value -- the one case where only the legacy value is left.
+def test_refresh_retires_it_even_with_nothing_to_carry_over() -> None:
+    """Refresh returns early with no entry and no task -- the one case where
+    only the legacy value is left.
 
-    MUTATION CHECK: drop the retirement from that refresh and it stays.
+    MUTATION CHECK: move the retirement below that return and it stays.
     """
-    autostart, _schtasks, reg = _task_autostart()
+    autostart, _, reg = _upgraded(None)
     _run_key(reg)["TRCC Linux"] = '"C:\\Program Files\\TRCC\\trcc-gui.exe" gui --resume'
 
     autostart.refresh()

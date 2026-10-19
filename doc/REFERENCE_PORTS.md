@@ -65,7 +65,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
-| [`AutostartManager`](#autostartmanager) | 6 | 0 | 5 |
+| [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 20 | 8 |
@@ -1009,7 +1009,7 @@ is_enabled() -> bool
 refresh() -> None
 ```
 
-**Implementations (5):** `MacOSAutostart` · `NoopAutostart` · `WindowsAutostart` · `WindowsTaskAutostart` · `XdgDesktopAutostart`
+**Implementations (4):** `MacOSAutostart` · `NoopAutostart` · `WindowsAutostart` · `XdgDesktopAutostart`
 
 ## Diagnostics
 

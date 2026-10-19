@@ -2,9 +2,8 @@
 
   * ``WindowsAutostart``  — writes HKCU\\Software\\Microsoft\\
                             Windows\\CurrentVersion\\Run via ``winreg``
-                            (a pip install: not elevated).
-  * ``WindowsTaskAutostart`` — a sign-in scheduled task via ``schtasks``
-                            (the ``--uac-admin`` installer build).
+                            (pip and installer builds alike: neither is
+                            elevated, so the Run key starts both).
   * ``MacOSAutostart``    — writes a LaunchAgent plist under
                             ``~/Library/LaunchAgents/`` and
                             ``launchctl bootstrap``s it.
@@ -438,23 +437,28 @@ _DEFAULT_VALUE_NAME = "TRCCNext"
 
 
 def _resolve_command(target: str = DEFAULT_AUTOSTART_TARGET) -> str:
-    """The Run-key command that starts *target* at sign-in, for a pip install.
+    """The Run-key command that starts *target* at sign-in.
 
-    ``pythonw.exe -m trcc``, never ``launch_argv``'s choice: ``python.exe`` and
-    the pip ``trcc.exe`` launcher are both CONSOLE programs, so an entry naming
-    either opens a terminal at every sign-in.  ``pythonw.exe`` ships beside
-    ``python.exe`` in every CPython install and venv on Windows.  The flags are
+    Never a console program: an entry naming one opens a terminal at every
+    sign-in.  The installer build runs ``trcc-gui.exe``, the windowed twin of
+    ``trcc.exe`` beside it.  A pip install runs ``pythonw.exe -m trcc``, never
+    ``launch_argv``'s choice: ``python.exe`` and the pip ``trcc.exe`` launcher
+    are both console programs.  ``pythonw.exe`` ships beside ``python.exe`` in
+    every CPython install and venv on Windows.  The flags are
     ``AUTOSTART_TARGETS``' — ``--resume`` keeps the gui in the tray (#201).
     """
     exe = Path(sys.executable)
-    pythonw = exe.with_name("pythonw.exe")
-    if not pythonw.is_file():
-        log.warning("_resolve_command: no %s — the Run entry uses %s, which "
-                    "opens a console window at sign-in", pythonw, exe)
-        pythonw = exe
+    if getattr(sys, "frozen", False):
+        program, module = exe.with_name("trcc-gui.exe"), []
+    else:
+        program, module = exe.with_name("pythonw.exe"), ["-m", "trcc"]
+        if not program.is_file():
+            log.warning("_resolve_command: no %s — the Run entry uses %s, "
+                        "which opens a console window at sign-in", program, exe)
+            program = exe
     # Registry values quote the program so spaces in install dirs
     # (Program Files) don't break the launch.
-    cmd = " ".join([f'"{pythonw}"', "-m", "trcc", target,
+    cmd = " ".join([f'"{program}"', *module, target,
                     *AUTOSTART_TARGETS[target]])
     log.debug("_resolve_command(%s): %s", target, cmd)
     return cmd
@@ -477,17 +481,23 @@ def _winreg_module() -> Any:
 
 
 class WindowsAutostart(AutostartManager):
-    """Autostart via the HKCU Run registry key — for a pip install.
+    """Autostart via the HKCU Run registry key — every Windows build.
 
     The Run key fires whenever the user signs in, for a program that does NOT
-    need elevation.  Windows blocks elevation in the sign-in path, so the
-    installer build (``--uac-admin``) uses :class:`WindowsTaskAutostart`
-    instead — this class never starts it.  Writes a single REG_SZ value running
-    ``pythonw.exe -m trcc gui --resume``.
+    need elevation — and no TRCC build does: TRCC's SYSTEM service drives the
+    panels and reads PawnIO for it.  Writes a single REG_SZ value running
+    ``trcc-gui.exe gui --resume`` (installer) or ``pythonw.exe -m trcc gui
+    --resume`` (pip).
 
-    Tests inject a stub ``registry`` module + ``command`` string so the
-    full enable / is_enabled / disable cycle runs without touching the
-    real winreg.
+    Builds before the service were elevated (``--uac-admin``), which Windows
+    will not start from the Run key, so they used a sign-in task at the
+    highest run level, as the C# does (``Form1.cs:211-281``).  :meth:`refresh`
+    carries that task's target over; the task itself is the installer's to
+    delete, since a task made elevated refuses a normal process (measured on
+    the win11 VM, 2026-10-19: "Access is denied").
+
+    Tests inject a stub ``registry`` module + ``command`` string (and a fake
+    ``schtasks``) so the full cycle runs without touching the real winreg.
     """
 
     def __init__(
@@ -496,13 +506,16 @@ class WindowsAutostart(AutostartManager):
         command: str | None = None,
         registry: Any = None,
         value_name: str = _DEFAULT_VALUE_NAME,
+        schtasks: Any = None,
     ) -> None:
         """``registry`` is a winreg-compatible module-like object — duck-typed
-        seam so tests can inject an in-memory fake on non-Windows boxes."""
+        seam so tests can inject an in-memory fake on non-Windows boxes;
+        ``schtasks`` stands in for ``schtasks.exe`` the same way."""
         log.debug("__init__")
         self._cmd = command if command is not None else _resolve_command()
         self._registry: Any = registry if registry is not None else _winreg_module()
         self._value_name = value_name
+        self._schtasks = schtasks if schtasks is not None else _run_schtasks
 
     # ── AutostartManager ABC ───────────────────────────────────────
 
@@ -635,17 +648,51 @@ class WindowsAutostart(AutostartManager):
         reach them.  Linux picks changes up because XDG ``refresh()``
         re-renders; this is that, for the registry.
 
-        Only rewrites when a value is already present — like every other
-        ``refresh``, it must never enable autostart nobody asked for.
+        Only rewrites when an entry is already present — like every other
+        ``refresh``, it must never enable autostart nobody asked for.  The old
+        sign-in task counts: it IS the user's choice, so an install upgraded
+        from the elevated builds gets a Run value for the same target.
         """
         self.retire_old_values()
         if not self._value_present():
+            if (target := self._old_task_target()) is not None:
+                log.info("WindowsAutostart.refresh: the sign-in task %r runs "
+                         "%s — carrying it over to the Run key", _TASK_NAME,
+                         target)
+                self.enable(target)
+                return
             log.debug("WindowsAutostart.refresh: no entry — nothing to refresh")
             return
         installed = self.installed_target()
         log.info("WindowsAutostart.refresh: re-writing %s (target=%s)",
                  self._value_name, installed)
         self.enable(installed)
+
+    def _old_task_target(self) -> str | None:
+        """The target the old sign-in task runs, or None without one.
+
+        Read off the task's Exec Arguments (``gui --resume``) by the same
+        position rule as a Run value.  A task we cannot read or parse answers
+        None: refresh then changes nothing, which beats guessing a target.
+        """
+        import xml.etree.ElementTree as ET
+        result = self._schtasks(["/query", "/tn", _TASK_NAME, "/xml"])
+        if result.returncode != 0:
+            log.debug("WindowsAutostart._old_task_target: no task %r (%s)",
+                      _TASK_NAME, result.stderr.strip())
+            return None
+        try:
+            arguments = ET.fromstring(result.stdout.strip()).findtext(
+                "t:Actions/t:Exec/t:Arguments", None, _TASK_NS)
+        except ET.ParseError:
+            log.warning("WindowsAutostart._old_task_target: unreadable task "
+                        "XML for %r", _TASK_NAME)
+            return None
+        target = (target_from_argv(["<program>", *arguments.split()])
+                  if arguments is not None else None)
+        log.info("WindowsAutostart._old_task_target: %r -> %s", arguments,
+                 target)
+        return target
 
     # ── Internal: open the Run key in read or write mode ──────────
 
@@ -662,13 +709,13 @@ class WindowsAutostart(AutostartManager):
 
 
 # =========================================================================
-# Windows — a sign-in scheduled task, for the elevated installer build
+# Windows — the sign-in task the elevated builds used, read to carry it over
 # =========================================================================
 
 
-#: The task's name is its IDENTITY — enable, disable and status all address it
-#: by name, and Task Scheduler shows it to the user.  Matches the applications
-#: menu entry; distinct from Thermalright's own ``TRCCAppStartup``.
+#: The old task's name is its IDENTITY, and the installer deletes it by this
+#: name (tests/test_installer_uninstall.py gates the match).  Distinct from
+#: Thermalright's own ``TRCCAppStartup``.
 _TASK_NAME = "TRCC Linux"
 
 _SCHTASKS = (Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
@@ -677,198 +724,23 @@ _SCHTASKS = (Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
 _TASK_NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
-def _render_task_xml(command: str, arguments: str, user: str) -> str:
-    """The task definition — pure string, fully testable.
-
-    The shape the C# oracle ends up with (``Form1.cs:211-281``): a sign-in
-    trigger at the highest run level, which is what lets an elevated program
-    start without a UAC prompt, and settings that keep it alive — no time
-    limit (the default is 72 h, then Windows KILLS it) and no battery rules
-    (by default a laptop on battery never starts it).  The C# creates a default
-    task, reads it back and edits the XML; this writes it whole in one call.
-    """
-    from xml.sax.saxutils import escape
-    log.debug("_render_task_xml: command=%s arguments=%s user=%s",
-              command, arguments, user)
-    return (
-        '<?xml version="1.0" encoding="UTF-16"?>\n'
-        '<Task version="1.2" '
-        'xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n'
-        '  <RegistrationInfo><Description>Start TRCC Linux at sign-in'
-        '</Description></RegistrationInfo>\n'
-        '  <Triggers><LogonTrigger><Enabled>true</Enabled>'
-        f'<UserId>{escape(user)}</UserId></LogonTrigger></Triggers>\n'
-        '  <Principals><Principal id="Author">'
-        f'<UserId>{escape(user)}</UserId>'
-        '<LogonType>InteractiveToken</LogonType>'
-        '<RunLevel>HighestAvailable</RunLevel></Principal></Principals>\n'
-        '  <Settings>\n'
-        '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n'
-        '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n'
-        '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n'
-        '    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\n'
-        '    <Enabled>true</Enabled>\n'
-        '  </Settings>\n'
-        '  <Actions Context="Author"><Exec>'
-        f'<Command>{escape(command)}</Command>'
-        f'<Arguments>{escape(arguments)}</Arguments>'
-        '</Exec></Actions>\n'
-        '</Task>\n'
-    )
-
-
 def _run_schtasks(args: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run ``schtasks.exe`` by absolute path — no shell, no console window."""
+    """Run ``schtasks.exe`` by absolute path — no shell, no console window.
+
+    A missing or hung ``schtasks`` answers as a failed query does: there is
+    then no task to carry over, which is no reason to fail a refresh.
+    """
     log.info("_run_schtasks: %s", args)
     from ...core.models import SUBPROCESS_NO_WINDOW
-    return subprocess.run(
-        [str(_SCHTASKS), *args], capture_output=True, text=True,
-        errors="replace", check=False, timeout=30,
-        creationflags=SUBPROCESS_NO_WINDOW,
-    )
-
-
-class WindowsTaskAutostart(AutostartManager):
-    """Autostart via a sign-in scheduled task — for the installer build.
-
-    The installer's exes are built ``--uac-admin``, and Windows BLOCKS
-    elevation in the sign-in path, Run key included — measured on the win11 VM:
-    the entry was present, the user signed in, nothing started.  A task at the
-    highest run level is the documented way round, and the C# oracle's.
-
-    The task runs ``trcc-gui.exe`` (the windowed exe; ``trcc.exe`` is a console
-    program and would open a terminal at sign-in) with the target and its
-    flags.  Enabling or disabling also removes the old Run-key entry this
-    replaces, so an upgraded install carries no dead ``TRCCNext`` value.
-
-    ``run``, ``program`` and ``legacy`` are seams so the full cycle runs on the
-    Linux dev box against a fake ``schtasks``.
-    """
-
-    def __init__(
-        self,
-        *,
-        program: Path | None = None,
-        run: Any = None,
-        legacy: WindowsAutostart | None = None,
-        task_name: str = _TASK_NAME,
-    ) -> None:
-        self._program = (program if program is not None
-                         else Path(sys.executable).with_name("trcc-gui.exe"))
-        self._run = run if run is not None else _run_schtasks
-        self._legacy = legacy if legacy is not None else WindowsAutostart()
-        self._task_name = task_name
-        log.debug("WindowsTaskAutostart: task=%r program=%s",
-                  task_name, self._program)
-
-    @staticmethod
-    def _arguments(target: str) -> str:
-        """The task's Arguments for *target*: the target, then ITS flags."""
-        arguments = " ".join([target, *AUTOSTART_TARGETS[target]])
-        log.debug("WindowsTaskAutostart._arguments(%s): %s", target, arguments)
-        return arguments
-
-    def _installed(self) -> tuple[str, str] | None:
-        """``(command, arguments)`` of the installed task, or None if absent."""
-        import xml.etree.ElementTree as ET
-        result = self._run(["/query", "/tn", self._task_name, "/xml"])
-        if result.returncode != 0:
-            log.debug("WindowsTaskAutostart._installed: no task %r (%s)",
-                      self._task_name, result.stderr.strip())
-            return None
-        try:
-            exec_ = ET.fromstring(result.stdout.strip()).find(
-                "t:Actions/t:Exec", _TASK_NS)
-        except ET.ParseError:
-            log.warning("WindowsTaskAutostart._installed: unreadable task XML "
-                        "for %r", self._task_name)
-            return None
-        if exec_ is None:
-            log.warning("WindowsTaskAutostart._installed: task %r has no Exec "
-                        "action", self._task_name)
-            return None
-        installed = (exec_.findtext("t:Command", "", _TASK_NS),
-                     exec_.findtext("t:Arguments", "", _TASK_NS))
-        log.debug("WindowsTaskAutostart._installed: %s", installed)
-        return installed
-
-    @staticmethod
-    def _target_of(installed: tuple[str, str] | None) -> str | None:
-        """The autostart target an installed task runs, read off its Arguments."""
-        target = (target_from_argv(["<program>", *installed[1].split()])
-                  if installed is not None else None)
-        log.debug("WindowsTaskAutostart._target_of: %s -> %s", installed, target)
-        return target
-
-    def entry_location(self) -> str:
-        location = f"Task Scheduler\\{self._task_name}"
-        log.debug("WindowsTaskAutostart.entry_location: %s", location)
-        return location
-
-    def installed_target(self) -> str | None:
-        target = self._target_of(self._installed())
-        log.debug("WindowsTaskAutostart.installed_target: %s", target)
-        return target
-
-    def is_enabled(self) -> bool:
-        """True when the task exists AND runs this install for its target.
-
-        A task left pointing at a moved or older install reads as disabled, so
-        the gui re-enables it and the entry heals — the Run key's rule.
-        """
-        installed = self._installed()
-        target = self._target_of(installed)
-        enabled = (installed is not None and target is not None
-                   and installed == (str(self._program), self._arguments(target)))
-        log.info("WindowsTaskAutostart.is_enabled: %s", enabled)
-        return enabled
-
-    def enable(self, target: str | None = None) -> None:
-        import tempfile
-        target = target or DEFAULT_AUTOSTART_TARGET
-        user = f"{os.environ.get('USERDOMAIN', '')}\\{os.environ.get('USERNAME', '')}"
-        xml = _render_task_xml(str(self._program), self._arguments(target), user)
-        log.info("WindowsTaskAutostart.enable: target=%s user=%s", target, user)
-        # schtasks reads a task file as UTF-16, as the C# writes it.
-        with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False,
-                                         encoding="utf-16") as f:
-            f.write(xml)
-        try:
-            result = self._run(["/create", "/tn", self._task_name,
-                                 "/xml", f.name, "/f"])
-        finally:
-            Path(f.name).unlink(missing_ok=True)
-        if result.returncode != 0:
-            log.error("WindowsTaskAutostart.enable: schtasks failed (%d): %s",
-                      result.returncode, result.stderr.strip())
-            return
-        self._legacy.disable()
-        log.info("WindowsTaskAutostart: enabled as %s", self.entry_location())
-
-    def disable(self) -> None:
-        result = self._run(["/delete", "/tn", self._task_name, "/f"])
-        log.info("WindowsTaskAutostart.disable: schtasks exit %d",
-                 result.returncode)
-        self._legacy.disable()
-
-    def refresh(self) -> None:
-        """Rewrite the task — or migrate a Run-key entry — if one exists.
-
-        An install upgraded from the Run-key era has only the old
-        ``TRCCNext`` value: that IS the user's choice, so it becomes a task
-        for the same target.  Neither present means autostart was never
-        chosen, and refresh must not choose it for them.
-        """
-        self._legacy.retire_old_values()
-        target = self.installed_target()
-        if target is None and self._legacy._stored_value() is None:
-            log.debug("WindowsTaskAutostart.refresh: no task, no Run entry — "
-                      "nothing to refresh")
-            return
-        target = target or self._legacy.installed_target()
-        log.info("WindowsTaskAutostart.refresh: re-writing for target=%s",
-                 target)
-        self.enable(target)
+    try:
+        return subprocess.run(
+            [str(_SCHTASKS), *args], capture_output=True, text=True,
+            errors="replace", check=False, timeout=30,
+            creationflags=SUBPROCESS_NO_WINDOW,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("_run_schtasks: %s could not run: %s", _SCHTASKS, e)
+        return subprocess.CompletedProcess(args, 1, "", str(e))
 
 
 # =========================================================================
