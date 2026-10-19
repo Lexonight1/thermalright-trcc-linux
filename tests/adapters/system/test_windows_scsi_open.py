@@ -140,10 +140,15 @@ def test_a_frame_goes_direct_byte_for_byte_into_a_reused_buffer(
     assert addr1 == addr2
 
 
-@pytest.mark.parametrize("err", [433, 1167, 1617])
+@pytest.mark.parametrize("err", [55, 433, 1167, 1617])
 def test_a_drive_that_is_gone_raises_disconnect_class(
     monkeypatch: pytest.MonkeyPatch, err: int,
 ) -> None:
+    """A pulled USB disk answers 1167 and then 55 (ERROR_DEV_NOT_EXIST) until the
+    handle closes -- measured on the VM.  55 was missing, so a frame sent after
+    removal completed counted as an ordinary failure.
+
+    MUTATION CHECK: drop 55 from _GONE_ERRORS."""
     from trcc.core.device_recovery import is_disconnect_error
     from trcc.core.errors import TransportError
 

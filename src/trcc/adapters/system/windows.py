@@ -151,11 +151,17 @@ _WIN_OPEN_ERRORS: dict[int, str] = {
 # GetLastError codes that mean the drive is gone -- no retry will reach it, so
 # the base raises disconnect-class and the recovery threshold marks the panel
 # lost (Linux: DID_NO_CONNECT).  ERROR_GEN_FAILURE (31) is NOT here: USBLCD.exe
-# retries it (USBLCD.exe.c:16684-16695).  To be confirmed on the VM by detaching
-# the panel mid-stream.
+# retries it (USBLCD.exe.c:16684-16695).
+#
+# Measured on the win11 VM (2026-10-18, dev/tools/win_vm/gone_probe.py: a USB
+# disk pulled mid-stream): the command in flight times out (121, status GOOD --
+# not gone, the poll returns it too), the next few get 1167, and every one
+# after, until the handle closes, gets 55.  433 and 1617 never appeared; they
+# stay because their meaning is "removed", so no retryable error is lost.
 _GONE_ERRORS: dict[int, str] = {
+    55:   "ERROR_DEV_NOT_EXIST",             # measured: after removal completes
     433:  "ERROR_NO_SUCH_DEVICE",
-    1167: "ERROR_DEVICE_NOT_CONNECTED",
+    1167: "ERROR_DEVICE_NOT_CONNECTED",      # measured: right after the pull
     1617: "ERROR_DEVICE_REMOVED",
 }
 
