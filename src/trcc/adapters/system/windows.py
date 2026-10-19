@@ -597,6 +597,12 @@ class WindowsPlatform(BaseOS, key="win32"):
         """
         log.info("hard_exit: TerminateProcess(%d)", code)
         kernel32 = _kernel32()
+        # Declared, or ctypes passes the pseudo-handle (-1) as a 32-bit int:
+        # Windows got 0xFFFFFFFF, answered WinError 6 (invalid handle), and
+        # every exit fell back to os._exit -- measured on the VM, 2026-10-19.
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        kernel32.TerminateProcess.restype = ctypes.c_int
         if not kernel32.TerminateProcess(kernel32.GetCurrentProcess(), code):
             log.warning("hard_exit: TerminateProcess failed (WinError %d) "
                         "-- os._exit", kernel32.GetLastError())

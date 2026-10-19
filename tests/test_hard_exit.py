@@ -10,13 +10,14 @@ the reap and took 6-80 s to leave on its own; it is reaped too.
 """
 from __future__ import annotations
 
+import ctypes
 import logging
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from conftest import FakePlatform
+
 from trcc.adapters.system import _base, windows
 from trcc.ui import _base as ui_base
 
@@ -110,22 +111,42 @@ def test_posix_ends_with_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ended.value.code == 2
 
 
+class _Fn:
+    """A kernel32 export: callable, with the prototype ctypes would carry."""
+
+    def __init__(self, body: Any) -> None:
+        self._body = body
+        self.argtypes: list[Any] | None = None
+        self.restype: Any = None
+
+    def __call__(self, *args: Any) -> Any:
+        return self._body(*args)
+
+
 class _Kernel32:
-    """``TerminateProcess`` on the current-process pseudo-handle, recorded."""
+    """``TerminateProcess`` on the current-process pseudo-handle, recorded.
+
+    As Windows does, it refuses the pseudo-handle unless the prototypes are
+    declared: undeclared, ctypes passes -1 as a 32-bit int and the call
+    fails with WinError 6 -- what the first build of this fix did on the VM,
+    so every exit fell back to os._exit and still crashed.
+    """
 
     def __init__(self, ok: bool) -> None:
         self.ok = ok
         self.terminated: list[tuple[int, int]] = []
+        self.GetCurrentProcess = _Fn(lambda: -1)
+        self.TerminateProcess = _Fn(self._terminate)
+        self.GetLastError = _Fn(lambda: 5)
 
-    def GetCurrentProcess(self) -> int:
-        return -1
-
-    def TerminateProcess(self, handle: int, code: int) -> int:
+    def _terminate(self, handle: int, code: int) -> int:
+        declared = (self.GetCurrentProcess.restype is ctypes.c_void_p
+                    and self.TerminateProcess.argtypes == [ctypes.c_void_p,
+                                                           ctypes.c_uint])
+        if not declared:
+            return 0
         self.terminated.append((handle, code))
         return 1 if self.ok else 0
-
-    def GetLastError(self) -> int:
-        return 5
 
 
 def test_windows_ends_with_terminate_process(
