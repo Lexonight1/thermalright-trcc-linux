@@ -68,9 +68,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
-| [`BaseOS`](#baseos) | 12 | 20 | 8 |
+| [`BaseOS`](#baseos) | 12 | 21 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 8 | 8 |
+| [`Platform`](#platform) | 26 | 8 | 8 |
 | [`ContentStore`](#contentstore) | 29 | 0 | 1 |
 
 ---
@@ -1080,7 +1080,7 @@ permission_denied_hint() -> str
 setup(dry_run: 'bool' = False) -> int
 ```
 
-**You inherit (20):** `IPC_CHANNEL` · `OPENRGB` · `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_hint` · `usb_power_state` · `worker_thread_context`
+**You inherit (21):** `IPC_CHANNEL` · `OPENRGB` · `autostart` · `configure_stdout` · `disk_partitions` · `display_session` · `hard_exit` · `hotplug` · `http_fetcher` · `install_method` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_hint` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
@@ -1118,7 +1118,7 @@ surface_size(surface: 'Any') -> tuple[int, int]
 
 OS abstraction.  DI'd into App at startup.
 
-**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 18 of these 25, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
+**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 19 of these 26, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
 
 **Register by naming your key in the class line:**
 
@@ -1126,7 +1126,7 @@ OS abstraction.  DI'd into App at startup.
 class MyPlatform(BaseOS, key="myos"):
 ```
 
-**You implement (25):**
+**You implement (26):**
 
 ```python
 autostart() -> AutostartManager
@@ -1136,6 +1136,7 @@ disk_info() -> list[dict[str, str]]
 disk_partitions() -> list[tuple[str, str]]
 display_session() -> DisplaySession
 distro_name() -> str
+hard_exit(code: 'int') -> NoReturn
 hotplug() -> HotplugMonitor
 http_fetcher() -> HttpFetcher
 install_method() -> str

@@ -32,7 +32,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import usb.util  # pyright: ignore[reportMissingImports]
 
@@ -307,6 +307,12 @@ class BaseOS(Platform):
         """
         log.debug("%s.configure_stdout: console already UTF-8, no-op",
                   type(self).__name__)
+
+    def hard_exit(self, code: int) -> NoReturn:
+        """``os._exit``: on a POSIX system the ``_exit`` call, which runs no
+        code at all.  Windows overrides -- there it runs the DLLs' teardown."""
+        log.info("%s.hard_exit: os._exit(%d)", type(self).__name__, code)
+        os._exit(code)
 
     def worker_thread_context(self) -> AbstractContextManager[None]:
         """No per-thread setup needed.  Windows overrides (COM apartment)."""

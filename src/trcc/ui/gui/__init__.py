@@ -56,7 +56,7 @@ def launch(verbosity: int = 0, decorated: bool = False,
 
     Thin wrapper over :func:`run_gui` — builds the real host platform and
     runs the full composition with the production seams on (single-instance
-    lock, IPC server, ``os._exit`` reap).
+    lock, IPC server, ``Platform.hard_exit`` reap).
 
     ``verbosity`` is unused: the CLI root callback (``ui.cli.main:_root``)
     ALWAYS runs first and has already configured logging at the requested
@@ -87,25 +87,25 @@ def run(platform: Any, *, decorated: bool = False,
       and everything that writes output (a Windows console defaults to cp1252
       and crashes on non-ASCII).  It takes the INJECTED platform, which is what
       the dev mock wants.
-    * ``force_exit`` — ``os._exit`` must run AFTER the bus's ``finally`` has
-      closed the App, so it cannot live inside ``GuiUI.run``.  Qt's
-      metrics/sensor/render threads occasionally outlive ``qapp.exec()`` when
-      native libraries (pynvml, psutil, pyusb) hold the GIL on shutdown;
-      cleanup has already happened by here, so forcing the reap is safe.  The
-      dev mock passes ``force_exit=False`` and returns normally.
+    * ``force_exit`` — the process ends via ``Platform.hard_exit`` AFTER the
+      bus's ``finally`` has closed the App, so it cannot live inside
+      ``GuiUI.run`` (``reap_after``).  Qt's metrics/sensor/render threads
+      occasionally outlive ``qapp.exec()`` when native libraries (pynvml,
+      psutil, pyusb) hold the GIL on shutdown; cleanup has already happened by
+      here, so forcing the reap is safe.  The dev mock passes
+      ``force_exit=False`` and returns normally.
     """
     log.info("run: delegating to the UI bus (decorated=%s start_hidden=%s "
              "single_instance=%s)", decorated, start_hidden, single_instance)
     platform.configure_stdout()
+    from functools import partial
+
+    from .._base import reap_after
     from .._uis import GuiUI
-    exit_code = GuiUI(
-        decorated=decorated, start_hidden=start_hidden,
-        single_instance=single_instance, on_ready=on_ready,
-    ).start(platform)
-    if force_exit:
-        import os as _os
-        _os._exit(exit_code)
-    return exit_code
+    face = GuiUI(decorated=decorated, start_hidden=start_hidden,
+                 single_instance=single_instance, on_ready=on_ready)
+    return reap_after(platform, partial(face.start, platform),
+                      force_exit=force_exit)
 
 
 # Back-compat alias — ``dev/mock_gui`` and existing tests call ``run_gui``.

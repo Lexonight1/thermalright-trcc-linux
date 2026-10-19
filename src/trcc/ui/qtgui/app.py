@@ -360,7 +360,7 @@ class MainWindow(QMainWindow):
 
 
 def run(
-    platform: Platform | None = None,
+    platform: Platform,
     on_ready: Callable[[MainWindow], None] | None = None,
     *,
     force_exit: bool = True,
@@ -374,34 +374,19 @@ def run(
     qtgui runs it before the window builds so pickers and browsers populate at
     construction) and its window.
 
-    ``force_exit`` stays here rather than on the face: ``os._exit`` must run
-    after the bus's ``finally`` has closed the App, so it cannot live inside
-    ``QtGuiUI.run``.
+    ``force_exit`` stays here rather than on the face: the process ends via
+    ``Platform.hard_exit`` after the bus's ``finally`` has closed the App, so
+    it cannot live inside ``QtGuiUI.run`` (``reap_after``).  The host's own
+    *platform* comes from :func:`trcc.ui.qtgui.launch`, the composition root.
     """
     log.info("run: delegating to the UI bus (start_hidden=%s)", start_hidden)
+    from functools import partial
+
+    from .._base import reap_after
     from .._uis import QtGuiUI
-    exit_code = QtGuiUI(start_hidden=start_hidden, on_ready=on_ready).start(platform)
-    if force_exit:
-        import os as _os
-        _os._exit(exit_code)
-    return exit_code
-
-
-def launch(
-    platform: Platform | None = None,
-    on_ready: Callable[[MainWindow], None] | None = None,
-    *,
-    force_exit: bool = True,
-    start_hidden: bool = False,
-) -> int:
-    """Back-compat entry — ``trcc qtgui`` and the direct entry points call this.
-
-    Identical to :func:`run`; kept as the historical name until the CLI router
-    dispatches ``run`` directly.
-    """
-    log.debug("launch: platform=%s on_ready=%s", platform, on_ready)
-    return run(platform, on_ready, force_exit=force_exit,
-               start_hidden=start_hidden)
+    face = QtGuiUI(start_hidden=start_hidden, on_ready=on_ready)
+    return reap_after(platform, partial(face.start, platform),
+                      force_exit=force_exit)
 
 
 # Silence unused-import warnings for QGuiApplication (kept for reference).

@@ -14,7 +14,7 @@ from contextlib import AbstractContextManager
 from operator import attrgetter
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, NoReturn, TypeVar
 
 from ._frames import pad_rows
 from ._safe import is_under
@@ -3286,6 +3286,17 @@ class Platform(ABC):
         StreamHandler attaches to an already-UTF-8-safe stream.  Consoles that
         already speak UTF-8 need nothing.
         """
+
+    @abstractmethod
+    def hard_exit(self, code: int) -> NoReturn:
+        """End this process NOW, after its cleanup ran, running no more code.
+
+        A GUI's last act: Qt and native threads can outlive ``exec()``, and
+        letting the interpreter -- or anything else -- tear them down was what
+        crashed or stalled the exit.  The App is closed by then, so nothing
+        is lost by not running anything further.
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def worker_thread_context(self) -> AbstractContextManager[None]:

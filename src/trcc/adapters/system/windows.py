@@ -15,7 +15,7 @@ import logging
 import os
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from ...core.errors import PermissionError_, TransportError
 from ...core.logs import per_frame
@@ -582,6 +582,25 @@ class WindowsPlatform(BaseOS, key="win32"):
             "driver — install it with Zadig (https://zadig.akeo.ie/). "
             "SCSI LCD panels need no driver."
         )
+
+    def hard_exit(self, code: int) -> NoReturn:
+        """``TerminateProcess`` on this process: Windows' ``_exit``.
+
+        ``os._exit`` here ends in ``ExitProcess``, which kills the other
+        threads wherever they stand -- one may hold the GIL -- and then runs
+        every DLL's detach code, Qt's included.  Qt's teardown reaches PySide
+        for the Python-made QObjects still alive, and about one GUI exit in
+        three crashed in ``SignalManager::retrieveMetaObject`` (0xc0000005 at
+        pyside6.abi3.dll+0x1c91e, measured on the win11 VM, 2026-10-19).
+        ``TerminateProcess`` runs no detach code, as ``_exit`` runs none on
+        Linux.  ``os._exit`` stays the fallback if Windows refuses.
+        """
+        log.info("hard_exit: TerminateProcess(%d)", code)
+        kernel32 = _kernel32()
+        if not kernel32.TerminateProcess(kernel32.GetCurrentProcess(), code):
+            log.warning("hard_exit: TerminateProcess failed (WinError %d) "
+                        "-- os._exit", kernel32.GetLastError())
+        os._exit(code)
 
     def configure_stdout(self) -> None:
         """Rewrap stdout / stderr as UTF-8 with ``errors='replace'``.

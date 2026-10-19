@@ -48,7 +48,7 @@ import logging
 import socket
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NoReturn, Optional, Tuple
 
 import pytest
 
@@ -489,6 +489,10 @@ class FakePlatform(Platform):
 
     def configure_stdout(self) -> None:
         """Nothing to rewrap — the test runner's streams are already UTF-8."""
+
+    def hard_exit(self, code: int) -> NoReturn:
+        """Never end the test run: raise what a real exit would leave."""
+        raise SystemExit(code)
 
     def worker_thread_context(self) -> AbstractContextManager[None]:
         return nullcontext()

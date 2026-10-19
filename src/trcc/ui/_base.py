@@ -443,3 +443,28 @@ class UserInterface(CommandBus):
         Reach the app through :meth:`dispatch` / :attr:`events`.
         """
 
+
+
+def reap_after(platform: Platform, start: Callable[[], int], *,
+               force_exit: bool) -> int:
+    """Run a Qt face's *start*; in production, end the process right there.
+
+    The process concern both Qt launchers share: ``start`` has closed the App
+    by the time it returns or raises, so ``Platform.hard_exit`` may end the
+    process without running anything more -- Qt and native threads that
+    outlive ``exec()`` are what crashed (Windows) or stalled the exit.  A
+    face that RAISES is reaped too: one whose App vanished while its window
+    was built took 6-80 s to leave on its own (win11 VM, 2026-10-19).
+    *force_exit* off (tests, the dev mock) returns or re-raises instead.
+    """
+    try:
+        code = start()
+    except Exception:
+        if not force_exit:
+            raise
+        log.critical("reap_after: the face failed", exc_info=True)
+        code = 1
+    log.info("reap_after: exit code %d (force_exit=%s)", code, force_exit)
+    if force_exit:
+        platform.hard_exit(code)
+    return code
