@@ -115,3 +115,43 @@ def test_uninstall_removes_the_data_folder_windows_trcc_really_uses(
                         if line.startswith("Type:"))
     assert f'Name: "{{userappdata}}\\{paths._root.name}"' in removed
     assert paths._user_content.name not in removed
+
+
+def _install_step() -> str:
+    """The body of ``CurStepChanged``, where the old sign-in task is replaced."""
+    text = _ISS.read_text(encoding="utf-8")
+    found = re.search(r"procedure CurStepChanged.*?\nend;", text, re.S)
+    assert found, "the installer lost its install step"
+    return found.group(0)
+
+
+def test_an_upgrade_carries_the_old_task_over_then_deletes_it() -> None:
+    """The elevated builds autostarted from a sign-in task; this one from the
+    Run key.  The App carries the task's target over AS THE USER (their HKCU),
+    in-process (no background App left by setup), and only then does the
+    admin installer delete the task -- a normal process may not (measured on
+    the win11 VM, 2026-10-19).
+
+    MUTATION CHECK: swap the two steps, or drop ExecAsOriginalUser for Exec."""
+    step = _install_step()
+    task = _autostart._TASK_NAME
+    carry = step.index("ExecAsOriginalUser(")
+    delete = step.index(f"'/delete /tn \"{task}\" /f'")
+
+    assert "if CurStep <> ssPostInstall then" in step
+    assert f"'/query /tn \"{task}\"'" in step
+    assert carry < delete, "the task went before its target was read"
+    assert "set TRCC_DAEMON=0&& " in step
+    assert "\\trcc.exe') +\n    '\" system autostart refresh\"'" in step
+
+
+def test_the_command_the_installer_runs_exists() -> None:
+    """The installer names a CLI path as a string; renaming the command would
+    leave every upgraded user without autostart, silently."""
+    from typer.testing import CliRunner
+
+    from trcc.ui.cli.main import app
+
+    result = CliRunner().invoke(app, ["system", "autostart", "refresh", "--help"])
+
+    assert result.exit_code == 0, result.output

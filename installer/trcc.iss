@@ -197,6 +197,36 @@ begin
       'Path', NewPath);
 end;
 
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  { The elevated builds before TRCC's service autostarted from a sign-in task
+    at the highest run level.  This build is not elevated and autostarts from
+    the Run key, so the task is replaced: first the App carries its target
+    over, AS THE USER (it writes their HKCU, and reads the task's arguments,
+    whose format lives in _autostart.py only), then the task goes, as admin --
+    a normal process may not delete a task made elevated (measured on the
+    win11 VM, 2026-10-19).  TRCC_DAEMON=0 keeps the App in this one process:
+    no background App is left running by the installer.  The task name must
+    match src/trcc/adapters/system/_autostart.py -- gated by
+    tests/test_installer_uninstall.py. }
+  if CurStep <> ssPostInstall then
+    exit;
+  if not Exec(ExpandConstant('{sys}\schtasks.exe'), '/query /tn "TRCC Linux"',
+              '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+     or (ResultCode <> 0) then
+    exit;
+  ExecAsOriginalUser(ExpandConstant('{cmd}'),
+    '/S /C "set TRCC_DAEMON=0&& "' + ExpandConstant('{app}\trcc.exe') +
+    '" system autostart refresh"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Log(Format('autostart refresh as the user exited %d', [ResultCode]));
+  Exec(ExpandConstant('{sys}\schtasks.exe'), '/delete /tn "TRCC Linux" /f',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Log(Format('old sign-in task delete exited %d', [ResultCode]));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
@@ -209,8 +239,9 @@ begin
     { Remove every autostart TRCC may have set.  The names are identity and
       must match src/trcc/adapters/system/_autostart.py -- gated by
       tests/test_installer_uninstall.py.  The sign-in task (_TASK_NAME) is
-      what the installed app uses; left behind, it runs a deleted program at
-      every sign-in. }
+      what the elevated builds used, gone after any later install; kept here
+      for an uninstall straight from one -- left behind, it runs a deleted
+      program at every sign-in. }
     Exec(ExpandConstant('{sys}\schtasks.exe'), '/delete /tn "TRCC Linux" /f',
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     RegDeleteValue(HKEY_CURRENT_USER,
