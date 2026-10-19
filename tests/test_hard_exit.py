@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from conftest import FakePlatform
 
-from trcc.adapters.system import _base, windows
+from trcc.adapters.system import windows
 from trcc.ui import _base as ui_base
 
 
@@ -105,7 +105,8 @@ def test_the_qtgui_launcher_resolves_this_host_and_reaps(
 
 def test_posix_ends_with_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     from trcc.adapters.system.linux import LinuxOS
-    _no_os_exit(monkeypatch, _base)
+    from trcc.core import ports
+    _no_os_exit(monkeypatch, ports)
     with pytest.raises(_Exited) as ended:
         LinuxOS().hard_exit(2)
     assert ended.value.code == 2

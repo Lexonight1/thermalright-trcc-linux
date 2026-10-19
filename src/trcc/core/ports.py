@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import builtins
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager
@@ -3287,7 +3288,6 @@ class Platform(ABC):
         already speak UTF-8 need nothing.
         """
 
-    @abstractmethod
     def hard_exit(self, code: int) -> NoReturn:
         """End this process NOW, after its cleanup ran, running no more code.
 
@@ -3295,8 +3295,14 @@ class Platform(ABC):
         letting the interpreter -- or anything else -- tear them down was what
         crashed or stalled the exit.  The App is closed by then, so nothing
         is lost by not running anything further.
+
+        The default is ``os._exit``: on a POSIX system the ``_exit`` call, which
+        runs no code at all.  Windows overrides -- there it runs every DLL's
+        teardown.  It lives on the port, not ``BaseOS``, because it is not
+        per-OS and ``BaseOS`` sits at the god-class limit (2026-10-19).
         """
-        raise NotImplementedError
+        log.info("%s.hard_exit: os._exit(%d)", type(self).__name__, code)
+        os._exit(code)
 
     @abstractmethod
     def worker_thread_context(self) -> AbstractContextManager[None]:
