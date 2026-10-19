@@ -241,3 +241,67 @@ def test_a_poll_with_no_identity_byte_warns_about_its_guess(
     assert device.profile is not None and device.profile.resolution == (320, 320)
     assert any("no identity byte" in r.getMessage() for r in caplog.records
                if r.levelname == "WARNING")
+
+
+# ── The handshake leaves a witness (2026-10-19) ─────────────────────
+# The panel went black while every frame was ACKed, and no log could say
+# whether the init got through: its result was discarded and its line was
+# DEBUG.  5afe11e0: "the device silently ignored all frames without
+# initialization".  One INFO line per step, once per connect.
+
+
+def _messages(caplog: pytest.LogCaptureFixture, level: str) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelname == level]
+
+
+def test_the_handshake_logs_its_poll_and_init_once(
+    fake_scsi: FakeScsiTransport, caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake_scsi.read_script = [_poll_response(100)]
+    device = _make_scsi(fake_scsi)
+
+    with caplog.at_level("INFO"):
+        device.connect()
+
+    info = _messages(caplog, "INFO")
+    polls = [m for m in info if "poll answered 57600 of 57600 byte(s)" in m]
+    assert len(polls) == 1 and "first bytes 64 00 00 00 00 00 00 00" in polls[0]
+    assert sum("init delivered" in m for m in info) == 1
+    assert not _messages(caplog, "WARNING")
+
+
+def test_an_init_that_did_not_get_through_warns(
+    fake_scsi: FakeScsiTransport, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """MUTATION CHECK: discard send_cdb's result again and this fails."""
+    fake_scsi.read_script = [_poll_response(100)]
+    fake_scsi.send_should_succeed = False
+    device = _make_scsi(fake_scsi)
+
+    with caplog.at_level("INFO"):
+        device.connect()
+
+    assert any("init NOT delivered" in m for m in _messages(caplog, "INFO"))
+    assert any("the init did not get through" in m
+               for m in _messages(caplog, "WARNING"))
+
+
+def test_only_the_first_frame_after_a_handshake_is_logged(
+    fake_scsi: FakeScsiTransport, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One line per connect, never one per frame -- and a reconnect logs again."""
+    fake_scsi.read_script = [_poll_response(100), _poll_response(100)]
+    device = _make_scsi(fake_scsi)
+    frame = b"\x00" * (320 * 320 * 2)
+
+    with caplog.at_level("INFO"):
+        device.connect()
+        device.send(frame)
+        device.send(frame)
+        device.connect()
+        device.send(frame)
+
+    firsts = [m for m in _messages(caplog, "INFO")
+              if "first frame after the handshake" in m]
+    assert firsts == ["ScsiLcd 0402:3922: first frame after the handshake "
+                      "delivered (204800 byte(s), 4 chunk(s))"] * 2

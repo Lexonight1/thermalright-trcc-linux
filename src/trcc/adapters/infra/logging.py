@@ -47,9 +47,12 @@ _HANDLER_TAG = "_trcc_handler"
 # ``[pid]``: the App and every UI write the SAME file, and without it a
 # report could not say which process a line came from -- two connects racing
 # at start-up read as one (2026-10-18).  It sits AFTER the level, which
-# ``_log_level_of`` reads as the second token.
+# ``_log_level_of`` reads as the second token.  Milliseconds join the time
+# in the FIRST token (``...T17:56:10.123``): whole seconds could not order a
+# handshake's poll, init and the USB reset the driver issues after it, and
+# the panel that went black on 2026-10-19 left no other witness.
 _LOG_FORMAT = (
-    "%(asctime)s %(levelname)-7s [%(process)d] "
+    "%(asctime)s.%(msecs)03d %(levelname)-7s [%(process)d] "
     "%(name)s:%(classname)s%(funcName)s:%(lineno)d: %(message)s"
 )
 _LOG_DATEFMT = "%Y-%m-%dT%H:%M:%S"

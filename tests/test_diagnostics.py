@@ -4062,3 +4062,25 @@ def test_every_log_line_names_its_process_and_keeps_the_level_second() -> None:
 
     assert f" [{os.getpid()}] trcc.app:App." in line
     assert _log_level_of(line) == "WARNING"
+
+
+def test_every_log_line_carries_milliseconds_in_its_first_token() -> None:
+    """Whole seconds could not order a handshake's poll, init and the USB
+    reset after it (2026-10-19).  The milliseconds join the time, so the level
+    is still the second token.  MUTATION CHECK: drop ``.%(msecs)03d``."""
+    import logging
+    import re
+
+    from trcc.adapters.infra.logging import (
+        _LOG_DATEFMT,
+        _LOG_FORMAT,
+        _log_level_of,
+    )
+
+    record = logging.LogRecord("trcc.app", logging.INFO, __file__, 1,
+                               "poll answered", None, None)
+    record.classname = "App."
+    line = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT).format(record)
+
+    assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3} ", line), line
+    assert _log_level_of(line) == "INFO"

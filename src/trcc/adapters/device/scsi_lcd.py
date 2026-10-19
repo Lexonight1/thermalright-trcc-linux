@@ -105,6 +105,10 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
     ``native_resolution``.
     """
 
+    #: True from a handshake until its first frame is logged -- one line per
+    #: connect saying what followed the init, never one per frame.
+    _first_frame_pending: bool = False
+
     # ── Device ABC ────────────────────────────────────────────────────
 
     def _do_handshake(self) -> HandshakeResult:
@@ -113,6 +117,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         poll_cdb = self._build_cdb(_POLL_CMD, _POLL_SIZE)
         log.debug("_do_handshake: poll CDB %s", poll_cdb.hex())
         response = b""
+        started = time.monotonic()
         for attempt in range(_BOOT_MAX_RETRIES):
             response = self._transport.read_cdb(
                 poll_cdb, _POLL_SIZE, _HANDSHAKE_TIMEOUT_MS,
@@ -125,6 +130,9 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
                 break
 
         self._trace_reply(response)
+        log.info("ScsiLcd %s: poll answered %d of %d byte(s) in %.0f ms, "
+                 "first bytes %s", self.info.key, len(response), _POLL_SIZE,
+                 (time.monotonic() - started) * 1000, response[:8].hex(" "))
         fbl = response[0] if response else (self.info.fbl or 100)
         if not response:
             # USBLCD.exe classifies no panel from an empty byte; we must draw
@@ -139,9 +147,21 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         # Step 2: Init (data-out, 0xE100 zeros)
         init_cdb = self._build_cdb(_INIT_CMD, _POLL_SIZE)
         log.debug("_do_handshake: init CDB %s", init_cdb.hex())
-        self._transport.send_cdb(
+        started = time.monotonic()
+        delivered = self._transport.send_cdb(
             init_cdb, b"\x00" * _POLL_SIZE, _HANDSHAKE_TIMEOUT_MS,
         )
+        # The init's result was thrown away.  A panel that missed it ACKs
+        # every frame and shows none (5afe11e0: "the device silently ignored
+        # all frames without initialization") -- and nothing said so.
+        log.info("ScsiLcd %s: init %s in %.0f ms", self.info.key,
+                 "delivered" if delivered else "NOT delivered",
+                 (time.monotonic() - started) * 1000)
+        if not delivered:
+            log.warning("ScsiLcd %s: the init did not get through -- the "
+                        "panel ignores every frame until one does",
+                        self.info.key)
+        self._first_frame_pending = True
 
         # Step 3: let the display controller settle
         time.sleep(_POST_INIT_DELAY_S)
@@ -191,6 +211,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         frame_log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
                   self.info.key, len(frame), len(chunks))
         offset = 0
+        delivered = True
         for cmd, size in chunks:
             cdb = self._build_cdb(cmd, size)
             ok = self._transport.send_cdb(
@@ -202,9 +223,17 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
                     "(cmd=0x%x size=%d)",
                     self.info.key, offset, cmd, size,
                 )
-                return False
+                delivered = False
+                break
             offset += size
-        return True
+        if self._first_frame_pending:
+            # One line per handshake, not per frame: what followed the init.
+            self._first_frame_pending = False
+            log.info("ScsiLcd %s: first frame after the handshake %s "
+                     "(%d byte(s), %d chunk(s))", self.info.key,
+                     "delivered" if delivered else "FAILED", len(frame),
+                     len(chunks))
+        return delivered
 
     # ── Boot animation ────────────────────────────────────────────────
 
