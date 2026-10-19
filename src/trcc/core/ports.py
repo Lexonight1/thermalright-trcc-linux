@@ -2821,10 +2821,20 @@ class IpcChannel(ABC):
         """Start serving: a listener, or ``OSError`` when another App serves."""
 
     def reachable(self) -> bool:
-        """True when an App accepts a connection right now."""
+        """True when an App is there to answer -- even one too busy to now.
+
+        Busy is not absent: a connect that times out found a listener whose
+        every connection was taken.  Reading it as "no App" made ``trcc kill``
+        report "TRCC App stopped" without sending the kill -- its first probe
+        got "every pipe instance is busy" from an App rendering a theme, and
+        the App ran on (win11 VM, 2026-10-19).
+        """
         try:
             with self.connect(0.5):
                 pass
+        except TimeoutError as e:
+            log.debug("%s.reachable: yes, busy -- %s", type(self).__name__, e)
+            return True
         except OSError as e:
             log.debug("%s.reachable: no -- %s", type(self).__name__, e)
             return False

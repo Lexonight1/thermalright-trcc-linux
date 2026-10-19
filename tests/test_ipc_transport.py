@@ -171,3 +171,67 @@ def test_one_failed_accept_does_not_stop_the_app() -> None:
     server._sock = _Listener()
     server.serve_forever()
     assert calls == ["accept", "accept"]
+
+
+class _AnsweringChannel:
+    """A channel whose connects answer, one by one, from *script*: an
+    exception to raise, or a stream to hand back."""
+
+    def __init__(self, script: list[object]) -> None:
+        self._script = script
+        self.sent: list[bytes] = []
+
+    def connect(self, timeout: float | None) -> object:
+        step = self._script.pop(0) if self._script else ConnectionRefusedError(2, "gone")
+        if isinstance(step, BaseException):
+            raise step
+        return step
+
+    reachable = ipc.IpcChannel.reachable
+
+
+class _Stream:
+    """One request/response over a fake connection."""
+
+    def __init__(self, chan: _AnsweringChannel, reply: bytes) -> None:
+        self._chan, self._reply = chan, reply
+
+    def __enter__(self) -> _Stream:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        pass
+
+    def sendall(self, data: bytes) -> None:
+        self._chan.sent.append(data)
+
+    def recv(self, n: int) -> bytes:
+        reply, self._reply = self._reply, b""
+        return reply
+
+
+@pytest.mark.parametrize(("error", "reachable"), [
+    (TimeoutError("every pipe instance is busy"), True),     # Windows, measured
+    (socket.timeout("timed out"), True),                     # a full backlog
+    (ConnectionRefusedError(2, "no App serves the pipe"), False),
+    (FileNotFoundError(2, "no socket"), False),
+    (PermissionError(5, "owner is not this user"), False),
+])
+def test_a_busy_app_is_still_an_app(error: OSError, reachable: bool) -> None:
+    """A connect that times out found a listener with every connection taken.
+    MUTATION CHECK: drop the TimeoutError branch and the busy rows fail."""
+    chan = _AnsweringChannel([error])
+    assert chan.reachable() is reachable
+
+
+def test_kill_reaches_an_app_that_was_busy_when_asked(monkeypatch) -> None:
+    """The VM run: the first probe found the App busy, ``kill_daemon`` read
+    that as "not running", said "TRCC App stopped" and never sent the kill --
+    the App rendered on (2026-10-19).  Busy probe, kill, then gone."""
+    chan = _AnsweringChannel([])
+    chan._script = [TimeoutError("every pipe instance is busy"),
+                    _Stream(chan, b'{"ok": true, "message": "shutting down"}\n')]
+    monkeypatch.setattr(ipc, "channel", lambda: chan)
+
+    assert daemon.kill_daemon(timeout=1.0) is True
+    assert chan.sent == [b'{"kill": true}\n'], "the kill was never sent"
