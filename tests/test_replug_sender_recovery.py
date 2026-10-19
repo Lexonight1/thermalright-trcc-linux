@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -548,3 +549,44 @@ def test_a_ui_action_waits_for_a_connect_already_under_way(app: App) -> None:
 
     assert finished.is_set()
     assert app.devices[_KEY].is_connected
+
+
+def test_a_panel_that_missed_its_init_is_retried_until_it_takes_one(
+        tmp_path: Path) -> None:
+    """A SCSI panel that misses its init ACKs every frame and shows none --
+    his panel, black, 2026-10-19.  The connect now FAILS on a missed init, so
+    the watcher retries with a fresh poll + init instead of streaming into it.
+
+    MUTATION CHECK: let ScsiLcd ignore the init's result again -- the first
+    connect "succeeds" with one init and no retry ever happens.
+    """
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+
+    from .mock_platform import MockPlatform
+
+    clock = SyncSendScheduler()
+    app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
+    real_open = app.platform.open_transport
+    inits: list[bool] = []
+
+    def open_refusing_the_first_init(*args: Any, **kwargs: Any) -> Any:
+        transport: Any = real_open(*args, **kwargs)
+        send = transport.send_cdb
+
+        def send_cdb(cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
+            if cdb[:4] == bytes.fromhex("f5010000"):       # the init (0x1F5)
+                inits.append(bool(inits))                  # first one refused
+                return inits[-1]
+            return send(cdb, data, timeout_ms)
+        transport.send_cdb = send_cdb
+        return transport
+
+    app.platform.open_transport = open_refusing_the_first_init  # type: ignore[method-assign]
+    app.discover_and_connect()
+    assert _KEY not in app.devices or not app.devices[_KEY].is_connected
+
+    for now in range(0, 30):
+        clock.tick(float(now))
+
+    assert app.devices[_KEY].is_connected
+    assert inits == [False, True]

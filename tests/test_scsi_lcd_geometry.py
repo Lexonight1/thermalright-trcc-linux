@@ -270,20 +270,25 @@ def test_the_handshake_logs_its_poll_and_init_once(
     assert not _messages(caplog, "WARNING")
 
 
-def test_an_init_that_did_not_get_through_warns(
+def test_an_init_that_did_not_get_through_fails_the_connect(
     fake_scsi: FakeScsiTransport, caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """MUTATION CHECK: discard send_cdb's result again and this fails."""
+    """A missed init is a panel that ACKs every frame and shows none.  The
+    connect fails, so ConnectDevice reports it and the watcher retries.
+    MUTATION CHECK: discard send_cdb's result again and this fails."""
+    from trcc.core.errors import HandshakeError
     fake_scsi.read_script = [_poll_response(100)]
     fake_scsi.send_should_succeed = False
     device = _make_scsi(fake_scsi)
 
-    with caplog.at_level("INFO"):
+    with caplog.at_level("INFO"), pytest.raises(HandshakeError,
+                                                match="did not take the init"):
         device.connect()
 
     assert any("init NOT delivered" in m for m in _messages(caplog, "INFO"))
     assert any("the init did not get through" in m
                for m in _messages(caplog, "WARNING"))
+    assert not device.is_connected
 
 
 def test_only_the_first_frame_after_a_handshake_is_logged(

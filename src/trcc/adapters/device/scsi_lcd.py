@@ -13,7 +13,7 @@ import struct
 import time
 import zlib
 
-from ...core.errors import TransportError
+from ...core.errors import HandshakeError, TransportError
 from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, Wire
 from ...core.ports import ScsiTransport
@@ -158,9 +158,16 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
                  "delivered" if delivered else "NOT delivered",
                  (time.monotonic() - started) * 1000)
         if not delivered:
+            # Fail the connect rather than stream into a panel that will show
+            # none of it: ConnectDevice reports it and the reconnect watcher
+            # retries with a fresh poll + init.  USBLCD.exe never reads the
+            # init's result either -- here doing better than the oracle is the
+            # point, since a missed init is a black panel that says "OK".
             log.warning("ScsiLcd %s: the init did not get through -- the "
-                        "panel ignores every frame until one does",
-                        self.info.key)
+                        "panel ignores every frame until one does; failing "
+                        "the connect so it is retried", self.info.key)
+            raise HandshakeError(
+                f"ScsiLcd {self.info.key}: the panel did not take the init")
         self._first_frame_pending = True
 
         # Step 3: let the display controller settle
