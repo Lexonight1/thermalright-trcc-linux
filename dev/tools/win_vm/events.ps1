@@ -1,9 +1,10 @@
-# ADMIN: App log, service log, and the last 30 minutes of events from System, Application and the PnP / USB / storage channels.
+# ADMIN: App log, service log, and the last $env:TRCC_EVENTS_HOURS hours (default 0.5) of events from System, Application and the PnP / USB / storage channels.
 $up = "http://10.0.2.2:8765"
 function Send($path, $name) { Invoke-WebRequest -UseBasicParsing -Method Put -InFile $path -Uri "$up/$name" | Out-Null }
 Send "$env:SystemRoot\System32\config\systemprofile\AppData\Roaming\trcc\trcc.log" "svc.log"
 Send "C:\Users\ignorant\AppData\Roaming\trcc\trcc.log" "app.log"
-$since = (Get-Date).AddMinutes(-30)
+$hours = if ($env:TRCC_EVENTS_HOURS) { [double]$env:TRCC_EVENTS_HOURS } else { 0.5 }
+$since = (Get-Date).AddHours(-$hours)
 $logs = @("System", "Application", "Microsoft-Windows-Kernel-PnP/Configuration",
           "Microsoft-Windows-DriverFrameworks-UserMode/Operational", "Microsoft-Windows-Storage-Storport/Operational",
           "Microsoft-Windows-Partition/Diagnostic", "Microsoft-Windows-Ntfs/Operational", "Microsoft-Windows-StorageSpaces-Driver/Operational",

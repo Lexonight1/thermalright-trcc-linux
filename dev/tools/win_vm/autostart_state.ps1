@@ -11,7 +11,7 @@ $out = "C:\trccdev\autostart_state.txt"
         Select-Object TRCCNext, "TRCC Linux" | Format-List | Out-String -Width 250
     "== processes"
     Get-CimInstance Win32_Process -Filter "Name like 'trcc%' or Name like 'python%'" |
-        Format-Table ProcessId, ParentProcessId, Name, CommandLine -AutoSize -Wrap | Out-String -Width 250
+        Format-Table ProcessId, ParentProcessId, CreationDate, Name, CommandLine -AutoSize -Wrap | Out-String -Width 250
     "== installed"
     $exe = "C:\Program Files\TRCC\trcc-gui.exe"
     if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion; (Get-Item $exe).LastWriteTime }
