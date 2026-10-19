@@ -13,6 +13,7 @@ no ssh and user-mode networking only; the guest reaches the host's loopback at
     python3 dev/tools/win_vm.py type 'whoami'    # probe focus: no Enter
     python3 dev/tools/win_vm.py run report       # type the one-liner for a recipe
     python3 dev/tools/win_vm.py exec cmd.exe /c whoami   # guest agent (see below)
+    python3 dev/tools/win_vm.py panel            # hand the panel back after a restart
 
 Recipes are ``dev/tools/win_vm/<name>.ps1``; each says on its first line whether
 it needs the ADMIN or the NON-ADMIN shell.  They upload their results to the
@@ -36,7 +37,11 @@ Lessons, each paid for on 2026-10-16/18 (memory ``reference_read_the_vm_disk``):
     non-admin test still needs the normal shell.  The agent that shipped in the VM
     (0.12.1) has no ``guest-exec``; ``win_vm/install_qga.ps1`` installs a current
     one (Red Hat's qemu-ga MSI -- put it in ``payload/`` first).
-6.  **Scratch tools die with ``/tmp``.**  This file exists because the session
+6.  **A VM restart drops the panel.**  The start resets it, it re-enumerates
+    under a new device number, the host's usb-storage claims it, and the VM
+    keeps a passthrough to the old number: Windows sees no panel.  ``panel``
+    re-attaches it by vendor/product (2026-10-18).
+7.  **Scratch tools die with ``/tmp``.**  This file exists because the session
     scratchpad copies were wiped by a host reboot.
 """
 from __future__ import annotations
@@ -158,6 +163,47 @@ def pack() -> Path:
     return out
 
 
+_PANEL = """<hostdev mode='subsystem' type='usb' managed='yes'>
+  <source><vendor id='0x0402'/><product id='0x3922'/></source>
+  <address type='usb' bus='0' port='7'/>
+</hostdev>"""
+
+
+def _panel_line() -> str:
+    """The panel's row in QEMU's ``info usb``, or ``""``."""
+    out = subprocess.run([*VIRSH, "qemu-monitor-command", DOMAIN, "--hmp", "info usb"],
+                         capture_output=True, text=True, check=True).stdout
+    return next((line.strip() for line in out.splitlines() if "hostdev0" in line), "")
+
+
+def _panel_connected() -> bool:
+    """QEMU shows address 0 until it has opened the host device."""
+    line = _panel_line()
+    return bool(line) and not line.startswith("Device 0.0,")
+
+
+def _wait(done, what: str) -> None:
+    """Poll *done* for up to 15 s -- both virsh calls return before QEMU acts."""
+    for _ in range(30):
+        if done():
+            return
+        time.sleep(0.5)
+    raise SystemExit(f"timed out waiting for {what}: {_panel_line() or 'no panel row'}")
+
+
+def reattach_panel() -> None:
+    """Drop the VM's passthrough of the panel and attach it again by
+    vendor/product, so it follows the panel's current device number."""
+    subprocess.run([*VIRSH, "detach-device-alias", DOMAIN, "hostdev0", "--live"],
+                   check=False)
+    _wait(lambda: not _panel_line(), "the old passthrough to go")
+    xml = CACHE / "panel.xml"
+    xml.write_text(_PANEL)
+    subprocess.run([*VIRSH, "attach-device", DOMAIN, str(xml), "--live"], check=True)
+    _wait(_panel_connected, "the panel to connect")
+    print(_panel_line())
+
+
 def agent(command: dict) -> dict:
     """One guest-agent command; its ``return`` value."""
     out = subprocess.run([*VIRSH, "qemu-agent-command", DOMAIN,
@@ -197,6 +243,7 @@ def main() -> int:
     r.add_argument("recipe")
     sub.add_parser("serve")
     sub.add_parser("pack")
+    sub.add_parser("panel")
     e = sub.add_parser("exec")
     e.add_argument("argv", nargs=argparse.REMAINDER)
     a = ap.parse_args()
@@ -220,6 +267,8 @@ def main() -> int:
             serve()
         case "pack":
             print(pack())
+        case "panel":
+            reattach_panel()
         case "exec":
             return guest_exec(a.argv)
     return 0

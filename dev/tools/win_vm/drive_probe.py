@@ -12,12 +12,18 @@ Twins without two panels -- from the host, live only (gone at VM shutdown);
 ``chcon`` because SELinux keeps the VM out of the scratchpad:
 
     qemu-img create -f raw twinA.img 32M; qemu-img create -f raw twinB.img 32M
-    chcon -t virt_content_t twinA.img twinB.img
+    chcon -t svirt_image_t twinA.img twinB.img
     virsh -c qemu:///session qemu-monitor-command win11 --hmp \\
         "device_add qemu-xhci,id=xhci3,bus=pci.6,p2=15,p3=15"
-    ... --hmp "drive_add 0 if=none,id=twinA,file=$PWD/twinA.img,format=raw,readonly=on"
+    ... --hmp "drive_add 0 if=none,id=twinA,file=$PWD/twinA.img,format=raw"
     ... --hmp "device_add usb-storage,bus=usb.0,port=5,drive=twinA,id=dtwinA"
-    (the same for twinB on bus=xhci3.0, port=5)
+    (the same for twinB on bus=xhci3.0, port=5; ``device_del`` each when done)
+
+Once (2026-10-18 19:52) Windows froze solid -- 9 cores busy, no event logged --
+at a service rebuild with these attached, and needed a forced restart.  Not
+reproduced: writable disks, read-only disks, a controller removed and re-added,
+and an exact replay of that sequence each ran this probe and a rebuild cleanly.
+If it freezes again, note what was attached and running.
 
 Measured 2026-10-18: libusb 1-5 / 2-5 -> PHYSICALDRIVE2 / 3; the panel 1-18 ->
 PHYSICALDRIVE1, ~2 ms per lookup.

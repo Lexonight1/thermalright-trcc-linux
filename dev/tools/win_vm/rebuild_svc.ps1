@@ -28,7 +28,8 @@ Set-Location $dev
     & "$venv\Scripts\pyinstaller.exe" --noconfirm trccsvc.spec 2>&1 | Select-Object -Last 3
     Copy-Item -Recurse -Force "$dev\pawnio_keep" "$dev\dist\trccsvc\pawnio"
     Get-ChildItem "$dev\dist\trccsvc\pawnio" | Select-Object -ExpandProperty Name
-    "== start"; sc.exe start TRCCService 2>&1
+    # Start at boot, as the installer registers it (installer/trcc.iss).
+    "== start"; sc.exe config TRCCService start= auto 2>&1; sc.exe start TRCCService 2>&1
     Start-Sleep 3
     sc.exe query TRCCService 2>&1 | Select-String STATE
     "venv for the user side: $venv"
