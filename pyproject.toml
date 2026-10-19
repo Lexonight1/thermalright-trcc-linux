@@ -42,11 +42,11 @@ dependencies = [
     # libusb-package bundles libusb-1.0.dll on Windows so pip-installed
     # users get a working pyusb backend out of the box. Pyocd's canonical
     # pattern (#131 — usb.core.NoBackendError on pip-install Windows).
-    # Pinned for Windows + Python <3.14 because upstream wheels only go
-    # to cp313 (verified PyPI 2026-05-14); pip install of trcc-linux on
-    # Python 3.14 Windows would otherwise fail at sdist build. Lift the
-    # python_version cap once libusb-package ships a cp314 wheel.
-    "libusb-package>=1.0.26.3; sys_platform == 'win32' and python_version < '3.14'",
+    # 1.0.30 is one py3-none wheel, so every Python 3 installs it (1.0.26
+    # stopped at cp313).  It is also the floor because Windows names a
+    # panel's socket (#287, _windows_drives) the way libusb >= 1.0.29 numbers
+    # buses; 1.0.26 numbered them by host controller instead.
+    "libusb-package>=1.0.30.0; sys_platform == 'win32'",
     "click>=7.0",
     "typer>=0.9.0",
     "fastapi>=0.100",

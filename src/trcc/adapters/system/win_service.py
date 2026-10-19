@@ -25,6 +25,7 @@ from ._service_broker import (
     PrivilegedBroker,
     serve_connection,
 )
+from ._windows_drives import find_physical_drive
 
 try:
     import servicemanager  # pyright: ignore[reportMissingImports, reportMissingModuleSource]
@@ -59,13 +60,6 @@ def _open_panel(path: str) -> Any:
     return transport
 
 
-def _find_panel(vid: int, pid: int) -> str | None:
-    """The drive of TRCC panel *vid*:*pid*, found by the service itself."""
-    from .windows import _find_physical_drive
-    log.debug("_find_panel: %04x:%04x", vid, pid)
-    return _find_physical_drive(vid, pid)
-
-
 def _open_module(name: str) -> Any:
     """A bundled PawnIO module, from this install's own ``pawnio`` folder."""
     from ..sensors._pawnio_cpu import _open_bundled
@@ -76,7 +70,7 @@ def _open_module(name: str) -> Any:
 def make_broker() -> PrivilegedBroker:
     """The broker wired to this machine's drives and PawnIO."""
     log.debug("make_broker")
-    return PrivilegedBroker(version=__version__, find_drive=_find_panel,
+    return PrivilegedBroker(version=__version__, find_drive=find_physical_drive,
                             open_scsi=_open_panel, open_module=_open_module)
 
 

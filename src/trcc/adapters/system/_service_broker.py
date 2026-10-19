@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import struct
 import threading
 from collections.abc import Callable
@@ -66,6 +67,9 @@ _BODY_MAX = 8 * 1024 * 1024
 _READ_MAX = 1024 * 1024
 _CDB_LEN = 16
 _TRCC_OPCODE = 0xF5
+#: Which of two identical panels, as the scan names it (``usb_path``,
+#: ``bus-port.port``).  Bounded: it arrives from an unprivileged client.
+_UNIT = re.compile(r"\d{1,3}-\d{1,3}(?:\.\d{1,3}){0,6}")
 
 #: The USB ids of every TRCC SCSI panel -- the only drives the service opens.
 SCSI_PANELS: frozenset[tuple[int, int]] = frozenset(
@@ -181,13 +185,13 @@ def check_pawnio_read(function: str, inputs: list[int]) -> None:
 class PrivilegedBroker:
     """Answers one request at a time for one :class:`Session`.
 
-    *find_drive(vid, pid)* names a panel's drive or None; *open_scsi(path)*
+    *find_drive(vid, pid, unit)* names a panel's drive or None; *open_scsi(path)*
     returns an opened ``ScsiTransport``; *open_module(name)* returns a loaded
     ``PawnIoModule`` -- injected, so Linux tests run the real checks.
     """
 
     def __init__(self, *, version: str,
-                 find_drive: Callable[[int, int], str | None],
+                 find_drive: Callable[[int, int, str], str | None],
                  open_scsi: Callable[[str], Any],
                  open_module: Callable[[str], Any]) -> None:
         self._version = version
@@ -231,7 +235,8 @@ class PrivilegedBroker:
                 return {"ok": True, "version": self._version}, b""
             case "scsi.open":
                 return self._scsi_open(session, int(header["vid"]),
-                                       int(header["pid"])), b""
+                                       int(header["pid"]),
+                                       str(header.get("unit", ""))), b""
             case "scsi.send":
                 transport = session.scsi[int(header["handle"])]
                 check_cdb(body[:_CDB_LEN])
@@ -267,15 +272,22 @@ class PrivilegedBroker:
         log.warning("PrivilegedBroker: unknown op %r", op)
         raise Refused(f"unknown request {op!r}")
 
-    def _scsi_open(self, session: Session, vid: int, pid: int) -> dict[str, Any]:
-        """Open the panel *vid*:*pid* -- a TRCC SCSI panel, or refused."""
+    def _scsi_open(self, session: Session, vid: int, pid: int,
+                   unit: str) -> dict[str, Any]:
+        """Open the panel *vid*:*pid* in socket *unit* -- a TRCC SCSI panel,
+        or refused."""
         if (vid, pid) not in SCSI_PANELS:
             log.warning("PrivilegedBroker: %04x:%04x is no TRCC SCSI panel -- "
                         "refused", vid, pid)
             raise Refused(f"{vid:04x}:{pid:04x} is not a TRCC SCSI panel")
-        path = self._find_drive(vid, pid)
+        if unit and not _UNIT.fullmatch(unit):
+            log.warning("PrivilegedBroker: unit %r is not a USB socket -- refused",
+                        unit[:40])
+            raise Refused("that is not a USB socket")
+        path = self._find_drive(vid, pid, unit)
         if path is None:
-            raise FileNotFoundError(f"no drive for {vid:04x}:{pid:04x}")
+            raise FileNotFoundError(
+                f"no drive for {vid:04x}:{pid:04x}{f' in {unit}' if unit else ''}")
         transport = self._open_scsi(path)
         handle = session.add(session.scsi, transport)
         log.info("PrivilegedBroker: %04x:%04x -> %s as handle %d",

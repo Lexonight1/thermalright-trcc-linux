@@ -55,12 +55,12 @@ class ServiceScsiTransport(BaseScsiTransport):
     Logging, the failure policy and open/close are ``BaseScsiTransport``'s.
     """
 
-    def __init__(self, vid: int, pid: int) -> None:
-        self._vid, self._pid = vid, pid
+    def __init__(self, vid: int, pid: int, unit: str = "") -> None:
+        self._vid, self._pid, self._unit = vid, pid, unit
         self._client: ServiceClient | None = None
         self._handle = 0
-        log.info("ServiceScsiTransport: %04x:%04x through %s", vid, pid,
-                 SERVICE_NAME)
+        log.info("ServiceScsiTransport: %04x:%04x unit=%s through %s", vid, pid,
+                 unit or "(only)", SERVICE_NAME)
         super().__init__(f"{vid:04x}:{pid:04x} via {SERVICE_NAME}")
 
     def _open_handle(self) -> bool:
@@ -72,7 +72,7 @@ class ServiceScsiTransport(BaseScsiTransport):
             raise TransportError(str(e)) from e
         try:
             reply, _ = client.call({"op": "scsi.open", "vid": self._vid,
-                                    "pid": self._pid})
+                                    "pid": self._pid, "unit": self._unit})
         except ServiceError as e:
             client.close()
             log.warning("ServiceScsiTransport.open: %s", e)

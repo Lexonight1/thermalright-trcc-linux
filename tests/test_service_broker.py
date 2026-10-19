@@ -144,12 +144,17 @@ class _Module:
         self.closed = True
 
 
-def _broker(transport: FakeScsiTransport, opened: list[str]) -> PrivilegedBroker:
+def _broker(transport: FakeScsiTransport, opened: list[str],
+            asked: list[str] | None = None) -> PrivilegedBroker:
     def open_scsi(path: str) -> FakeScsiTransport:
         opened.append(path)
         transport.open()
         return transport
-    return PrivilegedBroker(version="9.9.9", find_drive=lambda v, p: r"\\.\PhysicalDrive1",
+
+    def find_drive(vid: int, pid: int, unit: str) -> str:
+        (asked if asked is not None else []).append(unit)
+        return r"\\.\PhysicalDrive1"
+    return PrivilegedBroker(version="9.9.9", find_drive=find_drive,
                             open_scsi=open_scsi, open_module=lambda n: _Module())
 
 
@@ -176,6 +181,34 @@ def test_a_device_that_is_not_a_trcc_scsi_panel_is_never_opened(ids) -> None:
     reply, _ = broker.handle(Session(), {"op": "scsi.open", "vid": ids[0],
                                          "pid": ids[1]}, b"")
     assert reply["refused"] and opened == []
+
+
+@pytest.mark.parametrize(("header", "unit"), [({}, ""), ({"unit": "2-5"}, "2-5"),
+                                             ({"unit": "1-3.2.4"}, "1-3.2.4")])
+def test_the_socket_a_client_names_is_the_one_the_service_looks_in(header, unit) -> None:
+    """Which of two identical panels (#287) crosses the pipe; an older client
+    that names none still opens the only one.
+
+    MUTATION CHECK: drop ``unit`` from the find_drive call."""
+    asked: list[str] = []
+    vid, pid = next(iter(SCSI_PANELS))
+    reply, _ = _broker(FakeScsiTransport(), [], asked).handle(
+        Session(), {"op": "scsi.open", "vid": vid, "pid": pid, **header}, b"")
+    assert reply["ok"] and asked == [unit]
+
+
+@pytest.mark.parametrize("unit", ["..\\PhysicalDrive0", "1-5; x", "1", "1-",
+                                  "1234-5", "1-1.2.3.4.5.6.7.8", "1@4", " 1-5"])
+def test_a_unit_that_is_not_a_usb_socket_is_refused_before_any_lookup(unit) -> None:
+    """The unit comes from an unprivileged process: only ``bus-port.port``.
+
+    MUTATION CHECK: drop the ``_UNIT`` test in _scsi_open."""
+    asked: list[str] = []
+    opened: list[str] = []
+    vid, pid = next(iter(SCSI_PANELS))
+    reply, _ = _broker(FakeScsiTransport(), opened, asked).handle(
+        Session(), {"op": "scsi.open", "vid": vid, "pid": pid, "unit": unit}, b"")
+    assert reply["refused"] and asked == [] and opened == []
 
 
 def test_a_refused_cdb_never_reaches_the_drive() -> None:

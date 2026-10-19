@@ -71,7 +71,7 @@ def _scsi_service(monkeypatch, drive: FakeScsiTransport) -> _Service:
         drive.open()
         return drive
     service = _Service(PrivilegedBroker(
-        version="t", find_drive=lambda v, p: r"\\.\PhysicalDrive1",
+        version="t", find_drive=lambda v, p, u: r"\\.\PhysicalDrive1",
         open_scsi=open_scsi, open_module=lambda n: None))
     monkeypatch.setattr(_service_client, "connect_service", service.connect)
     return service
@@ -156,7 +156,7 @@ def test_the_cpu_is_read_through_the_service(monkeypatch, vendor, registers,
     MUTATION CHECK: drop "code" from the broker's error reply."""
     driver = _FakePawnIo(vendor, registers)
     service = _Service(PrivilegedBroker(
-        version="t", find_drive=lambda v, p: None, open_scsi=lambda p: None,
+        version="t", find_drive=lambda v, p, u: None, open_scsi=lambda p: None,
         open_module=lambda name: PawnIoModule(f"{name}.bin".encode(),
                                               name=name, device=driver)))
     monkeypatch.setattr(_service_client, "connect_service", service.connect)
@@ -183,12 +183,43 @@ def test_the_platform_picks_direct_or_the_service(monkeypatch, elevated,
     MUTATION CHECK: always take the direct path."""
     from trcc.adapters.system import windows
     monkeypatch.setattr(windows, "_is_elevated", lambda: elevated)
-    monkeypatch.setattr(windows, "_find_physical_drive",
-                        lambda v, p: r"\\.\PhysicalDrive1")
+    monkeypatch.setattr(windows, "find_physical_drive",
+                        lambda v, p, u: r"\\.\PhysicalDrive1")
     transport = windows.WindowsPlatform()._open_scsi(0x0402, 0x3922)
     assert isinstance(transport, ServiceScsiTransport) is service
     cpu = windows.make_pawnio_cpu()
     assert (cpu._open is open_service_module) is service
+
+
+@pytest.mark.parametrize("elevated", [True, False])
+def test_the_socket_reaches_the_drive_lookup_either_way(monkeypatch,
+                                                         elevated) -> None:
+    """Which of two identical panels (#287): opened directly, the lookup gets
+    the unit; through the service, the unit crosses the pipe to it.
+
+    MUTATION CHECK: drop ``unit`` from either ServiceScsiTransport call."""
+    from trcc.adapters.system import windows
+    asked: list[str] = []
+
+    def find(vid: int, pid: int, unit: str) -> str:
+        asked.append(unit)
+        return r"\\.\PhysicalDrive2"
+    monkeypatch.setattr(windows, "_is_elevated", lambda: elevated)
+    monkeypatch.setattr(windows, "find_physical_drive", find)
+    drive = FakeScsiTransport()
+
+    def open_scsi(path: str) -> FakeScsiTransport:
+        drive.open()
+        return drive
+    service = _Service(PrivilegedBroker(version="t", find_drive=find,
+                                        open_scsi=open_scsi,
+                                        open_module=lambda n: None))
+    monkeypatch.setattr(_service_client, "connect_service", service.connect)
+    transport = windows.WindowsPlatform()._open_scsi(0x0402, 0x3922, unit="2-5")
+    if not elevated:
+        assert transport.open()
+        transport.close()
+    assert asked == ["2-5"]
 
 
 class _Null:

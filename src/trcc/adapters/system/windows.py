@@ -39,6 +39,7 @@ from ..sensors.windows import build_windows_sensors
 from ..visual import WglSurface, drawn_on
 from ..visual.loopback import LoopbackSoundInput
 from ._base import BaseOS, BasePaths
+from ._windows_drives import find_physical_drive
 from ._windows_wmi import wmi_handle
 
 log = logging.getLogger(__name__)
@@ -132,19 +133,6 @@ def make_pawnio_cpu() -> PawnioCpu:
     from ._service_client import open_service_module
     log.info("make_pawnio_cpu: not elevated -- PawnIO through TRCC's service")
     return PawnioCpu(open_module=open_service_module)
-
-
-def _find_physical_drive(vid: int, pid: int) -> str | None:
-    r"""Map VID:PID -> ``\\.\PhysicalDriveN`` through SetupAPI (``_windows_drives``).
-
-    It went through WMI, matched the drive by "USBSTOR and under 1 MB", and
-    WMI's COM connection failed inside TRCC's service with an RPC internal
-    error (2026-10-18).  SetupAPI walks the disk up to its USB parent and
-    reads the VID:PID -- the Linux sysfs walk -- with no access rights.
-    """
-    from ._windows_drives import find_physical_drive
-    log.debug("_find_physical_drive: %04x:%04x", vid, pid)
-    return find_physical_drive(vid, pid)
 
 
 # Common CreateFileW failures when opening \\.\PhysicalDriveN for SCSI
@@ -506,14 +494,8 @@ class WindowsPlatform(BaseOS, key="win32"):
                   unit: str = "") -> ScsiTransport:
         r"""Windows SCSI passthrough over a ``\\.\PhysicalDriveN`` handle.
 
-        *unit* is ACCEPTED AND NOT HONOURED, and says so out loud.  Picking a
-        specific one of two identical devices (#287) needs the Windows device
-        path — ``SetupDiGetDeviceInstanceId`` / ``USB\VID_xxxx&PID_xxxx\…``
-        — matched against the USB topology, and this is the one OS in the
-        matrix that cannot be verified here (``doc``: macOS/BSD are
-        reporter-only, Windows needs the VM).  Shipping an untested mapping
-        that silently opens the WRONG panel is worse than shipping the
-        current behaviour with a warning that names the limit.
+        *unit* picks which of two identical panels (#287): ``find_physical_drive``
+        names each disk by the socket it is in, as the scan names the panel.
         """
         log.info("open_scsi: %04x:%04x serial=%r unit=%s",
                  vid, pid, serial, unit or "(only)")
@@ -522,18 +504,13 @@ class WindowsPlatform(BaseOS, key="win32"):
             # it, and checks every command against what TRCC sends.
             from ._service_client import ServiceScsiTransport
             log.info("open_scsi: not elevated -- through TRCC's service")
-            return ServiceScsiTransport(vid, pid)
-        if unit:
-            log.warning(
-                "open_scsi: Windows cannot yet target a specific unit — "
-                "opening the first %04x:%04x found, which may be the other "
-                "panel (#287)", vid, pid,
-            )
-        path = _find_physical_drive(vid, pid)
+            return ServiceScsiTransport(vid, pid, unit)
+        path = find_physical_drive(vid, pid, unit)
         if path is None:
             raise TransportError(
-                f"No PhysicalDrive found for {vid:04x}:{pid:04x} — "
-                "ensure the device is attached and visible as a USB mass-storage disk"
+                f"No PhysicalDrive found for {vid:04x}:{pid:04x}"
+                f"{f' in {unit}' if unit else ''} — ensure the device is "
+                "attached and visible as a USB mass-storage disk"
             )
         log.debug("WindowsPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
         return WindowsScsiTransport(path)
