@@ -535,13 +535,24 @@ class WindowsPlatform(BaseOS, key="win32"):
         return install(dry_run=dry_run)
 
     def check_permissions(self) -> list[str]:
-        log.info("check_permissions: called")
-        if not _is_elevated():
-            return [
-                "Not running as administrator — raw LCD device access (SCSI "
-                "passthrough) will fail. Launch the installed TRCC app (it "
-                "elevates automatically), or run from an administrator terminal."
-            ]
+        """What stands between this process and the panels, in words.
+
+        Not elevation: a process that is not administrator reaches SCSI
+        panels and PawnIO through TRCC's service, so the one thing that can
+        be missing is the service.  This said "Not running as administrator
+        -- will fail" to every such process, which stopped being true when
+        the service arrived and is every installed TRCC since.
+        """
+        if _is_elevated():
+            log.info("check_permissions: elevated -- direct access")
+            return []
+        from ._service_client import NOT_RUNNING, connect_service
+        try:
+            connect_service(timeout=1.0).close()
+        except OSError as e:
+            log.warning("check_permissions: the service does not answer: %s", e)
+            return [NOT_RUNNING]
+        log.info("check_permissions: not elevated -- the service answers")
         return []
 
     def display_session(self) -> DisplaySession:
