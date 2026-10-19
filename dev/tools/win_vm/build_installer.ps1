@@ -17,8 +17,13 @@ $log = "$dev\build_installer.log"
     "== Inno Setup"
     $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
     if (-not (Test-Path $iscc)) {
-        Invoke-WebRequest -UseBasicParsing -Uri "https://jrsoftware.org/download.php/is.exe" -OutFile "$dev\is.exe"
-        Start-Process "$dev\is.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait
+        # jrsoftware.org/download.php/is.exe answers an HTML page, not the exe.
+        $is = "$dev\innosetup-6.7.3.exe"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" -OutFile $is
+        $hash = (Get-FileHash $is -Algorithm SHA256).Hash
+        if ($hash -ne "9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732") { throw "Inno Setup 6.7.3 hash mismatch: $hash" }
+        Start-Process $is -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait
+        Remove-Item $is
     }
     "ISCC present: $(Test-Path $iscc)"
     "== venv"

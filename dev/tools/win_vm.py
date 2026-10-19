@@ -149,12 +149,13 @@ def serve() -> None:
 def pack() -> Path:
     """The working tree (tracked + untracked, not ignored) as payload/src.zip,
     without the theme archives -- 783 MB with them, ~27 MB without.  The local
-    Windows build script rides along, for ``build_installer``."""
+    Windows build script and the LICENSE the installer shows ride along, for
+    ``build_installer``."""
     PAYLOAD.mkdir(parents=True, exist_ok=True)
     files = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard",
          "src", "installer", "pyproject.toml", "README.md",
-         "dev/tools/build_windows.ps1"],
+         "dev/tools/build_windows.ps1", "LICENSE"],
         cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
     out = PAYLOAD / "src.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
