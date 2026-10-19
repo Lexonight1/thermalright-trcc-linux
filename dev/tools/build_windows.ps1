@@ -1,13 +1,14 @@
 # TRCC Windows Development Build Script
 #
 # Emulates windows.yml CI exactly - same tools, same bundle contents.
-# Downloads 7z and ffmpeg automatically on first run (cached for subsequent builds).
+# Copies the installed 7-Zip; downloads ffmpeg and PawnIO on first run (cached after).
 #
 # Prerequisites (one-time setup):
 #   1. Install Python 3.12 from python.org (check "Add to PATH")
 #   2. python -m pip install pyinstaller
 #   3. python -m pip install ".[nvidia,windows]"
 #   4. python -m pip install libusb-package tzdata
+#   5. 7-Zip installed in C:\Program Files\7-Zip (bundled, as CI does)
 #
 # Usage:
 #   cd <repo-root>
@@ -66,26 +67,16 @@ Log "Working dir: $(Get-Location)"
 Log ""
 
 # -----------------------------------------------------------------------
-# Download 7-Zip standalone (LGPL)
-# Bootstrap: download 7zr.exe (self-contained, no install required),
-# use it to extract 7za.exe from the extra package, then discard 7zr.exe.
+# 7-Zip (LGPL): the installed one, copied as windows.yml does.  This used to
+# download 7z2409-extra.7z from 7-zip.org, which answers 404 now (2026-10-19).
 # -----------------------------------------------------------------------
-Log "--- Downloading 7-Zip standalone ---"
-if (Test-Path "7z-standalone\7za.exe") {
-  Log "7za.exe already present - skipping download"
-} else {
-  try {
-    Invoke-WebRequest -Uri "https://www.7-zip.org/a/7zr.exe" -OutFile "7zr.exe" -UseBasicParsing
-    Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2409-extra.7z" -OutFile "7z-extra.7z" -UseBasicParsing
-    & ".\7zr.exe" x "7z-extra.7z" "-o7z-standalone" "7za.exe" | Out-Null
-    Remove-Item "7zr.exe" -Force
-    Remove-Item "7z-extra.7z" -Force
-    if (-not (Test-Path "7z-standalone\7za.exe")) { Die "7za.exe not found after extraction" }
-    Log "7z standalone downloaded OK"
-  } catch {
-    Die "7z download failed: $_"
-  }
-}
+Log "--- Preparing 7-Zip ---"
+$sevenZip = "C:\Program Files\7-Zip"
+if (-not (Test-Path "$sevenZip\7z.exe")) { Die "7-Zip not installed ($sevenZip) - install it from https://www.7-zip.org" }
+New-Item -ItemType Directory -Force -Path "7z-standalone" | Out-Null
+Copy-Item "$sevenZip\7z.exe" "7z-standalone\7za.exe" -Force
+Copy-Item "$sevenZip\7z.dll" "7z-standalone\7za.dll" -Force
+Log "7-Zip OK"
 
 # -----------------------------------------------------------------------
 # Download ffmpeg essentials (LGPL)
@@ -187,7 +178,8 @@ Log "--- Merging ---"
 Copy-Item "dist\trcc-gui\trcc-gui.exe" "dist\trcc\" -Force
 Log "Copied trcc-gui.exe"
 Copy-Item "7z-standalone\7za.exe" "dist\trcc\7z.exe" -Force
-Log "Bundled 7z.exe"
+Copy-Item "7z-standalone\7za.dll" "dist\trcc\7z.dll" -Force
+Log "Bundled 7z.exe + 7z.dll"
 Copy-Item "ffmpeg.exe" "dist\trcc\ffmpeg.exe" -Force
 Log "Bundled ffmpeg.exe"
 if ($libusbPath -and (Test-Path $libusbPath)) {
@@ -223,6 +215,7 @@ $missing = @()
 if (-not (Test-Path "dist\trcc\trcc.exe"))     { $missing += "trcc.exe" }
 if (-not (Test-Path "dist\trcc\trcc-gui.exe")) { $missing += "trcc-gui.exe" }
 if (-not (Test-Path "dist\trcc\7z.exe"))       { $missing += "7z.exe" }
+if (-not (Test-Path "dist\trcc\7z.dll"))       { $missing += "7z.dll" }
 if (-not (Test-Path "dist\trcc\ffmpeg.exe"))   { $missing += "ffmpeg.exe" }
 if (-not (Get-ChildItem "dist\trcc\libusb*" -ErrorAction SilentlyContinue)) {
   $missing += "libusb-1.0.dll"
