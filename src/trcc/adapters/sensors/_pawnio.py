@@ -22,8 +22,9 @@ The wire, from the driver source (namazso/PawnIO 2.2.0, include/pawnio_um.h):
              output: u64 cells; a ``_SIZED`` function wants EXACT counts
 
 One module per handle: a second LOAD on a handle is refused, and closing the
-handle unloads it.  The device admits SYSTEM and Administrators only, which
-TRCC's Windows build is (``--uac-admin``).
+handle unloads it.  The device admits SYSTEM and Administrators only: an
+elevated TRCC opens it directly, any other reaches it through TRCC's SYSTEM
+service (``make_pawnio_cpu``).
 
 Every call's result is checked.  LibreHardwareMonitor's client hands back an
 array of zeros when ``DeviceIoControl`` fails, which reads as 0 °C; here a

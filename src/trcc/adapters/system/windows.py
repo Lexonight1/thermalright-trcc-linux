@@ -110,9 +110,10 @@ def _kernel32() -> Any:
 def _is_elevated() -> bool:
     """True if the process holds Administrator rights.
 
-    Raw ``\\\\.\\PhysicalDriveN`` read/write (SCSI passthrough) needs admin;
-    the packaged app gets it via the ``--uac-admin`` manifest, but a
-    source / pip launch from a normal shell does not.  Returns ``True``
+    Raw ``\\\\.\\PhysicalDriveN`` read/write (SCSI passthrough) and PawnIO
+    need admin: an elevated process uses them directly, any other goes
+    through TRCC's SYSTEM service.  No build asks for elevation; an
+    administrator terminal is the one way in.  Returns ``True``
     (assume fine, emit no warning) if ``shell32`` can't be reached — we only
     warn when we are *sure* the user lacks elevation.
     """

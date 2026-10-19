@@ -11,12 +11,20 @@
 #
 # Usage:
 #   cd <repo-root>
-#   powershell -ExecutionPolicy Bypass -File .\tools\build_windows.ps1
+#   powershell -ExecutionPolicy Bypass -File .\dev\tools\build_windows.ps1 [-Installer]
 #
 # Output: dist\trcc\ - run directly, no installer needed.
+#   -Installer also compiles installer\trcc.iss with Inno Setup 6 (ISCC.exe on
+#   PATH or in its default folder) into installer\Output\, as windows.yml does.
+#
+# The PyInstaller flags must match windows.yml's -- gated by
+# tests/test_build_windows_matches_ci.py.  This file once claimed to emulate CI
+# "exactly" while leaving out the GUI's skin images and PawnIO.
 #   .\dist\trcc\trcc.exe detect
 #   .\dist\trcc\trcc.exe report
 #   .\dist\trcc\trcc-gui.exe
+
+param([switch]$Installer)
 
 Set-StrictMode -Off
 
@@ -101,6 +109,26 @@ if (Test-Path "ffmpeg.exe") {
 }
 
 # -----------------------------------------------------------------------
+# PawnIO (namazso): the two signed modules TRCC runs, and the driver's
+# installer the setup lays down -- pinned by SHA-256, the same values as
+# windows.yml (gated by tests/test_installer_uninstall.py).
+# -----------------------------------------------------------------------
+Log "--- Downloading PawnIO ---"
+if (-not (Test-Path "pawnio-modules\IntelMSR.bin")) {
+  Invoke-WebRequest -Uri "https://github.com/namazso/PawnIO.Modules/releases/download/0.2.11/release_0_2_11.zip" -OutFile "pawnio-modules.zip" -UseBasicParsing
+  $hash = (Get-FileHash "pawnio-modules.zip" -Algorithm SHA256).Hash
+  if ($hash -ne "43608CB89BC84247FEF1368A139013F7D043E17DB6D6C8DFC9B46BF0905A81F4") { Die "PawnIO.Modules 0.2.11 hash mismatch: $hash" }
+  Expand-Archive "pawnio-modules.zip" -DestinationPath "pawnio-modules" -Force
+}
+if (-not (Test-Path "installer\pawnio\PawnIO_setup.exe")) {
+  New-Item -ItemType Directory -Force -Path "installer\pawnio" | Out-Null
+  Invoke-WebRequest -Uri "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe" -OutFile "installer\pawnio\PawnIO_setup.exe" -UseBasicParsing
+  $hash = (Get-FileHash "installer\pawnio\PawnIO_setup.exe" -Algorithm SHA256).Hash
+  if ($hash -ne "1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032") { Die "PawnIO_setup 2.2.0 hash mismatch: $hash" }
+}
+Log "PawnIO OK"
+
+# -----------------------------------------------------------------------
 # Get libusb path (optional - pyusb dependency)
 # -----------------------------------------------------------------------
 $libusbPath = python -c "import libusb_package; print(libusb_package.get_library_path())" 2>$null
@@ -114,12 +142,13 @@ python -m PyInstaller `
   --name trcc `
   --onedir `
   --console `
-  --uac-admin `
   --icon "src\trcc\assets\icons\app.ico" `
   --add-data "src\trcc\assets;trcc\assets" `
+  --add-data "src\trcc\ui\gui\assets;trcc\ui\gui\assets" `
   --hidden-import PySide6.QtSvg `
   --hidden-import pynvml `
   --hidden-import wmi `
+  --hidden-import soundcard `
   --collect-submodules trcc `
   --noconfirm `
   "src\trcc\__main__.py"
@@ -136,12 +165,13 @@ python -m PyInstaller `
   --name trcc-gui `
   --onedir `
   --windowed `
-  --uac-admin `
   --icon "src\trcc\assets\icons\app.ico" `
   --add-data "src\trcc\assets;trcc\assets" `
+  --add-data "src\trcc\ui\gui\assets;trcc\ui\gui\assets" `
   --hidden-import PySide6.QtSvg `
   --hidden-import pynvml `
   --hidden-import wmi `
+  --hidden-import soundcard `
   --collect-submodules trcc `
   --noconfirm `
   "src\trcc\__main__.py"
@@ -166,6 +196,12 @@ if ($libusbPath -and (Test-Path $libusbPath)) {
 } else {
   Log "WARNING: libusb-package not installed - pyusb may not work"
 }
+# The PawnIO modules beside trcc.exe (_pawnio_cpu.module_dir).
+New-Item -ItemType Directory -Force -Path "dist\trcc\pawnio" | Out-Null
+foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "COPYING") {
+  Copy-Item "pawnio-modules\$f" "dist\trcc\pawnio\" -Force
+}
+Log "Bundled the PawnIO modules"
 
 # -----------------------------------------------------------------------
 # Verify (same checks as CI)
@@ -191,14 +227,28 @@ if (-not (Test-Path "dist\trcc\ffmpeg.exe"))   { $missing += "ffmpeg.exe" }
 if (-not (Get-ChildItem "dist\trcc\libusb*" -ErrorAction SilentlyContinue)) {
   $missing += "libusb-1.0.dll"
 }
+foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "COPYING") {
+  if (-not (Test-Path "dist\trcc\pawnio\$f")) { $missing += "pawnio\$f" }
+}
 
 if ($missing.Count -gt 0) {
   Die "FAILED - Missing: $($missing -join ', ')"
 }
 
 $ver = python -c "from trcc.__version__ import __version__; print(__version__)" 2>&1
-Log "PASSED - trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb OK"
+Log "PASSED - trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb, PawnIO OK"
 Log "Version: $ver"
+
+if ($Installer) {
+  Log ""
+  Log "--- Compiling the installer ---"
+  $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+  if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+  if (-not (Test-Path $iscc)) { Die "Inno Setup 6 not found (ISCC.exe)" }
+  & $iscc "/DAPP_VERSION=$ver" "installer\trcc.iss"
+  if ($LASTEXITCODE -ne 0) { Die "ISCC failed (exit $LASTEXITCODE)" }
+  Log "Installer: installer\Output\trcc-$ver-setup.exe"
+}
 Log ""
 Log "=== Build Complete ==="
 Log "Test with:"

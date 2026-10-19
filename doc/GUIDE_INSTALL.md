@@ -765,7 +765,7 @@ Download [`trcc-latest-setup.exe`](https://github.com/Lexonight1/thermalright-tr
 - Windows 10 or 11
 - NVIDIA GPU sensors work with nothing extra — they come from NVIDIA's own driver
 - For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc system setup` for guidance. SCSI devices (most models) work with the default Windows driver.
-- Run as Administrator for full hardware access
+- No administrator needed: the installer adds TRCC's Windows service (TRCCService), which drives SCSI panels and reads PawnIO on TRCC's behalf
 
 **Verify:**
 ```powershell

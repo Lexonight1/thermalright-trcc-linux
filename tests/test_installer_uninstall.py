@@ -64,8 +64,9 @@ def test_setup_installs_pawnio_silently_unless_it_is_there() -> None:
 
 
 def test_the_build_ships_the_modules_where_the_code_looks() -> None:
-    """The folder and file names live in the code and in windows.yml; this
-    is what keeps the two from drifting apart.  Both downloads stay pinned.
+    """The folder and file names live in the code, in windows.yml and in the
+    local build; this keeps the three from drifting apart.  Both downloads
+    stay pinned, in both builds.
 
     MUTATION CHECK: rename _IntelPackage.MODULE."""
     from trcc.adapters.sensors._pawnio_cpu import (
@@ -73,13 +74,15 @@ def test_the_build_ships_the_modules_where_the_code_looks() -> None:
         _AmdPackage,
         _IntelPackage,
     )
-    workflow = (_ISS.parent.parent / ".github" / "workflows"
-                / "windows.yml").read_text(encoding="utf-8")
-    for module in (_IntelPackage.MODULE, _AmdPackage.MODULE):
-        assert f'"{module}"' in workflow
-        assert f"dist/trcc/{MODULE_DIR_NAME}/$f" in workflow
-    assert "43608CB89BC84247FEF1368A139013F7D043E17DB6D6C8DFC9B46BF0905A81F4" in workflow
-    assert "1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032" in workflow
+    root = _ISS.parent.parent
+    for build in (root / ".github" / "workflows" / "windows.yml",
+                  root / "dev" / "tools" / "build_windows.ps1"):
+        text = build.read_text(encoding="utf-8").replace("\\", "/")
+        for module in (_IntelPackage.MODULE, _AmdPackage.MODULE):
+            assert f'"{module}"' in text, build.name
+            assert f"dist/trcc/{MODULE_DIR_NAME}/$f" in text, build.name
+        assert "43608CB89BC84247FEF1368A139013F7D043E17DB6D6C8DFC9B46BF0905A81F4" in text
+        assert "1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032" in text
 
 
 def test_setup_stops_only_the_lhm_an_older_trcc_launched() -> None:

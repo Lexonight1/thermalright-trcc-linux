@@ -85,7 +85,6 @@ jobs:
             --name trcc `
             --onedir `
             --console `
-            --uac-admin `
             --icon src/trcc/assets/icons/app.ico `
             --add-data "src/trcc/assets;trcc/assets" `
             --add-data "src/trcc/ui/gui/assets;trcc/ui/gui/assets" `
@@ -103,7 +102,6 @@ jobs:
             --name trcc-gui `
             --onedir `
             --windowed `
-            --uac-admin `
             --icon src/trcc/assets/icons/app.ico `
             --add-data "src/trcc/assets;trcc/assets" `
             --add-data "src/trcc/ui/gui/assets;trcc/ui/gui/assets" `
@@ -173,8 +171,8 @@ jobs:
       - name: Smoke-run the frozen CLI
         # The checks above prove files exist, not that the frozen program
         # starts: #166, #187 and #188 were all launch crashes of a bundle that
-        # passed them.  The integrity level is logged because trcc.exe carries
-        # --uac-admin, which fails with error 740 on a non-elevated runner.
+        # passed them.  The integrity level is logged because trcc.exe used to
+        # carry --uac-admin, which fails with error 740 on a non-elevated runner.
         run: |
           whoami /groups | Select-String "Mandatory Label"
           $out = & dist\trcc\trcc.exe --version 2>&1 | Out-String
