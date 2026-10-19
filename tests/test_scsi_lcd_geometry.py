@@ -310,3 +310,35 @@ def test_only_the_first_frame_after_a_handshake_is_logged(
               if "first frame after the handshake" in m]
     assert firsts == ["ScsiLcd 0402:3922: first frame after the handshake "
                       "delivered (204800 byte(s), 4 chunk(s))"] * 2
+
+
+def test_the_init_waits_for_the_usb_reset_the_poll_provokes(
+    fake_scsi: FakeScsiTransport, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Measured on the win11 VM to the millisecond: the reset came 70 ms after
+    the poll, and an init sent at once went THROUGH it (359 ms for a ~5 ms
+    write).  The init now waits a full second after the poll, as USBLCD.exe's
+    waits for the first frame.  conftest zeroes the wait for speed; this
+    restores it.  MUTATION CHECK: drop the settle sleep and the order breaks."""
+    from trcc.adapters.device import scsi_lcd
+    monkeypatch.setattr(scsi_lcd, "_POST_POLL_SETTLE_S", 1.0)
+    order: list[str] = []
+    monkeypatch.setattr(scsi_lcd.time, "sleep",
+                        lambda s: order.append(f"sleep {s}"))
+    read, send = fake_scsi.read_cdb, fake_scsi.send_cdb
+
+    def poll(cdb: bytes, length: int, timeout_ms: int = 5000) -> bytes:
+        order.append("poll")
+        return read(cdb, length, timeout_ms)
+
+    def init(cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
+        order.append("init")
+        return send(cdb, data, timeout_ms)
+
+    monkeypatch.setattr(fake_scsi, "read_cdb", poll)
+    monkeypatch.setattr(fake_scsi, "send_cdb", init)
+    fake_scsi.read_script = [_poll_response(100)]
+
+    _make_scsi(fake_scsi).connect()
+
+    assert order == ["poll", "sleep 1.0", "init", "sleep 0.1"]

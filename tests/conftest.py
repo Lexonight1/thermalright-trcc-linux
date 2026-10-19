@@ -748,6 +748,18 @@ def _home_is_never_the_real_one_at_any_scope(
 
 
 @pytest.fixture(autouse=True)
+def _scsi_handshake_does_not_wait_for_a_usb_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``ScsiLcd`` waits 1 s between poll and init on real hardware, for the
+    USB reset the short poll provokes (``_POST_POLL_SETTLE_S``).  A fake has no
+    reset to wait for, and dozens of tests handshake a SCSI panel -- a real
+    second each.  ``test_scsi_lcd_geometry`` puts the real value back and pins
+    the order, so this cannot hide a regression."""
+    monkeypatch.setattr("trcc.adapters.device.scsi_lcd._POST_POLL_SETTLE_S", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def _home_is_never_the_real_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

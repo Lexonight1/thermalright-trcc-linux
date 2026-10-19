@@ -33,6 +33,16 @@ _BOOT_SIGNATURE = b'\xa1\xa2\xa3\xa4'
 _BOOT_WAIT_S = 3.0
 _BOOT_MAX_RETRIES = 5
 _POST_INIT_DELAY_S = 0.1
+#: Between the poll and the init.  The panel answers the poll short (host=7 /
+#: WinError 121), and the storage driver then RESETS its USB link: Linux inside
+#: the poll, Windows after it returns.  Timed to the millisecond on the win11 VM
+#: (2026-10-19, VM clock, host reset shifted by the guest-agent offset): poll
+#: answered 44.213, init sent 44.213, reset 44.283, init "delivered" 44.572 --
+#: the init went THROUGH the reset (359 ms for a ~5 ms write).  A panel that
+#: misses its init ACKs every frame and shows none: his panel went black that
+#: way.  USBLCD.exe sends its init only once TRCC.exe hands over the first frame
+#: (USBLCD.exe.c:20510-20526), long after the poll.  1 s = 14x the measured gap.
+_POST_POLL_SETTLE_S = 1.0
 
 _POLL_CMD = 0xF5
 _INIT_CMD = 0x1F5
@@ -134,6 +144,9 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
                  "first bytes %s", self.info.key, len(response), _POLL_SIZE,
                  (time.monotonic() - started) * 1000, response[:8].hex(" "))
         fbl = response[0] if response else (self.info.fbl or 100)
+        log.debug("_do_handshake: settling %.1f s for the post-poll USB reset",
+                  _POST_POLL_SETTLE_S)
+        time.sleep(_POST_POLL_SETTLE_S)
         if not response:
             # USBLCD.exe classifies no panel from an empty byte; we must draw
             # something, so say what was assumed -- a 240x320 or 240x240 panel
