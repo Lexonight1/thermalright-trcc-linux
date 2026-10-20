@@ -6,8 +6,8 @@ Mirrors legacy ``adapters/infra/theme_cloud.py`` but injects an
 
 Theme IDs follow legacy convention: prefix + 3-digit index (``a001``…
 ``y005``).  Each ID maps to a ``{base_url}{id}.mp4`` at a per-resolution
-URL on either of two servers (the user picks one in Settings; the
-catalog retries the other on failure).
+URL on either of two servers: the catalog tries the one that last delivered
+first, and the other on failure.
 """
 from __future__ import annotations
 
@@ -61,6 +61,16 @@ _MAX_BYTES = 64 * 1024 * 1024
 # Enough of a file's head to tell what it is.
 _HEAD_BYTES = 12
 
+# A server not yet known to answer gets this long, then the other one is
+# tried.  urllib has one socket timeout for the connect and each read.  It
+# was 30 s, which Windows' own connect retries (~21 s) beat: with czhorde.cc
+# down (2026-10-20, from the host and the VM, http and https alike) every
+# cloud background waited 21 s for it, then took 2-3 s from czhorde.com.
+_UNPROVEN_TIMEOUT_S = 5.0
+# A server that delivered this session, and the last one tried: the download
+# itself rides on this, so a slow but working link is not cut off.
+_PROVEN_TIMEOUT_S = 60.0
+
 
 # =========================================================================
 # Catalog
@@ -75,8 +85,10 @@ class CzhordeCatalog(CloudCatalog):
     ``cache_dir / resolution / <theme_id>.{mp4,png}`` and survive across
     process restarts — re-download only when a file is missing.
 
-    The two-server fallback: try the user's preferred server first, then
-    the other one.  If both fail, raise ``HttpFetchError``.
+    The two-server fallback: the server that last delivered first (until one
+    has, ``preferred_server``), then the other.  If both fail, raise
+    ``HttpFetchError``.  One fetch per file at a time: a second request for a
+    theme already downloading waits for it and takes the cached file.
     """
 
     def __init__(
@@ -91,7 +103,10 @@ class CzhordeCatalog(CloudCatalog):
         self._http = http
         self._cache_dir = cache_dir
         self._resolution = resolution
-        self._preferred = preferred_server
+        self._preferred: Server = preferred_server
+        self._working: Server | None = None
+        self._lock = threading.Lock()
+        self._fetching: dict[Path, threading.Lock] = {}
 
     # ── Static reads ──────────────────────────────────────────────────
 
@@ -157,6 +172,22 @@ class CzhordeCatalog(CloudCatalog):
         if _is_cached(target, suffix):
             log.debug("CzhordeCatalog: cache hit %s", target)
             return target
+        with self._lock:
+            one_at_a_time = self._fetching.setdefault(target, threading.Lock())
+        with one_at_a_time:
+            # A click while the same theme downloads used to start a second
+            # GET, each waiting out the dead server again (2026-10-20: a009
+            # x4, a007 x3).  Whoever waited finds the file the first one kept.
+            if _is_cached(target, suffix):
+                log.info("CzhordeCatalog: %s arrived while waiting for the "
+                         "download already running", target.name)
+                return target
+            return self._download_to(target, theme_id, suffix, resolution)
+
+    def _download_to(self, target: Path, theme_id: str, suffix: str,
+                     resolution: str) -> Path:
+        """Fetch *theme_id* and keep it at *target*; the caller holds its lock."""
+        cache = target.parent
         log.info("CzhordeCatalog: fetching %s%s @ %s (cache miss)",
                  theme_id, suffix, resolution)
         data = self._fetch_with_fallback(theme_id, suffix, resolution)
@@ -178,22 +209,21 @@ class CzhordeCatalog(CloudCatalog):
     def _fetch_with_fallback(
         self, theme_id: str, suffix: str, resolution: str,
     ) -> bytes:
-        """Primary first, backup on failure.
+        """The server that last delivered first, the other on failure.
 
-        Primary gets a 30s timeout — tight enough to fall through to
-        the backup when the mirror is hard-down, loose enough to
-        tolerate a moderately slow connection on the working one
-        (urllib has only one combined socket timeout, so this also
-        bounds the download itself, not just the connect).  Backup
-        keeps the full 60s.  Both servers failing raises the last error.
+        A first server not yet known to answer gets ``_UNPROVEN_TIMEOUT_S``;
+        one that delivered, and the last one tried, ``_PROVEN_TIMEOUT_S``.
+        Whichever delivers is tried first from then on, so a mirror that is
+        down costs one short wait per App, not one per download.  Both
+        failing raises the last error.
         """
-        if self._preferred == "international":
-            order: tuple[Server, Server] = ("international", "china")
-        else:
-            order = ("china", "international")
-        timeouts = (30.0, 60.0)
+        first: Server = self._working or self._preferred
+        other: Server = "china" if first == "international" else "international"
+        order = (first, other)
         last_err: HttpFetchError | None = None
-        for server, timeout_s in zip(order, timeouts, strict=False):
+        for server in order:
+            timeout_s = (_PROVEN_TIMEOUT_S if server == self._working or server == order[-1]
+                         else _UNPROVEN_TIMEOUT_S)
             url = self._url_for(theme_id, suffix, server, resolution)
             try:
                 data = self._http.fetch(
@@ -204,6 +234,10 @@ class CzhordeCatalog(CloudCatalog):
                         f"GET {url} is not a {suffix} file "
                         f"(starts {data[:_HEAD_BYTES]!r})",
                     )
+                if server != self._working:
+                    log.info("CzhordeCatalog: %s delivered -- tried first from "
+                             "now on", server)
+                    self._working = server
                 return data
             except HttpFetchError as e:
                 last_err = e

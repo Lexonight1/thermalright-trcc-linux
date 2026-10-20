@@ -40,12 +40,14 @@ class FakeHttp(HttpFetcher):
         self.responses: dict[str, bytes] = {}
         self.errors: dict[str, str] = {}
         self.calls: list[str] = []
+        self.timeouts: list[float] = []
 
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
     ) -> bytes:
-        del timeout_s, max_bytes
+        del max_bytes
         self.calls.append(url)
+        self.timeouts.append(timeout_s)
         if url in self.errors:
             raise HttpFetchError(self.errors[url])
         if url in self.responses:
@@ -132,6 +134,81 @@ def test_download_falls_back_to_secondary_server(tmp_path: Path) -> None:
     target = catalog.download_theme("a002")
     assert target.read_bytes() == MP4 + b"backup"
     assert len(http.calls) == 2  # both servers tried
+
+
+# ── A dead mirror costs one short wait per App, not 21 s per download ─────
+#
+# 2026-10-20: czhorde.cc answered nothing (host and VM, http and https), and
+# every cloud background waited Windows' ~21 s connect retries for it before
+# czhorde.com delivered in 2-3 s -- once per click, since clicks were not
+# folded into the download already running.
+
+_CC = "http://www.czhorde.cc/tr/bj320320/{}.mp4"
+_COM = "http://www.czhorde.com/tr/bj320320/{}.mp4"
+
+
+def _cc_down(*ids: str) -> FakeHttp:
+    http = FakeHttp()
+    for theme_id in ids:
+        http.errors[_CC.format(theme_id)] = "WinError 10060"
+        http.responses[_COM.format(theme_id)] = MP4 + theme_id.encode()
+    return http
+
+
+def test_the_server_that_delivered_is_tried_first_from_then_on(tmp_path: Path) -> None:
+    """MUTATION CHECK: never remember the working server -- the second
+    download asks czhorde.cc again."""
+    http = _cc_down("a002", "a003")
+    catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
+
+    catalog.download_theme("a002")
+    catalog.download_theme("a003")
+
+    assert http.calls == [_CC.format("a002"), _COM.format("a002"), _COM.format("a003")]
+
+
+def test_a_server_not_yet_known_to_answer_gets_a_short_wait(tmp_path: Path) -> None:
+    """The unproven first try is short; the last try, and a server that has
+    delivered, keep the long one the download itself rides on.
+
+    MUTATION CHECK: give the first try the long timeout -- 60 s, not 5."""
+    http = _cc_down("a002", "a003")
+    catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
+
+    catalog.download_theme("a002")
+    catalog.download_theme("a003")
+
+    assert http.timeouts == [5.0, 60.0, 60.0]
+
+
+def test_a_second_request_for_a_theme_downloading_waits_for_that_download(
+        tmp_path: Path) -> None:
+    """MUTATION CHECK: drop the per-file lock -- two GETs for one file."""
+    release = threading.Event()
+    started = threading.Event()
+
+    class _Slow(FakeHttp):
+        def fetch(self, url: str, timeout_s: float = 30.0,
+                  max_bytes: int | None = None) -> bytes:
+            started.set()
+            release.wait(5)
+            return super().fetch(url, timeout_s, max_bytes)
+
+    http = _Slow()
+    http.responses[_CC.format("a004")] = MP4 + b"a004"
+    catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
+    got: list[Path] = []
+    first = threading.Thread(target=lambda: got.append(catalog.download_theme("a004")))
+    second = threading.Thread(target=lambda: got.append(catalog.download_theme("a004")))
+    first.start()
+    assert started.wait(5)
+    second.start()
+    release.set()
+    first.join(5)
+    second.join(5)
+
+    assert http.calls == [_CC.format("a004")]
+    assert got == [tmp_path / "320320" / "a004.mp4"] * 2
 
 
 def test_download_both_servers_fail_raises(tmp_path: Path) -> None:
