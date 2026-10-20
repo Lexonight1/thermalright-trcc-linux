@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
 log = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class TrayController:
 
     # ── Close ─────────────────────────────────────────────────────────
 
-    def intercept_close(self, event: Any) -> bool:
+    def intercept_close(self, event: QCloseEvent) -> bool:
         """Divert a window-close to the tray, or let it proceed to a real quit.
 
         Returns ``True`` when the close was diverted (the caller must return

@@ -53,6 +53,14 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...core.events import (
+    SlideshowChanged,
+    ThemeLoaded,
+    VideoAdvanced,
+    VideoPauseChanged,
+    VideoStarted,
+    VideoStopped,
+)
 from ...core.logs import per_frame
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import entries_to_configs
@@ -681,7 +689,7 @@ class LCDHandler(BaseHandler):
 
     # ── Video lifecycle (bus_bridge observers) ─────────────────────
 
-    def on_video_started(self, event: Any) -> None:
+    def on_video_started(self, event: VideoStarted) -> None:
         """Domain event ``VideoStarted`` arrived for this device.
 
         Single entry point for "start animating".  Anything that wants
@@ -705,7 +713,7 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_playing(True)
             self._w['preview'].show_video_controls(True)
 
-    def on_video_stopped(self, event: Any) -> None:
+    def on_video_stopped(self, event: VideoStopped) -> None:
         """Domain event ``VideoStopped`` arrived for this device.
 
         Single entry point for "stop animating".  Mirrors
@@ -739,7 +747,7 @@ class LCDHandler(BaseHandler):
         # Shown by ``on_video_pause_changed``, as a toggle from any UI is.
         self.log.info("play_pause: → paused=%s", result.paused)
 
-    def on_video_pause_changed(self, event: Any) -> None:
+    def on_video_pause_changed(self, event: VideoPauseChanged) -> None:
         """Paused or resumed -- by this window or any other UI.
 
         The playback stays loaded, so no VideoStarted / VideoStopped fires.
@@ -788,7 +796,7 @@ class LCDHandler(BaseHandler):
                       self._video_playing, playing, reason, self._device_key)
         self._video_playing = playing
 
-    def on_video_advanced(self, event: Any) -> None:
+    def on_video_advanced(self, event: VideoAdvanced) -> None:
         """A frame advanced (``VideoAdvanced``) — move the progress bar.
 
         Per-frame, so DEBUG.  The core's VideoLoop does the ticking (#249);
@@ -1077,7 +1085,7 @@ class LCDHandler(BaseHandler):
         self.log.info("on_slideshow_delegate: device=%s", self._device_key)
         self._update_slideshow_state()
 
-    def on_slideshow_changed(self, event: Any) -> None:
+    def on_slideshow_changed(self, event: SlideshowChanged) -> None:
         """The saved slideshow changed — here, in another UI, or the App
         switched it off because another source took the panel."""
         self.log.info("on_slideshow_changed: %s enabled=%s active=%s",
@@ -1085,7 +1093,7 @@ class LCDHandler(BaseHandler):
         if self._pm.ui_active:   # the local-theme widgets are shared
             self._show_slideshow(event.themes, event.enabled, event.interval_s)
 
-    def on_theme_loaded(self, event: Any) -> None:
+    def on_theme_loaded(self, event: ThemeLoaded) -> None:
         """A theme was loaded on this device — by the slideshow, or any UI.
 
         Re-reads what the panel shows (``_restore_theme_and_preview``) so the

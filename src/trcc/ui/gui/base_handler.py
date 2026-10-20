@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ...core.events import VideoAdvanced, VideoStarted, VideoStopped
+
 log = logging.getLogger(__name__)
 
 
@@ -104,18 +106,18 @@ class BaseHandler:
     # ``VideoStopped`` events without a ``hasattr`` dance — every
     # handler subclass satisfies the same interface.
 
-    def on_video_started(self, event: Any) -> None:
+    def on_video_started(self, event: VideoStarted) -> None:
         """Domain event ``VideoStarted`` for this handler's device."""
         log.debug("BaseHandler.on_video_started: view=%r dropped (base no-op)",
                   self._view)
         del event
 
-    def on_video_advanced(self, event: Any) -> None:
+    def on_video_advanced(self, event: VideoAdvanced) -> None:
         """A video moved one frame — handlers that show progress override."""
         log.debug("BaseHandler.on_video_advanced: view=%r dropped (base no-op)",
                   type(self).__name__)
 
-    def on_video_stopped(self, event: Any) -> None:
+    def on_video_stopped(self, event: VideoStopped) -> None:
         """Domain event ``VideoStopped`` for this handler's device."""
         log.debug("BaseHandler.on_video_stopped: view=%r dropped (base no-op)",
                   self._view)

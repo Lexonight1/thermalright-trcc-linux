@@ -35,6 +35,8 @@ from ....core.commands import (
     VideoStatus,
 )
 from ....core.events import (
+    ScreencastStarted,
+    ScreencastStopped,
     VideoAdvanced,
     VideoPauseChanged,
     VideoStarted,
@@ -245,6 +247,8 @@ class DisplayPanel(BasePanel):
         log.info("_on_key_changed: %s", key)
         self._show_state()
 
+    # ``Any``: bus_bridge.settings_changed carries every per-device settings
+    # event; they share only ``key``, and there is no keyed base class.
     def _on_settings_changed(self, event: Any) -> None:
         if event.key == self._picker.current_key():
             log.debug("_on_settings_changed: %s for %s",
@@ -369,7 +373,7 @@ class DisplayPanel(BasePanel):
                   event.key, event.cursor, event.frame_count)
         self._show_position(event.cursor, event.frame_count, event.fps)
 
-    def _on_source_event(self, event: Any) -> None:
+    def _on_source_event(self, event: ScreencastStarted | ScreencastStopped | VideoStarted | VideoStopped) -> None:
         """A cast or video started or stopped in any UI -- not a settings
         event, so ``_on_settings_changed`` never saw it."""
         if event.key == self._picker.current_key():

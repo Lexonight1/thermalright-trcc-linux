@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication, QIcon
@@ -40,6 +40,8 @@ from ...core.ports import CommandBus
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
+from PySide6.QtGui import QCloseEvent
+
 from ...core.events import (
     DeviceConnected,
     DeviceDisconnected,
@@ -203,7 +205,7 @@ class MainWindow(QMainWindow):
         )
         self._tray.install()
 
-    def closeEvent(self, event: Any) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self._tray.intercept_close(event):
             return
         # Genuine quit.  The core's loops are stopped by ``App.close``.

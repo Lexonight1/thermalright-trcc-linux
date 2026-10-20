@@ -37,6 +37,7 @@ from ....core.events import (
     DeviceConnected,
     DeviceDisconnected,
     ErrorOccurred,
+    Event,
     FrameSent,
     ThemeLoaded,
 )
@@ -159,13 +160,15 @@ class StatusPanel(BasePanel):
     # fields off a different Event type, so a single slot would have to branch
     # on the type it was handed — a logic table the signal already resolved.
 
+    # ``Any``: bus_bridge.settings_changed carries every per-device settings
+    # event; they share only ``key``, and there is no keyed base class.
     def _on_device_event(self, event: Any) -> None:
         if event.key == self._picker.current_key():
             log.debug("_on_device_event: %s for %s", type(event).__name__,
                       event.key)
             self._on_refresh()
 
-    def _on_app_event(self, event: Any) -> None:
+    def _on_app_event(self, event: Event) -> None:
         log.debug("_on_app_event: %s", type(event).__name__)
         self._on_refresh()
 

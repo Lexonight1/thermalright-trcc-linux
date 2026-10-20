@@ -60,6 +60,7 @@ from ....core.commands import (
     SetTempUnit,
     SetTimeFormat,
 )
+from ....core.events import Event
 from ....core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
 from ....core.results import Result
 from ..base import BasePanel
@@ -337,13 +338,15 @@ class ConfigurationPanel(BasePanel):
         log.info("_on_key_changed: %s", key)
         self._show_state()
 
+    # ``Any``: bus_bridge.settings_changed carries every per-device settings
+    # event; they share only ``key``, and there is no keyed base class.
     def _on_device_event(self, event: Any) -> None:
         if event.key == self._picker.current_key():
             log.debug("_on_device_event: %s for %s", type(event).__name__,
                       event.key)
             self._show_state()
 
-    def _on_app_event(self, event: Any) -> None:
+    def _on_app_event(self, event: Event) -> None:
         log.debug("_on_app_event: %s", type(event).__name__)
         self._show_state()
 

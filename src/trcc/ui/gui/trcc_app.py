@@ -111,6 +111,30 @@ from .uc_visuals import UCVisuals
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
 
+from PySide6.QtGui import QCloseEvent, QMouseEvent, QShowEvent
+
+from ...core.events import (
+    DataInstalled,
+    DeviceConnected,
+    DeviceDisconnected,
+    ErrorOccurred,
+    Event,
+    FrameSent,
+    ScreencastStarted,
+    ScreencastStopped,
+    SensorsUpdated,
+    SlideshowChanged,
+    ThemeDeleted,
+    ThemeImported,
+    ThemeLoaded,
+    ThemeSaved,
+    VideoAdvanced,
+    VideoExportFinished,
+    VideoExportProgress,
+    VideoPauseChanged,
+    VideoStarted,
+    VideoStopped,
+)
 from ...core.models import MEDIA, MediaKind
 from ..qt_file_drop import FileDropTarget
 
@@ -314,7 +338,7 @@ class TRCCApp(QMainWindow):
 
     # ── BusBridge subscribers (run on the Qt main thread) ───────────
 
-    def _on_bus_error(self, event: Any) -> None:
+    def _on_bus_error(self, event: ErrorOccurred) -> None:
         """Live error from the bus → transient system-tray balloon.
 
         Spam-safe by construction: balloons are OS-transient, and we de-dup
@@ -331,7 +355,7 @@ class TRCCApp(QMainWindow):
         log.info("_on_bus_error: [%s] %s", event.kind, event.message)
         self._tray.notify("TRCC — device", text)
 
-    def _on_bus_device_connected(self, event: Any) -> None:
+    def _on_bus_device_connected(self, event: DeviceConnected) -> None:
         """One device just attached/handshaked (hotplug after startup).
 
         Add a handler, REFRESH THE SIDEBAR so the new device's button appears
@@ -355,7 +379,7 @@ class TRCCApp(QMainWindow):
             # Through the sidebar, so its highlight follows the view.
             self.uc_device.select_path(event.key)
 
-    def _on_bus_themes_changed(self, event: Any) -> None:
+    def _on_bus_themes_changed(self, event: ThemeSaved | ThemeImported | ThemeDeleted) -> None:
         """A theme was saved, imported or deleted -- by this window or any
         other UI.  The grid is shared by every LCD handler, so the active one
         re-lists it; that is the only re-list, this window's own included."""
@@ -366,7 +390,7 @@ class TRCCApp(QMainWindow):
         if handler is not None:
             handler.refresh_themes()
 
-    def _on_bus_video_pause_changed(self, event: Any) -> None:
+    def _on_bus_video_pause_changed(self, event: VideoPauseChanged) -> None:
         """Paused or resumed in ANY UI -- the device's handler shows it."""
         handler = self._handlers.get(event.key)
         log.info("_on_bus_video_pause_changed: %s paused=%s handler=%s",
@@ -374,7 +398,7 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             handler.on_video_pause_changed(event)
 
-    def _on_bus_data_installed(self, event: Any) -> None:
+    def _on_bus_data_installed(self, event: DataInstalled) -> None:
         """First-run archives landed — re-list every LCD device's grids.
 
         The install runs in the background now so the window opens without
@@ -389,7 +413,7 @@ class TRCCApp(QMainWindow):
             if isinstance(handler, LCDHandler):
                 handler.notify_data_ready()
 
-    def _on_bus_device_disconnected(self, event: Any) -> None:
+    def _on_bus_device_disconnected(self, event: DeviceDisconnected) -> None:
         """One device just detached.  Drop its handler."""
         log.debug("_on_bus_device_disconnected: key=%s", event.key)
         self._remove_handler(event.key)
@@ -410,7 +434,7 @@ class TRCCApp(QMainWindow):
         self._bus.rgb_follow_sent.connect(self.uc_rgb.page.follow.on_follow_sent,
                                           type=qconn)
 
-    def _on_bus_frame_sent(self, event: Any) -> None:
+    def _on_bus_frame_sent(self, event: FrameSent) -> None:
         """A frame just went out on the wire.
 
         ``FrameSent`` now carries the rendered surface (legacy's
@@ -450,7 +474,7 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             handler.rebuild_preview()
 
-    def _on_bus_video_started(self, event: Any) -> None:
+    def _on_bus_video_started(self, event: VideoStarted) -> None:
         """Route a ``VideoStarted`` event to its device's handler.
 
         The handler owns its Qt animation timer; this bridge just hands
@@ -466,7 +490,7 @@ class TRCCApp(QMainWindow):
             handler.on_video_started(event)
         self._follow_sources(event.key)
 
-    def _on_bus_video_advanced(self, event: Any) -> None:
+    def _on_bus_video_advanced(self, event: VideoAdvanced) -> None:
         """Route a ``VideoAdvanced`` event to its device's handler (per-frame)."""
         frame_log.debug("_on_bus_video_advanced: key=%s cursor=%d/%d",
                   event.key, event.cursor, event.frame_count)
@@ -474,7 +498,7 @@ class TRCCApp(QMainWindow):
         if handler is not None:
             handler.on_video_advanced(event)
 
-    def _on_bus_video_stopped(self, event: Any) -> None:
+    def _on_bus_video_stopped(self, event: VideoStopped) -> None:
         """Route a ``VideoStopped`` event to its device's handler."""
         log.info("_on_bus_video_stopped: key=%s", event.key)
         handler = self._handlers.get(event.key)
@@ -482,7 +506,7 @@ class TRCCApp(QMainWindow):
             handler.on_video_stopped(event)
         self._follow_sources(event.key)
 
-    def _on_bus_theme_loaded(self, event: Any) -> None:
+    def _on_bus_theme_loaded(self, event: ThemeLoaded) -> None:
         """Route a ``ThemeLoaded`` event to its LCD's handler."""
         log.info("_on_bus_theme_loaded: key=%s theme=%s",
                  event.key, event.theme_name)
@@ -504,6 +528,8 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             handler.follow_app()
 
+    # ``Any``: bus_bridge.settings_changed carries every per-device settings
+    # event; they share only ``key``, and there is no keyed base class.
     def _on_bus_settings_changed(self, event: Any) -> None:
         """A device setting changed — here, in another UI, or in the App.
 
@@ -522,7 +548,7 @@ class TRCCApp(QMainWindow):
         if event.key == self._active_key and isinstance(handler, LCDHandler):
             self._show_cast()
 
-    def _on_bus_app_settings_changed(self, event: Any) -> None:
+    def _on_bus_app_settings_changed(self, event: Event) -> None:
         """An app-wide setting changed — here, in another UI, or in the App.
 
         The control-centre settings come back as one snapshot; the three that
@@ -578,7 +604,7 @@ class TRCCApp(QMainWindow):
             panel.set_title(tr(key, lang))
         self.uc_led_control.set_language(lang)
 
-    def _on_bus_slideshow_changed(self, event: Any) -> None:
+    def _on_bus_slideshow_changed(self, event: SlideshowChanged) -> None:
         """Route a ``SlideshowChanged`` event to its LCD's handler."""
         log.info("_on_bus_slideshow_changed: key=%s enabled=%s",
                  event.key, event.enabled)
@@ -586,7 +612,7 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             handler.on_slideshow_changed(event)
 
-    def _on_bus_sensors_updated(self, event: Any) -> None:
+    def _on_bus_sensors_updated(self, event: SensorsUpdated) -> None:
         """Sensors broadcast — observe the OS snapshot + fan out to widgets.
 
         The OS dispatcher (``MetricsLoop`` at the refresh-rate interval)
@@ -1968,7 +1994,7 @@ class TRCCApp(QMainWindow):
             self.uc_preview.set_status(f"Screencast: {result.message}")
             self._show_cast()
 
-    def _on_bus_cast_changed(self, event: Any) -> None:
+    def _on_bus_cast_changed(self, event: ScreencastStarted | ScreencastStopped) -> None:
         """A cast started or stopped in any UI -- redraw if it is ours."""
         log.info("_on_bus_cast_changed: %s %s (showing %s)",
                  type(event).__name__, event.key, self._active_key)
@@ -2417,7 +2443,7 @@ class TRCCApp(QMainWindow):
         log.info("_on_video_export_requested: queued token=%s at %dx%d",
                  result.token, result.target_w, result.target_h)
 
-    def _on_bus_video_export_progress(self, event: Any) -> None:
+    def _on_bus_video_export_progress(self, event: VideoExportProgress) -> None:
         # DEBUG, not INFO: an encode publishes a handful of these per run but
         # a long clip publishes many, and the one-shot lines a report is read
         # for must not be buried under them.
@@ -2428,7 +2454,7 @@ class TRCCApp(QMainWindow):
             return
         self.uc_video_cut.set_export_progress(event.percent, event.message)
 
-    def _on_bus_video_export_finished(self, event: Any) -> None:
+    def _on_bus_video_export_finished(self, event: VideoExportFinished) -> None:
         if getattr(event, "token", "") != self._video_export_token:
             return
         log.info("_on_bus_video_export_finished: ok=%s path=%s",
@@ -2629,10 +2655,10 @@ class TRCCApp(QMainWindow):
 
     # ── Window Events ───────────────────────────────────────────────
 
-    def showEvent(self, event: Any) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
 
-    def mousePressEvent(self, event: Any) -> None:
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if self._decorated or event.button() != Qt.MouseButton.LeftButton:
             return super().mousePressEvent(event)
         pos = event.position().toPoint()
@@ -2641,16 +2667,16 @@ class TRCCApp(QMainWindow):
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft())
         event.accept()
 
-    def mouseMoveEvent(self, event: Any) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_pos is not None:
             self.move(event.globalPosition().toPoint() - self._drag_pos)
         event.accept()
 
-    def mouseReleaseEvent(self, event: Any) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self._drag_pos = None
         event.accept()
 
-    def closeEvent(self, event: Any) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self._tray.intercept_close(event):
             return
         # Genuine quit (Exit / force): the controller already hid the tray.

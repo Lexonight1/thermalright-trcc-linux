@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from PySide6.QtGui import QCloseEvent
 
 
 def test_gui_raises_systemexit_with_launch_code(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -92,8 +93,12 @@ def test_gui_direct_entry_shows_window(monkeypatch: pytest.MonkeyPatch) -> None:
 # ─────────────────────────────────────────────────────────────────────
 
 
-class _FakeEvent:
+class _FakeEvent(QCloseEvent):
+    """Records what closeEvent did with it.  A real QCloseEvent starts out
+    accepted, so "nothing called accept()" needs its own flag."""
+
     def __init__(self) -> None:
+        super().__init__()
         self.accepted = False
         self.ignored = False
 
@@ -303,7 +308,7 @@ def test_closing_after_a_taskbar_restore_still_hides_to_the_tray(
     app.  The C# oracle's close button just hides (``Form1.cs:784``).  Only
     the tray's Exit may quit.  The offscreen platform has no tray, so the test
     says there is one — what is under test is the decision, not Qt's tray."""
-    from PySide6.QtGui import QCloseEvent, QIcon
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QSystemTrayIcon, QWidget
 
     from trcc.ui.qt_tray import TrayController
