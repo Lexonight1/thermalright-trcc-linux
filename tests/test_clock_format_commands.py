@@ -134,3 +134,15 @@ def test_every_drawable_clock_source_is_accepted(app: App) -> None:
     for source in ("time", "weekday", "date"):
         assert app.dispatch(UpdateOverlayElement(
             key=_A, element_id="t", source=source)).ok
+
+
+def test_a_source_on_a_non_clock_element_is_ignored_not_refused(app: App) -> None:
+    """Only a clock draws ``source``.  The first cut of the check refused a
+    metric element saved with source="metric" -- test_theme_persistence caught
+    it (2026-10-20).
+
+    MUTATION CHECK: refuse an unknown source for every type -> fails."""
+    added = app.dispatch(AddOverlayElement(
+        key=_A, element_id="m", type="metric", metric="cpu:temp", source="metric"))
+    assert added.ok
+    assert added.element is not None and added.element.source == "time"

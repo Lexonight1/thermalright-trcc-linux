@@ -2960,13 +2960,16 @@ class AddOverlayElement(Command[OverlayElementResult]):
                 message=f"Invalid element type {self.type!r} (expected "
                         "'text' / 'metric' / 'clock')",
             )
-        source = self.source
-        if not _is_clock_source(source):
+        # ``source`` is what a CLOCK draws; text and metric elements ignore it.
+        source: ClockSource = OVERLAY_DEFAULT_CLOCK_SOURCE
+        if _is_clock_source(self.source):
+            source = self.source
+        elif self.type == "clock":
             log.warning("AddOverlayElement: %s refused clock source %r",
-                        self.key, source)
+                        self.key, self.source)
             return OverlayElementResult(
                 ok=False, key=self.key, element=None,
-                message=f"Invalid clock source {source!r} (expected one of "
+                message=f"Invalid clock source {self.source!r} (expected one of "
                         f"{', '.join(get_args(ClockSource))})",
             )
         eid = self.element_id or new_overlay_id()
