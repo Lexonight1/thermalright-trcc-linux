@@ -58,7 +58,7 @@ jobs:
         run: python -m ruff check .
 
       - name: Type check with pyright
-        run: pyright src/
+        run: pyright          # src + tests: [tool.pyright] include
 
       - name: Run tests with coverage
         env:

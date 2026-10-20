@@ -106,7 +106,9 @@ def test_every_register_trcc_reads_passes_the_service(module, registers) -> None
     cpu = PawnioCpu(open_module=lambda f: PawnIoModule(f.encode(), name=f,
                                                        device=device),
                     pci_bus=lambda: lambda: _null())
-    cpu.temp(), cpu.power(), cpu.power()
+    cpu.temp()
+    cpu.power()
+    cpu.power()
     assert device.executed and device.executed <= PAWNIO_READS
     for function, register in device.executed:
         check_pawnio_read(function, [register])

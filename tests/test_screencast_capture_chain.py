@@ -555,7 +555,7 @@ def _row_ramp(w: int, h: int) -> Any:
     return img
 
 
-def _assert_tightly_packed(data: bytes, w: int, h: int, who: str) -> None:
+def _assert_tightly_packed(data: bytes | bytearray, w: int, h: int, who: str) -> None:
     assert len(data) == w * h * 3, f"{who}: {len(data)} bytes, want {w * h * 3}"
     assert [data[r * w * 3] for r in range(h)] == list(range(h)), (
         f"{who}: rows are misaligned — this is the diagonal shear"

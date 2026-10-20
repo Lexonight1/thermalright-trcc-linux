@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -629,9 +630,10 @@ def test_a_handler_that_may_not_hold_the_file_closes_it_between_records(
     run is as unverifiable as the bug it fixes.
     """
     handler_cls = shared_handler_class()
-
-    class ClosesBetweenRecords(handler_cls):  # type: ignore[valid-type,misc]
-        _keep_open = False
+    # type(), not a class statement: the base is picked at runtime (fcntl or
+    # msvcrt) and is typed as the abstract class both concrete ones extend.
+    ClosesBetweenRecords = type("ClosesBetweenRecords", (handler_cls,),
+                                {"_keep_open": False})
 
     log_file = tmp_path / "trcc.log"
     handler = ClosesBetweenRecords(
@@ -818,14 +820,16 @@ def test_a_lock_that_cannot_be_taken_never_raises_into_the_caller(
     surfaced it.
     """
     handler_cls = shared_handler_class()
+    armed = threading.Event()
 
-    class LockFailsAfterConstruction(handler_cls):  # type: ignore[valid-type,misc]
-        armed = False
+    def _acquire(self: Any) -> None:
+        if armed.is_set():
+            raise OSError(11, "simulated: LK_LOCK gave up after ten tries")
+        handler_cls._acquire(self)          # the base super() would reach
 
-        def _acquire(self) -> None:
-            if self.armed:
-                raise OSError(11, "simulated: LK_LOCK gave up after ten tries")
-            super()._acquire()
+    # type(), as in the closes-between-records test: the base is picked at runtime.
+    LockFailsAfterConstruction = type("LockFailsAfterConstruction", (handler_cls,),
+                                      {"_acquire": _acquire})
 
     handler = LockFailsAfterConstruction(
         tmp_path / "trcc.log", maxBytes=10_000_000, backupCount=1,
@@ -838,11 +842,11 @@ def test_a_lock_that_cannot_be_taken_never_raises_into_the_caller(
     logger.handlers[:] = [handler]
     try:
         logger.info("healthy")
-        handler.armed = True
+        armed.set()
         # The assertion IS that this does not raise.
         logger.info("the lock is now unavailable")
     finally:
-        handler.armed = False
+        armed.clear()
         handler.close()
         logger.handlers[:] = []
 

@@ -151,7 +151,7 @@ def test_a_citation_into_a_changed_method_refuses_to_move() -> None:
         pytest.skip("needs the TRCC 2.1.6 and 2.1.8 decompiles on disk")
     doc = audit_release.DEC / "BEHAVIOR_FORMCZTV.md"
     rebase = audit_release.Rebase(audit_release.Locator(
-        by_release["2.1.6"], by_release["2.1.8"], {"FormCZTV.cs"}))
+        by_release["2.1.6"], by_release["2.1.8"], frozenset({"FormCZTV.cs"})))
     cite = next(h for _, hits in walk(doc, "- `ReadSystemConfiguration` "
                                                    "(FormCZTV.cs:4642) — x\n")
                 for h in hits)

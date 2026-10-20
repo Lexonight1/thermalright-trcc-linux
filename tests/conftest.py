@@ -237,7 +237,9 @@ class FakeAutostart(AutostartManager):
 
 class FakeCpu(CpuSource):
     def __init__(self) -> None:
-        self.values = {"temp": 42.0, "usage": 15.0, "freq": 3200.0, "power": 65.0}
+        # ``None`` is a reading the source does not have this tick.
+        self.values: dict[str, float | None] = {
+            "temp": 42.0, "usage": 15.0, "freq": 3200.0, "power": 65.0}
 
     @property
     def name(self) -> str:
@@ -276,7 +278,8 @@ class FakeGpu(GpuSource):
         self._index = index
         self._discrete = discrete
         self._vendor = vendor
-        self.values = {
+        # ``None`` is a reading the source does not have this tick.
+        self.values: dict[str, float | None] = {
             "temp": 55.0, "hotspot": 71.0, "mem_temp": 62.0,
             "usage": 30.0, "clock": 1800.0, "power": 180.0,
             "fan": 42.0, "fan_rpm": 1500.0,

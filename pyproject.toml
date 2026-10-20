@@ -366,7 +366,11 @@ exclude_lines = [
 [tool.pyright]
 pythonVersion = "3.10"
 pythonPlatform = "Linux"
-include = ["src"]
+# tests/ was outside this until 2026-10-20 and had 397 errors nobody saw.
+include = ["src", "tests"]
+# Tests import the dev harnesses (_mock_bootstrap, check_program_deps) the way
+# they run them: with dev/, dev/tools/ and dev/decompiler/ on sys.path.
+extraPaths = ["dev", "dev/tools", "dev/decompiler"]
 typeCheckingMode = "basic"
 reportMissingTypeStubs = false
 reportMissingImports = "warning"

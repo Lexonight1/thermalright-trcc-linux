@@ -53,9 +53,15 @@ def _enter(point: QPoint, mime: QMimeData) -> QDragEnterEvent:
     a QPointF there is a TypeError.  Measured on both, 2026-10-15."""
     actions, buttons, mods = _DRAG
     try:
-        return QDragEnterEvent(QPointF(point), actions, mime, buttons, mods)
+        return _drag_enter(QPointF(point), actions, mime, buttons, mods)
     except TypeError:
-        return QDragEnterEvent(point, actions, mime, buttons, mods)
+        return _drag_enter(point, actions, mime, buttons, mods)
+
+
+def _drag_enter(*args: Any) -> QDragEnterEvent:
+    """Untyped on purpose: the installed stubs describe only one of the two
+    bindings above, and ``_enter`` has to call whichever the runtime has."""
+    return QDragEnterEvent(*args)
 
 
 def test_the_target_accepts_one_file_and_reports_the_drop(qtbot: Any) -> None:
