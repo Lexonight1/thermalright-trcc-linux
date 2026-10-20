@@ -440,3 +440,36 @@ def test_the_lhm_cpu_row_lookup_is_per_frame(
     assert _messages(caplog, "trcc.adapters.sensors._lhm", "_cpu_row") == []
     assert len(_messages(caplog, "trcc.frame.adapters.sensors._lhm",
                          "_cpu_row")) == 4
+
+
+def test_a_hardware_tile_tick_writes_nothing_to_the_file(
+        caplog: pytest.LogCaptureFixture) -> None:
+    """The GUI grid refreshes every hardware tile on every metrics tick
+    (``OverlayGrid._apply_readings``); a hidden window wrote 14 KB/min of
+    ``config_fields`` + ``hardware_metric`` on the win11 VM.  A tile with a
+    reading also logged ``tile_reading``.  An unmappable tile warned per tick.
+
+    MUTATION CHECK: put ``log.debug`` back in ``config_fields``,
+    ``tile_reading`` or ``hardware_metric``, or ``log.warning`` back in the
+    no-element branch → this fails."""
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+    from trcc.ui.presentation.overlay_serialization import tile_reading
+
+    paired = OverlayElementConfig(mode=OverlayMode.HARDWARE,
+                                  main_count=0, sub_count=1)   # cpu:temp
+    unmapped = OverlayElementConfig(mode=OverlayMode.HARDWARE,
+                                    main_count=99, sub_count=99)
+    caplog.set_level(logging.DEBUG)
+
+    for _ in range(5):
+        tile_reading(paired, {"cpu:temp": 41.0}, "C")
+        tile_reading(paired, {}, "C")
+        tile_reading(unmapped, {}, "C")
+
+    file_records = [r for r in caplog.records if r.name in (
+        "trcc.ui.presentation.overlay_serialization", "trcc.services._dc")]
+    assert [r.getMessage() for r in file_records] == [
+        "config_fields: HARDWARE cell (99, 99) maps to no element — repeats "
+        "go to the per-frame log"]
+    assert len(_messages(caplog, "trcc.frame.ui.presentation.overlay_serialization",
+                         "tile_reading")) == 5

@@ -25,6 +25,7 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from ...core.logs import per_frame, recurring_warning
 from ...core.models import (
     DATE_FORMATS,
     TIME_FORMATS,
@@ -38,6 +39,9 @@ from ...services import _dc as Dc
 from ...services.overlay import metric_text
 
 log = logging.getLogger(__name__)
+# ``tile_reading`` runs for every hardware tile on every metrics tick, and
+# ``config_fields`` with it: 14 KB/min from a hidden GUI (win11 VM, 2026-10-20).
+frame_log = per_frame(__name__)
 
 
 _DEFAULT_FONT_NAME = "Microsoft YaHei"
@@ -121,10 +125,11 @@ def config_fields(cfg: OverlayElementConfig) -> dict[str, Any] | None:
             fields = {**base, "type": "metric", "metric": sensor,
                       "format": fmt, "show_unit": cfg.mode_sub == 1}
         case _:
-            log.warning("config_fields: %s cell (%s, %s) maps to no element",
-                        cfg.mode.name, cfg.main_count, cfg.sub_count)
+            recurring_warning(log, "config_fields: %s cell (%s, %s) maps to "
+                              "no element", cfg.mode.name, cfg.main_count,
+                              cfg.sub_count)
             return None
-    log.debug("config_fields: %s → %s", cfg.mode.name, fields["type"])
+    frame_log.debug("config_fields: %s → %s", cfg.mode.name, fields["type"])
     return fields
 
 
@@ -146,6 +151,6 @@ def tile_reading(cfg: OverlayElementConfig, readings: Mapping[str, float],
     number = re.match(r"-?[\d.]+", text)
     reading = ((number.group(), text[number.end():].strip()) if number
                else (text, ""))
-    log.debug("tile_reading: %s -> %s", fields.get("metric"), reading)
+    frame_log.debug("tile_reading: %s -> %s", fields.get("metric"), reading)
     return reading
 

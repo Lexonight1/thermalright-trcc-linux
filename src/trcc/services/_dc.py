@@ -165,7 +165,7 @@ def hardware_metric(main: int, sub: int) -> tuple[str, str] | None:
     the two never drift on metric ids (``cpu:temp``) or format strings.
     Returns ``None`` for an unmapped code.
     """
-    log.debug("hardware_metric: main=%s sub=%s", main, sub)
+    frame_log.debug("hardware_metric: main=%s sub=%s", main, sub)
     return _HW_TO_SENSOR.get((main, sub))
 
 
