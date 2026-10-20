@@ -1798,3 +1798,41 @@ def test_a_web_source_is_announced(connected_app: App) -> None:
 
     assert heard == [_KEY]
     assert _source(connected_app) == "media"
+
+
+def test_a_lost_panels_video_writes_nothing_to_the_file_per_frame(
+    ticking_app: App, stub_media: Any, video_file: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The source keeps playing while the panel is lost (9823dec1) -- so every
+    frame of a lost panel's video runs TickDisplay -> RenderAndSend, which
+    fails "not connected".  On the maintainer's host, with the win11 VM holding
+    the panel, that path wrote ``find_product`` 25 times a second: 94% of the
+    log, rotating the 1 MB file every 6 minutes (2026-10-20).
+
+    MUTATION CHECK: put ``log.debug`` back in ``registry.find_product`` ->
+    this fails."""
+    playback = _playback_for(ticking_app, video_file)
+    ticking_app.release_device(_KEY)            # the transport is gone
+    caplog.set_level(logging.DEBUG)
+
+    def file_warnings() -> list[str]:
+        return [r.getMessage() for r in caplog.records
+                if r.levelno >= logging.WARNING and not r.name.startswith("trcc.frame")]
+
+    caplog.clear()
+    for _ in range(5):                          # the loss is reported, once
+        ticking_app.dispatch(TickDisplay(key=_KEY))
+    assert sorted(file_warnings()) == [
+        "[core] RenderAndSend failed: Not attached: 0402:3922 — repeats go to "
+        "the per-frame log",
+        "[core] TickDisplay failed: Not attached: 0402:3922 — repeats go to the "
+        "per-frame log",
+    ]
+
+    caplog.clear()
+    for _ in range(45):                         # ...and then every frame is silent
+        ticking_app.dispatch(TickDisplay(key=_KEY))
+    assert playback.cursor != 0, "the source must keep playing while lost"
+    assert [f"{r.name}: {r.getMessage()}" for r in caplog.records
+            if not r.name.startswith("trcc.frame")] == []

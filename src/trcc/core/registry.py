@@ -13,9 +13,15 @@ from __future__ import annotations
 
 import logging
 
+from .logs import per_frame
 from .models import Kind, ProductInfo, Wire
 
 log = logging.getLogger(__name__)
+# ``find_product`` is a dict lookup that a lost panel's video asks every frame
+# (TickDisplay -> RenderAndSend -> _lacks): 25 lines a second, 94% of a host
+# log while the win11 VM held the panel (2026-10-20).  Its callers log what
+# they found.
+frame_log = per_frame(__name__)
 
 # =========================================================================
 # Display constants used by the GUI
@@ -188,7 +194,7 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
 
 def find_product(vid: int, pid: int) -> ProductInfo | None:
     """Look up a product by VID/PID, or None if unknown."""
-    log.debug("find_product: vid=%04x pid=%04x", vid, pid)
+    frame_log.debug("find_product: vid=%04x pid=%04x", vid, pid)
     return ALL_DEVICES.get((vid, pid))
 
 
