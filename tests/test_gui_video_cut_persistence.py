@@ -12,6 +12,7 @@ scaffold ``test_gui_empty_state`` uses.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,6 +21,8 @@ from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
+from trcc.core.events import EventBus
+from trcc.core.ports import CommandBus
 from trcc.services.media import MediaService, Playback
 
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
@@ -162,30 +165,37 @@ def test_the_trimmer_exports_at_the_frame_rate_pressed(qtbot) -> None:
         assert sig.args[4] == expected
 
 
+class _DialogApp(CommandBus):
+    """The App a qtgui dialog talks to; each test answers ``dispatch``."""
+
+    @property
+    def events(self) -> EventBus:
+        return EventBus()
+
+    @property
+    def remote(self) -> bool:
+        return False
+
+
 def test_qtgui_exports_at_the_frame_rate_chosen(qtbot) -> None:
     """qtgui's 15/24 actions reach ExportVideoClip, 15 untouched."""
     from pathlib import Path
     from types import SimpleNamespace
 
-    from PySide6.QtCore import QObject, Signal
-
     from trcc.core.commands import DeviceCanvas, ExportVideoClip
+    from trcc.ui.bus_bridge import BusBridge
     from trcc.ui.qtgui.video_crop import VideoCropDialog
-
-    class _Bus(QObject):
-        video_export_progress = Signal(object)
-        video_export_finished = Signal(object)
 
     sent: list = []
 
-    class _App:
-        def dispatch(self, cmd):
+    class _App(_DialogApp):
+        def dispatch(self, cmd: Any) -> Any:
             sent.append(cmd)
             if isinstance(cmd, DeviceCanvas):
                 return SimpleNamespace(ok=False)
             return SimpleNamespace(ok=False, message="recorded")
 
-    dialog = VideoCropDialog(_App(), _Bus(), "0402:3922")  # type: ignore[arg-type]
+    dialog = VideoCropDialog(_App(), BusBridge(EventBus()), "0402:3922")
     qtbot.addWidget(dialog)
     dialog._video_path = Path("/nonexistent/clip.mp4")
 
@@ -205,24 +215,19 @@ def test_qtgui_sends_a_real_fit_mode(qtbot) -> None:
     from pathlib import Path
     from types import SimpleNamespace
 
-    from PySide6.QtCore import QObject, Signal
-
     from trcc.core.commands import ExportVideoClip
     from trcc.core.models import FitMode
+    from trcc.ui.bus_bridge import BusBridge
     from trcc.ui.qtgui.video_crop import VideoCropDialog
-
-    class _Bus(QObject):
-        video_export_progress = Signal(object)
-        video_export_finished = Signal(object)
 
     sent: list = []
 
-    class _App:
-        def dispatch(self, cmd):
+    class _App(_DialogApp):
+        def dispatch(self, cmd: Any) -> Any:
             sent.append(cmd)
             return SimpleNamespace(ok=False, message="recorded")
 
-    dialog = VideoCropDialog(_App(), _Bus(), "0402:3922")  # type: ignore[arg-type]
+    dialog = VideoCropDialog(_App(), BusBridge(EventBus()), "0402:3922")
     qtbot.addWidget(dialog)
     dialog._video_path = Path("/nonexistent/clip.mp4")
     by_mode = {a.data(): a for a in dialog._fit_group.actions()}

@@ -8,13 +8,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from trcc.app import App
 from trcc.services.reconnect_watcher import ReconnectWatcher
 
 _KEY = "0402:3922"
 
 
-class _App:
-    """Answers ``try_reconnect`` from a script and records each call's time."""
+class _App(App):
+    """Answers ``try_reconnect`` from a script and records each call's time.
+
+    No platform, no devices: the watcher reaches the App by this one method.
+    """
 
     def __init__(self, *outcomes: bool) -> None:
         self.outcomes = list(outcomes)
@@ -27,7 +31,7 @@ class _App:
 
 
 def _watcher(app: _App) -> ReconnectWatcher:
-    watcher = ReconnectWatcher(app, _KEY)  # type: ignore[arg-type]
+    watcher = ReconnectWatcher(app, _KEY)
     watcher.arm()
     return watcher
 
@@ -93,7 +97,7 @@ def test_a_disarmed_watcher_never_tries() -> None:
 
 def test_a_panel_that_never_answered_is_tried_at_most_every_five_minutes() -> None:
     app = _App(*[False] * 9)
-    watcher = ReconnectWatcher(app, _KEY)  # type: ignore[arg-type]
+    watcher = ReconnectWatcher(app, _KEY)
     watcher.arm(slow=True)
 
     times = _attempt_times(watcher, app, until=981)

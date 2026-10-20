@@ -23,16 +23,26 @@ from trcc.adapters.visual.cavalier import CavalierVisual
 from trcc.adapters.visual.pipes import TrccPipes
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, ListVisuals, PlayVisual, VisualTile
-from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
+from trcc.core.ports import Platform, VisualEngine
 
-_HOST_PIPES = host_platform_class().VISUALS["trcc-pipes"]
+
+def _pipes_of(os_class: type[Platform]) -> type[GlVisual]:
+    """The TRCC Pipes an OS binds -- always an OpenGL visual."""
+    pipes = os_class.VISUALS["trcc-pipes"]
+    assert issubclass(pipes, GlVisual)
+    return pipes
+
+
+_HOST_PIPES = _pipes_of(host_platform_class())
 _KEY = "0402:3922"
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
 
 
 def _surface() -> gl_module.GlSurface:
     """This host's context, as the App would open it."""
-    surface = _HOST_PIPES.SURFACE                    # type: ignore[attr-defined]
+    surface = _HOST_PIPES.SURFACE
+    assert surface is not None
     return surface.open()
 
 
@@ -57,7 +67,7 @@ def test_every_os_names_a_context() -> None:
     from trcc.adapters.system.macos import MacOSPlatform
     from trcc.adapters.system.windows import WindowsPlatform
 
-    named = {os_class.__name__: os_class.VISUALS["trcc-pipes"].SURFACE  # type: ignore[attr-defined]
+    named = {os_class.__name__: _pipes_of(os_class).SURFACE
              for os_class in (LinuxOS, BsdOS, WindowsPlatform, MacOSPlatform)}
     assert named == {"LinuxOS": gl_module.EglSurface,
                      "BsdOS": gl_module.EglSurface,
@@ -127,7 +137,7 @@ def test_a_picture_reads_back_top_row_first(
     """OpenGL counts rows from the bottom, a panel from the top: what is
     drawn at the top of OpenGL's picture is the first row read back.
     MUTATION CHECK: drop the row flip in read_rgb."""
-    if _HOST_PIPES.SURFACE is not gl_module.EglSurface:  # type: ignore[attr-defined]
+    if _HOST_PIPES.SURFACE is not gl_module.EglSurface:
         libraries = gl_module._GL_LIBRARIES      # the choice is EGL's alone
     monkeypatch.setattr(gl_module, "_GL_LIBRARIES", libraries)
     surface = _surface()
@@ -190,16 +200,18 @@ def test_an_opengl_older_than_3_is_refused_by_name() -> None:
 
 # ── TRCC Pipes on the graphics card ─────────────────────────────────
 
-def _music(engine: object, frames: int) -> object:
+def _music(engine: VisualEngine, frames: int) -> RawFrame:
     n = SOUND_RATE // VISUAL_FPS
     frame = None
     for i in range(frames):
         t = (np.arange(n) + i * n) / SOUND_RATE
         beat = 1.0 if i % 8 < 2 else 0.25
-        sig = sum(np.sin(2 * np.pi * f * t) * a
-                  for f, a in ((60, beat), (700, .5), (2500, .3)))
-        engine.feed(np.repeat(sig.astype("<f4"), 2).tobytes())  # type: ignore[attr-defined]
-        frame = engine.render()                                  # type: ignore[attr-defined]
+        sig = sum((np.sin(2 * np.pi * f * t) * a
+                   for f, a in ((60, beat), (700, .5), (2500, .3))),
+                  np.zeros(n))
+        engine.feed(np.repeat(sig.astype("<f4"), 2).tobytes())
+        frame = engine.render()
+    assert frame is not None
     return frame
 
 
@@ -221,7 +233,7 @@ def test_burning_pipes_flame_in_fire_colours(tmp_path: Path) -> None:
             drawn = _music(engine, 40)
         finally:
             engine.close()
-        return np.frombuffer(drawn.data, np.uint8).reshape(160, 160, 3).astype(int)  # type: ignore[attr-defined]
+        return np.frombuffer(drawn.data, np.uint8).reshape(160, 160, 3).astype(int)
 
     cold, hot = frame(0.0), frame(1.0)
     flames = np.all(cold == 0, axis=2) & (hot.max(axis=2) > 30)
@@ -237,7 +249,7 @@ class _CoreProfile(gl_module.EglSurface):
         super().__init__(core=True)
 
 
-@pytest.mark.skipif(_HOST_PIPES.SURFACE is not gl_module.EglSurface,  # type: ignore[attr-defined]
+@pytest.mark.skipif(_HOST_PIPES.SURFACE is not gl_module.EglSurface,
                     reason="a core profile on demand is EGL's")
 def test_pipes_draw_the_same_in_macos_glsl_on_a_core_profile(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -264,7 +276,7 @@ def test_pipes_draw_the_same_in_macos_glsl_on_a_core_profile(
             drawn = _music(engine, 24)
         finally:
             engine.close()
-        return np.frombuffer(drawn.data, np.uint8).reshape(96, 96, 3).astype(int)  # type: ignore[attr-defined]
+        return np.frombuffer(drawn.data, np.uint8).reshape(96, 96, 3).astype(int)
 
     usual = frame(_HOST_PIPES)
     monkeypatch.setattr(gl_module, "_HEADERS", gl_module._HEADERS[1:])

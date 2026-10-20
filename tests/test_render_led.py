@@ -620,7 +620,9 @@ def test_set_led_mode_targets_selected_zones_pa120(
 
     app = App(fake_platform)
     _attach_and_connect(app, fake_platform, pm=16)   # PA120
-    n = len(get_display(LedStyle.PA120).zone_led_map)  # type: ignore[arg-type]
+    display = get_display(LedStyle.PA120)
+    assert display is not None and display.zone_led_map is not None
+    n = len(display.zone_led_map)
 
     # circulate off, select zones 0 & 2, set BREATHING
     app.settings.set_led_zone_count(_LED_KEY, n)

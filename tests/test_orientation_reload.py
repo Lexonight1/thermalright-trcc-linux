@@ -22,8 +22,11 @@ import pytest
 from trcc.app import App
 from trcc.core.commands import ApplyMask, LoadTheme
 from trcc.core.events import OrientationChanged
+from trcc.core.models import HandshakeResult, Kind, ProductInfo, Wire
+from trcc.core.ports import Device, ScsiTransport
+from trcc.core.protocol import DeviceProfile
 
-from .conftest import FakePlatform
+from .conftest import FakePlatform, FakeScsiTransport
 
 _KEY = "0402:3922"
 _NAME = "Theme1"
@@ -38,21 +41,40 @@ def _seed(dir_path: Path, *files: str) -> Path:
     return dir_path
 
 
+class _WidePanel(Device[ScsiTransport]):
+    """A 1280x480 panel -- only ``profile.resolution`` is read by the observer.
+
+    Never handshaken, so the base ``handshake`` is None: _oriented_theme_path
+    reads it to pick the per-SKU theme library, and None = generic, which is
+    what a 1280x480 panel gets anyway (no variant at that resolution).  And so
+    not connected as far as ``App.close`` is concerned: it blanks only
+    connected panels.  Without that the teardown raised on every test here --
+    hidden, because pytest shows logs only for a failure.
+    """
+
+    @property
+    def profile(self) -> DeviceProfile:
+        return DeviceProfile(width=1280, height=480)
+
+    def connect(self) -> HandshakeResult:
+        raise AssertionError("the observer never connects a device")
+
+    def send(self, payload: Any) -> bool:
+        raise AssertionError("the observer never sends to a device")
+
+    def disconnect(self) -> None:
+        pass
+
+
 @pytest.fixture
 def app(tmp_home: Path) -> App:
     a = App(platform=FakePlatform(tmp_home))
     # A connected non-square 1280x480 device — only ``profile.resolution`` is
     # read by the observer, so a minimal stand-in is enough.
-    a.devices[_KEY] = SimpleNamespace(  # type: ignore[assignment]
-        profile=SimpleNamespace(resolution=(1280, 480)),
-        # The Device port declares handshake; _oriented_theme_path reads it to
-        # pick the per-SKU theme library.  None = generic, which is what a
-        # 1280x480 panel gets anyway (no variant at that resolution).
-        handshake=None,
-        # Not connected as far as ``App.close`` is concerned: it blanks only
-        # connected panels.  Without this the teardown raised on every test
-        # here -- hidden, because pytest shows logs only for a failure.
-        is_connected=False,
+    a.devices[_KEY] = _WidePanel(
+        ProductInfo(vid=0x0402, pid=0x3922, vendor="fake", product="fake",
+                    wire=Wire.SCSI, kind=Kind.LCD),
+        FakeScsiTransport(),
     )
     return a
 

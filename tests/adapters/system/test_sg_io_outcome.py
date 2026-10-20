@@ -31,15 +31,21 @@ def transport(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """An open transport whose every SG_IO completes with ``outcome``."""
     from trcc.adapters.system.linux import LinuxScsiTransport, _SgIoHdr
 
+    class _Scripted(LinuxScsiTransport):
+        """The real transport, plus what its faked SG_IO completes with."""
+        # The transport logs under ``type(self).__module__``; keep it the real one.
+        __module__ = LinuxScsiTransport.__module__
+        outcome: dict[str, int]
+
     node = tmp_path / "sg0"
     node.write_bytes(b"")
-    t = LinuxScsiTransport(str(node))
+    t = _Scripted(str(node))
     assert t.open()
-    t.outcome = {}                           # type: ignore[attr-defined]
+    t.outcome = {}
 
     def fake_ioctl(_fd: int, _request: int, buf) -> int:
         hdr = _SgIoHdr.from_buffer_copy(buf.raw)
-        for name, value in t.outcome.items():  # type: ignore[attr-defined]
+        for name, value in t.outcome.items():
             setattr(hdr, name, value)
         ctypes.memmove(buf, ctypes.addressof(hdr), ctypes.sizeof(hdr))
         return 0

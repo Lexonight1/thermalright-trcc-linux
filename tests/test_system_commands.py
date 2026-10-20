@@ -11,11 +11,13 @@ DI/manipulability proof.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import ListFonts, RunHealthCheck
+from trcc.core.ports import Diagnostics
 
 
 def test_list_fonts_delegates_to_the_injected_renderer_port() -> None:
@@ -29,7 +31,8 @@ def test_list_fonts_delegates_to_the_injected_renderer_port() -> None:
     fake_renderer = SimpleNamespace(list_fonts=lambda: ["Sentinel Sans", "Sentinel Serif"])
     app_stub = SimpleNamespace(renderer=fake_renderer)
 
-    result = ListFonts().execute(app_stub)  # type: ignore[arg-type]
+    # A deliberately partial App: the command may reach ``renderer`` only.
+    result = ListFonts().execute(cast(App, app_stub))
 
     assert result.ok
     assert result.fonts == ["Sentinel Sans", "Sentinel Serif"]
@@ -76,7 +79,7 @@ def test_qtrenderer_list_fonts_returns_list() -> None:
 # INJECTED ``Diagnostics`` port, not by importing adapters inside core Command
 # bodies.
 
-def _fake_diagnostics() -> object:
+def _fake_diagnostics() -> Diagnostics:
     """A ``Diagnostics`` returning sentinels so delegation is provable."""
     from trcc.core.diagnostics import (
         DoctorResult,
@@ -84,7 +87,6 @@ def _fake_diagnostics() -> object:
         HealthCheckResult,
         HealthReport,
     )
-    from trcc.core.ports import Diagnostics
 
     class _FakeDiag(Diagnostics):
         def health(self) -> HealthReport:
@@ -133,7 +135,7 @@ def test_run_health_check_delegates_to_the_diagnostics_port(tmp_path) -> None:
     """
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
-        app.diagnostics = _fake_diagnostics()  # type: ignore[assignment]
+        app.diagnostics = _fake_diagnostics()
         result = app.dispatch(RunHealthCheck())
         assert result.ok
         assert len(result.checks) == 1

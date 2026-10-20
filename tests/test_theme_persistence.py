@@ -1310,6 +1310,7 @@ def test_save_theme_clears_all_overrides_after_save(
 
 def test_save_theme_snapshots_preview_as_thumbnail(
     app: App, tmp_home: Path, user_theme_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With a device present, SaveTheme writes Theme.png — a real PNG
     snapshot of the preview composite — so the saved theme shows a grid
@@ -1326,7 +1327,7 @@ def test_save_theme_snapshots_preview_as_thumbnail(
         is_connected = True
         key = _TEST_DEVICE_KEY
 
-    app.devices[_TEST_DEVICE_KEY] = _StubDevice()  # type: ignore[assignment]
+    monkeypatch.setitem(app.devices, _TEST_DEVICE_KEY, _StubDevice())
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
@@ -1392,6 +1393,7 @@ def test_save_then_reload_resolves_library_assets_not_source(
 
 def test_save_theme_references_screencast_region(
     app: App, tmp_home: Path, user_theme_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An active screencast region is stored in the user screencast library and
     referenced by URI in the saved theme's config; the ref resolves back to the
@@ -1403,7 +1405,7 @@ def test_save_theme_references_screencast_region(
     app.settings.set_screencast_region(_TEST_DEVICE_KEY, (100, 50, 640, 480, True))
     # SaveTheme connects the device and reloads the saved theme, which resumes
     # its screencast -- audio on.  The real microphone would outlive the test.
-    app.audio = FakeMic()  # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", FakeMic())
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cast")).ok
     saved = user_theme_dir / "cast"
@@ -1958,13 +1960,13 @@ def _rotate_device():
 
 
 def test_save_at_90_portrait_mask_saves_to_portrait_folder(
-    app: App, tmp_home: Path,
+    app: App, tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A portrait mask applied at 90° saves into the PORTRAIT folder
     (theme240320) — its composed orientation — so it reloads composed
     portrait, not spun.  And the reloaded theme composes 240×320."""
     device = _rotate_device()
-    app.devices[_ROTATE_KEY] = device  # type: ignore[assignment]
+    monkeypatch.setitem(app.devices, _ROTATE_KEY, device)
     source = _write_theme_with_real_pngs(tmp_home, "land", 320, 240)
     app.active_themes[_ROTATE_KEY] = FileContentStore().load(source)
 
@@ -1994,14 +1996,14 @@ def test_save_at_90_portrait_mask_saves_to_portrait_folder(
 
 
 def test_save_at_90_landscape_content_saves_to_landscape_folder(
-    app: App, tmp_home: Path,
+    app: App, tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Landscape content (no portrait mask, landscape base theme) saved at
     90° lands in the LANDSCAPE folder (theme320240) — not the angle's
     portrait folder — so save + reload agree.  Before the fix this filed
     landscape coords under theme240320, where reload misread them."""
     device = _rotate_device()
-    app.devices[_ROTATE_KEY] = device  # type: ignore[assignment]
+    monkeypatch.setitem(app.devices, _ROTATE_KEY, device)
     source = _write_theme_with_real_pngs(tmp_home, "land", 320, 240)
     app.active_themes[_ROTATE_KEY] = FileContentStore().load(source)
     app.settings.set_orientation(_ROTATE_KEY, 90)
@@ -2110,7 +2112,7 @@ def test_load_image_background_actually_reaches_the_frame(
 
 
 def test_save_theme_references_the_devices_own_library(
-    app: App, tmp_home: Path,
+    app: App, tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A background from the device's PER-SKU library is referenced, not copied.
 
@@ -2138,13 +2140,13 @@ def test_save_theme_references_the_devices_own_library(
     # that carries only a resolution hides which fields are load-bearing.
     from trcc.core.protocol import get_profile
 
-    app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
+    monkeypatch.setitem(app.devices, key, SimpleNamespace(
         profile=get_profile(114, 64),            # FBL 114 PM 64 → 1600x720
         handshake=SimpleNamespace(sub_byte=3, pm_byte=64),
         info=SimpleNamespace(key=key, native_resolution=resolution,
                              kind=Kind.LCD, capabilities=CAPABILITIES_BY_KIND[Kind.LCD]),
         is_connected=True,
-    )
+    ))
 
     source = _write_theme_with_real_pngs(tmp_home, "srcly")
     app.active_themes[key] = FileContentStore().load(source)
@@ -2171,7 +2173,7 @@ def test_save_theme_references_the_devices_own_library(
 
 
 def test_save_theme_falls_back_when_the_sku_library_is_absent(
-    app: App, tmp_home: Path,
+    app: App, tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No variant dir on disk → the generic library, and refs say so.
 
@@ -2188,13 +2190,13 @@ def test_save_theme_falls_back_when_the_sku_library_is_absent(
     # that carries only a resolution hides which fields are load-bearing.
     from trcc.core.protocol import get_profile
 
-    app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
+    monkeypatch.setitem(app.devices, key, SimpleNamespace(
         profile=get_profile(114, 64),            # FBL 114 PM 64 → 1600x720
         handshake=SimpleNamespace(sub_byte=3, pm_byte=64),
         info=SimpleNamespace(key=key, native_resolution=resolution,
                              kind=Kind.LCD, capabilities=CAPABILITIES_BY_KIND[Kind.LCD]),
         is_connected=True,
-    )
+    ))
 
     source = _write_theme_with_real_pngs(tmp_home, "srcgen")
     app.active_themes[key] = FileContentStore().load(source)

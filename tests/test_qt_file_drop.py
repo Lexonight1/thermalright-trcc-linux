@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
@@ -94,7 +94,8 @@ class _Lcd:
     lcd_size = (320, 320)
 
 
-def _gui(qtbot: Any, fake_platform: Any) -> tuple[Any, list[object]]:
+def _gui(qtbot: Any, fake_platform: Any,
+         monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[object]]:
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
     from trcc.ui.gui.trcc_app import TRCCApp
@@ -102,27 +103,28 @@ def _gui(qtbot: Any, fake_platform: Any) -> tuple[Any, list[object]]:
     window = TRCCApp(app=App(platform=fake_platform, renderer=QtRenderer()))
     qtbot.addWidget(window)
     sent: list[object] = []
-    window._app = SimpleNamespace(      # type: ignore[assignment]
-        dispatch=lambda cmd: sent.append(cmd) or SimpleNamespace(ok=True, message=""))
-    window._active_lcd = lambda: _Lcd()  # type: ignore[method-assign]
+    monkeypatch.setattr(window, "_app", SimpleNamespace(
+        dispatch=lambda cmd: sent.append(cmd) or SimpleNamespace(ok=True, message="")))
+    monkeypatch.setattr(window, "_active_lcd", lambda: _Lcd())
     return window, sent
 
 
 def test_gui_a_dropped_video_plays_in_the_media_player(
-        qtbot: Any, fake_platform: Any) -> None:
+        qtbot: Any, fake_platform: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """MUTATION CHECK: route ANIMATED to the cropper -- nothing is sent."""
-    window, sent = _gui(qtbot, fake_platform)
+    window, sent = _gui(qtbot, fake_platform, monkeypatch)
     window._on_file_dropped(Path("/v/clip.mp4"), MediaKind.ANIMATED)
     assert sent == [SetMediaPlayer(key="0402:3922", uri="/v/clip.mp4")]
 
 
 def test_gui_a_dropped_image_opens_the_cropper(
-        qtbot: Any, fake_platform: Any, tmp_path: Path) -> None:
+        qtbot: Any, fake_platform: Any, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch) -> None:
     from PySide6.QtGui import QImage
 
     picture = tmp_path / "bob.png"
     QImage(8, 8, QImage.Format.Format_RGB888).save(str(picture))
-    window, sent = _gui(qtbot, fake_platform)
+    window, sent = _gui(qtbot, fake_platform, monkeypatch)
     shown: list[str] = []
     window._show_cutter = shown.append
     window._on_file_dropped(picture, MediaKind.IMAGE)
@@ -146,5 +148,6 @@ def test_qtgui_a_drop_sends_what_its_pickers_send(
         _app=SimpleNamespace(dispatch=lambda cmd: sent.append(cmd)
                              or SimpleNamespace(message="ok")),
         _status=SimpleNamespace(showMessage=lambda m, t: said.append(m)))
-    MainWindow._on_file_dropped(window, path, kind)  # type: ignore[arg-type]
+    # cast: a stand-in self carrying only the three attributes the slot reads
+    MainWindow._on_file_dropped(cast(MainWindow, window), path, kind)
     assert (sent, said) == ([command], ["ok"])

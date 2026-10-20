@@ -17,7 +17,6 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 from tests.mock_platform import MockPlatform
 from trcc.adapters.infra.data_install_runner import (
@@ -27,7 +26,7 @@ from trcc.adapters.infra.data_install_runner import (
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
 from trcc.core.events import DataInstalled, ErrorOccurred, EventBus
-from trcc.services.data_install import EnsureDataResult
+from trcc.services.data_install import DataInstallService, EnsureDataResult
 
 _SCSI = "0402:3922"          # the panel in #275 (Frozen Warframe)
 _SPECS = [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}]
@@ -38,7 +37,7 @@ _SPECS = [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}]
 _HANG_S = 10.0
 
 
-class _GatedService:
+class _GatedService(DataInstallService):
     """An install that cannot finish until the test opens its gate.
 
     Stands in for a large download.  It used to ``sleep(1.0)`` while the test
@@ -64,7 +63,7 @@ class _GatedService:
         )
 
 
-class _Service:
+class _Service(DataInstallService):
     """Instant install with a settable outcome."""
 
     def __init__(self, *, ok: bool = True, raises: bool = False) -> None:
@@ -106,7 +105,7 @@ def test_submit_returns_before_a_slow_install_finishes() -> None:
     bus = EventBus()
     order: list[str] = []
     service = _GatedService(order)
-    runner = ThreadDataInstallRunner(service, bus)  # type: ignore[arg-type]
+    runner = ThreadDataInstallRunner(service, bus)
     seen, arrived = _listen(bus)
     try:
         runner.submit((320, 240))
@@ -138,10 +137,10 @@ def test_connect_does_not_wait_for_the_download(tmp_path: Path) -> None:
     # and app.data_install (where it used to happen inline).  Without the
     # second, conftest's noop ``ensure_all`` makes an inline call free and this
     # test passes even with the bug reintroduced -- verified by mutation.
-    app.data_install = service                  # type: ignore[assignment]
+    app.data_install = service
     app.data_install_runner.shutdown()          # drop the fixture's runner
     app.data_install_runner = ThreadDataInstallRunner(
-        service, app.events,                    # type: ignore[arg-type]
+        service, app.events,
     )
     _seen, arrived = _listen(app.events)
     try:
@@ -164,7 +163,7 @@ def test_each_resolution_installs_once_however_often_it_is_submitted() -> None:
     """Discover and connect both submit the same panel; it downloads once."""
     bus = EventBus()
     service = _Service()
-    runner = SyncDataInstallRunner(service, bus)  # type: ignore[arg-type]
+    runner = SyncDataInstallRunner(service, bus)
 
     runner.submit((320, 240))
     runner.submit((320, 240))
@@ -176,7 +175,7 @@ def test_each_resolution_installs_once_however_often_it_is_submitted() -> None:
 def test_a_partial_install_is_reported_not_hidden() -> None:
     bus = EventBus()
     seen, _ = _listen(bus)
-    runner = SyncDataInstallRunner(_Service(ok=False), bus)  # type: ignore[arg-type]
+    runner = SyncDataInstallRunner(_Service(ok=False), bus)
 
     runner.submit((320, 240))
 
@@ -187,7 +186,7 @@ def test_a_raising_install_still_publishes_and_keeps_the_worker_alive() -> None:
     """Best-effort by contract: a failed download degrades, never propagates."""
     bus = EventBus()
     seen, arrived = _listen(bus)
-    runner = ThreadDataInstallRunner(_Service(raises=True), bus)  # type: ignore[arg-type]
+    runner = ThreadDataInstallRunner(_Service(raises=True), bus)
     try:
         runner.submit((320, 240))
         assert arrived.wait(timeout=10.0)
@@ -217,7 +216,7 @@ def test_shutdown_stops_the_worker() -> None:
     this is what holds it -- so the existence half has to be asserted too.
     """
     bus = EventBus()
-    runner = ThreadDataInstallRunner(_Service(), bus)  # type: ignore[arg-type]
+    runner = ThreadDataInstallRunner(_Service(), bus)
     _, arrived = _listen(bus)
     runner.submit((320, 240))
     assert arrived.wait(timeout=10.0)
@@ -235,7 +234,7 @@ def test_shutdown_stops_the_worker() -> None:
 def test_submitting_after_shutdown_is_ignored() -> None:
     bus = EventBus()
     service = _Service()
-    runner = ThreadDataInstallRunner(service, bus)  # type: ignore[arg-type]
+    runner = ThreadDataInstallRunner(service, bus)
     runner.shutdown()
 
     runner.submit((320, 240))
@@ -246,7 +245,7 @@ def test_submitting_after_shutdown_is_ignored() -> None:
 # ── #309: a failed download comes back, and the user hears about it ─────
 
 
-class _Outcomes:
+class _Outcomes(DataInstallService):
     """Install outcomes in order: each call takes the next, the last repeats."""
 
     def __init__(self, *oks: bool) -> None:
@@ -278,7 +277,7 @@ def test_a_failed_install_is_tried_again_on_the_next_submit() -> None:
     """
     bus = EventBus()
     service = _Outcomes(False, True)
-    runner = SyncDataInstallRunner(service, bus)  # type: ignore[arg-type]
+    runner = SyncDataInstallRunner(service, bus)
 
     runner.submit((320, 240))
     runner.submit((320, 240))
@@ -291,7 +290,7 @@ def test_a_failed_install_reaches_the_user_not_only_the_log() -> None:
     """#309: the grids sat empty and nothing on screen said why."""
     bus = EventBus()
     errors = _errors(bus)
-    runner = SyncDataInstallRunner(_Outcomes(False), bus)  # type: ignore[arg-type]
+    runner = SyncDataInstallRunner(_Outcomes(False), bus)
 
     runner.submit((320, 240))
 
@@ -314,7 +313,7 @@ def test_the_app_retries_a_failed_install_by_itself() -> None:
     seen, arrived = _listen(bus)
     errors = _errors(bus)
     runner = ThreadDataInstallRunner(
-        service, bus, retry_delays_s=(0.01,),  # type: ignore[arg-type]
+        service, bus, retry_delays_s=(0.01,),
     )
     try:
         runner.submit((320, 240))
@@ -337,7 +336,7 @@ def test_the_retries_stop_after_the_last_delay() -> None:
     seen, arrived = _listen(bus)
     errors = _errors(bus)
     runner = ThreadDataInstallRunner(
-        service, bus, retry_delays_s=(0.01,),  # type: ignore[arg-type]
+        service, bus, retry_delays_s=(0.01,),
     )
     try:
         runner.submit((320, 240))
@@ -359,7 +358,7 @@ def test_shutdown_cancels_a_pending_retry() -> None:
     service = _Outcomes(False)
     _, arrived = _listen(bus)
     runner = ThreadDataInstallRunner(
-        service, bus, retry_delays_s=(30.0,),  # type: ignore[arg-type]
+        service, bus, retry_delays_s=(30.0,),
     )
     runner.submit((320, 240))
     assert arrived.wait(timeout=_HANG_S)
@@ -377,7 +376,7 @@ def test_a_failure_landing_during_shutdown_arms_no_retry() -> None:
     bus = EventBus()
     service = _Outcomes(False)
     runner = ThreadDataInstallRunner(
-        service, bus, retry_delays_s=(30.0,),  # type: ignore[arg-type]
+        service, bus, retry_delays_s=(30.0,),
     )
     stopper: list[threading.Thread] = []
 
@@ -401,7 +400,7 @@ def test_a_failure_landing_during_shutdown_arms_no_retry() -> None:
 # ── the invariant the spawn guard actually protects ──────────────────────
 
 
-class _OverlapProbe:
+class _OverlapProbe(DataInstallService):
     """Records the highest number of installs running at the same moment."""
 
     def __init__(self) -> None:
@@ -409,15 +408,17 @@ class _OverlapProbe:
         self.live = 0
         self.peak = 0
 
-    def ensure_all(self, resolution, variant="", mask_variant=""):
-        del resolution, variant, mask_variant
+    def ensure_all(self, resolution: tuple[int, int], variant: str = "",
+                   mask_variant: str = "") -> EnsureDataResult:
+        del variant, mask_variant
         with self._lock:
             self.live += 1
             self.peak = max(self.peak, self.live)
         time.sleep(0.15)
         with self._lock:
             self.live -= 1
-        return SimpleNamespace(ok=True)
+        return EnsureDataResult(resolution=resolution, themes_ok=True,
+                                web_ok=True, masks_ok=True)
 
 
 def test_two_submissions_are_served_one_at_a_time() -> None:
@@ -440,7 +441,7 @@ def test_two_submissions_are_served_one_at_a_time() -> None:
     """
     bus = EventBus()
     probe = _OverlapProbe()
-    runner = ThreadDataInstallRunner(probe, bus)   # type: ignore[arg-type]
+    runner = ThreadDataInstallRunner(probe, bus)
     try:
         runner.submit((320, 240))
         runner.submit((480, 854))          # distinct key — dedupe won't block it

@@ -30,7 +30,9 @@ def app(tmp_home: Path) -> App:
 def attached(app: App) -> App:
     resp = bytearray(0xE100)
     resp[0] = 100                       # FBL=100 -> 320x320
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform = app.platform
+    assert isinstance(platform, FakePlatform)
+    platform.scsi.read_script.append(bytes(resp))
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     return app
 

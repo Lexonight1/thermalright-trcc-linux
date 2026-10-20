@@ -8,9 +8,10 @@ import numpy as np
 import pytest
 from PySide6.QtGui import QImage
 
-from trcc.adapters.visual import VISUALS, catalog
+from trcc.adapters.visual import VISUALS, BaseVisual, catalog
 from trcc.adapters.visual._cava import Cava, monstercat
-from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+from trcc.adapters.visual.cavalier import CavalierBars
+from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
 
 _FRAME = 2756                    # samples a call, as the reference was run
 
@@ -81,18 +82,19 @@ def test_monstercat_lifts_the_neighbours_of_a_peak() -> None:
 _MODES = sorted(k for k in VISUALS if k.startswith("cavalier-"))
 
 
-def _music(visual: object, frames: int = 30) -> None:
+def _music(visual: BaseVisual, frames: int = 30) -> None:
     n = SOUND_RATE // VISUAL_FPS
     for i in range(frames):
         t = (np.arange(n) + i * n) / SOUND_RATE
-        sig = sum(np.sin(2 * np.pi * f * t) * a
-                  for f, a in ((60, 1.0), (440, .5), (2500, .4), (7000, .2)))
-        visual.feed(np.repeat((0.3 * sig).astype("<f4"), 2).tobytes())  # type: ignore[attr-defined]
+        sig = sum((np.sin(2 * np.pi * f * t) * a
+                   for f, a in ((60, 1.0), (440, .5), (2500, .4), (7000, .2))),
+                  np.zeros(n))
+        visual.feed(np.repeat((0.3 * sig).astype("<f4"), 2).tobytes())
 
 
-def _pixels(frame: object) -> np.ndarray:
-    return np.frombuffer(frame.data, np.uint8).reshape(  # type: ignore[attr-defined]
-        frame.height, frame.width, 3)  # type: ignore[attr-defined]
+def _pixels(frame: RawFrame) -> np.ndarray:
+    return np.frombuffer(frame.data, np.uint8).reshape(
+        frame.height, frame.width, 3)
 
 
 def test_cavaliers_eleven_modes_come_after_trccs_own() -> None:
@@ -143,12 +145,13 @@ def test_a_circle_shows_the_picture_in_its_middle(tmp_path: Path) -> None:
 
 def test_a_slider_rebuilds_the_engine_only_for_a_new_bar_count() -> None:
     visual = VISUALS["cavalier-bars"]()
+    assert isinstance(visual, CavalierBars)
     visual.open(VisualSpec("cavalier-bars", 64, 64))
-    engine = visual._cava                                   # type: ignore[attr-defined]
+    engine = visual._cava
     visual.adjust({"colour": 10.0})
-    assert visual._cava is engine                           # type: ignore[attr-defined]
+    assert visual._cava is engine
     visual.adjust({"bars": 12.0})
-    assert visual._cava is not engine and visual._sample.size == 24  # type: ignore[attr-defined]
+    assert visual._cava is not engine and visual._sample.size == 24
 
 
 
@@ -168,6 +171,7 @@ def test_a_burning_picture_sends_flames_up_from_a_circle(tmp_path: Path) -> None
         frame = None
         for _ in range(12):
             frame = visual.render()
+        assert frame is not None
         return _pixels(frame)[30:55, 70:90].astype(int)
 
     cold, hot = above(0.0), above(1.0)
@@ -195,6 +199,7 @@ def test_flames_are_fire_coloured(kind: str, tmp_path: Path) -> None:
         drawn = None
         for _ in range(12):
             drawn = visual.render()
+        assert drawn is not None
         return _pixels(drawn).astype(int)
 
     cold, hot = frame(0.0), frame(1.0)

@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from trcc.adapters.visual._gl import SHADERS
+from trcc.adapters.visual._karmaviz_gl import KarmaVizPainter
 
 GLSL = SHADERS / "karmaviz"
 DATA = SHADERS.parent / "karmaviz"
@@ -197,7 +198,7 @@ def test_the_ear_hears_each_kick_of_a_120_bpm_beat() -> None:
     assert heard == [k / 2 for k in range(1, 20)]
 
 
-class _Painter:
+class _Painter(KarmaVizPainter):
     """What KarmaViz asks its painter to draw -- no OpenGL."""
 
     def __init__(self) -> None:
@@ -217,7 +218,7 @@ def test_change_every_n_beats(every: int, changes: int) -> None:
     visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
     visual._colours = Colours(visual._palettes, None)
     painter = _Painter()
-    visual._painter = painter  # type: ignore[assignment]
+    visual._painter = painter
     visual._wave, visual._warp = "led_matrix", "thirds_vortex"
     visual.adjust({"change_beats": float(every)})
     for _ in range(12):
@@ -243,7 +244,7 @@ def test_moving_the_change_slider_waits_its_beats_before_changing() -> None:
     visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
     visual._colours = Colours(visual._palettes, None)
     painter = _Painter()
-    visual._painter = painter  # type: ignore[assignment]
+    visual._painter = painter
     visual._wave, visual._warp = "led_matrix", "thirds_vortex"
     for _ in range(161):
         visual._step(1)
@@ -262,7 +263,7 @@ def test_another_slider_does_not_restart_the_count() -> None:
     visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
     visual._colours = Colours(visual._palettes, None)
     painter = _Painter()
-    visual._painter = painter  # type: ignore[assignment]
+    visual._painter = painter
     visual._wave, visual._warp = "led_matrix", "thirds_vortex"
     visual.adjust({"change_beats": 4.0})
     for _ in range(3):

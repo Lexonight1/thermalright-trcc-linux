@@ -28,7 +28,7 @@ from trcc.core.models import (
     RgbFollowMode,
     RgbMirrorDevice,
 )
-from trcc.core.ports import RamLights, SmBus
+from trcc.core.ports import RamAccess, RamLights, SmBus
 from trcc.services.rgb_mirror import BLINK_COLOR, BLINK_STEPS, RgbMirrorService
 
 from .mock_platform import (
@@ -354,14 +354,14 @@ def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:
     # Never the host's own sensors: a stuck hub on the dev box failed this.
     monkeypatch.setattr(linux, "silent_memory_sensors", lambda: [])
     monkeypatch.setattr(linux, "find_smbus", lambda: (3, 5))
-    assert [b.number for b in linux.LinuxOS.smbuses(object())] == [3, 5]  # type: ignore[arg-type]
+    assert [b.number for b in linux.LinuxOS().smbuses()] == [3, 5]
     monkeypatch.setattr(linux, "find_smbus", lambda: (3, 7))
     with pytest.raises(PermissionError):
-        linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
+        linux.LinuxOS().smbuses()
     assert opened[-1].number == 3 and opened[-1].closed
     monkeypatch.setattr(linux, "find_smbus", lambda: ())
     with pytest.raises(OSError, match="i2c-dev"):
-        linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
+        linux.LinuxOS().smbuses()
 
 
 # ── Every UI hears of a change; the page's own tests are test_rgb_page_view
@@ -535,16 +535,16 @@ def test_linux_will_not_open_a_bus_whose_spd_hub_is_stuck(monkeypatch) -> None:
     monkeypatch.setattr(linux, "find_smbus", lambda: (3,))
     monkeypatch.setattr(linux, "silent_memory_sensors", lambda: ["3-0051"])
     with pytest.raises(OSError, match="3-0051 are not answering.*power-off"):
-        linux.LinuxOS.smbuses(object())  # type: ignore[arg-type]
+        linux.LinuxOS().smbuses()
     assert opened == []
     # A stuck sensor on ANOTHER bus is not this bus's business.
     monkeypatch.setattr(linux, "silent_memory_sensors", lambda: ["9-0050"])
-    assert len(linux.LinuxOS.smbuses(object())) == 1  # type: ignore[arg-type]
+    assert len(linux.LinuxOS().smbuses()) == 1
 
 
 # ── RAM lighting: the opt-in grant, through the App ────────────────────────
 
-class _FakeRamAccess:
+class _FakeRamAccess(RamAccess):
     """Answers like the Linux adapter, without pkexec or /etc."""
 
     def __init__(self) -> None:
@@ -576,7 +576,7 @@ def _ram_app(tmp_path: Path) -> tuple[App, _FakeRamAccess, list]:
     from trcc.core.events import RamLightingChanged
     access = _FakeRamAccess()
     platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
-    platform.ram_access = lambda: access  # type: ignore[method-assign]
+    platform.ram_access = lambda: access
     app = App(platform)
     seen: list = []
     app.events.subscribe(RamLightingChanged, seen.append)
@@ -657,7 +657,9 @@ def _pixels(left: tuple[int, int, int] = RED,
 def _following(source: str = "0402:3922", **kw) -> tuple[RgbMirrorService, FakeMirror]:
     service, made = _service()
     service.configure(RAM_MODE, "", 0, source, **kw)
-    return service, made[-1] if made else service._ram  # type: ignore[return-value]
+    mirror = made[-1] if made else service._ram
+    assert isinstance(mirror, FakeMirror)
+    return service, mirror
 
 
 def test_halves_give_each_light_its_own_edge_of_the_picture() -> None:
@@ -956,7 +958,7 @@ def test_a_damaged_found_light_is_dropped_not_guessed(tmp_path) -> None:
         cast(dict[str, Any], "not even a dict")]  # damaged on purpose
     assert [(s.index, s.ref) for s in app.settings.found_lights(LightKind.RAM)
             ] == [(0, "i2c-3/0x19")]
-    app.settings.app.rgb_lights = "not a list"  # type: ignore[assignment]
+    app.settings.app.rgb_lights = cast(list[dict[str, Any]], "not a list")  # damaged on purpose
     assert app.settings.found_lights(LightKind.RAM) == ()
     app.close()
 
@@ -1047,7 +1049,9 @@ def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:
     app.close()
 
 
-def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None:
+def test_find_at_a_new_address_saves_it_and_moves_the_follower(
+    tmp_path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The page's address box reaches the App through Find, so the setting,
     the scan and an OpenRGB follower never point at different servers."""
     from trcc.core.commands import ScanRgbLights
@@ -1056,8 +1060,8 @@ def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None
     app, _platform, _seen = _lights_app(tmp_path)
     moved: list = []
     real = app.rgb_mirror.configure
-    app.rgb_mirror.configure = lambda *a, **k: (  # type: ignore[method-assign]
-        moved.append(a[:3]), real(*a, **k))
+    monkeypatch.setattr(app.rgb_mirror, "configure", lambda *a, **k: (
+        moved.append(a[:3]), real(*a, **k)))
     app.dispatch(ScanRgbLights(host="10.0.0.5", port=6800))
     assert (app.settings.app.openrgb_host, app.settings.app.openrgb_port) == (
         "10.0.0.5", 6800)

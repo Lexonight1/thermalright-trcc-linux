@@ -143,8 +143,10 @@ def test_the_app_lock_uses_msvcrt_where_there_is_no_fcntl(
     start an App (#314's shape)."""
     calls: list[tuple[int, int, int]] = []
     fake = types.ModuleType("msvcrt")
-    fake.LK_NBLCK = 2                                      # type: ignore[attr-defined]
-    fake.locking = lambda fd, mode, n: calls.append((fd, mode, n))  # type: ignore[attr-defined]
+    monkeypatch.setattr(fake, "LK_NBLCK", 2, raising=False)
+    monkeypatch.setattr(fake, "locking",
+                        lambda fd, mode, n: calls.append((fd, mode, n)),
+                        raising=False)
     monkeypatch.setitem(sys.modules, "fcntl", None)
     monkeypatch.setitem(sys.modules, "msvcrt", fake)
     lock = ipc.AppLock(tmp_path / "trcc.lock")
@@ -153,12 +155,15 @@ def test_the_app_lock_uses_msvcrt_where_there_is_no_fcntl(
     assert len(calls) == 1 and calls[0][1:] == (2, 1)
 
 
-def test_one_failed_accept_does_not_stop_the_app() -> None:
+def test_one_failed_accept_does_not_stop_the_app(fake_platform) -> None:
     """A probe that connects and leaves at once failed the pipe's accept on
     Windows, and the server read any accept error as "closed": the whole App
     shut down after the second CLI command (VM, 2026-10-16).  Only a stop on
     purpose ends the loop.  MUTATION CHECK: ``break`` on every OSError."""
-    server = ipc.IPCServer(app=object())  # type: ignore[arg-type]
+    from trcc.app import App
+
+    app = App(fake_platform)
+    server = ipc.IPCServer(app=app)
     calls: list[str] = []
 
     class _Listener:
@@ -170,6 +175,7 @@ def test_one_failed_accept_does_not_stop_the_app() -> None:
 
     server._sock = _Listener()
     server.serve_forever()
+    app.close()
     assert calls == ["accept", "accept"]
 
 

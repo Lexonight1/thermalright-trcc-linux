@@ -119,13 +119,13 @@ class _Rotation:
     def __enter__(self) -> _Rotation:
         real = self._app.dispatch
 
-        def spy(command: Any) -> Any:
-            if isinstance(command, LoadTheme):
-                self.loads.append(command)
-            return real(command)
+        def spy(cmd: Any) -> Any:
+            if isinstance(cmd, LoadTheme):
+                self.loads.append(cmd)
+            return real(cmd)
 
         self._real = real
-        self._app.dispatch = spy      # type: ignore[method-assign]
+        self._app.dispatch = spy
         return self
 
     def __exit__(self, *exc: object) -> None:

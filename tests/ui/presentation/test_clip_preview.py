@@ -109,7 +109,8 @@ def test_stop_kills_ffmpeg_and_removes_its_files(clip: Path) -> None:
     assert not preview.active
 
 
-def test_a_frame_still_being_written_is_not_read(tmp_path: Path) -> None:
+def test_a_frame_still_being_written_is_not_read(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Complete = the next file exists, or ffmpeg has exited."""
 
     class _Proc:
@@ -120,7 +121,8 @@ def test_a_frame_still_being_written_is_not_read(tmp_path: Path) -> None:
 
     preview = ClipPreview()
     proc = _Proc()
-    preview._proc, preview._dir = proc, tmp_path  # type: ignore[assignment]
+    monkeypatch.setattr(preview, "_proc", proc)
+    preview._dir = tmp_path
     (tmp_path / "00001.jpg").write_bytes(b"half")
     assert preview.poll() is None
     (tmp_path / "00002.jpg").write_bytes(b"next")
@@ -131,7 +133,8 @@ def test_a_frame_still_being_written_is_not_read(tmp_path: Path) -> None:
     preview._dir = None
 
 
-def test_ffmpeg_that_writes_nothing_ends_the_preview(tmp_path: Path) -> None:
+def test_ffmpeg_that_writes_nothing_ends_the_preview(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class _Done:
         returncode = 234
 
@@ -139,7 +142,8 @@ def test_ffmpeg_that_writes_nothing_ends_the_preview(tmp_path: Path) -> None:
             return self.returncode
 
     preview = ClipPreview()
-    preview._proc, preview._dir = _Done(), tmp_path  # type: ignore[assignment]
+    monkeypatch.setattr(preview, "_proc", _Done())
+    preview._dir = tmp_path
     assert preview.poll() is None
     assert not preview.active
 

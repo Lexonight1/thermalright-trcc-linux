@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import ctypes
 import logging
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -158,7 +157,7 @@ def test_windows_ends_with_terminate_process(
     monkeypatch.setattr(windows, "_kernel32", lambda: kernel32)
     _no_os_exit(monkeypatch, windows)
     with pytest.raises(_Exited):
-        windows.WindowsPlatform.hard_exit(SimpleNamespace(), 3)  # type: ignore[arg-type]
+        windows.WindowsPlatform().hard_exit(3)
     assert kernel32.terminated == [(-1, 3)]
 
 
@@ -169,6 +168,6 @@ def test_windows_falls_back_when_terminate_process_refuses(
     monkeypatch.setattr(windows, "_kernel32", lambda: kernel32)
     _no_os_exit(monkeypatch, windows)
     with caplog.at_level(logging.WARNING), pytest.raises(_Exited) as ended:
-        windows.WindowsPlatform.hard_exit(SimpleNamespace(), 3)  # type: ignore[arg-type]
+        windows.WindowsPlatform().hard_exit(3)
     assert ended.value.code == 3
     assert "TerminateProcess failed (WinError 5)" in caplog.text

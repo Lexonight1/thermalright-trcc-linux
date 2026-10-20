@@ -48,7 +48,7 @@ def window(tmp_path: Path, qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> Itera
     monkeypatch.setattr(MediaService, "load_video", fake_load)
 
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
-    app.audio = FakeMic()                   # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", FakeMic())
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     show_a_theme(app, _KEY)
     win = TRCCApp(app=app)
@@ -60,8 +60,9 @@ def window(tmp_path: Path, qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> Itera
         assert isinstance(handler, LCDHandler)
         return handler._pm.ui_active
     qtbot.waitUntil(lcd_shown)
-    win._clip = tmp_path / "clip.mp4"                      # type: ignore[attr-defined]
-    win._clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")   # type: ignore[attr-defined]
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    monkeypatch.setattr(win, "_clip", clip, raising=False)
     yield win
     win.close()
     app.close()

@@ -96,10 +96,11 @@ def app(tmp_home: Path) -> App:
 def connected_app(app: App, monkeypatch: pytest.MonkeyPatch) -> App:
     """An App with the SCSI device attached + a stubbed handshake."""
     platform = app.platform
+    assert isinstance(platform, FakePlatform)
     # Scripted SCSI handshake response so ConnectDevice succeeds
     resp = bytearray(0xE100)
     resp[0] = 100   # FBL=100 → (320, 320)
-    platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     result = app.dispatch(ConnectDevice(key=_KEY))
     assert result.ok, result.message
     show_a_theme(app, _KEY)
@@ -1572,8 +1573,8 @@ def _wire(app: App) -> list[int]:
     sent: list[int] = []
     sender = app.senders[_KEY]
     real = sender.submit
-    sender.submit = lambda data, *a, **k: (   # type: ignore[method-assign]
-        sent.append(len(data)), real(data, *a, **k))[1]
+    sender.submit = lambda payload, *a, **k: (
+        sent.append(len(payload)), real(payload, *a, **k))[1]
     return sent
 
 

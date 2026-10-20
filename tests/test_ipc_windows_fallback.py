@@ -8,16 +8,20 @@ The GUI hosts no socket on Windows; it just runs in-process.
 """
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 import trcc.ipc as ipc_mod
+from trcc.app import App
 
 
 def test_start_skips_without_af_unix(monkeypatch: pytest.MonkeyPatch) -> None:
     # Simulate Windows: no socket.AF_UNIX.
     monkeypatch.delattr(ipc_mod.socket, "AF_UNIX", raising=False)
 
-    server = ipc_mod.IPCServer(app=object())  # type: ignore[arg-type]
+    # Deliberately no App: start() must give up before it reaches one.
+    server = ipc_mod.IPCServer(app=cast(App, object()))
     server.start()              # must NOT raise — the Windows GUI relies on this
     assert server._sock is None  # nothing bound
 

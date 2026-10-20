@@ -63,13 +63,13 @@ class _Harness:
         self.counts: Counter[str] = Counter()
         real = self.app.dispatch
 
-        def counting(command: Any) -> Any:
-            self.counts[type(command).__name__] += 1
-            return real(command)
+        def counting(cmd: Any) -> Any:
+            self.counts[type(cmd).__name__] += 1
+            return real(cmd)
 
         # Instance attribute, so only THIS app is instrumented and the count is
         # what the widgets actually asked for.
-        self.app.dispatch = counting          # type: ignore[method-assign]
+        self.app.dispatch = counting
 
         self.bus = BusBridge(self.app.events)
         self.stack = QStackedWidget()

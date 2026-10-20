@@ -107,13 +107,14 @@ def test_latest_log_holds_only_the_current_run(tmp_path: Path) -> None:
 def _count_renders(root: logging.Logger) -> dict[str, int]:
     """Wrap every attached formatter so a test can count real render work."""
     calls = {"format": 0, "formatTime": 0}
+    wrapped: set[logging.Formatter] = set()     # a shared formatter counts once
     for handler in root.handlers:
         # Only OUR handlers.  pytest attaches its own capture handler with its
         # own formatter, and counting that would measure the test runner.
         if not getattr(handler, "_trcc_handler", False):
             continue
         fmt = handler.formatter
-        if fmt is None or getattr(fmt, "_counted", False):
+        if fmt is None or fmt in wrapped:
             continue
         original_format, original_time = fmt.format, fmt.formatTime
 
@@ -127,7 +128,7 @@ def _count_renders(root: logging.Logger) -> dict[str, int]:
 
         fmt.format = counted_format
         fmt.formatTime = counted_time
-        fmt._counted = True                  # type: ignore[attr-defined]
+        wrapped.add(fmt)
     return calls
 
 
@@ -2048,11 +2049,12 @@ def _ticking_app(tmp_path: Path) -> tuple[Any, Path]:
                       stderr_level=logging.CRITICAL,
                       per_frame=ladder.per_frame)
 
-    app = App(platform=FakePlatform(tmp_path))
+    platform = FakePlatform(tmp_path)
+    app = App(platform=platform)
     # Scripted SCSI handshake: FBL=100 -> a 320x320 panel.
     resp = bytearray(0xE100)
     resp[0] = 100
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     connected = app.dispatch(ConnectDevice(key=_TICK_KEY))
     assert connected.ok, connected.message
     app.set_renderer(QtRenderer())

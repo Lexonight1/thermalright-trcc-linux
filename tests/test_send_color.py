@@ -14,7 +14,7 @@ frame from a hex code on the wire. Verifies:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
@@ -377,9 +377,11 @@ def test_disconnect_blanks_the_panel_before_dropping_it(
     sent: list[bytes] = []
     device = app.devices[key]
     real_send = device.send
-    device.send = lambda frame, *a, **k: (          # type: ignore[method-assign]
-        sent.append(bytes(frame)), real_send(frame, *a, **k)
-    )[1]
+
+    def recording_send(payload: Any, *a: Any, **k: Any) -> bool:
+        sent.append(bytes(payload))
+        return real_send(payload, *a, **k)
+    device.send = recording_send
 
     # A non-black frame first, so "all zero" cannot be the device's resting
     # state — the disconnect has to actively overwrite it.
@@ -666,7 +668,7 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
     service when the App was constructed."""
     from trcc.adapters.infra.data_install_runner import SyncDataInstallRunner
     from trcc.core.commands import ConnectDevice
-    from trcc.services.data_install import EnsureDataResult
+    from trcc.services.data_install import DataInstallService, EnsureDataResult
 
     platform = FakePlatform(tmp_home)
     platform.scsi.read_script.append(_scsi_poll_response(100))   # FBL 100 → 320×320
@@ -674,7 +676,10 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
 
     installed: list[tuple[int, int]] = []
 
-    class _SpyInstall:
+    class _SpyInstall(DataInstallService):
+        def __init__(self) -> None:
+            """No paths, no installer: the spy never downloads."""
+
         def ensure_all(self, resolution: tuple[int, int], variant: str = "",
                        mask_variant: str = "") -> EnsureDataResult:
             installed.append(resolution)
@@ -683,7 +688,7 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
                 themes_ok=True, web_ok=True, masks_ok=True,
             )
 
-    app.data_install = _SpyInstall()   # type: ignore[assignment]
+    app.data_install = _SpyInstall()
     app.data_install_runner = SyncDataInstallRunner(
         app.data_install, app.events,
     )
@@ -719,10 +724,10 @@ def test_send_to_an_attached_but_unconnected_device_returns_a_result(
     app = App(platform=platform, renderer=RecordingRenderer())
     app.attach(0x0402, 0x3922)          # attached; ConnectDevice never dispatched
 
-    def refuse(*a: object, **k: object) -> None:
+    def refuse(*a: object, **k: object) -> NoReturn:
         raise PermissionError("Permission denied: '/dev/sg1'")
 
-    platform.open_transport = refuse    # type: ignore[method-assign]
+    platform.open_transport = refuse
 
     result = app.dispatch(SendColor(key="0402:3922", r=1, g=2, b=3))
 
@@ -960,10 +965,10 @@ def test_a_tolerant_command_still_saves_when_the_device_will_not_open(
     png = tmp_home / "pick.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n")
 
-    def refuse(*a: object, **k: object) -> None:
+    def refuse(*a: object, **k: object) -> NoReturn:
         raise PermissionError("Permission denied: '/dev/sg1'")
 
-    platform.open_transport = refuse        # type: ignore[method-assign]
+    platform.open_transport = refuse
 
     result = app.dispatch(LoadImage(key="0402:3922", path=png))
 

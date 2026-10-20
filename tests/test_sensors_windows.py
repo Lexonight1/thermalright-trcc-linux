@@ -39,7 +39,8 @@ from .conftest import FakeCpu, FakeMemory
 class _FakeZone:
     def __init__(self, *, instance: str, deci_kelvin: float) -> None:
         self.InstanceName = instance
-        self.CurrentTemperature = deci_kelvin
+        # Untyped COM data on a real row; a test plants a bad reading.
+        self.CurrentTemperature: float | str = deci_kelvin
 
 
 class _FakeMSAcpi:
@@ -90,7 +91,7 @@ def test_msacpi_exposes_only_temperature() -> None:
 def test_msacpi_survives_bad_reading() -> None:
     """A row whose CurrentTemperature isn't numeric should be skipped, not crash."""
     bad_zone = _FakeZone(instance="TZ", deci_kelvin=0)
-    bad_zone.CurrentTemperature = "not a number"        # type: ignore[assignment]
+    bad_zone.CurrentTemperature = "not a number"
     cpu = WmiAcpiCpu(handle_factory=_msacpi_factory([bad_zone]))
     assert cpu.temp() is None
 

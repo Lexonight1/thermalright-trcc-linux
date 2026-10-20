@@ -13,15 +13,20 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from trcc.app import App
 from trcc.core.commands import Command
 from trcc.core.led_models import LED_STYLES
+from trcc.core.models import HandshakeResult
+from trcc.core.ports import Device, ScsiTransport
 
 from .conftest import FakeAutostart, FakeMic, FakePlatform
+
+if TYPE_CHECKING:
+    from trcc.ui.screen_overlay import DragSelectOverlay
 
 # =========================================================================
 # QApplication fixture — module-scoped so all GUI tests share it
@@ -1239,7 +1244,7 @@ def test_main_window_constructs_and_includes_panels(make_window, gui_app: App) -
 # =========================================================================
 
 
-class _StubDevice:
+class _StubDevice(Device[ScsiTransport]):
     """A device whose ``info`` is a REAL ``ProductInfo`` from the registry.
 
     ``ListDevices`` reads ``info.wire`` / ``info.kind`` — fields on
@@ -1247,18 +1252,34 @@ class _StubDevice:
     entry from ``products_by_wire`` rather than hand-building one keeps the
     wire/kind pairing true to the registry, per CLAUDE.md's rule that
     ``ALL_DEVICES`` is the single source of truth for device-shaped tests.
+
+    Never handshaken, so the base ``profile`` and ``handshake`` are None.
     """
 
     def __init__(self, wire, connected: bool = True) -> None:
         from trcc.core.registry import products_by_wire
 
-        self.info = products_by_wire(wire)[0]
-        self.is_connected = connected
-        # The Device port declares these; a stub that omits one makes the
-        # window look broken when it reads what every real device has.
-        self.profile = None
-        self.handshake = None
-        self.needs_keepalive = False
+        from .conftest import FakeScsiTransport
+
+        super().__init__(products_by_wire(wire)[0], FakeScsiTransport())
+        self._connected = connected
+
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
+    @property
+    def needs_keepalive(self) -> bool:
+        return False
+
+    def connect(self) -> HandshakeResult:
+        raise AssertionError("the window never connects a device itself")
+
+    def send(self, payload: Any) -> bool:
+        return True
+
+    def disconnect(self) -> None:
+        self._connected = False
 
     @property
     def is_led(self) -> bool:
@@ -1275,11 +1296,11 @@ def _spy_on_dispatch(app: App) -> list[str]:
     seen: list[str] = []
     real = app.dispatch
 
-    def _spy(command):
-        seen.append(f"{type(command).__name__}:{getattr(command, 'key', '')}")
-        return real(command)
+    def _spy(cmd):
+        seen.append(f"{type(cmd).__name__}:{getattr(cmd, 'key', '')}")
+        return real(cmd)
 
-    app.dispatch = _spy                       # type: ignore[method-assign]
+    app.dispatch = _spy
     return seen
 
 
@@ -1292,7 +1313,7 @@ def test_the_window_restores_nothing_itself(make_window, gui_app: App) -> None:
     from trcc.core.models import Wire
 
     lcd = _StubDevice(Wire.SCSI)
-    gui_app.devices[lcd.key] = lcd            # type: ignore[assignment]
+    gui_app.devices[lcd.key] = lcd
     seen = _spy_on_dispatch(gui_app)
 
     window = make_window(gui_app)
@@ -1322,7 +1343,7 @@ def _with_a_theme(app: App) -> None:
     from trcc.core.models import Theme, Wire
 
     lcd = _StubDevice(Wire.SCSI)
-    app.devices[lcd.key] = lcd            # type: ignore[assignment]
+    app.devices[lcd.key] = lcd
     app.active_themes[lcd.key] = Theme(
         path=Path("/nonexistent/primed"), name="primed", resolution=(320, 320),
         config={"elements": []},
@@ -1797,21 +1818,16 @@ def test_device_picker_selected_item_yields_key_not_label(
     """Selecting a device from the dropdown must yield its KEY, not the human
     label — #176, where qtgui sent the whole "vid:pid — Vendor Product" string
     as the key and broke every display command."""
-    from types import SimpleNamespace
-
-    from trcc.core.models import Kind, Wire
+    from trcc.core.models import Wire
     from trcc.ui.qtgui.device_picker import DevicePickerWidget
 
     # ``wire`` / ``kind`` are ENUMS on the real ``ProductInfo``, and the picker
     # now reads them through ``ListDevices``, which takes ``.value``.  The fake
     # carried a bare string and no wire at all — faithful to what the widget
     # touched at the time, and silently wrong the moment anything else looked.
-    gui_app.devices["87ad:70db"] = SimpleNamespace(  # type: ignore[assignment]
-        info=SimpleNamespace(
-            vendor="Thermalright", product="Mjolnir Vision",
-            wire=Wire.BULK, kind=Kind.LCD),
-        is_connected=True,
-    )
+    lcd = _StubDevice(Wire.BULK)          # the registry's first bulk LCD
+    assert lcd.key == "87ad:70db"
+    gui_app.devices["87ad:70db"] = lcd
     picker = DevicePickerWidget(gui_app, _bus(gui_app))
     picker._populate_from_app()
     picker._combo.setCurrentIndex(0)   # SELECT the dropdown item — the bug path
@@ -1871,7 +1887,9 @@ def test_screencast_panel_start_casts_the_stored_region(cast_app: App) -> None:
 
     resp = bytearray(0xE100)
     resp[0] = 100                       # FBL=100 -> 320x320
-    cast_app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform = cast_app.platform
+    assert isinstance(platform, FakePlatform)
+    platform.scsi.read_script.append(bytes(resp))
     assert cast_app.dispatch(ConnectDevice(key="0402:3922")).ok
     panel = ScreencastPanel(cast_app, _bus(cast_app))
     panel._picker.set_key("0402:3922")
@@ -1968,7 +1986,8 @@ def test_screencast_build_frame_returns_bytes(gui_app: App) -> None:
 
 
 @pytest.fixture
-def cast_app(fake_platform: FakePlatform, qapp: object) -> App:
+def cast_app(fake_platform: FakePlatform, qapp: object,
+             monkeypatch: pytest.MonkeyPatch) -> App:
     """``gui_app`` with a SYNCHRONOUS send scheduler.
 
     Not a style preference.  ``ConnectDevice`` registers the device with the
@@ -1988,7 +2007,7 @@ def cast_app(fake_platform: FakePlatform, qapp: object) -> App:
               send_scheduler=SyncSendScheduler())
     # And NEVER a real microphone: ``StartScreencast(audio=True)`` would open
     # an ``sd.InputStream`` that outlives the test.  See ``FakeMic``.
-    app.audio = FakeMic()                   # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", FakeMic())
     return app
 
 
@@ -2003,7 +2022,9 @@ def _casting_panel(app: App):
 
     resp = bytearray(0xE100)
     resp[0] = 100                       # FBL=100 -> 320x320
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform = app.platform
+    assert isinstance(platform, FakePlatform)
+    platform.scsi.read_script.append(bytes(resp))
     assert app.dispatch(ConnectDevice(key="0402:3922")).ok
 
     panel = ScreencastPanel(app, _bus(app))
@@ -2159,23 +2180,26 @@ def _point(x: int, y: int):
     return QPoint(x, y)
 
 
-def _press(overlay: object, x: int, y: int, button: str = "LeftButton") -> None:
-    overlay.mousePressEvent(  # type: ignore[attr-defined]
+def _press(overlay: DragSelectOverlay, x: int, y: int, button: str = "LeftButton") -> None:
+    overlay.mousePressEvent(
         _mouse_event("MouseButtonPress", x, y, button, button))
 
 
-def _move_to(overlay: object, x: int, y: int) -> None:
-    overlay.mouseMoveEvent(  # type: ignore[attr-defined]
+def _move_to(overlay: DragSelectOverlay, x: int, y: int) -> None:
+    overlay.mouseMoveEvent(
         _mouse_event("MouseMove", x, y, "NoButton", "LeftButton"))
 
 
-def _release(overlay: object, x: int, y: int) -> None:
-    overlay.mouseReleaseEvent(  # type: ignore[attr-defined]
+def _release(overlay: DragSelectOverlay, x: int, y: int) -> None:
+    overlay.mouseReleaseEvent(
         _mouse_event("MouseButtonRelease", x, y, "LeftButton", "NoButton"))
 
 
-def _confirmed_rects(overlay: object) -> list[tuple[int, int, int, int]]:
-    """Subscribe to whichever signal this skin confirms with."""
+def _confirmed_rects(overlay: Any) -> list[tuple[int, int, int, int]]:
+    """Subscribe to whichever signal this skin confirms with.
+
+    ``Any``: each skin names its own signal, which is the point of the probe.
+    """
     seen: list[tuple[int, int, int, int]] = []
 
     def _on_region(x: int, y: int, w: int, h: int) -> None:
@@ -2185,9 +2209,9 @@ def _confirmed_rects(overlay: object) -> list[tuple[int, int, int, int]]:
         seen.append((0, 0, -1, -1) if pixmap is None else (0, 0, 1, 1))
 
     if hasattr(overlay, "region_selected"):
-        overlay.region_selected.connect(_on_region)  # type: ignore[attr-defined]
+        overlay.region_selected.connect(_on_region)
     else:
-        overlay.captured.connect(_on_captured)  # type: ignore[attr-defined]
+        overlay.captured.connect(_on_captured)
     return seen
 
 
@@ -3678,7 +3702,8 @@ def test_a_led_tab_shows_itself_unless_it_says_otherwise() -> None:
     from trcc.ui.qtgui.panels.led._base import LedTabBase
 
     assert LedTabBase._placeholder_visible is False
-    assert LedTabBase.has_visible_content(LedTabBase) is True  # type: ignore[arg-type]
+    unbuilt = LedTabBase.__new__(LedTabBase)    # the answer reads only the default
+    assert unbuilt.has_visible_content() is True
 
 
 def test_a_panel_without_setup_ui_is_refused_at_class_creation() -> None:
@@ -4458,7 +4483,9 @@ def test_qtgui_s_disk_picker_follows_another_ui(gui_app: App, qtbot) -> None:
     from .conftest import FakeCpu, FakeMemory
     from .test_sensors import FakeDisk
 
-    gui_app.platform._sensors = BaselineSensors(   # type: ignore[attr-defined]
+    platform = gui_app.platform
+    assert isinstance(platform, FakePlatform)
+    platform._sensors = BaselineSensors(
         cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
         disks=[FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0)])
     panel = LedPanel(gui_app, _bus(gui_app))

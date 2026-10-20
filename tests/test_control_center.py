@@ -11,6 +11,7 @@ Each Command is a Settings write + an EventBus publish. Validation:
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -266,8 +267,8 @@ def test_every_declared_refresh_default_agrees_with_the_constant() -> None:
                 return f.default
         raise AssertionError(f"{cls.__name__} has no field {name}")
 
-    def _param_default(fn: object, name: str) -> object:
-        return inspect.signature(fn).parameters[name].default  # type: ignore[arg-type]
+    def _param_default(fn: Callable[..., object], name: str) -> object:
+        return inspect.signature(fn).parameters[name].default
 
     declared = {
         "AppSettings.refresh_interval_s":

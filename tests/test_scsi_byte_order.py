@@ -74,7 +74,7 @@ def test_a_boot_animation_is_packed_in_the_panels_byte_order(
     assert app.dispatch(ConnectDevice(key="0402:3922")).ok
     sent: list[bytes] = []
     device = app.devices["0402:3922"]
-    device.send_boot_animation = lambda frames, delays: sent.extend(frames) or len(frames)  # type: ignore[method-assign]
+    device.send_boot_animation = lambda frames, delays_ds: sent.extend(frames) or len(frames)
 
     assert app.dispatch(UploadBootAnimation(key="0402:3922", frame_paths=[red],
                                             delays_ds=[10])).ok

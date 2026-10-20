@@ -174,17 +174,49 @@ def test_autostart_disable_clears_state(fake_platform) -> None:
 
 def _attach_sku_device(app: App, key: str, fbl: int, pm: int, sub: int) -> None:
     """Attach a device whose handshake selects a per-SKU artwork library."""
-    from types import SimpleNamespace
-
-    from trcc.core.protocol import get_profile
-
-    app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
-        profile=get_profile(fbl, pm),
-        handshake=SimpleNamespace(sub_byte=sub, pm_byte=pm),
-        info=SimpleNamespace(key=key,
-                             native_resolution=get_profile(fbl, pm).resolution),
-        is_connected=True,
+    from trcc.core.models import (
+        HandshakeResult,
+        Kind,
+        ProductInfo,
+        Wire,
+        parse_device_key,
     )
+    from trcc.core.ports import BulkTransport, Device
+    from trcc.core.protocol import DeviceProfile, get_profile
+
+    from .conftest import FakeBulkTransport
+
+    profile = get_profile(fbl, pm)
+
+    class _SkuDevice(Device[BulkTransport]):
+        """Handshaken with *pm*/*sub* -- the bytes that pick the library."""
+
+        @property
+        def profile(self) -> DeviceProfile:
+            return profile
+
+        @property
+        def is_connected(self) -> bool:
+            return True
+
+        def connect(self) -> HandshakeResult:
+            raise AssertionError("GetPaths never connects a device")
+
+        def send(self, payload: object) -> bool:
+            return False
+
+        def disconnect(self) -> None:
+            pass
+
+    vid, pid, _ = parse_device_key(key)
+    device = _SkuDevice(
+        ProductInfo(vid=vid, pid=pid, vendor="fake", product="fake",
+                    wire=Wire.BULK, kind=Kind.LCD,
+                    native_resolution=profile.resolution),
+        FakeBulkTransport())
+    device._handshake = HandshakeResult(resolution=profile.resolution,
+                                        model_id=pm, pm_byte=pm, sub_byte=sub)
+    app.devices[key] = device
 
 
 def test_get_paths_without_a_key_stays_generic(fake_platform) -> None:

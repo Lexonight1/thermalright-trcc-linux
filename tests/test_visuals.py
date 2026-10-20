@@ -254,12 +254,17 @@ class _FakeReader:
 
 
 @pytest.fixture
-def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App]:
+def tasks() -> list[str]:
+    """The key of every task the App was asked to run, in order."""
+    return []
+
+
+@pytest.fixture
+def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        tasks: list[str]) -> Iterator[App]:
     monkeypatch.setattr(MediaService, "visual_reader", _FakeReader)
-    tasks: list[str] = []
     monkeypatch.setattr(App, "add_task", lambda self, task: tasks.append(task.key))
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
-    app.tasks = tasks                        # type: ignore[attr-defined]
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     show_a_theme(app, _KEY)
     yield app
@@ -336,7 +341,7 @@ def test_each_visual_lists_only_its_own_presets(
     assert all(v.presets == () for v in listed.visuals if not v.uses_presets)
 
 
-def test_a_visual_plays_as_the_panel_s_background(app: App) -> None:
+def test_a_visual_plays_as_the_panel_s_background(app: App, tasks: list[str]) -> None:
     result = app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes",
                                      settings={"fire": 1.0}))
     assert (result.ok, result.playing) == (True, True)
@@ -348,7 +353,7 @@ def test_a_visual_plays_as_the_panel_s_background(app: App) -> None:
     s = app.settings.for_device(_KEY)
     assert (s.visual, s.visual_settings) == ("trcc-pipes", {"fire": 1.0})
     assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "visual"
-    assert app.tasks == [task_key(_KEY)]       # type: ignore[attr-defined]
+    assert tasks == [task_key(_KEY)]
     observer = app._render_observer
     assert observer._cadence_owner(_KEY) == "visual"
 
@@ -805,8 +810,8 @@ def _fake_soundcard(monkeypatch: pytest.MonkeyPatch,
                                      recorder)
 
     module = types.ModuleType("soundcard")
-    module.default_speaker = lambda: speaker            # type: ignore[attr-defined]
-    module.get_microphone = get_microphone              # type: ignore[attr-defined]
+    monkeypatch.setattr(module, "default_speaker", lambda: speaker, raising=False)
+    monkeypatch.setattr(module, "get_microphone", get_microphone, raising=False)
     monkeypatch.setitem(sys.modules, "soundcard", module)
     from trcc.adapters.visual import loopback
     monkeypatch.setattr(loopback.importlib.util, "find_spec",
@@ -906,7 +911,8 @@ def _fake_catap(monkeypatch: pytest.MonkeyPatch,
         return made[-1]
 
     module = types.ModuleType("catap")
-    module.record_system_audio = record_system_audio    # type: ignore[attr-defined]
+    monkeypatch.setattr(module, "record_system_audio", record_system_audio,
+                        raising=False)
     monkeypatch.setitem(sys.modules, "catap", module)
     monkeypatch.setattr(coreaudio.platform, "mac_ver", lambda: ("15.1", "", ""))
     monkeypatch.setattr(coreaudio.importlib.util, "find_spec",

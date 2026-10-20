@@ -44,12 +44,12 @@ def test_a_packaged_rule_is_installed_rules(dirs) -> None:
     _, lib = dirs
     _package(lib)
 
-    assert LinuxOS.check_permissions(None) == []        # type: ignore[arg-type]
-    assert "not permissions" in LinuxOS.permission_denied_hint(None)  # type: ignore[arg-type]
+    assert LinuxOS().check_permissions() == []
+    assert "not permissions" in LinuxOS().permission_denied_hint()
 
 
 def test_no_rules_anywhere_says_so_with_a_command_that_runs(dirs) -> None:
-    warnings = LinuxOS.check_permissions(None)          # type: ignore[arg-type]
+    warnings = LinuxOS().check_permissions()
 
     assert len(warnings) == 1
     assert "`trcc system setup`" in warnings[0]
@@ -117,7 +117,7 @@ def test_a_missing_motherboard_rgb_rule_asks_for_setup(dirs) -> None:
     _, lib = dirs
     (lib / _NAME).write_text(_udev.build_udev_rules(), encoding="utf-8")
 
-    assert LinuxOS.check_permissions(None) == [   # type: ignore[arg-type]
+    assert LinuxOS().check_permissions() == [
         "the motherboard RGB udev rules (70-trcc-rgb.rules) are missing or "
         "from an older TRCC — run `trcc system setup`"]
 

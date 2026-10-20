@@ -65,11 +65,12 @@ def app(tmp_home: Path, scheduler: _Scheduler) -> App:
     """A 320x320 panel showing a red theme with one text element."""
     from PySide6.QtGui import QImage
 
-    a = App(platform=FakePlatform(tmp_home), send_scheduler=scheduler,
+    platform = FakePlatform(tmp_home)
+    a = App(platform=platform, send_scheduler=scheduler,
             renderer=QtRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                      # FBL=100 -> 320x320
-    a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     assert a.dispatch(ConnectDevice(key=_KEY)).ok
     theme = a.platform.paths().theme_dir(320, 320) / "Red"
     theme.mkdir(parents=True)

@@ -30,7 +30,7 @@ from trcc.__version__ import __version__
 from trcc.app import App
 from trcc.core.commands import GetPaths, LoadTheme
 from trcc.core.models import DEFAULT_AUTOSTART_TARGET
-from trcc.core.ports import Renderer
+from trcc.core.ports import Device, Renderer
 from trcc.core.protocol import FBL_PROFILES
 
 from .conftest import FakePlatform, loopback_client
@@ -1349,7 +1349,7 @@ def test_display_tick_dispatches_only_the_animation_tick(
     """
     from trcc.core.commands import TickDisplay
 
-    trcc = api_client.app.state.trcc          # type: ignore[attr-defined]
+    trcc = _bus_of(api_client)
     # Depth-tracked: a Command may dispatch others, and this pins what the
     # ROUTE chooses, not how TickDisplay composes itself.
     route_dispatched: list[str] = []
@@ -1417,7 +1417,8 @@ def _attach_sku_device(
     info = ALL_DEVICES.get((vid, pid)) or SimpleNamespace(
         key=key, native_resolution=profile.resolution,
     )
-    trcc.devices[key] = SimpleNamespace(   # type: ignore[assignment]
+    # cast: a stub carrying only what the routes read -- no transport to open
+    trcc.devices[key] = cast(Device, SimpleNamespace(
         profile=profile,
         needs_keepalive=False,             # every Device answers it (#228)
         # The REAL dataclass, not a namespace carrying two bytes.  The stub
@@ -1433,7 +1434,7 @@ def _attach_sku_device(
         info=info,
         is_connected=True,
         is_led=False,
-    )
+    ))
 
 
 def test_display_masks_reads_the_devices_own_mask_library(
@@ -1451,7 +1452,7 @@ def test_display_masks_reads_the_devices_own_mask_library(
     """
     key = "87ad:70db"                     # GrandVision 360 AIO, FBL 72, 480x480
     _attach_sku_device(
-        api_client.app.state.trcc,        # type: ignore[attr-defined]
+        _bus_of(api_client),
         key, fbl=72, pm=3, sub=0,
     )
 
@@ -1492,7 +1493,7 @@ def test_theme_web_gallery_reads_the_devices_own_library(
     """
     key = "0416:5408"
     _attach_sku_device(
-        api_client.app.state.trcc,        # type: ignore[attr-defined]
+        _bus_of(api_client),
         key, fbl=114, pm=64, sub=3,
     )
 
@@ -1547,7 +1548,7 @@ def test_theme_web_gallery_falls_back_when_the_sku_library_is_absent(
     """
     key = "0416:5409"
     _attach_sku_device(
-        api_client.app.state.trcc,        # type: ignore[attr-defined]
+        _bus_of(api_client),
         key, fbl=114, pm=64, sub=3,
     )
 

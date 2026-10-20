@@ -13,6 +13,7 @@ rather than an excuse.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -21,11 +22,10 @@ from trcc.core.models import UsbPowerState
 
 
 def _state(**over) -> UsbPowerState:
-    base = dict(control="auto", runtime_status="active",
-                autosuspend_delay_ms=10000, suspended_time_ms=0,
-                supports_remote_wakeup=True)
-    base.update(over)
-    return UsbPowerState(**base)  # type: ignore[arg-type]
+    base = UsbPowerState(control="auto", runtime_status="active",
+                         autosuspend_delay_ms=10000, suspended_time_ms=0,
+                         supports_remote_wakeup=True)
+    return replace(base, **over)
 
 
 # ── the DTO's two derived facts ───────────────────────────────────────

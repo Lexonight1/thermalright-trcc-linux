@@ -11,6 +11,7 @@ from __future__ import annotations
 import compileall
 import importlib
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -25,13 +26,12 @@ from trcc.adapters.diagnostics.install import (
 
 
 def _info(**over) -> InstallInfo:
-    base = dict(
+    base = InstallInfo(
         version="9.8.8", source_version="9.8.8", module_path=None,
         interpreter="/usr/bin/python3", python="3.12.13", installer="pip",
         executables=(),
     )
-    base.update(over)
-    return InstallInfo(**base)  # type: ignore[arg-type]
+    return replace(base, **over)
 
 
 # ── bytecode_stale ────────────────────────────────────────────────────

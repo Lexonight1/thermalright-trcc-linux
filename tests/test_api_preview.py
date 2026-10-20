@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from trcc.adapters.render.qt import QtRenderer
@@ -40,7 +41,9 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
 
 
 def _load_theme(client: TestClient, tmp_path: Path) -> None:
-    client.app.state.trcc.active_themes[_KEY] = Theme(   # type: ignore[attr-defined]
+    api = client.app
+    assert isinstance(api, FastAPI)
+    api.state.trcc.active_themes[_KEY] = Theme(
         path=tmp_path / "theme", name="t",
         resolution=(854, 480), config={"elements": []},
     )

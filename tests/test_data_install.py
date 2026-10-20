@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from trcc.core.ports import HttpFetcher
+from trcc.core.ports import DataInstaller, HttpFetcher
 from trcc.services.data_install import DataInstallService
 
 from .conftest import FakePlatform
@@ -22,14 +22,14 @@ from .conftest import FakePlatform
 _REAL_ENSURE_ALL = DataInstallService.ensure_all
 
 
-class _RecordingInstaller:
+class _RecordingInstaller(DataInstaller):
     """Records every archive_name install() is asked for; installs nothing."""
 
     def __init__(self) -> None:
         self.archives: list[str] = []
 
-    def install(self, *, archive_name: str, target_dir: Path,
-                subpath: str | None = None) -> bool:
+    def install(self, archive_name: str, target_dir: Path, *,
+                subpath: str = "") -> bool:
         self.archives.append(archive_name)
         return True
 
@@ -37,7 +37,7 @@ class _RecordingInstaller:
 def _run(tmp_home: Path, resolution: tuple[int, int]) -> list[str]:
     paths = FakePlatform(tmp_home).paths()
     rec = _RecordingInstaller()
-    _REAL_ENSURE_ALL(DataInstallService(paths, rec), resolution)  # type: ignore[arg-type]
+    _REAL_ENSURE_ALL(DataInstallService(paths, rec), resolution)
     return rec.archives
 
 

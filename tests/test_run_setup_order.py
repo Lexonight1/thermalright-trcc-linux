@@ -7,14 +7,20 @@ as a result; this locks that ordering for the Command-bus rewrite.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+from trcc.app import App
 from trcc.core.commands.system import RunSetup
 
+from .conftest import FakePlatform
 
-class _OrderTrackingPlatform:
+
+class _OrderTrackingPlatform(FakePlatform):
     """check_permissions warns ONLY before setup ran — so a result with no
     warnings proves RunSetup checked permissions after the install."""
 
-    def __init__(self) -> None:
+    def __init__(self, tmp_home: Path) -> None:
+        super().__init__(tmp_home)
         self.calls: list[str] = []
 
     def setup(self, dry_run: bool = False) -> int:
@@ -27,14 +33,9 @@ class _OrderTrackingPlatform:
         return warns
 
 
-class _App:
-    def __init__(self, platform: _OrderTrackingPlatform) -> None:
-        self.platform = platform
-
-
-def test_run_setup_checks_permissions_after_setup() -> None:
-    platform = _OrderTrackingPlatform()
-    result = RunSetup().execute(_App(platform))  # type: ignore[arg-type]
+def test_run_setup_checks_permissions_after_setup(tmp_home: Path) -> None:
+    platform = _OrderTrackingPlatform(tmp_home)
+    result = RunSetup().execute(App(platform=platform))
 
     assert platform.calls == ["setup", "check"]
     # the stale pre-install warning is gone — the post-install state is clean
@@ -43,7 +44,9 @@ def test_run_setup_checks_permissions_after_setup() -> None:
     assert result.exit_code == 0
 
 
-def test_setup_applies_by_default_and_only_dry_run_previews() -> None:
+def test_setup_applies_by_default_and_only_dry_run_previews(
+    tmp_home: Path,
+) -> None:
     """#285: `--yes` previewed instead of writing the udev rules.
 
     The platform flag was `interactive` and inverted -- `interactive=False`
@@ -56,7 +59,7 @@ def test_setup_applies_by_default_and_only_dry_run_previews() -> None:
     """
     seen: list[bool] = []
 
-    class _Platform:
+    class _Platform(FakePlatform):
         def setup(self, dry_run: bool = False) -> int:
             seen.append(dry_run)
             return 0
@@ -64,9 +67,9 @@ def test_setup_applies_by_default_and_only_dry_run_previews() -> None:
         def check_permissions(self) -> list[str]:
             return []
 
-    app = _App(_Platform())          # type: ignore[arg-type]
-    RunSetup().execute(app)          # type: ignore[arg-type]
-    RunSetup(dry_run=True).execute(app)   # type: ignore[arg-type]
+    app = App(platform=_Platform(tmp_home))
+    RunSetup().execute(app)
+    RunSetup(dry_run=True).execute(app)
 
     assert seen == [False, True], (
         "default must APPLY and only dry_run=True may preview; got "

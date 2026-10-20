@@ -69,7 +69,14 @@ class _FakeReader:
 
 
 @pytest.fixture
-def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App]:
+def tasks() -> list[str]:
+    """The key of every task ``app`` was handed, in order."""
+    return []
+
+
+@pytest.fixture
+def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        tasks: list[str]) -> Iterator[App]:
     import trcc.core.toolchain as toolchain
 
     monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
@@ -77,10 +84,8 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App]:
     # The real threaded scheduler, so a send completes (``App.send`` waits for
     # the wire); the stream DRIVER is recorded instead of run, so each test
     # dispatches its own ticks and nothing races it.
-    tasks: list[str] = []
     monkeypatch.setattr(App, "add_task", lambda self, task: tasks.append(task.key))
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
-    app.tasks = tasks                        # type: ignore[attr-defined]
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     show_a_theme(app, _KEY)
     yield app
@@ -100,7 +105,7 @@ def _source(app: App) -> str:
     return app.dispatch(LcdSnapshot(key=_KEY)).display_source
 
 
-def test_a_url_plays_as_a_live_stream(app: App) -> None:
+def test_a_url_plays_as_a_live_stream(app: App, tasks: list[str]) -> None:
     result = app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
 
     assert (result.ok, result.playing) == (True, True)
@@ -109,7 +114,7 @@ def test_a_url_plays_as_a_live_stream(app: App) -> None:
     assert profile is not None
     assert _reader(app).size == profile.resolution
     assert _source(app) == "media"
-    assert app.tasks == [task_key(_KEY)], "no driver ticks the stream"  # type: ignore[attr-defined]
+    assert tasks == [task_key(_KEY)], "no driver ticks the stream"
 
 
 def test_a_tick_puts_the_stream_s_frame_on_the_panel(app: App) -> None:
@@ -348,12 +353,12 @@ def test_qtgui_plays_a_url_and_says_so(app: App, qtgui_panel: Any, qtbot: Any) -
 
 
 def test_qtgui_shows_a_cast_another_ui_started(
-    app: App, qtgui_panel: Any, qtbot: Any,
+    app: App, qtgui_panel: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from tests.conftest import FakeMic
     from trcc.core.commands import StartScreencast
 
-    app.audio = FakeMic()                       # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", FakeMic())
     assert app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=32, h=32)).ok
     qtbot.wait(50)
 

@@ -219,7 +219,7 @@ def test_the_report_survives_a_denied_device(tmp_path) -> None:
 def test_windows_advice_names_winusb_and_the_one_program_rule() -> None:
     from trcc.adapters.system.windows import WindowsPlatform
 
-    hint = WindowsPlatform.permission_denied_hint(object())   # type: ignore[arg-type]
+    hint = WindowsPlatform().permission_denied_hint()
     assert "WinUSB" in hint and "no other TRCC" in hint
     assert "udev" not in hint
 
@@ -242,4 +242,4 @@ def test_linux_advice_matches_whether_the_rules_are_installed(
     # Every directory udev reads is checked now, so pin them all: with only
     # the path pinned, the dev box's real installed rule read as "installed".
     monkeypatch.setattr(_udev, "RULES_DIRS", (tmp_path,))
-    assert expected in LinuxOS.permission_denied_hint(object())  # type: ignore[arg-type]
+    assert expected in LinuxOS().permission_denied_hint()

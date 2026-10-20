@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
+from trcc.core.ports import Transport
 
 _KEY = "0402:3922"
 _SPEC = [{"type": "lcd", "name": "Frozen Warframe", "vid": "0402",
@@ -274,10 +275,10 @@ def test_a_panel_handed_back_without_an_event_is_reconnected(tmp_path: Path) -> 
     transport.open = lambda: False
     hand_back = app.platform.open_transport
 
-    def no_node(*_args: object, **_kwargs: object) -> object:
+    def no_node(*_args: object, **_kwargs: object) -> NoReturn:
         raise TransportError("No SCSI device node found for 0402:3922")
 
-    app.platform.open_transport = no_node      # type: ignore[method-assign]
+    app.platform.open_transport = no_node
     app.send(_KEY, b"\x00" * 204800, wait=False)
     for now in range(0, 30):                   # the VM keeps it for 30 s
         clock.tick(float(now))
@@ -329,11 +330,11 @@ def test_a_hotplug_add_with_no_node_yet_keeps_waiting(tmp_path: Path) -> None:
     app.dispatch(ConnectDevice(key=_KEY))
     hand_back = app.platform.open_transport
 
-    def no_node(*_args: object, **_kwargs: object) -> object:
+    def no_node(*_args: object, **_kwargs: object) -> NoReturn:
         raise TransportError("No SCSI device node found for 0402:3922")
 
     app._on_device_detached(DeviceDetached(key=_KEY, vid=0x0402, pid=0x3922))
-    app.platform.open_transport = no_node      # type: ignore[method-assign]
+    app.platform.open_transport = no_node
     app._on_device_attached(DeviceAttached(key=_KEY, vid=0x0402, pid=0x3922))
     assert _KEY not in app.devices, "precondition: the add found no node"
 
@@ -369,8 +370,11 @@ def test_a_lost_panel_raises_no_error_event_per_frame(app: App) -> None:
     # drain frame, whose failure goes to its caller -- and test nothing.
     failures: list[str] = []
     sender = app.senders[_KEY]
-    sender._on_failure = lambda key, exc: (  # type: ignore[method-assign]
-        failures.append(key), app._on_sender_failure(key, exc))
+
+    def record(key: str, exc: BaseException | None) -> None:
+        failures.append(key)
+        app._on_sender_failure(key, exc)
+    sender._on_failure = record
     for _ in range(10):
         app.send(_KEY, b"\x00" * 204800, wait=False)
         deadline = time.monotonic() + 2
@@ -430,10 +434,10 @@ def test_a_panel_whose_node_is_late_after_a_wake_is_retried(tmp_path: Path) -> N
     app.dispatch(ConnectDevice(key=_KEY))
     hand_back = app.platform.open_transport
 
-    def no_node(*_args: object, **_kwargs: object) -> object:
+    def no_node(*_args: object, **_kwargs: object) -> NoReturn:
         raise TransportError("No SCSI device node found for 0402:3922")
 
-    app.platform.open_transport = no_node      # type: ignore[method-assign]
+    app.platform.open_transport = no_node
     app.events.publish(SystemResumed())
     assert not (_KEY in app.devices and app.devices[_KEY].is_connected), \
         "precondition: the wake's own connect found no node"
@@ -458,10 +462,10 @@ def _coldplug_without(tmp_path: Path, error: Exception):
     app = App(platform=MockPlatform(_SPEC, tmp_path), send_scheduler=clock)
     hand_back = app.platform.open_transport
 
-    def failing(*_args: object, **_kwargs: object) -> object:
+    def failing(*_args: object, **_kwargs: object) -> NoReturn:
         raise error
 
-    app.platform.open_transport = failing      # type: ignore[method-assign]
+    app.platform.open_transport = failing
     app.discover_and_connect()
     assert _KEY not in app.devices or not app.devices[_KEY].is_connected, \
         "precondition: the startup connect failed"
@@ -509,7 +513,7 @@ def test_a_panel_nobody_may_open_is_not_retried(tmp_path: Path, where: str) -> N
                   send_scheduler=SyncSendScheduler())
         build = app.platform.open_transport
 
-        def refusing_to_open(*args: Any, **kwargs: Any) -> object:
+        def refusing_to_open(*args: Any, **kwargs: Any) -> Transport:
             transport = build(*args, **kwargs)
 
             def no(*_a: object, **_k: object) -> bool:
@@ -518,7 +522,7 @@ def test_a_panel_nobody_may_open_is_not_retried(tmp_path: Path, where: str) -> N
             transport.open = no
             return transport
 
-        app.platform.open_transport = refusing_to_open  # type: ignore[method-assign]
+        app.platform.open_transport = refusing_to_open
         app.discover_and_connect()
 
     watcher = app._watchers.get(_KEY)

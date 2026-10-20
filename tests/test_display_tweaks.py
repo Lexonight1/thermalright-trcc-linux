@@ -299,11 +299,11 @@ def _island_assets(levita: App, mode: int) -> list[str]:
     levita.display._split_cache.clear()
     real = levita.display._load_split_asset
 
-    def spy(name: str):
-        loaded.append(name)
-        return real(name)
+    def spy(asset_name: str):
+        loaded.append(asset_name)
+        return real(asset_name)
 
-    levita.display._load_split_asset = spy       # type: ignore[method-assign]
+    levita.display._load_split_asset = spy
     levita.dispatch(SetSplitMode(key="87ad:70db", mode=mode))
     device = levita.devices["87ad:70db"]
     frame = levita.display.build_frame(

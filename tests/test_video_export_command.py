@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -40,6 +41,7 @@ from trcc.core.models import (
     FitMode,
     VideoExportRequest,
 )
+from trcc.core.ports import VideoExportRunner
 from trcc.core.registry import ALL_DEVICES
 
 # A registry row is enough to know the canvas — that is what lets a user
@@ -115,14 +117,14 @@ def test_returns_a_live_token_without_waiting_for_the_encode(
     """
     recorded: list[tuple[str, VideoExportRequest]] = []
 
-    class RecordingRunner:
+    class RecordingRunner(VideoExportRunner):
         def submit(self, token: str, request: VideoExportRequest) -> None:
             recorded.append((token, request))
 
         def shutdown(self) -> None:
             pass
 
-    app.video_export_runner = RecordingRunner()  # type: ignore[assignment]
+    app.video_export_runner = RecordingRunner()
     result = app.dispatch(ExportVideoClip(key=KEY, path=fake_clip, end_ms=500))
 
     assert result.ok is True
@@ -358,14 +360,14 @@ def test_end_ms_defaults_to_the_whole_clip(app: App, clip: Path) -> None:
     """``end_ms=None`` probes rather than guessing — the trimmer's default."""
     recorded: list[VideoExportRequest] = []
 
-    class RecordingRunner:
+    class RecordingRunner(VideoExportRunner):
         def submit(self, token: str, request: VideoExportRequest) -> None:
             recorded.append(request)
 
         def shutdown(self) -> None:
             pass
 
-    app.video_export_runner = RecordingRunner()  # type: ignore[assignment]
+    app.video_export_runner = RecordingRunner()
     app.dispatch(ExportVideoClip(key=KEY, path=clip))
     assert 1900 <= recorded[0].end_ms <= 2100
 
@@ -453,14 +455,14 @@ def test_the_fit_button_reaches_the_encoder(
     """
     recorded: list[VideoExportRequest] = []
 
-    class RecordingRunner:
+    class RecordingRunner(VideoExportRunner):
         def submit(self, token: str, request: VideoExportRequest) -> None:
             recorded.append(request)
 
         def shutdown(self) -> None:
             pass
 
-    app.video_export_runner = RecordingRunner()  # type: ignore[assignment]
+    app.video_export_runner = RecordingRunner()
     result = app.dispatch(
         ExportVideoClip(key=KEY, path=fake_clip, end_ms=500, fit_mode=mode),
     )
@@ -482,14 +484,14 @@ def test_an_untouched_export_still_takes_the_auto_arm(
     """
     recorded: list[VideoExportRequest] = []
 
-    class RecordingRunner:
+    class RecordingRunner(VideoExportRunner):
         def submit(self, token: str, request: VideoExportRequest) -> None:
             recorded.append(request)
 
         def shutdown(self) -> None:
             pass
 
-    app.video_export_runner = RecordingRunner()  # type: ignore[assignment]
+    app.video_export_runner = RecordingRunner()
     app.dispatch(ExportVideoClip(key=KEY, path=fake_clip, end_ms=500))
     assert recorded[0].fit_mode is None
 
@@ -505,8 +507,9 @@ def test_an_unknown_fit_is_refused_before_queueing(
     listening instead of handing ffmpeg a filter it cannot mean.
     """
     result = app.dispatch(
+        # cast: a string the enum does not name, as IPC coercion passes it on
         ExportVideoClip(key=KEY, path=fake_clip, end_ms=500,
-                        fit_mode="diagonal"),  # type: ignore[arg-type]
+                        fit_mode=cast(FitMode, "diagonal")),
     )
     assert result.ok is False
     assert "Fit mode must be" in result.message

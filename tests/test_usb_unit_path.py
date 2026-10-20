@@ -392,7 +392,8 @@ def test_a_reset_re_finds_its_own_unit_not_the_first_one_listed(
     mine = _Dev(bus=1, port_numbers=(11,), address=3)
     resets: list[_Dev] = []
     for dev in (sibling, mine):
-        dev.reset = lambda dev=dev: resets.append(dev)      # type: ignore[attr-defined]
+        monkeypatch.setattr(dev, "reset", lambda dev=dev: resets.append(dev),
+                            raising=False)
     monkeypatch.setattr(_pyusb_find, "find",
                         lambda **kw: [sibling, mine] if kw.get("find_all")
                         else sibling)

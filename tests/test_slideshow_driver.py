@@ -21,7 +21,10 @@ from pathlib import Path
 
 import pytest
 
-from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+from trcc.adapters.infra.send_scheduler import (
+    SyncSendScheduler,
+    ThreadSendScheduler,
+)
 from trcc.app import App
 from trcc.core.commands import (
     ConfigureSlideshow,
@@ -43,11 +46,12 @@ def scheduler() -> SyncSendScheduler:
 
 @pytest.fixture
 def app(tmp_home: Path, scheduler: SyncSendScheduler) -> App:
-    a = App(platform=FakePlatform(tmp_home), send_scheduler=scheduler,
+    platform = FakePlatform(tmp_home)
+    a = App(platform=platform, send_scheduler=scheduler,
             renderer=_CliRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                      # FBL=100 → 320x320
-    a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     assert a.dispatch(ConnectDevice(key=_KEY)).ok
     return a
 
@@ -219,7 +223,9 @@ def _showing(app: App) -> str | None:
 
 
 def _driving(app: App) -> bool:
-    return task_key(_KEY) in app._send_scheduler._threads   # type: ignore[attr-defined]
+    scheduler = app._send_scheduler        # the App's default: real threads
+    assert isinstance(scheduler, ThreadSendScheduler)
+    return task_key(_KEY) in scheduler._threads
 
 
 def test_a_saved_slideshow_resumes_when_the_app_starts(tmp_home: Path) -> None:

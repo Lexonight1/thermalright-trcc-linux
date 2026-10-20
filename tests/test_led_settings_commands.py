@@ -356,7 +356,9 @@ def test_a_fresh_leds_snapshot_counts_its_panels_segments(
 
     app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=pm)
-    style = app.get(_LED_KEY).led_handshake.style  # type: ignore[attr-defined]
+    handshake = app.get(_LED_KEY).led_handshake
+    assert handshake is not None
+    style = handshake.style
     display = get_display(style)
 
     snap = app.dispatch(LedSnapshot(key=_LED_KEY))
@@ -446,17 +448,20 @@ def test_the_carousel_interval_counts_like_the_csharp() -> None:
     assert (zone_sync_units(12), zone_sync_units(13), zone_sync_units(1)) == (2, 2, 1)
 
 
-def test_the_gui_sends_the_carousel_interval_in_csharp_ticks() -> None:
+def test_the_gui_sends_the_carousel_interval_in_csharp_ticks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The gui's box shows the C# unit; 2 in it is 12 ticks, not 13.
 
     MUTATION CHECK: put back ``int(secs * 1000 / 150)`` → this fails.
     """
-    from types import SimpleNamespace
-
     from trcc.ui.gui.led_handler import LEDHandler
 
     sent: list = []
-    fake = SimpleNamespace(_device_key="0416:8001", _dispatch=sent.append)
-    LEDHandler._on_carousel_interval_changed(fake, 2)  # type: ignore[arg-type]
+    # Unbuilt: the slot reads only the key and the dispatch.
+    handler = LEDHandler.__new__(LEDHandler)
+    handler._device_key = "0416:8001"
+    monkeypatch.setattr(handler, "_dispatch", sent.append)
+    handler._on_carousel_interval_changed(2)
 
     assert sent == [SetLedZoneSyncInterval(key="0416:8001", ticks=12)]

@@ -8,6 +8,7 @@ import pytest
 
 from trcc import daemon, ipc
 from trcc._boot import _ENV_FLAG
+from trcc.core.ports import Platform
 
 
 def test_ensure_daemon_strips_daemon_flag_from_child_env(
@@ -274,13 +275,15 @@ def test_the_gui_s_real_platform_still_reaches_the_shared_app(
     assert isinstance(_boot.trcc(platform=current_platform()), AppProxy)
 
 
-def _host_subclass() -> object:
+def _host_subclass() -> Platform:
     """A keyless subclass of this host's class -- the shape of the dev mock's
     ``DevPlatform`` / ``DevMockPlatform``: an INSTANCE of the host class, so
     ``isinstance`` would wave it through to the shared App."""
     from trcc.adapters.system import host_platform_class
 
-    return object.__new__(type("_DevLike", (host_platform_class(),), {}))
+    instance = object.__new__(type("_DevLike", (host_platform_class(),), {}))
+    assert isinstance(instance, Platform)
+    return instance
 
 
 @pytest.mark.parametrize("stand_in", ["fake", "host subclass"])
@@ -305,7 +308,7 @@ def test_a_stand_in_platform_never_reaches_the_shared_app(
                         lambda **kw: started.append("shared") or True)
     monkeypatch.setattr(_boot, "_build_local_app", lambda **kw: "LOCAL")
 
-    assert _boot.trcc(platform=platform) == "LOCAL"  # type: ignore[arg-type]
+    assert _boot.trcc(platform=platform) == "LOCAL"
     assert started == []
 
 

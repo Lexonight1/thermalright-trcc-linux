@@ -65,7 +65,8 @@ def test_an_attached_device_reports_identity_and_geometry(app: App) -> None:
     """The ok=True path: identity from the registry, geometry from handshake."""
     resp = bytearray(0xE100)
     resp[0] = 100                       # FBL=100 -> 320x320
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    assert isinstance(app.platform, FakePlatform)
+    app.platform.scsi.read_script.append(bytes(resp))
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
 
     result = app.dispatch(DeviceState(key=_KEY))
@@ -120,7 +121,8 @@ def test_it_reports_the_inspector_fields(app: App) -> None:
     """
     resp = bytearray(0xE100)
     resp[0] = 100                       # FBL=100 -> 320x320
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    assert isinstance(app.platform, FakePlatform)
+    app.platform.scsi.read_script.append(bytes(resp))
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
 
     result = app.dispatch(DeviceState(key=_KEY))

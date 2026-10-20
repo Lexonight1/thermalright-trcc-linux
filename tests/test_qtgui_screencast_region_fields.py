@@ -44,12 +44,12 @@ class _Harness:
         self.sent: list[SetScreencastRegion] = []
         real = self.app.dispatch
 
-        def counting(command: Any) -> Any:
-            if isinstance(command, SetScreencastRegion):
-                self.sent.append(command)
-            return real(command)
+        def counting(cmd: Any) -> Any:
+            if isinstance(cmd, SetScreencastRegion):
+                self.sent.append(cmd)
+            return real(cmd)
 
-        self.app.dispatch = counting          # type: ignore[method-assign]
+        self.app.dispatch = counting
         self.bus = BusBridge(self.app.events)
         self.panel = ScreencastPanel(self.app, self.bus)
         qtbot.addWidget(self.panel)

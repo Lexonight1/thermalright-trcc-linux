@@ -13,7 +13,10 @@ from typing import ClassVar, TypedDict
 
 import pytest
 
-from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+from trcc.adapters.infra.send_scheduler import (
+    SyncSendScheduler,
+    ThreadSendScheduler,
+)
 from trcc.app import App
 from trcc.core.commands import (
     CaptureScreencastFrame,
@@ -68,11 +71,12 @@ def scheduler() -> SyncSendScheduler:
 
 @pytest.fixture
 def app(tmp_home: Path, scheduler: SyncSendScheduler) -> App:
-    a = App(platform=FakePlatform(tmp_home), send_scheduler=scheduler,
+    platform = FakePlatform(tmp_home)
+    a = App(platform=platform, send_scheduler=scheduler,
             renderer=_CliRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                      # FBL=100 → 320x320
-    a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     assert a.dispatch(ConnectDevice(key=_KEY)).ok
     return a
 
@@ -127,13 +131,14 @@ def test_the_screencast_frame_is_encoded_for_the_PANEL_not_the_registry(
     )
 
     renderer = evo.renderer
-    renderer.calls.clear()                    # type: ignore[attr-defined]
+    assert isinstance(renderer, RecordingRenderer)
+    renderer.calls.clear()
     result = evo.dispatch(SendScreencastFrame(
         key=_EVO_KEY, frame=RawFrame(b"", 64, 64),
     ))
     assert result.ok is True, result.message
 
-    ran = [name for name, _ in renderer.calls]   # type: ignore[attr-defined]
+    ran = [name for name, _ in renderer.calls]
     assert "encode_jpeg" in ran, (
         "the panel handshook as JPEG and the frame was encoded some other "
         "way — the live profile is not reaching build_screencast_frame"
@@ -330,7 +335,7 @@ def test_nothing_is_captured_for_a_panel_that_is_away(
     casting: App, scheduler: SyncSendScheduler,
 ) -> None:
     """A lost panel costs no screen capture."""
-    capture = casting.platform.capture             # type: ignore[attr-defined]
+    capture = _capture(casting)
     casting.devices[_KEY].disconnect()
     driver = scheduler._tasks[task_key(_KEY)]
     grabbed = len(capture.regions)
@@ -372,7 +377,9 @@ def test_stopping_a_screencast_nobody_started_is_fine(app: App) -> None:
     assert app.dispatch(StopScreencast(key=_KEY)).ok
 
 
-def test_stopping_releases_the_capture_source(casting: App) -> None:
+def test_stopping_releases_the_capture_source(
+    casting: App, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A portal stream stays open until ``stop``, streaming a screen nobody is
     showing.  Only the gui's own timer used to release it; the Command now
     does, for every face.
@@ -380,7 +387,7 @@ def test_stopping_releases_the_capture_source(casting: App) -> None:
     MUTATION CHECK: drop the ``stop()`` call from ``StopScreencast``.
     """
     stops: list[int] = []
-    casting.platform.capture.stop = lambda: stops.append(1)   # type: ignore[method-assign]
+    monkeypatch.setattr(_capture(casting), "stop", lambda: stops.append(1))
 
     assert casting.dispatch(StopScreencast(key=_KEY)).ok
 
@@ -490,10 +497,11 @@ def test_the_metrics_actually_reach_the_screencast_pixels(tmp_home: Path) -> Non
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.models import OverlayElement, RawFrame, Theme
 
-    app = App(platform=FakePlatform(tmp_home), renderer=QtRenderer())
+    platform = FakePlatform(tmp_home)
+    app = App(platform=platform, renderer=QtRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                       # FBL=100 → 320x320
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
 
     info = app.get(_KEY).info
@@ -542,10 +550,11 @@ def test_the_preview_shows_the_same_picture_as_the_panel(tmp_home: Path) -> None
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.models import OverlayElement, RawFrame, Theme
 
-    app = App(platform=FakePlatform(tmp_home), renderer=QtRenderer())
+    platform = FakePlatform(tmp_home)
+    app = App(platform=platform, renderer=QtRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100
-    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
 
     info = app.get(_KEY).info
@@ -636,10 +645,11 @@ def threaded(tmp_home: Path, monkeypatch: pytest.MonkeyPatch):
     deaths: list[str] = []
     monkeypatch.setattr(threading, "excepthook",
                         lambda a: deaths.append(repr(a.exc_value)))
-    a = App(platform=FakePlatform(tmp_home), renderer=QtRenderer())
+    platform = FakePlatform(tmp_home)
+    a = App(platform=platform, renderer=QtRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100
-    a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    platform.scsi.read_script.append(bytes(resp))
     assert a.dispatch(ConnectDevice(key=_KEY)).ok
     stopped = _stops(a)
     yield a, stopped, deaths
@@ -647,7 +657,9 @@ def threaded(tmp_home: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def _driving(app: App) -> bool:
-    return task_key(_KEY) in app._send_scheduler._threads   # type: ignore[attr-defined]
+    scheduler = app._send_scheduler
+    assert isinstance(scheduler, ThreadSendScheduler)
+    return task_key(_KEY) in scheduler._threads
 
 
 def test_a_saved_screencast_theme_captures_without_the_gui(
@@ -775,7 +787,7 @@ def test_a_broken_capture_warns_once_not_every_tick(
 
 
 @pytest.fixture
-def mic(app: App) -> FakeMic:
+def mic(app: App, monkeypatch: pytest.MonkeyPatch) -> FakeMic:
     """Replace ``App.audio`` — a plain attribute (``app.py:216``).
 
     Assigned HERE and not on ``_audio``: a probe that wrote ``app._audio``
@@ -783,7 +795,7 @@ def mic(app: App) -> FakeMic:
     depended on whether the box running it had a microphone.
     """
     fake = FakeMic()
-    app.audio = fake        # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", fake)
     return fake
 
 
@@ -826,7 +838,7 @@ def test_re_issuing_the_same_flag_does_not_churn_the_microphone(
 
 
 def test_stopping_one_cast_keeps_the_microphone_for_another(
-    tmp_home: Path,
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two panels, one microphone — the reason demand is asked per FLEET.
 
@@ -849,7 +861,7 @@ def test_stopping_one_cast_keeps_the_microphone_for_another(
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     assert app.dispatch(ConnectDevice(key=other)).ok
     mic = FakeMic()
-    app.audio = mic         # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", mic)
 
     assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
     assert app.dispatch(StartScreencast(key=other, audio=True, **_REGION)).ok
@@ -1053,7 +1065,7 @@ def test_the_qt_renderer_writes_nothing_per_cast_frame(
 
 
 def test_stopping_one_cast_keeps_the_capture_for_another(
-    tmp_home: Path,
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two panels, one capture source.  Stopping the first panel's cast
     stopped the source under the second (on Wayland, its portal session).
@@ -1077,7 +1089,7 @@ def test_stopping_one_cast_keeps_the_capture_for_another(
     assert app.dispatch(StartScreencast(key=_KEY, audio=False, **_REGION)).ok
     assert app.dispatch(StartScreencast(key=other, audio=False, **_REGION)).ok
     stops: list[int] = []
-    app.platform.capture.stop = lambda: stops.append(1)   # type: ignore[attr-defined]
+    monkeypatch.setattr(_capture(app), "stop", lambda: stops.append(1))
 
     assert app.dispatch(StopScreencast(key=_KEY)).ok
     assert stops == [], "the other panel is still casting"

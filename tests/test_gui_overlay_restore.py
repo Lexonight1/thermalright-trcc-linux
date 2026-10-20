@@ -358,7 +358,7 @@ def test_emptying_the_layout_does_not_switch_the_overlay_on(
 
 
 def test_the_metrics_tick_reaches_the_overlay_grid(
-    handler: tuple[Any, App, _Widget],
+    handler: tuple[Any, App, _Widget], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The window received every SensorsUpdated and the handler only cached
     it, so a grid tile never showed a value (#301).  Only the device on show
@@ -368,8 +368,8 @@ def test_the_metrics_tick_reaches_the_overlay_grid(
 
     h, _app, theme_setting = handler
     seen: list = []
-    theme_setting.update_metrics = (  # type: ignore[attr-defined]
-        lambda readings, temp_unit: seen.append((dict(readings), temp_unit)))
+    monkeypatch.setattr(theme_setting, "update_metrics", (
+        lambda readings, temp_unit: seen.append((dict(readings), temp_unit))))
     metrics = SimpleNamespace(readings={"cpu:temp": 52.0})
 
     h.update_metrics(metrics, temp_unit="F")

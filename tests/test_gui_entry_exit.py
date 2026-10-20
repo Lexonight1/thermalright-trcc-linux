@@ -129,12 +129,13 @@ class _FakeFleet:
         self.closed = True
 
 
-def _make_window(*, divert: bool):
+def _make_window(monkeypatch: pytest.MonkeyPatch, *, divert: bool):
     from trcc.ui.qtgui.app import MainWindow
 
     win = MainWindow.__new__(MainWindow)
-    win._tray = _FakeTray(divert=divert)      # type: ignore[attr-defined]
-    win._viewfinders = _FakeFleet()           # type: ignore[attr-defined]
+    # Never constructed, so neither attribute exists yet to be replaced.
+    monkeypatch.setattr(win, "_tray", _FakeTray(divert=divert), raising=False)
+    monkeypatch.setattr(win, "_viewfinders", _FakeFleet(), raising=False)
     return win
 
 
@@ -161,7 +162,7 @@ def test_qtgui_genuine_close_quits_the_event_loop(
 ) -> None:
     """The reported bug: exiting qtgui left the process running forever."""
     quits = _patch_qapp(monkeypatch)
-    win = _make_window(divert=False)
+    win = _make_window(monkeypatch, divert=False)
     event = _FakeEvent()
 
     win.closeEvent(event)
@@ -185,7 +186,7 @@ def test_qtgui_close_to_tray_does_not_quit(
     than the one being fixed.
     """
     quits = _patch_qapp(monkeypatch)
-    win = _make_window(divert=True)
+    win = _make_window(monkeypatch, divert=True)
     event = _FakeEvent()
 
     win.closeEvent(event)

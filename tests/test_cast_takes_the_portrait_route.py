@@ -18,12 +18,16 @@ MUTATION CHECK -- in ``core.geometry.oriented_canvas`` pass ``False`` to
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from trcc.core.geometry import plan_orientation
 from trcc.core.models import Kind, ProductInfo, RawFrame, Theme, Wire
 from trcc.core.protocol import get_profile
+
+if TYPE_CHECKING:
+    from trcc.services.display import DisplayService
 
 _BASE_90 = (50, 51, 52, 53, 58, 64)
 
@@ -37,7 +41,7 @@ def _info(native: tuple[int, int]) -> ProductInfo:
     )
 
 
-def _display(tmp_home: Path) -> object:
+def _display(tmp_home: Path) -> DisplayService:
     from trcc.adapters.render.qt import QtRenderer
     from trcc.adapters.theme.filesystem import FileContentStore
     from trcc.services.background import BackgroundSlot
@@ -85,14 +89,14 @@ def test_a_cast_and_a_picture_send_what_a_portrait_theme_sends(
     raw = _picture(folder / "00.png", canvas)
     display = _display(tmp_home)
     info = _info(profile.resolution)
-    display._settings.set_orientation(info.key, orientation)   # type: ignore[attr-defined]
+    display._settings.set_orientation(info.key, orientation)
 
     theme = Theme(path=folder, name="T", resolution=canvas, config={"elements": []})
-    as_theme = display.build_frame(info=info, theme=theme, sensors={},  # type: ignore[attr-defined]
+    as_theme = display.build_frame(info=info, theme=theme, sensors={},
                                    profile=profile)
-    as_cast = display.build_screencast_frame(info=info, frame=raw,  # type: ignore[attr-defined]
+    as_cast = display.build_screencast_frame(info=info, frame=raw,
                                              profile=profile)
-    as_image = display.build_image_frame(info=info, path=folder / "00.png",  # type: ignore[attr-defined]
+    as_image = display.build_image_frame(info=info, path=folder / "00.png",
                                          profile=profile)
 
     assert as_cast == as_theme, f"fbl {fbl} at {orientation}: the cast took another route"

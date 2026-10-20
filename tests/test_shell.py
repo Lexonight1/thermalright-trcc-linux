@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from prompt_toolkit.completion import NestedCompleter
 
 from trcc.ui.cli.main import app as cli_app
 from trcc.ui.cli.shell import (
@@ -44,7 +45,8 @@ def test_completer_includes_subcommands_under_groups() -> None:
     # child's own ``options`` dict for the subcommand list.
     device_child = completer.options["device"]
     assert device_child is not None
-    names = set(device_child.options.keys())                # type: ignore[attr-defined]
+    assert isinstance(device_child, NestedCompleter)
+    names = set(device_child.options.keys())
     # ``device list`` / ``device connect`` / ``device disconnect`` exist
     assert "list" in names
     assert "connect" in names

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -115,7 +116,10 @@ def test_qtgui_remembers_a_colour_chosen_in_the_element_dialog(qtbot) -> None:
 
     from PySide6.QtWidgets import QWidget
 
-    from trcc.ui.qtgui.panels.overlay_editor import _ElementDialog
+    from trcc.ui.qtgui.panels.overlay_editor import (
+        OverlayEditorPanel,
+        _ElementDialog,
+    )
 
     sent: list = []
 
@@ -135,7 +139,8 @@ def test_qtgui_remembers_a_colour_chosen_in_the_element_dialog(qtbot) -> None:
 
     panel = _Panel()
     qtbot.addWidget(panel)
-    dialog = _ElementDialog(panel)  # type: ignore[arg-type]
+    # A stand-in panel: the dialog reaches only ``_key``, ``dispatch``, ``app``.
+    dialog = _ElementDialog(cast(OverlayEditorPanel, panel))
     sent.clear()
     dialog.accept()
     assert sent == [], "an untouched colour was remembered"

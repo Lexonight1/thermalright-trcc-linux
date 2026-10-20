@@ -12,8 +12,9 @@ import numpy as np
 import pytest
 from PySide6.QtGui import QImage
 
-from trcc.adapters.visual import VISUALS
+from trcc.adapters.visual import VISUALS, BaseVisual
 from trcc.adapters.visual._spectrum import FALL, HOLD, Spectrum
+from trcc.adapters.visual.spikes import SpikeCircle
 from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
 
 _FRAME = SOUND_RATE // VISUAL_FPS
@@ -113,19 +114,20 @@ def test_the_motion_is_the_same_at_any_frame_rate() -> None:
 
 # ── the Spike Circle ────────────────────────────────────────────────────
 
-def _spikes(**settings: float) -> object:
+def _spikes(**settings: float) -> SpikeCircle:
     visual = VISUALS["trcc-spikes"]()
+    assert isinstance(visual, SpikeCircle)
     visual.open(VisualSpec("trcc-spikes", 160, 160, settings=settings))
     return visual
 
 
-def _feed(visual: object, signal: np.ndarray) -> None:
+def _feed(visual: BaseVisual, signal: np.ndarray) -> None:
     for chunk in np.array_split(signal, max(1, signal.size // _FRAME)):
-        visual.feed(np.repeat(chunk.astype("<f4"), 2).tobytes())  # type: ignore[attr-defined]
+        visual.feed(np.repeat(chunk.astype("<f4"), 2).tobytes())
 
 
-def _pixels(visual: object) -> np.ndarray:
-    frame = visual.render()                                       # type: ignore[attr-defined]
+def _pixels(visual: BaseVisual) -> np.ndarray:
+    frame = visual.render()
     return np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, 3)
 
 
@@ -162,8 +164,9 @@ def test_it_breathes_rather_than_jumps() -> None:
     visual = _spikes()
     _feed(visual, np.zeros(SOUND_RATE))
     _feed(visual, _music(1 / VISUAL_FPS))
-    jumped = visual._spectrum.heights                             # type: ignore[attr-defined]
-    shown = visual._shown                                         # type: ignore[attr-defined]
+    assert visual._spectrum is not None
+    jumped = visual._spectrum.heights
+    shown = visual._shown
     assert (jumped.max() > 0.5, shown.max() < jumped.max() * 0.6) == (True, True)
 
 
@@ -188,8 +191,9 @@ def test_the_ring_holds_the_picture(tmp_path: Path) -> None:
 
 def test_a_slider_restarts_the_analyzer_only_for_a_new_spike_count() -> None:
     visual = _spikes()
-    analyzer = visual._spectrum                                   # type: ignore[attr-defined]
-    visual.adjust({"colour": 10.0})                               # type: ignore[attr-defined]
-    assert visual._spectrum is analyzer                           # type: ignore[attr-defined]
-    visual.adjust({"spikes": 40.0})                               # type: ignore[attr-defined]
-    assert visual._spectrum.heights.size == 20                    # type: ignore[attr-defined]
+    analyzer = visual._spectrum
+    visual.adjust({"colour": 10.0})
+    assert visual._spectrum is analyzer
+    visual.adjust({"spikes": 40.0})
+    assert visual._spectrum is not None
+    assert visual._spectrum.heights.size == 20

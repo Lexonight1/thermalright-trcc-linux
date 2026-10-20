@@ -33,12 +33,13 @@ _B_CAST = (10, 20, 300, 200)
 
 
 @pytest.fixture
-def window(tmp_path: Path, qtbot: Any) -> Iterator[Any]:
+def window(tmp_path: Path, qtbot: Any,
+           monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     """Two LCDs, A selected, and a cast on B started by another UI."""
     from trcc.ui.gui.trcc_app import TRCCApp
 
     app = App(MockPlatform(_SPECS, tmp_path), renderer=QtRenderer())
-    app.audio = FakeMic()                   # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", FakeMic())
     for key in (_A, _B):
         assert app.dispatch(ConnectDevice(key=key)).ok
     win = TRCCApp(app=app)
@@ -163,12 +164,13 @@ _WIDE = "87ad:70db"
 
 
 @pytest.fixture
-def wide(tmp_path: Path, qtbot: Any) -> Iterator[Any]:
+def wide(tmp_path: Path, qtbot: Any,
+         monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     from trcc.ui.gui.trcc_app import TRCCApp
 
     app = App(MockPlatform([{"vid": "87ad", "pid": "70db", "resolution": "854x480",
                              "pm": 11, "sub": 5}], tmp_path), renderer=QtRenderer())
-    app.audio = FakeMic()                   # type: ignore[assignment]
+    monkeypatch.setattr(app, "audio", FakeMic())
     assert app.dispatch(ConnectDevice(key=_WIDE)).ok
     win = TRCCApp(app=app)
     qtbot.addWidget(win)

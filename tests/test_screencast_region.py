@@ -76,12 +76,17 @@ def test_the_box_and_the_canvas_it_fills_share_a_shape(fbl: int, orientation: in
 
 
 @pytest.fixture
-def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App]:
-    tasks: list[str] = []
+def tasks() -> list[str]:
+    """The key of every task the App was asked to run, in order."""
+    return []
+
+
+@pytest.fixture
+def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        tasks: list[str]) -> Iterator[App]:
     monkeypatch.setattr(App, "add_task", lambda self, task: tasks.append(task.key))
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
-    app.audio = FakeMic()                        # type: ignore[assignment]
-    app.tasks = tasks                            # type: ignore[attr-defined]
+    monkeypatch.setattr(app, "audio", FakeMic())
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     profile = app.devices[_KEY].profile
     assert profile is not None
@@ -148,14 +153,14 @@ def test_out_of_range_values_change_nothing(app: App, box: tuple[int, ...]) -> N
     assert app.settings.for_device(_KEY).screencast_rect is None
 
 
-def test_a_running_cast_moves_without_restarting(app: App) -> None:
+def test_a_running_cast_moves_without_restarting(app: App, tasks: list[str]) -> None:
     assert app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=320, h=240, audio=True)).ok
-    started = list(app.tasks)                    # type: ignore[attr-defined]
+    started = list(tasks)
 
     app.dispatch(SetScreencastRegion(key=_KEY, x=50, y=60, w=320, h=240))
 
     assert app.settings.for_device(_KEY).screencast_region == (50, 60, 320, 240, True)
-    assert app.tasks == started, "the cast was restarted"  # type: ignore[attr-defined]
+    assert tasks == started, "the cast was restarted"
 
 
 def test_setting_the_region_never_starts_a_cast(app: App) -> None:
