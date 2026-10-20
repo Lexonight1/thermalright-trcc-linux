@@ -26,10 +26,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import queue
+from collections.abc import Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ...core.events import Event
+from ...core.events import Event, EventBus
 from ...core.logs import per_frame
 from ...ipc import EVENT_QUEUE_MAX, EVENT_TYPES, encode_event
 from ._shared import admit_ws
@@ -60,15 +61,15 @@ class _Subscription:
 
     __slots__ = ("_bus", "_handlers", "_queue", "dropped")
 
-    def __init__(self, bus: object, types: list[type[Event]]) -> None:
+    def __init__(self, bus: EventBus, types: list[type[Event]]) -> None:
         log.info("_Subscription.__init__: %d event type(s)", len(types))
         self._bus = bus
         self._queue: queue.Queue[dict] = queue.Queue(maxsize=EVENT_QUEUE_MAX)
-        self._handlers: list[tuple[type[Event], object]] = []
+        self._handlers: list[tuple[type[Event], Callable[[Event], None]]] = []
         self.dropped = 0
         for event_type in types:
             handler = self._on_event
-            bus.subscribe(event_type, handler)   # type: ignore[attr-defined]
+            bus.subscribe(event_type, handler)
             self._handlers.append((event_type, handler))
 
     def _on_event(self, event: Event) -> None:
@@ -101,7 +102,7 @@ class _Subscription:
         log.info("_Subscription.close: unsubscribing %d handler(s), "
                  "%d dropped", len(self._handlers), self.dropped)
         for event_type, handler in self._handlers:
-            self._bus.unsubscribe(event_type, handler)   # type: ignore[attr-defined]
+            self._bus.unsubscribe(event_type, handler)
         self._handlers.clear()
 
 

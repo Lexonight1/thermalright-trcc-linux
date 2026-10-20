@@ -21,6 +21,7 @@ from trcc.core.commands import (
     ResolveOverlay,
     SetDateFormat,
     SetTimeFormat,
+    UpdateOverlayElement,
 )
 from trcc.core.events import OverlayChanged
 
@@ -101,3 +102,35 @@ def test_an_invalid_time_format_changes_nothing(app: App) -> None:
     before = _formats(app, _A)
     assert not app.dispatch(SetTimeFormat(fmt="13h", key=_A)).ok
     assert _formats(app, _A) == before
+
+
+# ── A clock source the renderer cannot draw is refused, not saved blank ────
+#
+# clock_text returns "" for any source but time / date / weekday, so an element
+# saved with "Time" or "clock" drew nothing forever, and only a per-frame DEBUG
+# line said why.  The `type: ignore` on AddOverlayElement's source hid it
+# (2026-10-20).
+
+
+@pytest.mark.parametrize("bad", ["Time", "clock", ""])
+def test_an_unknown_clock_source_is_refused_and_nothing_is_saved(
+        app: App, bad: str) -> None:
+    """MUTATION CHECK: drop either Command's _is_clock_source check -> fails."""
+    before = _formats(app, _A)
+
+    added = app.dispatch(AddOverlayElement(
+        key=_A, element_id="bad", type="clock", source=bad))
+    updated = app.dispatch(UpdateOverlayElement(
+        key=_A, element_id="t", source=bad))
+
+    expected = (f"Invalid clock source {bad!r} (expected one of time, weekday, "
+                "date)")
+    assert (added.ok, added.message) == (False, expected)
+    assert (updated.ok, updated.message) == (False, expected)
+    assert _formats(app, _A) == before
+
+
+def test_every_drawable_clock_source_is_accepted(app: App) -> None:
+    for source in ("time", "weekday", "date"):
+        assert app.dispatch(UpdateOverlayElement(
+            key=_A, element_id="t", source=source)).ok

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeGuard, get_args
 
 from .. import toolchain
 from ..errors import (
@@ -48,6 +48,7 @@ from ..models import (
     OVERLAY_DEFAULT_SIZE,
     STREAM_SCHEMES,
     STREAM_TICK_S,
+    ClockSource,
     FitMode,
     HandshakeResult,
     OverlayElement,
@@ -175,6 +176,17 @@ class DiscoverDevices(Command[DiscoverResult]):
             several_coolers=[u.key for u in units
                              if covers_several_coolers(u.vid, u.pid)],
         )
+
+def _is_clock_source(source: str) -> TypeGuard[ClockSource]:
+    """Whether *source* is a clock source ``clock_text`` can draw.
+
+    Anything else renders as an empty string forever -- a blank element, with
+    only a per-frame DEBUG line to say why -- so the edit Commands refuse it.
+    """
+    valid = source in get_args(ClockSource)
+    log.debug("_is_clock_source: %r -> %s", source, valid)
+    return valid
+
 
 def _connect_failure_hints(app: App, error: Exception, vid: int, pid: int,
                            unit: str) -> list[str]:
@@ -2833,7 +2845,7 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
     def execute(self, app: App) -> BackgroundModeResult:
         log.info("SetBackgroundMode: %s mode=%s", self.key, self.mode)
         try:
-            app.settings.set_background_mode(self.key, self.mode)  # type: ignore[arg-type]
+            app.settings.set_background_mode(self.key, self.mode)
         except ValueError as e:
             log.warning("SetBackgroundMode: %s refused mode %r — %s",
                         self.key, self.mode, e)
@@ -2948,6 +2960,15 @@ class AddOverlayElement(Command[OverlayElementResult]):
                 message=f"Invalid element type {self.type!r} (expected "
                         "'text' / 'metric' / 'clock')",
             )
+        source = self.source
+        if not _is_clock_source(source):
+            log.warning("AddOverlayElement: %s refused clock source %r",
+                        self.key, source)
+            return OverlayElementResult(
+                ok=False, key=self.key, element=None,
+                message=f"Invalid clock source {source!r} (expected one of "
+                        f"{', '.join(get_args(ClockSource))})",
+            )
         eid = self.element_id or new_overlay_id()
         existing = {
             e.id for e in
@@ -2965,7 +2986,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
             text=self.text,
             metric=self.metric, format=self.format,
             show_unit=self.show_unit,
-            source=self.source,  # type: ignore[arg-type]
+            source=source,
         )
         app.settings.add_user_overlay_element(self.key, element)
         _invalidate_scene(app, self.key)
@@ -2996,6 +3017,14 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
 
     def execute(self, app: App) -> OverlayElementResult:
         log.debug("execute: app=%s", app)
+        if self.source is not None and not _is_clock_source(self.source):
+            log.warning("UpdateOverlayElement: %s refused clock source %r",
+                        self.key, self.source)
+            return OverlayElementResult(
+                ok=False, key=self.key, element=None,
+                message=f"Invalid clock source {self.source!r} (expected one "
+                        f"of {', '.join(get_args(ClockSource))})",
+            )
         try:
             element = app.settings.update_user_overlay_element(
                 self.key, self.element_id,

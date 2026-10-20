@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QFrame, QPushButton, QScrollArea, QWidget
+from PySide6.QtWidgets import QFrame, QScrollArea, QWidget
 
 from ..presentation.panel_spec import (
     Background,
@@ -21,7 +21,7 @@ from ..presentation.panel_spec import (
     PanelSpec,
 )
 from .assets import Assets
-from .base import BasePanel, create_image_button
+from .base import BasePanel, SkinButton, create_image_button
 from .constants import Colors, Layout, Sizes, Styles
 from .panel_renderer import render as render_spec
 
@@ -266,7 +266,7 @@ class UCDevice(BasePanel):
 
         self._detect_fn = detect_fn
         self.devices: list[dict] = []
-        self.device_buttons: list[QPushButton] = []
+        self.device_buttons: list[SkinButton] = []
         self.selected_device: dict | None = None
 
         self._setup_ui()
@@ -364,7 +364,7 @@ class UCDevice(BasePanel):
                 checkable=True,
                 fallback_text=fallback,
             )
-            btn.device_info = device  # type: ignore[attr-defined]
+            btn.device_info = device
             # Twin coolers share a picture; the key's @port tells them apart.
             btn.setToolTip(f"{fallback} — {device.get('path', '')}")
             # Image buttons use the flat (border-less) icon style — give them a
@@ -437,7 +437,7 @@ class UCDevice(BasePanel):
         self._deselect_header_buttons()
         self.selected_device = device_info
         for btn in self.device_buttons:
-            btn.setChecked(btn.device_info == device_info)  # type: ignore[attr-defined]
+            btn.setChecked(btn.device_info == device_info)
 
     def _select_device(self, device_info: dict) -> None:
         """Select a device button — deselects sensor and about — emits device_selected.
@@ -449,7 +449,7 @@ class UCDevice(BasePanel):
         self._deselect_header_buttons()
         self.selected_device = device_info
         for btn in self.device_buttons:
-            btn.setChecked(btn.device_info == device_info)  # type: ignore[attr-defined]
+            btn.setChecked(btn.device_info == device_info)
         self.device_selected.emit(device_info)
         self.invoke_delegate(self.CMD_SELECT_DEVICE, device_info)
 
@@ -490,7 +490,7 @@ class UCDevice(BasePanel):
         log.debug("update_device_button: button_image=%s name=%s",
                    device_info.get('button_image'), device_info.get('name'))
         for btn in self.device_buttons:
-            if getattr(btn, 'device_info', None) is not device_info:
+            if btn.device_info is not device_info:
                 continue
             normal_name, active_name = _get_device_images(device_info)
             if not normal_name:
@@ -505,7 +505,7 @@ class UCDevice(BasePanel):
                     icon.addPixmap(active_pix, QIcon.Mode.Normal, QIcon.State.On)
                 btn.setIcon(icon)
                 btn.setIconSize(btn.size())
-                btn._img_refs = [normal_pix, active_pix]  # type: ignore[attr-defined]
+                btn._img_refs = [normal_pix, active_pix]
                 btn.setText("")  # Clear text fallback
                 log.debug("update_device_button: icon set to %s", normal_name)
             else:
@@ -555,7 +555,7 @@ class UCDevice(BasePanel):
         self._deselect_header_buttons()
         if self.selected_device:
             for btn in self.device_buttons:
-                btn.setChecked(btn.device_info == self.selected_device)  # type: ignore[attr-defined]
+                btn.setChecked(btn.device_info == self.selected_device)
 
     def get_selected_device(self) -> dict | None:
         return self.selected_device

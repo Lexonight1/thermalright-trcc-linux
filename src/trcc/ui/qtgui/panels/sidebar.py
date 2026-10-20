@@ -206,13 +206,14 @@ class ActivitySidebar(BasePanel):
                 return
         log.debug("_select_row: %r is not on the rail", key)
 
-    def _on_device_row(self, item: object, _previous: object = None) -> None:
+    def _on_device_row(self, item: QListWidgetItem | None,
+                       _previous: QListWidgetItem | None = None) -> None:
         """A row became current — announce (key, kind) for MainWindow."""
         if item is None:
             log.debug("_on_device_row: cleared")
             return
-        key = str(item.data(_KEY_ROLE))          # type: ignore[attr-defined]
-        kind = str(item.data(_KIND_ROLE) or "")  # type: ignore[attr-defined]
+        key = str(item.data(_KEY_ROLE))
+        kind = str(item.data(_KIND_ROLE) or "")
         log.info("_on_device_row: key=%s kind=%s", key, kind)
         self.device_chosen.emit(key, kind)
 

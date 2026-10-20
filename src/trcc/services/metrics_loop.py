@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import TYPE_CHECKING
 
 from ..core.events import (
     Event,
@@ -33,6 +34,9 @@ from ..core.events import (
 )
 from ..core.logs import per_frame
 from ..core.models import MIN_REFRESH_INTERVAL_S
+
+if TYPE_CHECKING:
+    from ..app import App
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -51,7 +55,7 @@ class MetricsLoop:
     the loop fans out to every widget that bridges from the event.
     """
 
-    def __init__(self, app: App) -> None:  # type: ignore[name-defined]  # noqa: F821
+    def __init__(self, app: App) -> None:
         log.debug("__init__: app=%s", app)
         self._app = app
         self._thread: threading.Thread | None = None

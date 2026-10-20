@@ -1173,6 +1173,9 @@ class SingleInstance:
     # (when a peer is already running).  Encoded via __new__.
 
     _DIR_NAME = "trcc"
+    #: The msvcrt fallback's open lock file.  Held, never read: the lock lasts
+    #: exactly as long as this stays open.
+    _msvcrt_handle: object | None = None
     _RAISE_MESSAGE = b'{"raise": true}\n'
     _CONNECT_TIMEOUT_S = 1.0
 
@@ -1195,7 +1198,7 @@ class SingleInstance:
                 )
                 return None
             instance = super().__new__(cls)
-            instance._msvcrt_handle = fallback  # type: ignore[attr-defined]
+            instance._msvcrt_handle = fallback
             log.info(
                 "SingleInstance(%r): using msvcrt file lock (AF_UNIX unavailable)",
                 name,

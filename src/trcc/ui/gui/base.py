@@ -348,11 +348,11 @@ class _BgPaintFilter(QObject):
         # one but Paint falls straight through to ``return False``.  An entry
         # line would be a firehose at -vvv reporting that nothing happened;
         # this reports the repaint that did.
-        if event.type() == QEvent.Type.Paint:
+        if event.type() == QEvent.Type.Paint and isinstance(obj, QWidget):
             frame_log.debug("background repaint: %dx%d pixmap on %s",
                             self._pixmap.width(), self._pixmap.height(),
                             type(obj).__name__)
-            painter = QPainter(obj)  # type: ignore[arg-type]
+            painter = QPainter(obj)
             painter.drawPixmap(0, 0, self._pixmap)
             painter.end()
             return True
@@ -408,6 +408,19 @@ def set_background_pixmap(widget, asset_name, width=None, height=None,
 # Shared utilities
 # ============================================================================
 
+class SkinButton(QPushButton):
+    """A skin button that keeps its state pixmaps.
+
+    ``_img_refs`` holds the pixmaps its icon states were built from -- read
+    back to swap an icon (the preview's play/pause) and kept so they outlive
+    the call that made them.  On the device rail it also carries the device
+    it stands for.  Both used to be attributes set on a bare QPushButton.
+    """
+
+    _img_refs: list[QPixmap | None] | None = None
+    device_info: dict | None = None
+
+
 def create_image_button(parent, x, y, w, h, normal_img, active_img,
                         checkable=False, fallback_text=None):
     """Create a flat image button matching Windows style.
@@ -425,7 +438,7 @@ def create_image_button(parent, x, y, w, h, normal_img, active_img,
     """
     from .assets import Assets
 
-    btn = QPushButton(parent)
+    btn = SkinButton(parent)
     btn.setGeometry(x, y, w, h)
     btn.setFlat(True)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -447,7 +460,7 @@ def create_image_button(parent, x, y, w, h, normal_img, active_img,
         btn.setIcon(icon)
         btn.setIconSize(btn.size())
         # Store pixmaps to prevent GC
-        btn._img_refs = [normal_pix, active_pix]  # type: ignore[attr-defined]
+        btn._img_refs = [normal_pix, active_pix]
     elif fallback_text:
         btn.setText(fallback_text)
         btn.setStyleSheet(f"""

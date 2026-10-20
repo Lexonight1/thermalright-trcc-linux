@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeVar
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QHideEvent, QShowEvent
 from PySide6.QtWidgets import QFrame, QWidget
 
 from ...core.results import Result
@@ -43,7 +44,17 @@ log = logging.getLogger(__name__)
 R = TypeVar("R", bound=Result)
 
 
-class TicksWhileShown:
+# Typed as a QWidget for the checker, a plain mixin at runtime: both users
+# (PreviewSurface, BasePanel) are QWidgets, but a mixin that really
+# subclassed QWidget gave them two Qt base paths and PySide segfaulted
+# (measured 2026-10-20, test_gui_panels).
+if TYPE_CHECKING:
+    _Shown = QWidget
+else:
+    _Shown = object
+
+
+class TicksWhileShown(_Shown):
     """Periodic updates that run only while the widget is on screen.
 
     qtgui stacks its panels (``app.py:102``), so all but one are hidden at
@@ -73,14 +84,14 @@ class TicksWhileShown:
                       type(self).__name__)
             self._updates.suspend()
 
-    def showEvent(self, event: object) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         log.debug("showEvent: %s back on screen", type(self).__name__)
-        super().showEvent(event)      # type: ignore[misc]
+        super().showEvent(event)
         self._updates.resume()
 
-    def hideEvent(self, event: object) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         log.debug("hideEvent: %s left the screen", type(self).__name__)
-        super().hideEvent(event)      # type: ignore[misc]
+        super().hideEvent(event)
         self._updates.suspend()
 
 

@@ -82,7 +82,7 @@ class SlideshowModel:
         if name in self._themes:
             self._themes.remove(name)
 
-    def set_interval(self, raw: object) -> int:
+    def set_interval(self, raw: str | int) -> int:
         """Parse + clamp a user-entered interval to an int >= MIN_INTERVAL.
 
         Stores and returns the clamped value; non-numeric input falls to
@@ -90,7 +90,7 @@ class SlideshowModel:
         """
         log.debug("set_interval: raw=%s", raw)
         try:
-            val = int(raw)  # type: ignore[arg-type]
+            val = int(raw)
         except (ValueError, TypeError):
             val = MIN_INTERVAL
         val = max(MIN_INTERVAL, val)

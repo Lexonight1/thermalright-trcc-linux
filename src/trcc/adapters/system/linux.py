@@ -1259,8 +1259,12 @@ def _enrich_with_spd_timings(slots: list[dict[str, str]]) -> None:
 # Sentinel so a failed/unsupported live read is cached too (timings are static
 # per boot; current_platform() builds a fresh LinuxOS each call, so the cache
 # lives at module scope, not on the instance).
-_UNREAD: object = object()
-_live_imc_cache: object = _UNREAD
+class _Unread:
+    """The cache's not-read-yet marker: ``None`` is a cached answer."""
+
+
+_UNREAD = _Unread()
+_live_imc_cache: ImcTimings | None | _Unread = _UNREAD
 
 
 def _cpu_is_adl_rpl() -> bool:
@@ -1292,8 +1296,8 @@ def _read_live_imc_timings() -> ImcTimings | None:
     re-spawn on the next ``memory_info()`` call.
     """
     global _live_imc_cache
-    if _live_imc_cache is not _UNREAD:
-        return _live_imc_cache  # type: ignore[return-value]
+    if not isinstance(_live_imc_cache, _Unread):
+        return _live_imc_cache
     _live_imc_cache = None      # cache the negative result up front
 
     if os.environ.get("TRCC_DISABLE_LIVE_IMC"):

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import TypedDict
 
 import typer
 
@@ -43,7 +44,17 @@ _METRIC_USAGE = (
 _COORDS_RE = re.compile(r"-?\d+\s*,\s*-?\d+")
 
 
-def _parse_metric_spec(spec: str) -> dict[str, object]:
+class _MetricSpec(TypedDict):
+    """One ``--metric`` argument, as AddOverlayElement takes it."""
+
+    metric: str
+    x: int
+    y: int
+    color: str
+    size: int
+
+
+def _parse_metric_spec(spec: str) -> _MetricSpec:
     """Parse a ``--metric`` arg into kwargs for AddOverlayElement.
 
     Grammar: ``metric_key:x,y[:color[:size]]`` where **metric_key may contain
@@ -175,7 +186,7 @@ def create(
     for spec in metric:
         kwargs = _parse_metric_spec(spec)
         elem = app_obj.dispatch(AddOverlayElement(
-            key=key, type="metric", **kwargs,  # type: ignore[arg-type]
+            key=key, type="metric", **kwargs,
         ))
         if not elem.ok:
             typer.echo(elem.message, err=True)

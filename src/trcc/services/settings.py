@@ -19,7 +19,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from threading import RLock
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
@@ -34,6 +34,7 @@ from ..core.models import (
     RECENT_COLOR_DEFAULT,
     RECENT_COLOR_SLOTS,
     TIME_FORMATS,
+    BackgroundMode,
     DeviceSettings,
     EffectDirection,
     EffectSpeed,
@@ -203,6 +204,13 @@ def _inherited(store: dict[str, _S], key: str) -> _S | None:
         return None
     log.info("_inherited: %s inherits the settings of %s", key, base)
     return deepcopy(ancestor)
+
+
+def _is_background_mode(mode: str) -> TypeGuard[BackgroundMode]:
+    """Whether *mode* is one ``DeviceSettings.background_mode`` can hold."""
+    valid = mode in get_args(BackgroundMode)
+    log.debug("_is_background_mode: %r -> %s", mode, valid)
+    return valid
 
 
 class Settings:
@@ -1040,15 +1048,14 @@ class Settings:
             self._app.hdd_enabled = enabled
             self._save()
 
-    def set_background_mode(
-        self, key: str,
-        mode: Literal["theme", "color", "transparent"],
-    ) -> None:
-        """Pick what fills the LCD behind overlays."""
+    def set_background_mode(self, key: str, mode: str) -> None:
+        """Pick what fills the LCD behind overlays.  ``mode`` comes from a
+        UI as text, so this is where it is checked."""
         log.info("set_background_mode: key=%s mode=%s", key, mode)
-        if mode not in ("theme", "color", "transparent"):
+        if not _is_background_mode(mode):
             raise ValueError(
-                f"background_mode must be 'theme' / 'color' / 'transparent', "
+                "background_mode must be "
+                f"{' / '.join(repr(m) for m in get_args(BackgroundMode))}, "
                 f"got {mode!r}",
             )
         with self._lock:

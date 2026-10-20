@@ -206,7 +206,9 @@ class AppProxy(CommandBus):
         sink_for(cmd.LOG_LEVEL, log, frame_log).debug(
             "AppProxy.dispatch: %s -> %s", type(cmd).__name__,
             type(result).__name__)
-        return result  # type: ignore[return-value]   # caller's TypeVar binds the subclass
+        # The Command's TypeVar binds its own Result subclass; what came off the
+        # wire is decoded by name, which the type system cannot follow.
+        return cast(R, result)
 
     @property
     def remote(self) -> bool:

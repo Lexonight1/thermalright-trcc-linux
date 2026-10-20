@@ -708,6 +708,11 @@ class SensorReading:
 # =========================================================================
 
 
+#: What fills the LCD behind the overlay.  The one spelling: DeviceSettings, the
+#: setter and its error message all read it.
+BackgroundMode = Literal["theme", "color", "transparent"]
+
+
 @dataclass
 class DeviceSettings:
     """User prefs for one device.  Persisted to trcc.json."""
@@ -772,7 +777,7 @@ class DeviceSettings:
     #   'theme' = use the active theme's background (default)
     #   'color' = solid fill from ``overlay_background``
     #   'transparent' = no background (used for screencast overlay)
-    background_mode: Literal["theme", "color", "transparent"] = "theme"
+    background_mode: BackgroundMode = "theme"
     # Solid color used when ``background_mode == 'color'`` (RGB 0-255).
     overlay_background: tuple[int, int, int] = (0, 0, 0)
     # The overlay colour editor's remembered colours, newest first, at most

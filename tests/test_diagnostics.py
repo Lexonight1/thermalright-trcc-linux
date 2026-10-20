@@ -417,9 +417,10 @@ def test_a_records_traceback_does_not_leak_across_a_rollover(
 
 
 @contextmanager
-def _shared_handler(log_file: Path, **kwargs: object):
+def _shared_handler(log_file: Path, *, maxBytes: int, backupCount: int):
     """A multi-process handler on its own logger, cleaned up afterwards."""
-    handler = shared_handler_class()(log_file, encoding="utf-8", **kwargs)
+    handler = shared_handler_class()(log_file, encoding="utf-8",
+                                     maxBytes=maxBytes, backupCount=backupCount)
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger = logging.getLogger("trcc.test.shared")
     logger.propagate = False

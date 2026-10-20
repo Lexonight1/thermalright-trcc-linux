@@ -36,10 +36,10 @@ class PsutilCpu(CpuSource):
     def __init__(self) -> None:
         log.debug("__init__")
         self._warm = False
-        try:
-            self._name = psutil.cpu_info()[0].name  # type: ignore[attr-defined]
-        except (psutil.Error, AttributeError, OSError):
-            self._name = "CPU"
+        # psutil has no CPU model name.  This read psutil.cpu_info(), which
+        # does not exist -- it raised AttributeError every time, behind a
+        # `type: ignore`, and the name was always "CPU" (2026-10-20).
+        self._name = "CPU"
 
     @property
     def name(self) -> str:

@@ -178,11 +178,11 @@ class _SharedRotatingFileHandler(RenderOnceRotatingFileHandler, ABC):
     #: run is as unverifiable as the bug it fixes.
     _keep_open: ClassVar[bool] = True
 
-    def __init__(self, filename: Path, **kwargs: object) -> None:
-        if not self._keep_open:
-            # Nothing should hold the file between records, including the gap
-            # between construction and the first one.
-            kwargs.setdefault("delay", True)
+    def __init__(self, filename: Path, *, maxBytes: int = 0,
+                 backupCount: int = 0, encoding: str | None = None) -> None:
+        # A handler that may not hold the file between records must not hold
+        # it in the gap between construction and the first one either.
+        delay = not self._keep_open
         # Both before super().__init__: FileHandler opens the stream during it,
         # which calls our _open, which needs these to already exist.
         self._inode: int | None = None
@@ -191,7 +191,8 @@ class _SharedRotatingFileHandler(RenderOnceRotatingFileHandler, ABC):
         self._lock_fd = os.open(
             f"{filename}{LOCK_SUFFIX}", os.O_CREAT | os.O_RDWR, 0o644,
         )
-        super().__init__(filename, **kwargs)  # type: ignore[arg-type]
+        super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount,
+                         encoding=encoding, delay=delay)
         # Prove the lock works HERE rather than discovering it per record on a
         # filesystem that cannot lock (some NFS mounts).  configure_logging
         # catches the OSError and falls back with a warning naming the cost.
@@ -335,13 +336,15 @@ class _SharedRotatingFileHandler(RenderOnceRotatingFileHandler, ABC):
 class PosixSharedLogHandler(_SharedRotatingFileHandler):
     """Linux / macOS / BSD — ``fcntl.flock`` advisory locking."""
 
-    def __init__(self, filename: Path, **kwargs: object) -> None:
+    def __init__(self, filename: Path, *, maxBytes: int = 0,
+                 backupCount: int = 0, encoding: str | None = None) -> None:
         import fcntl
         log.debug("PosixSharedLogHandler: locking %s with fcntl.flock", filename)
         self._flock = fcntl.flock
         self._lock_ex = fcntl.LOCK_EX
         self._lock_un = fcntl.LOCK_UN
-        super().__init__(filename, **kwargs)
+        super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount,
+                         encoding=encoding)
 
     def _acquire(self) -> None:
         self._flock(self._lock_fd, self._lock_ex)
@@ -371,14 +374,16 @@ class WindowsSharedLogHandler(_SharedRotatingFileHandler):
 
     _keep_open: ClassVar[bool] = False
 
-    def __init__(self, filename: Path, **kwargs: object) -> None:
+    def __init__(self, filename: Path, *, maxBytes: int = 0,
+                 backupCount: int = 0, encoding: str | None = None) -> None:
         import msvcrt
         self._locking = msvcrt.locking  # pyright: ignore[reportAttributeAccessIssue]
         self._lk_lock = msvcrt.LK_LOCK  # pyright: ignore[reportAttributeAccessIssue]
         self._lk_unlck = msvcrt.LK_UNLCK  # pyright: ignore[reportAttributeAccessIssue]
         log.debug("WindowsSharedLogHandler: locking %s with msvcrt.locking",
                   filename)
-        super().__init__(filename, **kwargs)
+        super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount,
+                         encoding=encoding)
 
     def _acquire(self) -> None:
         os.lseek(self._lock_fd, 0, os.SEEK_SET)

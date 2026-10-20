@@ -10,13 +10,13 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSlider, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QLabel, QSlider, QVBoxLayout
 
 from ...core.logs import per_frame
 from ..presentation.lcd_panel import lcd_panel_for
 from ..presentation.video_clock import playback_clock
 from .assets import Assets
-from .base import BasePanel, ImageLabel, set_background_pixmap
+from .base import BasePanel, ImageLabel, SkinButton, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
 from .preview_popup import PreviewPopOut
 
@@ -115,7 +115,7 @@ class UCPreview(BasePanel):
         # Store pause icon for toggling
         pause_pix = Assets.load_pixmap(Assets.ICON_PAUSE, Layout.PLAY_BTN[2], Layout.PLAY_BTN[3])
         play_pix = Assets.load_pixmap(Assets.ICON_PLAY, Layout.PLAY_BTN[2], Layout.PLAY_BTN[3])
-        self.play_btn._img_refs = [play_pix, pause_pix]  # type: ignore[attr-defined]
+        self.play_btn._img_refs = [play_pix, pause_pix]
 
         self.height_fit_btn = self._make_video_btn(
             Layout.HEIGHT_FIT_BTN, 'display_mode_fit_height', "H",
@@ -148,7 +148,7 @@ class UCPreview(BasePanel):
 
     def _make_video_btn(self, rect, icon_name, fallback, tooltip, handler):
         """Create a flat video-control button."""
-        btn = QPushButton(self.progress_container)
+        btn = SkinButton(self.progress_container)
         btn.setGeometry(*rect)
         pix = Assets.load_pixmap(icon_name, rect[2], rect[3])
         if not pix.isNull():
@@ -251,7 +251,7 @@ class UCPreview(BasePanel):
         self.progress_container.setVisible(show)
 
     def set_playing(self, playing):
-        refs = getattr(self.play_btn, '_img_refs', None)
+        refs = self.play_btn._img_refs
         if refs and len(refs) >= 2 and refs[0] and refs[1]:
             icon = QIcon(refs[1] if playing else refs[0])
             self.play_btn.setIcon(icon)
