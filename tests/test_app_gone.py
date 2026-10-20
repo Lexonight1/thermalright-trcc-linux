@@ -236,6 +236,22 @@ def test_a_crash_restarts_the_face_with_its_own_command_line(execs) -> None:
     assert os.environ[RELAUNCHED_ENV]
 
 
+def test_a_crash_restarts_through_the_faces_own_platform(
+        execs, fake_platform, monkeypatch) -> None:
+    """The platform the face was started with does the restart -- on Windows
+    that is the override that quotes the path, not ``os.execv``.
+
+    MUTATION CHECK: call ``os.execv`` directly again -- ``replaced`` stays
+    empty and ``execs`` is not."""
+    replaced: list[list[str]] = []
+    monkeypatch.setattr(fake_platform, "replace_process",
+                        lambda argv: replaced.append(list(argv)))
+
+    _Face("lost").start(fake_platform)
+
+    assert (replaced, execs) == ([[sys.executable, *sys.orig_argv[1:]]], [])
+
+
 def test_a_second_crash_within_a_minute_does_not_restart(execs) -> None:
     """An App that dies on start must not relaunch the window forever.
 

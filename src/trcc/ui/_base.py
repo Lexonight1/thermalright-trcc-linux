@@ -281,8 +281,9 @@ class UserInterface(CommandBus):
         os.environ[RELAUNCHED_ENV] = f"{now:.0f}"
         for handler in logging.getLogger().handlers:
             handler.flush()       # exec runs no atexit: nothing else would
+        from .._boot import host_platform
         try:
-            os.execv(sys.executable, argv)
+            host_platform(self._platform).replace_process(argv)
         except OSError as e:
             log.error("%s: could not restart — %s: %s", type(self).__name__,
                       type(e).__name__, e)

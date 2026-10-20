@@ -122,6 +122,20 @@ def trcc(
     return _build_local_app(platform=platform, renderer=renderer)
 
 
+def host_platform(platform: Platform | None = None) -> Platform:
+    """*platform*, or this OS's own when none was passed.
+
+    The one place a face that was started without a platform gets one -- the
+    App it builds, and the process it restarts as (``replace_process``).
+    """
+    from .adapters.system import current_platform
+
+    resolved = platform if platform is not None else current_platform()
+    log.debug("host_platform: %s (%s)", type(resolved).__name__,
+              "passed" if platform is not None else "this OS")
+    return resolved
+
+
 def _build_local_app(
     *,
     platform: Platform | None = None,
@@ -136,10 +150,9 @@ def _build_local_app(
     """
     log.info("_build_local_app: platform=%s renderer=%s draws=%s",
              platform is not None, renderer is not None, draws)
-    from .adapters.system import current_platform
     from .app import App
 
-    real_platform = platform if platform is not None else current_platform()
+    real_platform = host_platform(platform)
     real_renderer = renderer
     if real_renderer is None and draws and _led_coolers_only(real_platform):
         # An LED cooler only shows its segment display -- the App sends the

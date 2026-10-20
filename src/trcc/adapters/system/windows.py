@@ -13,6 +13,8 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import subprocess
+from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, NoReturn
@@ -645,6 +647,23 @@ class WindowsPlatform(BaseOS, key="win32"):
             "driver — install it with Zadig (https://zadig.akeo.ie/). "
             "SCSI LCD panels need no driver."
         )
+
+    def replace_process(self, argv: Sequence[str]) -> None:
+        """Start *argv* as a new process; the caller then exits as it would.
+
+        Windows has no exec.  CPython's ``os.execv`` there is the C runtime's
+        ``_execv``: it starts a NEW process, ends this one, and builds the
+        command line by joining the arguments UNQUOTED.  A GUI installed under
+        ``C:\\Program Files\\TRCC`` restarted as ``C:\\Program`` +
+        ``Files\\TRCC\\trcc-gui.exe gui --resume``, took
+        ``Files\\TRCC\\trcc-gui.exe`` for its command and exited before
+        logging a line -- so a GUI whose App crashed closed, and nothing came
+        back (measured on the win11 VM, 2026-10-20: execv_probe split
+        ``"two words"`` in two; dev/tools/win_vm/gui_app_crash.ps1).
+        ``subprocess`` quotes each argument (``list2cmdline``).
+        """
+        log.info("replace_process: Popen %s", list(argv))
+        subprocess.Popen(list(argv), close_fds=True)
 
     def hard_exit(self, code: int) -> NoReturn:
         """``TerminateProcess`` on this process: Windows' ``_exit``.

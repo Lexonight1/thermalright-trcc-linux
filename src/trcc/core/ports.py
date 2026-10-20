@@ -3311,6 +3311,17 @@ class Platform(ABC):
         log.info("%s.hard_exit: os._exit(%d)", type(self).__name__, code)
         os._exit(code)
 
+    def replace_process(self, argv: Sequence[str]) -> None:
+        """Run *argv* in place of this process -- how a face restarts itself.
+
+        The default is ``os.execv``: on a POSIX system the process image is
+        replaced and this never returns.  Windows overrides it -- there is no
+        exec there, and CPython's stand-in passes arguments unquoted.  Raises
+        ``OSError`` when the program cannot be started.
+        """
+        log.info("%s.replace_process: execv %s", type(self).__name__, list(argv))
+        os.execv(argv[0], list(argv))
+
     @abstractmethod
     def worker_thread_context(self) -> AbstractContextManager[None]:
         """Per-thread OS setup a background worker needs before OS API calls.

@@ -171,3 +171,35 @@ def test_windows_falls_back_when_terminate_process_refuses(
         windows.WindowsPlatform().hard_exit(3)
     assert ended.value.code == 3
     assert "TerminateProcess failed (WinError 5)" in caplog.text
+
+
+# ── replace_process: how a face restarts itself after its App crashed ──────
+#
+# Windows has no exec: CPython's os.execv is the C runtime's _execv, which
+# starts a new process and joins the arguments UNQUOTED.  Installed under
+# C:\Program Files, the restarted GUI got "C:\Program" + "Files\TRCC\..." and
+# exited before logging a line -- a GUI whose App crashed closed and nothing
+# came back (win11 VM, 2026-10-20).
+
+
+def test_windows_restarts_through_popen_with_every_argument_whole(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: drop WindowsPlatform.replace_process -- the port's
+    execv runs and this fails."""
+    import subprocess
+
+    started: list[list[str]] = []
+    monkeypatch.setattr(windows.subprocess, "Popen",
+                        lambda argv, **_kw: started.append(list(argv)))
+
+    def no_execv(*_a: Any) -> None:
+        raise AssertionError("os.execv splits a quoted path on Windows")
+    monkeypatch.setattr(windows.os, "execv", no_execv)
+    argv = [r"C:\Program Files\TRCC\trcc-gui.exe", "gui", "--resume"]
+
+    windows.WindowsPlatform().replace_process(argv)
+
+    assert started == [argv]
+    # What CreateProcess receives: the path stays ONE argument.
+    assert subprocess.list2cmdline(started[0]) == (
+        '"C:\\Program Files\\TRCC\\trcc-gui.exe" gui --resume')
