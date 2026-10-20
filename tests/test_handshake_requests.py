@@ -56,6 +56,7 @@ from dataclasses import dataclass
 import pytest
 
 from trcc.adapters.device import DEVICES, _f5
+from trcc.adapters.device._base import BaseBulkDevice
 from trcc.core.models import ProductInfo, Wire
 from trcc.core.ports import Transport
 from trcc.core.registry import ALL_DEVICES, find_product
@@ -199,6 +200,13 @@ def _connect(product: ProductInfo, transport: Transport):
     return device
 
 
+def _connect_bulk(product: ProductInfo, transport: Transport) -> BaseBulkDevice:
+    """:func:`_connect` for a bulk-transport wire, whose endpoints we read."""
+    device = _connect(product, transport)
+    assert isinstance(device, BaseBulkDevice)
+    return device
+
+
 # ── The request itself ──────────────────────────────────────────────────
 
 
@@ -208,7 +216,7 @@ def test_handshake_writes_the_oracle_request(hs: Handshake) -> None:
     transport = FakeBulkTransport()
     transport.read_script.append(hs.reply)
 
-    device = _connect(_product(hs.vid, hs.pid), transport)
+    device = _connect_bulk(_product(hs.vid, hs.pid), transport)
 
     assert transport.writes == [(device._EP_WRITE, hs.request)], hs.citation
 
@@ -224,7 +232,7 @@ def test_handshake_asks_back_the_oracle_read_size(hs: Handshake) -> None:
     transport = FakeBulkTransport()
     transport.read_script.append(hs.reply)
 
-    device = _connect(_product(hs.vid, hs.pid), transport)
+    device = _connect_bulk(_product(hs.vid, hs.pid), transport)
 
     assert transport.reads == [(device._EP_READ, hs.read_size)], hs.citation
 
@@ -282,7 +290,7 @@ def test_ly1_sends_the_ly_request_not_its_own() -> None:
     transport = FakeBulkTransport()
     transport.read_script.append(mock.ly_reply(pm=65, is_ly1=True))
 
-    device = _connect(_product(0x0416, 0x5409), transport)
+    device = _connect_bulk(_product(0x0416, 0x5409), transport)
 
     assert transport.writes == [(device._EP_WRITE, _LY_REQUEST)]
     assert transport.reads == [(device._EP_READ, 512)]

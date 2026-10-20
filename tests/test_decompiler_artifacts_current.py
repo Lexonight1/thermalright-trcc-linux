@@ -37,6 +37,12 @@ _ABSENT = pytest.mark.skipif(
 _REGEN = "PYTHONPATH=. python3.12 dev/decompiler/{}"
 
 
+def _branch_map() -> Path:
+    """The committed ``branch-map.json``, beside its generator."""
+    assert map_branches.__file__ is not None
+    return Path(map_branches.__file__).with_name("branch-map.json")
+
+
 @_ABSENT
 def test_committed_control_flow_maps_are_current() -> None:
     """Every control-flow map — one per binary — matches the generator."""
@@ -67,7 +73,7 @@ def test_committed_control_inventory_is_current() -> None:
 @_ABSENT
 def test_committed_branch_map_is_current() -> None:
     """The wire's decision map matches the generator."""
-    out = Path(map_branches.__file__).with_name("branch-map.json")
+    out = _branch_map()
     assert out.read_text() == map_branches.render(map_branches.build(DECOMPILE_ROOT)), (
         "branch-map.json is stale — run: " + _REGEN.format("map_branches.py")
     )
@@ -81,7 +87,7 @@ def test_a_map_missing_the_wire_is_caught() -> None:
     the comparison has to fail.  A gate that cannot fail is decoration.
     """
     import json
-    out = Path(map_branches.__file__).with_name("branch-map.json")
+    out = _branch_map()
     good = json.loads(out.read_text())
     wire = [k for k in good["per_method"] if "DCReadWrite" in k]
     assert wire, "the wire is absent from the committed map — that IS the failure"

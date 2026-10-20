@@ -13,6 +13,8 @@ handshake. The Command must:
 """
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from trcc.adapters.device.led import (
@@ -26,7 +28,7 @@ from trcc.core.commands import RenderLed, SetLedColor
 from trcc.core.errors import DeviceNotConnectedError
 from trcc.core.led_protocol import LED_REMAP_TABLES
 from trcc.core.models import HardwareMetrics, LedStyle
-from trcc.services.led_segment import compute_mask
+from trcc.services.led_segment import SegmentDisplay, compute_mask
 
 from .conftest import FakePlatform
 
@@ -675,9 +677,15 @@ def test_render_led_forwards_week_sunday_to_the_renderer(
 # ── The page selector, now callable on its own ─────────────────────────────
 
 
-class _FakeDisplay:
-    def __init__(self, phase_count: int) -> None:
-        self.phase_count = phase_count
+def _display(phase_count: int) -> SegmentDisplay:
+    """A bare display with *phase_count* pages -- all ``_metric_page`` reads.
+
+    An instance, not a subclass: every SegmentDisplay subclass is walked as a
+    real style by test_led_effects.
+    """
+    display = SegmentDisplay()
+    display.phase_count = phase_count
+    return display
 
 
 class _FakeEffects:
@@ -706,7 +714,10 @@ def _page(*, phase_count, zone_sync, advance, ticks, interval, current,
     settings.zone_sync_interval_ticks = interval
     settings.zone_sync_zones = [i == selected for i in range(selected + 1)]
     got = RenderLed(key="0416:8001", phase=phase, advance=advance)._metric_page(
-        _FakeApp(), _FakeDisplay(phase_count), style, settings, runtime)
+        # _metric_page reads only app.led_effects; a real App would replace
+        # the stepping fake the test arithmetic relies on.
+        cast(App, _FakeApp()), _display(phase_count), style, settings,
+        runtime)
     return got, runtime
 
 

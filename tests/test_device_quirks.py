@@ -272,7 +272,7 @@ def _quirked(tmp_path, monkeypatch, script: list[bytes]) -> tuple:
     return dev, transport
 
 
-def _write_after_stale(dev, transport) -> bool:
+def _write_after_stale(dev, transport) -> tuple[bool, int]:
     transport.stale = True
     opens = transport.opens
     ok = dev._send_with_recovery(lambda: transport.write(1, b"frame") > 0)

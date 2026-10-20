@@ -34,9 +34,17 @@ from trcc.core.commands import (
 )
 from trcc.core.commands._base import Query
 from trcc.core.led_models import LEDMode
+from trcc.ui.gui.led_handler import LEDHandler
 
 _KEY = "0416:8001"
 _PA120, _AX120, _LC2, _LC1 = 16, 1, 112, 128
+
+
+def _led(win: Any) -> LEDHandler:
+    """The window's handler for the LED under test."""
+    handler = win._handlers[_KEY]
+    assert isinstance(handler, LEDHandler)
+    return handler
 
 
 def _rgb(panel: Any) -> tuple[int, ...]:
@@ -85,7 +93,7 @@ def _open(app: App, qtbot: Any) -> Any:
     win.replay_initial_devices()
     qtbot.waitUntil(lambda: _KEY in win._handlers)
     win._activate_device(_KEY)
-    qtbot.waitUntil(lambda: win._handlers[_KEY].active)
+    qtbot.waitUntil(lambda: _led(win).active)
     return win
 
 
@@ -238,11 +246,11 @@ def test_an_led_change_while_an_lcd_is_shown_waits_for_the_led_panel(
     win.replay_initial_devices()
     qtbot.waitUntil(lambda: _KEY in win._handlers and lcd in win._handlers)
     win._activate_device(_KEY)
-    qtbot.waitUntil(lambda: win._handlers[_KEY].active)
+    qtbot.waitUntil(lambda: _led(win).active)
     panel = win.uc_led_control
     shown = _rgb(panel)
     win._activate_device(lcd)
-    qtbot.waitUntil(lambda: not win._handlers[_KEY].active)
+    qtbot.waitUntil(lambda: not _led(win).active)
 
     app.dispatch(SetLedColor(key=_KEY, color=(90, 80, 70)))
     qtbot.wait(300)

@@ -255,6 +255,7 @@ def test_gate_covers_every_settings_only_led_command() -> None:
                 and obj is not Command
                 and obj.__module__ == led_module.__name__):
             source = inspect.getsource(obj)
+            assert dataclasses.is_dataclass(obj)
             fields = {f.name for f in dataclasses.fields(obj)}
             # Settings-only == has a device key, writes Settings, no wire.
             # SetLedColors / RenderLed keep their own is_led check;
@@ -406,7 +407,7 @@ def test_led_snapshot_reports_the_carousel_mask(tmp_path: Path) -> None:
 
     app = _app(tmp_path)
     key = "0416:1234"
-    app.dispatch(SetLedZoneSyncZones(key=key, zones=[True, False, True]))
+    app.dispatch(SetLedZoneSyncZones(key=key, zones=(True, False, True)))
 
     snap = app.dispatch(LedSnapshot(key=key))
 

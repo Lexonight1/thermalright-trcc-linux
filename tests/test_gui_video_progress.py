@@ -33,6 +33,7 @@ _FRAMES, _FPS = 300, 30
 @pytest.fixture
 def window(tmp_path: Path, qtbot: Any) -> Iterator[Any]:
     from trcc.services.media import Playback
+    from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.trcc_app import TRCCApp
 
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
@@ -42,7 +43,9 @@ def window(tmp_path: Path, qtbot: Any) -> Iterator[Any]:
     win = TRCCApp(app=app)
     qtbot.addWidget(win)
     win.replay_initial_devices()
-    qtbot.waitUntil(lambda: win._handlers[_KEY]._pm.ui_active)
+    handler = win._handlers[_KEY]
+    assert isinstance(handler, LCDHandler)
+    qtbot.waitUntil(lambda: handler._pm.ui_active)
     yield win
     win.close()
     app.close()

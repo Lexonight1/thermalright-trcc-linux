@@ -14,7 +14,7 @@ import time
 from collections.abc import Iterator
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import pytest
@@ -44,11 +44,13 @@ from trcc.core.commands import (
     StopVisual,
     VisualTile,
 )
-from trcc.core.events import BackgroundChanged, ErrorOccurred
+from trcc.core.events import BackgroundChanged, ErrorOccurred, Event
 from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
 from trcc.core.ports import CaptureNotReady
 from trcc.services.media import MediaService
 from trcc.services.visual_driver import task_key
+
+_E = TypeVar("_E", bound=Event)
 
 _KEY = "0402:3922"
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
@@ -60,6 +62,17 @@ _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
 #: as the App's platform binds it.
 TrccPipes = cast("type[pipes_module.TrccPipes]",
                  host_platform_class().VISUALS["trcc-pipes"])
+
+
+def _hear(app: App, event_type: type[_E]) -> list[_E]:
+    """Every *event_type* the App publishes from here on."""
+    heard: list[_E] = []
+
+    def on_event(e: Event) -> None:
+        assert isinstance(e, event_type)
+        heard.append(e)
+    app.events.subscribe(event_type, on_event)
+    return heard
 
 
 def test_every_visual_registers_by_the_key_in_its_class_line() -> None:
@@ -124,7 +137,7 @@ def test_milkdrop_is_offered_only_where_projectm_can_draw(
 # ── TRCC Pipes ───────────────────────────────────────────────────────
 
 def _pipes(center: Path | None = None, center_fire: float = 0.0,
-           **settings: float) -> TrccPipes:
+           **settings: float) -> pipes_module.TrccPipes:
     engine = TrccPipes()
     engine.open(VisualSpec("trcc-pipes", 160, 160, center=center,
                            center_fire=center_fire, settings=settings))
@@ -200,7 +213,7 @@ def test_the_centre_picture_sits_in_the_middle_and_can_burn(
     frame = plain.render()
     middle = (80 * 160 + 80) * 3
     assert sum(frame.data[middle:middle + 3]) > 60
-    def above_the_picture(engine: TrccPipes) -> np.ndarray:
+    def above_the_picture(engine: pipes_module.TrccPipes) -> np.ndarray:
         for _ in range(20):
             frame = engine.render()
         return np.frombuffer(frame.data, dtype=np.uint8).reshape(
@@ -382,8 +395,7 @@ def test_another_source_ends_the_visual_within_a_tick(app: App) -> None:
 
 
 def test_a_failed_visual_ends_and_says_why(app: App) -> None:
-    heard: list[ErrorOccurred] = []
-    app.events.subscribe(ErrorOccurred, heard.append)
+    heard = _hear(app, ErrorOccurred)
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     _reader(app).fail = "the sound stopped"
     assert not app.dispatch(CaptureVisualFrame(key=_KEY)).ok
@@ -521,8 +533,7 @@ def test_a_computer_that_cannot_hear_says_so_up_front(
     why = (f"TRCC cannot hear this computer's sound on "
            f"{app.platform.distro_name()} yet")
     assert {v.problem for v in app.dispatch(ListVisuals()).visuals} == {why}
-    heard: list[ErrorOccurred] = []
-    app.events.subscribe(ErrorOccurred, heard.append)
+    heard = _hear(app, ErrorOccurred)
 
     played = app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
 
@@ -596,8 +607,7 @@ def test_sliders_change_the_playing_visual_live(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes",
                             settings={"growth": 2.0}))
     reader = _reader(app)
-    heard: list[BackgroundChanged] = []
-    app.events.subscribe(BackgroundChanged, heard.append)
+    heard = _hear(app, BackgroundChanged)
 
     moved = app.dispatch(SetVisualSettings(key=_KEY, settings={"growth": 9.0}))
 
@@ -612,8 +622,7 @@ def test_sliders_change_the_playing_visual_live(app: App) -> None:
 
 def test_a_slider_the_visual_lacks_is_refused_out_loud(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
-    heard: list[ErrorOccurred] = []
-    app.events.subscribe(ErrorOccurred, heard.append)
+    heard = _hear(app, ErrorOccurred)
 
     refused = app.dispatch(SetVisualSettings(key=_KEY, settings={"warp": 1.0}))
 
@@ -683,8 +692,7 @@ def test_the_uis_hear_when_the_visual_stops_and_starts_hearing(
 
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     reader = _reader(app)
-    heard: list[VisualHearingChanged] = []
-    app.events.subscribe(VisualHearingChanged, heard.append)
+    heard = _hear(app, VisualHearingChanged)
 
     app.dispatch(CaptureVisualFrame(key=_KEY))
     reader.hearing = False
@@ -1083,13 +1091,12 @@ def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
         app: App, tmp_path: Path) -> None:
     """The panel shows what was picked last.  MUTATION CHECK: drop the
     ``set_visual(None)`` in LoadTheme -- the visual came back at restart."""
-    heard: list[str] = []
-    app.events.subscribe(BackgroundChanged, lambda e: heard.append(e.key))
+    changes = _hear(app, BackgroundChanged)
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
-    heard.clear()
+    changes.clear()
     app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Plain")))
     assert app.settings.for_device(_KEY).visual is None
-    assert _KEY in heard                                    # every UI hears
+    assert _KEY in [e.key for e in changes]                 # every UI hears
     app.media.close_visual(_KEY)                            # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert _reader(app) is None

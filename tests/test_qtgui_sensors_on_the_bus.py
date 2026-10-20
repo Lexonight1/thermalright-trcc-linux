@@ -43,6 +43,7 @@ from PySide6.QtWidgets import QLabel, QStackedWidget
 from tests.mock_platform import MockPlatform
 from trcc.app import App
 from trcc.core.events import SensorsUpdated
+from trcc.core.models import TempUnit
 from trcc.ui.bus_bridge import BusBridge
 from trcc.ui.qtgui.panels.system_panel import SystemPanel
 
@@ -83,7 +84,7 @@ class _Harness:
         qtbot.wait(20)
         self.qtbot = qtbot
 
-    def broadcast(self, value: float, *, temp_unit: str = "C") -> None:
+    def broadcast(self, value: float, *, temp_unit: TempUnit = "C") -> None:
         """Publish one ``SensorsUpdated`` and let the queued signal land."""
         self.app.events.publish(SensorsUpdated(
             reading_count=1,

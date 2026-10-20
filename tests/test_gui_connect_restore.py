@@ -50,15 +50,15 @@ class _Widgets(dict):
 def _jpeg(w: int, h: int) -> bytes:
     """One real solid JPEG — playbacks hold ENCODED frames."""
     from PySide6.QtCore import QBuffer, QByteArray
-    from PySide6.QtGui import QImage
+    from PySide6.QtGui import QImage, QImageWriter
 
     img = QImage(w, h, QImage.Format.Format_RGB888)
     img.fill(0xFF0000)
     data = QByteArray()
     buf = QBuffer(data)
     buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    img.save(buf, "JPEG")
-    return bytes(data)
+    QImageWriter(buf, b"JPEG").write(img)
+    return bytes(data.data())
 
 
 def _write_theme(directory: Path, name: str) -> Path:

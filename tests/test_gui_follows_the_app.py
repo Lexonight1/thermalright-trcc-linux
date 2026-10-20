@@ -131,6 +131,7 @@ def app(tmp_path: Path) -> App:
 
 
 def _open(app: App, qtbot: Any, key: str = _KEY) -> Any:
+    from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.trcc_app import TRCCApp
 
     win = TRCCApp(app=app)
@@ -138,7 +139,9 @@ def _open(app: App, qtbot: Any, key: str = _KEY) -> Any:
     win.replay_initial_devices()
     qtbot.waitUntil(lambda: key in win._handlers)
     win._activate_device(key)
-    qtbot.waitUntil(lambda: win._handlers[key]._pm.ui_active)
+    handler = win._handlers[key]
+    assert isinstance(handler, LCDHandler)
+    qtbot.waitUntil(lambda: handler._pm.ui_active)
     return win
 
 

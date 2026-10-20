@@ -392,6 +392,7 @@ def test_rainbow_cohesive_within_each_digit_single_zone() -> None:
     flat = eng.tick(st, LedRuntimeState(), {},
                     led_count=d.mask_size, color_groups=None)
 
+    assert d.color_groups is not None
     digit = d.color_groups[0]
     assert len({grouped[i] for i in digit}) == 1          # cohesive (fixed)
     assert len({flat[i] for i in digit}) > 1              # spread (the bug)
@@ -402,6 +403,7 @@ def test_rainbow_cohesive_within_each_digit_multi_zone() -> None:
     from trcc.services.led_segment import PA120Display
 
     d = PA120Display()
+    assert d.zone_led_map is not None
     eng = LEDEffectEngine()
     zones = [LedZoneSettings(on=True, mode=LEDMode.RAINBOW, brightness=100)
              for _ in range(len(d.zone_led_map))]
@@ -450,11 +452,14 @@ def test_decoration_styles_cohere_digits_keep_strip_spatial() -> None:
     st = LedDeviceSettings(mode=LEDMode.RAINBOW, color=(255, 0, 0))
     flat = eng.tick(st, LedRuntimeState(), {},
                     led_count=d12.mask_size, color_groups=d12.color_groups)
+    assert d12.digit_groups is not None
     fixed = eng.cohere_digit_groups(flat, d12.digit_groups)
     assert len({fixed[i] for i in d12.digit_groups[0]}) == 1
     assert len({fixed[i] for i in d12.DECORATION}) > 1
 
     d10 = LF10Display()
+    assert d10.zone_led_map is not None
+    assert d10.digit_groups is not None
     zones = [LedZoneSettings(on=True, mode=LEDMode.RAINBOW, brightness=100)
              for _ in range(len(d10.zone_led_map))]
     st2 = LedDeviceSettings(zones=zones)
@@ -561,6 +566,7 @@ def test_a_breathing_zone_cannot_corrupt_a_rainbow_zone() -> None:
             zone_map=zone_map, metric_sources=None, led_count=4)
 
     assert alone.rainbow_phase == mixed.rainbow_phase
+    assert only_rainbow is not None and with_breather is not None
     assert only_rainbow[0] == with_breather[0], (
         "a BREATHING zone changed what the RAINBOW zone rendered — "
         "they are sharing a phase"

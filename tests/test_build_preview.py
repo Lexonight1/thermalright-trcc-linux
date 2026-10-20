@@ -210,11 +210,13 @@ def test_result_survives_the_ipc_boundary_with_bytes_intact(
     """Over the socket the live surface can't travel, so a daemon client asks
     for an encode and reads bytes — the same contract FrameSent.surface has."""
     from trcc import ipc
+    from trcc.core.results import PreviewResult
 
     _load_theme(app, tmp_path)
     r = app.dispatch(BuildPreview(key=_KEY, encode="png", sample_cols=8))
 
     back = ipc.decode_result(ipc.encode_result(r))
+    assert isinstance(back, PreviewResult)
 
     assert back.surface is None            # dropped, loudly, at the boundary
     assert back.image == r.image           # bytes round-trip base64

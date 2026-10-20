@@ -95,17 +95,11 @@ def theme(tmp_home: Path) -> Theme:
 
 
 def _jpeg(value: int) -> bytes:
-    from PySide6.QtCore import QBuffer, QByteArray
     from PySide6.QtGui import QColor, QImage
 
     img = QImage(*SIZE, QImage.Format.Format_RGB888)
     img.fill(QColor(value, value, value))
-    ba = QByteArray()
-    buf = QBuffer(ba)
-    buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    img.save(buf, "JPEG", 90)
-    buf.close()
-    return bytes(ba)
+    return QtRenderer().encode_jpeg(img, 90)
 
 
 def _cache(display: DisplayService):

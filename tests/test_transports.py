@@ -158,6 +158,8 @@ def test_usb_bot_scsi_fails_on_non_zero_csw(fake_bulk) -> None:
 class _CythonDeviceStub:
     """Mimics ``hid.device``: no-arg ctor, ``.open()``, no ``__dict__``."""
 
+    calls: list[str]
+
     def __init__(self, *args, **kwargs) -> None:
         object.__setattr__(self, "calls", [f"ctor(args={len(args)},kw={sorted(kwargs)})"])
 
@@ -173,6 +175,8 @@ class _CythonDeviceStub:
 
 class _ApmortonDeviceStub:
     """Mimics ``hid.Device``: opens in the ctor, ``nonblocking`` property."""
+
+    calls: list[str]
 
     def __init__(self, vid=None, pid=None, serial=None, path=None) -> None:
         object.__setattr__(

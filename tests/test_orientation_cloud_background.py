@@ -59,7 +59,9 @@ def connected(
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     app.attach(_VID, _PID)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
-    assert app.devices[_KEY].profile.resolution == (854, 480)
+    profile = app.devices[_KEY].profile
+    assert profile is not None
+    assert profile.resolution == (854, 480)
     show_a_theme(app, _KEY)
 
     recorder = _RecordingCatalog(app)

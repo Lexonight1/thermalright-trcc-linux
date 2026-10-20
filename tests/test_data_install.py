@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from trcc.core.ports import HttpFetcher
 from trcc.services.data_install import DataInstallService
 
 from .conftest import FakePlatform
@@ -73,7 +74,7 @@ def test_http_data_installer_implements_the_core_data_installer_port() -> None:
     from trcc.adapters.repo.data_install import HttpDataInstaller
     from trcc.core.ports import DataInstaller
 
-    class _FakeHttp:
+    class _FakeHttp(HttpFetcher):
         def fetch(self, url, timeout_s=30.0, max_bytes=None):
             return b""
 
@@ -250,7 +251,7 @@ def test_every_reachable_resolution_has_both_shipped_catalogs() -> None:
 # =========================================================================
 
 
-class _Fetches:
+class _Fetches(HttpFetcher):
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
     ) -> bytes:

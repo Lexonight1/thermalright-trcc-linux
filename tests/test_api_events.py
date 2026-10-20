@@ -105,7 +105,9 @@ def test_a_tuple_field_survives_as_a_json_array(app: App, client) -> None:
         got = _drain(ws, 1)[0]
 
     assert got["fields"]["resolution"] == [320, 320]
-    assert decode_event(got).resolution == (320, 320)
+    decoded = decode_event(got)
+    assert isinstance(decoded, DeviceConnected)
+    assert decoded.resolution == (320, 320)
 
 
 # ── The types filter ─────────────────────────────────────────────────

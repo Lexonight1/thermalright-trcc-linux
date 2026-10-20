@@ -105,7 +105,9 @@ def test_a_url_plays_as_a_live_stream(app: App) -> None:
 
     assert (result.ok, result.playing) == (True, True)
     assert _reader(app).url == _URL
-    assert _reader(app).size == app.devices[_KEY].profile.resolution
+    profile = app.devices[_KEY].profile
+    assert profile is not None
+    assert _reader(app).size == profile.resolution
     assert _source(app) == "media"
     assert app.tasks == [task_key(_KEY)], "no driver ticks the stream"  # type: ignore[attr-defined]
 
@@ -375,12 +377,15 @@ def test_the_gui_web_video_action_streams_it(
 ) -> None:
     from PySide6.QtWidgets import QInputDialog
 
+    from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.trcc_app import TRCCApp
 
     win = TRCCApp(app=app)
     qtbot.addWidget(win)
     win.replay_initial_devices()
-    qtbot.waitUntil(lambda: win._handlers[_KEY]._pm.ui_active)
+    handler = win._handlers[_KEY]
+    assert isinstance(handler, LCDHandler)
+    qtbot.waitUntil(lambda: handler._pm.ui_active)
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: (f" {_URL} ", True))
 
     win.uc_theme_setting.video_panel.action_requested.emit("VideoUrl")

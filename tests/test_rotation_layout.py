@@ -201,9 +201,13 @@ def test_each_orientation_keeps_its_own_theme_and_brightness(folders: Path) -> N
     assert _showing(app) == ("theme480854", "Theme3", 40)       # carried over
     _pick(app, (480, 854), "Theme2", 80)
 
-    from trcc.core.events import BrightnessChanged
+    from trcc.core.events import BrightnessChanged, Event
     heard: list[int] = []
-    app.events.subscribe(BrightnessChanged, lambda e: heard.append(e.percent))
+
+    def on_brightness(e: Event) -> None:
+        assert isinstance(e, BrightnessChanged)
+        heard.append(e.percent)
+    app.events.subscribe(BrightnessChanged, on_brightness)
 
     app.dispatch(SetOrientation(key=_KEY, degrees=0))
     assert _showing(app) == ("theme854480", "Theme3", 40)
@@ -217,7 +221,7 @@ def test_each_orientation_keeps_its_own_game_mode(folders: Path) -> None:
     (FormCZTV.cs:6230-6231, read back at :1672-1675): a rotation swaps in the
     folder's own switch and threshold, tells every UI, and the pair survives a
     restart."""
-    from trcc.core.events import GameModeChanged
+    from trcc.core.events import Event, GameModeChanged
 
     app = _app(folders)
     app.dispatch(SetOrientation(key=_KEY, degrees=0))
@@ -230,8 +234,11 @@ def test_each_orientation_keeps_its_own_game_mode(folders: Path) -> None:
     app.settings.set_game_mode(_KEY, enabled=False, threshold=30)
 
     heard: list[tuple[bool, int]] = []
-    app.events.subscribe(GameModeChanged,
-                         lambda e: heard.append((e.enabled, e.threshold)))
+
+    def on_game_mode(e: Event) -> None:
+        assert isinstance(e, GameModeChanged)
+        heard.append((e.enabled, e.threshold))
+    app.events.subscribe(GameModeChanged, on_game_mode)
     app.dispatch(SetOrientation(key=_KEY, degrees=0))
     s = app.settings.for_device(_KEY)
     assert (s.game_enabled, s.game_threshold) == (True, 60)

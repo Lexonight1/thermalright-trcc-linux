@@ -17,7 +17,7 @@ import pytest
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, RestoreDeviceState
-from trcc.core.events import DataInstalled, DeviceConnected
+from trcc.core.events import DataInstalled, DeviceConnected, Event
 
 from .conftest import FakePlatform
 
@@ -224,8 +224,11 @@ def test_a_ui_hears_device_connected_only_after_the_prime(
     monkeypatch.setattr(app.data_install_runner, "submit",
                         lambda *_a, **_k: None)
     seen: list[str | None] = []
-    app.events.subscribe(DeviceConnected, lambda e: seen.append(
-        t.name if (t := app.active_themes.get(e.key)) else None))
+
+    def on_connected(e: Event) -> None:
+        assert isinstance(e, DeviceConnected)
+        seen.append(t.name if (t := app.active_themes.get(e.key)) else None)
+    app.events.subscribe(DeviceConnected, on_connected)
     _save(app, tmp_home)
     app.start_session()
     try:
@@ -284,6 +287,7 @@ def test_the_api_runs_a_session(tmp_home: Path,
     (the saved theme is the only theme on disk; there is no Theme1 here).
     """
     import uvicorn
+    from fastapi import FastAPI
 
     from trcc.core.commands import ListDevices
     from trcc.ui._uis import ApiUI
@@ -292,7 +296,9 @@ def test_the_api_runs_a_session(tmp_home: Path,
     shown: list[bool] = []
 
     def serve(self: uvicorn.Server, sockets: object = None) -> None:
-        bus = self.config.app.state.trcc
+        api = self.config.app
+        assert isinstance(api, FastAPI)
+        bus = api.state.trcc
         bus.dispatch(ConnectDevice(key=_KEY))
         shown.extend(d.has_active_theme
                      for d in bus.dispatch(ListDevices()).devices

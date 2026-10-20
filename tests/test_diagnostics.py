@@ -2734,7 +2734,7 @@ def _noise_jpeg(seed: int, w: int = 320, h: int = 320) -> bytes:
     import random
 
     from PySide6.QtCore import QBuffer, QByteArray
-    from PySide6.QtGui import QImage
+    from PySide6.QtGui import QImage, QImageWriter
 
     rng = random.Random(seed)
     img = QImage(bytes(rng.getrandbits(8) for _ in range(w * h * 3)),
@@ -2742,9 +2742,11 @@ def _noise_jpeg(seed: int, w: int = 320, h: int = 320) -> bytes:
     data = QByteArray()
     buf = QBuffer(data)
     buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    img.save(buf, "JPEG", 95)
+    writer = QImageWriter(buf, b"JPEG")
+    writer.setQuality(95)
+    writer.write(img)
     buf.close()
-    return bytes(data)
+    return bytes(data.data())
 
 
 @_needs_af_unix
@@ -3215,7 +3217,7 @@ _ENUMERATOR_LOGGERS: dict[str, frozenset[str]] = {
 }
 
 
-def _enumerator_methods() -> dict[str, ast.FunctionDef]:
+def _enumerator_methods() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     tree = ast.parse((_SRC / "adapters" / "sensors" / "aggregator.py")
                      .read_text(encoding="utf-8"))
     for node in ast.walk(tree):

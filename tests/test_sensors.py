@@ -673,7 +673,7 @@ def _hwmon_temps(root: Path, dirname: str, driver: str,
 
 # The real Intel Arc Pro B70 (xe driver) channel layout: no temp1 at all,
 # temp2="pkg" is the package/die sensor.  (Trimmed from the 21 real channels.)
-_XE_CHANNELS = {
+_XE_CHANNELS: dict[int, tuple[int, str | None]] = {
     2: (52000, "pkg"),
     3: (54000, "vram"),
     4: (40000, "mctrl"),
@@ -745,10 +745,11 @@ def test_intel_gpu_temp_none_without_hwmon(tmp_path: Path) -> None:
 # ── Memory channel clock — MemoryClock → memory:clock → mem_clock ────
 
 
-class _FakeMemoryClock:
+class _FakeMemoryClock(hwmon.MemoryClock):
     """Stub for the cached memory clock source (mhz)."""
 
     def __init__(self, mhz: float | None) -> None:
+        super().__init__()
         self._mhz = mhz
 
     def clock(self) -> float | None:

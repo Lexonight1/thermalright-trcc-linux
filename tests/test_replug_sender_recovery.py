@@ -177,10 +177,14 @@ def test_a_replug_heals_a_panel_whose_transport_closed(app: App) -> None:
 
 
 def _disconnects(app: App) -> list[str]:
-    from trcc.core.events import DeviceDisconnected
+    from trcc.core.events import DeviceDisconnected, Event
 
     seen: list[str] = []
-    app.events.subscribe(DeviceDisconnected, lambda e: seen.append(e.key))
+
+    def on_disconnect(e: Event) -> None:
+        assert isinstance(e, DeviceDisconnected)
+        seen.append(e.key)
+    app.events.subscribe(DeviceDisconnected, on_disconnect)
     return seen
 
 
@@ -350,12 +354,16 @@ def test_a_lost_panel_raises_no_error_event_per_frame(app: App) -> None:
     import time
 
     from trcc.core.errors import TransportError
-    from trcc.core.events import ErrorOccurred
+    from trcc.core.events import ErrorOccurred, Event
 
     app.dispatch(ConnectDevice(key=_KEY))
     _take_the_panel(app)
     errors: list[str] = []
-    app.events.subscribe(ErrorOccurred, lambda e: errors.append(e.message))
+
+    def on_error(e: Event) -> None:
+        assert isinstance(e, ErrorOccurred)
+        errors.append(e.message)
+    app.events.subscribe(ErrorOccurred, on_error)
 
     # Paced: back to back, latest-wins would fold all ten into the waited
     # drain frame, whose failure goes to its caller -- and test nothing.
@@ -501,7 +509,7 @@ def test_a_panel_nobody_may_open_is_not_retried(tmp_path: Path, where: str) -> N
                   send_scheduler=SyncSendScheduler())
         build = app.platform.open_transport
 
-        def refusing_to_open(*args: object, **kwargs: object) -> object:
+        def refusing_to_open(*args: Any, **kwargs: Any) -> object:
             transport = build(*args, **kwargs)
 
             def no(*_a: object, **_k: object) -> bool:

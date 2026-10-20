@@ -17,12 +17,20 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import FakeCpu, FakePlatform
+from trcc.adapters.sensors.aggregator import BaselineSensors
 from trcc.app import App
 
 
 @pytest.fixture
 def app(tmp_home: Path) -> App:
     return App(platform=FakePlatform(tmp_home))
+
+
+def _sensors(app: App) -> BaselineSensors:
+    """The enumerator ``FakePlatform`` builds — internals reached by the tests."""
+    sensors = app.platform.sensors()
+    assert isinstance(sensors, BaselineSensors)
+    return sensors
 
 
 def _spy_on_coldplug(monkeypatch) -> list[object]:
@@ -134,7 +142,7 @@ def test_set_refresh_interval_changes_the_observed_sweep_RATE(app: App) -> None:
     from trcc.core.commands import SetRefreshInterval
     from trcc.core.models import DEFAULT_REFRESH_INTERVAL_S
 
-    sensors = app.platform.sensors()
+    sensors = _sensors(app)
     sweeps: list[float] = []
     real = sensors._poll_once
 
@@ -221,12 +229,13 @@ class _SlowCpu(FakeCpu):
 
 def _subscribe_publishes(app: App) -> list[tuple[int, float]]:
     """(reading_count, cache age at publish) for every ``SensorsUpdated``."""
-    from trcc.core.events import SensorsUpdated
+    from trcc.core.events import Event, SensorsUpdated
 
-    sensors = app.platform.sensors()
+    sensors = _sensors(app)
     seen: list[tuple[int, float]] = []
 
-    def record(event: SensorsUpdated) -> None:
+    def record(event: Event) -> None:
+        assert isinstance(event, SensorsUpdated)
         with sensors._lock:
             age = time.monotonic() - sensors._last_poll
         seen.append((event.reading_count, age))
@@ -246,7 +255,7 @@ def test_the_first_broadcast_is_never_an_unswept_cache(app: App) -> None:
     MUTATION CHECK: restore the publish-then-wait order in ``MetricsLoop._loop``
     and this fails with ``0 readings``.
     """
-    app.platform.sensors()._cpu = _SlowCpu()
+    _sensors(app)._cpu = _SlowCpu()
     seen = _subscribe_publishes(app)
 
     app.metrics_loop.start()

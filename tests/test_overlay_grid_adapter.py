@@ -50,7 +50,9 @@ def test_hardware_metric_accessors_round_trip() -> None:
 def test_a_pair_reads_the_csharp_dashboard_row(
     pair: tuple[int, int], sensor: str,
 ) -> None:
-    assert Dc.hardware_metric(*pair)[0] == sensor
+    metric = Dc.hardware_metric(*pair)
+    assert metric is not None
+    assert metric[0] == sensor
 
 
 _CSHARP_ROWS = (DECOMPILE_ROOT / "TRCC" / "UCSystemInfoOptions.cs")
@@ -114,7 +116,9 @@ def test_every_sensor_is_written_as_its_own_pair() -> None:
     for pair in METRICS:
         assert Dc.metric_to_hardware(METRICS[pair].sensor_id) == pair, pair
     assert Dc.metric_to_hardware("fan:cpu") == (5, 1)
-    assert Dc.hardware_metric(10000, 1)[0] == "fan:cpu"      # still reads
+    fan = Dc.hardware_metric(10000, 1)
+    assert fan is not None
+    assert fan[0] == "fan:cpu"                               # still reads
 
 
 def test_a_cpu_fan_element_is_saved_as_the_cpu_fan() -> None:

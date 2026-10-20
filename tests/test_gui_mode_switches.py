@@ -38,6 +38,7 @@ _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
 def window(tmp_path: Path, qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     from tests.test_video_playback import _encoded_frame
     from trcc.services.media import MediaService, Playback
+    from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.trcc_app import TRCCApp
 
     def fake_load(self: Any, device_key: str, path: Path, size: Any, **_k: Any) -> Any:
@@ -53,7 +54,12 @@ def window(tmp_path: Path, qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> Itera
     win = TRCCApp(app=app)
     qtbot.addWidget(win)
     win.replay_initial_devices()
-    qtbot.waitUntil(lambda: win._handlers[_KEY]._pm.ui_active)
+
+    def lcd_shown() -> bool:
+        handler = win._handlers[_KEY]
+        assert isinstance(handler, LCDHandler)
+        return handler._pm.ui_active
+    qtbot.waitUntil(lcd_shown)
     win._clip = tmp_path / "clip.mp4"                      # type: ignore[attr-defined]
     win._clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")   # type: ignore[attr-defined]
     yield win

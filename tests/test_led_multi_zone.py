@@ -30,7 +30,7 @@ from trcc.core.commands import (
     SetLedZoneSyncZones,
     ToggleLed,
 )
-from trcc.core.events import FrameSent
+from trcc.core.events import Event, FrameSent
 from trcc.core.led_models import LED_STYLES, LEDMode
 from trcc.core.models import LedStyle
 from trcc.services.led_effects import LEDEffectEngine, apply_brightness
@@ -55,7 +55,11 @@ def _connected(platform: FakePlatform, pm: int) -> App:
 def _render(app: App, platform: FakePlatform, style: LedStyle) -> tuple[list, list]:
     """(what the preview shows, what the wire received) for one frame."""
     shown: list[Any] = []
-    app.events.subscribe(FrameSent, lambda e: shown.append(list(e.display_colors)))
+
+    def on_frame(e: Event) -> None:
+        assert isinstance(e, FrameSent)
+        shown.append(list(e.display_colors))
+    app.events.subscribe(FrameSent, on_frame)
     platform.bulk.writes.clear()
     assert app.dispatch(RenderLed(key=_LED_KEY)).ok
     return shown[-1], _decode_body(platform.bulk.writes, LED_STYLES[style].led_count)

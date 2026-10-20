@@ -24,6 +24,7 @@ from trcc.core.events import (
     DeviceDetached,
     EventBus,
 )
+from trcc.core.models import Theme
 
 from .conftest import FakePlatform
 
@@ -355,7 +356,8 @@ def test_detach_keeps_content_so_the_panel_repaints_on_replug(
     runtime / media — otherwise the panel comes back blank (the same choice
     _on_system_resumed makes)."""
     app = _connected_app(tmp_path)
-    app.active_themes[_REPLUG_KEY] = object()
+    app.active_themes[_REPLUG_KEY] = Theme(
+        name="T", path=Path("/nonexistent"), resolution=(320, 320))
 
     _detach(app)
 

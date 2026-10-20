@@ -13,6 +13,7 @@ from __future__ import annotations
 import io
 import sys
 import urllib.error
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -38,7 +39,7 @@ def test_a_network_error_is_unreachable_not_absent(monkeypatch) -> None:
 
 def test_a_404_is_still_absent(monkeypatch) -> None:
     def urlopen(url, *a, **k):
-        raise urllib.error.HTTPError(url, 404, "Not Found", None, io.BytesIO(b""))
+        raise urllib.error.HTTPError(url, 404, "Not Found", Message(), io.BytesIO(b""))
     monkeypatch.setattr(deps.urllib.request, "urlopen", urlopen)
 
     assert deps.in_fedora("no-such-package") is None
@@ -48,7 +49,7 @@ def test_mdapi_says_absent_with_a_400(monkeypatch) -> None:
     """Measured: mdapi answers ``400 Bad Request`` for ANY package it does
     not have (python3-nvidia-ml-py, no-such-package-xyz), 200 for one it has."""
     def urlopen(url, *a, **k):
-        raise urllib.error.HTTPError(url, 400, "Bad Request", None, io.BytesIO(b""))
+        raise urllib.error.HTTPError(url, 400, "Bad Request", Message(), io.BytesIO(b""))
     monkeypatch.setattr(deps.urllib.request, "urlopen", urlopen)
 
     assert deps.in_fedora("python3-nvidia-ml-py") is None

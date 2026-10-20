@@ -13,13 +13,15 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from trcc.app import App
+from trcc.core.commands import Command
 from trcc.core.led_models import LED_STYLES
 
-from .conftest import FakeMic, FakePlatform
+from .conftest import FakeAutostart, FakeMic, FakePlatform
 
 # =========================================================================
 # QApplication fixture — module-scoped so all GUI tests share it
@@ -204,6 +206,7 @@ def test_uc_about_gpu_widget_label_and_dropdown(qapp: object) -> None:
     assert one._gpu_label.text() == "RTX 4090"
 
     two = UCAbout(gpu_list=[("nvidia:0", "RTX 4090"), ("intel:igpu", "UHD 770")])
+    assert two._gpu_combo is not None
     assert two._gpu_combo.count() == 2
 
 
@@ -367,8 +370,9 @@ def test_system_panel_constructs(gui_app: App, qtbot) -> None:
 
     panel = SystemPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    assert panel.layout() is not None
-    assert panel.layout().count() == 7, "six boxes + the action row"
+    layout = panel.layout()
+    assert layout is not None
+    assert layout.count() == 7, "six boxes + the action row"
 
     boxes = (panel._platform, panel._gpu, panel._maintenance,
              panel._health, panel._sensors, panel._dash)
@@ -772,7 +776,7 @@ def test_overlay_editor_shows_the_layout_and_writes_nothing_on_open(
     writes: list[str] = []
     real = gui_app.dispatch
 
-    def _record(command: object) -> object:
+    def _record(command: Command[Any]) -> object:
         if not isinstance(command, Query):
             writes.append(type(command).__name__)
         return real(command)
@@ -859,7 +863,9 @@ def test_color_change_sends_one_update_naming_the_element(
     edits = [info for cmd, info in captured
              if cmd == UCThemeSetting.CMD_OVERLAY_CHANGED]
     assert len(edits) == 1, f"one colour change, {len(edits)} edits"
-    command = edits[0](key="0402:3922")
+    edit = edits[0]
+    assert callable(edit)
+    command = edit(key="0402:3922")
     assert command == UpdateOverlayElement(
         key="0402:3922", element_id="t1", color="#112233",
     ), "only the changed field may be sent"
@@ -941,7 +947,7 @@ def test_the_configuration_panel_shows_what_the_app_holds(
     sent: list[str] = []
     real = gui_app.dispatch
 
-    def _record(command: object) -> object:
+    def _record(command: Command[Any]) -> object:
         if not isinstance(command, Query):
             sent.append(type(command).__name__)
         return real(command)
@@ -1300,7 +1306,7 @@ def _record_dispatches(app: App, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     sent: list[str] = []
     real = app.dispatch
 
-    def _record(command: object) -> object:
+    def _record(command: Command[Any]) -> object:
         sent.append(type(command).__name__)
         return real(command)
 
@@ -1379,6 +1385,7 @@ def test_main_window_repairs_a_stale_autostart_entry(make_window, gui_app: App) 
     from trcc.core.commands import EnableAutostart
 
     mgr = gui_app.platform.autostart()
+    assert isinstance(mgr, FakeAutostart)
     gui_app.dispatch(EnableAutostart())
     mgr.command = "/moved/bin/trcc"               # the install moved
     assert mgr.installed_command != mgr.command, "fixture drift: not stale"
@@ -1873,6 +1880,7 @@ def test_screencast_panel_start_casts_the_stored_region(cast_app: App) -> None:
 
     rect = cast_app.dispatch(LcdSnapshot(key="0402:3922")).screencast_rect
     assert panel._casting is True, panel._status.text()
+    assert rect is not None
     assert cast_app.settings.for_device("0402:3922").screencast_region == (*rect, False)
 
 
@@ -2411,6 +2419,7 @@ def test_uc_image_cut_spec_declares_every_toolbar_button() -> None:
     here rather than surfacing as a button in the wrong place.
     """
     from trcc.ui.gui import uc_image_cut as mod
+    from trcc.ui.presentation.panel_spec import IconButton
 
     expected = {
         "btn_height_fit": mod.BTN_HEIGHT_FIT,
@@ -2424,7 +2433,8 @@ def test_uc_image_cut_spec_declares_every_toolbar_button() -> None:
     for name, rect in expected.items():
         assert declared[name].rect == rect, f"{name} moved off its constant"
     # Every toolbar button carries a text fallback for a missing asset.
-    assert all(c.fallback for c in mod._SPEC.controls)
+    assert all(isinstance(c, IconButton) and c.fallback
+               for c in mod._SPEC.controls)
 
 
 def test_overlay_editor_does_not_reseed_an_emptied_layer(gui_app: App) -> None:
@@ -2800,8 +2810,10 @@ def test_the_date_format_reaches_the_bus(gui_app: App, qtbot) -> None:
 
     panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
     panel._date.setCurrentText("dd.MM.yyyy")
-    panel._date.lineEdit().editingFinished.emit()        # the user is done
-    panel._date.lineEdit().editingFinished.emit()        # a focus change
+    line = panel._date.lineEdit()
+    assert line is not None
+    line.editingFinished.emit()                          # the user is done
+    line.editingFinished.emit()                          # a focus change
 
     assert sent == [("SetDateFormat", "dd.MM.yyyy", "0402:3922")], (
         f"the typed pattern did not reach the bus intact: {sent}"
@@ -3166,7 +3178,9 @@ def test_adding_a_panel_shows_it_without_persisting_it(
     box._on_add_panel()
 
     assert box._tree.topLevelItemCount() == len(box._panels)
-    assert box._tree.topLevelItem(len(box._panels) - 1).text(0) == "Custom"
+    added = box._tree.topLevelItem(len(box._panels) - 1)
+    assert added is not None
+    assert added.text(0) == "Custom"
     assert len(gui_app.dispatch(GetSensorDashboard()).panels) == persisted_before
     assert "unsaved" in box._status.text()
 
@@ -3243,7 +3257,9 @@ def test_renaming_a_panel_takes_the_dialogs_answer(
 
     rename_with("  Water loop  ", True)     # accepted, and stripped
     assert box._panels[0].name == "Water loop"
-    assert box._tree.topLevelItem(0).text(0) == "Water loop"
+    heading = box._tree.topLevelItem(0)
+    assert heading is not None
+    assert heading.text(0) == "Water loop"
 
     rename_with("Discarded", False)         # cancelled — ok=False
     assert box._panels[0].name == "Water loop"
@@ -3290,9 +3306,11 @@ def test_panel_verbs_refuse_politely_with_no_selection(
     gui_app: App, qtbot,
 ) -> None:
     """No selection is a message, never a crash or a silent no-op."""
+    from PySide6.QtCore import QModelIndex
+
     box = _dashboard_box(gui_app, qtbot)
     box._tree.clearSelection()
-    box._tree.setCurrentItem(None)
+    box._tree.setCurrentIndex(QModelIndex())     # what setCurrentItem(None) does
     assert box._selected_panel() is None
 
     before = [p.name for p in box._panels]
@@ -3328,7 +3346,9 @@ def test_binding_refuses_a_panel_heading(gui_app: App, qtbot) -> None:
     box = _dashboard_box(gui_app, qtbot)
     if box._tree.topLevelItemCount() == 0:
         pytest.skip("host reported no dashboard panels")
-    box._tree.setCurrentItem(box._tree.topLevelItem(0))
+    heading = box._tree.topLevelItem(0)
+    assert heading is not None
+    box._tree.setCurrentItem(heading)
 
     box._on_bind()
 
@@ -3478,8 +3498,7 @@ def _inspector_text(gui_app: App, qtbot, *, pm, sub) -> str:
         catalog_product="Frozen Warframe 360", pm_byte=pm, sub_byte=sub,
         fbl=7, serial="ABC")
     panel._refresh_inspector()
-    w = panel._inspector
-    return w.toPlainText() if hasattr(w, "toPlainText") else w.text()
+    return panel._inspector.text()
 
 
 def test_a_pm_byte_of_zero_is_shown(gui_app: App, qtbot) -> None:
@@ -3903,7 +3922,7 @@ def test_a_rail_pick_makes_every_device_panel_reload_for_that_device(
         asked: list[tuple[str, str]] = []
         real = app.dispatch
 
-        def _record(command: object) -> object:
+        def _record(command: Command[Any]) -> object:
             asked.append((type(command).__name__, getattr(command, "key", "")))
             return real(command)
 
@@ -4356,7 +4375,9 @@ def test_the_qtgui_edit_dialog_sends_only_what_the_user_changed(
     monkeypatch.setattr(overlay_editor._ElementDialog, "exec", _exec)
     panel._on_edit()
 
-    element = gui_app.settings.for_device(key).user_overlay_elements[0]
+    elements = gui_app.settings.for_device(key).user_overlay_elements
+    assert elements is not None
+    element = elements[0]
     assert (element.size, element.color) == (256, "#00ff00"), (
         "an untouched field was written back")
     assert element.x == (40 if user_moves_x else 5)

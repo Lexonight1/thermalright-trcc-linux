@@ -16,7 +16,7 @@ from trcc.adapters.modules import MODULES, BaseModule
 from trcc.app import App
 from trcc.core.commands import ListModules, SetModuleEnabled
 from trcc.core.errors import ModuleUnavailable
-from trcc.core.events import ModuleChanged
+from trcc.core.events import Event, ModuleChanged
 from trcc.core.ports import Module, ModuleHost
 
 from .conftest import FakePlatform
@@ -117,7 +117,11 @@ def test_the_choice_survives_a_restart(tmp_home: Path) -> None:
 def test_every_ui_hears_a_switch_and_sees_every_module(tmp_home: Path) -> None:
     app = _app(tmp_home)
     heard: list[tuple[str, bool]] = []
-    app.events.subscribe(ModuleChanged, lambda e: heard.append((e.key, e.enabled)))
+
+    def on_module(e: Event) -> None:
+        assert isinstance(e, ModuleChanged)
+        heard.append((e.key, e.enabled))
+    app.events.subscribe(ModuleChanged, on_module)
     app.dispatch(SetModuleEnabled(key="off", enabled=True))
     listed = {m.key: (m.enabled, m.problem)
               for m in app.dispatch(ListModules()).modules}

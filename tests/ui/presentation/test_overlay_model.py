@@ -8,6 +8,7 @@ testable as plain data — these tests import no Qt and create no QApplication.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -20,9 +21,9 @@ from trcc.ui.presentation.overlay_serialization import (
 )
 
 
-def _cfg(**kw) -> OverlayElementConfig:
+def _cfg(**kw: Any) -> OverlayElementConfig:
     """A CUSTOM-text element by default — simplest round-trippable shape."""
-    base = dict(mode=OverlayMode.CUSTOM, text="hello", x=10, y=20)
+    base: dict[str, Any] = dict(mode=OverlayMode.CUSTOM, text="hello", x=10, y=20)
     base.update(kw)
     return OverlayElementConfig(**base)
 
@@ -51,6 +52,7 @@ def test_add_appends_and_selects_new_element() -> None:
     assert m.selected_index == 1          # newest selected
     # A copy with its own id — never the caller's object.
     assert m.selected_config is not b
+    assert m.selected_config is not None
     assert m.selected_config == replace(b, id=m.selected_config.id)
 
 
@@ -139,7 +141,9 @@ def test_load_copies_caps_and_clears_selection() -> None:
     assert m.selected_index == -1      # the selected one is gone → cleared
     # load copies — mutating the source element must not touch the model
     src[0].text = "MUTATED"
-    assert m.config_at(0).text == "0"
+    first = m.config_at(0)
+    assert first is not None
+    assert first.text == "0"
 
 
 def test_load_keeps_the_selected_element_selected_by_id() -> None:
@@ -153,6 +157,7 @@ def test_load_keeps_the_selected_element_selected_by_id() -> None:
             _cfg(id="b", text="b", x=77)])
 
     assert m.selected_index == 2
+    assert m.selected_config is not None
     assert m.selected_config.x == 77, "the reloaded values, at the new place"
 
 
@@ -192,7 +197,9 @@ def test_find_nearest_empty_returns_minus_one() -> None:
 
 def _entry(cfg: OverlayElementConfig) -> OverlayElementEntry:
     """What the App hands back for a cell it was given."""
-    return OverlayElementEntry(id=cfg.id or "el_x", **config_fields(cfg))
+    fields = config_fields(cfg)
+    assert fields is not None
+    return OverlayElementEntry(id=cfg.id or "el_x", **fields)
 
 
 def test_config_fields_carry_show_unit_from_mode_sub() -> None:

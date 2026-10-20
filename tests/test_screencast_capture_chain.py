@@ -66,15 +66,15 @@ def _png(path: Path, w: int, h: int, rgb: tuple[int, int, int],
     desktop squashed into it.  Measured — removing the ``.copy(QRect(...))``
     left all eight tests green until this marker was added.
     """
-    from PySide6.QtCore import QRect
-    from PySide6.QtGui import QColor, QImage, QPainter
+    from PySide6.QtCore import QByteArray, QRect
+    from PySide6.QtGui import QColor, QImage, QImageWriter, QPainter
     img = QImage(w, h, QImage.Format.Format_RGB888)
     img.fill(QColor(*rgb))
     if marker is not None:
         painter = QPainter(img)
         painter.fillRect(QRect(*marker), QColor(*INK))
         painter.end()
-    img.save(str(path), "PNG")
+    QImageWriter(str(path), QByteArray(b"PNG")).write(img)
 
 
 def _uniform(frame: Any, rgb: tuple[int, int, int]) -> bool:
@@ -440,9 +440,12 @@ def test_the_portal_token_is_kept_per_desktop(
     overwriting the other's -- measured on 2026-09-18: the GNOME token
     replayed to KDE and refused, then KDE's overwriting it.
     """
+    from trcc.adapters.screencast.pipewire import PipeWireScreenCapture
+
     made = build_screen_capture(
         DisplaySession(DisplayServer.WAYLAND, desktops), config_dir=tmp_path)
 
+    assert isinstance(made, PipeWireScreenCapture)
     assert made._token_path == tmp_path / name
 
 

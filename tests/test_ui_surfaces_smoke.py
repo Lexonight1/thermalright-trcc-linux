@@ -57,6 +57,7 @@ def test_the_window_runs_no_capture_loop_of_its_own(tmp_path: Path) -> None:
 
         assert window.uc_theme_setting.screencast_panel.values() == (0, 0, 32, 32), (
             "the window missed ScreencastStarted")
+        assert isinstance(app.platform, MockPlatform)
         assert app.platform.capture.regions == [], (
             "the window captured on its own — a second capture loop")
         scheduler.tick(0.0)
@@ -139,6 +140,7 @@ def test_the_window_follows_what_another_ui_does(tmp_path: Path) -> None:
 
     from tests.conftest import renderable_theme
     from trcc.core.commands import ConfigureSlideshow, LoadTheme, SetSlideshow
+    from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.trcc_app import TRCCApp
 
     app = _app(tmp_path)
@@ -147,6 +149,7 @@ def test_the_window_follows_what_another_ui_does(tmp_path: Path) -> None:
         window = TRCCApp(app=app)
         window.replay_initial_devices()
         handler = window._handlers[_KEY]
+        assert isinstance(handler, LCDHandler)
         assert handler._pm.ui_active, "fixture: the one panel should be the active one"
         root = app.platform.paths().user_content_dir() / "data" / "theme320320"
         theme = renderable_theme(root, "FromTheCli")

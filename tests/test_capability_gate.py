@@ -101,6 +101,7 @@ def test_an_led_is_refused_and_nothing_is_written(app: App, tmp_path: Path,
     result = app.dispatch(cmd)
 
     assert result.ok is False
+    assert cmd.REQUIRES is not None
     assert f"has no {cmd.REQUIRES.value} capability" in result.message
     assert isinstance(result, result_type(type(cmd)))
     assert _LED not in app.settings._devices, "LCD settings written for an LED"

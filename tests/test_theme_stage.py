@@ -12,16 +12,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import FakePaths
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.errors import ThemeError
 from trcc.core.models import ThemeDir
 
 
-class _Paths:
-    """Minimal Paths port — ``single_file_theme`` needs user_content_dir."""
-
-    def __init__(self, root: Path) -> None:
-        self._root = root
+class _Paths(FakePaths):
+    """Paths port rooted at *root* — ``single_file_theme`` needs user_content_dir."""
 
     def user_content_dir(self) -> Path:
         return self._root

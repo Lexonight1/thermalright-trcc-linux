@@ -9,11 +9,13 @@ from typing import Any
 from PySide6.QtWidgets import QWidget
 
 from trcc.core.commands import ListDevices
+from trcc.core.events import EventBus
+from trcc.core.ports import CommandBus
 from trcc.core.results import Result
 from trcc.ui.qt_background import dispatch_in_background
 
 
-class _Bus:
+class _Bus(CommandBus):
     """Answers on the worker; can hold the answer back until released."""
 
     def __init__(self, hold: bool = False) -> None:
@@ -26,6 +28,14 @@ class _Bus:
         self.on_thread.append(threading.current_thread().name)
         self.release.wait(5)
         return Result(ok=True, message=type(cmd).__name__)
+
+    @property
+    def events(self) -> EventBus:
+        return EventBus()
+
+    @property
+    def remote(self) -> bool:
+        return False
 
 
 class _Page(QWidget):
@@ -65,7 +75,7 @@ def test_a_page_dropped_mid_wait_is_freed_and_never_answered(qtbot: Any) -> None
 
 
 def test_an_app_gone_meanwhile_is_an_answer_too(qtbot: Any) -> None:
-    class _Gone:
+    class _Gone(_Bus):
         def dispatch(self, cmd: Any) -> Result:
             raise ConnectionError("socket closed")
 

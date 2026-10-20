@@ -78,12 +78,16 @@ def test_a_missing_scsi_node_fails_the_connect_instead_of_raising(
 ) -> None:
     """MUTATION CHECK: drop ``TransportError`` from the attach clause and the
     dispatch raises — no result, no recorded issue, nothing for a UI."""
-    from trcc.core.events import ErrorOccurred
+    from trcc.core.events import ErrorOccurred, Event
 
     app = App(fake_platform)
     _no_scsi_node(app, monkeypatch)
     errors: list[str] = []
-    app.events.subscribe(ErrorOccurred, lambda e: errors.append(e.message))
+
+    def on_error(e: Event) -> None:
+        assert isinstance(e, ErrorOccurred)
+        errors.append(e.message)
+    app.events.subscribe(ErrorOccurred, on_error)
 
     result = app.dispatch(ConnectDevice(key="0402:3922"))
 

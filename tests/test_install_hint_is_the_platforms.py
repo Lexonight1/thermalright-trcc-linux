@@ -21,15 +21,16 @@ _SRC = Path(__file__).resolve().parent.parent / "src" / "trcc"
 _COMMAND = re.compile(r"\b(dnf|apt|apt-get|brew|winget|pacman|zypper|pkg) install\b")
 
 
-def _messages(path: Path) -> list[ast.Constant]:
-    """Every string literal in *path* except docstrings -- what a user can see."""
+def _messages(path: Path) -> list[tuple[int, str]]:
+    """Every string literal in *path* except docstrings -- what a user can see
+    -- as ``(lineno, text)``."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     docs = {id(node.body[0].value) for node in ast.walk(tree)
             if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
                                  ast.AsyncFunctionDef))
             and node.body and isinstance(node.body[0], ast.Expr)
             and isinstance(node.body[0].value, ast.Constant)}
-    return [node for node in ast.walk(tree)
+    return [(node.lineno, node.value) for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
             and id(node) not in docs]
 
@@ -40,11 +41,11 @@ def test_no_package_command_is_written_into_core_or_services() -> None:
     MUTATION CHECK: put a literal 'dnf install ffmpeg' message back and this
     names it.
     """
-    hits = [f"{path.relative_to(_SRC)}:{node.lineno}"
+    hits = [f"{path.relative_to(_SRC)}:{lineno}"
             for layer in ("core", "services")
             for path in (_SRC / layer).rglob("*.py")
-            for node in _messages(path)
-            if _COMMAND.search(node.value)]
+            for lineno, text in _messages(path)
+            if _COMMAND.search(text)]
 
     assert hits == []
 

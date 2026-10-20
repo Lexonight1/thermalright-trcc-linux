@@ -166,6 +166,7 @@ def test_qtgui_genuine_close_quits_the_event_loop(
         "a genuine close did not quit the event loop — qapp.exec() never "
         "returns, so App.close() (panel blank + device release) never runs"
     )
+    assert isinstance(win._viewfinders, _FakeFleet)
     assert win._viewfinders.closed, "quitting left the screencast frames up"
 
 
@@ -186,6 +187,7 @@ def test_qtgui_close_to_tray_does_not_quit(
 
     assert quits == [], "a close diverted to the tray must NOT quit the app"
     assert event.accepted is False
+    assert isinstance(win._viewfinders, _FakeFleet)
     assert not win._viewfinders.closed, "hiding to the tray took the frames down"
 
 

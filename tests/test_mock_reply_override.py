@@ -6,6 +6,7 @@ through every variant that shares a vid:pid (and the app re-presents it).
 """
 from __future__ import annotations
 
+from tests.conftest import FakeBulkTransport
 from tests.mock_platform import MockPlatform
 from trcc.adapters.infra.send_scheduler import SyncSendScheduler
 from trcc.app import App
@@ -19,15 +20,29 @@ from trcc.core.variants import _VARIANT_REGISTRY
 _VID, _PID = 0x87AD, 0x70DB
 
 
+def _first_reply(plat: MockPlatform) -> bytes:
+    """The scripted handshake reply a fresh bulk open of 87ad:70db returns."""
+    transport = plat.open_transport(Wire.BULK, _VID, _PID)
+    assert isinstance(transport, FakeBulkTransport)
+    return transport.read_script[0]
+
+
+def _resolution(app: App, key: str) -> tuple[int, int]:
+    """The connected device's resolved canvas."""
+    profile = app.devices[key].profile
+    assert profile is not None
+    return profile.resolution
+
+
 def test_set_active_reply_switches_handshake_bytes(tmp_path) -> None:
     plat = MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 0, "name": "x"}],
                         tmp_path)
 
     plat.set_active_reply(_VID, _PID, pm=10, sub=0, fbl=58)
-    first = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
+    first = _first_reply(plat)
 
     plat.set_active_reply(_VID, _PID, pm=20, sub=1, fbl=58)
-    second = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
+    second = _first_reply(plat)
 
     assert first and second
     assert first != second          # different reply → different handshake bytes
@@ -40,15 +55,15 @@ def test_override_is_used_verbatim_not_truthy_gated(tmp_path) -> None:
         [{"vid": "87ad", "pid": "70db", "pm": 99, "sub": 5, "name": "x"}],
         tmp_path)
 
-    spec_default = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]   # uses spec pm=99/sub=5
+    spec_default = _first_reply(plat)   # uses spec pm=99/sub=5
 
     plat.set_active_reply(_VID, _PID, pm=0, sub=0, fbl=58)
-    forced_zero = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]    # exact pm=0/sub=0
+    forced_zero = _first_reply(plat)    # exact pm=0/sub=0
 
     assert forced_zero != spec_default        # override won, verbatim
 
     # And it's deterministic for the same injected reply.
-    again = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
+    again = _first_reply(plat)
     assert again == forced_zero
 
 
@@ -56,8 +71,8 @@ def test_clearing_back_to_default(tmp_path) -> None:
     # No override set → falls back to the spec/geometry path (unchanged behaviour).
     plat = MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 7, "name": "x"}],
                         tmp_path)
-    a = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
-    b = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
+    a = _first_reply(plat)
+    b = _first_reply(plat)
     assert a == b and a            # stable default reply, no override in play
 
 
@@ -79,19 +94,19 @@ def test_inject_reply_reresolves_profile_through_real_connect(tmp_path) -> None:
     and resolve a different profile — the whole point of the dev console."""
     (pm_a, sub_a), (pm_b, sub_b) = _two_variants_with_different_resolution()
     key = "87ad:70db"
-    app = App(MockPlatform([{"vid": "87ad", "pid": "70db"}], tmp_path),
-              send_scheduler=SyncSendScheduler())
+    plat = MockPlatform([{"vid": "87ad", "pid": "70db"}], tmp_path)
+    app = App(plat, send_scheduler=SyncSendScheduler())
     try:
-        app.platform.set_active_reply(_VID, _PID, pm=pm_a, sub=sub_a,
+        plat.set_active_reply(_VID, _PID, pm=pm_a, sub=sub_a,
                                       fbl=pm_to_fbl(pm_a, sub_a))
         assert app.dispatch(ConnectDevice(key=key)).ok
-        res_a = app.devices[key].profile.resolution
+        res_a = _resolution(app, key)
 
         # Inject the other variant's reply + reconnect (what the console does).
-        app.platform.set_active_reply(_VID, _PID, pm=pm_b, sub=sub_b,
+        plat.set_active_reply(_VID, _PID, pm=pm_b, sub=sub_b,
                                       fbl=pm_to_fbl(pm_b, sub_b))
         assert app.dispatch(ConnectDevice(key=key)).ok
-        res_b = app.devices[key].profile.resolution
+        res_b = _resolution(app, key)
 
         assert res_a != res_b      # same vid:pid, different presentation
     finally:
@@ -115,7 +130,7 @@ def test_spec_reply_is_returned_untouched(tmp_path) -> None:
         [{"vid": "87ad", "pid": "70db", "name": "captured",
           "reply": raw.hex()}], tmp_path)
 
-    assert plat.open_transport(Wire.BULK, _VID, _PID).read_script[0] == raw
+    assert _first_reply(plat) == raw
 
 
 def test_spec_reply_can_contradict_the_registry(tmp_path) -> None:
@@ -136,7 +151,7 @@ def test_spec_reply_can_contradict_the_registry(tmp_path) -> None:
     try:
         assert app.dispatch(ConnectDevice(key=f"{_VID:04x}:{_PID:04x}")).ok
         registry_says = get_profile(pm_to_fbl(72), 72).resolution
-        device_says = app.devices[f"{_VID:04x}:{_PID:04x}"].profile.resolution
+        device_says = _resolution(app, f"{_VID:04x}:{_PID:04x}")
         assert registry_says == (480, 480)
         assert device_says == (320, 320), (
             "the verbatim reply was ignored — the mock is confirming our own "
@@ -151,7 +166,7 @@ def test_malformed_reply_hex_falls_back_instead_of_exploding(tmp_path) -> None:
         [{"vid": "87ad", "pid": "70db", "name": "typo", "reply": "not-hex!"}],
         tmp_path)
 
-    assert plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
+    assert _first_reply(plat)
 
 
 def test_live_override_beats_a_spec_reply(tmp_path) -> None:
@@ -162,7 +177,7 @@ def test_live_override_beats_a_spec_reply(tmp_path) -> None:
           "reply": raw.hex()}], tmp_path)
 
     plat.set_active_reply(_VID, _PID, pm=20, sub=1, fbl=58)
-    assert plat.open_transport(Wire.BULK, _VID, _PID).read_script[0] != raw
+    assert _first_reply(plat) != raw
 
 
 def test_traced_bytes_round_trip_into_a_spec_reply(tmp_path, caplog) -> None:
@@ -184,7 +199,7 @@ def test_traced_bytes_round_trip_into_a_spec_reply(tmp_path, caplog) -> None:
                   send_scheduler=SyncSendScheduler())
         try:
             assert app.dispatch(ConnectDevice(key=key)).ok
-            origin = app.devices[key].profile.resolution
+            origin = _resolution(app, key)
         finally:
             app.close()
 
@@ -199,6 +214,6 @@ def test_traced_bytes_round_trip_into_a_spec_reply(tmp_path, caplog) -> None:
         send_scheduler=SyncSendScheduler())
     try:
         assert replayed.dispatch(ConnectDevice(key=key)).ok
-        assert replayed.devices[key].profile.resolution == origin
+        assert _resolution(replayed, key) == origin
     finally:
         replayed.close()

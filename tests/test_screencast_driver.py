@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, TypedDict
 
 import pytest
 
@@ -22,16 +22,43 @@ from trcc.core.commands import (
     StartScreencast,
     StopScreencast,
 )
-from trcc.core.events import ScreencastStopped
+from trcc.core.events import Event, ScreencastStopped
 from trcc.core.models import SCREENCAST_TICK_S, RawFrame
 from trcc.services.screencast_driver import ScreencastDriver, task_key
 
-from .conftest import FakeMic, FakePlatform, _CliRenderer
+from .conftest import FakeMic, FakePlatform, FakeScreenCapture, _CliRenderer
 from .mock_platform import MockPlatform
 from .test_display_rotation import RecordingRenderer
 
 _KEY = "0402:3922"
-_REGION = dict(x=10, y=20, w=64, h=48)
+
+
+class _Region(TypedDict):
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+_REGION = _Region(x=10, y=20, w=64, h=48)
+
+
+def _capture(app: App) -> FakeScreenCapture:
+    """The fake desktop grab behind *app* -- every fixture here is a FakePlatform."""
+    platform = app.platform
+    assert isinstance(platform, FakePlatform)
+    return platform.capture
+
+
+def _stops(app: App) -> list[str]:
+    """Every key a ``ScreencastStopped`` names from here on."""
+    stopped: list[str] = []
+
+    def on_stopped(e: Event) -> None:
+        assert isinstance(e, ScreencastStopped)
+        stopped.append(e.key)
+    app.events.subscribe(ScreencastStopped, on_stopped)
+    return stopped
 
 
 @pytest.fixture
@@ -126,7 +153,7 @@ def test_capture_grabs_the_region_the_session_declared(casting: App) -> None:
     result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
 
     assert result.ok is True, result.message
-    assert casting.platform.capture.regions == [(10, 20, 64, 48)]
+    assert _capture(casting).regions == [(10, 20, 64, 48)]
 
 
 def test_a_tick_with_no_region_ends_the_session(
@@ -143,8 +170,7 @@ def test_a_tick_with_no_region_ends_the_session(
     MUTATION CHECK: drop the ``StopScreencast`` dispatch from the no-region
     branch and the task survives.
     """
-    stopped: list[str] = []
-    casting.events.subscribe(ScreencastStopped, lambda e: stopped.append(e.key))
+    stopped = _stops(casting)
     casting.settings.set_screencast_region(_KEY, None)   # what a source switch does
     caplog.set_level(logging.WARNING)
 
@@ -155,7 +181,7 @@ def test_a_tick_with_no_region_ends_the_session(
     assert "no screencast session" in result.message
     assert task_key(_KEY) not in scheduler._tasks
     assert stopped == [_KEY]
-    assert casting.platform.capture.regions == []
+    assert _capture(casting).regions == []
     assert [r.getMessage() for r in caplog.records
             if "CaptureScreencastFrame" in r.getMessage()] == []
 
@@ -171,7 +197,7 @@ def test_a_failing_grab_does_not_raise(casting: App, monkeypatch) -> None:
     def boom(*_a: object, **_k: object) -> None:
         raise RuntimeError("portal session revoked")
 
-    monkeypatch.setattr(casting.platform.capture, "grab_region", boom)
+    monkeypatch.setattr(_capture(casting), "grab_region", boom)
 
     result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
 
@@ -194,7 +220,7 @@ def test_a_source_that_is_not_ready_yet_is_quiet(
     def not_yet(*_a: object, **_k: object) -> None:
         raise CaptureNotReady("waiting for consent")
 
-    monkeypatch.setattr(casting.platform.capture, "grab_region", not_yet)
+    monkeypatch.setattr(_capture(casting), "grab_region", not_yet)
     with caplog.at_level(logging.DEBUG, logger="trcc"):
         result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
 
@@ -244,8 +270,8 @@ def test_each_tick_captures_one_frame(
     for tick in range(5):
         scheduler.tick(float(tick))
 
-    assert len(casting.platform.capture.regions) == 5
-    assert set(casting.platform.capture.regions) == {(10, 20, 64, 48)}
+    assert len(_capture(casting).regions) == 5
+    assert set(_capture(casting).regions) == {(10, 20, 64, 48)}
 
 
 def test_stopping_the_screencast_stops_its_driver(
@@ -266,7 +292,7 @@ def test_stopping_the_screencast_stops_its_driver(
     scheduler.tick(2.0)
 
     assert task_key(_KEY) not in scheduler._tasks
-    assert len(casting.platform.capture.regions) == 1
+    assert len(_capture(casting).regions) == 1
     # The driver's symptom was THIS warning, every tick.  (A re-render after
     # the stop can time out waiting on the synchronous test scheduler; that
     # is this harness, not the driver.)
@@ -330,7 +356,7 @@ def test_starting_a_screencast_starts_its_driver(
     assert task_key(_KEY) in scheduler._tasks
 
     scheduler.tick(0.0)
-    assert app.platform.capture.regions == [(10, 20, 64, 48)]
+    assert _capture(app).regions == [(10, 20, 64, 48)]
 
 
 def test_a_refused_screencast_starts_no_driver(
@@ -370,7 +396,7 @@ def test_stop_screencast_leaves_no_region_for_the_driver(casting: App) -> None:
     assert casting.dispatch(StopScreencast(key=_KEY)).ok
 
     casting.dispatch(CaptureScreencastFrame(key=_KEY))
-    assert casting.platform.capture.regions == []
+    assert _capture(casting).regions == []
 
 
 # ── one producer owns the panel ──────────────────────────────────────
@@ -420,7 +446,7 @@ def test_a_running_screencast_suppresses_the_reactive_theme_render(
         lambda key: (rendered.append(key), _Noop())[1],
     )
 
-    casting.events.publish(SensorsUpdated(readings={}, metrics=None))
+    casting.events.publish(SensorsUpdated(readings={}))
     assert rendered == [], (
         "a theme render was dispatched while a screencast owned the panel — "
         "two producers, which is the blink"
@@ -428,7 +454,7 @@ def test_a_running_screencast_suppresses_the_reactive_theme_render(
 
     # …and it resumes the moment the session ends.
     assert casting.dispatch(StopScreencast(key=_KEY)).ok
-    casting.events.publish(SensorsUpdated(readings={}, metrics=None))
+    casting.events.publish(SensorsUpdated(readings={}))
     assert rendered == [_KEY], (
         "the theme render did not resume after the screencast stopped"
     )
@@ -615,8 +641,7 @@ def threaded(tmp_home: Path, monkeypatch: pytest.MonkeyPatch):
     resp[0] = 100
     a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
     assert a.dispatch(ConnectDevice(key=_KEY)).ok
-    stopped: list[str] = []
-    a.events.subscribe(ScreencastStopped, lambda e: stopped.append(e.key))
+    stopped = _stops(a)
     yield a, stopped, deaths
     a.close()
 
@@ -722,7 +747,7 @@ def test_a_broken_capture_warns_once_not_every_tick(
     def boom(*_a: object, **_k: object) -> None:
         raise RuntimeError("grim is not installed")
 
-    monkeypatch.setattr(casting.platform.capture, "grab_region", boom)
+    monkeypatch.setattr(_capture(casting), "grab_region", boom)
     caplog.set_level(logging.WARNING)
 
     for tick in range(5):
@@ -775,7 +800,9 @@ def test_audio_off_mid_cast_releases_the_microphone(
         "gate is app.audio.running, so the bars keep drawing after the user "
         "turned them off"
     )
-    assert app.settings.for_device(_KEY).screencast_region[4] is False
+    region = app.settings.for_device(_KEY).screencast_region
+    assert region is not None
+    assert region[4] is False
 
 
 def test_audio_on_mid_cast_opens_the_microphone(

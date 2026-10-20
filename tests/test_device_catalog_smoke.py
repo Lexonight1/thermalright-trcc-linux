@@ -120,7 +120,11 @@ def test_device_variant_handshakes_and_resolves_geometry(
         if pm is None:
             return
         mocked = variant_resolution(wire, pm, sub if sub is not None else 0)
-        real = NO_PANEL if wire is Wire.LED else device.profile.resolution
+        if wire is Wire.LED:
+            real = NO_PANEL
+        else:
+            assert device.profile is not None
+            real = device.profile.resolution
         assert mocked == real, (
             f"{model}: dev mock fleet sizes this cooler {mocked} but connect() "
             f"resolved {real} — dev/_mock_bootstrap.variant_resolution has "

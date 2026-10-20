@@ -881,7 +881,7 @@ def test_theme_delete_unknown(api_client: TestClient) -> None:
     It sent ``DELETE /theme/<name>``, a route that does not exist, so the
     router's own 404 passed it and the delete was never reached.
     """
-    root = api_client.app.state.trcc.dispatch(GetPaths()).user_content_dir
+    root = _bus_of(api_client).dispatch(GetPaths()).user_content_dir
     Path(root).mkdir(parents=True, exist_ok=True)   # the theme is missing, not the root
     resp = api_client.request(
         "DELETE", "/theme",
@@ -1653,6 +1653,7 @@ def test_create_theme_keeps_only_what_a_command_still_reads(tmp_path: Path) -> N
 
     uploads = trcc.platform.paths().user_content_dir() / "uploads"
     mask = trcc.settings.for_device("0402:3922").mask_path
+    assert mask is not None
     assert [p.name for p in uploads.iterdir()] == [Path(mask).name]
 
 
@@ -1862,7 +1863,8 @@ def panel_api(tmp_path: Path) -> Iterator[tuple[TestClient, App]]:
 def _read(client: TestClient, verb: str, url: str, where: str, field: str,
           path: str) -> Any:
     body = {field: path, "width": 320, "height": 320}
-    return client.request(verb, url, **{where: body})
+    kwargs: dict[str, Any] = {where: body}
+    return client.request(verb, url, **kwargs)
 
 
 @pytest.mark.parametrize("verb,url,where,field", _ROUTES_THAT_READ)

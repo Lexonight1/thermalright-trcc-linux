@@ -30,6 +30,7 @@ from trcc.adapters.system.linux import (
 from trcc.adapters.system.macos import MacOSPlatform
 from trcc.adapters.system.windows import WindowsPlatform
 from trcc.core.models import DisplayServer
+from trcc.core.ports import PackageManager
 
 
 @pytest.mark.parametrize("family", _FAMILIES, ids=lambda f: f.name)
@@ -169,7 +170,7 @@ def test_enterprise_linux_is_told_apart_from_fedora(
     assert _is_enterprise_linux(text) is is_el, label
 
 
-class _Packages:
+class _Packages(PackageManager):
     """A PackageManager whose EPEL answer the test dictates."""
 
     def __init__(self, epel: bool) -> None:
@@ -230,11 +231,11 @@ def test_a_broken_package_query_never_breaks_the_hint() -> None:
     os_obj._family = _EL_FAMILY
     os_obj._packages = None                    # forces a build, then a failure
 
-    class _Boom:
+    class _Boom(_Packages):
         def installed(self, package: str) -> bool:
             raise RuntimeError("rpmdb is locked")
 
-    os_obj._packages = _Boom()
+    os_obj._packages = _Boom(epel=True)
     assert os_obj.software_install_hint("7z") == "sudo dnf install /usr/bin/7z"
 
 

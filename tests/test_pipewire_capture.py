@@ -12,10 +12,12 @@ never block a caller on a consent dialog.
 """
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -508,6 +510,7 @@ class _TokenSession(_Session):
         super().__init__(**kw)
         self.received: str | None = kw.get("restore_token")
         self._issues = issues
+        self._on_token: Callable[[str], None] | None = None
 
     def start(self, timeout: float = 30.0) -> bool:
         if self._issues is not None and self._on_token is not None:
@@ -985,7 +988,10 @@ def test_the_capture_pipeline_converts_no_more_than_the_cast_uses() -> None:
     """
     gi = pytest.importorskip("gi")
     gi.require_version("Gst", "1.0")
-    from gi.repository import GLib, Gst
+    # gi.repository builds its modules at runtime from typelibs; there is no
+    # static symbol for a type checker to find, so import them by name.
+    GLib = importlib.import_module("gi.repository.GLib")
+    Gst = importlib.import_module("gi.repository.Gst")
 
     Gst.init(None)
     if Gst.ElementFactory.find("videorate") is None:

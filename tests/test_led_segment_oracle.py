@@ -79,6 +79,9 @@ def _csharp_arrays() -> tuple[dict[str, int], dict[str, int]]:
     return pos, on
 
 
+#: Every LED style, in a stable order for the parametrized ids.
+_STYLES: list[LedStyle] = sorted(LED_STYLES, key=lambda s: s.value)
+
 #: Styles that deliberately do NOT match, each with the reason.  Anything else
 #: failing is real drift.
 _RECORDED: dict[LedStyle, str] = {
@@ -99,7 +102,7 @@ _RECORDED: dict[LedStyle, str] = {
 
 
 @_ABSENT
-@pytest.mark.parametrize("style", sorted(LED_STYLES, key=lambda s: s.value))
+@pytest.mark.parametrize("style", _STYLES)
 def test_drawn_rectangles_match_the_csharp_ledPosition(style: LedStyle) -> None:
     """``STYLE_POSITIONS`` is sized by the C#'s ``ledPosition`` array."""
     sid = LEGACY_STYLE_ID.get(style)
@@ -109,6 +112,7 @@ def test_drawn_rectangles_match_the_csharp_ledPosition(style: LedStyle) -> None:
             f"{style.value} has no C# array and no recorded reason"
         )
         return
+    assert sid is not None          # a suffix is only ever looked up by an id
     pos, _ = _csharp_arrays()
     assert len(STYLE_POSITIONS.get(sid, ())) == pos[suffix], (
         f"{style.value} (id {sid}): the preview draws "
@@ -118,7 +122,7 @@ def test_drawn_rectangles_match_the_csharp_ledPosition(style: LedStyle) -> None:
 
 
 @_ABSENT
-@pytest.mark.parametrize("style", sorted(LED_STYLES, key=lambda s: s.value))
+@pytest.mark.parametrize("style", _STYLES)
 def test_mask_size_matches_the_csharp_isOn(style: LedStyle) -> None:
     """``SegmentDisplay.mask_size`` is sized by the C#'s ``isOn`` array.
 

@@ -30,6 +30,13 @@ from trcc.services.settings import Settings
 from .test_overlay_clock import _CLOCK, _config, _DrawRecorder
 
 
+def _stored(settings: Settings, key: str) -> OverlayElement:
+    """The device's first user overlay element, as persisted."""
+    elements = settings.for_device(key).user_overlay_elements
+    assert elements is not None
+    return elements[0]
+
+
 class _FamilyRecorder(_DrawRecorder):
     """Records the family argument, which ``_DrawRecorder`` discards."""
 
@@ -123,7 +130,7 @@ def test_a_user_element_keeps_its_font_across_a_restart(tmp_path: Path) -> None:
     Settings(paths).add_user_overlay_element("0402:3922", OverlayElement(
         id="e1", type="text", text="hi", font="Comic Sans MS"))
 
-    reloaded = Settings(paths).for_device("0402:3922").user_overlay_elements[0]
+    reloaded = _stored(Settings(paths), "0402:3922")
     assert reloaded.font == "Comic Sans MS", (
         f"after a restart the element's font is {reloaded.font!r} — it was "
         "persisted and then dropped on load, so the element reverts to the "
@@ -167,7 +174,7 @@ def test_the_commands_can_set_a_font(tmp_home: Path) -> None:
         "it just set"
     )
 
-    stored = app.settings.for_device(key).user_overlay_elements[0]
+    stored = _stored(app.settings, key)
     assert stored.font == "Comic Sans MS"
     assert stored.to_dict()["name"] == "Comic Sans MS", (
         "the stored element must hand the renderer its family"
@@ -178,8 +185,7 @@ def test_the_commands_can_set_a_font(tmp_home: Path) -> None:
     assert updated.ok is True
     assert updated.element is not None
     assert updated.element.font == "Noto Sans"
-    assert app.settings.for_device(key).user_overlay_elements[0].font \
-        == "Noto Sans"
+    assert _stored(app.settings, key).font == "Noto Sans"
 
 
 def test_updating_another_field_leaves_the_font_alone(tmp_home: Path) -> None:
@@ -204,7 +210,7 @@ def test_updating_another_field_leaves_the_font_alone(tmp_home: Path) -> None:
 
     app.dispatch(UpdateOverlayElement(key=key, element_id=added.element.id,
                                       x=42))
-    element = app.settings.for_device(key).user_overlay_elements[0]
+    element = _stored(app.settings, key)
     assert element.x == 42
     assert element.font == "Comic Sans MS", (
         "moving an element must not clear the font the user chose"
@@ -255,7 +261,7 @@ def test_the_dispatch_serializer_carries_the_family(tmp_path: Path) -> None:
     assert fields is not None and fields["font"] == picked
     assert app.dispatch(AddOverlayElement(
         key=key, element_id=cell.id, **fields)).ok is True
-    stored = app.settings.for_device(key).user_overlay_elements[0]
+    stored = _stored(app.settings, key)
     assert stored.font == picked, (
         "the font of a new overlay element never reached the device")
 
@@ -263,7 +269,7 @@ def test_the_dispatch_serializer_carries_the_family(tmp_path: Path) -> None:
     assert changed is not None
     assert app.dispatch(UpdateOverlayElement(
         key=key, element_id=cell.id, font=changed["font"])).ok is True
-    stored = app.settings.for_device(key).user_overlay_elements[0]
+    stored = _stored(app.settings, key)
     assert stored.font == repicked, "a font pick on an existing element was lost"
     # ...and the renderer resolves it off that stored element.
     assert element_family(stored.to_dict()) == repicked

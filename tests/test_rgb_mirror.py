@@ -5,6 +5,7 @@ import threading
 import time
 from functools import partial
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -688,6 +689,7 @@ def test_a_pictures_colours_reach_the_leds_ungammad_and_are_reported_as_seen(
         (source, columns)))
     service.configure(RAM_MODE, "", 0, "0402:3922")
     mirror = made[-1] if made else service._ram
+    assert isinstance(mirror, FakeMirror)
     dark_red = (152, 18, 23)
     service.on_frame("0402:3922", "surface", _pixels(dark_red, dark_red))
     _until(lambda: bool(sent))
@@ -700,6 +702,7 @@ def test_a_coolers_colours_are_sent_as_they_are() -> None:
     service, made = _service()
     service.configure(RAM_MODE, "", 0)
     mirror = made[-1] if made else service._ram
+    assert isinstance(mirror, FakeMirror)
     service.on_colors(_colors("0416:8001", (152, 18, 23)))
     _until(lambda: bool(mirror.shown))
     assert mirror.shown[0][1] == ((152, 18, 23),)
@@ -753,7 +756,8 @@ def test_the_choice_is_kept_and_a_damaged_targets_setting_means_all(tmp_path) ->
     kept = app.dispatch(SetRgbFollow(mode=OFF))         # None keeps each
     assert (kept.source, kept.targets) == ("0402:3922", ("Board",))
     assert not app.dispatch(SetRgbFollow(mode=OFF, source="nope")).ok
-    app.settings.app.rgb_follow_targets = "Board"        # a hand-edited string
+    # a hand-edited string: the wrong type on purpose, so cast past the checker
+    app.settings.app.rgb_follow_targets = cast(list[str], "Board")
     assert app.settings.rgb_follow_targets() == ()
     app.close()
 
@@ -949,7 +953,7 @@ def test_a_damaged_found_light_is_dropped_not_guessed(tmp_path) -> None:  # type
         {"kind": "ram", "ref": "i2c-3/0x1b", "name": "C", "led_count": -1},
         {"kind": "board", "ref": "aura/argb2", "name": "unset", "led_count": 0},
         {"ref": "i2c-3/0x1c", "name": "no kind", "led_count": 10},
-        "not even a dict"]
+        cast(dict[str, Any], "not even a dict")]  # damaged on purpose
     assert [(s.index, s.ref) for s in app.settings.found_lights(LightKind.RAM)
             ] == [(0, "i2c-3/0x19")]
     app.settings.app.rgb_lights = "not a list"  # type: ignore[assignment]
@@ -1035,8 +1039,9 @@ def test_a_bus_that_cannot_be_used_is_said_not_hidden(tmp_path) -> None:  # type
 
 def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:  # type: ignore[no-untyped-def]
     app, _platform, _seen = _lights_app(tmp_path)
-    app.settings.app.ram_effects = {"i2c-3/0x19": {"effect": "disco"},
-                                    "i2c-3/0x1b": "not even a dict"}
+    app.settings.app.ram_effects = {
+        "i2c-3/0x19": {"effect": "disco"},
+        "i2c-3/0x1b": cast(dict[str, Any], "not even a dict")}  # damaged on purpose
     assert app.settings.ram_effect("i2c-3/0x19") is None
     assert app.settings.ram_effect("i2c-3/0x1b") is None
     app.close()

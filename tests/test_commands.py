@@ -606,7 +606,7 @@ def test_a_device_that_draws_no_frames_is_neither_primed_nor_rendered(
             app._prime(key)
             app.active_themes[key] = Theme(name="T", path=Path("/nonexistent"),
                                            resolution=(320, 320))
-            app.events.publish(SensorsUpdated(readings={}, metrics=None))
+            app.events.publish(SensorsUpdated(readings={}))
             app.events.publish(OverlayChanged(key=key, enabled=True))
 
         drive()
@@ -846,6 +846,7 @@ def test_autostart_result_round_trips_the_new_field() -> None:
     back = ipc.decode_result(ipc.encode_result(original))
 
     assert back == original
+    assert isinstance(back, AutostartResult)
     assert back.target == "daemon", "target was dropped crossing the wire"
 
 

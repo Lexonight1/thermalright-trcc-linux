@@ -15,15 +15,20 @@ from trcc.adapters.infra.send_scheduler import (
     SyncSendScheduler,
     ThreadSendScheduler,
 )
+from trcc.core.models import HandshakeResult, Kind, ProductInfo, Wire
+from trcc.core.ports import Device, ScsiTransport
 from trcc.services.device_sender import DeviceSender
 
+from .conftest import FakeScsiTransport
 
-class FakeDevice:
+
+class FakeDevice(Device[ScsiTransport]):
     """Minimal device double — records sends, detects concurrent entry."""
 
-    def __init__(self, key: str = "dead:beef") -> None:
-        self.key = key
-        self.is_connected = True
+    def __init__(self) -> None:
+        super().__init__(ProductInfo(vid=0xDEAD, pid=0xBEEF, vendor="fake",
+                                     product="fake", wire=Wire.SCSI,
+                                     kind=Kind.LCD), FakeScsiTransport())
         self.sent: list[bytes] = []
         self.fail = False
         self._in_send = 0
@@ -42,6 +47,16 @@ class FakeDevice:
         finally:
             with self._lk:
                 self._in_send -= 1
+
+    @property
+    def is_connected(self) -> bool:
+        return True
+
+    def connect(self) -> HandshakeResult:
+        raise AssertionError("the sender never connects a device")
+
+    def disconnect(self) -> None:
+        raise AssertionError("the sender never disconnects a device")
 
 
 # ── Policy (deterministic, no threads) ───────────────────────────────────

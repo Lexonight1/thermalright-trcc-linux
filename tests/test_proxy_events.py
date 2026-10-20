@@ -346,7 +346,8 @@ def test_a_sent_frame_crosses_the_socket_as_a_picture(
         assert seen[0].surface is None, "a live surface never crosses"
         picture = QImage.fromData(seen[0].image)
         assert (picture.width(), picture.height()) == (320, 320)
-        r, g, b, _ = picture.pixelColor(160, 160).getRgb()
+        color = picture.pixelColor(160, 160)
+        r, g, b = color.red(), color.green(), color.blue()
         assert abs(r - 0) <= 4 and abs(g - 64) <= 4 and abs(b - 128) <= 4
     finally:
         proxy.close()
@@ -571,6 +572,7 @@ def test_a_shared_and_a_jpeg_client_each_get_theirs(
         line = jpeg_sock.makefile("rb").readline()
         jpeg_event = ipc.decode_event(__import__("json").loads(line))
         assert seen[0].pixels and not seen[0].image
+        assert isinstance(jpeg_event, FrameSent)
         assert jpeg_event.image and not jpeg_event.shared_seq
     finally:
         jpeg_sock.close()

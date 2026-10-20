@@ -18,6 +18,8 @@ exact shape, resolving to ``1-13`` and ``1-11``.
 """
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from trcc.adapters.system._base import usb_path
@@ -29,6 +31,10 @@ class _Dev:
     ``None`` is what PyUSB itself stores when the backend does not supply a
     value -- not a hypothetical, which is why every one of these is optional.
     """
+
+    #: Declared only: set by the scan test, absent everywhere else.
+    iSerialNumber: int
+    bcdDevice: int
 
     def __init__(self, bus=None, port_numbers=None, address=None) -> None:
         self.bus = bus
@@ -65,7 +71,9 @@ def test_address_is_the_fallback_and_is_SPELLED_differently() -> None:
     """
     assert usb_path(_Dev(bus=2, port_numbers=None, address=1)) == "2@1"
     assert usb_path(_Dev(bus=1, port_numbers=(), address=9)) == "1@9"
-    assert "@" not in usb_path(_Dev(bus=1, port_numbers=(3,), address=9))
+    stable = usb_path(_Dev(bus=1, port_numbers=(3,), address=9))
+    assert stable is not None
+    assert "@" not in stable
 
 
 def test_no_bus_means_this_host_cannot_tell_units_apart() -> None:
@@ -111,7 +119,8 @@ def test_the_scan_carries_the_path_onto_DeviceInfo(monkeypatch) -> None:
     # Called UNBOUND: ``scan_devices`` touches ``self`` only for
     # ``type(self).__name__`` in its log lines, and ``BaseOS`` has eleven
     # abstract methods that a subclass would have to stub for nothing.
-    infos = _base.BaseOS.scan_devices(_Dev())
+    # cast: a duck-typed self for the unbound call, as the comment above says.
+    infos = _base.BaseOS.scan_devices(cast(_base.BaseOS, _Dev()))
 
     assert len(infos) == 2, "both units must survive the scan"
     assert [i.path for i in infos] == ["1-13", "1-11"]
@@ -439,7 +448,9 @@ def test_open_transport_passes_the_unit_to_its_opener(tmp_path) -> None:
         def _transport_openers(self):
             return {}          # every unlisted wire falls through to bulk
 
-    BaseOS.open_transport(_Host(), Wire.BULK, 0x87AD, 0x70DB, None, "1-13")
+    # cast: a duck-typed self for the unbound call, as the docstring says.
+    BaseOS.open_transport(cast(BaseOS, _Host()), Wire.BULK, 0x87AD, 0x70DB,
+                          None, "1-13")
     assert seen == {"vid": 0x87AD, "pid": 0x70DB,
                     "serial": None, "unit": "1-13"}
     del tmp_path

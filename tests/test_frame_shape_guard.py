@@ -16,17 +16,13 @@ from trcc.adapters.device.bulk_lcd import jpeg_dimensions
 
 def _jpeg(width: int, height: int) -> bytes:
     """A real JPEG of exactly *width* x *height*, via the shipping renderer."""
-    from PySide6.QtCore import QBuffer, QByteArray
     from PySide6.QtGui import QImage
+
+    from trcc.adapters.render.qt import QtRenderer
 
     img = QImage(width, height, QImage.Format.Format_RGB888)
     img.fill(0xFF3060A0)
-    ba = QByteArray()
-    buf = QBuffer(ba)
-    buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    img.save(buf, "JPEG", 90)
-    buf.close()
-    return bytes(ba)
+    return QtRenderer().encode_jpeg(img, 90)
 
 
 def test_jpeg_dimensions_reads_the_real_shape_without_decoding() -> None:
@@ -53,7 +49,9 @@ def test_262s_exact_mismatch_is_reported(
     from trcc.adapters.device.bulk_lcd import BulkLcd, bulk_profile
     from trcc.core.registry import find_product
 
-    device = BulkLcd(find_product(0x87AD, 0x70DB), FakeBulkTransport())
+    info = find_product(0x87AD, 0x70DB)
+    assert info is not None
+    device = BulkLcd(info, FakeBulkTransport())
     _, device._profile = bulk_profile(11, 5)       # 854x480, JPEG
 
     with caplog.at_level(logging.WARNING):
@@ -70,7 +68,9 @@ def test_a_correct_frame_says_nothing(caplog: pytest.LogCaptureFixture) -> None:
     from trcc.adapters.device.bulk_lcd import BulkLcd, bulk_profile
     from trcc.core.registry import find_product
 
-    device = BulkLcd(find_product(0x87AD, 0x70DB), FakeBulkTransport())
+    info = find_product(0x87AD, 0x70DB)
+    assert info is not None
+    device = BulkLcd(info, FakeBulkTransport())
     _, device._profile = bulk_profile(11, 5)
 
     with caplog.at_level(logging.WARNING):

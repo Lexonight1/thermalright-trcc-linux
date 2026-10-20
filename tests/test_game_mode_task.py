@@ -95,6 +95,7 @@ def _ticks(app: App, n: int) -> list[str]:
 def _corner(app: App) -> tuple[int, int, int]:
     """The bottom-right pixel of what was last sent -- clear of the text."""
     surface = app.display.rendered_surface(_KEY)
+    assert surface is not None
     colour = surface.pixelColor(surface.width() - 4, surface.height() - 4)
     return colour.red(), colour.green(), colour.blue()
 
@@ -141,6 +142,7 @@ def test_the_game_frame_keeps_the_theme_overlay(app: App) -> None:
     _ticks(app, 1)
 
     surface = app.display.rendered_surface(_KEY)
+    assert surface is not None
     lit = sum(1 for y in range(10, 50) for x in range(10, 120)
               if surface.pixelColor(x, y).lightness() > 128)
     assert lit > 50, "the white GAME text is drawn on the black"

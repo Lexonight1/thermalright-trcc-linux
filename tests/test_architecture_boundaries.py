@@ -30,6 +30,7 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
+from typing import TypeGuard
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 
@@ -1446,7 +1447,7 @@ def _is_app_factory_call(node: ast.expr) -> bool:
     return isinstance(func, ast.Attribute) and func.attr in _APP_FACTORIES
 
 
-def _is_self_app(node: ast.expr) -> bool:
+def _is_self_app(node: ast.expr) -> TypeGuard[ast.Attribute]:
     """``self._app`` / ``self.app`` / ``self._trcc``."""
     return (
         isinstance(node, ast.Attribute) and node.attr in _APP_ATTRS
@@ -2387,6 +2388,11 @@ def test_every_ui_hands_itself_on_not_its_app() -> None:
     import trcc.ui._uis  # noqa: F401 — importing registers the UIs
     from trcc.ui._base import UIS, UserInterface
 
+    def class_def(cls: type) -> ast.ClassDef:
+        node = ast.parse(textwrap.dedent(inspect.getsource(cls))).body[0]
+        assert isinstance(node, ast.ClassDef)
+        return node
+
     classes = {
         base for key in UIS for base in UIS[key].__mro__
         if issubclass(base, UserInterface) and base is not UserInterface
@@ -2394,7 +2400,7 @@ def test_every_ui_hands_itself_on_not_its_app() -> None:
     found = {
         (cls.__name__, fn.name)
         for cls in classes
-        for fn in ast.parse(textwrap.dedent(inspect.getsource(cls))).body[0].body
+        for fn in class_def(cls).body
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
         for node in ast.walk(fn)
         if isinstance(node, ast.Attribute) and node.attr == "_app"

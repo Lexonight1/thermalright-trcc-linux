@@ -407,11 +407,15 @@ def _sample(hint: object, field_name: str) -> object:
     )
 
 
-def _populated(cls: type) -> object:
+_T = typing.TypeVar("_T")
+
+
+def _populated(cls: type[_T]) -> _T:
     """Every WIRE field set to a non-default value.  In-process-only fields
     keep their defaults: they never cross by design, which
     ``test_a_live_surface_stays_in_its_process_quietly`` checks on its own."""
     from trcc.core.models import IN_PROCESS_ONLY_KEY
+    assert dataclasses.is_dataclass(cls)
     hints = typing.get_type_hints(cls)
     return cls(**{f.name: _sample(hints[f.name], f.name)
                   for f in dataclasses.fields(cls)
@@ -509,6 +513,7 @@ def test_a_live_surface_stays_in_its_process_quietly(caplog) -> None:
     assert "surface" not in envelope["fields"]
     assert "pixels" not in envelope["fields"]
     decoded = decode_event(envelope)
+    assert isinstance(decoded, FrameSent)
     assert decoded.surface is None and decoded.pixels == b""
     assert caplog.records == [], [r.getMessage() for r in caplog.records]
 

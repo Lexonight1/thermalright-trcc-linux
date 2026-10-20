@@ -167,9 +167,9 @@ def test_the_sensor_picker_stops_working_when_hidden(qtbot, tmp_path: Path) -> N
     try:
         bus = BusBridge(app.events)
         host = QWidget()
-        QVBoxLayout(host)
+        layout = QVBoxLayout(host)
         picker = SensorPickerWidget(app, bus, host)
-        host.layout().addWidget(picker)
+        layout.addWidget(picker)
         qtbot.addWidget(host)
         host.show()
         qtbot.waitExposed(host)

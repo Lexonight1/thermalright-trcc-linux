@@ -29,16 +29,18 @@ _KEY = "0402:3922"
 def _jpeg(w: int = 320, h: int = 320) -> bytes:
     """A real encoded frame -- playbacks hold JPEG bytes, not pixels."""
     from PySide6.QtCore import QBuffer, QByteArray
-    from PySide6.QtGui import QImage
+    from PySide6.QtGui import QImage, QImageWriter
 
     img = QImage(w, h, QImage.Format.Format_RGB888)
     img.fill(0xFF000000)
     ba = QByteArray()
     buf = QBuffer(ba)
     buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    img.save(buf, "JPEG", 100)
+    writer = QImageWriter(buf, QByteArray(b"JPEG"))
+    writer.setQuality(100)
+    writer.write(img)
     buf.close()
-    return bytes(ba)
+    return bytes(ba.data())
 
 
 def test_a_cut_video_becomes_the_background_as_delivered_and_survives_close(

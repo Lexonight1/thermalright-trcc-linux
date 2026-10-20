@@ -156,7 +156,7 @@ def test_scan_exception_does_not_break_loop(
     """A failed scan should log + continue, not crash the thread."""
     bus, captured = bus_with_capture
 
-    def boom() -> set[tuple[int, int]]:
+    def boom() -> set[tuple[int, int, str]]:
         raise OSError("scan failed")
 
     monitor = PollingHotplugMonitor(scan=boom)

@@ -83,7 +83,9 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App]:
     app.audio = FakeMic()                        # type: ignore[assignment]
     app.tasks = tasks                            # type: ignore[attr-defined]
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
-    assert app.devices[_KEY].profile.resolution == (854, 480)
+    profile = app.devices[_KEY].profile
+    assert profile is not None
+    assert profile.resolution == (854, 480)
     # This SKU is portrait-MOUNTED, so the App starts it at 90 degrees; the
     # expectations below are written for 0.
     assert app.dispatch(SetOrientation(key=_KEY, degrees=0)).ok

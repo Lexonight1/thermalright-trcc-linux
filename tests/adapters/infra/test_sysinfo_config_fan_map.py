@@ -45,7 +45,7 @@ class _Fan(FanSource):
         return self._rpm
 
 
-def _slots(fans: list[_Fan], pins: dict[str, str] | None = None) -> dict[str, float]:
+def _slots(fans: list[FanSource], pins: dict[str, str] | None = None) -> dict[str, float]:
     s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[FakeGpu(0)],
                         fans=fans)
     if pins is not None:
@@ -57,29 +57,32 @@ def _slots(fans: list[_Fan], pins: dict[str, str] | None = None) -> dict[str, fl
 def test_spinning_fans_claim_the_slots_before_dead_headers() -> None:
     """#145: an nct6798 with fan2 (pump) and fan6 (radiator) spinning, the
     other headers empty.  The live fans fill the slots, in order."""
-    fans = [_Fan(f"nct6798:fan{i}", rpm) for i, rpm in
-            ((1, 0), (2, 895), (3, 0), (4, 0), (5, 0), (6, 3125))]
+    fans: list[FanSource] = [
+        _Fan(f"nct6798:fan{i}", rpm) for i, rpm in
+        ((1, 0), (2, 895), (3, 0), (4, 0), (5, 0), (6, 3125))]
     assert _slots(fans) == {"fan:cpu": 895, "fan:gpu": 1500.0,
                             "fan:ssd": 3125, "fan:sys2": 0.0}
 
 
 def test_a_fan_named_for_a_slot_claims_it_first() -> None:
     """Boards that DO label their headers keep label-first mapping."""
-    fans = [_Fan("it87:fan1", 800, "SYS_FAN1"), _Fan("it87:fan2", 1100, "NVME_M2 Fan"),
-            _Fan("it87:fan3", 1200, "CPU Fan"), _Fan("it87:fan4", 3000, "AIO_PUMP")]
+    fans: list[FanSource] = [
+        _Fan("it87:fan1", 800, "SYS_FAN1"), _Fan("it87:fan2", 1100, "NVME_M2 Fan"),
+        _Fan("it87:fan3", 1200, "CPU Fan"), _Fan("it87:fan4", 3000, "AIO_PUMP")]
     assert _slots(fans) == {"fan:cpu": 1200, "fan:gpu": 1500.0,
                             "fan:ssd": 1100, "fan:sys2": 800}
 
 
 def test_a_gpu_fan_never_fills_a_motherboard_slot() -> None:
-    fans = [_Fan("amdgpu:fan1", 2000, "CPU-looking amdgpu fan", on_gpu=True),
-            _Fan("nct:fan1", 900)]
+    fans: list[FanSource] = [
+        _Fan("amdgpu:fan1", 2000, "CPU-looking amdgpu fan", on_gpu=True),
+        _Fan("nct:fan1", 900)]
     assert _slots(fans)["fan:cpu"] == 900
 
 
 def test_a_pin_from_the_dashboard_wins_and_is_not_reused() -> None:
     """The C#'s FAN rows are rebindable: the user picks the pump for CPUFAN."""
-    fans = [_Fan("nct:fan1", 790), _Fan("nct:fan6", 3082)]
+    fans: list[FanSource] = [_Fan("nct:fan1", 790), _Fan("nct:fan6", 3082)]
     slots = _slots(fans, {"fan:cpu": "fan:nct:fan6:rpm"})
     assert (slots["fan:cpu"], slots["fan:ssd"], slots["fan:sys2"]) == (3082, 790, 0.0)
 

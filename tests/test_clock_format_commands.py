@@ -8,6 +8,7 @@ every device when ``key`` is None.  Nothing else in the layout moves.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
@@ -26,14 +27,21 @@ from trcc.core.events import OverlayChanged
 _A, _B = "0402:3922", "87ad:70db"
 
 
+class _Clock(TypedDict, total=False):
+    """The clock fields each element below sets."""
+
+    source: str
+    format: str
+
+
 @pytest.fixture
 def app(tmp_path: Path) -> App:
     app = App(platform=FakePlatform(tmp_path))
     app.set_renderer(QtRenderer())
     for key in (_A, _B):
-        for eid, kind in (("t", {"source": "time", "format": "%H:%M"}),
-                          ("d", {"source": "date", "format": "%m/%d"}),
-                          ("w", {"source": "weekday"})):
+        for eid, kind in (("t", _Clock(source="time", format="%H:%M")),
+                          ("d", _Clock(source="date", format="%m/%d")),
+                          ("w", _Clock(source="weekday"))):
             assert app.dispatch(AddOverlayElement(
                 key=key, element_id=eid, type="clock", **kind)).ok
         assert app.dispatch(AddOverlayElement(

@@ -23,22 +23,9 @@ import pytest
 from trcc.core.models import OverlayElement
 from trcc.services.settings import _SCHEMA_VERSION, Settings
 
+from .conftest import FakePaths
+
 _KEY = "87ad:70db"
-
-
-class _Paths:
-    """Minimal Paths port — Settings only needs ``config_dir``."""
-
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
-    def config_dir(self) -> Path:
-        return self._root
-
-    def __getattr__(self, name: str) -> object:
-        def _dir(*a: object, **k: object) -> Path:
-            return self._root
-        return _dir
 
 
 def _write_config(root: Path, payload: dict) -> None:
@@ -52,7 +39,7 @@ def test_v1_empty_layer_reads_as_no_layout(tmp_path: Path) -> None:
         "devices": {_KEY: {"user_overlay_elements": []}},
     })
 
-    s = Settings(_Paths(tmp_path))
+    s = Settings(FakePaths(tmp_path))
 
     assert s.for_device(_KEY).user_overlay_elements is None, (
         "a pre-v2 empty list means 'no layout of its own' and must migrate "
@@ -69,7 +56,7 @@ def test_v1_populated_layer_is_carried_through(tmp_path: Path) -> None:
         ]}},
     })
 
-    s = Settings(_Paths(tmp_path))
+    s = Settings(FakePaths(tmp_path))
 
     layer = s.for_device(_KEY).user_overlay_elements
     assert layer is not None
@@ -90,7 +77,7 @@ def test_v2_empty_layer_stays_empty(tmp_path: Path, schema: int) -> None:
         "devices": {_KEY: {"user_overlay_elements": []}},
     })
 
-    s = Settings(_Paths(tmp_path))
+    s = Settings(FakePaths(tmp_path))
 
     assert s.for_device(_KEY).user_overlay_elements == [], (
         "a v2 empty layer is a deliberate clear and must NOT be migrated"
@@ -104,7 +91,7 @@ def test_a_save_stamps_the_current_schema(tmp_path: Path) -> None:
         "devices": {_KEY: {"user_overlay_elements": []}},
     })
 
-    s = Settings(_Paths(tmp_path))
+    s = Settings(FakePaths(tmp_path))
     s.set_overlay_enabled(_KEY, False)          # any setter saves
 
     written = json.loads((tmp_path / "trcc.json").read_text())
@@ -119,13 +106,13 @@ def test_the_emptied_layer_survives_a_restart(tmp_path: Path) -> None:
     for a serializer that drops the distinction (see
     ``feedback_gate_the_round_trip_not_the_write_half``).
     """
-    s = Settings(_Paths(tmp_path))
+    s = Settings(FakePaths(tmp_path))
     s.set_user_overlay_elements(_KEY, [
         OverlayElement(id="u1", type="text", x=1, y=1, text="hi"),
     ])
     s.set_user_overlay_elements(_KEY, [])       # the user deletes the last one
 
-    reloaded = Settings(_Paths(tmp_path)).for_device(_KEY)
+    reloaded = Settings(FakePaths(tmp_path)).for_device(_KEY)
 
     assert reloaded.user_overlay_elements == [], (
         "a deliberately emptied layer came back as something else after a "
@@ -141,7 +128,7 @@ def test_a_corrupt_schema_value_is_treated_as_v1(tmp_path: Path) -> None:
         "devices": {_KEY: {"user_overlay_elements": []}},
     })
 
-    s = Settings(_Paths(tmp_path))
+    s = Settings(FakePaths(tmp_path))
 
     assert s.for_device(_KEY).user_overlay_elements is None
 
@@ -155,7 +142,7 @@ def _v4(tmp_path: Path, elements: list | None, **device: str) -> Settings:
         "led_devices": {},
         "devices": {_KEY: {"user_overlay_elements": elements, **device}},
     })
-    return Settings(_Paths(tmp_path))
+    return Settings(FakePaths(tmp_path))
 
 
 def _clock(eid: str, source: str, fmt: str) -> dict:
@@ -217,4 +204,4 @@ def test_the_upgrade_is_saved_once_and_the_old_fields_are_gone(
     assert device["user_overlay_elements"][0]["format"] == "%I:%M %p"
 
     s.set_clock_format(_KEY, "time", "%H:%M")                # a later edit
-    assert _formats(Settings(_Paths(tmp_path))) == {"a": "%H:%M"}
+    assert _formats(Settings(FakePaths(tmp_path))) == {"a": "%H:%M"}

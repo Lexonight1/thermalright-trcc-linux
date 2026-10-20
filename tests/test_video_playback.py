@@ -61,16 +61,18 @@ def _encoded_frame(value: int, w: int = 320, h: int = 320) -> bytes:
     JPEG and the panel's RGB565 quantisation.
     """
     from PySide6.QtCore import QBuffer, QByteArray
-    from PySide6.QtGui import QImage
+    from PySide6.QtGui import QImage, QImageWriter
 
     img = QImage(w, h, QImage.Format.Format_RGB888)
     img.fill(value)
     ba = QByteArray()
     buf = QBuffer(ba)
     buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    img.save(buf, "JPEG", 100)
+    writer = QImageWriter(buf, b"JPEG")
+    writer.setQuality(100)
+    writer.write(img)
     buf.close()
-    return bytes(ba)
+    return bytes(ba.data())
 
 _KEY = "0402:3922"
 
@@ -1376,7 +1378,7 @@ def test_a_playing_video_suppresses_the_reactive_theme_render(
     _playback_for(rendering_app, theme / "Theme.mp4")
 
     n = _count_real_work(rendering_app, monkeypatch)
-    rendering_app.events.publish(SensorsUpdated(readings={}, metrics=None))
+    rendering_app.events.publish(SensorsUpdated(readings={}))
 
     assert (n["build_frame"], n["send"]) == (0, 0), (
         f"the video tick owns the wire, but a sensor tick still did "
@@ -1386,7 +1388,7 @@ def test_a_playing_video_suppresses_the_reactive_theme_render(
 
     # …and the panel is not abandoned: work resumes once playback ends.
     rendering_app.media.unload(_KEY)
-    rendering_app.events.publish(SensorsUpdated(readings={}, metrics=None))
+    rendering_app.events.publish(SensorsUpdated(readings={}))
     assert n["build_frame"] >= 1, (
         "no composite after the video was unloaded — the guard is stuck on "
         "and the panel would freeze"
@@ -1421,7 +1423,7 @@ def test_a_PAUSED_video_still_gets_the_reactive_render(
     playback.paused = True
 
     n = _count_real_work(rendering_app, monkeypatch)
-    rendering_app.events.publish(SensorsUpdated(readings={}, metrics=None))
+    rendering_app.events.publish(SensorsUpdated(readings={}))
 
     assert n["build_frame"] >= 1, (
         "a paused video's overlay was not re-composited — nothing else is "

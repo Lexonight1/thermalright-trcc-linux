@@ -5,6 +5,7 @@ LibreHardwareMonitor's client reads a failed call as zeros."""
 from __future__ import annotations
 
 import struct
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -152,10 +153,9 @@ def _kernel32_device(monkeypatch: pytest.MonkeyPatch, *, handle: int,
 
     from trcc.adapters.sensors._pawnio import _Kernel32DeviceIo
 
-    k32 = type("K32", (), {})()
-    k32.CreateFileW = _FakeFn(handle)
-    k32.DeviceIoControl = _FakeFn(ioctl)
-    k32.CloseHandle = _FakeFn(1)
+    k32 = SimpleNamespace(CreateFileW=_FakeFn(handle),
+                          DeviceIoControl=_FakeFn(ioctl),
+                          CloseHandle=_FakeFn(1))
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(ctypes, "WinDLL", lambda name, use_last_error=False: k32,
                         raising=False)
@@ -183,7 +183,9 @@ def test_the_win32_calls_carry_their_c_prototypes(monkeypatch) -> None:
 def test_an_invalid_handle_raises_with_the_reason(monkeypatch) -> None:
     import ctypes
 
-    device, _ = _kernel32_device(monkeypatch, handle=ctypes.c_void_p(-1).value,
+    invalid = ctypes.c_void_p(-1).value         # INVALID_HANDLE_VALUE
+    assert invalid is not None
+    device, _ = _kernel32_device(monkeypatch, handle=invalid,
                                  ioctl=1, last_error=2)
     with pytest.raises(PawnIoError, match="PawnIO is not installed"):
         device.open(DEVICE_PATH)

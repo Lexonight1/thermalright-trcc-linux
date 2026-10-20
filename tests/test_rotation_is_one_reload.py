@@ -230,9 +230,9 @@ def test_gui_rotation_is_one_reload(
         tmp_path, app=rotatable, lcd_idx=_KEY,
     )
     handler._pm.ui_active = True
-    handler._pm.state.current_theme_path = Path(
-        rotatable.settings.for_device(_KEY).current_theme,
-    )
+    theme = rotatable.settings.for_device(_KEY).current_theme
+    assert theme is not None
+    handler._pm.state.current_theme_path = Path(theme)
 
     with _Rotation(rotatable) as rotation:
         handler.set_rotation(90)

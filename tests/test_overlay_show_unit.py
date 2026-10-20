@@ -27,6 +27,13 @@ def _app_with_metric(fake_platform, show_unit: bool = True) -> tuple[App, str]: 
     return app, key
 
 
+def _stored(app: App, key: str) -> OverlayElement:
+    """The one element the device's saved user layout holds."""
+    elements = app.settings.for_device(key).user_overlay_elements
+    assert elements is not None
+    return elements[0]
+
+
 def test_update_toggles_show_unit(fake_platform) -> None:  # type: ignore[no-untyped-def]
     app, key = _app_with_metric(fake_platform, show_unit=True)
 
@@ -37,7 +44,7 @@ def test_update_toggles_show_unit(fake_platform) -> None:  # type: ignore[no-unt
     assert result.element is not None
     assert result.element.show_unit is False
 
-    stored = app.settings.for_device(key).user_overlay_elements[0]
+    stored = _stored(app, key)
     assert stored.show_unit is False
 
 
@@ -48,7 +55,7 @@ def test_update_can_turn_show_unit_back_on(fake_platform) -> None:  # type: igno
         UpdateOverlayElement(key=key, element_id="el_temp", show_unit=True),
     )
     assert result.ok
-    assert app.settings.for_device(key).user_overlay_elements[0].show_unit is True
+    assert _stored(app, key).show_unit is True
 
 
 def test_update_without_show_unit_leaves_it_unchanged(fake_platform) -> None:  # type: ignore[no-untyped-def]
@@ -56,7 +63,7 @@ def test_update_without_show_unit_leaves_it_unchanged(fake_platform) -> None:  #
     app, key = _app_with_metric(fake_platform, show_unit=False)
 
     app.dispatch(UpdateOverlayElement(key=key, element_id="el_temp", size=40))
-    stored = app.settings.for_device(key).user_overlay_elements[0]
+    stored = _stored(app, key)
     assert stored.show_unit is False  # untouched
     assert stored.size == 40
 

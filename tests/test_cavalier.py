@@ -22,10 +22,12 @@ def _reference_input() -> list[np.ndarray]:
     for i in range(24):
         t = (np.arange(_FRAME) + i * _FRAME) / 44100
         beat = 1.0 if i % 8 < 2 else 0.3
-        left = sum(np.sin(2 * np.pi * f * t) * a
-                   for f, a in ((60, beat), (440, .4), (3500, .25))) * 9000
-        right = sum(np.sin(2 * np.pi * f * t) * a
-                    for f, a in ((90, .6), (1200, .5), (7000, .2))) * 9000
+        left = sum((np.sin(2 * np.pi * f * t) * a
+                    for f, a in ((60, beat), (440, .4), (3500, .25))),
+                   np.zeros(_FRAME)) * 9000
+        right = sum((np.sin(2 * np.pi * f * t) * a
+                     for f, a in ((90, .6), (1200, .5), (7000, .2))),
+                    np.zeros(_FRAME)) * 9000
         if i in (14, 15):
             left[:] = right[:] = 0
         frames.append(np.stack([left, right], 1).ravel())

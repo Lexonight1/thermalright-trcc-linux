@@ -76,6 +76,7 @@ def test_no_orphan_manpages() -> None:
 
 def test_root_and_every_group_have_a_page() -> None:
     import typer.main
+    from typer.core import TyperGroup
 
     from trcc.ui.cli.main import app
 
@@ -85,6 +86,7 @@ def test_root_and_every_group_have_a_page() -> None:
     # root group — the one case where a page would be missing — so it asserted
     # only that six known pages still exist, which they would.
     cli = typer.main.get_command(app)
+    assert isinstance(cli, TyperGroup)
     groups = sorted(
         name for name, cmd in cli.commands.items()
         if getattr(cmd, "commands", None) and not getattr(cmd, "hidden", False)

@@ -38,6 +38,7 @@ from pathlib import Path
 import pytest
 
 from trcc.adapters.device.bulk_lcd import bulk_profile
+from trcc.core.protocol import DeviceProfile
 from trcc.services.settings import Settings
 
 # The two reporters' handshake, verbatim from their logs.
@@ -49,7 +50,7 @@ def _settings(tmp_home: Path) -> Settings:
     return Settings(FakePaths(tmp_home))
 
 
-def _profile_over_the_wire(vid: int, pid: int, reply: bytes):
+def _profile_over_the_wire(vid: int, pid: int, reply: bytes) -> DeviceProfile:
     """Handshake a real adapter with scripted bytes and return its profile.
 
     Driven through ``DEVICES[wire]`` rather than by calling a resolver, because
@@ -67,7 +68,9 @@ def _profile_over_the_wire(vid: int, pid: int, reply: bytes):
     assert product is not None, f"{vid:04x}:{pid:04x} is not in the registry"
     device = DEVICES[product.wire](product, transport)
     device.connect()
-    return device.profile
+    profile = device.profile
+    assert profile is not None, f"{vid:04x}:{pid:04x} resolved no profile"
+    return profile
 
 
 @pytest.mark.parametrize("sub, mounted", [(5, True), (0, False)])

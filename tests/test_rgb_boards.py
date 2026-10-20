@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -17,9 +18,10 @@ from trcc.core.models import (
     RgbControllerId,
     RgbMirrorDevice,
 )
-from trcc.core.ports import RgbMirror
+from trcc.core.ports import RgbMirror, Transport
 from trcc.services.rgb_boards import MotherboardFinder, matches, spot
 
+from .conftest import FakeBulkTransport
 from .mock_platform import (
     AURA_INTERFACE,
     MAINTAINER_BOARD,
@@ -71,10 +73,15 @@ def test_spot_names_a_controller_as_openrgb_does_once_per_device() -> None:
 def test_only_the_aura_motherboard_gets_a_trcc_driver() -> None:
     aura, msi = spot((AURA_INTERFACE, MSI), MSI_BOARD)
     opened: list = []
-    driver = make_board_driver(aura, open_transport=lambda *a, **k: opened,
+
+    def open_transport(*a: object, **k: object) -> Transport:
+        opened.append(a)
+        return FakeBulkTransport()
+
+    driver = make_board_driver(aura, open_transport=open_transport,
                                argb_leds=lambda: {1: 8})
     assert driver is not None and opened == []        # made, not yet opened
-    assert make_board_driver(msi, open_transport=lambda *a, **k: opened,
+    assert make_board_driver(msi, open_transport=open_transport,
                              argb_leds=dict) is None
 
 
@@ -246,7 +253,10 @@ def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> No
 
 def test_a_damaged_led_count_is_dropped_not_guessed(tmp_path) -> None:  # type: ignore[no-untyped-def]
     app = App(_platform(tmp_path))
-    app.settings.app.aura_argb_leds = {"1": 8, "2": "8", "x": 3, "3": 999,
-                                       "0": 4, "4": -1}
+    # cast: the entries are deliberately ill-typed, as a hand-edited
+    # trcc.json can be -- the field's type is exactly what is being violated.
+    app.settings.app.aura_argb_leds = cast(
+        "dict[str, int]",
+        {"1": 8, "2": "8", "x": 3, "3": 999, "0": 4, "4": -1})
     assert app.settings.aura_argb_leds() == {1: 8}
     app.close()

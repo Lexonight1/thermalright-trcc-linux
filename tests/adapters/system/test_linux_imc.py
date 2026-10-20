@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import ModuleType
@@ -20,7 +21,7 @@ _HELPER_OUT = ("tc_pre=0x141307500422028 odt=0x8026280000 "
 
 
 @pytest.fixture(autouse=True)
-def _reset_cache() -> None:
+def _reset_cache() -> Iterator[None]:
     linux._live_imc_cache = linux._UNREAD
     yield
     linux._live_imc_cache = linux._UNREAD

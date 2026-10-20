@@ -156,6 +156,12 @@ class _FakeSmcClient:
     def read_key_float(self, key: str) -> float | None:
         return self._readings.get(key)
 
+    def read_key_uint32(self, key: str) -> int | None:
+        return None                     # no integer keys are canned
+
+    def read_fan_rpm(self, key: str) -> float | None:
+        return self._readings.get(key)
+
 
 def _client_returning(readings: dict[str, float | None]) -> SmcClientPort:
     """Type-narrow helper for the DI seam."""

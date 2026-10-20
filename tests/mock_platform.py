@@ -634,7 +634,7 @@ class ScriptedCorsairStick:
                 self.at += 1
                 return self.info[self.at - 1]
             case 0x42:
-                return self.checksum if self.reading else crc8(self.buffer)
+                return self.checksum if self.reading else crc8(bytes(self.buffer))
             case 0x30:
                 return 0x00
         raise AssertionError(f"unexpected read of 0x{register:02x}")

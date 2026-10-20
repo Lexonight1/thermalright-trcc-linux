@@ -17,6 +17,9 @@ from typing import Any
 
 import pytest
 
+from trcc.core.events import EventBus
+from trcc.core.ports import CommandBus
+
 _KEY_A = "0402:3922"      # the background device
 _KEY_B = "87ad:70db"      # the device that owns the panel
 
@@ -78,13 +81,22 @@ class _FakeDevice:
         self.handshake = None
 
 
-class _FakeApp:
+class _FakeApp(CommandBus):
     """Answers TickDisplay the way the real Command does."""
 
     def __init__(self) -> None:
         self.devices: dict[str, _FakeDevice] = {}
         self._playbacks: dict[str, _FakePlayback] = {}
         self.dispatched: list[tuple[str, str]] = []
+        self._events = EventBus()
+
+    @property
+    def events(self) -> EventBus:
+        return self._events
+
+    @property
+    def remote(self) -> bool:
+        return False
 
     @property
     def media(self) -> Any:

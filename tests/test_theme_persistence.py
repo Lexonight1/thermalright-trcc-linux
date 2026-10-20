@@ -25,13 +25,14 @@ from trcc.core.commands import (
     SaveTheme,
 )
 from trcc.core.errors import ThemeError
-from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
+from trcc.core.events import Event, ThemeExported, ThemeImported, ThemeSaved
 from trcc.core.models import (
     CAPABILITIES_BY_KIND,
     MEDIA,
     FitMode,
     Kind,
     MediaKind,
+    OverlayElement,
     Theme,
 )
 from trcc.services.settings import Settings
@@ -666,7 +667,7 @@ def test_save_theme_clears_user_overlay_after_bake(
             size=12, bold=False, italic=False, text="hi",
         ),
     )
-    assert len(app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements) == 1
+    assert len(_user_elements(app)) == 1
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="clear-test"))
 
@@ -685,6 +686,13 @@ def test_save_theme_clears_user_overlay_after_bake(
     assert "ed1" in [e.get("id") for e in drawn], (
         "the user's edit was baked into the theme and must still be on screen"
     )
+
+
+def _user_elements(app: App) -> list[OverlayElement]:
+    """The test device's working overlay layer — a layout, never ``None``."""
+    elements = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
+    assert elements is not None
+    return elements
 
 
 def test_explicit_load_clears_user_edits_restore_preserves(
@@ -715,7 +723,7 @@ def test_explicit_load_clears_user_edits_restore_preserves(
 
     # Explicit switch → the user's edit is gone, the theme's layout is in.
     app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source))
-    adopted = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
+    adopted = _user_elements(app)
     assert "edit1" not in [e.id for e in adopted], (
         "an explicit theme switch must drop the previous theme's live edits"
     )
@@ -729,10 +737,9 @@ def test_explicit_load_clears_user_edits_restore_preserves(
         _TEST_DEVICE_KEY,
         OverlayElement(id="edit2", type="text", x=6, y=6, text="Y"),
     )
-    before = list(app.settings.for_device(
-        _TEST_DEVICE_KEY).user_overlay_elements)
+    before = list(_user_elements(app))
     app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY))
-    preserved = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
+    preserved = _user_elements(app)
     assert "edit2" in [e.id for e in preserved], (
         "RestoreDeviceState (reconnect) must keep the user's persisted edits"
     )
@@ -802,12 +809,12 @@ def _png_bytes(red: int = 0) -> bytes:
     # Pre-computed 1x1 RGBA PNGs; first byte after IDAT distinguishes them
     # well enough for test identity checks via length + leading bytes.
     from PySide6.QtCore import QBuffer, QIODevice
-    from PySide6.QtGui import QImage
+    from PySide6.QtGui import QImage, QImageWriter
     img = QImage(1, 1, QImage.Format.Format_ARGB32)
     img.fill((red << 16) | 0xFF000000)
     buf = QBuffer()
     buf.open(QIODevice.OpenModeFlag.WriteOnly)
-    img.save(buf, "PNG")
+    QImageWriter(buf, b"PNG").write(img)
     return bytes(buf.data().data())
 
 
@@ -1295,6 +1302,7 @@ def test_save_theme_clears_all_overrides_after_save(
     assert s.current_theme == str((user_theme_dir / "full-state").resolve())
     saved_elements = app.active_themes[_TEST_DEVICE_KEY].config.get(
         "elements") or []
+    assert s.user_overlay_elements is not None
     assert [e.id for e in s.user_overlay_elements] == [
         e.get("id") for e in saved_elements
     ], "the working layer must mirror the saved theme, overriding nothing"
@@ -1870,6 +1878,13 @@ def test_list_themes_classifies_origin_by_location(
     assert by_name["MyMix"].origin == "user"
 
 
+def _restored_theme(app: App) -> Path:
+    """The theme the test device's settings point at."""
+    current = app.settings.for_device(_TEST_DEVICE_KEY).current_theme
+    assert current is not None
+    return Path(current)
+
+
 def test_restore_loads_exact_stored_path_no_user_override(
     app: App, user_theme_dir: Path,
 ) -> None:
@@ -1884,7 +1899,7 @@ def test_restore_loads_exact_stored_path_no_user_override(
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
     assert app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY)).ok
-    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    restored = _restored_theme(app)
     assert restored.resolve() == shipped.resolve()    # shipped stays, NOT overridden by the user theme
 
 
@@ -1897,7 +1912,7 @@ def test_restore_keeps_shipped_when_no_user_shadow(app: App) -> None:
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
     assert app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY)).ok
-    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    restored = _restored_theme(app)
     assert restored.resolve() == shipped.resolve()
 
 
@@ -1909,7 +1924,7 @@ def test_restore_keeps_user_theme_unchanged(app: App, user_theme_dir: Path) -> N
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(user.resolve()))
 
     assert app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY)).ok
-    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    restored = _restored_theme(app)
     assert restored.resolve() == user.resolve()
 
 
@@ -2044,14 +2059,14 @@ def test_load_image_stages_a_jpeg_source_as_00png(
 ) -> None:
     """Non-PNG sources stage under the .png convention name too — the
     renderer sniffs content, so the extension is cosmetic."""
-    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtGui import QColor, QImage, QImageWriter
 
     from trcc.core.commands import LoadImage
 
     src = tmp_path / "photo.jpg"
     img = QImage(320, 320, QImage.Format.Format_RGB888)
     img.fill(QColor(10, 200, 90))
-    img.save(str(src), "JPEG")
+    QImageWriter(str(src), b"JPEG").write(img)
 
     assert app.dispatch(LoadImage(key=_TEST_DEVICE_KEY, path=src)).ok
 
@@ -2076,6 +2091,7 @@ def test_load_image_background_actually_reaches_the_frame(
     # Same registry fallback the other tests in this file rely on — the
     # test device is not attached, only known to the registry.
     info = find_product(0x0402, 0x3922)
+    assert info is not None
 
     red = _png(tmp_path / "red.png", (237, 28, 36))
     assert app.dispatch(LoadImage(key=_TEST_DEVICE_KEY, path=red)).ok
@@ -2803,7 +2819,11 @@ def test_export_current_theme_carries_the_panel_not_the_library(
 
     app, _ = panel
     events: list[ThemeExported] = []
-    app.events.subscribe(ThemeExported, events.append)
+
+    def on_exported(e: Event) -> None:
+        assert isinstance(e, ThemeExported)
+        events.append(e)
+    app.events.subscribe(ThemeExported, on_exported)
     archive = tmp_path / "Party.tr"
 
     result = app.dispatch(ExportCurrentTheme(key=_TEST_DEVICE_KEY,

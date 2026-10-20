@@ -25,18 +25,25 @@ def _two_gpu_enumerator() -> BaselineSensors:
     )
 
 
+
+def _primary_key(enum: BaselineSensors) -> str:
+    """The key of the GPU the enumerator picks as primary."""
+    gpu = enum.primary_gpu()
+    assert gpu is not None
+    return gpu.key
+
 # ── core port: primary_gpu honors the preference ─────────────────────
 
 def test_primary_gpu_defaults_to_discrete_with_no_preference() -> None:
     enum = _two_gpu_enumerator()
     assert enum._preferred_gpu_key is None
-    assert enum.primary_gpu().key == "nvidia:0"  # first discrete
+    assert _primary_key(enum) == "nvidia:0"  # first discrete
 
 
 def test_primary_gpu_honors_the_preferred_key() -> None:
     enum = _two_gpu_enumerator()
     enum.set_preferred_gpu("intel:1")            # the integrated GPU
-    assert enum.primary_gpu().key == "intel:1"
+    assert _primary_key(enum) == "intel:1"
 
 
 def test_preference_can_be_cleared_back_to_auto() -> None:
@@ -44,14 +51,14 @@ def test_preference_can_be_cleared_back_to_auto() -> None:
     enum.set_preferred_gpu("intel:1")
     enum.set_preferred_gpu("")                    # '' = clear
     assert enum._preferred_gpu_key is None
-    assert enum.primary_gpu().key == "nvidia:0"
+    assert _primary_key(enum) == "nvidia:0"
 
 
 def test_stale_preference_falls_back_to_discrete() -> None:
     """A saved GPU that's no longer present must not blank the metric."""
     enum = _two_gpu_enumerator()
     enum.set_preferred_gpu("nvidia:9")            # unplugged / wrong
-    assert enum.primary_gpu().key == "nvidia:0"
+    assert _primary_key(enum) == "nvidia:0"
 
 
 def test_discrete_nvidia_beats_a_misflagged_amd_apu() -> None:
@@ -67,7 +74,7 @@ def test_discrete_nvidia_beats_a_misflagged_amd_apu() -> None:
               FakeGpu(1, discrete=True, vendor="nvidia")],  # the real card
         fans=[],
     )
-    assert enum.primary_gpu().key == "nvidia:1"
+    assert _primary_key(enum) == "nvidia:1"
     assert [g.key for g in enum.gpus()][0] == "nvidia:1"    # order too
 
 

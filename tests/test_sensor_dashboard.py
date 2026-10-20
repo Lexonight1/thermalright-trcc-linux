@@ -15,6 +15,7 @@ from __future__ import annotations
 from trcc.app import App
 from trcc.core.commands import GetSensorDashboard, SetSensorDashboard
 from trcc.core.models import PanelConfig, SensorBinding
+from trcc.core.results import SensorDashboardResult
 from trcc.ipc import (
     decode_command,
     decode_result,
@@ -154,6 +155,7 @@ def test_the_result_survives_the_daemon_socket(fake_platform) -> None:
     result = App(fake_platform).dispatch(GetSensorDashboard())
     restored = decode_result(encode_result(result))
 
+    assert isinstance(restored, SensorDashboardResult)
     assert restored.panels == result.panels
     assert restored.auto_mapped == result.auto_mapped
 
