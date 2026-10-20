@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
-from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -43,6 +42,7 @@ from ....core.events import (
 )
 from ....core.logs import per_frame
 from ..._errors import format_device_error
+from ...bus_bridge import DeviceSettingsEvent
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -160,9 +160,7 @@ class StatusPanel(BasePanel):
     # fields off a different Event type, so a single slot would have to branch
     # on the type it was handed — a logic table the signal already resolved.
 
-    # ``Any``: bus_bridge.settings_changed carries every per-device settings
-    # event; they share only ``key``, and there is no keyed base class.
-    def _on_device_event(self, event: Any) -> None:
+    def _on_device_event(self, event: DeviceSettingsEvent | ThemeLoaded) -> None:
         if event.key == self._picker.current_key():
             log.debug("_on_device_event: %s for %s", type(event).__name__,
                       event.key)

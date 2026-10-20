@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from functools import partial
+from typing import TypeAlias, get_args
 
 from PySide6.QtCore import QEvent, QObject, Signal, SignalInstance
 from PySide6.QtGui import QImage
@@ -84,6 +85,17 @@ from ..core.logs import per_frame, recurring_warning
 log = logging.getLogger(__name__)
 #: Every bus event crosses this bridge, including the per-frame ones.
 frame_log = per_frame(__name__)
+
+#: Every event ``settings_changed`` carries -- a device's saved settings changed.
+#: The bridge subscribes from this union and the windows' handlers are typed
+#: with it, so the list exists once.  They share only ``key``; handlers typed
+#: ``Any`` instead were checked by nothing.
+DeviceSettingsEvent: TypeAlias = (
+    BrightnessChanged | OrientationChanged | SplitModeChanged | GameModeChanged
+    | FitModeChanged | OverlayChanged | BackgroundChanged | VisualHearingChanged
+    | MaskApplied | MaskPositionChanged | MaskVisibilityChanged
+    | ScreencastRegionChanged | LedSettingsChanged)
+
 
 class BusBridge(QObject):
     """Qt signals mirroring EventBus events.
@@ -244,19 +256,8 @@ class BusBridge(QObject):
             (SensorDashboardChanged, self.app_settings_changed),
             (AutostartChanged, self.app_settings_changed),
             (ModuleChanged, self.app_settings_changed),
-            (BrightnessChanged, self.settings_changed),
-            (OrientationChanged, self.settings_changed),
-            (SplitModeChanged, self.settings_changed),
-            (GameModeChanged, self.settings_changed),
-            (FitModeChanged, self.settings_changed),
-            (OverlayChanged, self.settings_changed),
-            (BackgroundChanged, self.settings_changed),
-            (VisualHearingChanged, self.settings_changed),
-            (MaskApplied, self.settings_changed),
-            (MaskPositionChanged, self.settings_changed),
-            (MaskVisibilityChanged, self.settings_changed),
-            (ScreencastRegionChanged, self.settings_changed),
-            (LedSettingsChanged, self.settings_changed),
+            *((event_type, self.settings_changed)
+              for event_type in get_args(DeviceSettingsEvent)),
         )
         subscribed = tuple(
             (event_type, _SignalForwarder(signal, event_type.__name__))

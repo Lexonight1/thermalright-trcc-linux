@@ -43,6 +43,7 @@ from ....core.events import (
     VideoStopped,
 )
 from ....core.models import MEDIA, MediaKind
+from ...bus_bridge import DeviceSettingsEvent
 from ...presentation.display_source import describe_source
 from ...presentation.video_clock import playback_clock
 from ..base import BasePanel
@@ -247,9 +248,7 @@ class DisplayPanel(BasePanel):
         log.info("_on_key_changed: %s", key)
         self._show_state()
 
-    # ``Any``: bus_bridge.settings_changed carries every per-device settings
-    # event; they share only ``key``, and there is no keyed base class.
-    def _on_settings_changed(self, event: Any) -> None:
+    def _on_settings_changed(self, event: DeviceSettingsEvent) -> None:
         if event.key == self._picker.current_key():
             log.debug("_on_settings_changed: %s for %s",
                       type(event).__name__, event.key)

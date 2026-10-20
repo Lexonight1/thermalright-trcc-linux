@@ -479,16 +479,49 @@ def signal_to_event(bridge: Path | None = None) -> dict[str, set[str]]:
     A SET per signal: ``settings_changed`` carries every settings event.  One
     name per signal kept only the last pair, so eleven bridged events read as
     one and the other ten as missing wires.
+
+    Two row shapes: a literal ``(SomeEvent, self.some_signal)``, and the rows a
+    union generates -- ``(e, self.sig) for e in get_args(Alias)`` with
+    ``Alias = A | B | ...`` at module level (``DeviceSettingsEvent``, so the
+    bridge and its handlers' type are one list, 2026-10-20).  Reading only the
+    first shape scored six bridged events as missing wires.
     """
     tree = ast.parse((bridge or _BUS_BRIDGE).read_text(encoding="utf-8"))
+    unions = {
+        target.id: names
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name) and (names := _union_members(node.value))
+    }
     out: dict[str, set[str]] = {}
     for node in ast.walk(tree):
         # (SomeEvent, self.some_signal)
         if (isinstance(node, ast.Tuple) and len(node.elts) == 2
                 and isinstance(node.elts[0], ast.Name)
+                and node.elts[0].id[:1].isupper()      # not a generator's loop variable
                 and isinstance(node.elts[1], ast.Attribute)):
             out.setdefault(node.elts[1].attr, set()).add(node.elts[0].id)
+        # (e, self.some_signal) for e in get_args(SomeUnion)
+        elif (isinstance(node, ast.GeneratorExp) and len(node.generators) == 1
+                and isinstance(node.elt, ast.Tuple) and len(node.elt.elts) == 2
+                and isinstance(node.elt.elts[1], ast.Attribute)
+                and isinstance(it := node.generators[0].iter, ast.Call)
+                and isinstance(it.func, ast.Name) and it.func.id == "get_args"
+                and len(it.args) == 1 and isinstance(it.args[0], ast.Name)
+                and it.args[0].id in unions):
+            out.setdefault(node.elt.elts[1].attr, set()).update(unions[it.args[0].id])
     return out
+
+
+def _union_members(expr: ast.expr) -> list[str]:
+    """The names in ``A | B | ...`` (parenthesised or not); [] for anything else."""
+    if isinstance(expr, ast.Name):
+        return [expr.id]
+    if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.BitOr):
+        left, right = _union_members(expr.left), _union_members(expr.right)
+        return left + right if left and right else []
+    return []
 
 
 def event_reach(uis: dict[str, Path] | None = None,
@@ -673,14 +706,16 @@ _FIXTURE_FACES: dict[str, str] = {
 #: collector scores gui 3 and a signal-only collector scores qtgui low, and
 #: either wrong answer looks plausible.
 _FIXTURE_BRIDGE = '''
+Settings: TypeAlias = MaskApplied | OverlayChanged
+
 class BusBridge:
     def _wire(self):
         pairs = (
             (FrameSent, self.frame_sent),
             (ThemeLoaded, self.theme_loaded),
             (ErrorOccurred, self.error_occurred),
-            (MaskApplied, self.settings_changed),
-            (OverlayChanged, self.settings_changed),
+            *((event_type, self.settings_changed)
+              for event_type in get_args(Settings)),
         )
 '''
 

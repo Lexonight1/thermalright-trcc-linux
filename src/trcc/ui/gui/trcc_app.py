@@ -79,7 +79,7 @@ from ...core.models import (
     ThemeDir,
 )
 from ...core.results import ControlCenterSnapshotResult, LanguageEntry
-from ..bus_bridge import BusBridge
+from ..bus_bridge import BusBridge, DeviceSettingsEvent
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
 from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
@@ -528,9 +528,7 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             handler.follow_app()
 
-    # ``Any``: bus_bridge.settings_changed carries every per-device settings
-    # event; they share only ``key``, and there is no keyed base class.
-    def _on_bus_settings_changed(self, event: Any) -> None:
+    def _on_bus_settings_changed(self, event: DeviceSettingsEvent) -> None:
         """A device setting changed — here, in another UI, or in the App.
 
         The handler re-reads what the App holds rather than trusting what

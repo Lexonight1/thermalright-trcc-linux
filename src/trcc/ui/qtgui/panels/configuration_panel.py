@@ -67,7 +67,8 @@ from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
 if TYPE_CHECKING:
-    from ....core.events import SlideshowChanged
+    from ....core.events import SlideshowChanged, ThemeLoaded
+    from ...bus_bridge import DeviceSettingsEvent
 
 log = logging.getLogger(__name__)
 
@@ -338,9 +339,7 @@ class ConfigurationPanel(BasePanel):
         log.info("_on_key_changed: %s", key)
         self._show_state()
 
-    # ``Any``: bus_bridge.settings_changed carries every per-device settings
-    # event; they share only ``key``, and there is no keyed base class.
-    def _on_device_event(self, event: Any) -> None:
+    def _on_device_event(self, event: DeviceSettingsEvent | ThemeLoaded) -> None:
         if event.key == self._picker.current_key():
             log.debug("_on_device_event: %s for %s", type(event).__name__,
                       event.key)
