@@ -10,7 +10,8 @@ $out = "C:\trccdev\gui_app_crash.txt"
 function Procs($kind) { @(Get-CimInstance Win32_Process -Filter "Name='trcc-gui.exe'" | Where-Object { $_.CommandLine -like "* $kind*" } | ForEach-Object ProcessId) }
 function Stamp { (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fff") }
 # Log lines at or after $since -- the file is shared by every TRCC process, and older runs wrote the same words.
-function Since($since, $pattern) { @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_.Length -ge 23 -and $_.Substring(0, 23) -ge $since -and $_ -match $pattern }) }
+# Timestamped lines only: a "Traceback" line sorts after every date and passed the time test (2026-10-20).
+function Since($since, $pattern) { @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\d{4}-\d\d-\d\dT' -and $_.Substring(0, 23) -ge $since -and $_ -match $pattern }) }
 & {
     "integrity: " + ((whoami /groups | Select-String "Mandatory Level") -replace '\s+', ' ')
     "kill: " + ((& $exe kill 2>&1 | Out-String).Trim() -split "`n")[-1]
@@ -35,6 +36,7 @@ function Since($since, $pattern) { @(Get-Content $log -ErrorAction SilentlyConti
     Start-Sleep 5
     "after: app [$((Procs 'daemon') -join ',')] gui [$((Procs 'gui') -join ',')] (gui $($p.Id) $(if ($p.HasExited) { "EXITED $($p.ExitCode)" } else { "running" }))"
     "-- what the log says after the kill --"
+    Since $start "shared App failed to start|falling back to an in-process" | Select-Object -First 3
     Since $killed "went away unexpectedly|stopped unexpectedly|ensure_daemon|daemon: listening|reap_after|init delivered|RestoreDeviceState: key|LoadTheme: Theme|Traceback|CRITICAL" | Select-Object -First 25
     $crash = Get-WinEvent -FilterHashtable @{LogName = "Application"; Id = 1000; StartTime = [datetime]$start} -ErrorAction SilentlyContinue
     "Application Error 1000 since the start: $(@($crash).Count)"
