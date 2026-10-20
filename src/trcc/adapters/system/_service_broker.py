@@ -39,6 +39,7 @@ from ...core.errors import TransportError
 from ...core.logs import per_frame
 from ...core.models import Wire
 from ...core.registry import ALL_DEVICES
+from ..infra.named_pipe import CLIENT_ACCESS
 from ..sensors._cpu_registers import (
     AMD_PKG_ENERGY_STAT,
     AMD_RAPL_PWR_UNIT,
@@ -56,7 +57,7 @@ frame_log = per_frame(__name__)
 #: it but not create instances of it; Medium label so non-elevated
 #: processes are admitted.  The rights mask is ``named_pipe.CLIENT_ACCESS``.
 SERVICE_PIPE = r"\\.\pipe\trcc-service"
-SERVICE_SDDL = "O:SYD:P(A;;GA;;;SY)(A;;0x120083;;;IU)S:(ML;;NW;;;ME)"
+SERVICE_SDDL = f"O:SYD:P(A;;GA;;;SY)(A;;{CLIENT_ACCESS:#x};;;IU)S:(ML;;NW;;;ME)"
 #: The Windows service's name, for ``sc.exe`` and the installer.
 SERVICE_NAME = "TRCCService"
 
@@ -126,7 +127,14 @@ def recv_message(stream: Any) -> tuple[dict[str, Any], bytes]:
     header_len, body_len = struct.unpack("<II", head)
     if header_len > _HEADER_MAX or body_len > _BODY_MAX:
         raise Refused(f"message too large ({header_len}+{body_len} bytes)")
-    header = json.loads(_recv_exactly(stream, header_len).decode())
+    raw = _recv_exactly(stream, header_len)
+    try:
+        header = json.loads(raw.decode())
+    except (ValueError, RecursionError) as e:
+        # Not UTF-8, not JSON, or nested past the parser: a garbage header is
+        # a refusal like any other -- it used to escape serve_connection and
+        # end the thread with a traceback no log received.
+        raise Refused(f"the header is not JSON ({type(e).__name__})") from e
     if not isinstance(header, dict):
         raise Refused("the header is not a JSON object")
     return header, _recv_exactly(stream, body_len) if body_len else b""
@@ -222,7 +230,8 @@ class PrivilegedBroker:
             code = getattr(e, "code", None) or e.errno or 0
             log.warning("PrivilegedBroker: %s failed: code %s: %s", op, code, e)
             return {"ok": False, "code": code, "error": str(e)}, b""
-        except (ValueError, KeyError, TypeError) as e:
+        except (ValueError, KeyError, TypeError, OverflowError) as e:
+            # OverflowError: JSON's 1e999 is float inf, and int(inf) raises it.
             log.warning("PrivilegedBroker: %s failed: %s: %s", op,
                         type(e).__name__, e)
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}, b""

@@ -299,3 +299,131 @@ def test_the_installer_registers_the_service_the_code_names() -> None:
                  f"delete {SERVICE_NAME}"):
         assert line in iss, line
     assert 'trcc-gui.exe\\"" service""' in iss    # the CLI's `trcc service`
+
+
+# ── Hostile input: the service runs as SYSTEM, the client is anyone ─────────
+#
+# Step 5 of the C-split (memory project_windows_c_split_plan): fuzz the
+# decoder.  serve_connection caught ConnectionError, Refused and OSError only;
+# a header that was not UTF-8 or not JSON, nesting deep enough to exhaust the
+# parser, or `inf` where an int belongs raised past it.  The per-connection
+# thread died with a traceback no log received -- a Windows service has no
+# stderr -- so a reporter's log showed a client that simply vanished
+# (2026-10-20).  Each is now a logged refusal.
+
+
+def _frame(header: bytes, body: bytes = b"") -> bytes:
+    return struct.pack("<II", len(header), len(body)) + header + body
+
+
+@pytest.mark.parametrize("raw", [
+    b"\xff\xfe\xfd",                       # not UTF-8
+    b"{\"op\": ",                          # not JSON
+    b"[" * 30000 + b"]" * 30000,           # deeper than the parser goes
+    b"\"a string\"", b"null", b"[1, 2]",   # JSON, but not an object
+], ids=["not-utf8", "not-json", "too-deep", "string", "null", "list"])
+def test_a_header_that_is_not_a_json_object_is_refused(raw: bytes) -> None:
+    """MUTATION CHECK: let recv_message's JSON errors through -> fails."""
+    ours, theirs = socket.socketpair()
+    ours.sendall(_frame(raw))
+    with pytest.raises(Refused):
+        recv_message(theirs)
+    ours.close()
+    theirs.close()
+
+
+@pytest.mark.parametrize("header", [
+    {"op": "scsi.read", "handle": float("inf"), "length": 4, "timeout_ms": 1},
+    {"op": "scsi.read", "handle": 0, "length": float("-inf"), "timeout_ms": 1},
+    {"op": "scsi.open", "vid": {}, "pid": []},
+    {"op": "scsi.open", "vid": 10 ** 100, "pid": 1},
+    {"op": "scsi.read", "handle": 0, "length": -1, "timeout_ms": 1},
+    {"op": "pawnio.execute", "handle": 0, "function": "x", "inputs": 5},
+    {"op": ["scsi.open"]},
+    {"op": "scsi.close", "handle": "nine"},
+], ids=["inf-handle", "-inf-length", "dict-vid", "huge-vid", "negative-length",
+        "inputs-not-a-list", "op-a-list", "handle-a-word"])
+def test_a_hostile_field_is_answered_not_raised(header: dict[str, Any]) -> None:
+    """MUTATION CHECK: drop OverflowError from handle's answers -> fails."""
+    reply, data = _broker(FakeScsiTransport(), []).handle(Session(), header, b"")
+    assert (reply["ok"], data) == (False, b"")
+
+
+def test_random_bytes_never_escape_the_connection() -> None:
+    """A seeded flood of garbage frames, one connection each: serve_connection
+    must return on its own and close the client's handles, whatever arrives."""
+    import random
+    rng = random.Random(20261020)
+    escaped: list[BaseException | None] = []
+    previous = threading.excepthook
+    threading.excepthook = lambda args: escaped.append(args.exc_value)
+    try:
+        for _ in range(300):
+            ours, theirs = socket.socketpair()
+            worker = threading.Thread(target=serve_connection, args=(
+                _broker(FakeScsiTransport(), []), theirs, threading.Event()))
+            worker.start()
+            size = rng.randrange(0, 400)
+            junk = bytes(rng.randrange(256) for _ in range(size))
+            if rng.random() < 0.5:               # a plausible frame around it
+                junk = _frame(junk)
+            ours.sendall(junk)
+            ours.shutdown(socket.SHUT_WR)
+            worker.join(timeout=5)
+            assert not worker.is_alive()
+            ours.close()
+    finally:
+        threading.excepthook = previous
+    assert escaped == []
+
+
+# ── Who may open the pipes ──────────────────────────────────────────────────
+#
+# Both descriptors are what Windows enforces; a widened one opens SYSTEM's
+# service, or a user's App, to other accounts with no other symptom.  Pinned
+# exactly -- the VM measured them as written (step 0, 2026-10-16).
+
+def _parse_sddl(sddl: str) -> dict[str, Any]:
+    import re
+    m = re.fullmatch(r"O:(?P<owner>[^D]+)D:(?P<p>P?)(?P<dacl>(?:\([^)]*\))+)"
+                     r"S:(?P<sacl>(?:\([^)]*\))+)", sddl)
+    assert m, f"unparsed SDDL {sddl!r}"
+    def aces(part: str) -> list[tuple[str, ...]]:
+        return [tuple(f for i, f in enumerate(ace.split(";")) if i in (0, 2, 5))
+                for ace in re.findall(r"\(([^)]*)\)", part)]
+    return {"owner": m["owner"], "protected": m["p"] == "P",
+            "dacl": aces(m["dacl"]), "sacl": aces(m["sacl"])}
+
+
+#: SIDs that would admit more than the intended account(s).
+_WIDE = ("WD", "AU", "AN", "BU", "NU", "S-1-1-0", "S-1-5-11", "S-1-5-7")
+
+
+def test_the_service_pipe_admits_interactive_users_to_its_stream_only() -> None:
+    """SYSTEM owns it; an interactive user may read and write the stream and
+    nothing more -- not create instances (no generic write), not change it.
+
+    MUTATION CHECK: grant GA to IU, add an Everyone ACE, or drop the P flag
+    -> fails."""
+    from trcc.adapters.infra.named_pipe import CLIENT_ACCESS
+    from trcc.adapters.system._service_broker import SERVICE_SDDL
+
+    sd = _parse_sddl(SERVICE_SDDL)
+    assert sd == {"owner": "SY", "protected": True,
+                  "dacl": [("A", "GA", "SY"), ("A", f"{CLIENT_ACCESS:#x}", "IU")],
+                  "sacl": [("ML", "NW", "ME")]}
+    assert not any(ace[2] in _WIDE for ace in sd["dacl"])
+
+
+def test_a_users_app_pipe_admits_that_user_and_system_only() -> None:
+    """Another account -- the VM's `trcctest` -- gets no ACE, so Windows
+    refuses it before the App hears a byte.
+
+    MUTATION CHECK: add any other SID's ACE, or drop the owner -> fails."""
+    from trcc.adapters.infra.named_pipe import app_pipe_sddl
+
+    sid = "S-1-5-21-111-222-333-1001"
+    sd = _parse_sddl(app_pipe_sddl(sid))
+    assert sd == {"owner": sid, "protected": True,
+                  "dacl": [("A", "GA", sid), ("A", "GA", "SY")],
+                  "sacl": [("ML", "NW", "ME")]}

@@ -70,6 +70,17 @@ _SECURITY_IDENTIFICATION = 0x00010000
 CLIENT_ACCESS = 0x00120083
 #: SYSTEM's SID: the owner of the service's pipe (``win_service.py``).
 SYSTEM_SID = "S-1-5-18"
+
+
+def app_pipe_sddl(sid: str) -> str:
+    """The security descriptor of user *sid*'s App pipe.
+
+    Owner + a protected DACL: this user and SYSTEM, nobody inherits in.
+    Label: Medium, no-write-up, so an elevated App admits its user's
+    non-elevated UIs.  Pure, so the ACL is tested on every OS.
+    """
+    log.debug("app_pipe_sddl: %s", sid)
+    return f"O:{sid}D:P(A;;GA;;;{sid})(A;;GA;;;SY)S:(ML;;NW;;;ME)"
 _ERROR_FILE_NOT_FOUND = 2
 _ERROR_BROKEN_PIPE = 109
 _ERROR_PIPE_BUSY = 231
@@ -362,10 +373,7 @@ class NamedPipeChannel(IpcChannel):
             raise ImportError(f"pywin32 is not importable: {_PYWIN32}")
         sid = win32security.ConvertSidToStringSid(_user_sid())
         self.name = name or rf"\\.\pipe\trcc-{sid}"
-        # Owner + DACL: this user and SYSTEM, nobody inherits in.  Label:
-        # Medium, no-write-up, so an elevated App admits its user's
-        # non-elevated UIs.
-        self._sddl = sddl or f"O:{sid}D:P(A;;GA;;;{sid})(A;;GA;;;SY)S:(ML;;NW;;;ME)"
+        self._sddl = sddl or app_pipe_sddl(sid)
         self._owner = win32security.ConvertStringSidToSid(owner or sid)
         log.debug("NamedPipeChannel: %s owner=%s", self.name, owner or sid)
 
