@@ -70,6 +70,9 @@ class WindowsPaths(BasePaths):
 # Both directions, as USBLCD.exe (USBLCD.exe.c:16684): the buffered form
 # (0x4D004) is for transfers under 16 KB, and the poll reads 57,600 bytes.
 _IOCTL_SCSI_PASS_THROUGH_DIRECT = 0x4D014
+# CTL_CODE(IOCTL_STORAGE_BASE, 0x0251, METHOD_BUFFERED, FILE_ANY_ACCESS), as
+# ntddstor.h; its input is PREVENT_MEDIA_REMOVAL, one BOOLEAN.
+_IOCTL_STORAGE_MCN_CONTROL = 0x2D0944
 _SCSI_IOCTL_DATA_OUT = 0
 _SCSI_IOCTL_DATA_IN = 1
 _SENSE_LENGTH = 32
@@ -262,7 +265,41 @@ class WindowsScsiTransport(BaseScsiTransport):
                 raise PermissionError_(f"{self._path}: {detail}")
             return False
         self._handle = handle
+        self._stop_media_polling(handle)
         return True
+
+    def _stop_media_polling(self, handle: int) -> None:
+        """Stop Windows checking the drive for media while *handle* is open.
+
+        The disk driver asks a removable drive "is there media?" (TEST UNIT
+        READY) about once a second.  The panel answers "no medium", and about 1
+        in 100 of the REQUEST SENSE reads that follow stalls its pipe; the hub
+        answers a stall it cannot clear with a port reset, and the panel blinks
+        (ETW trace on the win11 VM, 2026-10-20: 4114 checks, 38 stalls, 1 reset
+        in 69 min).  TRCC sends none of these -- only its own 0xF5 commands.
+
+        IOCTL_STORAGE_MCN_CONTROL with PreventMediaRemoval=TRUE raises classpnp's
+        detection-disable count, and ``ClassCheckMediaState`` then builds no TEST
+        UNIT READY (classpnp autorun.c, ``ClasspMcnControl``; Microsoft's
+        Windows-driver-samples).  It sends the panel nothing, and closing the
+        handle undoes it (create.c, ``ClasspCleanupDisableMcn``), so an exit or
+        a crash cannot leave a drive unpolled.  USBLCD.exe does not do this.  A
+        failure only keeps the polling every Windows TRCC has had.
+        """
+        request = ctypes.c_ubyte(1)          # PREVENT_MEDIA_REMOVAL: TRUE
+        returned = ctypes.c_uint32(0)
+        if _kernel32().DeviceIoControl(
+                handle, _IOCTL_STORAGE_MCN_CONTROL,
+                ctypes.byref(request), ctypes.sizeof(request), None, 0,
+                ctypes.byref(returned), None):
+            log.info("WindowsScsiTransport: Windows' media check is off for %s "
+                     "while TRCC holds it", self._path)
+            return
+        log.warning(
+            "WindowsScsiTransport: could not turn off Windows' media check for "
+            "%s (WinError %d) -- Windows keeps asking it about media once a "
+            "second, which can reset the panel's USB port (a blink)",
+            self._path, ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
 
     def _claim(self) -> bool:
         """Take the drive's single-owner claim, or refuse the open.

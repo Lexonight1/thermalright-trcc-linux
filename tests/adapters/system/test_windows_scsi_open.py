@@ -7,6 +7,7 @@ decision under test is ours.
 from __future__ import annotations
 
 import ctypes
+import logging
 from typing import Any
 
 import pytest
@@ -55,10 +56,12 @@ class _PassThrough:
     """A drive behind DeviceIoControl: records each call, answers as told."""
 
     def __init__(self, err: int = 0, status: int = 0,
-                 reply: bytes = b"") -> None:
+                 reply: bytes = b"", mcn_err: int = 0) -> None:
         self.err, self.status, self.reply = err, status, reply
+        self.mcn_err = mcn_err
         self.claims, self.semaphores = {}, {}
         self.calls: list[tuple[int, bytes, int]] = []   # (ioctl, data-out, address)
+        self.mcn: list[tuple[int, bytes]] = []          # (handle, request)
 
     def CreateFileW(self, *_args: Any) -> int:
         return 7
@@ -98,7 +101,11 @@ class _PassThrough:
         self.claims[self.semaphores[handle]] += count
         return 1
 
-    def DeviceIoControl(self, _handle: int, code: int, inbuf: Any, *_rest: Any) -> int:
+    def DeviceIoControl(self, handle: int, code: int, inbuf: Any, in_len: int,
+                        *_rest: Any) -> int:
+        if code == windows._IOCTL_STORAGE_MCN_CONTROL:
+            self.mcn.append((handle, ctypes.string_at(ctypes.addressof(inbuf._obj), in_len)))
+            return 0 if self.mcn_err else 1
         sptd = inbuf._obj.sptd
         length = sptd.DataTransferLength
         if sptd.DataIn == windows._SCSI_IOCTL_DATA_IN:
@@ -117,10 +124,52 @@ class _PassThrough:
 def _open(monkeypatch: pytest.MonkeyPatch, drive: _PassThrough) -> Any:
     monkeypatch.setattr(windows, "_kernel32", lambda: drive)
     monkeypatch.setattr(windows, "_advapi32", lambda: drive)
-    monkeypatch.setattr(ctypes, "GetLastError", lambda: drive.err, raising=False)
+    monkeypatch.setattr(ctypes, "GetLastError", lambda: drive.mcn_err or drive.err,
+                        raising=False)
     transport = windows.WindowsScsiTransport(r"\\.\PhysicalDrive3")
     assert transport.open()
     return transport
+
+
+# ── Windows' own media check, off while TRCC holds the drive ─────────────
+#
+# The disk driver asks the panel "is there media?" once a second; the panel's
+# answer leads, about once an hour, to a USB port reset -- a blink (ETW trace,
+# win11 VM, 2026-10-20).  classpnp stops asking for as long as the handle that
+# sent IOCTL_STORAGE_MCN_CONTROL stays open.
+
+
+def test_opening_turns_off_windows_media_check_before_any_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once per open, on the handle that drives the panel, PreventMediaRemoval
+    TRUE (one byte), before the first command.
+
+    MUTATION CHECK: drop the ``_stop_media_polling`` call -- ``mcn`` is empty."""
+    drive = _PassThrough()
+    transport = _open(monkeypatch, drive)
+
+    assert (drive.mcn, drive.calls) == ([(7, b"\x01")], [])
+    assert transport.send_cdb(b"\x01" * 16, b"frame") is True
+    assert drive.mcn == [(7, b"\x01")]
+
+
+def test_a_refused_media_switch_still_drives_the_panel_and_says_so(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Refused, the panel runs as every Windows TRCC has -- polled -- and the
+    log names the consequence.
+
+    MUTATION CHECK: make a refusal fail the open -- ``_open`` asserts."""
+    drive = _PassThrough(mcn_err=50)
+    with caplog.at_level(logging.WARNING):
+        transport = _open(monkeypatch, drive)
+
+    assert transport.send_cdb(b"\x01" * 16, b"frame") is True
+    assert [r.getMessage() for r in caplog.records if "media check" in r.getMessage()] == [
+        "WindowsScsiTransport: could not turn off Windows' media check for "
+        "\\\\.\\PhysicalDrive3 (WinError 50) -- Windows keeps asking it about "
+        "media once a second, which can reset the panel's USB port (a blink)"]
 
 
 def test_a_frame_goes_direct_byte_for_byte_into_a_reused_buffer(
