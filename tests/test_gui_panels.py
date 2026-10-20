@@ -355,7 +355,7 @@ def test_about_panel_constructs(gui_app: App) -> None:
     assert panel.layout() is not None
 
 
-def test_system_panel_constructs(gui_app: App, qtbot) -> None:
+def test_system_panel_constructs(gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
     """The host stacks six boxes and refreshes exactly ONE of them.
 
     The live wiring is the load-bearing half: ``ListMemorySlots`` shells out
@@ -389,7 +389,7 @@ def test_system_panel_constructs(gui_app: App, qtbot) -> None:
             ticked.append(type(cmd).__name__)
             return _real(cmd)
 
-        box.dispatch = spy                # pyright: ignore[reportAttributeAccessIssue]
+        monkeypatch.setattr(box, "dispatch", spy)
 
     panel.show()                          # a real view-switch
     qtbot.waitExposed(panel)
@@ -2196,22 +2196,18 @@ def _release(overlay: DragSelectOverlay, x: int, y: int) -> None:
 
 
 def _confirmed_rects(overlay: Any) -> list[tuple[int, int, int, int]]:
-    """Subscribe to whichever signal this skin confirms with.
+    """Every rectangle the overlay confirms, through ``region_selected``.
 
-    ``Any``: each skin names its own signal, which is the point of the probe.
+    A ``captured`` fallback here, and the ``hasattr`` guard on each assertion
+    below, served a skin that no longer exists -- so a skin that lost
+    ``region_selected`` would have passed every drag test unchecked.
     """
     seen: list[tuple[int, int, int, int]] = []
 
     def _on_region(x: int, y: int, w: int, h: int) -> None:
         seen.append((x, y, w, h))
 
-    def _on_captured(pixmap: object) -> None:
-        seen.append((0, 0, -1, -1) if pixmap is None else (0, 0, 1, 1))
-
-    if hasattr(overlay, "region_selected"):
-        overlay.region_selected.connect(_on_region)
-    else:
-        overlay.captured.connect(_on_captured)
+    overlay.region_selected.connect(_on_region)
     return seen
 
 
@@ -2226,9 +2222,7 @@ def test_drag_select_confirms_a_real_drag(skin: str, qtbot) -> None:
     _move_to(overlay, 300, 260)
     _release(overlay, 300, 260)
 
-    assert len(seen) == 1
-    if hasattr(overlay, "region_selected"):
-        assert seen[0] == (100, 120, 201, 141)
+    assert seen == [(100, 120, 201, 141)]
 
 
 @pytest.mark.parametrize("skin", sorted(_DRAG_SKINS))
@@ -2277,9 +2271,7 @@ def test_drag_select_is_direction_independent(skin: str, gesture: str,
     _move_to(overlay, x1, y1)
     _release(overlay, x1, y1)
 
-    assert len(seen) == 1
-    if hasattr(overlay, "region_selected"):
-        assert seen[0] == (100, 120, 201, 141)
+    assert seen == [(100, 120, 201, 141)]
 
 
 @pytest.mark.parametrize("skin", sorted(_DRAG_SKINS))
@@ -2302,10 +2294,7 @@ def test_drag_select_right_click_cancels(skin: str, qtbot) -> None:
     cancelled: list[bool] = []
     overlay = _drag_overlay(skin)()
     qtbot.addWidget(overlay)
-    if hasattr(overlay, "cancelled"):
-        overlay.cancelled.connect(lambda: cancelled.append(True))
-    else:
-        overlay.captured.connect(lambda px: cancelled.append(px is None))
+    overlay.cancelled.connect(lambda: cancelled.append(True))
 
     _press(overlay, 100, 120, button="RightButton")
 
@@ -2675,7 +2664,7 @@ def _slideshow_panel(gui_app: App, qtbot):
     return panel
 
 
-def test_the_slideshow_switch_is_one_command(gui_app: App, qtbot) -> None:
+def test_the_slideshow_switch_is_one_command(gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
     """The switch sends ``SetSlideshow`` alone -- it is what rotates, so the
     panel pairs no driver Command by hand -- and Save sends the list alone."""
     panel = _slideshow_panel(gui_app, qtbot)
@@ -2686,7 +2675,7 @@ def test_the_slideshow_switch_is_one_command(gui_app: App, qtbot) -> None:
         sent.append(type(cmd).__name__)
         return real(cmd)
 
-    panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setattr(panel, "dispatch", spy)
     on = panel._slideshow_enabled.findData(True)
     panel._slideshow_enabled.setCurrentIndex(on)
     panel._slideshow_enabled.activated.emit(on)          # the user's pick
@@ -2747,7 +2736,7 @@ def test_sensors_box_lists_memory_slots(gui_app: App, qtbot) -> None:
     )
 
 
-def test_the_hdd_toggle_shows_the_persisted_flag(gui_app: App, qtbot) -> None:
+def test_the_hdd_toggle_shows_the_persisted_flag(gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
     """And loading it must NOT write it back.
 
     ``setChecked`` emits ``toggled``; an unguarded load dispatches a write on
@@ -2769,7 +2758,7 @@ def test_the_hdd_toggle_shows_the_persisted_flag(gui_app: App, qtbot) -> None:
         sent.append(type(cmd).__name__)
         return real(cmd)
 
-    box.dispatch = spy                        # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setattr(box, "dispatch", spy)
     box.refresh_hdd()
 
     assert box._hdd_check.isChecked() is True
@@ -2809,7 +2798,7 @@ def test_the_upgrade_button_shows_the_command_and_runs_nothing(
     assert "&amp;&amp; sudo pacman -U" in box._status.text()
 
 
-def test_the_date_format_reaches_the_bus(gui_app: App, qtbot) -> None:
+def test_the_date_format_reaches_the_bus(gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
     """qtgui could set the CLOCK format but not the DATE pattern.
 
     Editable on purpose: the vocabulary is four tokens (``yyyy`` ``yy`` ``MM``
@@ -2832,7 +2821,7 @@ def test_the_date_format_reaches_the_bus(gui_app: App, qtbot) -> None:
             sent.append((type(cmd).__name__, cmd.fmt, cmd.key))
         return real(cmd)
 
-    panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setattr(panel, "dispatch", spy)
     panel._date.setCurrentText("dd.MM.yyyy")
     line = panel._date.lineEdit()
     assert line is not None
@@ -2894,7 +2883,7 @@ def test_the_participation_boxes_show_the_zones_the_app_uses(
     assert [b.isChecked() for b in tab._participation_checks] == shown
 
 
-def test_toggling_participation_sends_the_whole_mask(gui_app: App, qtbot) -> None:
+def test_toggling_participation_sends_the_whole_mask(gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
     """``SetLedZoneSyncZones`` replaces the mask wholesale, so send all of it."""
     tab = _zone_tab_with(gui_app, qtbot, zones=3, mask=(True, True, True))
     sent: list[tuple] = []
@@ -2905,7 +2894,7 @@ def test_toggling_participation_sends_the_whole_mask(gui_app: App, qtbot) -> Non
             sent.append(cmd.zones)
         return real(cmd)
 
-    tab._dispatch = spy                       # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setattr(tab, "_dispatch", spy)
     tab._participation_checks[1].setChecked(False)
 
     assert sent == [(True, False, True)], f"got {sent}"
@@ -3148,7 +3137,9 @@ def test_an_unbound_row_says_so(gui_app: App, qtbot) -> None:
     )]
     box._redraw()        # draw the WORKING layout — no bus round-trip
 
-    child = box._tree.topLevelItem(0).child(0)     # pyright: ignore[reportOptionalMemberAccess]
+    top = box._tree.topLevelItem(0)
+    assert top is not None
+    child = top.child(0)
     assert child is not None
     assert "unbound" in child.text(1)
 
@@ -3311,7 +3302,9 @@ def test_renaming_a_row_takes_the_dialogs_answer_up_to_twelve(
 
     rename_with("VRAM", True)
     assert box._panels[0].sensors[1].label == "VRAM"
-    assert box._tree.topLevelItem(0).child(1).text(0) == "VRAM"  # pyright: ignore[reportOptionalMemberAccess]
+    top = box._tree.topLevelItem(0)
+    renamed = top.child(1) if top is not None else None
+    assert renamed is not None and renamed.text(0) == "VRAM"
 
     rename_with("Discarded", False)                   # cancelled
     assert box._panels[0].sensors[1].label == "VRAM"
@@ -3347,7 +3340,7 @@ def test_panel_verbs_refuse_politely_with_no_selection(
     assert "Select a panel" in box._status.text()
 
 
-def test_saving_sends_the_whole_layout(gui_app: App, qtbot) -> None:
+def test_saving_sends_the_whole_layout(gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
     """One bulk verb, matching SetOverlayConfig — the UI holds the whole thing."""
     box = _dashboard_box(gui_app, qtbot)
     sent: list = []
@@ -3358,7 +3351,7 @@ def test_saving_sends_the_whole_layout(gui_app: App, qtbot) -> None:
             sent.append(cmd.panels)
         return real(cmd)
 
-    box.dispatch = spy                         # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setattr(box, "dispatch", spy)
     box._on_save()
 
     assert len(sent) == 1
@@ -3517,12 +3510,13 @@ def _inspector_text(gui_app: App, qtbot, *, pm, sub) -> str:
     panel = DevicePanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
     panel._current_key = lambda: "0402:3922"
-    panel.dispatch = lambda cmd: DeviceStateResult(   # pyright: ignore[reportAttributeAccessIssue]
-        ok=True, key="0402:3922", wire="SCSI", catalog_resolution=(320, 320),
-        catalog_product="Frozen Warframe 360", pm_byte=pm, sub_byte=sub,
-        fbl=7, serial="ABC")
-    panel._refresh_inspector()
-    return panel._inspector.text()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(panel, "dispatch", lambda cmd: DeviceStateResult(
+            ok=True, key="0402:3922", wire="SCSI", catalog_resolution=(320, 320),
+            catalog_product="Frozen Warframe 360", pm_byte=pm, sub_byte=sub,
+            fbl=7, serial="ABC"))
+        panel._refresh_inspector()
+        return panel._inspector.text()
 
 
 def test_a_pm_byte_of_zero_is_shown(gui_app: App, qtbot) -> None:
@@ -4222,7 +4216,7 @@ def test_the_screencast_page_shows_the_selected_devices_cast(
 
 
 def test_the_led_panel_reloads_on_settings_not_on_every_render(
-    gui_app: App, qtbot,
+    gui_app: App, qtbot, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """It reloaded on LedColorsChanged, which every render publishes (~6.7/s
     animated): three Queries a frame, and a pick pulled back mid-edit."""
@@ -4239,7 +4233,7 @@ def test_the_led_panel_reloads_on_settings_not_on_every_render(
         asked.append(type(cmd).__name__)
         return real(cmd)
 
-    panel.dispatch = spy                              # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setattr(panel, "dispatch", spy)
     for _ in range(5):
         gui_app.events.publish(LedColorsChanged(key="0416:8001", color_count=30))
     qtbot.wait(200)
@@ -4356,7 +4350,7 @@ def test_the_device_panel_lists_devices_on_open_and_frames_cost_no_query(
             asked.append(type(cmd).__name__)
             return real(cmd)
 
-        panel.dispatch = spy                          # pyright: ignore[reportAttributeAccessIssue]
+        monkeypatch.setattr(panel, "dispatch", spy)
         for n in (100, 200, 300):
             app.events.publish(FrameSent(key=keys[0], bytes_sent=n))
         qtbot.waitUntil(lambda: "300 bytes" in panel._inspector.text(),
