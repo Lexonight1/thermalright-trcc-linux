@@ -120,7 +120,10 @@ class ComputedIo:
 
     def poll(self, readings: dict[str, float]) -> None:
         frame_log.debug("poll: called")
-        now = time.monotonic()
+        # A rate divides by this interval, so it is timed with perf_counter:
+        # on Windows below Python 3.13 ``monotonic`` moves in 15.6 ms ticks,
+        # up to 1.6% off a one-second poll -- and Windows reads these rates.
+        now = time.perf_counter()
         self._poll_disk(readings, now)
         self._poll_net(readings, now)
 

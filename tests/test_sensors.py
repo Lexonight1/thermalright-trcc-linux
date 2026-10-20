@@ -1812,3 +1812,45 @@ def test_cores_are_listed_in_number_order() -> None:
     assert [s.name for s in ordered] == [
         "Core 0 (coretemp)", "Core 2 (coretemp)", "Core 8 (coretemp)",
         "Core 12 (coretemp)", "SYSTIN (nct6798)"]
+
+
+# ── Disk + network rates divide by an interval timed with perf_counter ──────
+#
+# On Windows below Python 3.13 ``monotonic`` moves in 15.6 ms ticks, up to 1.6%
+# off a one-second poll -- and Windows reads these rates from psutil
+# (2026-10-20).
+
+
+def test_io_rates_divide_by_the_perf_counter_interval(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: time ``poll`` with ``monotonic`` again -- the real clock
+    replaces the scripted half second and every rate is wrong."""
+    import time as real_time
+    from types import SimpleNamespace
+
+    from trcc.adapters.sensors import psutil_sources
+
+    clock = iter((10.0, 10.5))
+    counters = iter((
+        (SimpleNamespace(read_bytes=0, write_bytes=0, busy_time=0),
+         SimpleNamespace(bytes_sent=0, bytes_recv=0)),
+        (SimpleNamespace(read_bytes=1 << 20, write_bytes=2 << 20, busy_time=250),
+         SimpleNamespace(bytes_sent=512 << 10, bytes_recv=1 << 20)),
+    ))
+    current: list[tuple[SimpleNamespace, SimpleNamespace]] = []
+    monkeypatch.setattr(psutil_sources, "time", SimpleNamespace(
+        perf_counter=lambda: next(clock), monotonic=real_time.monotonic))
+    monkeypatch.setattr(psutil_sources.psutil, "disk_io_counters", lambda: current[-1][0])
+    monkeypatch.setattr(psutil_sources.psutil, "net_io_counters", lambda: current[-1][1])
+    io = psutil_sources.ComputedIo()
+
+    readings: dict[str, float] = {}
+    for sample in counters:
+        current.append(sample)
+        io.poll(readings)
+
+    assert readings == {
+        "disk:read": 2.0, "disk:write": 4.0, "disk:activity": 50.0,   # MiB/s, %
+        "net:up": 1024.0, "net:down": 2048.0,                         # KiB/s
+        "net:total_up": 0.5, "net:total_down": 1.0,                   # MiB
+    }
