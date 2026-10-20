@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
-from ..core.logs import per_frame
+from ..core.logs import per_frame, recurring_warning
 from ..core.models import OverlayElement, ThemeDir, element_family, percent_only
 from ..core.ports import Renderer
 from . import _dc as Dc
@@ -422,23 +422,34 @@ class OverlayService:
         metric_id = str(element.get("metric", ""))
         text = metric_text(element, sensors, temp_unit)
         if text is None:
+            # Both branches run on every frame for as long as the element is
+            # blank, so each warns once per element and metric; the repeats go
+            # per-frame.  As plain WARNINGs they were 41% of a steady Windows
+            # log (2026-10-20) and rotated the startup lines out of the report.
             if metric_id in self._unsupported():
                 # Not a fault and not a slow tick: nothing on this host reads
                 # it, and it never will.  Saying so stops a reporter (and me)
                 # hunting a transient that cannot happen.
-                log.warning(
+                recurring_warning(
+                    log,
                     "draw_metric %s: metric %r is UNSUPPORTED on this host — "
                     "no backend reads it, so this element will always be "
                     "blank (not a transient miss)",
                     source, metric_id,
                 )
             else:
-                log.warning(
-                    "draw_metric %s: metric %r has no sensor reading this "
-                    "tick — skipping (the host CAN read it; available "
-                    "sensors: %d, sample keys=%s)",
+                # Not on the unsupported list means a backend here COULD
+                # supply it -- not that one is: HWiNFO or LHM not running, or
+                # a CPU with no TjMax, reads nothing and still leaves the key
+                # off that static list.  The sample keys catch a typo'd id.
+                recurring_warning(
+                    log,
+                    "draw_metric %s: metric %r has no reading — skipping (not "
+                    "on the unsupported list, so a backend here may supply it "
+                    "once it answers; readings this tick: %d, sample keys=%s)",
                     source, metric_id, len(sensors),
                     list(sensors.keys())[:5],
+                    key=f"draw_metric {source} {metric_id} no reading",
                 )
             return
         x = int(element.get("x", 0))

@@ -219,7 +219,7 @@ class LhmCpu(CpuSource):
         return self._name
 
     def _cpu_row(self, ns: Any) -> Any | None:
-        log.debug("_cpu_row: ns=%s", ns)
+        frame_log.debug("_cpu_row: ns=%s", ns)
         self._ensure_cpu_row(ns)
         if ns is None or self._cpu_id is None:
             return None

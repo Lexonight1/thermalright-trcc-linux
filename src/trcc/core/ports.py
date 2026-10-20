@@ -1008,6 +1008,11 @@ class SensorEnumerator(ABC):
     _preferred_disk_key: str | None = None
     _warned_missing_disk_key: str | None = None
     _fan_slot_pins: dict[str, str] | None = None
+
+    # ``snapshot`` runs on every poll.  The first one's resolved values go to
+    # the file a report sends; the rest are per-frame -- at one line per poll
+    # they were 13% of a steady Windows log (2026-10-20).
+    _snapshot_logged: bool = False
     _warned_missing_fan_pins: frozenset[str] = frozenset()
 
     # Poll cadence, in seconds.  Lives here rather than on the concrete
@@ -1221,12 +1226,14 @@ class SensorEnumerator(ABC):
             cpus=cpus,
             gpus=gpus,
         )
-        log.debug(
+        sink = frame_log if self._snapshot_logged else log
+        sink.debug(
             "snapshot: cpus=%d gpus=%d cpu_temp=%.1f cpu_pct=%.1f "
             "gpu_temp=%.1f fans(rpm)=%s", len(cpus), len(gpus),
             metrics.cpu_temp, metrics.cpu_percent, metrics.gpu_temp,
             (fan_cpu, fan_gpu, fan_ssd, fan_sys2),
         )
+        self._snapshot_logged = True
         return metrics
 
     def fan_slots(self, readings: dict[str, float]) -> dict[str, float]:

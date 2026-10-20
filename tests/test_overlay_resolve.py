@@ -110,7 +110,7 @@ def test_an_unsupported_metric_says_so_instead_of_blaming_the_tick(caplog):
 
 
 def test_a_supported_metric_that_missed_a_tick_says_THAT(caplog):
-    """The other half — the host CAN read it, so this one may resolve."""
+    """The other half — a backend here could supply it, so this one may resolve."""
     import logging
 
     from trcc.adapters.render.qt import QtRenderer
@@ -126,8 +126,8 @@ def test_a_supported_metric_that_missed_a_tick_says_THAT(caplog):
         )
 
     assert "UNSUPPORTED" not in caplog.text
-    assert "this tick" in caplog.text
-    assert "CAN read it" in caplog.text
+    assert "has no reading" in caplog.text
+    assert "may supply it once it answers" in caplog.text
 
 
 def test_the_app_actually_wires_the_unsupported_set(fake_platform) -> None:

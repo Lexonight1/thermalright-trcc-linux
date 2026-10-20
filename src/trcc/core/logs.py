@@ -275,13 +275,16 @@ _REPORTED: set[str] = set()
 _REPEATS: dict[str, logging.Logger] = {}
 
 
-def _repeat(log: logging.Logger, msg: str, *args: object) -> bool:
+def _repeat(log: logging.Logger, msg: str, *args: object,
+            key: str | None = None) -> bool:
     """True when *msg* was reported before -- and then it goes per-frame.
 
     The formatted message is the key, so ``nvmlDeviceGetFanSpeedRPM(0) failed``
-    and ``…(1) failed`` are reported once each.
+    and ``…(1) failed`` are reported once each.  A message carrying a value
+    that changes every tick (a count, a sample) would never repeat, so its
+    caller names the stable part as *key* instead.
     """
-    key = f"{log.name}:{msg % args if args else msg}"
+    key = f"{log.name}:{key if key is not None else (msg % args if args else msg)}"
     if key in _REPORTED:
         frame_log = _REPEATS.get(log.name) or _REPEATS.setdefault(
             log.name, per_frame(log.name))
@@ -302,12 +305,14 @@ def recurring_failure(log: logging.Logger, msg: str, *args: object) -> None:
                   *args, exc_info=True)
 
 
-def recurring_warning(log: logging.Logger, msg: str, *args: object) -> None:
+def recurring_warning(log: logging.Logger, msg: str, *args: object,
+                      key: str | None = None) -> None:
     """A WARNING that a per-tick loop would repeat: once, then per-frame only.
 
     A screencast whose capture broke fails the same way seven times a second;
     as a WARNING each time it rotates the diagnosis out of the file ``trcc
-    report`` sends.
+    report`` sends.  *key*, when given, is what "the same warning" means --
+    see :func:`_repeat`.
     """
-    if not _repeat(log, msg, *args):
+    if not _repeat(log, msg, *args, key=key):
         log.warning(msg + " — repeats go to the per-frame log", *args)

@@ -354,3 +354,89 @@ def test_sensor_tracebacks_are_the_known_one_shot_probes() -> None:
             and isinstance(node.value, ast.Constant) and node.value.value))
     }
     assert found == KNOWN_SENSOR_TRACEBACKS
+
+
+# ── A per-tick line that is not a failure writes ONCE too (2026-10-20) ──────
+#
+# Measured on the win11 VM, one steady minute with no window open: three
+# emitters were 100% of the log, 40 KB/min, so one 1 MB file lasted about 25
+# minutes -- ``LhmCpu._cpu_row`` 46% (6 per poll), ``_draw_metric`` 41% (two
+# blank temperatures, a WARNING each per frame) and ``snapshot`` 13% (1 per
+# poll).  None of them repeats anything the first line did not already say.
+
+
+def _messages(caplog: pytest.LogCaptureFixture, logger: str,
+              prefix: str) -> list[str]:
+    return [r.getMessage() for r in caplog.records
+            if r.name == logger and r.getMessage().startswith(prefix)]
+
+
+def test_a_blank_metric_warns_once_per_element_not_per_frame(
+        caplog: pytest.LogCaptureFixture) -> None:
+    """Both branches, five frames each.  The 'no reading' frames carry a
+    different sensor count each time, as a real poll does.
+
+    MUTATION CHECK: drop ``key=`` from the 'no reading' call, or route either
+    branch back to ``log.warning`` → this fails."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.services.overlay import OverlayService
+
+    svc = OverlayService(QtRenderer(),
+                         unsupported=lambda: frozenset({"gpu:primary:temp"}))
+    surface = svc._r.create_surface(64, 64)
+    caplog.set_level(logging.DEBUG)
+
+    for frame in range(5):
+        readings = {f"cpu:k{i}": 1.0 for i in range(18 + frame)}
+        svc._draw_metric(surface, {"metric": "cpu:temp"}, readings,
+                         source="element[0]")
+        svc._draw_metric(surface, {"metric": "gpu:primary:temp"}, readings,
+                         source="element[2]")
+
+    assert [r.getMessage() for r in caplog.records
+            if r.levelno >= logging.WARNING] == [
+        "draw_metric element[0]: metric 'cpu:temp' has no reading — skipping "
+        "(not on the unsupported list, so a backend here may supply it once "
+        "it answers; readings this tick: 18, sample keys=['cpu:k0', 'cpu:k1', "
+        "'cpu:k2', 'cpu:k3', 'cpu:k4']) — repeats go to the per-frame log",
+        "draw_metric element[2]: metric 'gpu:primary:temp' is UNSUPPORTED on "
+        "this host — no backend reads it, so this element will always be "
+        "blank (not a transient miss) — repeats go to the per-frame log",
+    ]
+
+
+def test_snapshot_logs_its_first_values_to_the_file_then_per_frame(
+        caplog: pytest.LogCaptureFixture) -> None:
+    """MUTATION CHECK: log every snapshot on ``log`` again, or never set
+    ``_snapshot_logged`` → this fails."""
+    from trcc.adapters.sensors.aggregator import BaselineSensors
+
+    from .conftest import FakeCpu, FakeGpu, FakeMemory
+
+    sensors = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(),
+                              gpus=[FakeGpu(0)], fans=[])
+    caplog.set_level(logging.DEBUG)
+
+    for _ in range(3):
+        sensors.read_all()
+        sensors.snapshot()
+
+    assert len(_messages(caplog, "trcc.core.ports", "snapshot:")) == 1
+    assert len(_messages(caplog, "trcc.frame.core.ports", "snapshot:")) == 2
+
+
+def test_the_lhm_cpu_row_lookup_is_per_frame(
+        caplog: pytest.LogCaptureFixture) -> None:
+    """It runs for every CPU quantity on every poll; with LHM absent it wrote
+    ``_cpu_row: ns=None`` six times a poll.
+
+    MUTATION CHECK: put ``log.debug`` back in ``_cpu_row`` → this fails."""
+    from trcc.adapters.sensors import _lhm
+
+    cpu = _lhm.LhmCpu(handle_factory=lambda: None)
+    caplog.set_level(logging.DEBUG)
+
+    assert [cpu.temp(), cpu.usage(), cpu.freq(), cpu.power()] == [None] * 4
+    assert _messages(caplog, "trcc.adapters.sensors._lhm", "_cpu_row") == []
+    assert len(_messages(caplog, "trcc.frame.adapters.sensors._lhm",
+                         "_cpu_row")) == 4
