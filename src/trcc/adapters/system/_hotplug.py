@@ -124,8 +124,8 @@ def _import_dbus_glib() -> tuple[Any, Any] | None:
         from dbus.mainloop.glib import (  # pyright: ignore[reportMissingImports]
             DBusGMainLoop,
         )
-        from gi.repository import (
-            GLib,  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+        from gi.repository import (  # pyright: ignore[reportMissingImports]
+            GLib,  # pyright: ignore[reportAttributeAccessIssue]
         )
     except ImportError as e:
         log.debug("logind power listener: dependency missing (%s)", e)

@@ -8,6 +8,7 @@ Windows box with the panel dark.
 """
 from __future__ import annotations
 
+import contextlib
 import socket
 import struct
 import threading
@@ -367,11 +368,16 @@ def test_random_bytes_never_escape_the_connection() -> None:
             junk = bytes(rng.randrange(256) for _ in range(size))
             if rng.random() < 0.5:               # a plausible frame around it
                 junk = _frame(junk)
-            ours.sendall(junk)
-            ours.shutdown(socket.SHUT_WR)
-            worker.join(timeout=5)
-            assert not worker.is_alive()
-            ours.close()
+            with ours:
+                # Hanging up on garbage is the RIGHT answer, and Windows'
+                # loopback socketpair reports it to the sender as a reset
+                # (WinError 10054) when bytes were left unread.  The claim is
+                # about the server, so the client only has to survive it.
+                with contextlib.suppress(ConnectionError):
+                    ours.sendall(junk)
+                    ours.shutdown(socket.SHUT_WR)
+                worker.join(timeout=5)
+                assert not worker.is_alive()
     finally:
         threading.excepthook = previous
     assert escaped == []

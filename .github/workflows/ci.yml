@@ -52,7 +52,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]' pyright==1.1.408
+          pip install -e '.[dev]' pyright==1.1.414
 
       - name: Lint with ruff
         run: python -m ruff check .
