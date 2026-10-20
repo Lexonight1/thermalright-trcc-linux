@@ -18,7 +18,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`ModuleHost`](#modulehost) | 1 | 0 | 1 |
 | [`Query`](#query) | 1 | 0 | 46 |
-| [`ScreenCapture`](#screencapture) | 1 | 1 | 3 |
+| [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 0 |
@@ -207,7 +207,7 @@ grab_region(x: 'int', y: 'int', width: 'int', height: 'int') -> RawFrame
 
 **You inherit (1):** `stop`
 
-**Implementations (3):** `PipeWireScreenCapture` · `QtNativeCapture` · `ToolCapture`
+**Implementations (4):** `GdiScreenCapture` · `PipeWireScreenCapture` · `QtNativeCapture` · `ToolCapture`
 
 ## UserInterface
 

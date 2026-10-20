@@ -31,6 +31,7 @@ from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
     Paths,
+    ScreenCapture,
     ScsiTransport,
     SensorEnumerator,
 )
@@ -664,6 +665,18 @@ class WindowsPlatform(BaseOS, key="win32"):
         """
         log.info("replace_process: Popen %s", list(argv))
         subprocess.Popen(list(argv), close_fds=True)
+
+    def _build_screen_capture(self) -> ScreenCapture:
+        """GDI's screen copy (``BitBlt``), as the C#'s ``CopyFromScreen``.
+
+        Not Qt: the shared App's Qt runs offscreen and sees no screen -- every
+        grab came back blank on the win11 VM (2026-10-20).  GDI works in the
+        App and in a window alike, from any thread.
+        """
+        from ..screencast.gdi import GdiScreenCapture
+
+        log.info("WindowsPlatform._build_screen_capture: GDI BitBlt")
+        return GdiScreenCapture()
 
     def hard_exit(self, code: int) -> NoReturn:
         """``TerminateProcess`` on this process: Windows' ``_exit``.
