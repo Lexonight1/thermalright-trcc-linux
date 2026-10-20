@@ -481,11 +481,10 @@ class App(CommandBus, ModuleHost):
             self.enabled_modules.add(key)
         log.info("_enable_saved_modules: on: %s", sorted(self.enabled_modules))
 
-    def _persist_user_mask_dc(self, event: Any) -> None:
+    def _persist_user_mask_dc(self, event: OverlayChanged) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active
         user mask's ``config1.dc`` so its metric placement is editable +
-        durable.  ``event`` is ``Any`` to satisfy the ``Handler`` type, as
-        ``_on_visual_change`` does."""
+        durable."""
         log.debug("_persist_user_mask_dc: event=%s", event)
         from .core.commands._helpers import persist_user_mask_dc
         persist_user_mask_dc(self, event.key)
@@ -516,7 +515,7 @@ class App(CommandBus, ModuleHost):
         except Exception:
             log.exception("release_device: disconnect %s raised", key)
 
-    def _on_device_detached(self, event: Any) -> None:
+    def _on_device_detached(self, event: DeviceDetached) -> None:
         """Hotplug ``DeviceDetached`` → release the handle the unplug killed.
 
         Without this the device stayed in ``self.devices`` holding a dead
@@ -543,7 +542,7 @@ class App(CommandBus, ModuleHost):
             log.debug("_on_device_detached: %s — nothing left attached",
                       event.key)
 
-    def _on_device_attached(self, event: Any) -> None:
+    def _on_device_attached(self, event: DeviceAttached) -> None:
         """Hotplug ``DeviceAttached`` → connect every unit of that model.
 
         Runs on the hotplug poll thread (same off-main-thread pattern the
@@ -676,7 +675,7 @@ class App(CommandBus, ModuleHost):
         if forget:
             self._wanted.discard(key)
 
-    def _on_data_installed(self, event: Any) -> None:
+    def _on_data_installed(self, event: DataInstalled) -> None:
         """``DataInstalled`` -> backfill that resolution's cloud tile GIFs."""
         log.debug("_on_data_installed: %s ok=%s", event.resolution, event.ok)
         if not event.ok:
@@ -743,7 +742,7 @@ class App(CommandBus, ModuleHost):
                                       key)
                 self.connect_unit(key)
 
-    def _on_orientation_changed(self, event: Any) -> None:
+    def _on_orientation_changed(self, event: OrientationChanged) -> None:
         """``OrientationChanged`` → the folder of the new orientation, with its
         own theme, brightness, split mode and slideshow -- the port of the C#
         ``UpDateUCComboBox1``, which reads that folder's ``Theme.dc``.
@@ -755,8 +754,6 @@ class App(CommandBus, ModuleHost):
         the folder just left, which drew black on a widescreen panel's
         portrait canvas.  Then the background and the user mask (so an
         explicitly-applied mask wins over the theme's bundled one).
-        ``event`` is ``Any`` to satisfy the ``Handler`` type, as the other
-        subscribers do.
         """
         key = event.key
         device = self.devices.get(key)
@@ -1666,7 +1663,7 @@ class _DeviceRenderObserver:
         ):
             app.events.subscribe(event_cls, self._on_visual_change)
 
-    def _on_visual_change(self, event: Any) -> None:
+    def _on_visual_change(self, event: Event) -> None:
         """Any visual-mutation event → one RenderAndSend per affected key.
 
         Per-device events (BrightnessChanged, MaskApplied, etc.) carry

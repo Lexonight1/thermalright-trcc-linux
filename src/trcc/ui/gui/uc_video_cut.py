@@ -271,20 +271,23 @@ class UCVideoCut(QWidget):
         if self._duration_ms > 0:
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QBrush(QColor('#004400')))
+            # Handle positions are fractional (mouse, ms -> x); drawRect's int
+            # form truncates them on every PySide6, so int() draws the same
+            # pixels and is what 6.12's stubs ask for.
             p.drawRect(
-                self._start_x, TIMELINE_Y,
-                self._end_x - self._start_x, TIMELINE_H
+                int(self._start_x), TIMELINE_Y,
+                int(self._end_x - self._start_x), TIMELINE_H
             )
 
         # Start handle (green)
         p.setPen(QPen(QColor('#00FF00'), 1))
         p.setBrush(QBrush(QColor('#00AA00')))
-        p.drawRect(self._start_x, TIMELINE_Y, HANDLE_W, HANDLE_H)
+        p.drawRect(int(self._start_x), TIMELINE_Y, HANDLE_W, HANDLE_H)
 
         # End handle (red)
         p.setPen(QPen(QColor('#FF0000'), 1))
         p.setBrush(QBrush(QColor('#AA0000')))
-        p.drawRect(self._end_x - HANDLE_W, TIMELINE_Y, HANDLE_W, HANDLE_H)
+        p.drawRect(int(self._end_x - HANDLE_W), TIMELINE_Y, HANDLE_W, HANDLE_H)
 
         p.end()
 

@@ -529,8 +529,10 @@ class LedHandshakeResult:
 @dataclass(frozen=True, slots=True)
 class RawFrame:
     """Decoded video frame — RGB24 bytes.  Handed to Renderer."""
-    #: Out of the repr — a decoded RGB24 frame is megabytes.
-    data: bytes = field(repr=False)
+    #: Out of the repr — a decoded RGB24 frame is megabytes.  ``bytearray`` is
+    #: admitted because a capture may hand over a buffer it reuses; the
+    #: renderer copies it (test_a_grab_becomes_a_surface_that_owns_its_pixels).
+    data: bytes | bytearray = field(repr=False)
     width: int
     height: int
 

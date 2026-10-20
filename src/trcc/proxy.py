@@ -33,7 +33,7 @@ from typing import TypeVar, cast
 from . import frame_share, ipc
 from .core.commands import Command, DiscoverDevices
 from .core.errors import DaemonUnavailableError, RemoteCommandError
-from .core.events import AppStopping, Event, EventBus, FrameSent
+from .core.events import AppStopping, E, Event, EventBus, FrameSent
 from .core.logs import current_origin, per_frame, sink_for
 from .core.ports import CommandBus
 from .core.results import Result
@@ -113,14 +113,14 @@ class _ProxyBus(EventBus):
         log.debug("_ProxyBus.__init__")
         self._on_frames = on_frames
 
-    def subscribe(self, event_type: type[Event], handler: Callable[[Event], None]) -> None:
+    def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> None:
         log.debug("_ProxyBus.subscribe: %s", event_type.__name__)
         super().subscribe(event_type, handler)
         if event_type is FrameSent and self.subscriber_count(FrameSent) == 1:
             self._on_frames(True)
 
-    def unsubscribe(self, event_type: type[Event],
-                    handler: Callable[[Event], None]) -> None:
+    def unsubscribe(self, event_type: type[E],
+                    handler: Callable[[E], None]) -> None:
         log.debug("_ProxyBus.unsubscribe: %s", event_type.__name__)
         before = self.subscriber_count(event_type)
         super().unsubscribe(event_type, handler)

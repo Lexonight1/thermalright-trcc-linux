@@ -10,7 +10,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 from .logs import per_frame
 from .models import (
@@ -609,7 +609,10 @@ class AppStopping(Event):
 # =========================================================================
 
 
-Handler = Callable[[Event], None]
+#: The event type a handler is subscribed to.  ``publish`` looks handlers up by
+#: the EXACT ``type(event)``, so a handler for ``E`` is only ever called with an
+#: ``E`` -- the signature can say so, and pyright then checks the handler body.
+E = TypeVar("E", bound=Event)
 
 
 class EventBus:
@@ -622,15 +625,17 @@ class EventBus:
 
     def __init__(self) -> None:
         log.debug("__init__")
-        self._handlers: defaultdict[type[Event], list[Handler]] = defaultdict(list)
+        self._handlers: defaultdict[type[Event], list[Callable[[Any], None]]] = (
+            defaultdict(list))
 
-    def subscribe(self, event_type: type[Event], handler: Handler) -> None:
+    def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> None:
         """Register *handler* for all events of *event_type*."""
         log.info("subscribe: event=%s handler=%s",
                  event_type.__name__, getattr(handler, "__qualname__", handler))
         self._handlers[event_type].append(handler)
 
-    def unsubscribe(self, event_type: type[Event], handler: Handler) -> None:
+    def unsubscribe(self, event_type: type[E],
+                    handler: Callable[[E], None]) -> None:
         """Remove a previously-registered handler.  No-op if not found."""
         log.info("unsubscribe: event=%s handler=%s",
                  event_type.__name__, getattr(handler, "__qualname__", handler))
