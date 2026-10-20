@@ -73,6 +73,8 @@ _IOCTL_SCSI_PASS_THROUGH_DIRECT = 0x4D014
 # CTL_CODE(IOCTL_STORAGE_BASE, 0x0251, METHOD_BUFFERED, FILE_ANY_ACCESS), as
 # ntddstor.h; its input is PREVENT_MEDIA_REMOVAL, one BOOLEAN.
 _IOCTL_STORAGE_MCN_CONTROL = 0x2D0944
+_FILE_SHARE_READ_WRITE = 0x3
+_OPEN_EXISTING = 3
 _SCSI_IOCTL_DATA_OUT = 0
 _SCSI_IOCTL_DATA_IN = 1
 _SENSE_LENGTH = 32
@@ -236,6 +238,7 @@ class WindowsScsiTransport(BaseScsiTransport):
         # {data_len: (sptd_with_sense, data_buf)} -- one set per size class.
         self._bufs: dict[int, tuple[Any, Any]] = {}
         self._claim_handle: int | None = None
+        self._mcn_handle: int | None = None     # holds Windows' media check off
         log.debug("WindowsScsiTransport.__init__: %s", device_path)
         super().__init__(device_path)
 
@@ -243,11 +246,9 @@ class WindowsScsiTransport(BaseScsiTransport):
         log.debug("WindowsScsiTransport._open_handle: %s", self._path)
         try:
             GENERIC_READ_WRITE = 0xC0000000
-            FILE_SHARE_READ_WRITE = 0x3
-            OPEN_EXISTING = 3
             handle = _kernel32().CreateFileW(
-                self._path, GENERIC_READ_WRITE, FILE_SHARE_READ_WRITE,
-                None, OPEN_EXISTING, 0, None,
+                self._path, GENERIC_READ_WRITE, _FILE_SHARE_READ_WRITE,
+                None, _OPEN_EXISTING, 0, None,
             )
         except Exception:
             log.exception("Failed to open %s", self._path)
@@ -265,11 +266,11 @@ class WindowsScsiTransport(BaseScsiTransport):
                 raise PermissionError_(f"{self._path}: {detail}")
             return False
         self._handle = handle
-        self._stop_media_polling(handle)
+        self._stop_media_polling()
         return True
 
-    def _stop_media_polling(self, handle: int) -> None:
-        """Stop Windows checking the drive for media while *handle* is open.
+    def _stop_media_polling(self) -> None:
+        """Stop Windows checking the drive for media while TRCC holds the panel.
 
         The disk driver asks a removable drive "is there media?" (TEST UNIT
         READY) about once a second.  The panel answers "no medium", and about 1
@@ -282,24 +283,44 @@ class WindowsScsiTransport(BaseScsiTransport):
         detection-disable count, and ``ClassCheckMediaState`` then builds no TEST
         UNIT READY (classpnp autorun.c, ``ClasspMcnControl``; Microsoft's
         Windows-driver-samples).  It sends the panel nothing, and closing the
-        handle undoes it (create.c, ``ClasspCleanupDisableMcn``), so an exit or
-        a crash cannot leave a drive unpolled.  USBLCD.exe does not do this.  A
-        failure only keeps the polling every Windows TRCC has had.
+        handle that sent it undoes it (create.c, ``ClasspCleanupDisableMcn``), so
+        an exit or a crash cannot leave a drive unpolled.  USBLCD.exe does not do
+        this.  A failure only keeps the polling every Windows TRCC has had.
+
+        It needs a handle of its own, opened with NO access.  On the read/write
+        handle frames use, Windows answers ERROR_INVALID_PARAMETER (87);
+        measured on the VM (dev/tools/win_vm/mcn_probe.py).  A data-access open
+        of a disk is routed through the file-system layer, so classpnp keeps no
+        record of that handle -- the STATUS_INVALID_PARAMETER branch of
+        ``ClasspMcnControl`` -- while a no-access open reaches the device.
         """
+        k32 = _kernel32()
+        handle = k32.CreateFileW(self._path, 0, _FILE_SHARE_READ_WRITE, None,
+                                 _OPEN_EXISTING, 0, None)
+        if handle == -1:
+            self._media_check_stays_on(
+                "no-access open", ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
+            return
         request = ctypes.c_ubyte(1)          # PREVENT_MEDIA_REMOVAL: TRUE
         returned = ctypes.c_uint32(0)
-        if _kernel32().DeviceIoControl(
-                handle, _IOCTL_STORAGE_MCN_CONTROL,
-                ctypes.byref(request), ctypes.sizeof(request), None, 0,
-                ctypes.byref(returned), None):
+        if k32.DeviceIoControl(handle, _IOCTL_STORAGE_MCN_CONTROL,
+                               ctypes.byref(request), ctypes.sizeof(request),
+                               None, 0, ctypes.byref(returned), None):
+            self._mcn_handle = handle
             log.info("WindowsScsiTransport: Windows' media check is off for %s "
                      "while TRCC holds it", self._path)
             return
+        err = ctypes.GetLastError()  # pyright: ignore[reportAttributeAccessIssue]
+        k32.CloseHandle(handle)
+        self._media_check_stays_on("IOCTL_STORAGE_MCN_CONTROL", err)
+
+    def _media_check_stays_on(self, step: str, err: int) -> None:
+        """Say that the switch failed, and what that leaves in place."""
         log.warning(
             "WindowsScsiTransport: could not turn off Windows' media check for "
-            "%s (WinError %d) -- Windows keeps asking it about media once a "
+            "%s (%s: WinError %d) -- Windows keeps asking it about media once a "
             "second, which can reset the panel's USB port (a blink)",
-            self._path, ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]
+            self._path, step, err)
 
     def _claim(self) -> bool:
         """Take the drive's single-owner claim, or refuse the open.
@@ -357,6 +378,11 @@ class WindowsScsiTransport(BaseScsiTransport):
         log.debug("WindowsScsiTransport._close_handle: %s", self._handle)
         handle, self._handle = self._handle, None
         self._bufs.clear()
+        mcn, self._mcn_handle = self._mcn_handle, None
+        if mcn is not None:
+            log.debug("WindowsScsiTransport._close_handle: media check back on "
+                      "for %s", self._path)
+            _kernel32().CloseHandle(mcn)
         if handle is not None and not _kernel32().CloseHandle(handle):
             log.warning("CloseHandle %s failed: WinError %d", self._path,
                         ctypes.GetLastError())  # pyright: ignore[reportAttributeAccessIssue]

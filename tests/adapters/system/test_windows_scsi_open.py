@@ -58,16 +58,21 @@ class _PassThrough:
     def __init__(self, err: int = 0, status: int = 0,
                  reply: bytes = b"", mcn_err: int = 0) -> None:
         self.err, self.status, self.reply = err, status, reply
-        self.mcn_err = mcn_err
+        self.mcn_err, self.mcn_last = mcn_err, 0
         self.claims, self.semaphores = {}, {}
         self.calls: list[tuple[int, bytes, int]] = []   # (ioctl, data-out, address)
         self.mcn: list[tuple[int, bytes]] = []          # (handle, request)
+        self.access: dict[int, int] = {}                # handle -> access it was opened with
+        self.closed: list[int] = []
 
-    def CreateFileW(self, *_args: Any) -> int:
-        return 7
+    def CreateFileW(self, _path: str, access: int, *_args: Any) -> int:
+        handle = 7 if access else 8
+        self.access[handle] = access
+        return handle
 
     def CloseHandle(self, handle: int) -> int:
         self.semaphores.pop(handle, None)
+        self.closed.append(handle)
         return 1
 
     # The single-owner claim: named semaphores of count 1, shared by name.
@@ -105,7 +110,10 @@ class _PassThrough:
                         *_rest: Any) -> int:
         if code == windows._IOCTL_STORAGE_MCN_CONTROL:
             self.mcn.append((handle, ctypes.string_at(ctypes.addressof(inbuf._obj), in_len)))
-            return 0 if self.mcn_err else 1
+            # As the win11 VM answers (mcn_probe.py): only a no-access handle
+            # reaches classpnp; a read/write one gets ERROR_INVALID_PARAMETER.
+            self.mcn_last = 87 if self.access.get(handle) else self.mcn_err
+            return 0 if self.mcn_last else 1
         sptd = inbuf._obj.sptd
         length = sptd.DataTransferLength
         if sptd.DataIn == windows._SCSI_IOCTL_DATA_IN:
@@ -124,7 +132,7 @@ class _PassThrough:
 def _open(monkeypatch: pytest.MonkeyPatch, drive: _PassThrough) -> Any:
     monkeypatch.setattr(windows, "_kernel32", lambda: drive)
     monkeypatch.setattr(windows, "_advapi32", lambda: drive)
-    monkeypatch.setattr(ctypes, "GetLastError", lambda: drive.mcn_err or drive.err,
+    monkeypatch.setattr(ctypes, "GetLastError", lambda: drive.mcn_last or drive.err,
                         raising=False)
     transport = windows.WindowsScsiTransport(r"\\.\PhysicalDrive3")
     assert transport.open()
@@ -142,16 +150,21 @@ def _open(monkeypatch: pytest.MonkeyPatch, drive: _PassThrough) -> Any:
 def test_opening_turns_off_windows_media_check_before_any_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Once per open, on the handle that drives the panel, PreventMediaRemoval
-    TRUE (one byte), before the first command.
+    """Once per open, PreventMediaRemoval TRUE (one byte), before the first
+    command -- on a handle of its own, opened with no access, which closing
+    the panel closes (that is what turns Windows' check back on).
 
-    MUTATION CHECK: drop the ``_stop_media_polling`` call -- ``mcn`` is empty."""
+    MUTATION CHECK: drop the ``_stop_media_polling`` call -- ``mcn`` is empty;
+    send it on the frame handle -- handle 7, and Windows' 87."""
     drive = _PassThrough()
     transport = _open(monkeypatch, drive)
 
-    assert (drive.mcn, drive.calls) == ([(7, b"\x01")], [])
+    assert (drive.mcn, drive.calls) == ([(8, b"\x01")], [])
     assert transport.send_cdb(b"\x01" * 16, b"frame") is True
-    assert drive.mcn == [(7, b"\x01")]
+    assert drive.mcn == [(8, b"\x01")]
+    assert 8 not in drive.closed
+    transport.close()
+    assert 8 in drive.closed
 
 
 def test_a_refused_media_switch_still_drives_the_panel_and_says_so(
@@ -160,16 +173,19 @@ def test_a_refused_media_switch_still_drives_the_panel_and_says_so(
     """Refused, the panel runs as every Windows TRCC has -- polled -- and the
     log names the consequence.
 
-    MUTATION CHECK: make a refusal fail the open -- ``_open`` asserts."""
+    MUTATION CHECK: make a refusal fail the open -- ``_open`` asserts; keep the
+    refused handle -- 8 is never closed."""
     drive = _PassThrough(mcn_err=50)
     with caplog.at_level(logging.WARNING):
         transport = _open(monkeypatch, drive)
 
+    assert drive.closed == [8]
     assert transport.send_cdb(b"\x01" * 16, b"frame") is True
     assert [r.getMessage() for r in caplog.records if "media check" in r.getMessage()] == [
         "WindowsScsiTransport: could not turn off Windows' media check for "
-        "\\\\.\\PhysicalDrive3 (WinError 50) -- Windows keeps asking it about "
-        "media once a second, which can reset the panel's USB port (a blink)"]
+        "\\\\.\\PhysicalDrive3 (IOCTL_STORAGE_MCN_CONTROL: WinError 50) -- Windows "
+        "keeps asking it about media once a second, which can reset the panel's USB "
+        "port (a blink)"]
 
 
 def test_a_frame_goes_direct_byte_for_byte_into_a_reused_buffer(
