@@ -84,7 +84,7 @@ def test_download_theme_caches_to_disk(tmp_path: Path) -> None:
     payload = MP4 + b"\x00" * 256
     # First server tried — international.
     http.responses[
-        "http://www.czhorde.cc/tr/bj320320/a001.mp4"
+        "http://www.czhorde.com/tr/bj320320/a001.mp4"
     ] = payload
     catalog = CzhordeCatalog(
         http=http, cache_dir=tmp_path, resolution="320x320",
@@ -108,7 +108,7 @@ def test_download_theme_uses_per_call_resolution_for_folder_and_url(
     found its background."""
     http = FakeHttp()
     payload = MP4 + b"\x01" * 128
-    http.responses["http://www.czhorde.cc/tr/bj480854/a001.mp4"] = payload
+    http.responses["http://www.czhorde.com/tr/bj480854/a001.mp4"] = payload
     catalog = CzhordeCatalog(
         http=http, cache_dir=tmp_path, resolution="320x320",  # default ignored
     )
@@ -117,16 +117,16 @@ def test_download_theme_uses_per_call_resolution_for_folder_and_url(
 
     assert target == tmp_path / "480854" / "a001.mp4", target
     assert target.read_bytes() == payload
-    assert http.calls == ["http://www.czhorde.cc/tr/bj480854/a001.mp4"]
+    assert http.calls == ["http://www.czhorde.com/tr/bj480854/a001.mp4"]
     # The 320x320 default folder must NOT have been used.
     assert not (tmp_path / "320320").exists()
 
 
 def test_download_falls_back_to_secondary_server(tmp_path: Path) -> None:
     http = FakeHttp()
-    http.errors["http://www.czhorde.cc/tr/bj320320/a002.mp4"] = "503"
+    http.errors["http://www.czhorde.com/tr/bj320320/a002.mp4"] = "503"
     http.responses[
-        "http://www.czhorde.com/tr/bj320320/a002.mp4"
+        "http://www.czhorde.cc/tr/bj320320/a002.mp4"
     ] = MP4 + b"backup"
     catalog = CzhordeCatalog(
         http=http, cache_dir=tmp_path, resolution="320x320",
@@ -143,28 +143,28 @@ def test_download_falls_back_to_secondary_server(tmp_path: Path) -> None:
 # czhorde.com delivered in 2-3 s -- once per click, since clicks were not
 # folded into the download already running.
 
-_CC = "http://www.czhorde.cc/tr/bj320320/{}.mp4"
-_COM = "http://www.czhorde.com/tr/bj320320/{}.mp4"
+_FIRST = "http://www.czhorde.com/tr/bj320320/{}.mp4"     # tried first by default
+_BACKUP = "http://www.czhorde.cc/tr/bj320320/{}.mp4"
 
 
-def _cc_down(*ids: str) -> FakeHttp:
+def _first_down(*ids: str) -> FakeHttp:
     http = FakeHttp()
     for theme_id in ids:
-        http.errors[_CC.format(theme_id)] = "WinError 10060"
-        http.responses[_COM.format(theme_id)] = MP4 + theme_id.encode()
+        http.errors[_FIRST.format(theme_id)] = "WinError 10060"
+        http.responses[_BACKUP.format(theme_id)] = MP4 + theme_id.encode()
     return http
 
 
 def test_the_server_that_delivered_is_tried_first_from_then_on(tmp_path: Path) -> None:
     """MUTATION CHECK: never remember the working server -- the second
-    download asks czhorde.cc again."""
-    http = _cc_down("a002", "a003")
+    download asks the dead first server again."""
+    http = _first_down("a002", "a003")
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
 
     catalog.download_theme("a002")
     catalog.download_theme("a003")
 
-    assert http.calls == [_CC.format("a002"), _COM.format("a002"), _COM.format("a003")]
+    assert http.calls == [_FIRST.format("a002"), _BACKUP.format("a002"), _BACKUP.format("a003")]
 
 
 def test_a_server_not_yet_known_to_answer_gets_a_short_wait(tmp_path: Path) -> None:
@@ -172,7 +172,7 @@ def test_a_server_not_yet_known_to_answer_gets_a_short_wait(tmp_path: Path) -> N
     delivered, keep the long one the download itself rides on.
 
     MUTATION CHECK: give the first try the long timeout -- 60 s, not 5."""
-    http = _cc_down("a002", "a003")
+    http = _first_down("a002", "a003")
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
 
     catalog.download_theme("a002")
@@ -195,7 +195,7 @@ def test_a_second_request_for_a_theme_downloading_waits_for_that_download(
             return super().fetch(url, timeout_s, max_bytes)
 
     http = _Slow()
-    http.responses[_CC.format("a004")] = MP4 + b"a004"
+    http.responses[_FIRST.format("a004")] = MP4 + b"a004"
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
     got: list[Path] = []
     first = threading.Thread(target=lambda: got.append(catalog.download_theme("a004")))
@@ -207,14 +207,14 @@ def test_a_second_request_for_a_theme_downloading_waits_for_that_download(
     first.join(5)
     second.join(5)
 
-    assert http.calls == [_CC.format("a004")]
+    assert http.calls == [_FIRST.format("a004")]
     assert got == [tmp_path / "320320" / "a004.mp4"] * 2
 
 
 def test_download_both_servers_fail_raises(tmp_path: Path) -> None:
     http = FakeHttp()
-    http.errors["http://www.czhorde.cc/tr/bj320320/a003.mp4"] = "503"
-    http.errors["http://www.czhorde.com/tr/bj320320/a003.mp4"] = "504"
+    http.errors["http://www.czhorde.com/tr/bj320320/a003.mp4"] = "503"
+    http.errors["http://www.czhorde.cc/tr/bj320320/a003.mp4"] = "504"
     catalog = CzhordeCatalog(
         http=http, cache_dir=tmp_path, resolution="320x320",
     )
@@ -233,8 +233,8 @@ def test_a_body_that_is_not_a_video_falls_through_and_is_never_cached(
     """
     http = FakeHttp()
     page = b"<!DOCTYPE html><html>sign in to the wifi</html>"
-    http.responses["http://www.czhorde.cc/tr/bj320320/a005.mp4"] = page
     http.responses["http://www.czhorde.com/tr/bj320320/a005.mp4"] = page
+    http.responses["http://www.czhorde.cc/tr/bj320320/a005.mp4"] = page
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
 
     with pytest.raises(HttpFetchError, match="is not a .mp4 file"):
@@ -243,7 +243,7 @@ def test_a_body_that_is_not_a_video_falls_through_and_is_never_cached(
     assert len(http.calls) == 2
     assert list(tmp_path.rglob("*")) == []
 
-    http.responses["http://www.czhorde.com/tr/bj320320/a005.mp4"] = MP4 + b"real"
+    http.responses["http://www.czhorde.cc/tr/bj320320/a005.mp4"] = MP4 + b"real"
     assert catalog.download_theme("a005").read_bytes() == MP4 + b"real"
 
 
@@ -253,7 +253,7 @@ def test_a_cached_file_that_is_not_a_video_is_fetched_again(tmp_path: Path) -> N
     poisoned.parent.mkdir(parents=True)
     poisoned.write_bytes(b"<!DOCTYPE html>")
     http = FakeHttp()
-    http.responses["http://www.czhorde.cc/tr/bj320320/a006.mp4"] = MP4 + b"real"
+    http.responses["http://www.czhorde.com/tr/bj320320/a006.mp4"] = MP4 + b"real"
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
 
     assert catalog.download_theme("a006").read_bytes() == MP4 + b"real"
@@ -263,7 +263,7 @@ def test_a_cached_file_that_is_not_a_video_is_fetched_again(tmp_path: Path) -> N
 def test_a_download_leaves_only_the_file_it_names(tmp_path: Path) -> None:
     """Written to a sibling and renamed: no ``.part`` survives a good fetch."""
     http = FakeHttp()
-    http.responses["http://www.czhorde.cc/tr/bj320320/a007.mp4"] = MP4 + b"x"
+    http.responses["http://www.czhorde.com/tr/bj320320/a007.mp4"] = MP4 + b"x"
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
 
     target = catalog.download_theme("a007")
@@ -274,7 +274,7 @@ def test_a_download_leaves_only_the_file_it_names(tmp_path: Path) -> None:
 def test_a_cached_video_has_the_mode_any_other_new_file_gets(tmp_path: Path) -> None:
     """``tempfile`` would have made it 0600 beside the 0644 thumbnails."""
     http = FakeHttp()
-    http.responses["http://www.czhorde.cc/tr/bj320320/a008.mp4"] = MP4 + b"x"
+    http.responses["http://www.czhorde.com/tr/bj320320/a008.mp4"] = MP4 + b"x"
     catalog = CzhordeCatalog(http=http, cache_dir=tmp_path, resolution="320x320")
     sibling = tmp_path / "plain"
     sibling.write_bytes(b"")
@@ -423,7 +423,7 @@ def test_materialise_writes_flat_layout(
     cache.mkdir(parents=True, exist_ok=True)
     http = FakeHttp()
     http.responses[
-        f"http://www.czhorde.cc/tr/bj{w}{h}/a004.mp4"
+        f"http://www.czhorde.com/tr/bj{w}{h}/a004.mp4"
     ] = MP4 + b"mp4-bytes"
     service = CloudThemeService(
         catalog=CzhordeCatalog(
@@ -464,7 +464,7 @@ def test_download_cloud_theme_caches_without_applying(
     w, h = resolution
     app = App(fake_platform)
     http = FakeHttp()
-    http.responses[f"http://www.czhorde.cc/tr/bj{w}{h}/a004.mp4"] = MP4 + b"mp4-bytes"
+    http.responses[f"http://www.czhorde.com/tr/bj{w}{h}/a004.mp4"] = MP4 + b"mp4-bytes"
     cache = app.platform.paths().data_dir() / "web"
     cache.mkdir(parents=True, exist_ok=True)
     app.cloud_themes = CloudThemeService(
@@ -633,7 +633,7 @@ def test_the_explicit_download_still_makes_the_thumbnails(fake_platform,
 
     app = App(fake_platform)
     http = FakeHttp()
-    http.responses["http://www.czhorde.cc/tr/bj320320/a004.mp4"] = MP4 + b"v"
+    http.responses["http://www.czhorde.com/tr/bj320320/a004.mp4"] = MP4 + b"v"
     app.cloud_themes = CloudThemeService(
         catalog=CzhordeCatalog(http=http,
                                cache_dir=app.platform.paths().data_dir() / "web",

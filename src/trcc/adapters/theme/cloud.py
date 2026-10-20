@@ -97,7 +97,11 @@ class CzhordeCatalog(CloudCatalog):
         cache_dir: Path,
         *,
         resolution: str = "320x320",
-        preferred_server: Server = "international",
+        # czhorde.com first: the one that answers.  The C# picks by UI language
+        # -- Chinese .com, everyone else .cc, no fallback -- and .cc answered
+        # nothing on 2026-10-20 (http and https, host and VM), so every
+        # non-Chinese download waited it out.  It stays as the backup.
+        preferred_server: Server = "china",
     ) -> None:
         log.debug("__init__: http=%s cache_dir=%s", http, cache_dir)
         self._http = http
