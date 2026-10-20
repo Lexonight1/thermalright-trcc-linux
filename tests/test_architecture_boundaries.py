@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ast
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TypeGuard
 
@@ -2496,3 +2497,84 @@ def test_no_milliseconds_from_the_monotonic_clock() -> None:
     assert not offenders, (
         "milliseconds timed with time.monotonic() -- 15.6 ms ticks on Windows; "
         "use time.perf_counter():\n" + "\n".join(offenders))
+
+
+# ── Suppression comments: what may hide an error from the gate ──────────────
+#
+# 2026-10-20: tests/ was outside pyright's include and carried 397 errors;
+# with it gated, blanket `# type: ignore` comments still hid 246 more (42 in
+# src/, three of them bugs: a psutil call that does not exist, a clock source
+# nothing can draw, one Literal spelled four times), and 400 suppressions hid
+# nothing at all.  pyright's own reportUnnecessaryTypeIgnoreComment cannot gate
+# this: an import of an optional package resolves here and not on CI, so the
+# same ignore is "unnecessary" on one machine and needed on the other.  This
+# reads the comments instead -- the same answer everywhere.
+
+#: Blanket `# type: ignore` still allowed, per file -- every one in code only
+#: Windows runs, which pyright (pythonPlatform = Linux) skips as unreachable.
+#: Exact both ways: a new one needs its reason here; a removed one leaves.
+KNOWN_BLANKET_IGNORES: dict[str, int] = {
+    "src/trcc/__main__.py": 1,                    # Windows console stream patch
+    "src/trcc/adapters/sensors/_hwinfo.py": 2,    # ctypes.get_last_error
+    "src/trcc/adapters/sensors/_pawnio.py": 1,    # ctypes.get_last_error
+    "src/trcc/adapters/system/_hotplug.py": 1,    # pythoncom (pywin32)
+    "src/trcc/adapters/system/windows.py": 1,     # pythoncom (pywin32)
+}
+
+#: Top-level modules whose import may carry `reportMissingImports`: optional,
+#: per-platform packages that CI's Linux runner does not install.
+OPTIONAL_IMPORTS = frozenset({
+    "gi", "dbus",                                  # the `wayland` extra
+    "wmi", "pythoncom", "pywintypes", "servicemanager", "win32api", "win32event",
+    "win32file", "win32pipe", "win32security", "win32service", "win32serviceutil",
+    "win32timezone", "soundcard", "libusb_package",          # Windows only
+    "catap",                                                 # macOS only
+})
+
+
+def _suppressions() -> Iterator[tuple[str, int, str, str]]:
+    """(repo path, line, comment, the import statement's first line or "")."""
+    import io
+    import re
+    import tokenize
+
+    repo = _SRC.parent
+    for root in ("src", "tests"):
+        for path in sorted((repo / root).rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            lines = text.split("\n")
+            for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+                if tok.type != tokenize.COMMENT or "ignore" not in tok.string:
+                    continue
+                row = tok.start[0]
+                start = next((lines[i] for i in range(row - 1, max(row - 12, -1), -1)
+                              if re.match(r"\s*(from|import)\s", lines[i])), "")
+                yield str(path.relative_to(repo)), row, tok.string, start
+
+
+def test_suppressions_hide_only_what_the_platform_hides() -> None:
+    """MUTATION CHECK: add `# type: ignore` anywhere, a bare `# pyright:
+    ignore`, or `# pyright: ignore[reportMissingImports]` on a non-optional
+    import -> this fails, naming the line."""
+    import re
+
+    blanket: dict[str, int] = {}
+    problems: list[str] = []
+    for path, row, comment, statement in _suppressions():
+        # A suppression starts a comment segment; prose quotes one in backticks.
+        if re.search(r"(?<!`)#\s*type:\s*ignore", comment):
+            blanket[path] = blanket.get(path, 0) + 1
+        for m in re.finditer(r"(?<!`)#\s*pyright:\s*ignore(\[([^\]]*)\])?", comment):
+            if not m.group(1):
+                problems.append(f"{path}:{row}: bare `# pyright: ignore` hides "
+                                "every error on the line -- name the rule")
+            elif "reportMissingImports" in m.group(2):
+                module = re.match(r"\s*(?:from|import)\s+(\w+)", statement)
+                if module is None or module.group(1) not in OPTIONAL_IMPORTS:
+                    problems.append(f"{path}:{row}: reportMissingImports on "
+                                    f"{statement.strip()[:60]!r} -- not an optional "
+                                    "platform package")
+    assert blanket == KNOWN_BLANKET_IGNORES, (
+        "blanket `# type: ignore` hides any error on its line; fix the type or "
+        f"name a pyright rule.  Found {blanket}")
+    assert problems == []
