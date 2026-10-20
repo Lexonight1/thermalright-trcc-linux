@@ -944,7 +944,11 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - `pip install .` can use cached wheel — use `pip install --force-reinstall --no-deps .`
 - CI runs as root — mock `subprocess.run` in non-root tests
 - Never `setStyleSheet()` on ancestor widgets — blocks `QPalette` image backgrounds
-- Optional imports (`hid`, `dbus`, `gi`, `pynvml`) need `# pyright: ignore[reportMissingImports]`
+- A `# pyright: ignore[reportMissingImports]` is allowed only on a module in `OPTIONAL_IMPORTS`
+  (`tests/test_architecture_boundaries.py`, gated) — read the list there, it is not restated
+  here. `hidapi` (Linux) and `nvidia-ml-py` are base dependencies: `hid` and `pynvml` imports
+  carry no ignore, though they stay guarded by `try/except ImportError`. This line named them
+  as needing one until 2026-10-20; the `[hid]` and `[nvidia]` extras are empty shims
 - C# asset suffixes are legacy — `Assets.get_localized()` (`ui/gui/assets.py`) maps
   ISO 639-1 → legacy suffixes via `ISO_TO_LEGACY` (`core/i18n.py`)
 - **Issue #87**: Python 3.14 typer crash in `sudo_reexec` — FIXED: dispatches via `python -c` (direct function call), bypasses typer.
