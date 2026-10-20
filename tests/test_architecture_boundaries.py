@@ -2499,6 +2499,24 @@ def test_no_milliseconds_from_the_monotonic_clock() -> None:
         "use time.perf_counter():\n" + "\n".join(offenders))
 
 
+def test_nothing_waits_with_signal_pause() -> None:
+    """``signal.pause`` does not exist on Windows.
+
+    ``trcc display screencast`` waited for Ctrl-C with it: on the win11 VM
+    (2026-10-20) the CLI started a cast and died a second later with
+    AttributeError, leaving the cast running with nothing to stop it.  Wait
+    with ``ui.cli._ctx.wait_until_interrupted`` instead.
+    """
+    offenders = [
+        f"  {path.relative_to(_SRC)}:{node.lineno}"
+        for path in _files_under("trcc")
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), str(path)))
+        if isinstance(node, ast.Attribute) and node.attr == "pause"
+        and isinstance(node.value, ast.Name) and node.value.id == "signal"
+    ]
+    assert not offenders, "signal.pause() -- missing on Windows:\n" + "\n".join(offenders)
+
+
 # ── Suppression comments: what may hide an error from the gate ──────────────
 #
 # 2026-10-20: tests/ was outside pyright's include and carried 397 errors;

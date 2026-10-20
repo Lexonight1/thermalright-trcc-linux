@@ -62,7 +62,7 @@ from ...core.models import (
 )
 from ...core.results import RgbLightsResult
 from . import module
-from ._ctx import emit_json, get_app
+from ._ctx import emit_json, get_app, wait_until_interrupted
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -900,7 +900,6 @@ def led_debug(
     test pattern so you can confirm wire-up visually.
     """
     log.info("cli system led-debug: key=%s test_colors=%s", key, test_colors)
-    import signal
 
     from ...core.commands import ConnectDevice, EnableLedTestMode, LedSnapshot
 
@@ -933,16 +932,7 @@ def led_debug(
         typer.echo(result.message)
         if not result.ok:
             raise typer.Exit(code=1)
-        stopped = {"flag": False}
-
-        def _handle(*_args: object) -> None:
-            log.debug("_handle")
-            stopped["flag"] = True
-
-        signal.signal(signal.SIGINT, _handle)
-        signal.signal(signal.SIGTERM, _handle)
-        while not stopped["flag"]:
-            signal.pause()
+        wait_until_interrupted()
         stop = app_obj.dispatch(EnableLedTestMode(key=key, enabled=False))
         typer.echo(stop.message)
 

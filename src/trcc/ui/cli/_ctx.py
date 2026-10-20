@@ -10,6 +10,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import signal
+import threading
 from functools import lru_cache
 from typing import Any
 
@@ -274,3 +276,26 @@ def compose_app() -> App:
     log.debug("compose_app: platform=%s renderer=%s",
               _platform_override, _renderer_override)
     return trcc(platform=_platform_override, renderer=_renderer_override)
+
+
+def wait_until_interrupted() -> None:
+    """Block until Ctrl-C or SIGTERM -- on every OS.
+
+    Both waits used ``signal.pause()``, which Windows does not have: the CLI
+    started a screencast, then died with AttributeError a second later and
+    left the cast running with nothing to stop it (win11 VM, 2026-10-20).  A
+    bare ``Event.wait()`` is no answer either: on Windows it blocks where
+    Python cannot run the Ctrl-C handler.  So the wait is sliced -- each
+    slice ends, the handler gets its turn, the next begins.
+    """
+    log.debug("wait_until_interrupted: waiting for Ctrl-C / SIGTERM")
+    stopped = threading.Event()
+
+    def _stop(signum: int, _frame: object) -> None:
+        log.info("wait_until_interrupted: %s", signal.Signals(signum).name)
+        stopped.set()
+
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+    while not stopped.wait(0.25):
+        pass

@@ -84,3 +84,38 @@ def test_test_lcd_prints_half_block_art_at_the_panel_aspect(
     art = [ln for ln in result.output.splitlines() if "▀" in ln]
     assert len(art) == 6
     assert all(ln.count("▀") == 20 for ln in art)
+
+
+def test_the_ctrl_c_wait_returns_on_sigint() -> None:
+    """``wait_until_interrupted`` ends on SIGINT -- the wait every long-running
+    CLI command now shares, in place of ``signal.pause`` (missing on Windows).
+
+    MUTATION CHECK: ignore the signal -- the 5 s alarm fails this instead of
+    hanging (it did hang once: the mutant swallowed timeout's SIGTERM too).
+    The Windows half -- a sliced wait, so the handler gets its turn -- is the
+    VM's to show."""
+    import os
+    import signal
+    import threading
+
+    from trcc.ui.cli._ctx import wait_until_interrupted
+
+    if not hasattr(signal, "SIGALRM"):
+        pytest.skip("needs SIGALRM to fail rather than hang")
+
+    def _too_long(_signum: int, _frame: object) -> None:
+        raise TimeoutError("wait_until_interrupted ignored SIGINT")
+
+    previous = [signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM)]
+    timer = threading.Timer(0.2, os.kill, (os.getpid(), signal.SIGINT))
+    signal.signal(signal.SIGALRM, _too_long)
+    signal.alarm(5)
+    try:
+        timer.start()
+        wait_until_interrupted()
+    finally:
+        signal.alarm(0)
+        timer.cancel()
+        for signum, handler in zip((signal.SIGINT, signal.SIGTERM, signal.SIGALRM),
+                                   previous, strict=True):
+            signal.signal(signum, handler)

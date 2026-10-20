@@ -84,6 +84,7 @@ from ._ctx import (
     parse_on_off,
     recover_or_exit,
     resolution_for,
+    wait_until_interrupted,
 )
 
 log = logging.getLogger(__name__)
@@ -1236,7 +1237,6 @@ def screencast(
         "cli display screencast: key=%s x=%s y=%s w=%s h=%s audio=%s",
         key, x, y, w, h, audio,
     )
-    import signal
 
     app_obj = get_app()
     result = app_obj.dispatch(StartScreencast(
@@ -1247,16 +1247,7 @@ def screencast(
         raise typer.Exit(code=1)
 
     typer.echo(f"Capturing on {key} — Ctrl-C to stop.")
-    stopped = {"flag": False}
-
-    def _handle(*_args: object) -> None:
-        log.debug("_handle")
-        stopped["flag"] = True
-
-    signal.signal(signal.SIGINT, _handle)
-    signal.signal(signal.SIGTERM, _handle)
-    while not stopped["flag"]:
-        signal.pause()
+    wait_until_interrupted()
 
     stop_result = app_obj.dispatch(StopScreencast(key=key))
     typer.echo(stop_result.message)
