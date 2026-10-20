@@ -373,3 +373,35 @@ def test_a_hidden_start_shows_no_splash_and_still_brings_the_session_up(
     assert ui.bring_up() is True
     assert shown == ([] if hidden else [factory])
     ui._composed.start_session.assert_called_once()
+
+
+def test_gui_close_to_tray_does_not_quit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gui's twin of test_qtgui_close_to_tray_does_not_quit -- only the
+    qtgui half was tested (found 2026-10-20 while typing closeEvent).
+
+    MUTATION CHECK: accept() (or quit) in TRCCApp's diverted branch -> fails."""
+    import trcc.ui.gui.trcc_app as gui_app
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    quits: list[str] = []
+
+    def _record(_self: object) -> None:
+        quits.append("quit")
+
+    monkeypatch.setattr(gui_app.QApplication, "quit", _record)
+    win = TRCCApp.__new__(TRCCApp)
+    try:
+        monkeypatch.setattr(win, "_tray", _FakeTray(divert=True), raising=False)
+        monkeypatch.setattr(win, "_viewfinders", _FakeFleet(), raising=False)
+        event = _FakeEvent()
+
+        win.closeEvent(event)
+
+        assert quits == [], "a close diverted to the tray must NOT quit the app"
+        assert event.accepted is False
+        assert isinstance(win._viewfinders, _FakeFleet)
+        assert not win._viewfinders.closed, "hiding to the tray took the frames down"
+    finally:
+        # TRCCApp.__new__ registered this never-built window as the singleton;
+        # conftest's teardown would deleteLater() it, which PySide refuses.
+        TRCCApp._instance = None
