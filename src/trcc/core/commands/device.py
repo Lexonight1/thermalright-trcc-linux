@@ -639,7 +639,7 @@ class SendFrame(Command[SendResult]):
         if why := _lacks(app, self.key, Capability.FRAME_RENDER):
             return SendResult(ok=False, key=self.key, message=why)
         try:
-            _require_connected_device(app, self.key)
+            _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             return SendResult(ok=False, key=self.key, connected=False,
                               message=str(e))
@@ -690,7 +690,7 @@ class SendColor(Command[SendResult]):
                               message=why)
 
         try:
-            device = _require_connected_device(app, self.key)
+            device = _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               connected=False, message=str(e))
@@ -827,7 +827,7 @@ class SendImage(Command[SendResult]):
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               message=why)
         try:
-            device = _require_connected_device(app, self.key)
+            device = _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               connected=False, message=str(e))
@@ -888,7 +888,7 @@ class RenderAndSend(Command[RenderResult]):
         if why := _lacks(app, self.key, Capability.FRAME_RENDER):
             return RenderResult(ok=False, key=self.key, message=why)
         try:
-            device = _require_connected_device(app, self.key)
+            device = _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             return RenderResult(ok=False, key=self.key, connected=False,
                                 message=str(e))
@@ -1717,7 +1717,7 @@ class SendScreencastFrame(Command[ScreencastResult]):
             # Connected, not merely attached: a panel whose transport closed is
             # still attached, and every captured frame was built and sent into
             # it.  The failed Result is reported once by ``App.dispatch``.
-            device = _require_connected_device(app, self.key)
+            device = _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             frame_log.debug("SendScreencastFrame: %s — %s", self.key, e)
             return ScreencastResult(ok=False, key=self.key, message=str(e))
@@ -2598,7 +2598,7 @@ class TickGameMode(Command[GameModeTickResult]):
     def _send_game_frame(self, app: App) -> tuple[bool, str]:
         """Build the overlay-on-black frame and put it on the wire."""
         try:
-            device = _require_connected_device(app, self.key)
+            device = _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             frame_log.debug("TickGameMode: %s -- %s", self.key, e)
             return False, str(e)

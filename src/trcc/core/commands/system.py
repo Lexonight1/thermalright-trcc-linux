@@ -1182,7 +1182,7 @@ class KeepAliveLoop(Command[KeepaliveResult]):
         # The device BEFORE the cache: a failed connect leaves no cache either,
         # and "No cached frame" hid the reason ("permission denied …").
         try:
-            _require_connected_device(app, self.key)
+            _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             log.warning("KeepAliveLoop.execute: %s — %s", self.key, e)
             return KeepaliveResult(ok=False, key=self.key, message=str(e))

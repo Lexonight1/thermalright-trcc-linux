@@ -1997,7 +1997,7 @@ class RestoreDeviceState(Command[ThemeResult]):
     def execute(self, app: App) -> ThemeResult:
         log.info("RestoreDeviceState: key=%s", self.key)
         try:
-            _require_connected_device(app, self.key)
+            _require_connected_device(app, self.key, level=self.LOG_LEVEL)
         except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             log.warning("RestoreDeviceState: %s — %s", self.key, e)
             return ThemeResult(ok=False, key=self.key, message=str(e))

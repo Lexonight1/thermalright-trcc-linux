@@ -1837,3 +1837,42 @@ def test_a_lost_panels_video_writes_nothing_to_the_file_per_frame(
     assert playback.cursor != 0, "the source must keep playing while lost"
     assert [f"{r.name}: {r.getMessage()}" for r in caplog.records
             if not r.name.startswith("trcc.frame")] == []
+
+
+def test_a_connecting_panel_warns_once_per_frame_command_but_every_one_shot(
+    ticking_app: App, stub_media: Any, video_file: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A device is attached BEFORE its handshake (a second or more), so a
+    playing video's every frame reached _require_connected_device while it
+    connected: 17 WARNINGs in one reconnect, 71 in 3 s on the maintainer's
+    boot (2026-10-19).  A per-frame Command now warns once; at a one-shot
+    Command's level, where the WARNING is the whole diagnosis, every call warns.
+
+    MUTATION CHECK: make the helper ignore *level* (always log.warning) ->
+    this fails."""
+    from trcc.core.commands._helpers import _require_connected_device
+    from trcc.core.errors import DeviceNotConnectedError
+    from trcc.core.models import parse_device_key
+
+    _playback_for(ticking_app, video_file)
+    ticking_app.release_device(_KEY)
+    vid, pid = parse_device_key(_KEY)[:2]
+    ticking_app.attach(vid, pid)                 # attached, handshake not run yet
+    caplog.set_level(logging.DEBUG)
+
+    def warned() -> int:
+        return sum("dispatched before ConnectDevice" in r.getMessage()
+                   for r in caplog.records if r.levelno >= logging.WARNING)
+
+    for _ in range(20):
+        ticking_app.dispatch(TickDisplay(key=_KEY))
+    assert warned() == 1
+
+    # A one-shot wire Command's level: the dispatcher connects a device-using
+    # Command first, so reaching the check needs a failed connect -- the
+    # helper is driven at that level directly.
+    for _ in range(2):
+        with pytest.raises(DeviceNotConnectedError):
+            _require_connected_device(ticking_app, _KEY, level=logging.INFO)
+    assert warned() == 3

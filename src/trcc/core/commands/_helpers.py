@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from ...services.theme_directories import ThemeDirectories
     from ..models import DeviceSettings, ProductInfo, SensorBinding
 
-from ..logs import per_frame
+from ..logs import per_frame, recurring_warning
 from ..models import (
     FAN_PANEL_CATEGORY,
     FAN_PANEL_SLOTS,
@@ -277,7 +277,7 @@ _UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _require_connected_device(app: App, key: str) -> Any:
+def _require_connected_device(app: App, key: str, *, level: int) -> Any:
     """Fetch a connected device by key, or raise.
 
     Centralises the ``app.get(key) → is_connected check`` pattern that
@@ -310,8 +310,18 @@ def _require_connected_device(app: App, key: str) -> Any:
         # DeviceNotConnectedError propagates PAST App.dispatch (no try/except
         # there), so without this the rejected wire command is invisible in the
         # log.  Warn with the key — the universal "acted before connect" trace.
-        log.warning("%s: wire command dispatched before ConnectDevice — "
-                    "device attached but not connected", key)
+        #
+        # *level* is the calling Command's LOG_LEVEL.  A per-frame one (a video
+        # or cast tick) reaches here on every frame of a connect: the device is
+        # attached before its handshake, which takes a second or more -- 17
+        # WARNINGs in one reconnect of a playing panel, 71 in 3 s on a boot
+        # (2026-10-19).  It warns once per device; repeats go per-frame.
+        message = ("%s: wire command dispatched before ConnectDevice — "
+                   "device attached but not connected")
+        if level <= logging.DEBUG:
+            recurring_warning(log, message, key)
+        else:
+            log.warning(message, key)
         # The dispatcher already tried to connect a USES_DEVICE Command's
         # device, so "dispatch ConnectDevice first" is no advice at all when it
         # failed -- the recorded reason is ("permission denied on /dev/sg1").
