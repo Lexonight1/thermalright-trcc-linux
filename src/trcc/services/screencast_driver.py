@@ -25,13 +25,21 @@ running and keep capturing for a disconnected device; ``App`` removes both.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from ..core.logs import per_frame
 from ..core.models import SCREENCAST_TICK_S
 from ._send_task import BaseSendTask
 
+if TYPE_CHECKING:
+    from ..app import App
+
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
+
+#: Failed ticks in a row before the UIs are told: about three seconds.  Short
+#: gaps (a lock screen flickering, the portal's first frame) say nothing.
+FAILED_TICKS_BEFORE_TELLING = round(3.0 / SCREENCAST_TICK_S)
 
 
 class ScreencastDriver(BaseSendTask):
@@ -43,6 +51,14 @@ class ScreencastDriver(BaseSendTask):
 
     KEY_PREFIX = "screencast:"
     DEFAULT_INTERVAL_S = SCREENCAST_TICK_S
+
+    def __init__(self, app: App, device_key: str,
+                 interval_s: float | None = None) -> None:
+        super().__init__(app, device_key, interval_s)
+        log.debug("ScreencastDriver: %s tells the UIs after %d failed ticks",
+                  device_key, FAILED_TICKS_BEFORE_TELLING)
+        self._failed_in_a_row = 0
+        self._told = False
 
     def _run(self, now: float) -> float:
         """Capture one frame; return the seconds to wait before the next.
@@ -58,7 +74,37 @@ class ScreencastDriver(BaseSendTask):
         result = self._app.dispatch(CaptureScreencastFrame(key=self._device_key))
         frame_log.debug("ScreencastDriver.run_once: %s ok=%s",
                         self._device_key, result.ok)
+        self._follow(result.ok, result.message)
         return self._interval
+
+    def _follow(self, ok: bool, message: str) -> None:
+        """Tell the UIs once when capture keeps failing, and once when it is back.
+
+        It kept going silently, so a cast that could never capture -- the
+        shared Windows App's offscreen Qt, 2026-10-20 -- showed the user
+        nothing at all while it logged an ERROR sixteen times a second.  It
+        still does not END the session: a locked screen fails for minutes and
+        must not throw the cast away.
+        """
+        from ..core.events import ErrorOccurred
+
+        if ok:
+            if self._told:
+                log.info("ScreencastDriver: %s capturing again", self._device_key)
+            self._failed_in_a_row, self._told = 0, False
+            return
+        self._failed_in_a_row += 1
+        if self._told or self._failed_in_a_row < FAILED_TICKS_BEFORE_TELLING:
+            frame_log.debug("ScreencastDriver: %s failed %d in a row",
+                            self._device_key, self._failed_in_a_row)
+            return
+        self._told = True
+        log.warning("ScreencastDriver: %s has captured nothing for %d ticks "
+                    "(%s) -- telling the UIs; still trying",
+                    self._device_key, self._failed_in_a_row, message)
+        self._app.events.publish(ErrorOccurred(
+            message=f"Screencast: nothing captured for 3 seconds -- {message}",
+            kind="screencast", key=self._device_key))
 
 
 def task_key(device_key: str) -> str:

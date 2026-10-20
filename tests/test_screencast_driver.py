@@ -269,6 +269,45 @@ def test_driving_does_not_evict_the_device_sender(
     assert task_key(_KEY) in scheduler._tasks
 
 
+def test_a_cast_that_keeps_failing_tells_the_uis_once_and_carries_on(
+    casting: App, scheduler: SyncSendScheduler, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Three seconds of failed grabs reach the UIs ONCE; the session stays
+    (a locked screen must not end it); after it captures again, the next run
+    of failures is told again.  It used to say nothing at all -- the shared
+    Windows App's offscreen Qt failed every tick for 13 minutes (2026-10-20).
+
+    MUTATION CHECK: publish on every failed tick -- 150 messages, not 1."""
+    from trcc.core.events import ErrorOccurred
+    from trcc.services.screencast_driver import FAILED_TICKS_BEFORE_TELLING
+
+    told: list[ErrorOccurred] = []
+    casting.events.subscribe(ErrorOccurred, told.append)
+    stopped = _stops(casting)
+    capture = _capture(casting)
+    works = capture.grab_region
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("Qt returned a blank pixmap")
+
+    monkeypatch.setattr(capture, "grab_region", boom)
+    for tick in range(FAILED_TICKS_BEFORE_TELLING - 1):
+        scheduler.tick(float(tick))
+    assert told == []
+    for tick in range(100):
+        scheduler.tick(float(FAILED_TICKS_BEFORE_TELLING + tick))
+    assert [(e.kind, e.key) for e in told] == [("screencast", _KEY)]
+    assert "Qt returned a blank pixmap" in told[0].message
+    assert stopped == [], "a failing capture must not end the session"
+
+    monkeypatch.setattr(capture, "grab_region", works)
+    scheduler.tick(1000.0)
+    monkeypatch.setattr(capture, "grab_region", boom)
+    for tick in range(FAILED_TICKS_BEFORE_TELLING):
+        scheduler.tick(1001.0 + tick)
+    assert len(told) == 2
+
+
 def test_each_tick_captures_one_frame(
     casting: App, scheduler: SyncSendScheduler,
 ) -> None:

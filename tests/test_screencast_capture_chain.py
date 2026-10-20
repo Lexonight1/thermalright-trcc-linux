@@ -20,6 +20,7 @@ something" assertion cannot see.
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -506,6 +507,22 @@ def test_a_blank_source_raises_instead_of_sending_black() -> None:
     """
     with pytest.raises(OSError, match="Screen capture failed"):
         QtNativeCapture().grab_region(0, 0, 64, 64)
+
+
+def test_a_blank_source_says_so_once_not_every_frame(
+        caplog: pytest.LogCaptureFixture) -> None:
+    """Every grab still raises; the ERROR line is said once.  It was every
+    tick -- 11128 of them in 13 minutes in the shared Windows App, whose Qt is
+    offscreen (2026-10-20).
+
+    MUTATION CHECK: log.error on every blank grab -- three lines, not one."""
+    capture = QtNativeCapture()
+    with caplog.at_level(logging.ERROR):
+        for _ in range(3):
+            with pytest.raises(OSError, match="Screen capture failed"):
+                capture.grab_region(0, 0, 64, 64)
+    assert [r.levelno for r in caplog.records if "no next link" in r.getMessage()] == [
+        logging.ERROR]
 
 
 def test_the_region_tools_cover_plain_x11() -> None:

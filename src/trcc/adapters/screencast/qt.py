@@ -145,6 +145,8 @@ class QtNativeCapture(ScreenCapture):
         # Whether the last grab went to ``then`` -- so the handover is said
         # once when it starts and once when Qt works again, not per frame.
         self._handed_over = False
+        # Whether the blank-grab error was said: once, not every tick.
+        self._blank_said = False
 
     def grab_region(
         self, x: int, y: int, width: int, height: int,
@@ -154,14 +156,17 @@ class QtNativeCapture(ScreenCapture):
                         x, y, width, height)
         pix = self._qt_grab(x, y, width, height)
         if pix is not None and not pix.isNull() and pix.width() > 1:
-            if self._handed_over:
+            if self._handed_over or self._blank_said:
                 log.info("QtNativeCapture: Qt native grab works again")
-                self._handed_over = False
+                self._handed_over = self._blank_said = False
             return _pixmap_to_raw_frame(pix, width, height)
         if self._then is None:
-            log.error("QtNativeCapture: Qt returned a blank pixmap for "
-                      "(%d,%d) %dx%d and this chain has no next link",
-                      x, y, width, height)
+            # Said once: it was an ERROR every tick -- 11128 in 13 minutes in
+            # the shared Windows App, where Qt is offscreen (2026-10-20).
+            sink = frame_log.debug if self._blank_said else log.error
+            self._blank_said = True
+            sink("QtNativeCapture: Qt returned a blank pixmap for (%d,%d) "
+                 "%dx%d and this chain has no next link", x, y, width, height)
             raise OSError(
                 "Screen capture failed — Qt returned a blank pixmap and "
                 "this platform has no other capture path")
