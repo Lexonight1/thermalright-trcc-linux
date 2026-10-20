@@ -20,7 +20,8 @@ function Since($since, $pattern) { @(Get-Content $log -ErrorAction SilentlyConti
     $p = Start-Process $gui -ArgumentList "gui", "--resume" -PassThru
     $building = $null
     foreach ($i in 1..240) {
-        if (($hit = Since $start "GuiUI.run: building the window")) { $building = $hit[0]; break }
+        # @(...): PowerShell unwraps a one-line result to a string, and [0] of a string is its first character.
+        if (($hit = @(Since $start "GuiUI.run: building the window"))) { $building = $hit[0]; break }
         Start-Sleep -Milliseconds 250
     }
     if (-not $building) { "NO 'building the window' within 60 s -- nothing killed"; return }
