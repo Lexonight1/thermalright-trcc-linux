@@ -728,24 +728,59 @@ class _StubMsvcrt:
         self.held.add(fd)
 
 
-def test_the_windows_handler_locks_the_way_msvcrt_requires(
+class _StubLockFile:
+    """kernel32's ``LockFileEx`` / ``UnlockFileEx``, recorded, on any OS.
+
+    Byte-range semantics are the kernel's business and this cannot check them.
+    What it CAN check is our side: the exclusive flag WITHOUT
+    ``LOCKFILE_FAIL_IMMEDIATELY``, one byte at offset 0, every lock paired with
+    an unlock -- and a refused call surfaces as an error.
+    """
+
+    class Overlapped:
+        def __init__(self) -> None:
+            self.Offset = self.OffsetHigh = 0
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, int, int, int]] = []   # (op, flags, low, high, offset)
+        self.held: set[int] = set()
+        self.refuse = False
+
+    def lock(self, handle: int, flags: int, _reserved: int, low: int, high: int,
+             ov: Any) -> int:
+        self.calls.append(("lock", flags, low, high, ov.Offset))
+        if self.refuse or handle in self.held:
+            return 0
+        self.held.add(handle)
+        return 1
+
+    def unlock(self, handle: int, _reserved: int, low: int, high: int, ov: Any) -> int:
+        self.calls.append(("unlock", 0, low, high, ov.Offset))
+        self.held.discard(handle)
+        return 1
+
+    def api(self) -> Any:
+        from trcc.adapters.infra.logging import _LockFileApi
+        return _LockFileApi(self.lock, self.unlock, self.Overlapped,
+                            lambda fd: 1000 + fd, lambda: 33)
+
+
+def test_the_windows_handler_waits_in_the_kernel_for_its_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Exercise the REAL Windows class, on this OS, with a stubbed ``msvcrt``.
+    """Exercise the REAL Windows class, on this OS, with a stubbed kernel32.
 
-    Windows has no test run anywhere — ``windows.yml`` builds the installer and
-    never calls pytest, every other workflow is ubuntu-only — so this class
-    would otherwise ship having never executed a single line.  This does not
-    prove Windows file semantics; it proves the code we wrote does what
-    ``msvcrt`` documents: lock one byte, from position 0, blocking to acquire
-    and unlocking to release.
+    ``msvcrt.locking(LK_LOCK)`` slept a whole second whenever a peer held the
+    byte: 42 of the GUI's 48 pauses over 0.3 s on the win11 VM were 1.0 s, and
+    a screencast's error flood froze the window (2026-10-20).
+
+    MUTATION CHECK: add LOCKFILE_FAIL_IMMEDIATELY (1) to the flags -- this fails.
     """
-    import sys as sys_mod
-
+    import trcc.adapters.infra.logging as trcc_logging
     from trcc.adapters.infra.logging import WindowsSharedLogHandler
 
-    stub = _StubMsvcrt()
-    monkeypatch.setitem(sys_mod.modules, "msvcrt", stub)
+    stub = _StubLockFile()
+    monkeypatch.setattr(trcc_logging, "_lockfile_api", stub.api)
 
     log_file = tmp_path / "trcc.log"
     handler = WindowsSharedLogHandler(
@@ -759,23 +794,39 @@ def test_the_windows_handler_locks_the_way_msvcrt_requires(
         logger.info("first")
         logger.info("second")
 
-        assert log_file.read_text(encoding="utf-8").splitlines() == [
-            "first", "second",
-        ]
-        # Every lock call: byte 0, one byte.
-        assert all(offset == 0 and nbytes == 1
-                   for offset, _mode, nbytes in stub.calls), stub.calls
-        # Acquire/release pair per record, plus the constructor's probe.
-        modes = [mode for _o, mode, _n in stub.calls]
-        assert modes == [stub.LK_LOCK, stub.LK_UNLCK] * (len(modes) // 2), (
-            f"locks and unlocks are not paired in order: {modes}"
-        )
+        assert log_file.read_text(encoding="utf-8").splitlines() == ["first", "second"]
+        # The constructor's probe plus one pair per record, in order.
+        assert stub.calls == [("lock", 0x2, 1, 0, 0), ("unlock", 0, 1, 0, 0)] * 3
         assert not stub.held, "a lock was left held after the last record"
-        # And the Windows policy: nothing holds the file between records.
-        assert handler.stream is None
+        assert handler.stream is None        # nothing holds the file between records
     finally:
         handler.close()
         logger.handlers[:] = []
+
+
+@pytest.mark.expects_logging_error
+def test_a_refused_windows_lock_is_an_error_the_handler_catches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``LockFileEx`` returning 0 raises inside ``emit``, which routes it to
+    ``handleError`` -- a log call never raises into the caller.
+
+    MUTATION CHECK: ignore LockFileEx's result -- the record is written unlocked."""
+    import trcc.adapters.infra.logging as trcc_logging
+    from trcc.adapters.infra.logging import WindowsSharedLogHandler
+
+    stub = _StubLockFile()
+    monkeypatch.setattr(trcc_logging, "_lockfile_api", stub.api)
+    log_file = tmp_path / "trcc.log"
+    handler = WindowsSharedLogHandler(log_file, maxBytes=10_000_000, backupCount=2,
+                                      encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    try:
+        stub.refuse = True
+        handler.emit(logging.LogRecord("t", logging.INFO, __file__, 1, "lost", None, None))
+        assert not log_file.exists() or "lost" not in log_file.read_text(encoding="utf-8")
+    finally:
+        handler.close()
 
 
 def test_the_windows_run_claim_uses_the_non_blocking_mode(

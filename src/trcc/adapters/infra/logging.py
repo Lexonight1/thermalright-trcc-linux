@@ -29,7 +29,7 @@ from collections import deque
 from collections.abc import Iterator
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 from ...core.logs import PER_FRAME_ROOT, levels_for
 
@@ -244,11 +244,10 @@ class _SharedRotatingFileHandler(RenderOnceRotatingFileHandler, ABC):
         # be taken propagated out of ``log.info(...)`` into whatever called it.
         # Measured: ``BlockingIOError`` escaped a plain ``lg.info(...)``.
         #
-        # Not hypothetical on Windows.  ``msvcrt.locking(LK_LOCK)`` retries at
-        # one-second intervals, ten times, and then RAISES ``OSError`` — so
-        # sustained contention turns an ordinary log line into an exception
-        # about ten seconds in.  ``flock`` blocks indefinitely instead, which
-        # is why POSIX never showed it.
+        # It was not hypothetical on Windows: ``msvcrt.locking(LK_LOCK)``
+        # retried at one-second intervals, ten times, then RAISED ``OSError``.
+        # ``LockFileEx`` and ``flock`` block until the lock is free instead,
+        # but a lock call that fails for any other reason lands here too.
         try:
             self._acquire()
             try:
@@ -359,14 +358,62 @@ class PosixSharedLogHandler(_SharedRotatingFileHandler):
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-class WindowsSharedLogHandler(_SharedRotatingFileHandler):
-    """Windows — ``msvcrt.locking`` byte-range locking, file closed between writes.
+#: ``LockFileEx`` flags: exclusive, and NOT ``LOCKFILE_FAIL_IMMEDIATELY`` (1),
+#: so the call waits in the kernel and returns the moment the byte is free.
+_LOCKFILE_EXCLUSIVE_LOCK = 0x2
 
-    ``msvcrt`` locks a range starting at the CURRENT file position, so each
-    call seeks to 0 first; one byte is enough, and every process locks the
-    same one.  ``LK_LOCK`` blocks (retrying for ~10s) rather than failing, so
-    it is the ``LOCK_EX`` equivalent.  Same primitive ``ipc._msvcrt_acquire``
-    already uses for single-instance.
+
+class _LockFileApi(NamedTuple):
+    """``LockFileEx`` / ``UnlockFileEx`` with their types declared, built once."""
+
+    lock: Any
+    unlock: Any
+    overlapped: type
+    os_handle: Any
+    last_error: Any
+
+
+def _lockfile_api() -> _LockFileApi:
+    """kernel32's byte-range lock calls, typed -- undeclared, ctypes passes a
+    64-bit HANDLE as a 32-bit int (``hard_exit`` met exactly that)."""
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    log.debug("_lockfile_api: binding LockFileEx / UnlockFileEx")
+
+    class _Overlapped(ctypes.Structure):
+        _fields_ = [("Internal", ctypes.c_void_p), ("InternalHigh", ctypes.c_void_p),
+                    ("Offset", wintypes.DWORD), ("OffsetHigh", wintypes.DWORD),
+                    ("hEvent", wintypes.HANDLE)]
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)  # pyright: ignore[reportAttributeAccessIssue]
+    lock, unlock = k32.LockFileEx, k32.UnlockFileEx
+    lock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+                     wintypes.DWORD, ctypes.POINTER(_Overlapped)]
+    unlock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+                       ctypes.POINTER(_Overlapped)]
+    lock.restype = unlock.restype = wintypes.BOOL
+    return _LockFileApi(lock, unlock, _Overlapped,
+                        msvcrt.get_osfhandle,  # pyright: ignore[reportAttributeAccessIssue]
+                        ctypes.get_last_error)  # pyright: ignore[reportAttributeAccessIssue]
+
+
+class WindowsSharedLogHandler(_SharedRotatingFileHandler):
+    """Windows — ``LockFileEx`` on byte 0 of the lock file, file closed between writes.
+
+    It was ``msvcrt.locking(LK_LOCK)``, which only IMITATES a blocking lock:
+    the C runtime tries, sleeps ONE SECOND, and tries again, ten times.  So a
+    record that met a peer's lock waited a whole second however briefly the
+    peer held it.  On the win11 VM (2026-10-20) 42 of the GUI's 48 pauses over
+    0.3 s were 1.0 s; every command the window sent waited ~1 s on top of the
+    App's work (SetMaskVisible: 15 ms of work, 1031 ms waited); and a
+    screencast's error flood froze the window outright.
+    ``LockFileEx(LOCKFILE_EXCLUSIVE_LOCK)`` waits in the kernel and returns
+    when the byte is free -- the ``flock(LOCK_EX)`` equivalent, and what
+    ``portalocker`` (behind concurrent-log-handler) uses on Windows.  It is the
+    same byte-range lock ``msvcrt`` takes, so a process from an older build
+    still excludes this one during an upgrade.
 
     Also the OS that cannot rotate a file a peer holds open — see
     :attr:`_SharedRotatingFileHandler._keep_open`.
@@ -376,22 +423,22 @@ class WindowsSharedLogHandler(_SharedRotatingFileHandler):
 
     def __init__(self, filename: Path, *, maxBytes: int = 0,
                  backupCount: int = 0, encoding: str | None = None) -> None:
-        import msvcrt
-        self._locking = msvcrt.locking  # pyright: ignore[reportAttributeAccessIssue]
-        self._lk_lock = msvcrt.LK_LOCK  # pyright: ignore[reportAttributeAccessIssue]
-        self._lk_unlck = msvcrt.LK_UNLCK  # pyright: ignore[reportAttributeAccessIssue]
-        log.debug("WindowsSharedLogHandler: locking %s with msvcrt.locking",
-                  filename)
+        self._api = _lockfile_api()
+        log.debug("WindowsSharedLogHandler: locking %s with LockFileEx", filename)
         super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount,
                          encoding=encoding)
 
     def _acquire(self) -> None:
-        os.lseek(self._lock_fd, 0, os.SEEK_SET)
-        self._locking(self._lock_fd, self._lk_lock, 1)
+        api = self._api
+        # A fresh OVERLAPPED: offset 0, the one byte every process locks.
+        if not api.lock(api.os_handle(self._lock_fd), _LOCKFILE_EXCLUSIVE_LOCK,
+                        0, 1, 0, api.overlapped()):
+            raise OSError(api.last_error(), "LockFileEx failed")
 
     def _release(self) -> None:
-        os.lseek(self._lock_fd, 0, os.SEEK_SET)
-        self._locking(self._lock_fd, self._lk_unlck, 1)
+        api = self._api
+        if not api.unlock(api.os_handle(self._lock_fd), 0, 1, 0, api.overlapped()):
+            raise OSError(api.last_error(), "UnlockFileEx failed")
 
     @staticmethod
     def _claim_run(fd: int) -> None:
