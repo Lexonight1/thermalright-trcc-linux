@@ -17,6 +17,7 @@ does not add a duplicate on top of the theme.
 from __future__ import annotations
 
 import logging
+from typing import get_args
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -48,13 +49,16 @@ from ....core.commands import (
     ResolveOverlay,
     UpdateOverlayElement,
 )
+from ....core.models import ClockSource, OverlayElementType
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
 log = logging.getLogger(__name__)
 
-_TYPES = ("text", "metric", "clock")
-_CLOCK_SOURCES = ("time", "weekday", "date")
+# Read from the Literals the Commands validate against: spelled out here they
+# were a second copy, free to drift from the one the App accepts.
+_TYPES: tuple[OverlayElementType, ...] = get_args(OverlayElementType)
+_CLOCK_SOURCES: tuple[ClockSource, ...] = get_args(ClockSource)
 
 
 class OverlayEditorPanel(BasePanel):
@@ -428,7 +432,7 @@ class _ElementDialog(QDialog):
         self._show_unit.setChecked(getattr(element, "show_unit", True))
         try:
             self._source.setCurrentIndex(
-                list(_CLOCK_SOURCES).index(element.source),
+                _CLOCK_SOURCES.index(element.source),
             )
         except ValueError:
             self._source.setCurrentIndex(0)

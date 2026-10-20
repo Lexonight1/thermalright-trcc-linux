@@ -52,6 +52,7 @@ from ..models import (
     FitMode,
     HandshakeResult,
     OverlayElement,
+    OverlayElementType,
     RawFrame,
     ThemeDir,
     Wire,
@@ -185,6 +186,13 @@ def _is_clock_source(source: str) -> TypeGuard[ClockSource]:
     """
     valid = source in get_args(ClockSource)
     log.debug("_is_clock_source: %r -> %s", source, valid)
+    return valid
+
+
+def _is_element_type(kind: str) -> TypeGuard[OverlayElementType]:
+    """Whether *kind* is an overlay element type the renderer draws."""
+    valid = kind in get_args(OverlayElementType)
+    log.debug("_is_element_type: %r -> %s", kind, valid)
     return valid
 
 
@@ -2954,11 +2962,11 @@ class AddOverlayElement(Command[OverlayElementResult]):
 
     def execute(self, app: App) -> OverlayElementResult:
         log.debug("execute: app=%s", app)
-        if self.type not in ("text", "metric", "clock"):
+        if not _is_element_type(self.type):
             return OverlayElementResult(
                 ok=False, key=self.key, element=None,
-                message=f"Invalid element type {self.type!r} (expected "
-                        "'text' / 'metric' / 'clock')",
+                message=f"Invalid element type {self.type!r} (expected one of "
+                        f"{', '.join(get_args(OverlayElementType))})",
             )
         # ``source`` is what a CLOCK draws; text and metric elements ignore it.
         source: ClockSource = OVERLAY_DEFAULT_CLOCK_SOURCE
@@ -3300,7 +3308,7 @@ class SetOverlayConfig(Command[OverlayConfigResult]):
                     ok=False, key=self.key, elements=[],
                     message="Every element must carry an id",
                 )
-            if element.type not in ("text", "metric", "clock"):
+            if not _is_element_type(element.type):
                 return OverlayConfigResult(
                     ok=False, key=self.key, elements=[],
                     message=f"Invalid element type {element.type!r}",

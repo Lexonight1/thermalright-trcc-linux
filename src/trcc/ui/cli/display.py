@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
+from typing import get_args
 
 import typer
 
@@ -67,7 +68,13 @@ from ...core.commands import (
     VisualTile,
 )
 from ...core.errors import TrccError
-from ...core.models import CUTTER_DEFAULT_FPS, MEDIA, FitMode, MediaKind
+from ...core.models import (
+    CUTTER_DEFAULT_FPS,
+    MEDIA,
+    FitMode,
+    MediaKind,
+    OverlayElementType,
+)
 from ..presentation.display_source import describe_game_mode, describe_source
 from ._ctx import (
     daemon_owns_the_panels,
@@ -752,7 +759,8 @@ def overlay_list(
 def overlay_add(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
     type_: str = typer.Argument(
-        ..., metavar="TYPE", help="'text' / 'metric' / 'clock'",
+        ..., metavar="TYPE",
+        help=" / ".join(repr(t) for t in get_args(OverlayElementType)),
     ),
     x: int = typer.Option(0, "--x", help="X position"),
     y: int = typer.Option(0, "--y", help="Y position"),

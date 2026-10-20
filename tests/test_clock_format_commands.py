@@ -146,3 +146,21 @@ def test_a_source_on_a_non_clock_element_is_ignored_not_refused(app: App) -> Non
         key=_A, element_id="m", type="metric", metric="cpu:temp", source="metric"))
     assert added.ok
     assert added.element is not None and added.element.source == "time"
+
+
+# ── An element type nothing draws is refused, by the Literal's own spelling ──
+#
+# The three types were spelled out at both checks in the Commands, again in
+# qtgui's editor and in the CLI help -- four copies of OverlayElementType.  All
+# now read the Literal (2026-10-20); this branch had no test at all.
+
+
+def test_an_unknown_element_type_is_refused_and_nothing_is_saved(app: App) -> None:
+    """MUTATION CHECK: let AddOverlayElement accept any type -> fails."""
+    before = _formats(app, _A)
+
+    added = app.dispatch(AddOverlayElement(key=_A, element_id="box", type="box"))
+
+    assert (added.ok, added.message) == (
+        False, "Invalid element type 'box' (expected one of text, metric, clock)")
+    assert _formats(app, _A) == before
