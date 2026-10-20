@@ -1264,7 +1264,7 @@ class _Unread:
 
 
 _UNREAD = _Unread()
-_live_imc_cache: ImcTimings | None | _Unread = _UNREAD
+_live_imc_cache: ImcTimings | _Unread | None = _UNREAD
 
 
 def _cpu_is_adl_rpl() -> bool:

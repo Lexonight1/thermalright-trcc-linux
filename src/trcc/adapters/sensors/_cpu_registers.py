@@ -84,10 +84,15 @@ class EnergyMeter:
     The counter wraps -- at 61 µJ a count a 300 W package wraps in about
     15 minutes -- and modular subtraction counts across one wrap; a poll
     interval is seconds, far below the next.
+
+    The interval is timed with ``perf_counter``: on Windows below Python 3.13
+    ``monotonic`` is GetTickCount64, 15.6 ms ticks, and a 50 ms interval read
+    as 47 ms -- 106 W for 5 J that was 100 W.  It kept the Windows CI job red
+    (test_power_needs_two_reads_then_follows_the_counter, 2026-10-19).
     """
 
     def __init__(self, unit_joules: float, *,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.perf_counter) -> None:
         log.debug("EnergyMeter.__init__: %g J/count", unit_joules)
         self._unit = unit_joules
         self._clock = clock
