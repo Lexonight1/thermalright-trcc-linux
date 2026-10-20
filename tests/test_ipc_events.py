@@ -199,11 +199,11 @@ def test_the_handler_never_encodes_on_the_publishing_thread(server) -> None:
         )
 
     monkey = ipc_mod.encode_event
-    ipc_mod.encode_event = _explode          # type: ignore[assignment]
+    ipc_mod.encode_event = _explode
     try:
         srv._on_bus_event(FrameSent(key="k", bytes_sent=1))
     finally:
-        ipc_mod.encode_event = monkey        # type: ignore[assignment]
+        ipc_mod.encode_event = monkey
     # Buffered, not encoded and not written.
     assert srv._event_q.qsize() == 1
 

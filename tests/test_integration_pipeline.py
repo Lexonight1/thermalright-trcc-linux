@@ -24,7 +24,7 @@ def smoke_results():
     dev_dir = Path(__file__).resolve().parent.parent / "dev"
     sys.path.insert(0, str(dev_dir))
     try:
-        from smoke_full_pipeline import _run_steps  # type: ignore[import-not-found]
+        from smoke_full_pipeline import _run_steps
         return _run_steps()
     finally:
         sys.path.remove(str(dev_dir))

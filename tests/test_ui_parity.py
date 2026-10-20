@@ -22,7 +22,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _SRC = _ROOT / "src"
 sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
-import ui_contract  # noqa: E402  # pyright: ignore[reportMissingImports]
+import ui_contract  # noqa: E402
 
 #: The collector lives in ``dev/tools/ui_contract.py`` and is imported, not
 #: restated.  It WAS written twice — once there over the AST, once here over the

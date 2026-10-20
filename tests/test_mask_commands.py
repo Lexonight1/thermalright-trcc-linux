@@ -117,7 +117,7 @@ def test_apply_mask_rejects_non_image_extensions(
 
 def test_apply_mask_publishes_event(app: App, mask_png: Path) -> None:
     events: list[MaskApplied] = []
-    app.events.subscribe(MaskApplied, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(MaskApplied, lambda e: events.append(e))
 
     app.dispatch(ApplyMask(key=_KEY, path=mask_png))
 
@@ -130,7 +130,7 @@ def test_apply_mask_rejection_does_not_publish(
     app: App, tmp_home: Path,
 ) -> None:
     events: list[MaskApplied] = []
-    app.events.subscribe(MaskApplied, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(MaskApplied, lambda e: events.append(e))
 
     app.dispatch(ApplyMask(key=_KEY, path=tmp_home / "nope.png"))
 
@@ -193,7 +193,7 @@ def test_set_mask_position_partial_none_rejected(
 
 def test_set_mask_position_publishes_event(app: App) -> None:
     events: list[MaskPositionChanged] = []
-    app.events.subscribe(MaskPositionChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(MaskPositionChanged, lambda e: events.append(e))
 
     app.dispatch(SetMaskPosition(key=_KEY, x=50, y=100))
 
@@ -224,7 +224,7 @@ def test_set_mask_visible_message_uses_shown_hidden_wording(app: App) -> None:
 
 def test_set_mask_visible_publishes_event(app: App) -> None:
     events: list[MaskVisibilityChanged] = []
-    app.events.subscribe(MaskVisibilityChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(MaskVisibilityChanged, lambda e: events.append(e))
 
     app.dispatch(SetMaskVisible(key=_KEY, visible=False))
 

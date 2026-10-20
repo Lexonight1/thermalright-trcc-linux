@@ -71,10 +71,10 @@ def test_a_second_connect_closes_the_first_handle_before_reopening(
             events.append(f"close {n}")
             real_close()
 
-        transport.close = close  # type: ignore[method-assign]
+        transport.close = close
         return transport
 
-    platform.open_transport = tracking_open  # type: ignore[method-assign]
+    platform.open_transport = tracking_open
     app = App(platform, send_scheduler=SyncSendScheduler())
     try:
         assert app.dispatch(ConnectDevice(key=_SCSI)).ok
@@ -116,10 +116,10 @@ def test_two_connects_at_once_never_open_the_panel_together(tmp_path: Path) -> N
                 inside[0] -= 1
             return real_transport_open()
 
-        transport.open = open_  # type: ignore[method-assign]
+        transport.open = open_
         return transport
 
-    platform.open_transport = slow_open  # type: ignore[method-assign]
+    platform.open_transport = slow_open
     app = App(platform, send_scheduler=SyncSendScheduler())
     try:
         results: list[bool] = []

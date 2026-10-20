@@ -12,7 +12,7 @@ from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev"))
 
-import gen_rgb_catalog  # noqa: E402  # pyright: ignore[reportMissingImports]
+import gen_rgb_catalog  # noqa: E402
 
 _DETECT = '''/*---------------------------------------------------------*\\
 | FamilyDetect.cpp                                          |
@@ -45,7 +45,7 @@ def _tree(tmp_path: Path) -> Path:
     return tmp_path / "Controllers"
 
 
-def test_registrations_become_rows_through_their_defines(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_registrations_become_rows_through_their_defines(tmp_path, monkeypatch) -> None:
     """Defines followed, a wrapped macro read whole; a comment, a disabled
     registration and a keyboard are not motherboards.
 
@@ -75,7 +75,7 @@ def test_the_committed_catalog_names_every_motherboard_detector() -> None:
 
 @pytest.mark.parametrize("row", MOTHERBOARD_CONTROLLERS,
                          ids=lambda r: f"{r.vid:04x}:{r.pid:04x}")
-def test_a_catalog_row_is_never_a_trcc_cooler(row) -> None:  # type: ignore[no-untyped-def]
+def test_a_catalog_row_is_never_a_trcc_cooler(row) -> None:
     """A cooler's id in the catalog would list the cooler as a motherboard.
     JGINYUE shares Thermalright's vendor 0x0416; Gigabyte has 048D:5711."""
     assert (row.vid, row.pid) not in ALL_DEVICES

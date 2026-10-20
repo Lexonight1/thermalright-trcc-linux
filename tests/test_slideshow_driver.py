@@ -44,7 +44,7 @@ def scheduler() -> SyncSendScheduler:
 @pytest.fixture
 def app(tmp_home: Path, scheduler: SyncSendScheduler) -> App:
     a = App(platform=FakePlatform(tmp_home), send_scheduler=scheduler,
-            renderer=_CliRenderer())          # type: ignore[arg-type]
+            renderer=_CliRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                      # FBL=100 → 320x320
     a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
@@ -146,11 +146,11 @@ def test_a_driver_waits_while_its_panel_is_away(configured: App,
     asked: list[str] = []
     real_dispatch = configured.dispatch
 
-    def spy(cmd):  # type: ignore[no-untyped-def]
+    def spy(cmd):
         asked.append(type(cmd).__name__)
         return real_dispatch(cmd)
 
-    configured.dispatch = spy                  # type: ignore[method-assign]
+    configured.dispatch = spy
     for now in range(100, 110):
         driver.run_once(float(now))
 

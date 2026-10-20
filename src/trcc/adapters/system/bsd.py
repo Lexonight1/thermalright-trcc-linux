@@ -13,7 +13,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-import psutil  # pyright: ignore[reportMissingImports]
+import psutil
 
 from ...core.ports import (
     AutostartManager,

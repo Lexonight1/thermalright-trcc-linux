@@ -72,7 +72,7 @@ def test_set_temp_unit_propagates_to_every_device_settings(app: App) -> None:
 
 def test_set_temp_unit_publishes_event(app: App) -> None:
     events: list[TempUnitChanged] = []
-    app.events.subscribe(TempUnitChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(TempUnitChanged, lambda e: events.append(e))
 
     app.dispatch(SetTempUnit(unit="F"))
 
@@ -83,7 +83,7 @@ def test_set_temp_unit_publishes_event(app: App) -> None:
 def test_set_temp_unit_rejection_does_not_publish(app: App) -> None:
     """Invalid units must not fire an event or mutate state."""
     events: list[TempUnitChanged] = []
-    app.events.subscribe(TempUnitChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(TempUnitChanged, lambda e: events.append(e))
 
     app.dispatch(SetTempUnit(unit="K"))
 
@@ -119,7 +119,7 @@ def test_set_language_strips_whitespace(app: App) -> None:
 
 def test_set_language_publishes_event(app: App) -> None:
     events: list[LanguageChanged] = []
-    app.events.subscribe(LanguageChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(LanguageChanged, lambda e: events.append(e))
 
     app.dispatch(SetLanguage(language="zh"))
 
@@ -161,7 +161,7 @@ def test_set_gpu_device_empty_clears_to_auto(app: App, empty: str) -> None:
 
 def test_set_gpu_device_publishes_event(app: App) -> None:
     events: list[GpuDeviceChanged] = []
-    app.events.subscribe(GpuDeviceChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(GpuDeviceChanged, lambda e: events.append(e))
 
     app.dispatch(SetGpuDevice(gpu_key="amd:0"))
 
@@ -194,7 +194,7 @@ def test_set_refresh_interval_rejects_out_of_range(
 
 def test_set_refresh_interval_publishes_event(app: App) -> None:
     events: list[RefreshIntervalChanged] = []
-    app.events.subscribe(RefreshIntervalChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(RefreshIntervalChanged, lambda e: events.append(e))
 
     app.dispatch(SetRefreshInterval(seconds=3.5))
 
@@ -261,7 +261,7 @@ def test_every_declared_refresh_default_agrees_with_the_constant() -> None:
         Pydantic response model has several — and a gate that cannot be
         evaluated is a gate that gets deleted.
         """
-        for f in dataclasses.fields(cls):        # type: ignore[arg-type]
+        for f in dataclasses.fields(cls):
             if f.name == name:
                 return f.default
         raise AssertionError(f"{cls.__name__} has no field {name}")

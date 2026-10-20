@@ -102,8 +102,8 @@ def _take_the_panel(app: App) -> None:
     def gone(*_args: object, **_kwargs: object) -> bool:
         raise OSError(errno.ENODEV, "No such device")
 
-    transport.send_cdb = gone           # type: ignore[method-assign]
-    transport.open = lambda: False      # type: ignore[method-assign]
+    transport.send_cdb = gone
+    transport.open = lambda: False
     app.send(_KEY, b"\x00" * 204800)    # the frame that finds out
 
 
@@ -217,8 +217,8 @@ def test_a_fire_and_forget_frame_announces_the_loss(app: App) -> None:
     def gone(*_args: object, **_kwargs: object) -> bool:
         raise OSError(errno.ENODEV, "No such device")
 
-    transport.send_cdb = gone                  # type: ignore[method-assign]
-    transport.open = lambda: False             # type: ignore[method-assign]
+    transport.send_cdb = gone
+    transport.open = lambda: False
     app.send(_KEY, b"\x00" * 204800, wait=False)
 
     deadline = time.monotonic() + 5
@@ -270,8 +270,8 @@ def test_a_panel_handed_back_without_an_event_is_reconnected(tmp_path: Path) -> 
     def gone(*_args: object, **_kwargs: object) -> bool:
         raise OSError(errno.ENODEV, "No such device")
 
-    transport.send_cdb = gone                  # type: ignore[method-assign]
-    transport.open = lambda: False             # type: ignore[method-assign]
+    transport.send_cdb = gone
+    transport.open = lambda: False
     hand_back = app.platform.open_transport
 
     def no_node(*_args: object, **_kwargs: object) -> object:
@@ -284,7 +284,7 @@ def test_a_panel_handed_back_without_an_event_is_reconnected(tmp_path: Path) -> 
     assert not (_KEY in app.devices and app.devices[_KEY].is_connected)
 
     # The VM hands it back -- no event.
-    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    app.platform.open_transport = hand_back
     for now in range(30, 120):
         clock.tick(float(now))
 
@@ -337,7 +337,7 @@ def test_a_hotplug_add_with_no_node_yet_keeps_waiting(tmp_path: Path) -> None:
     app._on_device_attached(DeviceAttached(key=_KEY, vid=0x0402, pid=0x3922))
     assert _KEY not in app.devices, "precondition: the add found no node"
 
-    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    app.platform.open_transport = hand_back
     for now in range(0, 60):
         clock.tick(float(now))
 
@@ -438,7 +438,7 @@ def test_a_panel_whose_node_is_late_after_a_wake_is_retried(tmp_path: Path) -> N
     assert not (_KEY in app.devices and app.devices[_KEY].is_connected), \
         "precondition: the wake's own connect found no node"
 
-    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    app.platform.open_transport = hand_back
     for now in range(0, 30):
         clock.tick(float(now))
 
@@ -448,7 +448,7 @@ def test_a_panel_whose_node_is_late_after_a_wake_is_retried(tmp_path: Path) -> N
 # ── A panel that was not ready when TRCC started ─────────────────────────────
 
 
-def _coldplug_without(tmp_path: Path, error: Exception):  # type: ignore[no-untyped-def]
+def _coldplug_without(tmp_path: Path, error: Exception):
     """Start an App whose panel's node fails to open with *error*."""
     from trcc.adapters.infra.send_scheduler import SyncSendScheduler
 
@@ -478,7 +478,7 @@ def test_a_panel_held_when_trcc_starts_is_waited_for(tmp_path: Path) -> None:
 
     app, clock, hand_back = _coldplug_without(
         tmp_path, TransportError("No SCSI device node found for 0402:3922"))
-    app.platform.open_transport = hand_back    # type: ignore[method-assign]
+    app.platform.open_transport = hand_back
     for now in range(0, 120):
         clock.tick(float(now))
 
@@ -515,7 +515,7 @@ def test_a_panel_nobody_may_open_is_not_retried(tmp_path: Path, where: str) -> N
             def no(*_a: object, **_k: object) -> bool:
                 raise denied
 
-            transport.open = no                # type: ignore[attr-defined]
+            transport.open = no
             return transport
 
         app.platform.open_transport = refusing_to_open  # type: ignore[method-assign]
@@ -589,7 +589,7 @@ def test_a_panel_that_missed_its_init_is_retried_until_it_takes_one(
         transport.send_cdb = send_cdb
         return transport
 
-    app.platform.open_transport = open_refusing_the_first_init  # type: ignore[method-assign]
+    app.platform.open_transport = open_refusing_the_first_init
     app.discover_and_connect()
     assert _KEY not in app.devices or not app.devices[_KEY].is_connected
 

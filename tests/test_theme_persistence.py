@@ -359,7 +359,7 @@ def test_save_theme_publishes_event(
     source = _write_theme(tmp_home, "source")
     app.active_themes["0402:3922"] = FileContentStore().load(source)
     events: list[ThemeSaved] = []
-    app.events.subscribe(ThemeSaved, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(ThemeSaved, lambda e: events.append(e))
 
     app.dispatch(SaveTheme(key="0402:3922", name="ok-name"))
 
@@ -1198,7 +1198,7 @@ def test_the_store_accepts_every_animated_format_media_declares() -> None:
     """One authority: a format added to MEDIA saves without a second edit."""
     from trcc.adapters.theme import filesystem
 
-    assert MEDIA.exts(MediaKind.ANIMATED) == filesystem._VIDEO_EXTS  # pyright: ignore[reportPrivateUsage]
+    assert MEDIA.exts(MediaKind.ANIMATED) == filesystem._VIDEO_EXTS
 
 
 def test_a_zip_export_never_writes_an_animation_as_00_png(
@@ -1530,7 +1530,7 @@ def test_export_theme_publishes_event(
     user_theme_dir.mkdir(parents=True, exist_ok=True)
     _write_theme(user_theme_dir, "demo")
     events: list[ThemeExported] = []
-    app.events.subscribe(ThemeExported, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(ThemeExported, lambda e: events.append(e))
 
     app.dispatch(ExportTheme(
         key=_TEST_DEVICE_KEY, theme_name="demo",
@@ -1600,7 +1600,7 @@ def test_import_theme_publishes_event(
     archive = tmp_home / "src.zip"
     FileContentStore().export(source, archive)
     events: list[ThemeImported] = []
-    app.events.subscribe(ThemeImported, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(ThemeImported, lambda e: events.append(e))
 
     app.dispatch(ImportTheme(
         key=_TEST_DEVICE_KEY, archive_path=archive, name="evt",
@@ -2796,7 +2796,7 @@ def panel(tmp_path: Path) -> tuple[App, list[bytes]]:
     assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=theme)).ok
     sent: list[bytes] = []
     send = app.send
-    app.send = lambda key, payload, **kw: (  # type: ignore[method-assign]
+    app.send = lambda key, payload, **kw: (
         sent.append(bytes(payload)), send(key, payload, **kw))[1]
     return app, sent
 

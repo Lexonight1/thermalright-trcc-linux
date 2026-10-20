@@ -77,7 +77,7 @@ def test_an_answer_that_lands_after_stop_is_dropped() -> None:
     assert told == [] and watch.latest is None
 
 
-def test_the_app_checks_from_its_session_and_every_ui_can_read_it(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_app_checks_from_its_session_and_every_ui_can_read_it(tmp_path) -> None:
     """start_session starts the watch; UpdateStatus answers without the
     network; UpdateChecked reaches every listener; close stops it."""
     from tests.mock_platform import MockPlatform

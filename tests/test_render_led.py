@@ -126,7 +126,7 @@ def test_selected_metric_page_reaches_the_wire(
 
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
     metrics = fake_platform.sensors().snapshot()
     table = LED_REMAP_TABLES.get(LedStyle.AX120)
@@ -166,7 +166,7 @@ def test_render_led_converts_temp_to_device_unit(
 
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
     app.settings.set_temp_unit(_LED_KEY, "F")
     table = LED_REMAP_TABLES.get(LedStyle.AX120)
@@ -222,7 +222,7 @@ def test_carousel_rotates_only_through_toggled_pages(
 
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
     metrics = fake_platform.sensors().snapshot()
     table = LED_REMAP_TABLES.get(LedStyle.AX120)
@@ -281,7 +281,7 @@ def test_reactive_render_holds_carousel_only_loop_advances(
 
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
     app.dispatch(SetLedZoneSyncZones(
         key=_LED_KEY, zones=(True, True, True, True)))
@@ -316,7 +316,7 @@ def test_render_led_brightness_dims_preview_and_wire(
 
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)      # AX120, STATIC (255,0,0)
 
     captured: dict[str, list] = {}
@@ -355,7 +355,7 @@ def test_render_led_uses_cached_sample_not_per_tick_repoll(
     reads it (zero sensor polls); only an empty cache falls back to one read."""
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)      # AX120
     enum = app.platform.sensors()
 
@@ -399,7 +399,7 @@ def test_led_settings_changed_re_renders_immediately(
 
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=16)     # PA120
     fake_platform.bulk.writes.clear()
 

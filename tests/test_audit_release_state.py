@@ -31,9 +31,9 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "decompiler"))
 
-import audit_release  # noqa: E402  # pyright: ignore[reportMissingImports]
-from core.citations import walk  # noqa: E402  # pyright: ignore[reportMissingImports]
-from core.csharp import DECOMPILE_ROOT  # noqa: E402  # pyright: ignore[reportMissingImports]
+import audit_release  # noqa: E402
+from core.citations import walk  # noqa: E402
+from core.csharp import DECOMPILE_ROOT  # noqa: E402
 
 _DOCS = audit_release.docs()
 _TREES = audit_release.discover(DECOMPILE_ROOT.parent)

@@ -21,7 +21,7 @@ from .conftest import FakeBulkTransport
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
-from formcztv_init import (  # pyright: ignore[reportMissingImports]
+from formcztv_init import (
     form_cztv_init,
 )
 

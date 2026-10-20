@@ -77,7 +77,7 @@ def test_the_table_is_exactly_what_the_csharp_guards() -> None:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dev"
                            / "decompiler"))
-    from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    from formcztv_init import (
         _THEME_TOKENS,
     )
 

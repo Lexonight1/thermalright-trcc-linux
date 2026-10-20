@@ -189,7 +189,7 @@ def test_a_mask_change_reuses_the_background_instead_of_reopening_it(
         opened.append(path)
         return real_open(path)
 
-    display._r.open_image = counting_open          # type: ignore[method-assign]
+    display._r.open_image = counting_open
     s.fit_mode = FitMode.STRETCH                   # moves the bg cache key
     display.build_frame(info=_info(), theme=theme, sensors={}, profile=PROFILE)
 

@@ -27,8 +27,8 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev"))
 
-import gen_cli_reference  # noqa: E402  # pyright: ignore[reportMissingImports]
-from _cli_tree import iter_leaves  # noqa: E402  # pyright: ignore[reportMissingImports]
+import gen_cli_reference  # noqa: E402
+from _cli_tree import iter_leaves  # noqa: E402
 
 _DOC_DIR = _ROOT / "doc"
 

@@ -16,7 +16,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-import psutil  # pyright: ignore[reportMissingImports]
+import psutil
 
 from ...core.logs import per_frame
 from ...core.models import DeviceInfo, DisplayServer, DisplaySession

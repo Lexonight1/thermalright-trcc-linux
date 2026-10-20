@@ -487,14 +487,14 @@ class _ReportIdTransport(FakeBulkTransport):
     """Windows HID: the driver prepends a 1-byte Report ID, so a full write
     reports len+1 transferred (#240)."""
 
-    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:  # type: ignore[override]
+    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:
         return super().write(endpoint, data, timeout_ms) + 1
 
 
 class _ShortTransport(FakeBulkTransport):
     """A genuinely SHORT write (fewer bytes than the chunk) — the real failure."""
 
-    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:  # type: ignore[override]
+    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:
         return super().write(endpoint, data, timeout_ms) - 1
 
 

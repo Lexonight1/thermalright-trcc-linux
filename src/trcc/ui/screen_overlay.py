@@ -100,7 +100,7 @@ def grab_full_screen() -> QPixmap:
     log.debug("grab_full_screen")
     screen = QApplication.primaryScreen()
     if screen is not None:
-        pix = screen.grabWindow(0)  # type: ignore[arg-type]
+        pix = screen.grabWindow(0)
         if not pix.isNull() and pix.width() > 1:
             return pix
 

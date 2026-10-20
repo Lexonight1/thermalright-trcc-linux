@@ -150,7 +150,7 @@ def test_set_refresh_interval_changes_the_observed_sweep_RATE(app: App) -> None:
         sweeps.append(time.monotonic())
         real()
 
-    sensors._poll_once = counted                    # type: ignore[method-assign]
+    sensors._poll_once = counted
 
     assert DEFAULT_REFRESH_INTERVAL_S >= 2.0, (
         "this gate's arithmetic assumes the default is >= 2 s; at a faster "

@@ -261,7 +261,7 @@ def test_the_caller_side_app_builds_no_renderer(
         return real_qt()
 
     def build_on_the_fake(**kw: object) -> App:
-        return real_build(**{**kw, "platform": fake_platform})  # type: ignore[arg-type]
+        return real_build(**{**kw, "platform": fake_platform})
 
     monkeypatch.setattr(qt, "QtRenderer", counting_renderer)
     monkeypatch.setattr(_boot, "_build_local_app", build_on_the_fake)

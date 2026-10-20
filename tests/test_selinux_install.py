@@ -15,7 +15,7 @@ from trcc.adapters.system import _selinux
 @pytest.fixture
 def no_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail loudly if anything tries to shell out (build/load the policy)."""
-    def _boom(*a, **k):  # type: ignore[no-untyped-def]
+    def _boom(*a, **k):
         raise AssertionError(f"unexpected subprocess call: {a!r}")
     monkeypatch.setattr(_selinux.subprocess, "run", _boom)
 

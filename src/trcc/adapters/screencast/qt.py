@@ -216,7 +216,7 @@ class QtNativeCapture(ScreenCapture):
         screen = QApplication.primaryScreen()
         if screen is None:
             return None
-        return screen.grabWindow(0, x, y, w, h)  # type: ignore[arg-type]
+        return screen.grabWindow(0, x, y, w, h)
 
 
 # ── link 2: external tools ─────────────────────────────────────────────────

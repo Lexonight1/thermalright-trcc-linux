@@ -327,7 +327,7 @@ def test_every_bsd_host_reaches_the_shared_app(
     monkeypatch.setattr(os, "geteuid", lambda: 1000)
     host = object.__new__(host_platform_class())
 
-    assert _boot._local_reason(host) is None  # type: ignore[arg-type]
+    assert _boot._local_reason(host) is None
 
 
 def test_a_stand_in_face_runs_caller_commands_on_its_own_app(

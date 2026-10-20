@@ -392,7 +392,7 @@ def _transport_with(addresses: list[int]):
     from trcc.adapters.device.transport import PyUsbBulkTransport
 
     transport = PyUsbBulkTransport(0x0416, 0x5302)
-    transport._device = _FakeUsbDevice(addresses)   # pyright: ignore[reportAttributeAccessIssue]
+    transport._device = _FakeUsbDevice(addresses)
     transport._detect_endpoints()
     return transport
 
@@ -439,7 +439,7 @@ def test_endpoint_detection_survives_a_device_that_cannot_answer() -> None:
     from trcc.adapters.device.transport import PyUsbBulkTransport
 
     transport = PyUsbBulkTransport(0x0416, 0x5302)
-    transport._device = object()   # pyright: ignore[reportAttributeAccessIssue]
+    transport._device = object()
     transport._detect_endpoints()
 
     assert transport.ep_out is None and transport.ep_in is None

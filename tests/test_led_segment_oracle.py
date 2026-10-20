@@ -39,7 +39,7 @@ from trcc.ui.gui.uc_screen_led import STYLE_POSITIONS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
-from core.csharp import (  # pyright: ignore[reportMissingImports]
+from core.csharp import (
     DECOMPILE_ROOT,
 )
 

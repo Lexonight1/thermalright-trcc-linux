@@ -76,7 +76,7 @@ def test_cli_lists_and_connects_device(tmp_path: Path) -> None:
     from trcc.ui.cli.main import app
 
     _ctx.set_platform(MockPlatform([_SPEC], tmp_path))
-    _ctx.set_renderer(QtRenderer())  # type: ignore[arg-type]
+    _ctx.set_renderer(QtRenderer())
     try:
         runner = CliRunner()
         listed = runner.invoke(app, ["device", "list"])
@@ -177,7 +177,7 @@ def _spied(app: App) -> list[str]:
     def spy(cmd):
         sent.append(type(cmd).__name__)
         return real(cmd)
-    app.dispatch = spy                  # type: ignore[method-assign]
+    app.dispatch = spy
     return sent
 
 

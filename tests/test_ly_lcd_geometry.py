@@ -340,7 +340,7 @@ def _ack_ly(monkeypatch, fake_bulk, *latencies_ms: float) -> Any:
         clock += [0.0, ms / 1000]
     ticks = iter(clock)
     monkeypatch.setattr(ly_lcd.time, "perf_counter", lambda: next(ticks))
-    fake_bulk.read = lambda ep, n, timeout_ms=100: bytes(range(16)) * 32  # type: ignore[method-assign]
+    fake_bulk.read = lambda ep, n, timeout_ms=100: bytes(range(16)) * 32
     return _make_ly(fake_bulk)
 
 
@@ -376,7 +376,7 @@ def _ack_contents_ly(monkeypatch, fake_bulk, acks: list[bytes]) -> Any:
     """An LY device answering *acks* in turn, every one in 3 ms."""
     ly = _ack_ly(monkeypatch, fake_bulk, *([3.0] * len(acks)))
     replies = iter(acks)
-    fake_bulk.read = lambda ep, n, timeout_ms=100: next(replies)  # type: ignore[method-assign]
+    fake_bulk.read = lambda ep, n, timeout_ms=100: next(replies)
     return ly
 
 

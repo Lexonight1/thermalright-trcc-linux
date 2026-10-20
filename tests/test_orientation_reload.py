@@ -68,7 +68,7 @@ def spy(app: App) -> list[Any]:
         # read to decide whether to fall back to Theme1.
         return SimpleNamespace(ok=True)
 
-    app.dispatch = _record  # type: ignore[method-assign]
+    app.dispatch = _record
     return calls
 
 

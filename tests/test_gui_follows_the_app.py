@@ -524,8 +524,8 @@ def _blink_out(app: App, win: Any, qtbot: Any) -> None:
     def gone(*_a: object, **_k: object) -> bool:
         raise OSError(errno.ENODEV, "No such device")
 
-    transport.send_cdb = gone                  # type: ignore[attr-defined]
-    transport.open = lambda: False             # type: ignore[attr-defined]
+    transport.send_cdb = gone
+    transport.open = lambda: False
     app.send(_A, b"\x00" * 204800)
     qtbot.waitUntil(lambda: _A not in win._handlers, timeout=5000)
 

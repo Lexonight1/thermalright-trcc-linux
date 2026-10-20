@@ -156,7 +156,7 @@ def _try_bind_hid() -> bool:
             log.debug("HID layer: CoreFoundation missing %s", name)
             return False
         fn.restype = restype if restype is not None else None
-        fn.argtypes = argtypes  # type: ignore[assignment]
+        fn.argtypes = argtypes
 
     for name, restype, argtypes in (
         ("IOHIDEventSystemClientCreate", ctypes.c_void_p, [ctypes.c_void_p]),
@@ -178,7 +178,7 @@ def _try_bind_hid() -> bool:
             log.debug("HID layer: IOKit missing %s — disabled", name)
             return False
         fn.restype = restype
-        fn.argtypes = argtypes  # type: ignore[assignment]
+        fn.argtypes = argtypes
 
     if not _dlsym_cf_callbacks():
         return False

@@ -93,7 +93,7 @@ def _reader(app: App) -> Any:
 
 def _wire(app: App) -> list[Any]:
     """What this panel's own (scripted) transport was sent."""
-    return app.devices[_KEY]._transport.sent   # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+    return app.devices[_KEY]._transport.sent
 
 
 def _source(app: App) -> str:
@@ -207,7 +207,7 @@ def test_a_pushed_image_holds_the_stream_off_the_panel(app: App) -> None:
 def test_a_stream_owns_the_panel_s_cadence(app: App) -> None:
     """So the metrics tick does not render the theme over it."""
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
-    observer = app._render_observer         # pyright: ignore[reportPrivateUsage]
+    observer = app._render_observer
     assert observer._cadence_owner(_KEY) == "stream"
 
 
@@ -284,7 +284,7 @@ def test_the_reader_yields_frames_at_the_panel_s_size(served: str) -> None:
         assert (frame.width, frame.height, len(frame.data)) == (64, 48, 64 * 48 * 3)
     finally:
         reader.close()
-    assert reader._proc is not None and reader._proc.poll() is not None, (  # pyright: ignore[reportPrivateUsage]
+    assert reader._proc is not None and reader._proc.poll() is not None, (
         "close() left ffmpeg running")
 
 
@@ -302,8 +302,8 @@ def test_ffmpeg_may_not_open_local_files_for_a_stream() -> None:
     """The scheme allow-list stops a ``file://`` URL; this stops a remote
     playlist that points ffmpeg at a local file."""
     reader = StreamReader.__new__(StreamReader)
-    reader.url, reader._size, reader._fps = _URL, (8, 8), 16  # pyright: ignore[reportPrivateUsage]
-    cmd = reader._command()                                     # pyright: ignore[reportPrivateUsage]
+    reader.url, reader._size, reader._fps = _URL, (8, 8), 16
+    cmd = reader._command()
 
     allowed = cmd[cmd.index("-protocol_whitelist") + 1].split(",")
     assert {"file", "concat", "subfile", "pipe", "data"}.isdisjoint(allowed)
@@ -410,7 +410,7 @@ def test_the_cli_text_says_what_is_showing(
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
     monkeypatch.setattr(App, "add_task", lambda self, task: None)
     _ctx.set_platform(MockPlatform([_SPEC], tmp_path))
-    _ctx.set_renderer(_CliRenderer())          # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         assert cli_runner.invoke(cli, ["display", "media-player", _KEY, _URL]).exit_code == 0
         out = cli_runner.invoke(cli, ["display", "snapshot", _KEY]).output

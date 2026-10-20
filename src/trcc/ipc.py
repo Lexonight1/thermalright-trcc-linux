@@ -192,7 +192,7 @@ def _lock_exclusive(fd: int) -> None:
     try:
         import fcntl
     except ImportError:
-        import msvcrt  # pyright: ignore[reportMissingImports]
+        import msvcrt
         log.debug("_lock_exclusive: msvcrt fd=%d", fd)
         os.lseek(fd, 0, os.SEEK_SET)
         msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
@@ -1176,7 +1176,7 @@ class SingleInstance:
     _RAISE_MESSAGE = b'{"raise": true}\n'
     _CONNECT_TIMEOUT_S = 1.0
 
-    def __new__(cls, name: str, *,  # type: ignore[misc]
+    def __new__(cls, name: str, *,
                 raise_peer: bool = True) -> SingleInstance | None:
         """*raise_peer* False: a peer is left alone, for a launch that means to
         stay hidden (``--resume``: autostart, session restore)."""
@@ -1345,7 +1345,7 @@ def _msvcrt_acquire(name: str) -> Any | None:
     """
     log.debug("_msvcrt_acquire: name=%s", name)
     try:
-        import msvcrt  # pyright: ignore[reportMissingImports]
+        import msvcrt
     except ImportError:
         # Not on Windows; the AF_UNIX branch would have been taken.
         # Reaching here means an exotic platform — fail open.

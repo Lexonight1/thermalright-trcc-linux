@@ -283,7 +283,7 @@ def test_a_theme_without_a_portrait_twin_shows_theme1_not_black(
         path=app.platform.paths().user_theme_dir(854, 480) / "Mine")).ok
     sent: list[bytes] = []
     send = app.send
-    app.send = lambda key, payload, **kw: (  # type: ignore[method-assign]
+    app.send = lambda key, payload, **kw: (
         sent.append(bytes(payload)), send(key, payload, **kw))[1]
 
     app.dispatch(SetOrientation(key=_KEY, degrees=90))

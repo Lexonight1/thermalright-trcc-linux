@@ -27,7 +27,7 @@ from trcc.ui.cli.shell import (
 
 def test_completer_includes_every_subapp() -> None:
     completer = _build_completer()
-    top_level = set(completer.options.keys())   # type: ignore[attr-defined]
+    top_level = set(completer.options.keys())
 
     # The six registered sub-apps must be visible
     for name in ("device", "display", "led", "system", "config", "theme"):
@@ -42,7 +42,7 @@ def test_completer_includes_subcommands_under_groups() -> None:
     completer = _build_completer()
     # NestedCompleter wraps nested dicts as child completers; reach the
     # child's own ``options`` dict for the subcommand list.
-    device_child = completer.options["device"]              # type: ignore[attr-defined,index]
+    device_child = completer.options["device"]
     assert device_child is not None
     names = set(device_child.options.keys())                # type: ignore[attr-defined]
     # ``device list`` / ``device connect`` / ``device disconnect`` exist

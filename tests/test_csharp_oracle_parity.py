@@ -59,11 +59,11 @@ from trcc.core.protocol import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
-from encode_reference import (  # pyright: ignore[reportMissingImports]
+from encode_reference import (
     csharp_encode,
     csharp_encode_angles,
 )
-from formcztv_init import (  # pyright: ignore[reportMissingImports]
+from formcztv_init import (
     form_cztv_init,
 )
 
@@ -431,7 +431,7 @@ def test_mode3_fingerprint_matches_the_csharp(fbl: int, sub: int) -> None:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dev"
                            / "decompiler"))
-    from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    from formcztv_init import (
         CztvState,
         form_cztv_init,
     )

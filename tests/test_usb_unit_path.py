@@ -290,7 +290,7 @@ def _twin_app(tmp_path):
             "pid": "70db", "pm": 72, "resolution": "480x480"}
     return App(platform=MockPlatform([dict(spec), dict(spec)], tmp_path),
                send_scheduler=SyncSendScheduler(),
-               renderer=_CliRenderer())      # type: ignore[arg-type]
+               renderer=_CliRenderer())
 
 
 def _twins():
@@ -338,7 +338,7 @@ def test_one_device_still_attaches_under_the_plain_key(tmp_path) -> None:
                                       "fbl": 100, "resolution": "320x320"}],
                                     tmp_path),
               send_scheduler=SyncSendScheduler(),
-              renderer=_CliRenderer())        # type: ignore[arg-type]
+              renderer=_CliRenderer())
     app.attach(0x0402, 0x3922)
     assert list(app.devices) == ["0402:3922"]
 
@@ -470,7 +470,7 @@ def test_attach_threads_the_unit_all_the_way_to_the_transport(tmp_path) -> None:
         seen.update(wire=wire, unit=unit)
         return real(wire, vid, pid, serial)
 
-    app.platform.open_transport = spy          # type: ignore[assignment]
+    app.platform.open_transport = spy
     app.attach(0x87AD, 0x70DB, unit="1-11")
     assert seen.get("unit") == "1-11"
 
@@ -554,7 +554,7 @@ def _opened_units(app) -> list[str]:
         units.append(unit)
         return real(wire, vid, pid, serial, unit, **kw)
 
-    app.platform.open_transport = spy          # type: ignore[assignment]
+    app.platform.open_transport = spy
     return units
 
 
@@ -582,7 +582,7 @@ def test_coldplug_keeps_the_plain_key_for_a_single_cooler(tmp_path) -> None:
                                       "vid": "87ad", "pid": "70db", "pm": 72,
                                       "resolution": "480x480"}], tmp_path),
               send_scheduler=SyncSendScheduler(),
-              renderer=_CliRenderer())      # type: ignore[arg-type]
+              renderer=_CliRenderer())
     app.discover_and_connect()
     assert list(app.devices) == ["87ad:70db"]
 
@@ -613,7 +613,7 @@ def test_a_twin_resolves_its_quirks_from_its_own_scan_entry(tmp_path) -> None:
             "pm": 58, "bcd": "0407"}
     app = App(platform=MockPlatform([dict(spec), dict(spec)], tmp_path),
               send_scheduler=SyncSendScheduler(),
-              renderer=_CliRenderer())      # type: ignore[arg-type]
+              renderer=_CliRenderer())
     app.remember_scan(app.platform.scan_devices())
 
     assert app._quirks_for(0x0416, 0x5302, "1-2") == quirks_for(0x0416, 0x5302, 0x0407)
@@ -679,7 +679,7 @@ def _cli_on_twins(tmp_path, cli_runner, args: list[str]) -> str:
 
     spec = {"type": "lcd", "name": "HR10", "vid": "87ad", "pid": "70db", "pm": 72}
     _ctx.set_platform(MockPlatform([dict(spec), dict(spec)], tmp_path))
-    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         return cli_runner.invoke(cli, args).output
     finally:
@@ -752,7 +752,7 @@ def test_the_report_probes_each_twin_on_its_own_unit(tmp_path) -> None:
     app = _twin_app(tmp_path)
     opened = _opened_units(app)
     powered: list[str] = []
-    app.platform.usb_power_state = (                  # type: ignore[method-assign]
+    app.platform.usb_power_state = (
         lambda vid, pid, unit="": powered.append(unit))
     rows, error = _collect_devices(app.platform)
     assert (error, [r["key"] for r in rows]) == ("", _TWIN_KEYS)

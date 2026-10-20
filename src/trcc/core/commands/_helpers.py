@@ -342,7 +342,7 @@ def _invalidate_scene(app: App, key: str) -> None:
     seam.
     """
     log.debug("_invalidate_scene: key=%s", key)
-    if app._renderer is not None:  # pyright: ignore[reportPrivateUsage]
+    if app._renderer is not None:
         app.display.invalidate(key)
 
 
@@ -354,7 +354,7 @@ def _rendered_surface(app: App, key: str) -> Any | None:
     would raise rather than answer.  Asked on every preview, so per-frame.
     """
     frame_log.debug("_rendered_surface: key=%s", key)
-    if app._renderer is None:  # pyright: ignore[reportPrivateUsage]
+    if app._renderer is None:
         return None
     return app.display.rendered_surface(key)
 

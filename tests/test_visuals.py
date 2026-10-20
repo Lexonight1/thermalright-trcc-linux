@@ -157,7 +157,7 @@ def test_pipes_bands_take_exactly_their_fft_bins(size: int) -> None:
     expected = [np.flatnonzero((hz >= low) & (hz < high)).tolist()
                 for low, high in pairwise(edges)]
     assert [list(range(low, high)) for low, high
-            in engine._band_bins(size)] == expected  # type: ignore[attr-defined]
+            in engine._band_bins(size)] == expected
 
 
 def _lit(frame: RawFrame) -> int:
@@ -179,11 +179,11 @@ def _no_sleep_read(sound: ScriptedSound, frames: int) -> bytes:
     """The scripted beat without its real-time pacing."""
     import tests.mock_platform as mp
     real = mp.time.sleep
-    mp.time.sleep = lambda s: None            # type: ignore[assignment]
+    mp.time.sleep = lambda s: None
     try:
         return sound.read(frames)
     finally:
-        mp.time.sleep = real                  # type: ignore[assignment]
+        mp.time.sleep = real
 
 
 def test_pipes_reach_out_with_the_music_and_draw_back_in_silence() -> None:
@@ -200,7 +200,7 @@ def test_pipes_reach_out_with_the_music_and_draw_back_in_silence() -> None:
         engine.feed(b"\x00" * (SOUND_RATE // VISUAL_FPS) * 8)
         silent = engine.render()
     assert reached > 3 * max(_lit(silent), 1)
-    assert all(pipe.reach < 0.05 for pipe in engine._pipes)  # pyright: ignore[reportPrivateUsage]
+    assert all(pipe.reach < 0.05 for pipe in engine._pipes)
 
 
 def test_the_centre_picture_sits_in_the_middle_and_can_burn(
@@ -271,7 +271,7 @@ def _reader(app: App) -> Any:
 
 
 def _wire(app: App) -> list[Any]:
-    return app.devices[_KEY]._transport.sent   # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+    return app.devices[_KEY]._transport.sent
 
 
 def _preset(app: App, name: str = "Fractal/one.milk") -> str:
@@ -349,7 +349,7 @@ def test_a_visual_plays_as_the_panel_s_background(app: App) -> None:
     assert (s.visual, s.visual_settings) == ("trcc-pipes", {"fire": 1.0})
     assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "visual"
     assert app.tasks == [task_key(_KEY)]       # type: ignore[attr-defined]
-    observer = app._render_observer             # pyright: ignore[reportPrivateUsage]
+    observer = app._render_observer
     assert observer._cadence_owner(_KEY) == "visual"
 
 
@@ -762,7 +762,7 @@ def test_closing_the_reader_mid_read_is_a_stop_not_a_failure(
     time.sleep(0.2)
     with caplog.at_level("WARNING", logger="trcc.services.visual_stream"):
         reader.close()
-    assert reader._error == ""                       # type: ignore[attr-defined]
+    assert reader._error == ""
     assert not [r for r in caplog.records if r.levelname == "WARNING"]
 
 
@@ -968,7 +968,7 @@ def test_pipes_show_no_picture_until_the_user_picks_one() -> None:
     is chosen."""
     engine = TrccPipes()
     engine.open(VisualSpec("trcc-pipes", 64, 64))
-    assert engine._shown is None                    # type: ignore[attr-defined]
+    assert engine._shown is None
 
 
 def test_the_reader_thread_enters_the_platform_s_worker_context() -> None:

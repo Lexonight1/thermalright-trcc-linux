@@ -333,7 +333,7 @@ def test_a_grandchild_picker_repopulates_on_a_view_switch(qtbot, tmp_path) -> No
             refreshes.append(1)
             real()
 
-        h.picker._refresh = spy           # type: ignore[method-assign]
+        h.picker._refresh = spy
         h.show_panel()
 
         assert refreshes, (

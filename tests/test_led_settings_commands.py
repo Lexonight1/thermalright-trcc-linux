@@ -354,7 +354,7 @@ def test_a_fresh_leds_snapshot_counts_its_panels_segments(
     from .conftest import _CliRenderer
     from .test_render_led import _LED_KEY, _attach_and_connect
 
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=pm)
     style = app.get(_LED_KEY).led_handshake.style  # type: ignore[attr-defined]
     display = get_display(style)

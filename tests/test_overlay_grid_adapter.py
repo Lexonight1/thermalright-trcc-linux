@@ -23,7 +23,7 @@ from trcc.services import _dc as Dc
 from trcc.ui.presentation.overlay_serialization import config_fields
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
-from core.csharp import DECOMPILE_ROOT  # pyright: ignore[reportMissingImports]
+from core.csharp import DECOMPILE_ROOT
 
 
 def test_hardware_metric_accessors_round_trip() -> None:
@@ -122,7 +122,7 @@ def test_every_sensor_is_written_as_its_own_pair() -> None:
 
 
 def test_a_cpu_fan_element_is_saved_as_the_cpu_fan() -> None:
-    mode, _, main, sub, _ = Dc._element_to_legacy(       # pyright: ignore[reportPrivateUsage]
+    mode, _, main, sub, _ = Dc._element_to_legacy(
         {"type": "metric", "metric": "fan:cpu"})
     assert (main, sub) == (5, 1)
 

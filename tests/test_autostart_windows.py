@@ -241,7 +241,7 @@ def test_works_with_simplenamespace_fake_for_quick_smoke() -> None:
         DeleteValue=lambda key, name: storage.pop(name, None),
     )
 
-    autostart = WindowsAutostart(command="X", registry=fake)  # type: ignore[arg-type]
+    autostart = WindowsAutostart(command="X", registry=fake)
     autostart.enable()
     assert storage == {"TRCCNext": "X"}
 

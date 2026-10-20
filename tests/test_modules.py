@@ -157,7 +157,7 @@ def test_a_module_registers_by_the_key_in_its_class_line() -> None:
         assert (MODULES["test-registered"], _Registered.key) == (
             _Registered, "test-registered")
     finally:
-        MODULES._table.pop("test-registered", None)  # type: ignore[attr-defined]
+        MODULES._table.pop("test-registered", None)
 
 
 
@@ -176,7 +176,7 @@ def registered() -> Iterator[str]:
     try:
         yield _Face.key
     finally:
-        MODULES._table.pop("test-face", None)  # type: ignore[attr-defined]
+        MODULES._table.pop("test-face", None)
 
 
 def test_the_cli_lists_and_switches(cli_runner: Any, registered: str,
@@ -222,7 +222,7 @@ def test_a_module_reaches_the_app_only_through_its_host() -> None:
         def __init__(self) -> None:
             self.published: list[object] = []
 
-        def publish(self, event: object) -> None:  # type: ignore[override]
+        def publish(self, event: object) -> None:
             self.published.append(event)
 
     class _Announces(Module):

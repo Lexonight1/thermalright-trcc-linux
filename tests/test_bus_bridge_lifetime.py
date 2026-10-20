@@ -36,7 +36,7 @@ def app(tmp_path: Path, qapp: Any) -> Iterator[App]:
 
 
 def _handlers(app: App) -> int:
-    return sum(len(v) for v in app.events._handlers.values())   # pyright: ignore[reportPrivateUsage]
+    return sum(len(v) for v in app.events._handlers.values())
 
 
 def test_a_freed_bridge_leaves_no_subscription_behind(app: App) -> None:

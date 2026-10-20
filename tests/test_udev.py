@@ -182,7 +182,7 @@ def test_packaged_setup_files_are_what_setup_writes() -> None:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev"))
-    import gen_packaging_setup  # pyright: ignore[reportMissingImports]
+    import gen_packaging_setup
 
     stale = [str(path) for path, content in gen_packaging_setup.generate().items()
              if not path.exists() or path.read_text(encoding="utf-8") != content]

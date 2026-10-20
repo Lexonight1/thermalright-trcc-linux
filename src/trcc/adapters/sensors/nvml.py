@@ -23,10 +23,10 @@ frame_log = per_frame(__name__)
 
 
 try:
-    import pynvml  # pyright: ignore[reportMissingImports]
+    import pynvml
     _import_error: str | None = None
 except ImportError as e:
-    pynvml = None  # type: ignore[assignment]
+    pynvml = None
     # Recorded, not logged here — logging isn't configured at module-import
     # time.  Surfaced lazily (once) the first time init is attempted.
     _import_error = str(e)

@@ -139,7 +139,7 @@ class _ToolTipFilter(QObject):
         # different schedule than CPython frees the Python half.  Measured: an
         # identical filter holding ``lambda: None`` survives, and one holding
         # the bound method segfaults even when it is never INSTALLED.
-        self._on_tooltip = weakref.WeakMethod(on_tooltip)  # type: ignore[arg-type]
+        self._on_tooltip = weakref.WeakMethod(on_tooltip)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if event.type() != QEvent.Type.ToolTip:

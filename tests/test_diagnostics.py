@@ -125,8 +125,8 @@ def _count_renders(root: logging.Logger) -> dict[str, int]:
             calls["formatTime"] += 1
             return _o(record, datefmt)
 
-        fmt.format = counted_format          # type: ignore[method-assign]
-        fmt.formatTime = counted_time        # type: ignore[method-assign]
+        fmt.format = counted_format
+        fmt.formatTime = counted_time
         fmt._counted = True                  # type: ignore[attr-defined]
     return calls
 
@@ -2060,7 +2060,7 @@ def _ticking_app(tmp_path: Path) -> tuple[Any, Path]:
         path=tmp_path / "theme", name="t",
         resolution=(320, 320), config={"elements": []},
     )
-    app.media._playbacks[_TICK_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+    app.media._playbacks[_TICK_KEY] = Playback(
         frames=[_encoded_frame(v) for v in (0xFF000000, 0xFF404040, 0xFF808080)],
         fps=_TICK_FPS,
     )
@@ -2097,7 +2097,7 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
 
     app, log_file = _ticking_app(tmp_path)
     key = _TICK_KEY
-    scsi = app.platform.scsi        # pyright: ignore[reportAttributeAccessIssue]
+    scsi = app.platform.scsi
 
     # Force every submit to block until THIS frame is written -- see the
     # docstring: without it the denominator counts frames that never reached
@@ -2107,7 +2107,7 @@ def _tick_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
         return real_send(key, payload, wait=True)
 
-    app.send = sync_send        # type: ignore[method-assign]
+    app.send = sync_send
 
     def tick_once() -> None:
         """Exactly what ``LCDHandler._on_video_tick`` does for an active UI."""
@@ -2245,7 +2245,7 @@ def _sensor_tick_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
         OverlayElement(id="c", type="clock", x=10, y=110),
     ])
     if video:
-        app.media._playbacks[_TICK_KEY] = Playback(  # pyright: ignore[reportPrivateUsage]
+        app.media._playbacks[_TICK_KEY] = Playback(
             frames=[_encoded_frame(v)
                     for v in (0xFF000000, 0xFF404040, 0xFF808080)],
             fps=_TICK_FPS,
@@ -2255,7 +2255,7 @@ def _sensor_tick_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
     def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
         return real_send(key, payload, wait=True)
 
-    app.send = sync_send        # type: ignore[method-assign]
+    app.send = sync_send
     sensors: Any = platform.sensors()
 
     def sensor_update() -> None:
@@ -2263,7 +2263,7 @@ def _sensor_tick_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
         sweep it waits for, then the broadcast."""
         sensors.set_interval(float(app.settings.app.refresh_interval_s))
         sensors._poll_once()
-        app.metrics_loop._publish_once(app.events)  # pyright: ignore[reportPrivateUsage]
+        app.metrics_loop._publish_once(app.events)
         for _ in range(3 if video else 0):
             app.dispatch(TickDisplay(key=_TICK_KEY))
 
@@ -2447,7 +2447,7 @@ def _wire_tick_rates(tmp_path: Path, spec: dict[str, Any], *,
         path=tmp_path / "theme", name="t",
         resolution=connected.handshake.resolution, config={"elements": []},
     )
-    app.media._playbacks[key] = Playback(   # pyright: ignore[reportPrivateUsage]
+    app.media._playbacks[key] = Playback(
         frames=[_encoded_frame(v) for v in (0xFF000000, 0xFF404040, 0xFF808080)],
         fps=_TICK_FPS,
     )
@@ -2456,8 +2456,8 @@ def _wire_tick_rates(tmp_path: Path, spec: dict[str, Any], *,
     def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
         return real_send(key, payload, wait=True)
 
-    app.send = sync_send        # type: ignore[method-assign]
-    transport: Any = app.devices[key]._transport  # pyright: ignore[reportPrivateUsage]
+    app.send = sync_send
+    transport: Any = app.devices[key]._transport
 
     def wire_writes() -> int:
         return len(getattr(transport, "sent", None) or transport.writes)
@@ -2554,7 +2554,7 @@ def _led_tick_rates(tmp_path: Path, pm: int, state: str, *,
                       per_frame=ladder.per_frame)
 
     platform = FakePlatform(tmp_path)
-    app = App(platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(platform, renderer=_CliRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                                 # FBL 100 -> 320x320
     platform.scsi.read_script.append(bytes(resp))
@@ -2569,7 +2569,7 @@ def _led_tick_rates(tmp_path: Path, pm: int, state: str, *,
         case _:
             command = SetLedMode(key=_LED_KEY, mode=LEDMode[state.upper()])
     app.dispatch(command)
-    app.metrics_loop._publish_once(app.events)  # pyright: ignore[reportPrivateUsage]
+    app.metrics_loop._publish_once(app.events)
     assert app.led_animation_loop.animating_keys() == [_LED_KEY], (
         f"pm={pm} {state}: the LED is not on the animation tick, so this run "
         "would measure nothing")
@@ -2581,7 +2581,7 @@ def _led_tick_rates(tmp_path: Path, pm: int, state: str, *,
     def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
         return real_send(key, payload, wait=True)
 
-    app.send = sync_send        # type: ignore[method-assign]
+    app.send = sync_send
 
     for _ in range(5):          # warm-up: first-tick lines are one-shot
         app.led_animation_loop.tick()
@@ -2679,7 +2679,7 @@ def _remote_preview_rates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     # compresses to a few hundred bytes, so a line dumping it whole still fit
     # under the cap and the payload check was blind (measured: two mutations
     # that printed the PNG stayed green).  A real theme's is ~55 KB.
-    app.media._playbacks[_TICK_KEY].frames = [   # pyright: ignore[reportPrivateUsage]
+    app.media._playbacks[_TICK_KEY].frames = [
         _noise_jpeg(seed) for seed in range(3)]
     server = ipc.IPCServer(app)
     server.start()
@@ -2687,7 +2687,7 @@ def _remote_preview_rates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     serving.start()
     proxy = AppProxy(timeout=10.0)
     advances: list[VideoAdvanced] = []
-    proxy.events.subscribe(VideoAdvanced, advances.append)  # type: ignore[arg-type]
+    proxy.events.subscribe(VideoAdvanced, advances.append)
     previews = 0
     sizes: list[int] = []
 
@@ -3538,7 +3538,7 @@ def _tick_offenders(root: Path = _SRC) -> list[str]:
     import sys as _sys
 
     _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
-    import record_rate  # pyright: ignore[reportMissingImports]
+    import record_rate
 
     # The allowance lives ONCE, in the tool that measures it.  Restating it
     # here would be the same fact in two files, which is the shape that drifts.

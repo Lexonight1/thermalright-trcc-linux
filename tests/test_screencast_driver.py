@@ -69,7 +69,7 @@ def scheduler() -> SyncSendScheduler:
 @pytest.fixture
 def app(tmp_home: Path, scheduler: SyncSendScheduler) -> App:
     a = App(platform=FakePlatform(tmp_home), send_scheduler=scheduler,
-            renderer=_CliRenderer())          # type: ignore[arg-type]
+            renderer=_CliRenderer())
     resp = bytearray(0xE100)
     resp[0] = 100                      # FBL=100 → 320x320
     a.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
@@ -101,7 +101,7 @@ _EVO_KEY = "87ad:70db"
 def evo(tmp_home: Path, scheduler: SyncSendScheduler) -> App:
     """A connected EVO with a renderer that records which encoder ran."""
     a = App(platform=MockPlatform([_EVO], tmp_home), send_scheduler=scheduler,
-            renderer=RecordingRenderer())     # type: ignore[arg-type]
+            renderer=RecordingRenderer())
     assert a.dispatch(ConnectDevice(key=_EVO_KEY)).ok
     return a
 
@@ -842,7 +842,7 @@ def test_stopping_one_cast_keeps_the_microphone_for_another(
              {"vid": "87ad", "pid": "70db", "fbl": 100}],
             tmp_home,
         ),
-        send_scheduler=SyncSendScheduler(), renderer=_CliRenderer(),  # type: ignore[arg-type]
+        send_scheduler=SyncSendScheduler(), renderer=_CliRenderer(),
     )
     app.attach(0x0402, 0x3922)
     app.attach(0x87AD, 0x70DB)
@@ -922,7 +922,7 @@ def test_a_cast_draws_its_overlay_only_when_it_changes(
     drawn: list[dict[str, float]] = []
     real = DisplayService._build_overlay
 
-    def counting(self, info, theme, sensors, size, clock):  # type: ignore[no-untyped-def]
+    def counting(self, info, theme, sensors, size, clock):
         drawn.append(dict(sensors))
         return real(self, info, theme, sensors, size, clock)
 
@@ -1068,7 +1068,7 @@ def test_stopping_one_cast_keeps_the_capture_for_another(
              {"vid": "87ad", "pid": "70db", "fbl": 100}],
             tmp_home,
         ),
-        send_scheduler=SyncSendScheduler(), renderer=_CliRenderer(),  # type: ignore[arg-type]
+        send_scheduler=SyncSendScheduler(), renderer=_CliRenderer(),
     )
     app.attach(0x0402, 0x3922)
     app.attach(0x87AD, 0x70DB)

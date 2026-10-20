@@ -170,7 +170,7 @@ class _Kernel32DeviceIo(_DeviceIoPort):
         self._invalid = ctypes.c_void_p(-1).value
 
     def _last_error(self) -> int:
-        code = int(self._ctypes.get_last_error())    # type: ignore[attr-defined]
+        code = int(self._ctypes.get_last_error())
         log.debug("_Kernel32DeviceIo._last_error: %d", code)
         return code
 

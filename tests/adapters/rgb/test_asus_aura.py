@@ -187,7 +187,7 @@ def test_reports_go_out_as_report_0xec(monkeypatch: pytest.MonkeyPatch) -> None:
     assert written == [bytes([0xEC, 0x82]) + bytes(63)]
 
 
-def test_a_stand_in_platform_hands_out_its_scripted_controller(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_stand_in_platform_hands_out_its_scripted_controller(tmp_path) -> None:
     """The Platform is the one way to the controller, so a mock or a test can
     never reach the host's real one."""
     platform = MockPlatform([], tmp_path)

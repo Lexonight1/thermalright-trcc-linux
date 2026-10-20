@@ -45,7 +45,7 @@ def test_an_os_binds_its_context_to_the_opengl_visuals_only() -> None:
     assert set(bound) == set(VISUALS)
     pipes = bound["trcc-pipes"]
     assert issubclass(pipes, TrccPipes) and pipes is not TrccPipes
-    assert pipes.SURFACE is gl_module.EglSurface     # type: ignore[attr-defined]
+    assert pipes.SURFACE is gl_module.EglSurface
     assert bound["cavalier-bars"] is VISUALS["cavalier-bars"]
     assert TrccPipes.SURFACE is None                 # the registry is untouched
 

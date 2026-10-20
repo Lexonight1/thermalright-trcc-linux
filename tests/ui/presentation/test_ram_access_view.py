@@ -24,7 +24,7 @@ def _result(state: RamAccessState, command: str = "") -> RamLightingResult:
     (RamAccessState.ELSEWHERE,
      RamAccessView("msg elsewhere", "Enable RAM lighting...", True)),
 ], ids=lambda v: getattr(v, "value", ""))
-def test_each_state_is_one_line_and_at_most_one_button(state, view) -> None:  # type: ignore[no-untyped-def]
+def test_each_state_is_one_line_and_at_most_one_button(state, view) -> None:
     assert ram_access_view(_result(state)) == view
 
 

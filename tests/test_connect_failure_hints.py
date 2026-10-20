@@ -193,7 +193,7 @@ def _denied_app(tmp_path, platform_cls=None):
         transport.open = deny
         return transport
 
-    platform.open_transport = opener           # type: ignore[method-assign]
+    platform.open_transport = opener
     return App(platform=platform)
 
 

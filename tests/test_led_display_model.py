@@ -27,7 +27,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "dev" / "tools"))
 # See test_lcd_panel_model.py — the decompile location lives in ONE place
 # (`core.csharp.DECOMPILE_ROOT`), never spelled in a test.
-from audit_csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+from audit_csharp import (  # noqa: E402
     DECOMPILE_ROOT,
     _led_zone_styles,
 )

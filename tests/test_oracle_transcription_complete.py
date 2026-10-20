@@ -41,7 +41,7 @@ _REPO = Path(__file__).resolve().parent.parent
 # tmpdir and the check skips itself on a machine that HAS the decompile.
 # Collection runs first; module scope is the only place this is true.
 sys.path.insert(0, str(_REPO / "dev" / "decompiler"))
-from core.csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+from core.csharp import (  # noqa: E402
     DECOMPILE_ROOT,
 )
 
@@ -235,7 +235,7 @@ def test_transcribed_field_defaults_match_the_decompile() -> None:
     """
     import dataclasses
 
-    from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    from formcztv_init import (
         CztvState,
     )
 
@@ -344,7 +344,7 @@ def _csharp_mount_thresholds() -> dict[str, int | None]:
 
 def test_every_mount_threshold_matches_the_decompile() -> None:
     """The transcription's per-block pmSub threshold IS the C#'s, row by row."""
-    from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    from formcztv_init import (
         _THEME_TOKENS,
     )
 
@@ -366,7 +366,7 @@ def test_every_mount_threshold_matches_the_decompile() -> None:
 
 def test_the_transcription_covers_every_guarded_mount_block() -> None:
     """No isWxH block the C# guards may be missing from the transcription."""
-    from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    from formcztv_init import (
         _SQUARE_TOKENS,
         _THEME_TOKENS,
     )

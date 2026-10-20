@@ -31,7 +31,7 @@ def test_the_three_files_are_what_the_packages_install() -> None:
     assert {mode for _src, mode in FILES.values()} == {0o755, 0o644}
 
 
-def test_missing_files_are_installed_with_their_modes(tmp_path: Path, as_root) -> None:  # type: ignore[no-untyped-def]
+def test_missing_files_are_installed_with_their_modes(tmp_path: Path, as_root) -> None:
     files = _files(tmp_path)
     assert install(files=files) == 0
     for dest, (src, mode) in files.items():
@@ -39,7 +39,7 @@ def test_missing_files_are_installed_with_their_modes(tmp_path: Path, as_root) -
         assert dest.stat().st_mode & 0o777 == mode
 
 
-def test_a_packages_copy_is_never_overwritten(tmp_path: Path, as_root) -> None:  # type: ignore[no-untyped-def]
+def test_a_packages_copy_is_never_overwritten(tmp_path: Path, as_root) -> None:
     """MUTATION CHECK: drop the ``owns`` check in ``_needs``."""
     files = _files(tmp_path)
     for dest in files:
@@ -48,7 +48,7 @@ def test_a_packages_copy_is_never_overwritten(tmp_path: Path, as_root) -> None: 
     assert all(d.read_bytes() == b"the package's own, older copy" for d in files)
 
 
-def test_an_older_copy_setup_made_is_updated(tmp_path: Path, as_root) -> None:  # type: ignore[no-untyped-def]
+def test_an_older_copy_setup_made_is_updated(tmp_path: Path, as_root) -> None:
     files = _files(tmp_path)
     for dest in files:
         dest.write_bytes(b"an older setup's copy")

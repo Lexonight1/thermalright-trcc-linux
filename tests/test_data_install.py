@@ -338,7 +338,7 @@ def test_an_explicit_download_tells_every_open_grid(fake_platform) -> None:
 
     app = App(platform=fake_platform)
     seen: list[DataInstalled] = []
-    app.events.subscribe(DataInstalled, seen.append)  # type: ignore[arg-type]
+    app.events.subscribe(DataInstalled, seen.append)
 
     assert app.dispatch(EnsureDataDownload(width=320, height=320)).ok
     assert app.dispatch(EnsureDataDownload(width=0, height=320)).ok is False

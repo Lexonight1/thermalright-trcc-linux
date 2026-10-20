@@ -71,7 +71,7 @@ def connected(
     # record the decode size it's asked for so tests can assert it's oriented.
     decode_sizes: list[tuple[int, int] | None] = []
 
-    def _fake_load(self, device_key, path, size=None, **kwargs):  # type: ignore[no-untyped-def]
+    def _fake_load(self, device_key, path, size=None, **kwargs):
         from trcc.services.media import Playback
         decode_sizes.append(size)
         w, h = size if size is not None else (854, 480)
@@ -171,7 +171,7 @@ def test_a_cloud_video_that_fails_to_play_keeps_the_saved_background(
     kept = app.settings.for_device(_KEY).background_path
     assert kept is not None and kept.endswith("a003.mp4")
 
-    def _broken(self, device_key, path, size=None, **kwargs):  # type: ignore[no-untyped-def]
+    def _broken(self, device_key, path, size=None, **kwargs):
         raise ThemeError(f"cannot decode {path.name}")
 
     monkeypatch.setattr(MediaService, "load_video", _broken)

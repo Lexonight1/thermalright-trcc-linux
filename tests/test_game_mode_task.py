@@ -293,7 +293,7 @@ def test_a_held_panel_does_not_play_its_video(
     ticks: list[str] = []
     dispatch = app.dispatch
 
-    def spy(cmd):  # type: ignore[no-untyped-def]
+    def spy(cmd):
         if type(cmd).__name__ == "TickDisplay":
             ticks.append(cmd.key)
             return SimpleNamespace(ok=True, connected=True, cursor=0,

@@ -22,7 +22,7 @@ class _Run:
     def __init__(self, code: int = 0) -> None:
         self.code, self.argv = code, []
 
-    def __call__(self, argv, **_kw):  # type: ignore[no-untyped-def]
+    def __call__(self, argv, **_kw):
         self.argv.append(list(argv))
         return subprocess.CompletedProcess(argv, self.code, "", "")
 
@@ -55,7 +55,7 @@ def _access(tmp_path: Path, *, buses=(3,), nodes=(3,), ours: bool | None = None,
     (dict(nodes=(), ours=False), RamAccessState.OFF),
 ], ids=["no-bus", "ours-and-access", "someone-elses", "installed-not-applied",
         "off", "an-admins-file-is-not-ours"])
-def test_where_the_user_stands(tmp_path: Path, kwargs, state) -> None:  # type: ignore[no-untyped-def]
+def test_where_the_user_stands(tmp_path: Path, kwargs, state) -> None:
     assert _access(tmp_path, **kwargs).status().state is state
 
 

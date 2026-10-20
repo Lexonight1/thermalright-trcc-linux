@@ -15,8 +15,8 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev"))
 
-import gen_manpages  # noqa: E402  # pyright: ignore[reportMissingImports]
-from _cli_tree import iter_leaves  # noqa: E402  # pyright: ignore[reportMissingImports]
+import gen_manpages  # noqa: E402
+from _cli_tree import iter_leaves  # noqa: E402
 
 _MAN_DIR = _ROOT / "man" / "man1"
 

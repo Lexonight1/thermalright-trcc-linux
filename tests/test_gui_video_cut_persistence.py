@@ -53,7 +53,7 @@ def test_a_cut_video_becomes_the_background_as_delivered_and_survives_close(
     from trcc.ui.gui.trcc_app import TRCCApp
 
     # No ffmpeg in the loop: any .zt "decodes" to three black frames.
-    def fake_load(self, device_key, path, size, **kwargs):  # type: ignore[no-untyped-def]
+    def fake_load(self, device_key, path, size, **kwargs):
         w, h = size if size is not None else (320, 320)
         playback = Playback(frames=[_jpeg(w, h)] * 3, fps=15)
         self._playbacks[device_key] = playback

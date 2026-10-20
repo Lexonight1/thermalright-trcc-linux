@@ -1171,7 +1171,7 @@ def cli_app(fake_platform):
     from trcc.ui.cli import _ctx
 
     _ctx.set_platform(fake_platform)
-    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     yield _ctx.compose_app()
     _reset_cli_ctx()
 

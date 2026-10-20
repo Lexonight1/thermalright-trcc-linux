@@ -148,7 +148,7 @@ def test_connect_says_which_cooler_it_found(tmp_path, cli_runner) -> None:
     _ctx.set_platform(MockPlatform(
         [{"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 5, "sub": 1}],
         tmp_path / "cli"))
-    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         out = cli_runner.invoke(cli, ["device", "connect", "87ad:70db"]).output
     finally:
@@ -179,7 +179,7 @@ def test_device_list_says_which_cooler_it_cannot_know(tmp_path, cli_runner) -> N
         {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 5, "sub": 1},
         {"type": "lcd", "vid": "0416", "pid": "5406", "pm": 32},
     ], tmp_path))
-    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         out = cli_runner.invoke(cli, ["device", "list"]).output
     finally:

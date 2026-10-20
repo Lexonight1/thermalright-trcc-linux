@@ -15,7 +15,7 @@ from trcc.core.commands._helpers import _element_to_entry
 from trcc.core.models import OverlayElement
 
 
-def _app_with_metric(fake_platform, show_unit: bool = True) -> tuple[App, str]:  # type: ignore[no-untyped-def]
+def _app_with_metric(fake_platform, show_unit: bool = True) -> tuple[App, str]:
     app = App(fake_platform, renderer=QtRenderer())
     key = "0402:3922"
     app.settings.set_user_overlay_elements(key, [
@@ -34,7 +34,7 @@ def _stored(app: App, key: str) -> OverlayElement:
     return elements[0]
 
 
-def test_update_toggles_show_unit(fake_platform) -> None:  # type: ignore[no-untyped-def]
+def test_update_toggles_show_unit(fake_platform) -> None:
     app, key = _app_with_metric(fake_platform, show_unit=True)
 
     result = app.dispatch(
@@ -48,7 +48,7 @@ def test_update_toggles_show_unit(fake_platform) -> None:  # type: ignore[no-unt
     assert stored.show_unit is False
 
 
-def test_update_can_turn_show_unit_back_on(fake_platform) -> None:  # type: ignore[no-untyped-def]
+def test_update_can_turn_show_unit_back_on(fake_platform) -> None:
     app, key = _app_with_metric(fake_platform, show_unit=False)
 
     result = app.dispatch(
@@ -58,7 +58,7 @@ def test_update_can_turn_show_unit_back_on(fake_platform) -> None:  # type: igno
     assert _stored(app, key).show_unit is True
 
 
-def test_update_without_show_unit_leaves_it_unchanged(fake_platform) -> None:  # type: ignore[no-untyped-def]
+def test_update_without_show_unit_leaves_it_unchanged(fake_platform) -> None:
     """Omitting show_unit (None) must not clobber the stored value."""
     app, key = _app_with_metric(fake_platform, show_unit=False)
 

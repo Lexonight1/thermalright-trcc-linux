@@ -139,7 +139,7 @@ def test_snapshot_degrades_raising_source_not_throws() -> None:
     def boom() -> float:
         raise PermissionError(13, "Permission denied")   # the #139 shape
 
-    cpu.power = boom            # type: ignore[method-assign]
+    cpu.power = boom
     s = BaselineSensors(cpu=cpu, memory=FakeMemory(), gpus=[], fans=[])
 
     m = s.snapshot()            # must NOT raise
@@ -943,7 +943,7 @@ def test_nvml_offers_no_hot_spot_it_cannot_read() -> None:
 def test_none_values_omitted_from_flat_dict() -> None:
     """Source returning None for a reading must not produce an entry."""
     cpu = FakeCpu()
-    cpu.values["power"] = None   # type: ignore[assignment]
+    cpu.values["power"] = None
     s = BaselineSensors(cpu=cpu, memory=FakeMemory(), gpus=[], fans=[])
 
     r = s.read_all()
@@ -961,7 +961,7 @@ def test_raising_source_degrades_not_crashes() -> None:
     def boom() -> float:
         raise PermissionError(13, "Permission denied")   # the #139 shape
 
-    cpu.power = boom            # type: ignore[method-assign]
+    cpu.power = boom
     s = BaselineSensors(cpu=cpu, memory=FakeMemory(), gpus=[], fans=[])
 
     r = s.read_all()            # must NOT raise
@@ -1238,8 +1238,8 @@ def test_the_platform_builds_one_enumerator_for_threads_that_race() -> None:
         time.sleep(0.05)              # wide enough for the race to land
         return BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
 
-    platform._build_sensors = slow_build          # type: ignore[method-assign]
-    platform.worker_thread_context = os_setup     # type: ignore[method-assign]
+    platform._build_sensors = slow_build
+    platform.worker_thread_context = os_setup
     got: list[object] = []
     threads = [threading.Thread(target=lambda: got.append(platform.sensors()))
                for _ in range(8)]

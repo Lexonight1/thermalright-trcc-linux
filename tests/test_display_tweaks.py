@@ -74,7 +74,7 @@ def test_set_fit_mode_rejects_invalid(app: App, bad: str) -> None:
 
 def test_set_fit_mode_publishes_event(app: App) -> None:
     events: list[FitModeChanged] = []
-    app.events.subscribe(FitModeChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(FitModeChanged, lambda e: events.append(e))
 
     app.dispatch(SetFitMode(key=_KEY, mode="stretch"))
 
@@ -85,7 +85,7 @@ def test_set_fit_mode_publishes_event(app: App) -> None:
 
 def test_set_fit_mode_rejection_does_not_publish(app: App) -> None:
     events: list[FitModeChanged] = []
-    app.events.subscribe(FitModeChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(FitModeChanged, lambda e: events.append(e))
 
     app.dispatch(SetFitMode(key=_KEY, mode="garbage"))
 
@@ -114,7 +114,7 @@ def test_enable_overlay_message_uses_enabled_disabled_wording(app: App) -> None:
 
 def test_enable_overlay_publishes_event(app: App) -> None:
     events: list[OverlayChanged] = []
-    app.events.subscribe(OverlayChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(OverlayChanged, lambda e: events.append(e))
 
     app.dispatch(EnableOverlay(key=_KEY, enabled=False))
 
@@ -154,7 +154,7 @@ def test_set_split_mode_message_when_disabled(app: App) -> None:
 
 def test_set_split_mode_publishes_event(app: App) -> None:
     events: list[SplitModeChanged] = []
-    app.events.subscribe(SplitModeChanged, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
+    app.events.subscribe(SplitModeChanged, lambda e: events.append(e))
 
     app.dispatch(SetSplitMode(key=_KEY, mode=2))
 
@@ -175,7 +175,7 @@ def test_set_game_mode_saves_announces_and_reports(app: App) -> None:
     """One dispatch: saved, told to every UI, and read back by the snapshot
     a UI restores its controls from."""
     heard: list[GameModeChanged] = []
-    app.events.subscribe(GameModeChanged, heard.append)  # type: ignore[arg-type]
+    app.events.subscribe(GameModeChanged, heard.append)
 
     result = app.dispatch(SetGameMode(key=_KEY, enabled=True, threshold=60))
 
@@ -209,7 +209,7 @@ def test_set_game_mode_refuses_and_changes_nothing(
     nothing, is refused whole -- not clamped, and not half-applied."""
     app.dispatch(SetGameMode(key=_KEY, threshold=60))
     heard: list[GameModeChanged] = []
-    app.events.subscribe(GameModeChanged, heard.append)  # type: ignore[arg-type]
+    app.events.subscribe(GameModeChanged, heard.append)
 
     result = app.dispatch(SetGameMode(key=_KEY, **kwargs))
 
@@ -273,7 +273,7 @@ def test_display_tweaks_persist_across_app_restart(
 
 def _levita(tmp_path: Path, sub: int):
     """A connected 1600x720 panel (87ad:70db PM 64) showing a white image."""
-    from PySide6.QtGui import QColor, QImage  # type: ignore[import-not-found]
+    from PySide6.QtGui import QColor, QImage
 
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.commands import LoadImage

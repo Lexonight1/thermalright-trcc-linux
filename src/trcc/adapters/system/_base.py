@@ -34,7 +34,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import usb.util  # pyright: ignore[reportMissingImports]
+import usb.util
 
 from ...core.factory import FallBackTo, Registry
 from ...core.logs import per_frame
@@ -241,7 +241,7 @@ class BaseOS(Platform):
         convention ``memory_info`` and ``disk_info`` document.
         """
         try:
-            import psutil  # type: ignore[import-untyped]
+            import psutil
         except ImportError:
             log.warning("%s.disk_partitions: psutil unavailable",
                         type(self).__name__)

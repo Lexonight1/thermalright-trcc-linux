@@ -304,7 +304,7 @@ def test_send_color_command_drives_real_app_dispatch(
     # Subscribe to FrameSent so we can assert it fires
     frame_sent_events: list[FrameSent] = []
     app.events.subscribe(
-        FrameSent, lambda e: frame_sent_events.append(e),   # type: ignore[arg-type, return-value]
+        FrameSent, lambda e: frame_sent_events.append(e),
     )
 
     result = app.dispatch(SendColor(key="0402:3922", r=255, g=0, b=0))
@@ -463,7 +463,7 @@ def test_app_close_blanks_the_panel_before_release(tmp_home: Path) -> None:
 
     sent: list[FrameSent] = []
     app.events.subscribe(
-        FrameSent, lambda e: sent.append(e),   # type: ignore[arg-type, return-value]
+        FrameSent, lambda e: sent.append(e),
     )
     app.close()
 
@@ -494,7 +494,7 @@ def test_render_and_send_frame_sent_carries_surface(tmp_home: Path) -> None:
 
     events: list[FrameSent] = []
     app.events.subscribe(
-        FrameSent, lambda e: events.append(e),   # type: ignore[arg-type, return-value]
+        FrameSent, lambda e: events.append(e),
     )
 
     result = app.dispatch(RenderAndSend(key="0402:3922"))
@@ -942,7 +942,7 @@ def test_closing_does_not_try_to_connect_an_unconnected_panel(
         tried.append(type(cmd).__name__)
         return real(cmd)
 
-    app.dispatch = spy                      # type: ignore[method-assign]
+    app.dispatch = spy
     app.close()
 
     assert EnsureConnected.__name__ not in tried

@@ -119,7 +119,7 @@ def test_reset_reports_failure_when_the_device_does_not_come_back(
         def disconnect(self) -> None:
             self.is_connected = False
 
-    _trcc_app.devices[info.key] = _StubDevice(info)  # type: ignore[assignment]
+    _trcc_app.devices[info.key] = _StubDevice(info)
 
     result = _trcc_app.dispatch(ResetDevice(key="dead:beef"))
 

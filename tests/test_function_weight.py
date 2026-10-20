@@ -45,7 +45,7 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
-import function_census  # noqa: E402  # pyright: ignore[reportMissingImports]
+import function_census  # noqa: E402
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 15 -> 14 on 2026-09-30: qtgui's ConfigurationPanel._setup_ui (150 -> 111

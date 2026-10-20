@@ -426,10 +426,10 @@ class LoadTheme(Command[ThemeResult]):
             canvas: tuple[int, int] = (0, 0)
             if device is not None and device.profile is not None:
                 canvas = device.profile.resolution
-            if canvas != (0, 0) and app._renderer is not None:  # pyright: ignore[reportPrivateUsage]
+            if canvas != (0, 0) and app._renderer is not None:
                 try:
-                    img = app._renderer.open_image(theme_mask)  # pyright: ignore[reportPrivateUsage]
-                    mw, mh = app._renderer.surface_size(img)  # pyright: ignore[reportPrivateUsage]
+                    img = app._renderer.open_image(theme_mask)
+                    mw, mh = app._renderer.surface_size(img)
                 except Exception as e:
                     log.warning(
                         "LoadTheme: failed to size %s (%s) — using stored center",
@@ -460,7 +460,7 @@ class LoadTheme(Command[ThemeResult]):
                 ok=True,
                 message=f"Theme '{theme.name}' saved (device not connected)",
             )
-        if app._renderer is None:  # pyright: ignore[reportPrivateUsage]
+        if app._renderer is None:
             return self._loaded(
                 theme, theme_path_str,
                 ok=True,

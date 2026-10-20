@@ -38,7 +38,7 @@ def window(tmp_path: Path, qtbot: Any) -> Iterator[Any]:
 
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
-    app.media._playbacks[_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+    app.media._playbacks[_KEY] = Playback(
         frames=[b"f"] * _FRAMES, fps=_FPS)
     win = TRCCApp(app=app)
     qtbot.addWidget(win)
@@ -152,7 +152,7 @@ def test_qtgui_s_button_says_what_a_click_will_do_wherever_the_pause_came_from(
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
-        app.media._playbacks[_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+        app.media._playbacks[_KEY] = Playback(
             frames=[b"f"] * _FRAMES, fps=_FPS)
         panel = DisplayPanel(app, BusBridge(app.events))
         qtbot.addWidget(panel)
@@ -216,7 +216,7 @@ def test_qtgui_s_bar_seeks_on_a_key_step_too(tmp_path: Path, qtbot: Any) -> None
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     try:
         assert app.dispatch(ConnectDevice(key=_KEY)).ok
-        app.media._playbacks[_KEY] = Playback(   # pyright: ignore[reportPrivateUsage]
+        app.media._playbacks[_KEY] = Playback(
             frames=[b"f"] * _FRAMES, fps=_FPS)
         panel = DisplayPanel(app, BusBridge(app.events))
         qtbot.addWidget(panel)

@@ -2684,8 +2684,8 @@ class ApplyMask(Command[MaskApplyResult]):
         from ...services import _dc as Dc
         from ...services.overlay import OverlayService
         try:
-            mask_img = app.display._r.open_image(resolved_file)  # pyright: ignore[reportPrivateUsage]
-            mw, mh = app.display._r.surface_size(mask_img)  # pyright: ignore[reportPrivateUsage]
+            mask_img = app.display._r.open_image(resolved_file)
+            mw, mh = app.display._r.surface_size(mask_img)
         except Exception as e:
             log.warning("ApplyMask: failed to size %s (%s) — position skipped",
                         resolved_file, e)
@@ -2959,7 +2959,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
                 message=f"Overlay element id {eid!r} already exists",
             )
         element = OverlayElement(
-            id=eid, type=self.type,  # type: ignore[arg-type]
+            id=eid, type=self.type,
             x=self.x, y=self.y, color=self.color, size=self.size,
             font=self.font, bold=self.bold, italic=self.italic,
             text=self.text,

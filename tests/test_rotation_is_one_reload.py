@@ -129,7 +129,7 @@ class _Rotation:
         return self
 
     def __exit__(self, *exc: object) -> None:
-        self._app.dispatch = self._real   # type: ignore[method-assign]
+        self._app.dispatch = self._real
 
 
 def _assert_one_clean_reload(app: App, rotation: _Rotation) -> None:
@@ -250,7 +250,7 @@ def test_qtgui_rotation_is_one_reload(rotatable: App, qtbot: Any) -> None:
 
     panel = DisplayPanel(rotatable, BusBridge(rotatable.events))
     qtbot.addWidget(panel)
-    panel._require_key = lambda: _KEY   # type: ignore[method-assign]
+    panel._require_key = lambda: _KEY
     index = panel._orientation.findData(90)
     assert index >= 0, "the panel offers no 90° option to drive"
     panel._orientation.setCurrentIndex(index)

@@ -124,7 +124,7 @@ def test_gui_a_dropped_image_opens_the_cropper(
     QImage(8, 8, QImage.Format.Format_RGB888).save(str(picture))
     window, sent = _gui(qtbot, fake_platform)
     shown: list[str] = []
-    window._show_cutter = shown.append  # type: ignore[method-assign]
+    window._show_cutter = shown.append
     window._on_file_dropped(picture, MediaKind.IMAGE)
     assert (shown, sent, window._cut_mode) == (["image"], [], "background")
 

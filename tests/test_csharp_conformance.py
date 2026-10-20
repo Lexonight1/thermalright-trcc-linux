@@ -77,14 +77,14 @@ from .test_ly_lcd_geometry import _ly_response, _make_ly
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
-from audit_devices import (  # pyright: ignore[reportMissingImports]
+from audit_devices import (
     WIDESCREEN_SEMANTIC_SPLIT,
 )
-from encode_reference import (  # pyright: ignore[reportMissingImports]
+from encode_reference import (
     csharp_encode,
     csharp_rgb565_big_endian,
 )
-from formcztv_init import (  # pyright: ignore[reportMissingImports]
+from formcztv_init import (
     form_cztv_init,
 )
 

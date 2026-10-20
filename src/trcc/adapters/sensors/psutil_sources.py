@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 
-import psutil  # pyright: ignore[reportMissingImports]
+import psutil
 
 from ...core.logs import per_frame
 from ...core.ports import BoardTempSource, CpuSource, MemorySource

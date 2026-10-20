@@ -35,7 +35,7 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "decompiler"))
 
-from core.csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+from core.csharp import (  # noqa: E402
     DECOMPILE_ROOT,
     ORACLE_RELEASE,
     ORACLE_VERSION,

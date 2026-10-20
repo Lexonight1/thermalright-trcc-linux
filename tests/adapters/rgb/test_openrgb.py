@@ -123,11 +123,11 @@ class FakeOpenRgb:
 
 
 @pytest.fixture
-def fake():  # type: ignore[no-untyped-def]
+def fake():
     """Build fake servers and mirrors; close every socket afterwards."""
     made: list = []
 
-    def build(devices, **kw):  # type: ignore[no-untyped-def]
+    def build(devices, **kw):
         server = FakeOpenRgb(devices, **kw)
         mirror = OpenRgbMirror(port=server.port)
         made.extend((mirror, server))
@@ -225,7 +225,7 @@ def test_an_update_payload_is_what_openrgb_builds() -> None:
         "<IHI", 10, 1, 1 | 2 << 8 | 3 << 16)
 
 
-def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:  # type: ignore[no-untyped-def]
+def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:
     """The production chain: RenderLed -> the App's follower -> the real
     OpenRgbMirror -> an OpenRGB server, which receives the cooler's colours."""
     import sys

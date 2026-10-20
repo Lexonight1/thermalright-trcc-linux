@@ -535,7 +535,7 @@ def test_catalog_spellings_matches_every_csharp_token_pair() -> None:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dev"
                            / "decompiler"))
-    from formcztv_init import (  # pyright: ignore[reportMissingImports]
+    from formcztv_init import (
         _THEME_TOKENS,
     )
 

@@ -23,7 +23,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev"))
 
-import gen_ports_reference  # noqa: E402  # pyright: ignore[reportMissingImports]
+import gen_ports_reference  # noqa: E402
 
 _DOC = _ROOT / "doc" / "REFERENCE_PORTS.md"
 

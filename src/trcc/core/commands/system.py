@@ -1383,7 +1383,7 @@ class SetTempUnit(Command[TempUnitResult]):
                 message=f"unit must be 'C' or 'F', got {self.unit!r}",
             )
         log.info("SetTempUnit.execute: %s (global)", self.unit)
-        app.settings.set_global_temp_unit(self.unit)   # type: ignore[arg-type]
+        app.settings.set_global_temp_unit(self.unit)
         app.events.publish(TempUnitChanged(unit=self.unit))
         return TempUnitResult(
             ok=True, unit=self.unit,

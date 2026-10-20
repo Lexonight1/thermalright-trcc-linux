@@ -31,7 +31,7 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
-import class_census  # noqa: E402  # pyright: ignore[reportMissingImports]
+import class_census  # noqa: E402
 
 #: The one number.  LOWER IT when a class comes off the list; never raise it.
 #:

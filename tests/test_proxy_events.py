@@ -492,7 +492,7 @@ def test_no_frame_listener_means_the_app_encodes_nothing(
 
 # ── Shared frames: the pixels, not a JPEG (trcc.frame_share) ────────────────
 
-def _frame_daemon(fake_platform, tmp_path, monkeypatch):  # type: ignore[no-untyped-def]
+def _frame_daemon(fake_platform, tmp_path, monkeypatch):
     from trcc.adapters.render.qt import QtRenderer
 
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))

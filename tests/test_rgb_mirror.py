@@ -71,10 +71,10 @@ class FakeMirror(RamLights):
     def found(self) -> tuple[RgbMirrorDevice, ...] | None:
         return (STRIP, RAM) if self.scanned else None
 
-    def apply_effect(self, device, settings) -> None:  # type: ignore[no-untyped-def]
+    def apply_effect(self, device, settings) -> None:
         self.effects.append((device.name, settings))
 
-    def show(self, device, colors) -> None:  # type: ignore[no-untyped-def]
+    def show(self, device, colors) -> None:
         self.shown.append((device.name, tuple(colors)))
 
     def release(self) -> None:
@@ -88,7 +88,7 @@ class FakeMirror(RamLights):
         self.scanned = False
 
 
-def _until(check, timeout: float = 5.0) -> None:  # type: ignore[no-untyped-def]
+def _until(check, timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
     while not check() and time.monotonic() < deadline:
         time.sleep(0.01)
@@ -96,7 +96,7 @@ def _until(check, timeout: float = 5.0) -> None:  # type: ignore[no-untyped-def]
 
 
 def _service(retry_s: float = 10.0,
-             on_sent=None) -> tuple[RgbMirrorService, list[FakeMirror]]:  # type: ignore[no-untyped-def]
+             on_sent=None) -> tuple[RgbMirrorService, list[FakeMirror]]:
     made: list[FakeMirror] = []
 
     def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
@@ -241,7 +241,7 @@ def _app(tmp_path: Path) -> tuple[App, list[FakeMirror]]:
     return app, made
 
 
-def test_the_command_saves_the_setting_and_starts_following(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_command_saves_the_setting_and_starts_following(tmp_path) -> None:
     app, made = _app(tmp_path)
     result = app.dispatch(SetRgbFollow(mode=OPENRGB, port=7000))
     assert result.ok and result.mode is OPENRGB
@@ -262,7 +262,7 @@ def test_the_command_saves_the_setting_and_starts_following(tmp_path) -> None:  
     app.close()
 
 
-def test_the_saved_choice_follows_again_at_start(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_saved_choice_follows_again_at_start(tmp_path) -> None:
     app, _ = _app(tmp_path)
     app.dispatch(SetRgbFollow(mode=RAM_MODE))
     app.close()
@@ -271,14 +271,14 @@ def test_the_saved_choice_follows_again_at_start(tmp_path) -> None:  # type: ign
     again.close()
 
 
-def test_an_unknown_saved_choice_is_off(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_an_unknown_saved_choice_is_off(tmp_path) -> None:
     app, made = _app(tmp_path)
     app.settings.app.rgb_follow = "rainbow"
     assert app.settings.rgb_follow_mode() is OFF
     app.close()
 
 
-def test_a_port_out_of_range_is_refused(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_port_out_of_range_is_refused(tmp_path) -> None:
     app, made = _app(tmp_path)
     result = app.dispatch(SetRgbFollow(mode=OPENRGB, port=70000))
     assert not result.ok
@@ -287,7 +287,7 @@ def test_a_port_out_of_range_is_refused(tmp_path) -> None:  # type: ignore[no-un
     app.close()
 
 
-def test_an_led_render_reaches_the_follower(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_an_led_render_reaches_the_follower(tmp_path) -> None:
     """The whole chain: RenderLed -> LedColorsChanged -> the follower."""
     app, made = _app(tmp_path)
     assert app.dispatch(ConnectDevice(key="0416:8001")).ok
@@ -315,7 +315,7 @@ class _PlatformWithRam(MockPlatform):
         return (self.ram,)
 
 
-def test_the_app_lights_the_ram_its_platform_hands_out(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_app_lights_the_ram_its_platform_hands_out(tmp_path) -> None:
     """The App builds the RAM follower from ``platform.smbuses`` -- the one
     way a test or a mock fleet keeps its writes off the host's memory."""
     platform = _PlatformWithRam(tmp_path)
@@ -328,7 +328,7 @@ def test_the_app_lights_the_ram_its_platform_hands_out(tmp_path) -> None:  # typ
     app.close()
 
 
-def test_a_platform_without_an_smbus_refuses(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_platform_without_an_smbus_refuses(tmp_path) -> None:
     """The base port refuses; only an OS that has the bus opens it."""
     from .conftest import FakePlatform
 
@@ -336,7 +336,7 @@ def test_a_platform_without_an_smbus_refuses(tmp_path) -> None:  # type: ignore[
         FakePlatform(tmp_path).smbuses()
 
 
-def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:
     """A bus that fails to open closes the ones already open, and no bus at
     all names the module the user is missing."""
     from trcc.adapters.system import linux
@@ -366,7 +366,7 @@ def test_linux_opens_every_smbus_or_none(monkeypatch) -> None:  # type: ignore[n
 
 # ── Every UI hears of a change; the page's own tests are test_rgb_page_view
 
-def test_a_change_from_any_ui_reaches_the_windows(qtbot) -> None:  # type: ignore[no-untyped-def]
+def test_a_change_from_any_ui_reaches_the_windows(qtbot) -> None:
     from trcc.core.events import EventBus, RgbFollowChanged
     from trcc.ui.bus_bridge import BusBridge
 
@@ -523,7 +523,7 @@ def test_stopping_follow_keeps_the_ram_closing_releases_it() -> None:
     assert bus.closed and service.ram_sticks() is None
 
 
-def test_linux_will_not_open_a_bus_whose_spd_hub_is_stuck(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_linux_will_not_open_a_bus_whose_spd_hub_is_stuck(monkeypatch) -> None:
     """A stuck SPD hub on the bus is no place to add traffic: the follower and
     the effects are refused, with the cure, until a power-off clears it.
 
@@ -553,10 +553,10 @@ class _FakeRamAccess:
         self.cancel = False
         self.calls: list[str] = []
 
-    def status(self):  # type: ignore[no-untyped-def]
+    def status(self):
         return self.status_
 
-    def enable(self):  # type: ignore[no-untyped-def]
+    def enable(self):
         from trcc.core.models import RamAccessState, RamAccessStatus
         self.calls.append("enable")
         if self.cancel:
@@ -565,7 +565,7 @@ class _FakeRamAccess:
         self.status_ = RamAccessStatus(RamAccessState.ON, "RAM lighting is on")
         return self.status_
 
-    def disable(self):  # type: ignore[no-untyped-def]
+    def disable(self):
         from trcc.core.models import RamAccessState, RamAccessStatus
         self.calls.append("disable")
         self.status_ = RamAccessStatus(RamAccessState.OFF, "RAM lighting is off")
@@ -583,7 +583,7 @@ def _ram_app(tmp_path: Path) -> tuple[App, _FakeRamAccess, list]:
     return app, access, seen
 
 
-def test_switching_ram_lighting_tells_every_ui(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_switching_ram_lighting_tells_every_ui(tmp_path) -> None:
     from trcc.core.commands import RamLighting, SetRamLighting
     from trcc.core.models import RamAccessState
 
@@ -599,7 +599,7 @@ def test_switching_ram_lighting_tells_every_ui(tmp_path) -> None:  # type: ignor
     app.close()
 
 
-def test_a_closed_password_prompt_is_not_ok(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_closed_password_prompt_is_not_ok(tmp_path) -> None:
     from trcc.core.commands import SetRamLighting
     from trcc.core.models import RamAccessState
 
@@ -611,7 +611,7 @@ def test_a_closed_password_prompt_is_not_ok(tmp_path) -> None:  # type: ignore[n
     app.close()
 
 
-def test_a_client_waits_for_the_password_as_long_as_the_app_does(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_a_client_waits_for_the_password_as_long_as_the_app_does(monkeypatch) -> None:
     """The answer comes when the password is typed or the prompt closed --
     never a fixed 30 s that reports a failure that has not happened.
 
@@ -622,7 +622,7 @@ def test_a_client_waits_for_the_password_as_long_as_the_app_does(monkeypatch) ->
 
     waited: list[object] = []
 
-    def answer(envelope, *, timeout):  # type: ignore[no-untyped-def]
+    def answer(envelope, *, timeout):
         waited.append(timeout)
         return {"type": "RamLightingResult", "ok": True}
 
@@ -641,7 +641,7 @@ RED, BLUE = (255, 0, 0), (0, 0, 255)      # 0 and 255 pass the LED gamma as-is
 
 def _pixels(left: tuple[int, int, int] = RED,
             right: tuple[int, int, int] = BLUE, width: int = 40,
-            height: int = 20):  # type: ignore[no-untyped-def]
+            height: int = 20):
     """A ``raw_argb32`` stand-in: *left* half, *right* half, whatever the
     surface -- in the host's native ARGB32 order, as Qt lays it out."""
     import sys
@@ -654,7 +654,7 @@ def _pixels(left: tuple[int, int, int] = RED,
     return lambda surface: (line * height, width, height, width * 4)
 
 
-def _following(source: str = "0402:3922", **kw) -> tuple[RgbMirrorService, FakeMirror]:  # type: ignore[no-untyped-def]
+def _following(source: str = "0402:3922", **kw) -> tuple[RgbMirrorService, FakeMirror]:
     service, made = _service()
     service.configure(RAM_MODE, "", 0, source, **kw)
     return service, made[-1] if made else service._ram  # type: ignore[return-value]
@@ -724,7 +724,7 @@ def test_a_fast_video_is_sampled_at_most_twenty_times_a_second() -> None:
     read: list[object] = []
     pixels = _pixels()
 
-    def counting(surface):  # type: ignore[no-untyped-def]
+    def counting(surface):
         read.append(surface)
         return pixels(surface)
 
@@ -744,7 +744,7 @@ def test_only_the_picked_lights_follow() -> None:
     service.stop()
 
 
-def test_the_choice_is_kept_and_a_damaged_targets_setting_means_all(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_choice_is_kept_and_a_damaged_targets_setting_means_all(tmp_path) -> None:
     from trcc.core.models import FollowMapping
 
     app, made = _app(tmp_path)
@@ -763,7 +763,7 @@ def test_the_choice_is_kept_and_a_damaged_targets_setting_means_all(tmp_path) ->
 
 
 def test_the_colours_choice_is_kept_reaches_the_follower_and_damage_is_vivid(
-        tmp_path) -> None:  # type: ignore[no-untyped-def]
+        tmp_path) -> None:
     """MUTATION CHECK: drop ``colors`` from ``configure`` in SetRgbFollow."""
     from trcc.core.models import FollowColors
 
@@ -780,7 +780,7 @@ def test_the_colours_choice_is_kept_reaches_the_follower_and_damage_is_vivid(
     app.close()
 
 
-def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:
     """FrameSent -> App -> the renderer's sampler -> one column per light."""
     from PySide6.QtGui import QColor, QImage
 
@@ -813,7 +813,7 @@ def test_the_app_follows_an_lcd_with_the_real_renderer(tmp_path) -> None:  # typ
 
 
 def test_the_app_follows_the_picture_under_the_overlay_and_says_what_it_sent(
-        tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        tmp_path, monkeypatch) -> None:
     """The App samples ``background_surface`` -- the frame without its text --
     and publishes the colours sent, for every window's preview."""
     from PySide6.QtGui import QColor, QImage
@@ -861,14 +861,14 @@ def _lights_app(tmp_path: Path) -> tuple[App, _PlatformWithRam, list]:
     return app, platform, seen
 
 
-def _not_board(lights):  # type: ignore[no-untyped-def]
+def _not_board(lights):
     """RAM and OpenRGB lights only -- the stand-in fleet's board is listed
     beside them, and has tests of its own."""
     return [light for light in lights
             if light.kind.value not in ("board", "found")]
 
 
-def test_the_lights_are_read_without_the_bus_until_find(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_lights_are_read_without_the_bus_until_find(tmp_path) -> None:
     from trcc.core.commands import RgbLights, ScanRgbLights
 
     app, platform, seen = _lights_app(tmp_path)
@@ -888,7 +888,7 @@ def test_the_lights_are_read_without_the_bus_until_find(tmp_path) -> None:  # ty
     app.close()
 
 
-def test_a_find_is_listed_again_after_a_restart_without_the_bus(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_find_is_listed_again_after_a_restart_without_the_bus(tmp_path) -> None:
     """The sticks keep their own effect through a reboot; the page must not
     forget them.  Read back through the FILE, by a second App.
 
@@ -910,7 +910,7 @@ def test_a_find_is_listed_again_after_a_restart_without_the_bus(tmp_path) -> Non
     again.close()
 
 
-def test_a_find_replaces_its_own_kind_and_a_failed_one_keeps_it(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_find_replaces_its_own_kind_and_a_failed_one_keeps_it(tmp_path) -> None:
     """A stick taken out is forgotten; a bus that cannot be read forgets
     nothing; RAM's Find leaves OpenRGB's record alone."""
     from trcc.core.commands import ScanRgbLights
@@ -931,7 +931,7 @@ def test_a_find_replaces_its_own_kind_and_a_failed_one_keeps_it(tmp_path) -> Non
 
     app.close()
     platform = _PlatformWithRam(tmp_path)
-    platform.smbuses = stuck  # type: ignore[method-assign]
+    platform.smbuses = stuck
     again = App(platform)               # the App takes the bus from here
     failed = again.dispatch(ScanRgbLights())
     assert not failed.ok
@@ -942,7 +942,7 @@ def test_a_find_replaces_its_own_kind_and_a_failed_one_keeps_it(tmp_path) -> Non
     again.close()
 
 
-def test_a_damaged_found_light_is_dropped_not_guessed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_damaged_found_light_is_dropped_not_guessed(tmp_path) -> None:
     from trcc.core.models import LightKind
 
     app, _platform, _seen = _lights_app(tmp_path)
@@ -961,7 +961,7 @@ def test_a_damaged_found_light_is_dropped_not_guessed(tmp_path) -> None:  # type
     app.close()
 
 
-def test_an_effect_is_saved_on_the_sticks_and_remembered(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_an_effect_is_saved_on_the_sticks_and_remembered(tmp_path) -> None:
     from trcc.core.commands import RgbLights, ScanRgbLights, SetRamEffect
     from trcc.core.models import EffectSpeed, RamEffect
 
@@ -980,7 +980,7 @@ def test_an_effect_is_saved_on_the_sticks_and_remembered(tmp_path) -> None:  # t
     app.close()
 
 
-def test_an_effect_the_stick_cannot_take_changes_nothing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_an_effect_the_stick_cannot_take_changes_nothing(tmp_path) -> None:
     """Refused BEFORE following stops: a bad request turns nothing off.
 
     MUTATION CHECK: check the effect after stopping the follow."""
@@ -1001,7 +1001,7 @@ def test_an_effect_the_stick_cannot_take_changes_nothing(tmp_path) -> None:  # t
     app.close()
 
 
-def test_an_effect_stops_ram_following_first_and_says_so(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_an_effect_stops_ram_following_first_and_says_so(tmp_path) -> None:
     from trcc.core.commands import ScanRgbLights, SetRamEffect
     from trcc.core.models import RamEffect
 
@@ -1019,7 +1019,7 @@ def test_an_effect_stops_ram_following_first_and_says_so(tmp_path) -> None:  # t
     app.close()
 
 
-def test_a_bus_that_cannot_be_used_is_said_not_hidden(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_bus_that_cannot_be_used_is_said_not_hidden(tmp_path) -> None:
     """No access, a stuck SPD hub: the scan says why, and nothing is listed."""
     from trcc.core.commands import ScanRgbLights
 
@@ -1028,7 +1028,7 @@ def test_a_bus_that_cannot_be_used_is_said_not_hidden(tmp_path) -> None:  # type
     def stuck() -> tuple[SmBus, ...]:
         raise OSError("the memory's SPD hub(s) 3-0051 are not answering")
 
-    platform.smbuses = stuck  # type: ignore[method-assign]
+    platform.smbuses = stuck
     app = App(platform)                 # the App takes the bus from here
     result = app.dispatch(ScanRgbLights())
     assert not result.ok
@@ -1037,7 +1037,7 @@ def test_a_bus_that_cannot_be_used_is_said_not_hidden(tmp_path) -> None:  # type
     app.close()
 
 
-def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:
     app, _platform, _seen = _lights_app(tmp_path)
     app.settings.app.ram_effects = {
         "i2c-3/0x19": {"effect": "disco"},
@@ -1047,7 +1047,7 @@ def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:  # typ
     app.close()
 
 
-def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_find_at_a_new_address_saves_it_and_moves_the_follower(tmp_path) -> None:
     """The page's address box reaches the App through Find, so the setting,
     the scan and an OpenRGB follower never point at different servers."""
     from trcc.core.commands import ScanRgbLights

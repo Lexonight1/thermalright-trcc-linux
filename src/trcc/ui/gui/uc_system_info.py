@@ -476,7 +476,7 @@ class UCSystemInfo(QWidget):
                 )
             self._add_btn.setGeometry(add_x, add_y, PANEL_W, PANEL_H)
             self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._add_btn.mousePressEvent = self._handle_add_btn_press  # type: ignore[assignment]
+            self._add_btn.mousePressEvent = self._handle_add_btn_press
             self._add_btn.show()
 
             # Fill remaining slots with empty placeholders

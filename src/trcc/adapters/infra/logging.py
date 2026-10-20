@@ -263,7 +263,7 @@ class _SharedRotatingFileHandler(RenderOnceRotatingFileHandler, ABC):
                     # itself leaves it None under ``delay=True`` and CPython's own
                     # ``doRollover`` assigns None here.  The stub is wrong, not
                     # the assignment.
-                    self.stream = None  # pyright: ignore[reportAttributeAccessIssue]
+                    self.stream = None
                 self._release()
         except Exception:
             self.handleError(record)
@@ -296,7 +296,7 @@ class _SharedRotatingFileHandler(RenderOnceRotatingFileHandler, ABC):
         # retention.  Re-open onto the current file instead.
         if self.stream:
             self.stream.close()
-            self.stream = None  # pyright: ignore[reportAttributeAccessIssue]
+            self.stream = None
         try:
             rotated_by_peer = self._base_path.stat().st_ino != self._inode
         except FileNotFoundError:
@@ -372,7 +372,7 @@ class WindowsSharedLogHandler(_SharedRotatingFileHandler):
     _keep_open: ClassVar[bool] = False
 
     def __init__(self, filename: Path, **kwargs: object) -> None:
-        import msvcrt  # pyright: ignore[reportMissingImports]
+        import msvcrt
         self._locking = msvcrt.locking  # pyright: ignore[reportAttributeAccessIssue]
         self._lk_lock = msvcrt.LK_LOCK  # pyright: ignore[reportAttributeAccessIssue]
         self._lk_unlck = msvcrt.LK_UNLCK  # pyright: ignore[reportAttributeAccessIssue]
@@ -390,7 +390,7 @@ class WindowsSharedLogHandler(_SharedRotatingFileHandler):
 
     @staticmethod
     def _claim_run(fd: int) -> None:
-        import msvcrt  # pyright: ignore[reportMissingImports]
+        import msvcrt
         log.debug("WindowsSharedLogHandler._claim_run: trying fd=%d", fd)
         os.lseek(fd, 0, os.SEEK_SET)
         # LK_NBLCK is the non-blocking exclusive lock; msvcrt has no shared

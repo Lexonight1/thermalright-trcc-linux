@@ -43,7 +43,7 @@ def _hid(sys_root: Path, name: str, bus: int, interface: int,
     (links / name).symlink_to(device)
 
 
-def test_sysfs_lists_usb_hid_interfaces_and_names_the_board(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_sysfs_lists_usb_hid_interfaces_and_names_the_board(tmp_path) -> None:
     dmi = tmp_path / "class" / "dmi" / "id"
     dmi.mkdir(parents=True)
     (dmi / "board_vendor").write_text("ASUSTeK COMPUTER INC.\n")
@@ -57,13 +57,13 @@ def test_sysfs_lists_usb_hid_interfaces_and_names_the_board(tmp_path) -> None:  
         0x0B05, 0x19AF, 2, 0xFF72, 0x00A1, "Board 0B05", "/dev/hidraw0"),)
 
 
-def test_no_dmi_and_no_hid_bus_find_nothing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_no_dmi_and_no_hid_bus_find_nothing(tmp_path) -> None:
     hardware = SysfsRgbHardware(tmp_path)
     assert hardware.board() is None
     assert hardware.hid_interfaces() == ()
 
 
-def test_linux_names_the_sysfs_reader_and_other_platforms_find_nothing(fake_platform) -> None:  # type: ignore[no-untyped-def]
+def test_linux_names_the_sysfs_reader_and_other_platforms_find_nothing(fake_platform) -> None:
     assert LinuxOS.RGB_HARDWARE is SysfsRgbHardware
     assert fake_platform.rgb_hardware().hid_interfaces() == ()
     assert fake_platform.rgb_hardware().board() is None

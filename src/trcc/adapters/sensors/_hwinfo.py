@@ -217,7 +217,7 @@ class _HWiNFOMapping(_MappingPort):
         import ctypes
 
         buf = (ctypes.c_char * length)()
-        ctypes.memmove(buf, self._view + offset, length)  # type: ignore[operator]
+        ctypes.memmove(buf, self._view + offset, length)
         return bytes(buf)
 
     def close(self) -> None:

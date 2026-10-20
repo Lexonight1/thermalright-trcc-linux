@@ -29,7 +29,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
-import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
+import logging_coverage  # noqa: E402
 
 #: Silent functions as of 2026-08-21 (landed at 1451; -5 by deleting six dead
 #: functions, -7 by promoting eleven ``Platform`` members to ``@abstractmethod``

@@ -87,7 +87,7 @@ def test_only_the_aura_motherboard_gets_a_trcc_driver() -> None:
 
 # ── Find, through the App ──────────────────────────────────────────────────
 
-def test_find_lists_the_boards_lights_and_a_restart_remembers_them(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_find_lists_the_boards_lights_and_a_restart_remembers_them(tmp_path) -> None:
     """The maintainer's board: its LED and three ARGB headers, read with the
     two read requests and nothing else; an MSI controller listed, not driven.
 
@@ -128,7 +128,7 @@ class _Unreadable(RgbMirror):
     def devices(self) -> tuple[RgbMirrorDevice, ...]:
         raise OSError("permission denied: /dev/hidraw0")
 
-    def show(self, device: RgbMirrorDevice, colors) -> None:  # type: ignore[no-untyped-def]
+    def show(self, device: RgbMirrorDevice, colors) -> None:
         raise AssertionError("Find never sends colours")
 
     def close(self) -> None:
@@ -153,7 +153,7 @@ def test_a_board_that_cannot_be_read_says_why_and_is_not_called_found() -> None:
     assert finder.last() == scan
 
 
-def test_a_failed_board_read_keeps_the_last_find(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_failed_board_read_keeps_the_last_find(tmp_path) -> None:
     app = App(_platform(tmp_path, AURA_INTERFACE))
     app.dispatch(ScanRgbLights())
     saved = app.settings.found_lights(LightKind.BOARD)
@@ -209,7 +209,7 @@ def test_a_controller_that_refuses_to_open_leaves_find_working(
     app.close()
 
 
-def test_no_board_rgb_says_none_found(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_no_board_rgb_says_none_found(tmp_path) -> None:
     app = App(_platform(tmp_path))
     found = app.dispatch(ScanRgbLights())
     assert found.message.endswith("; motherboard: none found")
@@ -220,7 +220,7 @@ def test_no_board_rgb_says_none_found(tmp_path) -> None:  # type: ignore[no-unty
 
 # ── An ARGB header's LED count -- the user's to give ───────────────────────
 
-def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> None:
     """Refused before anything changes for a header not listed or a count
     out of range; saved and re-read -- read requests only -- otherwise.
 
@@ -251,7 +251,7 @@ def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> No
     again.close()
 
 
-def test_a_damaged_led_count_is_dropped_not_guessed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_damaged_led_count_is_dropped_not_guessed(tmp_path) -> None:
     app = App(_platform(tmp_path))
     # cast: the entries are deliberately ill-typed, as a hand-edited
     # trcc.json can be -- the field's type is exactly what is being violated.

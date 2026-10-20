@@ -108,7 +108,7 @@ def test_ten_leds_go_in_one_block_twelve_in_two() -> None:
     (CORSAIR_STICK_INFO[:2] + b"\x99\x99" + CORSAIR_STICK_INFO[4:], None, "an unknown product"),
     (b"\x00\x00" + CORSAIR_STICK_INFO[2:], None, "not Corsair's vendor id"),
 ], ids=["bad-checksum", "protocol-3", "unknown-product", "not-corsair"])
-def test_a_stick_it_cannot_drive_is_left_alone(info, checksum, why) -> None:  # type: ignore[no-untyped-def]
+def test_a_stick_it_cannot_drive_is_left_alone(info, checksum, why) -> None:
     mirror, bus = _mirror({0x19: ScriptedCorsairStick(info, checksum)})
     assert mirror.devices() == (), why
     assert not [t for t in bus.touched if t[0] == "block"], why
@@ -148,7 +148,7 @@ def test_the_bus_is_found_where_current_kernels_list_it() -> None:
 
 # ── Effects: saved on the stick, byte for byte as OpenRGB's ─────────────────
 
-def _effect(**kw):  # type: ignore[no-untyped-def]
+def _effect(**kw):
     return RamEffectSettings(**kw)
 
 
@@ -180,7 +180,7 @@ def _effect(**kw):  # type: ignore[no-untyped-def]
      [0x10, 0x00, 0x01, 0x02, 0, 0, 0, 0, 0, 0, 0, 0]),
 ], ids=["rainbow-wave-defaults", "color-shift", "pulse-random", "visor-h",
         "marquee-one-colour", "rain-up", "static"])
-def test_the_effect_packet_is_openrgbs(settings, expected) -> None:  # type: ignore[no-untyped-def]
+def test_the_effect_packet_is_openrgbs(settings, expected) -> None:
     assert effect_packet(settings) == bytes(expected + [0] * 8)
 
 
@@ -198,7 +198,7 @@ def test_every_effect_has_a_byte_and_traits() -> None:
      "color-wave takes 2 colour"),
     (_effect(effect=RamEffect.RAINBOW, brightness=256), "brightness is 0-255"),
 ], ids=["direction", "colours", "brightness"])
-def test_settings_the_effect_cannot_take_write_nothing(settings, message) -> None:  # type: ignore[no-untyped-def]
+def test_settings_the_effect_cannot_take_write_nothing(settings, message) -> None:
     mirror, bus = _mirror({0x19: ScriptedCorsairStick()})
     stick = mirror.devices()[0]
     before = len(bus.touched)

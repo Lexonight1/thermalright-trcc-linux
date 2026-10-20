@@ -28,7 +28,7 @@ def test_minted_ids_are_unique() -> None:
     assert a.id != b.id
 
 
-def test_an_edit_finds_the_element_by_its_id(fake_platform) -> None:  # type: ignore[no-untyped-def]
+def test_an_edit_finds_the_element_by_its_id(fake_platform) -> None:
     """An element is addressed by its real id; a bare index names nothing."""
     app = App(fake_platform, renderer=QtRenderer())
     key = "0402:3922"

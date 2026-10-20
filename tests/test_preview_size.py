@@ -27,7 +27,7 @@ def app(tmp_home: Path) -> App:
     # The composed path goes through DisplayService, which needs a
     # renderer; the fallback path does not.
     return App(platform=FakePlatform(tmp_home),
-               renderer=_CliRenderer())    # type: ignore[arg-type]
+               renderer=_CliRenderer())
 
 
 @pytest.fixture

@@ -969,7 +969,7 @@ def test_each_app_wide_setting_announces_its_change(fake_platform) -> None:
     app = App(platform=fake_platform)
     seen: list[object] = []
     for kind in (AutostartChanged, DiskDeviceChanged, SensorDashboardChanged):
-        app.events.subscribe(kind, seen.append)  # type: ignore[arg-type]
+        app.events.subscribe(kind, seen.append)
 
     for command in (SetDiskDevice(disk_key="nvme1"), SetDiskDevice(disk_key=""),
                     SetSensorDashboard(panels=(PanelConfig.custom(),)),

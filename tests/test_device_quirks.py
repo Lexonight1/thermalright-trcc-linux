@@ -386,7 +386,7 @@ def test_a_prior_discovery_is_still_honoured_and_costs_no_rescan(
         scans += 1
         return real()
 
-    app.platform.scan_devices = counting_scan   # type: ignore[method-assign]
+    app.platform.scan_devices = counting_scan
 
     quirks = app._quirks_for(0x0416, 0x5302)
 
@@ -513,7 +513,7 @@ def test_the_quirk_retry_keeps_what_the_panel_shows(tmp_path, monkeypatch) -> No
     real_connect = HidLcd.connect
     attempts: list[object] = []
 
-    def failing_first(self):  # type: ignore[no-untyped-def]
+    def failing_first(self):
         attempts.append(self)
         if len(attempts) == 1:
             raise HandshakeError("ordinary transport said nothing")

@@ -153,7 +153,7 @@ def test_a_denied_open_says_so_instead_of_returning_false(
 
     real_open = os.open
 
-    def denied(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def denied(path, *args, **kwargs):
         if path == node:
             raise PermissionError(errno.EACCES, "Permission denied", path)
         return real_open(path, *args, **kwargs)

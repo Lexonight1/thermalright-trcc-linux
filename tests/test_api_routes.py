@@ -1357,7 +1357,7 @@ def test_display_tick_dispatches_only_the_animation_tick(
     depth = 0
     real_dispatch = trcc.dispatch
 
-    def _recording_dispatch(cmd):             # type: ignore[no-untyped-def]
+    def _recording_dispatch(cmd):
         nonlocal depth
         every_dispatch.append(type(cmd).__name__)
         if depth == 0:
@@ -1368,13 +1368,13 @@ def test_display_tick_dispatches_only_the_animation_tick(
         finally:
             depth -= 1
 
-    trcc.dispatch = _recording_dispatch       # type: ignore[method-assign]
+    trcc.dispatch = _recording_dispatch
     try:
         # No device attached, so the tick reports failure — the ORDER and the
         # choice of Commands is what this pins, not the render succeeding.
         api_client.post("/devices/dead:beef/display/tick")
     finally:
-        trcc.dispatch = real_dispatch         # type: ignore[method-assign]
+        trcc.dispatch = real_dispatch
 
     assert route_dispatched == [TickDisplay.__name__], (
         f"expected only the animation tick, got {route_dispatched}")

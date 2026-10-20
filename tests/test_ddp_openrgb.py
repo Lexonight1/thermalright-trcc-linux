@@ -113,7 +113,7 @@ def _openrgb_app(fake_platform: FakePlatform) -> tuple[App, _Stream]:
     from .conftest import _CliRenderer
 
     stream = _Stream()
-    app = App(fake_platform, renderer=_CliRenderer(),   # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer(),
               led_stream=stream)
     _attach_and_connect(app, fake_platform, pm=1)        # AX120: digits
     return app, stream
@@ -147,7 +147,7 @@ def test_each_led_shows_its_own_pixel(fake_platform: FakePlatform, pm: int) -> N
     first N pixels instead of its own indices."""
     from .conftest import _CliRenderer
 
-    app = App(fake_platform, renderer=_CliRenderer(),   # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer(),
               led_stream=_Gradient())
     _attach_and_connect(app, fake_platform, pm=pm)
     app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.OPENRGB))

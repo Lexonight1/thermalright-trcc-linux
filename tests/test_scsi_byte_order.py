@@ -21,10 +21,10 @@ from trcc.adapters.device.scsi_lcd import scsi_profile
 from trcc.core.protocol import FBL_PROFILES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dev" / "decompiler"))
-from encode_reference import (  # pyright: ignore[reportMissingImports]
+from encode_reference import (
     csharp_rgb565_big_endian,
 )
-from formcztv_init import form_cztv_init  # pyright: ignore[reportMissingImports]
+from formcztv_init import form_cztv_init
 
 #: Every poll byte a SCSI panel has reported or the native USBLCD classifies.
 _SCSI_POLL_BYTES = (36, 37, 50, 51, 100, 101, 102)

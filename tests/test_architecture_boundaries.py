@@ -39,7 +39,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 # reaches for ``ui_contract`` the same way.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
 
-import ui_contract  # noqa: E402  # pyright: ignore[reportMissingImports]
+import ui_contract  # noqa: E402
 
 from trcc.core.ports import CommandBus  # noqa: E402
 

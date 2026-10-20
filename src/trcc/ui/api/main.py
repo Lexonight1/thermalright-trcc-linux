@@ -147,7 +147,7 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
     # rotated the diagnosis out of the file within hours; a FAILED dispatch
     # still logs a WARNING from the bus.
     @api.middleware("http")
-    async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def log_requests(request: Request, call_next):
         start = time.perf_counter()
         response = await call_next(request)
         ms = (time.perf_counter() - start) * 1000
@@ -167,7 +167,7 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
     # loopback Host with no foreign Origin gets through (``is_loopback_client``).
     # WebSockets bypass HTTP middleware; ``admit_ws`` applies the same rule.
     @api.middleware("http")
-    async def check_token(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def check_token(request: Request, call_next):
         if _api_token and request.url.path not in _AUTH_EXEMPT:
             header_token = request.headers.get("X-API-Token", "")
             if not hmac.compare_digest(header_token, _api_token):

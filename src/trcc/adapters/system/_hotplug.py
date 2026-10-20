@@ -96,7 +96,7 @@ class NoopHotplugMonitor(HotplugMonitor):
 def _import_pyudev() -> Any | None:
     log.debug("_import_pyudev: called")
     try:
-        import pyudev  # type: ignore[import-not-found]
+        import pyudev
     except ImportError:
         return None
     return pyudev

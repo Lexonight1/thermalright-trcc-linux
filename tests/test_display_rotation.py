@@ -38,7 +38,7 @@ from trcc.services.settings import Settings
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
-from encode_reference import (  # pyright: ignore[reportMissingImports]
+from encode_reference import (
     csharp_encode_angles,
 )
 

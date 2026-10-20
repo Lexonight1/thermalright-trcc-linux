@@ -36,7 +36,7 @@ def test_list_fonts_delegates_to_the_injected_renderer_port() -> None:
     assert "2 font" in result.message
 
 
-def test_list_fonts_with_no_renderer_returns_empty_gracefully(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_list_fonts_with_no_renderer_returns_empty_gracefully(tmp_path) -> None:
     """A rendererless App yields an empty list, never an error.
 
     Uses a real ``App`` built with ``renderer=None`` (whose ``renderer``
@@ -52,7 +52,7 @@ def test_list_fonts_with_no_renderer_returns_empty_gracefully(tmp_path) -> None:
         app.close()
 
 
-def test_list_fonts_dispatch_returns_a_list(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_list_fonts_dispatch_returns_a_list(tmp_path) -> None:
     """Characterisation through the real App + QtRenderer dispatch path."""
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
@@ -99,7 +99,7 @@ def _fake_diagnostics() -> object:
         def debug_report(self, log_tail_lines: int) -> str:
             return "SENTINEL REPORT"
 
-        def write_debug_report(self, rendered: str, path):  # type: ignore[no-untyped-def]
+        def write_debug_report(self, rendered: str, path):
             path.write_text(rendered, encoding="utf-8")
             return path
 
@@ -114,7 +114,7 @@ def _fake_diagnostics() -> object:
     return _FakeDiag()
 
 
-def test_app_exposes_a_diagnostics_port(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_app_exposes_a_diagnostics_port(tmp_path) -> None:
     """Conformance: ``App.diagnostics`` is an injected ``Diagnostics`` port."""
     from trcc.core.ports import Diagnostics
 
@@ -125,7 +125,7 @@ def test_app_exposes_a_diagnostics_port(tmp_path) -> None:  # type: ignore[no-un
         app.close()
 
 
-def test_run_health_check_delegates_to_the_diagnostics_port(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_run_health_check_delegates_to_the_diagnostics_port(tmp_path) -> None:
     """RED→GREEN driver: dispatch reads health from the injected port.
 
     The fake returns exactly ONE check; the real health suite returns ~10, so a
@@ -141,13 +141,13 @@ def test_run_health_check_delegates_to_the_diagnostics_port(tmp_path) -> None:  
         app.close()
 
 
-def test_run_upgrade_reads_the_hint_from_the_platform_port(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_run_upgrade_reads_the_hint_from_the_platform_port(tmp_path) -> None:
     """The command comes from the injected Platform, not a direct import."""
     from trcc.core.commands import RunUpgrade
 
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
-        app.platform.upgrade_hint = lambda: "sentinel-hint"  # type: ignore[method-assign]
+        app.platform.upgrade_hint = lambda: "sentinel-hint"
         result = app.dispatch(RunUpgrade())
         assert result.ok and result.message.endswith("sentinel-hint")
         assert result.command == []
@@ -155,7 +155,7 @@ def test_run_upgrade_reads_the_hint_from_the_platform_port(tmp_path) -> None:  #
         app.close()
 
 
-def test_diagnostics_commands_still_dispatch_through_real_adapter(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_diagnostics_commands_still_dispatch_through_real_adapter(tmp_path) -> None:
     """Characterisation: the real wiring still answers each command (safety net)."""
     from trcc.core.commands import GenerateDebugReport, RunDoctor
 

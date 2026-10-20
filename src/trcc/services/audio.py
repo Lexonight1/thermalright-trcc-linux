@@ -62,7 +62,7 @@ class AudioCapture:
         if self._running:
             return True
         try:
-            import sounddevice as sd  # pyright: ignore[reportMissingImports]
+            import sounddevice as sd
         except ImportError:
             log.warning("sounddevice not installed — audio visualization disabled")
             return False

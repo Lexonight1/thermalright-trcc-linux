@@ -43,7 +43,7 @@ _ANIMATED_MODES = frozenset({
 class LedAnimationLoop:
     """Background ~150 ms ticker re-rendering animating LED devices."""
 
-    def __init__(self, app: App) -> None:  # type: ignore[name-defined]
+    def __init__(self, app: App) -> None:
         log.debug("__init__: app=%s", app)
         self._app = app
         self._thread: threading.Thread | None = None

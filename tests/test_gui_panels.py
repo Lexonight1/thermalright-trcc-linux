@@ -184,7 +184,7 @@ def test_list_gpus_no_gpus_does_not_crash(tmp_home: Path) -> None:
     from .conftest import FakeCpu, FakeMemory, FakePlatform
 
     class _NoGpuPlatform(FakePlatform):
-        def sensors(self):  # type: ignore[override]
+        def sensors(self):
             if self._sensors is None:
                 self._sensors = BaselineSensors(
                     cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
@@ -454,7 +454,7 @@ def test_check_for_updates_does_not_wait_on_the_gui_thread(
     asked_on: list[str] = []
     real = gui_app.dispatch
 
-    def dispatch(cmd):  # type: ignore[no-untyped-def]
+    def dispatch(cmd):
         if isinstance(cmd, CheckForUpdate):
             asked_on.append(threading.current_thread().name)
             return UpdateCheckResult(ok=True, local_version="9.10.8",
@@ -657,7 +657,7 @@ def test_base_panel_requires_setup_ui() -> None:
     from trcc.ui.qtgui.base import BasePanel
 
     with pytest.raises(TypeError, match="must implement _setup_ui"):
-        class _BrokenPanel(BasePanel):  # type: ignore[misc]
+        class _BrokenPanel(BasePanel):
             pass
 
 
@@ -914,7 +914,7 @@ def _seed_non_defaults(app: App) -> None:
 
 def _on_device(panel) -> None:
     """Point a bare panel's picker at the Q3 device and show it."""
-    panel._picker.current_key = lambda: _KEY_Q3   # pyright: ignore[reportAttributeAccessIssue]
+    panel._picker.current_key = lambda: _KEY_Q3
     panel._show_state() if hasattr(panel, "_show_state") else panel._on_refresh()
 
 
@@ -930,7 +930,7 @@ def _writes(panel) -> list:
             sent.append(cmd)
         return real(cmd)
 
-    panel.dispatch = spy                      # pyright: ignore[reportAttributeAccessIssue]
+    panel.dispatch = spy
     return sent
 
 
@@ -1084,7 +1084,7 @@ def test_the_display_panel_shows_and_sends_one_setting_at_a_time(
     qtbot.addWidget(panel)
     sent = _writes(panel)
     _on_device(panel)
-    panel._require_key = lambda: _KEY_Q3          # pyright: ignore[reportAttributeAccessIssue]
+    panel._require_key = lambda: _KEY_Q3
     assert (panel._orientation.currentData(), panel._brightness.value()) == (180, 30)
     assert sent == [], f"showing the App's state wrote {sent}"
 
@@ -2646,8 +2646,8 @@ def _slideshow_panel(gui_app: App, qtbot):
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)                    # unparented top-levels leak
-    panel._key = lambda: "0402:3922"          # pyright: ignore[reportAttributeAccessIssue]
-    panel._picker.current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
+    panel._key = lambda: "0402:3922"
+    panel._picker.current_key = lambda: "0402:3922"
     return panel
 
 
@@ -2798,7 +2798,7 @@ def test_the_date_format_reaches_the_bus(gui_app: App, qtbot) -> None:
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    panel._picker.current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
+    panel._picker.current_key = lambda: "0402:3922"
 
     sent: list[tuple[str, str, str | None]] = []
     real = panel.dispatch
@@ -2897,7 +2897,7 @@ def _display_panel(gui_app: App, qtbot):
 
     panel = DisplayPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    panel._require_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
+    panel._require_key = lambda: "0402:3922"
     return panel
 
 
@@ -2917,7 +2917,7 @@ def _stub_status(panel, *, cursor, frame_count, fps=30):
             )
         return real(cmd)
 
-    panel.dispatch = spy                       # pyright: ignore[reportAttributeAccessIssue]
+    panel.dispatch = spy
     return sent
 
 
@@ -2928,7 +2928,7 @@ def test_a_video_stopped_elsewhere_disables_the_scrubber(gui_app: App, qtbot) ->
     from trcc.core.events import VideoStarted, VideoStopped
 
     panel = _display_panel(gui_app, qtbot)
-    panel._picker.current_key = lambda: "0402:3922"  # pyright: ignore[reportAttributeAccessIssue]
+    panel._picker.current_key = lambda: "0402:3922"
     _stub_status(panel, cursor=4, frame_count=30)
     gui_app.events.publish(VideoStarted(key="0402:3922", path="/v.mp4",
                                         interval_ms=33, frame_count=30))
@@ -3492,7 +3492,7 @@ def _inspector_text(gui_app: App, qtbot, *, pm, sub) -> str:
 
     panel = DevicePanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    panel._current_key = lambda: "0402:3922"   # pyright: ignore[reportAttributeAccessIssue]
+    panel._current_key = lambda: "0402:3922"
     panel.dispatch = lambda cmd: DeviceStateResult(   # pyright: ignore[reportAttributeAccessIssue]
         ok=True, key="0402:3922", wire="SCSI", catalog_resolution=(320, 320),
         catalog_product="Frozen Warframe 360", pm_byte=pm, sub_byte=sub,
@@ -3717,7 +3717,7 @@ def test_the_shared_browser_guard_names_the_next_step(gui_app: App, qtbot) -> No
 
     panel = LocalThemeBrowser(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    panel._picker.current_key = lambda: ""    # pyright: ignore[reportAttributeAccessIssue]
+    panel._picker.current_key = lambda: ""
 
     assert panel._device_key() is None
 
@@ -4055,13 +4055,13 @@ def test_the_preview_is_not_rendered_twice(make_window,
                 seen.append(cmd.key)
             return real(self, cmd)
 
-        App.dispatch = counting           # type: ignore[method-assign]
+        App.dispatch = counting
         try:
             for widget in (surfaces[0], window._panels["preview"]):
                 refresh = getattr(widget, "refresh", None) or widget._refresh
                 refresh()
         finally:
-            App.dispatch = real           # type: ignore[method-assign]
+            App.dispatch = real
         assert len(seen) == 1, (
             f"{len(seen)} BuildPreview dispatches for one refresh round — "
             "the preview is being rendered more than once per tick"
@@ -4206,7 +4206,7 @@ def test_the_led_panel_reloads_on_settings_not_on_every_render(
 
     panel = LedPanel(gui_app, _bus(gui_app))
     qtbot.addWidget(panel)
-    panel._picker.current_key = lambda: "0416:8001"   # pyright: ignore[reportAttributeAccessIssue]
+    panel._picker.current_key = lambda: "0416:8001"
     asked: list[str] = []
     real = panel.dispatch
 
@@ -4276,7 +4276,7 @@ def test_the_zone_tab_interval_is_in_the_csharps_unit(gui_app: App, qtbot) -> No
         sent.append(command)
         return real(command)
 
-    tab._dispatch = spy                               # pyright: ignore[reportAttributeAccessIssue]
+    tab._dispatch = spy
     assert (tab._interval_spin.value(), tab._interval_spin.suffix()) == (2, " s")
     tab._interval_spin.setValue(3)
     assert [getattr(c, "ticks", None) for c in sent] == [18], sent
@@ -4290,7 +4290,7 @@ def test_the_zone_tab_interval_writes_only_a_change(gui_app: App, qtbot) -> None
         sent.append(type(command).__name__)
         return real(command)
 
-    tab._dispatch = spy                               # pyright: ignore[reportAttributeAccessIssue]
+    tab._dispatch = spy
     tab._interval_spin.editingFinished.emit()         # focus moved, no change
     assert sent == []
     tab._interval_spin.setValue(tab._interval_spin.value() + 5)
@@ -4496,7 +4496,7 @@ def test_qtgui_shows_the_sent_frame_without_rendering_another(gui_app: App) -> N
     surface.rendered.connect(lambda w, h: sizes.append((w, h)))
     asked: list[str] = []
     real = gui_app.dispatch
-    gui_app.dispatch = lambda cmd: (asked.append(type(cmd).__name__), real(cmd))[1]  # type: ignore[method-assign]
+    gui_app.dispatch = lambda cmd: (asked.append(type(cmd).__name__), real(cmd))[1]
     try:
         gui_app.events.publish(FrameSent(key="0402:3922", bytes_sent=1,
                                          image=QtRenderer().encode_jpeg(frame, 95)))
@@ -4507,7 +4507,7 @@ def test_qtgui_shows_the_sent_frame_without_rendering_another(gui_app: App) -> N
             if len(sizes) == 2:
                 break
     finally:
-        gui_app.dispatch = real                # type: ignore[method-assign]
+        gui_app.dispatch = real
 
     assert asked == []
     assert sizes == [(320, 320), (320, 320)]

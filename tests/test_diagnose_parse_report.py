@@ -29,7 +29,7 @@ _DEV_TOOLS = Path(__file__).resolve().parent.parent / "dev" / "tools"
 def parse_report():
     sys.path.insert(0, str(_DEV_TOOLS))
     try:
-        from diagnose import parse_report as fn  # type: ignore[import-not-found]
+        from diagnose import parse_report as fn
     finally:
         sys.path.remove(str(_DEV_TOOLS))
     return fn
@@ -39,7 +39,7 @@ def parse_report():
 def parse_dispatch_sequence():
     sys.path.insert(0, str(_DEV_TOOLS))
     try:
-        from diagnose import (  # type: ignore[import-not-found]
+        from diagnose import (
             parse_dispatch_sequence as fn,
         )
     finally:

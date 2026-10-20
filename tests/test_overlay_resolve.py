@@ -143,7 +143,7 @@ def test_the_app_actually_wires_the_unsupported_set(fake_platform) -> None:
 
     known = frozenset({"cpu:power", "disk:temp"})
     sensors = fake_platform.sensors()
-    sensors.unsupported = lambda: known          # type: ignore[method-assign]
+    sensors.unsupported = lambda: known
 
     app = App(platform=fake_platform, renderer=QtRenderer())
 

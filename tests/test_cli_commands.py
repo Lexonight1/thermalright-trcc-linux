@@ -342,7 +342,7 @@ def test_theme_cloud_load_attaches_before_load(
 
     attached_when_run: list[bool] = []
 
-    def fake_execute(self, app):  # type: ignore[no-untyped-def]
+    def fake_execute(self, app):
         attached_when_run.append(self.key in app.devices)
         return CloudThemeLoadResult(ok=True, key=self.key,
                                     theme_id=self.theme_id, theme_path="",
@@ -439,7 +439,7 @@ def test_cloud_downloaded_sizes_a_device_from_the_one_ladder(
 
     _ctx.set_platform(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}],
                                    tmp_path))
-    _ctx.set_renderer(_CliRenderer())          # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         result = cli_runner.invoke(_app(), ["theme", "cloud-downloaded", key])
     finally:
@@ -464,7 +464,7 @@ def test_status_says_whether_game_mode_is_on(
     monkeypatch.setattr(App, "add_task", lambda self, task: None)
     _ctx.set_platform(MockPlatform(
         [{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path))
-    _ctx.set_renderer(_CliRenderer())          # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         assert cli_runner.invoke(_app(), [
             "display", "game", "0402:3922", "on", "--threshold", "60",
@@ -1707,7 +1707,7 @@ def _cli_on(tmp_path, cli_runner, spec: dict, args: list[str]) -> str:
     from .mock_platform import MockPlatform
 
     _ctx.set_platform(MockPlatform([spec], tmp_path))
-    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    _ctx.set_renderer(_CliRenderer())
     try:
         result = cli_runner.invoke(cli, args)
         return result.output + (result.stderr if result.stderr_bytes else "")

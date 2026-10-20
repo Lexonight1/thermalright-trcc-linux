@@ -340,4 +340,4 @@ def test_the_process_runtime_asks_the_pci_probe() -> None:
     the default answers "cannot tell" and would keep every false warning."""
     from trcc.adapters.sensors import gpu_detect
 
-    assert nvml._runtime._nvidia_present is gpu_detect.nvidia_gpu_present  # pyright: ignore[reportPrivateUsage]
+    assert nvml._runtime._nvidia_present is gpu_detect.nvidia_gpu_present

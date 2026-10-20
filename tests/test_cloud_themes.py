@@ -56,7 +56,7 @@ class FakeHttp(HttpFetcher):
 # =========================================================================
 
 
-def test_categories_static_table_has_expected_prefixes(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_categories_static_table_has_expected_prefixes(tmp_path) -> None:
     cats = CzhordeCatalog(http=FakeHttp(), cache_dir=tmp_path).categories()
     prefixes = {c.prefix for c in cats}
     assert prefixes == {"a", "b", "c", "d", "e", "y"}
@@ -239,7 +239,7 @@ class _Sized(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def sized_server():  # type: ignore[no-untyped-def]
+def sized_server():
     server = _SizedServer(("127.0.0.1", 0), _Sized)
     server.done = threading.Event()
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -470,7 +470,7 @@ def test_a_failed_download_leaves_no_directory(tmp_path: Path) -> None:
 # GIF had once failed, every click.  And nothing ever made a GIF for a video
 # downloaded while ffmpeg was missing.
 
-def _cached(tmp_path: Path, ids: tuple[str, ...]):  # type: ignore[no-untyped-def]
+def _cached(tmp_path: Path, ids: tuple[str, ...]):
     paths = FakePaths(tmp_path)
     folder = paths.cloud_theme_dir(320, 320)
     folder.mkdir(parents=True)
@@ -485,7 +485,7 @@ def _cached(tmp_path: Path, ids: tuple[str, ...]):  # type: ignore[no-untyped-de
 
 
 @pytest.fixture
-def ffmpeg_calls(monkeypatch):  # type: ignore[no-untyped-def]
+def ffmpeg_calls(monkeypatch):
     from trcc.services import cloud_theme
 
     made: list[str] = []

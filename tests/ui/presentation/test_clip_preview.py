@@ -159,7 +159,7 @@ def test_a_drag_lands_on_the_newest_still_only(clip: Path) -> None:
         started.append(req.start_ms)
         original(req, box, still=still)
 
-    preview._start = spy  # type: ignore[method-assign]
+    preview._start = spy
     for ms in range(0, 1900, 100):
         preview.still(_req(clip, ms, ms + 1), BOX)
     frames = _drain(preview, 3.0)

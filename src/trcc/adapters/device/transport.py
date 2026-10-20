@@ -26,7 +26,7 @@ from ._pyusb_find import find_unit
 
 # Optional hidapi backend (the [hid] extra)
 try:
-    import hid as _hid_module  # pyright: ignore[reportMissingImports]
+    import hid as _hid_module
     HIDAPI_AVAILABLE = True
 except ImportError:
     _hid_module = None

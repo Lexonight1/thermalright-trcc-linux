@@ -56,7 +56,7 @@ def test_a_slot_rewritten_during_the_copy_is_dropped(
     seq = writer.write("k", _frame(2, 2, 1), 2, 2, 8)
     real_unpack = struct.unpack_from
 
-    def overwrite_before_recheck(fmt, view, offset=0):  # type: ignore[no-untyped-def]
+    def overwrite_before_recheck(fmt, view, offset=0):
         # The after-copy check is the module-level unpack_from's one call:
         # the App lapping the window lands exactly between copy and check.
         if fmt == "<Q":

@@ -20,7 +20,7 @@ from .test_render_led import _LED_KEY, _attach_and_connect, _scripted_handshake
 
 
 def _app(fake_platform: FakePlatform, pm: int) -> App:
-    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=pm)
     return app
 

@@ -175,7 +175,7 @@ def client(fake_platform: FakePlatform) -> Iterator[object]:
 
 
 def test_the_api_serves_everything(client) -> None:
-    body = client.get("/system/credits").json()  # type: ignore[attr-defined]
+    body = client.get("/system/credits").json()
     assert [p["name"] for p in body["inspired_by"]] == [p.name for p in INSPIRATIONS]
     assert (body["what_trcc_does"], body["we_love"]) == (WHAT_TRCC_DOES, WE_LOVE)
     assert [g["title"] for g in body["groups"]] == [title for title, _ in GROUPS]

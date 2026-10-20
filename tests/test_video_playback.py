@@ -125,7 +125,7 @@ def stub_media(
     """
     calls: list[tuple[str, Path, tuple[int, int] | None]] = []
 
-    def fake_load(self, device_key: str, path: Path,   # type: ignore[no-untyped-def]
+    def fake_load(self, device_key: str, path: Path,
                   size: tuple[int, int] | None, **kwargs):
         calls.append((device_key, path, size))
         # Synthetic playback: 3 fake frames.  Use a stand-in resolution
@@ -247,7 +247,7 @@ def test_play_video_publishes_event(
 ) -> None:
     events: list[VideoStarted] = []
     connected_app.events.subscribe(
-        VideoStarted, lambda e: events.append(e),  # type: ignore[arg-type, return-value]
+        VideoStarted, lambda e: events.append(e),
     )
 
     connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
@@ -319,7 +319,7 @@ def test_play_video_single_frame_is_static_no_animation(
     does NOT (so the GUI never starts the 15fps animation timer)."""
     from trcc.core.events import BackgroundChanged
 
-    def fake_load(self, device_key, path, size, **kwargs):   # type: ignore[no-untyped-def]
+    def fake_load(self, device_key, path, size, **kwargs):
         pb = Playback(
             frames=[_encoded_frame(0xFF000000)],
             fps=15,
@@ -332,10 +332,10 @@ def test_play_video_single_frame_is_static_no_animation(
     started: list[VideoStarted] = []
     bg: list[BackgroundChanged] = []
     connected_app.events.subscribe(
-        VideoStarted, lambda e: started.append(e),  # type: ignore[arg-type,return-value]
+        VideoStarted, lambda e: started.append(e),
     )
     connected_app.events.subscribe(
-        BackgroundChanged, lambda e: bg.append(e),  # type: ignore[arg-type,return-value]
+        BackgroundChanged, lambda e: bg.append(e),
     )
 
     result = connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
@@ -353,7 +353,7 @@ def test_play_video_multi_frame_starts_animation(
     VideoStarted (the stub returns 3 frames)."""
     started: list[VideoStarted] = []
     connected_app.events.subscribe(
-        VideoStarted, lambda e: started.append(e),  # type: ignore[arg-type,return-value]
+        VideoStarted, lambda e: started.append(e),
     )
     result = connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
     assert result.ok is True
@@ -381,7 +381,7 @@ def test_stop_video_publishes_event_only_when_was_playing(
 ) -> None:
     events: list[VideoStopped] = []
     connected_app.events.subscribe(
-        VideoStopped, lambda e: events.append(e),  # type: ignore[arg-type, return-value]
+        VideoStopped, lambda e: events.append(e),
     )
 
     # No playback yet — StopVideo is a no-op
@@ -416,7 +416,7 @@ def test_a_paused_seek_tells_every_ui_where_it_landed(
     connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
     connected_app.dispatch(PauseVideo(key=_KEY, paused=True))
     seen: list[VideoAdvanced] = []
-    connected_app.events.subscribe(VideoAdvanced, seen.append)  # type: ignore[arg-type]
+    connected_app.events.subscribe(VideoAdvanced, seen.append)
 
     result = connected_app.dispatch(SeekVideo(key=_KEY, frame=2))
 
@@ -438,7 +438,7 @@ def test_a_pause_or_resume_is_announced_whoever_asked(
 
     connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
     seen: list[VideoPauseChanged] = []
-    connected_app.events.subscribe(VideoPauseChanged, seen.append)  # type: ignore[arg-type]
+    connected_app.events.subscribe(VideoPauseChanged, seen.append)
 
     connected_app.dispatch(PauseVideo(key=_KEY, paused=True))
     connected_app.dispatch(ToggleVideo(key=_KEY))
@@ -727,7 +727,7 @@ def _count_composites(display: DisplayService) -> Callable[[], int]:
         calls += 1
         return original(*args, **kwargs)
 
-    display._build_bg_mask = counting            # type: ignore[method-assign]
+    display._build_bg_mask = counting
     return lambda: calls
 
 
@@ -1220,7 +1220,7 @@ def test_video_theme_replaces_playback_static_theme_stops_it(
 
     stopped: list[VideoStopped] = []
     rendering_app.events.subscribe(
-        VideoStopped, stopped.append,  # type: ignore[arg-type]
+        VideoStopped, stopped.append,
     )
 
     first = _write_video_theme(tmp_home, "vid1")
@@ -1468,7 +1468,7 @@ def _pb(fps: int = 10) -> Any:
 
 def _loop(app: Any) -> Any:
     from trcc.services.video_loop import VideoLoop
-    return VideoLoop(app)                      # type: ignore[arg-type]
+    return VideoLoop(app)
 
 
 def test_the_loop_ticks_every_playing_device_including_the_unfocused_one() -> None:

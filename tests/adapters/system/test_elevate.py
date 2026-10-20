@@ -32,7 +32,7 @@ def test_reexec_injects_paths_into_snippet(monkeypatch: pytest.MonkeyPatch) -> N
     the importable dirs spliced onto sys.path before the snippet runs."""
     captured: dict[str, list[str]] = {}
 
-    def _fake_run(cmd, check=False):  # type: ignore[no-untyped-def]
+    def _fake_run(cmd, check=False):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0)
 
@@ -56,7 +56,7 @@ def test_reexec_returns_1_when_sudo_cannot_spawn(
     """A spawn failure (no sudo) is a clean non-zero, not an exception."""
     monkeypatch.setattr(_elevate, "_import_paths", lambda: [])
 
-    def _boom(*a, **k):  # type: ignore[no-untyped-def]
+    def _boom(*a, **k):
         raise OSError("sudo: command not found")
 
     monkeypatch.setattr(_elevate.subprocess, "run", _boom)

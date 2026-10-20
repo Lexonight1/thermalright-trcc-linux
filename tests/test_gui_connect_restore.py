@@ -180,7 +180,7 @@ def test_connecting_a_panel_in_the_gui_writes_nothing_back(handler) -> None:
     def spy(cmd):
         sent.append(type(cmd).__name__)
         return real(cmd)
-    app.dispatch = spy  # type: ignore[method-assign]
+    app.dispatch = spy
 
     h.apply_device_config(_KEY, *_RES)
 

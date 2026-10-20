@@ -27,7 +27,7 @@ sys.path.insert(0, str(_REPO / "dev" / "tools"))
 # re-exported by the audit tool this test already parses with.  This file used to
 # hardcode a /tmp scratch path, so the parity check below skipped itself for two
 # months and read as "decompile not installed" rather than "guard is broken".
-from audit_csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+from audit_csharp import (  # noqa: E402
     DECOMPILE_ROOT,
     _lcd_panel_composition,
 )

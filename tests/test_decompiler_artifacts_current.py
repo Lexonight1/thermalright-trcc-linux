@@ -25,10 +25,10 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "dev" / "decompiler"))
 
-import extract_control_flow  # noqa: E402  # pyright: ignore[reportMissingImports]
-import inventory_controls  # noqa: E402  # pyright: ignore[reportMissingImports]
-import map_branches  # noqa: E402  # pyright: ignore[reportMissingImports]
-from core.csharp import DECOMPILE_ROOT  # noqa: E402  # pyright: ignore[reportMissingImports]
+import extract_control_flow  # noqa: E402
+import inventory_controls  # noqa: E402
+import map_branches  # noqa: E402
+from core.csharp import DECOMPILE_ROOT  # noqa: E402
 
 _ABSENT = pytest.mark.skipif(
     not DECOMPILE_ROOT.exists(),
