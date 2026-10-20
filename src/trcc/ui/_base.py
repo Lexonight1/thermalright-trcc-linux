@@ -52,7 +52,7 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
-from ..core.errors import UnknownUserInterfaceError
+from ..core.errors import DaemonUnavailableError, UnknownUserInterfaceError
 from ..core.factory import Registry, Reject
 from ..core.logs import dispatch_origin, per_frame
 from ..core.ports import CommandBus
@@ -188,6 +188,20 @@ class UserInterface(CommandBus):
             if self._relaunched_at:
                 self.announce(RELAUNCH_NOTICE)
             return self.run()
+        except DaemonUnavailableError as e:
+            # The App died under a dispatch: the same loss the watcher reports,
+            # seen first by whoever asked.  On the win11 VM (2026-10-20) the
+            # window's GetPlatformInfo hit the dead pipe 10 ms after the
+            # watcher had flagged the restart; had it hit first, the face
+            # failed unflagged, was reaped, and nothing came back.  Only a
+            # face that holds a session -- one the watcher would restart: a
+            # one-shot CLI command re-run on its own is a command run twice.
+            if not self.needs_session:
+                raise
+            log.error("%s: the App went away under a request (%s) — restarting",
+                      type(self).__name__, e)
+            self._relaunch = True
+            return 1
         finally:
             # Close only what was actually built.  A face that never
             # dispatched -- ``trcc --help`` reaching the CLI face -- composed

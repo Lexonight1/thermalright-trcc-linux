@@ -252,6 +252,43 @@ def test_a_crash_restarts_through_the_faces_own_platform(
     assert (replaced, execs) == ([[sys.executable, *sys.orig_argv[1:]]], [])
 
 
+def test_a_request_that_finds_the_app_gone_restarts_too(execs) -> None:
+    """The loss may reach a dispatch before the watcher: the face restarts
+    all the same, and ends with 1 rather than a traceback.
+
+    MUTATION CHECK: drop the ``except DaemonUnavailableError`` -- the error
+    escapes and nothing restarts."""
+    from trcc.core.errors import DaemonUnavailableError
+
+    class _Asking(_Face):
+        def run(self) -> int:
+            raise DaemonUnavailableError("no App serves the pipe")
+
+    face = _Asking()
+
+    assert face.start() == 1
+    assert face.bus.closed, "cleaned up before the restart"
+    assert execs == [[sys.executable, *sys.orig_argv[1:]]]
+
+
+def test_a_one_shot_command_that_finds_the_app_gone_is_not_rerun(execs) -> None:
+    """A face with no session never restarts: a CLI command run again by
+    itself is a command run twice.
+
+    MUTATION CHECK: drop the ``needs_session`` check -- this restarts."""
+    from trcc.core.errors import DaemonUnavailableError
+
+    class _OneShot(_Face):
+        needs_session = False
+
+        def run(self) -> int:
+            raise DaemonUnavailableError("no App serves the pipe")
+
+    with pytest.raises(DaemonUnavailableError):
+        _OneShot().start()
+    assert execs == []
+
+
 def test_a_second_crash_within_a_minute_does_not_restart(execs) -> None:
     """An App that dies on start must not relaunch the window forever.
 

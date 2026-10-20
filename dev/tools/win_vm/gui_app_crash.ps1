@@ -15,6 +15,9 @@ function Since($since, $pattern) { @(Get-Content $log -ErrorAction SilentlyConti
 & {
     "integrity: " + ((whoami /groups | Select-String "Mandatory Level") -replace '\s+', ' ')
     "kill: " + ((& $exe kill 2>&1 | Out-String).Trim() -split "`n")[-1]
+    # `trcc kill` stops the shared App; a GUI that fell back to an App of its own outlives it, and would absorb the launch.
+    $left = Procs 'gui'
+    if ($left) { $left | ForEach-Object { Stop-Process -Id $_ -Force }; "force-closed a GUI running its own App: [$($left -join ',')]" }
     Start-Sleep 3
     "before: app [$((Procs 'daemon') -join ',')] gui [$((Procs 'gui') -join ',')]"
     $start = Stamp
