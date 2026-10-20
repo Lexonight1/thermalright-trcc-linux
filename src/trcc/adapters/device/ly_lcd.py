@@ -300,10 +300,10 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             pos += _USB_WRITE_SIZE
         # ACK read -- timed, because #251's freeze kept "succeeding" host-side
         # and nothing recorded what the ACK looked like while it did.
-        started = time.monotonic()
+        started = time.perf_counter()
         ack = self._transport.read(self._EP_READ, _HANDSHAKE_READ_SIZE,
                                    _READ_TIMEOUT_MS)
-        self._note_ack((time.monotonic() - started) * 1000, ack)
+        self._note_ack((time.perf_counter() - started) * 1000, ack)
         return True
 
     def _note_ack(self, ms: float, ack: bytes) -> None:

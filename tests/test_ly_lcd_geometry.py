@@ -339,7 +339,7 @@ def _ack_ly(monkeypatch, fake_bulk, *latencies_ms: float) -> Any:
     for ms in latencies_ms:
         clock += [0.0, ms / 1000]
     ticks = iter(clock)
-    monkeypatch.setattr(ly_lcd.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(ly_lcd.time, "perf_counter", lambda: next(ticks))
     fake_bulk.read = lambda ep, n, timeout_ms=100: bytes(range(16)) * 32  # type: ignore[method-assign]
     return _make_ly(fake_bulk)
 

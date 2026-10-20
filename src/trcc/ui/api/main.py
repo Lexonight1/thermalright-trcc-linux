@@ -148,9 +148,9 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
     # still logs a WARNING from the bus.
     @api.middleware("http")
     async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
-        start = time.monotonic()
+        start = time.perf_counter()
         response = await call_next(request)
-        ms = (time.monotonic() - start) * 1000
+        ms = (time.perf_counter() - start) * 1000
         line = ("API %s %s → %d (%.0fms)", request.method, request.url.path,
                 response.status_code, ms)
         if getattr(request.state, "per_frame", False):

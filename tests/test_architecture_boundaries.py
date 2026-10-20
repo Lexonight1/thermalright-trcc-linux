@@ -2449,3 +2449,44 @@ def test_no_ui_thread_holds_its_widget() -> None:
     assert offenders == [], (
         "a UI thread holds its widget -- use qt_background.dispatch_in_background:\n  "
         + "\n  ".join(offenders))
+
+
+def _is_monotonic_call(node: ast.expr) -> bool:
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "monotonic"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "time")
+
+
+def test_no_milliseconds_from_the_monotonic_clock() -> None:
+    """A duration in ms is timed with ``time.perf_counter()``, never
+    ``time.monotonic()``.
+
+    On Windows below Python 3.13, ``monotonic`` is ``GetTickCount64`` --
+    measured in the win11 VM 2026-10-20: ``resolution=0.015625``.  Every
+    millisecond figure it gives is a whole number of 15.6 ms ticks, so the SCSI
+    handshake witness logged "poll answered in 0 ms" and an init in "15 ms",
+    and an LY ACK of 95 ms could read 109 and cross the C#'s 100 ms line.
+    ``perf_counter`` is ``QueryPerformanceCounter`` there (0.28 us) and is
+    monotonic too, so it also serves a deadline that shares the start.
+
+    Scope: ``(time.monotonic() - x) * 1000`` written out.  A monotonic
+    difference stored in a variable and scaled later is not traceable without
+    data flow; a deadline in seconds is fine at 15.6 ms and stays monotonic.
+    """
+    offenders: list[str] = []
+    for path in _files_under("trcc"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult)):
+                continue
+            sides = (node.left, node.right)
+            scaled = any(isinstance(s, ast.Constant) and s.value == 1000
+                         for s in sides)
+            timed = any(isinstance(s, ast.BinOp) and isinstance(s.op, ast.Sub)
+                        and _is_monotonic_call(s.left) for s in sides)
+            if scaled and timed:
+                offenders.append(f"  {path.relative_to(_SRC)}:{node.lineno}")
+    assert not offenders, (
+        "milliseconds timed with time.monotonic() -- 15.6 ms ticks on Windows; "
+        "use time.perf_counter():\n" + "\n".join(offenders))

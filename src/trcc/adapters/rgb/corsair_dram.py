@@ -310,8 +310,8 @@ class CorsairDramMirror(RamLights):
         read means "still saving", not an error.  ``OSError`` only if it is
         not back and ready within ``_SAVE_TIMEOUT_S``.
         """
-        start, refused = time.monotonic(), 0
-        while time.monotonic() - start < _SAVE_TIMEOUT_S:
+        start, refused = time.perf_counter(), 0
+        while time.perf_counter() - start < _SAVE_TIMEOUT_S:
             try:
                 status = bus.read_byte_data(address, _REG_STATUS)
             except OSError:
@@ -320,7 +320,7 @@ class CorsairDramMirror(RamLights):
                 if not status & _STATUS_BUSY:
                     log.info("_wait_ready: 0x%02x saved in %d ms (%d refused "
                              "read(s), status 0x%02x)", address,
-                             (time.monotonic() - start) * 1000, refused, status)
+                             (time.perf_counter() - start) * 1000, refused, status)
                     return
             time.sleep(_READY_GAP_S)
         log.warning("_wait_ready: 0x%02x not ready %d ms after saving (%d "

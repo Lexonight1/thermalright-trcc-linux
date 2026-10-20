@@ -127,7 +127,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         poll_cdb = self._build_cdb(_POLL_CMD, _POLL_SIZE)
         log.debug("_do_handshake: poll CDB %s", poll_cdb.hex())
         response = b""
-        started = time.monotonic()
+        started = time.perf_counter()
         for attempt in range(_BOOT_MAX_RETRIES):
             response = self._transport.read_cdb(
                 poll_cdb, _POLL_SIZE, _HANDSHAKE_TIMEOUT_MS,
@@ -142,7 +142,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         self._trace_reply(response)
         log.info("ScsiLcd %s: poll answered %d of %d byte(s) in %.0f ms, "
                  "first bytes %s", self.info.key, len(response), _POLL_SIZE,
-                 (time.monotonic() - started) * 1000, response[:8].hex(" "))
+                 (time.perf_counter() - started) * 1000, response[:8].hex(" "))
         fbl = response[0] if response else (self.info.fbl or 100)
         log.debug("_do_handshake: settling %.1f s for the post-poll USB reset",
                   _POST_POLL_SETTLE_S)
@@ -160,7 +160,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         # Step 2: Init (data-out, 0xE100 zeros)
         init_cdb = self._build_cdb(_INIT_CMD, _POLL_SIZE)
         log.debug("_do_handshake: init CDB %s", init_cdb.hex())
-        started = time.monotonic()
+        started = time.perf_counter()
         delivered = self._transport.send_cdb(
             init_cdb, b"\x00" * _POLL_SIZE, _HANDSHAKE_TIMEOUT_MS,
         )
@@ -169,7 +169,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
         # all frames without initialization") -- and nothing said so.
         log.info("ScsiLcd %s: init %s in %.0f ms", self.info.key,
                  "delivered" if delivered else "NOT delivered",
-                 (time.monotonic() - started) * 1000)
+                 (time.perf_counter() - started) * 1000)
         if not delivered:
             # Fail the connect rather than stream into a panel that will show
             # none of it: ConnectDevice reports it and the reconnect watcher
