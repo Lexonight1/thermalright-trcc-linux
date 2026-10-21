@@ -1,5 +1,33 @@
 # Changelog
 
+## v9.11.2
+
+### Added
+
+- **A one-line installer for SteamOS** (`install-steamos.sh`, see the
+  install guide). It installs TRCC into your home folder, which SteamOS
+  updates leave alone, adds it to the application menu and starts it at
+  login -- no pacman, no read-only unlock, no container. Run the same line
+  again to update. Tested on SteamOS 3.8 in a virtual machine, through a
+  real SteamOS update and with a real panel; not yet on a Steam Deck.
+- Python 3.13 and 3.14 are tested in CI (SteamOS 3.7/3.8 and 3.9 ship them).
+
+### Fixed
+
+- **SteamOS: the panel keeps working after a SteamOS update.** Since
+  SteamOS 3.6 an update resets `/etc` to the new image, which took TRCC's
+  device rules with it. Setup now adds them to SteamOS's keep list.
+- **Setup no longer reports failure on read-only systems** (SteamOS,
+  Bazzite and other image-based distros) because it could not install
+  TRCC's own password prompt. RAM lighting uses the system's generic
+  prompt there.
+- Python 3.14: a failed download no longer leaves an unclosed connection
+  behind.
+- **The documentation was checked line by line against the code**: about
+  150 out-of-date statements fixed -- install commands that did not run,
+  the wrong API port, a device listed on the wrong protocol, missing pages
+  in the user guide -- and six obsolete documents removed.
+
 ## v9.11.1
 
 ### Added
