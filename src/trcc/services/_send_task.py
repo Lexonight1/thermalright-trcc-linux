@@ -115,10 +115,11 @@ class BaseSendTask(SendTask):
         # perf_counter, not monotonic: Windows' monotonic moves in 15.6 ms steps.
         started = time.perf_counter()
         beat = self._run(now)
-        left = max(0.0, beat - (time.perf_counter() - started))
+        took = time.perf_counter() - started
+        left = max(0.0, beat - took)
         frame_log.debug("%s: %s turn took %.0f ms, next in %.0f ms",
                         type(self).__name__, self._device_key,
-                        (beat - left) * 1000, left * 1000)
+                        took * 1000, left * 1000)
         return left
 
     @abstractmethod
