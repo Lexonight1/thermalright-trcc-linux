@@ -71,6 +71,10 @@ class Command(ABC, Generic[R_co]):
     #: the transport's usual limit.  The App's own wait always ends: the
     #: person answers, closes the prompt, or there is no prompt to show.
     WAITS_ON_USER: ClassVar[bool] = False
+    #: The module this Command belongs to ("" for none).  ``App.dispatch``
+    #: refuses it while that module is off or not installed, saying where to
+    #: turn it on -- every UI the same, instead of each hiding its own way.
+    MODULE: ClassVar[str] = ""
 
     @abstractmethod
     def execute(self, app: App) -> R_co: ...

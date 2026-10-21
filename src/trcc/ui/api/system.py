@@ -274,8 +274,7 @@ def set_module(key: str, body: ModuleSwitchRequest,
     log.info("api POST /system/modules/%s: enabled=%s", key, body.enabled)
     result = request.app.state.trcc.dispatch(
         SetModuleEnabled(key=key, enabled=body.enabled))
-    http_error_if_failed(
-        result, status_code=404 if result.message == f"no module {key!r}" else 409)
+    http_error_if_failed(result, status_code=404 if not result.found else 409)
     return result
 
 

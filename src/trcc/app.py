@@ -14,14 +14,14 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TypeVar
 
+from .adapters import modules as module_catalog
 from .adapters.device import DEVICES
-from .adapters.modules import MODULES
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.rgb import make_board_driver, make_mirror
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
-from .core.errors import DeviceNotFoundError, ModuleUnavailable, TransportError
+from .core.errors import DeviceNotFoundError, TransportError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
@@ -97,6 +97,7 @@ from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
 from .services.migration import LibraryMigration
+from .services.modules import ModuleRunner, ModuleSpec
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.reconnect_watcher import ReconnectWatcher
@@ -138,7 +139,7 @@ class App(CommandBus, ModuleHost):
                  make_rgb_mirror: Callable[[RgbFollowMode, str, int],
                                            RgbMirror] | None = None,
                  led_stream: LedColorStream | None = None,
-                 modules: Mapping[str, type[Module]] | None = None,
+                 modules: Mapping[str, type[Module] | ModuleSpec] | None = None,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
         self.platform = platform
@@ -450,33 +451,29 @@ class App(CommandBus, ModuleHost):
             if pins := fan_slot_pins(self.sysinfo.panels):
                 self.platform.sensors().set_fan_slot_pins(pins)
         # Every module, and the ones the user has on switched on: last, so a
-        # module's enable meets an App that is otherwise whole.
-        self.modules: dict[str, Module] = {
-            key: cls() for key, cls in (MODULES if modules is None
-                                        else modules).items()}
-        self.enabled_modules: set[str] = set()
-        self._enable_saved_modules()
+        # module's enable meets an App that is otherwise whole.  Enabling only
+        # registers; a module's hardware and threads start with the session.
+        self.modules = ModuleRunner(
+            module_catalog.specs() if modules is None else {
+                key: m if isinstance(m, ModuleSpec) else ModuleSpec.of(m)
+                for key, m in modules.items()},
+            host=self, settings=self.settings)
+        self.modules.enable_saved()
 
     def publish(self, event: Any) -> None:
         """``ModuleHost``: a module tells every UI something happened."""
         log.info("publish (module): %s", type(event).__name__)
         self.events.publish(event)
 
-    def _enable_saved_modules(self) -> None:
-        """Switch on each module the user has on -- or that is on by default.
-        One that cannot run here stays off, and the choice is kept."""
-        for key, module in self.modules.items():
-            if not self.settings.module_enabled(key, module.default_on):
-                log.info("_enable_saved_modules: %s is off", key)
-                continue
-            try:
-                module.enable(self)
-            except ModuleUnavailable as e:
-                log.warning("_enable_saved_modules: %s cannot run here: %s",
-                            key, e)
-                continue
-            self.enabled_modules.add(key)
-        log.info("_enable_saved_modules: on: %s", sorted(self.enabled_modules))
+    def subscribe(self, event_type: Any, handler: Any) -> None:
+        """``ModuleHost``: a module hears an event the App publishes."""
+        log.info("subscribe (module): %s", event_type.__name__)
+        self.events.subscribe(event_type, handler)
+
+    def unsubscribe(self, event_type: Any, handler: Any) -> None:
+        """``ModuleHost``: a module stops hearing an event."""
+        log.info("unsubscribe (module): %s", event_type.__name__)
+        self.events.unsubscribe(event_type, handler)
 
     def _persist_user_mask_dc(self, event: OverlayChanged) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active
@@ -1169,6 +1166,7 @@ class App(CommandBus, ModuleHost):
         self.video_loop.start()
         self.update_watch.start()
         self.resume_following()
+        self.modules.start_session()
 
     def resume_following(self) -> None:
         """Follow again as the settings say -- what a session starts with.
@@ -1264,12 +1262,7 @@ class App(CommandBus, ModuleHost):
         self.led_animation_loop.stop()
         self.led_stream.stop()
         # Each module ends what it runs; the user's choice stays saved.
-        for key in sorted(self.enabled_modules):
-            try:
-                self.modules[key].disable(self)
-            except Exception:
-                log.exception("close: module %s did not switch off cleanly", key)
-        self.enabled_modules.clear()
+        self.modules.close()
         self.video_loop.stop()
         self.stop_hotplug()
         # Blank every panel before releasing it so it goes dark on shutdown
@@ -1571,7 +1564,7 @@ class App(CommandBus, ModuleHost):
         origin = current_origin()
         sink = sink_for(cmd.LOG_LEVEL, log, frame_log)
         sink.log(cmd.LOG_LEVEL, "[%s] dispatch %r", origin, cmd)
-        if (why := self._lacks_capability(cmd)) is not None:
+        if (why := self._lacks_capability(cmd) or self._module_off(cmd)) is not None:
             result = cmd.refusal(why)
         else:
             if cmd.USES_DEVICE:
@@ -1606,6 +1599,16 @@ class App(CommandBus, ModuleHost):
             return None
         from .core.commands._helpers import _lacks
         return _lacks(self, getattr(cmd, "key", ""), cmd.REQUIRES)
+
+    def _module_off(self, cmd: Command[Any]) -> str | None:
+        """Why *cmd* cannot run because its ``MODULE`` is off or missing, or None."""
+        frame_log.debug("_module_off: %s module=%r", type(cmd).__name__, cmd.MODULE)
+        if not cmd.MODULE or self.modules.is_on(cmd.MODULE):
+            return None
+        if cmd.MODULE not in self.modules:
+            return f"the {cmd.MODULE} module is not installed -- install it in Modules"
+        return (f"{self.modules.manifest(cmd.MODULE).title} is off -- "
+                "turn it on in Modules")
 
     def _connect_for(self, cmd: Command[Any]) -> None:
         """Bring *cmd*'s device up before it runs — the one place that decides.

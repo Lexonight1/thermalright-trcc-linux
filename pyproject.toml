@@ -189,6 +189,9 @@ artifacts = [
     "**/assets/**/*.svg",
     # Every visual's GLSL (adapters/visual/_gl.py SHADERS) -- read at runtime.
     "**/assets/**/*.glsl",
+    # Each built-in module's manifest (adapters/modules/_catalog.py), beside
+    # its icon -- read at runtime to list a module without importing it.
+    "**/assets/modules/*/module.json",
     # KarmaViz's palettes and presets, its licence and what we changed.
     "**/assets/karmaviz/**/*.json",
     "**/assets/karmaviz/LICENSE",

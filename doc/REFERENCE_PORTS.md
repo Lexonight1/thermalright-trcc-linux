@@ -16,7 +16,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
-| [`ModuleHost`](#modulehost) | 1 | 0 | 1 |
 | [`Query`](#query) | 1 | 0 | 46 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
@@ -25,7 +24,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`GlSurface`](#glsurface) | 2 | 1 | 3 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Module`](#module) | 2 | 7 | 0 |
+| [`Module`](#module) | 2 | 9 | 0 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
@@ -44,6 +43,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
+| [`ModuleHost`](#modulehost) | 3 | 0 | 2 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
@@ -165,20 +165,6 @@ resolve(name: 'str', key: 'K', table: 'Mapping[K, V]') -> V
 ```
 
 **Implementations (2):** `FallBackTo` · `Reject`
-
-## ModuleHost
-
-`core/ports.py`
-
-What a module may do to the App -- and nothing more.
-
-**You implement (1):**
-
-```python
-publish(event: 'Event') -> None
-```
-
-**Implementations (1):** `App`
 
 ## Query
 
@@ -317,7 +303,7 @@ _disable(host: 'ModuleHost') -> None
 _enable(host: 'ModuleHost') -> None
 ```
 
-**You inherit (7):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem`
+**You inherit (9):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem` · `start` · `stop`
 
 **Implementations (0):** _none yet_
 
@@ -622,6 +608,22 @@ stop() -> None
 ```
 
 **Implementations (1):** `DdpReceiver`
+
+## ModuleHost
+
+`core/ports.py`
+
+What a module may do to the App -- and nothing more.
+
+**You implement (3):**
+
+```python
+publish(event: 'Event') -> None
+subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+```
+
+**Implementations (2):** `App` · `ModuleScope`
 
 ## RamAccess
 

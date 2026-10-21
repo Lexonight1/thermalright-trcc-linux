@@ -598,9 +598,12 @@ class ModulesResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class ModuleResult(Result):
-    """``SetModuleEnabled``: the module and whether it is now on."""
+    """``SetModuleEnabled``: the module and whether it is now on.  ``found``
+    is False for a key no module has -- an API's 404, without reading the
+    message."""
     key: str = ""
     enabled: bool = False
+    found: bool = True
 
 
 @dataclass(frozen=True, slots=True)

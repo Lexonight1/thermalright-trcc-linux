@@ -1338,12 +1338,42 @@ class VisualAdjustment:
 @dataclass(frozen=True, slots=True)
 class ModuleInfo:
     """One module as the Modules page shows it: its tile and its switch.
-    ``problem`` says why it cannot run here; "" when it can."""
+    ``problem`` says why it cannot run here; "" when it can.  ``icon`` is a
+    file path ("" for none); ``guide`` links its section of the guide."""
     key: str
     title: str
     summary: str
     enabled: bool
     problem: str = ""
+    icon: str = ""
+    guide: str = ""
+
+
+#: What a module may ask its host for: the name its manifest declares, and
+#: what that lets it do, in the words its tile and the guide show.  The one
+#: list -- the manifest reader refuses any other name.
+MODULE_CAPABILITIES: dict[str, str] = {
+    "events": "hears what happens in the app",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleManifest:
+    """What a module is, without its code -- read from its ``module.json``.
+
+    The Modules page lists a module from this alone, so one that is off is
+    never imported.  ``entry`` is the Python package whose import registers
+    the module's class under ``key``; ``icon`` a file beside the manifest;
+    ``capabilities`` what it may ask the App for."""
+    key: str
+    title: str
+    summary: str
+    entry: str
+    version: str = "0"
+    default_on: bool = True
+    icon: str = ""
+    guide: str = ""
+    capabilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,6 +32,10 @@ _STYLE = (f"QFrame#moduleTile {{ background: #2a2a30; border: 1px solid {FRAME};
           "QPushButton { min-width: 70px; min-height: 32px; color: white;"
           f" background: #3a3a3a; border: 1px solid {FRAME}; border-radius: 4px; }}"
           f"QPushButton:checked {{ background: {GOLD}; color: #3a3a3a; }}"
+          # "Guide ›" is a link, not a button: gold text, no box.
+          "QPushButton#moduleGuide { min-width: 0; min-height: 0; padding: 0;"
+          f" border: none; background: transparent; color: {GOLD}; }}"
+          "QPushButton#moduleGuide:hover { text-decoration: underline; }"
           "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
 
 

@@ -2493,8 +2493,11 @@ class CloudCatalog(ABC):
 
 
 # =========================================================================
-# ScreenCapture — grab a region of the user's desktop as raw RGB bytes
+# Modules — features a user switches on or off; the App is their host
 # =========================================================================
+
+
+_E = TypeVar("_E", bound="Event")
 
 
 class ModuleHost(ABC):
@@ -2502,13 +2505,23 @@ class ModuleHost(ABC):
 
     A module gets this, never the App: it cannot reach devices, settings or
     anything private.  Grows one capability at a time, when a module first
-    needs it (adding a visual, an LED colour source, ...).  The App is the
-    host; a test passes a fake.
+    needs it (adding a visual, an LED colour source, ...); each is named in
+    ``MODULE_CAPABILITIES`` and used only by a module whose manifest declares
+    it.  The App is the host; a test passes a fake.
     """
 
     @abstractmethod
     def publish(self, event: Event) -> None:
         """Tell every UI something happened."""
+
+    @abstractmethod
+    def subscribe(self, event_type: type[_E], handler: Callable[[_E], None]) -> None:
+        """Hear every *event_type* the App publishes -- the ``events``
+        capability.  A module's subscriptions end when it is switched off."""
+
+    @abstractmethod
+    def unsubscribe(self, event_type: type[_E], handler: Callable[[_E], None]) -> None:
+        """Stop hearing *event_type* with *handler*."""
 
 
 class Module(ABC):
@@ -2538,6 +2551,9 @@ class Module(ABC):
     summary: ClassVar[str] = ""
     #: On for a user who never chose.
     default_on: ClassVar[bool] = True
+    #: What it may ask its host for -- a module found by its manifest takes
+    #: these from ``module.json``; this is for one defined in code (a test's).
+    capabilities: ClassVar[tuple[str, ...]] = ()
 
     def enable(self, host: ModuleHost) -> None:
         """Switch it on: the hooks around the module's own work."""
@@ -2576,6 +2592,20 @@ class Module(ABC):
     def post_disable(self, host: ModuleHost) -> None:
         """After switching off."""
         log.debug("Module %s: post_disable", self.key)
+
+    def start(self, host: ModuleHost) -> None:
+        """Begin the work that touches hardware or runs a thread -- when the
+        App's session starts, or when the module is switched on inside one.
+
+        ``enable`` only registers: it runs in EVERY App, a one-shot CLI
+        command's too, so a loop or a hardware grab there would run where no
+        session wants it (the 2026-10-21 ``trcc kill`` board grab)."""
+        log.debug("Module %s: start", self.key)
+
+    def stop(self, host: ModuleHost) -> None:
+        """End what :meth:`start` began -- when the session ends, or before
+        the module is switched off."""
+        log.debug("Module %s: stop", self.key)
 
     def problem(self) -> str:
         """Why it cannot run on this machine -- shown on its tile.  ""
