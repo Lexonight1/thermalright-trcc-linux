@@ -869,7 +869,7 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
     import trcc.modules as package
     from trcc import ipc
     from trcc.adapters.modules import MODULES
-    from trcc.core.i18n import TRANSLATIONS
+    from trcc.core import i18n
 
     # The CLI and the API add what the installed modules bring when they are
     # first IMPORTED: imported here, before *root* joins the path, so a test's
@@ -878,7 +878,7 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
     importlib.import_module("trcc.ui.api.main")
     cli_main = importlib.import_module("trcc.ui.cli.main")
     monkeypatch.setattr(package, "__path__", list(package.__path__))
-    words = {lang: dict(table) for lang, table in TRANSLATIONS.items()}
+    words = {lang: dict(table) for lang, table in i18n._MODULE_WORDS.items()}
     roots: list[Path] = []
 
     def add(root: Path) -> Path:
@@ -902,9 +902,8 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
     for table in (ipc.COMMAND_TYPES, ipc.RESULT_TYPES, ipc.EVENT_TYPES):
         for name in [n for n, cls in table.items() if ours(cls.__module__)]:
             table.pop(name)
-    for lang, table in TRANSLATIONS.items():
-        table.clear()
-        table.update(words[lang])
+    i18n._MODULE_WORDS.clear()
+    i18n._MODULE_WORDS.update(words)
     for group in cli_main._GROUPS.values():
         group.registered_commands[:] = [
             c for c in group.registered_commands

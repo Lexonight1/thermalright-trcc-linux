@@ -201,3 +201,31 @@ def test_a_settings_file_from_before_keeps_every_panel_playing(tmp_path: Path) -
     assert s.for_device("87ad:70db").module_source is None
     assert s.module_settings("visualizer") == {
         "center": "/pictures/bob.png", "center_shown": False, "center_fire": 0.4}
+
+
+def test_the_gui_speaks_the_window_s_language(qtbot: Any, app: App) -> None:
+    """Its words come from its own i18n.json: the page's title, the slider
+    controls, and its row on the Modules page -- and follow a language
+    change.  MUTATION CHECK: drop ``page.set_language`` from TRCCApp's
+    ``_show_language`` and the controls stay German after the switch."""
+    from PySide6.QtWidgets import QLabel
+
+    from trcc.core.commands import SetLanguage
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app.dispatch(SetLanguage(language="de"))
+    window = TRCCApp(app=app)
+    qtbot.addWidget(window)
+    page: Any = window._module_pages["visualizer"]
+
+    def words() -> set[str]:
+        return {w.text() for w in page.findChildren(QLabel)} | {
+            w.text() for w in window.uc_modules.view.findChildren(QLabel)}
+
+    assert {"Audio-Visualisierung", "Feuer",
+            "Wähle oben eine Audio-Visualisierung – ihre Regler erscheinen hier."} <= words()
+    assert "Audio-Visualisierung" in {t for t in (window._module_tabs["visualizer"]
+                                                   .toolTip(),)}
+    window._show_language("fr")
+    assert {"Visuels audio", "Feu", "Visualiseur audio"} <= words()
+    window.close()

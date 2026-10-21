@@ -199,7 +199,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': '功能选择',
         'Circulate': '轮播',
         'Select all': '全选',
-        'Audio visuals': '音频可视化',
         'SPD Hub Temp': 'SPD Hub温度',
         'Memory Speed': '内存速度',
         'Memory Clock': '内存频率',
@@ -284,7 +283,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': '功能選擇',
         'Circulate': '輪播',
         'Select all': '全選',
-        'Audio visuals': '音訊視覺化',
         'SPD Hub Temp': 'SPD Hub溫度',
         'Memory Speed': '記憶體速度',
         'Memory Clock': '記憶體頻率',
@@ -315,7 +313,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'GPU': 'GPU',
     },
     'en': {
-        'Audio visuals': 'Audio visuals',
         'Layer Mask': 'Layer Mask',
         'Masks': 'Masks',
         'Upload': 'Upload',
@@ -454,7 +451,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Funktion',
         'Circulate': 'Wechselnd',
         'Select all': 'Alle auswählen',
-        'Audio visuals': 'Audio-Visualisierung',
         'SPD Hub Temp': 'SPD-Hub-Temp.',
         'Memory Speed': 'RAM-Geschw.',
         'Memory Clock': 'RAM-Takt',
@@ -539,7 +535,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Функции',
         'Circulate': 'По очереди',
         'Select all': 'Выбрать все',
-        'Audio visuals': 'Аудиовизуализация',
         'SPD Hub Temp': 'Темп. SPD Hub',
         'Memory Speed': 'Скорость памяти',
         'Memory Clock': 'Частота ОЗУ',
@@ -624,7 +619,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Sélection',
         'Circulate': 'Alterner',
         'Select all': 'Tout sélectionner',
-        'Audio visuals': 'Visuels audio',
         'SPD Hub Temp': 'Temp. SPD Hub',
         'Memory Speed': 'Vitesse mémoire',
         'Memory Clock': 'Fréq. RAM',
@@ -709,7 +703,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Seleção',
         'Circulate': 'Circular',
         'Select all': 'Selecionar tudo',
-        'Audio visuals': 'Visuais de áudio',
         'SPD Hub Temp': 'Temp. SPD Hub',
         'Memory Speed': 'Veloc. memória',
         'Memory Clock': 'Clock RAM',
@@ -794,7 +787,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': '機能',
         'Circulate': 'かわるがわる',
         'Select all': 'すべて選択',
-        'Audio visuals': 'オーディオビジュアル',
         'SPD Hub Temp': 'SPD Hub温度',
         'Memory Speed': 'メモリ速度',
         'Memory Clock': 'メモリ周波数',
@@ -879,7 +871,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Selección',
         'Circulate': 'Alternar',
         'Select all': 'Seleccionar todo',
-        'Audio visuals': 'Visuales de audio',
         'SPD Hub Temp': 'Temp. SPD Hub',
         'Memory Speed': 'Veloc. memoria',
         'Memory Clock': 'Reloj RAM',
@@ -964,7 +955,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': '기능 선택',
         'Circulate': '순환',
         'Select all': '모두 선택',
-        'Audio visuals': '오디오 비주얼',
         'SPD Hub Temp': 'SPD 허브 온도',
         'Memory Speed': '메모리 속도',
         'Memory Clock': '메모리 클럭',
@@ -1049,7 +1039,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Selezione',
         'Circulate': 'Alternare',
         'Select all': 'Seleziona tutto',
-        'Audio visuals': 'Visual audio',
         'SPD Hub Temp': 'Temp. SPD Hub',
         'Memory Speed': 'Velocità memoria',
         'Memory Clock': 'Clock RAM',
@@ -1134,7 +1123,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Selectie',
         'Circulate': 'Wisselen',
         'Select all': 'Alles selecteren',
-        'Audio visuals': 'Audiovisuals',
         'SPD Hub Temp': 'SPD-hubtemp.',
         'Memory Speed': 'Geheugensnelheid',
         'Memory Clock': 'Geheugenklok',
@@ -1219,7 +1207,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Wybór',
         'Circulate': 'Cyklicznie',
         'Select all': 'Zaznacz wszystko',
-        'Audio visuals': 'Wizualizacje audio',
         'SPD Hub Temp': 'Temp. SPD Hub',
         'Memory Speed': 'Prędkość pamięci',
         'Memory Clock': 'Zegar RAM',
@@ -1304,7 +1291,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Seçim',
         'Circulate': 'Döndür',
         'Select all': 'Tümünü seç',
-        'Audio visuals': 'Ses görselleri',
         'SPD Hub Temp': 'SPD Hub sıcaklığı',
         'Memory Speed': 'Bellek hızı',
         'Memory Clock': 'Bellek saati',
@@ -1389,7 +1375,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'اختيار',
         'Circulate': 'تدوير',
         'Select all': 'تحديد الكل',
-        'Audio visuals': 'مرئيات الصوت',
         'SPD Hub Temp': 'حرارة SPD Hub',
         'Memory Speed': 'سرعة الذاكرة',
         'Memory Clock': 'تردد الذاكرة',
@@ -1474,7 +1459,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'चयन',
         'Circulate': 'चक्रण',
         'Select all': 'सभी चुनें',
-        'Audio visuals': 'ऑडियो विज़ुअल',
         'SPD Hub Temp': 'SPD हब तापमान',
         'Memory Speed': 'मेमोरी स्पीड',
         'Memory Clock': 'मेमोरी क्लॉक',
@@ -1559,7 +1543,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'เลือก',
         'Circulate': 'สลับ',
         'Select all': 'เลือกทั้งหมด',
-        'Audio visuals': 'วิชวลเสียง',
         'SPD Hub Temp': 'อุณหภูมิ SPD Hub',
         'Memory Speed': 'ความเร็วหน่วยความจำ',
         'Memory Clock': 'ความถี่แรม',
@@ -1644,7 +1627,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Chọn',
         'Circulate': 'Luân phiên',
         'Select all': 'Chọn tất cả',
-        'Audio visuals': 'Hình ảnh âm thanh',
         'SPD Hub Temp': 'Nhiệt độ SPD Hub',
         'Memory Speed': 'Tốc độ bộ nhớ',
         'Memory Clock': 'Xung RAM',
@@ -1729,7 +1711,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Pilihan',
         'Circulate': 'Bergantian',
         'Select all': 'Pilih semua',
-        'Audio visuals': 'Visual audio',
         'SPD Hub Temp': 'Suhu SPD Hub',
         'Memory Speed': 'Kecepatan memori',
         'Memory Clock': 'Clock memori',
@@ -1814,7 +1795,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Výběr',
         'Circulate': 'Střídat',
         'Select all': 'Vybrat vše',
-        'Audio visuals': 'Zvukové vizualizace',
         'SPD Hub Temp': 'Tepl. SPD Hub',
         'Memory Speed': 'Rychlost paměti',
         'Memory Clock': 'Takt paměti',
@@ -1899,7 +1879,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Val',
         'Circulate': 'Växla',
         'Select all': 'Markera alla',
-        'Audio visuals': 'Ljudvisualiseringar',
         'SPD Hub Temp': 'SPD Hub-temp',
         'Memory Speed': 'Minneshastighet',
         'Memory Clock': 'Minnesklocka',
@@ -1984,7 +1963,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Valg',
         'Circulate': 'Skiftevis',
         'Select all': 'Vælg alle',
-        'Audio visuals': 'Lydvisualiseringer',
         'SPD Hub Temp': 'SPD Hub-temp.',
         'Memory Speed': 'RAM-hastighed',
         'Memory Clock': 'RAM-clock',
@@ -2069,7 +2047,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Valg',
         'Circulate': 'Veksle',
         'Select all': 'Velg alle',
-        'Audio visuals': 'Lydvisualiseringer',
         'SPD Hub Temp': 'SPD Hub-temp.',
         'Memory Speed': 'Minnehastighet',
         'Memory Clock': 'Minneklokke',
@@ -2154,7 +2131,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Valinta',
         'Circulate': 'Kiertää',
         'Select all': 'Valitse kaikki',
-        'Audio visuals': 'Äänivisualisoinnit',
         'SPD Hub Temp': 'SPD Hub -lämpö',
         'Memory Speed': 'Muistin nopeus',
         'Memory Clock': 'Muistin kello',
@@ -2239,7 +2215,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Választás',
         'Circulate': 'Váltakozó',
         'Select all': 'Összes kijelölése',
-        'Audio visuals': 'Hangvizualizációk',
         'SPD Hub Temp': 'SPD Hub hőm.',
         'Memory Speed': 'Memóriasebesség',
         'Memory Clock': 'Mem. órajel',
@@ -2324,7 +2299,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Selecție',
         'Circulate': 'Alternare',
         'Select all': 'Selectează tot',
-        'Audio visuals': 'Vizualizări audio',
         'SPD Hub Temp': 'Temp. SPD Hub',
         'Memory Speed': 'Viteză memorie',
         'Memory Clock': 'Frecv. RAM',
@@ -2409,7 +2383,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Функції',
         'Circulate': 'По черзі',
         'Select all': 'Вибрати все',
-        'Audio visuals': 'Аудіовізуалізації',
         'SPD Hub Temp': 'Темп. SPD Hub',
         'Memory Speed': "Швидкість пам'яті",
         'Memory Clock': 'Частота ОЗП',
@@ -2494,7 +2467,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Επιλογή',
         'Circulate': 'Εναλλαγή',
         'Select all': 'Επιλογή όλων',
-        'Audio visuals': 'Οπτικοποιήσεις ήχου',
         'SPD Hub Temp': 'Θερμ. SPD Hub',
         'Memory Speed': 'Ταχύτητα μνήμης',
         'Memory Clock': 'Συχν. μνήμης',
@@ -2579,7 +2551,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'בחירה',
         'Circulate': 'סיבוב',
         'Select all': 'בחר הכל',
-        'Audio visuals': 'ויזואליזציות שמע',
         'SPD Hub Temp': "טמפ' SPD Hub",
         'Memory Speed': 'מהירות זיכרון',
         'Memory Clock': 'תדר זיכרון',
@@ -2664,7 +2635,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Pilihan',
         'Circulate': 'Bergilir',
         'Select all': 'Pilih semua',
-        'Audio visuals': 'Visual audio',
         'SPD Hub Temp': 'Suhu SPD Hub',
         'Memory Speed': 'Kelajuan memori',
         'Memory Clock': 'Jam memori',
@@ -2750,7 +2720,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'নির্বাচন',
         'Circulate': 'ঘোরানো',
         'Select all': 'সব নির্বাচন করুন',
-        'Audio visuals': 'অডিও ভিজ্যুয়াল',
         'SPD Hub Temp': 'SPD হাব তাপমাত্রা',
         'Memory Speed': 'মেমরি গতি',
         'Memory Clock': 'মেমরি ক্লক',
@@ -2835,7 +2804,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'انتخاب',
         'Circulate': 'گردش',
         'Select all': 'سب منتخب کریں',
-        'Audio visuals': 'آڈیو بصریات',
         'SPD Hub Temp': 'SPD ہب درجہ حرارت',
         'Memory Speed': 'میموری کی رفتار',
         'Memory Clock': 'میموری کلاک',
@@ -2920,7 +2888,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'انتخاب',
         'Circulate': 'چرخش',
         'Select all': 'انتخاب همه',
-        'Audio visuals': 'جلوه\u200cهای صوتی',
         'SPD Hub Temp': 'دمای SPD Hub',
         'Memory Speed': 'سرعت حافظه',
         'Memory Clock': 'فرکانس حافظه',
@@ -3005,7 +2972,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Pagpili',
         'Circulate': 'Pag-ikot',
         'Select all': 'Piliin lahat',
-        'Audio visuals': 'Mga audio visual',
         'SPD Hub Temp': 'Temp ng SPD Hub',
         'Memory Speed': 'Bilis ng memory',
         'Memory Clock': 'Clock ng RAM',
@@ -3090,7 +3056,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'தேர்வு',
         'Circulate': 'சுழற்று',
         'Select all': 'அனைத்தையும் தேர்ந்தெடு',
-        'Audio visuals': 'ஆடியோ காட்சிகள்',
         'SPD Hub Temp': 'SPD ஹப் வெப்பம்',
         'Memory Speed': 'நினைவக வேகம்',
         'Memory Clock': 'RAM க்ளாக்',
@@ -3175,7 +3140,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'ਚੋਣ',
         'Circulate': 'ਘੁੰਮਾਓ',
         'Select all': 'ਸਭ ਚੁਣੋ',
-        'Audio visuals': 'ਆਡੀਓ ਵਿਜ਼ੂਅਲ',
         'SPD Hub Temp': 'SPD ਹੱਬ ਤਾਪਮਾਨ',
         'Memory Speed': 'ਮੈਮੋਰੀ ਸਪੀਡ',
         'Memory Clock': 'ਮੈਮੋਰੀ ਕਲਾਕ',
@@ -3260,7 +3224,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'Uchaguzi',
         'Circulate': 'Zungusha',
         'Select all': 'Chagua zote',
-        'Audio visuals': 'Taswira za sauti',
         'SPD Hub Temp': 'Joto la SPD Hub',
         'Memory Speed': 'Kasi ya RAM',
         'Memory Clock': 'Saa ya RAM',
@@ -3345,7 +3308,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Display Selection': 'ရွေးချယ်',
         'Circulate': 'လည်ပတ်',
         'Select all': 'အားလုံးရွေးပါ',
-        'Audio visuals': 'အသံရုပ်ပုံ',
         'SPD Hub Temp': 'SPD Hub အပူချိန်',
         'Memory Speed': 'မှတ်ဉာဏ်အမြန်နှုန်း',
         'Memory Clock': 'မှတ်ဉာဏ်နာရီ',
@@ -3394,27 +3356,32 @@ def tr(key: str, lang: str = "en") -> str:
     strings, which are the bug to fix rather than the data to add).
     """
     log.debug("tr: key=%r lang=%s", key, lang)
-    table = TRANSLATIONS.get(lang)
-    if table is not None:
-        translated = table.get(key)
-        if translated:
-            return translated
+    translated = (TRANSLATIONS.get(lang, {}).get(key)
+                  or _MODULE_WORDS.get(lang, {}).get(key))
+    if translated:
+        return translated
     english = TRANSLATIONS.get("en", {})
     return english.get(key, key)
+
+
+#: Every module's words, by language -- kept apart from ``TRANSLATIONS``,
+#: which is the app's own table and never changes at run time.
+_MODULE_WORDS: dict[str, dict[str, str]] = {}
 
 
 def add_translations(table: dict[str, dict[str, str]]) -> None:
     """Add a module's words (its ``i18n.json``, keyed like ``TRANSLATIONS``)
     so :func:`tr` finds them.  English is not added: an English key is its
-    own text, so ``tr`` already returns it.  The main table wins a clash, and
-    a language TRCC does not offer is skipped."""
+    own text, so ``tr`` already returns it.  The app's table wins a clash,
+    and a language TRCC does not offer is skipped."""
     added = 0
     for lang, entries in table.items():
         if lang == "en" or lang not in TRANSLATIONS:
             continue
+        words = _MODULE_WORDS.setdefault(lang, {})
         for key, text in entries.items():
-            if key not in TRANSLATIONS[lang]:
-                TRANSLATIONS[lang][key] = text
+            if key not in words:
+                words[key] = text
                 added += 1
     log.info("add_translations: %d entr(ies) across %d language(s)", added,
              len(table))

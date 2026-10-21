@@ -66,6 +66,15 @@ class ModulesView(QScrollArea):
         #: Why the last switch of each module was refused -- shown on its
         #: tile until one succeeds, never only in a log.
         self.refused: dict[str, str] = {}
+        #: A module's title and summary in the window's language -- the gui
+        #: sets it (its ``tr``, which holds each module's ``i18n.json``).
+        self._translate: Callable[[str], str] = str
+        self.refresh()
+
+    def set_translate(self, translate: Callable[[str], str]) -> None:
+        """The window's language changed: the tiles again, in it."""
+        log.info("ModulesView.set_translate")
+        self._translate = translate
         self.refresh()
 
     def refresh(self) -> None:
@@ -106,10 +115,10 @@ class ModulesView(QScrollArea):
             symbol.setPixmap(icon.pixmap(ICON_SIZE, ICON_SIZE))
             row.addWidget(symbol, 0, Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
-        name = QLabel(module.title)
+        name = QLabel(self._translate(module.title))
         name.setObjectName("moduleTitle")
         text.addWidget(name)
-        summary = QLabel(module.summary)
+        summary = QLabel(self._translate(module.summary))
         summary.setWordWrap(True)
         text.addWidget(summary)
         note = (f"Cannot run here: {module.problem}" if module.problem

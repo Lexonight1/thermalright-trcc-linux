@@ -609,6 +609,9 @@ class TRCCApp(QMainWindow):
         for panel, key in self._i18n_panel_tables:
             panel.set_title(tr(key, lang))
         self.uc_led_control.set_language(lang)
+        for page in self._module_pages.values():
+            cast(ModulePage, page).set_language(lang)
+        self.uc_modules.view.set_translate(partial(tr, lang=lang))
 
     def _on_bus_slideshow_changed(self, event: SlideshowChanged) -> None:
         """Route a ``SlideshowChanged`` event to its LCD's handler."""
@@ -1233,6 +1236,7 @@ class TRCCApp(QMainWindow):
         self.mode_buttons.append(button)
         self._module_tabs[key] = button
         self._module_pages[key] = widget
+        page.set_language(lang)
         if self._active_key:
             page.set_device_key(self._active_key)
         log.info("_add_module_page: %s at panel %d, tab at %s", key, index, (x, y))

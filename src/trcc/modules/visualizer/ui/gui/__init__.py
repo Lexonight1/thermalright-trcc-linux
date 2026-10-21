@@ -12,6 +12,8 @@ the window never waits on a visual.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,6 +21,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
 from trcc.core.events import BackgroundChanged
+from trcc.core.i18n import tr
 from trcc.ui.gui.base import BaseThemeBrowser, BaseThumbnail
 from trcc.ui.gui.constants import Colors, Sizes, Styles
 from trcc.ui.gui.module_page import ModulePage
@@ -115,6 +118,7 @@ class UCVisuals(BaseThemeBrowser, ModulePage):
     def __init__(self, parent=None, app: CommandBus | None = None) -> None:
         log.info("UCVisuals.__init__: app=%s", app is not None)
         self._app = app
+        self._tr: Callable[[str], str] = str
         self._key = ""
         self._listed = False
         self._tiles = (VisualTiles(app, self._tile_query, self._show_tile)
@@ -148,6 +152,14 @@ class UCVisuals(BaseThemeBrowser, ModulePage):
         if not result.ok:
             log.warning("UCVisuals._on_play: %s", result.message)
 
+    def set_language(self, lang: str) -> None:
+        """Its words, and its sliders', in the window's language."""
+        log.info("UCVisuals.set_language: %s", lang)
+        self._tr = partial(tr, lang=lang)
+        if self._controls is not None:
+            self._controls.set_translate(self._tr)
+            self._fit_controls()
+
     def set_device_key(self, key: str) -> None:
         """The panel the window works on -- its visual's controls show."""
         log.info("UCVisuals.set_device_key: %s -> %s", self._key, key)
@@ -170,7 +182,7 @@ class UCVisuals(BaseThemeBrowser, ModulePage):
 
     def _no_items_message(self) -> str:
         log.debug("UCVisuals._no_items_message")
-        return "No audio visuals on this computer"
+        return self._tr("No audio visuals on this computer")
 
     def showEvent(self, event: QShowEvent) -> None:
         """The gallery is listed the first time it is shown."""

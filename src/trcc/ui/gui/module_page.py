@@ -36,6 +36,12 @@ class ModulePage:
         """The LCD the window now works on."""
         log.debug("%s.set_device_key: %s", type(self).__name__, key)
 
+    def set_language(self, lang: str) -> None:
+        """The window's language -- at build time, and on every change.  The
+        page translates its own words (``trcc.core.i18n.tr``, which holds its
+        module's ``i18n.json`` too); its title and tooltip the window does."""
+        log.debug("%s.set_language: %s", type(self).__name__, lang)
+
     def on_settings_changed(self, event: object) -> None:
         """A device's settings changed, in this window or another."""
         log.debug("%s.on_settings_changed: %s", type(self).__name__,

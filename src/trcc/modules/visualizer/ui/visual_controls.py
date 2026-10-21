@@ -83,9 +83,14 @@ class VisualControls(QWidget):
                  sliders: Callable[[dict[str, float]], Command[Any]],
                  center: Callable[[str], Command[Any]],
                  picture: Callable[[bool | None, float | None], Command[Any]],
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None,
+                 translate: Callable[[str], str] = str) -> None:
         super().__init__(parent)
         log.debug("VisualControls.__init__")
+        #: English to the window's language -- the gui's ``tr``; the qtgui,
+        #: which translates nothing yet, keeps English.
+        self._tr = translate
+        self._listed = VisualsResult(ok=True)
         self._bus, self._sliders, self._center = bus, sliders, center
         self._picture_command = picture
         self._adjustments: dict[str, VisualAdjustment] = {}
@@ -102,13 +107,13 @@ class VisualControls(QWidget):
         self._toggle.setCheckable(True)
         self._toggle.setFixedSize(_THUMB + 8, _THUMB + 8)
         self._toggle.setIconSize(QSize(_THUMB, _THUMB))
-        self._toggle.setToolTip("The centre picture: on or off")
+        self._toggle.setToolTip(self._tr("The centre picture: on or off"))
         self._toggle.clicked.connect(self._on_toggle_picture)
-        self._pick = QPushButton("Choose picture…", self)
+        self._pick = QPushButton(self._tr("Choose picture…"), self)
         self._pick.setSizePolicy(QSizePolicy.Policy.Maximum,
                                  QSizePolicy.Policy.Fixed)
         self._pick.clicked.connect(self._on_pick_picture)
-        self._fire_label = QLabel("Fire", self)
+        self._fire_label = QLabel(self._tr("Fire"), self)
         self._fire = QSlider(Qt.Orientation.Horizontal, self)
         self._fire.setRange(0, _STEPS)
         self._fire.setTracking(False)
@@ -129,8 +134,18 @@ class VisualControls(QWidget):
         root.addWidget(self._hint)
         self.show_for(VisualsResult(ok=True))
 
+    def set_translate(self, translate: Callable[[str], str]) -> None:
+        """The window's language changed: every word again, in it."""
+        log.info("VisualControls.set_translate")
+        self._tr = translate
+        self._toggle.setToolTip(translate("The centre picture: on or off"))
+        self._pick.setText(translate("Choose picture…"))
+        self._fire_label.setText(translate("Fire"))
+        self.show_for(self._listed)
+
     def show_for(self, listed: VisualsResult) -> None:
         """The controls of the visual *listed* says the panel plays."""
+        self._listed = listed
         info: VisualInfo | None = next(
             (v for v in listed.visuals if v.kind == listed.playing), None)
         log.info("VisualControls.show_for: %s %s", listed.playing or "-",
@@ -145,13 +160,13 @@ class VisualControls(QWidget):
             self._add_slider(row, adjustment, listed.sliders.get(
                 adjustment.name, adjustment.default))
         self._show_picture(listed, info is not None and info.uses_center)
-        self._hint.setText(
+        self._hint.setText(self._tr(
             "Pick an audio visual above -- its sliders show here."
             if info is None else
             "Hearing nothing -- play some music.  If music IS playing, TRCC "
             "cannot hear this computer's sound output."
             if not listed.hearing else
-            "Let go of a slider and the visual changes as it plays.")
+            "Let go of a slider and the visual changes as it plays."))
 
     def _show_picture(self, listed: VisualsResult, centred: bool) -> None:
         """The picture row: its button (with the picture on it, pressed while
@@ -189,7 +204,7 @@ class VisualControls(QWidget):
         shown = QLabel(f"{value:.2f}", self)
         self._adjustments[adjustment.name] = adjustment
         self._values[adjustment.name] = shown
-        name = QLabel(adjustment.label, self)
+        name = QLabel(self._tr(adjustment.label), self)
         for column, widget in enumerate((name, slider, shown)):
             self._rows.addWidget(widget, row, column)
             # Shown now: Qt would show a new child on the next event-loop
@@ -220,8 +235,9 @@ class VisualControls(QWidget):
                                self._on_answer)
 
     def _on_pick_picture(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Centre picture",
-                                              self._picture_folder(), _PICTURES)
+        path, _ = QFileDialog.getOpenFileName(self, self._tr("Centre picture"),
+                                              self._picture_folder(),
+                                              self._tr(_PICTURES))
         log.info("VisualControls._on_pick_picture: %r", path)
         if path:
             dispatch_in_background(self._bus, self._center(path),

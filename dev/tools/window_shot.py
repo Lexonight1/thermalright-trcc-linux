@@ -13,7 +13,8 @@ desktop (memory: reference_drive_windows_on_xvfb)::
         --module visualizer=off --open visualizer
 
 ``--module KEY=on|off`` switches a module first (repeatable); ``--open KEY``
-opens that module's tab (gui) or sidebar page (qtgui) before the picture.
+opens that module's tab (gui) or sidebar page (qtgui) before the picture;
+``--lang CODE`` sets the window's language.
 Prints what it saw: each module's tab or entry and whether it is visible.
 """
 from __future__ import annotations
@@ -51,7 +52,7 @@ def _settle(app: object, seconds: float = 0.2) -> None:
 
 
 def shoot(face: str, out: Path, modules: list[str], open_key: str,
-          wait: float = 3.0) -> list[str]:
+          wait: float = 3.0, lang: str = "") -> list[str]:
     """Build *face*, switch *modules*, open *open_key*, save the window to
     *out*; what each module's tab or entry looked like."""
     from PySide6.QtWidgets import QApplication
@@ -59,7 +60,7 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
     from tests.mock_platform import MockPlatform
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
-    from trcc.core.commands import ConnectDevice, SetModuleEnabled
+    from trcc.core.commands import ConnectDevice, SetLanguage, SetModuleEnabled
 
     log.info("shoot: %s -> %s modules=%s open=%r", face, out, modules, open_key)
     qapp = QApplication.instance() or QApplication(sys.argv)
@@ -67,6 +68,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
     app = App(MockPlatform([_SPEC], root), renderer=QtRenderer())
     app.start_session()
     app.dispatch(ConnectDevice(key=_KEY))
+    if lang:
+        print(f"language {lang}: {app.dispatch(SetLanguage(language=lang)).message}")
     for switch in modules:
         key, _, state = switch.partition("=")
         result = app.dispatch(SetModuleEnabled(key=key, enabled=state == "on"))
@@ -109,10 +112,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--module", action="append", default=[], metavar="KEY=on|off")
     ap.add_argument("--open", default="", metavar="KEY",
                     help="open this module's tab or page first")
+    ap.add_argument("--lang", default="", help="the window's language, e.g. de")
     ap.add_argument("--wait", type=float, default=3.0,
                     help="seconds to let background answers arrive first")
     args = ap.parse_args(argv)
-    for line in shoot(args.face, args.out, args.module, args.open, args.wait):
+    for line in shoot(args.face, args.out, args.module, args.open, args.wait,
+                      args.lang):
         print(line)
     print(f"saved {args.out}")
     return 0
