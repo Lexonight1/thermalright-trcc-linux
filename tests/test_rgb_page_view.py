@@ -14,6 +14,7 @@ from trcc.core.commands import (
     RgbFollow,
     RgbLights,
     ScanRgbLights,
+    SetAuraEffect,
     SetAuraLeds,
     SetRamEffect,
     SetRgbFollow,
@@ -48,8 +49,9 @@ HEADER = RgbLight("aura/argb1", "ASUS Board -- ARGB header 1", 0,
 class _Bus:
     """Answers the page's reads; records every Command it is sent."""
 
-    def __init__(self) -> None:
+    def __init__(self, lights: tuple[RgbLight, ...] = (*STICKS, HEADER)) -> None:
         self.sent: list[Any] = []
+        self.lights = lights
 
     def dispatch(self, cmd: Any) -> Any:
         self.sent.append(cmd)
@@ -57,8 +59,8 @@ class _Bus:
             case RamLighting():
                 return RamLightingResult(state=RamAccessState.ON, message="on")
             case (RgbLights() | ScanRgbLights() | SetRamEffect() | SetAuraLeds()
-                  | BlinkAuraHeader()):
-                return RgbLightsResult(lights=(*STICKS, HEADER), scanned=True,
+                  | BlinkAuraHeader() | SetAuraEffect()):
+                return RgbLightsResult(lights=self.lights, scanned=True,
                                        ram_access=RamAccessState.ON,
                                        message="done")
             case RgbFollow() | SetRgbFollow():
@@ -111,6 +113,29 @@ def test_apply_saves_the_effect_with_only_what_it_takes(view: Any,
     _answered(view, qtbot)
     (sent,) = view._app.commands(SetRamEffect)
     assert (sent.effect, sent.refs, sent.colors) == (RamEffect.RAINBOW, (), ())
+
+
+@pytest.mark.parametrize("skin", _skins(), ids=["gui", "qtgui"])
+def test_apply_runs_the_effect_on_a_ticked_header(skin: Any, qtbot: Any) -> None:
+    """The maintainer's exhaust fan, from either window: a Static colour on
+    header 1 is SetAuraEffect for that header -- not an effect on the sticks."""
+    lit = RgbLight("aura/argb1", "ASUS Board -- ARGB header 1", 8, LightKind.BOARD)
+    other = RgbLight("aura/argb2", "ASUS Board -- ARGB header 2", 4, LightKind.BOARD)
+    view = skin(_Bus((*STICKS, lit, other)))
+    qtbot.addWidget(view)
+    view.resize(1170, 630)
+    view.show()
+    qtbot.waitExposed(view)
+    view._source_buttons[RgbSource.EFFECT].click()
+    for stick in STICKS:
+        view._lights_column._on_light_toggled(stick.ref, False)
+    view._lights_column._on_light_toggled(lit.ref, True)
+    view._effect._on_effect(view._effect._effect.findData(RamEffect.STATIC))
+    view._apply.click()
+    _answered(view, qtbot)
+    (sent,) = view._app.commands(SetAuraEffect)
+    assert (sent.effect, sent.refs) == (RamEffect.STATIC, ("aura/argb1",))
+    assert view._app.commands(SetRamEffect) == []
 
 
 def test_apply_follows_with_the_source_the_mapping_and_the_lights(

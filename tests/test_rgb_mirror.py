@@ -1044,8 +1044,8 @@ def test_a_damaged_saved_effect_is_unknown_not_a_guess(tmp_path) -> None:
     app.settings.app.ram_effects = {
         "i2c-3/0x19": {"effect": "disco"},
         "i2c-3/0x1b": cast(dict[str, Any], "not even a dict")}  # damaged on purpose
-    assert app.settings.ram_effect("i2c-3/0x19") is None
-    assert app.settings.ram_effect("i2c-3/0x1b") is None
+    assert app.settings.light_effect("i2c-3/0x19") is None
+    assert app.settings.light_effect("i2c-3/0x1b") is None
     app.close()
 
 
@@ -1192,3 +1192,181 @@ def test_every_os_platform_names_the_real_openrgb_client() -> None:
 
     assert Platform.OPENRGB is None
     assert host_platform_class().OPENRGB is OpenRgbMirror
+
+
+# ── TRCC's own effect as the source ─────────────────────────────────────
+
+def _effect(effect: RamEffect, *colors: tuple[int, int, int]) -> RamEffectSettings:
+    return RamEffectSettings(effect=effect, colors=colors)
+
+
+def _running(effects: dict, targets: tuple[str, ...] = ()) -> tuple[RgbMirrorService, FakeMirror]:
+    from trcc.core.models import EFFECT_SOURCE
+    service, made = _service()
+    service.configure(BOARD, "", 0, EFFECT_SOURCE, targets=targets,
+                      effects=effects)
+    return service, made[-1]
+
+
+def test_each_light_runs_its_own_effect() -> None:
+    """A header's fan can be one colour and the next header's another.
+
+    MUTATION CHECK: give every light the first light's effect -- RAM shows red."""
+    service, mirror = _running({"strip": _effect(RamEffect.STATIC, RED),
+                                "ram": _effect(RamEffect.STATIC, BLUE)})
+    _until(lambda: len(mirror.shown) >= 2)
+    service.stop()
+    assert mirror.shown[:2] == [("Strip", (RED,) * 10), ("RAM", (BLUE,) * 10)]
+
+
+def test_an_effect_reaches_only_its_targets() -> None:
+    service, mirror = _running({"strip": _effect(RamEffect.STATIC, RED)},
+                               targets=("strip",))
+    _until(lambda: bool(mirror.shown))
+    service.stop()
+    assert {name for name, _ in mirror.shown} == {"Strip"}
+
+
+def test_a_moving_effect_is_drawn_frame_after_frame() -> None:
+    """Rainbow changes as it runs; a Static colour is sent once a second.
+
+    MUTATION CHECK: wait for a pending frame as a follower does -- nothing
+    is ever sent, since nothing arrives."""
+    service, mirror = _running({"strip": _effect(RamEffect.RAINBOW)},
+                               targets=("strip",))
+    _until(lambda: len(mirror.shown) >= 4)
+    service.stop()
+    assert len({colors for _, colors in mirror.shown[:4]}) > 1
+
+
+def test_a_cooler_does_not_paint_over_the_effect() -> None:
+    service, mirror = _running({"strip": _effect(RamEffect.STATIC, RED)},
+                               targets=("strip",))
+    service.on_colors(_colors("0416:8001", BLUE))
+    _until(lambda: len(mirror.shown) >= 2)
+    service.stop()
+    assert all(colors == (RED,) * 10 for _, colors in mirror.shown)
+
+
+def test_effects_without_the_effect_source_are_ignored() -> None:
+    """Following a cooler with effects passed by mistake follows the cooler."""
+    service, made = _service()
+    service.configure(BOARD, "", 0, "", effects={"strip": _effect(RamEffect.STATIC, RED)})
+    mirror = made[-1]
+    service.on_colors(_colors("0416:8001", BLUE))
+    _until(lambda: bool(mirror.shown))
+    service.stop()
+    assert mirror.shown[0] == ("Strip", (BLUE,))
+
+
+# ── SetAuraEffect: the board's lights run TRCC's built-in effects ────────
+
+def _board_app(tmp_path: Path) -> tuple[App, MockPlatform]:
+    """The maintainer's board, scripted, Found, header 1 at 8 LEDs."""
+    platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
+    platform.rgb = ScriptedRgbHardware()
+    app = App(platform)
+    app.dispatch(ScanRgbLights())
+    assert app.dispatch(SetAuraLeds(header=1, leds=8)).ok
+    return app, platform
+
+
+def _header_shows(platform: MockPlatform, header: int, rgb: tuple[int, int, int],
+                  leds: int) -> bool:
+    """Whether a direct packet painted *header*'s *leds* LEDs *rgb*."""
+    want = bytes([0x40, 0x80 | (header - 1), 0, leds]) + bytes(rgb * leds)
+    return any(p[:4 + 3 * leds] == want for p in platform.aura.reports(0x40))
+
+
+def test_a_static_colour_lights_the_header_and_is_kept(tmp_path: Path) -> None:
+    """The maintainer's exhaust fan: header 1 turns red, nothing is saved on
+    the board (no 0x3F), and every UI lists the header's effect.
+
+    MUTATION CHECK: drop the effects from _refollow_board -- the header
+    stays dark."""
+    from trcc.core.commands import RgbLights, SetAuraEffect
+    from trcc.core.models import EFFECT_SOURCE
+    app, platform = _board_app(tmp_path)
+    result = app.dispatch(SetAuraEffect(effect=RamEffect.STATIC,
+                                        refs=("aura/argb1",), colors=(RED,)))
+    assert (result.ok, result.message) == (True, "static on 1 motherboard light(s)")
+    _until(lambda: _header_shows(platform, 1, RED, 8))
+    assert platform.aura.reports(0x3F) == []
+    assert app.settings.app.rgb_follow_source == EFFECT_SOURCE
+    header = next(light for light in app.dispatch(RgbLights()).lights
+                  if light.ref == "aura/argb1")
+    assert header.effect == RamEffectSettings(effect=RamEffect.STATIC, colors=(RED,))
+    app.close()
+
+
+def test_the_effect_runs_again_when_the_app_starts(tmp_path: Path) -> None:
+    from trcc.core.commands import SetAuraEffect
+    app, platform = _board_app(tmp_path)
+    app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb1",),
+                               colors=(BLUE,)))
+    app.close()
+    platform.aura.writes.clear()
+    again = App(platform)
+    _until(lambda: _header_shows(platform, 1, BLUE, 8))
+    again.close()
+
+
+def test_each_header_keeps_its_own_effect(tmp_path: Path) -> None:
+    """Header 2 turning blue leaves header 1 red.
+
+    MUTATION CHECK: target only the lights named now -- header 1 goes dark."""
+    from trcc.core.commands import SetAuraEffect
+    app, platform = _board_app(tmp_path)
+    assert app.dispatch(SetAuraLeds(header=2, leds=4)).ok
+    app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb1",),
+                               colors=(RED,)))
+    app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb2",),
+                               colors=(BLUE,)))
+    platform.aura.writes.clear()
+    _until(lambda: _header_shows(platform, 1, RED, 8)
+           and _header_shows(platform, 2, BLUE, 4))
+    app.close()
+
+
+def test_a_new_led_count_applies_while_the_effect_runs(tmp_path: Path) -> None:
+    """The count the maintainer had was 4, left over from a test -- correcting
+    it must reach the running header without a restart."""
+    from trcc.core.commands import SetAuraEffect
+    app, platform = _board_app(tmp_path)
+    app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb1",),
+                               colors=(RED,)))
+    _until(lambda: _header_shows(platform, 1, RED, 8))
+    assert app.dispatch(SetAuraLeds(header=1, leds=12)).ok
+    _until(lambda: _header_shows(platform, 1, RED, 12))
+    app.close()
+
+
+def test_stopping_hands_the_header_back_to_the_boards_effect(tmp_path: Path) -> None:
+    from trcc.core.commands import SetAuraEffect
+    app, platform = _board_app(tmp_path)
+    app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb1",),
+                               colors=(RED,)))
+    _until(lambda: _header_shows(platform, 1, RED, 8))
+    app.dispatch(SetRgbFollow(mode=OFF))
+    assert platform.aura.reports(0x35)[-1] == effect_packet(1, 0x05)
+    app.close()
+
+
+@pytest.mark.parametrize(("refs", "kw", "message"), [
+    (("aura/argb2",), {"colors": (RED,)},
+     "give ASUS PRIME Z790-V AX -- ARGB header 2 its number of LEDs first"),
+    (("aura/argb9",), {"colors": (RED,)},
+     "no motherboard light aura/argb9 -- found aura/argb1, aura/argb2, "
+     "aura/argb3, aura/onboard"),
+    (("aura/argb1",), {"colors": (RED,), "brightness": 300},
+     "brightness is 0-255, not 300"),
+])
+def test_what_cannot_run_is_refused_before_anything_changes(
+        tmp_path: Path, refs, kw, message) -> None:
+    from trcc.core.commands import SetAuraEffect
+    app, platform = _board_app(tmp_path)
+    before = (app.settings.rgb_follow_mode(), list(platform.aura.writes))
+    result = app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=refs, **kw))
+    assert (result.ok, result.message) == (False, message)
+    assert (app.settings.rgb_follow_mode(), list(platform.aura.writes)) == before
+    app.close()

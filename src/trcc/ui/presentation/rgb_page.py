@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from ...core.models import (
+    EFFECT_SOURCE,
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,
@@ -106,9 +107,11 @@ REMEMBERED_NOTE = ("Found at the last search -- press Find lights to check "
 HINTS: dict[RgbSource, str] = {
     RgbSource.LEAVE: ("TRCC sends nothing to any light.  Each stick keeps the "
                       "effect saved on it."),
-    RgbSource.EFFECT: ("Saved on the stick itself -- it keeps running after "
-                       "TRCC closes and after a reboot.  Written once when you "
-                       "press Apply, never on a timer."),
+    RgbSource.EFFECT: ("A RAM stick saves the effect itself -- it keeps "
+                       "running after TRCC closes and after a reboot.  A "
+                       "motherboard light runs it while TRCC runs, and shows "
+                       "the board's own effect before TRCC starts.  OpenRGB's "
+                       "lights only follow a device."),
     # Seen on Corsair Vengeance DDR5, 2026-10-10: a stick stopped following
     # keeps its last colours -- it does not go back to its saved effect.
     RgbSource.FOLLOW: ("Live only -- nothing is saved on the stick.  When "
@@ -150,7 +153,16 @@ class FollowDevice:
     targets: tuple[str, ...]
 
 
-ApplyPlan = LeaveLights | SaveEffect | FollowDevice
+@dataclass(frozen=True, slots=True)
+class RunBoardEffect:
+    """Plan: the motherboard lights *refs* (every one when empty) run
+    *settings*, drawn by TRCC (``SetAuraEffect``)."""
+    refs: tuple[str, ...]
+    settings: RamEffectSettings
+
+
+ApplyPlan = LeaveLights | SaveEffect | RunBoardEffect | FollowDevice
+
 
 
 def strip_legend(strips: Sequence[tuple[str, RamEffectSettings | None]]
@@ -194,6 +206,9 @@ FOLLOWS: dict[LightKind, RgbFollowMode] = {
     LightKind.BOARD: RgbFollowMode.BOARD,
 }
 TICKABLE = frozenset(FOLLOWS)
+#: The kinds a built-in effect runs on -- one at a time: a stick saves it, a
+#: motherboard light runs it as TRCC draws it.  OpenRGB's lights only follow.
+EFFECT_KINDS = frozenset({LightKind.RAM, LightKind.BOARD})
 #: Ticked when nothing says otherwise.  A motherboard's headers start
 #: unticked: which one has a fan on it is the user's to say.
 TICKED_AT_FIRST = frozenset({LightKind.RAM, LightKind.OPENRGB})
@@ -226,12 +241,21 @@ def _detail(light: RgbLight) -> str:
         return "found -- TRCC does not drive it; another app may"
     if light.kind is LightKind.BOARD:
         count = light.led_count
-        return (f"direct · {count} LED{'' if count == 1 else 's'}" if count
+        effect = f" · {EFFECT_LABELS[light.effect.effect]}" if light.effect else ""
+        return (f"direct · {count} LED{'' if count == 1 else 's'}{effect}" if count
                 else "direct · LED count not set")
     # The name already says where the stick sits (``named_by_ref``).
     saved = (f" · {EFFECT_LABELS[light.effect.effect]} saved"
              if light.effect else "")
     return f"direct · {light.led_count} LEDs{saved}"
+
+
+def effect_kinds(lights: Sequence[RgbLight], checked: set[str]) -> set[LightKind]:
+    """The kinds of the *checked* lights an effect can run on."""
+    kinds = {light.kind for light in lights
+             if light.ref in checked and light.kind in EFFECT_KINDS}
+    log.debug("effect_kinds: %s", sorted(k.value for k in kinds))
+    return kinds
 
 
 class EffectPicks:
@@ -338,14 +362,21 @@ class RgbPage:
                                if light.kind in first})
         if follow.host:
             self.address = format_openrgb_address(follow.host, follow.port)
-        self.follow_source = follow.source
+        # The board running TRCC's own effect is an effect, not following.
+        effect_running = (follow.mode is RgbFollowMode.BOARD
+                          and follow.source == EFFECT_SOURCE)
+        self.follow_source = FIRST_COOLER if effect_running else follow.source
         self.mapping = follow.mapping
         self.colors = follow.colors
-        saved = next((light.effect for light in self._ram_lights()
+        shown = (light for light in self._lights
+                 if (light.ref in self._checked if effect_running
+                     else light.kind is LightKind.RAM))
+        saved = next((light.effect for light in shown
                       if light.effect is not None), None)
         if saved is not None:
             self.effect_picks.take(saved)
-        self.source = (RgbSource.FOLLOW if follow.mode is not RgbFollowMode.OFF
+        self.source = (RgbSource.EFFECT if effect_running
+                       else RgbSource.FOLLOW if follow.mode is not RgbFollowMode.OFF
                        else RgbSource.EFFECT if saved is not None
                        else RgbSource.LEAVE)
 
@@ -432,7 +463,7 @@ class RgbPage:
         """An effect needs a stick; following needs a light, or to be on."""
         enabled = {
             RgbSource.LEAVE: True,
-            RgbSource.EFFECT: bool(self.rows(LightKind.RAM)),
+            RgbSource.EFFECT: any(self.rows(kind) for kind in EFFECT_KINDS),
             RgbSource.FOLLOW: (bool(self._lights)
                                or self._follow.mode is not RgbFollowMode.OFF),
         }[source]
@@ -497,8 +528,8 @@ class RgbPage:
         """
         if self.source is RgbSource.EFFECT:
             settings = self.effect_picks.settings()
-            strips = tuple((row.title, settings)
-                           for row in self.rows(LightKind.RAM) if row.checked)
+            strips = tuple((row.title, settings) for kind in EFFECT_KINDS
+                           for row in self.rows(kind) if row.checked)
         else:
             strips = tuple((light.name, light.effect)
                            for light in self._ram_lights())
@@ -552,16 +583,22 @@ class RgbPage:
     def problem(self) -> str | None:
         """Why Apply would be refused -- shown, and Apply stays off."""
         problem: str | None = None
+        silent = [row.title for row in self.rows(LightKind.BOARD)
+                  if row.checked and not row.leds]
         if self.source is RgbSource.EFFECT:
-            if not any(row.checked for row in self.rows(LightKind.RAM)):
-                problem = "Tick a RAM stick -- effects run on the memory itself."
+            kinds = effect_kinds(self._lights, self._checked)
+            if len(kinds) > 1:
+                problem = ("An effect goes to one kind of light at a time -- "
+                           "the RAM or the motherboard; untick the others.")
+            elif not kinds:
+                problem = "Tick a RAM stick or a motherboard light."
+            elif LightKind.BOARD in kinds and silent:
+                problem = f"Give {silent[0]} its number of LEDs first."
             else:
                 problem = effect_problem(self.effect_picks.settings())
         elif self.source is RgbSource.FOLLOW:
             kinds = {light.kind for light in self._lights
                      if light.ref in self._checked}
-            silent = [row.title for row in self.rows(LightKind.BOARD)
-                      if row.checked and not row.leds]
             if len(kinds) > 1:
                 problem = ("Following drives one kind of light at a time -- "
                            "RAM, OpenRGB or the motherboard; untick the others.")
@@ -585,8 +622,10 @@ class RgbPage:
         if self.source is RgbSource.LEAVE:
             plan = LeaveLights()
         elif self.source is RgbSource.EFFECT:
-            plan = SaveEffect(self._targets(LightKind.RAM),
-                              self.effect_picks.settings())
+            settings = self.effect_picks.settings()
+            plan = (RunBoardEffect(self._targets(LightKind.BOARD), settings)
+                    if LightKind.BOARD in effect_kinds(self._lights, self._checked)
+                    else SaveEffect(self._targets(LightKind.RAM), settings))
         elif mode is not None and address is not None:
             kind = next(k for k, m in FOLLOWS.items() if m is mode)
             plan = FollowDevice(mode, *address, self.follow_source,

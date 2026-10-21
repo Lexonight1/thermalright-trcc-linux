@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**162 total: 116 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**163 total: 117 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1651,6 +1651,22 @@ Look for the lights: RGB memory on the SMBus, and OpenRGB's devices.
 |---|---|---|
 | `host` | `str` | no |
 | `port` | `int` | no |
+
+### `SetAuraEffect`
+
+Run one of the built-in effects on the motherboard's lights named by ``refs`` -- ARGB headers (``aura/argb1``) or the board's own LEDs (``aura/onboard``); every one the last Find listed when empty.
+
+*Command* → `RgbLightsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `effect` | `RamEffect` | yes |
+| `refs` | `tuple[str, Ellipsis]` | no |
+| `speed` | `EffectSpeed` | no |
+| `direction` | `EffectDirection | None` | no |
+| `colors` | `tuple[tuple[int, int, int], Ellipsis]` | no |
+| `random_colors` | `bool` | no |
+| `brightness` | `int` | no |
 
 ### `SetAuraLeds`
 

@@ -24,8 +24,8 @@ import logging
 import math
 from collections.abc import Callable
 
-from ...core.logs import per_frame
-from ...core.models import (
+from ..core.logs import per_frame
+from ..core.models import (
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,

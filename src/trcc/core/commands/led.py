@@ -1165,7 +1165,8 @@ class SetRgbFollow(Command[RgbFollowResult]):
             log.warning("SetRgbFollow: refused — %s", e)
             return RgbFollowResult(ok=False, message=str(e))
         app.rgb_mirror.configure(self.mode, host, port, source, mapping,
-                                 targets, colors=colors)
+                                 targets, colors=colors,
+                                 effects=app.settings.follow_effects())
         app.events.publish(RgbFollowChanged(mode=self.mode))
         return _rgb_follow_result(
             app, _rgb_follow_label(self.mode, host, port, source))

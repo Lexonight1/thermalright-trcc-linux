@@ -1558,6 +1558,27 @@ trcc system aura-blink HEADER
 |---|---|
 | `HEADER` | The ARGB header, from 1 (see `trcc system rgb`). |
 
+### `trcc system aura-effect`
+
+Run a built-in effect on the motherboard's lights -- an ARGB header's fan or strip, or the board's own LEDs. TRCC draws it while TRCC runs; nothing is saved on the board, which shows its own effect before TRCC starts. A header needs its LED count first (`trcc system aura-leds`).
+
+```bash
+trcc system aura-effect [OPTIONS] EFFECT
+```
+
+| Argument | Description |
+|---|---|
+| `EFFECT` | The effect to run. |
+
+| Option | Description |
+|---|---|
+| `--light` `LIGHT` | A motherboard light by ref -- aura/argb1, aura/onboard (see `trcc system rgb`); repeat for more. Default: every one. |
+| `--speed` `SPEED` | -- |
+| `--direction` `DIRECTION` | -- |
+| `--color` `COLOR` | R,G,B; repeat for a second colour. |
+| `--random` | Let the effect pick the colours. |
+| `--brightness` `BRIGHTNESS` | -- |
+
 ### `trcc system aura-leds`
 
 Say how many LEDs an ASUS Aura ARGB header drives. The board cannot tell: the header's data line runs one way. The board is read again after, so the new count is listed.

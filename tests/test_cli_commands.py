@@ -2329,6 +2329,19 @@ def test_system_rgb_and_ram_effect_on_an_os_without_the_bus(cli_runner: CliRunne
     assert bad.exit_code != 0
 
 
+def test_system_aura_effect_dispatches_and_refuses(cli_runner: CliRunner, cli_app) -> None:
+    """No Find yet: SetAuraEffect says so; a bad colour never leaves the CLI."""
+    del cli_app
+    refused = cli_runner.invoke(_app(), ["system", "aura-effect", "static",
+                                         "--light", "aura/argb1",
+                                         "--color", "255,0,0"])
+    assert refused.exit_code == 1
+    assert "no motherboard lights listed -- press Find lights first" in refused.output
+    bad = cli_runner.invoke(_app(), ["system", "aura-effect", "static",
+                                     "--color", "300,0"])
+    assert bad.exit_code != 0
+
+
 def test_system_rgb_lists_the_last_find_and_says_so(cli_runner: CliRunner, cli_app) -> None:
     """After a restart the sticks come from the settings -- listed, marked,
     and no bus touched."""

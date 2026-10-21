@@ -28,6 +28,7 @@ from ..core.logs import per_frame
 from ..core.models import (
     DATE_FORMATS,
     DEFAULT_REFRESH_INTERVAL_S,
+    EFFECT_SOURCE,
     MAX_ARGB_LEDS,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
@@ -118,8 +119,11 @@ class AppSettings:
     # Refs of the lights that follow (a stick's "i2c-3/0x19", an OpenRGB
     # device's name); empty for every one.
     rgb_follow_targets: list[str] = field(default_factory=list)
-    # The effect TRCC last saved on each RAM stick, by ref -- what it set,
-    # not read back.  Plain JSON; ``ram_effect`` validates it on the way out.
+    # The built-in effect TRCC last gave each light, by ref -- a RAM stick's
+    # (saved on the stick) or an ARGB header's (``aura/argb1``, run by TRCC).
+    # What it set, not read back.  Plain JSON; ``light_effect`` validates it
+    # on the way out.  Named before headers had effects; kept, so a settings
+    # file from then still loads.
     ram_effects: dict[str, dict[str, Any]] = field(default_factory=dict)
     # The lights the last Find found -- kind, ref, name and LED count each --
     # so a restart lists them without reading a bus.  ``found_lights``
@@ -908,12 +912,12 @@ class Settings:
                         "vivid", value)
             return FollowColors.VIVID
 
-    def ram_effect(self, ref: str) -> RamEffectSettings | None:
-        """The effect TRCC last saved on stick *ref*, or None -- a damaged
-        record is None too, never a guess."""
+    def light_effect(self, ref: str) -> RamEffectSettings | None:
+        """The effect TRCC last gave light *ref* -- a stick or an ARGB
+        header -- or None; a damaged record is None too, never a guess."""
         record = (self._app.ram_effects.get(ref)
                   if isinstance(self._app.ram_effects, dict) else None)
-        log.debug("ram_effect: %s -> %r", ref, record)
+        log.debug("light_effect: %s -> %r", ref, record)
         if not isinstance(record, dict):
             return None
         colors = _rgb_list(record.get("colors", []))
@@ -927,13 +931,13 @@ class Settings:
                 random_colors=bool(record.get("random_colors", False)),
                 brightness=int(record.get("brightness", 255)))
         except (KeyError, ValueError, TypeError) as e:
-            log.warning("ram_effect: %s's saved effect is unreadable (%s) -- "
+            log.warning("light_effect: %s's saved effect is unreadable (%s) -- "
                         "shown as unknown", ref, e)
             return None
 
-    def set_ram_effect(self, ref: str, effect: RamEffectSettings) -> None:
-        """Remember the effect TRCC saved on stick *ref*."""
-        log.info("set_ram_effect: %s %s", ref, effect.effect.value)
+    def set_light_effect(self, ref: str, effect: RamEffectSettings) -> None:
+        """Remember the effect TRCC gave light *ref*, a stick or a header."""
+        log.info("set_light_effect: %s %s", ref, effect.effect.value)
         record = {"effect": effect.effect.value, "speed": effect.speed.value,
                   "direction": (effect.direction.value if effect.direction
                                 else None),
@@ -1017,6 +1021,20 @@ class Settings:
             return ()
         return tuple(value)
 
+    def follow_effects(self) -> dict[str, RamEffectSettings]:
+        """Each followed light's built-in effect, by ref, while the source
+        is TRCC's effect clock -- empty for any other source.  What the
+        follower is configured with, wherever following starts."""
+        if self._app.rgb_follow_source != EFFECT_SOURCE:
+            log.debug("follow_effects: source %r -- none",
+                      self._app.rgb_follow_source)
+            return {}
+        effects = {ref: effect for ref in self.rgb_follow_targets()
+                   if (effect := self.light_effect(ref)) is not None}
+        log.debug("follow_effects: %s",
+                  {ref: e.effect.value for ref, e in effects.items()})
+        return effects
+
     def set_rgb_follow(self, mode: RgbFollowMode, host: str, port: int,
                        source: str, mapping: FollowMapping,
                        targets: tuple[str, ...], *,
@@ -1029,7 +1047,7 @@ class Settings:
                  list(targets) or "all")
         if not 0 < port < 65536:
             raise ValueError(f"port out of range (1-65535): {port}")
-        if source:
+        if source and source != EFFECT_SOURCE:
             parse_device_key(source)       # ValueError for a malformed key
         with self._lock:
             self._app.rgb_follow = mode.value

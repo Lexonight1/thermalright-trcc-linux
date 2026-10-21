@@ -41,6 +41,7 @@ from ...core.commands import (
     RunSetup,
     RunUpgrade,
     ScanRgbLights,
+    SetAuraEffect,
     SetAuraLeds,
     SetHddEnabled,
     SetRamEffect,
@@ -730,6 +731,39 @@ def ram_effect(
     log.info("cli system ram-effect: %s sticks=%s", effect.value, stick)
     result = get_app().dispatch(SetRamEffect(
         effect=effect, refs=tuple(stick or ()), speed=speed,
+        direction=direction,
+        colors=tuple(_parse_rgb(c) for c in color or ()),
+        random_colors=random_colors, brightness=brightness))
+    _echo_lights(result)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("aura-effect")
+def aura_effect(
+    effect: RamEffect = typer.Argument(..., help="The effect to run."),
+    light: list[str] | None = typer.Option(
+        None, "--light", help="A motherboard light by ref -- aura/argb1, "
+        "aura/onboard (see `trcc system rgb`); repeat for more.  Default: "
+        "every one."),
+    speed: EffectSpeed = typer.Option(EffectSpeed.MEDIUM, "--speed"),
+    direction: EffectDirection | None = typer.Option(None, "--direction"),
+    color: list[str] | None = typer.Option(
+        None, "--color", help="R,G,B; repeat for a second colour."),
+    random_colors: bool = typer.Option(
+        False, "--random", help="Let the effect pick the colours."),
+    brightness: int = typer.Option(255, "--brightness", min=0, max=255),
+) -> None:
+    """Run a built-in effect on the motherboard's lights -- an ARGB header's
+    fan or strip, or the board's own LEDs.
+
+    TRCC draws it while TRCC runs; nothing is saved on the board, which
+    shows its own effect before TRCC starts.  A header needs its LED count
+    first (`trcc system aura-leds`).
+    """
+    log.info("cli system aura-effect: %s lights=%s", effect.value, light)
+    result = get_app().dispatch(SetAuraEffect(
+        effect=effect, refs=tuple(light or ()), speed=speed,
         direction=direction,
         colors=tuple(_parse_rgb(c) for c in color or ()),
         random_colors=random_colors, brightness=brightness))

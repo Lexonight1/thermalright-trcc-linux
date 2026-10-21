@@ -16,6 +16,7 @@ from ....core.commands import (
     RgbFollow,
     RgbLights,
     ScanRgbLights,
+    SetAuraEffect,
     SetAuraLeds,
     SetRamEffect,
     SetRgbFollow,
@@ -29,6 +30,7 @@ from ...presentation.rgb_page import (
     FollowDevice,
     HeaderLeds,
     LeaveLights,
+    RunBoardEffect,
     SaveEffect,
 )
 from ...qt_ram_access import RamAccessRow
@@ -80,6 +82,11 @@ class QtRgbPage(RgbPageView):
                 return SetRgbFollow(mode=RgbFollowMode.OFF)
             case SaveEffect(refs=refs, settings=s):
                 return SetRamEffect(
+                    effect=s.effect, refs=refs, speed=s.speed,
+                    direction=s.direction, colors=s.colors,
+                    random_colors=s.random_colors, brightness=s.brightness)
+            case RunBoardEffect(refs=refs, settings=s):
+                return SetAuraEffect(
                     effect=s.effect, refs=refs, speed=s.speed,
                     direction=s.direction, colors=s.colors,
                     random_colors=s.random_colors, brightness=s.brightness)

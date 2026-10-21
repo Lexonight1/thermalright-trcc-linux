@@ -39,6 +39,7 @@ from ...core.commands import (
     RunSetup,
     RunUpgrade,
     ScanRgbLights,
+    SetAuraEffect,
     SetAuraLeds,
     SetDiskDevice,
     SetHddEnabled,
@@ -84,6 +85,7 @@ from .schemas import (
     AppStatusEntry,
     AppStatusResponse,
     AuraBlinkRequest,
+    AuraEffectRequest,
     AuraLedsRequest,
     AutostartRequest,
     DebugReportRequest,
@@ -380,6 +382,19 @@ def aura_blink(body: AuraBlinkRequest, request: Request) -> RgbLightsResult:
     """Blink an ASUS Aura ARGB header for two seconds, to see which it is."""
     log.info("api POST /system/aura-blink: header %d", body.header)
     result = request.app.state.trcc.dispatch(BlinkAuraHeader(header=body.header))
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/aura-effect")
+def aura_effect_set(body: AuraEffectRequest, request: Request) -> RgbLightsResult:
+    """Run a built-in effect on the motherboard's lights, drawn by TRCC."""
+    log.info("api POST /system/aura-effect: %s lights=%s", body.effect.value,
+             body.lights)
+    result = request.app.state.trcc.dispatch(SetAuraEffect(
+        effect=body.effect, refs=tuple(body.lights), speed=body.speed,
+        direction=body.direction, colors=tuple(body.colors),
+        random_colors=body.random_colors, brightness=body.brightness))
     http_error_if_failed(result)
     return result
 

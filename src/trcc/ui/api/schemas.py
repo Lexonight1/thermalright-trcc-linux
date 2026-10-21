@@ -261,17 +261,27 @@ class AuraBlinkRequest(BaseModel):
     header: int = Field(..., ge=1, le=16)
 
 
-class RamEffectRequest(BaseModel):
-    """One of the memory's own effects, saved on the sticks named by
-    ``sticks`` (refs; [] for every stick)."""
+class _EffectRequest(BaseModel):
+    """One of the built-in effects and its settings."""
     effect: RamEffect
-    sticks: list[str] = Field(default_factory=list, max_length=16)
     speed: EffectSpeed = EffectSpeed.MEDIUM
     direction: EffectDirection | None = None
     colors: list[tuple[int, int, int]] = Field(default_factory=list,
                                                max_length=2)
     random_colors: bool = False
     brightness: int = Field(255, ge=0, le=255)
+
+
+class RamEffectRequest(_EffectRequest):
+    """One of the memory's own effects, saved on the sticks named by
+    ``sticks`` (refs; [] for every stick)."""
+    sticks: list[str] = Field(default_factory=list, max_length=16)
+
+
+class AuraEffectRequest(_EffectRequest):
+    """A built-in effect TRCC runs on the motherboard lights named by
+    ``lights`` (refs such as ``aura/argb1``; [] for every one)."""
+    lights: list[str] = Field(default_factory=list, max_length=16)
 
 
 class RamLightingRequest(BaseModel):

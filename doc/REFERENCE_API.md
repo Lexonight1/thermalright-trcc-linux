@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**151 endpoints.**
+**152 endpoints.**
 
 ## Running it
 
@@ -142,6 +142,7 @@ Interactive docs are served at `/docs` while the API is running.
 | Endpoint | Returns | Description |
 |---|---|---|
 | `POST /system/aura-blink` | `RgbLightsResult` | Blink an ASUS Aura ARGB header for two seconds, to see which it is. |
+| `POST /system/aura-effect` | `RgbLightsResult` | Run a built-in effect on the motherboard's lights, drawn by TRCC. |
 | `POST /system/aura-leds` | `RgbLightsResult` | Say how many LEDs an ASUS Aura ARGB header drives. |
 | `GET /system/autostart` | `AutostartResult` | Snapshot the autostart entry — whether it's installed + its path. |
 | `POST /system/autostart` | `AutostartResult` | Toggle the OS autostart entry (per-user, no sudo). |

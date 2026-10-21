@@ -26,6 +26,7 @@ from trcc.ui.presentation.rgb_page import (
     LeaveLights,
     RgbPage,
     RgbSource,
+    RunBoardEffect,
     SaveEffect,
     strip_legend,
 )
@@ -204,8 +205,68 @@ def test_an_effect_with_no_stick_ticked_is_refused() -> None:
     page = _page(STICK_A, FAN)
     page.set_source(RgbSource.EFFECT)
     page.set_checked(STICK_A.ref, False)
-    assert page.problem == "Tick a RAM stick -- effects run on the memory itself."
+    assert page.problem == "Tick a RAM stick or a motherboard light."
     assert page.apply() is None
+
+
+def _headers(*leds: int) -> tuple[RgbLight, ...]:
+    return tuple(RgbLight(f"aura/argb{n}", f"ARGB header {n}", count, LightKind.BOARD)
+                 for n, count in enumerate(leds, 1))
+
+
+def test_an_effect_on_a_ticked_header_runs_on_the_board() -> None:
+    """The maintainer's exhaust fan: Apply with Static on header 1 sent the
+    effect to the sticks and skipped the header (2026-10-21).
+
+    MUTATION CHECK: plan SaveEffect for every kind -- the sticks get it."""
+    one, two = _headers(8, 4)
+    page = _page(STICK_A, one, two)
+    page.set_source(RgbSource.EFFECT)
+    page.set_checked(STICK_A.ref, False)
+    page.set_checked(one.ref, True)
+    plan = page.apply()
+    assert isinstance(plan, RunBoardEffect)
+    assert plan.refs == ("aura/argb1",)
+
+
+def test_an_effect_goes_to_one_kind_of_light_at_a_time() -> None:
+    (one,) = _headers(8)
+    page = _page(STICK_A, one)
+    page.set_source(RgbSource.EFFECT)
+    page.set_checked(one.ref, True)
+    assert page.problem == ("An effect goes to one kind of light at a time -- "
+                            "the RAM or the motherboard; untick the others.")
+    assert page.apply() is None
+
+
+def test_a_header_with_no_led_count_cannot_run_an_effect() -> None:
+    (one,) = _headers(0)
+    page = _page(one)
+    page.set_source(RgbSource.EFFECT)
+    page.set_checked(one.ref, True)
+    assert page.problem == "Give ARGB header 1 its number of LEDs first."
+
+
+def test_openrgbs_lights_take_no_effect_and_are_not_counted() -> None:
+    """OpenRGB's lights start ticked; an effect on the sticks ignores them."""
+    page = _page(STICK_A, FAN)
+    page.set_source(RgbSource.EFFECT)
+    assert isinstance(page.apply(), SaveEffect)
+
+
+def test_a_board_running_trccs_effect_opens_on_that_effect() -> None:
+    """Following with the effect clock as the source is shown as the effect
+    it runs -- not as following a device called "effect"."""
+    from trcc.core.models import EFFECT_SOURCE
+    rainbow = RamEffectSettings(effect=RamEffect.RAINBOW)
+    one = RgbLight("aura/argb1", "ARGB header 1", 8, LightKind.BOARD, rainbow)
+    page = _page(STICK_A, one, follow=RgbFollowResult(
+        mode=RgbFollowMode.BOARD, source=EFFECT_SOURCE, targets=("aura/argb1",),
+        host="127.0.0.1", port=6742))
+    assert page.source is RgbSource.EFFECT
+    assert page.effect_picks.settings().effect is RamEffect.RAINBOW
+    assert [r.checked for r in page.rows(LightKind.BOARD)] == [True]
+    assert page.follow_source == ""
 
 
 def test_the_effect_rules_are_the_core_ones() -> None:
@@ -403,3 +464,4 @@ def test_following_the_board_starts_on_its_saved_headers() -> None:
     assert page.source is RgbSource.FOLLOW
     assert [r.checked for r in page.rows(LightKind.BOARD)] == [False, True]
     assert not page.rows(LightKind.RAM)[0].checked
+

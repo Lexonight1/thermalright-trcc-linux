@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from ..events import RgbFollowChanged, RgbLightsChanged
 from ..models import (
     AURA_HEADER_REF,
+    EFFECT_SOURCE,
     MAX_ARGB_LEDS,
     EffectDirection,
     EffectSpeed,
@@ -32,6 +33,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+#: The lights that take a built-in effect: a stick saves it, a motherboard
+#: light runs it as TRCC draws it.
+_EFFECT_KINDS = (LightKind.RAM, LightKind.BOARD)
+
 
 def _lights(app: App, message: str = "", *, ok: bool = True) -> RgbLightsResult:
     """Every light from the last scans, as the page shows them -- no bus.
@@ -50,8 +55,8 @@ def _lights(app: App, message: str = "", *, ok: bool = True) -> RgbLightsResult:
         remembered = found is None
         devices = app.settings.found_lights(kind) if found is None else found
         lights += [RgbLight(d.ref, d.name, d.led_count, kind,
-                            app.settings.ram_effect(d.ref)
-                            if kind is LightKind.RAM else None,
+                            app.settings.light_effect(d.ref)
+                            if kind in _EFFECT_KINDS else None,
                             remembered=remembered)
                    for d in devices]
     log.debug("_lights: %d light(s), scanned=%s, %d remembered", len(lights),
@@ -71,6 +76,22 @@ def _board_summary(boards: BoardScan) -> str:
     if boards.found:
         parts.append(f"{len(boards.found)} controller(s) TRCC does not drive")
     return ", ".join(parts) or "none found"
+
+
+def _refollow_board(app: App) -> None:
+    """Start a motherboard follower again from the settings, so its driver
+    reads the LED counts and effects as they are now -- a driver reads them
+    once, when it is made.  Nothing when the board is not followed."""
+    settings, prefs = app.settings, app.settings.app
+    if settings.rgb_follow_mode() is not RgbFollowMode.BOARD:
+        log.debug("_refollow_board: the board is not followed")
+        return
+    log.info("_refollow_board: source %r", prefs.rgb_follow_source)
+    app.rgb_mirror.configure(
+        RgbFollowMode.BOARD, prefs.openrgb_host, prefs.openrgb_port,
+        prefs.rgb_follow_source, settings.rgb_follow_mapping(),
+        settings.rgb_follow_targets(), colors=settings.rgb_follow_colors(),
+        effects=settings.follow_effects())
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +212,7 @@ class SetRamEffect(Command[RgbLightsResult]):
             log.warning("SetRamEffect: not saved -- %s", e)
             return _lights(app, message=str(e), ok=False)
         for stick in applied:
-            app.settings.set_ram_effect(stick.ref, settings)
+            app.settings.set_light_effect(stick.ref, settings)
         app.events.publish(RgbLightsChanged())
         message = (f"{self.effect.value} saved on {len(applied)} stick(s)"
                    + (" -- RAM following turned off" if follow_stopped else ""))
@@ -210,6 +231,76 @@ class SetRamEffect(Command[RgbLightsResult]):
         app.rgb_mirror.configure(RgbFollowMode.OFF, prefs.openrgb_host,
                                  prefs.openrgb_port)
         app.events.publish(RgbFollowChanged(mode=RgbFollowMode.OFF))
+
+
+@dataclass(frozen=True, slots=True)
+class SetAuraEffect(Command[RgbLightsResult]):
+    """Run one of the built-in effects on the motherboard's lights named by
+    ``refs`` -- ARGB headers (``aura/argb1``) or the board's own LEDs
+    (``aura/onboard``); every one the last Find listed when empty.
+
+    TRCC draws it and sends it in direct mode for as long as its App runs:
+    nothing is saved on the board, which shows its own effect before TRCC
+    starts and after ``trcc kill``.  Each light keeps its own effect, so a
+    light already running one keeps it.  Whatever followed before stops --
+    the lights show one source at a time.  Settings the effect cannot take,
+    an unknown light, or a header with no LED count are refused before
+    anything changes.
+    """
+    effect: RamEffect
+    refs: tuple[str, ...] = ()
+    speed: EffectSpeed = EffectSpeed.MEDIUM
+    direction: EffectDirection | None = None
+    colors: tuple[tuple[int, int, int], ...] = ()
+    random_colors: bool = False
+    brightness: int = 255
+
+    def execute(self, app: App) -> RgbLightsResult:
+        settings = RamEffectSettings(
+            effect=self.effect, speed=self.speed, direction=self.direction,
+            colors=self.colors, random_colors=self.random_colors,
+            brightness=self.brightness)
+        log.info("SetAuraEffect: %s on %s", settings, self.refs or "every light")
+        if (problem := effect_problem(settings)) is not None:
+            log.warning("SetAuraEffect: refused -- %s", problem)
+            return _lights(app, message=problem, ok=False)
+        board = {light.ref: light for light in _lights(app).lights
+                 if light.kind is LightKind.BOARD}
+        named = self.refs or tuple(board)
+        if problem := self._refusal(board, named):
+            log.warning("SetAuraEffect: refused -- %s", problem)
+            return _lights(app, message=problem, ok=False)
+        prefs, previous = app.settings.app, app.settings.rgb_follow_mode()
+        running = (previous is RgbFollowMode.BOARD
+                   and prefs.rgb_follow_source == EFFECT_SOURCE)
+        targets = tuple(sorted(set(named) | (set(app.settings.rgb_follow_targets())
+                                             if running else set())))
+        for ref in named:
+            app.settings.set_light_effect(ref, settings)
+        app.settings.set_rgb_follow(
+            RgbFollowMode.BOARD, prefs.openrgb_host, prefs.openrgb_port,
+            EFFECT_SOURCE, app.settings.rgb_follow_mapping(), targets,
+            colors=app.settings.rgb_follow_colors())
+        _refollow_board(app)
+        app.events.publish(RgbFollowChanged(mode=RgbFollowMode.BOARD))
+        app.events.publish(RgbLightsChanged())
+        message = f"{self.effect.value} on {len(named)} motherboard light(s)"
+        if previous is not RgbFollowMode.OFF and not running:
+            message += f" -- {previous.value} following turned off"
+        return _lights(app, message=message)
+
+    @staticmethod
+    def _refusal(board: dict[str, RgbLight], named: tuple[str, ...]) -> str:
+        """Why *named* cannot run an effect; "" when they can."""
+        log.debug("SetAuraEffect._refusal: %s of %s", named, sorted(board))
+        if not board:
+            return "no motherboard lights listed -- press Find lights first"
+        if unknown := sorted(set(named) - set(board)):
+            return (f"no motherboard light {', '.join(unknown)} -- found "
+                    f"{', '.join(sorted(board))}")
+        if dark := [board[ref].name for ref in named if not board[ref].led_count]:
+            return f"give {dark[0]} its number of LEDs first"
+        return ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,6 +329,7 @@ class SetAuraLeds(Command[RgbLightsResult]):
                 f"no ARGB header {self.header} -- press Find lights to list "
                 "the board's headers"))
         app.settings.set_aura_leds(self.header, self.leds)
+        _refollow_board(app)
         boards = app.rgb_boards.scan()
         if not boards.error:
             app.settings.set_found_lights(LightKind.BOARD, boards.driven)

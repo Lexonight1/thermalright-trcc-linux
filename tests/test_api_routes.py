@@ -2139,6 +2139,19 @@ def test_system_rgb_routes_on_an_os_without_the_bus(api_client: TestClient) -> N
         "effect": "static", "brightness": 999}).status_code == 422
 
 
+def test_system_aura_effect_route(api_client: TestClient) -> None:
+    """Dispatches SetAuraEffect; no Find yet lists no lights to run it on."""
+    refused = api_client.post("/system/aura-effect",
+                              json={"effect": "static", "lights": ["aura/argb1"],
+                                    "colors": [[255, 0, 0]]})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "no motherboard lights listed -- press Find lights first")
+    for body in ({"effect": "disco"}, {"effect": "static", "brightness": 999},
+                 {"effect": "static", "colors": [[1, 2, 3]] * 3}):
+        assert api_client.post("/system/aura-effect", json=body).status_code == 422
+
+
 def test_system_aura_leds_route(api_client: TestClient) -> None:
     """Dispatches SetAuraLeds; the schema refuses what the board cannot take."""
     refused = api_client.post("/system/aura-leds", json={"header": 1, "leds": 8})

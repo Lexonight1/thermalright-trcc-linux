@@ -65,8 +65,8 @@ from ..core.models import (
 )
 from ..core.ports import CommandBus
 from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
+from ..services.effect_frames import APPROXIMATE, LEDS, effect_frame
 from ..services.follow_colors import Rgb, strip_spans
-from .presentation.effect_preview import APPROXIMATE, LEDS, effect_frame
 from .presentation.rgb_page import (
     BLINK_TIP,
     BOARD_NOTE,

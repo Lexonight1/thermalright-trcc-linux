@@ -10,7 +10,7 @@ from trcc.core.models import (
     RamEffect,
     RamEffectSettings,
 )
-from trcc.ui.presentation.effect_preview import LEDS, PERIOD_S, effect_frame
+from trcc.services.effect_frames import LEDS, PERIOD_S, effect_frame
 
 RED, BLUE = (255, 0, 0), (0, 0, 255)
 TIMES = [i * 0.13 for i in range(40)]

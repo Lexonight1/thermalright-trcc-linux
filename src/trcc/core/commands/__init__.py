@@ -107,6 +107,7 @@ from .rgb import (
     BlinkAuraHeader,
     RgbLights,
     ScanRgbLights,
+    SetAuraEffect,
     SetAuraLeds,
     SetRamEffect,
 )
@@ -291,6 +292,7 @@ __all__ = [
     "SendFrame",
     "SendImage",
     "SendScreencastFrame",
+    "SetAuraEffect",
     "SetAuraLeds",
     "SetBackground",
     "SetBackgroundMode",

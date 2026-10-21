@@ -25,6 +25,43 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS aura\-effect
+.PP
+\fBtrcc system aura\-effect\fR \fIEFFECT\fR [\fIOPTIONS\fR]
+.PP
+Run a built\-in effect on the motherboard's lights \-\- an ARGB header's fan or strip, or the board's own LEDs. TRCC draws it while TRCC runs; nothing is saved on the board, which shows its own effect before TRCC starts. A header needs its LED count first (trcc system aura\-leds).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBEFFECT\fR
+The effect to run.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-light \fILIGHT\fR\fR
+A motherboard light by ref \-\- aura/argb1, aura/onboard (see trcc system rgb); repeat for more. Default: every one.
+.TP
+\fB\-\-speed \fISPEED\fR\fR
+(no description)
+.TP
+\fB\-\-direction \fIDIRECTION\fR\fR
+(no description)
+.TP
+\fB\-\-color \fICOLOR\fR\fR
+R,G,B; repeat for a second colour.
+.TP
+\fB\-\-random\fR
+Let the effect pick the colours.
+.TP
+\fB\-\-brightness \fIBRIGHTNESS\fR\fR
+(no description)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS aura\-leds
 .PP
 \fBtrcc system aura\-leds\fR \fIHEADER\fR \fILEDS\fR

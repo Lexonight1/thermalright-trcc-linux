@@ -1659,6 +1659,10 @@ MAX_ARGB_LEDS = 120
 #: An ASUS Aura ARGB header's light ref, by header number from 1 -- made by
 #: the driver, named by ``SetAuraLeds``.
 AURA_HEADER_REF = "aura/argb{}"
+#: The follow source that is TRCC's own effect clock: the motherboard's
+#: lights run the built-in effect each was given (``SetAuraEffect``), drawn
+#: by TRCC, instead of following a cooler or an LCD.
+EFFECT_SOURCE = "effect"
 
 
 def aura_header(ref: str) -> int | None:
@@ -1807,8 +1811,9 @@ class RgbLight:
     """One light the RGB page lists: a RAM stick, or one of OpenRGB's devices.
 
     ``ref`` names it across scans (a stick's ``i2c-3/0x19``, an OpenRGB
-    device's name).  ``effect`` is, for a RAM stick, the effect TRCC last
-    saved on it -- what TRCC set, not read back from the stick.
+    device's name).  ``effect`` is the built-in effect TRCC last gave it --
+    saved on a RAM stick, run by TRCC on a motherboard light -- what TRCC
+    set, not read back.
     ``remembered``: listed from the last Find's record in the settings, not
     looked for since the App started.
     """
