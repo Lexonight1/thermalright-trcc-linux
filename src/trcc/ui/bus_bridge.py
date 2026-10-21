@@ -256,6 +256,8 @@ class BusBridge(QObject):
             (SensorDashboardChanged, self.app_settings_changed),
             (AutostartChanged, self.app_settings_changed),
             (ModuleChanged, self.app_settings_changed),
+            # A module's themes show only while it is on.
+            (ModuleChanged, self.themes_changed),
             *((event_type, self.settings_changed)
               for event_type in get_args(DeviceSettingsEvent)),
         )

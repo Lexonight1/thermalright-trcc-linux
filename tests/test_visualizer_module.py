@@ -229,3 +229,95 @@ def test_the_gui_speaks_the_window_s_language(qtbot: Any, app: App) -> None:
     window._show_language("fr")
     assert {"Visuels audio", "Feu", "Visualiseur audio"} <= words()
     window.close()
+
+
+# ── its themes are kept with it ───────────────────────────────────────
+
+def _saved_visual(app: App, tmp_path: Path, name: str = "Viz") -> Path:
+    """A theme saved while the panel plays a visual -- where it landed."""
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, f"Start{name}"))).ok
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    saved = app.dispatch(SaveTheme(key=_KEY, name=name))
+    assert saved.ok, saved.message
+    return Path(saved.theme_path)
+
+
+def _size(app: App) -> tuple[int, int]:
+    """The panel's size -- a connected panel has reported it."""
+    profile = app.devices[_KEY].profile
+    assert profile is not None
+    return profile.resolution
+
+
+def _listed(app: App) -> set[str]:
+    from trcc.core.commands import ListThemes
+
+    size = _size(app)
+    return {t.name for t in app.dispatch(ListThemes(resolution=size)).themes}
+
+
+def test_a_visual_theme_is_kept_with_the_module_and_listed_only_while_on(
+        app: App, tmp_path: Path) -> None:
+    """Saved where the module keeps its themes; off, the browser does not
+    list it; on, it is back.  MUTATION CHECK: list every module's folder in
+    ``user_theme_dirs`` and it shows while off."""
+    folder = _saved_visual(app, tmp_path)
+    w, h = _size(app)
+    assert folder.parent == app.platform.paths().user_module_theme_dir(
+        "visualizer", w, h)
+    assert "Viz" in _listed(app)
+    _switch(app, False)
+    assert "Viz" not in _listed(app)
+    _switch(app, True)
+    assert "Viz" in _listed(app)
+
+
+def test_a_plain_theme_stays_in_the_ordinary_folder(app: App, tmp_path: Path) -> None:
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Start"))).ok
+    saved = app.dispatch(SaveTheme(key=_KEY, name="Plain"))
+    w, h = _size(app)
+    assert Path(saved.theme_path).parent == app.platform.paths().user_theme_dir(w, h)
+
+
+def test_a_name_is_taken_in_either_folder_and_overwrite_keeps_one(
+        app: App, tmp_path: Path) -> None:
+    """The name is the user's, wherever the theme is kept: a visual theme
+    named like a plain one needs the overwrite, and then there is one.
+    MUTATION CHECK: drop ``same_name`` from the taken check."""
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Start"))).ok
+    plain = Path(app.dispatch(SaveTheme(key=_KEY, name="Mine")).theme_path)
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    refused = app.dispatch(SaveTheme(key=_KEY, name="Mine"))
+    assert (refused.ok, refused.target_exists) == (False, True)
+    kept = Path(app.dispatch(SaveTheme(key=_KEY, name="Mine", overwrite=True)).theme_path)
+    assert kept != plain and kept.is_dir() and not plain.exists()
+
+
+def test_a_module_theme_is_found_by_name(app: App, tmp_path: Path) -> None:
+    """Exports look where the user's themes are kept -- a module's too."""
+    from trcc.core.commands import ExportTheme
+
+    _saved_visual(app, tmp_path)
+    exported = app.dispatch(ExportTheme(key=_KEY, theme_name="Viz",
+                                        archive_path=tmp_path / "viz.zip"))
+    assert exported.ok, exported.message
+    assert (tmp_path / "viz.zip").is_file()
+
+
+def test_the_api_loads_a_module_theme(app: App, tmp_path: Path) -> None:
+    from tests.conftest import loopback_client
+    from trcc.ui.api.main import build_app
+
+    folder = _saved_visual(app, tmp_path)
+    client = loopback_client(build_app(app))
+    loaded = client.post(f"/devices/{_KEY}/display/theme", json={"path": str(folder)})
+    assert loaded.status_code == 200, loaded.text
+
+
+def test_a_switch_re_lists_the_themes_in_every_window(qtbot: Any, app: App) -> None:
+    """MUTATION CHECK: drop ModuleChanged -> themes_changed in the bridge."""
+    from trcc.ui.bus_bridge import BusBridge
+
+    bridge = BusBridge(app.events)
+    with qtbot.waitSignal(bridge.themes_changed, timeout=2000):
+        _switch(app, False)

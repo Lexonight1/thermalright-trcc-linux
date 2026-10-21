@@ -2198,7 +2198,7 @@ trcc theme export KEY THEME_NAME ARCHIVE_PATH
 | Argument | Description |
 |---|---|
 | `KEY` | Device key (e.g. 0402:3922) whose resolution scopes the lookup |
-| `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
+| `THEME_NAME` | A saved theme of the device's size, by name (a module's while it is on) |
 | `ARCHIVE_PATH` | Destination archive path (e.g. theme.tr) |
 
 ### `trcc theme export-current`
@@ -2225,7 +2225,7 @@ trcc theme export-dc KEY THEME_NAME OUTPUT_PATH
 | Argument | Description |
 |---|---|
 | `KEY` | Device key (e.g. 0402:3922) — its resolution scopes the lookup and layers the user's overlay elements into the export |
-| `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
+| `THEME_NAME` | A saved theme of the device's size, by name (a module's while it is on) |
 | `OUTPUT_PATH` | Where to write the config1.dc file |
 
 ### `trcc theme export-overlay`
@@ -2239,7 +2239,7 @@ trcc theme export-overlay KEY THEME_NAME OUTPUT_PATH
 | Argument | Description |
 |---|---|
 | `KEY` | Device key (e.g. 0402:3922) — its resolution scopes the lookup |
-| `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
+| `THEME_NAME` | A saved theme of the device's size, by name (a module's while it is on) |
 | `OUTPUT_PATH` | Where to write the overlay layout file |
 
 ### `trcc theme import`

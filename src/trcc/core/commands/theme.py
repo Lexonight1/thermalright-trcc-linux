@@ -80,6 +80,8 @@ from ._helpers import (
     screencast_dc_flags,
     seed_screencast_rect,
     user_mask_flags,
+    user_theme_dirs,
+    user_theme_path,
 )
 from .device import (
     ApplyMask,
@@ -831,7 +833,18 @@ class SaveTheme(Command[ThemeResult]):
             )
         w, h = resolution
 
-        target = app.platform.paths().user_theme_dir(w, h) / self.name
+        # A theme whose background a module draws is kept with that module:
+        # listed only while it is on (``user_theme_dirs``).
+        module = (device_settings.module_source
+                  if device_settings.module_source
+                  and app.background_kind_of(device_settings.module_source)
+                  else None)
+        paths = app.platform.paths()
+        target = (paths.user_module_theme_dir(module, w, h) if module
+                  else paths.user_theme_dir(w, h)) / self.name
+        # The name is the user's: taken if a theme of it is kept anywhere.
+        same_name = [d / self.name for d in user_theme_dirs(app, w, h)
+                     if app.themes.is_theme_dir(d / self.name)]
         log.info(
             "SaveTheme: source=%s target=%s resolution=%dx%d "
             "bg_override=%r mask_override=%r user_elements=%d",
@@ -840,9 +853,9 @@ class SaveTheme(Command[ThemeResult]):
             device_settings.mask_path,
             len(device_settings.user_overlay_elements or ()),
         )
-        if target.exists() and not self.overwrite:
-            log.info("SaveTheme: target %s exists — overwrite confirmation "
-                     "needed", target)
+        if (target.exists() or same_name) and not self.overwrite:
+            log.info("SaveTheme: %r is taken (%s) — overwrite confirmation "
+                     "needed", self.name, same_name or [target])
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
                 target_exists=True,
@@ -867,6 +880,11 @@ class SaveTheme(Command[ThemeResult]):
                 ok=False, key=self.key, theme_name=self.name,
                 message=f"failed to save theme: {e}",
             )
+        # Overwritten: the one theme of that name is the one just saved, even
+        # when the old one was kept in the other folder.
+        for old in (o for o in same_name if o != target):
+            log.info("SaveTheme: replacing %s, kept in another folder", old)
+            app.themes.delete(old.parent, old.name)
 
         # The device's overrides pointed at the SOURCE theme's assets.  They
         # are captured inside the saved theme now, so drop them before the
@@ -1277,7 +1295,7 @@ class ExportTheme(Command[ThemeExportResult]):
             )
         w, h = resolution
 
-        source = app.platform.paths().user_theme_dir(w, h) / self.theme_name
+        source = user_theme_path(app, w, h, self.theme_name)
         if not source.is_dir():
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -1431,7 +1449,7 @@ class ExportOverlay(Command[ThemeExportResult]):
             )
         w, h = resolution
 
-        source_dir = app.platform.paths().user_theme_dir(w, h) / self.theme_name
+        source_dir = user_theme_path(app, w, h, self.theme_name)
         if not source_dir.is_dir():
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -1554,10 +1572,11 @@ class ImportTheme(Command[ThemeImportResult]):
 class ListThemes(Query[ThemesListResult]):
     """Enumerate themes for a device resolution.
 
-    With ``resolution=(w, h)`` (the GUI/CLI default), walks both
-    ``paths.theme_dir(w, h)`` (pkg + cloud-downloaded) and
-    ``paths.user_theme_dir(w, h)`` (legacy user-saved location) so
-    in-place users see every theme without a migration step.
+    With ``resolution=(w, h)`` (the GUI/CLI default), walks
+    ``paths.theme_dir(w, h)`` (pkg + cloud-downloaded), then the user's
+    saved themes -- the ordinary folder and the folder of each module that
+    is on (``user_theme_dirs``): a module's themes are not listed while it
+    is off.
 
     With ``directory=``, scans that exact dir (escape hatch for tests
     and ad-hoc browsing).
@@ -1576,7 +1595,7 @@ class ListThemes(Query[ThemesListResult]):
             # saved themes AFTER — both listed, neither hiding the other (dedupe
             # by PATH, not name, so a same-named user + shipped pair both belong,
             # told apart by ``origin``). (#theme-collision)
-            roots = [paths.theme_dir(w, h), paths.user_theme_dir(w, h)]
+            roots = [paths.theme_dir(w, h), *user_theme_dirs(app, w, h)]
         else:
             return ThemesListResult(
                 ok=False, directory="", themes=[],
@@ -1674,7 +1693,7 @@ class ExportDcTheme(Command[ThemeDcExportResult]):
         w, h = resolution
 
         theme_dir = (
-            app.platform.paths().user_theme_dir(w, h) / self.theme_name
+            user_theme_path(app, w, h, self.theme_name)
         )
         if not theme_dir.is_dir():
             return ThemeDcExportResult(

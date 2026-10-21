@@ -51,6 +51,29 @@ log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 
+def user_theme_dirs(app: App, width: int, height: int) -> list[Path]:
+    """Where the user's saved themes of a resolution are: the ordinary
+    folder, then each folder of a module that is on -- a module's themes are
+    not listed, found or exported while it is off."""
+    paths = app.platform.paths()
+    dirs = [paths.user_theme_dir(width, height),
+            *(paths.user_module_theme_dir(m, width, height)
+              for m in sorted(app.modules.on))]
+    log.debug("user_theme_dirs: %dx%d -> %s", width, height, dirs)
+    return dirs
+
+
+def user_theme_path(app: App, width: int, height: int, name: str) -> Path:
+    """The user's saved theme *name* -- wherever it is kept (see
+    :func:`user_theme_dirs`) -- or, when none has the name, where an
+    ordinary one would be (so a caller's "not found" names a real place)."""
+    dirs = user_theme_dirs(app, width, height)
+    found = next((d / name for d in dirs if app.themes.is_theme_dir(d / name)),
+                 dirs[0] / name)
+    log.debug("user_theme_path: %r -> %s", name, found)
+    return found
+
+
 def oriented_theme_path(
     app: App, key: str, stored: Path, degrees: int | None = None,
 ) -> Path | None:
@@ -90,8 +113,12 @@ def oriented_theme_path(
     # ``stored`` when the same-name oriented variant isn't on disk in that tree
     # (the renderer pixel-rotates the art).
     if is_under(stored, paths.user_content_dir()):
-        bases = [paths.user_theme_dir(bw, bh)]
-        others = [paths.user_theme_dir(bh, bw)]
+        # The folder the stored theme came from first: a module's theme and
+        # an ordinary one may share a name.
+        mine = user_theme_dirs(app, bw, bh)
+        bases = ([d for d in mine if d.parent == stored.parent.parent]
+                 + [d for d in mine if d.parent != stored.parent.parent])
+        others = user_theme_dirs(app, bh, bw)
     else:
         # Per-SKU library first, generic second.  A 1600x720 panel at SUB 3
         # keeps its themes in ``theme7201600l``; looking only in
@@ -650,7 +677,7 @@ def _search_theme_by_name(
         candidates.append(libs.theme_dir(w, h) / name)
         candidates.append(libs.cloud_theme_dir(w, h) / name)
         candidates.append(paths.theme_dir(w, h) / name)
-        candidates.append(paths.user_theme_dir(w, h) / name)
+        candidates += [d / name for d in user_theme_dirs(app, w, h)]
         candidates.append(paths.cloud_theme_dir(w, h) / name)
     # The browser's own folders when the #136 fallback moved them: a turned
     # panel with no portrait themes LISTS the landscape ones, and a slideshow

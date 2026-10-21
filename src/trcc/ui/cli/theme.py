@@ -208,7 +208,7 @@ def export(
         ..., help="Device key (e.g. 0402:3922) whose resolution scopes the lookup",
     ),
     theme_name: str = typer.Argument(
-        ..., help="Theme name (directory under user_theme_dir(w, h))",
+        ..., help="A saved theme of the device's size, by name (a module's while it is on)",
     ),
     archive_path: Path = typer.Argument(
         ..., help="Destination archive path (e.g. theme.tr)",
@@ -461,7 +461,7 @@ def export_dc(
                   "and layers the user's overlay elements into the export",
     ),
     theme_name: str = typer.Argument(
-        ..., help="Theme name (directory under user_theme_dir(w, h))",
+        ..., help="A saved theme of the device's size, by name (a module's while it is on)",
     ),
     output_path: Path = typer.Argument(
         ..., help="Where to write the config1.dc file",
@@ -488,7 +488,7 @@ def export_overlay(
         ..., help="Device key (e.g. 0402:3922) — its resolution scopes the lookup",
     ),
     theme_name: str = typer.Argument(
-        ..., help="Theme name (directory under user_theme_dir(w, h))",
+        ..., help="A saved theme of the device's size, by name (a module's while it is on)",
     ),
     output_path: Path = typer.Argument(
         ..., help="Where to write the overlay layout file",

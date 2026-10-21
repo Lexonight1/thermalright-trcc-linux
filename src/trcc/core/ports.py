@@ -1455,6 +1455,13 @@ class Paths(ABC):
         log.debug("user_theme_dir: %dx%d", width, height)
         return self.user_data_dir() / f"theme{width}{height}"
 
+    def user_module_theme_dir(self, module: str, width: int, height: int) -> Path:
+        """The user-saved themes whose background *module* draws, per
+        resolution -- kept with the module, so they are listed only while it
+        is on and stay when it is switched off or deleted."""
+        log.debug("user_module_theme_dir: %s %dx%d", module, width, height)
+        return self.user_data_dir() / "modules" / module / f"theme{width}{height}"
+
     def cloud_theme_dir(self, width: int, height: int,
                         variant: str = "") -> Path:
         """Cloud-catalog themes (backgrounds) downloaded at runtime.

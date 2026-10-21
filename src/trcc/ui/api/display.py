@@ -217,7 +217,14 @@ def load_theme(key: str, body: ThemeRequest,
     if not theme_name:
         raise HTTPException(400, "Theme path required")
     candidate: Path | None = None
-    for root in (Path(paths_result.user_data_dir), Path(paths_result.data_dir)):
+    roots = [Path(paths_result.user_data_dir), Path(paths_result.data_dir)]
+    # A module's saved themes live at ``<user>/modules/<module>/theme{w}{h}/
+    # <name>/`` -- its folder, too, found by iterating, never from the request.
+    modules_root = Path(paths_result.user_data_dir) / "modules"
+    if modules_root.is_dir():
+        roots += [d for d in modules_root.iterdir()
+                  if d.is_dir() and d.name == requested.parent.parent.name]
+    for root in roots:
         if not root.is_dir():
             continue
         res_dir = next((d for d in root.iterdir()

@@ -384,13 +384,16 @@ class TRCCApp(QMainWindow):
             # Through the sidebar, so its highlight follows the view.
             self.uc_device.select_path(event.key)
 
-    def _on_bus_themes_changed(self, event: ThemeSaved | ThemeImported | ThemeDeleted) -> None:
-        """A theme was saved, imported or deleted -- by this window or any
-        other UI.  The grid is shared by every LCD handler, so the active one
+    def _on_bus_themes_changed(
+            self, event: ThemeSaved | ThemeImported | ThemeDeleted | ModuleChanged,
+    ) -> None:
+        """A theme was saved, imported or deleted -- or a module switched,
+        whose themes show only while it is on -- by this window or any other
+        UI.  The grid is shared by every LCD handler, so the active one
         re-lists it; that is the only re-list, this window's own included."""
         handler = self._active_lcd()
         log.info("_on_bus_themes_changed: %s %s -> re-list %s",
-                 type(event).__name__, event.theme_name,
+                 type(event).__name__, getattr(event, "theme_name", ""),
                  handler.device_key if handler is not None else "(no LCD)")
         if handler is not None:
             handler.refresh_themes()
