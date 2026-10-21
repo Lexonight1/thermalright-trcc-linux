@@ -135,6 +135,10 @@ DEVICE_FOLLOWER: dict[RgbDevice, RgbFollowMode] = {
 #: light runs it as TRCC draws it.  OpenRGB's lights only follow.
 EFFECT_DEVICES = frozenset({RgbDevice.MEMORY, RgbDevice.MOTHERBOARD})
 
+#: A linked colour, on either device.
+LINKED_HINT = ("Live -- TRCC sets the colour when the reading moves it, and "
+               "writes nothing while it holds.  When TRCC stops, a stick keeps "
+               "its last colour and a header shows the board's own effect.")
 HINTS: dict[tuple[RgbDevice, RgbSource], str] = {
     (RgbDevice.MEMORY, RgbSource.LEAVE): (
         "TRCC sends nothing to the sticks.  Each keeps the effect saved on it."),
@@ -200,14 +204,21 @@ class FollowDevice:
 
 @dataclass(frozen=True, slots=True)
 class RunBoardEffect:
-    """Plan: the motherboard lights *refs* (every one when empty) run
-    *settings* -- a built-in effect (``SetAuraEffect``) or a linked colour
-    (``SetAuraLinked``) -- drawn by TRCC."""
+    """Plan: the motherboard lights *refs* (every one when empty) run the
+    built-in effect *settings*, drawn by TRCC (``SetAuraEffect``)."""
     refs: tuple[str, ...]
-    settings: LightEffect
+    settings: RamEffectSettings
 
 
-ApplyPlan = LeaveLights | SaveEffect | RunBoardEffect | FollowDevice
+@dataclass(frozen=True, slots=True)
+class LinkColor:
+    """Plan: the lights *refs* -- sticks or board lights, named -- take the
+    linked colour *effect* (``SetLinkedColor``)."""
+    refs: tuple[str, ...]
+    effect: LinkedEffect
+
+
+ApplyPlan = LeaveLights | SaveEffect | RunBoardEffect | LinkColor | FollowDevice
 
 
 
@@ -305,7 +316,10 @@ def _detail(light: RgbLight) -> str:
         return (f"direct · {count} LED{'' if count == 1 else 's'}{effect}" if count
                 else "direct · LED count not set")
     # The name already says where the stick sits (``named_by_ref``).
-    saved = f" · {effect_label(light.effect)} saved" if light.effect else ""
+    saved = ("" if light.effect is None
+             else f" · {effect_label(light.effect)}"
+             if isinstance(light.effect, LinkedEffect)       # live, not saved
+             else f" · {effect_label(light.effect)} saved")
     return f"direct · {light.led_count} LEDs{saved}"
 
 
@@ -519,10 +533,10 @@ class RgbPage:
         from what its lights run."""
         log.debug("RgbPage._show_device: %s", device.value)
         self.device = device
-        self.effect_picks.linked_allowed = device is RgbDevice.MOTHERBOARD
+        self.effect_picks.linked_allowed = device in EFFECT_DEVICES
         lights = [light for light in self._lights if light.kind in DEVICE_KINDS[device]]
         driven = self.follower is device
-        if driven and device is RgbDevice.MOTHERBOARD:
+        if driven and self._follow.source == EFFECT_SOURCE:
             lights = [light for light in lights if light.ref in self._checked]
         saved = next((light.effect for light in lights if light.effect is not None), None)
         if saved is not None:
@@ -608,9 +622,11 @@ class RgbPage:
     def hint(self) -> str:
         """What the source means for this device -- and, when sending to it
         takes the one follower from another device, which."""
-        hint = HINTS[self.device, self.source]
+        linked = (self.source is RgbSource.EFFECT
+                  and isinstance(self.effect_picks.light_effect(), LinkedEffect))
+        hint = LINKED_HINT if linked else HINTS[self.device, self.source]
         other = self.follower
-        takes_follower = (self.source is RgbSource.FOLLOW
+        takes_follower = (self.source is RgbSource.FOLLOW or linked
                           or (self.source is RgbSource.EFFECT
                               and self.device is RgbDevice.MOTHERBOARD))
         if takes_follower and other is not None and other is not self.device:
@@ -652,6 +668,17 @@ class RgbPage:
                            if light.kind is kind)
         log.debug("RgbPage.effect_strips: %d", len(strips))
         return strips
+
+    @property
+    def preview_approximate(self) -> bool:
+        """Whether the effect preview is TRCC's guess: a stick runs its saved
+        effect itself; what TRCC sends -- a board effect, a linked colour --
+        is drawn exactly."""
+        linked = (self.source is RgbSource.EFFECT
+                  and isinstance(self.effect_picks.light_effect(), LinkedEffect))
+        approximate = self.device is RgbDevice.MEMORY and not linked
+        log.debug("RgbPage.preview_approximate: %s", approximate)
+        return approximate
 
     #: LEDs per strip in the follow preview: the rows the App samples a
     #: frame into, one per LED of a 10-LED stick.
@@ -713,13 +740,16 @@ class RgbPage:
         address = parse_openrgb_address(self.address) or ("127.0.0.1", 6742)
         picks = self.follow_picks
         plan: ApplyPlan
+        effect = self.effect_picks.light_effect()
         if self.source is RgbSource.LEAVE:
             plan = LeaveLights()
+        elif isinstance(effect, LinkedEffect) and self.source is RgbSource.EFFECT:
+            plan = LinkColor(tuple(row.ref for row in self.rows(kind) if row.checked),
+                             effect)
         elif self.source is RgbSource.EFFECT:
             plan = (SaveEffect(self._targets(kind), settings)
                     if self.device is RgbDevice.MEMORY
-                    else RunBoardEffect(self._targets(kind),
-                                        self.effect_picks.light_effect()))
+                    else RunBoardEffect(self._targets(kind), settings))
         else:
             plan = FollowDevice(DEVICE_FOLLOWER[self.device], *address, picks.source,
                                 picks.mapping, picks.colors, self._targets(kind))

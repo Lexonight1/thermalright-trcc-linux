@@ -144,7 +144,6 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/aura-blink` | `RgbLightsResult` | Blink an ASUS Aura ARGB header for two seconds, to see which it is. |
 | `POST /system/aura-effect` | `RgbLightsResult` | Run a built-in effect on the motherboard's lights, drawn by TRCC. |
 | `POST /system/aura-leds` | `RgbLightsResult` | Say how many LEDs an ASUS Aura ARGB header drives. |
-| `POST /system/aura-linked` | `RgbLightsResult` | Colour the motherboard's lights by the CPU's or GPU's temperature or load. |
 | `GET /system/autostart` | `AutostartResult` | Snapshot the autostart entry — whether it's installed + its path. |
 | `POST /system/autostart` | `AutostartResult` | Toggle the OS autostart entry (per-user, no sudo). |
 | `POST /system/autostart/refresh` | `AutostartResult` | Re-render an existing autostart entry so it picks up a new launch path. |
@@ -166,6 +165,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `GET /system/info` | `dict` | — |
 | `GET /system/language` | `LanguageResult` | Return the currently active UI language (ISO 639-1 code). |
 | `GET /system/languages` | `LanguagesListResult` | Enumerate UI languages the i18n table supports. |
+| `POST /system/linked-color` | `RgbLightsResult` | Colour RAM sticks or the motherboard's lights by the CPU's or GPU's temperature or load. |
 | `POST /system/mark-setup-done` | `FirstRunStatusResult` | Mark the first-run flow as completed. |
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |

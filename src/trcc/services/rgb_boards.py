@@ -98,19 +98,30 @@ class MotherboardFinder:
         log.debug("MotherboardFinder.last: %s", self._last is not None)
         return self._last
 
-    def scan(self) -> BoardScan:
+    def scan(self, held: Sequence[RgbMirrorDevice] | None = None) -> BoardScan:
         """Look for the boards' controllers -- only ever because a user
         asked.  A driver that cannot be read says why, and is not listed as
-        found: "found" means another program drives it."""
-        log.info("MotherboardFinder.scan")
+        found: "found" means another program drives it.
+
+        *held*: the lights of the board TRCC drives right now.  Driving it
+        claims the controller through libusb, which takes away its hidraw
+        node -- the very thing this looks for -- so TRCC could not see the
+        board it was driving, and a Find, or a new LED count, saved "no board
+        lights" over the real ones (the maintainer's, 2026-10-21).  Held
+        lights are listed as they are; no second driver is opened."""
+        log.info("MotherboardFinder.scan: held=%s",
+                 None if held is None else [d.ref for d in held])
         with self._lock:
             hardware = self._hardware()
-            driven: list[RgbMirrorDevice] = []
+            driven: list[RgbMirrorDevice] = list(held or ())
             found: list[RgbMirrorDevice] = []
             errors: list[str] = []
             for board in spot(hardware.hid_interfaces(), hardware.board()):
                 if (driver := self._driver(board)) is None:
                     found.append(found_light(board))
+                    continue
+                if held is not None:      # TRCC drives it now: its lights are in
+                    driver.close()
                     continue
                 try:
                     driven += driver.devices()

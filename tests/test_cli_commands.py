@@ -2342,15 +2342,15 @@ def test_system_aura_effect_dispatches_and_refuses(cli_runner: CliRunner, cli_ap
     assert bad.exit_code != 0
 
 
-def test_system_aura_linked_dispatches_and_refuses(cli_runner: CliRunner, cli_app) -> None:
+def test_system_linked_color_dispatches_and_refuses(cli_runner: CliRunner, cli_app) -> None:
     del cli_app
-    refused = cli_runner.invoke(_app(), ["system", "aura-linked", "temp",
-                                         "--sensor", "gpu"])
+    refused = cli_runner.invoke(_app(), ["system", "linked-color", "temp",
+                                         "--light", "aura/argb1", "--sensor", "gpu"])
     assert refused.exit_code == 1
-    assert "no motherboard lights listed -- press Find lights first" in refused.output
-    assert cli_runner.invoke(_app(), ["system", "aura-linked", "fan"]).exit_code != 0
-    assert cli_runner.invoke(_app(), ["system", "aura-linked", "temp",
-                                      "--sensor", "ram"]).exit_code != 0
+    assert "no light aura/argb1 -- press Find lights" in refused.output
+    assert cli_runner.invoke(_app(), ["system", "linked-color", "temp"]).exit_code != 0
+    assert cli_runner.invoke(_app(), ["system", "linked-color", "fan",
+                                      "--light", "x"]).exit_code != 0
 
 
 def test_system_rgb_lists_the_last_find_and_says_so(cli_runner: CliRunner, cli_app) -> None:

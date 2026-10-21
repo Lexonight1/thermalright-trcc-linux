@@ -16,7 +16,7 @@ from trcc.core.commands import (
     ScanRgbLights,
     SetAuraEffect,
     SetAuraLeds,
-    SetAuraLinked,
+    SetLinkedColor,
     SetRamEffect,
     SetRgbFollow,
 )
@@ -61,7 +61,7 @@ class _Bus:
             case RamLighting():
                 return RamLightingResult(state=RamAccessState.ON, message="on")
             case (RgbLights() | ScanRgbLights() | SetRamEffect() | SetAuraLeds()
-                  | BlinkAuraHeader() | SetAuraEffect() | SetAuraLinked()):
+                  | BlinkAuraHeader() | SetAuraEffect() | SetLinkedColor()):
                 return RgbLightsResult(lights=self.lights, scanned=True,
                                        ram_access=RamAccessState.ON,
                                        message="done")
@@ -309,12 +309,11 @@ def test_a_device_button_shows_only_that_devices_lights(view: Any, qtbot: Any) -
 
 @pytest.mark.parametrize("skin", _skins(), ids=["gui", "qtgui"])
 def test_a_header_can_follow_the_cpu_temperature(skin: Any, qtbot: Any) -> None:
-    """The linked colours appear on the Motherboard panel only; picking one
-    swaps the colour rows for a CPU / GPU choice and Apply sends
-    SetAuraLinked.
+    """The linked colours appear on Memory's and the Motherboard's panels;
+    picking one swaps the colour rows for a CPU / GPU choice and Apply sends
+    SetLinkedColor with the ticked lights named.
 
-    MUTATION CHECK: offer the linked colours on every device -- Memory's
-    picker lists them."""
+    MUTATION CHECK: name no lights in the plan -- refs=()."""
     lit = RgbLight("aura/argb1", "ASUS Board -- ARGB header 1", 8, LightKind.BOARD)
     view = skin(_Bus((*STICKS, lit)))
     qtbot.addWidget(view)
@@ -322,8 +321,10 @@ def test_a_header_can_follow_the_cpu_temperature(skin: Any, qtbot: Any) -> None:
     view.show()
     qtbot.waitExposed(view)
     form = view._effect
-    view._source_buttons[RgbSource.EFFECT].click()          # Memory first
-    assert form._effect.findData("temp") == -1
+    view._devices_column.buttons[RgbDevice.OPENRGB].click()   # follow only
+    view._devices_column.buttons[RgbDevice.MEMORY].click()
+    view._source_buttons[RgbSource.EFFECT].click()          # Memory offers them
+    assert form._effect.findData("temp") != -1
     view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
     view._source_buttons[RgbSource.EFFECT].click()
     view._lights_column._on_light_toggled(lit.ref, True)
@@ -334,5 +335,5 @@ def test_a_header_can_follow_the_cpu_temperature(skin: Any, qtbot: Any) -> None:
     form._on_sensor("gpu")
     view._apply.click()
     _answered(view, qtbot)
-    assert view._app.commands(SetAuraLinked) == [
-        SetAuraLinked(metric="temp", refs=(), source="gpu")]
+    assert view._app.commands(SetLinkedColor) == [
+        SetLinkedColor(metric="temp", refs=("aura/argb1",), source="gpu")]

@@ -65,6 +65,7 @@ from ..core.models import (
 )
 from ..core.ports import CommandBus
 from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
+from ..services.effect_clock import LIGHT_GRADIENTS
 from ..services.effect_frames import APPROXIMATE, LEDS, effect_frame
 from ..services.follow_colors import Rgb, strip_spans
 from ..services.led_effects import linked_preview
@@ -752,7 +753,7 @@ class _EffectStrips(QWidget):
         for i, (_name, settings) in enumerate(strips):
             x = self.GAP // 2 + i * (width + self.GAP)
             leds = (None if settings is None
-                    else linked_preview(settings.metric, LEDS)
+                    else linked_preview(LIGHT_GRADIENTS[settings.metric], LEDS)
                     if isinstance(settings, LinkedEffect)
                     else effect_frame(settings, t, i, len(strips)))
             for led in range(LEDS):
@@ -1138,7 +1139,7 @@ class RgbPageView(QWidget):
         self.follow.show_layout()
         strips = page.effect_strips()
         for preview in self._previews:
-            preview.show_strips(strips, approximate=page.device is RgbDevice.MEMORY)
+            preview.show_strips(strips, approximate=page.preview_approximate)
         self._problem.setText(problem or "")
         self._problem.setVisible(problem is not None)
         self._message.setText(WORKING if self._busy else page.message)

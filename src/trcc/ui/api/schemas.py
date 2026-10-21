@@ -280,12 +280,12 @@ class RamEffectRequest(_EffectRequest):
     sticks: list[str] = Field(default_factory=list, max_length=16)
 
 
-class AuraLinkedRequest(BaseModel):
-    """The motherboard lights named by ``lights`` (refs; [] for every one)
-    coloured by ``metric`` -- temp or load -- of ``source``, cpu or gpu."""
+class LinkedColorRequest(BaseModel):
+    """The lights named by ``lights`` -- RAM sticks or motherboard lights --
+    coloured by ``metric`` (temp or load) of ``source`` (cpu or gpu)."""
     metric: LinkedMetric
     source: SensorLink = "cpu"
-    lights: list[str] = Field(default_factory=list, max_length=16)
+    lights: list[str] = Field(..., min_length=1, max_length=16)
 
 
 class AuraEffectRequest(_EffectRequest):

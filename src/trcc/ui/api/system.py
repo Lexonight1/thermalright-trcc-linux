@@ -41,9 +41,9 @@ from ...core.commands import (
     ScanRgbLights,
     SetAuraEffect,
     SetAuraLeds,
-    SetAuraLinked,
     SetDiskDevice,
     SetHddEnabled,
+    SetLinkedColor,
     SetModuleEnabled,
     SetRamEffect,
     SetRamLighting,
@@ -88,11 +88,11 @@ from .schemas import (
     AuraBlinkRequest,
     AuraEffectRequest,
     AuraLedsRequest,
-    AuraLinkedRequest,
     AutostartRequest,
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
+    LinkedColorRequest,
     ModuleSwitchRequest,
     RamEffectRequest,
     RamLightingRequest,
@@ -401,13 +401,13 @@ def aura_effect_set(body: AuraEffectRequest, request: Request) -> RgbLightsResul
     return result
 
 
-@router.post("/aura-linked")
-def aura_linked_set(body: AuraLinkedRequest, request: Request) -> RgbLightsResult:
-    """Colour the motherboard's lights by the CPU's or GPU's temperature or
-    load."""
-    log.info("api POST /system/aura-linked: %s %s lights=%s", body.metric,
+@router.post("/linked-color")
+def linked_color_set(body: LinkedColorRequest, request: Request) -> RgbLightsResult:
+    """Colour RAM sticks or the motherboard's lights by the CPU's or GPU's
+    temperature or load."""
+    log.info("api POST /system/linked-color: %s %s lights=%s", body.metric,
              body.source, body.lights)
-    result = request.app.state.trcc.dispatch(SetAuraLinked(
+    result = request.app.state.trcc.dispatch(SetLinkedColor(
         metric=body.metric, refs=tuple(body.lights), source=body.source))
     http_error_if_failed(result)
     return result

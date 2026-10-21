@@ -23,6 +23,7 @@ from trcc.core.commands import (
 from trcc.core.events import LedColorsChanged
 from trcc.core.models import (
     MAX_ARGB_LEDS,
+    LightKind,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
@@ -1389,34 +1390,135 @@ def test_what_cannot_run_is_refused_before_anything_changes(
     app.close()
 
 
-# ── SetAuraLinked: a header coloured by a reading ───────────────────────
+# ── SetLinkedColor: a light coloured by a reading ───────────────────────
 
 def test_a_header_follows_the_cpu_temperature(tmp_path: Path) -> None:
-    """90 °C on the LED cooler's gradient is orange; a missing reading keeps
+    """80 °C on the lights' scale is orange (heavy); a missing reading keeps
     the last colour instead of going dark.
 
     MUTATION CHECK: read the GPU for a CPU link -- the header stays dark."""
-    from trcc.core.commands import SetAuraLinked
+    from trcc.core.commands import SetLinkedColor
     app, platform = _board_app(tmp_path)
-    app.last_raw_readings = {"cpu:temp": 90.0, "gpu:primary:temp": 40.0}
-    result = app.dispatch(SetAuraLinked(metric="temp", refs=("aura/argb1",)))
+    app.last_raw_readings = {"cpu:temp": 80.0, "gpu:primary:temp": 40.0}
+    result = app.dispatch(SetLinkedColor(metric="temp", refs=("aura/argb1",)))
     assert (result.ok, result.message) == (
         True, "temp-linked (cpu) on 1 motherboard light(s)")
     _until(lambda: _header_shows(platform, 1, (255, 110, 0), 8))
-    app.last_raw_readings = {}
+    app.last_raw_readings = {}                    # the reading goes missing
     platform.aura.writes.clear()
-    _until(lambda: bool(platform.aura.reports(0x40)))
-    assert _header_shows(platform, 1, (255, 110, 0), 8)
+    time.sleep(1.5)                               # more than one tick
+    assert platform.aura.reports(0x40) == []      # held: nothing new to write
     app.close()
 
 
 def test_a_linked_colour_is_kept_and_listed(tmp_path: Path) -> None:
-    from trcc.core.commands import RgbLights, SetAuraLinked
+    from trcc.core.commands import RgbLights, SetLinkedColor
     from trcc.core.models import LinkedEffect
     app, _platform = _board_app(tmp_path)
-    app.dispatch(SetAuraLinked(metric="load", refs=("aura/argb1",), source="gpu"))
+    app.dispatch(SetLinkedColor(metric="load", refs=("aura/argb1",), source="gpu"))
     header = next(light for light in app.dispatch(RgbLights()).lights
                   if light.ref == "aura/argb1")
     assert header.effect == LinkedEffect(metric="load", source="gpu")
     assert app.settings.light_effect("aura/argb1") == LinkedEffect("load", "gpu")
     app.close()
+
+
+# ── A board TRCC drives is hidden from a fresh look ─────────────────────
+
+class _HidingRgbHardware(ScriptedRgbHardware):
+    """As Linux shows the board: while TRCC holds the Aura controller
+    through libusb, its hidraw node -- what Find looks for -- is gone."""
+
+    def __init__(self, platform: MockPlatform) -> None:
+        super().__init__()
+        self._platform = platform
+
+    def hid_interfaces(self):
+        return () if self._platform.aura.is_open else self.interfaces
+
+
+def test_a_new_led_count_keeps_the_boards_lights_listed(tmp_path: Path) -> None:
+    """The maintainer set header 1 to 8 LEDs while it ran an effect: the
+    follower restarted and held the board, the re-read saw nothing, and
+    "no board lights" was saved -- his Motherboard panel was empty after the
+    next restart, header 1 could not be ticked, Load-linked never applied
+    (2026-10-21).
+
+    MUTATION CHECK: scan without the held lights -- the board list empties."""
+    from trcc.core.commands import SetAuraEffect
+    platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
+    platform.rgb = _HidingRgbHardware(platform)
+    app = App(platform)
+    app.dispatch(ScanRgbLights())
+    assert app.dispatch(SetAuraLeds(header=1, leds=4)).ok
+    app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb1",),
+                               colors=(RED,)))
+    listed = ["aura/onboard", "aura/argb1", "aura/argb2", "aura/argb3"]
+    for change in (lambda: app.dispatch(SetAuraLeds(header=1, leds=8)),
+                   lambda: app.dispatch(ScanRgbLights())):
+        _until(lambda: platform.aura.is_open)         # TRCC holds the board
+        change()
+        assert [light.ref for light in app.settings.found_lights(LightKind.BOARD)
+                ] == listed
+    app.close()
+
+
+def test_ram_sticks_follow_the_cpu_temperature(tmp_path: Path) -> None:
+    """A static colour per stick that moves with the reading -- live, so on
+    the RAM follower, not saved on the stick.
+
+    MUTATION CHECK: refuse sticks in SetLinkedColor -- not ok."""
+    from trcc.core.commands import SetLinkedColor
+    from trcc.core.models import EFFECT_SOURCE, LinkedEffect
+    app, platform, _seen = _lights_app(tmp_path)
+    app.dispatch(ScanRgbLights())
+    app.last_raw_readings = {"cpu:temp": 55.0}
+    result = app.dispatch(SetLinkedColor(metric="temp",
+                                         refs=("i2c-3/0x19", "i2c-3/0x1b")))
+    assert (result.ok, result.message) == (True, "temp-linked (cpu) on 2 stick(s)")
+    assert (app.settings.rgb_follow_mode(), app.settings.app.rgb_follow_source) == (
+        RgbFollowMode.RAM, EFFECT_SOURCE)
+    assert app.settings.light_effect("i2c-3/0x19") == LinkedEffect("temp", "cpu")
+    _until(lambda: bool(platform.ram.chips[0x19].blocks))      # direct colours
+    app.close()
+
+
+def test_a_linked_colour_is_written_only_when_it_changes() -> None:
+    """A stick's write is on the SMBus: the same colour is not sent again
+    each tick.
+
+    MUTATION CHECK: drop the _linked_unchanged guard -- a write a tick."""
+    from trcc.core.models import EFFECT_SOURCE, LinkedEffect
+    readings = {"cpu:temp": 50.0}
+    made: list[FakeMirror] = []
+
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    service = RgbMirrorService(make, readings=lambda: readings)
+    service.configure(BOARD, "", 0, EFFECT_SOURCE, targets=("strip",),
+                      effects={"strip": LinkedEffect("temp", "cpu")})
+    _until(lambda: len(made[-1].shown) == 1)
+    time.sleep(2.2)                                # two more ticks, same colour
+    assert len(made[-1].shown) == 1
+    readings["cpu:temp"] = 95.0
+    _until(lambda: len(made[-1].shown) == 2)
+    service.stop()
+
+
+@pytest.mark.parametrize(("metric", "value", "rgb"), [
+    ("load", 5.0, (0, 255, 0)), ("load", 50.0, (255, 255, 0)),
+    ("load", 75.0, (255, 110, 0)), ("load", 95.0, (255, 0, 0)),
+    ("temp", 40.0, (0, 255, 0)), ("temp", 65.0, (255, 255, 0)),
+    ("temp", 80.0, (255, 110, 0)), ("temp", 92.0, (255, 0, 0)),
+])
+def test_a_linked_light_reads_green_fine_to_red_too_much(metric, value, rgb) -> None:
+    """His scale: green fine, yellow light, orange heavy, red very heavy or
+    too hot -- not the cooler's cyan, which read as cold.
+
+    MUTATION CHECK: use the cooler's gradient -- 5 % load is cyan."""
+    from trcc.services.effect_clock import LIGHT_GRADIENTS
+    from trcc.services.led_effects import linked_color
+    sensor = "cpu:temp" if metric == "temp" else "cpu:usage"
+    assert linked_color(metric, "cpu", {sensor: value}, LIGHT_GRADIENTS[metric]) == rgb

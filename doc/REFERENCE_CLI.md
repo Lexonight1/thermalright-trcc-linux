@@ -1592,23 +1592,6 @@ trcc system aura-leds HEADER LEDS
 | `HEADER` | The ARGB header, from 1 (see `trcc system rgb`). |
 | `LEDS` | How many LEDs it drives. |
 
-### `trcc system aura-linked`
-
-Colour the motherboard's lights by the CPU's or GPU's temperature or load -- the LED cooler's Temperature-linked and Load-linked modes. Cyan when cool or idle, red when hot or busy. TRCC runs it while TRCC runs; a header needs its LED count first (`trcc system aura-leds`).
-
-```bash
-trcc system aura-linked [OPTIONS] METRIC
-```
-
-| Argument | Description |
-|---|---|
-| `METRIC` | temp or load. |
-
-| Option | Description |
-|---|---|
-| `--light` `LIGHT` | A motherboard light by ref -- aura/argb1, aura/onboard (see `trcc system rgb`); repeat for more. Default: every one. |
-| `--sensor` `SENSOR` | cpu or gpu. |
-
 ### `trcc system autostart`
 
 Manage auto-launch-on-login (XDG .desktop on Linux).
@@ -1864,6 +1847,23 @@ trcc system led-debug [OPTIONS] KEY
 | Option | Description |
 |---|---|
 | `--test-colors` | After handshake, enable the 4-color test cycle (Ctrl-C to stop). |
+
+### `trcc system linked-color`
+
+Colour RAM sticks or the motherboard's lights by the CPU's or GPU's temperature or load -- the LED cooler's Temperature-linked and Load-linked modes. Cyan when cool or idle, red when hot or busy; one colour per light, written only when the reading changes it. Live while TRCC runs: a stick keeps its last colour when TRCC stops.
+
+```bash
+trcc system linked-color [OPTIONS] METRIC
+```
+
+| Argument | Description |
+|---|---|
+| `METRIC` | temp or load. |
+
+| Option | Description |
+|---|---|
+| `--light` `LIGHT` | A light by ref -- RAM sticks (i2c-3/0x19) or motherboard lights (aura/argb1), not both (see `trcc system rgb`); repeat for more. |
+| `--sensor` `SENSOR` | cpu or gpu. |
 
 ### `trcc system list-disk-sensors`
 

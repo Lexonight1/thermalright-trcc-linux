@@ -24,6 +24,7 @@ from trcc.ui.presentation.rgb_page import (
     FindLights,
     FollowDevice,
     LeaveLights,
+    LinkColor,
     RgbDevice,
     RgbPage,
     RgbSource,
@@ -498,17 +499,34 @@ def test_a_header_can_follow_the_gpu_load() -> None:
     picks = page.effect_picks
     picks.linked, picks.link_source = "load", "gpu"
     plan = page.apply()
-    assert plan == RunBoardEffect((), LinkedEffect(metric="load", source="gpu"))
+    assert plan == LinkColor((LIT_HEADER.ref,), LinkedEffect(metric="load", source="gpu"))
     assert effect_label(LinkedEffect("temp", "cpu")) == "Temperature-linked (CPU)"
     assert page.effect_strips() == ((LIT_HEADER.name, LinkedEffect("load", "gpu")),)
 
 
-def test_memory_takes_no_linked_colour() -> None:
-    """The sticks run their own firmware effects; a linked pick left over
-    from the board is not sent to them."""
-    page = _on(_page(STICK_A, LIT_HEADER), RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
+def test_memory_takes_a_linked_colour_live() -> None:
+    """A stick cannot read a sensor, so its linked colour is TRCC's to send:
+    the plan names the ticked sticks, and the hint says it is live.
+
+    MUTATION CHECK: keep linked colours to the Motherboard -- a SaveEffect."""
+    from trcc.core.models import LinkedEffect
+    from trcc.ui.presentation.rgb_page import LINKED_HINT
+    page = _on(_page(STICK_A, STICK_B), RgbDevice.MEMORY, RgbSource.EFFECT)
     page.effect_picks.linked = "temp"
-    page.set_device(RgbDevice.MEMORY)
+    assert page.apply() == LinkColor((STICK_A.ref, STICK_B.ref), LinkedEffect("temp", "cpu"))
+    assert page.hint.startswith(LINKED_HINT)
+
+
+def test_only_a_sticks_own_effect_is_drawn_as_a_guess() -> None:
+    """The stick runs its saved effect itself; a linked colour is TRCC's,
+    drawn exactly.
+
+    MUTATION CHECK: approximate on Memory whatever runs -- the linked case."""
+    page = _on(_page(STICK_A, LIT_HEADER), RgbDevice.MEMORY, RgbSource.EFFECT)
+    assert page.preview_approximate
+    page.effect_picks.linked = "load"
+    assert not page.preview_approximate
+    page.set_device(RgbDevice.MOTHERBOARD)
     page.set_source(RgbSource.EFFECT)
-    plan = page.apply()
-    assert isinstance(plan, SaveEffect)
+    page.effect_picks.set_effect(RamEffect.RAIN)
+    assert not page.preview_approximate

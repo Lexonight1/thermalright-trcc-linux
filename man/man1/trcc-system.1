@@ -84,31 +84,6 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
-.SS aura\-linked
-.PP
-\fBtrcc system aura\-linked\fR \fIMETRIC\fR [\fIOPTIONS\fR]
-.PP
-Colour the motherboard's lights by the CPU's or GPU's temperature or load \-\- the LED cooler's Temperature\-linked and Load\-linked modes. Cyan when cool or idle, red when hot or busy. TRCC runs it while TRCC runs; a header needs its LED count first (trcc system aura\-leds).
-.PP
-Arguments:
-.RS 4
-.TP
-\fBMETRIC\fR
-temp or load.
-.RE
-.PP
-Options:
-.RS 4
-.TP
-\fB\-\-light \fILIGHT\fR\fR
-A motherboard light by ref \-\- aura/argb1, aura/onboard (see trcc system rgb); repeat for more. Default: every one.
-.TP
-\fB\-\-sensor \fISENSOR\fR\fR
-cpu or gpu.
-.TP
-\fB\-\-help\fR
-Show this command's help and exit.
-.RE
 .SS autostart
 .PP
 Manage auto\-launch\-on\-login (XDG .desktop on Linux).
@@ -492,6 +467,31 @@ Options:
 .TP
 \fB\-\-test\-colors\fR
 After handshake, enable the 4\-color test cycle (Ctrl\-C to stop).
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS linked\-color
+.PP
+\fBtrcc system linked\-color\fR \fIMETRIC\fR [\fIOPTIONS\fR]
+.PP
+Colour RAM sticks or the motherboard's lights by the CPU's or GPU's temperature or load \-\- the LED cooler's Temperature\-linked and Load\-linked modes. Cyan when cool or idle, red when hot or busy; one colour per light, written only when the reading changes it. Live while TRCC runs: a stick keeps its last colour when TRCC stops.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBMETRIC\fR
+temp or load.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-light \fILIGHT\fR\fR
+A light by ref \-\- RAM sticks (i2c\-3/0x19) or motherboard lights (aura/argb1), not both (see trcc system rgb); repeat for more.
+.TP
+\fB\-\-sensor \fISENSOR\fR\fR
+cpu or gpu.
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

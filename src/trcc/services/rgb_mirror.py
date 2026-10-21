@@ -46,16 +46,13 @@ from ..core.models import (
     FollowColors,
     FollowMapping,
     LightEffect,
-    LinkedEffect,
-    RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbMirrorDevice,
 )
 from ..core.ports import RamLights, RgbMirror
-from .effect_frames import effect_frame
+from .effect_clock import EffectClock, Readings
 from .follow_colors import for_leds, frame_columns
-from .led_effects import linked_color
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -67,9 +64,6 @@ Columns = tuple[tuple[Rgb, ...], ...]
 Pixels = Callable[[Any], tuple[bytes, int, int, int]]
 #: Told of every send: the device that led, and the screen colours sent.
 Sent = Callable[[str, Columns], None]
-#: The App's last raw sensor sample, None before its first -- what a linked
-#: colour reads, the same one the LED cooler's linked modes read.
-Readings = Callable[[], Mapping[str, float] | None]
 
 #: Rows a frame is sampled into: one per LED of a 10-LED stick; each device
 #: stretches its column to its own LED count.
@@ -77,10 +71,6 @@ FRAME_ROWS = 10
 #: An LCD frame is sampled at most this often -- a 15-30 fps video gives
 #: every one it can, a still theme the rare frame it sends.
 FRAME_INTERVAL_S = 1 / 20
-#: TRCC's own effect is drawn this often -- as often as an LCD is sampled --
-#: and a Static one once a second, which puts it back after a board reset.
-EFFECT_INTERVAL_S = FRAME_INTERVAL_S
-STATIC_INTERVAL_S = 1.0
 #: A blink: dim white -- full white on a long strip can draw more than an
 #: ARGB header's 3 A -- then off, every 250 ms, for 2 s.
 BLINK_COLOR = (64, 64, 64)
@@ -118,7 +108,8 @@ class RgbMirrorService:
         self._retry_s = retry_s
         self._blink_step_s = blink_step_s
         self._on_sent = on_sent
-        self._readings = readings
+        # TRCC's own effects, when the source is its effect clock.
+        self._clock = EffectClock(readings)
         self._cond = threading.Condition()
         # One column of colours per device, newest only; a single column
         # (an LED cooler's colours) goes to every device.  With it, whether
@@ -128,12 +119,6 @@ class RgbMirrorService:
         self._mapping = FollowMapping.HALVES
         self._how = FollowColors.VIVID
         self._targets: tuple[str, ...] = ()
-        # Each light's built-in effect, by ref, while the source is TRCC's
-        # effect clock -- empty otherwise; and when that clock started.
-        self._effects: Mapping[str, LightEffect] = {}
-        self._effect_start = 0.0
-        # A linked light's last colour, kept while its reading is missing.
-        self._linked_last: dict[str, Rgb] = {}
         self._last_frame = 0.0
         self._device_count = 2
         self._mirror: RgbMirror | None = None
@@ -197,7 +182,7 @@ class RgbMirrorService:
                 self._running, self._lead, self._retry_at = True, source, 0.0
                 self._source, self._mapping = source, mapping
                 self._targets, self._how = targets, colors
-                self._effects, self._effect_start = effects, time.monotonic()
+                self._clock.set(effects)
                 self._last_frame = 0.0
                 self._status = MirrorStatus(mode=mode, source=source)
             self._thread = threading.Thread(target=self._run, daemon=True,
@@ -334,6 +319,25 @@ class RgbMirrorService:
 
     # ── The motherboard: which header is which ───────────────────────
 
+    def board_lights(self) -> tuple[RgbMirrorDevice, ...] | None:
+        """The lights of the board TRCC drives now -- None while it drives
+        none.  Driving it hides it from a fresh look (``MotherboardFinder.scan``
+        says why), so a Find asks here."""
+        with self._switch:
+            mirror = (self._mirror if self._status.mode is RgbFollowMode.BOARD
+                      else None)
+            if mirror is None:
+                log.debug("RgbMirrorService.board_lights: not driving the board")
+                return None
+            with self._bus:
+                try:
+                    lights = mirror.devices()
+                except OSError as e:
+                    log.warning("RgbMirrorService.board_lights: %s", e)
+                    return None
+        log.info("RgbMirrorService.board_lights: %s", [d.ref for d in lights])
+        return lights
+
     def blink(self, ref: str) -> RgbMirrorDevice:
         """Blink the motherboard light *ref* so the user can see which one
         it is.  Returns the light blinked.
@@ -391,7 +395,8 @@ class RgbMirrorService:
         drop the follower.  Caller holds the switch."""
         log.debug("_stop_following: thread=%s", self._thread is not None)
         with self._cond:
-            self._running, self._effects = False, {}
+            self._running = False
+            self._clock.set({})
             self._cond.notify()
         if self._thread is not None:
             self._thread.join(timeout=5)
@@ -421,9 +426,10 @@ class RgbMirrorService:
         log.debug("RgbMirrorService._run: started")
         while True:
             with self._cond:
-                if self._effects:               # TRCC's clock: a frame a beat
-                    self._cond.wait(self._effect_interval())
-                while self._running and self._pending is None and not self._effects:
+                if self._clock.effects:         # TRCC's clock: a frame a beat
+                    self._cond.wait(self._clock.interval())
+                while (self._running and self._pending is None
+                       and not self._clock.effects):
                     self._cond.wait()
                 if not self._running:
                     return
@@ -433,41 +439,6 @@ class RgbMirrorService:
             if mirror is not None and time.monotonic() >= self._retry_at:
                 with self._bus:
                     self._send(mirror, columns, picture)
-
-    def _effect_interval(self) -> float:
-        """How long until the next effect frame: once a second when every
-        light is Static, else an LCD sample's interval."""
-        moving = any(isinstance(e, RamEffectSettings)
-                     and e.effect is not RamEffect.STATIC
-                     for e in self._effects.values())
-        frame_log.debug("_effect_interval: moving=%s", moving)
-        return EFFECT_INTERVAL_S if moving else STATIC_INTERVAL_S
-
-    def _effect_columns(self, devices: tuple[RgbMirrorDevice, ...]) -> Columns:
-        """Each of *devices*' effect now -- device *i* is the *i*-th of the
-        lights, so a left / right effect travels across them; a light with no
-        effect is dark."""
-        t = time.monotonic() - self._effect_start
-        frame_log.debug("_effect_columns: %d light(s) t=%.2f", len(devices), t)
-        readings = (self._readings() if self._readings else None) or {}
-        return tuple(self._effect_column(d.ref, i, len(devices), t, readings)
-                     for i, d in enumerate(devices))
-
-    def _effect_column(self, ref: str, i: int, count: int, t: float,
-                       readings: Mapping[str, float]) -> tuple[Rgb, ...]:
-        """Light *ref*'s colours now: its effect drawn at *t*, or its linked
-        colour from *readings* -- the last one while its reading is missing,
-        dark before any."""
-        effect = self._effects.get(ref)
-        frame_log.debug("_effect_column: %s %s", ref, effect)
-        if isinstance(effect, LinkedEffect):
-            color = linked_color(effect.metric, effect.source, readings)
-            if color is not None:
-                self._linked_last[ref] = color
-            return (self._linked_last.get(ref, (0, 0, 0)),)
-        if effect is None:
-            return ((0, 0, 0),)
-        return tuple(effect_frame(effect, t, i, count))
 
     def _send(self, mirror: RgbMirror, columns: Columns | None,
               picture: bool) -> None:
@@ -484,11 +455,13 @@ class RgbMirrorService:
                             if not self._targets or d.ref in self._targets)
             self._device_count = len(devices) or self._device_count
             if columns is None:
-                columns = self._effect_columns(devices)
+                columns = self._clock.columns(devices)
             columns = columns or ((),)
             leds = tuple(map(for_leds, columns)) if picture else columns
             for i, device in enumerate(devices):
-                mirror.show(device, leds[i % len(leds)])
+                column = leds[i % len(leds)]
+                if not self._clock.unchanged(device.ref, column):
+                    mirror.show(device, column)
         except OSError as e:
             self._failed(mirror, e)
             return

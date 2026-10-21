@@ -23,12 +23,12 @@ from ...core.commands import (
     ScanRgbLights,
     SetAuraEffect,
     SetAuraLeds,
-    SetAuraLinked,
+    SetLinkedColor,
     SetRamEffect,
     SetRgbFollow,
 )
 from ...core.logs import per_frame
-from ...core.models import LinkedEffect, RgbFollowMode
+from ...core.models import RgbFollowMode
 from ...core.ports import CommandBus
 from ...core.results import DeviceEntry, RgbFollowResult, RgbLightsResult
 from ..presentation.rgb_page import (
@@ -37,6 +37,7 @@ from ..presentation.rgb_page import (
     FollowDevice,
     HeaderLeds,
     LeaveLights,
+    LinkColor,
     RunBoardEffect,
     SaveEffect,
 )
@@ -158,10 +159,9 @@ class UCRgbPage(RgbPageView):
                     effect=s.effect, refs=refs, speed=s.speed,
                     direction=s.direction, colors=s.colors,
                     random_colors=s.random_colors, brightness=s.brightness)
+            case LinkColor(refs=refs, effect=e):
+                return SetLinkedColor(metric=e.metric, refs=refs, source=e.source)
             case RunBoardEffect(refs=refs, settings=s):
-                if isinstance(s, LinkedEffect):
-                    return SetAuraLinked(metric=s.metric, refs=refs,
-                                         source=s.source)
                 return SetAuraEffect(
                     effect=s.effect, refs=refs, speed=s.speed,
                     direction=s.direction, colors=s.colors,

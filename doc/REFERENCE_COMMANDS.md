@@ -1679,9 +1679,9 @@ How many LEDs an ASUS Aura ARGB header drives -- the board cannot say, its heade
 | `header` | `int` | yes |
 | `leds` | `int` | yes |
 
-### `SetAuraLinked`
+### `SetLinkedColor`
 
-Colour the motherboard's lights named by ``refs`` (every one the last Find listed when empty) by a reading: ``metric`` -- the temperature or the load -- of ``source``, the CPU or the GPU, through the LED cooler's gradient, cyan when cool or idle to red when hot or busy.
+Colour the lights named by ``refs`` -- RAM sticks, or the motherboard's lights, not both -- by a reading: ``metric``, the temperature or the load, of ``source``, the CPU or the GPU, through the LED cooler's gradient, cyan when cool or idle to red when hot or busy.  One colour per light, changed when the reading moves it.
 
 *Command* → `RgbLightsResult`
 
