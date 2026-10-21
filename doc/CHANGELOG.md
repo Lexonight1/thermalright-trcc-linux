@@ -1,5 +1,98 @@
 # Changelog
 
+## v9.11.0
+
+### Added
+
+- **Windows: no more "Run as administrator", and every window shares one
+  TRCC app (#218).** A small TRCC service, installed with the app, does the
+  two jobs Windows reserves for administrators: talking to SCSI panels and
+  reading the PawnIO driver. TRCC itself runs as a normal user, and the GUI,
+  the CLI and the API share one app over a named pipe, as they do on Linux.
+  Sign-in autostart moved from a scheduled task to the Run key; an existing
+  task is carried over.
+- **Windows sensors without LibreHardwareMonitor (#319).** LibreHardwareMonitor
+  removed its WMI provider, so TRCC no longer bundles it and reads the
+  hardware itself:
+  - CPU temperature and power from the CPU, through PawnIO (a signed, open
+    driver; the installer sets it up);
+  - AMD graphics cards through AMD's own library, Intel graphics through
+    Intel's, and GPU usage and memory for every brand from Windows' own
+    counters;
+  - drive temperatures (never from a USB drive);
+  - motherboard fans and temperatures from Nuvoton and ITE (Gigabyte) chips
+    and MSI's embedded controller, read-only.
+  HWiNFO still works when it runs. These were tested on a Windows virtual
+  machine, which has no real sensors; reports from real PCs are welcome.
+- **Windows: two identical panels each open the right one (#287).**
+- **The motherboard's RGB headers follow the cooler (#160)** on ASUS Aura
+  boards, and each header can blink so you can see which one your fan is on.
+  TRCC installs its own udev rule for the board, since several distros ship
+  none.
+- **OpenRGB can drive the cooler's LEDs (#160)**: the cooler shows what
+  OpenRGB sends it over DDP, so one program can light the whole case.
+- **More audio visuals**: KarmaViz's 19 presets, and the Spike Circle. A
+  theme saved while a visual plays keeps the visual as its background.
+- **Drag a video or an image onto the preview (#265)** to play or show it.
+- **Name the rows of a custom dashboard (#223)**, in every window, the CLI and
+  the API.
+- **A Modules page** in every window, for features you switch on or off.
+- **An About page**: thanks to the people and the open-source projects TRCC
+  is built on, with every licence.
+- **`trcc doctor` says when the motherboard's fan chip has no driver loaded
+  (#301).**
+- **Every log line names the process that wrote it**, so a `trcc report`
+  shows which window or the app said what.
+
+### Fixed
+
+- **A video starts playing on its first frames (#264).** The rest decodes in
+  the background, so switching to a theme with a long or 4K video no longer
+  freezes the window while it decodes; the progress bar shows the full length
+  from the start. If decoding fails partway, what decoded keeps playing and
+  you are told once. Your own videos are decoded only as large as the panel
+  shows them, not at their full 4K: on a 30-second 4K clip for a 1600x720
+  panel, starting went from 2.2 s to 0.5 s and the memory it holds from
+  145 MB to 35 MB.
+- **macOS and Linux: a firmware-4.07 panel comes back after sleep (#283).**
+  The changes made for the original report are undone: macOS wake detection
+  is gone, and a single-session panel keeps its USB session through a sleep
+  on every OS, as in 9.10.2. On macOS, the once-a-second serial-number check
+  is back (without its log lines); the reporter's test showed it is what
+  lets the panel return.
+- **TRCC's app runs as your user service and survives a logout (#311)**, such
+  as switching from the desktop to Steam's Gamescope session, which used to
+  stop it and leave the panel dark.
+- **A unit you disconnect stays disconnected (#317)**, through restarts,
+  hotplug and wake, so another program can drive it.
+- **Text on the panel no longer changes with the desktop's scaling.**
+- **The sensor picker names the CPU reading as the package, by the CPU's
+  model, and lists cores in order (#301).** One failing CPU source no longer
+  empties the sensor list.
+- **HWiNFO's shared memory is read on Windows again** -- its signature was
+  byte-swapped (PR #320, thanks @yprimakov). On Ryzen, HWiNFO's CPU
+  temperature is Tctl and labelled as such.
+- **Windows: a GUI whose app crashed restarts** (it failed when TRCC was
+  installed under `C:\Program Files`), and a second launch brings back a
+  window hidden in the tray.
+- **Windows: screen cast works** in the shared app (it captures with GDI),
+  and `trcc display screencast` no longer dies for lack of `signal.pause`.
+- **Windows: no more one-second stalls** waiting for the shared log's lock,
+  and TRCC stops Windows' once-a-second media check on a panel it holds.
+- **SCSI panels are kept fed while the picture is still**, and a panel that
+  missed its start-up is retried rather than left blank.
+- **A slow first start of the app is waited for, never started twice** -- two
+  apps could own one panel.
+- **A pulled panel is no longer retried on a closed handle**, and is one
+  warning instead of three errors.
+- **Cloud downloads try the server that answers first**; a dead mirror costs
+  one 5-second wait per app, not 21 seconds per file.
+- **Screen cast, web stream and visuals keep their frame rate**: they waited
+  a full interval after each frame. A cast that keeps failing says so once.
+- **The log is a fraction of its size**: per-frame and per-tick lines that
+  filled 97% of it are gone.
+- **Disk and network rates are measured over the real interval.**
+
 ## v9.10.9
 
 ### Added
