@@ -2544,7 +2544,7 @@ KNOWN_BLANKET_IGNORES: dict[str, int] = {
 OPTIONAL_IMPORTS = frozenset({
     "gi", "dbus",                                  # the `wayland` extra
     "wmi", "pythoncom", "pywintypes", "servicemanager", "win32api", "win32event",
-    "win32file", "win32pipe", "win32security", "win32service", "win32serviceutil",
+    "win32file", "win32pdh", "win32pipe", "win32security", "win32service", "win32serviceutil",
     "win32timezone", "soundcard", "libusb_package",          # Windows only
     "catap",                                                 # macOS only
 })

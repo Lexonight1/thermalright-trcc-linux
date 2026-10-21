@@ -63,6 +63,8 @@ def test_chain_uses_wmi_only_when_live_backends_empty(monkeypatch) -> None:
     monkeypatch.setattr(win, "discover_nvidia_gpus", lambda: [])
     monkeypatch.setattr(win, "discover_lhm_gpus", lambda: [])
     monkeypatch.setattr(win, "discover_hwinfo_gpus", lambda: [])
+    monkeypatch.setattr(win, "discover_adl_gpus", lambda: [])
+    monkeypatch.setattr(win, "discover_d3dkmt_gpus", lambda: [])
     sentinel = WmiVideoControllerGpu(0, "Intel Arc A770")
     monkeypatch.setattr(win, "discover_wmi_gpus", lambda: [sentinel])
 
@@ -76,6 +78,8 @@ def test_chain_skips_wmi_when_a_live_backend_present(monkeypatch) -> None:
     monkeypatch.setattr(win, "discover_nvidia_gpus", lambda: [live])
     monkeypatch.setattr(win, "discover_lhm_gpus", lambda: [])
     monkeypatch.setattr(win, "discover_hwinfo_gpus", lambda: [])
+    monkeypatch.setattr(win, "discover_adl_gpus", lambda: [])
+    monkeypatch.setattr(win, "discover_d3dkmt_gpus", lambda: [])
 
     def _boom() -> list:
         raise AssertionError("WMI fallback must not run when a backend is live")
