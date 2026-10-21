@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from abc import abstractmethod
 from typing import TYPE_CHECKING, ClassVar
 
@@ -84,6 +85,12 @@ class BaseSendTask(SendTask):
     #: still while game mode holds the panel.  On by default, so a new driver
     #: that draws cannot overwrite the game frame by forgetting to say so.
     PAUSES_FOR_GAME: ClassVar[bool] = True
+    #: Whether the interval is a BEAT -- from one turn's start to the next --
+    #: rather than a rest after each turn.  Frame drivers set it.  As a rest,
+    #: a screencast frame came every work + 60 ms: 142 ms apart on the win11
+    #: VM (2026-10-20), 6.9 fps for a 16.7 fps cadence.  The C# casts off a
+    #: fixed 15 ms timer (every 4th tick), whatever the frame costs.
+    FIXED_BEAT: ClassVar[bool] = False
 
     def run_once(self, now: float) -> float:
         """Do one turn of the work, unless the panel is away.
@@ -103,7 +110,16 @@ class BaseSendTask(SendTask):
             frame_log.debug("%s: %s held by game mode -- waiting",
                             type(self).__name__, self._device_key)
             return self.AWAY_POLL_S
-        return self._run(now)
+        if not self.FIXED_BEAT:
+            return self._run(now)
+        # perf_counter, not monotonic: Windows' monotonic moves in 15.6 ms steps.
+        started = time.perf_counter()
+        beat = self._run(now)
+        left = max(0.0, beat - (time.perf_counter() - started))
+        frame_log.debug("%s: %s turn took %.0f ms, next in %.0f ms",
+                        type(self).__name__, self._device_key,
+                        (beat - left) * 1000, left * 1000)
+        return left
 
     @abstractmethod
     def _run(self, now: float) -> float:

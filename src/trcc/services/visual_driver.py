@@ -22,6 +22,7 @@ class VisualDriver(BaseSendTask):
     """Dispatches ``CaptureVisualFrame`` for one device, every tick."""
 
     KEY_PREFIX = "visual:"
+    FIXED_BEAT = True
     DEFAULT_INTERVAL_S = 1.0 / VISUAL_FPS
 
     def _run(self, now: float) -> float:

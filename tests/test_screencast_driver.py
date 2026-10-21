@@ -308,6 +308,51 @@ def test_a_cast_that_keeps_failing_tells_the_uis_once_and_carries_on(
     assert len(told) == 2
 
 
+@pytest.mark.parametrize(("work_s", "wait_s"), [(0.025, 0.035), (0.1, 0.0)])
+def test_the_cast_runs_on_a_beat_not_a_rest_after_each_frame(
+    casting: App, monkeypatch: pytest.MonkeyPatch, work_s: float, wait_s: float,
+) -> None:
+    """A 25 ms frame leaves 35 ms of the 60 ms beat; an overrun waits nothing.
+    It waited the full 60 ms after every frame: 142 ms apart on the win11 VM,
+    6.9 fps for 16.7 (2026-10-20).
+
+    MUTATION CHECK: drop FIXED_BEAT from the driver -- it waits 60 ms."""
+    from types import SimpleNamespace
+
+    from trcc.services import _send_task
+
+    clock = iter((100.0, 100.0 + work_s))
+    monkeypatch.setattr(_send_task, "time", SimpleNamespace(perf_counter=lambda: next(clock)))
+
+    wait = ScreencastDriver(casting, _KEY).run_once(0.0)
+
+    assert wait == pytest.approx(wait_s)
+
+
+def test_a_task_that_rests_keeps_its_whole_rest(
+    app: App, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``FIXED_BEAT`` is opt-in: a poll's interval stays a rest, however long
+    the turn took.
+
+    MUTATION CHECK: default FIXED_BEAT to True -- this waits 0.3 s, not 0.5."""
+    from types import SimpleNamespace
+
+    from trcc.services import _send_task
+
+    class _Rests(_send_task.BaseSendTask):
+        KEY_PREFIX = "rests:"
+        DEFAULT_INTERVAL_S = 0.5
+
+        def _run(self, now: float) -> float:
+            return self._interval
+
+    clock = iter((100.0, 100.2))
+    monkeypatch.setattr(_send_task, "time", SimpleNamespace(perf_counter=lambda: next(clock)))
+
+    assert _Rests(app, _KEY).run_once(0.0) == 0.5
+
+
 def test_each_tick_captures_one_frame(
     casting: App, scheduler: SyncSendScheduler,
 ) -> None:

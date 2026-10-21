@@ -50,6 +50,7 @@ class ScreencastDriver(BaseSendTask):
     """
 
     KEY_PREFIX = "screencast:"
+    FIXED_BEAT = True
     DEFAULT_INTERVAL_S = SCREENCAST_TICK_S
 
     def __init__(self, app: App, device_key: str,

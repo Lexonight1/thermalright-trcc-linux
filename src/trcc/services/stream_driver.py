@@ -22,6 +22,7 @@ class StreamDriver(BaseSendTask):
     """Dispatches ``CaptureStreamFrame`` for one device, every tick."""
 
     KEY_PREFIX = "stream:"
+    FIXED_BEAT = True
     DEFAULT_INTERVAL_S = STREAM_TICK_S
 
     def _run(self, now: float) -> float:
