@@ -408,6 +408,14 @@ def _shared(
 # =========================================================================
 
 
+#: The CPU temperatures HWiNFO names, in order: (entry-name needle, label).
+#: Intel's is "CPU Package".  On Ryzen HWiNFO shows "CPU (Tctl/Tdie)" when the
+#: two agree, else "CPU (Tctl)" beside "CPU (Tdie)" (HWiNFO forum, thread 4977)
+#: -- and Tctl is what PawnIO and Linux ``k10temp`` report, so the reading does
+#: not change meaning with HWiNFO running.  The labels are PawnioCpu's.
+_NAMED_CPU_TEMPS = (("cpu package", "Package"), ("tctl", "Tctl"))
+
+
 class HwinfoCpu(CpuSource):
     """CPU readings via HWiNFO64 shared memory."""
 
@@ -424,15 +432,34 @@ class HwinfoCpu(CpuSource):
         frame_log.debug("name")
         return "HWiNFO64 (CPU)"
 
+    def _named_temp(self) -> tuple[float, str] | None:
+        """The first CPU temperature HWiNFO names, with its label; None when
+        it names none (or HWiNFO is not running)."""
+        if self._snapshot is not None:
+            for needle, label in _NAMED_CPU_TEMPS:
+                value = self._snapshot.find(TYPE_TEMP, entry_name_contains=needle)
+                if value is not None:
+                    frame_log.debug("_named_temp: %s -> %s", label, value)
+                    return value, label
+        frame_log.debug("_named_temp: none named")
+        return None
+
     def temp(self) -> float | None:
         frame_log.debug("temp")
         if self._snapshot is None:
             return None
-        # Prefer CPU Package; otherwise hottest core under a CPU sensor row.
-        explicit = self._snapshot.find(TYPE_TEMP, entry_name_contains="cpu package")
-        if explicit is not None:
-            return explicit
+        if (named := self._named_temp()) is not None:
+            return named[0]
+        # Nothing named: the hottest temperature under a CPU sensor row.
         return self._snapshot.max_value(TYPE_TEMP, sensor_name_contains="cpu")
+
+    def temp_label(self) -> str:
+        """"Package" or "Tctl" when :meth:`temp` reads that named row; "" for
+        the unnamed hottest-row fallback."""
+        named = self._named_temp()
+        label = named[1] if named is not None else ""
+        frame_log.debug("temp_label: %r", label)
+        return label
 
     def usage(self) -> float | None:
         frame_log.debug("usage")

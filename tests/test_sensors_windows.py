@@ -10,6 +10,8 @@ import struct
 import threading
 from typing import Any
 
+import pytest
+
 from trcc.adapters.sensors._hwinfo import (
     _ENTRY_VALUE_OFFSET,
     _HEADER_FMT,
@@ -441,6 +443,35 @@ def test_hwinfo_cpu_pulls_through_snapshot_factory() -> None:
     assert cpu.usage() == 88.0
     assert cpu.freq() == 5200.0     # max core clock
     assert cpu.power() == 142.0
+
+
+def _hwinfo_cpu(*temps: tuple[str, float]) -> HwinfoCpu:
+    snap = _snapshot_from_bytes(_build_hwinfo_mmf(
+        sensors=["CPU [#0]"], entries=[(TYPE_TEMP, 0, name, v) for name, v in temps]))
+    return HwinfoCpu(snapshot_factory=lambda: snap)
+
+
+@pytest.mark.parametrize(("temps", "reading", "label"), [
+    # Intel: the package row, named "Package" as PawnIO names it.
+    ((("CPU Package", 72.0), ("CPU Core 1", 80.0)), 72.0, "Package"),
+    # Ryzen, no offset: one "CPU (Tctl/Tdie)" row -- not the hotter CCD.
+    ((("CPU (Tctl/Tdie)", 61.0), ("CPU CCD1 (Tdie)", 68.0)), 61.0, "Tctl"),
+    # Ryzen with an offset: Tctl and Tdie separate; Tctl, as PawnIO and k10temp.
+    ((("CPU (Tctl)", 70.0), ("CPU (Tdie)", 60.0)), 70.0, "Tctl"),
+    # Nothing named: the hottest CPU row, and no label claimed for it.
+    ((("CPU Core 1", 55.0), ("CPU Core 2", 58.0)), 58.0, ""),
+])
+def test_hwinfo_names_the_cpu_temperature_it_reads(
+    temps: tuple[tuple[str, float], ...], reading: float, label: str,
+) -> None:
+    """On Ryzen HWiNFO has no "CPU Package": it took the hottest CPU row --
+    a CCD or a core -- so the CPU temperature changed meaning with HWiNFO
+    running, and was never labelled.
+
+    MUTATION CHECK: drop the Tctl row -- the Ryzen cases read the CCD / Tctl
+    unlabelled."""
+    cpu = _hwinfo_cpu(*temps)
+    assert (cpu.temp(), cpu.temp_label()) == (reading, label)
 
 
 def test_hwinfo_cpu_returns_none_when_snapshot_factory_none() -> None:
