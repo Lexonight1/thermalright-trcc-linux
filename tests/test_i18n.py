@@ -1,6 +1,10 @@
 """i18n — language code + translation table coverage + tr() fallback rules."""
 from __future__ import annotations
 
+import json
+import sys
+from pathlib import Path
+
 import pytest
 
 from trcc.core.i18n import (
@@ -10,6 +14,70 @@ from trcc.core.i18n import (
     supported_languages,
     tr,
 )
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
+import i18n_gaps
+
+
+def test_every_language_translates_every_english_key() -> None:
+    """Every table -- the main one and each module's -- is complete in every
+    language TRCC offers.  29 keys sat untranslated in 37 languages until
+    2026-10-21 because nothing measured it; ``dev/tools/i18n_gaps.py`` lists
+    a gap and fills it.  MUTATION CHECK: drop one German entry and this
+    names it."""
+    short = {name: gaps for name, table in i18n_gaps.tables().items()
+             if (gaps := i18n_gaps.gaps(table))}
+    assert short == {}, (
+        "untranslated -- run PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py:\n"
+        + "\n".join(f"  {name} {lang}: {keys}" for name, langs in short.items()
+                    for lang, keys in langs.items()))
+
+
+def test_the_gap_tool_refuses_what_it_must_not_write() -> None:
+    """``--write`` takes only real languages, English keys, non-empty text,
+    and never replaces a translation already there."""
+    table = {"en": {"Hello": "Hello"}, "de": {"Hello": "Hallo"}}
+    assert i18n_gaps.problems(table, {"fr": {"Hello": "Bonjour"}}) == []
+    assert i18n_gaps.problems(table, {"de": {"Hello": "Hallo"}}) == []
+    assert i18n_gaps.problems(table, {
+        "xx": {"Hello": "?"},
+        "fr": {"Bye": "Adieu", "Hello": " "},
+        "de": {"Hello": "Servus"},
+    }) == [
+        "xx: TRCC has no such language",
+        "fr: 'Bye' is not an English key",
+        "fr: 'Hello' has no translation",
+        "de: 'Hello' is already 'Hallo' -- not replaced",
+    ]
+
+
+def test_the_gap_tool_adds_lines_without_moving_any(tmp_path: Path) -> None:
+    """The main table is edited in place: each new line lands at the end of
+    its language's block, comments and existing lines untouched."""
+    source = tmp_path / "i18n.py"
+    source.write_text(
+        "TRANSLATIONS = {\n"
+        "    'en': {\n"
+        "        # a comment that must survive\n"
+        "        'A': 'A', 'B': 'B',\n"
+        "    },\n"
+        "    'de': {\n"
+        "        'A': 'Ah',\n"
+        "    },\n"
+        "}\n", encoding="utf-8")
+    assert i18n_gaps.write_main({"de": {"A": "Ah", "B": "Beh"}}, source) == 1
+    assert source.read_text(encoding="utf-8").split("\n")[5:9] == [
+        "    'de': {", "        'A': 'Ah',", "        'B': 'Beh',", "    },"]
+
+
+def test_a_module_table_merges_into_its_json(tmp_path: Path) -> None:
+    """A module's ``i18n.json`` gains the new entries and keeps the old."""
+    (tmp_path / "viz").mkdir()
+    path = tmp_path / "viz" / "i18n.json"
+    path.write_text(json.dumps({"en": {"A": "A"}, "de": {}}), encoding="utf-8")
+    assert i18n_gaps.write_module("viz", {"de": {"A": "Ah"}}, tmp_path) == 1
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "en": {"A": "A"}, "de": {"A": "Ah"}}
 
 
 def test_every_language_in_table_has_a_name() -> None:

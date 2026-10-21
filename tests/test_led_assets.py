@@ -193,3 +193,32 @@ def test_a_language_chosen_before_the_led_appears_reaches_its_captions(qtbot) ->
     assert panel._mode_buttons[0].text() == tr(LED_MODE_LABELS[0], "de")
     assert panel._display_selection_label.text() == tr("Display Selection", "de")
     assert tr("Display Selection", "de") != tr("Display Selection", "en")
+
+
+def test_every_translated_panel_label_fits_its_box(qtbot) -> None:
+    """The LED info panels draw their field names in fixed boxes (the C#
+    art's positions), so a long translation is cut off on the panel.  Each
+    label of the memory, disk and clock panels is measured, in every
+    language, against its own box -- in the bundled Microsoft YaHei at the
+    panels' 13 px, a fixed reference so the answer is the same on every
+    machine.  One pixel of slack: the English "Memory Clock" has always been
+    91 px in its 90 px box.  42 of 703 new translations failed this on
+    2026-10-21 and were shortened.  MUTATION CHECK: put "Hukommelsesclock"
+    back as Danish for "Memory Clock" and this names it."""
+    from PySide6.QtGui import QFont, QFontMetrics
+
+    from trcc.adapters.render.qt import _register_bundled_fonts
+    from trcc.core.i18n import TRANSLATIONS, tr
+
+    _register_bundled_fonts()
+    font = QFont("Microsoft YaHei")
+    font.setPixelSize(13)
+    metrics = QFontMetrics(font)
+    panel = _panel(qtbot)
+    labels = [*panel._mem_name_labels, *panel._disk_name_labels,
+              *panel._lc2_text_labels]
+    too_wide = [f"{lang} {key!r} -> {tr(key, lang)!r}: "
+                f"{metrics.horizontalAdvance(tr(key, lang))} px in {label.width()}"
+                for lang in TRANSLATIONS for label, key in labels
+                if metrics.horizontalAdvance(tr(key, lang)) > label.width() + 1]
+    assert too_wide == []
