@@ -1247,7 +1247,23 @@ def screencast(
         raise typer.Exit(code=1)
 
     typer.echo(f"Capturing on {key} — Ctrl-C to stop.")
-    wait_until_interrupted()
+    # Another UI may stop this cast; the CLI follows it, as every UI does,
+    # instead of waiting for a Ctrl-C that has nothing left to stop.
+    import threading
+
+    from ...core.events import ScreencastStopped
+
+    ended = threading.Event()
+
+    def _on_stopped(event: ScreencastStopped) -> None:
+        if event.key == key:
+            log.info("cli display screencast: %s stopped elsewhere", key)
+            ended.set()
+
+    app_obj.events.subscribe(ScreencastStopped, _on_stopped)
+    if wait_until_interrupted(ended):
+        typer.echo(f"Screencast on {key} was stopped elsewhere.")
+        return
 
     stop_result = app_obj.dispatch(StopScreencast(key=key))
     typer.echo(stop_result.message)

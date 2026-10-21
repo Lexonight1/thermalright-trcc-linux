@@ -278,8 +278,11 @@ def compose_app() -> App:
     return trcc(platform=_platform_override, renderer=_renderer_override)
 
 
-def wait_until_interrupted() -> None:
-    """Block until Ctrl-C or SIGTERM -- on every OS.
+def wait_until_interrupted(ended: threading.Event | None = None) -> bool:
+    """Block until Ctrl-C or SIGTERM -- or *ended* is set -- on every OS.
+
+    True when *ended* ended it: the thing waited on stopped by itself (another
+    UI stopped the cast), so there is nothing left for the caller to stop.
 
     Both waits used ``signal.pause()``, which Windows does not have: the CLI
     started a screencast, then died with AttributeError a second later and
@@ -289,13 +292,17 @@ def wait_until_interrupted() -> None:
     slice ends, the handler gets its turn, the next begins.
     """
     log.debug("wait_until_interrupted: waiting for Ctrl-C / SIGTERM")
-    stopped = threading.Event()
+    stopped = ended if ended is not None else threading.Event()
+    interrupted = False
 
     def _stop(signum: int, _frame: object) -> None:
+        nonlocal interrupted
         log.info("wait_until_interrupted: %s", signal.Signals(signum).name)
+        interrupted = True
         stopped.set()
 
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
     while not stopped.wait(0.25):
         pass
+    return not interrupted

@@ -5,7 +5,7 @@ $exe = "C:\Program Files\TRCC\trcc.exe"
 $gui = "C:\Program Files\TRCC\trcc-gui.exe"
 $log = "$env:APPDATA\trcc\trcc.log"
 $out = "C:\trccdev\cast_breakdown.log"
-function AppPids { @(Get-CimInstance Win32_Process -Filter "Name='trcc-gui.exe'" | Where-Object { $_.CommandLine -notlike '* service*' } | ForEach-Object ProcessId) }  # not TRCCService (SYSTEM)
+function AppPids { @(Get-CimInstance Win32_Process -Filter "Name='trcc-gui.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine -notlike '* service*' } | ForEach-Object ProcessId) }  # not TRCCService (SYSTEM: its CommandLine is hidden from a normal shell)
 & $exe kill 2>&1 | Out-Null
 Start-Sleep 3
 AppPids | ForEach-Object { Stop-Process -Id $_ -Force }

@@ -1859,6 +1859,53 @@ def test_screencast_without_a_region_asks_for_the_stored_one(
         StartScreencast(key="0402:3922")]
 
 
+def test_a_screencast_stopped_elsewhere_ends_the_cli(
+        cli_runner: CliRunner, cli_app) -> None:
+    """Another UI stopping the cast ends ``trcc display screencast``: it used
+    to sit in its Ctrl-C wait with nothing left to stop (win11 VM, 2026-10-20).
+
+    The start is answered ok without starting anything, so the test needs no
+    panel; ``ScreencastStopped`` is what any UI's StopScreencast publishes.
+
+    MUTATION CHECK: drop the subscription -- the 5 s alarm fails this."""
+    import signal
+    import threading
+
+    from trcc.core.commands import StartScreencast, StopScreencast
+    from trcc.core.events import ScreencastStopped
+    from trcc.core.results import ScreencastResult
+
+    if not hasattr(signal, "SIGALRM"):
+        pytest.skip("needs SIGALRM to fail rather than hang")
+    sent: list[object] = []
+    real = cli_app.dispatch
+
+    def _dispatch(cmd: object) -> object:
+        sent.append(cmd)
+        if isinstance(cmd, StartScreencast):
+            stop = threading.Timer(0.3, cli_app.events.publish,
+                                   (ScreencastStopped(key=cmd.key),))
+            stop.start()
+            return ScreencastResult(ok=True, key=cmd.key, message="started")
+        return real(cmd)
+
+    def _too_long(_signum: int, _frame: object) -> None:
+        raise TimeoutError("the CLI ignored ScreencastStopped")
+
+    cli_app.dispatch = _dispatch
+    previous = signal.signal(signal.SIGALRM, _too_long)
+    signal.alarm(5)
+    try:
+        result = cli_runner.invoke(_app(), ["display", "screencast", "0402:3922"])
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+    assert result.exit_code == 0, result.output
+    assert "stopped elsewhere" in result.output
+    assert not [c for c in sent if isinstance(c, StopScreencast)]
+
+
 def test_the_note_never_builds_an_app_a_command_did_not(capsys) -> None:
     """``trcc --version`` must not open USB just to decide it has nothing to say."""
     from trcc.ui.cli import _ctx
