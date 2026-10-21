@@ -25,7 +25,7 @@ import logging
 import platform
 
 from ...core.ports import CpuSource, FanSource
-from ._sysctl import SysctlCpu, _SysctlSnapshot, discover_openbsd_fans
+from ._sysctl import SysctlCpu, _SysctlSnapshot, discover_openbsd_fans, sysctl_value
 from .aggregator import BaselineSensors
 from .chain import CpuSourceChain
 from .nvml import discover_nvidia_gpus
@@ -51,4 +51,5 @@ def build_bsd_sensors() -> BaselineSensors:
              len(gpus), len(fans))
     return BaselineSensors(
         cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=fans,
+        cpu_name=sysctl_value("hw.model"),
     )

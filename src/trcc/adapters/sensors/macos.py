@@ -40,6 +40,7 @@ from ._smc import (
     SMCClient,
     SmcClientPort,
 )
+from ._sysctl import sysctl_value
 from .aggregator import BaselineSensors
 from .chain import CpuSourceChain, GpuSourceChain
 from .nvml import discover_nvidia_gpus
@@ -344,6 +345,8 @@ def build_macos_sensors() -> BaselineSensors:
 
     return BaselineSensors(
         cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=fans,
+        # "Apple M2 Pro" on Apple Silicon, the Intel brand string before it.
+        cpu_name=sysctl_value("machdep.cpu.brand_string"),
     )
 
 

@@ -90,6 +90,20 @@ def _default_runner() -> str:
     return result.stdout
 
 
+def sysctl_value(name: str) -> str:
+    """``sysctl -n <name>`` with its whitespace collapsed, or '' on failure.
+    *name* is always a constant from this package, never user input."""
+    try:
+        result = subprocess.run(["sysctl", "-n", name], capture_output=True,
+                                text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.info("sysctl_value: %s failed (%s)", name, e)
+        return ""
+    value = " ".join(result.stdout.split()) if result.returncode == 0 else ""
+    log.info("sysctl_value: %s -> %r (exit %d)", name, value, result.returncode)
+    return value
+
+
 def _pattern_for(system: str) -> re.Pattern[str] | None:
     log.debug("_pattern_for: system=%s", system)
     return _BY_SYSTEM.get(system)

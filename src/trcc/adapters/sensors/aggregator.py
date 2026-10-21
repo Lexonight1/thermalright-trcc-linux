@@ -26,6 +26,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, nullcontext
+from pathlib import Path
 
 from ...core.logs import per_frame
 from ...core.models import (
@@ -227,8 +228,12 @@ class BaselineSensors(SensorEnumerator):
                  voltages: list[VoltageSource] | None = None,
                  memory_clock: MemoryClock | None = None,
                  thread_context: Callable[[], AbstractContextManager[None]]
-                     = nullcontext) -> None:
+                     = nullcontext,
+                 cpu_name: str = "") -> None:
         self._cpu = cpu or PsutilCpu()
+        #: The processor's own model, as the OS names it -- what the sensor
+        #: list calls the CPU.  Empty: the source's name, as before.
+        self._cpu_name = cpu_name
         self._memory = memory or PsutilMemory()
         self._gpus: list[GpuSource] = gpus if gpus is not None else discover_nvidia_gpus()
         self._fans: list[FanSource] = fans or []
@@ -418,7 +423,10 @@ class BaselineSensors(SensorEnumerator):
                     unit=unit, label=f"{device} {quantity}".strip(),
                 ))
 
-        add(_cpu_keys(self._cpu.temp_label()), self._cpu.name)
+        # The CPU by its model, not by the backend that answered: with PawnIO
+        # reading the temperature every CPU row read "PawnIO (CPU) ...",
+        # Usage and Clock included, which come from elsewhere (2026-10-21).
+        add(_cpu_keys(self._cpu.temp_label()), self._cpu_name or self._cpu.name)
         add(_memory_keys(), "Memory")
         for dimm in self._dram:
             add([(f"memory:{dimm.key}:temp", "temperature", "°C",
@@ -710,6 +718,27 @@ class BaselineSensors(SensorEnumerator):
 # ── LinuxSensors — baseline + hwmon-discovered Linux sources ─────────
 
 
+#: The /proc/cpuinfo fields that name the processor: x86 first, then ARM boards.
+_CPUINFO_NAMES = ("model name", "Model", "Hardware")
+
+
+def linux_cpu_model(cpuinfo: Path = Path("/proc/cpuinfo")) -> str:
+    """The processor's model from /proc/cpuinfo, or '' when it names none."""
+    try:
+        text = cpuinfo.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        log.info("linux_cpu_model: %s unreadable (%s)", cpuinfo, e)
+        return ""
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and (key := key.strip()) in _CPUINFO_NAMES:
+            fields.setdefault(key, " ".join(value.split()))
+    model = next((fields[k] for k in _CPUINFO_NAMES if fields.get(k)), "")
+    log.info("linux_cpu_model: %r", model)
+    return model
+
+
 def build_linux_sensors() -> BaselineSensors:
     """Factory: scan hwmon + DRM + NVIDIA, compose a full Linux enumerator.
 
@@ -738,4 +767,4 @@ def build_linux_sensors() -> BaselineSensors:
     return BaselineSensors(cpu=cpu, memory=PsutilMemory(),
                            gpus=gpus, fans=fans, disks=disks, dram=dram,
                            board_temps=board_temps, voltages=voltages,
-                           memory_clock=memory_clock)
+                           memory_clock=memory_clock, cpu_name=linux_cpu_model())

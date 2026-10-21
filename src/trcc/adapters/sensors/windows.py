@@ -16,6 +16,7 @@ chain naturally degrades.
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any
@@ -67,8 +68,29 @@ def build_windows_sensors(
              len(gpus), len(disks), len(fans), len(board))
     return BaselineSensors(
         cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=fans, disks=disks,
-        board_temps=board, thread_context=thread_context,
+        board_temps=board, thread_context=thread_context, cpu_name=windows_cpu_model(),
     )
+
+
+#: Where Windows names the processor -- what Task Manager shows, no admin.
+_CPU_KEY = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+
+
+def windows_cpu_model() -> str:
+    """``ProcessorNameString`` from the registry, or '' off Windows / unreadable."""
+    if sys.platform != "win32":
+        log.debug("windows_cpu_model: not Windows")
+        return ""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _CPU_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+    except (ImportError, OSError) as e:
+        log.info("windows_cpu_model: not read (%s)", e)
+        return ""
+    model = " ".join(str(value).split())
+    log.info("windows_cpu_model: %r", model)
+    return model
 
 
 def _build_windows_disks() -> list[DiskSource]:
