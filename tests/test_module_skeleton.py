@@ -235,3 +235,19 @@ def test_the_guide_lists_every_capability_as_the_code_names_it() -> None:
 
 def test_the_guide_lists_every_manifest_field() -> None:
     assert list(_table("module.json")) == [f.name for f in fields(ModuleManifest)]
+
+
+def test_every_folder_of_module_code_is_a_package() -> None:
+    """A module's folders of Python code each carry an ``__init__.py``.
+    Without one Python still imports it, as a namespace package, so every
+    test passed -- but CI's ``stale_refs --check`` reported the visualizer's
+    services "does not exist" (2026-10-21), and anything that walks packages
+    may skip it the same way.  MUTATION CHECK: delete the visualizer's
+    ``services/__init__.py``."""
+    roots = [_REPO / "src" / "trcc" / "modules", _TEMPLATE / "hello"]
+    bare = sorted(str(folder.relative_to(_REPO))
+                  for root in roots for folder in [root, *root.rglob("*")]
+                  if folder.is_dir() and folder.name != "__pycache__"
+                  and "assets" not in folder.relative_to(root).parts
+                  and any(folder.glob("*.py")) and not (folder / "__init__.py").is_file())
+    assert bare == []

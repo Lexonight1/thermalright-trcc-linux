@@ -203,10 +203,21 @@ def test_every_translated_panel_label_fits_its_box(qtbot) -> None:
     panels' 13 px, a fixed reference so the answer is the same on every
     machine.  One pixel of slack: the English "Memory Clock" has always been
     91 px in its 90 px box.  42 of 703 new translations failed this on
-    2026-10-21 and were shortened.  MUTATION CHECK: put "Hukommelsesclock"
-    back as Danish for "Memory Clock" and this names it."""
-    from PySide6.QtGui import QFont, QFontMetrics
+    2026-10-21 and were shortened.
 
+    Only text YaHei itself can draw is measured.  It has no Arabic, Hebrew,
+    Bengali, Devanagari, Gurmukhi, Myanmar, Tamil, Thai or Hangul (nor some
+    Vietnamese marks): Qt draws those with whatever system font has them, or
+    as empty boxes where none does -- CI measured the boxes, ~6.5 px a
+    character, and failed 104 labels that say nothing about a real screen.
+    Those languages' widths depend on the reader's fonts, so no fixed answer
+    exists for them here.  MUTATION CHECK: put "Hukommelsesclock" back as Danish
+    for "Memory Clock" and this names it."""
+    from pathlib import Path
+
+    from PySide6.QtGui import QFont, QFontMetrics, QRawFont
+
+    import trcc
     from trcc.adapters.render.qt import _register_bundled_fonts
     from trcc.core.i18n import TRANSLATIONS, tr
 
@@ -217,8 +228,27 @@ def test_every_translated_panel_label_fits_its_box(qtbot) -> None:
     panel = _panel(qtbot)
     labels = [*panel._mem_name_labels, *panel._disk_name_labels,
               *panel._lc2_text_labels]
+
+    # The bundled file itself -- ``QFontMetrics.inFontUcs4`` answers for any
+    # installed fallback, so the skipped set would follow each machine's fonts.
+    yahei = QRawFont(str(Path(trcc.__file__).parent / "assets" / "fonts" / "MSYH.TTC"), 13)
+    assert yahei.isValid()
+
+    def drawable(text: str) -> bool:
+        # The code point: a one-character str picks Qt's QChar overload,
+        # which answered "no" for Cyrillic and "yes" for Devanagari.
+        return all(yahei.supportsCharacter(ord(c)) for c in text
+                   if not c.isspace())
+
+    measured = [(lang, label, key) for lang in TRANSLATIONS
+                for label, key in labels if drawable(tr(key, lang))]
     too_wide = [f"{lang} {key!r} -> {tr(key, lang)!r}: "
                 f"{metrics.horizontalAdvance(tr(key, lang))} px in {label.width()}"
-                for lang in TRANSLATIONS for label, key in labels
+                for lang, label, key in measured
                 if metrics.horizontalAdvance(tr(key, lang)) > label.width() + 1]
     assert too_wide == []
+    # The scripts YaHei has are always measured -- a check that skipped
+    # everything would pass.
+    have = {(lang, key) for lang, _label, key in measured}
+    assert {(lang, key) for lang in ("en", "de", "ru", "zh", "ja")
+            for _label, key in labels} <= have
