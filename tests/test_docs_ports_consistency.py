@@ -125,11 +125,11 @@ def test_a_weakproxy_wearing_a_trcc_module_name_is_not_swept_up_as_a_class() -> 
     class Decoy:
         """A real class, and then a proxy to it wearing the same name."""
 
-    Decoy.__module__ = "trcc.decoy"
+    Decoy.__module__ = "trcc.core"  # loaded: the sweep skips unloaded modules
     proxy = weakref.proxy(Decoy)
 
     assert inspect.isclass(proxy), "the trap this guards is gone; so is the need"
-    assert proxy.__module__ == "trcc.decoy", "__module__ no longer forwards"
+    assert proxy.__module__ == "trcc.core", "__module__ no longer forwards"
 
     swept = gen_ports_reference._all_classes()
     assert Decoy in swept, "the sweep stopped seeing real classes"
@@ -137,3 +137,20 @@ def test_a_weakproxy_wearing_a_trcc_module_name_is_not_swept_up_as_a_class() -> 
         "a weakref proxy was swept up as a class"
     )
     gen_ports_reference.generate()
+
+
+def test_a_class_from_an_unloaded_module_is_not_swept() -> None:
+    """An unloaded module's classes linger in the collector until collected.
+    The ``hello`` template module the module tests install and unload left
+    its ``Greet`` -- a ``Command`` -- behind, and a worker that ran one first
+    generated ``Command`` with one implementation too many: the page failed
+    its gate by test order.  MUTATION CHECK: drop the ``sys.modules`` clause
+    in ``_all_classes`` and Ghost is swept."""
+    import sys
+
+    class Ghost:
+        """A class whose module is not loaded."""
+
+    Ghost.__module__ = "trcc.modules.ghost.core"
+    assert Ghost.__module__ not in sys.modules
+    assert Ghost not in gen_ports_reference._all_classes()

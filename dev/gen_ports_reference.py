@@ -106,6 +106,14 @@ def _all_classes() -> list[type]:
     gets there first is import order, so under ``pytest -n`` it was whichever
     worker drew ``tests/test_sensors_macos.py``: the page this module's header
     calls deterministic was a coin flip.
+
+    And only a class whose module is still LOADED: an unloaded module's
+    classes linger in the collector.  The test fixture that installs the
+    template module ``hello`` unloads it after, and its ``Greet`` -- a
+    ``Command`` -- was counted by any worker that had run a hello test first:
+    ``Command`` read 165 implementations instead of 164, and the gate failed
+    by test order.  (Loaded, not "still named by its module": conftest swaps
+    ``ThreadDataInstallRunner`` out of its module for every test.)
     """
     import gc
 
@@ -117,6 +125,7 @@ def _all_classes() -> list[type]:
         # generator -- and the pre-commit hook that runs it.
         and isinstance(module := getattr(obj, "__module__", ""), str)
         and module.startswith("trcc.")
+        and module in sys.modules
     ]
 
 
