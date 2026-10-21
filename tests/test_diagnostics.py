@@ -2322,10 +2322,10 @@ def test_the_tick_path_gate_actually_reaches_the_wire(tmp_path: Path) -> None:
 
 def _drawable_visuals() -> list[str]:
     """Every audio visual this host can draw -- MilkDrop only with libprojectM."""
-    from trcc.adapters.system import host_platform_class
-    visuals = host_platform_class().VISUALS
-    return sorted(k for k, cls in visuals.items()
-                  if cls.available() and not cls.problem())
+    from tests.mock_platform import host_drawn
+    from trcc.modules.visualizer.adapters import VISUALS
+    return sorted(k for k in VISUALS
+                  if (cls := host_drawn(k)).available() and not cls.problem())
 
 
 @pytest.mark.parametrize("kind", _drawable_visuals())
@@ -2344,15 +2344,17 @@ def test_a_visual_draws_without_a_record_per_frame(tmp_path: Path, kind: str) ->
 
     import numpy as np
 
-    from trcc.adapters.system import host_platform_class
-    from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+    from trcc.core.models import SOUND_RATE
+    from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 
     ladder = levels_for(0)                       # what a user runs: no -v
     log_file = tmp_path / "trcc.log"
     configure_logging(log_file, level=ladder.file,
                       stderr_level=logging.CRITICAL, per_frame=ladder.per_frame)
     random.seed(3)
-    engine_class = host_platform_class().VISUALS[kind]
+    from tests.mock_platform import host_drawn
+
+    engine_class = host_drawn(kind)
     presets = engine_class.presets(tmp_path)     # KarmaViz: its own, whatever the folder
     preset = engine_class.preset(tmp_path, presets[0]) if presets else None
     engine = engine_class()

@@ -39,7 +39,7 @@ from ..device.scsi_transport import BaseScsiTransport, CdbResult
 from ..infra.named_pipe import NamedPipeChannel
 from ..sensors._pawnio_cpu import PawnioCpu
 from ..sensors.windows import build_windows_sensors
-from ..visual import WglSurface, drawn_on
+from ..visual._gl import WglSurface
 from ..visual.loopback import LoopbackSoundInput
 from ._base import BaseOS, BasePaths
 from ._windows_drives import find_physical_drive
@@ -556,7 +556,8 @@ class WindowsPlatform(BaseOS, key="win32"):
     SOUND_INPUT = LoopbackSoundInput
     #: CPython has no AF_UNIX on Windows: the App is reached by a named pipe.
     IPC_CHANNEL = NamedPipeChannel
-    VISUALS = drawn_on(WglSurface)
+    #: What a module draws on with the graphics card.
+    GL_SURFACE = WglSurface
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
 

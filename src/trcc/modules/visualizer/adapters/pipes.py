@@ -45,19 +45,13 @@ from typing import Any
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ...core.models import (
-    SOUND_CHANNELS,
-    SOUND_RATE,
-    VISUAL_FPS,
-    RawFrame,
-    VisualAdjustment,
-    VisualInfo,
-    VisualSpec,
-)
+from trcc.adapters.visual._gl import GlSurface
+from trcc.core.logs import per_frame
+from trcc.core.models import SOUND_CHANNELS, SOUND_RATE, RawFrame
+
+from ..core.models import VISUAL_FPS, VisualAdjustment, VisualInfo, VisualSpec
 from ._base import GlVisual
 from ._fire import RISE, STEP, burned_picture, keep
-from ._gl import GlSurface
 from ._pipes_gl import SHAPE_FIELDS, PipesPainter
 
 log = logging.getLogger(__name__)

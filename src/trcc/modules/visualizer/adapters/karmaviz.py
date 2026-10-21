@@ -38,18 +38,12 @@ from pathlib import Path
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ...core.models import (
-    SOUND_CHANNELS,
-    SOUND_RATE,
-    VISUAL_FPS,
-    RawFrame,
-    VisualAdjustment,
-    VisualInfo,
-    VisualSpec,
-)
+from trcc.adapters.visual._gl import GlSurface
+from trcc.core.logs import per_frame
+from trcc.core.models import SOUND_CHANNELS, SOUND_RATE, RawFrame
+
+from ..core.models import VISUAL_FPS, VisualAdjustment, VisualInfo, VisualSpec
 from ._base import GlVisual
-from ._gl import SHADERS, GlSurface
 from ._karmaviz_gl import (
     SPECTRUM_SAMPLES,
     WAVE_SAMPLES,
@@ -58,6 +52,7 @@ from ._karmaviz_gl import (
     warp_names,
     waveform_names,
 )
+from ._shaders import SHADERS
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

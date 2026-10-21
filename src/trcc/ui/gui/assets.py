@@ -84,8 +84,6 @@ class Assets:
     TAB_CLOUD_ACTIVE = 'app_tab_cloud_active.png'
     TAB_MASK = 'app_tab_mask.png'
     TAB_MASK_ACTIVE = 'app_tab_mask_active.png'
-    TAB_VISUALS = 'app_tab_visuals.png'
-    TAB_VISUALS_ACTIVE = 'app_tab_visuals_active.png'
     TAB_SETTINGS = 'app_tab_settings.png'
     TAB_SETTINGS_ACTIVE = 'app_tab_settings_active.png'
 

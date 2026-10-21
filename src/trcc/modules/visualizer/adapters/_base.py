@@ -6,20 +6,23 @@ and a visual registers itself by naming its key where it is defined::
     class TrccPipes(BaseVisual, key="trcc-pipes"): ...
 
 A new visual is one new class.  Nothing that plays visuals names one: the
-Commands take a key, the platform turns it into an engine here, and the
-Audio Visuals page draws its gallery and sliders from each class's ``INFO``.
+Commands take a key, the module binds each class to the OS's OpenGL context
+(:meth:`GlVisual.on_surface`), and the Audio Visuals page draws its gallery
+and sliders from each class's ``INFO``.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any, ClassVar
 
-from ...core.factory import Registry, Reject
-from ...core.models import VisualInfo
-from ...core.ports import VisualEngine, ranked_visuals
-from ._gl import GlSurface
+from trcc.adapters.visual._gl import GlSurface
+from trcc.core.factory import Registry, Reject
+
+from ..core.models import VisualInfo
+from ..core.ports import VisualEngine, ranked_visuals
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +79,13 @@ class GlVisual(BaseVisual):
         log.info("%s: OpenGL draws here", cls.__name__)
         return ""
 
+    @classmethod
+    def on_surface(cls, surface: type | None) -> type[VisualEngine]:
+        """This visual drawing on *surface*, the OS's kind of context."""
+        log.debug("%s.on_surface: %s", cls.__name__,
+                  getattr(surface, "__name__", None))
+        return _bound(cls, surface)
+
     def _open_surface(self) -> GlSurface:
         """A context to draw on, current on this thread; ``OSError`` saying
         why there is none."""
@@ -87,18 +97,23 @@ class GlVisual(BaseVisual):
         return surface.open()
 
 
+@functools.cache
+def _bound(cls: type[GlVisual], surface: type[GlSurface] | None) -> type[GlVisual]:
+    """*cls* bound to *surface* -- a subclass, made once, so each binding
+    keeps its own answer to :meth:`GlVisual.problem`."""
+    log.debug("_bound: %s on %s", cls.__name__,
+              surface.__name__ if surface else None)
+    return type(cls.__name__, (cls,), {"SURFACE": surface,
+                                       "__module__": cls.__module__,
+                                       "__doc__": cls.__doc__})
+
+
 def drawn_on(surface: type[GlSurface]) -> Mapping[str, type[VisualEngine]]:
-    """The ``VISUALS`` registry as one OS draws it: every OpenGL visual
-    bound to that OS's *surface*, the rest as they are -- what a platform
-    names as its ``VISUALS``.  Each binding is a subclass, so each keeps
-    its own answer to :meth:`GlVisual.problem`."""
+    """The ``VISUALS`` registry as one OS draws it: every visual on that OS's
+    *surface* (:meth:`VisualEngine.on_surface`)."""
     log.info("drawn_on: %s", surface.__name__)
-    return MappingProxyType({
-        key: (type(cls.__name__, (cls,), {"SURFACE": surface,
-                                          "__module__": cls.__module__,
-                                          "__doc__": cls.__doc__})
-              if issubclass(cls, GlVisual) else cls)
-        for key, cls in VISUALS.items()})
+    return MappingProxyType({key: cls.on_surface(surface)
+                             for key, cls in VISUALS.items()})
 
 
 def catalog() -> tuple[VisualInfo, ...]:

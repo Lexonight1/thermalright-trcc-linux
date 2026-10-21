@@ -761,15 +761,17 @@ class DeviceSettings:
     # SaveTheme can bake it into a theme's ``media_player`` ref and a reload can
     # resume it.  Mutually exclusive with the other display-source toggles.
     media_player_uri: str | None = None
-    # Active audio visual -- its registry key (``VISUALS``), drawing the
-    # background from what is playing.  ``None`` = none.  Mutually exclusive
-    # with the other display sources, and resumed on a reconnect like the
-    # media player.  ``visual_preset`` is the preset file (relative to the
-    # visuals' folder) for a visual that draws presets; ``visual_settings``
-    # the slider values by name.
-    visual: str | None = None
-    visual_preset: str = ""
-    visual_settings: dict[str, float] = field(default_factory=dict)
+    # The module drawing the background -- its key -- or ``None``.  A
+    # display source like the others, exclusive with them, and resumed on a
+    # reconnect through the module's background kind.  What it draws is the
+    # module's own business, in ``module_settings[<key>]``.
+    module_source: str | None = None
+    # Each module's own settings for this panel, by module key -- written
+    # only through its host (``ModuleHost.save_panel_settings``).
+    module_settings: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # A theme's module background (its ref) loaded while that module was off:
+    # it plays when the module comes on.  ``None`` = none waiting.
+    pending_background: str | None = None
     # Show / hide the mask overlay regardless of which mask source is active.
     mask_visible: bool = True
     # Background mode — what fills the LCD behind overlays.  Mirrors
@@ -1317,22 +1319,7 @@ STREAM_TICK_S = 0.0625
 #: what projectM takes (``projectm_pcm_add_float``).
 SOUND_RATE = 44100
 SOUND_CHANNELS = 2
-#: How often an audio visual draws: the media player's pace, the C# player's
-#: 62.5 ms step -- 16 fps.  A panel shows no more, so drawing faster only
-#: burned CPU (it was 30, "projectM's default": half a core for Pipes).  The
-#: reader is paced by the sound itself -- 1/VISUAL_FPS of audio per frame.
-VISUAL_FPS = round(1 / STREAM_TICK_S)
 
-
-@dataclass(frozen=True, slots=True)
-class VisualAdjustment:
-    """One slider a visual offers; the Audio Visuals page draws it from
-    this, so a new visual needs no UI code."""
-    name: str
-    label: str
-    minimum: float
-    maximum: float
-    default: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -1354,6 +1341,13 @@ class ModuleInfo:
 #: list -- the manifest reader refuses any other name.
 MODULE_CAPABILITIES: dict[str, str] = {
     "events": "hears what happens in the app",
+    "panels": "knows which LCD panels are attached, and their size",
+    "background": "draws a panel's background (the theme's mask and metrics stay on top)",
+    "settings": "keeps its own settings, for the app and for each panel",
+    "themes": "lets themes save and load a background it draws",
+    "sound": "hears what the computer is playing",
+    "gpu": "draws with the graphics card",
+    "files": "reads its own files in TRCC's data folder, and makes PNG pictures",
 }
 
 
@@ -1373,42 +1367,11 @@ class ModuleManifest:
     icon: str = ""
     guide: str = ""
     capabilities: tuple[str, ...] = ()
+    #: The theme background refs it draws (``<prefix>/<id>``) -- known
+    #: without loading it, so a theme can say which module it needs.
+    backgrounds: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
-class VisualInfo:
-    """What an audio visual is, for the gallery: its registry key, its
-    title and category, whether it draws preset files or a centre picture,
-    and its sliders."""
-    kind: str
-    title: str
-    category: str
-    uses_presets: bool = False
-    uses_center: bool = False
-    adjustments: tuple[VisualAdjustment, ...] = ()
-    #: Why it cannot play on this computer -- "" when it can.  Filled by
-    #: ``ListVisuals``; a class's own ``INFO`` leaves it empty.
-    problem: str = ""
-    #: The preset files THIS visual draws -- one gallery tile each.  Filled
-    #: by ``ListVisuals`` like ``problem``.  Each visual carries its own:
-    #: they were one flat list, which gave every visual that draws presets
-    #: all of them.
-    presets: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class VisualSpec:
-    """Everything an audio visual needs to start: which one, its preset
-    file (if it draws presets), the panel's size, the user's centre picture
-    (``None`` when off) and how hot it burns, and the slider values by
-    name."""
-    kind: str
-    width: int
-    height: int
-    preset: Path | None = None
-    center: Path | None = None
-    center_fire: float = 0.0
-    settings: Mapping[str, float] = field(default_factory=dict)
 
 #: The URL schemes the media player will open.  An allow-list, not a deny-list:
 #: ``file:///…`` contains ``://`` too, and would read any local file past the

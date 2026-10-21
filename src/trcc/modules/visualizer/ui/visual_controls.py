@@ -35,11 +35,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.commands import Command
+from trcc.core.commands import Command
+from trcc.core.ports import CommandBus
+from trcc.core.results import Result
+from trcc.ui.qt_background import dispatch_in_background
+
 from ..core.models import VisualAdjustment, VisualInfo
-from ..core.ports import CommandBus
-from ..core.results import Result, VisualsResult
-from .qt_background import dispatch_in_background
+from ..core.results import VisualsResult
 
 log = logging.getLogger(__name__)
 

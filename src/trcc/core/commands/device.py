@@ -97,6 +97,7 @@ from ..results import (
     RecentColorsResult,
     RenderDcResult,
     RenderResult,
+    Result,
     ScreencastResult,
     SeekVideoResult,
     SendResult,
@@ -1957,6 +1958,89 @@ class CaptureStreamFrame(Command[ScreencastResult]):
         return app.dispatch(SendScreencastFrame(key=self.key, frame=frame))
 
 
+@dataclass(frozen=True, slots=True)
+class CaptureSourceFrame(Command[ScreencastResult]):
+    """One tick of a module's frame source: its newest picture, onto the panel.
+
+    ``CaptureStreamFrame``'s twin, with a module's source (an audio visual)
+    in place of the stream reader.  Dispatched by ``SourceDriver``.  It ends
+    ITSELF when another source took the panel: the display sources are
+    exclusive in Settings, so the moment ``module_source`` is cleared, the
+    source and its driver stop here, within a tick.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    key: str
+
+    def execute(self, app: App) -> ScreencastResult:
+        from ...services.source_driver import task_key
+
+        source = app.media.source(self.key)
+        if source is None or app.settings.for_device(self.key).module_source is None:
+            log.info("CaptureSourceFrame: %s's source is no longer its "
+                     "background -- ending it", self.key)
+            app.media.close_source(self.key)
+            app.remove_task(task_key(self.key))
+            return ScreencastResult(ok=True, key=self.key,
+                                    message=f"source on {self.key} ended")
+        if self.key in app.held:
+            frame_log.debug("CaptureSourceFrame: %s held by a pushed image",
+                            self.key)
+            return ScreencastResult(ok=True, key=self.key, message="held")
+        try:
+            frame = source.latest()
+        except CaptureNotReady as e:
+            frame_log.debug("CaptureSourceFrame: %s", e)
+            return ScreencastResult(ok=True, key=self.key, message=str(e))
+        except OSError as e:
+            log.warning("CaptureSourceFrame: %s -- ending %s", e, source.name)
+            app.end_source(self.key)
+            app.events.publish(ErrorOccurred(message=str(e), kind="video",
+                                             key=self.key))
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
+        return app.dispatch(SendScreencastFrame(key=self.key, frame=frame))
+
+
+@dataclass(frozen=True, slots=True)
+class ClearModuleSource(Command[Result]):
+    """Panel *key*'s background is no longer *module*'s: its source stops,
+    the theme's own background returns, and the choice is forgotten -- so
+    switching the module back on does not bring it back.  A theme background
+    waiting for *module* stops waiting too.
+
+    The App's, not the module's: it works while the module is off (the
+    user's decision, 2026-10-21 -- turning something off never needs it on).
+    """
+    USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
+    key: str
+    module: str
+
+    def execute(self, app: App) -> Result:
+        s = app.settings.for_device(self.key)
+        pending = s.pending_background
+        waiting = bool(pending) and app.background_owner(
+            (pending or "").split("/", 1)[0]) == self.module
+        log.info("ClearModuleSource: %s %s (draws %s, waiting %s)", self.key,
+                 self.module, s.module_source, waiting)
+        title = _module_title(app, self.module)
+        if s.module_source != self.module and not waiting:
+            return Result(ok=True, message=f"{title} draws nothing on {self.key}")
+        if waiting:
+            app.settings.set_pending_background(self.key, None)
+        if s.module_source == self.module:
+            app.end_source(self.key)
+        return Result(ok=True, message=f"{title} ended on {self.key}")
+
+
+def _module_title(app: App, module: str | None) -> str:
+    """*module*'s title for the user -- its key if it is not installed, ""
+    for none."""
+    title = (app.modules.manifest(module).title if module and module in app.modules
+             else module or "")
+    log.debug("_module_title: %s -> %r", module, title)
+    return title
+
+
 def _casting_keys(app: App) -> list[str]:
     """Every device that still has a screencast session."""
     keys = [key for key in app.devices
@@ -3531,8 +3615,9 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             screencast_region=s.screencast_region,
             display_source=("screencast" if s.screencast_region is not None
                             else "media" if s.media_player_uri
-                            else "visual" if s.visual
+                            else "module" if s.module_source
                             else "background"),
+            module_title=_module_title(app, s.module_source),
             media_player_uri=s.media_player_uri,
             screencast_rect=screencast_box(app, self.key),
             screencast_hide_border=s.screencast_hide_border,

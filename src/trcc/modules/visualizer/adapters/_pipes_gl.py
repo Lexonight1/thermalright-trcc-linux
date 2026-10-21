@@ -28,8 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ._gl import (
+from trcc.adapters.visual._gl import (
     FULL_QUAD,
     GL_BLEND,
     GL_COLOR_BUFFER_BIT,
@@ -49,12 +48,14 @@ from ._gl import (
     c_floats,
     program,
     read_rgb,
-    shader,
     texture,
     uniforms,
     upload,
     vertex_array,
 )
+from trcc.core.logs import per_frame
+
+from ._shaders import shader
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

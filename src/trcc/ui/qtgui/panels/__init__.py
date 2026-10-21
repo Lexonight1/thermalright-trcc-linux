@@ -1,7 +1,6 @@
 """GUI panels — one class per top-level screen."""
 
 from .about_panel import AboutPanel
-from .audio_visuals import AudioVisualsPanel
 from .cloud_theme_browser import CloudThemeBrowser
 from .configuration_panel import ConfigurationPanel
 from .device_panel import DevicePanel
@@ -21,7 +20,6 @@ from .system_panel import SystemPanel
 __all__ = [
     "AboutPanel",
     "ActivitySidebar",
-    "AudioVisualsPanel",
     "CloudThemeBrowser",
     "ConfigurationPanel",
     "DevicePanel",

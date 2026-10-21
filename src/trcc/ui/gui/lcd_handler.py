@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QPixmap
 
-from ...core.commands import (
+from trcc.core.commands import (
     ApplyMask,
     BuildPreview,
     CurrentFrame,
@@ -37,7 +37,6 @@ from ...core.commands import (
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
-    PlayVisual,
     PreviewSize,
     ResolveOverlay,
     ResolveThemeDirectories,
@@ -53,6 +52,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+
 from ...core.events import (
     SlideshowChanged,
     ThemeLoaded,
@@ -539,15 +539,6 @@ class LCDHandler(BaseHandler):
         if not persist or not self._device_key:
             self.log.warning("_select_theme_from_path: not persisting (persist=%s, key=%s)",
                              persist, self._device_key)
-
-    def play_visual(self, visual: str, preset: str) -> None:
-        """Make an audio visual this panel's background -- the App plays
-        it; picking any other background ends it."""
-        self.log.info("play_visual: %s %s %r", self._device_key, visual, preset)
-        result = self._app.dispatch(PlayVisual(
-            key=self._device_key, visual=visual, preset=preset))
-        if not result.ok:
-            self.log.warning("play_visual: %s", result.message)
 
     def select_cloud_theme(self, theme_info: Any) -> None:
         """Handle cloud theme selection — a BACKGROUND swap, not a
@@ -1283,7 +1274,6 @@ class LCDHandler(BaseHandler):
             # order worked only because the panel read its user-mask dir from
             # whatever resolution it happened to be holding.
             self._w['theme_mask'].set_device_key(self._device_key)
-            self._w['visuals'].set_device_key(self._device_key)
             for page in self._w.get('module_pages', {}).values():
                 page.set_device_key(self._device_key)
             self._w['theme_mask'].set_resolution(f'{bw}x{bh}')

@@ -86,6 +86,16 @@ Grab the device's screencast region once, encode it, put it on the wire.
 |---|---|---|
 | `key` | `str` | yes |
 
+### `CaptureSourceFrame`
+
+One tick of a module's frame source: its newest picture, onto the panel.
+
+*Command* → `ScreencastResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+
 ### `CaptureStreamFrame`
 
 One tick of a web media source: its newest frame, onto the panel.
@@ -95,6 +105,17 @@ One tick of a web media source: its newest frame, onto the panel.
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
+
+### `ClearModuleSource`
+
+Panel *key*'s background is no longer *module*'s: its source stops, the theme's own background returns, and the choice is forgotten -- so switching the module back on does not bring it back.  A theme background waiting for *module* stops waiting too.
+
+*Command* → `Result`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `module` | `str` | yes |
 
 ### `ConnectDevice`
 
@@ -1707,17 +1728,7 @@ Save one of the memory's own effects on the sticks named by ``refs`` (every stic
 | `random_colors` | `bool` | no |
 | `brightness` | `int` | no |
 
-## visual
-
-### `CaptureVisualFrame`
-
-One tick of an audio visual: its newest picture, onto the panel.
-
-*Command* → `ScreencastResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
+## visualizer module
 
 ### `ListVisuals`
 
@@ -1773,16 +1784,6 @@ New slider values for the panel's audio visual -- live: it keeps playing and tak
 |---|---|---|
 | `key` | `str` | yes |
 | `settings` | `dict[str, float]` | no |
-
-### `StopVisual`
-
-End the panel's audio visual: the theme's own background returns, its video playing again -- the App decides, no UI reloads a theme.
-
-*Command* → `VisualResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
 
 ### `VisualTile`
 

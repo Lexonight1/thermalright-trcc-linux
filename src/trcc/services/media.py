@@ -19,7 +19,6 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -29,10 +28,9 @@ from ..core import toolchain
 from ..core.errors import ThemeError
 from ..core.geometry import largest_fit_size
 from ..core.logs import per_frame
-from ..core.models import ZT_MAGIC, VisualSpec
-from ..core.ports import SoundInput, VisualEngine
+from ..core.models import ZT_MAGIC
+from ..core.ports import FrameSource
 from .media_stream import StreamReader, _drain
-from .visual_stream import VisualReader
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -699,8 +697,6 @@ class MediaService:
     #: The reader a web source gets.  A class attribute so a test swaps in a
     #: fake without ffmpeg or a network (``tests/test_media_stream.py``).
     stream_reader: type[StreamReader] = StreamReader
-    #: The reader an audio visual gets; swapped the same way in a test.
-    visual_reader: type[VisualReader] = VisualReader
 
     def __init__(self, install_hint: Callable[[str], str]
                  = toolchain.generic_install_hint) -> None:
@@ -708,7 +704,8 @@ class MediaService:
         self._install_hint = install_hint
         self._playbacks: dict[str, Playback] = {}
         self._streams: dict[str, StreamReader] = {}
-        self._visuals: dict[str, VisualReader] = {}
+        #: Pictures a module draws for a panel's background, by device.
+        self._sources: dict[str, FrameSource] = {}
         #: The decodes still filling a playback, by device (#264).
         self._decodes: dict[str, BackgroundDecode] = {}
 
@@ -842,36 +839,28 @@ class MediaService:
             log.info("close_stream: %s (%s)", device_key, reader.url)
             reader.close()
 
-    def open_visual(self, device_key: str, spec: VisualSpec,
-                    sound: Callable[[], SoundInput],
-                    engine: Callable[[], VisualEngine],
-                    thread: Callable[[], AbstractContextManager[None]]
-                    ) -> VisualReader:
-        """Start the visual *spec* names drawing *device_key*'s background
-        from what is playing, replacing any visual it had.  *thread* is the
-        platform's per-thread setup, which the reader's thread enters."""
-        log.info("open_visual: %s <- %s (%dx%d)", device_key, spec.kind,
-                 spec.width, spec.height)
-        self.close_visual(device_key)
-        reader = self._visuals[device_key] = self.visual_reader(
-            spec, sound, engine, thread)
-        return reader
+    def open_source(self, device_key: str, source: FrameSource) -> None:
+        """*source* draws *device_key*'s background now, replacing any it
+        had."""
+        log.info("open_source: %s <- %s", device_key, source.name)
+        self.close_source(device_key)
+        self._sources[device_key] = source
 
-    def visual(self, device_key: str) -> VisualReader | None:
-        frame_log.debug("visual: key=%s", device_key)
-        return self._visuals.get(device_key)
+    def source(self, device_key: str) -> FrameSource | None:
+        frame_log.debug("source: key=%s", device_key)
+        return self._sources.get(device_key)
 
-    def close_visual(self, device_key: str) -> None:
-        """Stop *device_key*'s audio visual, if it has one (idempotent)."""
-        if (reader := self._visuals.pop(device_key, None)) is not None:
-            log.info("close_visual: %s (%s)", device_key, reader.name)
-            reader.close()
+    def close_source(self, device_key: str) -> None:
+        """Stop *device_key*'s source, if it has one (idempotent)."""
+        if (source := self._sources.pop(device_key, None)) is not None:
+            log.info("close_source: %s (%s)", device_key, source.name)
+            source.close()
 
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers -- and end a stream
-        or an audio visual."""
+        or a module's source."""
         self.close_stream(device_key)
-        self.close_visual(device_key)
+        self.close_source(device_key)
         self._replace_decode(device_key, None)
         had = self._playbacks.pop(device_key, None)
         if had is not None:

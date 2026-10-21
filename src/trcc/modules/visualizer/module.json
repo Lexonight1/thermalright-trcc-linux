@@ -1,0 +1,11 @@
+{
+  "key": "visualizer",
+  "title": "Audio Visualizer",
+  "summary": "Draws what your computer is playing as a panel's background, with the theme's mask and readings on top.",
+  "version": "1",
+  "default_on": true,
+  "icon": "icon.svg",
+  "guide": "https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_MODULES.md#audio-visualizer",
+  "capabilities": ["events", "panels", "background", "settings", "themes", "sound", "gpu", "files"],
+  "backgrounds": ["visual_background"]
+}

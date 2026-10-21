@@ -59,6 +59,7 @@ from .core.models import (
     DeviceInfo,
     DeviceQuirks,
     HardwareMetrics,
+    RawFrame,
     RgbFollowMode,
     Theme,
     format_device_key,
@@ -67,18 +68,21 @@ from .core.models import (
     quirks_for,
 )
 from .core.ports import (
+    BackgroundKind,
     CommandBus,
     DataInstallRunner,
     Device,
     Diagnostics,
+    FrameSource,
     LedColorStream,
     Module,
-    ModuleHost,
+    ModuleServices,
     Platform,
     Renderer,
     RgbMirror,
     SendScheduler,
     SendTask,
+    SoundInput,
     TlsIdentity,
     VideoExportRunner,
 )
@@ -113,6 +117,7 @@ frame_log = per_frame(__name__)
 
 
 R = TypeVar("R", bound=Result)
+_C = TypeVar("_C", bound=type)
 
 
 # =========================================================================
@@ -120,7 +125,7 @@ R = TypeVar("R", bound=Result)
 # =========================================================================
 
 
-class App(CommandBus, ModuleHost):
+class App(CommandBus, ModuleServices):
     """Application hub.
 
     * `platform` — the OS (Linux/Windows/macOS/BSD), DI'd at construction.
@@ -453,6 +458,9 @@ class App(CommandBus, ModuleHost):
         # Every module, and the ones the user has on switched on: last, so a
         # module's enable meets an App that is otherwise whole.  Enabling only
         # registers; a module's hardware and threads start with the session.
+        #: Every background a module draws, by its theme ref prefix: the
+        #: module, and how themes play, save and resume it.
+        self._background_kinds: dict[str, tuple[str, BackgroundKind]] = {}
         self.modules = ModuleRunner(
             module_catalog.specs() if modules is None else {
                 key: m if isinstance(m, ModuleSpec) else ModuleSpec.of(m)
@@ -460,20 +468,199 @@ class App(CommandBus, ModuleHost):
             host=self, settings=self.settings)
         self.modules.enable_saved()
 
+    # ── ModuleServices: what every module's host reaches ───────────────
+
     def publish(self, event: Any) -> None:
-        """``ModuleHost``: a module tells every UI something happened."""
+        """A module tells every UI something happened."""
         log.info("publish (module): %s", type(event).__name__)
         self.events.publish(event)
 
     def subscribe(self, event_type: Any, handler: Any) -> None:
-        """``ModuleHost``: a module hears an event the App publishes."""
+        """A module hears an event the App publishes."""
         log.info("subscribe (module): %s", event_type.__name__)
         self.events.subscribe(event_type, handler)
 
     def unsubscribe(self, event_type: Any, handler: Any) -> None:
-        """``ModuleHost``: a module stops hearing an event."""
+        """A module stops hearing an event."""
         log.info("unsubscribe (module): %s", event_type.__name__)
         self.events.unsubscribe(event_type, handler)
+
+    def panel_keys(self) -> tuple[str, ...]:
+        """The attached devices a background can be drawn on."""
+        from .core.commands._helpers import _lacks
+        keys = tuple(key for key in self.devices
+                     if _lacks(self, key, Capability.BACKGROUND) is None)
+        log.debug("panel_keys: %s", keys)
+        return keys
+
+    def panel_size(self, key: str) -> tuple[int, int] | None:
+        """Panel *key*'s size, None until reported; raises when absent."""
+        profile = self.get(key).profile
+        log.debug("panel_size: %s -> %s", key, profile and profile.resolution)
+        return None if profile is None else profile.resolution
+
+    def show_source(self, module: str, key: str, source: FrameSource,
+                    fps: float) -> None:
+        """*module*'s *source* becomes panel *key*'s background: the video
+        stops, the choice is saved, a driver sends it, every UI hears."""
+        from .core.commands import StopVideo
+        from .core.commands.device import _publish_background
+        from .services.source_driver import SourceDriver
+        log.info("show_source: %s <- %s (%s, %g fps)", key, source.name,
+                 module, fps)
+        self.dispatch(StopVideo(key=key))
+        self.settings.set_module_source(key, module)
+        self.media.open_source(key, source)
+        self.add_task(SourceDriver(self, key, interval_s=1.0 / fps))
+        _publish_background(self, key)
+
+    def end_source(self, key: str, keep_choice: bool = False) -> None:
+        """Stop panel *key*'s module source; the theme's own background --
+        its video playing again -- returns.  *keep_choice* keeps the module
+        as the panel's choice, to resume when it comes back."""
+        from .core.commands import PlayVideo
+        from .core.commands.device import _publish_background
+        from .services.source_driver import task_key
+        log.info("end_source: %s keep_choice=%s", key, keep_choice)
+        self.media.close_source(key)
+        self.remove_task(task_key(key))
+        if not keep_choice:
+            self.settings.set_module_source(key, None)
+        theme = self.active_themes.get(key)
+        video = self.themes.video_path(theme) if theme is not None else None
+        if video is not None:
+            self.dispatch(PlayVideo(key=key, path=video))
+        _publish_background(self, key)
+
+    def source(self, key: str) -> FrameSource | None:
+        """The module source drawing panel *key* now, if any."""
+        frame_log.debug("App.source")
+        return self.media.source(key)
+
+    def panel_source(self, key: str) -> str | None:
+        """The module panel *key*'s chosen background belongs to."""
+        found = self.settings.for_device(key).module_source
+        log.debug("panel_source: %s -> %s", key, found)
+        return found
+
+    def module_settings(self, module: str) -> dict[str, Any]:
+        log.debug("module_settings: %s", module)
+        return self.settings.module_settings(module)
+
+    def save_module_settings(self, module: str, data: Mapping[str, Any]) -> None:
+        log.debug("save_module_settings: %s", module)
+        self.settings.set_module_settings(module, data)
+
+    def panel_settings(self, module: str, key: str) -> dict[str, Any]:
+        log.debug("panel_settings: %s %s", module, key)
+        return self.settings.panel_module_settings(key, module)
+
+    def save_panel_settings(self, module: str, key: str,
+                            data: Mapping[str, Any]) -> None:
+        log.debug("save_panel_settings: %s %s", module, key)
+        self.settings.set_panel_module_settings(key, module, data)
+
+    def add_background_kind(self, module: str, kind: BackgroundKind) -> None:
+        """Themes may play, save and resume *kind* -- *module*'s."""
+        log.info("add_background_kind: %s draws %s", module, kind.prefix)
+        self._background_kinds[kind.prefix] = (module, kind)
+
+    def remove_background_kind(self, prefix: str) -> None:
+        log.info("remove_background_kind: %s", prefix)
+        self._background_kinds.pop(prefix, None)
+
+    def background_kind(self, prefix: str) -> BackgroundKind | None:
+        """The kind that draws theme refs ``<prefix>/<id>``, while its module
+        is on."""
+        entry = self._background_kinds.get(prefix)
+        log.debug("background_kind: %s -> %s", prefix, entry and entry[0])
+        return entry[1] if entry is not None else None
+
+    def background_kind_of(self, module: str) -> BackgroundKind | None:
+        """*module*'s background kind, while it is on."""
+        found = next((kind for owner, kind in self._background_kinds.values()
+                      if owner == module), None)
+        log.debug("background_kind_of: %s -> %s", module, found is not None)
+        return found
+
+    def background_owner(self, prefix: str) -> str | None:
+        """The installed module that draws ``<prefix>/<id>`` refs -- known
+        from its manifest, on or off."""
+        found = next((m.key for m in (self.modules.manifest(k) for k in self.modules)
+                      if prefix in m.backgrounds), None)
+        log.debug("background_owner: %s -> %s", prefix, found)
+        return found
+
+    def resume_backgrounds(self, module: str) -> None:
+        """*module* has started: each attached panel whose background is its
+        draws again."""
+        log.info("resume_backgrounds: %s", module)
+        for key in self.panel_keys():
+            self.resume_background(key, module)
+
+    def resume_background(self, key: str, module: str | None = None) -> None:
+        """Panel *key*'s module background, again -- a theme's that waited
+        for its module, else the panel's own choice -- unless it is already
+        drawing, or that module is off.  *module* limits it to one module's."""
+        s = self.settings.for_device(key)
+        pending = s.pending_background
+        prefix = pending.split("/", 1)[0] if pending else ""
+        if pending and (module is None or self.background_owner(prefix) == module):
+            kind = self.background_kind(prefix)
+            payload = self.themes.background_config(pending)
+            if kind is not None and payload is not None:
+                log.info("resume_background: %s plays the theme's %s", key, pending)
+                self.settings.set_pending_background(key, None)
+                kind.play(key, payload)
+                return
+        chosen = s.module_source
+        if chosen is None or (module is not None and chosen != module):
+            log.debug("resume_background: %s has no module background", key)
+            return
+        if self.media.source(key) is not None:
+            log.debug("resume_background: %s already draws", key)
+            return
+        kind = self.background_kind_of(chosen)
+        if kind is None:
+            log.info("resume_background: %s's %s is off -- kept for later",
+                     key, chosen)
+            return
+        log.info("resume_background: %s resumes %s", key, chosen)
+        kind.resume(key)
+
+    def sound_input(self) -> SoundInput:
+        frame_log.debug("App.sound_input")
+        return self.platform.sound_input()
+
+    def sound_problem(self) -> str:
+        """Why this computer's sound cannot be heard -- "" when it can."""
+        made = type(self.platform).SOUND_INPUT
+        problem = (f"TRCC cannot hear this computer's sound on "
+                   f"{self.platform.distro_name()} yet" if made is None
+                   else made.problem())
+        log.debug("sound_problem: %r", problem)
+        return problem
+
+    def worker_thread(self) -> AbstractContextManager[None]:
+        log.debug("worker_thread")
+        return self.platform.worker_thread_context()
+
+    def gl_surface(self) -> type | None:
+        surface = type(self.platform).GL_SURFACE
+        log.debug("gl_surface: %s", getattr(surface, "__name__", None))
+        return surface
+
+    def substitute(self, cls: _C) -> _C:
+        frame_log.debug("App.substitute")
+        return self.platform.substitute(cls)
+
+    def data_root(self) -> Path:
+        frame_log.debug("App.data_root")
+        return self.platform.paths().data_dir()
+
+    def encode_png(self, frame: RawFrame) -> bytes:
+        log.debug("encode_png: %dx%d", frame.width, frame.height)
+        return self.renderer.encode_png(self.renderer.from_raw_rgb24(frame))
 
     def _persist_user_mask_dc(self, event: OverlayChanged) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active
@@ -1785,7 +1972,8 @@ class _DeviceRenderObserver:
           against a 2 s sensor tick the panel alternated ~13 screen frames
           with one theme frame: the "blinking metrics mask" (2026-09-14).
         * **video** — the animation tick already sends at the video's fps.
-        * **stream / visual** — a web source or an audio visual: its driver
+        * **stream / module** — a web source or a module's source (an audio
+          visual): its driver
           sends at its own rate, the theme's overlay composited on top.
           Measured on the mock 320x320 panel: 40 composites and 40 wire writes
           per 40 ``SensorsUpdated``, on top of the tick's own.
@@ -1813,8 +2001,8 @@ class _DeviceRenderObserver:
             return "screencast"
         if self._app.media.stream(key) is not None:
             return "stream"
-        if self._app.media.visual(key) is not None:
-            return "visual"
+        if self._app.media.source(key) is not None:
+            return "module"
         playback = self._app.media.playback(key)
         if playback is not None and not playback.paused:
             return "video"

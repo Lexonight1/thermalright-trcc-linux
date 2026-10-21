@@ -91,8 +91,10 @@ def main() -> int:
     from PySide6.QtGui import QGuiApplication, QImage, QPainter
 
     app = QGuiApplication(sys.argv[:1])
-    from trcc.adapters.visual import EglSurface, drawn_on
-    from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+    from trcc.adapters.visual._gl import EglSurface
+    from trcc.modules.visualizer.adapters._base import drawn_on
+    from trcc.core.models import SOUND_RATE
+    from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 
     engines = drawn_on(EglSurface)
     pcm = (decoded(args.audio, SOUND_RATE, args.seconds, args.start) if args.audio

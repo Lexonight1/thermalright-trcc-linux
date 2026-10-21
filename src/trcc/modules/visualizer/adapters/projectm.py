@@ -25,18 +25,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import ClassVar
 
-from ...core._safe import is_under
-from ...core.logs import per_frame
-from ...core.models import (
-    SOUND_CHANNELS,
-    VISUAL_FPS,
-    RawFrame,
-    VisualAdjustment,
-    VisualInfo,
-    VisualSpec,
-)
+from trcc.adapters.visual._gl import EglSurface, read_rgb
+from trcc.core._safe import is_under
+from trcc.core.logs import per_frame
+from trcc.core.models import SOUND_CHANNELS, RawFrame
+
+from ..core.models import VISUAL_FPS, VisualAdjustment, VisualInfo, VisualSpec
 from ._base import BaseVisual
-from ._gl import EglSurface, read_rgb
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

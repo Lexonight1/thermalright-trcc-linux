@@ -55,13 +55,18 @@ def read_manifest(path: Path) -> ModuleManifest:
         raise ManifestError(f"{path}: capabilities must be a list of names")
     if unknown := sorted(set(caps) - set(MODULE_CAPABILITIES)):
         raise ManifestError(f"{path}: no such capability: {', '.join(unknown)}")
+    backgrounds = data.get("backgrounds", [])
+    if not isinstance(backgrounds, list) or not all(
+            isinstance(b, str) and b for b in backgrounds):
+        raise ManifestError(f"{path}: backgrounds must be a list of ref prefixes")
     icon = data.get("icon", "")
     return ModuleManifest(
         key=data["key"], title=data["title"], summary=data["summary"],
         version=str(data.get("version", "0")),
         default_on=bool(data.get("default_on", True)),
         icon=str(path.parent / icon) if icon else "",
-        guide=str(data.get("guide", "")), capabilities=tuple(caps))
+        guide=str(data.get("guide", "")), capabilities=tuple(caps),
+        backgrounds=tuple(backgrounds))
 
 
 def specs(root: Path | None = None) -> dict[str, ModuleSpec]:

@@ -11,11 +11,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from ..core.commands import Query
-from ..core.ports import CommandBus
+from trcc.core.commands import Query
+from trcc.core.ports import CommandBus
+from trcc.ui.qt_background import dispatch_in_background
+
 from ..core.results import VisualTileResult
 from .presentation.visual_gallery import VisualItem
-from .qt_background import dispatch_in_background
 
 log = logging.getLogger(__name__)
 

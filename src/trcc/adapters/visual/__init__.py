@@ -1,14 +1,5 @@
-"""Audio visuals: what the computer is playing, turned into a panel's
-background.  Importing the package registers every visual in ``VISUALS``."""
-from . import (  # noqa: F401 -- each class registers itself
-    cavalier,
-    karmaviz,
-    pipes,
-    projectm,
-    spikes,
-)
-from ._base import VISUALS, BaseVisual, GlVisual, catalog, drawn_on
-from ._gl import CglSurface, EglSurface, WglSurface
-
-__all__ = ["VISUALS", "BaseVisual", "CglSurface", "EglSurface", "GlVisual",
-    "WglSurface", "catalog", "drawn_on"]
+"""What the OS gives anything that draws or hears: its OpenGL contexts
+(``_gl``: EGL, WGL, CGL) and what it hears the computer playing (``sound``,
+``loopback``, ``coreaudio``).  Each OS names its own as ``GL_SURFACE`` and
+``SOUND_INPUT``.  The audio visuals themselves are the Audio Visualizer
+module's (``trcc.modules.visualizer``); importing this package loads none."""

@@ -20,14 +20,14 @@ _BACKGROUND = {
 
 
 def describe_source(source: str, background_mode: str,
-                    media_player_uri: str | None) -> str:
+                    media_player_uri: str | None, module_title: str = "") -> str:
     """``LcdSnapshot``'s source fields as one short phrase."""
-    log.debug("describe_source: %s mode=%s uri=%s",
-              source, background_mode, media_player_uri)
+    log.debug("describe_source: %s mode=%s uri=%s module=%r",
+              source, background_mode, media_player_uri, module_title)
     if source == "screencast":
         return "a screen cast"
-    if source == "visual":
-        return "an audio visual"
+    if source == "module":
+        return f"the {module_title} module" if module_title else "a module"
     if source == "media":
         uri = media_player_uri or ""
         shown = uri if "://" in uri else PurePath(uri).name

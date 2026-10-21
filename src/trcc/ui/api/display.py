@@ -19,7 +19,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 
-from ...core.commands import (
+from trcc.core.commands import (
     AddOverlayElement,
     ApplyMask,
     BuildPreview,
@@ -33,14 +33,12 @@ from ...core.commands import (
     KeepAliveLoop,
     LcdSnapshot,
     ListMasks,
-    ListVisuals,
     LoadImage,
     LoadTheme,
     LoadVideo,
     LoopVideo,
     PauseVideo,
     PlayVideo,
-    PlayVisual,
     ProbeVideoDuration,
     RenderDcStandalone,
     ResolveOverlay,
@@ -62,24 +60,17 @@ from ...core.commands import (
     SetScreencastRegion,
     SetSlideshow,
     SetSplitMode,
-    SetVisualCenter,
-    SetVisualPicture,
-    SetVisualSettings,
     SleepDevice,
     StartScreencast,
     StopScreencast,
     StopVideo,
-    StopVisual,
     TickDisplay,
     UpdateOverlayElement,
     UploadBootAnimation,
     UploadCustomMask,
     VideoStatus,
-    VisualTile,
 )
-from ...core.logs import per_frame
-from ...core.models import MEDIA, MediaKind
-from ...core.results import (
+from trcc.core.results import (
     BackgroundModeResult,
     BackgroundResult,
     BootAnimationResult,
@@ -113,9 +104,10 @@ from ...core.results import (
     VideoDurationResult,
     VideoExportResult,
     VideoResult,
-    VisualResult,
-    VisualsResult,
 )
+
+from ...core.logs import per_frame
+from ...core.models import MEDIA, MediaKind
 from ._shared import (
     admit_ws,
     http_error_if_failed,
@@ -160,10 +152,6 @@ from .schemas import (
     ThemeRequest,
     ThemeResponse,
     VideoStatusResponse,
-    VisualCenterRequest,
-    VisualPictureRequest,
-    VisualRequest,
-    VisualSettingsRequest,
 )
 
 log = logging.getLogger(__name__)
@@ -661,33 +649,6 @@ def media_player(key: str, body: MediaPlayerRequest,
     result = request.app.state.trcc.dispatch(
         SetMediaPlayer(key=key, uri=uri),
     )
-    http_error_if_failed(result)
-    return result
-
-
-@router.post("/visual")
-def visual(key: str, body: VisualRequest, request: Request) -> VisualResult:
-    """Draw *key*'s background from what is playing with an audio visual --
-    or stop it ('' as the visual).  The preset is checked by the visual,
-    which refuses one outside the visuals' folder."""
-    log.info("api POST /devices/{key}/display/visual: key=%s visual=%s",
-             key, body.visual)
-    command = (PlayVisual(key=key, visual=body.visual, preset=body.preset,
-                          settings=dict(body.sliders))
-               if body.visual else StopVisual(key=key))
-    result = request.app.state.trcc.dispatch(command)
-    http_error_if_failed(result)
-    return result
-
-
-@router.post("/visual/settings")
-def visual_settings(key: str, body: VisualSettingsRequest,
-                    request: Request) -> VisualResult:
-    """Move *key*'s playing audio visual's sliders -- live."""
-    log.info("api POST /devices/{key}/display/visual/settings: key=%s %s",
-             key, sorted(body.sliders))
-    result = request.app.state.trcc.dispatch(
-        SetVisualSettings(key=key, settings=dict(body.sliders)))
     http_error_if_failed(result)
     return result
 
@@ -1281,52 +1242,6 @@ def upload_mask(key: str, body: MaskUploadRequest,
 
 
 meta_router = APIRouter(prefix="/display", tags=["display"])
-
-
-@meta_router.get("/visuals")
-def list_visuals(request: Request, key: str = "") -> VisualsResult:
-    """The audio visuals this computer can draw, their sliders and presets,
-    and the centre picture -- with ``?key=``, also what that panel plays and
-    its slider values."""
-    log.info("api GET /display/visuals: key=%r", key)
-    return request.app.state.trcc.dispatch(ListVisuals(key=key))
-
-
-@meta_router.get("/visual-tile")
-def visual_tile(request: Request, visual: str, preset: str = "",
-                size: int = 120) -> Response:
-    """A visual's gallery tile as PNG -- what it draws for noise, the same
-    whatever is playing.  The preset is checked by the visual, which refuses
-    one outside the visuals' folder."""
-    log.info("api GET /display/visual-tile: %s size=%d", visual, size)
-    result = request.app.state.trcc.dispatch(
-        VisualTile(visual=visual, preset=preset, size=size))
-    if not result.ok:
-        raise HTTPException(404, result.message)
-    return Response(content=result.image, media_type=result.media_type)
-
-
-@meta_router.post("/visual-picture")
-def visual_picture(body: VisualPictureRequest, request: Request) -> VisualsResult:
-    """Switch the centre picture on or off (kept while off) and set its
-    fire."""
-    log.info("api POST /display/visual-picture: shown=%s fire=%s",
-             body.shown, body.fire)
-    result = request.app.state.trcc.dispatch(
-        SetVisualPicture(shown=body.shown, fire=body.fire))
-    http_error_if_failed(result)
-    return result
-
-
-@meta_router.post("/visual-center")
-def visual_center(body: VisualCenterRequest, request: Request) -> VisualsResult:
-    """The picture in the middle of the visuals that show one -- a file in
-    TRCC's own folders; '' for none."""
-    log.info("api POST /display/visual-center: %s", bool(body.path))
-    path = str(owned_path(request, body.path)) if body.path else ""
-    result = request.app.state.trcc.dispatch(SetVisualCenter(path=path))
-    http_error_if_failed(result)
-    return result
 
 
 @meta_router.get("/video-duration")

@@ -21,15 +21,12 @@ from dataclasses import replace
 
 import numpy as np
 
-from ..core.logs import per_frame
-from ..core.models import (
-    SOUND_CHANNELS,
-    SOUND_RATE,
-    VISUAL_FPS,
-    RawFrame,
-    VisualSpec,
-)
-from ..core.ports import CaptureNotReady, SoundInput, VisualEngine
+from trcc.core.logs import per_frame
+from trcc.core.models import SOUND_CHANNELS, SOUND_RATE, RawFrame
+from trcc.core.ports import CaptureNotReady, FrameSource, SoundInput
+
+from ..core.models import VISUAL_FPS, VisualSpec
+from ..core.ports import VisualEngine
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -41,14 +38,17 @@ _QUIET = 1e-4
 _SILENCE_S = 3.0
 
 
-class VisualReader:
+class VisualReader(FrameSource):
     """The visual *spec* names, drawn from what *sound* hears; the newest
-    picture, on demand."""
+    picture, on demand -- a panel's background, through the App's frame
+    source slot.  *on_hearing* is told when it starts or stops hearing
+    anything, as the App asks it for a picture."""
 
     def __init__(self, spec: VisualSpec,
                  sound: Callable[[], SoundInput],
                  engine: Callable[[], VisualEngine],
-                 thread: Callable[[], AbstractContextManager[None]] = nullcontext
+                 thread: Callable[[], AbstractContextManager[None]] = nullcontext,
+                 on_hearing: Callable[[bool], None] | None = None,
                  ) -> None:
         self.spec = spec
         self.name = spec.preset.name if spec.preset else spec.kind
@@ -60,8 +60,9 @@ class VisualReader:
         self._lock = threading.Lock()
         self._adjusted: Mapping[str, float] | None = None
         self._heard_at = time.monotonic()
-        #: What the App last told the UIs -- ``CaptureVisualFrame`` keeps it.
+        #: What the UIs were last told -- ``latest`` keeps it.
         self.announced = True
+        self._on_hearing = on_hearing
         self._latest: RawFrame | None = None
         self._error = ""
         self._stop = threading.Event()
@@ -71,13 +72,31 @@ class VisualReader:
 
     def latest(self) -> RawFrame:
         """The newest picture; ``CaptureNotReady`` while starting,
-        ``OSError`` once it has failed."""
+        ``OSError`` once it has failed.  Asked each tick, so it is also where
+        a change in hearing is told (*on_hearing*) -- on the change only."""
+        frame_log.debug("VisualReader.latest")
+        frame = self._frame()
+        self._announce()
+        return frame
+
+    def _frame(self) -> RawFrame:
+        """The newest picture, or why there is none."""
         if self._error:
             raise OSError(self._error)
         if self._latest is None:
             raise CaptureNotReady(f"{self.name}: starting")
-        frame_log.debug("VisualReader.latest: %s", self.name)
+        frame_log.debug("VisualReader._frame: %s", self.name)
         return self._latest
+
+    def _announce(self) -> None:
+        """Tell *on_hearing* when hearing has changed since it was last told."""
+        if (hearing := self.hearing) == self.announced:
+            return
+        self.announced = hearing
+        log.info("VisualReader: %s %s", self.name,
+                 "hears sound again" if hearing else "hears nothing")
+        if self._on_hearing is not None:
+            self._on_hearing(hearing)
 
     @property
     def hearing(self) -> bool:

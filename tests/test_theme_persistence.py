@@ -2508,7 +2508,7 @@ def test_list_masks_reports_which_masks_are_the_user_s_own(
 
 
 def test_loadtheme_reports_its_theme_identity_from_one_place() -> None:
-    """`LoadTheme.execute` returns from eight arms; seven have a theme.
+    """`LoadTheme._load` returns from eight arms; seven have a theme.
 
     Each of those seven repeated `key`, `theme_name` and `theme_path` by hand,
     which is exactly how one arm ends up missing `theme_path` and a UI shows a
@@ -2526,13 +2526,13 @@ def test_loadtheme_reports_its_theme_identity_from_one_place() -> None:
 
     tree = ast.parse(inspect.getsource(theme_mod.LoadTheme))
     execute = next(n for n in ast.walk(tree)
-                   if isinstance(n, ast.FunctionDef) and n.name == "execute")
+                   if isinstance(n, ast.FunctionDef) and n.name == "_load")
     inline = [n for n in ast.walk(execute)
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
               and n.func.id == "ThemeResult"]
 
     assert len(inline) == 1, (
-        f"{len(inline)} inline ThemeResult(...) in LoadTheme.execute — every "
+        f"{len(inline)} inline ThemeResult(...) in LoadTheme._load — every "
         "arm that has resolved a theme must return self._loaded(...), so the "
         "identity fields cannot be forgotten.  Only the theme-not-resolved "
         "arm builds one directly.")

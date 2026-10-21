@@ -2,7 +2,7 @@
 
 A **module** is a feature you can switch on or off on the **Modules** page, in every TRCC window. A module that is off costs nothing: TRCC does not even load its code.
 
-> **Where this stands.** The module system is built; the features themselves are still moving into it. RGB Lighting and the Audio Visualizer become modules next, and installing, updating and deleting modules comes after that. Until then the Modules page may be empty.
+> **Where this stands.** The **Audio Visualizer** is the first module. RGB Lighting moves in next, and installing, updating and deleting modules comes after that.
 
 ---
 
@@ -17,12 +17,28 @@ Open it from the Control Center's title bar (gui) or the sidebar (qtgui). Each m
 
 From the command line: `trcc system modules list`, `trcc system modules on <key>`, `trcc system modules off <key>`. From the API: `GET /system/modules`, `POST /system/modules/{key}`.
 
-When a module is off, whatever belongs to it is refused in every window, with a line saying it is off and where to turn it on. Your choices stay saved: switching a module back on picks up where it left off. With RGB Lighting and the Audio Visualizer, an off module's buttons, tabs and themes will also be hidden, and come back the moment you switch it on.
+When a module is off, its tab or sidebar entry is hidden in every window and comes back the moment you switch it on. Anything you still ask of it — from the command line, the API or another window — is refused, with a line saying it is off and where to turn it on. Your choices stay saved: switching a module back on picks up where it left off.
 
 ### Coming next
 
-- **RGB Lighting** and the **Audio Visualizer** as modules, on by default, so nothing changes for anyone who uses them.
+- **RGB Lighting** as a module, on by default, so nothing changes for anyone who uses it.
+- A module's **themes kept with it**, and hidden while it is off.
 - **Install, Update and Delete**, from TRCC's own GitHub releases only. Every download is checked against a list signed by the maintainer (see [Verify Your Download](GUIDE_INSTALL.md#verify-your-download)); a failed or tampered download is never installed, and a failed update keeps the old version working.
+
+---
+
+## Audio Visualizer
+
+Draws what your computer is playing as a panel's background — TRCC Pipes, the Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop — with the theme's mask and readings on top. **On by default.**
+
+- **gui:** the audio-bars tab beside Cloud backgrounds. Click a tile and it plays on the panel you have selected; its sliders and the centre picture are below the tiles.
+- **qtgui:** *Audio visuals* in the sidebar.
+- **Command line:** `trcc display visuals` lists them; `trcc display visual <key> <name>` plays one, and `trcc display visual <key>` stops it. `visual-set`, `visual-picture`, `visual-center` and `visual-tile` do the rest.
+- **API:** `POST /devices/{key}/display/visual`, `GET /display/visuals`, and the other `/display/visual-*` routes.
+
+**What it needs to hear the music:** on Linux, ffmpeg with PulseAudio (or PipeWire's PulseAudio layer), or PipeWire's `pw-record`; on Windows, the `soundcard` package; on a Mac, macOS 14.2 or later and the `catap` package. A visual that cannot hear or draw on your computer says why on its tile. MilkDrop presets go in `~/.trcc/data/visuals/`.
+
+**Switching it off:** every panel playing a visual goes back to its theme, mask and readings still on top, and keeps its choice. Switch it on again and each panel plays its visual again. A theme whose background is a visual, loaded while the Visualizer is off, shows its mask and readings and says it needs the Audio Visualizer; its visual plays the moment you switch it on. To stop a panel's visual for good, pick any other background, or run `trcc display visual <key>`. That works whether the Visualizer is on or off.
 
 ---
 
@@ -80,6 +96,7 @@ The Modules page lists a module from this file alone.
 | `icon` | a file beside `module.json`, drawn 40 × 40 on its row |
 | `guide` | a link to its section of this guide |
 | `capabilities` | what it may ask TRCC for — see below; anything else is refused |
+| `backgrounds` | the theme background refs it draws (`<prefix>/<id>`), so a theme can name the module it needs even while that module is off |
 
 ### When each hook runs
 
@@ -97,13 +114,20 @@ A module that raises in any hook is switched back off and its row says why — i
 
 ### Capabilities
 
-A module never gets the App itself. It gets a **host** that offers only what its `module.json` declares:
+A module never gets the App itself. It gets a **host** that offers only what its `module.json` declares. Beside the events (`host.subscribe`, `host.publish`), each capability is one small port on the host — `host.panels`, `host.background`, `host.settings`, `host.themes`, `host.sound`, `host.gpu`, `host.files` — and reaching one its manifest does not declare is refused:
 
 | Capability | What it lets the module do |
 |---|---|
 | `events` | hears what happens in the app |
+| `panels` | knows which LCD panels are attached, and their size |
+| `background` | draws a panel's background (the theme's mask and metrics stay on top) |
+| `settings` | keeps its own settings, for the app and for each panel |
+| `themes` | lets themes save and load a background it draws |
+| `sound` | hears what the computer is playing |
+| `gpu` | draws with the graphics card |
+| `files` | reads its own files in TRCC's data folder, and makes PNG pictures |
 
-More arrive as modules need them — one at a time, each with a reason.
+When it is switched off, TRCC takes back what it still holds: its subscriptions, its background kinds, and the panels it draws, each keeping its choice. More capabilities arrive as modules need them — one at a time, each with a reason.
 
 ### Rules
 

@@ -8,10 +8,11 @@ import numpy as np
 import pytest
 from PySide6.QtGui import QImage
 
-from trcc.adapters.visual import VISUALS, BaseVisual, catalog
-from trcc.adapters.visual._cava import Cava, monstercat
-from trcc.adapters.visual.cavalier import CavalierBars
-from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
+from trcc.core.models import SOUND_RATE, RawFrame
+from trcc.modules.visualizer.adapters._base import VISUALS, BaseVisual, catalog
+from trcc.modules.visualizer.adapters._cava import Cava, monstercat
+from trcc.modules.visualizer.adapters.cavalier import CavalierBars
+from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 
 _FRAME = 2756                    # samples a call, as the reference was run
 
@@ -102,11 +103,13 @@ def test_cavaliers_eleven_modes_come_after_trccs_own() -> None:
     the path the App lists from, the platform's catalog: TRCC Pipes, the
     Spike Circle, then Cavalier.  MUTATION CHECK: drop the sort in
     ranked_visuals and Cavalier's modes come first."""
-    from trcc.adapters.system import current_platform
+    from trcc.adapters.system import host_platform_class
+    from trcc.modules.visualizer.core.ports import ranked_visuals
 
-    assert [i.kind for i in catalog()] == [
-        i.kind for i in current_platform().visual_catalog()]
-    kinds = [info.kind for info in current_platform().visual_catalog()]
+    surface = host_platform_class().GL_SURFACE
+    drawn = [cls.on_surface(surface) for cls in VISUALS.values()]
+    assert [i.kind for i in catalog()] == [i.kind for i in ranked_visuals(drawn)]
+    kinds = [info.kind for info in ranked_visuals(drawn)]
     assert kinds[:2] == ["trcc-pipes", "trcc-spikes"]
     assert len(_MODES) == 11
     assert kinds[2:13] == [k for k in kinds if k.startswith("cavalier-")]

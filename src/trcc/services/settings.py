@@ -140,12 +140,9 @@ class AppSettings:
     # Modules the user switched, key -> on.  One never switched is absent and
     # takes its own ``default_on``.
     modules: dict[str, bool] = field(default_factory=dict)
-    # The user's centre picture for audio visuals -- any image; ``None``
-    # shows none.  Kept while switched off, so switching it on brings it
-    # back; its fire belongs to it (0 to 1).
-    visual_center: str | None = None
-    visual_center_shown: bool = True
-    visual_center_fire: float = 0.0
+    # Each module's own app-wide settings, by module key -- written only
+    # through its host (``ModuleHost.save_settings``).
+    module_settings: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 # =========================================================================
@@ -182,12 +179,21 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #                         the C#'s myModeSub; up to 4 a device ``time_format``
 #                         / ``date_format`` drew over it.  ``_migrate_device``
 #                         writes a deliberate choice into the elements.
+#   6                     the audio visual is a module: a panel's ``visual``,
+#                         ``visual_preset`` and ``visual_settings`` and the
+#                         app's ``visual_center*`` move into the visualizer's
+#                         own sections, and ``visual`` becomes
+#                         ``module_source``.  ``_fold_visual`` /
+#                         ``_migrate_app`` move them.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
+
+#: The module the pre-6 visual fields belong to -- data, not an import.
+_VISUALIZER = "visualizer"
 
 _S = TypeVar("_S")
 
@@ -612,54 +618,57 @@ class Settings:
                 _only_source(dev, "media_player_uri")
             self._save()
 
-    def set_visual(self, key: str, visual: str | None, preset: str = "",
-                   settings: Mapping[str, float] | None = None) -> None:
-        """Set (or clear with ``None``) the device's audio visual: its key,
-        its preset file and its slider values.  Mutually exclusive with the
-        other display sources, so setting it clears them."""
-        log.info("set_visual: key=%s visual=%s preset=%r settings=%s", key,
-                 visual, preset, dict(settings or {}))
+    def set_module_source(self, key: str, module: str | None) -> None:
+        """Set (or clear with ``None``) the module drawing the device's
+        background.  Mutually exclusive with the other display sources, so
+        setting it clears them -- and a theme background waiting for a module
+        is no longer waiting."""
+        log.info("set_module_source: key=%s module=%s", key, module)
         with self._lock:
             dev = self.for_device(key)
-            dev.visual = visual
-            dev.visual_preset = preset if visual is not None else ""
-            dev.visual_settings = dict(settings or {}) if visual is not None else {}
-            if visual is not None:
-                _only_source(dev, "visual")
+            dev.module_source = module
+            if module is not None:
+                _only_source(dev, "module_source")
+                dev.pending_background = None
             self._save()
 
-    def visual_center(self) -> Path | None:
-        """The user's centre picture for audio visuals, if they picked one
-        (the visual checks the file when it opens)."""
-        path = self._app.visual_center
-        found = Path(path) if isinstance(path, str) and path else None
-        log.debug("visual_center: %s", found)
+    def set_pending_background(self, key: str, ref: str | None) -> None:
+        """A theme's module background *ref* waiting for its module to come
+        on (``None``: none waiting)."""
+        log.info("set_pending_background: key=%s ref=%s", key, ref)
+        with self._lock:
+            self.for_device(key).pending_background = ref
+            self._save()
+
+    def module_settings(self, module: str) -> dict[str, Any]:
+        """Module *module*'s own app-wide settings (a copy)."""
+        sections = _sections(self._app.module_settings)
+        found = dict(sections.get(module, {})) if sections is not _DROP else {}
+        log.debug("module_settings: %s -> %s", module, found)
         return found
 
-    def set_visual_center(self, path: str | None) -> None:
-        """Remember the user's centre picture (``None``: none) -- a picture
-        just picked is shown."""
-        log.info("set_visual_center: %s", path)
+    def set_module_settings(self, module: str, data: Mapping[str, Any]) -> None:
+        """Replace module *module*'s app-wide settings."""
+        log.info("set_module_settings: %s %s", module, dict(data))
         with self._lock:
-            self._app.visual_center = path
-            if path:
-                self._app.visual_center_shown = True
+            if not isinstance(self._app.module_settings, dict):
+                self._app.module_settings = {}
+            self._app.module_settings[module] = dict(data)
             self._save()
 
-    def visual_picture(self) -> tuple[Path | None, bool, float]:
-        """The centre picture as visuals draw it: its file, whether it is
-        on, and its fire (no fire while it is off)."""
-        path = self.visual_center()
-        shown = bool(self._app.visual_center_shown)
-        fire = float(self._app.visual_center_fire) if shown else 0.0
-        log.debug("visual_picture: %s shown=%s fire=%.2f", path, shown, fire)
-        return path, shown, fire
+    def panel_module_settings(self, key: str, module: str) -> dict[str, Any]:
+        """Module *module*'s own settings for device *key* (a copy)."""
+        found = dict(self.for_device(key).module_settings.get(module, {}))
+        log.debug("panel_module_settings: %s %s -> %s", key, module, found)
+        return found
 
-    def visual_center_fire(self) -> float:
-        """The picture's fire setting, kept while the picture is off."""
-        fire = float(self._app.visual_center_fire)
-        log.debug("visual_center_fire: %.2f", fire)
-        return fire
+    def set_panel_module_settings(self, key: str, module: str,
+                                  data: Mapping[str, Any]) -> None:
+        """Replace module *module*'s settings for device *key*."""
+        log.info("set_panel_module_settings: %s %s %s", key, module, dict(data))
+        with self._lock:
+            self.for_device(key).module_settings[module] = dict(data)
+            self._save()
 
     def module_enabled(self, key: str, default: bool) -> bool:
         """Whether the user has module *key* on; *default* if never chosen."""
@@ -676,18 +685,6 @@ class Settings:
             if not isinstance(self._app.modules, dict):
                 self._app.modules = {}
             self._app.modules[key] = enabled
-            self._save()
-
-    def set_visual_picture(self, shown: bool | None = None,
-                           fire: float | None = None) -> None:
-        """Switch the centre picture on or off, and set how hot it burns
-        (0 to 1) -- each only when given."""
-        log.info("set_visual_picture: shown=%s fire=%s", shown, fire)
-        with self._lock:
-            if shown is not None:
-                self._app.visual_center_shown = shown
-            if fire is not None:
-                self._app.visual_center_fire = min(max(fire, 0.0), 1.0)
             self._save()
 
     def set_fit_mode(self, key: str, mode: FitMode) -> None:
@@ -1282,7 +1279,7 @@ class Settings:
             log.warning("_load: %s has a non-integer schema %r — treating it "
                         "as 1 (the pre-versioned shape)", path, schema)
             schema = 1
-        app_data = raw.get("app", {})
+        app_data = _migrate_app(raw.get("app", {}), schema)
         with self._lock:
             for field_name, value in app_data.items():
                 if hasattr(self._app, field_name):
@@ -1420,6 +1417,45 @@ def _migrate_device(
         )
     if schema < 5:
         _fold_clock_formats(out, key)
+    if schema < 6:
+        _fold_visual(out, key)
+    return out
+
+
+def _fold_visual(data: dict[str, Any], key: str) -> None:
+    """v5 -> v6: a panel's audio visual moves into the visualizer's section,
+    and the panel's background source becomes that module.  A panel that
+    played one keeps playing it."""
+    visual = data.pop("visual", None)
+    preset = data.pop("visual_preset", "")
+    sliders = data.pop("visual_settings", {})
+    if not isinstance(visual, str) or not visual:
+        log.debug("_fold_visual: %s had no audio visual", key)
+        return
+    data["module_source"] = _VISUALIZER
+    data.setdefault("module_settings", {})[_VISUALIZER] = {
+        "visual": visual, "preset": preset if isinstance(preset, str) else "",
+        "settings": dict(sliders) if isinstance(sliders, dict) else {}}
+    log.info("_fold_visual: %s plays %s %r -- now the %s module's", key,
+             visual, preset, _VISUALIZER)
+
+
+def _migrate_app(data: Any, schema: int) -> dict[str, Any]:
+    """The app-wide settings, brought up to :data:`_SCHEMA_VERSION`.  v5 ->
+    v6: the audio visuals' centre picture moves into the visualizer's
+    section, under the same names."""
+    if not isinstance(data, dict):
+        return {}
+    if schema >= 6:
+        return data
+    out = dict(data)
+    picture = {name: out.pop(f"visual_{name}") for name in
+               ("center", "center_shown", "center_fire")
+               if f"visual_{name}" in out}
+    if picture:
+        out.setdefault("module_settings", {})[_VISUALIZER] = picture
+        log.info("_migrate_app: the centre picture moves to the %s module: %s",
+                 _VISUALIZER, picture)
     return out
 
 
@@ -1539,7 +1575,7 @@ def _tuple_of(size: int,
 #: The display sources -- what fills a panel's background.  One at a time:
 #: setting one clears the rest (``_only_source``).
 _DISPLAY_SOURCES = ("background_path", "screencast_region",
-                    "media_player_uri", "visual")
+                    "media_player_uri", "module_source")
 
 
 def _only_source(dev: DeviceSettings, keep: str) -> None:
@@ -1603,6 +1639,16 @@ def _orientation_slots(value: Any) -> Any:
 #: How each such field comes back -- by name, one row each, so a new tuple,
 #: enum or dataclass field is a row here.  A tuple field with no row stays a
 #: list and compares unequal to the tuple a Command writes.
+def _sections(value: Any) -> Any:
+    """Each module's settings section, by key -- a section that is not an
+    object is dropped, and so is the whole field when it is not one."""
+    log.debug("_sections: %r", value)
+    if not isinstance(value, dict):
+        return _DROP
+    return {k: dict(v) for k, v in value.items()
+            if isinstance(k, str) and isinstance(v, dict)}
+
+
 _FROM_JSON: dict[str, Callable[[Any], Any]] = {
     "mask_position": _tuple_of(2),
     "fit_mode": _fit_mode,
@@ -1613,6 +1659,7 @@ _FROM_JSON: dict[str, Callable[[Any], Any]] = {
     "user_overlay_elements": _overlay_elements,
     "entered_with": _orientation_state,
     "orientation_slots": _orientation_slots,
+    "module_settings": _sections,
 }
 
 

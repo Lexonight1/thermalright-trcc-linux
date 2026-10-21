@@ -1,7 +1,7 @@
 """Audio visuals: the registry, TRCC Pipes, and the Commands every UI uses.
 
-A visual is a key in ``VISUALS``; ``PlayVisual`` runs it on the screencast's
-chain (reader -> ``VisualDriver`` -> ``CaptureVisualFrame`` ->
+A visual is a key in ``VISUALS``; ``PlayVisual`` runs it on the App's frame
+source chain (reader -> ``SourceDriver`` -> ``CaptureSourceFrame`` ->
 ``SendScreencastFrame``), exactly as a web stream runs.  The stand-in
 platform hears a scripted beat and scripts MilkDrop, so no test reaches the
 host's sound card; TRCC Pipes draws on the host's own OpenGL, as the App
@@ -20,35 +20,38 @@ import numpy as np
 import pytest
 from PySide6.QtGui import QImage
 
+import trcc.modules.visualizer.app as visualizer_app
 from tests.conftest import show_a_theme
 from tests.mock_platform import MockPlatform, ScriptedSound
 from trcc.adapters.render.qt import QtRenderer
 from trcc.adapters.system import host_platform_class
-from trcc.adapters.visual import VISUALS, catalog
-from trcc.adapters.visual import pipes as pipes_module
-from trcc.adapters.visual import projectm as projectm_module
 from trcc.app import App
 from trcc.core.commands import (
-    CaptureVisualFrame,
+    CaptureSourceFrame,
+    ClearModuleSource,
     ConnectDevice,
     LcdSnapshot,
-    ListVisuals,
     LoadTheme,
-    PlayVisual,
     RestoreDeviceState,
     SaveTheme,
     SetMediaPlayer,
+)
+from trcc.core.events import BackgroundChanged, ErrorOccurred, Event
+from trcc.core.models import SOUND_RATE, RawFrame
+from trcc.core.ports import CaptureNotReady
+from trcc.modules.visualizer.adapters import pipes as pipes_module
+from trcc.modules.visualizer.adapters import projectm as projectm_module
+from trcc.modules.visualizer.adapters._base import VISUALS, catalog
+from trcc.modules.visualizer.core.commands import (
+    ListVisuals,
+    PlayVisual,
     SetVisualCenter,
     SetVisualPicture,
     SetVisualSettings,
-    StopVisual,
     VisualTile,
 )
-from trcc.core.events import BackgroundChanged, ErrorOccurred, Event
-from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
-from trcc.core.ports import CaptureNotReady
-from trcc.services.media import MediaService
-from trcc.services.visual_driver import task_key
+from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
+from trcc.services.source_driver import task_key
 
 _E = TypeVar("_E", bound=Event)
 
@@ -61,7 +64,7 @@ _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
 #: TRCC Pipes as this host draws it: bound to the host's OpenGL context,
 #: as the App's platform binds it.
 TrccPipes = cast("type[pipes_module.TrccPipes]",
-                 host_platform_class().VISUALS["trcc-pipes"])
+                 VISUALS["trcc-pipes"].on_surface(host_platform_class().GL_SURFACE))
 
 
 def _hear(app: App, event_type: type[_E]) -> list[_E]:
@@ -229,16 +232,22 @@ def test_the_centre_picture_sits_in_the_middle_and_can_burn(
 
 # ── The Commands, on the App ─────────────────────────────────────────
 
-class _FakeReader:
-    """What ``VisualReader`` promises, scripted -- no thread, no sound."""
+class _FakeReader(visualizer_app.VisualReader):
+    """What ``VisualReader`` promises, scripted -- no thread, no sound.  Its
+    announcing (``_announce``) is the real reader's."""
 
     def __init__(self, spec: VisualSpec, sound: Any, engine: Any,
-                 thread: Any = None) -> None:
+                 thread: Any = None, on_hearing: Any = None) -> None:
         self.spec, self.name, self.closed = spec, spec.kind, False
-        self.fail, self.ready = "", True
-        self.hearing = self.announced = True
+        self.fail, self.ready, self.heard = "", True, True
+        self.announced, self._on_hearing = True, on_hearing
 
-    def latest(self) -> RawFrame:
+    @property
+    def hearing(self) -> bool:
+        """What the test says it hears."""
+        return self.heard
+
+    def _frame(self) -> RawFrame:
         if self.fail:
             raise OSError(self.fail)
         if not self.ready:
@@ -262,7 +271,7 @@ def tasks() -> list[str]:
 @pytest.fixture
 def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         tasks: list[str]) -> Iterator[App]:
-    monkeypatch.setattr(MediaService, "visual_reader", _FakeReader)
+    monkeypatch.setattr(visualizer_app, "VisualReader", _FakeReader)
     monkeypatch.setattr(App, "add_task", lambda self, task: tasks.append(task.key))
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
@@ -272,7 +281,13 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 
 
 def _reader(app: App) -> Any:
-    return app.media.visual(_KEY)
+    return app.media.source(_KEY)
+
+
+def _chosen(app: App) -> tuple[str | None, dict[str, Any]]:
+    """The panel's background module, and the visualizer's own choice."""
+    s = app.settings.for_device(_KEY)
+    return s.module_source, s.module_settings.get("visualizer", {})
 
 
 def _wire(app: App) -> list[Any]:
@@ -292,7 +307,7 @@ def _wire_grows(app: App, past: int, timeout: float = 5.0) -> bool:
 
 
 def _preset(app: App, name: str = "Fractal/one.milk") -> str:
-    path = app.platform.paths().visuals_dir() / name
+    path = app.platform.paths().data_dir() / "visuals" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("[preset00]\n")
     return name
@@ -301,7 +316,8 @@ def _preset(app: App, name: str = "Fractal/one.milk") -> str:
 #: KarmaViz's presets ship with TRCC: whatever the user's visuals folder holds.
 _KARMAVIZ_PRESETS = tuple(sorted(
     p.name for p in (Path(__file__).resolve().parents[1]
-                     / "src/trcc/assets/karmaviz/presets").glob("*.json")))
+                     / "src/trcc/modules/visualizer/assets/karmaviz/presets"
+                     ).glob("*.json")))
 
 
 def test_the_gallery_lists_every_visual_and_the_preset_files(app: App) -> None:
@@ -320,11 +336,11 @@ def test_each_visual_lists_only_its_own_presets(
     """The presets were ONE flat list, and the gallery gave every visual that
     draws presets all of it: harmless while MilkDrop was the only one, wrong
     the moment a second arrives -- each would show the other's tiles."""
-    from trcc.core.models import VisualInfo
+    from trcc.modules.visualizer.core.models import VisualInfo
 
     _preset(app)
-    platform = app.platform
-    real_catalog, real_class = platform.visual_catalog, platform.visual_class
+    root = cast("visualizer_app.VisualizerModule", app.modules.root("visualizer"))
+    real_catalog, real_class = root.catalog, root.visual
 
     class Second:
         """A second visual that draws presets -- only what ListVisuals asks."""
@@ -339,9 +355,8 @@ def test_each_visual_lists_only_its_own_presets(
             return ("built-in/one.json", "built-in/two.json")
 
     second = VisualInfo("second", "Second", "Test", uses_presets=True)
-    monkeypatch.setattr(platform, "visual_catalog",
-                        lambda: (*real_catalog(), second))
-    monkeypatch.setattr(platform, "visual_class",
+    monkeypatch.setattr(root, "catalog", lambda: (*real_catalog(), second))
+    monkeypatch.setattr(root, "visual",
                         lambda kind: Second if kind == "second" else real_class(kind))
 
     listed = app.dispatch(ListVisuals())
@@ -362,12 +377,14 @@ def test_a_visual_plays_as_the_panel_s_background(app: App, tasks: list[str]) ->
     assert profile is not None
     assert (spec.width, spec.height) == profile.resolution
     assert dict(spec.settings) == {"fire": 1.0}
-    s = app.settings.for_device(_KEY)
-    assert (s.visual, s.visual_settings) == ("trcc-pipes", {"fire": 1.0})
-    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "visual"
+    assert _chosen(app) == ("visualizer", {"visual": "trcc-pipes", "preset": "",
+                                           "settings": {"fire": 1.0}})
+    snapshot = app.dispatch(LcdSnapshot(key=_KEY))
+    assert (snapshot.display_source, snapshot.module_title) == (
+        "module", "Audio Visualizer")
     assert tasks == [task_key(_KEY)]
     observer = app._render_observer
-    assert observer._cadence_owner(_KEY) == "visual"
+    assert observer._cadence_owner(_KEY) == "module"
 
 
 @pytest.mark.parametrize(("visual", "preset", "problem"), [
@@ -379,25 +396,25 @@ def test_a_visual_plays_as_the_panel_s_background(app: App, tasks: list[str]) ->
 def test_a_visual_that_cannot_play_changes_nothing(
         app: App, visual: str, preset: str, problem: str) -> None:
     """MUTATION CHECK: drop the is_under check in ``_preset_path``."""
-    escape = app.platform.paths().visuals_dir().parent.parent / "escape.milk"
+    escape = app.platform.paths().data_dir().parent / "escape.milk"
     escape.parent.mkdir(parents=True, exist_ok=True)
     escape.write_text("[preset00]\n")
     result = app.dispatch(PlayVisual(key=_KEY, visual=visual, preset=preset))
     assert (result.ok, result.message) == (False, problem)
     assert _reader(app) is None
-    assert app.settings.for_device(_KEY).visual is None
+    assert app.settings.for_device(_KEY).module_source is None
 
 
 def test_a_milkdrop_preset_plays_from_the_visuals_folder(app: App) -> None:
     name = _preset(app)
     assert app.dispatch(PlayVisual(key=_KEY, visual="milkdrop", preset=name)).ok
-    assert _reader(app).spec.preset == app.platform.paths().visuals_dir() / name
+    assert _reader(app).spec.preset == app.platform.paths().data_dir() / "visuals" / name
 
 
 def test_a_tick_puts_the_visual_s_picture_on_the_panel(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     sent = len(_wire(app))
-    result = app.dispatch(CaptureVisualFrame(key=_KEY))
+    result = app.dispatch(CaptureSourceFrame(key=_KEY))
     assert result.ok, result.message
     assert _wire_grows(app, sent), "no picture reached the wire"
 
@@ -406,8 +423,8 @@ def test_another_source_ends_the_visual_within_a_tick(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     reader = _reader(app)
     app.settings.set_media_player_uri(_KEY, "https://example.test/a.m3u8")
-    assert app.settings.for_device(_KEY).visual is None       # exclusive
-    app.dispatch(CaptureVisualFrame(key=_KEY))
+    assert app.settings.for_device(_KEY).module_source is None       # exclusive
+    app.dispatch(CaptureSourceFrame(key=_KEY))
     assert reader.closed and _reader(app) is None
 
 
@@ -415,23 +432,23 @@ def test_a_failed_visual_ends_and_says_why(app: App) -> None:
     heard = _hear(app, ErrorOccurred)
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     _reader(app).fail = "the sound stopped"
-    assert not app.dispatch(CaptureVisualFrame(key=_KEY)).ok
+    assert not app.dispatch(CaptureSourceFrame(key=_KEY)).ok
     assert [e.message for e in heard] == ["the sound stopped"]
     assert _reader(app) is None
-    assert app.settings.for_device(_KEY).visual is None
+    assert app.settings.for_device(_KEY).module_source is None
 
 
 def test_starting_up_is_not_a_failure(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     _reader(app).ready = False
-    assert app.dispatch(CaptureVisualFrame(key=_KEY)).ok
+    assert app.dispatch(CaptureSourceFrame(key=_KEY)).ok
     assert _reader(app) is not None
 
 
 def test_stopping_gives_the_panel_back_to_its_theme(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     reader = _reader(app)
-    assert app.dispatch(StopVisual(key=_KEY)).ok
+    assert app.dispatch(ClearModuleSource(key=_KEY, module="visualizer")).ok
     assert reader.closed and _reader(app) is None
     assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "background"
 
@@ -439,7 +456,7 @@ def test_stopping_gives_the_panel_back_to_its_theme(app: App) -> None:
 def test_a_restart_resumes_the_visual_with_its_settings(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes",
                             settings={"growth": 2.0}))
-    app.media.close_visual(_KEY)                 # what a restart leaves
+    app.media.close_source(_KEY)                 # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert dict(_reader(app).spec.settings) == {"growth": 2.0}
 
@@ -447,7 +464,7 @@ def test_a_restart_resumes_the_visual_with_its_settings(app: App) -> None:
 def test_a_media_player_replaces_the_visual(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     app.dispatch(SetMediaPlayer(key=_KEY, uri="https://example.test/a.m3u8"))
-    assert app.settings.for_device(_KEY).visual is None
+    assert app.settings.for_device(_KEY).module_source is None
 
 
 def test_the_centre_picture_is_the_user_s(app: App, tmp_path: Path) -> None:
@@ -490,15 +507,18 @@ def test_the_api_plays_lists_and_confines_the_centre_picture(
 
     stopped = client.post(f"/devices/{_KEY}/display/visual", json={"visual": ""})
     assert stopped.status_code == 200
-    assert app.settings.for_device(_KEY).visual is None
+    assert app.settings.for_device(_KEY).module_source is None
 
 
 
 def test_the_gallery_lists_trcc_pipes_first_and_one_tile_per_preset() -> None:
     """Both windows build their tiles here, so they cannot list differently."""
-    from trcc.core.models import VisualInfo
-    from trcc.core.results import VisualsResult
-    from trcc.ui.presentation.visual_gallery import VisualItem, gallery_items
+    from trcc.modules.visualizer.core.models import VisualInfo
+    from trcc.modules.visualizer.core.results import VisualsResult
+    from trcc.modules.visualizer.ui.presentation.visual_gallery import (
+        VisualItem,
+        gallery_items,
+    )
 
     listed = VisualsResult(ok=True, visuals=(
         VisualInfo("trcc-pipes", "TRCC Pipes", "TRCC"),
@@ -556,7 +576,7 @@ def test_a_computer_that_cannot_hear_says_so_up_front(
 
     assert (played.ok, played.message) == (False, why)
     assert [e.message for e in heard] == [why]
-    assert app.settings.for_device(_KEY).visual is None
+    assert app.settings.for_device(_KEY).module_source is None
     assert app.dispatch(VisualTile(visual="trcc-pipes", size=32)).ok
 
 
@@ -604,9 +624,9 @@ def test_a_pulse_server_is_found_the_way_libpulse_finds_it(
 
 
 def test_the_gallery_carries_why_a_visual_cannot_play() -> None:
-    from trcc.core.models import VisualInfo
-    from trcc.core.results import VisualsResult
-    from trcc.ui.presentation.visual_gallery import gallery_items
+    from trcc.modules.visualizer.core.models import VisualInfo
+    from trcc.modules.visualizer.core.results import VisualsResult
+    from trcc.modules.visualizer.ui.presentation.visual_gallery import gallery_items
 
     listed = VisualsResult(ok=True, visuals=(
         VisualInfo("trcc-pipes", "TRCC Pipes", "TRCC", problem="no sound"),))
@@ -631,7 +651,7 @@ def test_sliders_change_the_playing_visual_live(app: App) -> None:
     assert moved.ok and moved.playing
     assert reader.adjusted == {"growth": 3.0}                    # clamped
     assert _reader(app) is reader                                # not restarted
-    assert app.settings.for_device(_KEY).visual_settings == reader.adjusted
+    assert _chosen(app)[1]["settings"] == reader.adjusted
     assert [e.key for e in heard] == [_KEY]
     listed = app.dispatch(ListVisuals(key=_KEY))
     assert (listed.playing, listed.sliders) == ("trcc-pipes", reader.adjusted)
@@ -646,7 +666,7 @@ def test_a_slider_the_visual_lacks_is_refused_out_loud(app: App) -> None:
     assert (refused.ok, refused.message) == (
         False, "TRCC Pipes has no slider warp")
     assert [e.message for e in heard] == [refused.message]
-    assert app.settings.for_device(_KEY).visual_settings == {}
+    assert _chosen(app)[1]["settings"] == {}
 
 
 def test_sliders_need_a_playing_visual(app: App) -> None:
@@ -676,7 +696,7 @@ def test_the_reader_hands_sliders_to_its_engine_between_pictures() -> None:
     it draws.  The real VisualReader, a scripted beat, a recording engine."""
     import threading
 
-    from trcc.services.visual_stream import VisualReader
+    from trcc.modules.visualizer.services.visual_stream import VisualReader
 
     seen: list[tuple[str, object]] = []
     adjusted = threading.Event()
@@ -705,19 +725,19 @@ def test_the_uis_hear_when_the_visual_stops_and_starts_hearing(
         app: App) -> None:
     """On the change only -- never a line per tick.  MUTATION CHECK: drop
     the ``!= reader.announced`` guard and this hears every tick."""
-    from trcc.core.events import VisualHearingChanged
+    from trcc.modules.visualizer.core.events import VisualHearingChanged
 
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     reader = _reader(app)
     heard = _hear(app, VisualHearingChanged)
 
-    app.dispatch(CaptureVisualFrame(key=_KEY))
-    reader.hearing = False
+    app.dispatch(CaptureSourceFrame(key=_KEY))
+    reader.heard = False
     for _ in range(3):
-        app.dispatch(CaptureVisualFrame(key=_KEY))
+        app.dispatch(CaptureSourceFrame(key=_KEY))
     assert not app.dispatch(ListVisuals(key=_KEY)).hearing
-    reader.hearing = True
-    app.dispatch(CaptureVisualFrame(key=_KEY))
+    reader.heard = True
+    app.dispatch(CaptureSourceFrame(key=_KEY))
 
     assert [(e.key, e.hearing) for e in heard] == [(_KEY, False), (_KEY, True)]
     assert app.dispatch(ListVisuals(key=_KEY)).hearing
@@ -742,8 +762,8 @@ def test_the_reader_knows_silence_from_sound(
     late read look like 0.3 s of silence -- 2 failures in 3 runs.  A reader
     that never hears, or never notices silence, still fails at the deadline.
     """
-    from trcc.services import visual_stream
-    from trcc.services.visual_stream import VisualReader
+    from trcc.modules.visualizer.services import visual_stream
+    from trcc.modules.visualizer.services.visual_stream import VisualReader
 
     monkeypatch.setattr(visual_stream, "_SILENCE_S", 0.3)
     reader = VisualReader(VisualSpec("trcc-pipes", 32, 32), sound, TrccPipes)
@@ -772,12 +792,13 @@ def test_closing_the_reader_mid_read_is_a_stop_not_a_failure(
     """A read that fails because the reader is closing is the stop itself:
     no error, no WARNING in the user's report.  MUTATION CHECK: drop the
     ``_stop`` test in ``_listen_and_draw``'s ``except OSError``."""
-    from trcc.services.visual_stream import VisualReader
+    from trcc.modules.visualizer.services.visual_stream import VisualReader
 
     reader = VisualReader(VisualSpec("trcc-pipes", 32, 32), _FailsWhenClosed,
                           TrccPipes)
     time.sleep(0.2)
-    with caplog.at_level("WARNING", logger="trcc.services.visual_stream"):
+    with caplog.at_level("WARNING",
+                         logger="trcc.modules.visualizer.services.visual_stream"):
         reader.close()
     assert reader._error == ""
     assert not [r for r in caplog.records if r.levelname == "WARNING"]
@@ -996,7 +1017,7 @@ def test_the_reader_thread_enters_the_platform_s_worker_context() -> None:
     import threading
     from contextlib import contextmanager
 
-    from trcc.services.visual_stream import VisualReader
+    from trcc.modules.visualizer.services.visual_stream import VisualReader
 
     entered: list[str] = []
     done = threading.Event()
@@ -1102,7 +1123,7 @@ def test_a_saved_theme_keeps_its_visual_and_plays_it_when_picked(
     assert app.dispatch(LoadTheme(key=_KEY, path=Path(saved.theme_path))).ok
     assert (_reader(app).spec.kind, dict(_reader(app).spec.settings)) == (
         "trcc-pipes", {"growth": 2.0})
-    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "visual"
+    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "module"
 
 
 def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
@@ -1113,9 +1134,9 @@ def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     changes.clear()
     app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Plain")))
-    assert app.settings.for_device(_KEY).visual is None
+    assert app.settings.for_device(_KEY).module_source is None
     assert _KEY in [e.key for e in changes]                 # every UI hears
-    app.media.close_visual(_KEY)                            # what a restart leaves
+    app.media.close_source(_KEY)                            # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert _reader(app) is None
 
@@ -1123,7 +1144,7 @@ def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
 def _visual_theme(app: App, root: Path, payload: object) -> Path:
     """A theme whose background is a visual JSON holding *payload*."""
     folder = _theme(root, "Visual")
-    stored = app.platform.paths().user_visual_background_dir() / "x"
+    stored = app.platform.paths().user_data_dir() / "visual_background" / "x"
     stored.mkdir(parents=True)
     (stored / "config.json").write_text(json.dumps(payload))
     manifest = json.loads((folder / "trcc.json").read_text())
@@ -1154,10 +1175,10 @@ def test_an_unplayable_visual_theme_does_not_keep_the_last_visual(
     changes.clear()
     folder = _visual_theme(app, tmp_path, {"visual": "no-such-visual"})
     assert app.dispatch(LoadTheme(key=_KEY, path=folder)).ok
-    assert app.settings.for_device(_KEY).visual is None
-    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source != "visual"
+    assert app.settings.for_device(_KEY).module_source is None
+    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source != "module"
     assert _KEY in [e.key for e in changes]                 # every UI hears
-    app.media.close_visual(_KEY)                            # what a restart leaves
+    app.media.close_source(_KEY)                            # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert _reader(app) is None
 
@@ -1175,5 +1196,7 @@ def test_a_visual_background_is_read_or_refused(
         app: App, tmp_path: Path, payload: object, expected: object) -> None:
     folder = _visual_theme(app, tmp_path, payload)
     theme = app.themes.load(folder)
-    assert (app.themes.visual(theme), app.themes.background_path(theme)) == (
+    found = app.themes.module_background(theme)
+    read = visualizer_app._choice(found[2], _KEY) if found is not None else None
+    assert (read, app.themes.background_path(theme)) == (
         expected, None)                                     # drawn, never a file

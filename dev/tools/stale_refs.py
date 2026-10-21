@@ -315,7 +315,7 @@ _MUST_RESOLVE = [
      "registry-dispatched via PLATFORMS[key]"),
     ("trcc.adapters.diagnostics.health", "package_install_hint",
      "DEAD but present — deadness is a different question from existence"),
-    ("trcc.adapters.visual._spectrum", "HOLD",
+    ("trcc.modules.visualizer.adapters._spectrum", "HOLD",
      "bound by tuple assignment: HOLD, GRAVITY = 0.35, 5.0"),
     ("trcc.adapters.visual._gl", "GL_FRAGMENT_SHADER",
      "bound by tuple assignment beside GL_VERTEX_SHADER"),

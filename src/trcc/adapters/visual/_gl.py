@@ -24,7 +24,6 @@ exports.  Reimplemented here in ``ctypes``; no code is copied.
 from __future__ import annotations
 
 import ctypes
-import functools
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
@@ -597,20 +596,6 @@ class CglSurface(GlSurface):
 
 
 # ── drawing helpers ──────────────────────────────────────────────────────
-#: Every visual's GLSL, one ``.glsl`` file per shader -- the one home, so a
-#: shader is read, packaged and reviewed the same way whichever visual draws
-#: it.  Bodies only: :func:`program` puts the ``#version`` header on.
-SHADERS = Path(__file__).resolve().parents[2] / "assets" / "shaders"
-
-
-@functools.cache
-def shader(name: str) -> str:
-    """The GLSL in ``SHADERS/name`` -- read once, then kept."""
-    text = (SHADERS / name).read_text(encoding="utf-8")
-    log.debug("shader: %s, %d characters", name, len(text))
-    return text
-
-
 #: GLSL 1.30, the oldest OpenGL 3; 1.50 core where nothing older is offered
 #: (macOS).  The fragment shader writes ``FRAG_COLOUR`` in either.
 _HEADERS = (

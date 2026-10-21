@@ -20,16 +20,34 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, TypeVar
 
 from ..core.errors import ModuleUnavailable
-from ..core.models import ModuleInfo, ModuleManifest
-from ..core.ports import Module, ModuleHost
+from ..core.models import ModuleInfo, ModuleManifest, RawFrame
+from ..core.ports import (
+    BackgroundKind,
+    BackgroundPort,
+    FilesPort,
+    FrameSource,
+    GpuPort,
+    Module,
+    ModuleHost,
+    ModuleServices,
+    PanelsPort,
+    SettingsPort,
+    SoundInput,
+    SoundPort,
+    ThemesPort,
+)
 from .settings import Settings
 
 log = logging.getLogger(__name__)
+
+_C = TypeVar("_C", bound=type)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,46 +72,237 @@ class ModuleSpec:
                    loaded)
 
 
-class ModuleScope(ModuleHost):
-    """One module's view of its host: only the capabilities its manifest
-    declares, and every subscription it made -- all taken back when it is
-    switched off, so a module cannot leak a listener even if it forgets."""
+class _Panels(PanelsPort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Panels.__init__")
+        self._services = services
 
-    def __init__(self, host: ModuleHost, manifest: ModuleManifest) -> None:
+    def attached(self) -> tuple[str, ...]:
+        log.debug("_Panels.attached")
+        return self._services.panel_keys()
+
+    def size(self, key: str) -> tuple[int, int] | None:
+        log.debug("_Panels.size")
+        return self._services.panel_size(key)
+
+
+class _Background(BackgroundPort):
+    def __init__(self, services: ModuleServices, module: str) -> None:
+        log.debug("_Background.__init__: %s", module)
+        self._services, self._module = services, module
+
+    def show(self, key: str, source: FrameSource, fps: float) -> None:
+        log.info("background.show: %s on %s", self._module, key)
+        self._services.show_source(self._module, key, source, fps)
+
+    def end(self, key: str, keep_choice: bool = False) -> None:
+        log.info("background.end: %s on %s keep=%s", self._module, key, keep_choice)
+        self._services.end_source(key, keep_choice)
+
+    def source(self, key: str) -> FrameSource | None:
+        log.debug("_Background.source")
+        return self._services.source(key)
+
+    def draws(self, key: str) -> bool:
+        log.debug("_Background.draws")
+        return self._services.panel_source(key) == self._module
+
+
+class _Settings(SettingsPort):
+    def __init__(self, services: ModuleServices, module: str) -> None:
+        log.debug("_Settings.__init__: %s", module)
+        self._services, self._module = services, module
+
+    def app(self) -> dict[str, Any]:
+        log.debug("_Settings.app")
+        return self._services.module_settings(self._module)
+
+    def save_app(self, data: Mapping[str, Any]) -> None:
+        log.debug("_Settings.save_app")
+        self._services.save_module_settings(self._module, data)
+
+    def panel(self, key: str) -> dict[str, Any]:
+        log.debug("_Settings.panel")
+        return self._services.panel_settings(self._module, key)
+
+    def save_panel(self, key: str, data: Mapping[str, Any]) -> None:
+        log.debug("_Settings.save_panel")
+        self._services.save_panel_settings(self._module, key, data)
+
+
+class _Themes(ThemesPort):
+    def __init__(self, scope: ModuleScope) -> None:
+        log.debug("_Themes.__init__")
+        self._scope = scope
+
+    def add_kind(self, kind: BackgroundKind) -> None:
+        log.debug("_Themes.add_kind")
+        self._scope._add_kind(kind)
+
+
+class _Sound(SoundPort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Sound.__init__")
+        self._services = services
+
+    def input(self) -> SoundInput:
+        log.debug("_Sound.input")
+        return self._services.sound_input()
+
+    def problem(self) -> str:
+        log.debug("_Sound.problem")
+        return self._services.sound_problem()
+
+    def worker_thread(self) -> AbstractContextManager[None]:
+        log.debug("_Sound.worker_thread")
+        return self._services.worker_thread()
+
+
+class _Gpu(GpuPort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Gpu.__init__")
+        self._services = services
+
+    def surface(self) -> type | None:
+        log.debug("_Gpu.surface")
+        return self._services.gl_surface()
+
+    def substitute(self, cls: _C) -> _C:
+        log.debug("_Gpu.substitute")
+        return self._services.substitute(cls)
+
+
+class _Files(FilesPort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Files.__init__")
+        self._services = services
+
+    def data_root(self) -> Path:
+        log.debug("_Files.data_root")
+        return self._services.data_root()
+
+    def encode_png(self, frame: RawFrame) -> bytes:
+        log.debug("_Files.encode_png")
+        return self._services.encode_png(frame)
+
+
+class ModuleScope(ModuleHost):
+    """One module's view of the App: only the capabilities its manifest
+    declares, with its own key bound in -- and everything it still holds is
+    taken back when it is switched off (its subscriptions, its background
+    kinds, the panels it draws, each keeping its choice), so a module cannot
+    leak even if it forgets."""
+
+    def __init__(self, services: ModuleServices, manifest: ModuleManifest) -> None:
         log.debug("ModuleScope: %s %s", manifest.key, manifest.capabilities)
-        self._host, self._manifest = host, manifest
+        self._services, self._manifest = services, manifest
+        self._key = manifest.key
         self._subscriptions: list[tuple[Any, Any]] = []
+        self._kinds: list[str] = []
+        self._ports: dict[str, Any] = {
+            "panels": _Panels(services),
+            "background": _Background(services, self._key),
+            "settings": _Settings(services, self._key),
+            "themes": _Themes(self),
+            "sound": _Sound(services),
+            "gpu": _Gpu(services),
+            "files": _Files(services),
+        }
 
     def publish(self, event: Any) -> None:
-        log.debug("ModuleScope.publish: %s %s", self._manifest.key,
-                  type(event).__name__)
-        self._host.publish(event)
+        log.debug("ModuleScope.publish: %s %s", self._key, type(event).__name__)
+        self._services.publish(event)
 
     def subscribe(self, event_type: Any, handler: Any) -> None:
         self._need("events")
-        log.info("ModuleScope.subscribe: %s hears %s", self._manifest.key,
+        log.info("ModuleScope.subscribe: %s hears %s", self._key,
                  event_type.__name__)
-        self._host.subscribe(event_type, handler)
+        self._services.subscribe(event_type, handler)
         self._subscriptions.append((event_type, handler))
 
     def unsubscribe(self, event_type: Any, handler: Any) -> None:
-        log.info("ModuleScope.unsubscribe: %s %s", self._manifest.key,
-                 event_type.__name__)
-        self._host.unsubscribe(event_type, handler)
+        log.info("ModuleScope.unsubscribe: %s %s", self._key, event_type.__name__)
+        self._services.unsubscribe(event_type, handler)
         if (event_type, handler) in self._subscriptions:
             self._subscriptions.remove((event_type, handler))
 
-    def release(self) -> None:
-        """Take back everything the module still holds."""
-        log.info("ModuleScope.release: %s, %d subscription(s)",
-                 self._manifest.key, len(self._subscriptions))
+    @property
+    def panels(self) -> PanelsPort:
+        log.debug("ModuleScope.panels")
+        return self._port("panels")
+
+    @property
+    def background(self) -> BackgroundPort:
+        log.debug("ModuleScope.background")
+        return self._port("background")
+
+    @property
+    def settings(self) -> SettingsPort:
+        log.debug("ModuleScope.settings")
+        return self._port("settings")
+
+    @property
+    def themes(self) -> ThemesPort:
+        log.debug("ModuleScope.themes")
+        return self._port("themes")
+
+    @property
+    def sound(self) -> SoundPort:
+        log.debug("ModuleScope.sound")
+        return self._port("sound")
+
+    @property
+    def gpu(self) -> GpuPort:
+        log.debug("ModuleScope.gpu")
+        return self._port("gpu")
+
+    @property
+    def files(self) -> FilesPort:
+        log.debug("ModuleScope.files")
+        return self._port("files")
+
+    def _port(self, capability: str) -> Any:
+        """The port for *capability*, if the manifest declares it."""
+        log.debug("ModuleScope._port")
+        self._need(capability)
+        return self._ports[capability]
+
+    def _add_kind(self, kind: BackgroundKind) -> None:
+        """A background kind the module draws -- one its manifest declares."""
+        if kind.prefix not in self._manifest.backgrounds:
+            raise ModuleUnavailable(
+                f"{self._manifest.title} draws {kind.prefix!r} backgrounds "
+                "without declaring them in its module.json")
+        log.info("ModuleScope._add_kind: %s %s", self._key, kind.prefix)
+        self._services.add_background_kind(self._key, kind)
+        self._kinds.append(kind.prefix)
+
+    def resumed(self) -> None:
+        """The module has started: its panels draw again."""
+        log.info("ModuleScope.resumed: %s", self._key)
+        self._services.resume_backgrounds(self._key)
+
+    def release(self, end_sources: bool = True) -> None:
+        """Take back everything the module still holds.  *end_sources*: stop
+        the panels it draws, each keeping its choice -- not while the App is
+        closing, which stops every panel anyway."""
+        log.info("ModuleScope.release: %s, %d subscription(s), kinds %s",
+                 self._key, len(self._subscriptions), self._kinds)
         for event_type, handler in reversed(self._subscriptions):
-            self._host.unsubscribe(event_type, handler)
+            self._services.unsubscribe(event_type, handler)
         self._subscriptions.clear()
+        for prefix in self._kinds:
+            self._services.remove_background_kind(prefix)
+        self._kinds.clear()
+        if end_sources:
+            for key in self._services.panel_keys():
+                if (self._services.panel_source(key) == self._key
+                        and self._services.source(key) is not None):
+                    self._services.end_source(key, keep_choice=True)
 
     def _need(self, capability: str) -> None:
         """Refuse a capability the manifest does not declare."""
-        log.debug("ModuleScope._need: %s %s", self._manifest.key, capability)
+        log.debug("ModuleScope._need: %s %s", self._key, capability)
         if capability not in self._manifest.capabilities:
             raise ModuleUnavailable(
                 f"{self._manifest.title} asked for {capability!r} without "
@@ -103,7 +312,7 @@ class ModuleScope(ModuleHost):
 class ModuleRunner:
     """The modules an App has, which are on, and which are running."""
 
-    def __init__(self, specs: Mapping[str, ModuleSpec], host: ModuleHost,
+    def __init__(self, specs: Mapping[str, ModuleSpec], host: ModuleServices,
                  settings: Settings) -> None:
         log.info("ModuleRunner: %s", sorted(specs))
         self._specs = dict(specs)
@@ -120,6 +329,10 @@ class ModuleRunner:
 
     def __contains__(self, key: object) -> bool:
         return key in self._specs
+
+    def __iter__(self) -> Iterator[str]:
+        """Every module's key, on or off."""
+        return iter(sorted(self._specs))
 
     def manifest(self, key: str) -> ModuleManifest:
         """What module *key* is -- known without loading it."""
@@ -212,7 +425,7 @@ class ModuleRunner:
         with self._lock:
             for key in sorted(self._on):
                 try:
-                    self._disable(key)
+                    self._disable(key, end_sources=False)
                 except ModuleUnavailable as e:
                     log.warning("close: %s did not switch off cleanly: %s", key, e)
             self._session = False
@@ -259,9 +472,15 @@ class ModuleRunner:
             self._on.discard(key)
             raise ModuleUnavailable(f"{module.title} did not start: {e}") from e
         self._started.add(key)
+        try:
+            self._scopes[key].resumed()
+        except Exception:
+            # Its panels stay as they are; the module itself is running.
+            log.exception("_start: %s's panels did not resume", key)
 
-    def _disable(self, key: str) -> None:
-        """Stop *key* if it runs, then take its features out."""
+    def _disable(self, key: str, end_sources: bool = True) -> None:
+        """Stop *key* if it runs, then take its features out -- and, unless
+        the App is closing, end the panels it draws (each keeps its choice)."""
         module = self._modules[key]
         log.debug("ModuleRunner._disable: %s started=%s", key, key in self._started)
         try:
@@ -272,7 +491,7 @@ class ModuleRunner:
             log.exception("_disable: %s failed while switching off", key)
             raise ModuleUnavailable(f"{module.title} did not switch off cleanly: {e}") from e
         finally:
-            self._scopes[key].release()
+            self._scopes[key].release(end_sources)
             self._started.discard(key)
             self._on.discard(key)
 

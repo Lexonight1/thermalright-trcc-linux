@@ -58,7 +58,6 @@ from .device_selection import DeviceSelection
 from .panels import (
     AboutPanel,
     ActivitySidebar,
-    AudioVisualsPanel,
     CloudThemeBrowser,
     ConfigurationPanel,
     DevicePanel,
@@ -133,8 +132,6 @@ class MainWindow(QMainWindow):
             "themes":  LocalThemeBrowser(app, self._bus, self,
                                     selection=self._lcd_selection),
             "cloud":   CloudThemeBrowser(app, self._bus, self,
-                                    selection=self._lcd_selection),
-            "visuals": AudioVisualsPanel(app, self._bus, self,
                                     selection=self._lcd_selection),
             "masks":   MaskBrowser(app, self._bus, self,
                                     selection=self._lcd_selection),

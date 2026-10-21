@@ -4,9 +4,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import uuid4
 
 from .._safe import is_safe_user_name, is_under
@@ -49,6 +49,7 @@ from ..results import (
     FileEntry,
     MasksListResult,
     MaskUploadResult,
+    Result,
     ThemeDcExportResult,
     ThemeExportResult,
     ThemeImportResult,
@@ -176,6 +177,31 @@ class LoadTheme(Command[ThemeResult]):
     # of reverting to the theme's bundled layout/background.
     reset_overrides: bool = True
 
+    def _play_module_background(self, app: App, theme: Theme, ref: str,
+                                prefix: str, payload: dict[str, Any]) -> Result | None:
+        """Hand *theme*'s module background to the module that draws it --
+        or, while that module is off, keep it waiting for it.  None when it
+        did not play."""
+        kind = app.background_kind(prefix)
+        if kind is not None:
+            log.info("LoadTheme: %s's background is %s — the module plays it",
+                     theme.name, ref)
+            played = kind.play(self.key, payload)
+            if not played.ok:
+                log.warning("LoadTheme: %s's background cannot play (%s) — "
+                            "showing the theme without it", theme.name,
+                            played.message)
+            return played
+        owner = app.background_owner(prefix)
+        if owner is None:
+            log.warning("LoadTheme: %s's background %s is drawn by no installed "
+                        "module — showing the theme without it", theme.name, ref)
+            return None
+        log.info("LoadTheme: %s's background waits for the %s module",
+                 theme.name, owner)
+        app.settings.set_pending_background(self.key, ref)
+        return None
+
     def _loaded(
         self, theme: Theme, path: str, *, ok: bool, message: str,
     ) -> ThemeResult:
@@ -198,6 +224,20 @@ class LoadTheme(Command[ThemeResult]):
         )
 
     def execute(self, app: App) -> ThemeResult:
+        """Load the theme -- and say so when its background needs a module
+        that is off: the theme shows its mask and readings, and its
+        background plays the moment that module is on."""
+        result = self._load(app)
+        needs = waiting_module(app, self.key)
+        if not needs or not result.theme_name:
+            return result
+        log.info("LoadTheme: %s needs the %s module for its background",
+                 result.theme_name, needs)
+        return replace(result, needs_module=needs,
+                       message=f"{result.message} -- its background needs "
+                               f"{needs}: turn it on in Modules")
+
+    def _load(self, app: App) -> ThemeResult:
         log.info("LoadTheme: key=%s path=%s reset_overrides=%s",
                  self.key, self.path, self.reset_overrides)
         try:
@@ -255,16 +295,20 @@ class LoadTheme(Command[ThemeResult]):
                 "in place, not stopping it first",
                 theme.name, video_path.name,
             )
-        # An audio visual is a background like a picture or a video: a theme
-        # picked without one ends the one playing, and a restart does not bring
-        # it back over the theme.  Its driver ends itself within a tick.
-        visual = app.themes.visual(theme)
-        if (self.reset_overrides and visual is None
-                and app.settings.for_device(self.key).visual is not None):
-            log.info("LoadTheme: %s has no audio visual — ending the one "
-                     "playing", theme.name)
-            app.settings.set_visual(self.key, None)
-            _publish_background(app, self.key)
+        # A module's background (an audio visual) is a background like a
+        # picture or a video: a theme picked without one ends the one drawing
+        # -- its driver ends itself within a tick -- and a restart does not
+        # bring it back over the theme.  One still waiting for its module
+        # stops waiting.
+        module_bg = app.themes.module_background(theme)
+        if self.reset_overrides and module_bg is None:
+            if app.settings.for_device(self.key).module_source is not None:
+                log.info("LoadTheme: %s has no module background — ending "
+                         "the one drawing", theme.name)
+                app.settings.set_module_source(self.key, None)
+                _publish_background(app, self.key)
+            if app.settings.for_device(self.key).pending_background is not None:
+                app.settings.set_pending_background(self.key, None)
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
             "LoadTheme: %s loaded — prior playback + cloud-bg override "
@@ -501,30 +545,24 @@ class LoadTheme(Command[ThemeResult]):
                      "dispatching SetMediaPlayer", theme.name, media_uri)
             app.dispatch(SetMediaPlayer(key=self.key, uri=media_uri))
 
-        # Visual-backed theme: its background is the audio visual, the mask and
-        # metrics drawn on top.  Picked, it plays; on a restore the device's
-        # own choice stands (``RestoreDeviceState`` resumes it).  A visual this
-        # computer cannot play leaves the mask and metrics, and says why.
-        if visual is not None and self.reset_overrides:
-            from .visual import PlayVisual
-            kind, preset, sliders = visual
-            log.info("LoadTheme: %s has the audio visual %s %r — dispatching "
-                     "PlayVisual", theme.name, kind, preset)
-            played = app.dispatch(PlayVisual(key=self.key, visual=kind,
-                                             preset=preset, settings=sliders))
-            if played.ok:
+        # A theme whose background a module draws (an audio visual): the mask
+        # and metrics drawn on top.  Picked, its module plays it; on a restore
+        # the device's own choice stands (``RestoreDeviceState`` resumes it).
+        # One that cannot play leaves the mask and metrics, and says why; one
+        # whose module is off waits for it (``pending_background``).
+        if module_bg is not None and self.reset_overrides:
+            played = self._play_module_background(app, theme, *module_bg)
+            if played is not None and played.ok:
                 return self._loaded(
                     theme, theme_path_str, ok=True,
                     message=f"Theme '{theme.name}' loaded — {played.message}")
-            log.warning("LoadTheme: %s's audio visual cannot play (%s) — "
-                        "showing the theme without it", theme.name, played.message)
-            # PlayVisual refused before recording a choice, so the one that was
-            # playing still stood: the status kept saying "visual" and the next
-            # reconnect brought it back over this theme.
-            if app.settings.for_device(self.key).visual is not None:
-                log.info("LoadTheme: %s — ending the visual that was playing",
-                         theme.name)
-                app.settings.set_visual(self.key, None)
+            # A refused play recorded no choice, so the one that was drawing
+            # still stood: the status kept naming it and the next reconnect
+            # brought it back over this theme.
+            if app.settings.for_device(self.key).module_source is not None:
+                log.info("LoadTheme: %s — ending the module background that "
+                         "was drawing", theme.name)
+                app.settings.set_module_source(self.key, None)
                 _publish_background(app, self.key)
 
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
@@ -611,6 +649,16 @@ class LoadTheme(Command[ThemeResult]):
                 message=f"Theme '{theme.name}' loaded and sent ({len(frame)} bytes)"
                      if sent else f"Theme '{theme.name}' rendered but send failed",
             )
+
+def waiting_module(app: App, key: str) -> str:
+    """The title of the module a theme background on *key* waits for -- ""
+    when none waits.  Every UI's "module required" notice reads it."""
+    pending = app.settings.for_device(key).pending_background
+    owner = app.background_owner(pending.split("/", 1)[0]) if pending else None
+    title = app.modules.manifest(owner).title if owner else ""
+    log.debug("waiting_module: %s -> %r", key, title)
+    return title
+
 
 def _composed_resolution(
     app: App, key: str, theme: Theme, s: DeviceSettings,
@@ -894,8 +942,8 @@ class SaveTheme(Command[ThemeResult]):
                                        width, height)
         # The background is one thing: a picture, a video -- or an audio
         # visual, its settings in its own JSON like any library asset.
-        bg_ref = (app.themes.store_visual(s.visual, s.visual_preset,
-                                          s.visual_settings) if s.visual
+        bg_ref = (self._store_module_background(app, s.module_source)
+                  if s.module_source
                   else self._store_background(app, theme, s, width, height))
         if bg_ref is not None:
             manifest["background"] = bg_ref
@@ -991,6 +1039,16 @@ class SaveTheme(Command[ThemeResult]):
             log.warning("SaveTheme: %s override %s does not exist; falling "
                         "back to source theme %s", kind, cand, kind)
         return source
+
+    def _store_module_background(self, app: App, module: str) -> str | None:
+        """The live background *module* draws, stored as the theme's -- its
+        settings, from the module itself.  None when it is off or draws
+        nothing here (the theme then has no background of its own)."""
+        kind = app.background_kind_of(module)
+        payload = kind.snapshot(self.key) if kind is not None else None
+        log.info("SaveTheme: %s's %s background -> %s", self.key, module, payload)
+        return (app.themes.store_background_config(kind.prefix, payload)
+                if kind is not None and payload is not None else None)
 
     def _store_background(
         self,
@@ -2024,13 +2082,11 @@ class RestoreDeviceState(Command[ThemeResult]):
             )
 
         s = app.settings.for_device(self.key)
-        if s.visual:
-            from .visual import PlayVisual
-            log.info("RestoreDeviceState: %s resuming its audio visual %s %r",
-                     self.key, s.visual, s.visual_preset)
-            app.dispatch(PlayVisual(key=self.key, visual=s.visual,
-                                    preset=s.visual_preset,
-                                    settings=dict(s.visual_settings)))
+        if s.module_source or s.pending_background:
+            log.info("RestoreDeviceState: %s resuming its module background "
+                     "(%s, waiting %s)", self.key, s.module_source,
+                     s.pending_background)
+            app.resume_background(self.key)
         elif s.media_player_uri:
             log.info("RestoreDeviceState: %s resuming its media player %s",
                      self.key, s.media_player_uri)

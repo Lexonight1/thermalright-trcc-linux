@@ -15,8 +15,10 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ...core.models import RawFrame, VisualSpec
+from trcc.core.logs import per_frame
+from trcc.core.models import RawFrame
+
+from ..core.models import VisualSpec
 from ._base import BaseVisual
 from ._fire import Fire, burned_picture
 

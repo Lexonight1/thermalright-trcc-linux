@@ -21,8 +21,9 @@ from typing import Any
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ...core.models import VISUAL_FPS
+from trcc.core.logs import per_frame
+
+from ..core.models import VISUAL_FPS
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

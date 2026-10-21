@@ -104,8 +104,11 @@ def _fields(cls: type) -> list[tuple[str, str, bool]]:
 
 
 def generate() -> str:
+    from trcc.adapters.modules import specs
     from trcc.core.commands._base import Query
     from trcc.ipc import COMMAND_TYPES
+
+    specs()   # every built-in module's core/: its Commands are TRCC's too
 
     entries = sorted(COMMAND_TYPES.items())
     queries = [c for _n, c in entries if issubclass(c, Query)]
@@ -158,7 +161,10 @@ def generate() -> str:
 
     by_group: dict[str, list[tuple[str, type]]] = {}
     for name, cls in entries:
-        module = cls.__module__.rsplit(".", 1)[-1].lstrip("_")
+        parts = cls.__module__.split(".")
+        # A module's Commands are grouped under it -- ``trcc.modules.<key>``.
+        module = (f"{parts[2]} module" if parts[:2] == ["trcc", "modules"]
+                  else parts[-1].lstrip("_"))
         by_group.setdefault(module, []).append((name, cls))
 
     ordered = [g for g in _GROUPS if g in by_group]

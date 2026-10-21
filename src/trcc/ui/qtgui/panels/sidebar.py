@@ -55,7 +55,6 @@ _ENTRIES: tuple[_Entry, ...] = (
     _Entry("preview",    "Preview"),
     _Entry("themes",     "Themes"),
     _Entry("cloud",      "Cloud themes"),
-    _Entry("visuals",    "Audio visuals"),
     _Entry("masks",      "Masks"),
     _Entry("overlay",    "Overlay editor"),
     _Entry("screencast", "Screencast"),

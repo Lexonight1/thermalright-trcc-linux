@@ -8,7 +8,7 @@ it becomes that panel's background; any other background ends it.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QImage, QPixmap
@@ -21,7 +21,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import (
+from trcc.core.events import BackgroundChanged
+from trcc.ui.qt_background import dispatch_in_background
+from trcc.ui.qtgui.device_picker import DevicePickerWidget
+from trcc.ui.qtgui.panels._browser_base import AssetBrowserPanel
+
+from ...core.commands import (
     ListVisuals,
     PlayVisual,
     SetVisualCenter,
@@ -29,14 +34,11 @@ from ....core.commands import (
     SetVisualSettings,
     VisualTile,
 )
-from ....core.events import BackgroundChanged, VisualHearingChanged
-from ....core.results import VisualsResult
-from ...presentation.visual_gallery import VisualItem, gallery_items
-from ...qt_background import dispatch_in_background
-from ...qt_visual_controls import VisualControls
-from ...qt_visual_tiles import VisualTiles
-from ..device_picker import DevicePickerWidget
-from ._browser_base import AssetBrowserPanel
+from ...core.events import VisualHearingChanged
+from ...core.results import VisualsResult
+from ..presentation.visual_gallery import VisualItem, gallery_items
+from ..visual_controls import VisualControls
+from ..visual_tiles import VisualTiles
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QShowEvent
@@ -49,6 +51,9 @@ _TILE = 96
 
 class AudioVisualsPanel(AssetBrowserPanel):
     """Pick an audio visual as a panel's background."""
+
+    #: Its entry in the sidebar, just above Modules.
+    LABEL: ClassVar[str] = "Audio visuals"
 
     def _setup_ui(self) -> None:
         log.debug("AudioVisualsPanel._setup_ui")
@@ -66,6 +71,7 @@ class AudioVisualsPanel(AssetBrowserPanel):
                                         self._center_command,
                                             self._picture_command, self)
         self._picker.key_changed.connect(self._on_key_changed)
+        self._bus.forward(VisualHearingChanged, "settings_changed")
         self._bus.settings_changed.connect(
             self._on_settings_changed, type=Qt.ConnectionType.QueuedConnection)
 
@@ -197,3 +203,6 @@ class AudioVisualsPanel(AssetBrowserPanel):
         result = self.dispatch(PlayVisual(key=key, visual=item.visual,
                                           preset=item.preset))
         self._status.setText(result.message)
+
+
+PANEL = AudioVisualsPanel

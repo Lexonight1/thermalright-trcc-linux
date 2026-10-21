@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-65 ports.
+75 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -16,23 +16,29 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
-| [`ModuleCommand`](#modulecommand) | 1 | 1 | 0 |
-| [`ModuleQuery`](#modulequery) | 1 | 0 | 0 |
+| [`ModuleCommand`](#modulecommand) | 1 | 1 | 6 |
+| [`ModuleQuery`](#modulequery) | 1 | 0 | 2 |
 | [`Query`](#query) | 1 | 0 | 46 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
+| [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
-| [`BaseModule`](#basemodule) | 2 | 0 | 0 |
+| [`BaseModule`](#basemodule) | 2 | 0 | 1 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
+| [`FilesPort`](#filesport) | 2 | 0 | 1 |
+| [`FrameSource`](#framesource) | 2 | 0 | 1 |
 | [`GlSurface`](#glsurface) | 2 | 1 | 3 |
+| [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Module`](#module) | 2 | 9 | 0 |
+| [`Module`](#module) | 2 | 9 | 1 |
+| [`PanelsPort`](#panelsport) | 2 | 0 | 1 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
+| [`BackgroundKind`](#backgroundkind) | 3 | 0 | 1 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 2 |
@@ -45,21 +51,24 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
-| [`ModuleHost`](#modulehost) | 3 | 0 | 2 |
+| [`ModuleHost`](#modulehost) | 3 | 7 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`SoundInput`](#soundinput) | 3 | 0 | 3 |
+| [`SoundPort`](#soundport) | 3 | 0 | 1 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_DeviceIoPort`](#_deviceioport) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
+| [`BackgroundPort`](#backgroundport) | 4 | 0 | 1 |
 | [`BaseScsiTransport`](#basescsitransport) | 4 | 5 | 4 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
-| [`Paths`](#paths) | 4 | 12 | 5 |
+| [`Paths`](#paths) | 4 | 10 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
+| [`SettingsPort`](#settingsport) | 4 | 0 | 1 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
@@ -73,8 +82,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 20 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 10 | 8 |
-| [`ContentStore`](#contentstore) | 29 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 23 | 0 | 1 |
+| [`Platform`](#platform) | 25 | 9 | 8 |
+| [`ContentStore`](#contentstore) | 30 | 0 | 1 |
 
 ---
 
@@ -92,7 +102,7 @@ _run(now: 'float') -> float
 
 **You inherit (4):** `key` · `run_once` · `wait` · `wake`
 
-**Implementations (6):** `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver` · `VisualDriver`
+**Implementations (6):** `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `StreamDriver`
 
 ## Command
 
@@ -108,7 +118,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (164):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BuildPreview` · `CaptureScreencastFrame` · `CaptureStreamFrame` · `CaptureVisualFrame` · `CheckForUpdate` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `StopVisual` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
+**Implementations (164):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BuildPreview` · `CaptureScreencastFrame` · `CaptureSourceFrame` · `CaptureStreamFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
 
 ## CpuSource
 
@@ -182,7 +192,7 @@ run(module: 'M') -> R_co
 
 **You inherit (1):** `execute`
 
-**Implementations (0):** _none yet_
+**Implementations (6):** `ListVisuals` · `PlayVisual` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `VisualTile`
 
 ## ModuleQuery
 
@@ -196,7 +206,7 @@ A question a module answers -- a :class:`Query` (changes nothing, logs at DEBUG)
 run(module: 'M') -> R_co
 ```
 
-**Implementations (0):** _none yet_
+**Implementations (2):** `ListVisuals` · `VisualTile`
 
 ## Query
 
@@ -227,6 +237,20 @@ grab_region(x: 'int', y: 'int', width: 'int', height: 'int') -> RawFrame
 **You inherit (1):** `stop`
 
 **Implementations (4):** `GdiScreenCapture` · `PipeWireScreenCapture` · `QtNativeCapture` · `ToolCapture`
+
+## ThemesPort
+
+`core/ports.py`
+
+The ``themes`` capability: backgrounds themes carry.
+
+**You implement (1):**
+
+```python
+add_kind(kind: 'BackgroundKind') -> None
+```
+
+**Implementations (1):** `_Themes`
 
 ## UserInterface
 
@@ -273,7 +297,7 @@ _disable(host: 'ModuleHost') -> None
 _enable(host: 'ModuleHost') -> None
 ```
 
-**Implementations (0):** _none yet_
+**Implementations (1):** `VisualizerModule`
 
 ## DataInstallRunner
 
@@ -289,6 +313,36 @@ submit(resolution: 'tuple[int, int]', variant: 'str' = '', mask_variant: 'str' =
 ```
 
 **Implementations (2):** `SyncDataInstallRunner` · `ThreadDataInstallRunner`
+
+## FilesPort
+
+`core/ports.py`
+
+The ``files`` capability: TRCC's data folder, and pictures.
+
+**You implement (2):**
+
+```python
+data_root() -> Path
+encode_png(frame: 'RawFrame') -> bytes
+```
+
+**Implementations (1):** `_Files`
+
+## FrameSource
+
+`core/ports.py`
+
+Pictures for a panel's background, drawn by someone other than the App -- a module's audio visual.  The App takes the newest each tick, puts the theme's mask and metrics on top, and sends it (``CaptureSourceFrame``). A source draws on its own thread and keeps only its newest picture.
+
+**You implement (2):**
+
+```python
+close() -> None
+latest() -> RawFrame
+```
+
+**Implementations (1):** `VisualReader`
 
 ## GlSurface
 
@@ -306,6 +360,21 @@ close() -> None
 **You inherit (1):** `describe`
 
 **Implementations (3):** `CglSurface` · `EglSurface` · `WglSurface`
+
+## GpuPort
+
+`core/ports.py`
+
+The ``gpu`` capability: the graphics card.
+
+**You implement (2):**
+
+```python
+substitute(cls: '_C') -> _C
+surface() -> type | None
+```
+
+**Implementations (1):** `_Gpu`
 
 ## IdentifiedSource
 
@@ -337,7 +406,22 @@ _enable(host: 'ModuleHost') -> None
 
 **You inherit (9):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem` · `start` · `stop`
 
-**Implementations (0):** _none yet_
+**Implementations (1):** `VisualizerModule`
+
+## PanelsPort
+
+`core/ports.py`
+
+The ``panels`` capability: the LCD panels attached.
+
+**You implement (2):**
+
+```python
+attached() -> tuple[str, ...]
+size(key: 'str') -> tuple[int, int] | None
+```
+
+**Implementations (1):** `_Panels`
 
 ## RgbHardware
 
@@ -428,6 +512,22 @@ read(offset: 'int', length: 'int') -> bytes
 ```
 
 **Implementations (2):** `_BytesMapping` · `_HWiNFOMapping`
+
+## BackgroundKind
+
+`core/ports.py`
+
+A kind of panel background a module draws, as a theme names it: a background ref ``<prefix>/<id>`` whose folder holds its settings (``config.json``), not a picture.  The module registers one (``ModuleHost.add_background_kind``); themes load, save and restore it through here, never knowing what draws it.
+
+**You implement (3):**
+
+```python
+play(key: 'str', payload: 'Mapping[str, Any]') -> Result
+resume(key: 'str') -> None
+snapshot(key: 'str') -> dict[str, Any] | None
+```
+
+**Implementations (1):** `VisualBackground`
 
 ## BaseBulkDevice
 
@@ -655,7 +755,9 @@ subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 ```
 
-**Implementations (2):** `App` · `ModuleScope`
+**You inherit (7):** `background` · `files` · `gpu` · `panels` · `settings` · `sound` · `themes`
+
+**Implementations (1):** `ModuleScope`
 
 ## RamAccess
 
@@ -723,6 +825,22 @@ read(frames: 'int') -> bytes
 
 **Implementations (3):** `LoopbackSoundInput` · `MonitorSoundInput` · `TapSoundInput`
 
+## SoundPort
+
+`core/ports.py`
+
+The ``sound`` capability: what the computer is playing.
+
+**You implement (3):**
+
+```python
+input() -> SoundInput
+problem() -> str
+worker_thread() -> AbstractContextManager[None]
+```
+
+**Implementations (1):** `_Sound`
+
 ## VoltageSource
 
 `core/ports.py`
@@ -772,6 +890,23 @@ _release() -> None
 **You inherit (4):** `close` · `doRollover` · `emit` · `shouldRollover`
 
 **Implementations (2):** `PosixSharedLogHandler` · `WindowsSharedLogHandler`
+
+## BackgroundPort
+
+`core/ports.py`
+
+The ``background`` capability: drawing a panel's background.
+
+**You implement (4):**
+
+```python
+draws(key: 'str') -> bool
+end(key: 'str', keep_choice: 'bool' = False) -> None
+show(key: 'str', source: 'FrameSource', fps: 'float') -> None
+source(key: 'str') -> FrameSource | None
+```
+
+**Implementations (1):** `_Background`
 
 ## BaseScsiTransport
 
@@ -845,7 +980,7 @@ provides(path: 'str') -> str | None
 
 ## PaintedVisual
 
-`adapters/visual/_painted.py`
+`modules/visualizer/adapters/_painted.py`
 
 A frame painted over ``BACKGROUND``, the picture's fire behind it.
 
@@ -879,7 +1014,7 @@ log_file() -> Path
 user_content_dir() -> Path
 ```
 
-**You inherit (12):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_screencast_dir` · `user_theme_dir` · `user_visual_background_dir` · `visuals_dir`
+**You inherit (10):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_screencast_dir` · `user_theme_dir`
 
 **Implementations (5):** `BSDPaths` · `BasePaths` · `LinuxPaths` · `MacOSPaths` · `WindowsPaths`
 
@@ -900,7 +1035,24 @@ wake() -> None
 
 **You inherit (1):** `runs_on_caller`
 
-**Implementations (7):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `StreamDriver` · `VisualDriver`
+**Implementations (7):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `StreamDriver`
+
+## SettingsPort
+
+`core/ports.py`
+
+The ``settings`` capability: the module's own saved settings.
+
+**You implement (4):**
+
+```python
+app() -> dict[str, Any]
+panel(key: 'str') -> dict[str, Any]
+save_app(data: 'Mapping[str, Any]') -> None
+save_panel(key: 'str', data: 'Mapping[str, Any]') -> None
+```
+
+**Implementations (1):** `_Settings`
 
 ## SmBus
 
@@ -921,7 +1073,7 @@ write_byte_data(address: 'int', register: 'int', value: 'int') -> None
 
 ## BaseVisual
 
-`adapters/visual/_base.py`
+`modules/visualizer/adapters/_base.py`
 
 An audio visual: what it is (``INFO``), and whether this machine can draw it.  ``key=None`` in a class line means an intermediate base.
 
@@ -957,7 +1109,7 @@ write(endpoint: 'int', data: 'WriteBuffer', timeout_ms: 'int' = 100) -> int
 
 ## GlVisual
 
-`adapters/visual/_base.py`
+`modules/visualizer/adapters/_base.py`
 
 A visual drawn with OpenGL, on the context its platform names (:func:`drawn_on`).  Listed wherever it is registered; where no context opens -- or none is named -- the gallery shows it with the reason.
 
@@ -1029,7 +1181,7 @@ name(chip_id: 'int') -> str | None
 
 ## VisualEngine
 
-`core/ports.py`
+`modules/visualizer/core/ports.py`
 
 Turns sound into pictures: one audio visual.
 
@@ -1165,6 +1317,42 @@ surface_size(surface: 'Any') -> tuple[int, int]
 
 **Implementations (1):** `QtRenderer`
 
+## ModuleServices
+
+`core/ports.py`
+
+The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
+
+**You implement (23):**
+
+```python
+add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
+data_root() -> Path
+encode_png(frame: 'RawFrame') -> bytes
+end_source(key: 'str', keep_choice: 'bool' = False) -> None
+gl_surface() -> type | None
+module_settings(module: 'str') -> dict[str, Any]
+panel_keys() -> tuple[str, ...]
+panel_settings(module: 'str', key: 'str') -> dict[str, Any]
+panel_size(key: 'str') -> tuple[int, int] | None
+panel_source(key: 'str') -> str | None
+publish(event: 'Event') -> None
+remove_background_kind(prefix: 'str') -> None
+resume_backgrounds(module: 'str') -> None
+save_module_settings(module: 'str', data: 'Mapping[str, Any]') -> None
+save_panel_settings(module: 'str', key: 'str', data: 'Mapping[str, Any]') -> None
+show_source(module: 'str', key: 'str', source: 'FrameSource', fps: 'float') -> None
+sound_input() -> SoundInput
+sound_problem() -> str
+source(key: 'str') -> FrameSource | None
+subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+substitute(cls: '_C') -> _C
+unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+worker_thread() -> AbstractContextManager[None]
+```
+
+**Implementations (1):** `App`
+
 ## Platform
 
 `core/ports.py`
@@ -1209,7 +1397,7 @@ usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | Non
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**You inherit (10):** `adopt_session` · `hard_exit` · `openrgb` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `visual_catalog` · `visual_class`
+**You inherit (9):** `adopt_session` · `hard_exit` · `openrgb` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
@@ -1219,9 +1407,10 @@ worker_thread_context() -> AbstractContextManager[None]
 
 Where themes, masks, backgrounds and capture configs are kept.
 
-**You implement (29):**
+**You implement (30):**
 
 ```python
+background_config(ref: 'str') -> dict[str, Any] | None
 background_path(theme: 'Theme') -> Path | None
 copy_preview(src_theme_dir: 'Path', dst_theme_dir: 'Path') -> bool
 delete(directory: 'Path', name: 'str') -> Path
@@ -1236,19 +1425,19 @@ list_web_previews(web_dir: 'Path') -> builtins.list[WebPreviewInfo]
 load(path: 'Path') -> Theme
 mask_path(theme: 'Theme') -> Path | None
 media_player_uri(theme: 'Theme') -> str | None
+module_background(theme: 'Theme') -> tuple[str, str, dict[str, Any]] | None
 preview_path(theme: 'Theme') -> Path | None
 resolve_ref(ref: 'str') -> Path | None
 screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None
 single_file_theme(source: 'Path', kind: 'str') -> AbstractContextManager[SingleFileTheme]
 stage(target: 'Path') -> AbstractContextManager[Path]
 store_background(data: 'bytes', ext: 'str', width: 'int', height: 'int') -> str
+store_background_config(prefix: 'str', payload: 'Mapping[str, Any]') -> str
 store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None, name: 'str | None' = None) -> str
 store_media_player(uri: 'str') -> str
 store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
-store_visual(visual: 'str', preset: 'str', settings: 'Mapping[str, float]') -> str
 tile_path(theme_dir: 'Path') -> Path | None
 video_path(theme: 'Theme') -> Path | None
-visual(theme: 'Theme') -> tuple[str, str, dict[str, float]] | None
 write_manifest(theme_dir: 'Path', manifest: 'dict') -> Path
 write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 ```

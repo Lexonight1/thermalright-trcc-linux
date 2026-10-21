@@ -1,4 +1,5 @@
-"""The Audio visuals gallery -- the audio bars tab, right of Cloud backgrounds.
+"""The Audio Visualizer's gui page -- the audio bars tab, the first module
+tab slot, right of Cloud backgrounds.  Exported as ``PAGE``.
 
 The same grid and tiles as the cloud backgrounds: one tile per visual (and
 per preset), each the App's picture of what that visual draws for noise
@@ -11,33 +12,41 @@ the window never waits on a visual.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
+from trcc.core.events import BackgroundChanged
+from trcc.ui.gui.base import BaseThemeBrowser, BaseThumbnail
+from trcc.ui.gui.constants import Colors, Sizes, Styles
+from trcc.ui.gui.module_page import ModulePage
+from trcc.ui.qt_background import dispatch_in_background
+
 from ...core.commands import (
     ListVisuals,
+    PlayVisual,
     SetVisualCenter,
     SetVisualPicture,
     SetVisualSettings,
     VisualTile,
 )
-from ...core.events import BackgroundChanged, VisualHearingChanged
+from ...core.events import VisualHearingChanged
 from ...core.results import VisualsResult
 from ..presentation.visual_gallery import VisualItem, gallery_items
-from ..qt_background import dispatch_in_background
-from ..qt_visual_controls import VisualControls
-from ..qt_visual_tiles import VisualTiles
-from .base import BaseThemeBrowser, BaseThumbnail
-from .constants import Colors, Sizes, Styles
+from ..visual_controls import VisualControls
+from ..visual_tiles import VisualTiles
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QShowEvent
 
-    from ...core.ports import CommandBus
+    from trcc.core.ports import CommandBus
 
 log = logging.getLogger(__name__)
+
+#: The module's own images, its tab among them.
+_ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 
 class VisualThumbnail(BaseThumbnail):
@@ -93,10 +102,15 @@ _CONTROLS_STYLE = (
       f"height: 6px; border-radius: 3px; }}")
 
 
-class UCVisuals(BaseThemeBrowser):
+class UCVisuals(BaseThemeBrowser, ModulePage):
     """The Audio visuals gallery, and the controls of the visual the active
-    panel plays.  ``theme_selected`` carries the clicked
-    :class:`VisualItem`."""
+    panel plays.  A clicked :class:`VisualItem` (``theme_selected``) plays
+    on the active panel."""
+
+    TAB_IMAGE = str(_ASSETS / "tab.png")
+    TAB_IMAGE_ACTIVE = str(_ASSETS / "tab_active.png")
+    TOOLTIP = TITLE = "Audio visuals"
+    EVENTS = (VisualHearingChanged,)
 
     def __init__(self, parent=None, app: CommandBus | None = None) -> None:
         log.info("UCVisuals.__init__: app=%s", app is not None)
@@ -119,6 +133,20 @@ class UCVisuals(BaseThemeBrowser):
                                             self._picture_command, self)
             self._controls.setStyleSheet(_CONTROLS_STYLE)
             self._fit_controls()
+        self.theme_selected.connect(self._on_play)
+
+    def _on_play(self, item: VisualItem) -> None:
+        """A tile was clicked: it plays on the active panel -- the App plays
+        it; picking any other background ends it."""
+        log.info("UCVisuals._on_play: %s %s %r", self._key, item.visual,
+                 item.preset)
+        if self._app is None or not self._key:
+            log.warning("UCVisuals._on_play: no panel to play on -- dropped")
+            return
+        result = self._app.dispatch(PlayVisual(key=self._key, visual=item.visual,
+                                               preset=item.preset))
+        if not result.ok:
+            log.warning("UCVisuals._on_play: %s", result.message)
 
     def set_device_key(self, key: str) -> None:
         """The panel the window works on -- its visual's controls show."""
@@ -239,3 +267,6 @@ class UCVisuals(BaseThemeBrowser):
         for widget in self.item_widgets:
             if isinstance(widget, VisualThumbnail) and widget.item_info == item:
                 widget.show_tile(png)
+
+
+PAGE = UCVisuals

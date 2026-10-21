@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 
-from trcc.adapters.visual._gl import SHADERS
-from trcc.adapters.visual._karmaviz_gl import KarmaVizPainter
+from trcc.modules.visualizer.adapters._base import GlVisual
+from trcc.modules.visualizer.adapters._karmaviz_gl import KarmaVizPainter
+from trcc.modules.visualizer.adapters._shaders import SHADERS, shader
 
 GLSL = SHADERS / "karmaviz"
 DATA = SHADERS.parent / "karmaviz"
@@ -130,11 +132,17 @@ def test_every_shader_compiles_in_the_frame_it_is_drawn_in() -> None:
     """All 237, each composed into the ported frame shader exactly as the
     visual composes it, through the one program() and its header rule --
     on this host's OpenGL (Mesa's software one in CI)."""
-    from trcc.adapters.system import host_platform_class
-    from trcc.adapters.visual._gl import program, shader
-    from trcc.adapters.visual._karmaviz_gl import frame_source, warp_names, waveform_names
+    from tests.mock_platform import host_drawn
+    from trcc.adapters.visual._gl import program
+    from trcc.modules.visualizer.adapters._karmaviz_gl import (
+        frame_source,
+        warp_names,
+        waveform_names,
+    )
 
-    surface = host_platform_class().VISUALS["karmaviz"].SURFACE.open()  # pyright: ignore[reportAttributeAccessIssue]
+    surface = cast("type[GlVisual]", host_drawn("karmaviz")).SURFACE
+    assert surface is not None
+    surface = surface.open()
     gl, vertex = surface.gl, shader("quad_vertex.glsl")
     refused = []
     try:
@@ -158,10 +166,11 @@ def test_every_preset_draws(preset: str) -> None:
 
     import numpy as np
 
-    from trcc.adapters.system import host_platform_class
-    from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+    from tests.mock_platform import host_drawn
+    from trcc.core.models import SOUND_RATE
+    from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 
-    engine_class = host_platform_class().VISUALS["karmaviz"]
+    engine_class = host_drawn("karmaviz")
     random.seed(3)
     engine = engine_class()
     engine.open(VisualSpec("karmaviz", 96, 96, preset=engine_class.preset(Path(), preset)))
@@ -184,8 +193,9 @@ def test_the_ear_hears_each_kick_of_a_120_bpm_beat() -> None:
     is its arithmetic, kept.)"""
     import numpy as np
 
-    from trcc.adapters.visual.karmaviz import Ear
-    from trcc.core.models import SOUND_RATE, VISUAL_FPS
+    from trcc.core.models import SOUND_RATE
+    from trcc.modules.visualizer.adapters.karmaviz import Ear
+    from trcc.modules.visualizer.core.models import VISUAL_FPS
 
     ear = Ear()
     n = SOUND_RATE // VISUAL_FPS
@@ -212,7 +222,7 @@ class _Painter(KarmaVizPainter):
 def test_change_every_n_beats(every: int, changes: int) -> None:
     """KarmaViz's beat transitions: a new waveform and warp map on every Nth
     beat -- and none at 0, the default, so a tile keeps its look."""
-    from trcc.adapters.visual.karmaviz import Colours, KarmaViz, Look
+    from trcc.modules.visualizer.adapters.karmaviz import Colours, KarmaViz, Look
 
     visual = KarmaViz()
     visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
@@ -238,7 +248,7 @@ def test_moving_the_change_slider_waits_its_beats_before_changing() -> None:
     now counted since the last change, and moving this slider starts over.
 
     MUTATION CHECK: count beats since the start again."""
-    from trcc.adapters.visual.karmaviz import Colours, KarmaViz, Look
+    from trcc.modules.visualizer.adapters.karmaviz import Colours, KarmaViz, Look
 
     visual = KarmaViz()
     visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
@@ -257,7 +267,7 @@ def test_moving_the_change_slider_waits_its_beats_before_changing() -> None:
 
 
 def test_another_slider_does_not_restart_the_count() -> None:
-    from trcc.adapters.visual.karmaviz import Colours, KarmaViz, Look
+    from trcc.modules.visualizer.adapters.karmaviz import Colours, KarmaViz, Look
 
     visual = KarmaViz()
     visual._look = Look.read(DATA / "presets" / "groovy_lamp.json", visual._palettes)
@@ -276,13 +286,13 @@ def test_another_slider_does_not_restart_the_count() -> None:
 @pytest.mark.parametrize("name", ["", "../presets/groovy_lamp.json", "/etc/passwd",
                                   "groovy_lamp", "no_such_preset.json"])
 def test_a_preset_is_one_of_its_own_files_or_nothing(name: str) -> None:
-    from trcc.adapters.visual.karmaviz import KarmaViz
+    from trcc.modules.visualizer.adapters.karmaviz import KarmaViz
 
     assert KarmaViz.preset(Path(), name) is None
 
 
 def test_the_presets_are_its_own_whatever_the_folder(tmp_path: Path) -> None:
-    from trcc.adapters.visual.karmaviz import KarmaViz
+    from trcc.modules.visualizer.adapters.karmaviz import KarmaViz
 
     (tmp_path / "mine.json").write_text("{}")
     listed = KarmaViz.presets(tmp_path)
@@ -292,7 +302,7 @@ def test_the_presets_are_its_own_whatever_the_folder(tmp_path: Path) -> None:
 
 
 def test_the_sliders() -> None:
-    from trcc.adapters.visual.karmaviz import KarmaViz
+    from trcc.modules.visualizer.adapters.karmaviz import KarmaViz
 
     visual = KarmaViz()
     visual.adjust({"speed": 2.0, "warp": 0.5, "beat_sensitivity": 3.0, "change_beats": 7.6})
@@ -306,7 +316,7 @@ def test_the_sliders() -> None:
 def test_the_frame_carries_the_waveform_and_warp_it_was_asked_for() -> None:
     """Without the warp the frame still compiles and draws -- its dispatcher
     falls back to no warp -- so only this can tell."""
-    from trcc.adapters.visual._karmaviz_gl import frame_source
+    from trcc.modules.visualizer.adapters._karmaviz_gl import frame_source
 
     warp = (GLSL / "warps" / "spiral.glsl").read_text(encoding="utf-8")
     line = (GLSL / "lines" / "sine_wave.glsl").read_text(encoding="utf-8")

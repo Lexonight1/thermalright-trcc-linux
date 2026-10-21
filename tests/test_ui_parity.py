@@ -75,9 +75,10 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "scoped: StreamDriver turns it; every UI reaches the capability "
         "through SetMediaPlayer with a web URL"
     )),
-    "CaptureVisualFrame": (frozenset(), (
-        "scoped: VisualDriver turns it; every UI reaches the capability "
-        "through PlayVisual / StopVisual"
+    "CaptureSourceFrame": (frozenset(), (
+        "scoped: SourceDriver turns it; every UI reaches the capability "
+        "through a module's own Commands (the Audio Visualizer's PlayVisual) "
+        "and ClearModuleSource"
     )),
     "AdvanceSlideshow": (frozenset(), (
         "scoped: SlideshowDriver turns it; every UI reaches the capability "
@@ -228,9 +229,11 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "for every UI and undid disconnects (removed 2026-09-29); App.close "
         "blanks on shutdown"
     )),
-    "StopVisual": (frozenset({"cli", "api"}), (
-        "gap: audio visuals -- the Audio Visuals page (the EQ tab beside Cloud "
-        "backgrounds) is the next step; CLI + API land first (2026-10-12)"
+    "ClearModuleSource": (frozenset({"cli", "api"}), (
+        "gap: neither window has a stop for a module's background (the Audio "
+        "Visualizer's) -- picking any other background ends it; the CLI's "
+        "`display visual KEY` and the API's visual '' send it, and work with "
+        "the module off (2026-10-21)"
     )),
     "ResetDevice": (frozenset({"cli", "api"}), (
         "gap: power-cycle + restore. It sat in exactly this blind spot, which is "

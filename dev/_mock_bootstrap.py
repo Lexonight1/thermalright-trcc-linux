@@ -514,9 +514,9 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
         ScriptedAuraController,
         ScriptedRamAccess,
         ScriptedRgbHardware,
-        SCRIPTED_VISUALS,
         ScriptedSound,
         is_aura,
+        scripted,
         scripted_bulk_transport,
         scripted_ram,
         scripted_scsi_transport,
@@ -625,7 +625,10 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
         # Audio visuals: a scripted beat, never the host's sound, and a
         # scripted MilkDrop, never the host's GPU.
         SOUND_INPUT = ScriptedSound
-        VISUALS = SCRIPTED_VISUALS
+
+        def substitute(self, cls: Any) -> Any:
+            log.debug("DevMockPlatform.substitute: %s", cls.__name__)
+            return scripted(cls)
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",
              len(parsed), host_cls.__name__)

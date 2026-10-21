@@ -57,7 +57,7 @@ import math
 
 import numpy as np
 
-from ...core.logs import per_frame
+from trcc.core.logs import per_frame
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

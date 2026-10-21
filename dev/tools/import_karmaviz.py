@@ -48,12 +48,12 @@ import struct
 import subprocess
 import sys
 import unicodedata
+from trcc.modules.visualizer.adapters._shaders import SHADERS
 from dataclasses import dataclass
 from pathlib import Path
 
 from trcc.adapters.visual._gl import (
     GL_FRAGMENT_SHADER,
-    SHADERS,
     EglSurface,
     Gl,
     _compiled,

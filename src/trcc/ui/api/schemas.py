@@ -664,34 +664,6 @@ class ScreencastRegionRequest(BaseModel):
         None, description="Hide the on-screen border; null leaves it as it is.")
 
 
-class VisualRequest(BaseModel):
-    """Body for ``POST /devices/{key}/display/visual``: the audio visual
-    (``GET /display/visuals``), its preset and slider values by name;
-    '' stops it."""
-    visual: str = Field("", max_length=64, pattern=r"^[a-z0-9-]*$")
-    preset: str = Field("", max_length=512)
-    sliders: dict[str, float] = Field(default_factory=dict, max_length=16)
-
-
-class VisualSettingsRequest(BaseModel):
-    """Body for ``POST /devices/{key}/display/visual/settings``: slider
-    values by name for the playing visual."""
-    sliders: dict[str, float] = Field(default_factory=dict, max_length=16)
-
-
-class VisualPictureRequest(BaseModel):
-    """Body for ``POST /display/visual-picture``: the centre picture on or
-    off, and its fire (0 to 1) -- each only when given."""
-    shown: bool | None = None
-    fire: float | None = Field(None, ge=0.0, le=1.0)
-
-
-class VisualCenterRequest(BaseModel):
-    """Body for ``POST /display/visual-center``: a picture in TRCC's own
-    folders; '' for none."""
-    path: str = Field("", max_length=1024)
-
-
 class MediaPlayerRequest(BaseModel):
     """Body for ``POST /devices/{key}/display/media-player``."""
     uri: str = Field(

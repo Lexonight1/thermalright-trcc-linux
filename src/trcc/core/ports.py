@@ -10,11 +10,9 @@ import builtins
 import logging
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
-from operator import attrgetter
 from pathlib import Path
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, NoReturn, TypeVar
 
 from ._frames import pad_rows
@@ -64,8 +62,6 @@ if TYPE_CHECKING:
         SensorReading,
         Theme,
         UsbPowerState,
-        VisualInfo,
-        VisualSpec,
         WebPreviewInfo,
         Wire,
     )
@@ -1451,12 +1447,6 @@ class Paths(ABC):
         log.debug("theme_dir: %dx%d variant=%r", width, height, variant)
         return self.data_dir() / f"theme{width}{height}{variant}"
 
-    def visuals_dir(self) -> Path:
-        """Audio-visual presets (projectM / MilkDrop ``.milk``), any panel
-        size -- a preset draws at whatever size it is given."""
-        log.debug("visuals_dir")
-        return self.data_dir() / "visuals"
-
     def user_theme_dir(self, width: int, height: int) -> Path:
         """Per-resolution user-saved theme dir.
 
@@ -1515,13 +1505,6 @@ class Paths(ABC):
         at play time."""
         log.debug("user_media_player_dir")
         return self.user_data_dir() / "media_player"
-
-    def user_visual_background_dir(self) -> Path:
-        """User audio-visual backgrounds (which visual, its preset and its
-        sliders) that a saved theme's ``background`` references.  Not
-        resolution-keyed -- a visual draws at the panel's size."""
-        log.debug("user_visual_background_dir")
-        return self.user_data_dir() / "visual_background"
 
 
 # =========================================================================
@@ -1653,11 +1636,10 @@ class ContentStore(ABC):
         local path or a URL/stream — it is stored verbatim."""
 
     @abstractmethod
-    def store_visual(self, visual: str, preset: str,
-                     settings: Mapping[str, float]) -> str:
-        """Store an audio-visual background -- which visual, its preset and
-        its sliders -- as JSON; return the ref a theme's ``background``
-        carries."""
+    def store_background_config(self, prefix: str,
+                                payload: Mapping[str, Any]) -> str:
+        """Store a module background's settings as JSON; return the
+        ``<prefix>/<id>`` ref a theme's ``background`` carries."""
 
     # ── Readers ───────────────────────────────────────────────────────
 
@@ -1724,9 +1706,14 @@ class ContentStore(ABC):
         """Resolve *theme*'s media-player ref → its source URI."""
 
     @abstractmethod
-    def visual(self, theme: Theme) -> tuple[str, str, dict[str, float]] | None:
-        """*theme*'s background as an audio visual -- ``(visual, preset,
-        sliders)`` -- or None when its background is not one."""
+    def background_config(self, ref: str) -> dict[str, Any] | None:
+        """The settings a module background *ref* names, or None when it
+        names none (a picture's ref is a file)."""
+
+    @abstractmethod
+    def module_background(self, theme: Theme) -> tuple[str, str, dict[str, Any]] | None:
+        """*theme*'s background as a module draws it -- ``(ref, prefix,
+        settings)`` -- or None when its background is a picture or a video."""
 
     @abstractmethod
     def background_path(self, theme: Theme) -> Path | None:
@@ -2500,15 +2487,175 @@ class CloudCatalog(ABC):
 _E = TypeVar("_E", bound="Event")
 
 
+_C = TypeVar("_C", bound=type)
+
+
+class FrameSource(ABC):
+    """Pictures for a panel's background, drawn by someone other than the
+    App -- a module's audio visual.  The App takes the newest each tick, puts
+    the theme's mask and metrics on top, and sends it (``CaptureSourceFrame``).
+    A source draws on its own thread and keeps only its newest picture."""
+
+    #: What it shows, for the log.
+    name: str = ""
+
+    @abstractmethod
+    def latest(self) -> RawFrame:
+        """The newest picture; ``CaptureNotReady`` while starting, ``OSError``
+        once it has failed for good."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Stop drawing (idempotent)."""
+
+
+class BackgroundKind(ABC):
+    """A kind of panel background a module draws, as a theme names it: a
+    background ref ``<prefix>/<id>`` whose folder holds its settings
+    (``config.json``), not a picture.  The module registers one
+    (``ModuleHost.add_background_kind``); themes load, save and restore it
+    through here, never knowing what draws it."""
+
+    #: The ref prefix -- also the folder its settings are kept in.
+    prefix: str = ""
+
+    @abstractmethod
+    def play(self, key: str, payload: Mapping[str, Any]) -> Result:
+        """A theme with this background was loaded on panel *key*: draw it
+        with *payload*, the settings the theme saved."""
+
+    @abstractmethod
+    def resume(self, key: str) -> None:
+        """Draw panel *key*'s own saved choice again -- on a reconnect, or
+        when the module is switched back on."""
+
+    @abstractmethod
+    def snapshot(self, key: str) -> dict[str, Any] | None:
+        """What a theme saved now from panel *key* keeps -- None when this
+        kind is not what the panel shows."""
+
+
+class PanelsPort(ABC):
+    """The ``panels`` capability: the LCD panels attached."""
+
+    @abstractmethod
+    def attached(self) -> tuple[str, ...]:
+        """The LCD panels attached now."""
+
+    @abstractmethod
+    def size(self, key: str) -> tuple[int, int] | None:
+        """Panel *key*'s size; None until it has reported one.
+        ``DeviceNotFoundError`` when it is not attached."""
+
+
+class BackgroundPort(ABC):
+    """The ``background`` capability: drawing a panel's background."""
+
+    @abstractmethod
+    def show(self, key: str, source: FrameSource, fps: float) -> None:
+        """Make *source* panel *key*'s background, *fps* pictures a second:
+        whatever it showed stops, the choice is saved, every UI hears it."""
+
+    @abstractmethod
+    def end(self, key: str, keep_choice: bool = False) -> None:
+        """Stop panel *key*'s source; the theme's own background returns.
+        *keep_choice* keeps it saved as the panel's choice, to resume."""
+
+    @abstractmethod
+    def source(self, key: str) -> FrameSource | None:
+        """The source drawing panel *key* now, if any."""
+
+    @abstractmethod
+    def draws(self, key: str) -> bool:
+        """Whether panel *key*'s chosen background is this module's."""
+
+
+class SettingsPort(ABC):
+    """The ``settings`` capability: the module's own saved settings."""
+
+    @abstractmethod
+    def app(self) -> dict[str, Any]:
+        """Its app-wide settings (a copy)."""
+
+    @abstractmethod
+    def save_app(self, data: Mapping[str, Any]) -> None:
+        """Replace them; saved at once."""
+
+    @abstractmethod
+    def panel(self, key: str) -> dict[str, Any]:
+        """Its settings for panel *key* (a copy)."""
+
+    @abstractmethod
+    def save_panel(self, key: str, data: Mapping[str, Any]) -> None:
+        """Replace them; saved at once."""
+
+
+class ThemesPort(ABC):
+    """The ``themes`` capability: backgrounds themes carry."""
+
+    @abstractmethod
+    def add_kind(self, kind: BackgroundKind) -> None:
+        """Themes may now load, save and restore *kind*; taken back when the
+        module is switched off."""
+
+
+class SoundPort(ABC):
+    """The ``sound`` capability: what the computer is playing."""
+
+    @abstractmethod
+    def input(self) -> SoundInput:
+        """This computer's sound, as the OS hears it."""
+
+    @abstractmethod
+    def problem(self) -> str:
+        """Why it cannot be heard -- "" when it can."""
+
+    @abstractmethod
+    def worker_thread(self) -> AbstractContextManager[None]:
+        """What a thread of the module's enters before touching the OS
+        (Windows' COM)."""
+
+
+class GpuPort(ABC):
+    """The ``gpu`` capability: the graphics card."""
+
+    @abstractmethod
+    def surface(self) -> type | None:
+        """The OS's kind of OpenGL context; None where none is named."""
+
+    @abstractmethod
+    def substitute(self, cls: _C) -> _C:
+        """*cls* as this machine runs it: itself, or a stand-in platform's
+        scripted twin -- so no test reaches a GPU it does not own."""
+
+
+class FilesPort(ABC):
+    """The ``files`` capability: TRCC's data folder, and pictures."""
+
+    @abstractmethod
+    def data_root(self) -> Path:
+        """TRCC's data folder -- a module keeps its files in a folder there."""
+
+    @abstractmethod
+    def encode_png(self, frame: RawFrame) -> bytes:
+        """*frame* as a PNG."""
+
+
 class ModuleHost(ABC):
     """What a module may do to the App -- and nothing more.
 
     A module gets this, never the App: it cannot reach devices, settings or
-    anything private.  Grows one capability at a time, when a module first
-    needs it (adding a visual, an LED colour source, ...); each is named in
-    ``MODULE_CAPABILITIES`` and used only by a module whose manifest declares
-    it.  The App is the host; a test passes a fake.
+    anything private.  Beside the events, each capability is a small port --
+    ``host.background.show(...)`` -- named in ``MODULE_CAPABILITIES``; a
+    module may reach only those its manifest declares.  Every port defaults
+    to "not offered", so a test passes a fake host that offers just what it
+    needs.  The App's side is :class:`ModuleServices`, reached through a scope
+    that knows which module asks (``services/modules.py``).
     """
+
+    def _not_offered(self, what: str) -> NoReturn:
+        log.debug("%s: %s is not offered", type(self).__name__, what)
+        raise UnsupportedOperationError(f"this host does not offer {what}")
 
     @abstractmethod
     def publish(self, event: Event) -> None:
@@ -2522,6 +2669,122 @@ class ModuleHost(ABC):
     @abstractmethod
     def unsubscribe(self, event_type: type[_E], handler: Callable[[_E], None]) -> None:
         """Stop hearing *event_type* with *handler*."""
+
+    @property
+    def panels(self) -> PanelsPort:
+        log.debug("ModuleHost.panels")
+        self._not_offered("panels")
+
+    @property
+    def background(self) -> BackgroundPort:
+        log.debug("ModuleHost.background")
+        self._not_offered("background")
+
+    @property
+    def settings(self) -> SettingsPort:
+        log.debug("ModuleHost.settings")
+        self._not_offered("settings")
+
+    @property
+    def themes(self) -> ThemesPort:
+        log.debug("ModuleHost.themes")
+        self._not_offered("themes")
+
+    @property
+    def sound(self) -> SoundPort:
+        log.debug("ModuleHost.sound")
+        self._not_offered("sound")
+
+    @property
+    def gpu(self) -> GpuPort:
+        log.debug("ModuleHost.gpu")
+        self._not_offered("gpu")
+
+    @property
+    def files(self) -> FilesPort:
+        log.debug("ModuleHost.files")
+        self._not_offered("files")
+
+
+class ModuleServices(ABC):
+    """The App's side of every :class:`ModuleHost`: the same calls, each told
+    which module is asking where it matters.  ``ModuleScope`` binds the key,
+    checks the capability, and takes back on switch-off what the module still
+    holds.  The App implements it; a test passes a fake."""
+
+    @abstractmethod
+    def publish(self, event: Event) -> None: ...
+
+    @abstractmethod
+    def subscribe(self, event_type: type[_E], handler: Callable[[_E], None]) -> None: ...
+
+    @abstractmethod
+    def unsubscribe(self, event_type: type[_E], handler: Callable[[_E], None]) -> None: ...
+
+    @abstractmethod
+    def panel_keys(self) -> tuple[str, ...]: ...
+
+    @abstractmethod
+    def panel_size(self, key: str) -> tuple[int, int] | None: ...
+
+    @abstractmethod
+    def show_source(self, module: str, key: str, source: FrameSource,
+                    fps: float) -> None: ...
+
+    @abstractmethod
+    def end_source(self, key: str, keep_choice: bool = False) -> None: ...
+
+    @abstractmethod
+    def source(self, key: str) -> FrameSource | None: ...
+
+    @abstractmethod
+    def panel_source(self, key: str) -> str | None:
+        """The module panel *key*'s chosen background belongs to, if any."""
+
+    @abstractmethod
+    def module_settings(self, module: str) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def save_module_settings(self, module: str, data: Mapping[str, Any]) -> None: ...
+
+    @abstractmethod
+    def panel_settings(self, module: str, key: str) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def save_panel_settings(self, module: str, key: str,
+                            data: Mapping[str, Any]) -> None: ...
+
+    @abstractmethod
+    def add_background_kind(self, module: str, kind: BackgroundKind) -> None: ...
+
+    @abstractmethod
+    def remove_background_kind(self, prefix: str) -> None: ...
+
+    @abstractmethod
+    def resume_backgrounds(self, module: str) -> None:
+        """Module *module* has started: each attached panel whose background
+        is its -- chosen before, or a theme's waiting for it -- draws again."""
+
+    @abstractmethod
+    def sound_input(self) -> SoundInput: ...
+
+    @abstractmethod
+    def sound_problem(self) -> str: ...
+
+    @abstractmethod
+    def worker_thread(self) -> AbstractContextManager[None]: ...
+
+    @abstractmethod
+    def gl_surface(self) -> type | None: ...
+
+    @abstractmethod
+    def substitute(self, cls: _C) -> _C: ...
+
+    @abstractmethod
+    def data_root(self) -> Path: ...
+
+    @abstractmethod
+    def encode_png(self, frame: RawFrame) -> bytes: ...
 
 
 class Module(ABC):
@@ -2671,92 +2934,6 @@ class SoundInput(ABC):
         log.debug("SoundInput.problem: %s has none", cls.__name__)
         return ""
 
-
-def ranked_visuals(classes: Iterable[type[VisualEngine]]) -> tuple[VisualInfo, ...]:
-    """The gallery: each visual this machine can draw, by ``RANK`` -- never
-    by the order its module happened to load (an import sorter reorders
-    those, and TRCC Pipes is to come first)."""
-    infos = tuple(cls.INFO for cls in sorted(classes, key=attrgetter("RANK"))
-                  if cls.available())
-    log.debug("ranked_visuals: %s", [i.kind for i in infos])
-    return infos
-
-
-class VisualEngine(ABC):
-    """Turns sound into pictures: one audio visual.
-
-    Concrete: the ``VISUALS`` registry (``adapters/visual/_base.py``) --
-    ``TrccPipes``, ``MilkdropVisual``.  Every call comes from ONE thread: a
-    visual may draw with OpenGL, whose context belongs to the thread that
-    made it.
-
-    The class answers what the gallery asks -- ``INFO``, whether this
-    machine can draw it, its preset files, whether a picture will do -- so
-    the Commands never touch a file: a visual that reads files does so here,
-    in its adapter.
-    """
-
-    #: What the visual is, for the gallery; every concrete visual sets it.
-    INFO: ClassVar[VisualInfo]
-    #: Where it sits in the gallery, lowest first -- TRCC Pipes is 0, the
-    #: first thing the user sees (their call).  Equal ranks keep the order
-    #: their classes registered in.  See :func:`ranked_visuals`.
-    RANK: ClassVar[int] = 50
-
-    @classmethod
-    def available(cls) -> bool:
-        """Whether this machine has what the visual needs."""
-        log.debug("%s.available: yes", cls.__name__)
-        return True
-
-    @classmethod
-    def problem(cls) -> str:
-        """Why this machine cannot draw it -- "" when it can.  Unlike
-        ``available``, the gallery still shows it, with this reason: a
-        visual every user expects (TRCC Pipes) says why it is missing."""
-        log.debug("%s.problem: none", cls.__name__)
-        return ""
-
-    @classmethod
-    def presets(cls, folder: Path) -> tuple[str, ...]:
-        """The preset files under *folder* this visual draws, relative to it;
-        none for a visual without presets."""
-        log.debug("%s.presets: none", cls.__name__)
-        return ()
-
-    @classmethod
-    def preset(cls, folder: Path, name: str) -> Path | None:
-        """*name* as one of this visual's presets under *folder*, or None."""
-        log.debug("%s.preset: %r -- none", cls.__name__, name)
-        return None
-
-    @classmethod
-    def picture_problem(cls, path: Path) -> str:
-        """Why *path* cannot be the centre picture; "" when it can."""
-        log.debug("%s.picture_problem: %s -- fine", cls.__name__, path)
-        return ""
-
-    @abstractmethod
-    def open(self, spec: VisualSpec) -> None:
-        """Start drawing *spec*; ``OSError`` when the engine or the graphics
-        it needs are missing."""
-
-    @abstractmethod
-    def feed(self, pcm: bytes) -> None:
-        """Sound for the next picture (``SoundInput.read``'s shape)."""
-
-    @abstractmethod
-    def adjust(self, settings: Mapping[str, float]) -> None:
-        """New slider values while it plays -- called on its own thread,
-        between pictures; it keeps playing."""
-
-    @abstractmethod
-    def render(self) -> RawFrame:
-        """The next picture, RGB24, top row first."""
-
-    @abstractmethod
-    def close(self) -> None:
-        """Free the engine and its graphics (idempotent)."""
 
 
 class CaptureNotReady(OSError):
@@ -3463,24 +3640,17 @@ class Platform(ABC):
                           f"{type(self).__name__} yet")
         return made()
 
-    #: The audio visuals, by key -- a table entry like ``RGB_HARDWARE``:
-    #: the OS adapter names the ``VISUALS`` registry, a stand-in platform a
-    #: scripted one, so no test reaches the GPU.  Empty: none on this OS yet.
-    VISUALS: ClassVar[Mapping[str, type[VisualEngine]]] = MappingProxyType({})
+    #: The OS's kind of OpenGL context (``EglSurface``, ``WglSurface``,
+    #: ``CglSurface``) -- a table entry like ``RGB_HARDWARE``, handed to a
+    #: module that draws with the graphics card.  None: none named here.
+    GL_SURFACE: ClassVar[type | None] = None
 
-    def visual_class(self, kind: str) -> type[VisualEngine]:
-        """The audio visual registered as *kind*; ``OSError`` for none."""
-        table = type(self).VISUALS
-        log.debug("visual_class: %s in %s", kind, sorted(table))
-        if kind not in table:
-            raise OSError(f"no audio visual {kind!r} on {type(self).__name__}")
-        return table[kind]
-
-    def visual_catalog(self) -> tuple[VisualInfo, ...]:
-        """Every audio visual this machine can draw -- the gallery."""
-        infos = ranked_visuals(type(self).VISUALS.values())
-        log.debug("visual_catalog: %s", [i.kind for i in infos])
-        return infos
+    def substitute(self, cls: _C) -> _C:
+        """*cls* as this machine runs it -- itself here.  A stand-in platform
+        returns a scripted twin for anything that would reach hardware it
+        does not own (a GPU, a library), as it scripts the transports."""
+        log.debug("substitute: %s -> itself", cls.__name__)
+        return cls
 
     #: The OS adapter's OpenRGB SDK client, made with the server's host and
     #: port -- a table entry like ``RGB_HARDWARE``.  None on a stand-in

@@ -31,8 +31,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ._gl import (
+from trcc.adapters.visual._gl import (
     FULL_QUAD,
     GL_BLEND,
     GL_COLOR_BUFFER_BIT,
@@ -53,17 +52,18 @@ from ._gl import (
     GL_TEXTURE_WRAP_S,
     GL_TEXTURE_WRAP_T,
     GL_TRIANGLES,
-    SHADERS,
     Framebuffer,
     GlSurface,
     c_floats,
     program,
     read_rgb,
-    shader,
     texture,
     upload,
     vertex_array,
 )
+from trcc.core.logs import per_frame
+
+from ._shaders import SHADERS, shader
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

@@ -17,19 +17,22 @@ from PySide6.QtGui import QImage
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.adapters.system import host_platform_class
-from trcc.adapters.visual import VISUALS, GlVisual, drawn_on
 from trcc.adapters.visual import _gl as gl_module
-from trcc.adapters.visual.cavalier import CavalierVisual
-from trcc.adapters.visual.pipes import TrccPipes
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, ListVisuals, PlayVisual, VisualTile
-from trcc.core.models import SOUND_RATE, VISUAL_FPS, RawFrame, VisualSpec
-from trcc.core.ports import Platform, VisualEngine
+from trcc.core.commands import ConnectDevice
+from trcc.core.models import SOUND_RATE, RawFrame
+from trcc.core.ports import Platform
+from trcc.modules.visualizer.adapters._base import VISUALS, GlVisual, drawn_on
+from trcc.modules.visualizer.adapters.cavalier import CavalierVisual
+from trcc.modules.visualizer.adapters.pipes import TrccPipes
+from trcc.modules.visualizer.core.commands import ListVisuals, PlayVisual, VisualTile
+from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
+from trcc.modules.visualizer.core.ports import VisualEngine
 
 
 def _pipes_of(os_class: type[Platform]) -> type[GlVisual]:
     """The TRCC Pipes an OS binds -- always an OpenGL visual."""
-    pipes = os_class.VISUALS["trcc-pipes"]
+    pipes = VISUALS["trcc-pipes"].on_surface(os_class.GL_SURFACE)
     assert issubclass(pipes, GlVisual)
     return pipes
 
@@ -94,7 +97,7 @@ def test_no_opengl_shows_pipes_with_the_reason_and_refuses_to_play(
     it, or its tile, is refused with the same reason.  MUTATION CHECK:
     drop the class problem from ``_resolve`` and PlayVisual tries to draw."""
     class NoGl(MockPlatform):
-        VISUALS = {**drawn_on(_NoOpenGL)}
+        GL_SURFACE = _NoOpenGL
 
     app = App(NoGl([_SPEC], tmp_path), renderer=QtRenderer())
     try:

@@ -57,7 +57,6 @@ from ..device._pyusb_find import usb_path
 from ..device.transport import PyUsbBulkTransport
 from ..infra.unix_socket import UnixSocketChannel
 from ..rgb.openrgb import OpenRgbMirror
-from ..visual import VISUALS as _VISUALS
 
 if TYPE_CHECKING:
     from ...core.models import UsbPowerState
@@ -205,8 +204,6 @@ class BaseOS(Platform):
     instantiating on its own and what tells a new OS's author what to write.
     """
 
-    #: Every audio visual TRCC has: the ``VISUALS`` registry.
-    VISUALS = _VISUALS
     #: OpenRGB's SDK client -- plain TCP, the same on every OS.
     OPENRGB = OpenRgbMirror
     #: The shared App's channel: a socket file wherever there is AF_UNIX.

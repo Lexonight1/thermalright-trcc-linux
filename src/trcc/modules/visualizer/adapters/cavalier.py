@@ -65,13 +65,10 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ...core.models import (
-    SOUND_CHANNELS,
-    SOUND_RATE,
-    VisualAdjustment,
-    VisualInfo,
-)
+from trcc.core.logs import per_frame
+from trcc.core.models import SOUND_CHANNELS, SOUND_RATE
+
+from ..core.models import VisualAdjustment, VisualInfo
 from ._cava import Cava, monstercat
 from ._painted import PaintedVisual
 

@@ -510,7 +510,7 @@ def status(
         typer.echo(f"  overlay enabled:  {s.overlay_enabled}")
         typer.echo(f"  fit mode:         {s.fit_mode}")
         typer.echo(f"  game mode:        {describe_game_mode(s.game_enabled, s.game_threshold)}")
-        typer.echo(f"  showing:          {describe_source(s.display_source, s.background_mode, s.media_player_uri)}")
+        typer.echo(f"  showing:          {describe_source(s.display_source, s.background_mode, s.media_player_uri, s.module_title)}")
 
     for i, s in enumerate(led_snaps):
         typer.echo("")

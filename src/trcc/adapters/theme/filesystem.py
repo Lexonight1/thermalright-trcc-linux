@@ -41,7 +41,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...core._safe import is_safe_zip_member
 from ...core.errors import ThemeError
@@ -63,9 +63,6 @@ if TYPE_CHECKING:
 
 
 log = logging.getLogger(__name__)
-#: The library folder -- and a theme ``background`` ref's prefix -- for an
-#: audio visual: a background drawn from what is playing, not a file.
-_VISUAL_BACKGROUND = "visual_background"
 #: ``video_path`` is asked once per frame by the background resolver.
 frame_log = per_frame(__name__)
 
@@ -482,33 +479,45 @@ class FileContentStore(ContentStore):
         log.debug("media_player_uri: %s -> %r", theme.name, uri)
         return str(uri) if uri else None
 
-    def store_visual(self, visual: str, preset: str,
-                     settings: Mapping[str, float]) -> str:
-        """Store an audio-visual background -- ``{visual, preset, settings}``
-        -- in the user library; return the ``visual_background/<id>`` ref a
-        theme's ``background`` carries."""
-        log.info("store_visual: %s %r %s", visual, preset, dict(settings))
+    def store_background_config(self, prefix: str,
+                                payload: Mapping[str, Any]) -> str:
+        """Store a module background's settings -- what draws it is the
+        module's business -- in the user library; return the ``<prefix>/<id>``
+        ref a theme's ``background`` carries."""
+        log.info("store_background_config: %s %s", prefix, dict(payload))
         return self._store_config(
-            self._paths_for("store_visual").user_visual_background_dir(),
-            {"visual": visual, "preset": preset, "settings": dict(settings)})
+            self._paths_for("store_background_config").user_data_dir() / prefix,
+            dict(payload))
 
-    def visual(self, theme: Theme) -> tuple[str, str, dict[str, float]] | None:
-        """*theme*'s background as an audio visual -- ``(visual, preset,
-        sliders)`` -- or None.  A malformed one is None, and said."""
-        d = self._read_config(theme, "background", _VISUAL_BACKGROUND)
-        if d is None:
+    def background_config(self, ref: str) -> dict[str, Any] | None:
+        """The settings a module background *ref* names -- its folder's
+        ``config.json`` -- or None when *ref* is not one (a picture's ref is
+        a file) or it cannot be read, which is said."""
+        resolved = self._resolve_asset_ref(ref)
+        if resolved is None or not resolved.is_dir():
+            log.debug("background_config: %r is not a module background", ref)
             return None
+        cfg = ThemeDir(resolved).legacy_json
         try:
-            visual, preset = d["visual"], d.get("preset", "")
-            sliders = {str(k): float(v) for k, v in d.get("settings", {}).items()}
-            if not (isinstance(visual, str) and visual and isinstance(preset, str)):
-                raise TypeError(f"visual={visual!r} preset={preset!r}")
-        except (AttributeError, KeyError, TypeError, ValueError) as e:
-            log.warning("visual: %s has a malformed visual background %s (%s)",
-                        theme.name, d, e)
+            data = json.loads(cfg.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            log.warning("background_config: bad config %s (%s)", cfg, e)
             return None
-        log.debug("visual: %s -> %s %r %s", theme.name, visual, preset, sliders)
-        return visual, preset, sliders
+        log.debug("background_config: %s -> %s", ref, data)
+        return data if isinstance(data, dict) else None
+
+    def module_background(self, theme: Theme) -> tuple[str, str, dict[str, Any]] | None:
+        """*theme*'s background as a module draws it -- ``(ref, prefix,
+        settings)`` -- when its ``background`` names a folder of settings
+        rather than a picture; else None."""
+        ref = theme.config.get("background")
+        if not (isinstance(ref, str) and "/" in ref):
+            log.debug("module_background: %s has no ref", theme.name)
+            return None
+        data = self.background_config(ref)
+        found = None if data is None else (ref, ref.split("/", 1)[0], data)
+        log.debug("module_background: %s -> %s", theme.name, found)
+        return found
 
     def load(self, path: Path) -> Theme:
         """Load a theme directory into a Theme dataclass.
@@ -696,9 +705,12 @@ class FileContentStore(ContentStore):
         ship the thumbnail to the device).
         """
         ref = theme.config.get("background")
-        if isinstance(ref, str) and ref.startswith(f"{_VISUAL_BACKGROUND}/"):
-            log.debug("background_path: %s → an audio visual (%s), no file",
-                      theme.name, ref)
+        found = self._resolve_asset_ref(ref) if isinstance(ref, str) and ref else None
+        if found is not None and found.is_dir():
+            # A ref naming a FOLDER is a module's background (its settings),
+            # readable or not -- never a picture to draw.
+            log.debug("background_path: %s → a module's background (%s), no "
+                      "file", theme.name, ref)
             return None
         if isinstance(ref, str) and ref:
             resolved = self._resolve_asset_ref(ref)

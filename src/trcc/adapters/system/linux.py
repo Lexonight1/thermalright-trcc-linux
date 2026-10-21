@@ -47,7 +47,7 @@ from ..sensors.gpu_detect import (
     detect_gpu_vendors,
     install_matching_gpu_extras,
 )
-from ..visual import EglSurface, drawn_on
+from ..visual._gl import EglSurface
 from ..visual.sound import MonitorSoundInput
 from ._autostart import SystemdUserService
 from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
@@ -665,7 +665,8 @@ class LinuxOS(BaseOS, key="linux"):
     #: An App the user service started at boot learns the desktop from the
     #: systemd user manager before it builds the screen capture (#311).
     adopt_session = staticmethod(adopt_user_session_environment)
-    VISUALS = drawn_on(EglSurface)
+    #: What a module draws on with the graphics card.
+    GL_SURFACE = EglSurface
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
 

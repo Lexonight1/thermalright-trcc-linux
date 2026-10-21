@@ -23,8 +23,10 @@ from typing import Any
 
 import numpy as np
 
-from ...core.logs import per_frame
-from ...core.models import SOUND_RATE, VisualAdjustment, VisualInfo
+from trcc.core.logs import per_frame
+from trcc.core.models import SOUND_RATE
+
+from ..core.models import VisualAdjustment, VisualInfo
 from ._painted import PaintedVisual
 from ._spectrum import Spectrum
 

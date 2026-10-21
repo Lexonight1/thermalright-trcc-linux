@@ -32,7 +32,7 @@ from ..device._pyusb_find import find as usb_find
 from ..device._pyusb_find import usb_path
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
-from ..visual import CglSurface, drawn_on
+from ..visual._gl import CglSurface
 from ..visual.coreaudio import TapSoundInput
 from ._base import BaseOS, BasePaths, disambiguate, read_usb_serial
 
@@ -108,7 +108,8 @@ class MacOSPlatform(BaseOS, key="darwin"):
     #: ``adapters/visual/coreaudio.py``), drawn on a CGL context with
     #: nothing on screen.
     SOUND_INPUT = TapSoundInput
-    VISUALS = drawn_on(CglSurface)
+    #: What a module draws on with the graphics card.
+    GL_SURFACE = CglSurface
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
 

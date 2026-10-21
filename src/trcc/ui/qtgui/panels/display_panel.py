@@ -273,7 +273,8 @@ class DisplayPanel(BasePanel):
         self._brightness.blockSignals(False)
         self._brightness_label.setText(f"{snap.brightness}%")
         self._showing.setText(describe_source(
-            snap.display_source, snap.background_mode, snap.media_player_uri))
+            snap.display_source, snap.background_mode, snap.media_player_uri,
+            snap.module_title))
         self._media.show_snapshot(snap)
 
     def _on_set_background(self) -> None:

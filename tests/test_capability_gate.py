@@ -15,9 +15,11 @@ from typing import Any
 import pytest
 
 import trcc.core.commands as C
+from trcc import ipc
 from trcc.app import App
 from trcc.core.commands._base import Command, result_type
 from trcc.core.models import Capability
+from trcc.modules.visualizer.core import PlayVisual, SetVisualSettings
 
 from .mock_platform import MockPlatform
 
@@ -60,9 +62,9 @@ def _commands(key: str, tmp: Path) -> list[Command[Any]]:
         C.ConfigureSlideshow(key=key, themes=("a",), interval_s=5.0),
         C.SetSlideshow(key=key, enabled=True),
         C.ExportCurrentTheme(key=key, archive_path=tmp / "out.tr"),
-        C.PlayVisual(key=key, visual="trcc-pipes"),
-        C.StopVisual(key=key),
-        C.SetVisualSettings(key=key, settings={"fire": 1.0}),
+        PlayVisual(key=key, visual="trcc-pipes"),
+        C.ClearModuleSource(key=key, module="visualizer"),
+        SetVisualSettings(key=key, settings={"fire": 1.0}),
     ]
 
 
@@ -72,9 +74,10 @@ _ROWS = range(len(_commands(_LED, Path())))
 
 
 def _gated() -> set[str]:
-    return {cls.__name__ for cls in C.__dict__.values()
-            if isinstance(cls, type) and issubclass(cls, Command)
-            and cls.REQUIRES is not None}
+    """Every dispatchable Command -- the App's and each module's -- that
+    declares REQUIRES."""
+    return {name for name, cls in ipc.COMMAND_TYPES.items()
+            if cls.REQUIRES is not None}
 
 
 def test_the_table_below_is_every_gated_command(tmp_path: Path) -> None:

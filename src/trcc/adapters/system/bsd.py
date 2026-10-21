@@ -24,7 +24,7 @@ from ...core.ports import (
 )
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
-from ..visual import EglSurface, drawn_on
+from ..visual._gl import EglSurface
 from ._base import BaseOS, BasePaths
 
 log = logging.getLogger(__name__)
@@ -102,8 +102,8 @@ class BsdOS(BaseOS, key="bsd"):
     that used to cost.
     """
 
-    #: Audio visuals draw on EGL, as on Linux (no sound input yet).
-    VISUALS = drawn_on(EglSurface)
+    #: The graphics card is EGL, as on Linux (no sound input yet).
+    GL_SURFACE = EglSurface
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
 

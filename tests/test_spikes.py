@@ -12,10 +12,11 @@ import numpy as np
 import pytest
 from PySide6.QtGui import QImage
 
-from trcc.adapters.visual import VISUALS, BaseVisual
-from trcc.adapters.visual._spectrum import FALL, HOLD, Spectrum
-from trcc.adapters.visual.spikes import SpikeCircle
-from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+from trcc.core.models import SOUND_RATE
+from trcc.modules.visualizer.adapters._base import VISUALS, BaseVisual
+from trcc.modules.visualizer.adapters._spectrum import FALL, HOLD, Spectrum
+from trcc.modules.visualizer.adapters.spikes import SpikeCircle
+from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 
 _FRAME = SOUND_RATE // VISUAL_FPS
 

@@ -863,6 +863,7 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
     exactly as a built-in is -- found by ``specs()``, imported by key.  Every
     trace is undone afterwards: the imports, the ``MODULES`` registrations,
     the types IPC learnt, the words, the commands the CLI took."""
+    import importlib
     import sys
 
     import trcc.modules as package
@@ -870,6 +871,12 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
     from trcc.adapters.modules import MODULES
     from trcc.core.i18n import TRANSLATIONS
 
+    # The CLI and the API add what the installed modules bring when they are
+    # first IMPORTED: imported here, before *root* joins the path, so a test's
+    # module never sticks in them -- a test asks for it by name instead
+    # (measured: hello's route stuck in the API for the rest of a worker).
+    importlib.import_module("trcc.ui.api.main")
+    cli_main = importlib.import_module("trcc.ui.cli.main")
     monkeypatch.setattr(package, "__path__", list(package.__path__))
     words = {lang: dict(table) for lang, table in TRANSLATIONS.items()}
     roots: list[Path] = []
@@ -898,12 +905,6 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
     for lang, table in TRANSLATIONS.items():
         table.clear()
         table.update(words[lang])
-    # Only if a test imported it: importing the CLI here, with the module
-    # still on the path, would add its commands -- and load its core/ --
-    # all over again (measured: hello's Greet then clashed with weather's).
-    cli_main = sys.modules.get("trcc.ui.cli.main")
-    if cli_main is None:
-        return
     for group in cli_main._GROUPS.values():
         group.registered_commands[:] = [
             c for c in group.registered_commands

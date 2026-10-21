@@ -28,10 +28,9 @@ from __future__ import annotations
 import errno
 import logging
 import time
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import MappingProxyType
+from typing import TypeVar, cast
 
 import numpy as np
 
@@ -46,7 +45,6 @@ from trcc.adapters.rgb.asus_aura import AURA_VID, MAINBOARD_PIDS, REPORT_ID
 from trcc.adapters.rgb.corsair_dram import crc8
 from trcc.adapters.system import host_platform_class
 from trcc.adapters.system._base import disambiguate
-from trcc.adapters.visual.projectm import MilkdropVisual
 from trcc.core.models import (
     SOUND_CHANNELS,
     SOUND_RATE,
@@ -57,7 +55,6 @@ from trcc.core.models import (
     RamAccessState,
     RamAccessStatus,
     RawFrame,
-    VisualSpec,
     Wire,
 )
 from trcc.core.ports import (
@@ -67,15 +64,19 @@ from trcc.core.ports import (
     SmBus,
     SoundInput,
     Transport,
-    VisualEngine,
     WriteBuffer,
 )
 from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.registry import find_product
+from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
+from trcc.modules.visualizer.core.models import VisualSpec
+from trcc.modules.visualizer.core.ports import VisualEngine
 
 from .conftest import FakeBulkTransport, FakePlatform, FakeScsiTransport
 
 log = logging.getLogger(__name__)
+
+_C = TypeVar("_C", bound=type)
 
 
 # ── Scripted handshake byte-builders (single source; mirror the wire) ────────
@@ -493,6 +494,11 @@ class MockPlatform(FakePlatform):
     ``root`` is the data root the GUI writes to (``dev/.trcc`` for the mock GUI,
     a tmp dir for unit tests); it flows through ``FakePlatform`` → ``FakePaths``.
     """
+
+    def substitute(self, cls: _C) -> _C:
+        """Every visual as this host draws it, but MilkDrop scripted."""
+        log.debug("MockPlatform.substitute: %s", cls.__name__)
+        return scripted(cls)
 
     def __init__(self, specs: list[dict], root: Path, *,
                  host_sensors: bool = False) -> None:
@@ -943,14 +949,28 @@ class ScriptedMilkdrop(MilkdropVisual):
         log.info("ScriptedMilkdrop.close")
 
 
-#: The visuals a stand-in platform draws: every real one as this host draws
-#: it -- TRCC Pipes on the host's own OpenGL context, a software one where
-#: there is no graphics card (CI) -- but MilkDrop, scripted.  Derived from
-#: the host's table, so a new visual reaches the mocks without anyone
-#: remembering to add it here.
-SCRIPTED_VISUALS: Mapping[str, type[VisualEngine]] = MappingProxyType(
-    {**host_platform_class().VISUALS, "milkdrop": ScriptedMilkdrop})
-MockPlatform.VISUALS = SCRIPTED_VISUALS
+def scripted(cls: _C) -> _C:
+    """*cls* as a stand-in platform runs it: MilkDrop scripted -- no
+    libprojectM, no GPU -- and every other visual as it is, so a new one
+    reaches the mocks without anyone remembering to add it here."""
+    found = ScriptedMilkdrop if issubclass(cls, MilkdropVisual) else cls
+    log.debug("scripted: %s -> %s", cls.__name__, found.__name__)
+    return cast("_C", found)
+
+
+#: Stand-in platforms draw on this host's own OpenGL context -- a software
+#: one where there is no graphics card (CI).
+MockPlatform.GL_SURFACE = host_platform_class().GL_SURFACE
+
+
+def host_drawn(kind: str) -> type[VisualEngine]:
+    """The visual *kind* as this host draws it -- bound to its own OpenGL
+    context, as the module binds it."""
+    from trcc.modules.visualizer.adapters import VISUALS
+
+    drawn = VISUALS[kind].on_surface(host_platform_class().GL_SURFACE)
+    log.debug("host_drawn: %s -> %s", kind, drawn.__name__)
+    return drawn
 #: A scripted beat, never the host's sound -- the same table a real
 #: platform fills, so the App reads it the same way.
 MockPlatform.SOUND_INPUT = ScriptedSound

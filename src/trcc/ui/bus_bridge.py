@@ -25,7 +25,7 @@ from PySide6.QtCore import QEvent, QObject, Signal, SignalInstance
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QWidget
 
-from ..core.events import (
+from trcc.core.events import (
     AutostartChanged,
     BackgroundChanged,
     BrightnessChanged,
@@ -78,8 +78,8 @@ from ..core.events import (
     VideoPauseChanged,
     VideoStarted,
     VideoStopped,
-    VisualHearingChanged,
 )
+
 from ..core.logs import per_frame, recurring_warning
 
 log = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ frame_log = per_frame(__name__)
 #: ``Any`` instead were checked by nothing.
 DeviceSettingsEvent: TypeAlias = (
     BrightnessChanged | OrientationChanged | SplitModeChanged | GameModeChanged
-    | FitModeChanged | OverlayChanged | BackgroundChanged | VisualHearingChanged
+    | FitModeChanged | OverlayChanged | BackgroundChanged
     | MaskApplied | MaskPositionChanged | MaskVisibilityChanged
     | ScreencastRegionChanged | LedSettingsChanged)
 
@@ -274,7 +274,25 @@ class BusBridge(QObject):
         # bridge left 40 handlers.  The slot is a module function over the bus
         # and the pairs, never ``self``, so it cannot keep the bridge alive.
         self.destroyed.connect(partial(_unsubscribe, self._bus, subscribed))
+        # What a module's page asks for (``forward``) -- dropped with the rest.
+        self._forwarded: list[tuple[type[Event], _SignalForwarder]] = []
+        self._forwarded_pairs: set[tuple[type[Event], str]] = set()
+        self.destroyed.connect(partial(_unsubscribe_list, self._bus, self._forwarded))
         log.info("BusBridge._wire: subscribed %d event types", len(pairs) + 1)
+
+    def forward(self, event_type: type[Event], signal: str) -> None:
+        """Re-emit *event_type* on the signal named *signal* too -- for a
+        module's page, whose events this bridge cannot name.  Once per pair,
+        however often asked."""
+        name = event_type.__name__
+        if (event_type, signal) in self._forwarded_pairs:
+            log.debug("BusBridge.forward: %s -> %s already", name, signal)
+            return
+        log.info("BusBridge.forward: %s -> %s", name, signal)
+        forwarder = _SignalForwarder(getattr(self, signal), name)
+        self._bus.subscribe(event_type, forwarder)
+        self._forwarded.append((event_type, forwarder))
+        self._forwarded_pairs.add((event_type, signal))
 
 
 def _unsubscribe(bus: EventBus,
@@ -283,6 +301,15 @@ def _unsubscribe(bus: EventBus,
     """Drop a destroyed bridge's forwarders from the App's bus."""
     log.info("BusBridge destroyed: unsubscribing %d forwarders", len(subscribed))
     for event_type, forwarder in subscribed:
+        bus.unsubscribe(event_type, forwarder)
+
+
+def _unsubscribe_list(bus: EventBus,
+                      forwarded: list[tuple[type[Event], _SignalForwarder]],
+                      *_: object) -> None:
+    """Drop a destroyed bridge's ``forward``-ed forwarders from the bus."""
+    log.info("BusBridge destroyed: unsubscribing %d forwarded", len(forwarded))
+    for event_type, forwarder in forwarded:
         bus.unsubscribe(event_type, forwarder)
 
 

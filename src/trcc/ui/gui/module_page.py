@@ -28,6 +28,9 @@ class ModulePage:
     #: translates them (the module's ``i18n.json``).
     TOOLTIP: ClassVar[str] = ""
     TITLE: ClassVar[str] = ""
+    #: Its module's own events it follows: the window forwards each to
+    #: :meth:`on_settings_changed` with the App's own device events.
+    EVENTS: ClassVar[tuple[type, ...]] = ()
 
     def set_device_key(self, key: str) -> None:
         """The LCD the window now works on."""
