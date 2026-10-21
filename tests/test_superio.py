@@ -26,8 +26,13 @@ class _FakeChip:
     """A Nuvoton chip behind PawnIO's LpcIO, recording every call."""
 
     def __init__(self, *, slot_ids: dict[int, int] | None = None, base: int = _BASE,
-                 active: int = 1, lock: int = 0, monitor: dict[int, int] | None = None) -> None:
+                 active: int = 1, lock: int = 0, monitor: dict[int, int] | None = None,
+                 already_entered: frozenset[int] = frozenset()) -> None:
         self.slot_ids = slot_ids if slot_ids is not None else {0: 0xD42B}
+        #: Slots whose chip is in config mode from power-on (Gigabyte's IT8792E).
+        self.already_entered = set(already_entered)
+        #: Slots a config-mode key was ever written to -- the Gigabyte hazard.
+        self.keyed: list[tuple[int, int]] = []
         self.config = {0x0B: {0x60: base >> 8, 0x61: base & 0xFF, 0x30: active, 0x28: lock}}
         self.monitor = monitor or {}
         self.calls: list[tuple[str, list[int]]] = []
@@ -43,7 +48,12 @@ class _FakeChip:
 
     @property
     def chip_id(self) -> int:
-        return self.slot_ids.get(self.slot if self.slot is not None else -1, 0xFFFF)
+        """What CR20/21 answer: 0xFFFF unless the chip is in config mode.  Only
+        a Nuvoton enters on 0x87 0x87 (an ITE's key is 0x87 0x01 0x55 0x55)."""
+        real = self.slot_ids.get(self.slot if self.slot is not None else -1, 0xFFFF)
+        nuvoton = (real & sio._ID_MASK) in sio.CHIPS
+        in_config = self.slot in self.already_entered or (nuvoton and self.entered >= 2)
+        return real if in_config else 0xFFFF
 
     def _cfg_read(self, register: int) -> int:
         if register == 0x20:
@@ -62,6 +72,7 @@ class _FakeChip:
         match function:
             case "ioctl_select_slot":
                 self.slot, self.port, self.bars = inputs[0], sio._SLOTS[inputs[0]], set()
+                self.entered = 0
                 return ()
             case "ioctl_find_bars":
                 if self.chip_id in (0, 0xFFFF):
@@ -82,6 +93,7 @@ class _FakeChip:
                 if not self._allowed(port):
                     raise OSError("STATUS_ACCESS_DENIED")
                 if port == self.port:
+                    self.keyed.append((port, value))
                     self.entered = self.entered + 1 if value == 0x87 else 0
                 elif port == self.base + 5:
                     self.hwm_index = value
@@ -195,6 +207,27 @@ def test_a_known_chip_that_cannot_be_read_ends_the_search() -> None:
     chip = _FakeChip(slot_ids={0: 0xD42B, 1: 0xFFFF}, lock=0x10)
     assert "locked by the BIOS" in _reader(chip).sample()["reason"]
     assert ("ioctl_select_slot", [1]) not in chip.calls
+
+
+def test_a_chip_already_in_config_mode_is_never_entered_or_exited() -> None:
+    """Gigabyte: an ITE IT8686E at 0x2E (not keyed by Nuvoton's 0x87 0x87) and
+    an IT8792E at 0x4E left in config mode from power-on.  Linux it87.c:
+    "entering and/or exiting configuration mode is what causes the crash".
+
+    MUTATION CHECK: drop the read-before-enter step -- 0x4E is keyed."""
+    chip = _FakeChip(slot_ids={0: 0x8686, 1: 0x8733}, already_entered=frozenset({1}))
+    sample = _reader(chip).sample()
+    assert sample == {"chip": None, "reason": "chip 0x8733 at 0x4e is already in config mode "
+                                              "and is not one TRCC reads -- left alone"}
+    assert [k for k in chip.keyed if k[0] == 0x4E] == []
+    assert not any(f == "ioctl_find_bars" for f, _ in chip.calls)
+
+
+def test_a_nuvoton_already_in_config_mode_is_read_as_found() -> None:
+    """Entered by the BIOS or another tool: read without writing a key or 0xAA."""
+    chip = _FakeChip(already_entered=frozenset({0}), monitor=_monitor({0: 700}, {}))
+    assert _reader(chip).sample()["fans"][0] == 700
+    assert chip.keyed == []
 
 
 def test_another_vendors_chip_is_not_read() -> None:

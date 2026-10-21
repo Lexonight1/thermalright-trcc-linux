@@ -91,17 +91,41 @@ class SuperIoReader:
         frame_log.debug("SuperIoReader._config: 0x%02x -> 0x%02x", register, value)
         return value
 
+    def _chip_id(self) -> int:
+        """CR20/21 as the chip answers right now -- 0xFFFF when none is in
+        config mode on this port."""
+        chip_id = (self._config(_DEVICE_ID) << 8) | self._config(_DEVICE_ID + 1)
+        frame_log.debug("SuperIoReader._chip_id: 0x%04x", chip_id)
+        return chip_id
+
     def _find(self) -> tuple[str, int] | None:
         """Look for the chip in each slot; its name and monitor base, or None
-        with :attr:`_reason` saying why.  Under the bus mutex."""
+        with :attr:`_reason` saying why.  Under the bus mutex.
+
+        Each port is asked its chip id BEFORE any config-mode key is written,
+        as Linux ``it87_find`` does.  On Gigabyte boards the second chip at
+        0x4E (ITE IT8792E 0x8733, IT87952E 0x8695, IT8790E 0x8790) sits in
+        config mode from power-on, and "entering and/or exiting configuration
+        mode is what causes the crash" (``it87.c``).  So a chip that already
+        answers is never entered or exited: one TRCC does not read is left
+        alone, a Nuvoton is read as it was found.
+        """
         for slot, port in _SLOTS.items():
             self._call("ioctl_select_slot", slot)
-            self._call("ioctl_pio_outb", port, _ENTER)
-            self._call("ioctl_pio_outb", port, _ENTER)
-            try:
-                name, found = self._identify(port)
-            finally:
-                self._call("ioctl_pio_outb", port, _EXIT)
+            if (present := self._chip_id()) != 0xFFFF:
+                if present & _ID_MASK not in CHIPS:
+                    self._reason = (f"chip 0x{present:04x} at 0x{port:02x} is already in "
+                                    "config mode and is not one TRCC reads -- left alone")
+                    log.info("SuperIoReader: %s", self._reason)
+                    continue
+                name, found = self._identify(port, present)
+            else:
+                self._call("ioctl_pio_outb", port, _ENTER)
+                self._call("ioctl_pio_outb", port, _ENTER)
+                try:
+                    name, found = self._identify(port, self._chip_id())
+                finally:
+                    self._call("ioctl_pio_outb", port, _EXIT)
             if name is not None:
                 # A chip TRCC knows ends the search, readable or not: the
                 # other slot is not where its reason lies.
@@ -109,10 +133,10 @@ class SuperIoReader:
         log.info("SuperIoReader._find: no Nuvoton NCT679x -- %s", self._reason)
         return None
 
-    def _identify(self, port: int) -> tuple[str | None, tuple[str, int] | None]:
-        """In config mode on *port*: (chip name or None, (name, monitor base)
-        or None where the chip's monitor cannot be read)."""
-        chip_id = (self._config(_DEVICE_ID) << 8) | self._config(_DEVICE_ID + 1)
+    def _identify(self, port: int, chip_id: int
+                  ) -> tuple[str | None, tuple[str, int] | None]:
+        """In config mode on *port*, *chip_id* answering: (chip name or None,
+        (name, monitor base) or None where the chip's monitor cannot be read)."""
         if (name := CHIPS.get(chip_id & _ID_MASK)) is None:
             self._reason = f"chip id 0x{chip_id:04x} at 0x{port:02x} is not one TRCC reads"
             log.info("SuperIoReader: %s", self._reason)
