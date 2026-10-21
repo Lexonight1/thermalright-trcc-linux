@@ -18,7 +18,7 @@
 
 [![CI](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-30725_passed-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-0%25-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![Code Style](https://img.shields.io/badge/code_style-ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
 [![Type Check](https://img.shields.io/badge/type_check-pyright-blue?logo=python&logoColor=white)](https://microsoft.github.io/pyright/)
@@ -159,6 +159,8 @@ trcc display set-brightness 0402:3922 80        # Brightness (0–100%)
 trcc display set-orientation 0402:3922 90       # Rotate display (0/90/180/270)
 trcc led color 0416:8001 "#00ff00"              # Set LED color
 trcc led mode 0416:8001 breathing               # Set LED effect mode
+trcc system rgb                                 # List the RGB lights TRCC can drive
+trcc system linked-color temp --sensor gpu      # RAM/board lights show the GPU temperature
 trcc report                                     # Generate diagnostic report
 trcc doctor                                     # Check system dependencies
 trcc system setup                               # Interactive setup wizard
@@ -236,11 +238,12 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Overlay Editor** | Text, sensors, date/time overlays — font picker, dynamic scaling, color picker |
 | **Hardware Sensors** | 77+ sensors — CPU/GPU temp, fan speed, power, usage — customizable dashboard |
 | **LED Control** | 13 LED styles, zone carousel, breathing/rainbow/static/wave modes, per-zone color |
+| **RGB Lighting** | Corsair RGB RAM, ASUS Aura motherboard headers, and anything OpenRGB drives, on one page — a built-in effect per stick or header, lights that show CPU or GPU temp or load (green → yellow → orange → red), or lights that follow the cooler's colours |
 | **Display** | 16 resolutions (240x240 to 1920x462), 0/90/180/270 rotation, 3 brightness levels |
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules, polkit policy, SELinux support, no root required after setup |
 
-**Under the hood**: 246 source files, ~83K lines of Python, 4,400+ tests across 180 test files. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
+**Under the hood**: 357 source files, ~127K lines of Python, 30,000+ tests across 304 test files. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
 
 ### What we do better than Windows TRCC
 

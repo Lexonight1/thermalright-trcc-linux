@@ -1801,7 +1801,7 @@ LinkedMetric = Literal["temp", "load"]
 @dataclass(frozen=True, slots=True)
 class LinkedEffect:
     """A light whose colour follows a reading -- *metric* of *source* -- through
-    the LED cooler's gradient, cyan when cool or idle to red when hot or busy.
+    a green-yellow-orange-red scale (``LIGHT_GRADIENTS``), red when hot or busy.
     The LED cooler's Temperature-linked and Load-linked modes, for a light
     TRCC draws (a motherboard header)."""
     metric: LinkedMetric

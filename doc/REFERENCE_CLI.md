@@ -1850,7 +1850,7 @@ trcc system led-debug [OPTIONS] KEY
 
 ### `trcc system linked-color`
 
-Colour RAM sticks or the motherboard's lights by the CPU's or GPU's temperature or load -- the LED cooler's Temperature-linked and Load-linked modes. Cyan when cool or idle, red when hot or busy; one colour per light, written only when the reading changes it. Live while TRCC runs: a stick keeps its last colour when TRCC stops.
+Colour RAM sticks or the motherboard's lights by the CPU's or GPU's temperature or load -- the LED cooler's Temperature-linked and Load-linked modes. Green when fine, then yellow, orange and red as it gets busy or hot; one colour per light, written only when the reading changes it. Live while TRCC runs: a stick keeps its last colour when TRCC stops.
 
 ```bash
 trcc system linked-color [OPTIONS] METRIC

@@ -312,7 +312,9 @@ jobs:
       - name: Parse and update badges
         run: |
           TESTS=$(grep -oP '\d+ passed' pytest-output.txt | grep -oP '\d+' || true)
-          COV=$(grep -oP 'TOTAL.*\K\d+(?=%)' pytest-output.txt || true)
+          # \s before the number: a greedy .* ate its leading digits, so the
+          # badge showed only the last one -- 80% read as 0%.
+          COV=$(grep -oP 'TOTAL.*\s\K\d+(?=%)' pytest-output.txt || true)
           if [ -n "$TESTS" ]; then
             sed -i "s/tests-[0-9]*_passed/tests-${TESTS}_passed/" README.md
           fi

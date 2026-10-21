@@ -288,8 +288,8 @@ class SetAuraEffect(Command[RgbLightsResult]):
 class SetLinkedColor(Command[RgbLightsResult]):
     """Colour the lights named by ``refs`` -- RAM sticks, or the motherboard's
     lights, not both -- by a reading: ``metric``, the temperature or the
-    load, of ``source``, the CPU or the GPU, through the LED cooler's
-    gradient, cyan when cool or idle to red when hot or busy.  One colour per
+    load, of ``source``, the CPU or the GPU, on a green-yellow-orange-red
+    scale, red when hot or busy.  One colour per
     light, changed when the reading moves it.
 
     The LED cooler's Temperature-linked and Load-linked modes.  Live, not

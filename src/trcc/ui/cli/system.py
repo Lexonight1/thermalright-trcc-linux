@@ -791,9 +791,9 @@ def linked_color(
     temperature or load -- the LED cooler's Temperature-linked and
     Load-linked modes.
 
-    Cyan when cool or idle, red when hot or busy; one colour per light,
-    written only when the reading changes it.  Live while TRCC runs: a stick
-    keeps its last colour when TRCC stops.
+    Green when fine, then yellow, orange and red as it gets busy or hot; one
+    colour per light, written only when the reading changes it.  Live while
+    TRCC runs: a stick keeps its last colour when TRCC stops.
     """
     log.info("cli system linked-color: %s %s lights=%s", metric, sensor, light)
     if metric not in ("temp", "load"):
