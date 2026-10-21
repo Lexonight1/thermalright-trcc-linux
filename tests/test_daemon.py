@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -503,3 +504,76 @@ def test_a_server_never_removes_a_socket_it_does_not_own(fake_platform) -> None:
         assert path.exists(), "shutdown removed another server's socket"
     finally:
         other.close()
+
+
+class _Spawned:
+    """A spawned App's process: *exits_with* after *exit_after* polls, or never."""
+
+    def __init__(self, exits_with: int | None = None, exit_after: int = 0) -> None:
+        self.pid = 4242
+        self.exits_with, self.exit_after = exits_with, exit_after
+        self.polls = 0
+        self.killed = False
+
+    def poll(self) -> int | None:
+        self.polls += 1
+        return self.exits_with if self.polls > self.exit_after else None
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float) -> int:
+        return -9
+
+
+def _spawn_once(monkeypatch: pytest.MonkeyPatch, spawned: _Spawned,
+                answers_at: float | None) -> None:
+    """No App running; the spawn is *spawned*; the socket answers once *answers_at*
+    simulated seconds have passed (never, for None).  Each wait advances a fake
+    clock by its slice, so "10 s" and "60 s" mean what they say."""
+    clock = [0.0]
+
+    def wait_for_daemon(timeout: float) -> bool:
+        clock[0] += timeout
+        return answers_at is not None and clock[0] >= answers_at
+
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    monkeypatch.setattr(ipc.AppLock, "held", staticmethod(lambda: False))
+    monkeypatch.setattr(ipc, "wait_for_daemon", wait_for_daemon)
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda *a, **k: spawned)
+    monkeypatch.setattr(daemon, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+
+
+def test_a_slow_first_start_is_waited_for_not_doubled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """VM 2026-10-20: a cold first start took ~9 s against a 10 s wait; the UI
+    built an App of its own and the late one came up beside it.  An App that is
+    still running is still starting.
+
+    MUTATION CHECK: give up after the old 10 s -- the slow App is killed."""
+    spawned = _Spawned()
+    _spawn_once(monkeypatch, spawned, answers_at=30.0)
+    assert daemon.ensure_daemon() is True
+    assert not spawned.killed
+
+
+def test_a_spawned_app_that_exits_is_a_failure_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """It crashed: fall back now, nothing to stop.
+
+    MUTATION CHECK: drop the exit check -- the wait runs out and kills."""
+    spawned = _Spawned(exits_with=1, exit_after=2)
+    _spawn_once(monkeypatch, spawned, answers_at=None)
+    assert daemon.ensure_daemon() is False
+    assert spawned.polls == 3 and not spawned.killed
+
+
+def test_an_app_that_never_answers_is_stopped_before_the_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never two Apps: the one this UI spawned is stopped before the UI builds
+    its own.
+
+    MUTATION CHECK: drop the kill -- it is left running beside the fallback."""
+    spawned = _Spawned()
+    _spawn_once(monkeypatch, spawned, answers_at=None)
+    assert daemon.ensure_daemon() is False
+    assert spawned.killed

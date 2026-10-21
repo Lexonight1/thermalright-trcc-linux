@@ -127,6 +127,16 @@ _REPLACE_TIMEOUT_S = 15.0
 #: How often a UI asks whether the App holding the lock has let go of it.
 #: Not every socket poll: each ask takes the lock for an instant.
 _LOCK_POLL_S = 0.25
+#: How long a UI waits for an App that is starting -- the one it spawned, or
+#: one another UI spawned -- while that App is still alive.  A cold first start
+#: after an install took ~9 s on the win11 VM (2026-10-20: Defender scanning
+#: fresh files), against the 10 s this used to be; the UI gave up, built an App
+#: of its own, and the late App came up beside it -- two owners of one panel.
+_START_TIMEOUT_S = 60.0
+#: How often a UI checks that the App it spawned is still running.
+_SPAWN_POLL_S = 0.25
+#: After this long a still-starting App is worth one INFO line.
+_SLOW_START_S = 10.0
 
 
 def _wait_for_the_lock_holder(timeout: float) -> bool:
@@ -155,14 +165,16 @@ def _wait_for_the_lock_holder(timeout: float) -> bool:
     return False
 
 
-def ensure_daemon(*, timeout: float = 10.0) -> bool:
+def ensure_daemon(*, timeout: float = _START_TIMEOUT_S) -> bool:
     """Make sure a current daemon is reachable, spawning one if not.
 
     A running daemon OLDER than this install -- or too old to say -- is
     replaced: stopped, and this install's started, whose session restores what
     the panels showed.  A NEWER one is kept (never downgrade) and warned
-    about.  Returns True when a daemon is reachable, False if the spawn didn't
-    come up within *timeout* seconds.
+    about.  Returns True when a daemon is reachable; False when the App this
+    UI spawned exited without answering, or was still not answering after
+    *timeout* seconds -- and was then stopped, so the UI's in-process App is
+    never a second one (:func:`_wait_for_the_spawn`).
     """
     if ipc.daemon_running():
         from .__version__ import __version__
@@ -205,7 +217,7 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
     # cwd="/", as daemons do: otherwise the App inherits whatever directory the
     # FIRST UI was started from — holding it open (an unmountable USB stick)
     # and resolving anything relative against it for its whole life.
-    subprocess.Popen(
+    spawned = subprocess.Popen(
         cmd,
         env=child_env,
         cwd="/",
@@ -216,7 +228,46 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
         close_fds=True,
         creationflags=_detached_flags(),
     )
-    return ipc.wait_for_daemon(timeout=timeout)
+    return _wait_for_the_spawn(spawned, timeout)
+
+
+def _wait_for_the_spawn(spawned: subprocess.Popen[bytes], timeout: float) -> bool:
+    """Wait for the App this UI just started: True once it answers.
+
+    Its process is the evidence a fixed wait lacked.  Exited without answering
+    -> it failed: False now.  Alive -> still starting: keep waiting, up to
+    *timeout*.  Alive and silent at *timeout* -> stopped, then False: the
+    caller falls back to an in-process App, and the late one must not come up
+    beside it (it did on the win11 VM, 2026-10-20).
+    """
+    log.info("_wait_for_the_spawn: pid %s, up to %.0f s", spawned.pid, timeout)
+    started = time.monotonic()
+    said_slow = False
+    while (left := timeout - (time.monotonic() - started)) > 0:
+        if ipc.wait_for_daemon(timeout=min(_SPAWN_POLL_S, left)):
+            log.info("_wait_for_the_spawn: the App answered after %.1f s",
+                     time.monotonic() - started)
+            return True
+        if (code := spawned.poll()) is not None:
+            log.warning("_wait_for_the_spawn: the App exited with code %s before "
+                        "answering", code)
+            return False
+        if not said_slow and time.monotonic() - started >= _SLOW_START_S:
+            said_slow = True
+            log.info("_wait_for_the_spawn: the App is still starting after %.0f s "
+                     "-- waiting (a first start after an install can be slow)",
+                     _SLOW_START_S)
+    if ipc.daemon_running():
+        log.info("_wait_for_the_spawn: the App answered at the deadline")
+        return True
+    log.warning("_wait_for_the_spawn: the App did not answer within %.0f s -- "
+                "stopping it, so it cannot start beside an in-process App", timeout)
+    spawned.kill()
+    try:
+        spawned.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        log.warning("_wait_for_the_spawn: pid %s did not exit after kill", spawned.pid)
+    return False
 
 
 def _detached_flags() -> int:
