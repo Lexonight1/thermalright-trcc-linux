@@ -59,13 +59,15 @@ from ..core.models import (
     EffectSpeed,
     FollowColors,
     FollowMapping,
+    LightEffect,
+    LinkedEffect,
     RamEffect,
-    RamEffectSettings,
 )
 from ..core.ports import CommandBus
 from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
 from ..services.effect_frames import APPROXIMATE, LEDS, effect_frame
 from ..services.follow_colors import Rgb, strip_spans
+from ..services.led_effects import linked_preview
 from .presentation.rgb_page import (
     BLINK_TIP,
     BOARD_NOTE,
@@ -75,7 +77,9 @@ from .presentation.rgb_page import (
     DIRECTION_LABELS,
     EFFECT_LABELS,
     LEDS_TIP,
+    LINKED_LABELS,
     MAPPING_LABELS,
+    SENSOR_LABELS,
     SOURCE_LABELS,
     SPEED_LABELS,
     ApplyPlan,
@@ -396,8 +400,6 @@ class _EffectForm(QWidget):
         log.debug("_EffectForm.__init__")
         self._picks, self._changed = picks, changed
         self._effect = QComboBox(self)
-        for effect, label in EFFECT_LABELS.items():
-            self._effect.addItem(label, effect)
         # Wide enough for the longest name, not the whole form (his note).
         self._effect.setFixedWidth(EFFECT_PICKER_WIDTH)
         self._effect.activated.connect(self._on_effect)
@@ -415,6 +417,7 @@ class _EffectForm(QWidget):
         self._brightness.setRange(0, 255)
         self._brightness.setFixedWidth(300)
         self._brightness.valueChanged.connect(self._on_brightness)
+        self._sensor = _ChoiceButtons(SENSOR_LABELS, self._on_sensor)
         colors = QHBoxLayout()
         for swatch in self._swatches:
             colors.addWidget(swatch)
@@ -429,7 +432,8 @@ class _EffectForm(QWidget):
         for name, widget in (("Effect", self._effect), ("Colours", colors),
                              ("Speed", self._speed),
                              ("Direction", self._direction),
-                             ("Brightness", self._brightness)):
+                             ("Brightness", self._brightness),
+                             ("Sensor", self._sensor)):
             self._add_row(name, widget)
         self._grid.setColumnStretch(1, 1)
 
@@ -455,8 +459,17 @@ class _EffectForm(QWidget):
         """The picked effect's controls, set to the page's values."""
         page = self._picks
         traits = page.traits
-        log.debug("_EffectForm.show_page: %s %s", page.effect.value, traits)
-        self._effect.setCurrentIndex(self._effect.findData(page.effect))
+        log.debug("_EffectForm.show_page: %s %s linked=%s", page.effect.value,
+                  traits, page.linked)
+        self._fill_picker()
+        linked = page.linked if page.linked_allowed else None
+        self._effect.setCurrentIndex(self._effect.findData(linked or page.effect))
+        self._show_row("Sensor", linked is not None)
+        self._sensor.show_values(tuple(SENSOR_LABELS), page.link_source)
+        if linked is not None:           # a reading picks the colour
+            for name in ("Colours", "Speed", "Direction", "Brightness"):
+                self._show_row(name, False)
+            return
         for swatch, (r, g, b) in zip(self._swatches, page.colors, strict=True):
             swatch.setStyleSheet(f"background-color: rgb({r}, {g}, {b});")
         for index, swatch in enumerate(self._swatches):
@@ -477,11 +490,33 @@ class _EffectForm(QWidget):
         self._brightness.setValue(page.brightness)
         self._brightness.blockSignals(False)
 
+    def _fill_picker(self) -> None:
+        """The effects, and the linked colours where the device takes them."""
+        items = [(label, effect) for effect, label in EFFECT_LABELS.items()]
+        if self._picks.linked_allowed:
+            items += [(label, metric) for metric, label in LINKED_LABELS.items()]
+        log.debug("_EffectForm._fill_picker: %d", len(items))
+        if [self._effect.itemData(i) for i in range(self._effect.count())] == [
+                data for _label, data in items]:
+            return
+        self._effect.clear()
+        for label, data in items:
+            self._effect.addItem(label, data)
+
     def _on_effect(self, index: int) -> None:
-        effect = RamEffect(self._effect.itemData(index))
-        log.info("_EffectForm._on_effect: %s", effect.value)
-        self._picks.set_effect(effect)
+        # Qt hands item data back as a plain string, not the enum stored.
+        data = str(self._effect.itemData(index))
+        log.info("_EffectForm._on_effect: %s", data)
+        if data == "temp" or data == "load":
+            self._picks.linked = data
+        else:
+            self._picks.set_effect(RamEffect(data))
         self.show_page()
+        self._changed()
+
+    def _on_sensor(self, source: object) -> None:
+        log.info("_EffectForm._on_sensor: %s", source)
+        self._picks.link_source = "gpu" if source == "gpu" else "cpu"
         self._changed()
 
     def _on_swatch(self, index: int) -> None:
@@ -646,7 +681,7 @@ class _FollowPreview(QWidget):
                        Qt.AlignmentFlag.AlignCenter, chr(ord("A") + i))
 
 
-Strips = Sequence[tuple[str, RamEffectSettings | None]]
+Strips = Sequence[tuple[str, LightEffect | None]]
 
 
 class _EffectStrips(QWidget):
@@ -716,8 +751,10 @@ class _EffectStrips(QWidget):
         p = QPainter(self)
         for i, (_name, settings) in enumerate(strips):
             x = self.GAP // 2 + i * (width + self.GAP)
-            leds = (effect_frame(settings, t, i, len(strips))
-                    if settings is not None else None)
+            leds = (None if settings is None
+                    else linked_preview(settings.metric, LEDS)
+                    if isinstance(settings, LinkedEffect)
+                    else effect_frame(settings, t, i, len(strips)))
             for led in range(LEDS):
                 color = QColor(*leds[led]) if leds else QColor("#3a3a40")
                 p.fillRect(QRect(x, 4 + led * (height + 4), width, height),

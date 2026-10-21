@@ -28,10 +28,12 @@ lets the App keep one runtime dict keyed by device.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import ClassVar
 
 from ..core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
 from ..core.logs import per_frame
+from ..core.models import LinkedMetric, SensorLink
 from ..core.ports import LedColorStream
 
 log = logging.getLogger(__name__)
@@ -165,6 +167,46 @@ _RAINBOW_STEP = 4                 # rainbow advance per tick
 # across a single digit's seven segments (#193).
 _RAINBOW_GROUP_STEP = 768 // 10 // 6        # ≈ 12 / 768  ≈ 1.6 % of the wheel
 _COLORFUL_GROUP_STEP = _COLORFUL_PERIOD // 10 // 6   # ≈ 2 / 168
+
+
+def _link(source: str) -> SensorLink:
+    """A settings string as a source: anything but "cpu" read the GPU, as the
+    engine always has."""
+    frame_log.debug("_link: %s", source)
+    return "cpu" if source == "cpu" else "gpu"
+
+
+#: The reading each linked metric follows, per source -- the keys
+#: ``App.last_raw_readings`` carries (°C, not the user's display unit).
+LINKED_SENSORS: dict[LinkedMetric, dict[SensorLink, str]] = {
+    "temp": {"cpu": "cpu:temp", "gpu": "gpu:primary:temp"},
+    "load": {"cpu": "cpu:usage", "gpu": "gpu:primary:usage"},
+}
+
+
+def linked_color(metric: LinkedMetric, source: SensorLink,
+                 readings: Mapping[str, float]) -> tuple[int, int, int] | None:
+    """The colour *metric* of *source* maps to now -- None without a
+    reading, so a caller keeps the last colour rather than going dark.
+    The LED cooler's linked modes and a motherboard light's both use it."""
+    value = readings.get(LINKED_SENSORS[metric][source])
+    frame_log.debug("linked_color: %s %s -> %s", metric, source, value)
+    if value is None:
+        return None
+    gradient = (ColorEngine.TEMP_GRADIENT if metric == "temp"
+                else ColorEngine.LOAD_GRADIENT)
+    return ColorEngine.color_for_value(value, gradient)
+
+
+def linked_preview(metric: LinkedMetric, leds: int) -> list[tuple[int, int, int]]:
+    """A strip showing *metric*'s gradient, hot or busy at the top -- how a
+    page draws a linked light it has no live reading for."""
+    gradient = (ColorEngine.TEMP_GRADIENT if metric == "temp"
+                else ColorEngine.LOAD_GRADIENT)
+    low, high = gradient[0][0], gradient[-1][0]
+    frame_log.debug("linked_preview: %s %d", metric, leds)
+    return [ColorEngine.color_for_value(high - (high - low) * i / max(1, leds - 1),
+                                        gradient) for i in range(leds)]
 
 
 class LEDEffectEngine:
@@ -586,13 +628,10 @@ class LEDEffectEngine:
         source: str,
     ) -> list[tuple[int, int, int]]:
         """Color from a temperature gradient.  Holds previous color if no sensor."""
-        log.debug("_tick_temp_linked: runtime=%s sensors=%s", runtime, sensors)
-        sensor_id = f"{source}:temp" if source == "cpu" else "gpu:primary:temp"
-        value = sensors.get(sensor_id)
-        if value is not None:
-            runtime.last_temp_color = ColorEngine.color_for_value(
-                value, ColorEngine.TEMP_GRADIENT,
-            )
+        # Per tick: the per-frame logger -- on ``log`` it wrote every tick.
+        frame_log.debug("_tick_temp_linked: runtime=%s", runtime)
+        if (color := linked_color("temp", _link(source), sensors)) is not None:
+            runtime.last_temp_color = color
         return [runtime.last_temp_color] * led_count
 
     @staticmethod
@@ -603,11 +642,7 @@ class LEDEffectEngine:
         source: str,
     ) -> list[tuple[int, int, int]]:
         """Color from CPU/GPU load gradient.  Holds previous color if no sensor."""
-        log.debug("_tick_load_linked: runtime=%s sensors=%s", runtime, sensors)
-        sensor_id = "cpu:usage" if source == "cpu" else "gpu:primary:usage"
-        value = sensors.get(sensor_id)
-        if value is not None:
-            runtime.last_load_color = ColorEngine.color_for_value(
-                value, ColorEngine.LOAD_GRADIENT,
-            )
+        frame_log.debug("_tick_load_linked: runtime=%s", runtime)
+        if (color := linked_color("load", _link(source), sensors)) is not None:
+            runtime.last_load_color = color
         return [runtime.last_load_color] * led_count

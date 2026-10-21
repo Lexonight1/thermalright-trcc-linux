@@ -2152,6 +2152,17 @@ def test_system_aura_effect_route(api_client: TestClient) -> None:
         assert api_client.post("/system/aura-effect", json=body).status_code == 422
 
 
+def test_system_aura_linked_route(api_client: TestClient) -> None:
+    """Dispatches SetAuraLinked; the schema takes only temp/load, cpu/gpu."""
+    refused = api_client.post("/system/aura-linked",
+                              json={"metric": "temp", "lights": ["aura/argb1"]})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "no motherboard lights listed -- press Find lights first")
+    for body in ({"metric": "fan"}, {"metric": "temp", "source": "ram"}, {}):
+        assert api_client.post("/system/aura-linked", json=body).status_code == 422
+
+
 def test_system_aura_leds_route(api_client: TestClient) -> None:
     """Dispatches SetAuraLeds; the schema refuses what the board cannot take."""
     refused = api_client.post("/system/aura-leds", json={"header": 1, "leds": 8})

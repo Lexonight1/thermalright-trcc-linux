@@ -10,10 +10,9 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Literal
 
 from .logs import per_frame
-from .models import LedStyle
+from .models import LedStyle, SensorLink
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -61,9 +60,6 @@ class LedZoneSettings:
 # =========================================================================
 # Per-device LED settings — persisted to trcc.json under "led_devices"
 # =========================================================================
-
-
-SensorLink = Literal["cpu", "gpu"]
 
 
 @dataclass

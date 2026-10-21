@@ -27,12 +27,16 @@ from ...core.models import (
     FollowColors,
     FollowMapping,
     Kind,
+    LightEffect,
     LightKind,
+    LinkedEffect,
+    LinkedMetric,
     RamAccessState,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbLight,
+    SensorLink,
     aura_header,
 )
 from ...core.ram_effects import effect_problem
@@ -69,6 +73,10 @@ EFFECT_LABELS: dict[RamEffect, str] = {
     RamEffect.MARQUEE: "Marquee",
     RamEffect.SEQUENTIAL: "Sequential",
 }
+#: The LED cooler's linked modes, as the motherboard's picker lists them.
+LINKED_LABELS: dict[LinkedMetric, str] = {
+    "temp": "Temperature-linked", "load": "Load-linked"}
+SENSOR_LABELS: dict[SensorLink, str] = {"cpu": "CPU", "gpu": "GPU"}
 SPEED_LABELS: dict[EffectSpeed, str] = {
     EffectSpeed.SLOW: "Slow", EffectSpeed.MEDIUM: "Medium",
     EffectSpeed.FAST: "Fast",
@@ -193,9 +201,10 @@ class FollowDevice:
 @dataclass(frozen=True, slots=True)
 class RunBoardEffect:
     """Plan: the motherboard lights *refs* (every one when empty) run
-    *settings*, drawn by TRCC (``SetAuraEffect``)."""
+    *settings* -- a built-in effect (``SetAuraEffect``) or a linked colour
+    (``SetAuraLinked``) -- drawn by TRCC."""
     refs: tuple[str, ...]
-    settings: RamEffectSettings
+    settings: LightEffect
 
 
 ApplyPlan = LeaveLights | SaveEffect | RunBoardEffect | FollowDevice
@@ -207,15 +216,22 @@ NOT_KNOWN_NOTE = ("Not known: its factory default, or what OpenRGB or the "
                   "motherboard's own lighting control last set.")
 
 
-def strip_legend(strips: Sequence[tuple[str, RamEffectSettings | None]]
+def effect_label(effect: LightEffect) -> str:
+    """What a light runs, in words: "Rain", "Temperature-linked (CPU)"."""
+    log.debug("effect_label: %s", effect)
+    if isinstance(effect, LinkedEffect):
+        return f"{LINKED_LABELS[effect.metric]} ({SENSOR_LABELS[effect.source]})"
+    return EFFECT_LABELS[effect.effect]
+
+
+def strip_legend(strips: Sequence[tuple[str, LightEffect | None]]
                  ) -> str:
     """The effect preview's legend: one line per lettered strip, the effect
     it runs.  Letters only: the lights' names are on their cards, in the same
     order (his call, 2026-10-21)."""
     log.debug("strip_legend: %d", len(strips))
     legend = "\n".join(
-        f"{chr(ord('A') + i)}: "
-        f"{EFFECT_LABELS[settings.effect] if settings else 'not known'}"
+        f"{chr(ord('A') + i)}: {effect_label(settings) if settings else 'not known'}"
         for i, (_name, settings) in enumerate(strips))
     # Said once, under the letters -- on every line it was noise (his call).
     if any(settings is None for _name, settings in strips):
@@ -285,12 +301,11 @@ def _detail(light: RgbLight) -> str:
         return "found -- TRCC does not drive it; another app may"
     if light.kind is LightKind.BOARD:
         count = light.led_count
-        effect = f" · {EFFECT_LABELS[light.effect.effect]}" if light.effect else ""
+        effect = f" · {effect_label(light.effect)}" if light.effect else ""
         return (f"direct · {count} LED{'' if count == 1 else 's'}{effect}" if count
                 else "direct · LED count not set")
     # The name already says where the stick sits (``named_by_ref``).
-    saved = (f" · {EFFECT_LABELS[light.effect.effect]} saved"
-             if light.effect else "")
+    saved = f" · {effect_label(light.effect)} saved" if light.effect else ""
     return f"direct · {light.led_count} LEDs{saved}"
 
 
@@ -305,10 +320,18 @@ class EffectPicks:
         self.colors: list[Rgb] = list(DEFAULT_COLORS)
         self.random_colors = False
         self.brightness = 255
+        # A linked colour instead of an effect -- the motherboard's alone.
+        self.linked_allowed = False
+        self.linked: LinkedMetric | None = None
+        self.link_source: SensorLink = "cpu"
 
-    def take(self, saved: RamEffectSettings) -> None:
-        """Start from an effect saved on a stick."""
+    def take(self, saved: LightEffect) -> None:
+        """Start from what a light runs."""
         log.debug("EffectPicks.take: %s", saved)
+        if isinstance(saved, LinkedEffect):
+            self.linked, self.link_source = saved.metric, saved.source
+            return
+        self.linked = None
         self.effect, self.speed = saved.effect, saved.speed
         self.direction = saved.direction
         self.random_colors, self.brightness = (saved.random_colors,
@@ -326,7 +349,7 @@ class EffectPicks:
         """Pick an effect; a direction it cannot take falls back to its own."""
         log.info("EffectPicks.set_effect: %s -> %s", self.effect.value,
                  effect.value)
-        self.effect = effect
+        self.effect, self.linked = effect, None
         if self.direction not in EFFECT_TRAITS[effect].directions:
             self.direction = None
 
@@ -340,6 +363,14 @@ class EffectPicks:
     def set_color(self, index: int, color: Rgb) -> None:
         log.info("EffectPicks.set_color: %d %s", index, color)
         self.colors[index] = color
+
+    def light_effect(self) -> LightEffect:
+        """What a motherboard light runs: the linked colour picked, else the
+        effect."""
+        log.debug("EffectPicks.light_effect: linked=%s", self.linked)
+        if self.linked is not None and self.linked_allowed:
+            return LinkedEffect(metric=self.linked, source=self.link_source)
+        return self.settings()
 
     def settings(self) -> RamEffectSettings:
         """The picks as the effect takes them: only its own colours, direction
@@ -488,6 +519,7 @@ class RgbPage:
         from what its lights run."""
         log.debug("RgbPage._show_device: %s", device.value)
         self.device = device
+        self.effect_picks.linked_allowed = device is RgbDevice.MOTHERBOARD
         lights = [light for light in self._lights if light.kind in DEVICE_KINDS[device]]
         driven = self.follower is device
         if driven and device is RgbDevice.MOTHERBOARD:
@@ -603,7 +635,7 @@ class RgbPage:
         log.debug("RgbPage.follow_status: %s", status)
         return status
 
-    def effect_strips(self) -> tuple[tuple[str, RamEffectSettings | None], ...]:
+    def effect_strips(self) -> tuple[tuple[str, LightEffect | None], ...]:
         """The effect preview's strips: each light's name and what it runs.
 
         Built-in effect: the effect being set, on the device's ticked lights.
@@ -612,9 +644,9 @@ class RgbPage:
         """
         kind = DEVICE_KINDS[self.device][0]
         if self.source is RgbSource.EFFECT:
-            settings = self.effect_picks.settings()
-            strips = tuple((row.title, settings) for row in self.rows(kind)
-                           if row.checked)
+            effect = self.effect_picks.light_effect()
+            strips: tuple[tuple[str, LightEffect | None], ...] = tuple(
+                (row.title, effect) for row in self.rows(kind) if row.checked)
         else:
             strips = tuple((light.name, light.effect) for light in self._lights
                            if light.kind is kind)
@@ -660,8 +692,9 @@ class RgbPage:
                        else "Tick the lights the effect runs on.")
         elif silent:
             problem = f"Give {silent[0]} its number of LEDs first."
-        elif self.source is RgbSource.EFFECT:
-            problem = effect_problem(self.effect_picks.settings())
+        elif (self.source is RgbSource.EFFECT and isinstance(
+                effect := self.effect_picks.light_effect(), RamEffectSettings)):
+            problem = effect_problem(effect)
         elif (self.device is RgbDevice.OPENRGB
               and parse_openrgb_address(self.address) is None):
             problem = BAD_ADDRESS
@@ -685,7 +718,8 @@ class RgbPage:
         elif self.source is RgbSource.EFFECT:
             plan = (SaveEffect(self._targets(kind), settings)
                     if self.device is RgbDevice.MEMORY
-                    else RunBoardEffect(self._targets(kind), settings))
+                    else RunBoardEffect(self._targets(kind),
+                                        self.effect_picks.light_effect()))
         else:
             plan = FollowDevice(DEVICE_FOLLOWER[self.device], *address, picks.source,
                                 picks.mapping, picks.colors, self._targets(kind))

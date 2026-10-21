@@ -24,8 +24,10 @@ from ...core.models import (
     FitMode,
     FollowColors,
     FollowMapping,
+    LinkedMetric,
     RamEffect,
     RgbFollowMode,
+    SensorLink,
 )
 from ...core.results import ConnectionIssuesResult, ConnectResult
 
@@ -276,6 +278,14 @@ class RamEffectRequest(_EffectRequest):
     """One of the memory's own effects, saved on the sticks named by
     ``sticks`` (refs; [] for every stick)."""
     sticks: list[str] = Field(default_factory=list, max_length=16)
+
+
+class AuraLinkedRequest(BaseModel):
+    """The motherboard lights named by ``lights`` (refs; [] for every one)
+    coloured by ``metric`` -- temp or load -- of ``source``, cpu or gpu."""
+    metric: LinkedMetric
+    source: SensorLink = "cpu"
+    lights: list[str] = Field(default_factory=list, max_length=16)
 
 
 class AuraEffectRequest(_EffectRequest):

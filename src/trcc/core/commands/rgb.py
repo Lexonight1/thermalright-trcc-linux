@@ -17,11 +17,15 @@ from ..models import (
     MAX_ARGB_LEDS,
     EffectDirection,
     EffectSpeed,
+    LightEffect,
     LightKind,
+    LinkedEffect,
+    LinkedMetric,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbLight,
+    SensorLink,
 )
 from ..ram_effects import effect_problem
 from ..results import RgbLightsResult
@@ -264,43 +268,76 @@ class SetAuraEffect(Command[RgbLightsResult]):
         if (problem := effect_problem(settings)) is not None:
             log.warning("SetAuraEffect: refused -- %s", problem)
             return _lights(app, message=problem, ok=False)
-        board = {light.ref: light for light in _lights(app).lights
-                 if light.kind is LightKind.BOARD}
-        named = self.refs or tuple(board)
-        if problem := self._refusal(board, named):
-            log.warning("SetAuraEffect: refused -- %s", problem)
-            return _lights(app, message=problem, ok=False)
-        prefs, previous = app.settings.app, app.settings.rgb_follow_mode()
-        running = (previous is RgbFollowMode.BOARD
-                   and prefs.rgb_follow_source == EFFECT_SOURCE)
-        targets = tuple(sorted(set(named) | (set(app.settings.rgb_follow_targets())
-                                             if running else set())))
-        for ref in named:
-            app.settings.set_light_effect(ref, settings)
-        app.settings.set_rgb_follow(
-            RgbFollowMode.BOARD, prefs.openrgb_host, prefs.openrgb_port,
-            EFFECT_SOURCE, app.settings.rgb_follow_mapping(), targets,
-            colors=app.settings.rgb_follow_colors())
-        _refollow_board(app)
-        app.events.publish(RgbFollowChanged(mode=RgbFollowMode.BOARD))
-        app.events.publish(RgbLightsChanged())
-        message = f"{self.effect.value} on {len(named)} motherboard light(s)"
-        if previous is not RgbFollowMode.OFF and not running:
-            message += f" -- {previous.value} following turned off"
-        return _lights(app, message=message)
+        return _run_on_board(app, self.refs, settings, self.effect.value)
 
-    @staticmethod
-    def _refusal(board: dict[str, RgbLight], named: tuple[str, ...]) -> str:
-        """Why *named* cannot run an effect; "" when they can."""
-        log.debug("SetAuraEffect._refusal: %s of %s", named, sorted(board))
-        if not board:
-            return "no motherboard lights listed -- press Find lights first"
-        if unknown := sorted(set(named) - set(board)):
-            return (f"no motherboard light {', '.join(unknown)} -- found "
-                    f"{', '.join(sorted(board))}")
-        if dark := [board[ref].name for ref in named if not board[ref].led_count]:
-            return f"give {dark[0]} its number of LEDs first"
-        return ""
+
+@dataclass(frozen=True, slots=True)
+class SetAuraLinked(Command[RgbLightsResult]):
+    """Colour the motherboard's lights named by ``refs`` (every one the last
+    Find listed when empty) by a reading: ``metric`` -- the temperature or
+    the load -- of ``source``, the CPU or the GPU, through the LED cooler's
+    gradient, cyan when cool or idle to red when hot or busy.
+
+    The LED cooler's Temperature-linked and Load-linked modes, for a header's
+    fan or strip.  Run by TRCC like ``SetAuraEffect``: nothing is saved on
+    the board, each light keeps its own, and whatever followed before stops.
+    """
+    metric: LinkedMetric
+    refs: tuple[str, ...] = ()
+    source: SensorLink = "cpu"
+
+    def execute(self, app: App) -> RgbLightsResult:
+        log.info("SetAuraLinked: %s of %s on %s", self.metric, self.source,
+                 self.refs or "every light")
+        return _run_on_board(app, self.refs,
+                             LinkedEffect(metric=self.metric, source=self.source),
+                             f"{self.metric}-linked ({self.source})")
+
+
+def _run_on_board(app: App, refs: tuple[str, ...], effect: LightEffect,
+                  name: str) -> RgbLightsResult:
+    """*effect* on the board lights *refs* (every one listed when empty) --
+    what ``SetAuraEffect`` and ``SetAuraLinked`` share.  Refused before
+    anything changes for an unknown light or a header with no LED count;
+    lights already running TRCC's effect keep theirs."""
+    board = {light.ref: light for light in _lights(app).lights
+             if light.kind is LightKind.BOARD}
+    named = refs or tuple(board)
+    if problem := _board_refusal(board, named):
+        log.warning("_run_on_board: refused -- %s", problem)
+        return _lights(app, message=problem, ok=False)
+    prefs, previous = app.settings.app, app.settings.rgb_follow_mode()
+    running = (previous is RgbFollowMode.BOARD
+               and prefs.rgb_follow_source == EFFECT_SOURCE)
+    targets = tuple(sorted(set(named) | (set(app.settings.rgb_follow_targets())
+                                         if running else set())))
+    log.info("_run_on_board: %s on %s, targets %s", name, named, targets)
+    for ref in named:
+        app.settings.set_light_effect(ref, effect)
+    app.settings.set_rgb_follow(
+        RgbFollowMode.BOARD, prefs.openrgb_host, prefs.openrgb_port,
+        EFFECT_SOURCE, app.settings.rgb_follow_mapping(), targets,
+        colors=app.settings.rgb_follow_colors())
+    _refollow_board(app)
+    app.events.publish(RgbFollowChanged(mode=RgbFollowMode.BOARD))
+    app.events.publish(RgbLightsChanged())
+    message = f"{name} on {len(named)} motherboard light(s)"
+    if previous is not RgbFollowMode.OFF and not running:
+        message += f" -- {previous.value} following turned off"
+    return _lights(app, message=message)
+
+
+def _board_refusal(board: dict[str, RgbLight], named: tuple[str, ...]) -> str:
+    """Why *named* cannot run an effect; "" when they can."""
+    log.debug("_board_refusal: %s of %s", named, sorted(board))
+    if not board:
+        return "no motherboard lights listed -- press Find lights first"
+    if unknown := sorted(set(named) - set(board)):
+        return (f"no motherboard light {', '.join(unknown)} -- found "
+                f"{', '.join(sorted(board))}")
+    if dark := [board[ref].name for ref in named if not board[ref].led_count]:
+        return f"give {dark[0]} its number of LEDs first"
+    return ""
 
 
 @dataclass(frozen=True, slots=True)

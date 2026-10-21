@@ -1592,6 +1592,23 @@ trcc system aura-leds HEADER LEDS
 | `HEADER` | The ARGB header, from 1 (see `trcc system rgb`). |
 | `LEDS` | How many LEDs it drives. |
 
+### `trcc system aura-linked`
+
+Colour the motherboard's lights by the CPU's or GPU's temperature or load -- the LED cooler's Temperature-linked and Load-linked modes. Cyan when cool or idle, red when hot or busy. TRCC runs it while TRCC runs; a header needs its LED count first (`trcc system aura-leds`).
+
+```bash
+trcc system aura-linked [OPTIONS] METRIC
+```
+
+| Argument | Description |
+|---|---|
+| `METRIC` | temp or load. |
+
+| Option | Description |
+|---|---|
+| `--light` `LIGHT` | A motherboard light by ref -- aura/argb1, aura/onboard (see `trcc system rgb`); repeat for more. Default: every one. |
+| `--sensor` `SENSOR` | cpu or gpu. |
+
 ### `trcc system autostart`
 
 Manage auto-launch-on-login (XDG .desktop on Linux).

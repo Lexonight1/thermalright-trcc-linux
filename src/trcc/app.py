@@ -399,7 +399,7 @@ class App(CommandBus, ModuleHost):
         self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
             make_mirror, smbuses=platform.smbuses,
             board=self.rgb_boards.driver, openrgb=platform.openrgb),
-            on_sent=self._follow_sent)
+            on_sent=self._follow_sent, readings=self._raw_readings)
         self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
         # Whether a newer TRCC exists: asked here, for every window, from
         # start_session on -- never by a window (services/update_watch.py).
@@ -874,6 +874,12 @@ class App(CommandBus, ModuleHost):
             surface = event.surface
         if surface is not None:
             self.rgb_mirror.on_frame(event.key, surface, renderer.raw_argb32)
+
+    def _raw_readings(self) -> dict[str, float] | None:
+        """The metrics loop's last raw sample (°C), None before its first --
+        what a motherboard light's linked colour reads."""
+        frame_log.debug("App._raw_readings: %s", self.last_raw_readings is not None)
+        return self.last_raw_readings
 
     def _follow_sent(self, source: str, columns: Columns) -> None:
         """What following just sent, for every window's preview."""

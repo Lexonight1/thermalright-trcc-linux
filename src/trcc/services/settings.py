@@ -42,13 +42,17 @@ from ..core.models import (
     FitMode,
     FollowColors,
     FollowMapping,
+    LightEffect,
     LightKind,
+    LinkedEffect,
+    LinkedMetric,
     OrientationState,
     OverlayElement,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbMirrorDevice,
+    SensorLink,
     TempUnit,
     parse_device_key,
 )
@@ -215,6 +219,18 @@ def _is_background_mode(mode: str) -> TypeGuard[BackgroundMode]:
     valid = mode in get_args(BackgroundMode)
     log.debug("_is_background_mode: %r -> %s", mode, valid)
     return valid
+
+
+def _linked_effect(ref: str, record: dict[str, Any]) -> LinkedEffect | None:
+    """A saved linked colour; one this build cannot read is None."""
+    metric, source = record.get("linked"), record.get("source", "cpu")
+    log.debug("_linked_effect: %s %r %r", ref, metric, source)
+    if metric not in get_args(LinkedMetric) or source not in get_args(SensorLink):
+        log.warning("_linked_effect: %s's linked colour %r/%r is unreadable -- "
+                    "shown as unknown", ref, metric, source)
+        return None
+    return LinkedEffect(metric=cast(LinkedMetric, metric),
+                        source=cast(SensorLink, source))
 
 
 class Settings:
@@ -912,14 +928,17 @@ class Settings:
                         "vivid", value)
             return FollowColors.VIVID
 
-    def light_effect(self, ref: str) -> RamEffectSettings | None:
-        """The effect TRCC last gave light *ref* -- a stick or an ARGB
-        header -- or None; a damaged record is None too, never a guess."""
+    def light_effect(self, ref: str) -> LightEffect | None:
+        """The effect TRCC last gave light *ref* -- a stick's or an ARGB
+        header's built-in effect, or a header's linked colour -- or None; a
+        damaged record is None too, never a guess."""
         record = (self._app.ram_effects.get(ref)
                   if isinstance(self._app.ram_effects, dict) else None)
         log.debug("light_effect: %s -> %r", ref, record)
         if not isinstance(record, dict):
             return None
+        if "linked" in record:
+            return _linked_effect(ref, record)
         colors = _rgb_list(record.get("colors", []))
         try:
             return RamEffectSettings(
@@ -935,15 +954,19 @@ class Settings:
                         "shown as unknown", ref, e)
             return None
 
-    def set_light_effect(self, ref: str, effect: RamEffectSettings) -> None:
+    def set_light_effect(self, ref: str, effect: LightEffect) -> None:
         """Remember the effect TRCC gave light *ref*, a stick or a header."""
-        log.info("set_light_effect: %s %s", ref, effect.effect.value)
-        record = {"effect": effect.effect.value, "speed": effect.speed.value,
-                  "direction": (effect.direction.value if effect.direction
-                                else None),
-                  "colors": [list(c) for c in effect.colors],
-                  "random_colors": effect.random_colors,
-                  "brightness": effect.brightness}
+        log.info("set_light_effect: %s %s", ref, effect)
+        record: dict[str, Any]
+        if isinstance(effect, LinkedEffect):
+            record = {"linked": effect.metric, "source": effect.source}
+        else:
+            record = {"effect": effect.effect.value, "speed": effect.speed.value,
+                      "direction": (effect.direction.value if effect.direction
+                                    else None),
+                      "colors": [list(c) for c in effect.colors],
+                      "random_colors": effect.random_colors,
+                      "brightness": effect.brightness}
         with self._lock:
             if not isinstance(self._app.ram_effects, dict):
                 self._app.ram_effects = {}
@@ -1021,7 +1044,7 @@ class Settings:
             return ()
         return tuple(value)
 
-    def follow_effects(self) -> dict[str, RamEffectSettings]:
+    def follow_effects(self) -> dict[str, LightEffect]:
         """Each followed light's built-in effect, by ref, while the source
         is TRCC's effect clock -- empty for any other source.  What the
         follower is configured with, wherever following starts."""
@@ -1031,8 +1054,7 @@ class Settings:
             return {}
         effects = {ref: effect for ref in self.rgb_follow_targets()
                    if (effect := self.light_effect(ref)) is not None}
-        log.debug("follow_effects: %s",
-                  {ref: e.effect.value for ref, e in effects.items()})
+        log.debug("follow_effects: %s", effects)
         return effects
 
     def set_rgb_follow(self, mode: RgbFollowMode, host: str, port: int,

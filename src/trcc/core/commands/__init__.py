@@ -109,6 +109,7 @@ from .rgb import (
     ScanRgbLights,
     SetAuraEffect,
     SetAuraLeds,
+    SetAuraLinked,
     SetRamEffect,
 )
 from .system import (
@@ -294,6 +295,7 @@ __all__ = [
     "SendScreencastFrame",
     "SetAuraEffect",
     "SetAuraLeds",
+    "SetAuraLinked",
     "SetBackground",
     "SetBackgroundMode",
     "SetBrightness",

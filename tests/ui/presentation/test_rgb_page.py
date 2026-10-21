@@ -484,3 +484,31 @@ def test_following_the_board_starts_on_its_saved_headers() -> None:
     assert [r.checked for r in page.rows(LightKind.BOARD)] == [False, True]
     # Each device keeps its own ticks: the sticks start ticked as ever.
     assert page.rows(LightKind.RAM)[0].checked
+
+
+# ── Linked colours: the motherboard's alone ──────────────────────────
+
+def test_a_header_can_follow_the_gpu_load() -> None:
+    """MUTATION CHECK: ignore ``linked`` in ``light_effect`` -- the plan
+    carries a built-in effect."""
+    from trcc.core.models import LinkedEffect
+    from trcc.ui.presentation.rgb_page import effect_label
+    page = _on(_page(LIT_HEADER), RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
+    page.set_checked(LIT_HEADER.ref, True)
+    picks = page.effect_picks
+    picks.linked, picks.link_source = "load", "gpu"
+    plan = page.apply()
+    assert plan == RunBoardEffect((), LinkedEffect(metric="load", source="gpu"))
+    assert effect_label(LinkedEffect("temp", "cpu")) == "Temperature-linked (CPU)"
+    assert page.effect_strips() == ((LIT_HEADER.name, LinkedEffect("load", "gpu")),)
+
+
+def test_memory_takes_no_linked_colour() -> None:
+    """The sticks run their own firmware effects; a linked pick left over
+    from the board is not sent to them."""
+    page = _on(_page(STICK_A, LIT_HEADER), RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
+    page.effect_picks.linked = "temp"
+    page.set_device(RgbDevice.MEMORY)
+    page.set_source(RgbSource.EFFECT)
+    plan = page.apply()
+    assert isinstance(plan, SaveEffect)

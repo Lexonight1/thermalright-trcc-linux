@@ -43,6 +43,7 @@ from ...core.commands import (
     ScanRgbLights,
     SetAuraEffect,
     SetAuraLeds,
+    SetAuraLinked,
     SetHddEnabled,
     SetRamEffect,
     SetRamLighting,
@@ -55,6 +56,7 @@ from ...core.models import (
     EffectSpeed,
     FollowColors,
     FollowMapping,
+    LinkedEffect,
     PanelConfig,
     RamAccessState,
     RamEffect,
@@ -667,8 +669,12 @@ def _echo_lights(result: RgbLightsResult) -> None:
     elif not result.scanned:
         typer.echo("  (not searched yet -- `trcc system rgb --scan`)")
     for light in result.lights:
-        effect = (f"  effect: {light.effect.effect.value} (last set by TRCC)"
-                  if light.effect else "")
+        effect = ""
+        if isinstance(light.effect, LinkedEffect):
+            effect = (f"  effect: {light.effect.metric}-linked "
+                      f"({light.effect.source}) (last set by TRCC)")
+        elif light.effect is not None:
+            effect = f"  effect: {light.effect.effect.value} (last set by TRCC)"
         typer.echo(f"  {light.kind.value:<7} {light.ref:<24} {light.name} "
                    f"({light.led_count} LEDs){effect}")
     if result.openrgb_error:
@@ -767,6 +773,34 @@ def aura_effect(
         direction=direction,
         colors=tuple(_parse_rgb(c) for c in color or ()),
         random_colors=random_colors, brightness=brightness))
+    _echo_lights(result)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("aura-linked")
+def aura_linked(
+    metric: str = typer.Argument(..., help="temp or load."),
+    light: list[str] | None = typer.Option(
+        None, "--light", help="A motherboard light by ref -- aura/argb1, "
+        "aura/onboard (see `trcc system rgb`); repeat for more.  Default: "
+        "every one."),
+    sensor: str = typer.Option("cpu", "--sensor", help="cpu or gpu."),
+) -> None:
+    """Colour the motherboard's lights by the CPU's or GPU's temperature or
+    load -- the LED cooler's Temperature-linked and Load-linked modes.
+
+    Cyan when cool or idle, red when hot or busy.  TRCC runs it while TRCC
+    runs; a header needs its LED count first (`trcc system aura-leds`).
+    """
+    log.info("cli system aura-linked: %s %s lights=%s", metric, sensor, light)
+    if metric not in ("temp", "load"):
+        raise typer.BadParameter(f"temp or load -- got {metric!r}")
+    if sensor not in ("cpu", "gpu"):
+        raise typer.BadParameter(f"cpu or gpu -- got {sensor!r}")
+    result = get_app().dispatch(SetAuraLinked(
+        metric="temp" if metric == "temp" else "load", refs=tuple(light or ()),
+        source="cpu" if sensor == "cpu" else "gpu"))
     _echo_lights(result)
     if not result.ok:
         raise typer.Exit(code=1)

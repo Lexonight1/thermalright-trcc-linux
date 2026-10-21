@@ -1792,6 +1792,26 @@ class RamEffectSettings:
     brightness: int = 255
 
 
+#: Which device a linked colour reads: the CPU's or the GPU's.
+SensorLink = Literal["cpu", "gpu"]
+#: What a linked colour follows: a temperature or a load.
+LinkedMetric = Literal["temp", "load"]
+
+
+@dataclass(frozen=True, slots=True)
+class LinkedEffect:
+    """A light whose colour follows a reading -- *metric* of *source* -- through
+    the LED cooler's gradient, cyan when cool or idle to red when hot or busy.
+    The LED cooler's Temperature-linked and Load-linked modes, for a light
+    TRCC draws (a motherboard header)."""
+    metric: LinkedMetric
+    source: SensorLink = "cpu"
+
+
+#: What a light TRCC drives can run: a built-in effect, or a linked colour.
+LightEffect = RamEffectSettings | LinkedEffect
+
+
 class LightKind(str, Enum):
     """What a light is and what drives it.
 
@@ -1821,7 +1841,7 @@ class RgbLight:
     name: str
     led_count: int
     kind: LightKind
-    effect: RamEffectSettings | None = None
+    effect: LightEffect | None = None
     remembered: bool = False
 
 

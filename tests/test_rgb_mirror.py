@@ -992,8 +992,9 @@ def test_an_effect_is_saved_on_the_sticks_and_remembered(tmp_path) -> None:
     assert platform.ram.chips[0x19].effect == b""
     lights = {light.ref: light.effect for light in app.dispatch(RgbLights()).lights}
     assert lights["i2c-3/0x19"] is None
-    assert lights["i2c-3/0x1b"] is not None
-    assert lights["i2c-3/0x1b"].speed is EffectSpeed.FAST
+    saved = lights["i2c-3/0x1b"]
+    assert isinstance(saved, RamEffectSettings)      # a stick's, not a linked colour
+    assert saved.speed is EffectSpeed.FAST
     app.close()
 
 
@@ -1385,4 +1386,37 @@ def test_what_cannot_run_is_refused_before_anything_changes(
     result = app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=refs, **kw))
     assert (result.ok, result.message) == (False, message)
     assert (app.settings.rgb_follow_mode(), list(platform.aura.writes)) == before
+    app.close()
+
+
+# ── SetAuraLinked: a header coloured by a reading ───────────────────────
+
+def test_a_header_follows_the_cpu_temperature(tmp_path: Path) -> None:
+    """90 °C on the LED cooler's gradient is orange; a missing reading keeps
+    the last colour instead of going dark.
+
+    MUTATION CHECK: read the GPU for a CPU link -- the header stays dark."""
+    from trcc.core.commands import SetAuraLinked
+    app, platform = _board_app(tmp_path)
+    app.last_raw_readings = {"cpu:temp": 90.0, "gpu:primary:temp": 40.0}
+    result = app.dispatch(SetAuraLinked(metric="temp", refs=("aura/argb1",)))
+    assert (result.ok, result.message) == (
+        True, "temp-linked (cpu) on 1 motherboard light(s)")
+    _until(lambda: _header_shows(platform, 1, (255, 110, 0), 8))
+    app.last_raw_readings = {}
+    platform.aura.writes.clear()
+    _until(lambda: bool(platform.aura.reports(0x40)))
+    assert _header_shows(platform, 1, (255, 110, 0), 8)
+    app.close()
+
+
+def test_a_linked_colour_is_kept_and_listed(tmp_path: Path) -> None:
+    from trcc.core.commands import RgbLights, SetAuraLinked
+    from trcc.core.models import LinkedEffect
+    app, _platform = _board_app(tmp_path)
+    app.dispatch(SetAuraLinked(metric="load", refs=("aura/argb1",), source="gpu"))
+    header = next(light for light in app.dispatch(RgbLights()).lights
+                  if light.ref == "aura/argb1")
+    assert header.effect == LinkedEffect(metric="load", source="gpu")
+    assert app.settings.light_effect("aura/argb1") == LinkedEffect("load", "gpu")
     app.close()

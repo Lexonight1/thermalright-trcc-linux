@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**163 total: 117 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**164 total: 118 Commands and 46 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1678,6 +1678,18 @@ How many LEDs an ASUS Aura ARGB header drives -- the board cannot say, its heade
 |---|---|---|
 | `header` | `int` | yes |
 | `leds` | `int` | yes |
+
+### `SetAuraLinked`
+
+Colour the motherboard's lights named by ``refs`` (every one the last Find listed when empty) by a reading: ``metric`` -- the temperature or the load -- of ``source``, the CPU or the GPU, through the LED cooler's gradient, cyan when cool or idle to red when hot or busy.
+
+*Command* → `RgbLightsResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `metric` | `Literal[temp, load]` | yes |
+| `refs` | `tuple[str, Ellipsis]` | no |
+| `source` | `Literal[cpu, gpu]` | no |
 
 ### `SetRamEffect`
 

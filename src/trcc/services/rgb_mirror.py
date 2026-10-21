@@ -45,6 +45,8 @@ from ..core.models import (
     MAX_ARGB_LEDS,
     FollowColors,
     FollowMapping,
+    LightEffect,
+    LinkedEffect,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
@@ -53,6 +55,7 @@ from ..core.models import (
 from ..core.ports import RamLights, RgbMirror
 from .effect_frames import effect_frame
 from .follow_colors import for_leds, frame_columns
+from .led_effects import linked_color
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -64,6 +67,9 @@ Columns = tuple[tuple[Rgb, ...], ...]
 Pixels = Callable[[Any], tuple[bytes, int, int, int]]
 #: Told of every send: the device that led, and the screen colours sent.
 Sent = Callable[[str, Columns], None]
+#: The App's last raw sensor sample, None before its first -- what a linked
+#: colour reads, the same one the LED cooler's linked modes read.
+Readings = Callable[[], Mapping[str, float] | None]
 
 #: Rows a frame is sampled into: one per LED of a 10-LED stick; each device
 #: stretches its column to its own LED count.
@@ -104,13 +110,15 @@ class RgbMirrorService:
                  *,
                  retry_s: float = RETRY_S,
                  blink_step_s: float = BLINK_STEP_S,
-                 on_sent: Sent | None = None) -> None:
+                 on_sent: Sent | None = None,
+                 readings: Readings | None = None) -> None:
         log.debug("RgbMirrorService.__init__: retry %.1f s, blink step %.2f s",
                   retry_s, blink_step_s)
         self._make = make_mirror
         self._retry_s = retry_s
         self._blink_step_s = blink_step_s
         self._on_sent = on_sent
+        self._readings = readings
         self._cond = threading.Condition()
         # One column of colours per device, newest only; a single column
         # (an LED cooler's colours) goes to every device.  With it, whether
@@ -122,8 +130,10 @@ class RgbMirrorService:
         self._targets: tuple[str, ...] = ()
         # Each light's built-in effect, by ref, while the source is TRCC's
         # effect clock -- empty otherwise; and when that clock started.
-        self._effects: Mapping[str, RamEffectSettings] = {}
+        self._effects: Mapping[str, LightEffect] = {}
         self._effect_start = 0.0
+        # A linked light's last colour, kept while its reading is missing.
+        self._linked_last: dict[str, Rgb] = {}
         self._last_frame = 0.0
         self._device_count = 2
         self._mirror: RgbMirror | None = None
@@ -150,7 +160,7 @@ class RgbMirrorService:
                   mapping: FollowMapping = FollowMapping.HALVES,
                   targets: tuple[str, ...] = (), *,
                   colors: FollowColors = FollowColors.VIVID,
-                  effects: Mapping[str, RamEffectSettings] | None = None) -> None:
+                  effects: Mapping[str, LightEffect] | None = None) -> None:
         """Stop following; start again with *mode* unless it is OFF.
 
         *host* and *port* are OpenRGB's SDK server; RAM ignores them.
@@ -165,7 +175,7 @@ class RgbMirrorService:
         log.info("RgbMirrorService.configure: %s %s:%d source=%r %s %s "
                  "targets=%s effects=%s", mode.value, host, port, source,
                  mapping.value, colors.value, targets or "all",
-                 {ref: e.effect.value for ref, e in effects.items()})
+                 effects)
         with self._switch:
             self._stop_following()
             if mode is RgbFollowMode.OFF:
@@ -427,7 +437,8 @@ class RgbMirrorService:
     def _effect_interval(self) -> float:
         """How long until the next effect frame: once a second when every
         light is Static, else an LCD sample's interval."""
-        moving = any(e.effect is not RamEffect.STATIC
+        moving = any(isinstance(e, RamEffectSettings)
+                     and e.effect is not RamEffect.STATIC
                      for e in self._effects.values())
         frame_log.debug("_effect_interval: moving=%s", moving)
         return EFFECT_INTERVAL_S if moving else STATIC_INTERVAL_S
@@ -438,9 +449,25 @@ class RgbMirrorService:
         effect is dark."""
         t = time.monotonic() - self._effect_start
         frame_log.debug("_effect_columns: %d light(s) t=%.2f", len(devices), t)
-        return tuple(tuple(effect_frame(self._effects[d.ref], t, i, len(devices)))
-                     if d.ref in self._effects else ((0, 0, 0),)
+        readings = (self._readings() if self._readings else None) or {}
+        return tuple(self._effect_column(d.ref, i, len(devices), t, readings)
                      for i, d in enumerate(devices))
+
+    def _effect_column(self, ref: str, i: int, count: int, t: float,
+                       readings: Mapping[str, float]) -> tuple[Rgb, ...]:
+        """Light *ref*'s colours now: its effect drawn at *t*, or its linked
+        colour from *readings* -- the last one while its reading is missing,
+        dark before any."""
+        effect = self._effects.get(ref)
+        frame_log.debug("_effect_column: %s %s", ref, effect)
+        if isinstance(effect, LinkedEffect):
+            color = linked_color(effect.metric, effect.source, readings)
+            if color is not None:
+                self._linked_last[ref] = color
+            return (self._linked_last.get(ref, (0, 0, 0)),)
+        if effect is None:
+            return ((0, 0, 0),)
+        return tuple(effect_frame(effect, t, i, count))
 
     def _send(self, mirror: RgbMirror, columns: Columns | None,
               picture: bool) -> None:
