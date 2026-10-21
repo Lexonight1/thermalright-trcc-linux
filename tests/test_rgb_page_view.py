@@ -36,7 +36,7 @@ from trcc.core.results import (
     RgbFollowResult,
     RgbLightsResult,
 )
-from trcc.ui.presentation.rgb_page import RgbSource, strip_legend
+from trcc.ui.presentation.rgb_page import RgbDevice, RgbSource, strip_legend
 
 LCD = "0402:3922"
 STICKS = (RgbLight("i2c-3/0x19", "Stick A", 10, LightKind.RAM),
@@ -52,6 +52,7 @@ class _Bus:
     def __init__(self, lights: tuple[RgbLight, ...] = (*STICKS, HEADER)) -> None:
         self.sent: list[Any] = []
         self.lights = lights
+        self.follow_mode = RgbFollowMode.OFF
 
     def dispatch(self, cmd: Any) -> Any:
         self.sent.append(cmd)
@@ -64,8 +65,8 @@ class _Bus:
                                        ram_access=RamAccessState.ON,
                                        message="done")
             case RgbFollow() | SetRgbFollow():
-                return RgbFollowResult(host="127.0.0.1", port=6742,
-                                       message="done")
+                return RgbFollowResult(mode=self.follow_mode, host="127.0.0.1",
+                                       port=6742, message="done")
             case ListDevices():
                 return DevicesListResult(devices=[DeviceEntry(
                     key=LCD, product="Frozen", kind="lcd", connected=True)])
@@ -126,9 +127,8 @@ def test_apply_runs_the_effect_on_a_ticked_header(skin: Any, qtbot: Any) -> None
     view.resize(1170, 630)
     view.show()
     qtbot.waitExposed(view)
+    view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
     view._source_buttons[RgbSource.EFFECT].click()
-    for stick in STICKS:
-        view._lights_column._on_light_toggled(stick.ref, False)
     view._lights_column._on_light_toggled(lit.ref, True)
     view._effect._on_effect(view._effect._effect.findData(RamEffect.STATIC))
     view._apply.click()
@@ -155,6 +155,7 @@ def test_apply_follows_with_the_source_the_mapping_and_the_lights(
 
 def test_blink_sends_the_headers_number(view: Any, qtbot: Any) -> None:
     from PySide6.QtWidgets import QPushButton
+    view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
     (button,) = view.findChildren(QPushButton, "rgb-blink")
     button.click()
     _answered(view, qtbot)
@@ -162,6 +163,8 @@ def test_blink_sends_the_headers_number(view: Any, qtbot: Any) -> None:
 
 
 def test_leave_alone_turns_following_off(view: Any, qtbot: Any) -> None:
+    view._app.follow_mode = RgbFollowMode.RAM          # the sticks follow
+    view.refresh()
     view._source_buttons[RgbSource.LEAVE].click()
     view._apply.click()
     _answered(view, qtbot)
@@ -270,6 +273,7 @@ def test_a_headers_led_count_is_sent_when_the_edit_ends(view: Any,
 
     from trcc.ui.presentation.rgb_page import BOARD_NOTE, LEDS_TIP
 
+    view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
     (box,) = [b for b in view.findChildren(QSpinBox)
               if b.objectName() == "rgb-leds"]
     assert box.toolTip() == LEDS_TIP
@@ -281,3 +285,22 @@ def test_a_headers_led_count_is_sent_when_the_edit_ends(view: Any,
     box.editingFinished.emit()
     _answered(view, qtbot)
     assert view._app.commands(SetAuraLeds) == [SetAuraLeds(header=1, leds=8)]
+
+
+def test_a_device_button_shows_only_that_devices_lights(view: Any, qtbot: Any) -> None:
+    """The left column picks the device; the panel shows its lights alone.
+
+    MUTATION CHECK: show every kind's cards on every device -- the sticks
+    appear on the Motherboard panel."""
+    from PySide6.QtWidgets import QCheckBox
+    view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
+    qtbot.wait(20)                  # Qt shows a card added to a shown page next pass
+    shown = {c.text() for c in view._lights_column.findChildren(QCheckBox)
+             if c.isVisibleTo(view)}
+    assert shown == {HEADER.name}
+    assert view._title.text() == "Motherboard"
+    view._devices_column.buttons[RgbDevice.MEMORY].click()
+    qtbot.wait(20)
+    shown = {c.text() for c in view._lights_column.findChildren(QCheckBox)
+             if c.isVisibleTo(view)}
+    assert shown == {stick.name for stick in STICKS}

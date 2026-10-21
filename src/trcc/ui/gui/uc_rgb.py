@@ -87,6 +87,11 @@ _QSS = f"""
     border: 1px solid {CARD_BORDER}; padding: 6px 22px; font-size: 10pt; }}
 #rgb-page QPushButton#rgb-choice:checked {{ background: #4a3f22;
     border: 1px solid {ACCENT}; }}
+#rgb-page QPushButton#rgb-device {{ background: {CARD};
+    border: 1px solid {CARD_BORDER}; border-radius: 6px; padding: 10px 14px;
+    text-align: left; font-size: 11pt; }}
+#rgb-page QPushButton#rgb-device:checked {{ background: #4a3f22;
+    border: 1px solid {ACCENT}; font-weight: bold; }}
 #rgb-page QPushButton#rgb-button, #rgb-page QPushButton#rgb-apply {{
     background: #2d2d33; border: 2px solid {ACCENT}; border-radius: 6px;
     padding: 6px 16px; font-weight: bold; }}

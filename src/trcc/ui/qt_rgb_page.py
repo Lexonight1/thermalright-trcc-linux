@@ -1,9 +1,9 @@
 """The RGB page both windows show -- the view, not the Commands.
 
-Lights on the left (RGB memory, OpenRGB's devices, the RAM-access card and
-"Find lights"), the source on the right (Leave alone / Built-in effect /
-Follow a device) with only the controls that source and that effect take, and
-Apply.  ``presentation.rgb_page.RgbPage`` makes every choice; this draws it.
+The devices on the left (Memory, Motherboard, OpenRGB, and "Find lights");
+the one picked on the right -- its lights, its source (Leave alone /
+Built-in effect / Follow a device) with only the controls that source and that
+effect take, and Apply, which changes that device only.  ``presentation.rgb_page.RgbPage`` makes every choice; this draws it.
 
 Template Method, as ``qt_ram_access.RamAccessRow``: each skin's subclass names
 the Commands (``_lights`` .. ``_apply``) and builds its RAM-access row, so the
@@ -59,7 +59,6 @@ from ..core.models import (
     EffectSpeed,
     FollowColors,
     FollowMapping,
-    LightKind,
     RamEffect,
     RamEffectSettings,
 )
@@ -71,6 +70,8 @@ from .presentation.rgb_page import (
     BLINK_TIP,
     BOARD_NOTE,
     COLORS_LABELS,
+    DEVICE_KINDS,
+    DEVICE_LABELS,
     DIRECTION_LABELS,
     EFFECT_LABELS,
     LEDS_TIP,
@@ -82,6 +83,7 @@ from .presentation.rgb_page import (
     FindLights,
     HeaderLeds,
     LightRow,
+    RgbDevice,
     RgbPage,
     RgbSource,
     strip_legend,
@@ -96,6 +98,15 @@ ACCESS_OFF_TEXT = (
     "TRCC needs permission to reach the memory's lighting chips.  Nothing is "
     "changed until you turn it on, and you can turn it off here again.")
 WORKING = "Working..."
+#: The devices column: "Motherboard (3) · on", the longest button, and no
+#: wider -- 240 left a wide empty band (his note, 2026-10-21).
+DEVICES_WIDTH = 180
+#: The effect picker: "Rainbow Wave", the longest name, with room to spare.
+EFFECT_PICKER_WIDTH = 220
+#: How wide the line explaining the picked choice runs -- the form's width.
+HINT_WIDTH = 520
+#: The most a device's lights take of the panel before they scroll.
+LIGHTS_HEIGHT = 180
 #: How often the follow status is re-read while frames reach the preview.
 STATUS_EVERY_S = 2.0
 
@@ -105,6 +116,7 @@ def _clear(layout: QVBoxLayout) -> None:
     log.debug("_clear: %d item(s)", layout.count())
     while (item := layout.takeAt(0)) is not None:
         if (widget := item.widget()) is not None:
+            widget.hide()              # gone now, not when Qt deletes it
             widget.deleteLater()
 
 
@@ -194,10 +206,78 @@ class _LightCard(QFrame):
             leds_set(header, box.value())
 
 
-class _LightsColumn(QWidget):
-    """The left column: what TRCC can light, and how to find more."""
+def _scrolling(parent: QWidget, column: QWidget) -> QScrollArea:
+    """*column* in a frameless scroll area: a device's lights outgrow the
+    panel -- more sticks, a board's headers -- and must not push the
+    controls below off the page."""
+    log.debug("_scrolling")
+    area = QScrollArea(parent)
+    area.setObjectName("rgb-lights-scroll")
+    area.setWidget(column)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    # As tall as its lights, up to the cap: a fixed small box hid the second
+    # stick behind a scroll bar with half the page empty below.
+    area.setSizeAdjustPolicy(QScrollArea.SizeAdjustPolicy.AdjustToContents)
+    area.setMaximumHeight(LIGHTS_HEIGHT)
+    return area
 
+
+class _DeviceList(QWidget):
+    """The left column: the devices, and how to find their lights."""
+
+    picked = Signal(object)          # RgbDevice
     find_clicked = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        log.debug("_DeviceList.__init__")
+        self._group = QButtonGroup(self)
+        self.buttons: dict[RgbDevice, QPushButton] = {}
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        layout.addWidget(_heading("Devices"))
+        for device, label in DEVICE_LABELS.items():
+            button = QPushButton(label, self)
+            button.setObjectName("rgb-device")
+            button.setCheckable(True)
+            button.clicked.connect(partial(self._on_picked, device))
+            self._group.addButton(button)
+            self.buttons[device] = button
+            layout.addWidget(button)
+        layout.addSpacing(12)
+        self.find_button = QPushButton("Find lights", self)
+        self.find_button.setObjectName("rgb-button")
+        self.find_button.clicked.connect(self.find_clicked)
+        layout.addWidget(self.find_button)
+        layout.addStretch(1)
+
+    def _on_picked(self, device: RgbDevice, _checked: bool = False) -> None:
+        """A device button: ``clicked`` passes its checked state, which is
+        not the device."""
+        log.info("_DeviceList._on_picked: %s", device.value)
+        self.picked.emit(device)
+
+    def show_page(self, page: RgbPage) -> None:
+        """Which device is shown, and how many lights each has."""
+        log.debug("_DeviceList.show_page: %s", page.device.value)
+        for device, button in self.buttons.items():
+            count = len(page.rows(DEVICE_KINDS[device][0]))
+            following = " · on" if page.follower is device else ""
+            button.setText(f"{DEVICE_LABELS[device]} ({count}){following}")
+            button.setChecked(device is page.device)
+
+    def set_busy(self, busy: bool) -> None:
+        log.debug("_DeviceList.set_busy: %s", busy)
+        self.find_button.setEnabled(not busy)
+
+
+class _LightsColumn(QWidget):
+    """The selected device's lights: a card each, with what that device
+    needs beside them -- the RAM-access switch, OpenRGB's address."""
+
     leds_set = Signal(int, int)
     blinked = Signal(int)
 
@@ -215,76 +295,56 @@ class _LightsColumn(QWidget):
         card.addWidget(self._access_title)
         card.addWidget(self._access_text)
         card.addWidget(access)
-        self._ram = QVBoxLayout()
-        self._ram_note = _muted()
+        self._address_row = QWidget(self)
+        address = QHBoxLayout(self._address_row)
+        address.setContentsMargins(0, 0, 0, 0)
         self._address = QLineEdit(self)
         self._address.setObjectName("rgb-address")
         self._address.setToolTip("OpenRGB's SDK server, host:port")
         self._address.textEdited.connect(self._on_address_edited)
-        self._openrgb_note = _muted()
-        self._openrgb = QVBoxLayout()
-        self._board_box = QFrame(self)
-        self._board_box.setObjectName("rgb-openrgb")
-        self._board = QVBoxLayout(self._board_box)
-        self._board.addWidget(_title("Motherboard"))
-        self._board.addWidget(_muted(BOARD_NOTE))
-        self._board_rows = QVBoxLayout()
-        self._board.addLayout(self._board_rows)
-        self.find_button = QPushButton("Find lights", self)
-        self.find_button.setObjectName("rgb-button")
-        self.find_button.clicked.connect(self.find_clicked)
+        address.addWidget(_muted("SDK server"))
+        address.addWidget(self._address, 1)
+        self._board_note = _muted(BOARD_NOTE)
+        self._note = _muted()
+        self._cards = QVBoxLayout()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(_heading("Lights"))
-        layout.addLayout(self._ram)
-        layout.addWidget(self._ram_note)
+        layout.addWidget(self._address_row)
+        layout.addWidget(self._board_note)
+        layout.addLayout(self._cards)
+        layout.addWidget(self._note)
         layout.addWidget(self._access_card)
-        layout.addWidget(self._openrgb_box())
-        layout.addWidget(self._board_box)
-        layout.addWidget(self.find_button, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addStretch(1)
 
-    def _openrgb_box(self) -> QFrame:
-        log.debug("_LightsColumn._openrgb_box")
-        box = QFrame(self)
-        box.setObjectName("rgb-openrgb")
-        layout = QVBoxLayout(box)
-        top = QHBoxLayout()
-        top.addWidget(_title("OpenRGB"))
-        top.addWidget(self._address, 1)
-        layout.addLayout(top)
-        layout.addWidget(self._openrgb_note)
-        layout.addLayout(self._openrgb)
-        return box
-
     def show_page(self) -> None:
-        """Lay out the lights the page lists now."""
+        """Lay out the shown device's lights."""
         page = self._page
-        log.debug("_LightsColumn.show_page: reachable=%s", page.ram_reachable)
-        for layout, kind in ((self._ram, LightKind.RAM),
-                             (self._openrgb, LightKind.OPENRGB)):
-            _clear(layout)
+        device = page.device
+        log.debug("_LightsColumn.show_page: %s reachable=%s", device.value,
+                  page.ram_reachable)
+        _clear(self._cards)
+        board = device is RgbDevice.MOTHERBOARD
+        for kind in DEVICE_KINDS[device]:
             for row in page.rows(kind):
-                layout.addWidget(_LightCard(row, self._on_light_toggled))
-        _clear(self._board_rows)
-        board = page.rows(LightKind.BOARD) + page.rows(LightKind.FOUND)
-        for row in board:
-            self._board_rows.addWidget(_LightCard(row, self._on_light_toggled,
-                                                  self.leds_set.emit,
-                                                  self.blinked.emit))
-        self._board_box.setVisible(bool(board))
+                card = _LightCard(row, self._on_light_toggled,
+                                  self.leds_set.emit if board else None,
+                                  self.blinked.emit if board else None)
+                self._cards.addWidget(card)
+                # Shown now, not on Qt's next pass: the box measures its
+                # lights straight after this, and a card not yet shown is
+                # not counted.
+                card.show()
+        self._note.setText(page.note)
+        self._note.setVisible(bool(page.note))
+        memory = device is RgbDevice.MEMORY
         reachable = page.ram_reachable
-        self._ram_note.setText(page.ram_note if reachable else "")
-        self._ram_note.setVisible(reachable and bool(page.ram_note))
+        self._access_card.setVisible(memory)
         # Off: the card explains and offers the switch.  On: just the switch.
         self._access_title.setVisible(not reachable)
         self._access_text.setVisible(not reachable)
+        self._address_row.setVisible(device is RgbDevice.OPENRGB)
         self._address.setText(page.address)
-        self._openrgb_note.setText(page.openrgb_note)
-
-    def set_busy(self, busy: bool) -> None:
-        log.debug("_LightsColumn.set_busy: %s", busy)
-        self.find_button.setEnabled(not busy)
+        self._board_note.setVisible(board)
 
     def _on_light_toggled(self, ref: str, checked: bool) -> None:
         log.info("_LightsColumn._on_light_toggled: %s %s", ref, checked)
@@ -338,6 +398,8 @@ class _EffectForm(QWidget):
         self._effect = QComboBox(self)
         for effect, label in EFFECT_LABELS.items():
             self._effect.addItem(label, effect)
+        # Wide enough for the longest name, not the whole form (his note).
+        self._effect.setFixedWidth(EFFECT_PICKER_WIDTH)
         self._effect.activated.connect(self._on_effect)
         self._swatches = [QPushButton(self) for _ in picks.colors]
         for index, swatch in enumerate(self._swatches):
@@ -361,7 +423,7 @@ class _EffectForm(QWidget):
         colors.addStretch(1)
         self._grid = QGridLayout(self)
         self._grid.setContentsMargins(0, 0, 0, 0)
-        self._grid.setHorizontalSpacing(24)
+        self._grid.setHorizontalSpacing(10)    # controls close to their labels
         self._grid.setVerticalSpacing(14)
         self._rows: dict[str, tuple[QLabel, QWidget]] = {}
         for name, widget in (("Effect", self._effect), ("Colours", colors),
@@ -595,7 +657,8 @@ class _EffectStrips(QWidget):
     effect to run; a stick whose effect is not known stays grey and still.
     """
 
-    CELL = (22, 16)
+    CELL = (22, 14)
+    GAP = 24                     # between strips: room for each letter
     TICK_MS = 50                 # 20 frames a second: smooth, and cheap
 
     def __init__(self) -> None:
@@ -618,6 +681,8 @@ class _EffectStrips(QWidget):
         log.debug("_EffectStrips.set_strips: %d -> %d", len(self._strips),
                   len(strips))
         self._strips = tuple(strips)
+        # As wide as the strips: the legend sits beside them, not past a gap.
+        self.setFixedWidth(max(1, len(self._strips)) * (self.CELL[0] + self.GAP))
         self._sync_timer()
         self.update()
 
@@ -650,7 +715,7 @@ class _EffectStrips(QWidget):
         width, height = self.CELL
         p = QPainter(self)
         for i, (_name, settings) in enumerate(strips):
-            x = i * (width + 24)
+            x = self.GAP // 2 + i * (width + self.GAP)
             leds = (effect_frame(settings, t, i, len(strips))
                     if settings is not None else None)
             for led in range(LEDS):
@@ -658,7 +723,8 @@ class _EffectStrips(QWidget):
                 p.fillRect(QRect(x, 4 + led * (height + 4), width, height),
                            color)
             p.setPen(self.palette().windowText().color())   # either skin
-            p.drawText(QRect(x - 12, LEDS * (height + 4) + 6, width + 24, 20),
+            p.drawText(QRect(x - self.GAP // 2, LEDS * (height + 4) + 6,
+                             width + self.GAP, 20),
                        Qt.AlignmentFlag.AlignCenter,
                        chr(ord("A") + i) + ("" if leds else "?"))
         p.end()
@@ -673,17 +739,26 @@ class _EffectPreview(QWidget):
         log.debug("_EffectPreview.__init__")
         self.strips = _EffectStrips()
         self.legend = _muted()
+        self._approximate = _muted(APPROXIMATE)
+        # What each strip runs, beside the strips (his ask, 2026-10-21).
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        row.addWidget(self.strips)
+        row.addWidget(self.legend, 1, Qt.AlignmentFlag.AlignTop)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        layout.addWidget(self.strips)
-        layout.addWidget(self.legend)
-        layout.addWidget(_muted(APPROXIMATE))
+        layout.addLayout(row)
+        layout.addWidget(self._approximate)
 
-    def show_strips(self, strips: Strips) -> None:
-        log.debug("_EffectPreview.show_strips: %d", len(strips))
+    def show_strips(self, strips: Strips, *, approximate: bool) -> None:
+        """*approximate*: the lights run the effect themselves (RAM), so the
+        drawing is TRCC's guess; a board light shows exactly what TRCC sends."""
+        log.debug("_EffectPreview.show_strips: %d approximate=%s", len(strips),
+                  approximate)
         self.strips.set_strips(strips)
         self.legend.setText(strip_legend(strips))
+        self._approximate.setVisible(approximate)
         self.setVisible(bool(strips))
 
 
@@ -727,19 +802,19 @@ class _FollowForm(QWidget):
 
     def show_page(self) -> None:
         page = self._page
-        log.debug("_FollowForm.show_page: %r %s", page.follow_source,
-                  page.mapping.value)
+        picks = page.follow_picks
+        log.debug("_FollowForm.show_page: %r %s", picks.source, picks.mapping.value)
         self._source.clear()
-        for choice in page.follow_choices():
+        for choice in picks.choices():
             self._source.addItem(choice.label, choice.key)
-        self._source.setCurrentIndex(self._source.findData(page.follow_source))
-        applies = page.mapping_applies
+        self._source.setCurrentIndex(self._source.findData(picks.source))
+        applies = picks.mapping_applies
         self._mapping_label.setVisible(applies)
         self._mapping.setVisible(applies)
-        self._mapping.show_values(tuple(FollowMapping), page.mapping)
+        self._mapping.show_values(tuple(FollowMapping), picks.mapping)
         self._colors_label.setVisible(applies)
         self._colors.setVisible(applies)
-        self._colors.show_values(tuple(FollowColors), page.colors)
+        self._colors.show_values(tuple(FollowColors), picks.colors)
         self._legend.setText("   ".join(
             f"{chr(ord('A') + i)}: {name}"
             for i, name in enumerate(page.preview_lights)))
@@ -750,8 +825,10 @@ class _FollowForm(QWidget):
         """The preview's lights and columns, as the page has them now."""
         page = self._page
         log.debug("_FollowForm.show_layout")
-        self.preview.set_layout(page.preview_lights, page.preview_columns,
-                                page.mapping_applies)
+        picks = page.follow_picks
+        lights = page.preview_lights
+        self.preview.set_layout(lights, picks.columns(len(lights)),
+                                picks.mapping_applies)
 
     def show_status(self) -> None:
         log.debug("_FollowForm.show_status")
@@ -760,9 +837,9 @@ class _FollowForm(QWidget):
     def _on_source(self, index: int) -> None:
         key = str(self._source.itemData(index))
         log.info("_FollowForm._on_source: %r", key)
-        if key != self._page.follow_source:
+        if key != self._page.follow_picks.source:
             self.preview.clear()
-        self._page.follow_source = key
+        self._page.follow_picks.source = key
         self.show_page()
         self._changed()
 
@@ -772,7 +849,7 @@ class _FollowForm(QWidget):
         """``FrameSent``: the followed LCD's frame goes to the preview."""
         key = getattr(event, "key", "")
         surface = getattr(event, "surface", None)
-        if (key != self._page.follow_source or not isinstance(surface, QImage)
+        if (key != self._page.follow_picks.source or not isinstance(surface, QImage)
                 or not self.preview.isVisible()):
             return
         frame_log.debug("_FollowForm.on_frame: %s", key)
@@ -784,7 +861,7 @@ class _FollowForm(QWidget):
         the follower takes, before the cooler's segment mask."""
         key = getattr(event, "key", "")
         colors = getattr(event, "colors", ())
-        source = self._page.follow_source
+        source = self._page.follow_picks.source
         if (self.preview.follows_picture or not colors
                 or not self.preview.isVisible()
                 or key != (source or self.lead or key)):
@@ -799,7 +876,7 @@ class _FollowForm(QWidget):
         drawn on the strips when they come from what this page follows."""
         source = getattr(event, "source", "")
         columns = getattr(event, "columns", ())
-        followed = self._page.follow_source
+        followed = self._page.follow_picks.source
         if (not self.preview.isVisible()
                 or source != (followed or self.lead or source)):
             return
@@ -817,12 +894,12 @@ class _FollowForm(QWidget):
 
     def _on_colors(self, colors: object) -> None:
         log.info("_FollowForm._on_colors: %s", colors)
-        self._page.colors = FollowColors(colors)
+        self._page.follow_picks.colors = FollowColors(colors)
         self._changed()
 
     def _on_mapping(self, mapping: object) -> None:
         log.info("_FollowForm._on_mapping: %s", mapping)
-        self._page.mapping = FollowMapping(mapping)
+        self._page.follow_picks.mapping = FollowMapping(mapping)
         self._changed()
 
 
@@ -839,12 +916,15 @@ class RgbPageView(QWidget):
         self._busy = False
         self._reload = False            # the running job: a scan reloads
         self._access = self._access_row()
+        self._devices_column = _DeviceList()
+        self._devices_column.setFixedWidth(DEVICES_WIDTH)
+        self._devices_column.picked.connect(self._on_device)
+        self._devices_column.find_clicked.connect(self._on_find)
         self._lights_column = _LightsColumn(self.page, self._access,
                                             self._on_changed)
-        self._lights_column.setFixedWidth(400)
-        self._lights_column.find_clicked.connect(self._on_find)
         self._lights_column.leds_set.connect(self._on_leds)
         self._lights_column.blinked.connect(self._on_blink)
+        self._title = _heading("")
         self._sources = QButtonGroup(self)
         self._source_buttons: dict[RgbSource, QRadioButton] = {}
         self._effect = _EffectForm(self.page.effect_picks, self._on_changed)
@@ -868,24 +948,25 @@ class RgbPageView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         # Spaced by hand: a nested layout inherits its parent's spacing.
         layout.setSpacing(0)
-        layout.addWidget(self._scrolling(self._lights_column))
-        layout.addSpacing(70)
+        layout.addWidget(self._devices_column)
+        layout.addSpacing(40)
         layout.addLayout(self._source_column(), 1)
 
     def _with_strips(self, form: QWidget | None) -> QWidget:
-        """*form* (if any) above the animated sticks and what they run."""
+        """*form* (if any) with the animated lights and what they run beside
+        it -- below it, the page outgrew the window (2026-10-21)."""
         log.debug("RgbPageView._with_strips: %s", type(form).__name__)
         holder = QWidget(self)
-        layout = QVBoxLayout(holder)
+        layout = QHBoxLayout(holder)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(40)
+        # The form at its own width, the preview right after it, the spare
+        # room past both -- a share of the width left a wide gap (his note).
         if form is not None:
-            layout.addWidget(form)
-            layout.addSpacing(8)
+            layout.addWidget(form, 0, Qt.AlignmentFlag.AlignTop)
         preview = _EffectPreview()
         self._previews.append(preview)
-        layout.addWidget(preview)
-        layout.addStretch(1)
+        layout.addWidget(preview, 1, Qt.AlignmentFlag.AlignTop)
         return holder
 
     def _source_column(self) -> QVBoxLayout:
@@ -904,29 +985,22 @@ class RgbPageView(QWidget):
         apply_row.addWidget(self._apply)
         column = QVBoxLayout()
         column.setSpacing(10)
-        column.addWidget(_heading("Source"))
+        column.addWidget(self._title)
+        self._lights_area = _scrolling(self, self._lights_column)
+        column.addWidget(self._lights_area)
+        column.addSpacing(8)
         column.addLayout(radios)
-        column.addSpacing(18)
-        column.addWidget(self._stack)
+        # What the picked choice means, right under it and no wider than the
+        # form -- alone at the foot of the page, full width, it read as stray
+        # (his note, 2026-10-21).
+        self._hint.setMaximumWidth(HINT_WIDTH)
         column.addWidget(self._hint)
+        column.addSpacing(12)
+        column.addWidget(self._stack)
         column.addWidget(self._problem)
         column.addStretch(1)
         column.addLayout(apply_row)
         return column
-
-    def _scrolling(self, column: QWidget) -> QScrollArea:
-        """*column* in a frameless scroll area: lights outgrow a fixed
-        window -- more sticks, a board's headers -- and must not squeeze."""
-        log.debug("RgbPageView._scrolling")
-        area = QScrollArea(self)
-        area.setObjectName("rgb-lights-scroll")
-        area.setWidget(column)
-        area.setWidgetResizable(True)
-        area.setFrameShape(QFrame.Shape.NoFrame)
-        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        area.setFixedWidth(column.width() + area.verticalScrollBar().sizeHint()
-                           .width())
-        return area
 
     # ── What a skin supplies ─────────────────────────────────────────
 
@@ -1002,8 +1076,13 @@ class RgbPageView(QWidget):
 
     def _show(self) -> None:
         page = self.page
-        log.debug("RgbPageView._show: source=%s", page.source.value)
+        log.debug("RgbPageView._show: %s source=%s", page.device.value,
+                  page.source.value)
+        self._title.setText(DEVICE_LABELS[page.device])
+        self._devices_column.show_page(page)
         self._lights_column.show_page()
+        self._lights_area.setMinimumHeight(
+            min(LIGHTS_HEIGHT, self._lights_column.sizeHint().height()))
         for source, button in self._source_buttons.items():
             button.setEnabled(page.source_enabled(source))
             button.setChecked(source is page.source)
@@ -1022,12 +1101,18 @@ class RgbPageView(QWidget):
         self.follow.show_layout()
         strips = page.effect_strips()
         for preview in self._previews:
-            preview.show_strips(strips)
+            preview.show_strips(strips, approximate=page.device is RgbDevice.MEMORY)
         self._problem.setText(problem or "")
         self._problem.setVisible(problem is not None)
         self._message.setText(WORKING if self._busy else page.message)
         self._apply.setEnabled(problem is None and not self._busy)
-        self._lights_column.set_busy(self._busy)
+        self._devices_column.set_busy(self._busy)
+
+    def _on_device(self, device: RgbDevice) -> None:
+        """Show another device's lights and source."""
+        log.info("RgbPageView._on_device: %s", device.value)
+        self.page.set_device(device)
+        self._show()
 
     def _on_source(self, source: RgbSource) -> None:
         log.info("RgbPageView._on_source: %s", source.value)

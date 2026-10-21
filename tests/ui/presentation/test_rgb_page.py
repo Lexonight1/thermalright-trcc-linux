@@ -24,6 +24,7 @@ from trcc.ui.presentation.rgb_page import (
     FindLights,
     FollowDevice,
     LeaveLights,
+    RgbDevice,
     RgbPage,
     RgbSource,
     RunBoardEffect,
@@ -53,11 +54,35 @@ def _page(*lights: RgbLight, follow: RgbFollowResult | None = None,
 
 # ── What it starts on ────────────────────────────────────────────────
 
-def test_nothing_running_starts_on_leave_alone_with_every_light_ticked() -> None:
+def _on(page: RgbPage, device: RgbDevice, source: RgbSource | None = None) -> RgbPage:
+    """*page* showing *device*, on *source* when given."""
+    page.set_device(device)
+    if source is not None:
+        page.set_source(source)
+    return page
+
+
+# ── What it starts on ────────────────────────────────────────────────
+
+def test_nothing_running_opens_on_the_first_device_with_lights() -> None:
     page = _page(STICK_A, STICK_B, FAN)
-    assert page.source is RgbSource.LEAVE
+    assert (page.device, page.source) == (RgbDevice.MEMORY, RgbSource.LEAVE)
     assert [r.checked for r in page.rows(LightKind.RAM)] == [True, True]
-    assert [r.ref for r in page.rows(LightKind.OPENRGB)] == ["Fan hub"]
+    assert _page(FAN).device is RgbDevice.OPENRGB
+
+
+def test_it_opens_on_the_device_trcc_drives() -> None:
+    page = _page(STICK_A, LIT_HEADER, follow=RgbFollowResult(
+        mode=RgbFollowMode.BOARD, host="127.0.0.1", port=6742,
+        targets=(LIT_HEADER.ref,)))
+    assert (page.device, page.source) == (RgbDevice.MOTHERBOARD, RgbSource.FOLLOW)
+
+
+def test_a_device_the_user_picked_stays_through_a_reload() -> None:
+    page = _on(_page(STICK_A, FAN), RgbDevice.OPENRGB)
+    page.load(RgbLightsResult(lights=(STICK_A, FAN), scanned=True,
+                              ram_access=RamAccessState.ON), RgbFollowResult(), ())
+    assert page.device is RgbDevice.OPENRGB
 
 
 def test_a_saved_effect_starts_on_that_effect() -> None:
@@ -83,9 +108,10 @@ def test_following_starts_on_follow_with_its_saved_lights() -> None:
     page = _page(STICK_A, STICK_B, follow=follow)
     assert page.source is RgbSource.FOLLOW
     assert [r.checked for r in page.rows(LightKind.RAM)] == [False, True]
-    assert (page.follow_source, page.mapping, page.address) == (
+    picks = page.follow_picks
+    assert (picks.source, picks.mapping, page.address) == (
         LCD.key, FollowMapping.SINGLE, "10.0.0.2:7000")
-    assert page.mapping_applies
+    assert picks.mapping_applies
 
 
 def test_load_drops_what_the_user_picked() -> None:
@@ -111,29 +137,28 @@ def test_the_ram_is_reachable_only_with_access(access: RamAccessState,
     assert _page(access=access).ram_reachable is reachable
 
 
-def test_notes_say_whether_anything_was_looked_for() -> None:
-    assert _page(scanned=False).ram_note == (
-        "Press Find lights to look for RGB memory.")
-    assert _page(scanned=False).openrgb_note == (
-        "not searched yet -- press Find lights")
-    assert _page().ram_note == "No RGB memory found."
-    assert _page(FAN).openrgb_note == "1 device(s) found"
-    assert _page(STICK_A).ram_note == ""
+def test_the_note_says_whether_the_device_was_looked_for() -> None:
+    assert _page(scanned=False).note == "Not searched yet -- press Find lights."
+    assert _page().note == "No memory lights found."
+    assert _on(_page(), RgbDevice.OPENRGB).note == "No openrgb lights found."
+    assert _page(STICK_A).note == ""
+    page = _page(FAN)
+    page.openrgb_error = "refused"
+    assert _on(page, RgbDevice.OPENRGB).note == "not reachable -- refused"
 
 
 def test_lights_from_the_last_find_say_so() -> None:
-    """Listed from the settings after a restart: the note says where the
-    list came from, per kind -- RAM searched this run says nothing."""
+    """Listed from the settings after a restart: the note says so, per
+    device -- one searched this run says nothing."""
     from dataclasses import replace
 
     from trcc.ui.presentation.rgb_page import REMEMBERED_NOTE
 
     old_stick = replace(STICK_A, remembered=True)
     old_fan = replace(FAN, remembered=True)
-    assert _page(old_stick, scanned=False).ram_note == REMEMBERED_NOTE
-    assert _page(old_fan, scanned=False).openrgb_note == REMEMBERED_NOTE
-    assert _page(STICK_A, old_fan).ram_note == ""
-    assert _page(old_stick, FAN).openrgb_note == "1 device(s) found"
+    assert _page(old_stick, scanned=False).note == REMEMBERED_NOTE
+    assert _on(_page(old_fan, scanned=False), RgbDevice.OPENRGB).note == REMEMBERED_NOTE
+    assert _page(STICK_A, old_fan).note == ""
 
 
 def test_find_carries_the_address_or_refuses_it() -> None:
@@ -145,21 +170,46 @@ def test_find_carries_the_address_or_refuses_it() -> None:
     assert page.message == BAD_ADDRESS
 
 
+def test_each_device_shows_only_its_own_lights() -> None:
+    page = _on(_page(STICK_A, FAN, HEADER, MYSTIC), RgbDevice.MOTHERBOARD)
+    assert page.preview_lights == ()
+    page.set_checked(HEADER.ref, True)
+    assert page.preview_lights == (HEADER.name,)
+    assert page.effect_strips() == ((HEADER.name, None),)
+
+
 # ── The sources ──────────────────────────────────────────────────────
 
-def test_effects_need_a_stick_and_following_needs_a_light() -> None:
+def test_effects_are_for_memory_and_the_board_and_following_needs_a_light() -> None:
     bare = _page()
     assert [bare.source_enabled(s) for s in RgbSource] == [True, False, False]
-    fan_only = _page(FAN)
-    assert [fan_only.source_enabled(s) for s in RgbSource] == [True, False, True]
+    fans = _on(_page(FAN), RgbDevice.OPENRGB)
+    assert [fans.source_enabled(s) for s in RgbSource] == [True, False, True]
+    board = _on(_page(LIT_HEADER), RgbDevice.MOTHERBOARD)
+    assert [board.source_enabled(s) for s in RgbSource] == [True, True, True]
     # Following that already runs can always be seen, and switched off.
     running = _page(follow=RgbFollowResult(mode=RgbFollowMode.OPENRGB,
                                            host="h", port=1))
+    assert running.device is RgbDevice.OPENRGB
     assert running.source_enabled(RgbSource.FOLLOW)
 
 
-def test_leave_alone_turns_following_off() -> None:
-    assert _page(STICK_A).apply() == LeaveLights()
+def test_leave_alone_stops_what_trcc_sends_to_this_device() -> None:
+    follow = RgbFollowResult(mode=RgbFollowMode.RAM, host="h", port=1)
+    page = _on(_page(STICK_A, FAN, follow=follow), RgbDevice.MEMORY, RgbSource.LEAVE)
+    assert page.apply() == LeaveLights()
+
+
+def test_leave_alone_on_a_device_trcc_does_not_drive_has_nothing_to_do() -> None:
+    """Stopping the follower from another device's panel would stop the wrong
+    lights.
+
+    MUTATION CHECK: drop the LEAVE check from ``problem`` -- OpenRGB's Apply
+    stops the RAM following."""
+    follow = RgbFollowResult(mode=RgbFollowMode.RAM, host="h", port=1)
+    page = _on(_page(STICK_A, FAN, follow=follow), RgbDevice.OPENRGB, RgbSource.LEAVE)
+    assert page.problem == "TRCC is not sending to these lights."
+    assert page.apply() is None
 
 
 # ── A built-in effect ────────────────────────────────────────────────
@@ -201,11 +251,11 @@ def test_a_direction_the_new_effect_cannot_take_falls_back() -> None:
     assert page.effect_picks.shown_direction is None
 
 
-def test_an_effect_with_no_stick_ticked_is_refused() -> None:
+def test_an_effect_with_no_light_ticked_is_refused() -> None:
     page = _page(STICK_A, FAN)
     page.set_source(RgbSource.EFFECT)
     page.set_checked(STICK_A.ref, False)
-    assert page.problem == "Tick a RAM stick or a motherboard light."
+    assert page.problem == "Tick the lights the effect runs on."
     assert page.apply() is None
 
 
@@ -215,43 +265,28 @@ def _headers(*leds: int) -> tuple[RgbLight, ...]:
 
 
 def test_an_effect_on_a_ticked_header_runs_on_the_board() -> None:
-    """The maintainer's exhaust fan: Apply with Static on header 1 sent the
-    effect to the sticks and skipped the header (2026-10-21).
+    """The maintainer's exhaust fan: a Static colour on header 1, from the
+    Motherboard panel -- the sticks, ticked on their own panel, untouched.
 
-    MUTATION CHECK: plan SaveEffect for every kind -- the sticks get it."""
+    MUTATION CHECK: plan SaveEffect for every device -- the sticks get it."""
     one, two = _headers(8, 4)
-    page = _page(STICK_A, one, two)
-    page.set_source(RgbSource.EFFECT)
-    page.set_checked(STICK_A.ref, False)
+    page = _on(_page(STICK_A, one, two), RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
     page.set_checked(one.ref, True)
     plan = page.apply()
     assert isinstance(plan, RunBoardEffect)
     assert plan.refs == ("aura/argb1",)
 
 
-def test_an_effect_goes_to_one_kind_of_light_at_a_time() -> None:
-    (one,) = _headers(8)
-    page = _page(STICK_A, one)
-    page.set_source(RgbSource.EFFECT)
-    page.set_checked(one.ref, True)
-    assert page.problem == ("An effect goes to one kind of light at a time -- "
-                            "the RAM or the motherboard; untick the others.")
-    assert page.apply() is None
-
-
 def test_a_header_with_no_led_count_cannot_run_an_effect() -> None:
     (one,) = _headers(0)
-    page = _page(one)
-    page.set_source(RgbSource.EFFECT)
+    page = _on(_page(one), RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
     page.set_checked(one.ref, True)
     assert page.problem == "Give ARGB header 1 its number of LEDs first."
 
 
-def test_openrgbs_lights_take_no_effect_and_are_not_counted() -> None:
-    """OpenRGB's lights start ticked; an effect on the sticks ignores them."""
-    page = _page(STICK_A, FAN)
-    page.set_source(RgbSource.EFFECT)
-    assert isinstance(page.apply(), SaveEffect)
+def test_openrgbs_lights_take_no_effect() -> None:
+    page = _on(_page(FAN), RgbDevice.OPENRGB)
+    assert not page.source_enabled(RgbSource.EFFECT)
 
 
 def test_a_board_running_trccs_effect_opens_on_that_effect() -> None:
@@ -263,10 +298,10 @@ def test_a_board_running_trccs_effect_opens_on_that_effect() -> None:
     page = _page(STICK_A, one, follow=RgbFollowResult(
         mode=RgbFollowMode.BOARD, source=EFFECT_SOURCE, targets=("aura/argb1",),
         host="127.0.0.1", port=6742))
-    assert page.source is RgbSource.EFFECT
+    assert (page.device, page.source) == (RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
     assert page.effect_picks.settings().effect is RamEffect.RAINBOW
     assert [r.checked for r in page.rows(LightKind.BOARD)] == [True]
-    assert page.follow_source == ""
+    assert page.follow_picks.source == ""
 
 
 def test_the_effect_rules_are_the_core_ones() -> None:
@@ -276,12 +311,26 @@ def test_the_effect_rules_are_the_core_ones() -> None:
     assert page.problem == "brightness is 0-255, not 300"
 
 
+def test_taking_the_one_follower_from_another_device_is_said() -> None:
+    """TRCC sends to one device at a time: a board effect stops the RAM
+    following, and the panel says so before Apply.
+
+    MUTATION CHECK: drop the warning from ``hint``."""
+    (one,) = _headers(8)
+    follow = RgbFollowResult(mode=RgbFollowMode.RAM, host="h", port=1)
+    page = _on(_page(STICK_A, one, follow=follow), RgbDevice.MOTHERBOARD,
+               RgbSource.EFFECT)
+    assert page.hint.endswith("Memory stops when you apply this.")
+    page.set_device(RgbDevice.MEMORY)
+    assert "stops when you apply" not in page.hint
+
+
 # ── Following ────────────────────────────────────────────────────────
 
 def test_follow_choices_are_the_cooler_every_device_and_a_missing_one() -> None:
     page = _page(STICK_A, follow=RgbFollowResult(
         mode=RgbFollowMode.RAM, host="h", port=1, source="0402:9999"))
-    assert [(c.key, c.label, c.is_lcd) for c in page.follow_choices()] == [
+    assert [(c.key, c.label, c.is_lcd) for c in page.follow_picks.choices()] == [
         ("", "The first LED cooler", False),
         (LCD.key, "Frozen Warframe (LCD)", True),
         (COOLER.key, "AX120 (LED cooler)", False),
@@ -290,18 +339,18 @@ def test_follow_choices_are_the_cooler_every_device_and_a_missing_one() -> None:
 
 
 def test_mapping_is_only_for_a_picture() -> None:
-    page = _page(STICK_A)
+    picks = _page(STICK_A).follow_picks
     for key, applies in (("", False), (COOLER.key, False), (LCD.key, True)):
-        page.follow_source = key
-        assert page.mapping_applies is applies
+        picks.source = key
+        assert picks.mapping_applies is applies
 
 
 def test_ticked_sticks_follow_the_ram_way() -> None:
     page = _page(STICK_A, STICK_B)
     page.set_source(RgbSource.FOLLOW)
-    page.follow_source = LCD.key
-    page.mapping = FollowMapping.SINGLE
-    page.colors = FollowColors.SMOOTH
+    picks = page.follow_picks
+    picks.source, picks.mapping, picks.colors = (LCD.key, FollowMapping.SINGLE,
+                                                 FollowColors.SMOOTH)
     assert page.apply() == FollowDevice(RgbFollowMode.RAM, "127.0.0.1", 6742,
                                         LCD.key, FollowMapping.SINGLE,
                                         FollowColors.SMOOTH, ())
@@ -310,43 +359,24 @@ def test_ticked_sticks_follow_the_ram_way() -> None:
     assert isinstance(plan, FollowDevice) and plan.targets == (STICK_B.ref,)
 
 
-def test_ticked_openrgb_devices_follow_through_openrgb() -> None:
-    page = _page(STICK_A, FAN)
-    page.set_source(RgbSource.FOLLOW)
-    page.set_checked(STICK_A.ref, False)
+def test_openrgb_devices_follow_through_openrgb() -> None:
+    page = _on(_page(STICK_A, FAN), RgbDevice.OPENRGB, RgbSource.FOLLOW)
     page.address = "10.1.1.1:6743"
     assert page.apply() == FollowDevice(RgbFollowMode.OPENRGB, "10.1.1.1",
                                         6743, "", FollowMapping.HALVES,
                                         FollowColors.VIVID, ())
 
 
-@pytest.mark.parametrize("untick, problem", [
-    ((), "Following drives one kind of light at a time -- RAM, OpenRGB or "
-         "the motherboard; untick the others."),
-    ((STICK_A.ref, FAN.ref), "Tick the lights that should follow."),
-])
-def test_following_both_kinds_or_none_is_refused(untick: tuple[str, ...],
-                                                 problem: str) -> None:
+def test_following_with_nothing_ticked_is_refused() -> None:
     page = _page(STICK_A, FAN)
     page.set_source(RgbSource.FOLLOW)
-    for ref in untick:
-        page.set_checked(ref, False)
-    assert page.problem == problem
+    page.set_checked(STICK_A.ref, False)
+    assert page.problem == "Tick the lights that should follow."
     assert page.apply() is None
 
 
-def test_following_with_nothing_listed_keeps_the_mode_that_runs() -> None:
-    page = _page(follow=RgbFollowResult(mode=RgbFollowMode.OPENRGB,
-                                        host="h", port=9,
-                                        colors=FollowColors.SMOOTH))
-    assert page.apply() == FollowDevice(RgbFollowMode.OPENRGB, "h", 9, "",
-                                        FollowMapping.HALVES,
-                                        FollowColors.SMOOTH, ())
-
-
-def test_a_bad_address_stops_following_from_applying() -> None:
-    page = _page(FAN)
-    page.set_source(RgbSource.FOLLOW)
+def test_a_bad_address_stops_openrgb_from_following() -> None:
+    page = _on(_page(FAN), RgbDevice.OPENRGB, RgbSource.FOLLOW)
     page.address = "no spaces allowed"
     assert page.problem == BAD_ADDRESS
 
@@ -384,13 +414,20 @@ def test_leave_alone_previews_what_trcc_last_saved_on_each_stick() -> None:
                                     (STICK_B.name, saved))
 
 
-def test_the_legend_letters_each_strip_and_says_what_it_runs() -> None:
+def test_the_legend_says_what_each_letter_runs() -> None:
+    """Letters only -- the names are on the cards, in the same order.
+
+    MUTATION CHECK: put the names back -- "A: Vengeance A -- Rain"."""
     legend = strip_legend(((STICK_A.name, RamEffectSettings(RamEffect.RAIN)),
                            (STICK_B.name, None)))
     assert legend == (
-        "A: Vengeance A -- Rain\n"
-        "B: Vengeance B -- not known -- its factory default, or set by "
-        "another program")
+        "A: Rain\n"
+        "B: not known\n\n"
+        "Not known: its factory default, or what OpenRGB or the motherboard's "
+        "own lighting control last set.")
+    assert strip_legend(((STICK_A.name, RamEffectSettings(RamEffect.RAIN)),
+                         (STICK_B.name, RamEffectSettings(RamEffect.RAIN)))) == (
+        "A: Rain\nB: Rain")
 
 
 HEADER = RgbLight("aura/argb1", "ASUS PRIME Z790-V AX -- ARGB header 1", 0,
@@ -399,37 +436,29 @@ ONBOARD = RgbLight("aura/onboard", "ASUS PRIME Z790-V AX -- board LEDs", 1,
                    LightKind.BOARD)
 MYSTIC = RgbLight("usb/1462:7e06", "MSI MAG B650 (MSI Mystic Light MS_7E06)",
                   0, LightKind.FOUND)
+LIT_HEADER = RgbLight("aura/argb2", "ASUS PRIME Z790-V AX -- ARGB header 2",
+                      12, LightKind.BOARD)
 
 
-def test_motherboard_lights_start_unticked_so_a_stick_still_follows() -> None:
-    """Tickable, but not ticked at first: following a stick with the board
-    present is not "two kinds at once".  A found board never takes part.
+def test_motherboard_lights_start_unticked() -> None:
+    """Which header has a fan on it is the user's to say.  A found board
+    never takes part.
 
     MUTATION CHECK: tick every tickable light at first again in load."""
-    page = _page(STICK_A, HEADER, ONBOARD, MYSTIC)
+    page = _on(_page(STICK_A, HEADER, ONBOARD, MYSTIC), RgbDevice.MOTHERBOARD)
     rows = page.rows(LightKind.BOARD) + page.rows(LightKind.FOUND)
     assert [(r.detail, r.checked, r.checkable) for r in rows] == [
         ("direct · LED count not set", False, True),
         ("direct · 1 LED", False, True),
         ("found -- TRCC does not drive it; another app may", False, False)]
-    page.set_source(RgbSource.FOLLOW)
-    assert page.problem is None
-    assert page.apply() == FollowDevice(RgbFollowMode.RAM, "127.0.0.1", 6742,
-                                        "", FollowMapping.HALVES,
-                                        FollowColors.VIVID, ())
-
-
-LIT_HEADER = RgbLight("aura/argb2", "ASUS PRIME Z790-V AX -- ARGB header 2",
-                      12, LightKind.BOARD)
 
 
 def test_a_ticked_header_with_leds_follows_the_board_way() -> None:
     """Only the ticked header follows; the other board light is left alone.
 
-    MUTATION CHECK: drop BOARD from FOLLOWS."""
-    page = _page(STICK_A, HEADER, LIT_HEADER)
-    page.set_source(RgbSource.FOLLOW)
-    page.set_checked(STICK_A.ref, False)
+    MUTATION CHECK: drop BOARD from DEVICE_FOLLOWER."""
+    page = _on(_page(STICK_A, HEADER, LIT_HEADER), RgbDevice.MOTHERBOARD,
+               RgbSource.FOLLOW)
     page.set_checked(LIT_HEADER.ref, True)
     assert page.problem is None
     assert page.apply() == FollowDevice(RgbFollowMode.BOARD, "127.0.0.1", 6742,
@@ -440,20 +469,10 @@ def test_a_ticked_header_with_leds_follows_the_board_way() -> None:
 
 def test_a_ticked_header_without_leds_is_refused() -> None:
     """MUTATION CHECK: drop the ``silent`` branch from ``problem``."""
-    page = _page(HEADER, LIT_HEADER)
-    page.set_source(RgbSource.FOLLOW)
+    page = _on(_page(HEADER, LIT_HEADER), RgbDevice.MOTHERBOARD, RgbSource.FOLLOW)
     page.set_checked(HEADER.ref, True)
     page.set_checked(LIT_HEADER.ref, True)
     assert page.problem == f"Give {HEADER.name} its number of LEDs first."
-    assert page.apply() is None
-
-
-def test_a_stick_and_a_header_together_are_two_kinds() -> None:
-    page = _page(STICK_A, LIT_HEADER)
-    page.set_source(RgbSource.FOLLOW)
-    page.set_checked(LIT_HEADER.ref, True)
-    assert page.problem == ("Following drives one kind of light at a time -- "
-                            "RAM, OpenRGB or the motherboard; untick the others.")
     assert page.apply() is None
 
 
@@ -463,5 +482,5 @@ def test_following_the_board_starts_on_its_saved_headers() -> None:
     page = _page(STICK_A, HEADER, LIT_HEADER, follow=follow)
     assert page.source is RgbSource.FOLLOW
     assert [r.checked for r in page.rows(LightKind.BOARD)] == [False, True]
-    assert not page.rows(LightKind.RAM)[0].checked
-
+    # Each device keeps its own ticks: the sticks start ticked as ever.
+    assert page.rows(LightKind.RAM)[0].checked

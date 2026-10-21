@@ -3,7 +3,8 @@
 
 Drives the real RGB page of each window on a real App over the scripted
 copy of the maintainer's ASUS board (``ScriptedRgbHardware`` -- no USB):
-Find lights, give header 1 its 8 LEDs, pick Built-in effect, tick header 1,
+Find lights, give header 1 its 8 LEDs, pick Motherboard, Built-in effect,
+tick header 1,
 pick Static, press Apply -- then reads back what reached the board.  Then
 Rainbow runs for ``--seconds`` and the frames the board got are counted.
 
@@ -52,8 +53,8 @@ def _drive(skin: type, seconds: float) -> tuple[bool, str]:
     """One window: Static on header 1, then Rainbow for *seconds*."""
     from trcc.app import App
     from trcc.core.commands import SetRgbFollow
-    from trcc.core.models import LightKind, RamEffect, RgbFollowMode
-    from trcc.ui.presentation.rgb_page import RgbSource
+    from trcc.core.models import RamEffect, RgbFollowMode
+    from trcc.ui.presentation.rgb_page import RgbDevice, RgbSource
 
     with tempfile.TemporaryDirectory() as tmp:
         platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], Path(tmp))
@@ -69,9 +70,8 @@ def _drive(skin: type, seconds: float) -> tuple[bool, str]:
             view._on_leds(1, _LEDS)               # the header's LED box
             if not _wait(lambda: not view._busy):
                 return False, "the LED count never answered"
+            view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
             view._source_buttons[RgbSource.EFFECT].click()
-            for row in view.page.rows(LightKind.RAM):
-                view._lights_column._on_light_toggled(row.ref, False)
             view._lights_column._on_light_toggled(_HEADER, True)
             view._effect._on_effect(view._effect._effect.findData(RamEffect.STATIC))
             colour = view.page.effect_picks.settings().colors[0]
