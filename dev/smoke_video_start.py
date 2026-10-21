@@ -8,11 +8,16 @@ the decode must finish in the background, and frames must reach the panel.
 
 Run:  QT_QPA_PLATFORM=offscreen PYTHONPATH=src:. python3.12 dev/smoke_video_start.py [clip]
       (no clip: a 10 s 3840x2160 test pattern is made with ffmpeg in a temp dir)
-Gate: prints ``PASS`` and exits 0 when the dispatch returned in under half the
-time the whole decode took, the decode completed, and the panel was written.
+The App's data root is that temp dir, with one fabricated ``Theme1`` for the
+video to play over -- ``PlayVideo`` needs a theme, and CI has none installed.
+Gate: prints ``PASS`` and exits 0 when the dispatch returned while the decode
+was still running, with fewer frames than it ends with, the decode then
+completed, and the panel was written.  Not a time ratio: a test pattern decodes
+in about a second, so "under half the decode" was a coin flip on a fast runner.
 """
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -22,11 +27,12 @@ from pathlib import Path
 from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _mock_bootstrap import DEV_TRCC  # also puts src/ + repo on sys.path
+import _mock_bootstrap  # noqa: F401 -- puts src/ + repo on sys.path
 from tests.mock_platform import MockPlatform
 
 _SCSI = "0402:3922"   # 320x320
 _SPECS = [{"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}]
+_PANEL = (320, 320)
 
 
 def _clip(argv: list[str], scratch: Path) -> Path:
@@ -41,17 +47,31 @@ def _clip(argv: list[str], scratch: Path) -> Path:
     return clip
 
 
+def _install_theme1(platform: MockPlatform) -> None:
+    """One theme -- ``00.png`` and an empty layout -- for the video to play over."""
+    from PySide6.QtGui import QColor, QImage
+    theme = platform.paths().theme_dir(*_PANEL) / "Theme1"
+    theme.mkdir(parents=True)
+    image = QImage(*_PANEL, QImage.Format.Format_RGB32)
+    image.fill(QColor(0, 0, 64))
+    assert image.save(str(theme / "00.png")), "Theme1/00.png"
+    (theme / "config.json").write_text('{"elements": []}', encoding="utf-8")
+
+
+def _close_logging() -> None:
+    """Release the log files before their temp dir is removed."""
+    root = logging.getLogger()
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+        handler.close()
+
+
 def main() -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import logging
-
     from trcc.adapters.infra.logging import configure_logging
 
-    platform = MockPlatform(_SPECS, DEV_TRCC)
-    configure_logging(platform.paths().log_file(), level=logging.INFO)
-
     from PySide6.QtWidgets import QApplication
-    QApplication.instance() or QApplication(sys.argv)
+    _qt = QApplication.instance() or QApplication(sys.argv)  # kept alive for the run
 
     from trcc._boot import trcc
     from trcc.adapters.render.qt import QtRenderer
@@ -59,6 +79,9 @@ def main() -> int:
     from trcc.core.commands import ConnectDevice, PlayVideo, TickDisplay
 
     with tempfile.TemporaryDirectory() as tmp:
+        platform = MockPlatform(_SPECS, Path(tmp) / ".trcc")
+        configure_logging(platform.paths().log_file(), level=logging.INFO)
+        _install_theme1(platform)
         clip = _clip(sys.argv, Path(tmp))
         app = cast(App, trcc(platform=cast(Any, platform), renderer=QtRenderer()))
         try:
@@ -79,12 +102,14 @@ def main() -> int:
             sent = len(app.devices[_SCSI]._transport.sent) - sent_before
         finally:
             app.close()
+            _close_logging()
 
     print(f"PlayVideo returned after {returned:.2f} s with {at_return[0]} frame(s) decoded "
           f"of ~{at_return[1]} (complete={at_return[2]})")
     print(f"decode finished after   {finished:.2f} s: {len(playback.frames)} frame(s)")
     print(f"panel writes during the run: {sent}")
-    ok = returned < finished / 2 and playback.complete and sent > 0
+    ok = (not at_return[2] and at_return[0] < len(playback.frames)
+          and playback.complete and sent > 0)
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
