@@ -1140,6 +1140,28 @@ def test_a_visual_this_computer_cannot_play_leaves_the_theme_without_it(
     assert _reader(app) is None
 
 
+def test_an_unplayable_visual_theme_does_not_keep_the_last_visual(
+        app: App, tmp_path: Path) -> None:
+    """Pipes plays; a theme whose visual cannot play here is picked.  The
+    panel shows that theme -- and the device's choice must say so too: it
+    kept naming Pipes, so the status still read "visual" and the next
+    reconnect brought Pipes back over the new theme (seen by the maintainer).
+
+    MUTATION CHECK: drop the ``set_visual(None)`` on the refused branch of
+    LoadTheme -- Pipes is still the device's visual."""
+    changes = _hear(app, BackgroundChanged)
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    changes.clear()
+    folder = _visual_theme(app, tmp_path, {"visual": "no-such-visual"})
+    assert app.dispatch(LoadTheme(key=_KEY, path=folder)).ok
+    assert app.settings.for_device(_KEY).visual is None
+    assert app.dispatch(LcdSnapshot(key=_KEY)).display_source != "visual"
+    assert _KEY in [e.key for e in changes]                 # every UI hears
+    app.media.close_visual(_KEY)                            # what a restart leaves
+    assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
+    assert _reader(app) is None
+
+
 @pytest.mark.parametrize(("payload", "expected"), [
     ({"visual": "milkdrop", "preset": "a/b.milk", "settings": {"x": 1}},
      ("milkdrop", "a/b.milk", {"x": 1.0})),

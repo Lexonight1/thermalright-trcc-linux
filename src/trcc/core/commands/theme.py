@@ -518,6 +518,14 @@ class LoadTheme(Command[ThemeResult]):
                     message=f"Theme '{theme.name}' loaded — {played.message}")
             log.warning("LoadTheme: %s's audio visual cannot play (%s) — "
                         "showing the theme without it", theme.name, played.message)
+            # PlayVisual refused before recording a choice, so the one that was
+            # playing still stood: the status kept saying "visual" and the next
+            # reconnect brought it back over this theme.
+            if app.settings.for_device(self.key).visual is not None:
+                log.info("LoadTheme: %s — ending the visual that was playing",
+                         theme.name)
+                app.settings.set_visual(self.key, None)
+                _publish_background(app, self.key)
 
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
         # PlayVideo pipeline so the same VideoStarted event fires for
