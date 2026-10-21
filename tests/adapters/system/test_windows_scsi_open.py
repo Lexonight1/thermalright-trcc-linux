@@ -49,6 +49,25 @@ def test_a_drive_that_is_gone_or_busy_is_worth_retrying(
     assert windows.WindowsScsiTransport(r"\\.\PhysicalDrive3").open() is False
 
 
+@pytest.mark.parametrize(("err", "level"), [
+    (2, logging.WARNING), (3, logging.WARNING),     # no drive there: a pulled panel
+    (32, logging.ERROR),                            # anything else stays an ERROR
+])
+def test_a_missing_drive_warns_and_other_open_failures_are_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    err: int, level: int,
+) -> None:
+    """A pulled panel's reopen finds no drive: expected, and the reconnect says
+    what it meant -- one of the three ERROR lines a Windows pull used to write.
+
+    MUTATION CHECK: log every open failure at ERROR -- 2 and 3 fail."""
+    _failing_with(monkeypatch, err)
+    with caplog.at_level(logging.DEBUG, logger="trcc.adapters.system.windows"):
+        windows.WindowsScsiTransport(r"\\.\PhysicalDrive3").open()
+    assert [r.levelno for r in caplog.records
+            if r.getMessage().startswith("CreateFileW failed")] == [level]
+
+
 # ── The pass-through itself, on BaseScsiTransport ────────────────────────
 
 

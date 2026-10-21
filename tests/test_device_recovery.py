@@ -9,12 +9,14 @@ gone.  Driven through the real ``Led`` adapter (the device in #189).
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC, Led, LedPayload
 from trcc.adapters.device.scsi_lcd import ScsiLcd
 from trcc.core.device_recovery import DISCONNECT_FAILURE_THRESHOLD, is_disconnect_error
-from trcc.core.errors import DeviceDisconnectedError
+from trcc.core.errors import DeviceDisconnectedError, HandshakeError
 from trcc.core.models import Kind, ProductInfo, Wire
 
 from .conftest import FakeBulkTransport, FakeScsiTransport
@@ -121,10 +123,11 @@ class _FlakyScsiTransport(FakeScsiTransport):
         super().__init__()
         self.fail_send = 0
         self.open_calls = 0
+        self.open_fails = False             # a pulled panel: the reopen fails
 
     def open(self) -> bool:
         self.open_calls += 1
-        return super().open()
+        return False if self.open_fails else super().open()
 
     def send_cdb(self, cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
         if self.fail_send > 0:
@@ -139,19 +142,39 @@ def _poll_response(fbl: int = 100, size: int = 0xE100) -> bytes:
     return bytes(resp)
 
 
-def _connected_scsi() -> tuple[ScsiLcd, _FlakyScsiTransport]:
-    transport = _FlakyScsiTransport()
-    transport.read_script.append(_poll_response())
-    info = ProductInfo(
+def _scsi_info() -> ProductInfo:
+    return ProductInfo(
         vid=0x0402, pid=0x3922,
         vendor="ALi Corp", product="Frozen Warframe LCD",
         wire=Wire.SCSI, kind=Kind.LCD,
         device_type=1, fbl=100, native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),
     )
-    scsi = ScsiLcd(info, transport)
+
+
+def _connected_scsi() -> tuple[ScsiLcd, _FlakyScsiTransport]:
+    transport = _FlakyScsiTransport()
+    transport.read_script.append(_poll_response())
+    scsi = ScsiLcd(_scsi_info(), transport)
     scsi.connect()
     return scsi, transport
+
+
+def test_a_transport_that_will_not_open_warns_once_and_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The HandshakeError is the report; whoever catches it says what it meant
+    (a reconnect, a connect).  It logged ERROR as well -- the second of the
+    three ERROR lines one Windows pull wrote.
+
+    MUTATION CHECK: log.error in _open_transport again -- an ERROR record."""
+    transport = _FlakyScsiTransport()
+    transport.open_fails = True
+    with caplog.at_level(logging.DEBUG, logger="trcc.adapters.device._base"), \
+            pytest.raises(HandshakeError, match="Failed to open"):
+        ScsiLcd(_scsi_info(), transport).connect()
+    assert [r.levelno for r in caplog.records
+            if "transport open failed" in r.getMessage()] == [logging.WARNING]
 
 
 def test_scsi_soft_failure_returns_false_without_reconnect() -> None:
@@ -173,6 +196,23 @@ def test_scsi_send_reconnects_on_eio_then_succeeds() -> None:
 
     assert scsi.send(b"\x00" * 100) is True
     assert transport.open_calls == 2                     # connect + reconnect
+
+
+def test_a_pulled_panel_is_not_retried_on_a_closed_handle() -> None:
+    """The reopen of a pulled panel fails: a retry on the closed handle could
+    only fail as "not open" -- the third ERROR line of a Windows pull, and a
+    non-disconnect the tracker counted instead of the EIO that happened.
+
+    MUTATION CHECK: retry regardless -- send_cdb is reached on a closed handle."""
+    scsi, transport = _connected_scsi()
+    transport.fail_send = 1
+    transport.open_fails = True                      # the panel is gone
+    sent_before = len(transport.sent)
+
+    assert scsi.send(b"\x00" * 100) is False
+    assert len(transport.sent) == sent_before                 # no second write
+    # Only a disconnect-class error counts: the EIO did; "not open" would not.
+    assert scsi._recovery.consecutive_failures == 1
 
 
 # ── Step 4: per-OS permission hint is injected, not sniffed in core ──────────

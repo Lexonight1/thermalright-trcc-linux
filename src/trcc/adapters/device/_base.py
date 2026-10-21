@@ -215,8 +215,10 @@ class BaseDevice(Device[T]):
         """Open the transport or raise — identical on every wire."""
         log.info("%s %s: opening transport", type(self).__name__, self.info.key)
         if not self._transport.open():
-            log.error("%s %s: transport open failed",
-                      type(self).__name__, self.info.key)
+            # WARNING, not ERROR: the HandshakeError below is the report, and
+            # whoever catches it says what it meant (a reconnect, a connect).
+            log.warning("%s %s: transport open failed",
+                        type(self).__name__, self.info.key)
             raise HandshakeError(
                 f"Failed to open {self.info.wire.value} transport "
                 f"for {self.info.key}"

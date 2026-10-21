@@ -179,6 +179,9 @@ _WIN_OPEN_ERRORS: dict[int, str] = {
     32: "ERROR_SHARING_VIOLATION — another process holds the device open",
 }
 
+#: CreateFileW codes for a drive path that does not exist right now.
+_DRIVE_NOT_THERE = frozenset({2, 3})            # FILE_NOT_FOUND, PATH_NOT_FOUND
+
 # GetLastError codes that mean the drive is gone -- no retry will reach it, so
 # the base raises disconnect-class and the recovery threshold marks the panel
 # lost (Linux: DID_NO_CONNECT).  ERROR_GEN_FAILURE (31) is NOT here: USBLCD.exe
@@ -282,8 +285,11 @@ class WindowsScsiTransport(BaseScsiTransport):
             err = ctypes.GetLastError()  # pyright: ignore[reportAttributeAccessIssue]
             detail = _WIN_OPEN_ERRORS.get(
                 err, "see Microsoft 'System Error Codes'")
-            log.error("CreateFileW failed for %s — WinError %d: %s",
-                      self._path, err, detail)
+            # A drive that is not there (2, 3) is a pulled or not-yet-arrived
+            # panel -- expected, and the reconnect path says what it meant.
+            log.log(logging.WARNING if err in _DRIVE_NOT_THERE else logging.ERROR,
+                    "CreateFileW failed for %s — WinError %d: %s",
+                    self._path, err, detail)
             if err == _ERROR_ACCESS_DENIED:
                 # Raised, like every other transport: a plain False read as
                 # "not answering yet", so the reconnect watcher retried a panel

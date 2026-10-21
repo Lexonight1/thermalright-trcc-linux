@@ -490,7 +490,13 @@ class Device(ABC, Generic[T]):
                         self.key, e,
                     )
                     self._reconnect()
-                    continue
+                    if self._transport.is_open:
+                        continue
+                    # The reopen failed -- a pulled panel: a retry on the closed
+                    # handle could only fail as "not open", and the tracker
+                    # would count that instead of what really happened.  The
+                    # original error goes to the tracker below.
+                    log.info("%s: the reconnect left it closed — no retry", self.key)
                 if self._quirks.single_session:
                     # Single-session firmware: a close→reopen wedges the panel
                     # until a physical replug (#228), so NEVER reconnect — soft-
