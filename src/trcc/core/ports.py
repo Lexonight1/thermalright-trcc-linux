@@ -1455,12 +1455,17 @@ class Paths(ABC):
         log.debug("user_theme_dir: %dx%d", width, height)
         return self.user_data_dir() / f"theme{width}{height}"
 
+    def user_module_dir(self, module: str) -> Path:
+        """What the user keeps for *module* -- its saved themes among it --
+        kept when it is switched off or deleted."""
+        log.debug("user_module_dir: %s", module)
+        return self.user_data_dir() / "modules" / module
+
     def user_module_theme_dir(self, module: str, width: int, height: int) -> Path:
         """The user-saved themes whose background *module* draws, per
-        resolution -- kept with the module, so they are listed only while it
-        is on and stay when it is switched off or deleted."""
+        resolution -- listed only while it is on."""
         log.debug("user_module_theme_dir: %s %dx%d", module, width, height)
-        return self.user_data_dir() / "modules" / module / f"theme{width}{height}"
+        return self.user_module_dir(module) / f"theme{width}{height}"
 
     def cloud_theme_dir(self, width: int, height: int,
                         variant: str = "") -> Path:
@@ -1859,6 +1864,18 @@ class ContentStore(ABC):
         Confined to *directory* — callers pass the trusted root and the
         target is verified to stay inside it.
         """
+
+    @abstractmethod
+    def user_theme_folders(self) -> builtins.list[Path]:
+        """Every ordinary per-resolution folder of the user's saved themes
+        (``theme{w}{h}`` in the user data folder) -- not a module's --
+        resolved, as a saved path to a theme is."""
+
+    @abstractmethod
+    def move_theme(self, theme_dir: Path, into: Path) -> Path:
+        """Move the theme *theme_dir* into the folder *into*, never over
+        another: a taken name becomes "Name (2)", "Name (3)" ...  Returns
+        where it is now, resolved; ``OSError`` and it stays where it was."""
 
 
 # =========================================================================

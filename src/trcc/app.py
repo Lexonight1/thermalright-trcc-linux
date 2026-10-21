@@ -100,7 +100,7 @@ from .services.led_animation_loop import LedAnimationLoop
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
-from .services.migration import LibraryMigration
+from .services.migration import LibraryMigration, ModuleThemeMove
 from .services.modules import ModuleRunner, ModuleSpec
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
@@ -467,6 +467,10 @@ class App(CommandBus, ModuleServices):
                 for key, m in modules.items()},
             host=self, settings=self.settings)
         self.modules.enable_saved()
+        # Once per user: themes a module draws move into its folder.  After
+        # the modules, whose manifests say which module draws what.
+        ModuleThemeMove(self.themes, platform.paths(), self.settings,
+                        self.background_owner).run()
 
     # ── ModuleServices: what every module's host reaches ───────────────
 

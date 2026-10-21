@@ -143,6 +143,9 @@ class AppSettings:
     # Each module's own app-wide settings, by module key -- written only
     # through its host (``ModuleHost.save_settings``).
     module_settings: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # The one-time move of themes a module draws into its folder has run
+    # (``ModuleThemeMove``) -- so no later start scans the user's themes.
+    module_themes_moved: bool = False
 
 
 # =========================================================================
@@ -631,6 +634,38 @@ class Settings:
                 _only_source(dev, "module_source")
                 dev.pending_background = None
             self._save()
+
+    def module_themes_moved(self) -> bool:
+        """Whether the one-time move of module themes has run."""
+        done = self._app.module_themes_moved is True
+        log.debug("module_themes_moved: %s", done)
+        return done
+
+    def set_module_themes_moved(self) -> None:
+        """The one-time move of module themes has run."""
+        log.info("set_module_themes_moved")
+        with self._lock:
+            self._app.module_themes_moved = True
+            self._save()
+
+    def rename_theme_path(self, old: str, new: str) -> int:
+        """A theme moved from *old* to *new*: every saved reference to it --
+        each device's current theme, and the ones its orientation slots keep
+        -- follows, or the next start loads Theme1 in its place.  How many
+        references changed."""
+        changed = 0
+        with self._lock:
+            for dev in self._devices.values():
+                states = [dev, *dev.orientation_slots.values(),
+                          *([dev.entered_with] if dev.entered_with else [])]
+                for state in states:
+                    if state.current_theme == old:
+                        state.current_theme = new
+                        changed += 1
+            if changed:
+                self._save()
+        log.info("rename_theme_path: %s -> %s (%d reference(s))", old, new, changed)
+        return changed
 
     def set_pending_background(self, key: str, ref: str | None) -> None:
         """A theme's module background *ref* waiting for its module to come

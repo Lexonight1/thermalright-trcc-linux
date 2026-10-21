@@ -693,6 +693,28 @@ class FileContentStore(ContentStore):
             raise ThemeError(f"Failed to delete {target}: {e}") from e
         return target
 
+    def user_theme_folders(self) -> builtins.list[Path]:
+        """Every ordinary ``theme{w}{h}`` folder of the user's saved themes."""
+        root = self._paths_for("user_theme_folders").user_data_dir()
+        # Resolved: a saved path to a theme (``current_theme``) is resolved.
+        found = (sorted(d.resolve() for d in root.glob("theme*")
+                        if d.is_dir() and d.name[5:].isdigit())
+                 if root.is_dir() else [])
+        log.info("user_theme_folders: %s", [d.name for d in found])
+        return found
+
+    def move_theme(self, theme_dir: Path, into: Path) -> Path:
+        """Move *theme_dir* into *into*, never over another theme."""
+        into.mkdir(parents=True, exist_ok=True)
+        name, n = theme_dir.name, 1
+        target = into / name
+        while target.exists():
+            n += 1
+            target = into / f"{name} ({n})"
+        theme_dir.rename(target)
+        log.info("move_theme: %s -> %s", theme_dir, target)
+        return target.resolve()
+
     def background_path(self, theme: Theme) -> Path | None:
         """Return the theme's background — a referenced library asset or
         the in-dir ``00.png`` / video file.

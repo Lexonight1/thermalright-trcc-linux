@@ -321,3 +321,80 @@ def test_a_switch_re_lists_the_themes_in_every_window(qtbot: Any, app: App) -> N
     bridge = BusBridge(app.events)
     with qtbot.waitSignal(bridge.themes_changed, timeout=2000):
         _switch(app, False)
+
+
+# ── the one-time move of the themes saved before it was a module ─────
+
+def _old_theme(folder: Path, name: str, background: str | None = None) -> Path:
+    """A saved theme as the ordinary folder kept it."""
+    theme = folder / name
+    theme.mkdir(parents=True)
+    config: dict[str, Any] = {"name": name, "width": 320, "height": 320,
+                              "elements": []}
+    if background:
+        config["background"] = background
+    (theme / "trcc.json").write_text(json.dumps(config))
+    return theme
+
+
+def _old_layout(root: Path) -> tuple[Path, Path]:
+    """A user's data from before: a plain theme and a visual one in the
+    ordinary folder, a theme of the visual one's name already kept with the
+    module, and the panel showing the visual one."""
+    data = root / "user" / "data"
+    stored = data / "visual_background" / "x"
+    stored.mkdir(parents=True)
+    (stored / "config.json").write_text(json.dumps({"visual": "trcc-pipes"}))
+    ordinary = data / "theme320320"
+    _old_theme(ordinary, "Plain")
+    viz = _old_theme(ordinary, "Viz", "visual_background/x")
+    _old_theme(data / "modules" / "visualizer" / "theme320320", "Viz")
+    shown = str(viz.resolve())
+    (root / "trcc.json").write_text(json.dumps({
+        "schema": 6, "app": {}, "led_devices": {},
+        "devices": {_KEY: {"current_theme": shown, "orientation_slots": {
+            "theme320320": {"current_theme": shown}}}}}), encoding="utf-8")
+    return ordinary, data / "modules" / "visualizer" / "theme320320"
+
+
+def test_the_themes_saved_before_move_once_and_the_panel_follows(
+        tmp_path: Path) -> None:
+    """The visual theme moves -- as "Viz (2)": nothing is overwritten -- the
+    plain one stays, and every saved path to the moved one follows it.  A
+    second start moves nothing, even a visual theme that appeared since.
+    MUTATION CHECK: drop ``rename_theme_path`` and the panel still points
+    at the old folder (it would load Theme1 and drop its visual)."""
+    ordinary, kept = _old_layout(tmp_path)
+
+    first = App(MockPlatform([_SPEC], tmp_path))
+    moved = kept / "Viz (2)"
+    s = first.settings.for_device(_KEY)
+    assert moved.is_dir() and (kept / "Viz").is_dir()
+    assert (ordinary / "Plain").is_dir() and not (ordinary / "Viz").exists()
+    assert s.current_theme == str(moved.resolve())
+    assert s.orientation_slots["theme320320"].current_theme == str(moved.resolve())
+    first.close()
+
+    _old_theme(ordinary, "Later", "visual_background/x")
+    second = App(MockPlatform([_SPEC], tmp_path))
+    assert (ordinary / "Later").is_dir()
+    second.close()
+
+
+def test_a_theme_that_cannot_move_stays_where_it_was(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    from trcc.adapters.theme.filesystem import FileContentStore
+
+    ordinary, _kept = _old_layout(tmp_path)
+
+    def refuse(self: Any, theme_dir: Path, into: Path) -> Path:
+        raise PermissionError("read-only")
+    monkeypatch.setattr(FileContentStore, "move_theme", refuse)
+    with caplog.at_level("WARNING", logger="trcc.services.migration"):
+        app = App(MockPlatform([_SPEC], tmp_path))
+    assert (ordinary / "Viz").is_dir()
+    assert app.settings.for_device(_KEY).current_theme == str(
+        (ordinary / "Viz").resolve())
+    assert any("could not move" in r.getMessage() for r in caplog.records)
+    app.close()

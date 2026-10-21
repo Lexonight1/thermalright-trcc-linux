@@ -66,7 +66,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
-| [`Paths`](#paths) | 4 | 11 | 5 |
+| [`Paths`](#paths) | 4 | 12 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
 | [`SettingsPort`](#settingsport) | 4 | 0 | 1 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
@@ -84,7 +84,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`ModuleServices`](#moduleservices) | 23 | 0 | 1 |
 | [`Platform`](#platform) | 25 | 9 | 8 |
-| [`ContentStore`](#contentstore) | 30 | 0 | 1 |
+| [`ContentStore`](#contentstore) | 32 | 0 | 1 |
 
 ---
 
@@ -1014,7 +1014,7 @@ log_file() -> Path
 user_content_dir() -> Path
 ```
 
-**You inherit (11):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_module_theme_dir` · `user_screencast_dir` · `user_theme_dir`
+**You inherit (12):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_module_dir` · `user_module_theme_dir` · `user_screencast_dir` · `user_theme_dir`
 
 **Implementations (5):** `BSDPaths` · `BasePaths` · `LinuxPaths` · `MacOSPaths` · `WindowsPaths`
 
@@ -1407,7 +1407,7 @@ worker_thread_context() -> AbstractContextManager[None]
 
 Where themes, masks, backgrounds and capture configs are kept.
 
-**You implement (30):**
+**You implement (32):**
 
 ```python
 background_config(ref: 'str') -> dict[str, Any] | None
@@ -1426,6 +1426,7 @@ load(path: 'Path') -> Theme
 mask_path(theme: 'Theme') -> Path | None
 media_player_uri(theme: 'Theme') -> str | None
 module_background(theme: 'Theme') -> tuple[str, str, dict[str, Any]] | None
+move_theme(theme_dir: 'Path', into: 'Path') -> Path
 preview_path(theme: 'Theme') -> Path | None
 resolve_ref(ref: 'str') -> Path | None
 screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None
@@ -1437,6 +1438,7 @@ store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = Non
 store_media_player(uri: 'str') -> str
 store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
 tile_path(theme_dir: 'Path') -> Path | None
+user_theme_folders() -> builtins.list[Path]
 video_path(theme: 'Theme') -> Path | None
 write_manifest(theme_dir: 'Path', manifest: 'dict') -> Path
 write_preview(theme_dir: 'Path', png: 'bytes') -> Path
