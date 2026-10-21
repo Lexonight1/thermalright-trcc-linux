@@ -408,14 +408,10 @@ class App(CommandBus, ModuleHost):
         # An LCD as the source: its frames' backgrounds, read through the
         # renderer.
         self.events.subscribe(FrameSent, self._follow_frame)
-        prefs = self.settings.app
-        self.rgb_mirror.configure(self.settings.rgb_follow_mode(),
-                                  prefs.openrgb_host, prefs.openrgb_port,
-                                  prefs.rgb_follow_source,
-                                  self.settings.rgb_follow_mapping(),
-                                  self.settings.rgb_follow_targets(),
-                                  colors=self.settings.rgb_follow_colors(),
-                                  effects=self.settings.follow_effects())
+        # Following starts again with the session (``resume_following``), not
+        # here: an App built only to run one caller-side Command (``trcc
+        # kill``) took the board -- or the RAM's SMBus -- from the running
+        # App the moment it was built (2026-10-21).
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -1166,6 +1162,22 @@ class App(CommandBus, ModuleHost):
         self.led_animation_loop.start()
         self.video_loop.start()
         self.update_watch.start()
+        self.resume_following()
+
+    def resume_following(self) -> None:
+        """Follow again as the settings say -- what a session starts with.
+        Never at construction: only the App that owns the session drives the
+        RGB hardware."""
+        prefs = self.settings.app
+        log.info("resume_following: %s source=%r", prefs.rgb_follow,
+                 prefs.rgb_follow_source)
+        self.rgb_mirror.configure(self.settings.rgb_follow_mode(),
+                                  prefs.openrgb_host, prefs.openrgb_port,
+                                  prefs.rgb_follow_source,
+                                  self.settings.rgb_follow_mapping(),
+                                  self.settings.rgb_follow_targets(),
+                                  colors=self.settings.rgb_follow_colors(),
+                                  effects=self.settings.follow_effects())
 
     def _check_for_update(self) -> UpdateCheckResult:
         """The watch's check: the one Command every UI's check goes through."""

@@ -262,12 +262,27 @@ def test_the_command_saves_the_setting_and_starts_following(tmp_path) -> None:
     app.close()
 
 
-def test_the_saved_choice_follows_again_at_start(tmp_path) -> None:
+def test_the_saved_choice_follows_again_when_the_session_starts(tmp_path) -> None:
     app, _ = _app(tmp_path)
     app.dispatch(SetRgbFollow(mode=RAM_MODE))
     app.close()
     again, made = _app(tmp_path)
+    again.resume_following()                # start_session's last step
     assert [m.mode for m in made] == [RAM_MODE]
+    again.close()
+
+
+def test_an_app_without_a_session_touches_no_lights(tmp_path) -> None:
+    """``trcc kill`` builds an App only to send StopDaemon: built, it took
+    the board -- or the RAM's SMBus -- from the running App (2026-10-21).
+
+    MUTATION CHECK: configure the follower in ``App.__init__`` again -- the
+    RAM follower is made."""
+    app, _ = _app(tmp_path)
+    app.dispatch(SetRgbFollow(mode=RAM_MODE))
+    app.close()
+    again, made = _app(tmp_path)
+    assert made == []
     again.close()
 
 
@@ -1299,7 +1314,7 @@ def test_a_static_colour_lights_the_header_and_is_kept(tmp_path: Path) -> None:
     app.close()
 
 
-def test_the_effect_runs_again_when_the_app_starts(tmp_path: Path) -> None:
+def test_the_effect_runs_again_when_the_session_starts(tmp_path: Path) -> None:
     from trcc.core.commands import SetAuraEffect
     app, platform = _board_app(tmp_path)
     app.dispatch(SetAuraEffect(effect=RamEffect.STATIC, refs=("aura/argb1",),
@@ -1307,6 +1322,7 @@ def test_the_effect_runs_again_when_the_app_starts(tmp_path: Path) -> None:
     app.close()
     platform.aura.writes.clear()
     again = App(platform)
+    again.resume_following()                # start_session's last step
     _until(lambda: _header_shows(platform, 1, BLUE, 8))
     again.close()
 
