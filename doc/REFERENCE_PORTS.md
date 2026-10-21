@@ -24,7 +24,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseModule`](#basemodule) | 2 | 0 | 0 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`GlSurface`](#glsurface) | 2 | 1 | 3 |
-| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 21 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 22 |
 | [`Module`](#module) | 2 | 7 | 0 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -40,7 +40,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
-| [`GpuSource`](#gpusource) | 3 | 10 | 13 |
+| [`GpuSource`](#gpusource) | 3 | 10 | 14 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
@@ -301,7 +301,7 @@ key() -> str
 name() -> str
 ```
 
-**Implementations (21):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
+**Implementations (22):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
 
 ## Module
 
@@ -570,7 +570,7 @@ name() -> str
 
 **You inherit (10):** `clock` · `fan` · `fan_rpm` · `hotspot` · `mem_temp` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
 
-**Implementations (13):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
+**Implementations (14):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `IgclGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
 
 ## HotplugMonitor
 

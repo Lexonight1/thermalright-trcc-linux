@@ -23,6 +23,7 @@ from ...core.ports import CpuSource, GpuSource
 from ._adl import discover_adl_gpus
 from ._d3dkmt import discover_d3dkmt_gpus
 from ._hwinfo import HwinfoCpu, discover_hwinfo_gpus
+from ._igcl import discover_igcl_gpus
 from ._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
 from ._pawnio_cpu import PawnioCpu
@@ -65,8 +66,8 @@ def build_windows_sensors(
 
 
 def _build_windows_gpu_chains() -> list[GpuSource]:
-    """One GpuSourceChain per detected GPU: vendor library, HWiNFO, LHM, then
-    Windows' own numbers (D3DKMT + PDH, every vendor).
+    """One GpuSourceChain per detected GPU: vendor library (NVML, ADL, IGCL),
+    HWiNFO, LHM, then Windows' own numbers (D3DKMT + PDH, every vendor).
 
     The aggregator dedups via vendor-normalized keys (``nvidia:0``,
     ``amd:0``, ``intel:0``) — each chain reads its key from the first
@@ -77,12 +78,13 @@ def _build_windows_gpu_chains() -> list[GpuSource]:
     log.debug("_build_windows_gpu_chains: called")
     nvml = discover_nvidia_gpus()
     adl = discover_adl_gpus()
+    igcl = discover_igcl_gpus()
     lhm = discover_lhm_gpus()
     hwinfo = discover_hwinfo_gpus()
     windows = discover_d3dkmt_gpus()
 
     by_key: dict[str, list[GpuSource]] = {}
-    for source in [*nvml, *adl, *hwinfo, *lhm, *windows]:
+    for source in [*nvml, *adl, *igcl, *hwinfo, *lhm, *windows]:
         by_key.setdefault(source.key, []).append(source)
 
     chains: list[GpuSource] = []

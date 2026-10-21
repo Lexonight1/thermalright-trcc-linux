@@ -1,4 +1,5 @@
-"""W1 + W2: AMD and Intel GPUs on Windows -- D3DKMT/PDH for every vendor, ADL for AMD.
+"""W1 + W2: AMD and Intel GPUs on Windows -- D3DKMT/PDH for every vendor, ADL for
+AMD, IGCL for Intel.
 
 Until 2026-10-20 an AMD or Intel card on Windows showed its name and nothing
 else unless HWiNFO or LibreHardwareMonitor ran beside TRCC.  The native calls
@@ -14,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from trcc.adapters.sensors import _adl, _d3dkmt
+from trcc.adapters.sensors import _adl, _d3dkmt, _igcl
 from trcc.adapters.sensors import windows as win
 
 # ── struct layouts: sizes the headers imply ─────────────────────────────────
@@ -28,6 +29,12 @@ from trcc.adapters.sensors import windows as win
     (_d3dkmt._SegmentSize, 24),         # D3DKMT_SEGMENTSIZEINFO
     (_d3dkmt._PerfData, 64),            # D3DKMT_ADAPTER_PERFDATA, ULONGLONGs 8-aligned
     (_d3dkmt._PerfDataCaps, 40),        # D3DKMT_ADAPTER_PERFDATACAPS
+    (_d3dkmt._AdapterAddress, 12),      # D3DKMT_ADAPTERADDRESS
+    (_igcl._InitArgs, 36),              # ctl_init_args_t
+    (_igcl._Properties, 320),           # ctl_device_adapter_properties_t
+    (_igcl._Item, 24),                  # ctl_oc_telemetry_item_t: bool, 2 enums, 8-B union
+    (_igcl._Psu, 56),                   # ctl_psu_info_t
+    (_igcl._Telemetry, 1024),           # ctl_power_telemetry_t
 ])
 def test_layouts_match_the_sdk_headers(struct: type, size: int) -> None:
     assert ctypes.sizeof(struct) == size
@@ -35,6 +42,11 @@ def test_layouts_match_the_sdk_headers(struct: type, size: int) -> None:
 
 def test_perf_data_fields_sit_where_the_header_puts_them() -> None:
     assert (_d3dkmt._PerfData.FanRPM.offset, _d3dkmt._PerfData.Temperature.offset) == (48, 56)
+    tel, props = _igcl._Telemetry, _igcl._Properties
+    assert (tel.totalCardEnergyCounter.offset, tel.fanSpeed.offset,
+            tel.vramWriteBandwidth.offset) == (384, 688, 1000)
+    assert (props.name.offset, props.graphics_adapter_properties.offset,
+            props.adapter_bdf.offset) == (88, 188, 200)
 
 
 # ── ADL: PMLog slots -> readings ────────────────────────────────────────────
@@ -158,7 +170,8 @@ class _FakeKmt:
 
 
 def _card(vendor: int, name: str, *, temp: int = 0, fan: int = 0,
-          caps: tuple[int, int] = (0, 0), software: bool = False) -> dict[int, Any]:
+          caps: tuple[int, int] = (0, 0), software: bool = False,
+          pci: tuple[int, int, int] | None = None) -> dict[int, Any]:
     def set_ids(d: Any) -> None:
         d.VendorID = vendor
 
@@ -177,12 +190,18 @@ def _card(vendor: int, name: str, *, temp: int = 0, fan: int = 0,
     def set_perf(d: Any) -> None:
         d.Temperature, d.FanRPM, d.Power = temp, fan, 873       # Power: tenths of a %
 
-    return {_d3dkmt._KMTQAITYPE_ADAPTERTYPE: set_kind,
+    def set_address(d: Any) -> None:
+        d.BusNumber, d.DeviceNumber, d.FunctionNumber = pci or (0, 0, 0)
+
+    answers = {_d3dkmt._KMTQAITYPE_ADAPTERTYPE: set_kind,
             _d3dkmt._KMTQAITYPE_PHYSICALADAPTERDEVICEIDS: set_ids,
             _d3dkmt._KMTQAITYPE_ADAPTERREGISTRYINFO: set_name,
             _d3dkmt._KMTQAITYPE_GETSEGMENTSIZE: set_vram,
             _d3dkmt._KMTQAITYPE_ADAPTERPERFDATA_CAPS: set_caps,
             _d3dkmt._KMTQAITYPE_ADAPTERPERFDATA: set_perf}
+    if pci is not None:
+        answers[_d3dkmt._KMTQAITYPE_ADAPTERADDRESS] = set_address
+    return answers
 
 
 class _FakePdh:
@@ -208,6 +227,33 @@ def test_every_vendor_reads_through_windows_and_software_adapters_do_not() -> No
     assert (arc.temp(), arc.fan_rpm(), arc.usage(), arc.vram_used(), arc.vram_total(),
             arc.power()) == (65.0, 1500.0, 63.0, 2048.0, 16384.0, None)
     assert (uhd.temp(), uhd.fan_rpm()) == (None, None)       # no perf caps: not offered
+
+
+def test_a_vendors_cards_count_by_pci_address_not_enumeration_order() -> None:
+    """Windows may list the Arc before the iGPU; ADL and IGCL count by PCI
+    bus, so D3DKMT must too or the two cards swap readings in the chain.
+
+    MUTATION CHECK: drop the sort -- the Arc becomes intel:0."""
+    kmt = _FakeKmt({
+        1: _card(0x8086, "Intel(R) Arc(TM) A770 Graphics", pci=(3, 0, 0)),
+        2: _card(0x8086, "Intel(R) UHD Graphics 770", pci=(0, 2, 0)),
+    })
+    gpus = _d3dkmt.discover_d3dkmt_gpus(lambda: kmt, lambda: _FakePdh())
+    assert [(g.key, g.name) for g in gpus] == [
+        ("intel:0", "Intel(R) UHD Graphics 770"),
+        ("intel:1", "Intel(R) Arc(TM) A770 Graphics")]
+
+
+def test_an_adapter_off_the_pci_bus_sorts_after_every_one_on_it() -> None:
+    """All-ones is "no address" -- what the win11 VM's render driver answered.
+
+    MUTATION CHECK: drop the all-ones test -- pci reads (4294967295, 65535, 65535)."""
+    kmt = _FakeKmt({1: _card(0x8086, "Intel(R) UHD Graphics 770",
+                             pci=(0xFFFFFFFF, 0xFFFF, 0xFFFF))})
+    (info,) = kmt.adapters()
+    adapter = _d3dkmt.describe(kmt, info)
+    assert adapter is not None
+    assert adapter.pci is None
 
 
 def test_no_pdh_still_gives_temperature_and_total_vram() -> None:
@@ -239,6 +285,7 @@ def test_an_amd_card_reads_from_adl_first_then_windows(monkeypatch: pytest.Monke
     monkeypatch.setattr(win, "discover_lhm_gpus", lambda: [])
     monkeypatch.setattr(win, "discover_hwinfo_gpus", lambda: [])
     monkeypatch.setattr(win, "discover_adl_gpus", lambda: _adl.discover_adl_gpus(lambda: adl))
+    monkeypatch.setattr(win, "discover_igcl_gpus", lambda: [])
     monkeypatch.setattr(win, "discover_d3dkmt_gpus",
                         lambda: _d3dkmt.discover_d3dkmt_gpus(lambda: kmt, lambda: _FakePdh()))
 
@@ -246,3 +293,150 @@ def test_an_amd_card_reads_from_adl_first_then_windows(monkeypatch: pytest.Monke
 
     assert (card.key, card.temp(), card.hotspot(), card.power(), card.vram_total()) == (
         "amd:0", 50.0, 71.0, 210.0, 16384.0)
+
+
+# ── IGCL: Intel's telemetry -> readings ─────────────────────────────────────
+
+_DOUBLE, _INT32 = 9, 4
+_RPM, _PERCENT = 9, 11
+
+
+def _item(item: Any, value: float, *, kind: int = _DOUBLE, units: int = 0) -> None:
+    item.bSupported, item.type, item.units = True, kind, units
+    setattr(item.value, _igcl._VALUE_FIELDS[kind], value)
+
+
+def _telemetry(t: float, *, energy: float | None = None, card_energy: float | None = None,
+               activity: float | None = None, temp: float | None = None,
+               fan: tuple[float, int] | None = None) -> Any:
+    data = _igcl._Telemetry()
+    _item(data.timeStamp, t, units=7)
+    for item, value in ((data.gpuEnergyCounter, energy), (data.totalCardEnergyCounter, card_energy),
+                        (data.globalActivityCounter, activity),
+                        (data.gpuCurrentTemperature, temp)):
+        if value is not None:
+            _item(item, value)
+    if fan is not None:
+        _item(data.fanSpeed[0], fan[0], units=fan[1])
+    return data
+
+
+def test_an_item_reads_the_union_member_its_type_names() -> None:
+    data = _igcl._Telemetry()
+    _item(data.gpuCurrentTemperature, 61, kind=_INT32)
+    assert _igcl.item_value(data.gpuCurrentTemperature) == 61.0
+    assert _igcl.item_value(data.vramCurrentTemperature) is None     # not supported: absent
+
+
+def test_power_and_usage_are_counter_change_over_time() -> None:
+    """Watts = joules / seconds, usage = busy seconds / seconds, as Intel's
+    sample computes them; the first read has no rate yet.
+
+    MUTATION CHECK: drop the *100 -- usage reads 0.25, not 25."""
+    first = _igcl.sample(_telemetry(10.0, energy=500.0, activity=3.0, temp=55.0))
+    later = _igcl.sample(_telemetry(12.0, energy=560.0, activity=3.5, temp=57.0))
+    assert _igcl.readings({}, first) == {"temp": 55.0}
+    assert _igcl.readings(first, later) == {"temp": 57.0, "power": 30.0, "usage": 25.0}
+
+
+def test_whole_card_energy_wins_over_the_gpu_chips() -> None:
+    a = _igcl.sample(_telemetry(1.0, energy=100.0, card_energy=200.0))
+    b = _igcl.sample(_telemetry(2.0, energy=150.0, card_energy=390.0))
+    assert _igcl.readings(a, b)["power"] == 190.0
+
+
+def test_a_counter_that_went_backwards_gives_no_rate() -> None:
+    """A driver reset restarts the counters; a negative watt is not a reading."""
+    a = _igcl.sample(_telemetry(1.0, energy=900.0))
+    b = _igcl.sample(_telemetry(2.0, energy=5.0))
+    assert "power" not in _igcl.readings(a, b)
+
+
+@pytest.mark.parametrize(("units", "quantity"), [(_RPM, "fan_rpm"), (_PERCENT, "fan")])
+def test_the_fan_is_rpm_or_percent_by_its_units(units: int, quantity: str) -> None:
+    assert _igcl.readings({}, _igcl.sample(_telemetry(1.0, fan=(42.0, units)))) == {quantity: 42.0}
+
+
+class _FakeIgcl:
+    """IGCL with {handle: (vendor, device_type, bdf, integrated, name, telemetry or None)}."""
+
+    def __init__(self, devices: dict[int, tuple[Any, ...]]) -> None:
+        self._devices = devices
+        self.reads = 0
+
+    def devices(self) -> list[int]:
+        return list(self._devices)
+
+    def properties(self, handle: int) -> Any:
+        vendor, kind, bdf, integrated, name, _ = self._devices[handle]
+        props = _igcl._Properties(pci_vendor_id=vendor, device_type=kind, name=name.encode(),
+                                  graphics_adapter_properties=int(integrated))
+        props.adapter_bdf.bus, props.adapter_bdf.device, props.adapter_bdf.function = bdf
+        return props
+
+    def telemetry(self, handle: int) -> Any:
+        self.reads += 1
+        return self._devices[handle][5]
+
+
+def test_intel_gpus_count_by_pci_address_and_non_gpus_are_skipped() -> None:
+    """The iGPU sits at bus 0 and is intel:0 even when IGCL lists the Arc first
+    -- D3DKMT counts the same way.  A GPU with no telemetry keeps its number.
+
+    MUTATION CHECK: drop the bdf sort -- the Arc becomes intel:0."""
+    igcl = _FakeIgcl({
+        0xA: (0x8086, 1, (3, 0, 0), False, "Intel(R) Arc(TM) B580 Graphics", _telemetry(1.0, temp=48.0)),
+        0xB: (0x8086, 1, (0, 2, 0), True, "Intel(R) UHD Graphics 770", _telemetry(1.0, temp=41.0)),
+        0xC: (0x8086, 2, (0, 4, 0), False, "not graphics", _telemetry(1.0, temp=1.0)),
+        0xD: (0x10DE, 1, (1, 0, 0), False, "not Intel", _telemetry(1.0, temp=1.0)),
+    })
+    gpus = _igcl.discover_igcl_gpus(lambda: igcl)
+    assert [(g.key, g.name, g.is_discrete, g.temp()) for g in gpus] == [
+        ("intel:0", "Intel(R) UHD Graphics 770", False, 41.0),
+        ("intel:1", "Intel(R) Arc(TM) B580 Graphics", True, 48.0)]
+
+    silent = _FakeIgcl({
+        0xB: (0x8086, 1, (0, 2, 0), True, "Intel(R) UHD Graphics 770", None),
+        0xA: (0x8086, 1, (3, 0, 0), False, "Intel(R) Arc(TM) B580 Graphics", _telemetry(1.0, temp=48.0)),
+    })
+    assert [g.key for g in _igcl.discover_igcl_gpus(lambda: silent)] == ["intel:1"]
+
+
+def test_one_telemetry_read_serves_every_reading_within_the_ttl() -> None:
+    igcl = _FakeIgcl({1: (0x8086, 1, (3, 0, 0), False, "Arc", _telemetry(1.0, temp=50.0))})
+    now = [100.0]
+    gpu = _igcl.IgclGpu(igcl, 1, 0, "Arc", True, clock=lambda: now[0])
+    for read in (gpu.temp, gpu.clock, gpu.power):
+        read()
+    assert igcl.reads == 1
+    now[0] += 1.0
+    gpu.temp()
+    assert igcl.reads == 2
+
+
+def test_no_intel_driver_is_no_intel_gpus() -> None:
+    def missing() -> Any:
+        raise OSError("ControlLib.dll not found")
+
+    assert _igcl.discover_igcl_gpus(missing) == []
+
+
+def test_an_intel_card_reads_from_igcl_first_then_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """IGCL has the temperature; D3DKMT fills VRAM, which IGCL does not report.
+
+    MUTATION CHECK: put the Windows reader ahead of IGCL -- temp reads 65, not 48."""
+    igcl = _FakeIgcl({1: (0x8086, 1, (3, 0, 0), False, "Intel(R) Arc(TM) A770 Graphics",
+                          _telemetry(1.0, temp=48.0))})
+    kmt = _FakeKmt({1: _card(0x8086, "Intel(R) Arc(TM) A770 Graphics", temp=650, caps=(0, 105),
+                             pci=(3, 0, 0))})
+    for name in ("discover_nvidia_gpus", "discover_lhm_gpus", "discover_hwinfo_gpus",
+                 "discover_adl_gpus"):
+        monkeypatch.setattr(win, name, lambda: [])
+    monkeypatch.setattr(win, "discover_igcl_gpus", lambda: _igcl.discover_igcl_gpus(lambda: igcl))
+    monkeypatch.setattr(win, "discover_d3dkmt_gpus",
+                        lambda: _d3dkmt.discover_d3dkmt_gpus(lambda: kmt, lambda: _FakePdh()))
+
+    (card,) = win._build_windows_gpu_chains()
+
+    assert (card.key, card.temp(), card.vram_total(), card.vram_used()) == (
+        "intel:0", 48.0, 16384.0, 2048.0)

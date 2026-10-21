@@ -15,8 +15,10 @@ fallback).  Three sources, none needing admin:
 
 Layouts from System Informer's ``d3dkmthk.h`` (the Windows DDK header) and
 Microsoft Learn ``D3DKMT_ADAPTER_PERFDATA``.  Keys are ``<vendor>:<n>``, n
-counting that vendor's adapters in enumeration order, so one card chains with
-the vendor library's and HWiNFO's readings of it (``windows.py``).
+counting that vendor's adapters by PCI address, as ADL and IGCL count theirs, so
+one card chains with the vendor library's readings of it (``windows.py``).  In
+enumeration order an Intel iGPU and an Arc card -- or a Ryzen APU and a Radeon --
+could take each other's numbers, and one card's readings show on the other.
 """
 from __future__ import annotations
 
@@ -38,6 +40,8 @@ frame_log = per_frame(__name__)
 
 _VENDORS = {0x10DE: "nvidia", 0x1002: "amd", 0x8086: "intel"}
 _KMTQAITYPE_GETSEGMENTSIZE = 3
+_KMTQAITYPE_ADAPTERADDRESS = 6
+_NO_PCI_BUS = 0xFFFFFFFF
 _KMTQAITYPE_ADAPTERREGISTRYINFO = 8
 _KMTQAITYPE_ADAPTERTYPE = 15
 _KMTQAITYPE_PHYSICALADAPTERDEVICEIDS = 31
@@ -50,6 +54,13 @@ _SAMPLE_TTL_S = 0.9
 
 class _Luid(ctypes.Structure):
     _fields_ = [("LowPart", ctypes.c_uint32), ("HighPart", ctypes.c_int32)]
+
+
+class _AdapterAddress(ctypes.Structure):
+    """``D3DKMT_ADAPTERADDRESS``: the adapter's PCI bus, device, function."""
+
+    _fields_ = [("BusNumber", ctypes.c_uint32), ("DeviceNumber", ctypes.c_uint32),
+                ("FunctionNumber", ctypes.c_uint32)]
 
 
 class _AdapterInfo(ctypes.Structure):
@@ -113,6 +124,7 @@ class Adapter:
     vram_total_mb: float | None
     has_temp: bool
     has_fan: bool
+    pci: tuple[int, int, int] | None = None   # bus, device, function
 
 
 def luid_text(high: int, low: int) -> str:
@@ -333,13 +345,26 @@ def describe(kmt: Any, info: Any) -> Adapter | None:
         and segments.DedicatedVideoMemorySize else None)
     caps = _PerfDataCaps()
     has_caps = kmt.query(handle, _KMTQAITYPE_ADAPTERPERFDATA_CAPS, caps)
+    address = _AdapterAddress()
+    # An adapter off the PCI bus answers all-ones (win11 VM, 2026-10-20: the
+    # basic render driver gave 0xFFFFFFFF, 0xFFFF, 0xFFFF).
+    pci = ((address.BusNumber, address.DeviceNumber, address.FunctionNumber)
+           if kmt.query(handle, _KMTQAITYPE_ADAPTERADDRESS, address)
+           and address.BusNumber != _NO_PCI_BUS else None)
     adapter = Adapter(handle=handle,
                       luid=luid_text(info.AdapterLuid.HighPart, info.AdapterLuid.LowPart),
                       vendor=vendor, name=name, vram_total_mb=vram,
                       has_temp=has_caps and caps.TemperatureMax > 0,
-                      has_fan=has_caps and caps.MaxFanRPM > 0)
+                      has_fan=has_caps and caps.MaxFanRPM > 0, pci=pci)
     log.info("describe: %s", adapter)
     return adapter
+
+
+def pci_order(adapter: Adapter) -> tuple[int, int, int]:
+    """Sort key: by PCI address, an adapter without one after every one with."""
+    order = adapter.pci or (1 << 32, 0, 0)
+    log.debug("pci_order: %s -> %s", adapter.luid, order)
+    return order
 
 
 def discover_d3dkmt_gpus(kmt_factory: Callable[[], Any] = _Kmt,
@@ -357,7 +382,8 @@ def discover_d3dkmt_gpus(kmt_factory: Callable[[], Any] = _Kmt,
         log.warning("discover_d3dkmt_gpus: no GPU usage counters (%s) -- "
                     "usage and VRAM used stay empty", e)
         pdh = None
-    adapters = [a for info in kmt.adapters() if (a := describe(kmt, info)) is not None]
+    adapters = sorted((a for info in kmt.adapters() if (a := describe(kmt, info)) is not None),
+                      key=pci_order)
     sampler = GpuSampler(kmt, pdh)
     sampler.watch(adapters)
     counts: dict[str, int] = {}
