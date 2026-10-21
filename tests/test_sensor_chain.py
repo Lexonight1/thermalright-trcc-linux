@@ -167,6 +167,21 @@ def test_cpu_chain_exceptions_skipped_silently() -> None:
     assert chain.temp() == 66.0
 
 
+def test_a_raising_member_does_not_break_the_chains_name_or_label() -> None:
+    """``name`` and ``temp_label`` asked members bare, so one WMI error in a
+    backend escaped them and took the whole sensor list down.
+
+    MUTATION CHECK: call ``source.temp()`` bare in either -- RuntimeError."""
+
+    class _Boom(_StubCpu):
+        def temp(self) -> float | None:
+            raise RuntimeError("backend died")
+
+    chain = CpuSourceChain([_Boom(name="boom", label="Tctl"),
+                            _StubCpu(name="ok", temp=66.0, label="Package")])
+    assert (chain.name, chain.temp_label()) == ("ok", "Package")
+
+
 def test_cpu_chain_name_reflects_active_source() -> None:
     """``name`` picks the first source that produced ANY reading."""
     chain = CpuSourceChain([

@@ -47,7 +47,7 @@ class CpuSourceChain(CpuSource):
         """
         frame_log.debug("name")
         for source in self._sources:
-            if source.temp() is not None or source.usage() is not None:
+            if _reads(source, "temp") or _reads(source, "usage"):
                 return source.name
         return self._sources[0].name
 
@@ -88,7 +88,7 @@ class CpuSourceChain(CpuSource):
         COULD read (HWiNFO not running) would name the wrong sensor."""
         frame_log.debug("CpuSourceChain.temp_label: called")
         for source in self._sources:
-            if source.temp() is not None:
+            if _reads(source, "temp"):
                 return source.temp_label()
         return ""
 
@@ -227,6 +227,15 @@ class MemorySourceChain(MemorySource):
     def percent(self) -> float | None:
         frame_log.debug("MemorySourceChain.percent: called")
         return _first_not_none(self._sources, "percent")
+
+
+def _reads(source: object, method: str) -> bool:
+    """Whether *source* answers *method* now -- a member that raises answers
+    no, as in :func:`_first_not_none`: one flaky strategy must not take the
+    sensor list down (``name`` and ``temp_label`` called members bare)."""
+    reads = _first_not_none([source], method) is not None
+    frame_log.debug("_reads: %s.%s -> %s", type(source).__name__, method, reads)
+    return reads
 
 
 def _first_not_none(sources: Sequence[object], method: str) -> float | None:
