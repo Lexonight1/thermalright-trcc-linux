@@ -522,6 +522,7 @@ class UCDevice(BasePanel):
         old_paths = {d.get('path') for d in self.devices}
         new_paths = {d.get('path') for d in devices}
         if old_paths == new_paths:
+            self._take_identities(devices)
             return
 
         prev_path = self.selected_device.get('path') if self.selected_device else None
@@ -545,6 +546,29 @@ class UCDevice(BasePanel):
                     break
         if not restored:
             self._select_device(devices[0])
+
+    def _take_identities(self, devices: list[dict]) -> None:
+        """The same devices, some now identified: each button whose device
+        now has a product picture takes it.
+
+        The sidebar is built before the App has identified a panel, so its
+        button starts on the generic picture (``A1CZTV``, which reads
+        "TARAN ARMS"); when the App's connect resolves the product the device
+        list is the same and nothing was rebuilt -- the maintainer's Frozen
+        Warframe Pro stayed "TARAN ARMS" (2026-10-21).  Each kept dict is
+        updated in place: a button is matched to its dict by identity.  A
+        blank picture never replaces a resolved one.
+        """
+        current = {d.get('path'): d for d in self.devices}
+        for new in devices:
+            old = current.get(new.get('path'))
+            image = new.get('button_image')
+            if old is None or not image or old.get('button_image') == image:
+                continue
+            log.info("_take_identities: %s %s -> %s", new.get('path'),
+                     old.get('button_image'), image)
+            old.update(new)
+            self.update_device_button(old)
 
     def restore_device_selection(self) -> None:
         """Re-activate current device button and deselect header buttons.

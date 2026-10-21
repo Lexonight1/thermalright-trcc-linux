@@ -165,6 +165,33 @@ def test_uc_device_overflow_scrolls_within_fixed_area(qapp: object) -> None:
         area_w, area_h)
 
 
+def test_a_panel_identified_after_the_sidebar_was_built_shows_its_picture(
+        qapp: object) -> None:
+    """The sidebar is built before the App identifies the panel; the same
+    device list, now with its product, must swap the generic picture -- the
+    maintainer's Frozen Warframe Pro stayed "TARAN ARMS" (2026-10-21).
+
+    MUTATION CHECK: return early on the same paths, as it did -- the button
+    keeps A1CZTV."""
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_device import UCDevice
+    set_assets_dir(_PKG_ASSETS_DIR)
+    panel = UCDevice()
+    panel.update_devices([{"name": "Thermalright LCD Display", "path": "0402:3922",
+                           "button_image": "A1CZTV"}])
+    (button,) = panel.device_buttons
+    generic = button.icon().pixmap(button.iconSize()).toImage()
+    panel.update_devices([{"name": "Thermalright FROZEN WARFRAME PRO",
+                           "path": "0402:3922",
+                           "button_image": "A1FROZEN WARFRAME PRO"}])
+    assert panel.device_buttons == [button]                  # not rebuilt
+    assert button.device_info is not None
+    assert button.device_info["button_image"] == "A1FROZEN WARFRAME PRO"
+    assert button.icon().pixmap(button.iconSize()).toImage() != generic
+    panel.update_devices([{"name": "x", "path": "0402:3922", "button_image": ""}])
+    assert button.device_info["button_image"] == "A1FROZEN WARFRAME PRO"
+
+
 def test_list_gpus_feeds_about_panel_gpu_data(gui_app: App) -> None:
     """ListGpus surfaces the aggregator's GPUs — the data the About panel
     feeds its GPU label/dropdown.  Was empty via the dead get_gpu_list,

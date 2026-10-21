@@ -369,7 +369,9 @@ class TRCCApp(QMainWindow):
             return
         self._add_handler(state)
         self._refresh_sidebar()
-        self._configure_inactive_lcd(event.key)
+        # The window may open on a panel the App has not connected yet: when
+        # it connects, it is the one on screen, not one in the background.
+        self._configure_lcd(event.key, on_screen=event.key == self._active_key)
         if event.key == self._view_lost_from:
             # It was the one on screen when it went (a VM, a hub reset): put
             # it back, or every blink leaves the user looking at another panel.
@@ -724,7 +726,7 @@ class TRCCApp(QMainWindow):
         # The target activates LAST so its frame ends up in the shared widgets.
         for key in list(self._handlers):
             if key != target_key:
-                self._configure_inactive_lcd(key)
+                self._configure_lcd(key, on_screen=False)
 
         self._show_initial_view(target_key)
 
@@ -743,15 +745,18 @@ class TRCCApp(QMainWindow):
             log.info("_show_initial_view: no devices — home/sysinfo empty state")
             self._show_view('sysinfo')
 
-    def _configure_inactive_lcd(self, key: str) -> None:
-        """Load + render a connected LCD without it owning the shared preview.
+    def _configure_lcd(self, key: str, *, on_screen: bool) -> None:
+        """Load + render a connected LCD; *on_screen* -- it is the device the
+        window shows -- owns the shared preview, any other does not.
 
         Used for non-target devices at startup AND for late (hotplug) connects,
         so EVERY connected cooler renders its content — matching real hardware
         where every screen shows at once.  No-op for non-LCD or already-
-        configured handlers.  ``set_inactive`` keeps it rendering to the wire
-        but drops ``_ui_active`` so it never fights the active device for the
-        shared preview widgets.
+        configured handlers.  ``set_inactive`` keeps a background one rendering
+        to the wire but drops ``_ui_active`` so it never fights the active
+        device for the shared preview widgets.  The one on screen was set
+        inactive too until 2026-10-21: a window opened before the App connected
+        the panel then dropped every preview frame -- a still preview.
         """
         handler = self._handlers.get(key)
         if not isinstance(handler, LCDHandler) or handler.is_configured:
@@ -762,9 +767,13 @@ class TRCCApp(QMainWindow):
         w, h = state.resolution
         if (w, h) == (0, 0):
             return
-        log.info("configure_inactive_lcd: %s %dx%d", key, w, h)
+        log.info("_configure_lcd: %s %dx%d on_screen=%s", key, w, h, on_screen)
         handler.apply_device_config(key, w, h)
-        handler.set_inactive()
+        if on_screen:                   # as _activate_device's first config
+            self._show_brightness()
+            self._show_cast()
+        else:
+            handler.set_inactive()
 
     # ── Handler lifecycle ───────────────────────────────────────────
 

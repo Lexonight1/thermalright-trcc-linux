@@ -648,3 +648,58 @@ def test_the_new_window_takes_frames_only_while_shown(
         qtbot.waitUntil(lambda: not qt_window._bus._frames_on, timeout=3000)
     finally:
         app.close()
+
+
+def test_a_window_opened_before_the_panel_connects_shows_its_frames(
+        tmp_path: Path, qtbot: Any) -> None:
+    """The maintainer's start-up: the window opened on his panel while a
+    fresh App was still connecting it.  When it connected, the window set it
+    up as a background panel and dropped every preview frame -- a still
+    preview, with the panel itself playing (2026-10-21).
+
+    MUTATION CHECK: set it up off screen again (``on_screen=False``) -- the
+    preview gate stays shut."""
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    app.attach(0x0402, 0x3922)          # attached, its handshake not yet done
+    win = TRCCApp(app=app)
+    qtbot.addWidget(win)
+    win.replay_initial_devices()
+    qtbot.waitUntil(lambda: _KEY in win._handlers)
+    win._activate_device(_KEY)                    # not connected yet
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    from trcc.ui.gui.lcd_handler import LCDHandler
+
+    def configured() -> bool:            # the connect builds a fresh handler
+        handler = win._handlers[_KEY]
+        return isinstance(handler, LCDHandler) and handler._pm.configured
+
+    qtbot.waitUntil(configured, timeout=5000)
+    handler = win._handlers[_KEY]
+    assert isinstance(handler, LCDHandler) and handler._pm.ui_active
+    win.close()
+
+
+def test_a_preview_cut_off_from_its_frames_is_logged_once(
+        window: Any, caplog: pytest.LogCaptureFixture) -> None:
+    """A still preview shows in a report as one line, not one a frame -- the
+    drop line used to be written ~25 times a second (2026-10-21).
+
+    MUTATION CHECK: log every dropped frame on ``self.log`` -- three lines."""
+    import logging
+
+    from PySide6.QtGui import QImage
+
+    handler = window._handlers[_KEY]
+    frame = QImage(320, 320, QImage.Format.Format_RGB888)
+    caplog.set_level(logging.INFO, logger="trcc.ui.gui.lcd_handler")
+    handler._pm.ui_active = False
+    for _ in range(3):
+        handler.handle_frame(frame)
+    handler._pm.ui_active = True
+    handler.handle_frame(frame)
+    said = [r.getMessage() for r in caplog.records
+            if r.name.startswith("trcc.ui.gui.lcd_handler") and "this window's preview" in r.getMessage()]
+    assert said == [f"handle_frame: {_KEY}'s frames no longer reach this window's preview",
+                    f"handle_frame: {_KEY}'s frames reach this window's preview"]

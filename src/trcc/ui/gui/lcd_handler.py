@@ -137,6 +137,9 @@ class LCDHandler(BaseHandler):
         self._dirs_signature: tuple[object, ...] | None = None
         self.log: logging.Logger = log
         self.frame_log: logging.Logger = per_frame(__name__)
+        # Whether frames are reaching this window's preview -- logged when it
+        # changes, so a still preview shows in a report without a line a frame.
+        self._preview_fed = True
 
         # Qt-free coordination model — owns the per-device DeviceState cache
         # AND the activation/view-lifecycle flags (ui_active gate, configured
@@ -846,17 +849,23 @@ class LCDHandler(BaseHandler):
         image, so it goes straight to the widget — no second render.
         ``fast`` follows the animation timer so video uses the fast paint.
         """
-        # Per-tick; DEBUG.  Note when UI is gated so a frozen preview
-        # while LCD still updates is visible in the log.
+        # Per frame, so on the per-frame logger.  Whether the preview is fed
+        # is logged once when it changes: a still preview while the panel
+        # updates is visible in a report -- the line used to be written
+        # every frame, ~25 a second (2026-10-21).
         if image is None:
-            self.log.debug("handle_frame: None surface — skip")
+            self.frame_log.debug("handle_frame: None surface — skip")
             return
-        if self._pm.ui_active:
+        fed = self._pm.ui_active
+        if fed != self._preview_fed:
+            self._preview_fed = fed
+            self.log.info("handle_frame: %s's frames %s this window's preview",
+                          self._device_key, "reach" if fed else "no longer reach")
+        if fed:
             self._w['preview'].set_image(image, fast=self._video_playing)
         else:
-            self.log.debug(
-                "handle_frame: dropped (ui_active=False, %s)", self._device_key,
-            )
+            self.frame_log.debug("handle_frame: dropped (ui_active=False, %s)",
+                                 self._device_key)
 
     def _sync_preview_size(self) -> None:
         """Resize the preview bezel/label to the active theme's composed
