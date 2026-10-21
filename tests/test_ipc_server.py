@@ -264,6 +264,30 @@ def test_kill_request_shuts_daemon_down(
     assert not ipc.daemon_running()
 
 
+def test_a_listener_woken_before_it_accepts_answers_no_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The kill's worker can wake the listener before the accept loop gets
+    back to it.  The App must be gone then too, not answering until shutdown
+    -- on Windows it was (CI, 2026-10-21: the kill test above failed once).
+
+    The order is forced here; the kill test leaves it to the scheduler.
+    MUTATION CHECK (Windows): drop ``_drop_pending`` from accept's entry -- the
+    pipe stays reachable."""
+    _private_channel(tmp_path, monkeypatch)
+    chan = ipc.channel()
+    assert chan is not None
+    listener = chan.listen()
+    try:
+        listener.wake()      # no probe first: a queued probe is what accept would return
+        with pytest.raises(OSError):
+            listener.accept()
+        assert not chan.reachable()
+    finally:
+        listener.close()
+        listener.remove()
+
+
 def test_malformed_envelope_returns_typed_error(
     running_server: tuple[ipc.IPCServer, App],
 ) -> None:

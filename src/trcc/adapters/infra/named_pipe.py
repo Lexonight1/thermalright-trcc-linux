@@ -275,6 +275,11 @@ class _PipeListener:
         frame_log.debug("_PipeListener.accept")
         with self._lock:
             if win32event.WaitForSingleObject(self._stop, 0) == win32event.WAIT_OBJECT_0:
+                # Woken before we got here -- a kill's worker can beat the
+                # accept loop back.  The waiting instance goes now, as in the
+                # wait below; left open it answered "an App is here" until
+                # shutdown (Windows CI, 2026-10-21).
+                self._drop_pending()
                 raise OSError("listener closed")
             handle, self._accepting = self._pending, True
         overlapped = pywintypes.OVERLAPPED()
@@ -348,6 +353,15 @@ class _PipeListener:
                 win32api.CloseHandle(pending)
             except pywintypes.error as e:
                 log.debug("_PipeListener.close: %s", e)
+
+    def _drop_pending(self) -> None:
+        """Close the instance waiting for the next client; the caller holds
+        the lock."""
+        pending, self._pending = self._pending, None
+        log.debug("_PipeListener._drop_pending: %s (%s)", self._name,
+                  "closed" if pending is not None else "none waiting")
+        if pending is not None:
+            win32api.CloseHandle(pending)
 
     def remove(self) -> None:
         """Nothing to delete: a pipe's name goes with its last handle."""
