@@ -37,7 +37,7 @@ from trcc.core.results import (
     RgbFollowResult,
     RgbLightsResult,
 )
-from trcc.ui.presentation.rgb_page import RgbDevice, RgbSource, strip_legend
+from trcc.ui.presentation.rgb_page import RgbDevice, RgbSource, Strip, strip_legend
 
 LCD = "0402:3922"
 STICKS = (RgbLight("i2c-3/0x19", "Stick A", 10, LightKind.RAM),
@@ -253,15 +253,19 @@ def test_sticks_with_no_known_effect_are_drawn_still(view: Any) -> None:
     strips = _strips(view, RgbSource.LEAVE)
     assert strips.isVisible() and not strips.animating
     assert view._previews[0].legend.text() == strip_legend(
-        tuple((stick.name, None) for stick in STICKS))
+        tuple(Strip(None) for _stick in STICKS))
 
 
-def test_no_sticks_no_preview(view: Any) -> None:
+def test_unticked_sticks_still_show_what_they_run(view: Any) -> None:
+    """Nothing ticked: the preview stays, each stick on what it runs -- the
+    fake App's sticks run nothing known, so grey and still."""
     view._source_buttons[RgbSource.EFFECT].click()
     for row in view.page.rows(LightKind.RAM):
         view._lights_column._on_light_toggled(row.ref, False)
     preview = view._previews[1]
-    assert not preview.isVisible() and not preview.strips.animating
+    assert preview.isVisible() and not preview.strips.animating
+    assert preview.legend.text() == strip_legend(
+        tuple(Strip(None) for _stick in STICKS))
 
 
 def test_a_headers_led_count_is_sent_when_the_edit_ends(view: Any,
@@ -325,15 +329,17 @@ def test_a_header_can_follow_the_cpu_temperature(skin: Any, qtbot: Any) -> None:
     view._devices_column.buttons[RgbDevice.OPENRGB].click()   # follow only
     view._devices_column.buttons[RgbDevice.MEMORY].click()
     view._source_buttons[RgbSource.EFFECT].click()          # Memory offers them
-    assert form._effect.findData("temp") != -1
+    # One choice per reading, no separate sensor row (his, 2026-10-21).
+    assert [form._effect.itemText(i) for i in range(form._effect.count())][-4:] == [
+        "CPU temp", "CPU load", "GPU temp", "GPU load"]
+    assert "Sensor" not in form._rows
     view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
     view._source_buttons[RgbSource.EFFECT].click()
     view._lights_column._on_light_toggled(lit.ref, True)
-    form._on_effect(form._effect.findData("temp"))
+    form._on_effect(form._effect.findData("temp:gpu"))
     qtbot.wait(20)
-    assert form._rows["Sensor"][1].isVisibleTo(view)
+    assert form._effect.currentText() == "GPU temp"
     assert not form._rows["Colours"][1].isVisibleTo(view)
-    form._on_sensor("gpu")
     view._apply.click()
     _answered(view, qtbot)
     assert view._app.commands(SetLinkedColor) == [
@@ -348,8 +354,8 @@ def test_a_linked_or_static_strip_is_drawn_once_not_animated(view: Any) -> None:
     from trcc.core.models import LinkedEffect, RamEffectSettings
     view._source_buttons[RgbSource.EFFECT].click()      # the strips on screen
     strips = view._previews[1].strips
-    strips.set_strips((("A", LinkedEffect("temp", "cpu")),
-                       ("B", RamEffectSettings(RamEffect.STATIC))))
+    strips.set_strips((Strip(LinkedEffect("temp", "cpu")),
+                       Strip(None, RamEffectSettings(RamEffect.STATIC))))
     assert not strips.animating
-    strips.set_strips((("A", RamEffectSettings(RamEffect.RAIN)),))
+    strips.set_strips((Strip(None, RamEffectSettings(RamEffect.RAIN)),))
     assert strips.animating

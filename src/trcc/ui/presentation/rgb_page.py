@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
+from ...core.logs import per_frame
 from ...core.models import (
     EFFECT_SOURCE,
     EFFECT_TRAITS,
@@ -45,6 +46,7 @@ from ...services.rgb_mirror import FRAME_ROWS
 from .openrgb_address import format_openrgb_address, parse_openrgb_address
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 Rgb = tuple[int, int, int]
 
@@ -73,10 +75,15 @@ EFFECT_LABELS: dict[RamEffect, str] = {
     RamEffect.MARQUEE: "Marquee",
     RamEffect.SEQUENTIAL: "Sequential",
 }
-#: The LED cooler's linked modes, as the motherboard's picker lists them.
-LINKED_LABELS: dict[LinkedMetric, str] = {
-    "temp": "Temperature-linked", "load": "Load-linked"}
+#: The LED cooler's linked modes, named by their reading: "CPU temp".
+LINKED_LABELS: dict[LinkedMetric, str] = {"temp": "temp", "load": "load"}
 SENSOR_LABELS: dict[SensorLink, str] = {"cpu": "CPU", "gpu": "GPU"}
+#: The linked colours as the picker lists them, one choice per reading --
+#: "CPU temp", not "Temperature-linked" plus a separate sensor row (his,
+#: 2026-10-21).  Keyed by a plain string: Qt hands item data back as one.
+LINKED_CHOICES: dict[str, LinkedEffect] = {
+    f"{metric}:{source}": LinkedEffect(metric, source)
+    for source in SENSOR_LABELS for metric in LINKED_LABELS}
 SPEED_LABELS: dict[EffectSpeed, str] = {
     EffectSpeed.SLOW: "Slow", EffectSpeed.MEDIUM: "Medium",
     EffectSpeed.FAST: "Fast",
@@ -228,24 +235,46 @@ NOT_KNOWN_NOTE = ("Not known: its factory default, or what OpenRGB or the "
 
 
 def effect_label(effect: LightEffect) -> str:
-    """What a light runs, in words: "Rain", "Temperature-linked (CPU)"."""
+    """What a light runs, in words: "Rain", "CPU temp"."""
     log.debug("effect_label: %s", effect)
     if isinstance(effect, LinkedEffect):
-        return f"{LINKED_LABELS[effect.metric]} ({SENSOR_LABELS[effect.source]})"
+        return f"{SENSOR_LABELS[effect.source]} {LINKED_LABELS[effect.metric]}"
     return EFFECT_LABELS[effect.effect]
 
 
-def strip_legend(strips: Sequence[tuple[str, LightEffect | None]]
-                 ) -> str:
-    """The effect preview's legend: one line per lettered strip, the effect
-    it runs.  Letters only: the lights' names are on their cards, in the same
-    order (his call, 2026-10-21)."""
+@dataclass(frozen=True, slots=True)
+class Strip:
+    """One lettered strip of the effect preview: what its light runs now,
+    and -- ticked, under Effect -- what Apply gives it.
+
+    The preview used to draw only the pick, on every ticked stick: with both
+    ticked it read "B: GPU" on a stick that ran CPU, as if Apply had made them
+    the same (his, 2026-10-21)."""
+    runs: LightEffect | None
+    on_apply: LightEffect | None = None
+
+    @property
+    def drawn(self) -> LightEffect | None:
+        """What the strip paints: what the light runs once Apply is pressed."""
+        frame_log.debug("Strip.drawn: %s -> %s", self.runs, self.on_apply)
+        return self.runs if self.on_apply is None else self.on_apply
+
+
+def strip_legend(strips: Sequence[Strip]) -> str:
+    """The effect preview's legend: one line per lettered strip, what it runs
+    and what Apply would give it.  Letters only: the lights' names are on
+    their cards, in the same order (his call, 2026-10-21)."""
     log.debug("strip_legend: %d", len(strips))
-    legend = "\n".join(
-        f"{chr(ord('A') + i)}: {effect_label(settings) if settings else 'not known'}"
-        for i, (_name, settings) in enumerate(strips))
+    lines = []
+    for i, strip in enumerate(strips):
+        runs = "not known" if strip.runs is None else effect_label(strip.runs)
+        line = f"{chr(ord('A') + i)}: {runs}"
+        if strip.on_apply is not None:
+            line += f"  ->  on Apply: {effect_label(strip.on_apply)}"
+        lines.append(line)
+    legend = "\n".join(lines)
     # Said once, under the letters -- on every line it was noise (his call).
-    if any(settings is None for _name, settings in strips):
+    if any(strip.runs is None for strip in strips):
         legend += "\n\n" + NOT_KNOWN_NOTE
     return legend
 
@@ -666,22 +695,19 @@ class RgbPage:
         log.debug("RgbPage.follow_status: %s", status)
         return status
 
-    def effect_strips(self) -> tuple[tuple[str, LightEffect | None], ...]:
-        """The effect preview's strips: each light's name and what it runs.
-
-        Built-in effect: the effect being set, on the device's ticked lights.
-        Otherwise what TRCC last gave each of them -- None where it never
-        gave one, so the light runs its own or another program's.
+    def effect_strips(self) -> tuple[Strip, ...]:
+        """The effect preview's strips: every light of the device, with what
+        TRCC last gave it -- None where it never gave one, so the light runs
+        its own or another program's.  Under Effect, a ticked light also
+        carries the effect Apply gives it.
         """
         kind = DEVICE_KINDS[self.device][0]
-        if self.source is RgbSource.EFFECT:
-            effect = self.effect_picks.light_effect()
-            strips: tuple[tuple[str, LightEffect | None], ...] = tuple(
-                (row.title, effect) for row in self.rows(kind) if row.checked)
-        else:
-            strips = tuple((light.name, light.effect) for light in self._lights
-                           if light.kind is kind)
-        log.debug("RgbPage.effect_strips: %d", len(strips))
+        effect = (self.effect_picks.light_effect()
+                  if self.source is RgbSource.EFFECT else None)
+        strips = tuple(Strip(light.effect,
+                             effect if light.ref in self._checked else None)
+                       for light in self._lights if light.kind is kind)
+        log.debug("RgbPage.effect_strips: %s", strips)
         return strips
 
     @property

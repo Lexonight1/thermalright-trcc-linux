@@ -30,6 +30,7 @@ from trcc.ui.presentation.rgb_page import (
     RgbSource,
     RunBoardEffect,
     SaveEffect,
+    Strip,
     strip_legend,
 )
 
@@ -195,7 +196,7 @@ def test_each_device_shows_only_its_own_lights() -> None:
     assert page.preview_lights == ()
     page.set_checked(HEADER.ref, True)
     assert page.preview_lights == (HEADER.name,)
-    assert page.effect_strips() == ((HEADER.name, None),)
+    assert page.effect_strips() == (Strip(None),)
 
 
 # ── The sources ──────────────────────────────────────────────────────
@@ -422,7 +423,29 @@ def test_the_effect_preview_runs_the_picked_effect_on_ticked_sticks() -> None:
     page.effect_picks.set_effect(RamEffect.RAIN)
     page.set_checked(STICK_A.ref, False)
     assert page.effect_strips() == (
-        (STICK_B.name, page.effect_picks.settings()),)
+        Strip(None), Strip(None, page.effect_picks.settings()))
+
+
+def test_a_ticked_stick_shows_what_it_runs_beside_what_apply_gives_it() -> None:
+    """His run, 2026-10-21: A on CPU, B on GPU, both ticked with GPU picked --
+    the legend read GPU twice, as if Apply had made the sticks the same.
+
+    MUTATION CHECK: draw only the pick on ticked sticks (drop ``runs``) --
+    A reads "GPU temp"."""
+    from trcc.core.models import LinkedEffect
+    cpu, gpu = LinkedEffect("temp", "cpu"), LinkedEffect("temp", "gpu")
+    page = _page(RgbLight(STICK_A.ref, STICK_A.name, 10, LightKind.RAM, cpu),
+                 RgbLight(STICK_B.ref, STICK_B.name, 10, LightKind.RAM, gpu))
+    page.set_source(RgbSource.EFFECT)
+    page.effect_picks.linked, page.effect_picks.link_source = "temp", "gpu"
+    assert strip_legend(page.effect_strips()) == (
+        "A: CPU temp  ->  on Apply: GPU temp\n"
+        "B: GPU temp  ->  on Apply: GPU temp")
+    page.set_checked(STICK_A.ref, False)
+    assert strip_legend(page.effect_strips()) == (
+        "A: CPU temp\n"
+        "B: GPU temp  ->  on Apply: GPU temp")
+    assert [strip.drawn for strip in page.effect_strips()] == [cpu, gpu]
 
 
 def test_leave_alone_previews_what_trcc_last_saved_on_each_stick() -> None:
@@ -430,23 +453,21 @@ def test_leave_alone_previews_what_trcc_last_saved_on_each_stick() -> None:
     page = _page(STICK_A, RgbLight(STICK_B.ref, STICK_B.name, 10,
                                    LightKind.RAM, saved), FAN)
     page.set_source(RgbSource.LEAVE)
-    assert page.effect_strips() == ((STICK_A.name, None),
-                                    (STICK_B.name, saved))
+    assert page.effect_strips() == (Strip(None), Strip(saved))
 
 
 def test_the_legend_says_what_each_letter_runs() -> None:
     """Letters only -- the names are on the cards, in the same order.
 
     MUTATION CHECK: put the names back -- "A: Vengeance A -- Rain"."""
-    legend = strip_legend(((STICK_A.name, RamEffectSettings(RamEffect.RAIN)),
-                           (STICK_B.name, None)))
+    legend = strip_legend((Strip(RamEffectSettings(RamEffect.RAIN)), Strip(None)))
     assert legend == (
         "A: Rain\n"
         "B: not known\n\n"
         "Not known: its factory default, or what OpenRGB or the motherboard's "
         "own lighting control last set.")
-    assert strip_legend(((STICK_A.name, RamEffectSettings(RamEffect.RAIN)),
-                         (STICK_B.name, RamEffectSettings(RamEffect.RAIN)))) == (
+    assert strip_legend((Strip(RamEffectSettings(RamEffect.RAIN)),
+                         Strip(RamEffectSettings(RamEffect.RAIN)))) == (
         "A: Rain\nB: Rain")
 
 
@@ -519,8 +540,10 @@ def test_a_header_can_follow_the_gpu_load() -> None:
     picks.linked, picks.link_source = "load", "gpu"
     plan = page.apply()
     assert plan == LinkColor((LIT_HEADER.ref,), LinkedEffect(metric="load", source="gpu"))
-    assert effect_label(LinkedEffect("temp", "cpu")) == "Temperature-linked (CPU)"
-    assert page.effect_strips() == ((LIT_HEADER.name, LinkedEffect("load", "gpu")),)
+    assert effect_label(LinkedEffect("temp", "cpu")) == "CPU temp"
+    assert effect_label(LinkedEffect("load", "gpu")) == "GPU load"
+    assert page.effect_strips() == (
+        Strip(LIT_HEADER.effect, LinkedEffect("load", "gpu")),)
 
 
 def test_memory_takes_a_linked_colour_live() -> None:

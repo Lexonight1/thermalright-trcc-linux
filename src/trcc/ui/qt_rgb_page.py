@@ -59,7 +59,6 @@ from ..core.models import (
     EffectSpeed,
     FollowColors,
     FollowMapping,
-    LightEffect,
     LinkedEffect,
     RamEffect,
     RamEffectSettings,
@@ -79,9 +78,8 @@ from .presentation.rgb_page import (
     DIRECTION_LABELS,
     EFFECT_LABELS,
     LEDS_TIP,
-    LINKED_LABELS,
+    LINKED_CHOICES,
     MAPPING_LABELS,
-    SENSOR_LABELS,
     SOURCE_LABELS,
     SPEED_LABELS,
     ApplyPlan,
@@ -92,6 +90,8 @@ from .presentation.rgb_page import (
     RgbDevice,
     RgbPage,
     RgbSource,
+    Strip,
+    effect_label,
     strip_legend,
 )
 from .qt_background import dispatch_in_background
@@ -421,7 +421,6 @@ class _EffectForm(QWidget):
         self._brightness.setRange(0, 255)
         self._brightness.setFixedWidth(300)
         self._brightness.valueChanged.connect(self._on_brightness)
-        self._sensor = _ChoiceButtons(SENSOR_LABELS, self._on_sensor)
         colors = QHBoxLayout()
         for swatch in self._swatches:
             colors.addWidget(swatch)
@@ -436,8 +435,7 @@ class _EffectForm(QWidget):
         for name, widget in (("Effect", self._effect), ("Colours", colors),
                              ("Speed", self._speed),
                              ("Direction", self._direction),
-                             ("Brightness", self._brightness),
-                             ("Sensor", self._sensor)):
+                             ("Brightness", self._brightness)):
             self._add_row(name, widget)
         self._grid.setColumnStretch(1, 1)
 
@@ -466,10 +464,10 @@ class _EffectForm(QWidget):
         log.debug("_EffectForm.show_page: %s %s linked=%s", page.effect.value,
                   traits, page.linked)
         self._fill_picker()
-        linked = page.linked if page.linked_allowed else None
+        effect = page.light_effect()
+        linked = next((key for key, choice in LINKED_CHOICES.items()
+                       if choice == effect), None)
         self._effect.setCurrentIndex(self._effect.findData(linked or page.effect))
-        self._show_row("Sensor", linked is not None)
-        self._sensor.show_values(tuple(SENSOR_LABELS), page.link_source)
         if linked is not None:           # a reading picks the colour
             for name in ("Colours", "Speed", "Direction", "Brightness"):
                 self._show_row(name, False)
@@ -498,7 +496,8 @@ class _EffectForm(QWidget):
         """The effects, and the linked colours where the device takes them."""
         items = [(label, effect) for effect, label in EFFECT_LABELS.items()]
         if self._picks.linked_allowed:
-            items += [(label, metric) for metric, label in LINKED_LABELS.items()]
+            items += [(effect_label(choice), key)
+                      for key, choice in LINKED_CHOICES.items()]
         log.debug("_EffectForm._fill_picker: %d", len(items))
         if [self._effect.itemData(i) for i in range(self._effect.count())] == [
                 data for _label, data in items]:
@@ -511,16 +510,11 @@ class _EffectForm(QWidget):
         # Qt hands item data back as a plain string, not the enum stored.
         data = str(self._effect.itemData(index))
         log.info("_EffectForm._on_effect: %s", data)
-        if data == "temp" or data == "load":
-            self._picks.linked = data
+        if (linked := LINKED_CHOICES.get(data)) is not None:
+            self._picks.take(linked)
         else:
             self._picks.set_effect(RamEffect(data))
         self.show_page()
-        self._changed()
-
-    def _on_sensor(self, source: object) -> None:
-        log.info("_EffectForm._on_sensor: %s", source)
-        self._picks.link_source = "gpu" if source == "gpu" else "cpu"
         self._changed()
 
     def _on_swatch(self, index: int) -> None:
@@ -685,7 +679,7 @@ class _FollowPreview(QWidget):
                        Qt.AlignmentFlag.AlignCenter, chr(ord("A") + i))
 
 
-Strips = Sequence[tuple[str, LightEffect | None]]
+Strips = Sequence[Strip]
 
 
 class _EffectStrips(QWidget):
@@ -729,8 +723,8 @@ class _EffectStrips(QWidget):
         # Only what moves: a Static or linked strip is drawn once, not 20
         # times a second.
         run = self.isVisible() and any(
-            isinstance(s, RamEffectSettings) and s.effect is not RamEffect.STATIC
-            for _, s in self._strips)
+            isinstance(drawn, RamEffectSettings) and drawn.effect is not RamEffect.STATIC
+            for drawn in (strip.drawn for strip in self._strips))
         log.debug("_EffectStrips._sync_timer: %s", "run" if run else "still")
         if run and not self._timer.isActive():
             self._timer.start()
@@ -757,7 +751,8 @@ class _EffectStrips(QWidget):
         t = time.monotonic() - self._start
         width, height = self.CELL
         p = QPainter(self)
-        for i, (_name, settings) in enumerate(strips):
+        for i, strip in enumerate(strips):
+            settings = strip.drawn
             x = self.GAP // 2 + i * (width + self.GAP)
             leds = (None if settings is None
                     else linked_preview(LIGHT_GRADIENTS[settings.metric], LEDS)
