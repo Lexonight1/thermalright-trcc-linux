@@ -64,7 +64,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
-| [`SuperIoChip`](#superiochip) | 5 | 0 | 2 |
+| [`SuperIoChip`](#superiochip) | 5 | 0 | 3 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
@@ -991,7 +991,7 @@ measure(found: 'FoundChip') -> dict[str, Any]
 name(chip_id: 'int') -> str | None
 ```
 
-**Implementations (2):** `Ite` · `Nuvoton`
+**Implementations (3):** `Ite` · `Nct668x` · `Nuvoton`
 
 ## VisualEngine
 

@@ -1,8 +1,9 @@
 """Motherboard fans and board temperatures on Windows, from the Super I/O chip.
 
 Most ASUS and ASRock boards, and many MSI ones, carry a Nuvoton NCT6791D-NCT6799D
-"Super I/O" chip; Gigabyte boards carry ITE IT86xx chips, often with a second
-IT879x beside them.  The chip counts every fan header and reads the board's
+"Super I/O" chip; most MSI boards a Nuvoton NCT6683D/6686D/6687D, whose monitor
+is an embedded controller (``_nct668x``); Gigabyte boards carry ITE IT86xx
+chips, often with a second IT879x beside them.  The chip counts every fan header and reads the board's
 thermal inputs.  Linux's ``nct6775`` and ``it87`` drivers read them; on Windows
 nothing did unless LibreHardwareMonitor or HWiNFO ran beside TRCC (#319).  This
 reads them through PawnIO's signed ``LpcIO`` module -- as the SYSTEM service for
@@ -35,17 +36,22 @@ LibreHardwareMonitor, HWiNFO and FanControl hold around the ISA bus.
 from __future__ import annotations
 
 import enum
+import itertools
 import logging
+import re
 import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeGuard
 
 from ...core.logs import per_frame
 from ...core.ports import BoardTempSource, FanSource
+from ._nct668x import CHIPS as NCT668X_CHIPS
+from ._nct668x import ID_MASK as NCT668X_ID_MASK
+from ._nct668x import Nct668xMonitor
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -56,8 +62,8 @@ _DEVICE_ID, _REVISION, _DEVICE_SELECT, _ACTIVATE, _BASE = 0x20, 0x22, 0x07, 0x30
 #: What the id registers read where no chip answers on the port.
 _NO_CHIP = 0xFFFF
 #: An unconnected input reads far outside this (LibreHardwareMonitor drops <= 0
-#: and > 125 for these registers too).
-_PLAUSIBLE_C = range(1, 126)
+#: and > 125 for these registers too).  NCT668x inputs read in half degrees.
+_PLAUSIBLE_MIN_C, _PLAUSIBLE_MAX_C = 1, 125
 #: The service answers a client no faster than this; a reading moves slower.
 _MIN_INTERVAL_S = 0.5
 _SAMPLE_TTL_S = 0.9
@@ -132,6 +138,9 @@ class FoundChip:
     name: str
     base: int
     family: SuperIoChip
+    #: What the family keeps between samples for this chip (the NCT668x EC's
+    #: layout); None where it keeps nothing.
+    state: Any = None
 
 
 class SuperIoChip(ABC):
@@ -252,6 +261,42 @@ class Nuvoton(SuperIoChip):
         sample = {"fans": [(raw[r] << 8) | raw[r + 1] for r in FAN_REGISTERS],
                   "temps": {label: _signed(raw[r]) for label, r in TEMP_REGISTERS.items()}}
         frame_log.debug("Nuvoton.measure: %s %s", found.name, sample)
+        return sample
+
+
+# ── Nuvoton NCT6683D / NCT6686D / NCT6687D (MSI) ─────────────────────────────
+
+
+class Nct668x(Nuvoton):
+    """NCT6683D / NCT6686D / NCT6687D: Nuvoton's config key and exit (the base
+    class's), the monitor device 0x0B -- but its monitor is an embedded
+    controller behind a paged window at base+4/5/6, read by
+    :class:`_nct668x.Nct668xMonitor`.  Linux ``nct6683`` neither clears nor
+    checks config 0x28 on these chips, and neither does this."""
+
+    VENDOR = "Nuvoton EC"
+
+    def name(self, chip_id: int) -> str | None:
+        name = NCT668X_CHIPS.get(chip_id & NCT668X_ID_MASK)
+        log.debug("Nct668x.name: 0x%04x -> %s", chip_id, name)
+        return name
+
+    def identify(self, lpc: Lpc, chip_id: int) -> FoundChip | str:
+        name = NCT668X_CHIPS[chip_id & NCT668X_ID_MASK]
+        lpc.find_bars()
+        lpc.select_device(_HWM_DEVICE)
+        base = lpc.config_word(_BASE) & ~0x7
+        active = lpc.config(_ACTIVATE) & 0x01
+        log.info("Nct668x: %s at 0x%02x, EC base 0x%04x, active=%d", name, lpc.port, base, active)
+        if base < 0x100 or not active:
+            return f"{name}'s hardware monitor is switched off"
+        return FoundChip(lpc, chip_id, name, base, self, Nct668xMonitor(lpc.call, name, base))
+
+    def measure(self, found: FoundChip) -> dict[str, Any]:
+        reading = found.state.sample()
+        sample = ({"reason": reading["reason"]} if reading.get("chip") is None
+                  else {"fans": reading["fans"], "temps": reading["temps"]})
+        frame_log.debug("Nct668x.measure: %s %s", found.name, sample)
         return sample
 
 
@@ -517,7 +562,21 @@ def _rpm(low: int | None, high: int | None) -> int | None:
 
 
 #: The key order LibreHardwareMonitor's ``Detect`` uses: Nuvoton, then ITE.
-FAMILIES: tuple[SuperIoChip, ...] = (Nuvoton(), Ite())
+#: The two Nuvoton lines share a key; their chip ids do not overlap.
+FAMILIES: tuple[SuperIoChip, ...] = (Nuvoton(), Nct668x(), Ite())
+
+
+def _config_key(family: SuperIoChip) -> tuple[Any, Any]:
+    """How *family* enters and leaves config mode -- families that share it
+    share one key on a port, not one each."""
+    key = (type(family).enter, type(family).leave)
+    log.debug("_config_key: %s", type(family).__name__)
+    return key
+
+
+#: FAMILIES grouped by config key, in order: one key per group per port.
+KEYED_FAMILIES: tuple[tuple[SuperIoChip, ...], ...] = tuple(
+    tuple(group) for _, group in itertools.groupby(FAMILIES, key=_config_key))
 
 
 # ── the reader ───────────────────────────────────────────────────────────────
@@ -610,15 +669,17 @@ class SuperIoReader:
             log.info("SuperIoReader: %s", reason)
             return None, reason
         seen = _NO_CHIP
-        for family in FAMILIES:
-            family.enter(lpc)
+        for group in KEYED_FAMILIES:
+            keyer = group[0]
+            keyer.enter(lpc)
             chip_id = _NO_CHIP
             try:
                 chip_id = lpc.chip_id()
-                if family.name(chip_id) is not None:
-                    return family, family.identify(lpc, chip_id)
+                for family in group:
+                    if family.name(chip_id) is not None:
+                        return family, family.identify(lpc, chip_id)
             finally:
-                family.leave(lpc, chip_id)
+                keyer.leave(lpc, chip_id)
             seen = chip_id if seen == _NO_CHIP else seen
         reason = (f"no Super I/O chip at 0x{lpc.port:02x}" if seen == _NO_CHIP else
                   f"chip id 0x{seen:04x} at 0x{lpc.port:02x} is not one TRCC reads")
@@ -747,7 +808,7 @@ class SuperIoTemp(BoardTempSource):
     @property
     def key(self) -> str:
         frame_log.debug("SuperIoTemp.key")
-        return f"{self._view.prefix}:{self._label.lower()}"
+        return f"{self._view.prefix}:{key_of(self._label)}"
 
     @property
     def name(self) -> str:
@@ -756,9 +817,25 @@ class SuperIoTemp(BoardTempSource):
 
     def temp(self) -> float | None:
         value = (self._view.board.chip(self._view.slot).get("temps") or {}).get(self._label)
-        result = float(value) if isinstance(value, int) and value in _PLAUSIBLE_C else None
+        result = float(value) if _plausible(value) else None
         frame_log.debug("SuperIoTemp.temp: %s -> %s", self._label, result)
         return result
+
+
+def key_of(label: str) -> str:
+    """An input's label as a key: lower case, every run of other characters one
+    ``_`` -- "SYSTIN" stays "systin", "PECI 0.0" becomes "peci_0_0"."""
+    key = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    frame_log.debug("key_of: %r -> %s", label, key)
+    return key
+
+
+def _plausible(value: Any) -> TypeGuard[int | float]:
+    """A temperature worth showing: a number from 1 to 125 °C."""
+    plausible = (isinstance(value, (int, float)) and not isinstance(value, bool)
+                 and _PLAUSIBLE_MIN_C <= value <= _PLAUSIBLE_MAX_C)
+    frame_log.debug("_plausible: %s -> %s", value, plausible)
+    return plausible
 
 
 def _spinning(rpm: Any) -> bool:
@@ -793,7 +870,7 @@ def discover_superio(sample: Callable[[], dict[str, Any]] | None
                  if _spinning(rpm)]
         temps += [SuperIoTemp(view, label)
                   for label, value in (entry.get("temps") or {}).items()
-                  if value in _PLAUSIBLE_C]
+                  if _plausible(value)]
         log.info("discover_superio: %s -- %d fan(s) spinning, %d input(s) connected so far",
                  view.chip, len(fans), len(temps))
     return fans, temps
