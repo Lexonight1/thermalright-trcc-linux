@@ -44,6 +44,12 @@ def contribution(key: str, face: str, name: str) -> Any | None:
         return None
     found = getattr(part, name, None) if part is not None else None
     if part is not None and found is None:
+        if getattr(part.__spec__, "_initializing", False):
+            # Asked while the face itself is mid-import (it imported this UI
+            # first) -- the flag behind Python's "partially initialized
+            # module" error.  Not a fault: the UI asks again before it serves.
+            log.debug("module %s: ui/%s/ still loading -- asked later", key, face)
+            return None
         log.error("module %s: ui/%s/ exports no %s -- skipped", key, face, name)
     log.debug("contribution: %s %s %s -> %s", key, face, name, found is not None)
     return found

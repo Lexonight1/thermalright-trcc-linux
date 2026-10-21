@@ -793,6 +793,9 @@ add_module_commands()
 def main() -> None:
     """Entry point for console_scripts and python -m trcc.ui.cli."""
     log.debug("main")
+    # Again, now every import has finished: one done while a module's own
+    # ``ui/cli`` was half-loaded skipped it (that module is not marked added).
+    add_module_commands()
     app()
 
 

@@ -140,11 +140,58 @@ def test_the_cli_runs_its_command_on_or_off(
     assert (on.exit_code, on.output.strip()) == (0, "Hello, Ada!")
 
 
-def test_the_api_serves_its_route(hello: Path, tmp_home: Path,
-                                  monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_cli_adds_late_modules_before_it_runs(
+        hello: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A module the import-time pass missed (its own ``ui/cli`` was mid-import)
+    is added when ``main()`` runs.  MUTATION CHECK: drop the call in ``main``
+    and hello is not added."""
+    from trcc.ui.cli import main
+
+    seen: list[bool] = []
+
+    def run() -> None:
+        seen.append("hello" in main._ADDED)
+
+    monkeypatch.setattr(main, "app", run)
+    main.main()
+    assert seen == [True]
+
+
+@pytest.mark.parametrize("loading, level", [(True, None), (False, logging.ERROR)])
+def test_a_face_still_loading_is_not_a_fault(
+        monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+        loading: bool, level: int | None) -> None:
+    """A face asked while it is mid-import (it imported the UI first) adds
+    nothing yet and is no ERROR; a loaded face missing the name is.
+    MUTATION CHECK: drop the ``_initializing`` branch and the first case
+    logs an ERROR."""
+    from importlib.machinery import ModuleSpec
+    from types import ModuleType
+
+    from trcc import modules
+    from trcc.ui import _module_faces
+
+    part = ModuleType("trcc.modules.x.ui.cli")
+    part.__spec__ = ModuleSpec(part.__name__, None)
+    part.__spec__.__dict__["_initializing"] = loading
+
+    def load_face(key: str, face: str) -> ModuleType:
+        return part
+
+    monkeypatch.setattr(modules, "load_face", load_face)
+    with caplog.at_level(logging.DEBUG, logger=_module_faces.__name__):
+        found = _module_faces.contribution("x", "cli", "COMMANDS")
+    worst = max((r.levelno for r in caplog.records
+                 if "exports no" in r.getMessage()), default=None)
+    assert (found, worst) == (None, level)
+
+
+def test_the_api_serves_its_route(hello: Path, tmp_home: Path) -> None:
+    """Asked for when the API is built: a module added since its file was
+    imported is served.  MUTATION CHECK: fold module_routers back into the
+    import-time ROUTERS and Hello's route is missing."""
     from trcc.ui.api import main
 
-    monkeypatch.setattr(main, "ROUTERS", (*main.ROUTERS, *main.module_routers()))
     with loopback_client(main.build_app(trcc=_app(tmp_home, on=True))) as client:
         answer = client.get("/modules/hello", params={"name": "Ada"})
     assert (answer.status_code, answer.json()["greeting"]) == (200, "Hello, Ada!")

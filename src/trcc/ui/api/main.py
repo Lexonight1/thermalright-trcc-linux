@@ -63,8 +63,18 @@ def module_routers() -> tuple[APIRouter, ...]:
 ROUTERS = (
     devices.router, display.router, display.meta_router, led.router,
     led.meta_router, system.router, config.router, theme.router,
-    _trcc_router.router, events.router, *module_routers(),
+    _trcc_router.router, events.router,
 )
+
+
+def routers() -> tuple[APIRouter, ...]:
+    """The app's routers and every installed module's, asked for when the
+    API is BUILT, never when this file is imported: a module's ``ui/api``
+    imported first (anything that walks the packages) imports this file
+    while it is itself half-loaded, and its routes were skipped for good."""
+    found = (*ROUTERS, *module_routers())
+    log.debug("routers: %d", len(found))
+    return found
 
 
 def api_routes(api: FastAPI) -> list[BaseRoute]:
@@ -79,7 +89,7 @@ def api_routes(api: FastAPI) -> list[BaseRoute]:
     """
     seen: set[tuple[str, str, tuple[str, ...]]] = set()
     routes: list[BaseRoute] = []
-    for route in [*api.routes, *(r for router in ROUTERS for r in router.routes)]:
+    for route in [*api.routes, *(r for router in routers() for r in router.routes)]:
         path = getattr(route, "path", None)
         if path is None:
             continue
@@ -244,7 +254,7 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
         log.info("API pair: remote device paired successfully")
         return {"success": True, "token": _api_token}
 
-    for router in ROUTERS:
+    for router in routers():
         api.include_router(router)
 
     # ── Static serving for cloud previews ───────────────────────────
