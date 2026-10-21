@@ -19,6 +19,7 @@ from trcc.core.geometry import (
     content_is_portrait,
     fit_rect_for_mode,
     fit_source_to_panel,
+    largest_fit_size,
     lock_region_to_panel,
     plan_orientation,
 )
@@ -565,3 +566,38 @@ def test_the_spelling_rule_is_order_independent() -> None:
 
     assert catalog_spellings((176, 320)) == catalog_spellings((320, 176))
     assert catalog_spellings((176, 320)) == ((320, 176), (176, 320))
+
+
+# ── largest_fit_size -- a user's video decoded no larger than a fit mode draws (#264)
+
+
+@pytest.mark.parametrize(("source", "panel", "size"), [
+    ((3840, 2160), (1600, 720), (1600, 900)),     # #264's clip on his 1600x720 panel
+    ((3840, 2160), (480, 854), (1518, 854)),      # portrait canvas: the height binds
+    ((1921, 1081), (480, 480), (852, 480)),       # odd dimensions come out even
+    ((1280, 720), (1600, 720), (1280, 720)),      # already smaller: never scaled up
+])
+def test_largest_fit_size(source: tuple[int, int], panel: tuple[int, int],
+                          size: tuple[int, int]) -> None:
+    assert largest_fit_size(source, panel) == size
+
+
+@pytest.mark.parametrize("mode", [None, *FitMode])
+@pytest.mark.parametrize(("source", "panel"), [
+    ((3840, 2160), (1600, 720)), ((3840, 2160), (480, 854)),
+    ((1921, 1081), (480, 480)), ((2160, 3840), (1280, 480)),
+])
+def test_a_smaller_decode_lands_where_the_native_one_does(
+    mode: FitMode | None, source: tuple[int, int], panel: tuple[int, int],
+) -> None:
+    """Every fit mode places the scaled-down source where it placed the native
+    one, to the pixel, and never draws it larger than it was decoded -- so the
+    smaller decode loses nothing the panel shows.
+
+    MUTATION CHECK: scale by min(...) instead of max(...) -- WIDTH / STRETCH
+    then draw the source larger than it was decoded."""
+    small = largest_fit_size(source, panel)
+    native, scaled = fit_rect_for_mode(source, panel, mode), fit_rect_for_mode(small, panel, mode)
+    assert max(abs(native.width - scaled.width), abs(native.height - scaled.height),
+               abs(native.x - scaled.x), abs(native.y - scaled.y)) <= 1
+    assert scaled.width <= small[0] + 1 and scaled.height <= small[1] + 1

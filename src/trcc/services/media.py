@@ -22,6 +22,7 @@ from pathlib import Path
 
 from ..core import toolchain
 from ..core.errors import ThemeError
+from ..core.geometry import largest_fit_size
 from ..core.logs import per_frame
 from ..core.models import ZT_MAGIC, VisualSpec
 from ..core.ports import SoundInput, VisualEngine
@@ -64,8 +65,13 @@ class VideoDecoder:
                  rotation_degrees: int = 0,
                  duration_s: float | None = None,
                  install_hint: Callable[[str], str] = toolchain.generic_install_hint,
+                 fit_within: tuple[int, int] | None = None,
                  ) -> None:
         self._install_hint = install_hint
+        # With ``size=None``: the canvas the fit modes draw on.  The native
+        # frame is scaled down to the largest any of them needs
+        # (``geometry.largest_fit_size``) -- never up, aspect kept.
+        self.fit_within = fit_within
         # ``size`` is the OUTPUT scale ffmpeg is told to produce.
         # ``None`` → decode at the source's native resolution and let
         # the render pipeline's fit-mode scale at composite time.  Used
@@ -92,6 +98,7 @@ class VideoDecoder:
             raise ThemeError(toolchain.missing("ffmpeg",
                                                self._install_hint("ffmpeg")))
 
+        native: tuple[int, int] | None = None
         if self.size is None:
             native = _probe_video_size(self.path)
             if native is None:
@@ -103,9 +110,12 @@ class VideoDecoder:
                     "(ffprobe failed) — install ffprobe or pass an "
                     "explicit decode size",
                 )
-            w, h = native
-            log.info("VideoDecoder: %s native size %dx%d (no rescale)",
-                     self.path.name, w, h)
+            w, h = (largest_fit_size(native, self.fit_within)
+                    if self.fit_within is not None else native)
+            log.info("VideoDecoder: %s native size %dx%d -> decode %dx%d (%s)",
+                     self.path.name, *native, w, h,
+                     "no rescale" if (w, h) == native
+                     else f"the largest a fit mode draws on {self.fit_within}")
         else:
             w, h = self.size
 
@@ -129,10 +139,9 @@ class VideoDecoder:
             "-i", str(self.path),
             "-r", str(self.fps),
         ]
-        # Only emit -s when the caller asked for a specific output size.
-        # When ``size is None`` ffmpeg outputs the input's native frame
-        # dimensions, which we already pinned (w, h) via ffprobe.
-        if self.size is not None:
+        # Only emit -s when the output differs from the source: an explicit
+        # size, or a native decode scaled down to what the fit modes need.
+        if self.size is not None or (w, h) != native:
             cmd += ["-s", f"{w}x{h}"]
         # Ask ffmpeg for ENCODED frames rather than rawvideo.  Counter-
         # intuitively this is also FASTER: pushing ~45 MB of JPEG through the
@@ -483,7 +492,8 @@ class MediaService:
                    size: tuple[int, int] | None,
                    fps: int = _DEFAULT_FPS,
                    rotation_degrees: int = 0,
-                   duration_s: float | None = None) -> Playback:
+                   duration_s: float | None = None,
+                   fit_within: tuple[int, int] | None = None) -> Playback:
         """Decode a video / .zt animation for a device, replacing any previous playback.
 
         Dispatches by suffix: ``.zt`` → :class:`ZtDecoder`, anything else
@@ -500,12 +510,13 @@ class MediaService:
           user-uploaded videos in ``user_content_dir`` so the render
           pipeline's ``fit_mode`` (width / height / stretch) can scale at
           composite time.  ``.zt`` is fixed-size by format, so ``None``
-          is only valid for ffmpeg-decoded inputs.
+          is only valid for ffmpeg-decoded inputs.  *fit_within* (the
+          canvas) then caps it at the largest size a fit mode draws.
         """
         if size is None:
             log.info(
-                "load_video: key=%s path=%s size=native fps=%d rotate=%d",
-                device_key, path, fps, rotation_degrees,
+                "load_video: key=%s path=%s size=native fit_within=%s fps=%d rotate=%d",
+                device_key, path, fit_within, fps, rotation_degrees,
             )
         else:
             log.info(
@@ -536,6 +547,7 @@ class MediaService:
                 rotation_degrees=rotation_degrees,
                 duration_s=duration_s,
                 install_hint=self._install_hint,
+                fit_within=fit_within if size is None else None,
             )
             decoder.decode()
             playback = Playback(frames=decoder.frames, fps=fps,

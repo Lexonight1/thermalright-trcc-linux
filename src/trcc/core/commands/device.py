@@ -1422,6 +1422,9 @@ class PlayVideo(Command[VideoResult]):
             playback = app.media.load_video(
                 device_key=self.key, path=self.path, size=decode_size,
                 fps=self.fps,
+                # A user's video: no larger than the largest fit-mode draw on
+                # this canvas -- a 4K clip for a 1600x720 panel froze the gui (#264).
+                fit_within=canvas_size if decode_size is None else None,
             )
         except ThemeError as e:
             log.warning(

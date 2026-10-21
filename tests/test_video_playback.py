@@ -225,6 +225,31 @@ def test_play_video_user_uploaded_asset_decodes_at_native(
     assert stub_media[0][2] is None
 
 
+def test_a_user_video_is_capped_at_the_canvas_its_fit_modes_draw_on(
+    connected_app: App, tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native size, but no larger than the oriented canvas needs (#264): the
+    decoder gets the canvas as ``fit_within``.
+
+    MUTATION CHECK: drop fit_within from PlayVideo -- None reaches the decoder."""
+    seen: list[tuple[Any, Any]] = []
+
+    def record(self: MediaService, device_key: str, path: Path,
+               size: tuple[int, int] | None, **kwargs: Any) -> Playback:
+        seen.append((size, kwargs.get("fit_within")))
+        playback = Playback(frames=[_encoded_frame(0xFF000000, 8, 8)] * 3, fps=15)
+        self._playbacks[device_key] = playback
+        return playback
+
+    monkeypatch.setattr(MediaService, "load_video", record)
+    user_video = tmp_home / "user" / "data" / "mybg.mp4"
+    user_video.parent.mkdir(parents=True, exist_ok=True)
+    user_video.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    assert connected_app.dispatch(PlayVideo(key=_KEY, path=user_video)).ok
+    assert seen == [(None, (320, 320))]
+
+
 def test_play_video_zt_user_asset_keeps_canvas_size(
     connected_app: App, stub_media: list, tmp_home: Path,
 ) -> None:
@@ -656,6 +681,33 @@ def test_video_decoder_rejects_zero_dimension(
 
     with pytest.raises(ThemeError, match="width and height must both be positive"):
         VideoDecoder(clip, size=(0, 480)).decode()
+
+
+@pytest.mark.parametrize(("fit_within", "rescale"), [
+    ((1600, 720), ["-s", "1600x900"]),      # #264: 3840x2160 for a 1600x720 panel
+    (None, []),                             # no canvas given: native, as before
+])
+def test_a_4k_user_video_decodes_at_the_largest_size_a_fit_mode_draws(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+    fit_within: tuple[int, int] | None, rescale: list[str],
+) -> None:
+    """Measured on a 30 s 4K clip: 2.93 s -> 2.21 s and 145 MB -> 35 MB held.
+
+    MUTATION CHECK: ignore fit_within -- ffmpeg gets no -s, decodes native 4K."""
+    clip = tmp_home / "clip.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
+    monkeypatch.setattr("trcc.services.media._probe_video_size", lambda path: (3840, 2160))
+    commands: list[list[str]] = []
+
+    def run(cmd: list[str], **_: Any) -> _FakeProc:
+        commands.append(cmd)
+        return _FakeProc(_encoded_frame(0xFF102030, 16, 16))
+
+    monkeypatch.setattr("trcc.services.media.subprocess.run", run)
+    VideoDecoder(clip, size=None, fit_within=fit_within).decode()
+    (cmd,) = commands
+    assert (cmd[cmd.index("-s"):cmd.index("-s") + 2] if "-s" in cmd else []) == rescale
 
 
 def test_video_decoder_accepts_valid_dimension(

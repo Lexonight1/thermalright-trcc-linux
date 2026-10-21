@@ -306,6 +306,31 @@ class FitRect:
     y: int
 
 
+def largest_fit_size(source: tuple[int, int], panel: tuple[int, int]) -> tuple[int, int]:
+    """The smallest size of *source* that loses nothing any fit mode shows on *panel*.
+
+    :func:`fit_rect_for_mode` draws a source at ``panel_w / src_w`` (WIDTH),
+    ``panel_h / src_h`` (HEIGHT), each of those on its own axis (STRETCH), or
+    the smaller of the two (the load path) -- so none draws it larger than
+    ``max`` of the two ratios.  Decoding at that scale, aspect kept, is
+    invisible on the panel; decoding a 3840x2160 user video at native size for
+    a 1600x720 panel froze the gui for 9 s (#264).  Never larger than the
+    source; dimensions even, as ffmpeg's 4:2:0 output needs.
+    """
+    sw, sh = source
+    pw, ph = panel
+    if min(sw, sh, pw, ph) <= 0:
+        log.debug("largest_fit_size: %s on %s -- no shape, unchanged", source, panel)
+        return source
+    scale = max(pw / sw, ph / sh)
+    if scale >= 1.0:
+        log.debug("largest_fit_size: %s on %s -- not larger than needed", source, panel)
+        return source
+    size = (max(2, round(sw * scale) & ~1), max(2, round(sh * scale) & ~1))
+    log.debug("largest_fit_size: %s on %s -> %s", source, panel, size)
+    return size
+
+
 def fit_source_to_panel(
     source: tuple[int, int], panel: tuple[int, int],
 ) -> FitRect:
