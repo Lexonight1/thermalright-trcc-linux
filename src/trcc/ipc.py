@@ -1176,6 +1176,8 @@ class SingleInstance:
     #: The msvcrt fallback's open lock file.  Held, never read: the lock lasts
     #: exactly as long as this stays open.
     _msvcrt_handle: object | None = None
+    #: Windows' raise channel (``RaiseEvent``), in place of the socket.
+    _doorbell: Any = None
     _RAISE_MESSAGE = b'{"raise": true}\n'
     _CONNECT_TIMEOUT_S = 1.0
 
@@ -1185,20 +1187,26 @@ class SingleInstance:
         stay hidden (``--resume``: autostart, session restore)."""
         path = _instance_socket_path(name)
         if not hasattr(socket, "AF_UNIX"):
-            # Legacy Windows fallback (build < 17063 / Windows 10 pre-1803).
-            # AF_UNIX missing means no socket-based lock; legacy used
-            # ``msvcrt.locking`` on a file and accepted no raise-existing
-            # support.  Same shape here — single-instance enforcement
-            # without window-raise, silent fallthrough on success.
+            # Windows: CPython has no AF_UNIX there.  The lock is a file lock;
+            # the raise is a named event (adapters/infra/raise_event.py) --
+            # without it a second launch logged "raised" and did nothing, so a
+            # window hidden in the tray stayed hidden (win11 VM, 2026-10-20).
+            from .adapters.infra.raise_event import RaiseEvent
+
+            doorbell = RaiseEvent(name)
             fallback = _msvcrt_acquire(name)
             if fallback is None:
-                log.info(
-                    "SingleInstance(%r): peer already running (msvcrt lock held)",
-                    name,
-                )
+                if not raise_peer:
+                    log.info("SingleInstance(%r): peer running — a hidden "
+                             "launch leaves its window as it is", name)
+                elif doorbell.ring():
+                    log.info("SingleInstance(%r): peer running, raise sent", name)
                 return None
             instance = super().__new__(cls)
             instance._msvcrt_handle = fallback
+            instance.on_raise = None
+            doorbell.listen(instance._raise_callback)
+            instance._doorbell = doorbell
             log.info(
                 "SingleInstance(%r): using msvcrt file lock (AF_UNIX unavailable)",
                 name,
@@ -1240,6 +1248,11 @@ class SingleInstance:
         if not hasattr(self, "_name"):
             self._name = name
 
+    def _raise_callback(self) -> typing.Callable[[], None] | None:
+        """What a ring runs now -- None while the window does not exist."""
+        log.debug("SingleInstance._raise_callback: %s", self.on_raise is not None)
+        return self.on_raise
+
     def _bind(self, name: str, path: Path) -> None:
         """Actually listen on the socket + spawn the accept thread."""
         import threading
@@ -1269,6 +1282,10 @@ class SingleInstance:
     def close(self) -> None:
         """Stop listening and remove the socket file."""
         log.info("close: called")
+        doorbell = getattr(self, "_doorbell", None)
+        if doorbell is not None:
+            doorbell.close()
+            self._doorbell = None
         sock = getattr(self, "_sock", None)
         if sock is None:
             return
@@ -1335,16 +1352,16 @@ def _instance_socket_path(name: str) -> Path:
 def _msvcrt_acquire(name: str) -> Any | None:
     """Acquire a Windows single-instance file-lock via ``msvcrt.locking``.
 
-    Used as the fallback when ``AF_UNIX`` isn't available (Windows 8.1
-    or 10 pre-1803).  Ports legacy ``WindowsPlatform.acquire_instance_lock``
+    Used where ``AF_UNIX`` isn't available -- every Windows, since CPython
+    builds no ``AF_UNIX`` there.  Ports legacy ``WindowsPlatform.acquire_instance_lock``
     (windows_platform.py:269-280).  Returns the open file handle on
     success (caller stores it for the process lifetime — the lock
     releases when the FD closes), or ``None`` when a peer already
     holds the lock.
 
-    No raise-existing-window support — legacy didn't have it either
-    (``raise_existing_instance`` was a ``pass``).  Modern Windows
-    (1803+) gets the full AF_UNIX path with raise.
+    The lock only; the window raise is ``RaiseEvent``'s
+    (``adapters/infra/raise_event.py``).  Legacy had no raise at all
+    (``raise_existing_instance`` was a ``pass``).
     """
     log.debug("_msvcrt_acquire: name=%s", name)
     try:
