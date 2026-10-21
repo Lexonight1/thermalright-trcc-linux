@@ -440,3 +440,68 @@ def test_an_intel_card_reads_from_igcl_first_then_windows(monkeypatch: pytest.Mo
 
     assert (card.key, card.temp(), card.vram_total(), card.vram_used()) == (
         "intel:0", 48.0, 16384.0, 2048.0)
+
+
+# ── per card, not per class: which rows the sensor list offers ─────────────
+
+
+def test_an_amd_card_without_a_hot_spot_sensor_offers_no_hot_spot_row() -> None:
+    """Asked per class, every AMD card answered "reads Hot Spot" -- and a card
+    whose sensor log has no such slot (Polaris) showed the row empty for ever.
+
+    MUTATION CHECK: drop AdlGpu.provides -- the Hot Spot row is offered."""
+    from trcc.adapters.sensors.aggregator import BaselineSensors
+    from trcc.adapters.sensors.psutil_sources import PsutilCpu, PsutilMemory
+
+    adl = _FakeAdl({0: _pmlog(s8=55, s19=30, s23=140),          # no hotspot, no mem temp
+                    1: _pmlog(s8=60, s27=82, s9=70, s73=250)})
+    old, new = _adl.discover_adl_gpus(lambda: adl)
+    assert [old.provides(q) for q in ("temp", "hotspot", "mem_temp", "power", "vram_used")] == [
+        True, False, False, True, True]
+    assert (new.provides("hotspot"), new.provides("mem_temp")) == (True, True)
+    labels = [r.label for r in BaselineSensors(cpu=PsutilCpu(), memory=PsutilMemory(),
+                                               gpus=[old]).discover()]
+    assert not [label for label in labels if label.endswith("Hot Spot")]
+    assert any(label.endswith("Temperature") and label.startswith(old.name) for label in labels)
+
+
+def test_a_windows_adapter_offers_only_what_its_driver_fills() -> None:
+    """D3DKMT: temperature and fan only with perf-data caps; usage and VRAM
+    used only with the GPU counters.
+
+    MUTATION CHECK: drop D3dkmtGpu.provides -- the capless card offers both."""
+    kmt = _FakeKmt({1: _card(0x8086, "Intel(R) UHD Graphics 770"),
+                    2: _card(0x1002, "AMD Radeon RX 7800 XT", temp=520, caps=(3000, 110))})
+    capless, capped = _d3dkmt.discover_d3dkmt_gpus(lambda: kmt, lambda: _FakePdh())
+    assert (capless.provides("temp"), capless.provides("fan_rpm")) == (False, False)
+    assert (capped.provides("temp"), capped.provides("fan_rpm")) == (True, True)
+    assert capped.provides("usage") and capped.provides("vram_total")
+
+    def no_pdh() -> Any:
+        raise OSError("no GPU counters")
+
+    (alone,) = _d3dkmt.discover_d3dkmt_gpus(
+        lambda: _FakeKmt({1: _card(0x1002, "AMD Radeon RX 7800 XT")}), no_pdh)
+    assert (alone.provides("usage"), alone.provides("vram_used")) == (False, False)
+
+
+def test_an_intel_gpu_offers_only_what_its_telemetry_carries() -> None:
+    """Power and usage need their counter AND the timestamp; a fan only where
+    one reports.
+
+    MUTATION CHECK: drop IgclGpu.provides -- power and fan are offered."""
+    igcl = _FakeIgcl({1: (0x8086, 1, (0, 2, 0), True, "Intel(R) UHD Graphics 770",
+                          _telemetry(1.0, temp=45.0, activity=3.0))})
+    (gpu,) = _igcl.discover_igcl_gpus(lambda: igcl)
+    assert [gpu.provides(q) for q in ("temp", "usage", "power", "fan_rpm", "mem_temp")] == [
+        True, True, False, False, False]
+
+
+def test_counters_without_a_timestamp_cannot_make_a_rate() -> None:
+    """Power and usage are counter change over TIME: a card reporting the
+    counters but no timestamp gives neither, so neither row is offered.
+
+    MUTATION CHECK: need only the counter -- power and usage are offered."""
+    assert _igcl.telemetry_supports({"energy": 50.0, "activity": 3.0, "temp": 40.0}) == {"temp"}
+    assert _igcl.telemetry_supports({"energy": 50.0, "activity": 3.0, "time": 1.0}) == {
+        "power", "usage"}

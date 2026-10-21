@@ -237,6 +237,13 @@ class GpuSampler:
         self._perf: dict[int, tuple[float | None, float | None]] = {}
         self._adapters: list[Adapter] = []
 
+    @property
+    def counted(self) -> bool:
+        """Whether Windows' GPU counters (PDH) answer here -- usage and VRAM
+        used come from nowhere else."""
+        frame_log.debug("GpuSampler.counted: %s", self._pdh is not None)
+        return self._pdh is not None
+
     def watch(self, adapters: Iterable[Adapter]) -> None:
         """The adapters whose perf data each sample reads."""
         self._adapters = list(adapters)
@@ -299,6 +306,18 @@ class D3dkmtGpu(GpuSource):
     def is_discrete(self) -> bool:
         frame_log.debug("D3dkmtGpu.is_discrete")
         return self._discrete
+
+    def provides(self, quantity: str) -> bool:
+        """For THIS adapter, not the class: temperature and fan only where the
+        driver fills them (perf-data caps), usage and VRAM used only with the
+        GPU counters, total VRAM only where Windows reported it.  The class
+        answer offered an always-empty row on every card without them."""
+        per_card = {"temp": self._adapter.has_temp, "fan_rpm": self._adapter.has_fan,
+                    "vram_total": self._adapter.vram_total_mb is not None,
+                    "usage": self._sampler.counted, "vram_used": self._sampler.counted}
+        answer = per_card[quantity] if quantity in per_card else super().provides(quantity)
+        log.debug("D3dkmtGpu.provides: %s %s -> %s", self.key, quantity, answer)
+        return answer
 
     def usage(self) -> float | None:
         frame_log.debug("D3dkmtGpu.usage: %s", self.key)

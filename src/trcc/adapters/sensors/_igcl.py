@@ -222,9 +222,13 @@ class IgclGpu(GpuSource):
     """One Intel graphics device, read through IGCL's power telemetry."""
 
     def __init__(self, igcl: Any, handle: int, ordinal: int, name: str, discrete: bool,
-                 clock: Callable[[], float] = time.monotonic) -> None:
-        log.info("IgclGpu: intel:%d %s (%s)", ordinal, name,
-                 "discrete" if discrete else "integrated")
+                 clock: Callable[[], float] = time.monotonic, *,
+                 supported: frozenset[str] | None = None) -> None:
+        log.info("IgclGpu: intel:%d %s (%s) reads %s", ordinal, name,
+                 "discrete" if discrete else "integrated",
+                 sorted(supported) if supported is not None else "?")
+        #: What THIS card's telemetry reported at discovery; None: unknown.
+        self._supported = supported
         self._igcl, self._handle, self._ordinal, self._name = igcl, handle, ordinal, name
         self._discrete, self._clock = discrete, clock
         self._lock = threading.Lock()
@@ -260,6 +264,17 @@ class IgclGpu(GpuSource):
         frame_log.debug("IgclGpu._read: %s %s -> %s", self.key, quantity, value)
         return value
 
+    def provides(self, quantity: str) -> bool:
+        """For THIS card: what its first telemetry read carried (power and usage
+        need their counter AND the timestamp).  The class answer offered every
+        quantity on every Intel GPU."""
+        if self._supported is not None and quantity in _TELEMETRY_QUANTITIES:
+            answer = quantity in self._supported
+        else:
+            answer = super().provides(quantity)
+        log.debug("IgclGpu.provides: %s %s -> %s", self.key, quantity, answer)
+        return answer
+
     def temp(self) -> float | None:
         frame_log.debug("IgclGpu.temp: %s", self.key)
         return self._read("temp")
@@ -287,6 +302,22 @@ class IgclGpu(GpuSource):
     def fan_rpm(self) -> float | None:
         frame_log.debug("IgclGpu.fan_rpm: %s", self.key)
         return self._read("fan_rpm")
+
+
+#: TRCC's GPU quantity -> the raw sample fields it needs.
+_TELEMETRY_QUANTITIES: dict[str, tuple[str, ...]] = {
+    "temp": ("temp",), "mem_temp": ("mem_temp",), "clock": ("clock",),
+    "fan_rpm": ("fan_rpm",), "fan": ("fan",),
+    "power": ("energy", "time"), "usage": ("activity", "time"),
+}
+
+
+def telemetry_supports(raw: dict[str, float]) -> frozenset[str]:
+    """The quantities one :func:`sample` can feed."""
+    supported = frozenset(q for q, needs in _TELEMETRY_QUANTITIES.items()
+                          if all(k in raw for k in needs))
+    log.debug("telemetry_supports: %s", sorted(supported))
+    return supported
 
 
 def graphics_devices(igcl: Any) -> list[tuple[int, _Properties]]:
@@ -323,11 +354,12 @@ def discover_igcl_gpus(igcl_factory: Callable[[], Any] = _Igcl) -> list[GpuSourc
     for ordinal, (handle, props) in enumerate(graphics_devices(igcl)):
         name = props.name.decode(errors="replace").strip()
         data = igcl.telemetry(handle)
-        if data is None or not sample(data):
+        if data is None or not (raw := sample(data)):
             log.warning("discover_igcl_gpus: %s reports no telemetry through IGCL -- skipped",
                         name)
             continue
         gpus.append(IgclGpu(igcl, handle, ordinal, name,
-                            discrete=not props.graphics_adapter_properties & _ADAPTER_INTEGRATED))
+                            discrete=not props.graphics_adapter_properties & _ADAPTER_INTEGRATED,
+                            supported=telemetry_supports(raw)))
     log.info("discover_igcl_gpus: %d Intel GPU(s)", len(gpus))
     return gpus

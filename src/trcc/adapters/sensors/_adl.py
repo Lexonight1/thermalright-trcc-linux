@@ -150,8 +150,12 @@ class AdlGpu(GpuSource):
     """One physical AMD card, read through ADL's sensor log."""
 
     def __init__(self, adl: Any, adapter_index: int, ordinal: int, name: str,
-                 clock: Callable[[], float] = time.monotonic) -> None:
-        log.info("AdlGpu: amd:%d %s (ADL adapter %d)", ordinal, name, adapter_index)
+                 clock: Callable[[], float] = time.monotonic, *,
+                 supported: frozenset[str] | None = None) -> None:
+        log.info("AdlGpu: amd:%d %s (ADL adapter %d) reads %s", ordinal, name,
+                 adapter_index, sorted(supported) if supported is not None else "?")
+        #: What THIS card's sensor log filled at discovery; None: unknown.
+        self._supported = supported
         self._adl, self._index, self._ordinal, self._name = adl, adapter_index, ordinal, name
         self._clock = clock
         self._lock = threading.Lock()
@@ -186,6 +190,17 @@ class AdlGpu(GpuSource):
             value = self._values.get(quantity)
         frame_log.debug("AdlGpu._read: %s %s -> %s", self.key, quantity, value)
         return value
+
+    def provides(self, quantity: str) -> bool:
+        """For THIS card: a PMLog slot it filled at discovery.  The class answer
+        offered a Hot Spot row on every AMD card, and a card without that
+        sensor (Polaris) showed it empty for ever."""
+        if self._supported is not None and (quantity in _SLOTS or quantity == "vram_used"):
+            answer = quantity in self._supported
+        else:
+            answer = super().provides(quantity)
+        log.debug("AdlGpu.provides: %s %s -> %s", self.key, quantity, answer)
+        return answer
 
     def temp(self) -> float | None:
         frame_log.debug("AdlGpu.temp: %s", self.key)
@@ -249,11 +264,14 @@ def discover_adl_gpus(adl_factory: Callable[[], Any] = _Adl) -> list[GpuSource]:
     gpus: list[GpuSource] = []
     for ordinal, info in enumerate(physical_cards(adl.adapters())):
         data = adl.pmlog(info.iAdapterIndex)
-        if data is None or not readings(data):
+        if data is None or not (found := readings(data)):
             log.warning("discover_adl_gpus: %s reports no sensors through ADL -- skipped",
                         info.strAdapterName.decode(errors="replace"))
             continue
+        if adl.vram_used_mb(info.iAdapterIndex) is not None:
+            found["vram_used"] = 0.0
         gpus.append(AdlGpu(adl, info.iAdapterIndex, ordinal,
-                           info.strAdapterName.decode(errors="replace").strip()))
+                           info.strAdapterName.decode(errors="replace").strip(),
+                           supported=frozenset(found)))
     log.info("discover_adl_gpus: %d AMD GPU(s)", len(gpus))
     return gpus
