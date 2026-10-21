@@ -6,6 +6,7 @@ is testable from a Linux dev box without ``wmi`` or Windows itself.
 """
 from __future__ import annotations
 
+import logging
 import struct
 import threading
 from typing import Any
@@ -472,6 +473,24 @@ def test_hwinfo_names_the_cpu_temperature_it_reads(
     unlabelled."""
     cpu = _hwinfo_cpu(*temps)
     assert (cpu.temp(), cpu.temp_label()) == (reading, label)
+
+
+def test_hwinfo_reports_its_cpu_temperature_rows_once(caplog: pytest.LogCaptureFixture) -> None:
+    """The Ryzen row names come from HWiNFO's forum, not a captured system, and
+    a user may rename a row in HWiNFO: the first AMD `trcc report` shows the
+    real names and which one TRCC reads.
+
+    MUTATION CHECK: drop the report -- no line."""
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.sensors._hwinfo"):
+        _hwinfo_cpu(("CPU (Tctl/Tdie)", 61.0), ("CPU CCD1 (Tdie)", 68.0))
+        _hwinfo_cpu(("CPU Core 1", 55.0))
+        HwinfoCpu(snapshot_factory=lambda: None)              # no HWiNFO: no line
+    assert [r.getMessage() for r in caplog.records if "temperature rows" in r.getMessage()] == [
+        "HwinfoCpu: HWiNFO's CPU temperature rows ['CPU (Tctl/Tdie)', 'CPU CCD1 (Tdie)'] "
+        "-- TRCC reads the row named 'Tctl'",
+        "HwinfoCpu: HWiNFO's CPU temperature rows ['CPU Core 1'] "
+        "-- TRCC reads the hottest of them, unlabelled",
+    ]
 
 
 def test_hwinfo_cpu_returns_none_when_snapshot_factory_none() -> None:

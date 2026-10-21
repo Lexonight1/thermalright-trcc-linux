@@ -320,6 +320,15 @@ class _Snapshot:
 
     # ── Query helpers ───────────────────────────────────────────────
 
+    def names(self, entry_type: int, *, sensor_name_contains: str) -> list[str]:
+        """The names of the *entry_type* entries under sensor rows whose name
+        contains *sensor_name_contains* -- from the index, no value read."""
+        needle = sensor_name_contains.lower()
+        found = [e.name for e in self._entries if e.entry_type == entry_type
+                 and needle in self.sensor_name(e.sensor_index).lower()]
+        log.debug("names: type %d under %r -> %d", entry_type, sensor_name_contains, len(found))
+        return found
+
     def sensor_name(self, sensor_index: int) -> str:
         log.debug("sensor_name: sensor_index=%s", sensor_index)
         if 0 <= sensor_index < len(self._sensors):
@@ -426,6 +435,19 @@ class HwinfoCpu(CpuSource):
     ) -> None:
         log.debug("__init__")
         self._snapshot = snapshot_factory()
+        if self._snapshot is not None:
+            self._report_temperature_rows(self._snapshot)
+
+    def _report_temperature_rows(self, snapshot: _Snapshot) -> None:
+        """Once per run: the CPU temperature rows HWiNFO publishes, and which
+        one :meth:`temp` reads (asked of ``_named_temp``, the one rule).  The
+        Ryzen names ("CPU (Tctl/Tdie)", "CPU (Tctl)") come from HWiNFO's forum,
+        not a captured system, and a user may rename a row in HWiNFO -- an AMD
+        user's `trcc report` shows what is really there."""
+        rows = snapshot.names(TYPE_TEMP, sensor_name_contains="cpu")
+        named = self._named_temp()
+        read = f"the row named {named[1]!r}" if named else "the hottest of them, unlabelled"
+        log.info("HwinfoCpu: HWiNFO's CPU temperature rows %s -- TRCC reads %s", rows, read)
 
     @property
     def name(self) -> str:
