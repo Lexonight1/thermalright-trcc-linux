@@ -405,3 +405,25 @@ def test_gui_close_to_tray_does_not_quit(monkeypatch: pytest.MonkeyPatch) -> Non
         # TRCCApp.__new__ registered this never-built window as the singleton;
         # conftest's teardown would deleteLater() it, which PySide refuses.
         TRCCApp._instance = None
+
+
+@pytest.mark.parametrize(("given", "runs"), [
+    ([], ["gui"]),
+    (["--resume"], ["gui", "--resume"]),            # gui's own option: older sign-in entries
+    (["-vvv"], ["-vvv", "gui"]),
+    (["-v", "--resume"], ["-v", "gui", "--resume"]),
+    (["-vvv", "daemon"], ["-vvv", "daemon"]),
+    (["gui", "--resume"], ["gui", "--resume"]),
+    (["daemon"], ["daemon"]),
+])
+def test_the_gui_exe_defaults_to_gui_only_when_no_subcommand_is_named(
+        given: list[str], runs: list[str]) -> None:
+    """``trcc-gui.exe -vvv daemon`` ran ``gui -vvv daemon`` and died silently
+    (win11 VM, 2026-10-20): ``gui`` was put FIRST whenever an option was.
+
+    MUTATION CHECK: insert ``gui`` in front again -- the ``-vvv`` cases fail;
+    append it after every option -- ``--resume`` fails (a first cut did that,
+    and test_the_frozen_entry_passes_its_arguments_on caught it)."""
+    from trcc._entry import with_default_gui
+
+    assert with_default_gui(given) == runs

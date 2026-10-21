@@ -88,14 +88,12 @@ try:
     # subcommand is given.  It used to call ``gui()`` directly, which dropped
     # every argument — so the sign-in task's ``--resume`` could never reach it
     # — and skipped the shared entry's bundled-tools PATH step.
-    if Path(sys.executable).name.lower().startswith('trcc-gui') and (
-            len(sys.argv) < 2 or sys.argv[1].startswith('-')):
-        sys.argv.insert(1, 'gui')
-        log.info("trcc-gui: no subcommand — defaulting to gui (argv=%s)",
-                 sys.argv[1:])
+    from trcc._entry import main, with_default_gui
+    if Path(sys.executable).name.lower().startswith('trcc-gui'):
+        sys.argv[1:] = with_default_gui(sys.argv[1:])
+        log.info("trcc-gui: argv=%s", sys.argv[1:])
     # Everything goes through the shared entry so python -m trcc, the `trcc`
     # console script and both frozen exes dispatch the same way.
-    from trcc._entry import main
     sys.exit(main() or 0)
 except Exception:
     log.critical("Fatal startup error", exc_info=True)

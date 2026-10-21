@@ -33,6 +33,32 @@ def put_bundled_tools_on_path() -> str | None:
     return here
 
 
+def with_default_gui(args: list[str]) -> list[str]:
+    """*args* for ``trcc-gui.exe``: ``gui`` when they name no subcommand.
+
+    The GUI exe is the CLI with ``gui`` as its default.  It used to insert
+    ``gui`` FIRST whenever the first argument was an option, so
+    ``trcc-gui.exe -vvv daemon`` ran ``gui -vvv daemon`` and
+    ``trcc-gui.exe -v`` ran ``gui -v`` -- both refused by the CLI, silently,
+    since the windowed exe has no console (win11 VM, 2026-10-20).
+
+    The ROOT options (``-v``..., ``--verbose``, ``-V``, ``--version``) stay in
+    front; ``gui`` goes where the next argument is not a subcommand, so the
+    options after it are ``gui``'s own -- ``trcc-gui.exe --resume`` is
+    ``gui --resume``, as older sign-in entries still run it.
+    """
+    import logging
+    import re
+
+    lead = 0
+    while lead < len(args) and re.fullmatch(r"-v+|--verbose|-V|--version", args[lead]):
+        lead += 1
+    if lead < len(args) and not args[lead].startswith("-"):
+        return args
+    logging.getLogger(__name__).info("with_default_gui: no subcommand in %s -- gui", args)
+    return [*args[:lead], "gui", *args[lead:]]
+
+
 def main() -> int | None:
     """Dispatch to the new top-level CLI, with startup crashes recorded.
 
