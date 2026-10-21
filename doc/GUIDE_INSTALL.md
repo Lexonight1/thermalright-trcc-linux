@@ -22,7 +22,7 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
 | NixOS | [Flake](#nixos) | — |
 | Gentoo | [pipx](#gentoo) | — |
 | Bazzite / Bluefin / Aurora / Fedora Atomic | [rpm-ostree](#bazzite--aurora--bluefin--fedora-atomic) | — |
-| SteamOS (Steam Deck) | — | [pip / Distrobox](#steamos-steam-deck) |
+| SteamOS (Steam Deck) | — | [one-line script](#steamos-steam-deck) |
 | Vanilla OS | — | [apx subsystem](#vanilla-os) |
 | ChromeOS (Crostini) | — | [pip](#chromeos-crostini) |
 | Void Linux | — | [pip](#void-linux) |
@@ -618,41 +618,40 @@ distrobox enter trcc -- trcc gui
 
 ### SteamOS (Steam Deck)
 
-Switch to Desktop Mode first: hold the Power button > Desktop Mode, then open Konsole.
+For SteamOS 3 — the Steam Deck's system, and SteamOS on other PCs. (SteamOS 1 and 2 were Debian releases Valve discontinued; their Python is too old for TRCC.)
 
-**Option A — Direct install** (simpler, but lost on SteamOS updates):
+A SteamOS update replaces the whole system with Valve's new image, so anything installed with `pacman` is gone after the next update. TRCC therefore installs into your home folder, which updates leave alone. SteamOS already ships what TRCC needs beside it: Python, 7-Zip, ffmpeg, PortAudio and libusb.
+
+Switch to Desktop Mode (hold the Power button > Switch to Desktop), open Konsole, and run this as yourself — not with sudo:
 
 ```bash
-# Unlock the read-only filesystem
-sudo steamos-readonly disable
-
-# Set a password if you haven't already
-passwd
-
-# Set up pacman's keyring (fixes "keyring is not writable" / "required key missing")
-sudo pacman-key --init
-sudo pacman-key --populate archlinux holo
-
-# Install dependencies
-sudo pacman -S --needed sg3_utils python-pip pyside6 portaudio ffmpeg p7zip
-
-# Install TRCC
-pip install --break-system-packages trcc-linux
-
-# Set up device permissions — as yourself, not with sudo: setup runs sudo
-# itself for the root-only steps, and skips your per-user parts when run as root
-trcc system setup
-
-# Re-enable read-only (recommended)
-sudo steamos-readonly enable
-
-# Launch
-trcc gui
+curl -fsSL https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/install-steamos.sh | bash
 ```
 
-> **Warning:** System packages installed with `pacman` are lost when SteamOS updates. You'll need to re-run the `steamos-readonly disable` and `pacman` steps after each update. The `pip install` persists in your home directory.
+It asks for your password once, for the device rules. Never set one? Run `passwd` first.
 
-**Option B — Distrobox** (survives updates):
+What it does:
+1. Creates a Python environment in `~/.local/share/trcc-linux` and installs TRCC into it.
+2. Links `trcc` into `~/.local/bin`.
+3. Runs `trcc system setup`: the device rules in `/etc` — plus `/etc/atomic-update.conf.d/trcc-linux.conf`, which keeps them through SteamOS updates — the app-menu entry, and starting TRCC at login.
+
+Then open **TRCC** from the application menu. To update, run the same line again.
+
+To remove it:
+
+```bash
+systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service
+rm -rf ~/.local/share/trcc-linux ~/.local/bin/trcc ~/.local/share/applications/trcc-linux.desktop
+sudo rm /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
+    /etc/modprobe.d/trcc-lcd.conf /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf \
+    /etc/atomic-update.conf.d/trcc-linux.conf
+```
+
+Your settings (`~/.trcc`) and your own themes (`~/.trcc-user`) stay; delete those folders too for a clean slate.
+
+> **Tested in an Arch container set up like SteamOS, not yet on a Steam Deck.** If something goes wrong, please open an issue with the output of `trcc report`.
+
+**Alternative — Distrobox**, if you would rather keep TRCC in a container (`distrobox` and `podman` come with SteamOS 3.5 and later):
 
 ```bash
 distrobox create --name trcc --image archlinux:latest
@@ -675,6 +674,10 @@ sudo curl -fsSLo /etc/modules-load.d/trcc-sg.conf "$base/modprobe/trcc-sg.conf"
 sudo curl -fsSLo /etc/modules-load.d/trcc-rapl.conf "$base/modprobe/trcc-rapl.conf"
 sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo modprobe sg; sudo modprobe intel_rapl_msr
+# Keep those files through SteamOS updates, which reset /etc to the new image
+printf '%s\n' /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
+    /etc/modprobe.d/trcc-lcd.conf /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf \
+    | sudo tee /etc/atomic-update.conf.d/trcc-linux.conf >/dev/null
 sudo steamos-readonly enable
 
 # Run

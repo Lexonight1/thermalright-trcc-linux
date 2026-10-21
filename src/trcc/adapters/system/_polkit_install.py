@@ -17,6 +17,7 @@ A file a distro package owns is never overwritten -- the package keeps it.
 """
 from __future__ import annotations
 
+import errno
 import logging
 import os
 from collections.abc import Callable
@@ -69,7 +70,16 @@ def install(dry_run: bool = False,
     try:
         for dest, src, mode in plan:
             _copy(src, dest, mode)
-    except OSError:
+    except OSError as e:
+        if e.errno == errno.EROFS:
+            # SteamOS, Bazzite and other image-based systems: /usr is
+            # read-only, and whatever reached it would go with the next update
+            # anyway.  Not a failure -- RAM lighting still works, through
+            # polkit's generic password prompt.
+            log.warning("install: %s is on a read-only system -- TRCC's own "
+                        "password prompt is not installed; RAM lighting asks "
+                        "through polkit's generic one", e.filename)
+            return 0
         log.exception("install: could not install TRCC's polkit files")
         return 1
     return 0

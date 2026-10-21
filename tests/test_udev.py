@@ -230,3 +230,34 @@ def test_every_uaccess_rule_file_runs_before_seat_late() -> None:
     assert uaccess, "no rule file grants uaccess"
     late = [name for name in uaccess if name >= "73-seat-late.rules"]
     assert not late, f"{late} tag uaccess after 73-seat-late.rules applies it"
+
+
+def test_steamos_keeps_every_file_setup_writes(tmp_path: Path, monkeypatch, capsys) -> None:
+    """SteamOS resets /etc on every update except the paths a keep list names,
+    so without one the first update threw the rules away.  The drop-in names
+    every file setup writes, and setup -- dry run included -- carries it.
+
+    MUTATION CHECK: drop ``files |= keep_list(files)`` from install -- the dry
+    run no longer shows the drop-in."""
+    from trcc.adapters.system import _udev
+
+    keep_dir = tmp_path / "atomic-update.conf.d"
+    keep_dir.mkdir()
+    monkeypatch.setattr(_udev, "KEEP_LIST_DIR", keep_dir)
+
+    drop_in = keep_dir / "trcc-linux.conf"
+    written = _udev.host_files()
+    listed = [line for line in _udev.keep_list(written)[drop_in].splitlines()
+              if not line.startswith("#")]
+    assert listed == [str(path) for path in written]
+
+    assert _udev.install(dry_run=True) == 0
+    assert f"--- would write {drop_in} ---" in capsys.readouterr().out.splitlines()
+
+
+def test_no_keep_list_off_steamos(tmp_path: Path, monkeypatch) -> None:
+    """Every other distro has no keep-list folder; nothing is added there."""
+    from trcc.adapters.system import _udev
+
+    monkeypatch.setattr(_udev, "KEEP_LIST_DIR", tmp_path / "absent")
+    assert _udev.keep_list(_udev.host_files()) == {}

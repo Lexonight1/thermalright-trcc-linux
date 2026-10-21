@@ -100,6 +100,7 @@ src/trcc/data/ui_*.json
 /probe_*.py
 /*.sh
 !install.sh
+!install-steamos.sh
 
 # Dev tooling (root-level scratch only — dev/tools/ is tracked source)
 /tools/

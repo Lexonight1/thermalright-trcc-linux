@@ -73,3 +73,25 @@ def test_a_dry_run_writes_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert install(dry_run=True, files=files) == 0
     assert not any(d.exists() for d in files)
     assert capsys.readouterr().out.count("--- would install") == 3
+
+
+def test_a_read_only_system_is_not_a_failure(tmp_path: Path, as_root,
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """SteamOS and Bazzite keep /usr read-only: setup reported failure there
+    though RAM lighting works through polkit's generic prompt.  Any other
+    write error still fails.
+
+    MUTATION CHECK: drop the EROFS branch -- the first assertion fails."""
+    import errno
+
+    def read_only(_src: Path, dest: Path, _mode: int) -> None:
+        raise OSError(errno.EROFS, "Read-only file system", str(dest))
+
+    monkeypatch.setattr(_polkit_install, "_copy", read_only)
+    assert install(files=_files(tmp_path)) == 0
+
+    def denied(_src: Path, dest: Path, _mode: int) -> None:
+        raise OSError(errno.EACCES, "Permission denied", str(dest))
+
+    monkeypatch.setattr(_polkit_install, "_copy", denied)
+    assert install(files=_files(tmp_path)) == 1
