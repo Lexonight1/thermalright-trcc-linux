@@ -34,26 +34,31 @@ from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
 from ..visual import CglSurface, drawn_on
 from ..visual.coreaudio import TapSoundInput
-from ._base import BaseOS, BasePaths, disambiguate
+from ._base import BaseOS, BasePaths, disambiguate, read_usb_serial
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 
 def _present_units() -> set[tuple[int, int, str]]:
-    """The units on the bus as ``(vid, pid, unit)``, cheap enough to poll.
+    """The units on the bus as ``(vid, pid, unit)``, polled each second.
 
-    The hotplug poll used ``scan_devices``, built for the one-shot discover:
-    three INFO lines and a serial-string read per panel, every second.  The
-    #283 report holds 129 such scans a second apart -- the log tail eaten,
-    and a USB control transfer to a streaming panel each time.  This reads
-    no string descriptor, and reads ports only where twins need telling
-    apart (#287): a single unit is keyed by its id alone.
+    It used ``scan_devices``, built for the one-shot discover: three INFO lines
+    per panel per second, and the #283 log tail eaten by 129 such scans.  Those
+    lines are gone.  The serial-string READ is back: 8035beb dropped it too, and
+    the #283 reporter's 0416:5302 (serial "USBDISPLAY", fw 4.07) then stayed
+    black after waking his Intel Mac -- reverting that commit, it left the bus
+    for 3 s after wake and reconnected through this poll (his test, 10-19).
+    Why the request matters is unproven; that it does is his measurement, so
+    it is sent to every panel on every tick, quietly.  Ports are read only
+    where twins need telling apart (#287): a single unit is keyed by its id.
     """
     units: set[tuple[int, int, str]] = set()
     twins: list[DeviceInfo] = []
     for vid, pid in ALL_DEVICES:
         devices = list(usb_find(find_all=True, idVendor=vid, idProduct=pid) or [])
+        for dev in devices:
+            read_usb_serial(dev)
         if len(devices) == 1:
             units.add((vid, pid, ""))
         else:

@@ -174,6 +174,26 @@ def download_and_install(asset: str, installer: str) -> str:
     return line
 
 
+def read_usb_serial(dev: Any) -> str:
+    """The device's serial string, or '' -- a GET_DESCRIPTOR(string) request
+    sent to the device itself, which fails quietly on one that is not there.
+
+    The one-shot scan names devices by it.  The macOS hotplug poll sends it to
+    every panel each second (#283): see ``macos._present_units``.
+    """
+    index = getattr(dev, "iSerialNumber", 0)
+    if not index:
+        frame_log.debug("read_usb_serial: no serial string")
+        return ""
+    try:
+        serial = usb.util.get_string(dev, index) or ""
+    except Exception as e:      # pyusb raises USBError, ValueError, NotImplementedError
+        frame_log.debug("read_usb_serial: unreadable (%s)", e)
+        return ""
+    frame_log.debug("read_usb_serial: %r", serial)
+    return serial
+
+
 class BaseOS(Platform):
     """Shared skeleton for every concrete OS :class:`Platform`.
 
@@ -490,13 +510,7 @@ class BaseOS(Platform):
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
-                serial_idx = getattr(dev, "iSerialNumber", 0)
-                serial = ""
-                try:
-                    if serial_idx:
-                        serial = usb.util.get_string(dev, serial_idx) or ""
-                except Exception:
-                    serial = ""
+                serial = read_usb_serial(dev)
                 bcd = int(getattr(dev, "bcdDevice", 0) or 0)
                 found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None,
                                         bcd_device=bcd, path=usb_path(dev)))
