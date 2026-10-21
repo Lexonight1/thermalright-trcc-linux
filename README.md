@@ -73,7 +73,7 @@ Pre-built packages are available for every major distro. No pip, no venv, no PEP
 | Arch / CachyOS / Manjaro / EndeavourOS / Garuda | [Arch](doc/GUIDE_INSTALL.md#arch--cachyos--manjaro--endeavouros--garuda) |
 | NixOS | [NixOS](doc/GUIDE_INSTALL.md#nixos) |
 | Gentoo | [Gentoo](doc/GUIDE_INSTALL.md#gentoo) |
-| SteamOS (Steam Deck) | [SteamOS](doc/GUIDE_INSTALL.md#steamos-steam-deck) |
+| SteamOS (Steam Deck) | [One-line script](doc/GUIDE_INSTALL.md#steamos-steam-deck) |
 | Windows 10/11 | [Windows](doc/GUIDE_INSTALL.md#windows-experimental) |
 | macOS 11+ | [macOS](doc/GUIDE_INSTALL.md#macos-experimental) |
 | FreeBSD | [FreeBSD](doc/GUIDE_INSTALL.md#freebsd-experimental) |
