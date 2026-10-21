@@ -45,7 +45,7 @@ imports no adapter, ever.
 | `services/` | business logic, pure Python — display, overlay, theme, LED effects, metrics. No Qt, no framework. |
 | `adapters/device/` | one class per wire: `ScsiLcd`, `HidLcd`, `BulkLcd`, `LyLcd`, `Led`. |
 | `adapters/system/` | one class per OS: `LinuxOS`, `WindowsPlatform`, `MacOSPlatform`, `BsdOS`. |
-| `adapters/render/qt.py` | `QtRenderer` — the only place Qt touches rendering. |
+| `adapters/render/qt.py` | `QtRenderer` — composites, draws text, rotates and encodes every frame. (The audio visuals in `adapters/visual/` also paint with Qt.) |
 | `ui/{cli,api,gui,qtgui}/` | the four front-ends. Thin. |
 | `ui/presentation/` | toolkit-free presentation models shared by the graphical UIs. |
 | `app.py` | the `App`: owns devices, services, the bus, and `dispatch`. |
@@ -62,20 +62,36 @@ app = trcc()                     # the shared App's proxy, or an in-process App
 ```
 
 It takes an optional `platform` and `renderer` for injection — that seam is what
-lets `dev/mock.py` drive any UI against a `MockPlatform` with no hardware.
+lets `dev/mock.py` drive any UI against a simulated platform
+(`DevMockPlatform`, built by `dev/_mock_bootstrap.py`) with no hardware.
 
 ## The shared App vs in-process
 
-| | default | `TRCC_DAEMON=0`, as root, or on Windows |
+| | default | in-process |
 |---|---|---|
 | `trcc()` returns | `AppProxy` | `App` |
-| a dispatch is | one JSON round-trip over a Unix socket | a method call |
+| a dispatch is | one JSON round-trip to the shared App: a Unix socket, or a named pipe on Windows | a method call |
 | who owns USB | the shared App (`trcc daemon`), started by the first UI that needs it | this process |
 
-`AppProxy` implements the `CommandBus` port and **nothing else**:
-`dispatch(cmd) -> Result`, `events` (the App's events, streamed over the socket
-and republished on a local bus), `remote`, and `on_app_gone` (told when the App
-stops on purpose or dies). Every other attribute raises. That is deliberate: a
+A UI builds its own in-process App only when `_boot._local_reason` names a
+reason:
+
+- `TRCC_DAEMON` is set to anything but `1`.
+- This OS has no IPC channel (`Platform.IPC_CHANNEL`), or the channel cannot
+  load here.
+- The process is root raised from a user's session (`SUDO_UID`, `PKEXEC_UID`
+  or `DOAS_USER` is set). A root login or a root service shares an App like
+  any other user.
+- The platform is a stand-in (a mock or fake), not this host's own class.
+
+If the shared App fails to start, the UI logs a warning and runs in-process.
+
+`AppProxy` implements the `CommandBus` port: `dispatch(cmd) -> Result`, `events`
+(the App's events, streamed over the channel and republished on a local bus),
+`remote`, and `on_app_gone` (told when the App stops on purpose or dies). Beyond
+the port it has only `close` and two logged no-ops (`start_session`,
+`discover_and_connect`), because the App already did that work. Every other
+attribute raises. That is deliberate: a
 UI that reaches for `app.settings` or `app.devices` works locally and breaks
 remotely, so the proxy makes the mistake loud rather than silent.
 
@@ -95,8 +111,9 @@ One line of JSON per message. Three shapes:
 
 Serialization is reflective over `dataclasses.fields`, so adding a Command and
 its Result is zero-touch for IPC. `Path` travels as a string, `bytes` as
-`{"__bytes__": "<base64>"}`, and a value that cannot be represented (a live
-renderer surface) is dropped to `null` with a warning rather than crashing the
+`{"__bytes__": "<base64>"}`. A field marked `IN_PROCESS_ONLY` (a live renderer
+surface, a frame's raw pixels) is left off the wire. Any other value that cannot
+be represented is dropped to `null` with a warning, rather than crashing the
 call.
 
 Devices are addressed by **`key`** — the `"vid:pid"` string, e.g.
@@ -104,12 +121,17 @@ Devices are addressed by **`key`** — the `"vid:pid"` string, e.g.
 
 ## Command bus
 
-The contract is **135 types: 101 Commands and 34 Queries**. A `Query` is a read
+The contract is a set of Commands and Queries, counted and listed in
+[`doc/REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md). A `Query` is a read
 and nothing else; naming the kind is what makes a missing read obvious rather
 than archaeological.
 
-Dispatch is pure polymorphism — `App.dispatch` is `cmd.execute(self)`. There is
-no handler map and no registration table, so **adding a capability is one frozen
+Dispatch is pure polymorphism — `App.dispatch` ends in `cmd.execute(self)`.
+Before that it does two things each Command declares for itself. If the
+Command's `REQUIRES` names a capability the device lacks, dispatch returns the
+Command's own failed Result without running it. If `USES_DEVICE` is set,
+dispatch connects the device first. There is no handler map and no registration
+table, so **adding a capability is one frozen
 dataclass with an `execute` method**, plus its Result in `core/results.py` and a
 re-export from `core/commands/__init__.py`. That last step is gated: a Command
 that is not re-exported works in-process but is undispatchable over IPC, so a
@@ -159,12 +181,13 @@ changes.
 
 `DisplayService` orchestrates rendering: composite background and mask, draw
 overlay elements, apply brightness and split, then hand the frame to the device.
-`RenderPipeline` in the same module owns the pure rendering half.
+The pure pieces it reuses (`bg_fit`, `encode_payload`) are concrete methods on
+the `Renderer` port in `core/ports.py`.
 
-Geometry is per-device and rotation-aware: `output_resolution`,
-`canvas_resolution`, and the theme/mask directories all derive from the device's
-profile and its orientation, so a portrait panel and a landscape one read the
-same code.
+Geometry is per-device and rotation-aware: the canvas, the rotation and the
+theme/mask directories all derive from the device's profile and its orientation
+(`core/geometry.py`, `plan_orientation`), so a portrait panel and a landscape
+one read the same code.
 
 The preview the GUI shows is captured **before** the device-mount rotation, so
 what you see upright is what the panel displays upright.
@@ -179,8 +202,9 @@ without a pile of `if device.is_led` branches scattered across the GUI is the
 
 ### One device → one `DevicePresentation`
 
-`ui/presentation/device_presentation.py::presentation_for(info)` maps a device's
-resolved `ProductInfo` to a toolkit-free contract: its `kind` (LED vs LCD), the
+`ui/presentation/device_presentation.py::presentation_for(kind)` maps a device's
+`Kind` (taken from its resolved `ProductInfo`, or from a Result that carries it)
+to a toolkit-free contract: its `kind` (LED vs LCD), the
 `view_name` the UI should show (`"led"` segment panel vs `"form"` theme/preview),
 and whether it has metric gauges to populate. Every graphical front-end asks this
 one function "what does this device present?" instead of each re-deriving it.
@@ -219,10 +243,10 @@ data change (a registry row + its geometry/PM/SUB), not new UI branching.
 
 ## Settings
 
-`app.settings` holds app-wide and per-device state — resolution, orientation,
-language, temperature unit, format preferences, current theme and mask —
-persisted to `trcc.json`. Widgets read it through Commands and never keep their
-own copy.
+`app.settings` holds app-wide and per-device state — orientation, language,
+temperature unit, format preferences, current theme and mask — persisted to
+`trcc.json`. Widgets read it through Commands and never keep their
+own copy. Resolution is not a setting: it comes from the device's handshake.
 
 ## Verification
 

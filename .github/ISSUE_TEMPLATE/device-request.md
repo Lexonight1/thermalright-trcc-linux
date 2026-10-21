@@ -34,5 +34,5 @@ Paste trcc report output here
 **Additional context**
 
 - Does this device work in Windows TRCC? If so, which screen does it appear on — the LCD display tab or the LED lighting tab?
-- USB ID (run `lsusb | grep -i 0416` or check Windows Device Manager)
+- USB ID (run `lsusb | grep -iE '0416|0418|0402|87ad|87cd'` or check Windows Device Manager)
 - Photo of the device (optional, but helpful)

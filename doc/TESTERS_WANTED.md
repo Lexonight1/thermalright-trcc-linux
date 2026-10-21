@@ -1,6 +1,6 @@
 # Testers Wanted
 
-TRCC Linux supports many Thermalright devices, but I only own SCSI-based coolers (`87CD:70DB`). Most HID and LED devices have been implemented from reverse-engineering the Windows TRCC 2.1.2 source — they need real hardware validation.
+TRCC Linux supports many Thermalright devices, but I only own SCSI-based coolers (`87CD:70DB`). Most HID and LED devices have been implemented from reverse-engineering the Windows TRCC app's decompiled source — they need real hardware validation.
 
 If you have a device listed below, testing takes about 2 minutes. Your help directly improves support for everyone on Linux.
 
@@ -15,7 +15,7 @@ trcc report
 3. [Open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) and paste the output
 4. Optionally try `trcc gui` and report what works / what doesn't
 
-Even a "nothing happened" report is useful — the `hid-debug` output tells us exactly where the protocol breaks.
+Even a "nothing happened" report is useful — the report's device and handshake sections tell us exactly where the protocol breaks.
 
 ## Confirmed Working
 
@@ -26,7 +26,7 @@ These devices have been tested on real Linux hardware by contributors:
 | FROZEN HORIZON PRO | `87CD:70DB` | SCSI | Developer |
 | FROZEN MAGIC PRO | `87CD:70DB` | SCSI | Developer |
 | FROZEN VISION V2 | `87CD:70DB` | SCSI | Developer |
-| LC1, LC2, LC3, LC5 | `0416:5406` | SCSI | Developer |
+| LC1, LC2, LC3, LC5 | `0416:5406` | HID Type 3 | Developer |
 | FROZEN WARFRAME, WARFRAME SE | `0402:3922` | SCSI | Developer |
 | GrandVision 360 AIO | `87AD:70DB` | Bulk | [bipobuilt](https://github.com/bipobuilt) |
 | Mjolnir Vision 360 | `87AD:70DB` | Bulk | [Pikarz](https://github.com/Pikarz) |
@@ -68,7 +68,7 @@ If anything is off (positioning, cropping, display), [open an issue](https://git
 
 ## Need Testers — HID LCD Devices
 
-These use USB HID to display images on the LCD. Code is complete, but no one has tested with real hardware.
+These use USB HID to display images on the LCD. Code is complete, but these specific models have not been confirmed on real hardware.
 
 | Device | USB ID | Protocol | Priority |
 |--------|--------|----------|----------|
@@ -77,8 +77,8 @@ These use USB HID to display images on the LCD. Code is complete, but no one has
 | FROZEN WARFRAME PRO | `0416:5302` | HID Type 2 | Medium |
 | ELITE VISION (HID variant) | `0416:5302` | HID Type 2 | Medium — SCSI variant confirmed by tensaiteki |
 | LC5 (HID variant) | `0416:5302` | HID Type 2 | Medium |
-| TARAN ARMS | `0418:5303` | HID Type 3 | High — only Type 3 device |
-| TARAN ARMS | `0418:5304` | HID Type 3 | High — only Type 3 device |
+| TARAN ARMS | `0418:5303` | HID Type 3 | High |
+| TARAN ARMS | `0418:5304` | HID Type 3 | High |
 
 ## Need Testers — LED RGB Devices
 
@@ -101,27 +101,26 @@ These use PID `0416:8001` for RGB LED ring control. The device model is auto-det
 | LC1 | 128 | Style 4 (31 LEDs, 14 segments) | Untested |
 | LC2 | 112 | Style 9 (61 LEDs, 31 segments) | Untested |
 | CZ1 | 208 | Style 8 (18 LEDs, 13 segments) | Untested |
+| LF10 (second PM) | 49 | Style 5 (93 LEDs) | Untested |
+| LF25 | 176 | Style 5 (93 LEDs) | Untested |
+| Magic Qube | 208, told from CZ1 by its handshake header | Own style (65 LEDs) | Untested |
 
-**Vision-series RGB devices (case 257 in Windows — needs PM mapping work):**
+## Need Testers — Vision-series LCD Panels
 
-These devices also connect via `0416:8001` but use different PM byte mappings that overlap with the standard LED devices. Supporting these requires protocol investigation.
+These are LCD panels, not LED rings: they connect as Bulk (`87AD:70DB`), SCSI (`87CD:70DB`, `0402:3922`) or LY (`0416:5408`/`5409`), and the handshake's PM and SUB bytes say which model it is (the Windows app's case 257 table). The mapping is in place (`src/trcc/core/variants.py`); GrandVision, Mjolnir Vision, Stream Vision and FROZEN VISION V2 are already in the Confirmed table above. These have not been confirmed yet:
 
-| Device | PM (case 257) | Status |
-|--------|---------------|--------|
-| Mjolnir VISION | 5 | Not yet mapped |
-| Mjolnir VISION PRO | 7 (sub=2) | Not yet mapped |
-| GRAND VISION | 1 | Not yet mapped — PM overlaps with FROZEN HORIZON PRO |
-| Stream Vision | 7 (sub=1) | Not yet mapped |
-| FROZEN WARFRAME Ultra | 6 (sub=1) | Not yet mapped |
-| FROZEN VISION V2 (RGB) | 6 (sub=2) | Not yet mapped |
-| RP130 VISION | 2 | Not yet mapped — PM overlaps with FROZEN MAGIC PRO |
-| LM16SE | 2 (sub=3) | Not yet mapped |
-| LM22 | 1 (sub=48) | Not yet mapped |
-| LM24 | 2 (sub=128) | Not yet mapped |
-| LM26 | — | Not yet mapped |
-| LM27 | 1 (sub=49) | Not yet mapped |
+| Device | PM (SUB) | Status |
+|--------|----------|--------|
+| Mjolnir VISION PRO | 7 (2), 14 (2) | Mapped, untested |
+| FROZEN WARFRAME Ultra | 6 (1) | Mapped, untested |
+| RP130 VISION | 4 (2), 22 (2) | Mapped, untested |
+| LM16SE | 4 (3), 22 (3) | Mapped, untested |
+| LM22 | 1 (48); 63, 64, 100 (1) | Mapped, untested |
+| LM24 | 68, 128 | Mapped, untested — also HID `0416:5302` PM 128 |
+| LM26 | HID `0416:5302`, PM 58 | Mapped, untested |
+| LM27 | 63 (2), 64 (2) | Mapped, untested |
 
-> If you have any of these Vision-series devices, a `trcc system hid-debug` dump would be extremely valuable — it will help us figure out how Windows distinguishes these from the standard LED devices.
+> If you have one, `trcc report` shows the PM and SUB bytes your panel sent — paste it in an issue so we can confirm the model.
 
 ## All TRCC-Compatible Models (from Thermalright's download page)
 
@@ -133,8 +132,8 @@ The following models are listed on [Thermalright's official download page](https
 |--------|----------------|--------|
 | Burst Assassin 120 Vision | HID LCD or LED | Need tester |
 | Core Matrix VISION | HID LCD or LED | Need tester |
-| Core Vision | HID LCD or LED | Need tester |
-| Levita Vision | HID LCD or LED | Need tester |
+| Core Vision | HID LCD (`0416:5302`) or Bulk/SCSI — both variant tables name it | Need tester |
+| Levita Vision | Bulk/SCSI (handshakes as PM 64, SUB 3) | Need tester |
 | Peerless Assassin 140 Digital | HID LCD or LED | Need tester |
 | Phantom Spirit 120 Digital | HID LED | Need tester |
 | Rainbow Vision | HID LCD or LED | Need tester |
@@ -148,4 +147,4 @@ The following models are listed on [Thermalright's official download page](https
 
 ## Not Sure If Your Device Is Listed?
 
-Run `lsusb` and look for `0416`, `0418`, `87cd`, or `0402` in the output. If you see a match, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — even if your exact model isn't listed above, it likely shares the same USB controller.
+Run `lsusb` and look for `0416`, `0418`, `87ad`, `87cd`, or `0402` in the output. If you see a match, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — even if your exact model isn't listed above, it likely shares the same USB controller.

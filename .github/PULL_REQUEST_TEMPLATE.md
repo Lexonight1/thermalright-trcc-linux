@@ -6,5 +6,6 @@ What does this PR do and why?
 
 - [ ] Tests pass (`pytest -v --tb=short`)
 - [ ] Linter clean (`ruff check .`)
+- [ ] Type check clean (`pyright`)
 - [ ] Tested on hardware (if device-specific change)
 - [ ] New tests added (if adding functionality)

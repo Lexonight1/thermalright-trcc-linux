@@ -142,7 +142,7 @@ That's it! If your device isn't detected, restart your computer and try again �
 
 Covers: Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Linux Mint 21.x, Linux Mint 22.x, Debian 12 (Bookworm), Pop!_OS 22.04 / 24.04, Zorin OS 17 / 18, KDE neon, elementary OS 7 / 8
 
-The standard `.deb` requires `python3-pyside6` and other packages that aren't in Ubuntu 22.04's repos. This legacy package installs Python dependencies into `/opt/trcc-linux` via pip — no system Python conflicts, no `--break-system-packages`.
+The standard `.deb` requires `python3-pyside6` and other packages that aren't in Ubuntu 22.04's repos. This legacy package installs Python dependencies into `/opt/trcc-linux` via pip — no system Python conflicts, no `--break-system-packages`. It builds that environment from the system `python3`, and TRCC needs Python 3.10 or newer — check with `python3 --version`.
 
 **Step 1 — Download** the `*legacy*_all.deb` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest).
 
@@ -244,19 +244,7 @@ Then:
 trcc gui
 ```
 
-> **NixOS note:** The `trcc system setup` command won't work because NixOS manages udev rules declaratively. If you need manual udev rules, add them to your `configuration.nix`:
-> ```nix
-> services.udev.extraRules = ''
->   SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
->   SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87ad", ATTRS{idProduct}=="70db", MODE="0666"
->   SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0666"
->   SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", ATTRS{idProduct}=="3922", MODE="0666"
->   SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5302", MODE="0666"
->   SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5303", MODE="0666"
->   SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5304", MODE="0666"
->   SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="8001", MODE="0666"
-> '';
-> ```
+> **NixOS note:** The `trcc system setup` command won't work because NixOS manages udev rules declaratively. You don't need it: `programs.trcc-linux.enable = true;` installs the packaged udev rules (`packaging/udev/99-trcc-lcd.rules` and `70-trcc-rgb.rules`), loads the `sg` module and sets the usb-storage quirks. Don't write your own rules for TRCC devices.
 
 ---
 
@@ -294,7 +282,7 @@ If native packages aren't available for your distro, or you prefer pip. This req
 
 ```bash
 # Step 1: Install system dependencies
-sudo dnf install pipx sg3_utils python3-pyside6 portaudio ffmpeg
+sudo dnf install pipx sg3_utils python3-pyside6 portaudio /usr/bin/ffmpeg /usr/bin/7z
 
 # Step 2: Install optional extras (hardware sensors, Wayland screen capture)
 sudo dnf install lm_sensors grim python3-gobject python3-dbus pipewire-devel
@@ -322,7 +310,7 @@ trcc gui
 
 ### Ubuntu / Debian / Mint / Pop!_OS / Zorin (pip)
 
-> **Alternative for all distros**, and the only option for very old distros (Ubuntu 20.04, Debian 11, elementary OS 6) where even the legacy `.deb` won't work. `pipx` creates an isolated environment and handles all Python dependencies automatically.
+> **Alternative for all distros.** TRCC needs Python 3.10 or newer — check with `python3 --version`. `pipx` creates an isolated environment and handles all Python dependencies automatically.
 
 ```bash
 # Step 1: Install system dependencies
@@ -344,7 +332,7 @@ trcc gui
 
 > To upgrade later: `pipx upgrade trcc-linux`
 
-> **`pipx` not available?** On very old systems (Ubuntu 20.04, Debian 10), fall back to pip:
+> **`pipx` not available?** Fall back to pip (it still needs Python 3.10 or newer):
 > ```bash
 > sudo apt install python3-pip python3-venv
 > pip install trcc-linux
@@ -359,7 +347,7 @@ Arch-based distros enforce PEP 668 — use `pipx` instead of `pip`:
 
 ```bash
 # Step 1: Install system dependencies
-sudo pacman -S python-pipx sg3_utils pyside6 portaudio ffmpeg
+sudo pacman -S python-pipx sg3_utils pyside6 portaudio ffmpeg p7zip
 
 # Step 2: Install optional extras (hardware sensors, Wayland screen capture)
 sudo pacman -S lm_sensors grim python-gobject python-dbus gst-python
@@ -412,7 +400,7 @@ trcc gui
 
 ```bash
 # Step 1: Install system dependencies
-sudo xbps-install sg3_utils python3-pipx python3-pyside6 portaudio ffmpeg
+sudo xbps-install sg3_utils python3-pipx python3-pyside6 portaudio ffmpeg p7zip
 
 # Step 2: Install optional extras
 sudo xbps-install lm_sensors grim python3-gobject python3-dbus python3-gst
@@ -446,7 +434,7 @@ trcc gui
 
 ```bash
 # Step 1: Install system dependencies
-sudo apk add python3 pipx sg3_utils py3-pyside6 portaudio ffmpeg
+sudo apk add python3 pipx sg3_utils py3-pyside6 portaudio ffmpeg p7zip
 
 # Step 2: Install optional extras
 sudo apk add lm-sensors grim py3-gobject3 py3-dbus
@@ -529,7 +517,7 @@ cd thermalright-trcc-linux
 sudo ./install.sh
 ```
 
-The script auto-detects your distro, installs system packages, Python deps, udev rules, and a desktop shortcut. After it finishes: restart your computer, then run `trcc gui`.
+The script installs pip if it is missing, installs TRCC and its Python deps (in a virtual environment on immutable distros), then runs `trcc system setup` as root to install the udev rules. It does not install other system packages — add 7-Zip, ffmpeg and PortAudio with your package manager. After it finishes: restart your computer, then run `trcc gui`.
 
 To uninstall: `sudo ./install.sh --uninstall`.
 
@@ -569,25 +557,17 @@ After reboot: `trcc gui`
 **Option B — pip in a venv (if RPM doesn't work):**
 
 ```bash
-# Step 1: Layer sg3_utils (needed for SCSI USB devices — requires reboot)
-rpm-ostree install sg3_utils
-systemctl reboot
-```
-
-After rebooting:
-
-```bash
-# Step 2: Create a Python virtual environment (system Python is read-only)
+# Step 1: Create a Python virtual environment (system Python is read-only)
 python3 -m venv ~/trcc-env
 source ~/trcc-env/bin/activate
 
-# Step 3: Install TRCC
+# Step 2: Install TRCC
 pip install trcc-linux
 
-# Step 4: Set up device permissions
+# Step 3: Set up device permissions
 trcc system setup
 
-# Step 5: Launch
+# Step 4: Launch
 trcc gui
 ```
 
@@ -608,7 +588,7 @@ trcc gui
 ```bash
 trcc system setup
 ```
-Say `y` when it asks about the desktop entry — it installs the `.desktop` file and TRCC icon to your app menu.
+It installs the `.desktop` file and TRCC icon to your app menu without asking (skipped when a distro package already provides the menu entry).
 
 **Optional: Wayland screen capture** (for screen cast / eyedropper features):
 ```bash
@@ -622,7 +602,7 @@ distrobox create --name trcc --image fedora:latest
 distrobox enter trcc
 
 # Inside the container — normal Fedora commands work
-sudo dnf install python3-pip sg3_utils python3-pyside6 portaudio ffmpeg
+sudo dnf install python3-pip sg3_utils python3-pyside6 portaudio /usr/bin/ffmpeg /usr/bin/7z
 pip install trcc-linux
 exit
 
@@ -654,13 +634,14 @@ sudo pacman-key --init
 sudo pacman-key --populate archlinux holo
 
 # Install dependencies
-sudo pacman -S --needed sg3_utils python-pip pyside6 portaudio ffmpeg
+sudo pacman -S --needed sg3_utils python-pip pyside6 portaudio ffmpeg p7zip
 
 # Install TRCC
 pip install --break-system-packages trcc-linux
 
-# Set up device permissions
-sudo trcc system setup
+# Set up device permissions — as yourself, not with sudo: setup runs sudo
+# itself for the root-only steps, and skips your per-user parts when run as root
+trcc system setup
 
 # Re-enable read-only (recommended)
 sudo steamos-readonly enable
@@ -678,7 +659,7 @@ distrobox create --name trcc --image archlinux:latest
 distrobox enter trcc
 
 # Inside the container (it is disposable, so a system-wide pip install is fine here)
-sudo pacman -Syu --needed python-pip sg3_utils pyside6 portaudio ffmpeg
+sudo pacman -Syu --needed python-pip sg3_utils pyside6 portaudio ffmpeg p7zip
 sudo pip install --break-system-packages trcc-linux
 exit
 
@@ -735,7 +716,7 @@ apx trcc-system run -- trcc gui
 ```bash
 # Install dependencies
 sudo apt update
-sudo apt install python3-pip python3-venv sg3-utils python3-pyside6 libportaudio2 ffmpeg
+sudo apt install python3-pip python3-venv sg3-utils python3-pyside6 libportaudio2 ffmpeg p7zip
 
 # Install TRCC
 pip install --break-system-packages trcc-linux
@@ -795,7 +776,7 @@ Download [`trcc-latest-macos.dmg`](https://github.com/Lexonight1/thermalright-tr
 
 **Requirements:**
 - macOS 11+ (Big Sur or later)
-- Install `libusb`: `brew install libusb`
+- Nothing extra to install for the DMG — it bundles libusb, 7-Zip and ffmpeg
 - LCD devices using SCSI (most models) need `sudo` to detach the kernel driver — HID devices work without root
 - On Apple Silicon Macs, sensor reading requires `sudo` for `powermetrics` access
 
@@ -819,16 +800,16 @@ trcc serve    # or trcc detect, trcc display …, etc.
 
 ```bash
 # GUI (adds Qt6/PySide6)
-pkg install py311-pip libusb py311-pyusb py311-hid py311-pyside6 p7zip ffmpeg
+pkg install py311-pip libusb py311-pyusb py311-hid py311-pyside6 7-zip ffmpeg
 pip install trcc-linux
 trcc system setup
 trcc gui
 ```
 
 **Notes:**
-- SCSI devices use `/dev/pass*` via `camcontrol` (part of base system)
+- SCSI devices are driven over libusb (USB bulk-only transport), which needs root to detach the umass kernel driver
 - CPU temp requires `kldload coretemp` (Intel) or `kldload amdtemp` (AMD)
-- HID devices work via hidapi
+- HID devices work over libusb (pyusb)
 - Run as root for full hardware access
 - No native package — install from PyPI
 - GUI is untested on BSD — if you get it working, please [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) and let us know
@@ -846,7 +827,7 @@ Covers: Fedora Asahi Remix on Apple M1/M2/M3/M4 Macs
 Follow the [Fedora / Nobara (pip)](#fedora--nobara-pip) instructions — Asahi is Fedora-based:
 
 ```bash
-sudo dnf install python3-pip sg3_utils python3-pyside6 portaudio ffmpeg
+sudo dnf install python3-pip sg3_utils python3-pyside6 portaudio /usr/bin/ffmpeg /usr/bin/7z
 pip install trcc-linux
 trcc system setup
 trcc gui
@@ -864,7 +845,7 @@ TRCC works on ARM64 (aarch64) systems:
 
 ```bash
 # Raspberry Pi OS / Armbian (Debian-based)
-sudo apt install python3-pip python3-venv sg3-utils python3-pyside6 libportaudio2 ffmpeg
+sudo apt install python3-pip python3-venv sg3-utils python3-pyside6 libportaudio2 ffmpeg p7zip
 pip install --break-system-packages trcc-linux
 trcc system setup
 trcc gui
@@ -872,12 +853,13 @@ trcc gui
 
 > **No display?** If you're running headless (no monitor), the CLI still works:
 > ```bash
-> trcc send /path/to/image.png
-> trcc display color ff0000
-> trcc display test
+> trcc detect                                  # find your device's key, e.g. 0402:3922
+> trcc display load-image 0402:3922 /path/to/image.png
+> trcc display color 0402:3922 ff0000
+> trcc display test 0402:3922
 > ```
 
-> **ARM PySide6:** If `pip install PySide6` fails, use the system package (`python3-pyside6`). The CLI commands work without PySide6 — only the GUI needs it.
+> **ARM PySide6:** PySide6 is a required dependency, so `pip install trcc-linux` needs it to install. The CLI needs it too: TRCC draws every LCD frame with Qt, so display commands fail without it.
 
 ---
 
@@ -909,22 +891,27 @@ trcc detect
 You should see something like:
 ```text
 2 device(s) found:
-  0402:3922  Thermalright LCD Display  (wire=scsi, resolution=320×320)
-  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=240×320)
+  0402:3922  Thermalright LCD Display  (wire=scsi, resolution=320×320 (catalog))
+      this USB id covers several coolers — 'trcc device connect 0402:3922' names yours
+  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=unknown)
+      this USB id covers several coolers — 'trcc device connect 0416:5302' names yours
+Resolutions above come from the catalog, not the panel.  Run 'trcc device connect <key>' to read the panel's own.
 ```
+
+The first column is the device key that other commands take.
 
 `trcc detect` always lists every connected device; it exits non-zero when it
 finds none.
 
 ### Quick test
 
-Send a test pattern to make sure everything works:
+Send a test pattern to make sure everything works, using your device's key from `trcc detect`:
 
 ```bash
-trcc display test
+trcc display test 0402:3922
 ```
 
-This cycles through red, green, blue, yellow, magenta, cyan, and white on the LCD. If you see the colors, you're all set.
+This cycles through red, green, blue, and black on the LCD. If you see the colors, you're all set.
 
 ### `trcc: command not found`?
 
@@ -961,7 +948,7 @@ So you can launch TRCC from your app menu instead of typing a command:
 trcc system setup
 ```
 
-Say `y` when it asks about the desktop entry — it installs the `.desktop` file and TRCC icon to your app menu.
+It installs the `.desktop` file and TRCC icon to your app menu without asking (skipped when a distro package already provides the menu entry).
 
 ---
 
@@ -974,7 +961,7 @@ cd ~/Downloads
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
-If you see `OK` next to your package — it's clean. Source code is GPL-3.0, fully auditable — no binaries, no obfuscation, no telemetry.
+If you see `OK` next to your package — it's clean. `SHA256SUMS.txt` covers the Linux packages (`.rpm`, `.deb`, `.pkg.tar.zst`) plus the wheel and sdist, under their versioned names — not the `trcc-linux-latest…` copies the one-liners download, and not the Windows or macOS installers. Source code is GPL-3.0, fully auditable — no binaries, no obfuscation, no telemetry.
 
 ---
 
@@ -983,10 +970,11 @@ If you see `OK` next to your package — it's clean. Source code is GPL-3.0, ful
 | Package | Why it's needed |
 |---------|----------------|
 | `python3-pip` | Installs Python packages (like TRCC itself) |
-| `sg3_utils` / `sg3-utils` | Sends data to the LCD over USB (SCSI commands) — **required for SCSI devices** |
-| `PySide6` / `python3-pyside6` | The graphical user interface (GUI) toolkit |
+| `sg3_utils` / `sg3-utils` | Not used by TRCC — it talks to SCSI panels directly (the kernel's SG_IO interface). The distro packages still list it as a dependency |
+| `PySide6` / `python3-pyside6` | The GUI toolkit — TRCC also draws every LCD frame with it, so the CLI needs it too |
 | `ffmpeg` | Video and GIF playback on the LCD |
-| `lm-sensors` / `lm_sensors` | Hardware sensor readings (CPU/GPU temps, fan speeds) — optional but recommended |
+| `p7zip` / `7zip` / `/usr/bin/7z` | Unpacks the theme, cloud and mask archives — without it the theme browser stays empty |
+| `lm-sensors` / `lm_sensors` | Provides `sensors-detect`, which finds the driver your motherboard's fan chip needs (`trcc doctor` suggests it when fans can't be read) — optional. TRCC reads the sensors from sysfs itself |
 | `grim` | Screen capture on Wayland desktops — optional |
 | `python3-gobject` / `python3-dbus` | PipeWire screen capture for GNOME/KDE on Wayland — optional |
 | `portaudio` / `libportaudio2` | Audio I/O library — required for the audio visualizer feature |
@@ -1010,9 +998,12 @@ not been restored. Remove the pieces directly:
 ```bash
 trcc system autostart disable                 # drop the autostart entry
 trcc system ram-lighting disable              # BEFORE uninstalling: take back the RAM-bus grant, if you enabled it
-pip uninstall trcc-linux                      # or your package manager
+systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service   # the App's user service setup added
+pipx uninstall trcc-linux                     # or pip uninstall trcc-linux, or your package manager
 sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules   # udev rules
+sudo rm -f /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
+rm -f ~/.local/share/applications/trcc-linux.desktop   # menu entry setup added (pip/source only)
 sudo rm -f /usr/bin/trcc-ram-access /usr/bin/trcc-ram-access-off \
            /usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy   # setup's polkit files (pip/source only)
 rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
@@ -1028,13 +1019,14 @@ first if you want to keep them.
 ### Manual removal (if `trcc` command is unavailable)
 
 ```bash
-pip uninstall trcc-linux
+systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service
+pip uninstall trcc-linux                      # or pipx uninstall trcc-linux
 sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 sudo rm -f /etc/udev/rules.d/70-trcc-ram-lighting.rules /etc/modules-load.d/trcc-i2c.conf   # RAM-lighting grant
 sudo udevadm control --reload-rules
-rm -rf ~/.config/trcc ~/.trcc
+rm -rf ~/.trcc ~/.trcc-user                   # back up ~/.trcc-user first to keep your themes
 rm -f ~/.config/autostart/trcc*.desktop
 rm -f ~/.local/share/applications/trcc*.desktop
 ```

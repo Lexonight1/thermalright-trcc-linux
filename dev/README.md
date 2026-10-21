@@ -21,12 +21,14 @@ $EDITOR dev/devices.json            # keep only the device(s) you care about
 # 3. Run the real GUI against that simulated fleet — zero hardware
 PYTHONPATH=src python3 dev/mock_gui.py -v
 
-# …or just simulate the ENTIRE catalog at once and scroll the sidebar:
+# …or simulate the ENTIRE catalog and scroll the sidebar. That is the default
+# with no dev/devices.json; --all forces it over your devices.json:
 PYTHONPATH=src python3 dev/mock_gui.py --all
 ```
 
 Logs land in `dev/.trcc/trcc.log` (full history) and `dev/.trcc/trcc.latest.log`
-(this run only — no offset math). `-v` = DEBUG, `-vv` = more.
+(this run only — no offset math). The file always keeps DEBUG; `-v` / `-vv`
+raise the terminal to INFO / DEBUG.
 
 Run headless (CI / no display) by appending Qt's `-platform offscreen`.
 
@@ -43,6 +45,9 @@ through the *same* model path `connect()` uses. The rest are optional overrides:
 | `sub` | no | SUB byte — disambiguates models that share a PM |
 | `fbl` | no | force an FBL code directly (rarely needed) |
 | `name` | no | label shown in logs / sidebar |
+| `bcd` | no | USB `bcdDevice` (firmware revision, hex, e.g. `"0407"`) — what `DEVICE_QUIRKS` is keyed on |
+| `reply` | no | a reporter's actual handshake reply bytes (hex; spaces and colons ignored), used verbatim |
+| `resolution` | no | informational only |
 
 `dev/devices.json` is **local to you** (git-ignored); commit nothing from it.
 `devices.json.example` is the shared template.
@@ -52,10 +57,13 @@ through the *same* model path `connect()` uses. The rest are optional overrides:
 One USB vid:pid fronts *many* coolers — the handshake PM/SUB fingerprint tells
 them apart (e.g. the bulk `87ad:70db` covers dozens of models; some coolers even
 share one fingerprint under different marketing names). `--list-devices` shows
-the real catalog: **~50 distinct models across 119 PM/SUB variants**.
+the real catalog — every model and PM/SUB variant, with the count in its header.
 
-Coverage is at **full parity with the original Windows app** (verified against
-the C# v2.1.4 `UCDevice.ADDUserButton` dispatcher — every model present). When
+Coverage was checked for **full parity with the original Windows app** against
+an earlier C# release's `UCDevice.ADDUserButton` dispatcher (every model
+present). The release we port now is `ORACLE_VERSION` in
+`dev/decompiler/core/csharp.py`; `dev/decompiler/audit_devices.py --all` diffs
+our resolution against it. When
 Thermalright ships new coolers, cross-check
 <https://www.thermalright.com/support/download/> and the C# decompile, then add
 them (below).

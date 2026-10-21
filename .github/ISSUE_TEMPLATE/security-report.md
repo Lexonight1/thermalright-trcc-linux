@@ -10,9 +10,9 @@ assignees: ''
 **Security report summary**
 
 - **Severity:** [Low / Medium / High / Critical]
-- **Scanner/source:** [pip-audit | bandit | safety | codeql | other]
+- **Scanner/source:** [pip-audit | bandit | codeql | other]
 - **CI run / artifact:** (link to workflow run or artifact)
-- **Files attached:** (bandit_report.json, pip_audit_results.json, safety_report.json)
+- **Files attached:** (pip_audit.json, bandit.json)
 
 **Description**
 

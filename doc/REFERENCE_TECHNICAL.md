@@ -6,11 +6,12 @@ Linux port of the Thermalright TRCC application for controlling LCD displays on 
 
 ## Supported Devices
 
+The source of truth is `ALL_DEVICES` in `src/trcc/core/registry.py`; these tables mirror it.
+
 | VID    | PID    | Vendor      | Product           |
 |--------|--------|-------------|-------------------|
 | 0x87CD | 0x70DB | Thermalright| LCD Display       |
-| 0x0416 | 0x5406 | ALi Corp    | LCD Display       |
-| 0x0402 | 0x3922 | ALi Corp    | USB PRC System    |
+| 0x0402 | 0x3922 | Thermalright| LCD Display       |
 
 SCSI devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
 
@@ -18,7 +19,7 @@ SCSI devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
 
 | VID    | PID    | Vendor      | Product           |
 |--------|--------|-------------|-------------------|
-| 0x87AD | 0x70DB | Thermalright| LCD Display       |
+| 0x87AD | 0x70DB | ChiZhu Tech | GrandVision 360 AIO |
 
 Bulk devices use raw USB vendor-specific transfers via PyUSB. Products: GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360.
 
@@ -27,6 +28,7 @@ Bulk devices use raw USB vendor-specific transfers via PyUSB. Products: GrandVis
 | VID    | PID    | Protocol | Type | Notes |
 |--------|--------|----------|------|-------|
 | 0x0416 | 0x5302 | HID      | 2 (H)   | LCD display via HID bulk transfer |
+| 0x0416 | 0x5406 | HID      | 3 (F5)  | LCD display via F5 bulk transfer |
 | 0x0418 | 0x5303 | HID      | 3 (ALi) | LCD display via HID bulk transfer |
 | 0x0418 | 0x5304 | HID      | 3 (ALi) | LCD display via HID bulk transfer |
 
@@ -36,22 +38,26 @@ Bulk devices use raw USB vendor-specific transfers via PyUSB. Products: GrandVis
 |--------|--------|----------|------|-------|
 | 0x0416 | 0x8001 | LED      | HID 64-byte | RGB LED controller (AX120 DIGITAL, PA120 DIGITAL, Phantom Spirit 120 Digital EVO, Peerless Assassin 120 Digital ARGB White) |
 
-LED devices are distinguished from LCD HID devices by the `implementation` field (`hid_led`) set during device detection based on the Windows device model registry.
+LED devices are distinguished from LCD HID devices by their registry row: `wire=Wire.LED, kind=Kind.LED`.
 
 ## Display Resolutions
 
 ### FBL (Feature Byte Length) Detection
 
-The Windows app uses FBL values to identify display resolution. FBL mapping:
+The Windows app uses FBL values to identify display resolution. The source of truth is `FBL_PROFILES` in `src/trcc/core/protocol.py` (FBLs 192 and 224 are split by PM in `_FBL_192_BY_PM` / `_FBL_224_BY_PM`). FBL mapping:
 
 | FBL | Resolution | Notes |
 |-----|------------|-------|
 | 36, 37 | 240x240 | Small |
-| 50 | 320x240 | Rotate, SPI mode 2 |
+| 49 | 320x240 | Big-endian RGB565 (SPI mode 2), rotate |
+| 50 | 320x240 | Rotate |
 | 51 | 320x240 | HID Type 2, rotate |
+| 52 | 320x240 | Rotate |
 | 53 | 320x240 | HID Type 2, rotate |
-| 54 | 360x360 | JPEG |
+| 54 | 360x360 | JPEG (RGB565 at SUB 4) |
 | 58 | 320x240 | Rotate |
+| 59 | 640x172 | RGB565, rotate (the HID route to the 640x172 panel) |
+| 60 | 320x176 | Rotate |
 | 64 | 640x480 | Rotate |
 | 72 | 480x480 | Large square |
 | 100-102 | 320x320 | Big-endian RGB565 (default) |
@@ -59,11 +65,11 @@ The Windows app uses FBL values to identify display resolution. FBL mapping:
 | 128 | 1280x480 | JPEG, rotate (Trofeo Vision) |
 | 129 | 480x480 | Alias for FBL 72 |
 | 192 | 1920x462 | JPEG, rotate. PM disambiguates: 68→1280x480, 69→1920x440 |
-| 224 | 854x480 | JPEG, rotate. PM disambiguates: 10/16→960x540, 12→800x480, 13/17→960x320, 15→640x172 |
+| 224 | 854x480 | JPEG, rotate. PM disambiguates: 9/11/20→854x480, 10/16→960x540, 12→800x480, 13/17/18→960x320, 15→640x172 |
 
-### PM → FBL Mapping (Type 2 HID Devices)
+### PM → FBL Mapping (HID Type 2, Bulk and LY Devices)
 
-Type 2 HID devices don't report FBL directly. Instead, the PM (product mode) byte from the handshake maps to FBL:
+HID Type 2, bulk and LY devices don't report FBL directly. Instead, the PM (product mode) byte from the handshake maps to FBL. The source of truth is `_PM_TO_FBL_OVERRIDES` and `_PM_SUB_TO_FBL` in `src/trcc/core/protocol.py`; a PM not listed maps to FBL = PM, except on bulk and LY devices, where it stays on FBL 72 (480x480).
 
 | PM | FBL | Resolution | Notes |
 |----|-----|------------|-------|
@@ -78,6 +84,8 @@ Type 2 HID devices don't report FBL directly. Instead, the PM (product mode) byt
 | 15 | 224 | 640x172 | PM disambiguates FBL 224 |
 | 16 | 224 | 960x540 | PM disambiguates FBL 224 |
 | 17 | 224 | 960x320 | PM disambiguates FBL 224 |
+| 18 | 224 | 960x320 | PM disambiguates FBL 224 |
+| 20 | 224 | 854x480 | |
 | 32 | 100 | 320x320 | |
 | 50 | 50 | 320x240 | SPI mode 2 |
 | 63 | 114 | 1600x720 | |
@@ -89,42 +97,11 @@ Type 2 HID devices don't report FBL directly. Instead, the PM (product mode) byt
 | 1+sub=48 | 114 | 1600x720 | PM=1 with SUB byte variant |
 | 1+sub=49 | 192 | 1920x462 | PM=1 with SUB byte variant |
 
-Functions: `pm_to_fbl()` and `fbl_to_resolution()` in `core/models.py`.
+Functions: `pm_to_fbl()` and `fbl_to_resolution()` in `core/protocol.py`.
 
 ### Theme Directories & Archives
 
-Theme archives for all 15 LCD resolutions are tracked in git. On first use, `ensure_themes_extracted()` in `adapters/infra/data_repository.py`:
-
-1. Checks the package dir (`src/trcc/data/`) for extracted themes
-2. Checks the user dir (`~/.trcc/data/`) for previously extracted themes
-3. If no archive found locally, **downloads from GitHub** (`raw.githubusercontent.com`)
-4. Extracts via system `7z` CLI
-5. Falls back to `~/.trcc/data/` if the package dir is read-only
-
-```text
-src/trcc/data/
-├── Theme240240.7z          # All 16 resolutions bundled
-├── Theme240320.7z
-├── Theme320320.7z
-├── Theme360360.7z
-├── Theme480480.7z
-├── Theme640480.7z
-├── Theme800480.7z
-├── Theme854480.7z
-├── Theme960540.7z
-├── Theme1280480.7z         # Trofeo Vision
-├── Theme1600720.7z
-├── Theme1920462.7z
-├── Theme480800.7z          # Portrait variants
-├── Theme480854.7z
-├── Theme540960.7z
-└── Web/
-    ├── 240240.7z           # Cloud preview PNGs
-    ├── 320320.7z
-    ├── zt240240.7z         # Cloud mask themes (000a-023e)
-    ├── zt320320.7z
-    └── ...
-```
+Stock themes, cloud previews and cloud masks ship as `.7z` archives under `src/trcc/data/` in the repository: `theme{w}{h}.7z` for stock themes, `web/{w}{h}.7z` for cloud previews and `web/zt{w}{h}.7z` for cloud masks. The installer, `adapters/repo/data_install.py`, downloads the archives for a device's resolution from GitHub (`raw.githubusercontent.com`), extracts them with the system `7z` binary, and places them under `~/.trcc/data/` as `theme{w}{h}/`, `web/{w}{h}/` and `web/zt{w}{h}/`. Non-square panels also get the rotated counterpart's previews and masks. A directory that is already populated is not fetched again.
 
 Each theme subdirectory contains:
 - `00.png` - Background image (sent to LCD)
@@ -138,16 +115,15 @@ Mask-only themes (in `zt*/` directories) omit `00.png`.
 
 ### SCSI Commands
 
-All communication via `sg_raw` to `/dev/sgX`. Source: reverse-engineered from `USBLCD.exe` (native C++/MFC) via Ghidra decompilation.
+On Linux, all communication goes to `/dev/sgX` through the `SG_IO` ioctl, one call per CDB (`LinuxScsiTransport` in `adapters/system/linux.py`). Source: reverse-engineered from `USBLCD.exe` (native C++/MFC) via Ghidra decompilation.
 
-**Header format (20 bytes):**
+**CDB format (16 bytes):**
 ```text
 bytes[0:3]   = command (LE uint32)
 bytes[4:11]  = zeros
 bytes[12:15] = data size (LE uint32)
-bytes[16:19] = CRC32(bytes[0:15])
 ```
-Only bytes[0:15] are sent as the SCSI CDB (16-byte). The CRC32 is appended but the device firmware ignores it (verified by testing with zeroed CRC — still works).
+These 16 bytes are the SCSI CDB. trcc sends no CRC32 (`ScsiLcd._build_cdb` in `adapters/device/scsi_lcd.py`).
 
 ### CDB Byte-Level Structure
 
@@ -213,7 +189,7 @@ The 0xE100-byte poll response encodes device state:
 
 ### Frame Transfer
 
-Frame chunks are 64 KiB each (except the last). Chunk count depends on resolution:
+Frame chunks are 64 KiB each (except the last); panels of 76,800 pixels (320×240) or fewer use 0xE100-byte chunks instead. Chunk count depends on resolution:
 
 | Resolution | RGB565 Size | Chunks | Chunk Sizes |
 |---|---|---|---|
@@ -225,10 +201,10 @@ Frame chunks are 64 KiB each (except the last). Chunk count depends on resolutio
 
 ### Compressed Frame Transfer
 
-USBLCD.exe supports zlib-compressed frames (not implemented in trcc-linux):
+USBLCD.exe supports zlib-compressed frames. trcc uses them only to upload a boot animation to device flash (`ScsiLcd.send_boot_animation`, `trcc display boot-anim`), on 240×240, 240×320, 320×240 and 320×320 panels, with 1-248 frames:
 
-1. **Single frame**: Compress RGB565 data with zlib level 3, send via `0x201F5`. `byte[8]` = frame count from shared memory.
-2. **Multi-frame carousel**: Each frame compressed individually, sent via `0x301F5 | (frame_index << 24)`. Sleep 10ms between frames, 500ms after first compressed send.
+1. **First frame**: Compress RGB565 data with zlib level 3, send via `0x201F5`. CDB `bytes[8:11]` = frame count, `bytes[12:15]` = compressed size. Sleep 500ms.
+2. **Multi-frame carousel**: Each frame compressed individually, sent via `0x301F5 | (delay_byte << 24)`, where the delay byte is the dwell time in deciseconds × 10, capped at 250. CDB `bytes[8:11]` = frame index, `bytes[12:15]` = compressed size. Sleep 10ms between frames.
 
 ### Display Clear
 
@@ -256,7 +232,7 @@ For SCSI devices, brightness and rotation are purely software-side operations.
 
 ### Pixel Format
 
-RGB565 big-endian (2 bytes/pixel):
+RGB565, 2 bytes/pixel. Big-endian on 320×320 panels (FBL 100-102) and on SCSI FBL 51; little-endian on the other SCSI panels (FBL 36, 37, 50):
 ```python
 pixel = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 ```
@@ -275,7 +251,7 @@ On Windows, TRCC.exe and USBLCD.exe communicate via shared memory (`shareMemory_
 | 0x257FE-0x257FF | 2 | Resolution echo (0xDC, resolution_code) |
 | 0x25800+ | varies | RGB565 image data |
 
-On Linux, this IPC layer is unnecessary — `trcc` talks directly to `/dev/sgX` via `sg_raw`.
+On Linux, this IPC layer is unnecessary — `trcc` talks directly to `/dev/sgX` via `SG_IO`.
 
 ## LED Protocol (HID 64-byte Reports)
 
@@ -285,22 +261,26 @@ LED devices communicate via 64-byte HID reports (matching Windows FormLED).
 
 The LED handshake reads a PM (product mode) byte from the device, which maps to an LED style:
 
+The source of truth is `_PM_REGISTRY` in `src/trcc/core/led_protocol.py` (PM → style), with LED counts from `LED_STYLES` in `src/trcc/core/led_models.py`; the Style column is `LEGACY_STYLE_ID`.
+
 | PM | Style | Model | LEDs | Segments |
 |----|-------|-------|------|----------|
 | 1  | 1     | FROZEN HORIZON PRO | 30 | 10 |
 | 2  | 1     | FROZEN MAGIC PRO | 30 | 10 |
 | 3  | 1     | AX120 DIGITAL | 30 | 10 |
-| 16 | 2     | PA120 DIGITAL | 84 | 18 |
+| 16-22, 24-31 | 2 | PA120 DIGITAL | 84 | 18 |
 | 23 | 2     | RK120 DIGITAL | 84 | 18 |
 | 32 | 3     | AK120 DIGITAL | 64 | 10 |
 | 48 | 5     | LF8 | 93 | 23 |
+| 49 | 5     | LF10 (LF8 layout) | 93 | 23 |
 | 80 | 6     | LF12 | 124 | 72 |
 | 96 | 7     | LF10 | 116 | 12 |
 | 112| 9     | LC2 | 61 | 31 |
-| 128| 4     | HR10 2280 PRO DIGITAL / LC1 | 31 | 14 |
+| 128| 4     | LC1 | 31 | 14 |
 | 129| 10    | LF11 | 38 | 17 |
 | 144| 11    | LF15 | 93 | 72 |
 | 160| 12    | LF13 | 62 | 62 |
+| 176| 5     | LF25 (LF8 layout, wire sub-variant 1) | 93 | 23 |
 | 208| 8     | CZ1 | 18 | 13 |
 | 208| 13    | Magic Qube | 65 | 14 |
 
@@ -313,24 +293,30 @@ reverse-engineered and hardware-validated by [@jphilipb](https://github.com/jphi
 ### LED Packet Format
 
 ```text
-Byte 0:     Report ID (0x00)
-Byte 1:     Command (0xA0 = LED data)
-Byte 2:     Global on/off (0x01 = on, 0x00 = off)
-Byte 3:     Brightness (0-100)
-Bytes 4-N:  Per-LED data: [R, G, B, on/off] × segment_count
+Bytes 0-3:   Magic (DA DB DC DD)
+Bytes 4-11:  Zeros
+Byte 12:     Command (0x02 = LED data; 0x01 = handshake)
+Bytes 13-15: Zeros
+Bytes 16-17: Payload length (LE uint16) = LED count × 3
+Bytes 18-19: Zeros
+Bytes 20-N:  Per-LED data: [R, G, B] × LED count, each channel × 0.4 (an off LED is 0, 0, 0)
 ```
 
+The packet goes out as 64-byte HID reports, the last one zero-padded (`Led` in `adapters/device/led.py`).
+
 ### LED Effect Modes
+
+The source of truth is `LEDMode` in `src/trcc/core/led_models.py`.
 
 | Mode | Name | Description |
 |------|------|-------------|
 | 0 | Static | Solid color on all segments |
 | 1 | Breathing | Fade in/out cycle |
-| 2 | Rainbow | Rotating hue across segments |
-| 3 | Cycle | Cycle through preset colors |
-| 4 | Wave | Color wave propagation |
-| 5 | Flash | Strobe effect |
-| 6 | Music | Reactive to audio input (stub) |
+| 2 | Colorful | 6-phase gradient cycle |
+| 3 | Rainbow | 768-entry color table shifted across segments |
+| 4 | Temp-linked | Color from CPU/GPU temperature |
+| 5 | Load-linked | Color from CPU/GPU load |
+| 6 | OpenRGB | The colours OpenRGB sends over DDP (TRCC's own; not in the Windows app) |
 
 ## Bulk USB Protocol
 
@@ -338,11 +324,11 @@ Bulk devices (`87AD:70DB`) use raw USB vendor-specific transfers via PyUSB, bypa
 
 ### Handshake
 
-Same PM→FBL→resolution pipeline as HID devices. Default resolution: 480×480 if handshake fails.
+Write a 64-byte request (magic `12 34 56 78`, byte 56 = `0x01`), read 1024 bytes. A reply with `resp[24] == 0` fails the handshake. PM = `resp[24]`, SUB = `resp[36]`. The PM goes through the same PM→FBL table as HID Type 2 (`bulk_profile` in `adapters/device/bulk_lcd.py`); a PM outside that table stays on FBL 72 (480×480).
 
 ### Frame Transfer
 
-Frames are sent as raw RGB565 data via USB bulk OUT endpoint. The frame is split into chunks matching the endpoint's max packet size. No SCSI CDB header — just raw pixel data.
+Each frame is a 64-byte header followed by the payload. Header fields are LE uint32: bytes 0-3 magic `12 34 56 78`, 4-7 command (2 = JPEG, 3 = RGB565), 8-11 width, 12-15 height, 56-59 = 2, 60-63 payload length. Every PM encodes JPEG except PM 32 and 50, which send RGB565 (PM 50 big-endian). The frame goes out in 16 KiB bulk writes, followed by a zero-length packet when its length is a multiple of 512.
 
 ### Known Products
 
@@ -359,37 +345,40 @@ LY devices (`0416:5408` and `0416:5409`) use a chunked USB bulk protocol distinc
 
 ### Handshake
 
-Same HID-style handshake as other devices. PM byte maps through `pm_to_fbl()` → `fbl_to_resolution()`.
+Write 2048 bytes (16-byte header `02 FF 00 00 00 00 00 00 01 00 00 00 00 00 00 00` + 2032 zeros), read 512. The reply is valid when `resp[0] == 0x03`, `resp[1] == 0xFF` and `resp[8] == 0x01`. PM and SUB come from the reply (see PID Variants) and resolve through the same `bulk_profile` as bulk devices.
 
 ### Frame Transfer
 
-Frames are JPEG-encoded and split into 512-byte chunks:
+Frames are encoded as on bulk devices (JPEG for every PM except 32 and 50) and split into 512-byte chunks:
 
 ```text
 Each chunk (512 bytes):
   Bytes 0-15:   Header (16 bytes)
-    [0]:        0xEF (magic)
-    [1]:        chunk type (0x69=data, 0x65=end)
-    [2-3]:      chunk index (LE uint16)
-    [4-7]:      total data length (LE uint32)
-    [8-15]:     padding (zeros)
+    [0]:        0x01
+    [1]:        0xFF
+    [2-5]:      total payload length (LE uint32)
+    [6-7]:      this chunk's data length (LE uint16: 496, the remainder in the last chunk)
+    [8]:        0x01 (LY) / 0x02 (LY1)
+    [9-10]:     chunk count (LE uint16)
+    [11-12]:    chunk index (LE uint16)
+    [13-15]:    zeros
   Bytes 16-511: Data payload (496 bytes)
 ```
 
-The last chunk is padded with zeros to fill 512 bytes and marked with type `0x65`.
+Chunk count = payload length ÷ 496 + 1. On LY the buffer is padded with empty chunks to a multiple of 4. It goes out in 4096-byte writes (on LY a final write under 4096 bytes is 2048), then a 512-byte ACK is read (`adapters/device/ly_lcd.py`).
 
 ### PID Variants
 
 | PID | PM Formula | Notes |
 |-----|-----------|-------|
-| `0x5408` (LY) | `response[4]` | Standard LY |
-| `0x5409` (LY1) | `response[4] + 2` | LY1 variant, PM offset |
+| `0x5408` (LY) | `64 + response[20]` (a value ≤ 3 is read as 1) | SUB = `response[22] + 1` |
+| `0x5409` (LY1) | `49 + response[20]` | SUB = `response[22]` |
 
 ### Known Products
 
 | Product | Resolution |
 |---------|------------|
-| Trofeo Vision 9.16 LCD | — |
+| Trofeo Vision 9.16 LCD | 1920×462 |
 
 ---
 
@@ -445,122 +434,24 @@ Prefixes: `A0` (startup), `A1` (device images), `A2` (dropdowns), `D0` (device p
 
 ### Linux Port Files
 
-Hexagonal architecture (Ports & Adapters). Services are the core hexagon; CLI, GUI, API, and Setup GUI are driving adapters.
+Hexagonal architecture (Ports & Adapters). Services are the core hexagon; the CLI, GUI and API are driving adapters. The file tree is deliberately not drawn here — a hand-drawn one drifted out of date. Start from:
 
-```text
-src/trcc/
-├── cli/                         # Typer CLI adapter package (8 submodules)
-├── api/                         # FastAPI REST adapter package (7 submodules)
-│   ├── __init__.py              # App factory, middleware, CORS
-│   ├── devices.py               # Device endpoints
-│   ├── display.py               # Display endpoints
-│   ├── led.py                   # LED endpoints
-│   ├── themes.py                # Theme endpoints
-│   ├── system.py                # System + perf endpoints
-│   ├── i18n.py                  # Language endpoints
-│   └── models.py                # Pydantic request/response models
-├── ipc.py                       # Unix socket IPC daemon (GUI-as-server)
-├── conf.py                      # Settings singleton + persistence helpers
-├── __version__.py               # Version info
-├── core/                        # Domain layer — pure Python, zero I/O
-│   ├── models.py                # Domain constants, dataclasses, enums, resolution pipeline
-│   ├── ports.py                 # Device ABC, Renderer ABC, protocol type aliases
-│   ├── lcd_device.py            # LCDDevice(Device) — direct methods, delegates to services
-│   ├── led_device.py            # LEDDevice(Device) — LED control methods
-│   ├── builder.py               # ControllerBuilder — fluent builder with full DI wiring
-│   ├── color.py                 # ColorEngine — HSV/RGB conversion, LED color math
-│   ├── encoding.py              # Frame encoding helpers
-│   ├── led_segment.py           # SegmentDisplay ABC + 10 subclasses (domain data)
-│   └── paths.py                 # Path constants
-├── services/                    # Application layer — business logic, no framework deps
-│   ├── __init__.py              # Re-exports service classes
-│   ├── device.py                # DeviceService — detect, select, send_pil, send_rgb565
-│   ├── image.py                 # ImageService — facade over active Renderer
-│   ├── display.py               # DisplayService — high-level display orchestration
-│   ├── led.py                   # LEDService — LED RGB control via LedProtocol
-│   ├── led_config.py            # LED config persistence (Memento pattern)
-│   ├── led_effects.py           # LEDEffectEngine — strategy pattern for LED effects
-│   ├── media.py                 # MediaService — GIF/video frame extraction
-│   ├── overlay.py               # OverlayService — overlay rendering
-│   ├── renderer.py              # Renderer ABC — Strategy port for compositing backends
-│   ├── system.py                # SystemService — system sensor access and monitoring
-│   ├── theme.py                 # ThemeService — theme orchestration
-│   ├── theme_loader.py          # Theme loading logic
-│   ├── theme_persistence.py     # Theme save/export/import
-│   └── video_cache.py           # VideoFrameCache — lazy per-frame encoding
-├── adapters/
-│   ├── device/                  # USB device protocol handlers
-│   │   ├── frame.py             # UsbDevice / FrameDevice ABCs
-│   │   ├── scsi.py              # SCSI protocol (sg_raw)
-│   │   ├── hid.py               # HID USB transport (PyUSB)
-│   │   ├── led.py               # LED RGB protocol (effects, HID sender)
-│   │   ├── led_kvm.py           # KVM LED backend
-│   │   ├── led_segment.py       # Segment display re-export (delegates to core/)
-│   │   ├── bulk.py              # Raw USB bulk protocol
-│   │   ├── ly.py                # LY USB bulk protocol (0416:5408/5409)
-│   │   ├── lcd.py               # SCSI RGB565 frame send
-│   │   ├── detector.py          # USB device scan + registries
-│   │   ├── factory.py           # Protocol factory (SCSI/HID/LED/Bulk/LY routing)
-│   │   └── _usb_helpers.py      # Shared USB utility functions
-│   ├── render/                  # Rendering backends (Strategy pattern)
-│   │   └── qt.py                # QtRenderer — QImage/QPainter (sole renderer)
-│   ├── system/                  # System integration
-│   │   ├── sensors.py           # Hardware sensor discovery + collection
-│   │   ├── hardware.py          # Hardware info (CPU, GPU, RAM, disk)
-│   │   ├── info.py              # Dashboard panel config
-│   │   └── config.py            # Dashboard config persistence
-│   └── infra/                   # Infrastructure (I/O, files, network)
-│       ├── data_repository.py   # User data paths, on-demand download
-│       ├── binary_reader.py     # Binary data reader
-│       ├── dc_parser.py         # Parse config1.dc overlay configs
-│       ├── dc_writer.py         # Write config1.dc files
-│       ├── dc_config.py         # DcConfig class
-│       ├── font_resolver.py     # Cross-distro font discovery
-│       ├── media_player.py      # FFmpeg video frame extraction
-│       ├── theme_cloud.py       # Cloud theme HTTP fetch
-│       ├── theme_downloader.py  # Theme pack download manager
-│       ├── debug_report.py      # Diagnostic report tool
-│       └── doctor.py            # Dependency health check + setup wizard
-├── install/                     # Standalone setup wizard
-│   ├── __init__.py
-│   └── gui.py                   # PySide6 setup wizard GUI
-└── gui/               # PySide6 GUI adapter
-    ├── trcc_app.py              # TRCCApp — thin QMainWindow shell, entry point
-    ├── lcd_handler.py           # LCDHandler — one per LCD device (owns LCDDevice, timers)
-    ├── metrics_mediator.py      # MetricsMediator — single polling authority for sensors
-    ├── base.py                  # BasePanel, BaseThemeBrowser, pil_to_pixmap
-    ├── constants.py             # Layout coords, sizes, colors, styles
-    ├── assets.py                # Asset loader with lru_cache
-    ├── eyedropper.py            # Fullscreen color picker
-    ├── pipewire_capture.py      # PipeWire/Portal Wayland capture
-    ├── uc_device.py             # Device sidebar
-    ├── uc_preview.py            # Live preview frame
-    ├── uc_theme_local.py        # Local theme browser
-    ├── uc_theme_web.py          # Cloud theme browser
-    ├── uc_theme_mask.py         # Mask browser
-    ├── uc_theme_setting.py      # Overlay editor / display mode panels
-    ├── uc_image_cut.py          # Image cropper
-    ├── uc_video_cut.py          # Video trimmer
-    ├── uc_system_info.py        # Sensor dashboard
-    ├── uc_sensor_picker.py      # Sensor selection dialog
-    ├── uc_info_module.py        # Live system info display
-    ├── uc_led_control.py        # LED RGB control panel (LED styles 1-13)
-    ├── uc_screen_led.py         # LED segment visualization (colored circles)
-    ├── uc_color_wheel.py        # HSV color wheel for LED hue selection
-    ├── uc_activity_sidebar.py   # Sensor element picker
-    └── uc_about.py              # Settings / about panel
-```
+- [`REFERENCE_PORTS.md`](REFERENCE_PORTS.md) — generated from the live ABCs: every port, what you implement, and who already implements it.
+- `src/trcc/core/registry.py` — `ALL_DEVICES`, the VID:PID → product and wire table.
+- `src/trcc/core/protocol.py` — `FBL_PROFILES` and the PM → FBL tables.
+- `src/trcc/adapters/device/` — one class per wire: `scsi_lcd.py`, `hid_lcd.py` (F5 bytes in `_f5.py`), `bulk_lcd.py`, `ly_lcd.py`, `led.py`.
+- `src/trcc/services/settings.py` — `Settings`, persisted to `trcc.json`.
+- `src/trcc/adapters/repo/data_install.py` — theme and mask archive download.
+- `src/trcc/ui/cli/`, `src/trcc/ui/api/`, `src/trcc/ui/gui/` — the CLI, REST API and GUI.
 
 ### Device Detection Flow
 
 ```text
-1. lsusb → find known VID:PID
-2. lsscsi → map USB to /dev/sgX
-3. sysfs → verify USBLCD vendor
-4. FBL query → detect resolution (or use default 320x320)
-5. Sort by /dev/sgX path, assign 0-based device_index
-6. Build device key: "{index}" (vid_pid stored inside the device dict)
-7. Restore per-device config (theme, brightness, rotation)
+1. Scan USB (PyUSB) for every VID:PID in ALL_DEVICES (Platform.scan_devices, adapters/system/_base.py)
+2. SCSI devices: map the USB device to /dev/sgX by walking sysfs (adapters/system/linux.py)
+3. Handshake → FBL or PM/SUB byte → resolution (core/protocol.py)
+4. Device key: "VID:PID", with "@<usb port>" appended only when two identical devices are plugged in
+5. Per-device settings (theme, brightness, orientation) are keyed by that device key in trcc.json
 ```
 
 ## Video Playback
@@ -590,43 +481,15 @@ The Linux port matches Windows behavior by using FFmpeg via subprocess for frame
 
 ## Configuration
 
-Settings stored in `~/.trcc/config.json`.
+Settings are stored in `trcc.json` in the config directory (`~/.trcc/trcc.json` on Linux), owned by `Settings` in `src/trcc/services/settings.py`. The file has three sections:
 
-### Global settings
+| Key | Contents |
+|-----|----------|
+| `app` | Global preferences — language, temperature unit (`"C"` / `"F"`), refresh interval, … (`AppSettings`, `services/settings.py`) |
+| `devices` | One entry per LCD, keyed by device key (e.g. `"0402:3922"`) — orientation, brightness (0-100), current theme, mask and overlay state, … (`DeviceSettings`, `core/models.py`) |
+| `led_devices` | One entry per LED controller (`LedDeviceSettings`, `core/led_models.py`) |
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `temp_unit` | int | 0=Celsius, 1=Fahrenheit |
-| `resolution` | [int,int] | LCD resolution |
-
-### Per-device settings
-
-Stored under `"devices"` keyed by index-only `"0"`, `"1"`, etc. The `vid_pid` is stored inside each device dict (e.g. `"vid_pid": "87cd_70db"`). Old `"0:vid_pid"` format is auto-migrated on `load_config()`.
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `theme_path` | string | Last selected theme directory or video file |
-| `brightness_level` | int | 1=25%, 2=50%, 3=100% |
-| `rotation` | int | 0, 90, 180, or 270 degrees |
-
-```json
-{
-  "temp_unit": 0,
-  "resolution": [320, 320],
-  "devices": {
-    "0:87cd_70db": {
-      "theme_path": "/home/user/.trcc/data/Theme320320/003a",
-      "brightness_level": 2,
-      "rotation": 0
-    },
-    "1:87cd_70db": {
-      "theme_path": "/home/user/.trcc/data/Theme320320/001b",
-      "brightness_level": 3,
-      "rotation": 90
-    }
-  }
-}
-```
+Each dataclass is written as-is, so its fields are the authoritative list.
 
 ## Quick Commands
 
@@ -649,7 +512,7 @@ trcc display set-orientation 0402:3922 90     # rotate display
 
 # Themes
 trcc theme list 0402:3922                     # list local themes
-trcc display load-theme 0402:3922 003a        # load and send theme
+trcc display load-theme 0402:3922 ~/.trcc/data/theme320320/Theme1  # load and send a theme directory
 trcc theme save 0402:3922 MyTheme             # save current as custom
 trcc theme export 0402:3922 003a out.tr       # export to .tr file
 trcc theme import 0402:3922 out.tr            # import from .tr file
@@ -666,8 +529,8 @@ trcc led toggle 0416:8001 off                 # turn LEDs off
 # Diagnostics
 trcc report                                   # full diagnostic report
 trcc doctor                                   # check deps and permissions
-trcc system hid-debug                         # HID handshake dump
-trcc system led-debug --test-colors           # LED diagnostic
+trcc system hid-debug 0402:3922              # handshake dump
+trcc system led-debug --test-colors 0416:8001 # LED diagnostic
 
 # GUI / API
 trcc gui                                      # launch GUI
@@ -677,7 +540,10 @@ trcc serve                                    # start REST API server
 > **Uninstalling:** there is no `trcc uninstall` command — it was dropped in
 > the rebuild and has not been restored. Remove the package with your package
 > manager (or `pip uninstall trcc-linux`), then delete `~/.trcc/`,
-> `~/.trcc-user/`, and the udev rule at `/etc/udev/rules.d/99-trcc-lcd.rules`.
+> `~/.trcc-user/`, and the files `trcc system setup` installs: the udev rules
+> `/etc/udev/rules.d/99-trcc-lcd.rules` and `/etc/udev/rules.d/70-trcc-rgb.rules`,
+> `/etc/modules-load.d/trcc-sg.conf`, `/etc/modules-load.d/trcc-rapl.conf`, and
+> `/etc/modprobe.d/trcc-lcd.conf` if present.
 
 ## Troubleshooting
 
@@ -694,7 +560,7 @@ sudo chmod 666 /dev/sgX
 ### Device not found
 ```bash
 # Check USB connection
-lsusb | grep -i "0402\|0416\|87cd"
+lsusb | grep -i "0402\|0416\|0418\|87cd\|87ad"
 
 # Check SCSI mapping
 lsscsi -t
@@ -705,12 +571,11 @@ sudo modprobe sg
 
 ### Display shows garbage
 - Verify resolution matches your LCD (default: 320x320)
-- Check pixel format (RGB565 big-endian)
+- Check pixel format (RGB565; big-endian on 320x320)
 - Ensure full frame is sent (204,800 bytes for 320x320)
 
 ## See Also
 
-- [USBLCD_PROTOCOL.md](audit/USBLCD_PROTOCOL.md) — Full SCSI protocol reverse-engineered from USBLCD.exe (handles `0402:3922`)
-- [PROTOCOL_USBLCDNEW.md](PROTOCOL_USBLCDNEW.md) — USB protocol reverse-engineered from USBLCDNEW.exe (handles `87CD:70DB`, `0416:5302`, `0416:5406`, `87AD:70DB`)
+- [PROTOCOL_USBLCDNEW.md](PROTOCOL_USBLCDNEW.md) — USB protocol reverse-engineered from USBLCDNEW (handles `87AD:70DB`, `0416:5302`, `0416:5406`, `0416:5408`, `0416:5409`)
 - [PROTOCOL_USBLED.md](PROTOCOL_USBLED.md) — HID LED protocol reverse-engineered from FormLED.cs (handles `0416:8001`)
 - [REFERENCE_DEVICES.md](REFERENCE_DEVICES.md) — Full device compatibility list with tester credits

@@ -170,6 +170,20 @@ trcc system setup                               # Interactive setup wizard
 
 See the **[CLI Reference](doc/REFERENCE_CLI.md)** for the full command list.
 
+### Interactive prompt
+
+`trcc shell` opens a `trcc>` prompt: type any command without the leading `trcc`. Tab completes command names, the up arrow brings back earlier lines (kept in `~/.local/state/trcc/shell_history`), `help` lists the commands, and `exit` or Ctrl-D leaves.
+
+```
+$ trcc shell
+trcc> detect
+trcc> display color 0402:3922 "#ff0000"
+trcc> led mode 0416:8001 breathing
+trcc> exit
+```
+
+Every line goes to the same running TRCC as the GUI and the API, so there is no start-up wait per command. If TRCC is stopped (`trcc kill`) the prompt closes; if TRCC crashes, the next command starts it again.
+
 ### REST API
 
 Start the API server and control your devices remotely:

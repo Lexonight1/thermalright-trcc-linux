@@ -1,6 +1,6 @@
 # Device Testing Guide
 
-All 5 protocols (SCSI, HID, LED, Bulk, LY) are implemented with **5243 automated tests** across 91 test files. Several HID/LED devices have been validated by testers. If you have a device not listed below, please help test.
+All 5 protocols (SCSI, HID, LED, Bulk, LY) are implemented and covered by the automated test suite. Several HID/LED devices have been validated by testers. If you have a device not listed below, please help test.
 
 ## Supported HID Devices
 
@@ -20,13 +20,15 @@ Run `lsusb` and look for your VID:PID:
 The fastest way to get started:
 
 ```bash
-pip install trcc-linux pyusb
-trcc system setup        # interactive wizard — checks all deps, installs udev rules, desktop entry
+pip install trcc-linux   # pyusb comes with it
+trcc system setup        # one-time setup — udev rules, SELinux policy (if enforcing), desktop entry; applies without asking (sudo asks for your password)
 ```
+
+`trcc system setup --dry-run` shows what it would change without changing anything.
 
 After setup finishes: **open a new terminal**. (If the device isn't picked up, restart your computer.)
 
-> **Already have TRCC installed?** Just run `pip install pyusb` and then `trcc gui` (HID is auto-detected).
+> **Already have TRCC installed?** Just run `trcc gui` (HID is auto-detected).
 
 For per-distro manual install commands, see the [Install Guide](GUIDE_INSTALL.md).
 
@@ -42,64 +44,51 @@ You should see your device listed. Example:
 
 ```text
 1 device(s) found:
-  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=240×320)
+  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=unknown)
+      this USB id covers several coolers — 'trcc device connect 0416:5302' names yours
+Resolutions above come from the catalog, not the panel.  Run 'trcc device connect <key>' to read the panel's own.
 ```
 
-`wire=hid` is expected here — HID devices don't use `/dev/sgX` like SCSI devices do.
+`wire=hid` is expected here — HID devices don't use `/dev/sgX` like SCSI devices do. `detect` never talks to the panel: the resolution is the catalog's, printed as `W×H (catalog)`, or `unknown` when one USB ID covers panels of several sizes (as `0416:5302` does). The panel's real resolution comes from the handshake in Step 2.
 
 > **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH.
 
 ## Step 2: Run HID Debug
 
-This is the most important step. The `hid-debug` command performs the handshake with your device and shows exactly what it reports:
+This is the most important step. The `hid-debug` command performs the handshake with your device and shows what it reports. It takes the device key from Step 1:
 
 ```bash
-trcc system hid-debug
+trcc system hid-debug 0416:5302
 ```
 
-Example output:
+The output has this shape (values depend on your panel):
 
 ```text
-HID Debug — Handshake Diagnostic
+HID/LCD diagnostic for 0416:5302
 ============================================================
+Handshake: <the connect result>
+  resolution: <W>x<H>
+  model_id:   <PM byte on HID Type 2; FBL on HID Type 3>
+  serial:     <only if the panel reports one>
+  sub_byte:   <SUB byte>
 
-Device: Winbond Electronics Corp. USBDISPLAY
-  VID:PID = 0416:5302
-  Type = 2
-  Implementation = hid_lcd
-
-  Attempting handshake...
-  Handshake OK!
-  PM byte  = 100 (0x64)
-  SUB byte = 0 (0x00)
-  FBL      = 100 (0x64)
-  Serial   = ABCDEF0123456789
-  Resolution = 320x320
-  Button image = A1FROZEN WARFRAME PRO
-  FBL 100 = known resolution
-
-  Raw handshake response (first 64 bytes):
-  0000: da db dc dd 64 00 00 00 00 00 00 00 01 00 00 00  ....d...........
-  0010: 10 00 00 00 ab cd ef 01 23 45 67 89 ab cd ef 01  ........#Eg.....
-  0020: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
-  0030: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+Persisted state:
+  orientation:     <degrees>
+  brightness:      <percent>%
+  current_theme:   <theme>
+  overlay_enabled: <True/False>
 
 ============================================================
-Copy the output above and paste it in your GitHub issue.
+Copy the output above into a GitHub issue.
 ```
+
+If the handshake fails, only the `Handshake:` line is printed and the command exits with status 1.
 
 **What to look for:**
 
-- **PM byte** — This identifies your product model. Known values: 5, 7, 9, 10, 11, 12, 32, 36, 50-53, 58, 64, 65, 100, 101
-- **FBL** — Determines the LCD resolution. If it says "UNKNOWN", we need to add your device's mapping
-- **Resolution** — Should match your LCD's actual pixel dimensions
-- **Button image** — If it says "unknown PM=X", we need to add your product to the mapping table
-
-If `hid-debug` shows an error like "Missing dependency", install pyusb:
-
-```bash
-pip install --break-system-packages pyusb
-```
+- **resolution** — Should match your LCD's actual pixel dimensions
+- **model_id** and **sub_byte** — These identify your product model and select the resolution and the wire rotation
+- If the panel reports a byte TRCC does not know, the log gets a WARNING starting `get_profile: UNKNOWN` naming the byte and the size TRCC assumed. `trcc report` (below) includes it — that line is what we need to add your device.
 
 ## Step 3: Try the GUI
 
@@ -120,11 +109,10 @@ Check:
 
 This usually means the handshake succeeded but frame transfer failed. The most common causes:
 
-1. **Wrong resolution detected** — The PM byte mapped to the wrong resolution, so frames are the wrong size. Run `trcc system hid-debug` and share the output
+1. **Wrong resolution detected** — The PM byte mapped to the wrong resolution, so frames are the wrong size. Run `trcc system hid-debug <key>` and share the output
 2. **USB permissions** — Run `trcc system setup`, then restart your computer if it still isn't detected
-3. **Missing pyusb** — Run `pip install --break-system-packages pyusb`
 
-### "No HID devices found" in hid-debug
+### hid-debug fails at the handshake
 
 1. Make sure the USB cable is plugged in
 2. Run `lsusb` — you should see your device listed
@@ -133,7 +121,7 @@ This usually means the handshake succeeded but frame transfer failed. The most c
 
 ### Device shows wrong name in sidebar
 
-After the HID handshake, the sidebar button updates based on the PM (product mode) byte. If your device shows a wrong name (e.g. "TARAN ARMS" when it's a Trofeo Vision), it means we need to update the PM→product mapping. Run `trcc system hid-debug` and share the PM byte.
+After the HID handshake, the sidebar button updates based on the PM (product mode) byte. If your device shows a wrong name (e.g. "TARAN ARMS" when it's a Trofeo Vision), it means we need to update the PM→product mapping. Run `trcc system hid-debug <key>` and share its output.
 
 ### GUI opens but device isn't in the sidebar
 
@@ -169,111 +157,26 @@ Even a "it doesn't work" report is helpful — the `trcc report` output tells us
 
 TRCC Linux supports 5 USB protocol types:
 
-- **SCSI** (`87CD:70DB`, `0416:5406`, `0402:3922`) — USB Mass Storage, sends raw RGB565 pixels via `sg_raw`
+- **SCSI** (`87CD:70DB`, `0402:3922`) — USB Mass Storage; on Linux, frames go to `/dev/sgN` through the kernel's SG_IO ioctl
 - **HID Type 2** (`0416:5302`) — USB HID, DA/DB/DC/DD magic bytes, RGB565 frames with 20-byte header (512-byte aligned)
-- **HID Type 3** (`0418:5303`, `0418:5304`) — USB HID, 0x65/0x66 prefix, fixed-size frames with ACK
+- **HID Type 3 / F5** (`0418:5303`, `0418:5304`, `0416:5406`) — 16-byte `F5 00` handshake / `F5 01` frame headers, fixed-size frames with ACK; 0x65/0x66 are identity values in the panel's reply, not a prefix (`VALID_IDENTITY` in `adapters/device/_f5.py`)
 - **HID LED** (`0416:8001`) — USB HID, 64-byte reports for RGB LED color/effect control
 - **Bulk** (`87AD:70DB`) — Raw USB vendor-specific protocol via pyusb (GrandVision/Mjolnir Vision/Wonder Vision Pro/Frozen Warframe Pro)
 - **LY** (`0416:5408`, `0416:5409`) — USB bulk protocol for LY-type LCDs (Trofeo Vision 9.16 LCD), 512-byte chunked frames with 16-byte headers
 
 ### Resolution Detection
 
-The handshake response contains a **PM (Product Mode)** byte that identifies the device model. This maps through two tables:
+The handshake response contains a **PM (Product Mode)** byte that identifies the device model, and a **SUB** byte. They map through tables in `src/trcc/core/protocol.py`, which is the source of truth — this guide does not copy them:
 
-1. **PM → FBL**: `pm_to_fbl()` in `core/models.py` converts the product mode to an FBL (Feature Byte Length) code
-2. **FBL → Resolution**: `fbl_to_resolution()` in `core/models.py` maps FBL to pixel dimensions
+1. **PM → FBL**: `pm_to_fbl()` returns the FBL (Feature Byte Length) code. By default PM = FBL; the exceptions are `_PM_TO_FBL_OVERRIDES`, and `_PM_SUB_TO_FBL` holds the (PM, SUB) pairs checked first (PM=1 + SUB=48 → FBL 114, 1600x720; PM=1 + SUB=49 → FBL 192, 1920x462).
+2. **FBL → profile**: `get_profile()` looks the FBL up in `FBL_PROFILES` — resolution, RGB565 or JPEG (`jpeg`), byte order (`big_endian`), and whether the frame is rotated for the wire. `fbl_to_resolution()` returns just the size.
 
-| PM | FBL | Resolution | Products |
-|----|-----|------------|----------|
-| 5 | 50 | 240x320 | |
-| 7 | 64 | 640x480 | |
-| 9, 11 | 224 | 854x480 | |
-| 10 | 224 | 960x540 | |
-| 12 | 224 | 800x480 | |
-| 32 | 100 | 320x320 | |
-| 36 | — | — | AS120 VISION |
-| 50, 51 | — | — | FROZEN WARFRAME |
-| 52, 53 | — | — | BA120 VISION |
-| 58 | — | — | FROZEN WARFRAME SE |
-| 64 | 114 | 1600x720 | |
-| 65 | 192 | 1920x462 | |
-| 100 | — | — | FROZEN WARFRAME PRO |
-| 101 | — | — | ELITE VISION |
+**Shared FBLs:** FBL 224 and FBL 192 each cover several resolutions, and the PM byte picks one (`_FBL_224_BY_PM`, `_FBL_192_BY_PM`). FBL 224 falls back to 854x480 and FBL 192 to 1920x462 for a PM not in its table — and logs a `get_profile: UNKNOWN PM=…` WARNING when it does. An FBL missing from `FBL_PROFILES` falls back to 320x320 big-endian with the same kind of WARNING.
 
-If your device reports a PM byte not in this table, we need to add it. The `trcc system hid-debug` output tells us exactly what PM byte your device uses.
+**JPEG vs RGB565 on HID Type 2:** header byte[6] = 0x00 (JPEG) vs 0x01 (RGB565).
 
-### FBL → Resolution Table
+If your device reports a PM byte TRCC does not know, the WARNING in `trcc report` names it, and `trcc system hid-debug <key>` shows the resolution TRCC resolved.
 
-The FBL (Feature Byte Length) byte determines the LCD resolution. This is the complete mapping from `core/models.py`:
+### Theme Resolutions
 
-| FBL | Resolution | Encoding | Byte Order | Notes |
-|-----|------------|----------|------------|-------|
-| 36 | 240x240 | RGB565 | Little-endian | Small square |
-| 37 | 240x240 | RGB565 | Little-endian | Small square (alt) |
-| 50 | 320x240 | RGB565 | Little-endian | Portrait, PM=5 |
-| 51 | 320x240 | RGB565 | Big-endian | Portrait, SPIMode=2 |
-| 54 | 360x360 | JPEG | Little-endian | Medium square |
-| 64 | 640x480 | RGB565 | Little-endian | VGA, PM=7 |
-| 72 | 480x480 | RGB565 | Little-endian | Large square |
-| 100 | 320x320 | RGB565 | Big-endian | Most common |
-| 101 | 320x320 | RGB565 | Big-endian | FROZEN WARFRAME PRO |
-| 102 | 320x320 | RGB565 | Big-endian | ELITE VISION |
-| 114 | 1600x720 | JPEG | Little-endian | Ultrawide, PM=64 |
-| 128 | 1280x480 | JPEG | Little-endian | Trofeo Vision |
-| 192 | 1920x462 | JPEG | Little-endian | Ultrawide, PM=65 |
-| 224 | 854x480 | JPEG | Little-endian | Wide (default) |
-| 224 | 960x540 | JPEG | Little-endian | Wide, PM=10 |
-| 224 | 800x480 | JPEG | Little-endian | Wide, PM=12 |
-
-**FBL 224 disambiguation:** FBL 224 is shared by 3 resolutions. The PM byte determines the actual resolution: PM=10 → 960x540, PM=12 → 800x480, all others → 854x480.
-
-**JPEG mode FBLs:** 54, 114, 128, 192, 224 use JPEG encoding instead of raw RGB565. Header byte[6] = 0x00 (JPEG) vs 0x01 (RGB565).
-
-### PM → FBL Overrides
-
-For most devices, PM=FBL (the PM byte is the FBL directly). These PM values map to a different FBL:
-
-| PM | FBL | Resolution | Products |
-|----|-----|------------|----------|
-| 5 | 50 | 320x240 | |
-| 7 | 64 | 640x480 | |
-| 9 | 224 | 854x480 | |
-| 10 | 224 | 960x540 | |
-| 11 | 224 | 854x480 | |
-| 12 | 224 | 800x480 | |
-| 32 | 100 | 320x320 | |
-| 36 | 36 | 240x240 | AS120 VISION |
-| 50 | 50 | 320x240 | FROZEN WARFRAME |
-| 51 | 51 | 320x240 | FROZEN WARFRAME |
-| 52 | 52 | — | BA120 VISION |
-| 53 | 53 | — | BA120 VISION |
-| 58 | 58 | — | FROZEN WARFRAME SE |
-| 64 | 114 | 1600x720 | |
-| 65 | 192 | 1920x462 | |
-| 100 | 100 | 320x320 | FROZEN WARFRAME PRO |
-| 101 | 101 | 320x320 | ELITE VISION |
-| 128 | 128 | 1280x480 | Trofeo Vision |
-
-**Compound key:** PM=1 + SUB=48 → FBL 114 (1600x720), PM=1 + SUB=49 → FBL 192 (1920x462).
-
-### All Supported Theme Resolutions
-
-Theme data is bundled for all 16 resolutions. If a resolution's archive isn't included in the install, it downloads automatically from GitHub on first use.
-
-| Resolution | Source FBLs | Notes |
-|------------|-------------|-------|
-| 240x240 | 36, 37 | Small square |
-| 320x240 | 50, 51 | Portrait |
-| 320x320 | 100, 101, 102 | Most common |
-| 360x360 | 54 | Medium square |
-| 480x480 | 72 | Large square |
-| 640x480 | 64 | VGA |
-| 800x480 | 224 (PM=12) | Wide |
-| 854x480 | 224 | Wide (default for FBL 224) |
-| 960x540 | 224 (PM=10) | Wide |
-| 1280x480 | 128 | Trofeo Vision |
-| 1600x720 | 114 | Ultrawide, split mode |
-| 1920x462 | 192 | Ultrawide |
-| 480x800 | — | Portrait variant |
-| 480x854 | — | Portrait variant |
-| 540x960 | — | Portrait variant |
+Theme data is not inside the pip package. When a device connects, TRCC downloads the archives for its resolution from GitHub in the background (`theme{W}{H}.7z`, `web/{W}{H}.7z`, `web/zt{W}{H}.7z` under [`src/trcc/data/`](../src/trcc/data/)). That directory is the list of supported theme resolutions, portrait and split-mode variants included.

@@ -1,15 +1,15 @@
 # FormLED.cs — HID LED Protocol Reference
 
-Reverse-engineered from `FormLED.cs`, `UCDevice.cs`, and `UCScreenLED.cs` (TRCC 2.1.2, .NET/ILSpy decompilation). This covers the **HID LED protocol** used by RGB LED devices (VID:PID `0416:8001`).
+Reverse-engineered from `FormLED.cs`, `UCDevice.cs`, and `UCScreenLED.cs` (.NET/ILSpy decompilation; the C# oracle release is the one named by `ORACLE_VERSION` in `dev/decompiler/core/csharp.py`). This covers the **HID LED protocol** used by RGB LED devices (VID:PID `0416:8001`).
 
-For SCSI LCD devices, see [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md).
+For SCSI LCD devices, see the SCSI section of [REFERENCE_TECHNICAL.md](REFERENCE_TECHNICAL.md#scsi-commands).
 For HID LCD devices, see [PROTOCOL_USBLCDNEW.md](PROTOCOL_USBLCDNEW.md).
 
 ## Overview
 
 ```text
 Windows:  TRCC.exe → FormLED.cs (effects) → UCDevice.cs (HID sender) → USB HID 64-byte reports
-Linux:    trcc → LEDController (effects) → LedHidSender (chunking) → pyusb/hidapi → USB HID
+Linux:    trcc → LEDEffectEngine (effects) → Led (packet + chunking) → pyusb/hidapi → USB HID
 ```
 
 LED devices use 64-byte HID reports (not SCSI) for RGB LED control. The protocol consists of:
@@ -57,24 +57,23 @@ Offset  Size  Value         Description
 
 ```text
 Offset  Size  Value         Description
-0-3     4     DA DB DC DD   Magic echo (must match)
-4       1     ??            Reserved
-5       1     SUB           Sub-type byte (distinguishes HR10 from LC1)
-6       1     PM            Product Model byte (identifies device)
-7-11    5     ??            Reserved
-12      1     01            Command echo (must be 1)
+0-3     4     DA DB DC DD   Magic echo
+4       1     SUB           Sub-type byte
+5       1     PM            Product Model byte (identifies device)
+6-11    6     ??            Reserved
+12      1     01            Command echo
 13-63   52    ??            Device-specific data
 ```
 
-**Validation:**
-- `response[0:4]` must equal `DA DB DC DD`
-- `response[12]` must equal `1` (handshake echo)
+**Validation:** none is enforced. The Windows `DeviceDataReceived1` does not check the magic or the command byte, and neither does trcc: an unexpected value is logged as a warning and the reply is still parsed (`Led._parse_reply` in `adapters/device/led.py`). A recognised fingerprint header (see below) is not warned about.
 
 **Key bytes:**
-- `response[6]` = **PM** (product model) — used to select LED style
-- `response[5]` = **SUB** (sub-type) — disambiguates devices sharing a PM byte
+- `response[5]` = **PM** (product model) — used to select LED style
+- `response[4]` = **SUB** (sub-type) — recorded, but not used to pick a style
 
-**Firmware limitation:** The handshake only works **once per power cycle**. Subsequent init packets receive no response. The Linux implementation caches handshake results to `~/.config/trcc/led_probe_cache.json`.
+The Windows handler's `data[]` array carries a leading report-ID byte, so its indices are one higher than these (its `data[17] == 16` is byte 16 here, `UCDevice.cs`).
+
+**Firmware limitation:** The handshake only works **once per power cycle**. Subsequent init packets receive no response. The Linux implementation caches handshake results to `led_probe_cache.json` in the config directory (`~/.trcc/led_probe_cache.json` on Linux).
 
 ## PM → Style Mapping
 
@@ -82,25 +81,29 @@ From `FormLEDInit()` (FormLED.cs line 1598):
 
 | PM Byte | Style | Model | LED Count | Segments | Zones | Background |
 |---------|-------|-------|-----------|----------|-------|------------|
-| 1 | 1 | FROZEN HORIZON PRO | 30 | 10 | 1 | D0数码屏 |
-| 2 | 1 | FROZEN MAGIC PRO | 30 | 10 | 1 | D0数码屏 |
-| 3 | 1 | AX120 DIGITAL | 30 | 10 | 1 | D0数码屏 |
-| 16-31 | 2 | PA120 DIGITAL | 84 | 18 | 4 | D0数码屏4区域 |
+| 1 | 1 | FROZEN HORIZON PRO | 30 | 10 | 4 | D0数码屏 |
+| 2 | 1 | FROZEN MAGIC PRO | 30 | 10 | 4 | D0数码屏 |
+| 3 | 1 | AX120 DIGITAL | 30 | 10 | 4 | D0数码屏 |
+| 16-22, 24-31 | 2 | PA120 DIGITAL | 84 | 18 | 4 | D0数码屏4区域 |
+| 23 | 2 | RK120 DIGITAL | 84 | 18 | 4 | — |
 | 32 | 3 | AK120 DIGITAL | 64 | 10 | 2 | D0数码屏 |
-| 48-49 | 5 | LF8 | 93 | 23 | 2 | D0LF8 |
+| 48 | 5 | LF8 | 93 | 23 | 2 | D0LF8 |
+| 49 | 5 | LF10 (LF8 layout) | 93 | 23 | 2 | — |
 | 80 | 6 | LF12 | 124 | 72 | 2 | D0LF12 |
 | 96 | 7 | LF10 | 116 | 12 | 3 | D0LF10 |
-| 112 | 9 | LC2 | 61 | 31 | 1 | D0LC2 |
-| 128 | 4 | LC1 | 31 | 14 | 1 | D0LC1 |
-| 128 (sub=129) | 13 | HR10 2280 PRO DIGITAL | 31 | 14 | 1 | D0数码屏 |
-| 129 | 10 | LF11 | 38 | 17 | 1 | D0LF11 |
+| 112 | 9 | LC2 | 61 | 31 | 0 | D0LC2 |
+| 128 | 4 | LC1 | 31 | 14 | 3 | D0LC1 |
+| 129 | 10 | LF11 (wire sub-variant 1) | 38 | 17 | 4 | D0LF11 |
 | 144 | 11 | LF15 | 93 | 72 | 2 | D0LF15 |
-| 160 | 12 | LF13 | 62 | 62 | 1 | D0rgblf13 |
+| 160 | 12 | LF13 | 62 | 62 | 0 | D0rgblf13 |
+| 176 | 5 | LF25 (LF8 layout, wire sub-variant 1) | 93 | 23 | 2 | — |
 | 208 | 8 | CZ1 | 18 | 13 | 4 | D0CZ1 |
+
+Source of truth: `_PM_REGISTRY` in `src/trcc/core/led_protocol.py` (PM → style and model), `LED_STYLES` in `src/trcc/core/led_models.py` (LED count; Zones is its `zone_count`, where 0 means no zone buttons), and `LEGACY_STYLE_ID` (the Style column). Segments and Background come from the C# and are not mirrored in code.
 
 **LED Count vs Segment Count:** LEDs are the physical addressable units. Segments are logical groups shown in the GUI. For style 1: 30 LEDs, 10 segments = 3 LEDs per segment.
 
-**Sub-type disambiguation:** PM=128 is shared by LC1 (sub=0) and HR10 (sub=129). The `SUB_TYPE_OVERRIDES` table resolves this.
+**SUB byte:** trcc does not use it to pick a style — `resolve_pm()` looks up the PM byte alone, so PM=128 is always LC1.
 
 ### Handshake-header overrides (Linux additions)
 
@@ -118,7 +121,7 @@ with `DC DD AA 01` instead of the standard `DA DB DC DD` — the only wire-level
 signal that tells it apart. It is a 65-LED device (two 7-segment digits at 3 LEDs
 per segment, four corner metric indicators, and a 15-LED contour border) with a
 CZ1-style 2-digit / 4-phase indicator rotation (CPU°C / GPU°C / GPU% / CPU%). No
-reference exists in the Windows TRCC 2.1.4/2.1.6 app; the layout was
+reference exists in the Windows TRCC app, including the oracle release; the layout was
 reverse-engineered on hardware and validated by
 [@jphilipb](https://github.com/jphilipb).
 
@@ -168,6 +171,8 @@ scaled_b = int(b * brightness / 100 * 0.4)
 
 Source: `(float)(int)color * 0.4f` in FormLED.cs `SendHidVal`.
 
+In trcc the service layer applies brightness before the wire; `Led` applies only the ×0.4 (`adapters/device/led.py`).
+
 Off LEDs send `(0, 0, 0)`.
 
 ### Complete Packet
@@ -203,7 +208,7 @@ Packet size   Chunks   Example
 
 ## LED Effect Modes
 
-Six effect modes, each implemented as a timer function in FormLED.cs. The timer fires every ~30ms.
+Six effect modes, each implemented as a timer function in FormLED.cs. The timer fires every ~30ms. trcc implements these six as `LEDMode` 0-5 (`src/trcc/core/led_models.py`) and adds its own mode 6, OpenRGB.
 
 ### Mode 0: Static (DSCL_Timer)
 
@@ -338,7 +343,7 @@ From FormLED.cs `ucColor1_ChangeColor` handlers:
 
 ## Multi-Zone Devices
 
-Styles 2, 3, 5, 6, 7, 8, 11 have 2-4 independent zones. Each zone has its own:
+Every style except LC2 (9) and LF13 (12) has 2-4 independent zones (`zone_count` in `LED_STYLES`). Each zone has its own:
 - Mode (static, breathing, rainbow, etc.)
 - Color (RGB)
 - Brightness (0-100)
@@ -351,81 +356,6 @@ The LED payload maps physical LEDs to zones. For style 2 (PA120 DIGITAL, 84 LEDs
 - Zone 4: GPU LEDs
 
 `SendHidVal()` reorders the segment-ordered color array to match the device's physical wire order before transmission.
-
-## HR10 2280 PRO Digital (Style 13)
-
-The HR10 is a NVMe SSD heatsink with a 31-LED 7-segment display. It shares PM=128 with LC1 but is distinguished by `sub_type=129` in the handshake response.
-
-### Physical LED Layout
-
-```text
-Wire positions (left → right on the physical heatsink):
-
-[Digit4] [Digit3] [Digit2] [°] [Digit1] [MB/s] [%]
-
-LED Index:  0    1    2    3    4    5    6    7    8    9   10   ...   30
-Purpose:  MB/s  %   [----Digit 1----] [°]  [----Digit 2----] ...
-```
-
-| LED Index | Purpose |
-|---|---|
-| 0 | MB/s indicator |
-| 1 | % indicator |
-| 2-7, 9 | Digit 1 (rightmost): segments c, d, e, g, b, a, f |
-| 8 | ° (degree) indicator |
-| 10-16 | Digit 2: segments c, d, e, g, b, a, f |
-| 17-23 | Digit 3: segments c, d, e, g, b, a, f |
-| 24-30 | Digit 4 (leftmost): segments c, d, e, g, b, a, f |
-
-### 7-Segment Wire Order
-
-Each digit's 7 segments are wired in the order: **c, d, e, g, b, a, f**
-
-Standard 7-segment labeling:
-```text
- aaa
-f   b
-f   b
- ggg
-e   c
-e   c
- ddd
-```
-
-### Character Encoding
-
-| Char | Segments ON |
-|---|---|
-| 0 | a, b, c, d, e, f |
-| 1 | b, c |
-| 2 | a, b, d, e, g |
-| 3 | a, b, c, d, g |
-| 4 | b, c, f, g |
-| 5 | a, c, d, f, g |
-| 6 | a, c, d, e, f, g |
-| 7 | a, b, c |
-| 8 | a, b, c, d, e, f, g |
-| 9 | a, b, c, d, f, g |
-
-### Display Modes
-
-The HR10 GUI panel shows drive metrics via the 7-segment display:
-
-| Mode | Indicators | Example |
-|---|---|---|
-| Temperature | ° | "52C" with ° lit |
-| Activity | % | "87" with % lit |
-| Read speed | MB/s | "1250" with MB/s lit |
-| Write speed | MB/s | "830" with MB/s lit |
-
-### NVMe Temperature Daemon
-
-`trcc hr10-tempd` runs as a standalone daemon:
-1. Reads NVMe temperature from `/sys/class/hwmon/hwmon*/temp1_input` (matched by drive model string)
-2. Converts to color using a thermal gradient (blue→cyan→green→yellow→orange→red)
-3. Applies breathe animation that speeds up as temperature rises
-4. Sends to HR10 via HID every animation tick
-5. Fast red blink above throttle threshold (~80°C)
 
 ## State Variables
 
@@ -462,41 +392,36 @@ The HR10 GUI panel shows drive metrics via the 7-segment display:
 
 The firmware only responds to the handshake **once per power cycle**. To avoid consuming the one-shot handshake during device detection, the Linux implementation caches probe results:
 
-**Cache file:** `~/.config/trcc/led_probe_cache.json`
+**Cache file:** `led_probe_cache.json` in the config directory (`~/.trcc/led_probe_cache.json` on Linux)
 
 ```json
 {
     "0416_8001": {
         "pm": 3,
-        "sub_type": 0,
-        "model_name": "AX120_DIGITAL",
-        "style_id": 1
+        "sub": 0,
+        "model_name": "AX120_DIGITAL"
     },
     "0416_8001_2-1.4": {
         "pm": 128,
-        "sub_type": 129,
-        "model_name": "HR10_2280_PRO_DIGITAL",
-        "style_id": 13
+        "sub": 0,
+        "model_name": "LC1"
     }
 }
 ```
 
-Cache keys include the USB bus path (e.g. `2-1.4`) to disambiguate multiple devices with the same VID:PID.
+Cache keys include the USB bus path (e.g. `2-1.4`) to disambiguate multiple devices with the same VID:PID; a lookup falls back to the plain `vid_pid` key.
 
 ## Linux Implementation Files
 
 | File | Purpose |
 |---|---|
-| `device_led.py` | Constants, styles, PM mapping, packet builder, HID sender, probe cache |
-| `device_factory.py` | `LedProtocol` class (observer pattern, transport management) |
-| `controllers.py` | `LEDController` (effect engine), `LEDDeviceController` (orchestrator) |
-| `models.py` | `LEDMode`, `LEDState`, `LEDModel` (MVC state + tick computation) |
-| `hr10_display.py` | HR10 7-segment renderer (text → 31-LED color array) |
-| `hr10_tempd.py` | HR10 NVMe temperature daemon |
-| `uc_led_control.py` | PyQt6 GUI panel (all LED styles 1-13) |
-| `uc_screen_led.py` | LED segment visualization widget |
-| `uc_color_wheel.py` | HSV color wheel widget |
-| `uc_seven_segment.py` | 7-segment display preview widget |
+| `adapters/device/led.py` | `Led` — handshake, PM/SUB parse, probe cache, packet builder, 64-byte chunking |
+| `core/led_protocol.py` | PM → style registry, handshake-header overrides, wire-order remap |
+| `core/led_models.py` | `LEDMode`, `LedStyle`, `LED_STYLES`, `LedPayload` |
+| `services/led_effects.py` | `LEDEffectEngine` — effect computation |
+| `ui/gui/uc_led_control.py` | PySide6 GUI panel |
+| `ui/gui/uc_screen_led.py` | LED segment visualization widget |
+| `ui/gui/uc_color_wheel.py` | HSV color wheel widget |
 
 ## See Also
 

@@ -29,18 +29,22 @@ them; it only *invokes* them.
 2. **State → one `Settings`, persisted to `trcc.json`.** All mutable app +
    per-device state (resolution, orientation, current theme, background,
    format prefs) lives in `services/settings.py` → `Settings`, persisted to
-   `paths.config_dir()/trcc.json` (`_CONFIG_FILE`). Every UI reads and writes
-   `app.settings`; **no UI keeps its own copy.** This is why a theme picked in
+   `paths.config_dir()/trcc.json` (`CONFIG_FILE`). Every UI reaches it through
+   the App — as `app.settings` in-process, and through Commands and Queries in
+   daemon mode (the default), where the `AppProxy` exposes only the bus and
+   refuses `.settings`; **no UI keeps its own copy.** This is why a theme picked in
    the GUI is already selected when you open the CLI — the state was never in
    the GUI, it was in `trcc.json`.
 3. **Lifecycle → one entry sequence.** From launch to a displaying device the
-   steps are identical everywhere: **detect → ensure data → connect → restore
-   → stream** (below). A UI decides *when* to run a step (GUI on window-ready,
+   steps are identical everywhere: **detect → connect (+ data install) →
+   restore → stream** (below). A UI decides *when* to run a step (GUI on window-ready,
    CLI on command, API on request), never *what* the step does.
 4. **Launch → one contract: `run(platform) -> int`.** Every leaf UI is injected
    the `Platform` *port* — the abstraction the mock replaces (`MockPlatform`) —
-   and composes its own App from it (via `_boot.trcc(platform, renderer)`,
-   the one App factory). **Inject the Platform, not a pre-built App:** the GUI's
+   and asks for its App with it (`UserInterface.compose` →
+   `_boot.trcc(platform=…, renderer=…)`, the one App factory). That returns
+   the shared App's `AppProxy` unless `_boot._local_reason` names a reason to
+   build in-process — a stand-in platform such as `MockPlatform` is one. **Inject the Platform, not a pre-built App:** the GUI's
    Qt-before-renderer and single-instance-before-build ordering can't receive an
    injected App, so the platform is the only *uniform* seam (DIP — depend on the
    port; each UI owns its own renderer lifecycle). The GUI + qtgui share
@@ -71,8 +75,10 @@ path:
   a missing device means to it (`SendColor` fails, `LoadTheme` still saves the
   choice), and a failed connect's recorded reason ("permission denied on
   /dev/sg1") reaches its message. Per-tick Commands never connect — a panel
-  that is unplugged would be retried at frame rate. So a UI has no connect step
-  of its own; the one left is the CLI `slideshow-run` loop (P4d). (#150, and
+  that is unplugged would be retried at frame rate. So a UI needs no connect
+  step of its own. The CLI still dispatches `ConnectDevice` itself in
+  `resume`, `quickstart`, `hid-debug` / `led-debug` and its reconnect loop
+  (`ui/cli/_ctx.py`). (#150, and
   before 2026-09-28 the CLI connected before 21 verbs, the API before 9 routes
   and 6 not at all.)
 - **A session shows each panel's saved display — `App._prime`, once, in core.**
@@ -87,8 +93,9 @@ path:
   restored on every poll.)
 - **`RestoreDeviceState` is the one restore, and it always restores.** Every
   UI's "restore" verb dispatches it (CLI `restore-theme` / `resume`, API
-  `restore-theme`, qtgui's button), even over a push; so do the CLI `play` and
-  `keepalive` loops, whose fresh process is blank. It needs a connected device
+  `restore-theme`, qtgui's button), even over a push; so does the CLI `play`
+  loop, whose fresh process is blank. `keepalive` dispatches `KeepAliveLoop`,
+  which restores only when the panel has nothing to resend (#267). It needs a connected device
   and fails with the connect reason otherwise. "Only if blank" is the session
   prime's rule, not the Command's.
 - **Per-tick handlers log at DEBUG; one-shot actions at INFO.** (See CLAUDE.md
@@ -103,9 +110,9 @@ The whole path, launch → glass, as shared Commands:
 
 | Step | Command(s) | What it does |
 |---|---|---|
-| detect | `DiscoverDevices` | scan the bus, resolve `DeviceInfo` |
-| ensure data | `EnsureDataDownload(w, h)` | download + extract the themes/masks for this canvas |
-| connect | `ConnectDevice` / `EnsureConnected` | attach + handshake |
+| detect | `DiscoverDevices` | scan the bus, resolve `DeviceInfo` — installs no data |
+| connect | `ConnectDevice` / `EnsureConnected` | attach + handshake; queues the themes/masks for the handshake's resolution on `app.data_install_runner` (background) |
+| ensure data | `EnsureDataDownload(width, height)` | the explicit, synchronous pre-fetch of the same archives |
 | restore | `RestoreDeviceState` | persisted theme → else first theme → replay background |
 | stream | `RenderAndSend` / `KeepAliveLoop` | render live metrics + keep a volatile panel lit |
 
@@ -118,32 +125,34 @@ and qtgui must reach the same sequence, not a bespoke onboarding each.
 The backbones exist; the *lifecycle* is not yet unified — first-run is
 reimplemented per surface, and that is the standing debt this doc names:
 
-- **CLI:** `RunQuickstart` + implicit `EnsureDataDownload` via `DiscoverDevices`
+- **CLI:** `trcc quickstart` (`RunQuickstart`, then its own `ConnectDevice`)
   + `system.py`.
 - **API:** an explicit `POST /theme/init` (`EnsureDataDownload`) + `/devices`
-  scan — no single onboarding call.
-- **GUI:** `splash.py` + `trcc_app` download orchestration on launch.
+  scan — no single onboarding call. It reaches `RunQuickstart` too.
+- **GUI:** `splash.py` on launch; the install runs in the App, and the grids
+  refill on `DataInstalled` (`TRCCApp._on_bus_data_installed`).
 - **qtgui:** `device_picker` + `device_panel` — least verified.
 
-The target is a single shared "ensure-ready" path (detect → ensure data →
-connect → restore) each UI invokes, the way `RestoreDeviceState` unified the
+The target is a single shared "ensure-ready" path (detect → connect + data
+install → restore) each UI invokes, the way `RestoreDeviceState` unified the
 restore step. Until then, adding onboarding to one UI without the others is the
 drift to resist.
 
 ## The parity gate
 
-`tests/test_ui_parity.py` pins the CLI ↔ API Command surface: the two complete
-programmatic UIs must dispatch the same Commands (today ~95 shared), and every
-intentional asymmetry lives in an annotated ledger — `_CLI_ONLY` / `_API_ONLY` —
-where each reason is tagged **`scoped:`** (legitimately one-UI) or **`gap:`**
-(should reach parity — a tracked TODO, e.g. `RunQuickstart`, the first-run
-lifecycle drift). A new Command wired into one surface but not the other **fails
-the test**, forcing the author to either reach parity or ledger it with a reason;
-a stale ledger entry (no longer diverging) also fails, so the ledger can't rot.
-A shared-surface floor guards against the collector silently returning empty and
-passing vacuously. That test is the enforceable half of this doc; the prose is
-the why. (GUI/qtgui dispatch via handlers, not top-level imports, so their
-reachability needs a dynamic collector — a future gate.)
+`tests/test_ui_parity.py` pins which UIs reach each Command, across all four
+trees, using the collector in `dev/tools/ui_contract.py`: the CLI and API must
+dispatch the same Commands, no Command may be reached by neither GUI, and a
+Command reachable from at most one UI must be recorded. Every intentional
+asymmetry lives in one annotated record — `KNOWN_UI_ASYMMETRY` — where each
+reason is tagged **`scoped:`** (legitimately limited to some UIs) or **`gap:`**
+(should reach parity — a tracked TODO, e.g. `SleepDevice`, which neither window
+offers). A new Command wired into one surface but not the other **fails the
+test**, forcing the author to either reach parity or record it with a reason;
+an entry whose recorded reach no longer matches reality also fails, so the
+record can't rot. A shared-surface floor guards against the collector silently
+returning empty and passing vacuously. That test is the enforceable half of
+this doc; the prose is the why.
 
 ## Anti-patterns — the ways UI unity breaks
 

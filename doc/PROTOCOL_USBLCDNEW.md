@@ -19,9 +19,9 @@ directly — the same protocol commands, different transport library.
 |---|---|
 | Type | .NET 8.0 (C#), clean decompilation |
 | Version | 2.3.0 |
-| Size | ~1150 lines decompiled |
+| Size | ~1370 lines decompiled |
 | USB API | LibUsbDotNet (→ WinUSB/libusb) |
-| Source | TRCC **2.1.6** installer payload → `TRCCCAP/USBLCDNEW.dll` (net8.0; `USBLCDNEW.exe` is the apphost stub, the code is in the .dll) |
+| Source | The installer payload of the oracle release (named by `ORACLE_VERSION` in `dev/decompiler/core/csharp.py`) → `USBLCDNEW.dll` (net8.0; `USBLCDNEW.exe` is the apphost stub, the code is in the .dll) |
 
 ## Supported Devices
 
@@ -33,12 +33,7 @@ directly — the same protocol commands, different transport library.
 
      ONE was deliberately left as 87CD: the "87CD:70DB via SCSI" row in the
      implementation-mapping table near the end, which is about the SCSI
-     path and reads consistently as the SCSI device.
-
-     That table is ALSO pre-cutover: it names device_scsi.py / device_hid.py,
-     which do not exist in the shipping tree.  Not rewritten here — the byte
-     tables above are what this document is read for, and they are now
-     verified against the 2.1.6 USBLCDNEW decompile. -->
+     path and reads consistently as the SCSI device. -->
 
 | VID:PID | Decimal | Handler | Protocol | Write EP | Read EP |
 |---|---|---|---|---|---|
@@ -123,11 +118,11 @@ Two branches based on `response[56]`:
 9-byte header + 8-char hex string:
 
 Byte  Source          Purpose
-0     response[32]    PM (product mode) byte
-1     response[36]    Unknown
+0     response[32]    Unknown (TRCC.exe tests it when picking this branch, Form1.cs:1044)
+1     response[36]    SUB byte (TRCC.exe reads slot 1 as SUB, Form1.cs:1071)
 2     0x48 ('H')      Hardcoded type marker
 3     response[40]    Unknown
-4     response[24]    Device present flag
+4     response[24]    PM (product mode) byte (TRCC.exe reads slot 4 as PM, Form1.cs:1071); non-zero = device present
 5     response[28]    Unknown
 6     0xDC (220)      Protocol marker
 7     response[20]    Unknown
@@ -186,7 +181,7 @@ response[12] == 0x01    (success)
 response[16] == 0x10    (16 = data present flag)
 ```
 
-**This is the same DA/DB/DC/DD handshake used in our `device_hid.py`.**
+**This is the same DA/DB/DC/DD handshake trcc sends from `HidLcd` (`adapters/device/hid_lcd.py`).**
 
 ### Device Info (Written Back to Shared Memory)
 
@@ -196,18 +191,18 @@ Serial number extracted from response bytes 20-35 as hex string.
 
 | Byte | Source | Purpose |
 |---|---|---|
-| 0 | response[4] | PM (product mode) byte |
-| 1 | response[5] | SUB byte |
-| 2 | 0x36 (54) | Hardcoded FBL marker |
-| 3 | response[4] | PM (repeated) |
-| 4 | response[5] | SUB (repeated) |
+| 0 | response[4] | SUB byte (TRCC.exe reads slot 0 as SUB, Form1.cs:1141) |
+| 1 | response[5] | PM (product mode) byte (TRCC.exe reads slot 1, Form1.cs:1141) |
+| 2 | 0x36 (54) | Hardcoded branch marker |
+| 3 | response[4] | SUB (repeated) |
+| 4 | response[5] | PM (repeated) |
 | 5 | 0xDC (220) | Protocol marker |
 | 6 | 0xDC (220) | Protocol marker |
 | 7 | 0xDC (220) | Protocol marker |
 | 8 | serial length | Serial hex string length |
 | 9+ | serial bytes | UTF-8 hex serial number |
 
-The FBL value 0x36 (54) maps to 360×360 resolution in TRCC.exe's FBL table. But this may not be the actual FBL — it could be a default that gets overridden by the PM/SUB bytes.
+The value 0x36 (54) is not the panel's FBL: it is the marker TRCC.exe tests to pick this device's branch (`shareMemoryValRGB[2] == 54`, Form1.cs:1114). The panel is identified by the PM byte.
 
 ### Frame Send
 
@@ -352,7 +347,7 @@ ID extracted from response bytes 16-19 as hex string.
 | 1 | 1 + response[22] | SUB-derived byte |
 | 2 | 0x48 ('H') | Hardcoded type marker |
 | 3 | 0x01 (1) | Hardcoded |
-| 4 | 64 + response[20] | Mode/FBL derived (clamped: if response[20] ≤ 3, treated as 1) |
+| 4 | 64 + response[20] | PM byte (TRCC.exe reads slot 4 as PM, Form1.cs:1071; clamped: if response[20] ≤ 3, treated as 1) |
 | 5 | 0x44 (68) | Hardcoded |
 | 6 | 0xDC (220) | Protocol marker |
 | 7 | 0x70 (112) | Hardcoded |
@@ -427,7 +422,7 @@ ID extracted from response bytes 16-19 as hex string.
 | 1 | response[22] | SUB byte |
 | 2 | 0x48 ('H') | Hardcoded type marker |
 | 3 | 0x01 (1) | Hardcoded |
-| 4 | 49 + response[20] | Mode/FBL derived |
+| 4 | 49 + response[20] | PM byte (TRCC.exe reads slot 4 as PM, Form1.cs:1071) |
 | 5 | response[32] | Additional mode byte |
 | 6 | 0xDC (220) | Protocol marker |
 | 7 | 0x70 (112) | Hardcoded |
@@ -438,7 +433,7 @@ ID extracted from response bytes 16-19 as hex string.
 
 Frame length read from slot `n*2+1` bytes[16:19] (LE uint32) — **different offset than LY** (which uses bytes[60:63]).
 
-Same chunked 512-byte packet format as LY (Protocol 4). Same 4096-byte burst sending. Same 512-byte acknowledgment read after completion.
+Same 512-byte chunk layout as LY (Protocol 4), with two differences: chunk byte[8] is `02`, and the chunk count is NOT rounded up to a multiple of 4. The whole buffer is handed to one write call (repeated until it is all written), then a 511-byte acknowledgment is read from EP01 IN.
 
 ---
 
@@ -457,8 +452,8 @@ Note: `0416:5406` is handled by BOTH binaries — USBLCDNEW.exe via raw USB, USB
 
 | Device | Magic | Send Size | Read Size | Key Response Bytes |
 |---|---|---|---|---|
-| 87AD:70DB | `12 34 56 78` | 64 | 1024 | [24]=present, [32]=PM, [56]=name branch |
-| 0416:5302 | `DA DB DC DD` | 512 | 512 | [4]=PM, [5]=SUB, [12]=OK, [16]=0x10 |
+| 87AD:70DB | `12 34 56 78` | 64 | 1024 | [24]=PM (non-zero = present), [36]=SUB, [56]=name branch |
+| 0416:5302 | `DA DB DC DD` | 512 | 512 | [5]=PM, [4]=SUB, [12]=OK, [16]=0x10 |
 | 0416:5406 | `F5 00 01 00` | 1040 | 1024 | [0]='6'/'e'/'f' (resolution) |
 | 0416:5408 | `02 FF ...` | 2048 | 512 | [0]=0x03, [1]=0xFF, [8]=0x01 |
 | 0416:5409 | `02 FF ...` | 512 | 511 | [0]=0x03, [1]=0xFF, [8]=0x01 |
@@ -471,19 +466,18 @@ Note: `0416:5406` is handled by BOTH binaries — USBLCDNEW.exe via raw USB, USB
 | 0416:5302 | bytes[16:19] + 20 | DA/DB/DC/DD (20B) | No (512-aligned) | — | No |
 | 0416:5406 | fixed (153600 or 204800) | F5 header (16B) | No (single sync) | — | Yes (16B) |
 | 0416:5408 | bytes[60:63] | 16B per chunk | Yes (496B payload/chunk) | 4096B | Yes (512B) |
-| 0416:5409 | bytes[16:19] | 16B per chunk | Yes (496B payload/chunk) | 4096B | Yes (512B) |
+| 0416:5409 | bytes[16:19] | 16B per chunk | Yes (496B payload/chunk) | One write | Yes (511B) |
 
 ### trcc-linux Implementation Mapping
 
 | Feature | USBLCDNEW.exe | trcc-linux | Status |
 |---|---|---|---|
-| 87CD:70DB via SCSI | N/A (uses USB) | ✓ `device_scsi.py` | Working (SCSI transport) |
-| 0416:5302 DA/DB/DC/DD | ✓ | ✓ `device_hid.py` | Matches exactly |
-| 0416:5406 via SCSI | N/A (uses USB) | ✓ `device_scsi.py` | Working (SCSI transport) |
-| 0416:5406 frame (USB) | ✓ (single bulk) | ✓ (chunked SCSI) | Same data, different transport |
-| 0416:5408 LY chunked | ✓ | ✓ `device_ly.py` | Matches exactly |
-| 0416:5409 LY1 chunked | ✓ | ✓ `device_ly.py` | Matches exactly |
-| Device info writeback | ✓ (shared memory) | ✓ (device_detector) | Equivalent |
+| 87CD:70DB via SCSI | N/A (uses USB) | ✓ `ScsiLcd` (`scsi_lcd.py`) | Working (SCSI transport) |
+| 0416:5302 DA/DB/DC/DD | ✓ | ✓ `HidLcd` type 2 (`hid_lcd.py`) | Same handshake; trcc sends the 512-aligned frame as a series of 512-byte writes, not one transfer |
+| 0416:5406 F5 | ✓ (single bulk) | ✓ `HidLcd` type 3 (`hid_lcd.py`, bytes in `_f5.py`) | Same bytes: 1040-byte handshake, 16-byte header + payload in one write, 16-byte ACK |
+| 0416:5408 LY chunked | ✓ | ✓ `LyLcd` (`ly_lcd.py`) | Same handshake and chunk layout |
+| 0416:5409 LY1 chunked | ✓ | ✓ `LyLcd` (`ly_lcd.py`) | Differs: trcc sends the 2048-byte LY handshake and reads 512 bytes (USBLCDNEW: 512 / 511), and writes frames in 4096-byte pieces |
+| Device info writeback | ✓ (shared memory) | — | Not needed: trcc reads PM/SUB straight from the reply |
 
 ---
 
@@ -494,7 +488,7 @@ On Windows, there are two separate USB transport paths running simultaneously:
 - **USBLCDNEW.exe** → LibUsbDotNet/WinUSB → raw USB bulk transfers → direct commands
 
 On Linux, there is only one path per device type:
-- **SCSI devices** → `sg_raw` → usb-storage SCSI Generic → SCSI CDB wrapper
+- **SCSI devices** → `SG_IO` ioctl → usb-storage SCSI Generic → SCSI CDB wrapper
 - **HID/Bulk/LY devices** → PyUSB → direct USB bulk transfers
 
 The device firmware accepts the same protocol commands regardless of transport. For HID/bulk/LY devices (`0416:5302`, `0416:8001`, `87AD:70DB`, `0416:5408`, etc.), Linux uses PyUSB directly — matching the USBLCDNEW.exe approach.

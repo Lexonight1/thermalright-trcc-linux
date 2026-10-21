@@ -24,23 +24,35 @@ Notes:
   (`ffmpeg.exe`/`libusb`); the device logic lives in the managed `TRCC.exe`,
   which `ilspycmd` decompiles fully. Don't reach for Ghidra for a normal sync.
 
-## 0. Get the build + decompile it
+## 0. Point the oracle at the new release, get the build, decompile it
+
+**Bump `ORACLE_VERSION` in `dev/decompiler/core/csharp.py` first** — the full
+four-part `AssemblyVersion` the new `TRCC.exe` declares. It is the single source
+for the release: `ORACLE_RELEASE`, `DECOMPILE_ROOT` (the decompile directory,
+override `TRCC_DECOMPILE`) and `INSTALLER` (the setup `.exe` path, override
+`TRCC_INSTALLER`) all derive from it. `tests/test_oracle_version.py` gates it:
+the decompile at `DECOMPILE_ROOT` must declare exactly that version (wrong
+fails, absent skips). Never spell the release anywhere else.
 
 The installer is a PE with an appended ZIP (not Inno/NSIS, not a .NET-Core
-single-file bundle). Extract the app assemblies + data tree, then decompile:
+single-file bundle). Put it at the path `INSTALLER` names, extract the app
+assemblies + data tree, then decompile in project mode into `DECOMPILE_ROOT`:
 
 ```bash
-SETUP="…/TRCC X.Y.Z-Setup.exe"
+SETUP="<the path INSTALLER names>"
+DECOMPILE="<the path DECOMPILE_ROOT names>"
 7z l -tzip "$SETUP"                                   # confirm the TRCCCAP/ tree
 7z x -tzip -y -o/tmp/trccXYZ_zip "$SETUP" "TRCCCAP/*" # app + Data/USBLCD tree
-ilspycmd -o /tmp/trccXYZ_src  /tmp/trccXYZ_zip/TRCCCAP/TRCC.exe   # → one .cs
-ilspycmd -p -o /tmp/trccXYZ_proj /tmp/trccXYZ_zip/TRCCCAP/TRCC.exe  # → Forms + .resx
+ilspycmd -p -o "$DECOMPILE" /tmp/trccXYZ_zip/TRCCCAP/TRCC.exe  # → Forms + .resx + Properties/
+PYTHONPATH=src pytest tests/test_oracle_version.py    # must pass, not skip
 ```
 
-Both `ilspycmd` runs are needed: `-p` (project mode) emits the `.resx`
-(Forms + Resources) the audit reads; the plain run emits the single `.cs` the
-resolution-fingerprint parser reads (pass it as `--cs`). `TRCC.exe` is the GUI;
-`USBLCD.exe`/`USBLCDNEW.dll` are the device layer if a protocol diff is needed.
+Project mode (`-p`) is the one that is needed: it emits the `.resx` (Forms +
+Resources) the audit reads and `Properties/AssemblyInfo.cs`, which
+`assembly_version()` reads. The resolution-fingerprint parser reads either a
+project tree or a single-file `ilspycmd` dump, so a plain run is optional.
+`TRCC.exe` is the GUI; `USBLCD.exe`/`USBLCDNEW.dll` are the device layer if a
+protocol diff is needed.
 
 (The installer is a PE + appended ZIP — open it with `7z -tzip`, **not**
 `sfextract` (which rejects it) and **not** Ghidra (managed code; ILSpy covers it).)
@@ -48,9 +60,11 @@ resolution-fingerprint parser reads (pass it as `--cs`). `TRCC.exe` is the GUI;
 ## 1. Audit — what changed
 
 ```bash
-PYTHONPATH=src python3 dev/tools/audit_csharp.py \
-    --resx /tmp/trccXYZ_proj --installer "$SETUP" --cs /tmp/trccXYZ_src/TRCC.decompiled.cs
+PYTHONPATH=src python3 dev/tools/audit_csharp.py
 ```
+
+`--resx` and `--cs` default to `DECOMPILE_ROOT` and `--installer` to
+`INSTALLER`; pass them only to audit something else.
 
 `audit_csharp.py` diffs each dimension against our registries and prints
 **new / missing / dropped**:
@@ -58,8 +72,8 @@ PYTHONPATH=src python3 dev/tools/audit_csharp.py \
 | dimension | source | our side | reliability |
 |---|---|---|---|
 | devices | resx `A1<model>` buttons | `core.variants` `_VARIANT_REGISTRY` | reliable (kept names) |
-| assets — device | resx `A1<model>(+a)` | `src/trcc/assets/` | reliable |
-| assets — chrome | resx, via `rename_assets.RENAME_MAP` | `src/trcc/assets/` | **advisory** (unmapped renames/localization variants over-report) |
+| assets — device | resx `A1<model>(+a)` | `src/trcc/assets/` + `src/trcc/ui/gui/assets/` | reliable |
+| assets — chrome | resx, via `rename_assets.RENAME_MAP` | `src/trcc/assets/` + `src/trcc/ui/gui/assets/` | **advisory** (unmapped renames/localization variants over-report) |
 | data | installer `Theme{res}`/`Web` | `src/trcc/data/*.7z` | reliable |
 | resolutions | C# `is{W}x{H}` universe + the `(mode,pm,sub,fbl)` fingerprint (parsed from `FormCZTVInit`/`AddhidDeviceList` in the `.cs`) | our **resolved device catalog** (`get_profile∘pm_to_fbl`) | reliable |
 | panels | `Form*.resx` families | `ui/gui` panels (known map) | reliable |
@@ -67,8 +81,7 @@ PYTHONPATH=src python3 dev/tools/audit_csharp.py \
 The audit is the source of truth for the rest of this list. Its final
 **WHAT TO PULL** section is the actionable checklist — it prints the exact
 `extract_resx_images` / `pack_theme_archives` commands and the C# handshake
-fingerprint for every genuinely-new device, resolution, and asset. (Requires
-`--cs`; without it the resolution dimension is skipped.)
+fingerprint for every genuinely-new device, resolution, and asset.
 
 ## 2. Publish new data (reliable, do first)
 
@@ -95,7 +108,7 @@ For each new device the audit lists (its WHAT TO PULL section prints the exact
 commands):
 1. **Fingerprint** — the audit already extracts the `(mode,pm,sub,fbl)`
    fingerprint from the C# (`FormCZTVInit`/`ADDUserButton`); confirm it against
-   `/tmp/trccXYZ_src/TRCC.decompiled.cs` if it looks surprising, then add the row
+   the decompile in `DECOMPILE_ROOT` if it looks surprising, then add the row
    to `core/variants.py` `_VARIANT_REGISTRY` (the normalized `(vid,pid)→pm→
    {sub: model}` table — one row, never special-cased in code).
 2. **Profile** — if it introduces a new resolution, add it to `core/protocol.py`
@@ -103,8 +116,8 @@ commands):
    resolution diff lists these with their fingerprint).
 3. **Button asset** — extract `A1<model>(+a)` from the resx:
    `python dev/tools/extract_resx_images.py --resx <proj>/TRCC.Properties.Resources.resx
-   --names A1<model>,A1<model>a` → writes to both asset dirs (device buttons keep
-   the C# name). A guard test (`test_every_variant_button_image_has_an_asset`)
+   --names A1<model>,A1<model>a` → writes to `src/trcc/ui/gui/assets/`, the one
+   colour tree qtgui shares and greyscales at load (device buttons keep the C# name). A guard test (`test_every_variant_button_image_has_an_asset`)
    fails CI if any variant's button is unbundled.
 4. **Validate** — simulate it with zero hardware via the dev variant console:
    `PYTHONPATH=src python3 dev/mock_gui.py` → summon it; or
@@ -125,31 +138,36 @@ model — no per-device branching.
 The audit's chrome diff over-reports (localization variants, unmapped renames).
 Treat it as a checklist, not gospel: extract any genuinely-new chrome from the
 resx, add it to `rename_assets.py`'s map (C#→English), rename, and drop into
-`src/trcc/assets/`.
+`src/trcc/ui/gui/assets/` (the tree `rename_assets.py` and `Assets` read;
+`src/trcc/assets/` is for packaging files — fonts, icons, `.desktop`).
 
 ## 6. Verify + publish
 
 ```bash
 ruff check . && pyright
-PYTHONPATH=src pytest tests/ -n 8 -q
+PYTHONPATH=src pytest tests/ -n 8 -q          # includes test_oracle_version.py
 TRCC_GUI_AUDIT=1 PYTHONPATH=src pytest tests/test_variant_presentation_audit.py  # every variant shows properly
 PYTHONPATH=src python3 dev/mock_gui.py    # eyeball the new devices on a real display
 ```
 
 Commit per dimension (data / devices / profiles / assets / panels) in verifiable
 increments; push only on explicit instruction. Then update `core/variants.py`'s
-parity notes and this doc's "last synced version".
+parity notes. The release we are synced to is `ORACLE_VERSION`
+(`dev/decompiler/core/csharp.py`); this doc does not repeat it.
 
 ---
-**Last synced:** 2.1.6.
+**State of the sync** (the release is `ORACLE_VERSION`):
 
 Done: variant fingerprints for LC10/LC13/LC15/LD11/LF014/RX1; their button images
 extracted + bundled (guard test enforces coverage); data for 6 resolutions
 published; `audit_csharp.py` upgraded to parse the C# resolution-fingerprint chain.
+**176×320** (⟵ `mode==3 && pm==100 && fbl==60`, a sub-screen) now has its profile
+row (`FBL_PROFILES[60]`, `core/protocol.py`) and its data (`theme176320.7z`,
+`theme320176.7z`). The **CZTV** panel family is built: `FormScreenshot` →
+`ui/viewfinder.py`, `FormScreenImage` → `ui/gui/preview_popup.py`, `FormGetColor`
+→ `ui/eyedropper.py` (the audit's panel map, `audit_csharp.py`).
 
-Outstanding (per the audit's WHAT TO PULL): two resolutions our device catalog
-doesn't yet produce — **176×320** (⟵ `mode==3 && pm==100 && fbl==60`, a sub-screen)
-and **2560×720** (⟵ `fbl==257`, the Trofeo family) — each needs a profile row +
-variant + data pull; and the **CZTV** panel family (screenshot / screen-image /
-color-picker) is unbuilt. `A1LF17` is a hover-only orphan in the C# (no base art,
-no variant) — not a device, ignore it.
+Outstanding (per the audit's WHAT TO PULL): **2560×720** (⟵ `fbl==257`, the Trofeo
+family) — not in `FBL_PROFILES` or the PM tables; it needs a profile row + variant +
+data pull. Re-run the audit for anything the latest release added. `A1LF17` is a
+hover-only orphan in the C# (no base art, no variant) — not a device, ignore it.

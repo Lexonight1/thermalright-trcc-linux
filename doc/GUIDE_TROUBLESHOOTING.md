@@ -7,7 +7,7 @@ Quick reference for common TRCC Linux issues. For full installation instructions
 ## Table of Contents
 
 1. [Command Not Found](#trcc-command-not-found)
-2. [No Device Detected](#no-compatible-trcc-lcd-device-detected)
+2. [No Device Detected](#no-device-detected)
 3. [Permission Denied](#permission-denied-when-accessing-the-device)
 4. [SELinux / Immutable Distros](#selinux--immutable-distros)
 5. [PySide6 Issues](#pyside6-issues)
@@ -66,9 +66,11 @@ trcc --version
 
 ---
 
-## No compatible TRCC LCD device detected
+## No device detected
 
-**Cause:** The LCD isn't showing up as a SCSI device.
+**Symptom:** `trcc detect` prints "No devices connected." (or `trcc display resume` prints "No compatible TRCC device detected.").
+
+**Cause (SCSI panels — 0402:3922, 87cd:70db):** The LCD isn't showing up as a SCSI device.
 
 **Fix:**
 1. Make sure the USB cable is plugged in (both ends)
@@ -77,7 +79,7 @@ trcc --version
 4. Check if the device appears: `ls /dev/sg*`
 5. Check kernel messages: `dmesg | tail -20` right after plugging in
 
-> **HID devices** (0416:5302, 0418:5303, 0418:5304, 0416:8001) don't use `/dev/sg*`. Use `trcc detect` instead.
+> **HID, LY and Bulk devices** (0416:5302, 0416:5406, 0418:5303, 0418:5304, 0416:8001, 0416:5408, 0416:5409, 87ad:70db) don't use `/dev/sg*`. Use `trcc detect` instead.
 
 ---
 
@@ -110,7 +112,7 @@ Versions before v1.2.16 used `TAG+="uaccess"` in udev rules, which relies on sys
 **Fix:** Upgrade to v1.2.16+ which uses `MODE="0666"`:
 ```bash
 pip install --upgrade trcc-linux
-sudo trcc system setup
+trcc system setup    # as your own user — it asks for sudo itself
 # Unplug/replug USB cable
 ```
 
@@ -146,7 +148,9 @@ sudo dnf install checkpolicy    # Fedora/Bazzite
 
 ## PySide6 Issues
 
-### "Error: PySide6 not available"
+### PySide6 is missing
+
+**Symptom:** `trcc gui` stops with a Python import error naming `PySide6`. (PySide6 is a declared dependency, so this means the install skipped it.)
 
 **Fix:** Install for your distro:
 ```bash
@@ -189,30 +193,29 @@ QT_DEBUG_PLUGINS=1 trcc gui 2>&1 | head -30
 
 ## HID Device Issues
 
-### "No HID devices found"
+### HID device not listed by `trcc detect`
 
 1. Verify USB connection: `lsusb | grep -i "0416\|0418\|87"`
 2. Run `trcc system setup` and unplug/replug
 3. Check if another process holds the USB device (VM, Windows TRCC in dual-boot)
 
-### "Handshake returned None (protocol error)"
+### Device detected but the handshake fails
 
-The device was detected but didn't respond to the handshake query. Common causes:
+The device was detected but didn't respond to the handshake query — `trcc device issues` lists every device that failed to connect, and why. Common causes:
 
 1. **Old version** — v1.2.9 rewrote the HID handshake with retry logic, 5s timeout, and endpoint auto-detect. Upgrade first:
    ```bash
    pip install --upgrade trcc-linux
    ```
-2. **Firmware consumed the handshake** — some devices only respond once per USB power cycle. Unplug the USB header, wait 5 seconds, replug, then immediately run `trcc system hid-debug`
-3. **Unknown device** — if the device model isn't in our mapping table, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with the `trcc system hid-debug` output
+2. **Firmware consumed the handshake** — some devices only respond once per USB power cycle. Unplug the USB header, wait 5 seconds, replug, then immediately run `trcc system hid-debug KEY` (your key from `trcc detect`, e.g. `0416:5302`)
+3. **Unknown device** — if the device model isn't in our mapping table, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with the `trcc system hid-debug KEY` output
 
-### "No USB backend available"
+### No USB backend (pyusb `NoBackendError`)
 
-**Fix:** Install pyusb:
+**Cause:** pyusb (installed with TRCC) cannot find the system libusb library.
+
+**Fix:** Install libusb:
 ```bash
-pip install pyusb
-
-# Also need the system library:
 sudo apt install libusb-1.0-0-dev    # Debian/Ubuntu
 sudo dnf install libusb1-devel       # Fedora
 sudo pacman -S libusb                # Arch
@@ -309,7 +312,7 @@ trcc system setup
 
 If the problem persists, manually blacklist UAS:
 ```bash
-echo "options usb-storage quirks=87cd:70db:u,0416:5406:u,0402:3922:u" | sudo tee /etc/modprobe.d/trcc-lcd.conf
+echo "options usb-storage quirks=0402:3922:u,87cd:70db:u" | sudo tee /etc/modprobe.d/trcc-lcd.conf
 sudo dracut --force       # Fedora/RHEL
 # or
 sudo update-initramfs -u  # Debian/Ubuntu
@@ -323,17 +326,18 @@ errors), but the panel stays dark.
 
 **Cause:** two things combine. Servers are power-tuned and enable aggressive
 **USB autosuspend**, and TRCC panels are designed to *sleep when the USB link
-suspends* (that's the intended "screen off on shutdown" behaviour). A **one-shot
-CLI command sends a single frame and exits** — there's no keepalive stream to
-hold the link awake — so the panel can suspend the instant the command finishes.
-The frame was delivered to a panel that's now asleep → successful send, dark
-screen. (This is a *power* issue, not a bug in the send path.)
+suspends* (that's the intended "screen off on shutdown" behaviour). A solid
+colour is a **single frame**: once it is written nothing more crosses the link,
+so the panel can suspend right after. The frame was delivered to a panel that's
+now asleep → successful send, dark screen. (This is a *power* issue, not a bug
+in the send path.)
 
 **Fixes, quickest first:**
 
-1. **Run the GUI, or keep a persistent send running, instead of a one-shot
-   command.** The GUI keeps a continuous keepalive frame stream that holds the
-   panel awake and refreshed. If the panel lights up in the GUI but not via
+1. **Keep a persistent send running instead of a one-shot frame.**
+   `trcc display play KEY` renders and sends every tick until Ctrl-C (it keeps
+   SCSI panels from timing out); `trcc display keepalive KEY` resends the last
+   frame. If the panel stays lit with one of these running but not after
    `trcc display color`, autosuspend is confirmed.
 2. **Check the device's power state** (look for `suspended`):
    ```bash
@@ -360,8 +364,8 @@ screen. (This is a *power* issue, not a bug in the send path.)
 **Cause:** FFmpeg not installed.
 
 ```bash
-# Fedora / Nobara
-sudo dnf install ffmpeg
+# Fedora / Nobara (stock Fedora's package is ffmpeg-free; with RPM Fusion it is ffmpeg)
+sudo dnf install /usr/bin/ffmpeg
 
 # Ubuntu / Debian
 sudo apt install ffmpeg
@@ -402,7 +406,7 @@ sudo pacman -S python-gobject python-dbus gst-python \
 > `gst-plugins-base` also matters: it carries the `GstVideo` typelib TRCC uses
 > to read each frame's true row layout.
 
-> On X11 no portal is involved — capture goes through `grim`/`scrot`/`maim`/`import`.
+> On X11 no portal is involved — capture uses Qt's own screen grab, then `scrot`/`maim`/`import` (or `spectacle`/`gnome-screenshot`) if that fails.
 > On **every** Wayland compositor, including wlroots ones, capture goes through the
 > PipeWire portal, so you also need your compositor's portal backend:
 > `xdg-desktop-portal-gnome`, `xdg-desktop-portal-kde` or `xdg-desktop-portal-wlr`.
@@ -446,23 +450,21 @@ is absent while your panel is frozen, because that means something else.
 
 ### `trcc system setup` doesn't work
 
-NixOS manages udev rules declaratively. Add rules to `/etc/nixos/configuration.nix`:
+NixOS manages udev rules declaratively, so don't hand-write them — enable the
+flake's module, which installs TRCC's own generated rules (LCD/LED devices, the
+CPU-power counter and the motherboard RGB controllers), loads `sg`, and sets the
+usb-storage quirk:
 
 ```nix
-services.udev.extraRules = ''
-  # SCSI LCD devices
-  SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
-  SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0666"
-  SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", ATTRS{idProduct}=="3922", MODE="0666"
-  # Bulk USB devices
-  SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", MODE="0666"
-  # HID LCD/LED devices
-  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5302", MODE="0666"
-  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5303", MODE="0666"
-  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5304", MODE="0666"
-  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="8001", MODE="0666"
-'';
+# configuration.nix (with inputs.trcc-linux.url = "github:Lexonight1/thermalright-trcc-linux")
+{ inputs, ... }:
+{
+  imports = [ inputs.trcc-linux.nixosModules.default ];
+  programs.trcc-linux.enable = true;
+}
 ```
+
+See [Install Guide → NixOS](GUIDE_INSTALL.md#nixos) for the full setup.
 
 Then rebuild: `sudo nixos-rebuild switch`
 
@@ -470,11 +472,9 @@ Then rebuild: `sudo nixos-rebuild switch`
 
 ## Quick Diagnostic
 
-Run the setup wizard to check all dependencies at once:
-
 ```bash
-trcc system setup    # CLI — shows all checks with install prompts
-trcc doctor          # health checks only, no prompts
+trcc doctor          # health checks only, changes nothing
+trcc system setup    # applies the setup (udev rules, quirks, …), then lists any permission warnings
 ```
 
 ---

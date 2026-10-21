@@ -15,7 +15,7 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | FROZEN WARFRAME 240 | SCSI (0402:3922) | 320x240 | [gizbo](https://github.com/gizbo) |
 | FROZEN WARFRAME SE | HID (0416:5302) | 320x240 | [apj202-ops](https://github.com/apj202-ops), [RenanASD](https://github.com/RenanASD) |
 | FROZEN WARFRAME 360 | HID (0416:5302) | — | [Edoardo-Rossi-EOS](https://github.com/Edoardo-Rossi-EOS), [edoargo1996](https://github.com/edoargo1996), [stephendesmond1-cmd](https://github.com/stephendesmond1-cmd) |
-| LC1, LC2, LC3, LC5 | SCSI (0416:5406) | 320x320 | Developer |
+| LC1, LC2, LC3, LC5 | HID (0416:5406) | 320x320 | Developer |
 | GrandVision 360 AIO | Bulk (87AD:70DB) | 480x480 | [bipobuilt](https://github.com/bipobuilt), [cadeon](https://github.com/cadeon) |
 | Mjolnir Vision 360 | Bulk (87AD:70DB) | 480x480 | [Pikarz](https://github.com/Pikarz) |
 | Levita Vision | Bulk (87AD:70DB) | 1600x720 | [oranura](https://github.com/oranura) |
@@ -24,7 +24,7 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | Assassin Spirit 120 Vision ARGB | HID (0416:5302) | 240x240 | [michael-spinelli](https://github.com/michael-spinelli), [acioannina-wq](https://github.com/acioannina-wq) |
 | Elite Vision 360 ARGB Black | SCSI (0402:3922) | — | [tensaiteki](https://github.com/tensaiteki) |
 | Frozen Warframe Pro | Bulk (87AD:70DB) | — | [loosethoughts19-hash](https://github.com/loosethoughts19-hash) |
-| Trofeo Vision 9.16 LCD | LY (0416:5408) | — | [Mr-Renegade](https://github.com/Mr-Renegade) |
+| Trofeo Vision 9.16 LCD | LY (0416:5408) | 1920x462 | [Mr-Renegade](https://github.com/Mr-Renegade) |
 | Hyper Vision 360 | Bulk (87AD:70DB) | 480x480 | [Seryogaberkut](https://github.com/Seryogaberkut) |
 | Peerless Vision 360 | Bulk (87AD:70DB) | 480x480 | [Ziusz](https://github.com/Ziusz) |
 | Phantom Spirit 120 Vision EVO | Bulk (87AD:70DB) | 480x480 | [alan7383](https://github.com/alan7383) |
@@ -80,7 +80,6 @@ These have a small digital display showing CPU/GPU temperature plus addressable 
 | Frozen Magic Digital |
 | Royal Knight 120 Digital |
 | Royal Knight 130 Digital |
-| MC-3 DIGITAL |
 
 ---
 
@@ -92,16 +91,16 @@ All devices connect through one of these USB VID:PIDs:
 |---------|----------|---------|----------|
 | 87CD:70DB | SCSI | Full LCD | Older LCD screens |
 | 87AD:70DB | Bulk | Full LCD | GrandVision 360 AIO, Mjolnir Vision 360, Hyper Vision 360, Peerless Vision 360, … (one USB id, many coolers — the handshake tells them apart) |
-| 0402:3922 | SCSI | Full LCD | Frozen Warframe series (360/SE/PRO/Ultra) |
-| 0416:5406 | SCSI | Full LCD | Winbond LCD variant |
+| 0402:3922 | SCSI | Full LCD | Frozen Warframe, Frozen Warframe 240 |
+| 0416:5406 | HID Type 3 (F5) | Full LCD | Winbond LCD variant |
 | 0416:5302 | HID Type 2 | Full LCD | Vision/Warframe (newer HW) |
 | 0418:5303 | HID Type 3 | Full LCD | TARAN ARMS |
 | 0418:5304 | HID Type 3 | Full LCD | TARAN ARMS |
 | 0416:5408 | LY Bulk | Full LCD | Trofeo Vision 9.16 LCD |
 | 0416:5409 | LY1 Bulk | Full LCD | |
-| 0416:8001 | HID | LED + segment / Full LCD | Digital series + many Vision products |
+| 0416:8001 | HID | LED + segment | Digital series |
 
-The exact product model is identified after a USB handshake. The device responds with PM (product model) and SUB bytes that tell the app which product it is and whether to show the LCD or LED control panel.
+The USB id decides whether a device gets the LCD or the LED control panel: each id has one row in `ALL_DEVICES` (`src/trcc/core/registry.py`), the source of truth for this table. The exact model is identified after a USB handshake: an LCD answers with PM (product model) and SUB bytes that select its resolution, and an LED controller answers with a PM byte that selects its LED style.
 
 ## How to Help Test
 

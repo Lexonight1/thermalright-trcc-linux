@@ -9,7 +9,7 @@ git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e '.[dev]'
 git config core.hooksPath .githooks   # enable repo git hooks (see below)
-trcc system setup              # interactive wizard — checks deps, udev, desktop entry
+trcc system setup              # OS setup (udev rules on Linux) — applies; --dry-run previews
 ```
 
 ### Git hooks
@@ -25,6 +25,8 @@ commit, so a committed page can never drift from the tree it describes:
 | `src/trcc/ui/cli/` | `doc/REFERENCE_CLI.md` |
 | `src/trcc/` | `doc/REFERENCE_PORTS.md` |
 | `src/trcc/` | `doc/REFERENCE_COMMANDS.md` |
+| `src/trcc/` | `doc/REFERENCE_API.md` |
+| `src/trcc/` | packaged setup files (`packaging/udev/`, `packaging/modprobe/`) |
 
 Each has a test as the backstop, so CI fails if a page is stale.
 
@@ -47,8 +49,8 @@ pyright                      # type check
 ```
 
 Most tests sit directly in `tests/`, named after what they cover
-(`test_ipc_wire.py`, `test_app_start_session.py`). Three subdirectories group
-the ones that benefit from it: `tests/adapters/{infra,system}/` and
+(`test_ipc_wire.py`, `test_app_start_session.py`). A few subdirectories
+group the ones that benefit from it: `tests/adapters/{infra,rgb,system}/` and
 `tests/ui/presentation/`.
 
 All PRs must pass the suite, `ruff check`, and `pyright` with 0 errors.

@@ -2,6 +2,8 @@
 
 A practical guide distilled from porting Thermalright's TRCC (C# / WinForms / .NET) to native Linux (Python / PySide6).
 
+Most of this page is general porting advice. Where it says what **TRCC** does, it describes this repository; for TRCC's actual layout, see [`GUIDE_ARCHITECTURE.md`](GUIDE_ARCHITECTURE.md).
+
 ## Decompilation
 
 Use **ILSpy** or **dnSpy** to decompile the .NET executable into readable C#. The decompiled output gives you:
@@ -58,12 +60,13 @@ Extract every embedded resource from the .resx files. Windows apps typically emb
 
 .NET WinForms apps are typically tightly coupled — event handlers directly manipulate UI controls, business logic lives in code-behind files, and forms reference each other. Don't replicate this.
 
-**Separate into MVC:**
-- **Models** — pure data classes (Python dataclasses)
-- **Controllers** — all business logic, zero GUI imports, callback-based notification
-- **Views** — PySide6 widgets that subscribe to controller callbacks
+**Separate logic from the UI.** TRCC uses a hexagonal (ports & adapters) layout:
+- **Core** (`core/`) — pure data classes, the port ABCs, and every Command and Query
+- **Services** (`services/`) — all business logic, zero GUI imports
+- **Adapters** (`adapters/`) — USB wires, per-OS platforms, the Qt renderer
+- **UIs** (`ui/`) — GUI, CLI and REST API are thin: each builds a Command and calls `app.dispatch(...)`, then draws the Result and the events the App publishes
 
-This lets you swap GUI frameworks (PySide6, Tkinter, GTK) without rewriting logic.
+This lets you swap or add front-ends without rewriting logic. See [`GUIDE_ARCHITECTURE.md`](GUIDE_ARCHITECTURE.md).
 
 ## Platform Replacements
 
@@ -71,7 +74,7 @@ This lets you swap GUI frameworks (PySide6, Tkinter, GTK) without rewriting logi
 
 | Windows | Linux |
 |---------|-------|
-| Win32 `CreateFile` / `DeviceIoControl` | `/dev/sg*` via `sg_raw` (SCSI generic) |
+| Win32 `CreateFile` / `DeviceIoControl` | `/dev/sg*` with the `SG_IO` ioctl (SCSI generic) |
 | `SetupDiGetClassDevs` (USB enumeration) | `lsusb` + `/sys/bus/usb/devices/` sysfs |
 | HID device access | `hidapi` or `/dev/hidraw*` |
 | COM ports | `/dev/ttyUSB*` or `/dev/ttyACM*` |
@@ -100,8 +103,8 @@ This lets you swap GUI frameworks (PySide6, Tkinter, GTK) without rewriting logi
 
 | Windows | Linux |
 |---------|-------|
-| GDI+ `Bitmap`, `Graphics` | Pillow (`PIL.Image`) |
-| `System.Drawing.Color` | Pillow tuples or PySide6 `QColor` |
+| GDI+ `Bitmap`, `Graphics` | PySide6 `QImage` / `QPainter` (TRCC's `QtRenderer`); Pillow is a generic alternative |
+| `System.Drawing.Color` | PySide6 `QColor` (or Pillow tuples) |
 | DirectShow / MediaFoundation | FFmpeg subprocess (`ffprobe` + `ffmpeg`) |
 | `System.Media.SoundPlayer` | Not needed (or `pygame.mixer`) |
 
@@ -122,11 +125,11 @@ cdb[1] = (byte)(cmd >> 24);
 // ...
 ```
 
-Python equivalent:
+Python equivalent (sketch): build the CDB with `struct`, then send it with the `SG_IO` ioctl on `/dev/sg*`, as TRCC's Linux platform does (`adapters/system/linux.py`):
 ```python
 import struct
 cdb = struct.pack('>BBI', 0xEF, cmd >> 24, payload_len)
-subprocess.run(['sg_raw', '-s', str(len(data)), device, *hex_cdb], input=data)
+# fcntl.ioctl(fd, SG_IO, sg_io_hdr) with the CDB and the data-out buffer
 ```
 
 ## Localization
@@ -150,7 +153,7 @@ def get_localized(base_name: str, lang: str) -> str:
 3. **C# delegates ≠ Python signals** — map `delegate.Invoke(cmd, data)` patterns to PySide6 `Signal` or controller callbacks.
 4. **Thread safety** — WinForms `Invoke`/`BeginInvoke` for UI updates becomes `QMetaObject.invokeMethod` or `Signal.emit` from worker threads.
 5. **Font rendering differs** — Windows ClearType and Linux FreeType render differently. Accept minor text width variations.
-6. **Color depth** — if the device expects RGB565, use numpy for fast conversion, not per-pixel Python loops.
+6. **Color depth** — if the device expects RGB565, convert in bulk, never with per-pixel Python loops. TRCC lets Qt do it (`QtRenderer.encode_rgb565`); numpy is the generic alternative.
 7. **Stub what you can't port** — some Windows features (e.g., shared memory IPC with HWiNFO) have no direct equivalent. Build the Linux-native replacement instead of trying to emulate the Windows mechanism.
 
 ## Advanced Topics
@@ -203,16 +206,15 @@ Before porting a feature, check if it's actually used:
 
 In TRCC, "Animation Linkage" and "Keyboard Linkage" panels were stubs (Visible=false, no logic) — no need to port.
 
-## Project Structure Recommendation
+## Project Structure (TRCC's)
 
 ```text
-src/
-├── core/
-│   ├── models.py       # Data classes (ThemeInfo, DeviceInfo, etc.)
-│   └── controllers.py  # GUI-independent business logic
-├── gui/      # PySide6 views (one file per major panel)
-├── parsers/            # Binary file format parsers
-└── drivers/            # Hardware communication (SCSI, HID, etc.)
+src/trcc/
+├── core/        # models, port ABCs, Commands/Queries, Results, events
+├── services/    # business logic, no GUI imports
+├── adapters/    # device wires, per-OS platforms, renderer, sensors
+├── ui/          # gui, qtgui, cli, api, presentation (thin)
+└── app.py       # the App: owns devices and services, dispatches Commands
 ```
 
-Keep controllers free of GUI imports — they should work with any frontend.
+Keep services free of GUI imports — they should work with any frontend.

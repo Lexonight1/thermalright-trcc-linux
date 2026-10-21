@@ -7,8 +7,10 @@ Optional OS-level service registration. Two independent units live here:
 | `trccd.service` | the IPC daemon that owns USB and serves CLI/API/GUI clients |
 | `trcc-display.service` | the render-and-send ticker, so the panel shows live metrics after a reboot |
 
-**Install one or the other, not both.** Only one process may hold a panel's USB
-interface; running both makes them fight over it.
+**Install one or the other, not both.** In daemon mode (the default) the
+ticker's `trcc display play` hands the panel to the shared App and exits
+(see below). With `TRCC_DAEMON=0` the ticker holds the panel's USB interface
+itself, and only one process may hold it; running both makes them fight over it.
 
 The daemon auto-spawns when any UI calls it, so installing `trccd.service` is
 **not required** — it just makes the daemon survive reboots / logout.
@@ -45,8 +47,14 @@ systemctl --user daemon-reload
 ## LCD stats ticker (systemd user unit)
 
 Drives the panel with the active theme on the configured refresh interval, from
-login. Without it the LCD only updates while the GUI or `trcc display play` is
-open, so it goes stale after a reboot.
+login. Without it the LCD only updates while a TRCC App runs (the daemon, or a
+UI's own App), so it goes stale after a reboot until one starts.
+
+**Daemon mode (the default):** `trcc display play` asks the shared App to show
+the saved display and exits at once — the App keeps the panel updated, not the
+ticker (`ui/cli/display.py`, `play`). The ticker loops and holds the panel
+itself only when its CLI runs its own App, e.g. with `TRCC_DAEMON=0` in
+`~/.trcc/ticker.env`.
 
 ```bash
 # Install the unit + its helper (one-time)
@@ -74,8 +82,8 @@ EOF
 systemctl --user restart trcc-display
 ```
 
-To use the GUI while the ticker is running, stop it first — the ticker holds the
-USB interface, and the GUI blocks on its splash rather than reporting the device
+To use the GUI while the ticker runs with `TRCC_DAEMON=0`, stop it first — then
+the ticker holds the USB interface, and the GUI blocks on its splash rather than reporting the device
 is busy:
 
 ```bash
@@ -109,8 +117,9 @@ rm ~/Library/LaunchAgents/com.thermalright.trccd.plist
 
 ## Windows
 
-A scheduled task is installed by `trcc system setup` (Phase 11 wires this in).
-Manual install:
+`trcc system setup` installs no task: on Windows it checks the WinUSB driver and
+prints Zadig instructions. TRCC's own autostart is the per-user Run key, which
+starts `gui --resume` at sign-in. To run the daemon at logon by hand:
 
 ```powershell
 schtasks /Create /SC ONLOGON /TN "TRCC Daemon" /TR "trcc daemon" /F
@@ -121,8 +130,11 @@ schtasks /Create /SC ONLOGON /TN "TRCC Daemon" /TR "trcc daemon" /F
 After install, in any terminal:
 
 ```bash
-# Should print info about the running daemon (or auto-spawn one)
+# Lists attached devices through the daemon (auto-spawned if none runs)
 trcc detect
+
+# Reports whether the daemon socket is reachable
+trcc daemon-status
 
 # The IPC socket should exist:
 ls -la $XDG_RUNTIME_DIR/trcc.sock     # Linux with a login session

@@ -1,6 +1,6 @@
 # Cross-Platform Sensor & Device Research — Fail-Proof Reference
 
-**Status:** in-progress research. **No code based on this until every section has citations and every claim has a "Failure modes" line.** Goal is to make sure the canonical-pattern lesson (`feedback_canonical_pattern_first.md`) holds *before* any source is written, not after.
+**Status:** research memo, point-in-time. The external research below is kept as written; statements about TRCC's own code were corrected on 2026-10-21 against `src/trcc/adapters/sensors/`. The Windows sensor code has since been built, partly on different paths than the ones recommended here — see "Recommended next code changes", where each row says which way the code went. Goal was to make sure the canonical-pattern lesson (`feedback_canonical_pattern_first.md`) held *before* any source was written, not after.
 
 This doc is the standing reference for what each supported OS can actually expose, by what API, with what permissions, and what's known to fail. When in doubt, cite this doc and link the upstream source.
 
@@ -47,7 +47,7 @@ Plus cross-cutting:
 - [lm_sensors ArchWiki](https://wiki.archlinux.org/title/Lm_sensors)
 - [HWMON Subsystem (DeepWiki)](https://deepwiki.com/linux-doc/linux/5.1-hwmon-subsystem)
 
-We already use this via [linux_sensors.py](src/trcc/adapters/system/linux_sensors.py).
+We already use this via [hwmon.py](../src/trcc/adapters/sensors/hwmon.py), composed by `build_linux_sensors` in [aggregator.py](../src/trcc/adapters/sensors/aggregator.py).
 
 ### GPU temperature
 - **NVIDIA:** `pynvml` (NVIDIA Management Library). Stable, vendor-supported.
@@ -62,7 +62,7 @@ hwmon `fanN_input` (RPM) + `inN_input` (voltage). Driver-dependent — `nct6779`
 
 🚨 **Permission gotcha (Linux 5.10+):** RAPL files restricted to root since kernel 5.10 (security: [CVE-2020-8694, CVE-2020-8695, INTEL-SA-00389](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/advisory-guidance/running-average-power-limit-energy-reporting.html)). Was world-readable before; broke many monitoring tools (e.g. [Prometheus node_exporter #2090](https://github.com/prometheus/node_exporter/issues/2090)).
 
-**Workaround we already use:** `trcc system setup-rapl` chmods `+r` (or installs a udev rule) so the user's group can read. Lasts across reboots if the udev rule is in place.
+**Workaround we already use:** `trcc system setup` writes a udev rule that makes `energy_uj` world-readable (`chmod 0444`) and autoloads `intel_rapl_msr`, then re-triggers the powercap nodes ([_udev.py](../src/trcc/adapters/system/_udev.py)). Lasts across reboots.
 
 ### USB device discovery
 - udev rules (we install via `trcc system setup`) for `/dev/sg*` (SCSI) and `/dev/hidraw*` (HID)
@@ -125,7 +125,7 @@ Three paths, all production-grade:
 | **WMI** `Win32_PnPEntity` | Simple Python via `wmi` package | Slower, depends on WMI service | [Medium: Automating Device Manager via Python WMI](https://snotna.medium.com/automating-windows-device-manager-with-python-and-wmi-883e1171e8cd) |
 | **hidapi** (for HID devices only) | Cross-platform Python binding | HID-only | [hidapi PyPI](https://pypi.org/project/hid/) |
 
-We currently use SetupAPI ([windows/detector.py](src/trcc/adapters/device/windows/detector.py)). Working canonically.
+TRCC discovers devices with pyusb (libusb) on every OS, Windows included (`BaseOS.scan_devices`, [_base.py](../src/trcc/adapters/system/_base.py)). SetupAPI is used for one job only: finding which `\\.\PhysicalDriveN` is a SCSI panel ([_windows_drives.py](../src/trcc/adapters/system/_windows_drives.py)).
 
 ### Safety / future-proofing
 
@@ -133,7 +133,7 @@ We currently use SetupAPI ([windows/detector.py](src/trcc/adapters/device/window
 
 Microsoft Defender began flagging WinRing0 as `VulnerableDriver:WinNT/Winring0` in March 2025 ([Microsoft Support article](https://support.microsoft.com/en-us/windows/microsoft-defender-antivirus-alert-vulnerabledriver-winnt-winring0-eb057830-d77b-41a2-9a34-015a5d203c42)). The April 2026 Windows security update introduces stronger protections against known vulnerable kernel drivers ([Microsoft 2026 update note](https://support.microsoft.com/en-us/topic/april-2026-windows-security-updates-introduce-protections-to-known-vulnerable-kernel-drivers-1f8aaf7c-d4ac-4e02-be1d-b63c1b1aa9d0)).
 
-Affected apps include: HWiNFO (when used with WinRing0 alternatives), LibreHardwareMonitor, OpenHardwareMonitor, MSI Afterburner, EVGA Precision X1, OpenRGB, FanCtrl, CapFrameX, ZenTimings, SteelSeries Engine, OmenMon ([Neowin Windows 11/10 flagging WinRing0](https://www.neowin.net/news/windows-1110-is-flagging-winring0-on-your-pc-monitoring-fan-control-apps-heres-why/)). **TRCC's bundled LHM is in this list.**
+Affected apps include: HWiNFO (when used with WinRing0 alternatives), LibreHardwareMonitor, OpenHardwareMonitor, MSI Afterburner, EVGA Precision X1, OpenRGB, FanCtrl, CapFrameX, ZenTimings, SteelSeries Engine, OmenMon ([Neowin Windows 11/10 flagging WinRing0](https://www.neowin.net/news/windows-1110-is-flagging-winring0-on-your-pc-monitoring-fan-control-apps-heres-why/)). **The LHM that older TRCC releases bundled was in this list.** TRCC no longer ships or launches LHM; the installer removes the old `lhm` folder ([installer/trcc.iss](../installer/trcc.iss)).
 
 Microsoft is also blocking cross-signed kernel drivers and enforcing WHCP-only signing starting April 2026 ([WindowsNews 2026 kernel security overhaul](https://windowsnews.ai/article/windows-april-2026-kernel-security-overhaul-microsoft-blocks-cross-signed-roots-enforces-whcp.407924)). New kernel drivers must be submitted to Microsoft Hardware Developer Center.
 
@@ -141,9 +141,9 @@ Microsoft is also blocking cross-signed kernel drivers and enforcing WHCP-only s
 
 LHM **v0.9.6+** ships a [PawnIO](https://poorlydocumented.com/2025/09/replacing-winring0-in-fan-control-with-pawnio/)-based build instead of WinRing0. **PawnIO is signed by Microsoft *and* the driver's author** — it executes Pawn bytecode in ring-0 with safety checks, so it's not on Defender's hit list. FanControl migrated to PawnIO in V238 ([DeepWiki: Driver Evolution and Anti-Virus Issues](https://deepwiki.com/Rem0o/FanControl.Releases/5.4-driver-evolution-and-anti-virus-issues)); OpenRGB has a merge request open ([OpenRGB MR !2833](https://gitlab.com/CalcProgrammer1/OpenRGB/-/merge_requests/2833)).
 
-**Implication for TRCC:** the LHM bundle is *not* dead — we just need to be on **LHM ≥ 0.9.6 with the PawnIO build**. Our [_lhm_subprocess.py](src/trcc/adapters/system/windows/sources/lhm.py) already mentions "Install LHM v0.9.6 + PawnIO manually" in its warning string; the bundling step needs to actually pull the PawnIO build. Known limitation: PawnIO is blocked by FACEIT anti-cheat (per [PawnIO project notes](https://www.file.net/process/pawnio.sys.html)) — non-issue for TRCC's user base.
+**What TRCC did (superseded the LHM-bundle plan):** TRCC uses PawnIO directly, with no LHM. The installer lays down PawnIO, and TRCC reads the CPU's own registers through signed PawnIO modules: package temperature and power ([_pawnio_cpu.py](../src/trcc/adapters/sensors/_pawnio_cpu.py)), and the board's Super I/O fans and temperatures ([_superio.py](../src/trcc/adapters/sensors/_superio.py)). LHM is still read when a user runs it, but the code records that LHM 0.9.5 removed its WMI provider, so only LHM 0.9.4 or older publishes there ([_lhm.py](../src/trcc/adapters/sensors/_lhm.py)). Known limitation: PawnIO is blocked by FACEIT anti-cheat (per [PawnIO project notes](https://www.file.net/process/pawnio.sys.html)) — non-issue for TRCC's user base.
 
-**Long-term** (still recommended): add the **vendor-SDK chain** (ADLX + NVML + L0) for GPU + **HWiNFO SHM tier** for CPU. The existing strategy chain we just shipped already supports this — `ADLXSource`, `IntelL0Source` would each be one new file under [windows/sources/](src/trcc/adapters/system/windows/sources/) following the same `@WindowsSensorSource.register('key')` pattern.
+**Vendor chain as built:** the Windows chain is a list in `build_windows_sensors` ([windows.py](../src/trcc/adapters/sensors/windows.py)) composed with `CpuSourceChain` / `GpuSourceChain` ([chain.py](../src/trcc/adapters/sensors/chain.py)); there is no `@WindowsSensorSource.register` registry. CPU: HWiNFO SHM → PawnIO → LHM → MSAcpi → psutil. GPU: NVML, **ADL** (not ADLX — ADLX's licence forbids use under GPL-3, [_adl.py](../src/trcc/adapters/sensors/_adl.py)), **Intel IGCL** (not Level Zero, [_igcl.py](../src/trcc/adapters/sensors/_igcl.py)), HWiNFO, LHM, then Windows' own D3DKMT + PDH for every vendor ([_d3dkmt.py](../src/trcc/adapters/sensors/_d3dkmt.py)). Disks: Windows storage query, plus LHM for any drive it alone can read.
 
 Sources:
 - [Microsoft April 2026 vulnerable driver protections](https://support.microsoft.com/en-us/topic/april-2026-windows-security-updates-introduce-protections-to-known-vulnerable-kernel-drivers-1f8aaf7c-d4ac-4e02-be1d-b63c1b1aa9d0)
@@ -158,7 +158,7 @@ Sources:
 ## macOS — Intel
 
 ### CPU temperature
-**SMC keys** — `TC0P` (proximity), `TC0D` (die), `TC0E`, `TC1C`-`TC3C` (per-core). Read via `IOServiceMatching("AppleSMC")` + `IOConnectCallStructMethod`. Stable for years; we already use this in [macos/sensors.py](src/trcc/adapters/system/macos/sensors.py).
+**SMC keys** — `TC0P` (proximity), `TC0D` (die), `TC0E`, `TC1C`-`TC3C` (per-core). Read via `IOServiceMatching("AppleSMC")` + `IOConnectCallStructMethod`. Stable for years; we already use this in [_smc.py](../src/trcc/adapters/sensors/_smc.py), composed by [macos.py](../src/trcc/adapters/sensors/macos.py).
 
 ### GPU temperature
 **SMC keys** — `TG0P`, `TG0D` for discrete; iGPU varies. Same SMC interface.
@@ -170,7 +170,7 @@ Sources:
 **`powermetrics`** — requires **sudo** ([powermetrics docs](https://firefox-source-docs.mozilla.org/performance/powermetrics.html)). Or **IOReport** (no sudo, see Apple Silicon section).
 
 ### USB device discovery
-**IOKit** via `IOServiceMatching("IOUSBDevice")` + `IOServiceGetMatchingServices`. Same on Intel and Apple Silicon. We use ctypes to `CDLL('IOKit')`. Wraps cleanly via [PyObjC](https://pyobjc.readthedocs.io/) too.
+**IOKit** via `IOServiceMatching("IOUSBDevice")` + `IOServiceGetMatchingServices`. Same on Intel and Apple Silicon. Wraps cleanly via [PyObjC](https://pyobjc.readthedocs.io/) too. TRCC does not use it for discovery: it finds devices with pyusb, as on every OS (`BaseOS.scan_devices`); IOKit is used for the SMC sensor reads.
 
 ### Safety / future-proofing
 - **Notarization:** does NOT require sandboxing. Hardened runtime is enough ([Apple notarization doc](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)). We can still read SMC + IOReport from a notarized non-sandboxed Python app.
@@ -186,7 +186,7 @@ Sources:
 1. **SMC keys** — work for *some* readings, but **key names change per chip generation** (`Tp01/Tp05/Tp09` on M1, different on M3+) ([ThermalForge](https://github.com/ProducerGuy/ThermalForge), [iSMC](https://github.com/dkorunic/iSMC)). No universal table — must auto-discover.
 2. **HID sensor hub** — Apple Silicon exposes temp/voltage/current/power through a HID sensor hub (per [iSMC docs](https://github.com/dkorunic/iSMC)). This is what `iSMC` and `mac_temp_sensor` use for AS coverage.
 
-**We already use both** in [macos/sensors.py](src/trcc/adapters/system/macos/sensors.py) and [macos/hid_sensors.py](src/trcc/adapters/system/macos/hid_sensors.py). Coverage is *partial* because Apple changes key names per generation — some readings work on M1 but not M4, etc.
+**We already use both** in [_macos_hid.py](../src/trcc/adapters/sensors/_macos_hid.py) and [_smc.py](../src/trcc/adapters/sensors/_smc.py), composed by [macos.py](../src/trcc/adapters/sensors/macos.py): HID first, then SMC. The Apple Silicon SMC keys are off unless `TRCC_NEXT_APPLE_SILICON_SMC=1`, until a reporter confirms them on real hardware. Coverage is *partial* because Apple changes key names per generation — some readings work on M1 but not M4, etc.
 
 ### GPU temperature & power (both require IOReport)
 **IOReport API** (`IOReportCreateSubscription` + `IOReportCopyChannelsWithID` + `IOReportCreateSamples`) is the canonical Apple Silicon path used by [mactop](https://github.com/metaspartan/mactop), [macpow](https://github.com/k06a/macpow), [asitop](https://github.com/tlkh/asitop), [macgtop](https://github.com/Acelogic/macgtop), [macmon](https://www.x-cmd.com/install/macmon/).
@@ -259,7 +259,7 @@ RAPL on FreeBSD: extremely limited compared to Linux. No clean userspace API.
 - **`usbconfig(8)`** CLI — `usbconfig list` for enumeration
 - **libusb20(3)** native FreeBSD library; libusb 0.1.12 compatible
 - **pyusb works** with libusb backend (per [PyUSB site](https://pyusb.github.io/pyusb/))
-- We use this in [adapters/device/bsd/detector.py](src/trcc/adapters/device/bsd/detector.py)
+- We use pyusb, through the shared `BaseOS.scan_devices` ([_base.py](../src/trcc/adapters/system/_base.py))
 
 ### Safety / future-proofing
 - `coretemp`/`amdtemp` are stable kernel modules; Zen 5 support landed 14-stable
@@ -360,7 +360,7 @@ FreeBSD compatible via libusb20(3) ABI shim. The single most cross-portable USB 
 | MSI Afterburner | ⚠️ Pending | [Guru3D forum](https://forums.guru3d.com/threads/will-ab-4-6-7-migrate-over-to-pawnio-now-that-ms-is-actively-treating-winring0-as-a-trojan.458413/) |
 | OmenMon, EVGA Precision, ZenTimings, SteelSeries, CapFrameX | ⚠️ Various states | [Neowin coverage](https://www.neowin.net/news/windows-1110-is-flagging-winring0-on-your-pc-monitoring-fan-control-apps-heres-why/) |
 
-**Implication for TRCC:** ship LHM ≥ 0.9.6 (PawnIO build). Update [_lhm_subprocess.py](src/trcc/adapters/system/windows/sources/lhm.py)'s warning copy now reflects the v0.9.6+PawnIO pinning correctly.
+**Implication for TRCC (superseded):** the plan here was to ship LHM ≥ 0.9.6 (PawnIO build). TRCC went to PawnIO directly instead and ships no LHM — see the Windows "What TRCC did" note above.
 
 ---
 
@@ -379,6 +379,8 @@ FreeBSD compatible via libusb20(3) ABI shim. The single most cross-portable USB 
 
 Legend: ✅ green = canonical, no caveats. ⚠️ yellow = works with caveats or could be improved with code we *can* write. ❌ red = no clean path; ecosystem-blocked, not on us.
 
+The "→ Green if we add …" paths in the Windows and Apple Silicon rows are the plan as it stood when this was written. What the code did instead is in the next section.
+
 ---
 
 ## Recommended next code changes
@@ -387,21 +389,21 @@ Each entry below has an **upgradable-to-green path** in the verdict matrix above
 
 ### Highest leverage — Windows (3 changes)
 
-| # | Change | Closes which yellow? | Effort | Risk |
-|---|---|---|---|---|
-| 1 | **Pin LHM bundle to v0.9.6+ (PawnIO build)** in [installer / dist scripts](src/trcc/install/) | WinRing0 ban (Apr 2026 enforcement) | XS — bundling change, no code | None — verified by FanControl V238 + LHM upstream |
-| 2 | **Add `ADLXSource` (priority 15)** under [windows/sources/](src/trcc/adapters/system/windows/sources/) | AMD GPU temp/usage/power on Windows without LHM | M — ~250 LOC ctypes around ADLX SDK; Python sample exists | Low — vendor-supported SDK, [Python samples](https://gpuopen.com/manuals/adlx/adlx-page_sample_py/) |
-| 3 | **Add `IntelL0Source` (priority 17)** under same dir | Intel iGPU + Arc temp on Windows | M — ~200 LOC ctypes around Level Zero `zes_*` (sysman); ships with [Intel Compute Runtime](https://github.com/intel/compute-runtime) | Low — vendor-supported, used by Phoronix benchmarks |
+| # | Change | Closes which yellow? | Effort | Risk | What the code did |
+|---|---|---|---|---|---|
+| 1 | **Pin LHM bundle to v0.9.6+ (PawnIO build)** in installer / dist scripts | WinRing0 ban (Apr 2026 enforcement) | XS — bundling change, no code | None — verified by FanControl V238 + LHM upstream | **Superseded.** No LHM is shipped; the installer lays down PawnIO and TRCC reads the CPU and Super I/O through it ([_pawnio_cpu.py](../src/trcc/adapters/sensors/_pawnio_cpu.py), [_superio.py](../src/trcc/adapters/sensors/_superio.py)) |
+| 2 | **Add `ADLXSource` (priority 15)** | AMD GPU temp/usage/power on Windows without LHM | M — ~250 LOC ctypes around ADLX SDK; Python sample exists | Low — vendor-supported SDK, [Python samples](https://gpuopen.com/manuals/adlx/adlx-page_sample_py/) | **Superseded.** ADLX's licence forbids use under GPL-3, so ADL (`atiadlxx.dll`) is used instead ([_adl.py](../src/trcc/adapters/sensors/_adl.py)) |
+| 3 | **Add `IntelL0Source` (priority 17)** | Intel iGPU + Arc temp on Windows | M — ~200 LOC ctypes around Level Zero `zes_*` (sysman); ships with [Intel Compute Runtime](https://github.com/intel/compute-runtime) | Low — vendor-supported, used by Phoronix benchmarks | **Superseded.** Intel IGCL (`ControlLib.dll`) is used instead ([_igcl.py](../src/trcc/adapters/sensors/_igcl.py)), plus Windows' own D3DKMT + PDH for every vendor ([_d3dkmt.py](../src/trcc/adapters/sensors/_d3dkmt.py)) |
 
-After these three: Windows verdict moves to **Green** for every column.
+The plan was that these three would move the Windows verdict to **Green** for every column. The code took the paths in the last column.
 
 ### Medium leverage — macOS (1 change)
 
 | # | Change | Closes which yellow? | Effort | Risk |
 |---|---|---|---|---|
-| 4 | **Add `IOReportSource`** as a new strategy in [macos/sensors.py](src/trcc/adapters/system/macos/sensors.py) — same pattern as the Windows chain | Apple Silicon GPU temp/power, removes powermetrics-sudo requirement | L — ~300 LOC ctypes around private IOReport framework; [test-ioreport](https://github.com/freedomtan/test-ioreport) is the reference impl | Medium — private framework, but stable in practice for 5+ years per mactop/macpow/macmon shipping evidence |
+| 4 | **Add `IOReportSource`** as a new strategy in [macos.py](../src/trcc/adapters/sensors/macos.py) — same pattern as the Windows chain | Apple Silicon GPU temp/power, removes powermetrics-sudo requirement | L — ~300 LOC ctypes around private IOReport framework; [test-ioreport](https://github.com/freedomtan/test-ioreport) is the reference impl | Medium — private framework, but stable in practice for 5+ years per mactop/macpow/macmon shipping evidence |
 
-After this: macOS verdict moves to **Green** on Apple Silicon.
+**Not built.** Apple Silicon CPU power and frequency, and GPU usage, clock and power, come from `powermetrics` through a root helper over `/var/run/trcc-powermetrics.sock` ([_powermetrics.py](../src/trcc/adapters/sensors/_powermetrics.py)). The helper's source is in [native/macos/trcc_powermetrics_helper/](../native/macos/trcc_powermetrics_helper/); no CI workflow builds it. Without the helper those readings stay empty, unless TRCC runs as root, when it runs `powermetrics` itself (`_default_fetcher`). The plan was that IOReport would move macOS to **Green** on Apple Silicon.
 
 ### Low leverage — BSD (no code changes possible)
 
@@ -412,7 +414,7 @@ The BSD red entries (AMD/Intel GPU temp on FreeBSD, all GPU on OpenBSD) are **ec
 
 ### Linux (no code changes — already green)
 
-The only yellow is RAPL permission, and we already install a udev rule via `trcc system setup-rapl`.
+The only yellow is RAPL permission, and we already install a udev rule via `trcc system setup`.
 
 ### Cross-cutting — pin recommendations
 
@@ -422,7 +424,7 @@ After the above, the recommended pyproject extras would be:
 |---|---|---|
 | `[windows]` | pywin32, wmi (already exists) | (Windows base) |
 | `[windows-vendor]` (NEW) | ADLX wheels (not yet on PyPI — would need build) + Intel `pyze` (community) | Power users without LHM running |
-| `[hid]` | hidapi (already exists) | All OSes for HID protocol devices |
+| `[hid]` | hidapi — **now a core Linux dependency**; the extra is an empty back-compat alias | Ships on every Linux install; nothing to add |
 | `[nvidia]` | nvidia-ml-py — **now a core dependency** (v9.8.3); the extra is an empty back-compat alias | Ships on every install; nothing to add |
 | `[macos-iorport]` (NEW) | (just version-pin if we vendor the IOReport ctypes wrapper) | Apple Silicon best path |
 
@@ -442,5 +444,5 @@ After the above, the recommended pyproject extras would be:
 
 5. **Cross-platform Python deps are healthy.** pyusb, hidapi, nvidia-ml-py all actively maintained as of Feb 2026.
 
-The roadmap to "all-green except BSD" is **4 new sensor source files** (ADLX, IntelL0, LHM-PawnIO bundling, IOReport), zero architecture changes, zero new dependencies on the trickle-down chain.
+The roadmap to "all-green except BSD" was **4 new sensor source files** (ADLX, IntelL0, LHM-PawnIO bundling, IOReport), zero architecture changes, zero new dependencies on the trickle-down chain. As built, Windows went PawnIO + ADL + IGCL + D3DKMT + Super I/O instead, and IOReport was not built (see "Recommended next code changes").
 

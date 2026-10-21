@@ -1,6 +1,6 @@
 # Architecture History — GoF Refactoring & SOLID Evolution
 
-This documents the architectural refactoring journey from v6.0.0 through v8.1.4. For per-version changelogs, see `CHANGELOG.md`.
+This documents the architectural refactoring journey from v6.0.0 through v8.1.9, then summarises the v9 era that produced today's tree. The modules named in the v6–v8 sections are history; most no longer exist. For per-version changelogs, see `CHANGELOG.md`. For the current architecture, see `GUIDE_ARCHITECTURE.md`.
 
 ## GoF Refactoring (COMPLETE — v6.0.0 through v7.0.10)
 
@@ -128,3 +128,15 @@ This documents the architectural refactoring journey from v6.0.0 through v8.1.4.
 ### v8.1.9: LED View Switch Fix (#61)
 - **LED display going dark on view switch**: `_show_view()` called `_led.stop()` whenever navigating away from the LED panel (back button, about, sysinfo). `stop()` closes the USB transport, so the physical LED display stopped receiving data and went dark.
 - **Fix**: Removed `_led.stop()` from `_show_view()`. LED keeps running independently of which GUI panel is shown. Only stops on full app quit or explicit device switch to LCD.
+
+## The v9 Era — Rebuild, Cutover, One Shared App
+
+- **Command bus, first attempt (v9.1.4, `70683c66`)**: CLI, API and GUI dispatched frozen-dataclass Commands through a `CommandBus` with middleware and per-context handlers.
+- **Command bus removed (`b259fb19`, first released in v9.2.7)**: `core/command_bus.py`, `core/commands/` and `core/handlers/` deleted. UIs called `LCDDevice`/`LEDDevice` methods directly.
+- **Clean-slate rebuild (v9.4.8, `c309a557`)**: a new tree, `trcc.next`, opt-in via `trcc-next` / `TRCC_NEXT=1`. Its first commit brought back a Command bus contract: a `Command` ABC whose subclasses return typed Results. That contract grew into today's `app.dispatch(cmd)`, with no handler map.
+- **Cutover (v9.7.0, `4fa876be`)**: `next/` promoted to the `trcc` package root, with the old tree kept as `trcc.legacy`. Six days later (`73f4122d`, same release) the legacy tree and its tests moved to the `legacy` branch, and the `TRCC_LEGACY` escape hatch was removed.
+- **Presentation layer (from v9.7.1, `b68f5802`)**: Qt-free Presentation Models in `ui/presentation/`, shared by `ui/gui` and `ui/qtgui`. A boundary test (`tests/test_architecture_boundaries.py`) now forbids importing Qt, adapters or the App there.
+- **One `Registry` (v9.9.6, `23cf3adf`)**: `PlatformFactory` and `DeviceFactory` collapsed into one keyed `Registry` (`core/factory.py`). Subclasses register by naming their key in the class line (`key="linux"`, `wire=Wire.SCSI`).
+- **One shared App by default (v9.10.5)**: `_boot.trcc()` returns an `AppProxy` to a background App that every window and command shares, and starts that App on first use. Closing a window no longer stops the panels; `trcc kill` does. `TRCC_DAEMON=0` keeps the old per-process behaviour.
+- **Root shares the App (v9.10.6)**: only root raised from a user's session (`sudo`, `run0`, `pkexec`, `doas`) stays in-process. A root login or a root service shares an App like any other user.
+- **Windows joins the shared App (v9.11.0, `f30dc462`)**: on Windows the shared App runs over a named pipe, with a small TRCC service handling SCSI panels and the PawnIO driver.

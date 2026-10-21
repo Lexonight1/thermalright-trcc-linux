@@ -48,7 +48,7 @@ cat /etc/os-release
 ```
 
 Look for the `NAME=` line. Common ones:
-- **Fedora** / **CachyOS** / **Nobara** → uses `dnf`
+- **Fedora** / **Nobara** → uses `dnf`
 - **Ubuntu** / **Debian** / **Pop!_OS** / **Linux Mint** → uses `apt`
 - **Arch** / **Manjaro** / **EndeavourOS** / **CachyOS** → uses `pacman`
 
@@ -78,10 +78,12 @@ curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/d
 curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.legacy_all.deb && sudo apt install -y ./trcc-linux-latest.legacy_all.deb
 ```
 
-### pip (any distro, if packages don't work)
+### pipx (any distro, if packages don't work)
 ```bash
-pip install trcc-linux
+pipx install trcc-linux
 ```
+
+Needs Python 3.10 or newer. Install the system packages first — your distro's section in the [Installation Guide](GUIDE_INSTALL.md#pypi-install-alternative) lists them.
 
 ---
 
@@ -90,8 +92,10 @@ pip install trcc-linux
 On Windows, the app just talks to USB devices. On Linux, you need to tell the system "this user is allowed to talk to this USB device." It's a one-time setup:
 
 ```bash
-sudo trcc system setup
+trcc system setup
 ```
+
+Run it as yourself, without `sudo`: it asks for your password itself for the parts that need administrator rights, and the per-user parts are skipped when it runs as root.
 
 Then restart your computer. That's it.
 
@@ -122,7 +126,7 @@ Run the built-in doctor to check all dependencies:
 trcc doctor
 ```
 
-You should see all `[OK]` entries. If something says `[FAIL]`, follow the suggestion it gives you.
+Each line starts with `[OK  ]`, `[WARN]` or `[FAIL]`. If something says `[FAIL]` or `[WARN]`, follow the `hint:` line printed under it, if there is one.
 
 To see your device:
 ```bash
@@ -143,7 +147,7 @@ trcc detect
 
 **`~`** — Shorthand for your home folder. `~/.trcc/` means `/home/yourname/.trcc/`.
 
-**`pip`** — Python's package installer. If you installed via pip, you update with `pip install --upgrade trcc-linux`.
+**`pip` / `pipx`** — Python's package installers. If you installed via pipx, you update with `pipx upgrade trcc-linux` (via pip: `pip install --upgrade trcc-linux`).
 
 ---
 
@@ -151,14 +155,14 @@ trcc detect
 
 ### "Permission denied" or device not found
 ```bash
-sudo trcc system setup
+trcc system setup
 ```
 Then restart your computer.
 
 ### Screen stays on the splash/boot logo
 Run `trcc doctor` and check for `[FAIL]` entries. Most common fix:
 ```bash
-sudo trcc system setup
+trcc system setup
 ```
 
 ### "command not found: trcc"
@@ -177,7 +181,7 @@ trcc gui --decorated
 ### Device disconnects every 30 seconds
 Update your udev rules — this was fixed in v9.2.10:
 ```bash
-sudo trcc system setup
+trcc system setup
 ```
 
 ### Need more help?
@@ -219,10 +223,10 @@ Everything you could do on Windows works on Linux:
 | Launch GUI | `trcc gui` |
 | Detect devices | `trcc detect` |
 | Check health | `trcc doctor` |
-| Set up permissions | `sudo trcc system setup` |
+| Set up permissions | `trcc system setup` |
 | Generate bug report | `trcc report` |
 | Update (Arch / Fedora / Ubuntu) | re-run the Step 3 line for your distro — it always fetches the latest |
-| Update (pip) | `pip install --upgrade trcc-linux` |
+| Update (pipx) | `pipx upgrade trcc-linux` |
 | Start API server | `trcc serve` |
 | Interactive shell | `trcc shell` |
 
