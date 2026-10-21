@@ -68,12 +68,14 @@ def _open_module(name: str) -> Any:
 
 
 def _open_superio() -> Any:
-    """The Super I/O reader on the bundled ``LpcIO`` module, under the ISA-bus
-    mutex -- as SYSTEM, which PawnIO admits."""
+    """The Super I/O reader on the bundled ``LpcIO`` module -- one per slot it
+    reads -- under the ISA-bus mutex, as SYSTEM, which PawnIO admits."""
+    from functools import partial
+
     from ..sensors._pawnio import IsaBusLock
     from ..sensors._superio import SuperIoReader
     log.info("_open_superio")
-    return SuperIoReader(_open_module("LpcIO"), IsaBusLock().held)
+    return SuperIoReader(partial(_open_module, "LpcIO"), IsaBusLock().held)
 
 
 def make_broker() -> PrivilegedBroker:

@@ -149,11 +149,13 @@ def make_superio_sample() -> Callable[[], dict[str, Any]] | None:
     elevated, else through TRCC's SYSTEM service, as :func:`make_pawnio_cpu`
     decides.  None when an elevated process cannot load ``LpcIO``."""
     if _is_elevated():
+        from functools import partial
+
         from ..sensors._pawnio import IsaBusLock
         from ..sensors._pawnio_cpu import _open_bundled
         from ..sensors._superio import SuperIoReader
         try:
-            reader = SuperIoReader(_open_bundled("LpcIO.bin"), IsaBusLock().held)
+            reader = SuperIoReader(partial(_open_bundled, "LpcIO.bin"), IsaBusLock().held)
         except OSError as e:
             log.warning("make_superio_sample: elevated, but no LpcIO -- %s", e)
             return None

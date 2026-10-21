@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-62 ports.
+63 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -64,6 +64,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
+| [`SuperIoChip`](#superiochip) | 5 | 0 | 2 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
@@ -973,6 +974,24 @@ send_cdb(cdb: 'bytes', data: 'bytes', timeout_ms: 'int' = 5000) -> bool
 ```
 
 **Implementations (4):** `LinuxScsiTransport` · `ServiceScsiTransport` · `UsbBotScsiTransport` · `WindowsScsiTransport`
+
+## SuperIoChip
+
+`adapters/sensors/_superio.py`
+
+One vendor's chip family: its config-mode key, its chip ids, and how its monitor is found and read.  :class:`SuperIoReader` owns the order of everything; a family only knows its own chips.
+
+**You implement (5):**
+
+```python
+enter(lpc: 'Lpc') -> None
+identify(lpc: 'Lpc', chip_id: 'int') -> FoundChip | str
+leave(lpc: 'Lpc', chip_id: 'int') -> None
+measure(found: 'FoundChip') -> dict[str, Any]
+name(chip_id: 'int') -> str | None
+```
+
+**Implementations (2):** `Ite` · `Nuvoton`
 
 ## VisualEngine
 

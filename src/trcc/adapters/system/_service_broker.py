@@ -19,7 +19,8 @@ against what TRCC itself does -- measured from the code, 2026-10-16:
   install folder, and only the register reads ``_pawnio_cpu`` makes.
 * **Super I/O** -- one request, ``superio.sample``, with no arguments: the
   service runs ``_superio.SuperIoReader``'s fixed read-only sequence on the
-  bundled ``LpcIO`` module and answers numbers.  A client never names a port,
+  bundled ``LpcIO`` module (Nuvoton or ITE, whichever the board carries, the
+  reader decides) and answers numbers.  A client never names a port,
   a register or a value, and ``LpcIO`` itself is not loadable by a client.
 
 The wire is one length-prefixed message each way: ``<u32 header length>
@@ -325,7 +326,8 @@ class PrivilegedBroker:
             session.superio = self._open_superio()
             log.info("PrivilegedBroker: Super I/O reader opened for this client")
         sample = session.superio.sample()
-        frame_log.debug("PrivilegedBroker._superio_sample: %s", sample.get("chip"))
+        frame_log.debug("PrivilegedBroker._superio_sample: %d chip(s)",
+                        len(sample.get("chips") or []))
         return sample
 
     def _pawnio_load(self, session: Session, name: str) -> dict[str, Any]:

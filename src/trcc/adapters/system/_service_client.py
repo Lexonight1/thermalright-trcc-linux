@@ -174,7 +174,8 @@ class ServiceSuperIo:
             self._client.close()
             self._client = None
             raise
-        frame_log.debug("ServiceSuperIo.sample: %s", reply["sample"].get("chip"))
+        frame_log.debug("ServiceSuperIo.sample: %d chip(s)",
+                        len(reply["sample"].get("chips") or []))
         return dict(reply["sample"])
 
 
