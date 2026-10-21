@@ -24,7 +24,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseModule`](#basemodule) | 2 | 0 | 0 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`GlSurface`](#glsurface) | 2 | 1 | 3 |
-| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 23 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
 | [`Module`](#module) | 2 | 7 | 0 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -34,12 +34,12 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
-| [`BoardTempSource`](#boardtempsource) | 3 | 0 | 1 |
+| [`BoardTempSource`](#boardtempsource) | 3 | 0 | 2 |
 | [`CommandBus`](#commandbus) | 3 | 1 | 7 |
 | [`Device`](#device) | 3 | 15 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 3 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
-| [`FanSource`](#fansource) | 3 | 2 | 3 |
+| [`FanSource`](#fansource) | 3 | 2 | 4 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 14 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
@@ -301,7 +301,7 @@ key() -> str
 name() -> str
 ```
 
-**Implementations (23):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
+**Implementations (25):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SuperIoFan` · `SuperIoTemp` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
 
 ## Module
 
@@ -458,7 +458,7 @@ name() -> str
 temp() -> float | None
 ```
 
-**Implementations (1):** `PsutilBoardTemp`
+**Implementations (2):** `PsutilBoardTemp` · `SuperIoTemp`
 
 ## CommandBus
 
@@ -552,7 +552,7 @@ rpm() -> int | None
 
 **You inherit (2):** `on_gpu` · `percent`
 
-**Implementations (3):** `HwmonFan` · `SmcFan` · `SysctlFan`
+**Implementations (4):** `HwmonFan` · `SmcFan` · `SuperIoFan` · `SysctlFan`
 
 ## GpuSource
 

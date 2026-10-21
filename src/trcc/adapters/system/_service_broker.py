@@ -17,6 +17,10 @@ against what TRCC itself does -- measured from the code, 2026-10-16:
   animation ``0x201F5``/``0x301F5``).  A disk's own READ/WRITE are refused.
 * **PawnIO** -- only the two bundled modules, loaded from the service's own
   install folder, and only the register reads ``_pawnio_cpu`` makes.
+* **Super I/O** -- one request, ``superio.sample``, with no arguments: the
+  service runs ``_superio.SuperIoReader``'s fixed read-only sequence on the
+  bundled ``LpcIO`` module and answers numbers.  A client never names a port,
+  a register or a value, and ``LpcIO`` itself is not loadable by a client.
 
 The wire is one length-prefixed message each way: ``<u32 header length>
 <u32 body length> <JSON header> <body bytes>`` -- frames are ~200 KB and
@@ -148,6 +152,8 @@ class Session:
 
     scsi: dict[int, Any] = field(default_factory=dict)
     pawnio: dict[int, Any] = field(default_factory=dict)
+    #: The Super I/O reader, made on this client's first ``superio.sample``.
+    superio: Any = None
     next_id: int = 1
 
     def add(self, table: dict[int, Any], thing: Any) -> int:
@@ -162,13 +168,15 @@ class Session:
         """Close everything this client left open."""
         log.info("Session.close: %d SCSI, %d PawnIO handle(s)",
                  len(self.scsi), len(self.pawnio))
-        for thing in [*self.scsi.values(), *self.pawnio.values()]:
+        superio = [self.superio] if self.superio is not None else []
+        for thing in [*self.scsi.values(), *self.pawnio.values(), *superio]:
             try:
                 thing.close()
             except Exception:
                 log.exception("Session.close: a handle failed to close")
         self.scsi.clear()
         self.pawnio.clear()
+        self.superio = None
 
 
 def check_cdb(cdb: bytes) -> None:
@@ -195,17 +203,21 @@ class PrivilegedBroker:
 
     *find_drive(vid, pid, unit)* names a panel's drive or None; *open_scsi(path)*
     returns an opened ``ScsiTransport``; *open_module(name)* returns a loaded
-    ``PawnIoModule`` -- injected, so Linux tests run the real checks.
+    ``PawnIoModule``; *open_superio()* returns a ``SuperIoReader`` -- injected,
+    so Linux tests run the real checks.  Without *open_superio* the board's
+    fans are an error answer, as on a service built before them.
     """
 
     def __init__(self, *, version: str,
                  find_drive: Callable[[int, int, str], str | None],
                  open_scsi: Callable[[str], Any],
-                 open_module: Callable[[str], Any]) -> None:
+                 open_module: Callable[[str], Any],
+                 open_superio: Callable[[], Any] | None = None) -> None:
         self._version = version
         self._find_drive = find_drive
         self._open_scsi = open_scsi
         self._open_module = open_module
+        self._open_superio = open_superio
         log.info("PrivilegedBroker: version %s, %d SCSI panel id(s)",
                  version, len(SCSI_PANELS))
 
@@ -278,6 +290,8 @@ class PrivilegedBroker:
             case "pawnio.close":
                 session.pawnio.pop(int(header["handle"])).close()
                 return {"ok": True}, b""
+            case "superio.sample":
+                return {"ok": True, "sample": self._superio_sample(session)}, b""
         log.warning("PrivilegedBroker: unknown op %r", op)
         raise Refused(f"unknown request {op!r}")
 
@@ -302,6 +316,17 @@ class PrivilegedBroker:
         log.info("PrivilegedBroker: %04x:%04x -> %s as handle %d",
                  vid, pid, path, handle)
         return {"ok": True, "handle": handle}
+
+    def _superio_sample(self, session: Session) -> dict[str, Any]:
+        """The board's fans and inputs, read by the service's own sequence."""
+        if session.superio is None:
+            if self._open_superio is None:
+                raise Refused("this service does not read the Super I/O")
+            session.superio = self._open_superio()
+            log.info("PrivilegedBroker: Super I/O reader opened for this client")
+        sample = session.superio.sample()
+        frame_log.debug("PrivilegedBroker._superio_sample: %s", sample.get("chip"))
+        return sample
 
     def _pawnio_load(self, session: Session, name: str) -> dict[str, Any]:
         """Load the bundled module *name*; another CPU's is an answer."""

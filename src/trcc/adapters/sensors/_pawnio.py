@@ -38,7 +38,7 @@ import sys
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, ClassVar
 
 from ...core.logs import per_frame
 
@@ -263,23 +263,24 @@ class PawnIoModule:
         self.close()
 
 
-class PciBusLock:
-    """``Global\\Access_PCI``: the named mutex monitoring tools hold around
-    PCI config reads, so two of them never interleave the SMN index/data
-    pair AMD temperatures go through.  LibreHardwareMonitor and others take
-    it; TRCC takes it too, waiting 10 ms as they do.  Windows only."""
+class _BusLock:
+    """A named mutex monitoring tools hold around one bus, so two of them never
+    interleave an index/data pair on it.  LibreHardwareMonitor, HWiNFO and
+    FanControl take these; TRCC takes them too, waiting as long as they do.
+    Windows only.  A subclass names the mutex and says what is busy."""
 
-    NAME = "Global\\Access_PCI"
-    WAIT_MS = 10
+    NAME: ClassVar[str]
+    WAIT_MS: ClassVar[int]
+    BUS: ClassVar[str]
     _WAIT_TIMEOUT = 0x102
 
     _k32: Any                       # set in __init__ behind a sys.platform gate
     _handle: Any
 
     def __init__(self) -> None:
-        log.debug("PciBusLock.__init__: %s", self.NAME)
+        log.debug("%s.__init__: %s", type(self).__name__, self.NAME)
         if sys.platform != "win32":
-            raise OSError("Access_PCI is a Windows mutex")
+            raise OSError(f"{self.NAME} is a Windows mutex")
         import ctypes
 
         self._k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -297,15 +298,35 @@ class PciBusLock:
 
     @contextmanager
     def held(self) -> Iterator[None]:
-        """The bus, for one read -- ``PawnIoError`` when another tool holds
+        """The bus, for one access -- ``PawnIoError`` when another tool holds
         it past the wait, so this tick skips rather than interleaves."""
-        frame_log.debug("PciBusLock.held: waiting %d ms", self.WAIT_MS)
+        frame_log.debug("%s.held: waiting %d ms", type(self).__name__, self.WAIT_MS)
         if self._k32.WaitForSingleObject(self._handle,
                                          self.WAIT_MS) == self._WAIT_TIMEOUT:
             raise PawnIoError(self._WAIT_TIMEOUT,
-                              "the PCI bus is busy -- another monitor holds "
-                              "Access_PCI")
+                              f"the {self.BUS} is busy -- another monitor holds "
+                              f"{self.NAME}")
         try:
             yield
         finally:
             self._k32.ReleaseMutex(self._handle)
+
+
+class PciBusLock(_BusLock):
+    """``Global\\Access_PCI``, around PCI config reads: the SMN index/data
+    pair AMD temperatures go through."""
+
+    NAME = "Global\\Access_PCI"
+    WAIT_MS = 10
+    BUS = "PCI bus"
+
+
+class IsaBusLock(_BusLock):
+    """``Global\\Access_ISABUS.HTP.Method``, around the Super I/O's config and
+    hardware-monitor ports -- the name LibreHardwareMonitor's ``Mutexes.cs``
+    and PawnIO's ``LpcIO`` module both give.  100 ms, LibreHardwareMonitor's
+    detection wait: a board's fans are found from its FIRST sample."""
+
+    NAME = "Global\\Access_ISABUS.HTP.Method"
+    WAIT_MS = 100
+    BUS = "ISA bus"

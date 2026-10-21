@@ -67,11 +67,21 @@ def _open_module(name: str) -> Any:
     return _open_bundled(f"{name}.bin")
 
 
+def _open_superio() -> Any:
+    """The Super I/O reader on the bundled ``LpcIO`` module, under the ISA-bus
+    mutex -- as SYSTEM, which PawnIO admits."""
+    from ..sensors._pawnio import IsaBusLock
+    from ..sensors._superio import SuperIoReader
+    log.info("_open_superio")
+    return SuperIoReader(_open_module("LpcIO"), IsaBusLock().held)
+
+
 def make_broker() -> PrivilegedBroker:
-    """The broker wired to this machine's drives and PawnIO."""
+    """The broker wired to this machine's drives, PawnIO and Super I/O."""
     log.debug("make_broker")
     return PrivilegedBroker(version=__version__, find_drive=find_physical_drive,
-                            open_scsi=_open_panel, open_module=_open_module)
+                            open_scsi=_open_panel, open_module=_open_module,
+                            open_superio=_open_superio)
 
 
 class ServiceServer:

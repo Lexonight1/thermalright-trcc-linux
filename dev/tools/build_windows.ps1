@@ -190,7 +190,7 @@ if ($libusbPath -and (Test-Path $libusbPath)) {
 }
 # The PawnIO modules beside trcc.exe (_pawnio_cpu.module_dir).
 New-Item -ItemType Directory -Force -Path "dist\trcc\pawnio" | Out-Null
-foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "COPYING") {
+foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "LpcIO.bin", "COPYING") {
   Copy-Item "pawnio-modules\$f" "dist\trcc\pawnio\" -Force
 }
 Log "Bundled the PawnIO modules"
@@ -220,7 +220,7 @@ if (-not (Test-Path "dist\trcc\ffmpeg.exe"))   { $missing += "ffmpeg.exe" }
 if (-not (Get-ChildItem "dist\trcc\libusb*" -ErrorAction SilentlyContinue)) {
   $missing += "libusb-1.0.dll"
 }
-foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "COPYING") {
+foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "LpcIO.bin", "COPYING") {
   if (-not (Test-Path "dist\trcc\pawnio\$f")) { $missing += "pawnio\$f" }
 }
 

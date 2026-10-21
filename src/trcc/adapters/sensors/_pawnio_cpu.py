@@ -49,6 +49,10 @@ frame_log = per_frame(__name__)
 
 #: The module files, beside the frozen ``trcc.exe`` (windows.yml puts them).
 MODULE_DIR_NAME = "pawnio"
+#: Every module file the Windows build ships there, from PawnIO.Modules 0.2.11:
+#: the CPU readers, and LpcIO for the motherboard's Super I/O chip.
+#: ``tests/test_pawnio.py`` holds windows.yml and build_windows.ps1 to it.
+BUNDLED_MODULES = ("IntelMSR.bin", "AMDFamily17.bin", "LpcIO.bin")
 _NOT_FOR_THIS_CPU = 50              # ERROR_NOT_SUPPORTED from a module's main()
 
 

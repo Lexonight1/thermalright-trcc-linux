@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
+from typing import Any
 
 from ...core.ports import CpuSource, DiskSource, GpuSource
 from ._adl import discover_adl_gpus
@@ -28,6 +29,7 @@ from ._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
 from ._pawnio_cpu import PawnioCpu
 from ._storage_query import discover_windows_disks
+from ._superio import discover_superio
 from ._wmi_gpu import discover_wmi_gpus
 from .aggregator import BaselineSensors
 from .chain import CpuSourceChain, GpuSourceChain
@@ -40,13 +42,15 @@ log = logging.getLogger(__name__)
 def build_windows_sensors(
     thread_context: Callable[[], AbstractContextManager[None]] = nullcontext,
     pawnio: PawnioCpu | None = None,
+    superio: Callable[[], dict[str, Any]] | None = None,
 ) -> BaselineSensors:
     """Construct a BaselineSensors with the full Windows source chain.
 
     ``thread_context`` is the OS poll-thread setup (Windows passes its COM
     apartment so WMI reads work off the main thread); defaults to a no-op
     so the builder stays callable without a Platform.  *pawnio* is the
-    platform's choice -- through TRCC's service when not elevated.
+    platform's choice -- through TRCC's service when not elevated -- and
+    *superio* likewise the board's Super I/O sample, or None without one.
     """
     log.info("build_windows_sensors: pawnio=%s", "given" if pawnio else "direct")
     cpu: CpuSource = CpuSourceChain([
@@ -58,11 +62,12 @@ def build_windows_sensors(
     ])
     gpus = _build_windows_gpu_chains()
     disks = _build_windows_disks()
-    log.info("Windows sensors: cpu chain ready, gpus=%d, disks=%d",
-             len(gpus), len(disks))
+    fans, board = discover_superio(superio)
+    log.info("Windows sensors: cpu chain ready, gpus=%d, disks=%d, fans=%d, board=%d",
+             len(gpus), len(disks), len(fans), len(board))
     return BaselineSensors(
-        cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=[], disks=disks,
-        thread_context=thread_context,
+        cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=fans, disks=disks,
+        board_temps=board, thread_context=thread_context,
     )
 
 

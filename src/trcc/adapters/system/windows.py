@@ -14,7 +14,7 @@ import ctypes
 import logging
 import os
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, NoReturn
@@ -142,6 +142,26 @@ def make_pawnio_cpu() -> PawnioCpu:
     from ._service_client import open_service_module
     log.info("make_pawnio_cpu: not elevated -- PawnIO through TRCC's service")
     return PawnioCpu(open_module=open_service_module)
+
+
+def make_superio_sample() -> Callable[[], dict[str, Any]] | None:
+    """The board's Super I/O as this process can reach it -- directly when
+    elevated, else through TRCC's SYSTEM service, as :func:`make_pawnio_cpu`
+    decides.  None when an elevated process cannot load ``LpcIO``."""
+    if _is_elevated():
+        from ..sensors._pawnio import IsaBusLock
+        from ..sensors._pawnio_cpu import _open_bundled
+        from ..sensors._superio import SuperIoReader
+        try:
+            reader = SuperIoReader(_open_bundled("LpcIO.bin"), IsaBusLock().held)
+        except OSError as e:
+            log.warning("make_superio_sample: elevated, but no LpcIO -- %s", e)
+            return None
+        log.info("make_superio_sample: elevated -- the Super I/O directly")
+        return reader.sample
+    from ._service_client import ServiceSuperIo
+    log.info("make_superio_sample: not elevated -- the Super I/O through TRCC's service")
+    return ServiceSuperIo().sample
 
 
 # Common CreateFileW failures when opening \\.\PhysicalDriveN for SCSI
@@ -540,7 +560,8 @@ class WindowsPlatform(BaseOS, key="win32"):
         """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
         log.debug("_build_sensors")
         return build_windows_sensors(thread_context=self.worker_thread_context,
-                                     pawnio=make_pawnio_cpu())
+                                     pawnio=make_pawnio_cpu(),
+                                     superio=make_superio_sample())
 
     def _build_autostart(self) -> AutostartManager:
         """The Run key, for the installer build and pip alike.

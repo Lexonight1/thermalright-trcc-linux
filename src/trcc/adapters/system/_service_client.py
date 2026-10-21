@@ -155,6 +155,29 @@ class ServicePawnModule:
         self._client.close()
 
 
+class ServiceSuperIo:
+    """The board's Super I/O, read by the service: ``SuperIoReader.sample``'s
+    shape.  One connection, made again after the service restarts."""
+
+    def __init__(self) -> None:
+        log.debug("ServiceSuperIo.__init__")
+        self._client: ServiceClient | None = None
+
+    def sample(self) -> dict[str, Any]:
+        """One sample; ``OSError`` when the service cannot give one."""
+        if self._client is None:
+            self._client = connect_service()
+        try:
+            reply, _ = self._client.call({"op": "superio.sample"})
+        except OSError:
+            # Gone or refused: the next tick connects afresh.
+            self._client.close()
+            self._client = None
+            raise
+        frame_log.debug("ServiceSuperIo.sample: %s", reply["sample"].get("chip"))
+        return dict(reply["sample"])
+
+
 def open_service_module(file_name: str) -> Any:
     """``PawnioCpu``'s *open_module*, through the service: ``IntelMSR.bin``
     -> the service loads ``IntelMSR``.  Failures arrive as ``PawnIoError``

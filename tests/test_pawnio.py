@@ -222,3 +222,26 @@ def test_off_windows_there_is_no_pawnio() -> None:
     from trcc.adapters.sensors._pawnio import _Kernel32DeviceIo
     with pytest.raises(OSError, match="PawnIO is a Windows driver"):
         _Kernel32DeviceIo()
+
+
+def test_every_build_ships_exactly_the_bundled_modules() -> None:
+    """The module list is spelled out four times, in the CI workflow and the
+    local build script, each copying then verifying.  A module added to one
+    and not another ships in one build only -- or is checked for and missing.
+
+    MUTATION CHECK: drop LpcIO.bin from one foreach line -- named here."""
+    import re
+    from pathlib import Path
+
+    from trcc.adapters.sensors._pawnio_cpu import BUNDLED_MODULES
+
+    root = Path(__file__).resolve().parents[1]
+    expected = {*BUNDLED_MODULES, "COPYING"}
+    lines = [(name, n, line) for name in (".github/workflows/windows.yml",
+                                          "dev/tools/build_windows.ps1")
+             for n, line in enumerate((root / name).read_text().splitlines(), 1)
+             if "foreach ($f in" in line and "IntelMSR.bin" in line]
+    assert len(lines) == 4, lines
+    wrong = [(name, n, sorted(set(re.findall(r'"([^"]+)"', line)) ^ expected))
+             for name, n, line in lines if set(re.findall(r'"([^"]+)"', line)) != expected]
+    assert not wrong, f"module lists that differ from BUNDLED_MODULES: {wrong}"
