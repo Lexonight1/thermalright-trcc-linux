@@ -71,6 +71,7 @@ from ...core.models import (
 )
 from ..presentation.display_source import describe_game_mode, describe_source
 from ._ctx import (
+    DeviceKey,
     daemon_owns_the_panels,
     dispatch_echo,
     emit_json,
@@ -94,7 +95,7 @@ app = typer.Typer(help="Configure device display (theme / orientation / brightne
 
 @app.command("set-orientation")
 def set_orientation(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     degrees: int = typer.Argument(..., help="Rotation: 0, 90, 180, or 270"),
 ) -> None:
     """Set per-device rotation."""
@@ -104,7 +105,7 @@ def set_orientation(
 
 @app.command("set-brightness")
 def set_brightness(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     percent: int = typer.Argument(..., help="Brightness 0–100"),
 ) -> None:
     """Set per-device display brightness."""
@@ -124,7 +125,7 @@ def _parse_hex_color(hex_str: str) -> tuple[int, int, int] | None:
 
 @app.command("color")
 def color(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     hex_color: str = typer.Argument(..., metavar="HEX",
                                     help="Hex color (e.g. ff0000 for red)"),
 ) -> None:
@@ -150,7 +151,7 @@ def color(
 
 @app.command("set-fit-mode")
 def set_fit_mode(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     mode: str = typer.Argument(
         ..., help="Fit mode: 'width' (letterbox), 'height' (pillarbox), 'stretch'",
     ),
@@ -162,7 +163,7 @@ def set_fit_mode(
 
 @app.command("overlay")
 def overlay(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     state: str = typer.Argument(..., help="'on' or 'off'"),
 ) -> None:
     """Toggle the metric overlay layer."""
@@ -180,7 +181,7 @@ def overlay(
 
 @app.command("apply-mask")
 def apply_mask(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Image file path (png/jpg/jpeg/bmp/webp)",
         exists=True, file_okay=True, dir_okay=False,
@@ -197,7 +198,7 @@ def apply_mask(
 
 @app.command("mask-position")
 def mask_position(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     x: int = typer.Argument(..., help="X offset in pixels (≥ 0)"),
     y: int = typer.Argument(..., help="Y offset in pixels (≥ 0)"),
 ) -> None:
@@ -208,7 +209,7 @@ def mask_position(
 
 @app.command("mask-visible")
 def mask_visible(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     state: str = typer.Argument(..., help="'on' or 'off'"),
 ) -> None:
     """Toggle mask visibility."""
@@ -226,7 +227,7 @@ def mask_visible(
 
 @app.command("split-mode")
 def split_mode(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     mode: int = typer.Argument(..., help="0 (off), 1 (style A), 2 (B), 3 (C)"),
 ) -> None:
     """Set the Dynamic Island style (widescreen panels only)."""
@@ -236,7 +237,7 @@ def split_mode(
 
 @app.command("game")
 def game(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     state: str | None = typer.Argument(
         None, help="'on' / 'off'; omit to change only the threshold"),
     threshold: int | None = typer.Option(
@@ -256,7 +257,7 @@ def game(
 
 @app.command("load-image")
 def load_image(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Image file (PNG / JPG / JPEG / BMP / WEBP)",
         exists=True, file_okay=True, dir_okay=False,
@@ -280,7 +281,7 @@ def load_image(
 
 @app.command("load-video")
 def load_video(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Video file (MP4 / MOV / WEBM / MKV / AVI / ZT)",
         exists=True, file_okay=True, dir_okay=False,
@@ -322,7 +323,7 @@ def load_video(
 
 @app.command("export-video")
 def export_video(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Video file (MP4 / MOV / WEBM / MKV / AVI)",
         exists=True, file_okay=True, dir_okay=False,
@@ -440,7 +441,7 @@ def video_duration(
 
 @app.command("load-theme")
 def load_theme(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(..., help="Theme directory",
                                 exists=True, file_okay=False, dir_okay=True),
 ) -> None:
@@ -455,7 +456,7 @@ def load_theme(
 
 @app.command("play-video")
 def play_video(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Video path (mp4/mov/webm/mkv/avi/zt)",
         exists=True, file_okay=True, dir_okay=False,
@@ -482,7 +483,7 @@ def play_video(
 
 @app.command("stop-video")
 def stop_video(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Clear the video playback override (returns to the active theme)."""
     log.info("cli display stop-video: key=%s", key)
@@ -538,7 +539,7 @@ def boot_anim(
 
 @app.command("play")
 def play(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     interval: float = typer.Option(
         None, "--interval", "-i",
         help="Tick interval in seconds (default: AppSettings.refresh_interval_s)",
@@ -651,7 +652,7 @@ def seek_video(
 
 @app.command("video-status")
 def video_status(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Report what the device's video playback is doing (read-only).
 
@@ -722,7 +723,7 @@ def list_masks(
 
 @app.command("overlay-list")
 def overlay_list(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Show what is currently drawn on the device's screen.
 
@@ -752,7 +753,7 @@ def overlay_list(
 
 @app.command("overlay-add")
 def overlay_add(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     type_: str = typer.Argument(
         ..., metavar="TYPE",
         help=" / ".join(repr(t) for t in get_args(OverlayElementType)),
@@ -861,7 +862,7 @@ def overlay_delete(
 
 @app.command("slideshow")
 def slideshow(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     state: str = typer.Argument(..., help="'on' / 'off'"),
 ) -> None:
     """Toggle the per-device slideshow on/off."""
@@ -878,7 +879,7 @@ def slideshow(
 
 @app.command("background")
 def background(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Image or video file to use as the background",
         exists=True, file_okay=True, dir_okay=False,
@@ -896,7 +897,7 @@ def background(
 
 @app.command("configure-slideshow")
 def configure_slideshow(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     themes: list[str] = typer.Argument(
         ..., help="Theme names (directories under user_content_dir) — order matters",
     ),
@@ -922,7 +923,7 @@ def configure_slideshow(
 
 @app.command("keepalive")
 def keepalive(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     interval: float = typer.Option(
         0.150, "--interval", "-i", min=0.05,
         help=("Seconds between resends.  Bulk/LY firmware reverts to "
@@ -973,7 +974,7 @@ def keepalive(
 
 @app.command("background-mode")
 def background_mode(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     mode: str = typer.Argument(
         ..., help="'theme' / 'color' / 'transparent'",
     ),
@@ -985,7 +986,7 @@ def background_mode(
 
 @app.command("overlay-background")
 def overlay_background(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     hex_color: str = typer.Argument(
         ..., metavar="HEX", help="Hex color (e.g. 000000 for black)",
     ),
@@ -1001,7 +1002,7 @@ def overlay_background(
 
 @app.command("restore-theme")
 def restore_theme(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Restore the device's saved display (theme + background; Theme1 if none)."""
     log.info("cli display restore-theme: key=%s", key)
@@ -1070,7 +1071,7 @@ def resume(
 
 @app.command("test")
 def test(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     seconds: float = typer.Option(
         1.0, "--seconds", "-s", min=0.1,
         help="Hold each color for this many seconds.",
@@ -1104,7 +1105,7 @@ def test(
 
 @app.command("sleep")
 def sleep(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Blank the panel so it goes dark (the shutdown / turn-off action).
 
@@ -1122,7 +1123,7 @@ def sleep(
 
 @app.command("test-lcd")
 def test_lcd(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     cols: int = typer.Option(
         60, "--cols", "-c", min=10, max=200,
         help="Width of the ANSI preview in terminal cells.",
@@ -1150,7 +1151,7 @@ def test_lcd(
 
 @app.command("send-image")
 def send_image(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     path: Path = typer.Argument(
         ..., help="Image file (PNG/JPG/BMP/WEBP)",
         exists=True, file_okay=True, dir_okay=False,
@@ -1209,7 +1210,7 @@ def overlay_render(
 
 @app.command("screencast")
 def screencast(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     x: int = typer.Argument(0, min=0, help="Top-left X of the capture region (px)"),
     y: int = typer.Argument(0, min=0, help="Top-left Y of the capture region (px)"),
     w: int = typer.Argument(
@@ -1267,7 +1268,7 @@ def screencast(
 
 @app.command("screencast-region")
 def screencast_region(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     x: int = typer.Argument(..., min=0, max=9999, help="Top-left X on screen (px)"),
     y: int = typer.Argument(..., min=0, max=9999, help="Top-left Y on screen (px)"),
     w: int = typer.Argument(..., min=0, max=9999, help="Region width (px)"),
@@ -1286,7 +1287,7 @@ def screencast_region(
 
 @app.command("stop-screencast")
 def stop_screencast(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Stop an active screencast started by another process (daemon/API)."""
     log.info("cli display stop-screencast: key=%s", key)
@@ -1295,7 +1296,7 @@ def stop_screencast(
 
 @app.command("media-player")
 def media_player(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     uri: str = typer.Argument(
         "", help="Source: a local file path, or a web URL/stream. '' clears.",
     ),
@@ -1316,7 +1317,7 @@ def media_player(
 
 @app.command("snapshot")
 def snapshot(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     json_output: bool = typer.Option(
         False, "--json", help="Emit JSON instead of human text.",
     ),

@@ -10,8 +10,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 from ...core.commands import (
@@ -43,15 +42,16 @@ from ..presentation.rgb_page import (
 )
 from ..qt_ram_access import RamAccessRow
 from ..qt_rgb_page import RgbPageView
+from .base import paint_page
 from .constants import Colors, Sizes
 from .uc_ram_access import UCRamAccess
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
-GOLD = "#b49653"
+GOLD = Colors.PAGE_GOLD
 ACCENT = "#d9b45a"
-FRAME = "#434343"
+FRAME = Colors.PAGE_FRAME
 CARD = "#2b2b31"
 CARD_BORDER = "#4a4a52"
 MUTED = "#9a9aa2"
@@ -191,32 +191,4 @@ class UCRgb(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         frame_log.debug("UCRgb.paintEvent")
         paint_page(self, "RGB Lighting")
-
-
-#: A page's gold title bar and framed body, in its own coordinates -- the
-#: RGB Lighting page's and the About page's.
-TITLE_BAR = QRect(10, 20, 1254, 48)
-BODY_FRAME = QRect(12, 98, 1250, 680)
-
-
-def paint_page(widget: QWidget, title: str) -> None:
-    """*widget*'s page: the window's colour, the gold title bar with *title*
-    on it, the framed body."""
-    frame_log.debug("paint_page: %s", title)
-    p = QPainter(widget)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.fillRect(widget.rect(), QColor(Colors.WINDOW_BG))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(GOLD))
-    p.drawRoundedRect(TITLE_BAR, 6, 6)
-    font = QFont()
-    font.setPixelSize(30)
-    font.setBold(True)
-    p.setFont(font)
-    p.setPen(QColor("#3a3a3a"))
-    p.drawText(TITLE_BAR.adjusted(20, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, title)
-    p.setPen(QPen(QColor(FRAME), 3))
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    p.drawRoundedRect(BODY_FRAME, 6, 6)
-    p.end()
 

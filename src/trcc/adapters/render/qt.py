@@ -26,7 +26,7 @@ from PySide6.QtGui import (
 
 from ...core.errors import TrccError
 from ...core.logs import per_frame
-from ...core.models import RawFrame
+from ...core.models import THEME_FONT, RawFrame
 from ...core.ports import Renderer
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,6 @@ _FONT_CACHE: dict[tuple[int, bool, bool, str], QFont] = {}
 # we additionally register everything bundled under src/trcc/assets/fonts/ so a
 # user who lacks YaHei still gets it.  The default font then resolves from the
 # union — the user's installed copy if present, else the bundled one.
-_THEME_DEFAULT_FAMILY = "Microsoft YaHei"
 _FONT_SUFFIXES = (".ttf", ".ttc", ".otf")
 _FONTS_REGISTERED = False
 
@@ -51,7 +50,7 @@ def _register_bundled_fonts() -> None:
     Drop a font into ``src/trcc/assets/fonts/`` → it just works.  The user's
     SYSTEM + downloaded fonts are already in the DB via Qt, so after this the DB
     is the union of both — the renderer then resolves the theme family
-    (``_THEME_DEFAULT_FAMILY``) from the user's own copy when installed, else the
+    (``THEME_FONT``) from the user's own copy when installed, else the
     bundled one.  Does NOT mutate the global app font (that would shift GUI
     widget metrics + leak across tests); the renderer picks its own font in
     ``_get_font`` instead.
@@ -277,7 +276,7 @@ class QtRenderer(Renderer):
         # Default overlay text to the theme family (Microsoft YaHei, registered
         # from the bundled/system union) instead of the app default — so theme
         # text matches the Windows app without mutating the global app font.
-        family = family or _THEME_DEFAULT_FAMILY
+        family = family or THEME_FONT
         cache_key = (size, bold, italic, family)
         cached = _FONT_CACHE.get(cache_key)
         if cached is not None:

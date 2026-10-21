@@ -50,8 +50,7 @@ from ...core.models import DEFAULT_REFRESH_INTERVAL_S
 from ...core.results import ControlCenterSnapshotResult
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
-from .constants import Layout, Sizes, Styles
-from .uc_rgb import GOLD, TITLE_BAR
+from .constants import Colors, Layout, Sizes, Styles
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -219,8 +218,8 @@ class UCAbout(BasePanel):
         log.debug("UCAbout._setup_title_bar")
         bar = QFrame(self)
         bar.setObjectName("titleBar")
-        bar.setGeometry(TITLE_BAR)
-        bar.setStyleSheet(f"QFrame#titleBar {{ background: {GOLD}; border-radius: 6px; }}")
+        bar.setGeometry(*Layout.PAGE_TITLE_BAR)
+        bar.setStyleSheet(f"QFrame#titleBar {{ background: {Colors.PAGE_GOLD}; border-radius: 6px; }}")
         row = QHBoxLayout(bar)
         row.setContentsMargins(20, 0, 0, 0)
         row.setSpacing(40)

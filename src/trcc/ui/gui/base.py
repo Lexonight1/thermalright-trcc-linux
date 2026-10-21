@@ -17,7 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -36,6 +36,30 @@ log = logging.getLogger(__name__)
 #: The preview repaints and re-images once per rendered frame.
 frame_log = per_frame(__name__)
 
+
+
+def paint_page(widget: QWidget, title: str) -> None:
+    """*widget*'s full-window page: the window's colour, the gold title bar
+    with *title* on it, the framed body -- About, RGB Lighting, Thanks and
+    Modules all draw this."""
+    frame_log.debug("paint_page: %s", title)
+    bar = QRect(*Layout.PAGE_TITLE_BAR)
+    p = QPainter(widget)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.fillRect(widget.rect(), QColor(Colors.WINDOW_BG))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(Colors.PAGE_GOLD))
+    p.drawRoundedRect(bar, 6, 6)
+    font = QFont()
+    font.setPixelSize(30)
+    font.setBold(True)
+    p.setFont(font)
+    p.setPen(QColor("#3a3a3a"))
+    p.drawText(bar.adjusted(20, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, title)
+    p.setPen(QPen(QColor(Colors.PAGE_FRAME), 3))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(QRect(*Layout.PAGE_BODY), 6, 6)
+    p.end()
 
 
 class BasePanel(QFrame):

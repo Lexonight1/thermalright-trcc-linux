@@ -27,6 +27,7 @@ from ..core.logs import Blob, per_frame
 from ..core.models import (
     DATE_FORMATS,
     METRICS,
+    THEME_FONT,
     TIME_FORMATS,
     DisplaySource,
     default_metric_format,
@@ -48,7 +49,6 @@ _MAGIC_DD = 0xDD
 _FONT_SLOTS = 13
 _ELEMENT_SLOTS = 13
 
-_DEFAULT_FONT_NAME = "Microsoft YaHei"
 _DEFAULT_FONT_UNIT = 3       # GraphicsUnit.Point
 _DEFAULT_FONT_CHARSET = 134  # GB2312
 
@@ -511,7 +511,7 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         try:
             if idx == 0:
                 custom_text = r.read_string()
-            font_name = r.read_string() or _DEFAULT_FONT_NAME
+            font_name = r.read_string() or THEME_FONT
             size = _clamp_font_size(r.read_float())
             style = r.read_byte()
             r.read_byte()
@@ -536,7 +536,7 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
             })
         except (struct.error, IndexError):
             fonts.append({
-                "name": _DEFAULT_FONT_NAME, "size": 24, "bold": False,
+                "name": THEME_FONT, "size": 24, "bold": False,
                 "italic": False, "color": "#ffffff",
             })
 
@@ -707,7 +707,7 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
 
 def _read_dd_font(r: _Reader) -> dict[str, Any]:
     frame_log.debug("_read_dd_font: r=%s", r)
-    name = r.read_string() or _DEFAULT_FONT_NAME
+    name = r.read_string() or THEME_FONT
     size = _clamp_font_size(r.read_float())
     style = r.read_byte()
     r.read_byte()
@@ -810,7 +810,7 @@ def _write_dd_element(w: _Writer, element: dict[str, Any]) -> None:
 
 def _write_dd_font(w: _Writer, element: dict[str, Any]) -> None:
     log.debug("_write_dd_font: w=%s element=%s", w, element)
-    w.write_string(str(element.get("font_name", _DEFAULT_FONT_NAME)))
+    w.write_string(str(element.get("font_name", THEME_FONT)))
     w.write_float(float(element.get("size", 24.0)))
     style = 0
     if element.get("bold"):

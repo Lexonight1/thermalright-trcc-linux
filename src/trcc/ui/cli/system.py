@@ -65,7 +65,7 @@ from ...core.models import (
 )
 from ...core.results import RgbLightsResult
 from . import module
-from ._ctx import emit_json, get_app, wait_until_interrupted
+from ._ctx import DeviceKey, emit_json, get_app, wait_until_interrupted
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -916,7 +916,7 @@ def info(
 
 @app.command("hid-debug")
 def hid_debug(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Connect to *key* + print handshake details for a GitHub issue paste.
 

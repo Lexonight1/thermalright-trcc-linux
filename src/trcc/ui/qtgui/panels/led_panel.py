@@ -52,7 +52,7 @@ class LedPanel(BasePanel):
         self._picker.key_changed.connect(self._on_key_changed)
 
         header_form = QFormLayout()
-        header_form.addRow("Device key:", self._picker)
+        header_form.addRow(self._picker.LABEL, self._picker)
 
         header_row = QHBoxLayout()
         header_row.addLayout(header_form, stretch=1)

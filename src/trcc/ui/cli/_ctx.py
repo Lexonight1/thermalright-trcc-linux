@@ -13,7 +13,7 @@ import logging
 import signal
 import threading
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 
@@ -23,6 +23,10 @@ from ...core.commands import DeviceState
 from ...core.ports import CommandBus, Platform, Renderer
 
 log = logging.getLogger(__name__)
+
+#: A command's device-key argument -- the one wording every command and every
+#: module's CLI shows (it was typed out 46 times).
+DeviceKey = Annotated[str, typer.Argument(help="Device key, e.g. 0402:3922")]
 
 
 def dumps_json(payload: Any) -> str:

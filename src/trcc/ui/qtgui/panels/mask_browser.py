@@ -61,7 +61,7 @@ class MaskBrowser(AssetBrowserPanel):
         self._picker.key_changed.connect(self._on_key_changed)
 
         key_form = QFormLayout()
-        key_form.addRow("Device key:", self._picker)
+        key_form.addRow(self._picker.LABEL, self._picker)
 
         # ── Mask list + actions ─────────────────────────────────────
         # Thumbnail grid: each mask shows its Theme.png preview

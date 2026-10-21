@@ -21,6 +21,11 @@ class Colors:
     ACCENT = '#4A6FA5'
     ACCENT_BORDER = '#6B8FC5'
 
+    # A full-window page (About, RGB Lighting, Thanks, Modules): its title
+    # bar's gold and its body's frame
+    PAGE_GOLD = '#b49653'
+    PAGE_FRAME = '#434343'
+
     # Hover
     HOVER_BG = '#3A3A3A'
     HOVER_BORDER = '#555'
@@ -178,6 +183,11 @@ class Layout:
     # Device sidebar
     SIDEBAR = (0, 0, 180, 800)
     FORM_CONTAINER = (180, 0, 1274, 800)
+
+    # A full-window page's gold title bar and framed body, in its own
+    # coordinates (``base.paint_page``)
+    PAGE_TITLE_BAR = (10, 20, 1254, 48)
+    PAGE_BODY = (12, 98, 1250, 680)
 
     # Form1-level buttons (on central, visible in sensor/home view only)
     # Windows: buttonPower at (1392, 24), buttonHelp at (1342, 24)

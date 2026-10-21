@@ -21,6 +21,7 @@ from ...core.logs import per_frame
 from ...core.models import (
     RECENT_COLOR_DEFAULT,
     RECENT_COLOR_SLOTS,
+    THEME_FONT,
     OverlayElementConfig,
     OverlayMode,
 )
@@ -220,11 +221,11 @@ class ColorPickerPanel(QFrame):
             f"QPushButton {{ background-color: transparent; border: none; "
             f"color: {Colors.TEXT}; font-size: 10px; text-align: left; padding-left: 27px; }}"
         )
-        self.font_btn.setText("Microsoft YaHei")
+        self.font_btn.setText(THEME_FONT)
         self.font_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.font_btn.setToolTip("Choose font")
         self.font_btn.clicked.connect(self._pick_font)
-        self._current_font_name = "Microsoft YaHei"
+        self._current_font_name = THEME_FONT
         self._current_font_size = 36
         self._current_font_style = 0  # 0=Regular, 1=Bold
 

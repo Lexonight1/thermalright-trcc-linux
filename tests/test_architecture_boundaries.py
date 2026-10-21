@@ -33,6 +33,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TypeGuard
 
+import pytest
+
 _SRC = Path(__file__).resolve().parents[1] / "src"
 
 # The UI->UI collectors live with the other instruments, so the tool a human
@@ -2685,3 +2687,36 @@ def test_suppressions_hide_only_what_the_platform_hides() -> None:
         "blanket `# type: ignore` hides any error on its line; fix the type or "
         f"name a pyright rule.  Found {blanket}")
     assert problems == []
+
+
+# ── One wording, written once ────────────────────────────────────────────────
+#: Strings every command, panel and module repeats, and the one place each is
+#: written.  ``Device key, e.g. 0402:3922`` was typed out 46 times and the
+#: theme font defined five times before they got a home; a module copying a
+#: main-app panel copies the literal with it.
+_WRITTEN_ONCE = {
+    '"Device key, e.g. 0402:3922"': "trcc/ui/cli/_ctx.py",        # DeviceKey
+    '"Device key:"': "trcc/ui/qtgui/device_picker.py",             # .LABEL
+    '"Microsoft YaHei"': "trcc/core/models.py",                    # THEME_FONT
+}
+
+#: Where the theme font's NAME is also the window skin's font -- the C#'s
+#: 微软雅黑 for its own labels, a separate fact from a theme's default.
+_SKIN_FONT_FILES = {"trcc/ui/qapp.py"}
+
+
+def _literal_sites(literal: str, src: Path) -> set[str]:
+    """Every .py file under *src*``/trcc`` with *literal* as a string token."""
+    found = {path.relative_to(src).as_posix()
+             for path in (src / "trcc").rglob("*.py")
+             if literal in path.read_text(encoding="utf-8")}
+    return found
+
+
+@pytest.mark.parametrize("literal, home", sorted(_WRITTEN_ONCE.items()))
+def test_a_shared_wording_is_written_in_one_place(literal: str, home: str) -> None:
+    """Import the constant instead of typing the words again.  MUTATION CHECK:
+    type ``help="Device key, e.g. 0402:3922"`` into any command and this names
+    the file."""
+    others = _literal_sites(literal, _SRC) - {home} - _SKIN_FONT_FILES
+    assert others == set(), f"{literal} is typed out again -- import it from {home}"

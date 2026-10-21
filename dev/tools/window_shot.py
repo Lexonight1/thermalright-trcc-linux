@@ -13,7 +13,9 @@ desktop (memory: reference_drive_windows_on_xvfb)::
         --module visualizer=off --open visualizer
 
 ``--module KEY=on|off`` switches a module first (repeatable); ``--open KEY``
-opens that module's tab (gui) or sidebar page (qtgui) before the picture;
+opens that module's tab (gui) or sidebar page (qtgui) before the picture -- or,
+in the gui, a full-window view by name (``about``, ``rgb``, ``thanks``,
+``modules``, ``sysinfo``, ``led``);
 ``--lang CODE`` sets the window's language.
 Prints what it saw: each module's tab or entry and whether it is visible.
 """
@@ -83,6 +85,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
         _settle(qapp)
         if open_key in window._module_tabs:
             window._module_tabs[open_key].click()
+        elif open_key:
+            window._show_view(open_key)
         for key, tab in window._module_tabs.items():
             seen.append(f"gui tab {key}: at {tab.geometry().getRect()} "
                         f"visible={tab.isVisibleTo(window)}")
@@ -111,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("out", type=Path, help="where to save the PNG")
     ap.add_argument("--module", action="append", default=[], metavar="KEY=on|off")
     ap.add_argument("--open", default="", metavar="KEY",
-                    help="open this module's tab or page first")
+                    help="open this module's tab or page first (gui: or a view)")
     ap.add_argument("--lang", default="", help="the window's language, e.g. de")
     ap.add_argument("--wait", type=float, default=3.0,
                     help="seconds to let background answers arrive first")

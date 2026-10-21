@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 
 from trcc.core.commands import ClearModuleSource
-from trcc.ui.cli._ctx import dispatch_echo, get_app
+from trcc.ui.cli._ctx import DeviceKey, dispatch_echo, get_app
 
 from ...core import (
     ListVisuals,
@@ -72,7 +72,7 @@ def _visual_settings(pairs: list[str]) -> dict[str, float]:
 
 @COMMANDS.command("visual")
 def visual(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     name: str = typer.Argument(
         "", help="The audio visual (see `trcc display visuals`); '' stops it."),
     preset: str = typer.Option(
@@ -91,7 +91,7 @@ def visual(
 
 @COMMANDS.command("visual-set")
 def visual_set(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     setting: list[str] = typer.Option(
         ..., "--set", help="NAME=VALUE for one slider; repeat for more."),
 ) -> None:

@@ -14,7 +14,7 @@ from ...core.commands import (
     DiscoverDevices,
     ResetDevice,
 )
-from ._ctx import get_app
+from ._ctx import DeviceKey, get_app
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def list_devices() -> None:
 
 
 @app.command("connect")
-def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -> None:
+def connect(key: DeviceKey) -> None:
     """Open USB transport and perform the wire-protocol handshake."""
     log.info("cli device connect: key=%s", key)
     result = get_app().dispatch(ConnectDevice(key=key))
@@ -99,7 +99,7 @@ def issues() -> None:
 
 @app.command("state")
 def state(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """Show what a device IS — identity, connection, handshake geometry.
 
@@ -126,7 +126,7 @@ def state(
 
 @app.command("canvas")
 def canvas(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
 ) -> None:
     """The panel's NATIVE pixels — the size to AUTHOR an asset for.
 

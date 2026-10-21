@@ -23,7 +23,7 @@ does not emit.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -52,6 +52,10 @@ class DevicePickerWidget(QWidget):
     """
 
     key_changed = Signal(str)
+
+    #: The form row's label beside the picker -- one wording for every panel
+    #: and every module's panel.
+    LABEL: ClassVar[str] = "Device key:"
 
     def __init__(
         self,

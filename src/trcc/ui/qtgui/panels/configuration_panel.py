@@ -92,7 +92,7 @@ class ConfigurationPanel(BasePanel):
             parent=self, selection=self._selection,
         )
         key_form = QFormLayout()
-        key_form.addRow("Device key:", self._picker)
+        key_form.addRow(self._picker.LABEL, self._picker)
 
         # ── Display group ──
         display_box = QGroupBox("Display", self)

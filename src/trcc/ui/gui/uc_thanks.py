@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
 
 from ...core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES, Credit
 from ...core.logs import per_frame
-from .constants import Sizes
-from .uc_rgb import GOLD, paint_page
+from .base import paint_page
+from .constants import Colors, Sizes
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -66,12 +66,12 @@ def _credit(credit: Credit) -> QLabel:
     licence = html.escape(credit.licence)
     if credit.licence_url and licence:
         licence = (f"<a href='{html.escape(credit.licence_url, quote=True)}'"
-                   f" style='color:{GOLD}'>{licence}</a>")
+                   f" style='color:{Colors.PAGE_GOLD}'>{licence}</a>")
     who = ", ".join(part for part in (html.escape(credit.author), licence) if part)
     used = (f"<br><span style='color:#b3b3b3'>{html.escape(credit.used_for)}</span>"
             if credit.used_for else "")
     return _label(f"<b style='color:white; font-size:11pt'>{html.escape(credit.name)}</b>"
-                  f"<span style='color:{GOLD}'>&nbsp; {who}</span>{used}",
+                  f"<span style='color:{Colors.PAGE_GOLD}'>&nbsp; {who}</span>{used}",
                   "font-size: 9pt;", rich=True)
 
 
@@ -136,7 +136,7 @@ class UCThanks(QWidget):
 
         self.entries: list[QLabel] = []
         for title, credits in GROUPS:
-            column.addWidget(_label(title, f"color: {GOLD}; font-size: 15pt;"
+            column.addWidget(_label(title, f"color: {Colors.PAGE_GOLD}; font-size: 15pt;"
                                            " font-weight: bold;"))
             grid = QGridLayout()
             grid.setHorizontalSpacing(30)

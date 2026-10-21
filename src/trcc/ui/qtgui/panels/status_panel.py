@@ -65,7 +65,7 @@ class StatusPanel(BasePanel):
         self._picker.key_changed.connect(self._on_key_changed)
 
         key_form = QFormLayout()
-        key_form.addRow("Device key:", self._picker)
+        key_form.addRow(self._picker.LABEL, self._picker)
 
         key_row = QHBoxLayout()
         key_row.addLayout(key_form, stretch=1)

@@ -2052,6 +2052,12 @@ def format_metric(
 # =========================================================================
 
 
+#: The font a theme's overlay text takes when nothing names one -- the Windows
+#: app's default, which the themes are authored for.  The app bundles a copy,
+#: so it resolves on every OS.
+THEME_FONT = "Microsoft YaHei"
+
+
 @dataclass(frozen=True, slots=True)
 class FontConfig:
     """Font configuration as serialised in a DC file."""
@@ -2094,7 +2100,7 @@ class OverlayElementConfig:
     main_count: int = 0
     sub_count: int = 1
     color: str = "#FFFFFF"
-    font_name: str = "Microsoft YaHei"
+    font_name: str = THEME_FONT
     font_size: int = 36
     font_style: int = 0
     text: str = ""

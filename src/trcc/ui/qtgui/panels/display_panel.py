@@ -165,7 +165,7 @@ class DisplayPanel(BasePanel):
         self._media = MediaPlayerControls(self, self._status.setText)
 
         form = QFormLayout()
-        form.addRow("Device key:", self._picker)
+        form.addRow(self._picker.LABEL, self._picker)
         form.addRow("Orientation:", self._orientation)
         form.addRow("Brightness:", brightness_row)
         form.addRow("Theme:", theme_row)

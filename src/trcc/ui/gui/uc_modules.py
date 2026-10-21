@@ -15,26 +15,26 @@ from ...core.commands import Command, ListModules, SetModuleEnabled
 from ...core.logs import per_frame
 from ..bus_bridge import BusBridge
 from ..qt_modules import ModulesView
-from .constants import Sizes
-from .uc_rgb import FRAME, GOLD, paint_page
+from .base import paint_page
+from .constants import Colors, Sizes
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 #: Inside the framed body, in this page's coordinates.
 _BODY = (40, 110, 1190, 660)
-_STYLE = (f"QFrame#moduleTile {{ background: #2a2a30; border: 1px solid {FRAME};"
+_STYLE = (f"QFrame#moduleTile {{ background: #2a2a30; border: 1px solid {Colors.PAGE_FRAME};"
           " border-radius: 6px; }"
           "QLabel { background: transparent; color: #d0d0d0; font-size: 11pt; }"
           "QLabel#moduleTitle { color: white; font-size: 14pt; font-weight: bold; }"
-          f"QLabel#moduleProblem {{ color: {GOLD}; }}"
+          f"QLabel#moduleProblem {{ color: {Colors.PAGE_GOLD}; }}"
           "QLabel#modulesEmpty { color: #b3b3b3; font-size: 13pt; }"
           "QPushButton { min-width: 70px; min-height: 32px; color: white;"
-          f" background: #3a3a3a; border: 1px solid {FRAME}; border-radius: 4px; }}"
-          f"QPushButton:checked {{ background: {GOLD}; color: #3a3a3a; }}"
+          f" background: #3a3a3a; border: 1px solid {Colors.PAGE_FRAME}; border-radius: 4px; }}"
+          f"QPushButton:checked {{ background: {Colors.PAGE_GOLD}; color: #3a3a3a; }}"
           # "Guide ›" is a link, not a button: gold text, no box.
           "QPushButton#moduleGuide { min-width: 0; min-height: 0; padding: 0;"
-          f" border: none; background: transparent; color: {GOLD}; }}"
+          f" border: none; background: transparent; color: {Colors.PAGE_GOLD}; }}"
           "QPushButton#moduleGuide:hover { text-decoration: underline; }"
           "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
 

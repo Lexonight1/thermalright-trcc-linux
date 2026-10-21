@@ -48,6 +48,7 @@ from ...core.errors import ThemeError
 from ...core.logs import Blob, per_frame
 from ...core.models import (
     MEDIA,
+    THEME_FONT,
     DiscoveredMask,
     MediaKind,
     Theme,
@@ -1357,7 +1358,7 @@ def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
     return out
 
 
-_LEGACY_FONT_DEFAULTS = {"name": "Microsoft YaHei", "size": 24, "style": "regular"}
+_LEGACY_FONT_DEFAULTS = {"name": THEME_FONT, "size": 24, "style": "regular"}
 
 
 def _legacy_entry_to_next_element(entry: dict) -> dict | None:

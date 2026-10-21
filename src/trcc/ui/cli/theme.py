@@ -26,7 +26,7 @@ from ...core.commands import (
     SaveTheme,
     UploadCustomMask,
 )
-from ._ctx import get_app, resolution_for
+from ._ctx import DeviceKey, get_app, resolution_for
 
 log = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def save(
 
 @app.command("create")
 def create(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     name: str = typer.Argument(..., help="Theme name to save as"),
     background: Path = typer.Option(
         ..., "--bg", "-b", help="Background image (PNG/JPG/BMP/WEBP)",
@@ -349,7 +349,7 @@ def cloud_list(
 
 @app.command("cloud-downloaded")
 def cloud_downloaded(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     resolution: str | None = typer.Option(
         None, "--resolution", "-r", metavar="WxH",
         help="Canvas to list for (e.g. 320x320). Needed when the device "
@@ -437,7 +437,7 @@ def cloud_download(
 
 @app.command("cloud-load")
 def cloud_load(
-    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    key: DeviceKey,
     theme_id: str = typer.Argument(..., help="Cloud theme id, e.g. a001"),
 ) -> None:
     """Download a cloud theme and load it on a device."""

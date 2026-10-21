@@ -28,6 +28,7 @@ from typing import Any
 from ...core.logs import per_frame, recurring_warning
 from ...core.models import (
     DATE_FORMATS,
+    THEME_FONT,
     TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
@@ -44,7 +45,6 @@ log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 
-_DEFAULT_FONT_NAME = "Microsoft YaHei"
 
 
 def entries_to_configs(
@@ -61,7 +61,7 @@ def entries_to_configs(
     for e in entries:
         cfg = OverlayElementConfig(
             id=e.id, x=e.x, y=e.y, color=e.color,
-            font_name=e.font or _DEFAULT_FONT_NAME, font_size=e.size,
+            font_name=e.font or THEME_FONT, font_size=e.size,
             font_style=1 if e.bold else 2 if e.italic else 0,
         )
         match e.type, e.source:

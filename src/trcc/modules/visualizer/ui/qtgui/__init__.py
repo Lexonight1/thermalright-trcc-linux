@@ -64,7 +64,7 @@ class AudioVisualsPanel(AssetBrowserPanel):
             parent=self, selection=self._selection,
         )
         form = QFormLayout()
-        form.addRow("Device key:", self._picker)
+        form.addRow(self._picker.LABEL, self._picker)
 
         self._list = self._build_asset_list()
         self._controls = VisualControls(self.app, self._sliders_command,

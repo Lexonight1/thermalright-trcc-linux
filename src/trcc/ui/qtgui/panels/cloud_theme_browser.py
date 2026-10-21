@@ -55,7 +55,7 @@ class CloudThemeBrowser(AssetBrowserPanel):
         self._category.currentIndexChanged.connect(self._on_category_changed)
 
         key_form = QFormLayout()
-        key_form.addRow("Device key:", self._picker)
+        key_form.addRow(self._picker.LABEL, self._picker)
         key_form.addRow("Category:", self._category)
 
         # Each catalog entry shows its extracted preview PNG

@@ -62,7 +62,7 @@ class LocalThemeBrowser(AssetBrowserPanel):
             self._on_themes_changed, type=Qt.ConnectionType.QueuedConnection)
 
         key_form = QFormLayout()
-        key_form.addRow("Device key:", self._picker)
+        key_form.addRow(self._picker.LABEL, self._picker)
 
         # Thumbnail grid: each theme shows its Theme.png preview.
         self._list = self._build_asset_list()

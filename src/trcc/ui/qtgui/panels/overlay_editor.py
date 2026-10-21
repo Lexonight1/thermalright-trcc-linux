@@ -77,7 +77,7 @@ class OverlayEditorPanel(BasePanel):
 
         key_row = QHBoxLayout()
         key_form = QFormLayout()
-        key_form.addRow("Device key:", self._picker)
+        key_form.addRow(self._picker.LABEL, self._picker)
         key_row.addLayout(key_form, stretch=1)
         key_row.addWidget(self._refresh_btn)
 
