@@ -36,13 +36,16 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import sys
 from pathlib import Path
 
 import pytest
 
 from trcc.ipc import COMMAND_TYPES
 
-_UI_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc" / "ui"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
+import layers
+
 _FACES = ("cli", "api", "gui", "qtgui")
 
 #: ``key`` addresses the device on almost every Command; it is routing, not a
@@ -148,7 +151,7 @@ def _kwargs_by_command(face: str) -> dict[str, set[str]]:
     whether the face as a whole can express the field.
     """
     found: dict[str, set[str]] = {}
-    for path in sorted((_UI_ROOT / face).rglob("*.py")):
+    for path in layers.files(f"ui/{face}"):  # modules' pages too
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):

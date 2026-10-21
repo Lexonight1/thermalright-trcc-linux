@@ -46,6 +46,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import layers
+
 _REPO = Path(__file__).resolve().parents[2]
 _SRC = _REPO / "src" / "trcc"
 
@@ -61,6 +63,15 @@ _UIS = {
     "gui": _UI_ROOT / "gui",
     "qtgui": _UI_ROOT / "qtgui",
 }
+
+
+def _face_files(ui: str, root: Path, uis: dict[str, Path] | None) -> list[Path]:
+    """*ui*'s files: on the real tree the main app's AND every module's copy of
+    that face (``dev/tools/layers.py``), so a module's page counts for its UI;
+    under a fixture, *root* alone."""
+    if uis is not None:
+        return [p for p in sorted(root.rglob("*.py")) if "__pycache__" not in p.parts]
+    return layers.files(f"ui/{ui}")
 
 #: The ONE module allowed to name a skin's internals.  It builds the faces,
 #: exactly as ``adapters/device/_base.py`` names its device classes in order to
@@ -131,9 +142,7 @@ def reach_by_command(
     commands, queries = contract_classes()
     reach: dict[str, set[str]] = {n: set() for n in commands | queries}
     for ui, root in (uis or _UIS).items():
-        for path in root.rglob("*.py"):
-            if "__pycache__" in path.parts:
-                continue
+        for path in _face_files(ui, root, uis):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 seen = None
                 if isinstance(node, ast.Name):
@@ -314,21 +323,25 @@ def cross_edges(ui_root: Path | None = None,
     was fixed: a collector pinned to the real tree cannot be aimed at a fixture,
     and one that cannot be aimed at a fixture cannot be shown to work.
     """
+    # The real tree includes every module's ui/ too, each file judged as the
+    # face it sits in (``layers.logical``): a module's gui page reaching into
+    # qtgui crosses skins exactly as the main app's would.
+    files = layers.files("ui") if ui_root is None else _ui_files(ui_root)
     ui_root = ui_root or _UI_ROOT
     skins = skins if skins is not None else frozenset(_UIS)
     anchor = _package_anchor(ui_root)
     ui_pkg = _module_name(ui_root, anchor)
     edges: list[CrossEdge] = []
-    for path in _ui_files(ui_root):
+    for path in files:
         this = _module_name(path, anchor)
-        src = _area(this, ui_pkg, skins)
+        src = _area(layers.logical(this), ui_pkg, skins)
         if src is None:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.ImportFrom):
                 continue
             target = _resolve_import(node, this, path.name == "__init__.py")
-            dst = _area(target, ui_pkg, skins) if target else None
+            dst = _area(layers.logical(target), ui_pkg, skins) if target else None
             if dst is None or dst == src:
                 continue
             edges.append(CrossEdge(
@@ -531,9 +544,7 @@ def event_reach(uis: dict[str, Path] | None = None,
     by_signal = signal_to_event(bridge)
     reach: dict[str, set[str]] = {name: set() for name in known}
     for ui, root in (uis or _UIS).items():
-        for path in root.rglob("*.py"):
-            if "__pycache__" in path.parts:
-                continue
+        for path in _face_files(ui, root, uis):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 seen: set[str] = set()
                 if isinstance(node, ast.Name) and node.id in known:

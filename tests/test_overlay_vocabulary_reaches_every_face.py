@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -52,6 +53,9 @@ from .conftest import loopback_client
 from .test_api_routes import _SmokeRenderer
 
 _UI_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc" / "ui"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
+import layers  # noqa: E402
+
 _FACES = ("api", "cli", "gui", "qtgui")
 
 #: Routing, not vocabulary: ``key`` names the device and ``element_id``
@@ -78,7 +82,7 @@ def _keywords_by_command(face: str) -> dict[str, set[str]]:
     """
     wanted = {c.__name__ for c in _COMMANDS}
     found: dict[str, set[str]] = {}
-    for path in sorted((_UI_ROOT / face).rglob("*.py")):
+    for path in layers.files(f"ui/{face}"):  # modules' pages too
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):

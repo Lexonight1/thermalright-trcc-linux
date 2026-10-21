@@ -22,6 +22,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _SRC = _ROOT / "src"
 sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
+import layers  # noqa: E402
 import ui_contract  # noqa: E402
 
 #: The collector lives in ``dev/tools/ui_contract.py`` and is imported, not
@@ -517,9 +518,7 @@ def _dispatching_functions_never_referenced() -> list[str]:
     tokens = Counter(re.findall(r"\w+", blob))
     defs = Counter(re.findall(r"\bdef\s+(\w+)", blob))
     dead: list[str] = []
-    for path in sorted((_SRC / "trcc" / "ui").rglob("*.py")):
-        if "__pycache__" in path.parts:
-            continue
+    for path in layers.files("ui"):  # modules' ui/ too
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -571,8 +570,7 @@ def test_the_collector_ignores_comments() -> None:
     )
     src = "\n".join(
         p.read_text(encoding="utf-8")
-        for p in (_SRC / "trcc" / "ui").rglob("*.py")
-        if "__pycache__" not in p.parts
+        for p in layers.files("ui")
     )
     assert "SendFrame" in src, (
         "the premise is gone: SendFrame is no longer even MENTIONED in the UI "

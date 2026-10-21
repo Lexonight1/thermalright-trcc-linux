@@ -40,6 +40,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 # reaches for ``ui_contract`` the same way.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
 
+import layers  # noqa: E402
 import ui_contract  # noqa: E402
 
 from trcc.core.ports import CommandBus  # noqa: E402
@@ -122,6 +123,7 @@ def _resolve_import(node: ast.ImportFrom, module_name: str) -> str:
 
 
 def _is_forbidden_target(target: str) -> bool:
+    target = layers.logical(target)
     if target.startswith(("trcc.adapters", "trcc.ui")):
         return True
     top = target.split(".", 1)[0]
@@ -135,6 +137,7 @@ def _is_forbidden_in_presentation(target: str) -> bool:
     forbids GUI toolkits / OS bindings (``_BANNED_TOPLEVEL``), adapters, the App
     composition root, and the other UI views.
     """
+    target = layers.logical(target)
     if target.startswith(_PRESENTATION_FORBIDDEN_PREFIXES):
         return True
     top = target.split(".", 1)[0]
@@ -193,11 +196,16 @@ class _OsSniffCollector(ast.NodeVisitor):
 
 
 def _files_under(*trees: str) -> list[Path]:
+    """Every file of each tree: ``"trcc"`` for the whole package, modules and
+    all; ``"trcc/<layer>"`` for one layer -- the main app's AND every module's
+    copy of it, so a module is held to the same rules (``dev/tools/layers.py``)."""
     files: list[Path] = []
     for tree in trees:
-        for path in sorted((_SRC / tree).rglob("*.py")):
-            if "__pycache__" not in path.parts:
-                files.append(path)
+        if tree == "trcc":
+            files += [path for path in sorted((_SRC / tree).rglob("*.py"))
+                      if "__pycache__" not in path.parts]
+        else:
+            files += layers.files(tree.removeprefix("trcc/"))
     return files
 
 
@@ -680,6 +688,96 @@ def test_presentation_layer_is_qt_app_and_adapter_free() -> None:
     )
 
 
+# ── Modules: mini hexagons ───────────────────────────────────────────────────
+# A module (``trcc/modules/<key>/``) plugs into the main app through its host
+# and is found by its manifest.  So deleting its folder must break nothing in
+# the main app, and a module must never reach past its host for the App -- or
+# into another module.  TYPE_CHECKING imports count here: a type-only import of
+# a module still breaks the type check the day that module is deleted.
+
+#: What a module may never import: the App and what builds or fronts it.
+_PAST_THE_HOST = ("trcc.app", "trcc._boot", "trcc.proxy", "trcc.daemon")
+
+
+def _module_boundary_breaches(src: Path) -> list[str]:
+    """Every import, under *src*``/trcc``, that crosses a module's boundary the
+    wrong way -- fixture-pointable, so the self-test can prove it sees one."""
+    breaches: list[str] = []
+    for path in sorted((src / "trcc").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        name = ".".join(path.relative_to(src).with_suffix("").parts)
+        owner = layers.module_of(name)
+        rel = path.relative_to(src).as_posix()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                targets = [_resolve_import(node, name)]
+            elif isinstance(node, ast.Import):
+                targets = [a.name for a in node.names]
+            else:
+                continue
+            for target in targets:
+                into = layers.module_of(target)
+                if not owner and into:
+                    breaches.append(f"  {rel}:{node.lineno} -> {target} "
+                                    "(the main app names a module)")
+                elif owner and into and into != owner:
+                    breaches.append(f"  {rel}:{node.lineno} -> {target} "
+                                    "(one module reaches into another)")
+                elif owner and any(target == p or target.startswith(p + ".")
+                                   for p in _PAST_THE_HOST):
+                    breaches.append(f"  {rel}:{node.lineno} -> {target} "
+                                    "(a module reaches past its host)")
+    return breaches
+
+
+def test_modules_meet_the_main_app_only_through_the_host() -> None:
+    """The main app never imports a module, a module never imports the App or
+    another module.  MUTATION CHECK: the self-test below plants each breach."""
+    breaches = _module_boundary_breaches(_SRC)
+    assert not breaches, (
+        "a module is a mini hexagon -- the main app finds it by its manifest "
+        "and it reaches the app through its host:\n" + "\n".join(breaches))
+
+
+def test_selftest_module_boundary_sees_each_breach(tmp_path: Path) -> None:
+    """Each wrong crossing is named, and the right ones are not."""
+    pkg = tmp_path / "trcc"
+    for rel, text in {
+        "core/a.py": "from ..modules.viz.core import x\n",                # main -> module
+        "modules/viz/core/b.py": "from ...other.core import y\n",         # module -> module
+        "modules/viz/app.py": "if TYPE_CHECKING:\n    from trcc.app import App\n",
+        "modules/viz/ui/gui/c.py": "from trcc.core.models import Wire\n"  # inward: fine
+                                   "from ...core import z\n",             # its own: fine
+    }.items():
+        (pkg / rel).parent.mkdir(parents=True, exist_ok=True)
+        (pkg / rel).write_text(text, encoding="utf-8")
+    found = _module_boundary_breaches(tmp_path)
+    assert found == [
+        "  trcc/core/a.py:1 -> trcc.modules.viz.core (the main app names a module)",
+        "  trcc/modules/viz/app.py:2 -> trcc.app (a module reaches past its host)",
+        "  trcc/modules/viz/core/b.py:1 -> trcc.modules.other.core "
+        "(one module reaches into another)",
+    ]
+
+
+def test_selftest_layer_files_reach_inside_modules(tmp_path: Path) -> None:
+    """``layers`` hands every gate a module's copy of a layer too -- as a
+    folder, or as one file -- and names it by the layer it sits in."""
+    pkg = tmp_path / "trcc"
+    for rel in ("ui/gui/a.py", "modules/viz/ui/gui/b.py", "modules/viz/core/commands.py",
+                "core/commands/c.py"):
+        (pkg / rel).parent.mkdir(parents=True, exist_ok=True)
+        (pkg / rel).write_text("", encoding="utf-8")
+    assert [p.relative_to(pkg).as_posix() for p in layers.files("ui/gui", pkg)] == [
+        "ui/gui/a.py", "modules/viz/ui/gui/b.py"]
+    assert [p.relative_to(pkg).as_posix() for p in layers.files("core/commands", pkg)] == [
+        "core/commands/c.py", "modules/viz/core/commands.py"]
+    assert layers.logical("trcc.modules.viz.adapters.gl") == "trcc.adapters.gl"
+    assert _is_forbidden_target("trcc.modules.viz.ui.gui.page")
+    assert not _is_forbidden_target("trcc.modules.viz.core.models")
+
+
 # ── Query purity ─────────────────────────────────────────────────────────────
 # A Query answers and changes nothing.  Stated in its docstring, enforced here,
 # because a docstring is not a contract.  Detection is AST-based, on the CALLED
@@ -693,9 +791,6 @@ _MUTATING_CALLS = frozenset({
     "write_text", "write_bytes", "mkdir", "unlink", "rmtree", "touch",
 })
 _MUTATING_PREFIXES = ("set_", "save", "store_", "delete_", "clear_")
-
-_COMMANDS_TREE = _SRC / "trcc" / "core" / "commands"
-
 
 def _query_mutations(source: str) -> list[str]:
     """Mutating calls inside every ``Query`` subclass's ``execute`` in *source*."""
@@ -724,7 +819,7 @@ def test_a_query_never_mutates() -> None:
     ``publish`` to one gets a silent event on a call a UI polls once a second.
     """
     breaches: list[str] = []
-    for path in sorted(_COMMANDS_TREE.glob("*.py")):
+    for path in _files_under("trcc/core/commands"):
         for hit in _query_mutations(path.read_text(encoding="utf-8")):
             breaches.append(f"  {path.name}: {hit}")
     assert not breaches, (
@@ -1180,7 +1275,7 @@ def _fs_io_counts() -> dict[str, int]:
     """Per-file count of unambiguous filesystem calls in core/ + services/."""
     counts: dict[str, int] = {}
     for area in ("core", "services"):
-        for path in sorted((_SRC / "trcc" / area).rglob("*.py")):
+        for path in _files_under(f"trcc/{area}"):
             rel = str(path.relative_to(_SRC))
             n = sum(
                 1 for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
@@ -1512,9 +1607,7 @@ class _AppReachVisitor(ast.NodeVisitor):
 def _app_reaches() -> dict[str, list[tuple[int, str]]]:
     """Every App reach in ``ui/``, by file, as ``(lineno, text)``."""
     found: dict[str, list[tuple[int, str]]] = {}
-    for path in (_SRC / "trcc" / "ui").rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
+    for path in _files_under("trcc/ui"):
         visitor = _AppReachVisitor()
         visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
         if visitor.hits:
@@ -1784,15 +1877,13 @@ KNOWN_UI_ADAPTER_IMPORTS: frozenset[tuple[str, str]] = frozenset({
 def _ui_adapter_imports() -> set[tuple[str, str]]:
     """Every ``trcc.adapters`` import made from a UI, as (path, target)."""
     found: set[tuple[str, str]] = set()
-    for path in (_SRC / "trcc" / "ui").rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
+    for path in _files_under("trcc/ui"):
         rel = path.relative_to(_SRC).as_posix()
         module = _module_name(path)
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom):
                 target = _resolve_import(node, module)
-                if target.startswith("trcc.adapters"):
+                if layers.logical(target).startswith("trcc.adapters"):
                     found.add((rel, target))
     return found
 
@@ -1858,9 +1949,7 @@ def _ui_network_imports() -> set[tuple[str, str]]:
     adapter audit above does — would have missed half of it.
     """
     found: set[tuple[str, str]] = set()
-    for path in (_SRC / "trcc" / "ui").rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
+    for path in _files_under("trcc/ui"):
         rel = path.relative_to(_SRC).as_posix()
         module = _module_name(path)
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -2450,7 +2539,7 @@ def test_no_ui_thread_holds_its_widget() -> None:
     """
     offenders = [
         f"{path.relative_to(_SRC)}:{line}"
-        for path in sorted((_SRC / "trcc" / "ui").rglob("*.py"))
+        for path in _files_under("trcc/ui")
         for line in _threads_holding_self(ast.parse(path.read_text(encoding="utf-8")))
     ]
     assert offenders == [], (
