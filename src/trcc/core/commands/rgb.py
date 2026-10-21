@@ -212,9 +212,8 @@ class SetRamEffect(Command[RgbLightsResult]):
         if (problem := effect_problem(settings)) is not None:
             log.warning("SetRamEffect: refused -- %s", problem)
             return _lights(app, message=problem, ok=False)
-        follow_stopped = app.settings.rgb_follow_mode() is RgbFollowMode.RAM
-        if follow_stopped:
-            self._stop_ram_follow(app)
+        follow_stopped = (app.settings.rgb_follow_mode() is RgbFollowMode.RAM
+                          and self._release_from_follow(app))
         try:
             applied = app.rgb_mirror.apply_effect(self.refs, settings)
         except (ValueError, OSError) as e:
@@ -227,19 +226,28 @@ class SetRamEffect(Command[RgbLightsResult]):
                    + (" -- RAM following turned off" if follow_stopped else ""))
         return _lights(app, message=message)
 
-    @staticmethod
-    def _stop_ram_follow(app: App) -> None:
-        """Following off, everything else about it kept -- in every UI."""
+    def _release_from_follow(self, app: App) -> bool:
+        """Take the sticks this saves on out of RAM following first -- its
+        colours would cover the effect -- and leave the others following:
+        one stick on a linked colour, the other on Rain (his ask,
+        2026-10-21).  Following stops only when no stick is left in it.
+        True when it stopped."""
         prefs, settings = app.settings.app, app.settings
-        log.info("SetRamEffect: RAM following off first")
+        sticks = [light.ref for light in _lights(app).lights
+                  if light.kind is LightKind.RAM]
+        following = settings.rgb_follow_targets() or tuple(sticks)
+        written = set(self.refs or sticks)
+        left = tuple(ref for ref in following if ref not in written)
+        log.info("SetRamEffect: %s leave following; %s keep it",
+                 sorted(written), list(left))
         settings.set_rgb_follow(
-            RgbFollowMode.OFF, prefs.openrgb_host, prefs.openrgb_port,
-            prefs.rgb_follow_source, settings.rgb_follow_mapping(),
-            settings.rgb_follow_targets(),
+            RgbFollowMode.RAM if left else RgbFollowMode.OFF,
+            prefs.openrgb_host, prefs.openrgb_port, prefs.rgb_follow_source,
+            settings.rgb_follow_mapping(), left or settings.rgb_follow_targets(),
             colors=settings.rgb_follow_colors())
-        app.rgb_mirror.configure(RgbFollowMode.OFF, prefs.openrgb_host,
-                                 prefs.openrgb_port)
-        app.events.publish(RgbFollowChanged(mode=RgbFollowMode.OFF))
+        app.resume_following()
+        app.events.publish(RgbFollowChanged(mode=settings.rgb_follow_mode()))
+        return not left
 
 
 @dataclass(frozen=True, slots=True)

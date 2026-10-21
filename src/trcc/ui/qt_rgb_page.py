@@ -62,6 +62,7 @@ from ..core.models import (
     LightEffect,
     LinkedEffect,
     RamEffect,
+    RamEffectSettings,
 )
 from ..core.ports import CommandBus
 from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
@@ -106,6 +107,8 @@ WORKING = "Working..."
 #: The devices column: "Motherboard (3) · on", the longest button, and no
 #: wider -- 240 left a wide empty band (his note, 2026-10-21).
 DEVICES_WIDTH = 180
+#: The follow picker: room for a device's name, not the whole panel.
+FOLLOW_PICKER_WIDTH = 300
 #: The effect picker: "Rainbow Wave", the longest name, with room to spare.
 EFFECT_PICKER_WIDTH = 220
 #: How wide the line explaining the picked choice runs -- the form's width.
@@ -723,7 +726,11 @@ class _EffectStrips(QWidget):
         self.update()
 
     def _sync_timer(self) -> None:
-        run = self.isVisible() and any(s for _, s in self._strips)
+        # Only what moves: a Static or linked strip is drawn once, not 20
+        # times a second.
+        run = self.isVisible() and any(
+            isinstance(s, RamEffectSettings) and s.effect is not RamEffect.STATIC
+            for _, s in self._strips)
         log.debug("_EffectStrips._sync_timer: %s", "run" if run else "still")
         if run and not self._timer.isActive():
             self._timer.start()
@@ -812,7 +819,7 @@ class _FollowForm(QWidget):
         self._status_at = 0.0
         self.lead = ""                    # the first cooler heard from
         self._source = QComboBox(self)
-        self._source.setMinimumWidth(340)
+        self._source.setFixedWidth(FOLLOW_PICKER_WIDTH)
         self._source.activated.connect(self._on_source)
         self._mapping_label = QLabel("Mapping", self)
         self._mapping = _ChoiceButtons(MAPPING_LABELS, self._on_mapping)
@@ -821,22 +828,37 @@ class _FollowForm(QWidget):
         self.preview = _FollowPreview()
         self._legend = _muted()
         self._status = _muted()
-        grid = QGridLayout(self)
+        # The controls, and beside them the preview -- under them it ran off
+        # the page and the legend sat on the picture (his note, 2026-10-21).
+        grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(24)
+        grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(14)
         grid.addWidget(QLabel("Follow", self), 0, 0)
         grid.addWidget(self._source, 0, 1)
-        grid.addWidget(_muted("Any connected LCD, or an LED cooler -- which "
-                              "sends its own colours."), 1, 1)
+        note = _muted("Any connected LCD, or an LED cooler -- which sends its "
+                      "own colours.")
+        note.setMaximumWidth(FOLLOW_PICKER_WIDTH)
+        grid.addWidget(note, 1, 1)
         grid.addWidget(self._mapping_label, 2, 0)
         grid.addWidget(self._mapping, 2, 1)
         grid.addWidget(self._colors_label, 3, 0)
         grid.addWidget(self._colors, 3, 1)
-        grid.addWidget(self.preview, 4, 1)
-        grid.addWidget(self._legend, 5, 1)
-        grid.addWidget(self._status, 6, 1)
-        grid.setColumnStretch(1, 1)
+        self._status.setMaximumWidth(FOLLOW_PICKER_WIDTH)
+        grid.addWidget(self._status, 4, 1)
+        grid.setRowStretch(5, 1)
+        # No legend: it only named each strip's light, and the cards above
+        # list them in the same A, B order (his call on the effect legend).
+        self._legend.hide()
+        shown = QVBoxLayout()
+        shown.setSpacing(8)
+        shown.addWidget(self.preview)
+        shown.addStretch(1)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(40)
+        row.addLayout(grid, 0)
+        row.addLayout(shown, 1)
 
     def show_page(self) -> None:
         page = self._page

@@ -236,6 +236,7 @@ def _strips(view: Any, source: RgbSource) -> Any:
 def test_the_effect_preview_animates_only_while_it_is_on_screen(
         view: Any, qtbot: Any) -> None:
     view._source_buttons[RgbSource.EFFECT].click()
+    view._effect._on_effect(view._effect._effect.findData(RamEffect.RAIN))  # moves
     strips = _strips(view, RgbSource.EFFECT)
     qtbot.waitUntil(lambda: strips.animating, timeout=1000)
     view._source_buttons[RgbSource.FOLLOW].click()
@@ -337,3 +338,18 @@ def test_a_header_can_follow_the_cpu_temperature(skin: Any, qtbot: Any) -> None:
     _answered(view, qtbot)
     assert view._app.commands(SetLinkedColor) == [
         SetLinkedColor(metric="temp", refs=("aura/argb1",), source="gpu")]
+
+
+def test_a_linked_or_static_strip_is_drawn_once_not_animated(view: Any) -> None:
+    """A linked strip never moves; animating it repainted -- and logged --
+    every LED 20 times a second, ~1000 log lines a second (2026-10-21).
+
+    MUTATION CHECK: animate any strip with an effect -- the timer runs."""
+    from trcc.core.models import LinkedEffect, RamEffectSettings
+    view._source_buttons[RgbSource.EFFECT].click()      # the strips on screen
+    strips = view._previews[1].strips
+    strips.set_strips((("A", LinkedEffect("temp", "cpu")),
+                       ("B", RamEffectSettings(RamEffect.STATIC))))
+    assert not strips.animating
+    strips.set_strips((("A", RamEffectSettings(RamEffect.RAIN)),))
+    assert strips.animating

@@ -126,7 +126,9 @@ class ColorEngine:
         gradient: tuple[tuple[float, tuple[int, int, int]], ...],
     ) -> tuple[int, int, int]:
         """Map *value* to an RGB color via linear interpolation between stops."""
-        log.debug("color_for_value: value=%s gradient=%s", value, gradient)
+        # Per LED, per frame: the RGB page's preview wrote ~1000 a second on
+        # ``log`` (2026-10-21).
+        frame_log.debug("color_for_value: value=%s", value)
         if value <= gradient[0][0]:
             return gradient[0][1]
         if value >= gradient[-1][0]:

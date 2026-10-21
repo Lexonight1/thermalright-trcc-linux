@@ -18,6 +18,7 @@ from trcc.core.commands import (
     RgbFollow,
     ScanRgbLights,
     SetAuraLeds,
+    SetRamEffect,
     SetRgbFollow,
 )
 from trcc.core.events import LedColorsChanged
@@ -1522,3 +1523,39 @@ def test_a_linked_light_reads_green_fine_to_red_too_much(metric, value, rgb) -> 
     from trcc.services.led_effects import linked_color
     sensor = "cpu:temp" if metric == "temp" else "cpu:usage"
     assert linked_color(metric, "cpu", {sensor: value}, LIGHT_GRADIENTS[metric]) == rgb
+
+
+@pytest.mark.parametrize("linked_first", [True, False], ids=["linked-first", "rain-first"])
+def test_one_stick_linked_and_the_other_on_its_own_effect(tmp_path: Path,
+                                                         linked_first: bool) -> None:
+    """His ask: one stick on a linked colour, the other on Rain, in either
+    order.  Saving Rain on one used to stop RAM following for both.
+
+    MUTATION CHECK: stop following for every stick again -- the linked
+    stick drops out."""
+    from trcc.core.commands import SetLinkedColor
+    from trcc.core.models import EFFECT_SOURCE
+    app, _platform, _seen = _lights_app(tmp_path)
+    app.dispatch(ScanRgbLights())
+    linked = SetLinkedColor(metric="temp", refs=("i2c-3/0x19",))
+    rain = SetRamEffect(effect=RamEffect.RAIN, refs=("i2c-3/0x1b",),
+                        colors=((255, 0, 0), (0, 0, 255)))
+    for command in ((linked, rain) if linked_first else (rain, linked)):
+        assert app.dispatch(command).ok
+    assert (app.settings.rgb_follow_mode(), app.settings.app.rgb_follow_source,
+            app.settings.rgb_follow_targets()) == (
+        RgbFollowMode.RAM, EFFECT_SOURCE, ("i2c-3/0x19",))
+    rained = app.settings.light_effect("i2c-3/0x1b")
+    assert isinstance(rained, RamEffectSettings) and rained.effect is RamEffect.RAIN
+    app.close()
+
+
+def test_an_effect_on_every_stick_still_ends_following(tmp_path: Path) -> None:
+    from trcc.core.commands import SetLinkedColor
+    app, _platform, _seen = _lights_app(tmp_path)
+    app.dispatch(ScanRgbLights())
+    app.dispatch(SetLinkedColor(metric="temp", refs=("i2c-3/0x19",)))
+    result = app.dispatch(SetRamEffect(effect=RamEffect.RAINBOW))
+    assert result.message.endswith("-- RAM following turned off")
+    assert app.settings.rgb_follow_mode() is RgbFollowMode.OFF
+    app.close()

@@ -115,15 +115,34 @@ def test_following_starts_on_follow_with_its_saved_lights() -> None:
     assert picks.mapping_applies
 
 
-def test_load_drops_what_the_user_picked() -> None:
+def test_a_reload_keeps_the_users_picks_while_the_lights_stay_the_same() -> None:
+    """After his Apply on stick B the page came back with both sticks ticked
+    on stick A's effect; the next Apply made them the same (2026-10-21).
+
+    MUTATION CHECK: start again on every load -- stick A is ticked again."""
+    from trcc.core.models import EFFECT_SOURCE
+    page = _page(STICK_A, STICK_B)
+    page.set_source(RgbSource.EFFECT)
+    page.set_checked(STICK_A.ref, False)
+    page.effect_picks.linked, page.effect_picks.link_source = "temp", "gpu"
+    page.load(RgbLightsResult(lights=(STICK_A, STICK_B), scanned=True,
+                              ram_access=RamAccessState.ON),
+              RgbFollowResult(mode=RgbFollowMode.RAM, source=EFFECT_SOURCE,
+                              targets=(STICK_A.ref, STICK_B.ref),
+                              host="127.0.0.1", port=6742), ())
+    assert [r.checked for r in page.rows(LightKind.RAM)] == [False, True]
+    assert (page.source, page.effect_picks.link_source) == (RgbSource.EFFECT, "gpu")
+
+
+def test_new_lights_start_the_picks_again() -> None:
     page = _page(STICK_A)
     page.set_source(RgbSource.EFFECT)
     page.set_checked(STICK_A.ref, False)
-    page.load(RgbLightsResult(lights=(STICK_A,), scanned=True,
+    page.load(RgbLightsResult(lights=(STICK_A, STICK_B), scanned=True,
                               ram_access=RamAccessState.ON),
               RgbFollowResult(), ())
     assert page.source is RgbSource.LEAVE
-    assert page.rows(LightKind.RAM)[0].checked
+    assert [r.checked for r in page.rows(LightKind.RAM)] == [True, True]
 
 
 # ── The lights ───────────────────────────────────────────────────────

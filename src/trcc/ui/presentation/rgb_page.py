@@ -460,6 +460,7 @@ class RgbPage:
         self._checked: set[str] = set()
         self.device = RgbDevice.MEMORY
         self._picked = False            # the user chose the device on screen
+        self._loaded = False            # a load has run: picks are the user's
         self.source = RgbSource.LEAVE
         self.effect_picks = EffectPicks()
         self.follow_picks = FollowPicks()
@@ -470,12 +471,26 @@ class RgbPage:
 
     def load(self, lights: RgbLightsResult, follow: RgbFollowResult,
              devices: Sequence[DeviceEntry]) -> None:
-        """Start again from the App's answers; the user's picks are dropped,
-        the device on screen is kept."""
+        """Take the App's answers.  The user's picks -- ticks, source, effect,
+        what to follow -- start again only on the first load or when the
+        lights listed change; otherwise they stay as the user left them.
+        After an Apply they used to reset to what the App runs: both sticks
+        came back ticked on the first one's effect, so the next Apply made
+        them the same (his, 2026-10-21).  The cards show what each runs."""
+        same = (self._loaded and {light.ref for light in lights.lights}
+                == {light.ref for light in self._lights})
         log.info("RgbPage.load: %d light(s) scanned=%s access=%s follow=%s "
-                 "source=%r targets=%s device=%s", len(lights.lights),
+                 "source=%r targets=%s device=%s keep_picks=%s", len(lights.lights),
                  lights.scanned, lights.ram_access.value, follow.mode.value,
-                 follow.source, list(follow.targets) or "all", self.device.value)
+                 follow.source, list(follow.targets) or "all", self.device.value,
+                 same)
+        self._loaded = True
+        if same:
+            self._lights, self._follow = lights.lights, follow
+            self.scanned, self.openrgb_error = lights.scanned, lights.openrgb_error
+            self.ram_access = lights.ram_access
+            self.follow_picks.devices = tuple(devices)
+            return
         self._lights = lights.lights
         self.scanned = lights.scanned
         self.openrgb_error = lights.openrgb_error
