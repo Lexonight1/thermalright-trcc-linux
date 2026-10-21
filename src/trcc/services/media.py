@@ -15,10 +15,15 @@ from __future__ import annotations
 import logging
 import struct
 import subprocess
+import threading
+import time
+from collections import deque
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 from ..core import toolchain
 from ..core.errors import ThemeError
@@ -26,7 +31,7 @@ from ..core.geometry import largest_fit_size
 from ..core.logs import per_frame
 from ..core.models import ZT_MAGIC, VisualSpec
 from ..core.ports import SoundInput, VisualEngine
-from .media_stream import StreamReader
+from .media_stream import StreamReader, _drain
 from .visual_stream import VisualReader
 
 log = logging.getLogger(__name__)
@@ -87,11 +92,38 @@ class VideoDecoder:
         self.frames: list[bytes] = []
 
     def decode(self) -> list[bytes]:
-        """Run ffmpeg, return the frames as ENCODED (JPEG) bytes.
+        """Run ffmpeg to the end, return the frames as ENCODED (JPEG) bytes.
 
         One is decoded per tick via ``Renderer.decode_image`` rather than the
         whole animation being held as raw pixels — see :class:`Playback`.
+        The same path as :meth:`start`, waited out: one way ffmpeg is run.
         """
+        playback = Playback(frames=[], complete=False)
+        decode = self.start(playback)
+        decode.wait_done()
+        if decode.error:
+            raise ThemeError(f"ffmpeg decode failed: {decode.error}")
+        self.frames = playback.frames
+        log.info("VideoDecoder: decoded %d frame(s) from %s (%.1f MB encoded)",
+                 len(self.frames), self.path.name,
+                 sum(len(f) for f in self.frames) / 1e6)
+        return self.frames
+
+    def start(self, playback: Playback,
+              on_error: Callable[[str], None] | None = None) -> BackgroundDecode:
+        """Start ffmpeg filling *playback*'s frames on a thread (#264); returns
+        at once.  ``ThemeError`` now when it cannot start at all."""
+        cmd = self.command()
+        try:
+            decode = BackgroundDecode(cmd, playback, self.path.name, on_error=on_error)
+        except FileNotFoundError as e:
+            raise ThemeError("ffmpeg not found on PATH") from e
+        log.info("VideoDecoder.start: %s decoding in the background", self.path.name)
+        return decode
+
+    def command(self) -> list[str]:
+        """The ffmpeg command for this decode -- probing the native size where
+        asked.  ``ThemeError`` when it cannot be built."""
         if not self.path.exists():
             raise ThemeError(f"Video path does not exist: {self.path}")
         if not toolchain.present("ffmpeg"):
@@ -157,23 +189,8 @@ class VideoDecoder:
             "pipe:1",
         ]
 
-        log.debug("VideoDecoder: %s", " ".join(cmd))
-        try:
-            proc = subprocess.run(
-                cmd, check=True, capture_output=True,
-            )
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.decode("utf-8", errors="replace").strip()
-            raise ThemeError(f"ffmpeg decode failed: {stderr[:500]}") from e
-        except FileNotFoundError as e:
-            raise ThemeError("ffmpeg not found on PATH") from e
-
-        self.frames = _split_jpeg_stream(proc.stdout)
-        log.info("VideoDecoder: decoded %d frame(s) at %dx%d from %s "
-                 "(%.1f MB encoded)",
-                 len(self.frames), w, h, self.path.name,
-                 sum(len(f) for f in self.frames) / 1e6)
-        return self.frames
+        log.info("VideoDecoder.command: %s at %dx%d: %s", self.path.name, w, h, " ".join(cmd))
+        return cmd
 
 
 _JPEG_SOI = b"\xff\xd8"
@@ -181,31 +198,217 @@ _JPEG_EOI = b"\xff\xd9"
 _MJPEG_QUALITY = 3       # ffmpeg -q:v; 2 = best .. 31 = worst
 
 
-def _split_jpeg_stream(data: bytes) -> list[bytes]:
-    """Split ffmpeg's ``image2pipe`` mjpeg output into one blob per frame.
+#: How much of ffmpeg's output one read takes, at most (``read1`` returns what
+#: has arrived, so the first frames are not held back to fill it).
+_CHUNK_BYTES = 1 << 18
+
+
+class BackgroundDecode:
+    """ffmpeg decoding a video into a :class:`Playback`'s frames, on a thread.
+
+    #264: ``PlayVideo`` decoded every frame before it returned, and the gui
+    dispatches it on its UI thread -- a 4K video froze the window for ~9 s, and
+    the CLI and API waited the same way.  Now the caller waits for the first
+    frames (:meth:`wait_for`) and playback starts while the rest arrives; the
+    playback holds at the last decoded frame until ``complete`` is set.
+
+    ffmpeg is started HERE, on the caller's thread, so one that cannot start
+    raises now.  stderr is drained as it comes (``media_stream._drain``): left
+    in a pipe it fills and stalls ffmpeg.  A decode that fails partway keeps
+    what it decoded -- the panel keeps playing it -- and reports once through
+    *on_error*; one that fails before any frame leaves ``error`` for the
+    caller to raise.  :meth:`cancel` stops it (replace, ``StopVideo``, close).
+    """
+
+    def __init__(self, cmd: list[str], playback: Playback, name: str, *,
+                 on_error: Callable[[str], None] | None = None) -> None:
+        log.info("BackgroundDecode: %s", name)
+        self._playback, self._name, self._on_error = playback, name, on_error
+        self.error = ""
+        self._stop = threading.Event()
+        self._done = threading.Event()
+        self._grew = threading.Condition()
+        self._began = time.monotonic()
+        self._proc: Any = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self._tail: deque[bytes] = deque(maxlen=3)
+        self._drain = threading.Thread(target=_drain, args=(self._proc.stderr, self._tail),
+                                       daemon=True, name="trcc-decode-stderr")
+        self._drain.start()
+        self._thread = threading.Thread(target=self._run, daemon=True, name="trcc-decode")
+        self._thread.start()
+
+    def _run(self) -> None:
+        log.debug("BackgroundDecode._run: %s", self._name)
+        splitter, proc, said_first = _JpegFrames(), self._proc, False
+        while not self._stop.is_set():
+            chunk = proc.stdout.read1(_CHUNK_BYTES)
+            if not chunk:
+                break
+            if new := splitter.feed(chunk):
+                with self._grew:
+                    self._playback.frames.extend(new)
+                    self._grew.notify_all()
+                if not said_first:
+                    said_first = True
+                    log.info("BackgroundDecode: %s first frame after %.2f s",
+                             self._name, time.monotonic() - self._began)
+        if self._stop.is_set() and proc.poll() is None:
+            proc.terminate()
+        code = proc.wait()
+        self._drain.join(timeout=2)
+        proc.stdout.close()
+        proc.stderr.close()
+        self._finish(code, splitter.pending)
+
+    def _finish(self, code: int, pending: int) -> None:
+        """Settle the decode: mark the playback complete, say how it ended."""
+        frames = len(self._playback.frames)
+        stopped = self._stop.is_set()
+        if not stopped and code != 0:
+            tail = b" ".join(self._tail).decode(errors="replace").strip()
+            self.error = f"ffmpeg exit {code}" + (f": {tail[:500]}" if tail else "")
+        if pending and not stopped:
+            log.warning("BackgroundDecode: %s ended with %d byte(s) of a partial frame "
+                        "-- dropped", self._name, pending)
+        self._playback.complete = True
+        with self._grew:
+            self._done.set()
+            self._grew.notify_all()
+        log.info("BackgroundDecode: %s %s -- %d frame(s) in %.2f s%s", self._name,
+                 "cancelled" if stopped else "finished", frames,
+                 time.monotonic() - self._began, f" ({self.error})" if self.error else "")
+        if self.error and frames and self._on_error is not None:
+            self._on_error(f"{self._name}: decoding stopped after {frames} frame(s), "
+                           f"which keep playing -- {self.error}")
+
+    def _arrived(self, frames: int) -> bool:
+        ready = len(self._playback.frames) >= frames or self._done.is_set()
+        frame_log.debug("BackgroundDecode._arrived: %d -> %s", frames, ready)
+        return ready
+
+    def wait_for(self, frames: int, timeout: float) -> int:
+        """Until *frames* have arrived or the decode ended; how many there are."""
+        with self._grew:
+            self._grew.wait_for(partial(self._arrived, frames), timeout)
+        count = len(self._playback.frames)
+        log.debug("BackgroundDecode.wait_for: %s %d of %d", self._name, count, frames)
+        return count
+
+    def wait_done(self, timeout: float | None = None) -> bool:
+        """Until the decode ended; whether it did."""
+        done = self._done.wait(timeout)
+        log.debug("BackgroundDecode.wait_done: %s -> %s", self._name, done)
+        return done
+
+    @property
+    def done(self) -> bool:
+        frame_log.debug("BackgroundDecode.done: %s", self._done.is_set())
+        return self._done.is_set()
+
+    def cancel(self) -> None:
+        """Stop ffmpeg and the reader (idempotent)."""
+        log.info("BackgroundDecode.cancel: %s", self._name)
+        self._stop.set()
+        if self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+        self._thread.join(timeout=3)
+
+
+class _JpegFrames:
+    """ffmpeg's ``image2pipe`` mjpeg output, split into one blob per frame as
+    the bytes arrive -- a frame, or its EOI marker, may straddle two reads.
 
     Frames are delimited by SOI (``ff d8``) / EOI (``ff d9``).  Inside
     entropy-coded data a literal ``ff`` is byte-stuffed as ``ff 00``, so a bare
     EOI cannot appear mid-scan; the one thing that could fool this is an
     embedded EXIF thumbnail carrying its own JPEG, which ffmpeg's mjpeg encoder
-    does not emit.  Verified against 897 real frames at four quality levels —
-    897 of 897 each time — but that is evidence about ffmpeg's output, not a
-    proof, so a short read is logged rather than passed off as a full decode.
+    does not emit.  Verified against 897 real frames at four quality levels --
+    897 of 897 each time -- but that is evidence about ffmpeg's output, not a
+    proof, so bytes left over at the end are logged, never passed off as a frame.
     """
-    frames: list[bytes] = []
-    pos = 0
-    while (start := data.find(_JPEG_SOI, pos)) >= 0:
-        end = data.find(_JPEG_EOI, start + 2)
-        if end < 0:
-            log.warning("_split_jpeg_stream: %d trailing byte(s) with no EOI "
-                        "after frame %d — dropping the partial frame",
-                        len(data) - start, len(frames))
-            break
-        frames.append(data[start:end + 2])
-        pos = end + 2
-    log.debug("_split_jpeg_stream: %d frame(s) from %d byte(s)",
-              len(frames), len(data))
+
+    def __init__(self) -> None:
+        log.debug("_JpegFrames.__init__")
+        self._buffer = bytearray()
+
+    def feed(self, chunk: bytes) -> list[bytes]:
+        """The frames *chunk* completed; a partial frame waits for the next."""
+        self._buffer += chunk
+        frames: list[bytes] = []
+        pos = 0
+        while (start := self._buffer.find(_JPEG_SOI, pos)) >= 0:
+            end = self._buffer.find(_JPEG_EOI, start + 2)
+            if end < 0:
+                pos = start                 # this frame is still arriving
+                break
+            frames.append(bytes(self._buffer[start:end + 2]))
+            pos = end + 2
+        else:
+            # No SOI after pos: keep a lone trailing ff, which may be half of one.
+            pos = len(self._buffer) - (1 if self._buffer.endswith(b"\xff") else 0)
+        del self._buffer[:pos]
+        frame_log.debug("_JpegFrames.feed: %d frame(s), %d byte(s) pending",
+                        len(frames), len(self._buffer))
+        return frames
+
+    @property
+    def pending(self) -> int:
+        """Bytes received that are not yet a whole frame."""
+        frame_log.debug("_JpegFrames.pending: %d", len(self._buffer))
+        return len(self._buffer)
+
+
+def _split_jpeg_stream(data: bytes) -> list[bytes]:
+    """Every whole frame in a complete mjpeg stream (``_JpegFrames``, once)."""
+    splitter = _JpegFrames()
+    frames = splitter.feed(data)
+    if splitter.pending:
+        log.warning("_split_jpeg_stream: %d trailing byte(s) with no EOI after "
+                    "frame %d -- dropping the partial frame", splitter.pending, len(frames))
+    log.debug("_split_jpeg_stream: %d frame(s) from %d byte(s)", len(frames), len(data))
     return frames
+
+
+#: ``load_video`` returns once this many frames are in: two tell an animation
+#: from a still (``PlayVideo``'s static-background rule), and are ~0.1 s of 4K.
+_FIRST_FRAMES = 2
+#: A video that has not produced its first frames by then is reported, not
+#: waited on -- well inside the 30 s IPC timeout a UI waits for an answer.
+_FIRST_FRAMES_TIMEOUT_S = 20.0
+
+
+def _expected_frames(path: Path, fps: int, duration_s: float | None) -> int:
+    """How many frames the decode should yield: duration x fps, 0 if unknown."""
+    duration = _probe_video_duration(path)
+    if duration is not None and duration_s:
+        duration = min(duration, duration_s)
+    expected = round(duration * fps) if duration else 0
+    log.debug("_expected_frames: %s -> %d", path.name, expected)
+    return expected
+
+
+def _probe_video_duration(path: Path) -> float | None:
+    """The container's duration in seconds, or None when ffprobe cannot say --
+    the estimate a progress bar shows while the rest still decodes (#264)."""
+    if not toolchain.present("ffprobe"):
+        log.info("_probe_video_duration: no ffprobe -- length grows as it decodes")
+        return None
+    cmd = [toolchain.executable("ffprobe"), "-v", "error",
+           "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]
+    try:
+        out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=10)
+        duration = float(out.decode("utf-8", errors="replace").strip())
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError,
+            ValueError) as e:
+        log.info("_probe_video_duration: %s has none (%s)", path.name, e)
+        return None
+    log.debug("_probe_video_duration: %s -> %.2f s", path.name, duration)
+    return duration if duration > 0 else None
 
 
 def _probe_video_size(path: Path) -> tuple[int, int] | None:
@@ -394,11 +597,24 @@ class Playback:
     #: and gets a different one.  ``Paths.is_user_content`` is where the
     #: question is decided.
     is_user_content: bool = False
+    #: False while a :class:`BackgroundDecode` is still appending to
+    #: ``frames`` (#264: playback starts on the first frames, not the last).
+    complete: bool = True
+    #: The decode's expected length (ffprobe duration x fps), 0 when unknown --
+    #: what ``frame_count`` reports until the decode completes, so a progress
+    #: bar and clock show the video's real length from the first frame.
+    expected_frames: int = 0
 
     @property
     def frame_count(self) -> int:
-        frame_log.debug("frame_count")
-        return len(self.frames)
+        """The video's length in frames: the expected total while it is still
+        decoding (never less than what is already here), the exact count once
+        complete.  Stepping and seeking use ``len(frames)`` -- what exists."""
+        decoded = len(self.frames)
+        count = decoded if self.complete else max(decoded, self.expected_frames)
+        frame_log.debug("frame_count: %d (decoded %d, complete=%s)",
+                        count, decoded, self.complete)
+        return count
 
     @property
     def interval_ms(self) -> int:
@@ -433,11 +649,17 @@ class Playback:
         frame = self.frames[self.cursor]
         if self.paused:
             return frame
+        # One read of the length: a decode thread may append between two.
+        decoded = len(self.frames)
         next_cursor = self.cursor + 1
-        if next_cursor >= len(self.frames):
-            self.cursor = 0 if self.loop else len(self.frames) - 1
-        else:
+        if next_cursor < decoded:
             self.cursor = next_cursor
+        elif not self.complete:
+            # The end of what is decoded, not of the video: hold here until
+            # more arrives -- wrapping now would restart a video half-read.
+            frame_log.debug("advance: holding at %d of %d decoded", self.cursor, decoded)
+        else:
+            self.cursor = 0 if self.loop else decoded - 1
         return frame
 
     def seek(self, frame_index: int) -> None:
@@ -487,14 +709,21 @@ class MediaService:
         self._playbacks: dict[str, Playback] = {}
         self._streams: dict[str, StreamReader] = {}
         self._visuals: dict[str, VisualReader] = {}
+        #: The decodes still filling a playback, by device (#264).
+        self._decodes: dict[str, BackgroundDecode] = {}
 
     def load_video(self, device_key: str, path: Path,
                    size: tuple[int, int] | None,
                    fps: int = _DEFAULT_FPS,
                    rotation_degrees: int = 0,
                    duration_s: float | None = None,
-                   fit_within: tuple[int, int] | None = None) -> Playback:
+                   fit_within: tuple[int, int] | None = None,
+                   on_error: Callable[[str], None] | None = None) -> Playback:
         """Decode a video / .zt animation for a device, replacing any previous playback.
+
+        An ffmpeg video returns once its first frames are in, still decoding
+        (#264); ``ThemeError`` when it yields none.  *on_error* hears of a
+        decode that fails after that -- what it decoded keeps playing.
 
         Dispatches by suffix: ``.zt`` → :class:`ZtDecoder`, anything else
         through ``ffmpeg`` via :class:`VideoDecoder``.  ``.zt`` carries its
@@ -549,15 +778,35 @@ class MediaService:
                 install_hint=self._install_hint,
                 fit_within=fit_within if size is None else None,
             )
-            decoder.decode()
-            playback = Playback(frames=decoder.frames, fps=fps,
-                                is_user_content=size is None)
-            log.info(
-                "load_video: ffmpeg decoded %s — %d frames @ %d fps",
-                path.suffix, len(decoder.frames), fps,
-            )
+            playback = Playback(frames=[], fps=fps, is_user_content=size is None,
+                                complete=False,
+                                expected_frames=_expected_frames(path, fps, duration_s))
+            decode = decoder.start(playback, on_error)
+            got = decode.wait_for(_FIRST_FRAMES, _FIRST_FRAMES_TIMEOUT_S)
+            if not got:
+                decode.cancel()
+                raise ThemeError(f"ffmpeg decode failed: {decode.error}" if decode.error
+                                 else f"{path.name} gave no frame within "
+                                      f"{_FIRST_FRAMES_TIMEOUT_S:.0f} s")
+            log.info("load_video: %s playing on its first %d frame(s) of ~%d, %s",
+                     path.name, got, playback.frame_count,
+                     "decoded" if decode.done else "the rest decoding")
+            self._replace_decode(device_key, None if decode.done else decode)
+            self._playbacks[device_key] = playback
+            return playback
+        self._replace_decode(device_key, None)
         self._playbacks[device_key] = playback
         return playback
+
+    def _replace_decode(self, device_key: str, decode: BackgroundDecode | None) -> None:
+        """Cancel the decode still filling *device_key*'s old playback -- only
+        now, when a new one replaces it, so a load that fails leaves it be."""
+        old = self._decodes.pop(device_key, None)
+        if old is not None and old is not decode:
+            log.info("_replace_decode: %s -- the previous decode is cancelled", device_key)
+            old.cancel()
+        if decode is not None:
+            self._decodes[device_key] = decode
 
     def playback(self, device_key: str) -> Playback | None:
         frame_log.debug("playback: key=%s", device_key)
@@ -623,6 +872,7 @@ class MediaService:
         or an audio visual."""
         self.close_stream(device_key)
         self.close_visual(device_key)
+        self._replace_decode(device_key, None)
         had = self._playbacks.pop(device_key, None)
         if had is not None:
             log.info("unload: dropped %d-frame playback for %s",

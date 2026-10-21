@@ -588,7 +588,10 @@ class DisplayService:
             # static theme.  The cache needs it to tell a workload it can
             # serve from one it would only thrash on.
             playback = self._media.playback(info.key)
-            frames = len(playback.frames) if playback is not None else 1
+            # frame_count, not len(frames): a video still decoding (#264) has
+            # its whole length to come round, and sizing the cache to the part
+            # decoded so far would take it on, then drop it partway.
+            frames = playback.frame_count if playback is not None else 1
             bg_cache.put(bg_key, bg_surface, nbytes,
                          working_set_bytes=frames * nbytes)
 

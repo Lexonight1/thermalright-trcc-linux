@@ -1313,6 +1313,13 @@ def _theme_under_background(app: App, key: str) -> str:
             "show a file on its own")
 
 
+def _report_decode_failure(app: App, key: str, message: str) -> None:
+    """A video that stopped decoding partway, told where the user is looking --
+    what it decoded keeps playing (#264).  Called on the decode's thread."""
+    log.warning("PlayVideo: %s -- %s", key, message)
+    app.events.publish(ErrorOccurred(message=message, kind="video", key=key))
+
+
 @dataclass(frozen=True, slots=True)
 class PlayVideo(Command[VideoResult]):
     """Decode a video into a per-device playback override.
@@ -1425,6 +1432,9 @@ class PlayVideo(Command[VideoResult]):
                 # A user's video: no larger than the largest fit-mode draw on
                 # this canvas -- a 4K clip for a 1600x720 panel froze the gui (#264).
                 fit_within=canvas_size if decode_size is None else None,
+                # It returns on the first frames; a decode that fails after
+                # them keeps playing what it got and is reported here, once.
+                on_error=partial(_report_decode_failure, app, self.key),
             )
         except ThemeError as e:
             log.warning(

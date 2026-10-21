@@ -30,7 +30,7 @@ from trcc.core.commands import (
     TickDisplay,
 )
 from trcc.core.errors import ThemeError
-from trcc.core.events import VideoAdvanced, VideoStarted, VideoStopped
+from trcc.core.events import ErrorOccurred, VideoAdvanced, VideoStarted, VideoStopped
 from trcc.core.models import (
     FitMode,
     Kind,
@@ -266,6 +266,35 @@ def test_play_video_zt_user_asset_keeps_canvas_size(
     assert result.ok is True
     assert len(stub_media) == 1
     assert stub_media[0][2] == (320, 320)
+
+
+def test_a_decode_failing_after_playback_began_reaches_the_user(
+    connected_app: App, video_file: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PlayVideo returns on the first frames (#264), so a decode that fails
+    later has no Result to ride on: it is published as ErrorOccurred, which
+    every UI shows.
+
+    MUTATION CHECK: drop on_error from PlayVideo -- nothing is published."""
+    hooks: list[Any] = []
+
+    def load(self: MediaService, device_key: str, path: Path,
+             size: tuple[int, int] | None, **kwargs: Any) -> Playback:
+        hooks.append(kwargs.get("on_error"))
+        playback = Playback(frames=[_encoded_frame(0xFF000000, 8, 8)] * 3, fps=15)
+        self._playbacks[device_key] = playback
+        return playback
+
+    monkeypatch.setattr(MediaService, "load_video", load)
+    errors: list[ErrorOccurred] = []
+    connected_app.events.subscribe(ErrorOccurred, errors.append)
+    assert connected_app.dispatch(PlayVideo(key=_KEY, path=video_file)).ok
+    (on_error,) = hooks
+    assert on_error is not None
+    on_error("clip.mp4: decoding stopped after 3 frame(s), which keep playing -- ffmpeg exit 1")
+    assert [(e.key, e.kind, e.message) for e in errors] == [
+        (_KEY, "video", "clip.mp4: decoding stopped after 3 frame(s), which keep playing "
+                        "-- ffmpeg exit 1")]
 
 
 def test_play_video_publishes_event(
@@ -662,6 +691,25 @@ class _FakeProc:
         self.stdout = stdout
 
 
+class _FakeFfmpeg:
+    """``subprocess.Popen`` standing in for ffmpeg: *output* on stdout, then
+    exit *code* -- the shape ``BackgroundDecode`` reads (``read1``, stderr
+    lines, ``wait``).  Records each command it was started with."""
+
+    def __init__(self, output: bytes, code: int = 0, stderr: bytes = b"") -> None:
+        self.output, self.code, self.err = output, code, stderr
+        self.commands: list[list[str]] = []
+
+    def __call__(self, cmd: list[str], **_: Any) -> Any:
+        import io
+        from types import SimpleNamespace
+        self.commands.append(cmd)
+        return SimpleNamespace(
+            stdout=io.BytesIO(self.output), stderr=io.BytesIO(self.err),
+            poll=lambda: self.code, wait=lambda timeout=None: self.code,
+            terminate=lambda: None, kill=lambda: None)
+
+
 def test_video_decoder_rejects_zero_dimension(
     tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -698,15 +746,10 @@ def test_a_4k_user_video_decodes_at_the_largest_size_a_fit_mode_draws(
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
     monkeypatch.setattr("trcc.services.media._probe_video_size", lambda path: (3840, 2160))
-    commands: list[list[str]] = []
-
-    def run(cmd: list[str], **_: Any) -> _FakeProc:
-        commands.append(cmd)
-        return _FakeProc(_encoded_frame(0xFF102030, 16, 16))
-
-    monkeypatch.setattr("trcc.services.media.subprocess.run", run)
+    ffmpeg = _FakeFfmpeg(_encoded_frame(0xFF102030, 16, 16))
+    monkeypatch.setattr("trcc.services.media.subprocess.Popen", ffmpeg)
     VideoDecoder(clip, size=None, fit_within=fit_within).decode()
-    (cmd,) = commands
+    (cmd,) = ffmpeg.commands
     assert (cmd[cmd.index("-s"):cmd.index("-s") + 2] if "-s" in cmd else []) == rescale
 
 
@@ -722,10 +765,7 @@ def test_video_decoder_accepts_valid_dimension(
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     two = _encoded_frame(0xFF102030, 320, 480) + _encoded_frame(0xFF405060, 320, 480)
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
-    monkeypatch.setattr(
-        "trcc.services.media.subprocess.run",
-        lambda *a, **k: _FakeProc(two),
-    )
+    monkeypatch.setattr("trcc.services.media.subprocess.Popen", _FakeFfmpeg(two))
 
     frames = VideoDecoder(clip, size=(320, 480)).decode()
     assert len(frames) == 2
