@@ -648,11 +648,14 @@ jobs:
       - name: Generate SHA256 checksums
         run: |
           cd packages
-          find . -type f \( -name "*.rpm" -o -name "*.deb" -o -name "*.pkg.tar.zst" \) \
-            -exec sh -c 'sha256sum "$1" >> SHA256SUMS.txt' _ {} \;
-          # Also checksum the wheel and sdist
-          for f in ../dist/*; do
-            sha256sum "$f" >> SHA256SUMS.txt
+          # Plain file names: a user checks the files they downloaded side by
+          # side, and the ./noarch/ and ../dist/ this used to write in front
+          # made sha256sum -c fail on every release to 9.11.2.  The complete
+          # list -- with the Windows and macOS files, which arrive later -- is
+          # written and signed afterwards by dev/tools/sign_release.py, on the
+          # machine of the maintainer: the signing key never reaches CI.
+          for f in $(find . -type f \( -name "*.rpm" -o -name "*.deb" -o -name "*.pkg.tar.zst" \)) ../dist/*; do
+            (cd "$(dirname "$f")" && sha256sum "$(basename "$f")") >> SHA256SUMS.txt
           done
           cat SHA256SUMS.txt
 

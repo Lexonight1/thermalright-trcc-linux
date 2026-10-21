@@ -957,14 +957,25 @@ It installs the `.desktop` file and TRCC icon to your app menu without asking (s
 
 ## Verify Your Download
 
-Every release includes a `SHA256SUMS.txt` file. Download it from the same release page, then:
+Every release (from 9.11.2) includes `SHA256SUMS.txt` — the SHA-256 of every file in the release: the Linux packages and their `latest` copies, the wheel and sdist, and the Windows and macOS installers — and `SHA256SUMS.txt.sig`, the maintainer's signature on that list. Download both from the same release page, next to your file.
+
+**1. Check the list is genuine** (OpenSSL 3). Fetch the public key once and keep it:
 
 ```bash
 cd ~/Downloads
+curl -fsSLO https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/packaging/keys/trcc-release-main.pub
+openssl pkeyutl -verify -pubin -inkey trcc-release-main.pub -rawin -in SHA256SUMS.txt -sigfile SHA256SUMS.txt.sig
+```
+
+`Signature Verified Successfully` means the list came from the maintainer: the key that signs it never leaves their computer, so even someone who broke into the GitHub project could not forge it. Keep the `.pub` you fetched — a copy you already have cannot be swapped later.
+
+**2. Check your file against the list:**
+
+```bash
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
-If you see `OK` next to your package — it's clean. `SHA256SUMS.txt` covers the Linux packages (`.rpm`, `.deb`, `.pkg.tar.zst`) plus the wheel and sdist, under their versioned names — not the `trcc-linux-latest…` copies the one-liners download, and not the Windows or macOS installers. Source code is GPL-3.0, fully auditable — no binaries, no obfuscation, no telemetry.
+`OK` next to your file means it is exactly what was released. Source code is GPL-3.0, fully auditable — no binaries, no obfuscation, no telemetry.
 
 ---
 

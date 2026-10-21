@@ -1170,7 +1170,16 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
     alongside the deb/rpm/pkg/exe/dmg (`gh release view v{version} --json
     assets`), and PyPI actually serves the new version — BEFORE telling any
     reporter to upgrade.
-14. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
+14. **Sign the checksums**, after EVERY workflow of the release is green —
+    `PYTHONPATH=src python3.12 dev/tools/sign_release.py v{version}`.  It
+    downloads every asset, checks the hashes `release.yml` published, writes
+    the complete `SHA256SUMS.txt` (the Windows and macOS installers arrive
+    after `release.yml` writes its own), signs it with the Ed25519 key in
+    `~/.config/trcc-signing/` and uploads list + `SHA256SUMS.txt.sig`.  It
+    runs HERE, never in CI: the private key must not reach GitHub, or a
+    stolen token could sign a forged release.  Public keys:
+    `packaging/keys/` (main + spare, for retiring a lost main key).
+15. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
     never announce an unconfirmed change as "the fix" (see
     `memory/feedback_fix_then_bump_then_reply.md`).  Upgrade commands must be
     copy-paste ready and matched to how that reporter actually installed

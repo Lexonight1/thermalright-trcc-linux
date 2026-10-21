@@ -82,14 +82,14 @@ Each guide has a one-liner copy-paste command and step-by-step instructions. Aft
 
 ### Verify your download
 
-Every release includes a `SHA256SUMS.txt` file. Download it from the same release page, then:
+Every release includes `SHA256SUMS.txt`, the hash of every file in it, signed by the maintainer (`SHA256SUMS.txt.sig`). Download both from the same release page, then:
 
 ```bash
 cd ~/Downloads
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
-If you see `OK` next to your package — it's clean. Source code is GPL-3.0, fully auditable — no binaries, no obfuscation, no telemetry.
+If you see `OK` next to your package — it's clean. To check the signature as well, see [Verify Your Download](doc/GUIDE_INSTALL.md#verify-your-download). Source code is GPL-3.0, fully auditable — no binaries, no obfuscation, no telemetry.
 
 ### PyPI
 
