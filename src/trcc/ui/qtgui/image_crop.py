@@ -41,9 +41,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.logs import per_frame
 from ...core.models import PAN_MULTIPLIERS
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 _PREVIEW_W = 480
 _PREVIEW_H = 480
@@ -80,7 +82,7 @@ class _CropCanvas(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:
-        log.debug("paintEvent: event=%s", event)
+        frame_log.debug("paintEvent: event=%s", event)
         if not self._display_pixmap or self._display_pixmap.isNull():
             return
         painter = QPainter(self)

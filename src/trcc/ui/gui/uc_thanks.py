@@ -21,10 +21,12 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES, Credit
+from ...core.logs import per_frame
 from .constants import Sizes
 from .uc_rgb import GOLD, paint_page
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 #: The people's pictures -- package assets, like the renderer's fonts.
 PICTURES = Path(__file__).resolve().parents[2] / "assets" / "inspired"
@@ -154,5 +156,5 @@ class UCThanks(QWidget):
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        log.debug("UCThanks.paintEvent: %s", self._title)
+        frame_log.debug("UCThanks.paintEvent: %s", self._title)
         paint_page(self, self._title)

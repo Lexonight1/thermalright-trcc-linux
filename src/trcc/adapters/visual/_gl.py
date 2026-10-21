@@ -783,7 +783,7 @@ def upload(gl: Gl, buffer: int, floats: np.ndarray) -> None:
 def c_floats(values: np.ndarray) -> Any:
     """*values* as a C array of floats, for a ``glUniform*v``."""
     flat = np.ascontiguousarray(values, dtype=np.float32).ravel()
-    log.debug("c_floats: %d", flat.size)
+    frame_log.debug("c_floats: %d", flat.size)
     return (ctypes.c_float * flat.size)(*flat.tolist())
 
 

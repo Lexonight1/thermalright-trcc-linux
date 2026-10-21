@@ -173,7 +173,7 @@ class UCRgb(QWidget):
         self.page.setStyleSheet(_QSS)
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        log.debug("UCRgb.paintEvent")
+        frame_log.debug("UCRgb.paintEvent")
         paint_page(self, "RGB Lighting")
 
 

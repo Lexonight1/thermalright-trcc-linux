@@ -147,7 +147,7 @@ class _TimelineBar(QWidget):
     # ── Painting ─────────────────────────────────────────────────────
 
     def paintEvent(self, event) -> None:
-        log.debug("paintEvent: event=%s", event)
+        frame_log.debug("paintEvent: event=%s", event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(QPen(QColor("#555"), 1))

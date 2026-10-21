@@ -24,9 +24,11 @@ import logging
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 
+from ..core.logs import per_frame
 from .screen_overlay import BaseScreenOverlay
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class EyedropperOverlay(BaseScreenOverlay):
@@ -56,7 +58,7 @@ class EyedropperOverlay(BaseScreenOverlay):
         self.cancelled.emit()
 
     def paintEvent(self, event) -> None:
-        log.debug("paintEvent: event=%s", event)
+        frame_log.debug("paintEvent: event=%s", event)
         if self._screenshot.isNull():
             return
         painter = QPainter(self)

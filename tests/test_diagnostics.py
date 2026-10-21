@@ -2320,6 +2320,92 @@ def test_the_tick_path_gate_actually_reaches_the_wire(tmp_path: Path) -> None:
     )
 
 
+def _drawable_visuals() -> list[str]:
+    """Every audio visual this host can draw -- MilkDrop only with libprojectM."""
+    from trcc.adapters.system import host_platform_class
+    visuals = host_platform_class().VISUALS
+    return sorted(k for k, cls in visuals.items()
+                  if cls.available() and not cls.problem())
+
+
+@pytest.mark.parametrize("kind", _drawable_visuals())
+def test_a_visual_draws_without_a_record_per_frame(tmp_path: Path, kind: str) -> None:
+    """Thirty frames of a real visual on this host's OpenGL, at DEFAULT
+    verbosity: nothing may scale with frames.
+
+    ``_gl.c_floats`` logged on the module logger once per uniform per frame,
+    and with KarmaViz playing 88% of the maintainer's log was it and the RGB
+    page's paintEvent -- the 1 MB file turned over every minute (2026-10-21).
+    No gate drove a visual, so none saw it.
+
+    MUTATION CHECK: put ``c_floats`` back on ``log`` -- it floods at well
+    over 1/frame."""
+    import random
+
+    import numpy as np
+
+    from trcc.adapters.system import host_platform_class
+    from trcc.core.models import SOUND_RATE, VISUAL_FPS, VisualSpec
+
+    ladder = levels_for(0)                       # what a user runs: no -v
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=ladder.file,
+                      stderr_level=logging.CRITICAL, per_frame=ladder.per_frame)
+    random.seed(3)
+    engine_class = host_platform_class().VISUALS[kind]
+    presets = engine_class.presets(tmp_path)     # KarmaViz: its own, whatever the folder
+    preset = engine_class.preset(tmp_path, presets[0]) if presets else None
+    engine = engine_class()
+    engine.open(VisualSpec(kind, 96, 96, preset=preset))
+    t = np.arange(SOUND_RATE // VISUAL_FPS) / SOUND_RATE
+    sound = np.repeat((0.5 * np.sin(2 * np.pi * 110 * t)).astype("<f4"), 2).tobytes()
+    frames, drawn = 30, 0
+    try:
+        for _ in range(5):                       # warm-up: first frames are one-shot
+            engine.feed(sound)
+            engine.render()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        mark = _mark(log_file)
+        for _ in range(frames):
+            engine.feed(sound)
+            drawn += engine.render() is not None
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+    finally:
+        engine.close()
+    assert drawn == frames, f"{kind}: {drawn} of {frames} renders returned a frame"
+    floods = {site: n / frames for site, n in _records_by_site(log_file, mark).items()
+              if n / frames >= _PER_FRAME_RATE}
+    assert not floods, (
+        f"{kind} writes a record per frame at DEFAULT verbosity -- move each "
+        "onto core.logs.per_frame(__name__):\n"
+        + "\n".join(f"  {rate:.2f}/frame  {site}"
+                    for site, rate in sorted(floods.items(), key=lambda kv: -kv[1])))
+
+
+def test_no_paint_event_logs_outside_the_per_frame_family() -> None:
+    """A ``paintEvent`` runs on every repaint -- a page frame repaints with
+    each animated child, a crop box with each mouse move.  Its line belongs
+    on ``frame_log``; on ``log`` it reaches the file at default verbosity.
+    ``UCRgb.paintEvent`` wrote 20 a second while the RGB page's effect
+    preview animated (2026-10-21).
+
+    MUTATION CHECK: put ``UCRgb.paintEvent`` back on ``log`` -- named here."""
+    src = Path(__file__).resolve().parents[1] / "src" / "trcc"
+    offenders = []
+    for path in sorted(src.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.FunctionDef) and node.name == "paintEvent"):
+                continue
+            for call in ast.walk(node):
+                if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and isinstance(call.func.value, ast.Name)
+                        and call.func.value.id in ("log", "logger")):
+                    offenders.append(f"{path.relative_to(src)}:{call.lineno}")
+    assert offenders == [], f"paintEvent logging on the module logger: {offenders}"
+
+
 #: The one record a sensor update may write: the snapshot, which carries the
 #: readings.  Everything a consumer does with them is per-update.
 _SENSOR_TICK_ALLOWED = "trcc.core.ports:BaselineSensors.snapshot:"

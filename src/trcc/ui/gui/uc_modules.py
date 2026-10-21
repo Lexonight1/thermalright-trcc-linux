@@ -12,12 +12,14 @@ from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 from ...core.commands import Command, ListModules, SetModuleEnabled
+from ...core.logs import per_frame
 from ..bus_bridge import BusBridge
 from ..qt_modules import ModulesView
 from .constants import Sizes
 from .uc_rgb import FRAME, GOLD, paint_page
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 #: Inside the framed body, in this page's coordinates.
 _BODY = (40, 110, 1190, 660)
@@ -62,5 +64,5 @@ class UCModules(QWidget):
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        log.debug("UCModules.paintEvent: %s", self._title)
+        frame_log.debug("UCModules.paintEvent: %s", self._title)
         paint_page(self, self._title)
