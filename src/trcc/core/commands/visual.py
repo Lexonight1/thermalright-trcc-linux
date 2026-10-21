@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..errors import DeviceNotFoundError
 from ..events import ErrorOccurred, VisualHearingChanged
+from ..logs import per_frame
 from ..models import Capability, VisualInfo, VisualSpec
 from ..ports import CaptureNotReady
 from ..results import (
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from ...app import App
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 #: The largest gallery tile a client may ask for, in pixels a side.
 MAX_TILE = 512
@@ -274,12 +276,13 @@ class CaptureVisualFrame(Command[ScreencastResult]):
             return ScreencastResult(ok=True, key=self.key,
                                     message=f"visual on {self.key} ended")
         if self.key in app.held:
-            log.debug("CaptureVisualFrame: %s held by a pushed image", self.key)
+            # Every tick while held, as CaptureStreamFrame says it -- per-frame.
+            frame_log.debug("CaptureVisualFrame: %s held by a pushed image", self.key)
             return ScreencastResult(ok=True, key=self.key, message="held")
         try:
             frame = reader.latest()
         except CaptureNotReady as e:
-            log.debug("CaptureVisualFrame: %s", e)
+            frame_log.debug("CaptureVisualFrame: %s", e)
             return ScreencastResult(ok=True, key=self.key, message=str(e))
         except OSError as e:
             log.warning("CaptureVisualFrame: %s -- ending the audio visual", e)

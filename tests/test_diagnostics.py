@@ -11,7 +11,7 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import pytest
 
@@ -2078,12 +2078,13 @@ _TICK_KEY = "0402:3922"
 _TICK_FPS = 15
 
 
-def _ticking_app(tmp_path: Path) -> tuple[Any, Path]:
+def _ticking_app(tmp_path: Path, platform_cls: type | None = None) -> tuple[Any, Path]:
     """A real App over a fake 320x320 SCSI panel, playing a 3-frame video,
     logging at DEFAULT verbosity into ``tmp_path/trcc.log`` -- what a user runs.
 
-    Shared by the tick-path and remote-preview gates so both measure the same
-    App; returns it with the log file.
+    Shared by the tick-path, remote-preview and cast-path gates so all measure
+    the same App; returns it with the log file.  *platform_cls* replaces
+    :class:`FakePlatform` with a subclass of it.
     """
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
@@ -2100,7 +2101,7 @@ def _ticking_app(tmp_path: Path) -> tuple[Any, Path]:
                       stderr_level=logging.CRITICAL,
                       per_frame=ladder.per_frame)
 
-    platform = FakePlatform(tmp_path)
+    platform = (platform_cls or FakePlatform)(tmp_path)
     app = App(platform=platform)
     # Scripted SCSI handshake: FBL=100 -> a 320x320 panel.
     resp = bytearray(0xE100)
@@ -2197,6 +2198,85 @@ def test_the_tick_path_writes_no_record_per_frame(tmp_path: Path) -> None:
     floods = {s: r for s, r in rates.items() if r >= _PER_FRAME_RATE}
     assert not floods, (
         "these call sites write a record per rendered frame at DEFAULT "
+        "verbosity — move each onto core.logs.per_frame(__name__) so the "
+        "record is never constructed:\n"
+        + "\n".join(f"  {rate:.2f}/frame  {site}"
+                    for site, rate in sorted(floods.items(),
+                                             key=lambda kv: -kv[1]))
+    )
+
+
+def _cast_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
+    """Records-per-frame for a whole screencast tick: grab, compose, SEND.
+
+    ``CaptureScreencastFrame`` is what the App's capture driver dispatches
+    every tick.  The platform keeps the BASE ``screen_capture()``, not
+    FakePlatform's override, because that base method is one of the two
+    lines this gate was written for: it and ``AudioCapture.running`` each
+    wrote a DEBUG record per cast frame, 97% of the win11 VM's log, and
+    6 MB held half an hour (2026-10-20).
+    """
+    from trcc.adapters.system._base import BaseOS
+    from trcc.core.commands import CaptureScreencastFrame
+
+    from .conftest import FakePlatform, FakeScreenCapture
+
+    class _BaseCapturePlatform(FakePlatform):
+        _screen_capture = None
+        # The base method itself, on a platform that is not a BaseOS.
+        screen_capture = cast(Any, BaseOS.screen_capture)
+
+        def _build_screen_capture(self) -> FakeScreenCapture:
+            return self.capture
+
+    app, log_file = _ticking_app(tmp_path, _BaseCapturePlatform)
+    key = _TICK_KEY
+    scsi = app.platform.scsi
+    # What StartScreencast stores; starting one would also start the App's own
+    # capture driver ticking beside this loop.
+    app.settings.set_screencast_region(key, (0, 0, 320, 320, False))
+    real_send = app.send
+
+    def sync_send(key: str, payload: Any, *, wait: bool = False) -> bool:
+        return real_send(key, payload, wait=True)
+
+    app.send = sync_send
+
+    def cast_once() -> None:
+        assert app.dispatch(CaptureScreencastFrame(key=key)).ok
+
+    for _ in range(5):            # warm-up: first-frame lines are one-shot
+        cast_once()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    mark = _mark(log_file)
+    writes = len(scsi.sent)
+    for _ in range(frames):
+        cast_once()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    return _TickRun(
+        rates={site: n / frames
+               for site, n in _records_by_site(log_file, mark).items()},
+        writes=len(scsi.sent) - writes,
+    )
+
+
+def test_the_cast_path_writes_no_record_per_frame(tmp_path: Path) -> None:
+    """Drive a whole screencast tick at DEFAULT verbosity; nothing may scale
+    with frames.
+
+    MUTATION CHECK: put ``AudioCapture.running`` back on ``log`` -- it floods
+    at 1.00/frame."""
+    run = _cast_path_rates(tmp_path)
+    # A 320x320 SCSI frame is exactly 4 CDBs (see the tick gate below), so 30
+    # synchronous casts write 120 -- anything else and the drive is not real.
+    assert run.writes == 30 * 4, f"30 casts wrote {run.writes} CDB(s), expected 120"
+    floods = {s: r for s, r in run.rates.items() if r >= _PER_FRAME_RATE}
+    assert not floods, (
+        "these call sites write a record per cast frame at DEFAULT "
         "verbosity — move each onto core.logs.per_frame(__name__) so the "
         "record is never constructed:\n"
         + "\n".join(f"  {rate:.2f}/frame  {site}"

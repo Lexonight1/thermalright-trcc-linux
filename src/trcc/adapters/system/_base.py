@@ -556,8 +556,9 @@ class BaseOS(Platform):
                      type(self).__name__)
             self._screen_capture = self._build_screen_capture()
         else:
-            log.debug("%s.screen_capture: returning cached source",
-                      type(self).__name__)
+            # Asked once per cast frame -- per-frame, or it fills the log.
+            frame_log.debug("%s.screen_capture: returning cached source",
+                            type(self).__name__)
         return self._screen_capture
 
     def http_fetcher(self) -> HttpFetcher:

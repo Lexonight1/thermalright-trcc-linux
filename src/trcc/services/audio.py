@@ -19,7 +19,10 @@ from typing import Any
 
 import numpy as np
 
+from ..core.logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 NUM_BANDS = 16        # bars in the spectrum visualizer
 SMOOTHING = 0.6       # exponential smoothing (0 = no smoothing, 1 = frozen)
@@ -44,7 +47,9 @@ class AudioCapture:
 
     @property
     def running(self) -> bool:
-        log.debug("running")
+        # Asked once per visual frame -- per-frame, or it fills the log
+        # (half of every record on the win11 VM, 2026-10-20).
+        frame_log.debug("running")
         return self._running
 
     def start(
