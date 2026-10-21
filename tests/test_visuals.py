@@ -279,6 +279,18 @@ def _wire(app: App) -> list[Any]:
     return app.devices[_KEY]._transport.sent
 
 
+def _wire_grows(app: App, past: int, timeout: float = 5.0) -> bool:
+    """Whether the panel's wire passes *past* writes within *timeout* -- the
+    per-frame send is fire-and-forget, so the frame lands on the sender's thread."""
+    import time
+    deadline = time.monotonic() + timeout
+    while len(_wire(app)) <= past:
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
+
+
 def _preset(app: App, name: str = "Fractal/one.milk") -> str:
     path = app.platform.paths().visuals_dir() / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -387,7 +399,7 @@ def test_a_tick_puts_the_visual_s_picture_on_the_panel(app: App) -> None:
     sent = len(_wire(app))
     result = app.dispatch(CaptureVisualFrame(key=_KEY))
     assert result.ok, result.message
-    assert len(_wire(app)) > sent
+    assert _wire_grows(app, sent), "no picture reached the wire"
 
 
 def test_another_source_ends_the_visual_within_a_tick(app: App) -> None:

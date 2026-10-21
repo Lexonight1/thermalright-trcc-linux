@@ -81,8 +81,8 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 
     monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
-    # The real threaded scheduler, so a send completes (``App.send`` waits for
-    # the wire); the stream DRIVER is recorded instead of run, so each test
+    # The real threaded scheduler, so a queued send reaches the wire on the
+    # sender's thread (``_wire_grows`` waits for it); the stream DRIVER is recorded instead of run, so each test
     # dispatches its own ticks and nothing races it.
     monkeypatch.setattr(App, "add_task", lambda self, task: tasks.append(task.key))
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
@@ -99,6 +99,18 @@ def _reader(app: App) -> Any:
 def _wire(app: App) -> list[Any]:
     """What this panel's own (scripted) transport was sent."""
     return app.devices[_KEY]._transport.sent
+
+
+def _wire_grows(app: App, past: int, timeout: float = 5.0) -> bool:
+    """Whether the panel's wire passes *past* writes within *timeout* -- the
+    per-frame send is fire-and-forget, so the frame lands on the sender's thread."""
+    import time
+    deadline = time.monotonic() + timeout
+    while len(_wire(app)) <= past:
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
 
 
 def _source(app: App) -> str:
@@ -124,7 +136,7 @@ def test_a_tick_puts_the_stream_s_frame_on_the_panel(app: App) -> None:
     result = app.dispatch(CaptureStreamFrame(key=_KEY))
 
     assert result.ok, result.message
-    assert len(_wire(app)) > sent, "no frame reached the wire"
+    assert _wire_grows(app, sent), "no frame reached the wire"
 
 
 def test_the_url_stops_what_played_before(

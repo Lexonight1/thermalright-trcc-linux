@@ -353,6 +353,28 @@ def test_a_task_that_rests_keeps_its_whole_rest(
     assert _Rests(app, _KEY).run_once(0.0) == 0.5
 
 
+def test_a_cast_frame_is_queued_not_waited_for(
+    casting: App, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-frame path hands the frame to the sender and returns, as
+    RenderAndSend does.  It waited for the USB write -- on Windows four pipe
+    round trips to TRCCService and four SCSI writes inside every turn
+    (2026-10-20).
+
+    MUTATION CHECK: send with the default ``wait=True`` -- this fails."""
+    waits: list[bool] = []
+    real = casting.send
+
+    def spy(key: str, payload: object, *, wait: bool = True) -> bool:
+        waits.append(wait)
+        return real(key, payload, wait=wait)
+
+    monkeypatch.setattr(casting, "send", spy)
+
+    assert casting.dispatch(CaptureScreencastFrame(key=_KEY)).ok
+    assert waits == [False]
+
+
 def test_each_tick_captures_one_frame(
     casting: App, scheduler: SyncSendScheduler,
 ) -> None:

@@ -1780,8 +1780,16 @@ class SendScreencastFrame(Command[ScreencastResult]):
                 message=f"screencast encode failed: {type(e).__name__}: {e}",
             )
 
-        app.send(self.key, data)
-        frame_log.debug("SendScreencastFrame: %s sent %d bytes",
+        # Fire-and-forget, as RenderAndSend: the per-frame path must not block
+        # on USB.  It waited -- four pipe round trips to TRCCService and four
+        # SCSI writes inside every cast turn on Windows (2026-10-20) -- and a
+        # failed write already surfaces through the sender's on_failure.
+        if not app.send(self.key, data, wait=False):
+            frame_log.debug("SendScreencastFrame: %s -- no sender took the frame",
+                            self.key)
+            return ScreencastResult(ok=False, key=self.key,
+                                    message=f"no sender for {self.key}")
+        frame_log.debug("SendScreencastFrame: %s queued %d bytes",
                         self.key, len(data))
         # Same publish ``RenderAndSend`` makes, for the same reason: the UI
         # must show the frame that was SENT, not one it composed for itself.
