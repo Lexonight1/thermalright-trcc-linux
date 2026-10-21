@@ -25,7 +25,9 @@ jobs:
     timeout-minutes: 45
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # 3.13 and 3.14: SteamOS 3.7/3.8 ship 3.13 and 3.9 ships 3.14, and a
+        # SteamOS install is a venv on the system Python (install-steamos.sh).
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

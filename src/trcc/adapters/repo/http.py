@@ -90,6 +90,7 @@ class UrllibHttpFetcher(HttpFetcher):
                 log.info("HTTP GET %s → %d bytes", url, len(body))
                 return body
         except HTTPError as e:
+            e.close()       # an error is a response too; 3.14 warns when one is left open
             log.warning("HTTP GET %s → HTTPError %d", url, e.code)
             raise HttpFetchError(f"GET {url} → HTTP {e.code}") from e
         except URLError as e:

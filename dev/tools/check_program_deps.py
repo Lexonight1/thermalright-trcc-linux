@@ -263,7 +263,10 @@ def _get(url: str) -> str | None:
     try:
         with urllib.request.urlopen(url, timeout=_TIMEOUT) as r:
             return r.read().decode("utf-8", "replace")
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+    except urllib.error.HTTPError as e:
+        e.close()           # an error is a response too; 3.14 warns when one is left open
+        return None
+    except (urllib.error.URLError, TimeoutError, OSError):
         return None
 
 
@@ -286,6 +289,7 @@ def _fetch(url: str, attempts: int = 3,
             with urllib.request.urlopen(url, timeout=_TIMEOUT) as r:
                 return r.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
+            e.close()       # an error is a response too; 3.14 warns when one is left open
             if e.code in absent:
                 return None
             reason = f"HTTP {e.code}"
