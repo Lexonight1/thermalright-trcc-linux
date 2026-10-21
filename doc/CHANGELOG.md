@@ -1,5 +1,36 @@
 # Changelog
 
+## v9.11.1
+
+### Added
+
+- **The RGB page is a list of your lighting devices** (Memory, Motherboard,
+  OpenRGB) and the one you pick. Apply changes only that device, so the RAM
+  and the board no longer share one list and one button.
+- **The motherboard's headers and LEDs run TRCC's built-in effects** on ASUS
+  Aura boards.
+- **Lights that show a reading**: a RAM stick or a motherboard header can show
+  CPU temp, CPU load, GPU temp or GPU load, green when fine, then yellow,
+  orange and red as it gets busy or hot. TRCC writes a new colour only when
+  the reading moves it.
+- **Each RAM stick can run its own effect.**
+
+### Fixed
+
+- The effect preview says what each light runs now, and what Apply will give
+  the ticked ones. It used to show only the new pick, so two sticks on
+  different readings looked the same.
+- The RGB page keeps what you picked after Apply instead of resetting to the
+  first light's effect, which made the next Apply set every light the same.
+- The motherboard stays in the list while TRCC is driving it. Finding lights
+  then could save an empty board list.
+- `trcc kill` no longer starts RGB following on its way out, which could
+  take hold of the board's lights or the RAM.
+- A window opened while TRCC is still connecting the panel shows the right
+  device picture and a live preview.
+- The log no longer fills with per-frame lines from audio visuals and the RGB
+  preview (88% of one user's log).
+
 ## v9.11.0
 
 ### Added
