@@ -19,7 +19,7 @@ import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
-from ...core.ports import CpuSource, GpuSource
+from ...core.ports import CpuSource, DiskSource, GpuSource
 from ._adl import discover_adl_gpus
 from ._d3dkmt import discover_d3dkmt_gpus
 from ._hwinfo import HwinfoCpu, discover_hwinfo_gpus
@@ -27,6 +27,7 @@ from ._igcl import discover_igcl_gpus
 from ._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
 from ._pawnio_cpu import PawnioCpu
+from ._storage_query import discover_windows_disks
 from ._wmi_gpu import discover_wmi_gpus
 from .aggregator import BaselineSensors
 from .chain import CpuSourceChain, GpuSourceChain
@@ -56,13 +57,35 @@ def build_windows_sensors(
         PsutilCpu(),
     ])
     gpus = _build_windows_gpu_chains()
-    disks = discover_lhm_disks()
+    disks = _build_windows_disks()
     log.info("Windows sensors: cpu chain ready, gpus=%d, disks=%d",
              len(gpus), len(disks))
     return BaselineSensors(
         cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=[], disks=disks,
         thread_context=thread_context,
     )
+
+
+def _build_windows_disks() -> list[DiskSource]:
+    """Windows' own drive temperatures, then any drive only LHM can read.
+
+    One drive must not appear twice in the disk picker, so an LHM drive is
+    kept only when no Windows reading carries its name.  LHM still covers a
+    drive whose driver does not answer the temperature property.
+    """
+    log.debug("_build_windows_disks: called")
+    native = discover_windows_disks()
+    names = {_disk_name(d) for d in native}
+    extra = [d for d in discover_lhm_disks() if _disk_name(d) not in names]
+    log.info("_build_windows_disks: %d from Windows, %d more from LHM", len(native), len(extra))
+    return [*native, *extra]
+
+
+def _disk_name(disk: DiskSource) -> str:
+    """A drive's model as two readers may spell it: case and runs of spaces aside."""
+    name = " ".join(disk.name.lower().split())
+    log.debug("_disk_name: %s -> %r", disk.key, name)
+    return name
 
 
 def _build_windows_gpu_chains() -> list[GpuSource]:

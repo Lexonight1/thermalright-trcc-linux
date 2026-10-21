@@ -24,7 +24,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseModule`](#basemodule) | 2 | 0 | 0 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`GlSurface`](#glsurface) | 2 | 1 | 3 |
-| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 22 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 23 |
 | [`Module`](#module) | 2 | 7 | 0 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -37,7 +37,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 1 |
 | [`CommandBus`](#commandbus) | 3 | 1 | 7 |
 | [`Device`](#device) | 3 | 15 | 5 |
-| [`DiskSource`](#disksource) | 3 | 0 | 2 |
+| [`DiskSource`](#disksource) | 3 | 0 | 3 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 2 | 3 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 14 |
@@ -301,7 +301,7 @@ key() -> str
 name() -> str
 ```
 
-**Implementations (22):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WmiVideoControllerGpu`
+**Implementations (23):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
 
 ## Module
 
@@ -518,7 +518,7 @@ name() -> str
 temp() -> float | None
 ```
 
-**Implementations (2):** `HwmonDisk` · `LhmDisk`
+**Implementations (3):** `HwmonDisk` · `LhmDisk` · `WindowsDisk`
 
 ## DramSource
 
