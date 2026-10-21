@@ -48,7 +48,7 @@ class ModuleSpec:
             log.debug("ModuleSpec.of: %s is already loaded", module.key)
             return module
         return cls(ModuleManifest(key=module.key, title=module.title,
-                                  summary=module.summary, entry=module.__module__,
+                                  summary=module.summary,
                                   default_on=module.default_on,
                                   capabilities=module.capabilities),
                    loaded)
@@ -132,6 +132,15 @@ class ModuleRunner:
         log.debug("ModuleRunner.loaded: %s", sorted(self._modules))
         return frozenset(self._modules)
 
+    def root(self, key: str) -> Module:
+        """Module *key*'s root -- what its Commands run against.  Only ever
+        asked for a module that is on (``App.dispatch`` refuses its Commands
+        otherwise); ``ModuleUnavailable`` if it is not."""
+        log.debug("ModuleRunner.root: %s", key)
+        if key not in self._on:
+            raise ModuleUnavailable(f"module {key!r} is not on")
+        return self._modules[key]
+
     def is_on(self, key: str) -> bool:
         """Whether module *key* is switched on."""
         log.debug("ModuleRunner.is_on: %s", key)
@@ -214,14 +223,14 @@ class ModuleRunner:
         if (module := self._modules.get(key)) is not None:
             return module
         manifest = self._specs[key].manifest
-        log.info("ModuleRunner._module: loading %s from %s", key, manifest.entry)
+        log.info("ModuleRunner._module: loading %s", key)
         try:
             module = self._specs[key].load()()
         except Exception as e:
             log.exception("_module: %s could not be loaded", key)
             raise ModuleUnavailable(f"{manifest.title} could not be loaded: {e}") from e
         self._modules[key] = module
-        self._scopes[key] = ModuleScope(self._host, manifest)
+        self._scopes[key] = module.host = ModuleScope(self._host, manifest)
         return module
 
     def _enable(self, key: str) -> None:

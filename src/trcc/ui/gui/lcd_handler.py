@@ -1284,6 +1284,8 @@ class LCDHandler(BaseHandler):
             # whatever resolution it happened to be holding.
             self._w['theme_mask'].set_device_key(self._device_key)
             self._w['visuals'].set_device_key(self._device_key)
+            for page in self._w.get('module_pages', {}).values():
+                page.set_device_key(self._device_key)
             self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
             if masks_dir:
                 self._w['theme_mask'].set_mask_directory(masks_dir)

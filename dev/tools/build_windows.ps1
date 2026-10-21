@@ -136,6 +136,7 @@ python -m PyInstaller `
   --icon "src\trcc\assets\icons\app.ico" `
   --add-data "src\trcc\assets;trcc\assets" `
   --add-data "src\trcc\ui\gui\assets;trcc\ui\gui\assets" `
+  --add-data "src\trcc\modules;trcc\modules" `
   --hidden-import PySide6.QtSvg `
   --hidden-import pynvml `
   --hidden-import wmi `
@@ -159,6 +160,7 @@ python -m PyInstaller `
   --icon "src\trcc\assets\icons\app.ico" `
   --add-data "src\trcc\assets;trcc\assets" `
   --add-data "src\trcc\ui\gui\assets;trcc\ui\gui\assets" `
+  --add-data "src\trcc\modules;trcc\modules" `
   --hidden-import PySide6.QtSvg `
   --hidden-import pynvml `
   --hidden-import wmi `

@@ -132,17 +132,7 @@ class ActivitySidebar(BasePanel):
 
         self._buttons: dict[str, QPushButton] = {}
         for entry in _ENTRIES:
-            button = QPushButton(entry.label, self)
-            button.setCheckable(True)
-            button.setMinimumHeight(36)
-            # The panel key rides on the button rather than being captured in
-            # a closure: ``feedback_no_lambdas`` — every callable gets a real
-            # symbol so a traceback, a debugger and a grep all name it.
-            button.setProperty(_KEY_PROPERTY, entry.key)
-            button.clicked.connect(self._on_nav_clicked)
-            self._buttons[entry.key] = button
-            self._group.addButton(button)
-            layout.addWidget(button)
+            layout.addWidget(self._nav_button(entry.key, entry.label))
 
         layout.addStretch(1)
 
@@ -218,6 +208,35 @@ class ActivitySidebar(BasePanel):
         self.device_chosen.emit(key, kind)
 
     # ── Navigation ─────────────────────────────────────────────────────
+
+    def _nav_button(self, key: str, label: str) -> QPushButton:
+        """One navigation button, for panel *key*."""
+        log.debug("_nav_button: %s", key)
+        button = QPushButton(label, self)
+        button.setCheckable(True)
+        button.setMinimumHeight(36)
+        # The panel key rides on the button rather than being captured in
+        # a closure: ``feedback_no_lambdas`` — every callable gets a real
+        # symbol so a traceback, a debugger and a grep all name it.
+        button.setProperty(_KEY_PROPERTY, key)
+        button.clicked.connect(self._on_nav_clicked)
+        self._buttons[key] = button
+        self._group.addButton(button)
+        return button
+
+    def add_entry(self, key: str, label: str) -> None:
+        """An entry for a module's panel, just above Modules -- where a user
+        who switched it on is looking."""
+        log.info("add_entry: %s %r", key, label)
+        layout = self.layout()
+        assert isinstance(layout, QVBoxLayout)
+        layout.insertWidget(layout.indexOf(self._buttons["modules"]),
+                            self._nav_button(key, label))
+
+    def set_entry_visible(self, key: str, visible: bool) -> None:
+        """Show or hide *key*'s entry -- a module's, while it is on or off."""
+        log.info("set_entry_visible: %s %s", key, visible)
+        self._buttons[key].setVisible(visible)
 
     def select(self, key: str) -> None:
         """Programmatically check the button for *key* (no signal emitted)."""

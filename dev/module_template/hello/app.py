@@ -1,4 +1,4 @@
-"""Hello -- the module skeleton.  Copy it with ``dev/tools/new_module.py``.
+"""Hello's root -- the module skeleton.  Copy it with ``dev/tools/new_module.py``.
 
 It is a real, working module: the tests load it through the same catalog as
 every built-in, so if the module API changes, this breaks in CI instead of
@@ -12,7 +12,9 @@ Two steps, at different times:
 * ``start`` / ``stop`` -- RUN: hardware and threads.  Only inside a session.
 
 Everything goes through ``host``, never the App.  ``host`` gives only what
-``module.json`` declares under "capabilities" -- here, "events".
+``module.json`` declares under "capabilities" -- here, "events".  Its
+Commands (``core/``) run against this class, so they reach the App only
+through the same host.
 """
 from __future__ import annotations
 
@@ -63,3 +65,8 @@ class HelloModule(BaseModule, key="hello"):
         """Every module switched on or off, in any window."""
         log.info("hello: %s was switched %s", event.key,
                  "on" if event.enabled else "off")
+
+    def greet(self, name: str) -> str:
+        """What ``Greet`` answers -- a module's work lives in the module."""
+        log.info("hello: greeting %s", name)
+        return f"Hello, {name}!"

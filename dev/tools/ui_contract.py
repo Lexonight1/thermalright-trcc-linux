@@ -101,22 +101,28 @@ def contract_classes() -> tuple[set[str], set[str]]:
     named ``DeviceState`` exist (the Query, and a presentation dataclass).
     """
     import trcc.core.commands as commands
-    from trcc.core.commands._base import Command, Query
+    from trcc import ipc
+    from trcc.adapters.modules import specs
+    from trcc.core.commands._base import Command, ModuleCommand, ModuleQuery, Query
 
+    specs()   # every installed module's core/: its Commands join the contract
+    bases = (Command, Query, ModuleCommand, ModuleQuery)
     concrete = {
         name
         for name in dir(commands)
         if isinstance(obj := getattr(commands, name), type)
         and issubclass(obj, Command)
-        and obj not in (Command, Query)   # the bases themselves are not capabilities
-    }
+        and obj not in bases   # the bases themselves are not capabilities
+    } | {name for name, cls in ipc.COMMAND_TYPES.items()
+         if cls.__module__.startswith("trcc.modules.")}
     if len(concrete) < _MIN_CONTRACT:
         raise SystemExit(
             f"contract collector returned {len(concrete)} classes, under the "
             f"floor of {_MIN_CONTRACT} — trcc.core.commands exported nothing "
             f"useful.  Every UI would score as complete against it."
         )
-    queries = {n for n in concrete if issubclass(getattr(commands, n), Query)}
+    queries = {n for n in concrete
+               if issubclass(ipc.COMMAND_TYPES.get(n) or getattr(commands, n), Query)}
     return concrete - queries, queries
 
 

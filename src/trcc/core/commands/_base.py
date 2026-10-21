@@ -18,6 +18,8 @@ log = logging.getLogger(__name__)
 
 
 R_co = TypeVar("R_co", bound=Result, covariant=True)
+#: A module's root -- the class a module's Commands run against.
+M = TypeVar("M")
 
 
 log = logging.getLogger(__name__)
@@ -122,5 +124,33 @@ class Query(Command[R_co]):
     only device-listing verb despite scanning USB and triggering data installs.
     Naming the kind makes a missing read obvious instead of archaeological.
     """
+
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+
+
+class ModuleCommand(Command[R_co], Generic[R_co, M]):
+    """A Command a module owns, in that module's ``core/`` -- the front door
+    of its mini hexagon.  It runs against the module's own root (its
+    ``app.py`` class: its services, its host), never the App, so a module's
+    work reaches the App only through the ports its host offers.
+
+    ``MODULE`` names the module, and ``App.dispatch`` refuses the Command
+    while that module is off -- so by the time :meth:`run` is called, the
+    module is loaded and on.
+    """
+
+    def execute(self, app: App) -> R_co:
+        module = app.modules.root(self.MODULE)
+        log.debug("%s: running in module %s", type(self).__name__, self.MODULE)
+        return self.run(cast("M", module))
+
+    @abstractmethod
+    def run(self, module: M) -> R_co:
+        """Do the work, with the module's own root."""
+
+
+class ModuleQuery(ModuleCommand[R_co, M], Query[R_co]):
+    """A question a module answers -- a :class:`Query` (changes nothing, logs
+    at DEBUG) that runs against the module, like :class:`ModuleCommand`."""
 
     LOG_LEVEL: ClassVar[int] = logging.DEBUG

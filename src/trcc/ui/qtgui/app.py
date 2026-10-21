@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from ...core.commands import (
     GetFirstRunStatus,
     GetPlatformInfo,
+    ListModules,
     MarkFirstRunDone,
     RefreshAutostart,
     SetBackground,
@@ -47,6 +48,7 @@ from ...core.events import (
     DeviceDisconnected,
     ErrorOccurred,
     FrameSent,
+    ModuleChanged,
 )
 from ..bus_bridge import BusBridge
 from ..qt_file_drop import FileDropTarget
@@ -169,6 +171,12 @@ class MainWindow(QMainWindow):
 
         self._content = content
         sidebar.selected.connect(self._on_navigate)
+        # What the modules add: an entry and a panel for each one that is on,
+        # following ModuleChanged from any UI.
+        self._module_panels: set[str] = set()
+        self._sync_module_panels()
+        self._bus.app_settings_changed.connect(
+            self._on_app_settings_changed, type=Qt.ConnectionType.QueuedConnection)
 
         self.setCentralWidget(self._build_chrome(app, sidebar, content))
 
@@ -347,6 +355,47 @@ class MainWindow(QMainWindow):
         self._content.setCurrentWidget(
             self._panels.get(key, self._panels["devices"]),
         )
+
+    def _on_app_settings_changed(self, event: object) -> None:
+        """An app-wide change from any UI: a module switched on or off
+        brings its panel back, or hides it."""
+        log.debug("MainWindow._on_app_settings_changed: %s", type(event).__name__)
+        if isinstance(event, ModuleChanged):
+            self._sync_module_panels()
+
+    def _sync_module_panels(self) -> None:
+        """A sidebar entry and a panel for each module that is on and adds one
+        (``ui/qtgui/``'s ``PANEL``); the entries of the rest hidden.  A panel
+        is built the first time its module is on and kept; one showing when
+        its module goes off gives way to Devices."""
+        from .._module_faces import contribution
+
+        on = {m.key for m in self._app.dispatch(ListModules()).modules
+              if m.enabled}
+        log.info("MainWindow._sync_module_panels: on %s, built %s", sorted(on),
+                 sorted(self._module_panels))
+        for key in sorted(on - self._module_panels):
+            panel_class = contribution(key, "qtgui", "PANEL")
+            if panel_class is None:
+                continue
+            if key in self._panels:
+                log.error("module %s: the qtgui already has a %r panel -- "
+                          "not added", key, key)
+                continue
+            panel = panel_class(self._app, self._bus, self,
+                                selection=self._lcd_selection)
+            self._panels[key] = panel
+            self._content.addWidget(panel)
+            self._sidebar.add_entry(key, panel_class.LABEL)
+            self._module_panels.add(key)
+        for key in self._module_panels:
+            self._sidebar.set_entry_visible(key, key in on)
+        shown = self._content.currentWidget()
+        if any(self._panels[key] is shown for key in self._module_panels - on):
+            log.info("MainWindow._sync_module_panels: the panel showing is "
+                     "off -- Devices")
+            self._content.setCurrentWidget(self._panels["devices"])
+            self._sidebar.select("devices")
 
     def _on_device_chosen(self, key: str, kind: str) -> None:
         """Route a rail choice to the DeviceSelection for that device kind.

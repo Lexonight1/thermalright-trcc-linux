@@ -1,0 +1,59 @@
+"""What the modules add to a UI -- the one place every face asks.
+
+A module's ``ui/<face>/`` exports fixed names, the way a Django app's
+``urls.py`` exports ``urlpatterns``:
+
+============  ==============================================================
+face          names
+============  ==============================================================
+``gui``       ``PAGE`` -- the page its mode tab opens (a ``ModulePage``)
+``qtgui``     ``PANEL`` -- its sidebar panel (a ``BasePanel`` with ``LABEL``)
+``cli``       ``GROUP`` (the ``trcc`` group, ``""`` for the top) + ``COMMANDS``
+``api``       ``ROUTERS`` -- the FastAPI routers it adds
+============  ==============================================================
+
+The CLI and the API add every INSTALLED module's -- an off module's command
+still answers, and the App says it is off.  The windows add only what is on,
+and follow ``ModuleChanged``.  A module that fails to load is logged and
+skipped: one broken module never breaks a window.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from .. import modules
+
+log = logging.getLogger(__name__)
+
+
+def installed() -> list[str]:
+    """Every installed module's key, on or off."""
+    keys = sorted(modules.folders())
+    log.debug("installed: %s", keys)
+    return keys
+
+
+def contribution(key: str, face: str, name: str) -> Any | None:
+    """Module *key*'s *name* for *face* (``PAGE`` for ``gui`` ...), or None
+    when it adds nothing there -- or failed to load, which is logged."""
+    try:
+        part = modules.load_face(key, face)
+    except Exception:
+        log.exception("module %s: its %s part did not load -- skipped", key, face)
+        return None
+    found = getattr(part, name, None) if part is not None else None
+    if part is not None and found is None:
+        log.error("module %s: ui/%s/ exports no %s -- skipped", key, face, name)
+    log.debug("contribution: %s %s %s -> %s", key, face, name, found is not None)
+    return found
+
+
+def contributions(face: str, name: str,
+                  keys: list[str] | None = None) -> dict[str, Any]:
+    """*name* for *face* from each module in *keys* (every installed one by
+    default) that adds one, by key."""
+    found = {key: c for key in (installed() if keys is None else keys)
+             if (c := contribution(key, face, name)) is not None}
+    log.info("contributions: %s %s -> %s", face, name, sorted(found))
+    return found

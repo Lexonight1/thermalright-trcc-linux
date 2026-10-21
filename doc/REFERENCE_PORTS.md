@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-63 ports.
+65 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -16,6 +16,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
+| [`ModuleCommand`](#modulecommand) | 1 | 1 | 0 |
+| [`ModuleQuery`](#modulequery) | 1 | 0 | 0 |
 | [`Query`](#query) | 1 | 0 | 46 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
@@ -165,6 +167,36 @@ resolve(name: 'str', key: 'K', table: 'Mapping[K, V]') -> V
 ```
 
 **Implementations (2):** `FallBackTo` · `Reject`
+
+## ModuleCommand
+
+`core/commands/_base.py`
+
+A Command a module owns, in that module's ``core/`` -- the front door of its mini hexagon.  It runs against the module's own root (its ``app.py`` class: its services, its host), never the App, so a module's work reaches the App only through the ports its host offers.
+
+**You implement (1):**
+
+```python
+run(module: 'M') -> R_co
+```
+
+**You inherit (1):** `execute`
+
+**Implementations (0):** _none yet_
+
+## ModuleQuery
+
+`core/commands/_base.py`
+
+A question a module answers -- a :class:`Query` (changes nothing, logs at DEBUG) that runs against the module, like :class:`ModuleCommand`.
+
+**You implement (1):**
+
+```python
+run(module: 'M') -> R_co
+```
+
+**Implementations (0):** _none yet_
 
 ## Query
 

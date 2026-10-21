@@ -1362,13 +1362,12 @@ class ModuleManifest:
     """What a module is, without its code -- read from its ``module.json``.
 
     The Modules page lists a module from this alone, so one that is off is
-    never imported.  ``entry`` is the Python package whose import registers
-    the module's class under ``key``; ``icon`` a file beside the manifest;
+    never imported.  ``key`` is also its folder's and its package's name
+    (``trcc.modules.<key>``); ``icon`` a file beside the manifest;
     ``capabilities`` what it may ask the App for."""
     key: str
     title: str
     summary: str
-    entry: str
     version: str = "0"
     default_on: bool = True
     icon: str = ""

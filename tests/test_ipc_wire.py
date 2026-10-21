@@ -77,14 +77,14 @@ def test_command_registry_collects_every_command_subclass() -> None:
     import pkgutil
 
     import trcc.core.commands as pkg
-    from trcc.core.commands._base import Command, Query
+    from trcc.core.commands._base import Command, ModuleCommand, ModuleQuery, Query
 
     defined: dict[str, str] = {}
     for mod_info in pkgutil.iter_modules(pkg.__path__):
         module = importlib.import_module(f"trcc.core.commands.{mod_info.name}")
         for name, obj in vars(module).items():
             if (inspect.isclass(obj) and issubclass(obj, Command)
-                    and obj not in (Command, Query)
+                    and obj not in (Command, Query, ModuleCommand, ModuleQuery)
                     and obj.__module__ == module.__name__):
                 defined[name] = mod_info.name
 

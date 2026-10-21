@@ -858,6 +858,60 @@ def fake_platform(tmp_home: Path) -> FakePlatform:
 
 
 @pytest.fixture
+def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Path]]:
+    """``add(root)``: the modules in *root* become ``trcc.modules.<key>``,
+    exactly as a built-in is -- found by ``specs()``, imported by key.  Every
+    trace is undone afterwards: the imports, the ``MODULES`` registrations,
+    the types IPC learnt, the words, the commands the CLI took."""
+    import sys
+
+    import trcc.modules as package
+    from trcc import ipc
+    from trcc.adapters.modules import MODULES
+    from trcc.core.i18n import TRANSLATIONS
+
+    monkeypatch.setattr(package, "__path__", list(package.__path__))
+    words = {lang: dict(table) for lang, table in TRANSLATIONS.items()}
+    roots: list[Path] = []
+
+    def add(root: Path) -> Path:
+        package.__path__.append(str(root))
+        roots.append(root)
+        return root
+
+    yield add
+    keys = {p.parent.name for root in roots for p in root.glob("*/module.json")}
+
+    def ours(dotted: str) -> bool:
+        parts = dotted.split(".")
+        return parts[:2] == ["trcc", "modules"] and len(parts) > 2 and parts[2] in keys
+
+    for name in [n for n in sys.modules if ours(n)]:
+        sys.modules.pop(name)
+    for key in keys:
+        MODULES._table.pop(key, None)
+        if hasattr(package, key):
+            delattr(package, key)
+    for table in (ipc.COMMAND_TYPES, ipc.RESULT_TYPES, ipc.EVENT_TYPES):
+        for name in [n for n, cls in table.items() if ours(cls.__module__)]:
+            table.pop(name)
+    for lang, table in TRANSLATIONS.items():
+        table.clear()
+        table.update(words[lang])
+    # Only if a test imported it: importing the CLI here, with the module
+    # still on the path, would add its commands -- and load its core/ --
+    # all over again (measured: hello's Greet then clashed with weather's).
+    cli_main = sys.modules.get("trcc.ui.cli.main")
+    if cli_main is None:
+        return
+    for group in cli_main._GROUPS.values():
+        group.registered_commands[:] = [
+            c for c in group.registered_commands
+            if not ours(getattr(c.callback, "__module__", "") or "")]
+    cli_main._ADDED.difference_update(keys)
+
+
+@pytest.fixture
 def make_window() -> Iterator[Callable[[Any], Any]]:
     """Build qtgui ``MainWindow``s that are DESTROYED at teardown.
 

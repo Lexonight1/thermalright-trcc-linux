@@ -196,6 +196,10 @@ class Layout:
     TAB_CLOUD = (682, 90, 50, 38)
     TAB_VISUALS = (752, 90, 50, 38)     # the audio bars tab: TRCC's, not the C#'s
     TAB_SETTINGS = (882, 90, 50, 38)
+    #: Where a module's tab goes, in the order modules claim them -- the
+    #: spacing of the C#'s tabs, before Settings.  The audio visuals' own tab
+    #: (``TAB_VISUALS``) holds 752 until the visualizer is a module.
+    TAB_MODULE_SLOTS = ((822, 90, 50, 38),)
 
     # Device fingerprint line — selectable/copyable, beneath the rotation row
     # (preview ends y=648; the bottom control row sits at y=680).

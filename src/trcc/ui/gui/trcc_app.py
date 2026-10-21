@@ -13,9 +13,10 @@ currently-selected device; the rest keep ticking in the background.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QRegularExpression as QRE
 from PySide6.QtCore import Qt, Signal
@@ -48,6 +49,7 @@ from ...core.commands import (
     ListDevices,
     ListGpus,
     ListLanguages,
+    ListModules,
     RecentColors,
     RememberColor,
     SetBackground,
@@ -65,6 +67,7 @@ from ...core.commands import (
 from ...core.events import (
     AutostartChanged,
     DiskDeviceChanged,
+    ModuleChanged,
     RamLightingChanged,
     RgbFollowChanged,
     RgbLightsChanged,
@@ -90,6 +93,7 @@ from .base_handler import BaseHandler
 from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
+from .module_page import ModulePage
 from .uc_about import UCAbout, ensure_autostart
 from .uc_activity_sidebar import UCActivitySidebar
 from .uc_brightness import UCBrightness
@@ -541,6 +545,8 @@ class TRCCApp(QMainWindow):
         log.debug("_on_bus_settings_changed: %s key=%s",
                   type(event).__name__, event.key)
         self.uc_visuals.on_settings_changed(event)
+        for page in self._module_pages.values():
+            cast(ModulePage, page).on_settings_changed(event)
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.follow_app()
@@ -565,6 +571,8 @@ class TRCCApp(QMainWindow):
                 self.uc_system_info.show_dashboard()
             case RamLightingChanged() | RgbLightsChanged() | RgbFollowChanged():
                 self.uc_rgb.page.on_app_event(event)
+            case ModuleChanged():
+                self._sync_module_tabs()
             case _:
                 self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
 
@@ -818,6 +826,7 @@ class TRCCApp(QMainWindow):
             'theme_web': self.uc_theme_web,
             'theme_mask': self.uc_theme_mask,
             'visuals': self.uc_visuals,
+            'module_pages': self._module_pages,
             'image_cut': self.uc_image_cut,
             'video_cut': self.uc_video_cut,
             'rotation_combo': self.rotation_combo,
@@ -1148,6 +1157,89 @@ class TRCCApp(QMainWindow):
         self.form1_help_btn.clicked.connect(self._on_help_clicked)
 
         self._create_i18n_overlays()
+        # What the modules add: built once, after the stack and the labels.
+        self._module_pages: dict[str, QWidget] = {}
+        self._module_tabs: dict[str, QPushButton] = {}
+        self._sync_module_tabs()
+
+    def _i18n_label(self, parent: QWidget, text: str, x: int, y: int, w: int,
+                    h: int, pt: int, key: str | None = None,
+                    bold: bool = False, color: str = 'white',
+                    wrap: bool = False, center: bool = False) -> QLabel:
+        """A text label over the skin; with *key*, re-translated when the
+        language changes (``_show_language``)."""
+        log.debug("_i18n_label: %r key=%r", text, key)
+        y_offset = max(2, pt // 4)
+        lbl = QLabel(text, parent)
+        lbl.setGeometry(x, y - y_offset, w, h)
+        weight = " font-weight: bold;" if bold else ""
+        lbl.setStyleSheet(
+            f"color: {color}; font-family: 'Microsoft YaHei';"
+            f" font-size: {pt}pt;{weight} background: transparent;")
+        if wrap:
+            lbl.setWordWrap(True)
+        if center:
+            lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        lbl.raise_()
+        self._i18n_labels.append((lbl, key))
+        return lbl
+
+    # ── Module tabs ─────────────────────────────────────────────────
+
+    def _sync_module_tabs(self) -> None:
+        """A mode tab for each module that is on and adds a gui page
+        (``ui/gui/``'s ``PAGE``); the tabs of the rest hidden.  A page is
+        built the first time its module is on and kept, so switching it back
+        on brings the same page -- and a page showing when its module goes
+        off gives way to Local themes."""
+        from .._module_faces import contribution
+
+        on = {m.key for m in self._app.dispatch(ListModules()).modules
+              if m.enabled}
+        log.info("_sync_module_tabs: on %s, built %s", sorted(on),
+                 sorted(self._module_pages))
+        for key in sorted(on - set(self._module_pages)):
+            page_class = contribution(key, "gui", "PAGE")
+            if page_class is not None:
+                self._add_module_page(key, page_class)
+        for key, button in self._module_tabs.items():
+            button.setVisible(key in on)
+        shown = self.panel_stack.currentWidget()
+        if any(page is shown for key, page in self._module_pages.items()
+               if key not in on):
+            log.info("_sync_module_tabs: the page showing is off -- Local")
+            self._show_panel(0)
+
+    def _add_module_page(self, key: str,
+                         page_class: Callable[..., ModulePage]) -> None:
+        """Build module *key*'s page, its title and its tab in the next free
+        slot -- none when every slot is taken (logged)."""
+        from ...core.i18n import ONLINE_THEME_POS, tr
+
+        if len(self._module_tabs) >= len(Layout.TAB_MODULE_SLOTS):
+            log.warning("_add_module_page: no free tab slot for module %s", key)
+            return
+        lang = self._app.dispatch(ControlCenterSnapshot()).language
+        page = page_class(app=self._app)
+        widget = cast(QWidget, page)
+        self._set_panel_bg(widget, Assets.THEME_WEB_BG)
+        index = self.panel_stack.addWidget(widget)
+        x, y, w, h, pt = ONLINE_THEME_POS
+        self._i18n_label(widget, tr(page.TITLE, lang), x, y, w, h, pt, page.TITLE)
+        x, y, w, h = Layout.TAB_MODULE_SLOTS[len(self._module_tabs)]
+        button = create_image_button(self.form_container, x, y, w, h,
+                                     page.TAB_IMAGE, page.TAB_IMAGE_ACTIVE,
+                                     checkable=True)
+        button.setToolTip(tr(page.TOOLTIP, lang))
+        button.setProperty('panel_idx', index)
+        button.clicked.connect(self._on_mode_button_clicked)
+        button.show()
+        self.mode_buttons.append(button)
+        self._module_tabs[key] = button
+        self._module_pages[key] = widget
+        if self._active_key:
+            page.set_device_key(self._active_key)
+        log.info("_add_module_page: %s at panel %d, tab at %s", key, index, (x, y))
 
     def _set_panel_bg(self, widget: QWidget, asset_name: str) -> None:
         pix = set_background_pixmap(widget, asset_name)
@@ -1311,24 +1403,7 @@ class TRCCApp(QMainWindow):
         log.info("_create_i18n_overlays: lang=%s", lang)
         self._i18n_labels: list[tuple[QLabel | QPushButton, str | None]] = []
 
-        def _lbl(parent: QWidget, text: str, x: int, y: int, w: int, h: int,
-                 pt: int, key: str | None = None,
-                 bold: bool = False, color: str = 'white',
-                 wrap: bool = False, center: bool = False) -> QLabel:
-            y_offset = max(2, pt // 4)
-            lbl = QLabel(text, parent)
-            lbl.setGeometry(x, y - y_offset, w, h)
-            weight = " font-weight: bold;" if bold else ""
-            lbl.setStyleSheet(
-                f"color: {color}; font-family: 'Microsoft YaHei';"
-                f" font-size: {pt}pt;{weight} background: transparent;")
-            if wrap:
-                lbl.setWordWrap(True)
-            if center:
-                lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            lbl.raise_()
-            self._i18n_labels.append((lbl, key))
-            return lbl
+        _lbl = self._i18n_label
 
         x, y, w, h, pt = TITLE_BAR_POS
         _lbl(self.form_container, TITLE_BAR_TEXT, x, y, w, h, pt, bold=True, color='#434343')

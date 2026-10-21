@@ -287,6 +287,37 @@ EVENT_TYPES: dict[str, type[Event]] = {
 }
 
 
+def register_types(namespace: Any) -> None:
+    """Add a module's Commands, Results and events -- the classes in
+    *namespace*, its ``core`` -- so they cross the socket like the app's own.
+    A name the app already uses for another class is refused: the wire knows
+    a class by its name alone.  Registering the same class twice is a no-op."""
+    log.info("register_types: %s", getattr(namespace, "__name__", namespace))
+    _register(COMMAND_TYPES, Command, namespace)
+    _register(RESULT_TYPES, Result, namespace)
+    _register(EVENT_TYPES, Event, namespace)
+
+
+_T = typing.TypeVar("_T")
+
+
+def _register(table: dict[str, type[_T]], base: type[_T], namespace: Any) -> None:
+    """*namespace*'s concrete subclasses of *base*, into *table*."""
+    from .core.commands._base import ModuleCommand, ModuleQuery
+
+    abstract = {Query, ModuleCommand, ModuleQuery}
+    for name, cls in _collect_classes(namespace, base).items():
+        if cls in abstract:
+            continue
+        # The same module imported again (a test reloading it) replaces its
+        # own class; anything else by that name is a clash.
+        if (old := table.get(name, cls)).__module__ != cls.__module__:
+            raise ValueError(f"{cls.__module__}.{name}: the app already has a "
+                             f"{name} ({old.__module__})")
+        log.debug("_register: %s", name)
+        table[name] = cls
+
+
 # =========================================================================
 # Sanitize / unsanitize — Path / bytes / Enum at the JSON boundary
 # =========================================================================

@@ -37,14 +37,34 @@ PYTHONPATH=src python3.12 dev/tools/new_module.py weather --title "Weather" \
     --summary "Today's forecast as a panel background."
 ```
 
-That copies the `hello` skeleton (`dev/module_template/`) into the two places a built-in module lives:
+That copies the `hello` skeleton (`dev/module_template/hello/`) to `src/trcc/modules/<key>/`, the one folder a module lives in. `hello` is a real, working module with one of everything: the tests load it through the same catalog as every built-in and drive each part, so the skeleton cannot silently go stale.
 
-| Where | What |
-|---|---|
-| `src/trcc/assets/modules/<key>/` | `module.json` and `icon.svg` — the only data folder every build carries, so the Windows and macOS apps get it too |
-| `src/trcc/adapters/modules/<key>/` | the code, imported only when the module is switched on |
+### One folder, fixed names
 
-`hello` is a real, working module: the tests load it through the same catalog as every built-in, so the skeleton cannot silently go stale.
+A module is a small copy of TRCC's own layout. Each part has a fixed name, and TRCC finds it there — nothing lists it:
+
+| Where | What | Loaded |
+|---|---|---|
+| `module.json`, `icon.svg`, `i18n.json` | its row on the Modules page, and its words in every language | always — without importing anything |
+| `core/` | its Commands, Results and events | always, so its Commands are known in every window and refused while it is off |
+| `app.py` | its root: the `Module` class, holding its own state | when it is switched on |
+| `services/`, `adapters/` | its own logic and hardware code | by `app.py` |
+| `ui/gui/` | exports `PAGE`: a widget that also extends `ModulePage` — the page its mode tab opens | while it is on |
+| `ui/qtgui/` | exports `PANEL`: a `BasePanel` with a `LABEL` — its sidebar entry | while it is on |
+| `ui/cli/` | exports `GROUP` (the `trcc` group, `""` for the top) and `COMMANDS` (a Typer app) | always, on or off |
+| `ui/api/` | exports `ROUTERS`, the FastAPI routers it adds | always, on or off |
+
+The windows show a module's tab or entry only while it is on, and follow it being switched in any window. The CLI and the API carry an installed module's commands whether it is on or off; while it is off, they answer that it is off and where to turn it on.
+
+The same layer rules apply inside a module as in TRCC itself, and the same tests check them. TRCC never imports a module by name, and a module never imports TRCC's App or another module.
+
+### Its Commands
+
+A module's Commands extend `ModuleCommand` (or `ModuleQuery` for a question), name the module in `MODULE`, and do their work in `run(self, module)`. That method gets the module's own root, its `app.py` class, never the App. Their names travel between windows and the shared App, so a name TRCC already uses is refused.
+
+### Its words
+
+`i18n.json` holds `{"<language>": {"<English>": "<translation>"}}` for every language TRCC offers. `dev/tools/i18n_gaps.py` lists what is missing and merges new translations; a test fails while any language lacks a word.
 
 ### module.json
 
@@ -52,10 +72,9 @@ The Modules page lists a module from this file alone.
 
 | Field | Meaning |
 |---|---|
-| `key` | its name everywhere — the folder name, the Python package name, the Command tag; lowercase letters, digits and `_` |
+| `key` | its name everywhere — the folder name, the Python package (`trcc.modules.<key>`), the Command tag; lowercase letters, digits and `_` |
 | `title` | the name on its row |
 | `summary` | one plain sentence on what it does for the user |
-| `entry` | the Python package whose import registers its class (`trcc.adapters.modules.<key>`) |
 | `version` | its version |
 | `default_on` | on for someone who never chose (new modules start `false`) |
 | `icon` | a file beside `module.json`, drawn 40 × 40 on its row |
@@ -91,6 +110,6 @@ More arrive as modules need them — one at a time, each with a reason.
 1. **Plain words with a next step.** Every refusal is shown to the user as written: *"Needs working graphics drivers — see the guide"*, not *"no OpenGL"*.
 2. **Register in `_enable`, run in `start`.** `_enable` runs even for a one-shot command; hardware grabbed there would be grabbed by every `trcc …` call.
 3. **Everything through the host.** If you need something the host does not offer, that is a new capability, added to TRCC itself.
-4. **Tag your Commands.** A Command that belongs to your module sets `MODULE = "<key>"`; TRCC then refuses it, in every window, while the module is off.
+4. **Your Commands live in your module.** They extend `ModuleCommand` and set `MODULE = "<key>"`; TRCC then refuses them, in every window, while the module is off.
 5. **Log every function**, as all TRCC code does — a user's `trcc report` is often all there is to go on.
-6. **Test it** through the App, the way `tests/test_module_skeleton.py` tests `hello`.
+6. **Test it** through the App and each UI, the way `tests/test_module_skeleton.py` tests `hello`.

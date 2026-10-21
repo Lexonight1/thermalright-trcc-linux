@@ -1,21 +1,22 @@
 """Finding modules without importing them: their ``module.json`` manifests.
 
-A built-in module's manifest -- and its icon -- live in
-``src/trcc/assets/modules/<key>/``, the one data folder every build carries
-(the frozen Windows and macOS apps collect ``trcc``'s code and ``assets/``,
-nothing else).  Its code lives in ``adapters/modules/<key>/`` and is imported
-only when the module is switched on.  A downloaded bundle will carry the same
-two files in its own folder, read by the same :func:`read_manifest`.
+Everything a module owns lives in its own folder, ``trcc/modules/<key>/``
+(see :mod:`trcc.modules`): the manifest and icon at its top, its root in
+``app.py``, imported only when the module is switched on.  Reading the
+catalog loads each module's light ``core/`` -- its Commands, Results and
+events -- so they are known everywhere, and refused while it is off.  A
+downloaded bundle will be the same folder, read by the same
+:func:`read_manifest`.
 """
 from __future__ import annotations
 
-import importlib
 import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ... import modules as module_folders
 from ...core.errors import TrccError
 from ...core.models import MODULE_CAPABILITIES, ModuleManifest
 from ...core.ports import Module
@@ -24,9 +25,7 @@ from ._base import MODULES
 
 log = logging.getLogger(__name__)
 
-MANIFEST = "module.json"
-#: Where the built-in modules' manifests are.
-BUILTIN = Path(__file__).resolve().parents[2] / "assets" / "modules"
+MANIFEST = module_folders.MANIFEST
 
 
 class ManifestError(TrccError):
@@ -42,12 +41,15 @@ def read_manifest(path: Path) -> ModuleManifest:
         raise ManifestError(f"{path}: not readable JSON ({e})") from e
     if not isinstance(data, dict):
         raise ManifestError(f"{path}: not a JSON object")
-    missing = [f for f in ("key", "title", "summary", "entry")
+    missing = [f for f in ("key", "title", "summary")
                if not isinstance(data.get(f), str) or not data[f]]
     if missing:
         raise ManifestError(f"{path}: missing {', '.join(missing)}")
     if data["key"] != path.parent.name:
         raise ManifestError(f"{path}: key {data['key']!r} is not its folder's name")
+    if not module_folders.KEY.fullmatch(data["key"]):
+        raise ManifestError(f"{path}: key {data['key']!r} is not 2-31 lowercase "
+                            "letters, digits or _ -- it is also a package name")
     caps = data.get("capabilities", [])
     if not isinstance(caps, list) or not all(isinstance(c, str) for c in caps):
         raise ManifestError(f"{path}: capabilities must be a list of names")
@@ -56,25 +58,34 @@ def read_manifest(path: Path) -> ModuleManifest:
     icon = data.get("icon", "")
     return ModuleManifest(
         key=data["key"], title=data["title"], summary=data["summary"],
-        entry=data["entry"], version=str(data.get("version", "0")),
+        version=str(data.get("version", "0")),
         default_on=bool(data.get("default_on", True)),
         icon=str(path.parent / icon) if icon else "",
         guide=str(data.get("guide", "")), capabilities=tuple(caps))
 
 
 def specs(root: Path | None = None) -> dict[str, ModuleSpec]:
-    """Every module whose manifest is under *root* (the built-in folder by
-    default -- looked up now, not at import, so a test can point it
-    elsewhere), none of them imported.  A broken manifest is logged and left
-    out -- it never stops the others."""
-    root = BUILTIN if root is None else root
-    log.info("catalog.specs: %s", root)
+    """Every module: each folder of :mod:`trcc.modules` with a manifest -- or
+    each under *root*, for a test that has added *root* to that package's
+    path.  Nothing is imported but each module's light ``core/``.  A broken
+    manifest, or a ``core/`` that will not load, is logged and that module
+    left out -- one bad module never stops the others."""
+    paths = (sorted(root.glob(f"*/{MANIFEST}")) if root is not None
+             else [folder / MANIFEST for folder in module_folders.folders().values()])
+    log.info("catalog.specs: %d manifest(s)%s", len(paths),
+             f" under {root}" if root is not None else "")
     found: dict[str, ModuleSpec] = {}
-    for path in sorted(root.glob(f"*/{MANIFEST}")):
+    for path in paths:
         try:
             manifest = read_manifest(path)
         except ManifestError as e:
             log.warning("catalog.specs: skipping %s", e)
+            continue
+        try:
+            module_folders.load_core(manifest.key)
+        except Exception:
+            log.exception("catalog.specs: skipping %s -- its core/ did not load",
+                          manifest.key)
             continue
         found[manifest.key] = ModuleSpec(manifest, _loader(manifest))
     log.info("catalog.specs: %s", sorted(found))
@@ -82,12 +93,13 @@ def specs(root: Path | None = None) -> dict[str, ModuleSpec]:
 
 
 def _loader(manifest: ModuleManifest) -> Callable[[], type[Module]]:
-    """How to load *manifest*'s class: import its package, which registers the
-    class under its key."""
+    """How to load *manifest*'s class: import its ``app.py``, which registers
+    the class under its key."""
     log.debug("catalog._loader: %s", manifest.key)
 
     def load() -> type[Module]:
-        log.info("catalog: importing %s for module %s", manifest.entry, manifest.key)
-        importlib.import_module(manifest.entry)
+        log.info("catalog: importing module %s's app.py", manifest.key)
+        if module_folders.part(manifest.key, "app") is None:
+            raise ModuleNotFoundError(f"module {manifest.key} has no app.py")
         return MODULES[manifest.key]
     return load

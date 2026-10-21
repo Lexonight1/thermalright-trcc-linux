@@ -3403,6 +3403,23 @@ def tr(key: str, lang: str = "en") -> str:
     return english.get(key, key)
 
 
+def add_translations(table: dict[str, dict[str, str]]) -> None:
+    """Add a module's words (its ``i18n.json``, keyed like ``TRANSLATIONS``)
+    so :func:`tr` finds them.  English is not added: an English key is its
+    own text, so ``tr`` already returns it.  The main table wins a clash, and
+    a language TRCC does not offer is skipped."""
+    added = 0
+    for lang, entries in table.items():
+        if lang == "en" or lang not in TRANSLATIONS:
+            continue
+        for key, text in entries.items():
+            if key not in TRANSLATIONS[lang]:
+                TRANSLATIONS[lang][key] = text
+                added += 1
+    log.info("add_translations: %d entr(ies) across %d language(s)", added,
+             len(table))
+
+
 def supported_languages() -> list[str]:
     """ISO 639-1 codes for every language with at least one translation."""
     log.info("supported_languages: called")

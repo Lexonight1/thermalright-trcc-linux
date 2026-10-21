@@ -2554,6 +2554,10 @@ class Module(ABC):
     #: What it may ask its host for -- a module found by its manifest takes
     #: these from ``module.json``; this is for one defined in code (a test's).
     capabilities: ClassVar[tuple[str, ...]] = ()
+    #: Its own view of the App, set when it is first loaded -- what its
+    #: Commands reach the App through (``ModuleCommand.run`` gets the module,
+    #: never the App).
+    host: ModuleHost
 
     def enable(self, host: ModuleHost) -> None:
         """Switch it on: the hooks around the module's own work."""

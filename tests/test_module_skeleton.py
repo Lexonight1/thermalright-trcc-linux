@@ -1,27 +1,32 @@
 """The ``hello`` skeleton, ``new_module.py``, and the guide that explains them.
 
 The skeleton is loaded through the real catalog and the real import path a
-built-in module uses (``trcc.adapters.modules.<key>``), so a change to the
-module API breaks here instead of leaving a stale template.
+built-in module uses (``trcc.modules.<key>``), so a change to the module API
+breaks here instead of leaving a stale template.  It carries one of each
+thing a module may have -- a Query, words, a CLI command, an API route, a
+gui page and a qtgui panel -- so every hook a module plugs into is driven.
 """
 from __future__ import annotations
 
 import logging
 import re
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable
 from dataclasses import fields
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-import trcc.adapters.modules as modules_package
-from trcc.adapters.modules import MODULES, read_manifest, specs
+from trcc import ipc
+from trcc.adapters.modules import read_manifest, specs
+from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
-from trcc.core.commands import SetModuleEnabled
+from trcc.core.commands import Command, SetModuleEnabled
+from trcc.core.i18n import tr
 from trcc.core.models import MODULE_CAPABILITIES, ModuleManifest
 
-from .conftest import FakePlatform
+from .conftest import FakePlatform, loopback_client
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
 import new_module
@@ -31,23 +36,28 @@ _TEMPLATE = _REPO / "dev" / "module_template"
 
 
 @pytest.fixture
-def importable(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
-    """Code folders added to ``trcc.adapters.modules``'s search path, so a
-    module's ``entry`` imports exactly as a built-in's does."""
-    added: list[str] = []
-    monkeypatch.setattr(modules_package, "__path__", list(modules_package.__path__))
-    yield added
-    for key in added:
-        sys.modules.pop(f"trcc.adapters.modules.{key}", None)
-        MODULES._table.pop(key, None)
+def hello(module_root: Callable[[Path], Path]) -> Path:
+    """The skeleton, installed as a built-in is."""
+    return module_root(_TEMPLATE)
+
+
+def _greet(**kwargs: Any) -> Command[Any]:
+    """Hello's own Query -- reached by its wire name, as any UI reaches it."""
+    return ipc.decode_command({"command": "Greet", "kwargs": kwargs})
+
+
+def _app(tmp_home: Path, on: bool = False) -> App:
+    app = App(platform=FakePlatform(tmp_home), renderer=QtRenderer(),
+              modules=specs(_TEMPLATE))
+    if on:
+        assert app.dispatch(SetModuleEnabled(key="hello", enabled=True)).ok
+    return app
 
 
 def test_the_skeleton_runs_every_hook_through_the_app(
-        importable: list[str], tmp_home: Path, caplog: pytest.LogCaptureFixture) -> None:
-    modules_package.__path__.append(str(_TEMPLATE / "code"))
-    importable.append("hello")
-    app = App(platform=FakePlatform(tmp_home), modules=specs(_TEMPLATE / "manifest"))
-    caplog.set_level(logging.INFO, logger="trcc.adapters.modules.hello")
+        hello: Path, tmp_home: Path, caplog: pytest.LogCaptureFixture) -> None:
+    app = App(platform=FakePlatform(tmp_home), modules=specs(hello))
+    caplog.set_level(logging.INFO, logger="trcc.modules.hello.app")
     try:
         app.start_session()
         assert app.dispatch(SetModuleEnabled(key="hello", enabled=True)).ok
@@ -55,33 +65,150 @@ def test_the_skeleton_runs_every_hook_through_the_app(
     finally:
         app.close()
     said = [r.getMessage() for r in caplog.records
-            if r.name == "trcc.adapters.modules.hello"]
+            if r.name == "trcc.modules.hello.app"]
     assert said == ["hello: pre_enable", "hello: enable", "hello: start",
                     "hello: hello was switched on",     # it heard its own switch
                     "hello: stop", "hello: disable"]
 
 
 def test_the_skeletons_manifest_is_valid() -> None:
-    manifest = read_manifest(_TEMPLATE / "manifest" / "hello" / "module.json")
-    assert (manifest.key, manifest.entry, manifest.default_on, manifest.capabilities,
-            Path(manifest.icon).is_file()) == (
-        "hello", "trcc.adapters.modules.hello", False, ("events",), True)
+    manifest = read_manifest(_TEMPLATE / "hello" / "module.json")
+    assert (manifest.key, manifest.default_on, manifest.capabilities,
+            Path(manifest.icon).is_file()) == ("hello", False, ("events",), True)
+
+
+def test_a_modules_query_runs_in_the_module_and_only_while_it_is_on(
+        hello: Path, tmp_home: Path) -> None:
+    """``Greet`` is answered by Hello's own root, never the App; while Hello
+    is off every UI is told so.  MUTATION CHECK: drop ``MODULE`` from
+    ``Greet`` and the off case reaches a module that is not loaded."""
+    app = _app(tmp_home)
+    off = app.dispatch(_greet(name="Ada"))
+    app.dispatch(SetModuleEnabled(key="hello", enabled=True))
+    on = app.dispatch(_greet(name="Ada"))
+    assert (off.ok, off.message) == (False, "Hello is off -- turn it on in Modules")
+    assert (on.ok, on.message, type(on).__name__) == (True, "Hello, Ada!", "HelloResult")
+
+
+def test_its_types_cross_the_wire_like_the_apps_own(hello: Path) -> None:
+    """Reading the catalog teaches IPC a module's Commands and Results, so a
+    window talking to the shared App sends and reads them."""
+    specs(hello)
+    command = _greet(name="Ada")
+    hello_result: Any = ipc.RESULT_TYPES["HelloResult"]
+    result: Any = ipc.decode_result(ipc.encode_result(
+        hello_result(ok=True, greeting="hi", message="hi")))
+    assert ipc.decode_command(ipc.encode_command(command)) == command
+    assert (type(result).__name__, result.greeting) == ("HelloResult", "hi")
+
+
+def test_a_name_the_app_already_uses_is_refused() -> None:
+    """The wire knows a class by its name alone, so a module may not reuse
+    one.  MUTATION CHECK: drop the clash check and SendColor is replaced."""
+    from dataclasses import dataclass
+    from types import SimpleNamespace
+
+    from trcc.core.commands import SendColor
+
+    @dataclass(frozen=True, slots=True)
+    class SendColor2(Command[Any]):   # renamed below: same name, other class
+        def execute(self, app: Any) -> Any: ...
+    SendColor2.__name__ = "SendColor"
+    with pytest.raises(ValueError, match="the app already has a SendColor"):
+        ipc.register_types(SimpleNamespace(SendColor=SendColor2))
+    assert ipc.COMMAND_TYPES["SendColor"] is SendColor
+
+
+def test_its_words_join_the_translations(hello: Path) -> None:
+    specs(hello)
+    assert (tr("Hello", "de"), tr("Hello", "fr")) == ("Hallo", "Hello")
+
+
+def test_the_cli_runs_its_command_on_or_off(
+        hello: Path, cli_runner: Any, cli_app: App) -> None:
+    """An installed module's command is in the CLI whether it is on or off;
+    off, the App says so.  MUTATION CHECK: add only on modules and the first
+    call is "No such command"."""
+    from trcc.ui.cli import main
+
+    main.add_module_commands()
+    off = cli_runner.invoke(main.app, ["hello", "Ada"])
+    cli_app.dispatch(SetModuleEnabled(key="hello", enabled=True))
+    on = cli_runner.invoke(main.app, ["hello", "Ada"])
+    assert (off.exit_code, off.output.strip().splitlines()[-1]) == (
+        1, "Hello is off -- turn it on in Modules")
+    assert (on.exit_code, on.output.strip()) == (0, "Hello, Ada!")
+
+
+def test_the_api_serves_its_route(hello: Path, tmp_home: Path,
+                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.ui.api import main
+
+    monkeypatch.setattr(main, "ROUTERS", (*main.ROUTERS, *main.module_routers()))
+    with loopback_client(main.build_app(trcc=_app(tmp_home, on=True))) as client:
+        answer = client.get("/modules/hello", params={"name": "Ada"})
+    assert (answer.status_code, answer.json()["greeting"]) == (200, "Hello, Ada!")
+
+
+def test_the_gui_shows_its_tab_while_it_is_on(
+        hello: Path, qtbot: Any, tmp_home: Path) -> None:
+    """On: a tab in the first module slot opening Hello's page.  Off: the tab
+    hides and the window leaves the page.  MUTATION CHECK: skip the hiding in
+    ``_sync_module_tabs`` and the tab stays."""
+    from trcc.ui.gui.constants import Layout
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = _app(tmp_home, on=True)
+    window = TRCCApp(app=app)
+    qtbot.addWidget(window)
+    tab = window._module_tabs["hello"]
+    tab.click()
+    shown: Any = window.panel_stack.currentWidget()
+    app.dispatch(SetModuleEnabled(key="hello", enabled=False))
+    window._sync_module_tabs()
+    assert (tab.geometry().getRect(), shown is window._module_pages["hello"],
+            shown.label.text()) == (Layout.TAB_MODULE_SLOTS[0], True, "Hello, world!")
+    assert (tab.isVisibleTo(window), window.panel_stack.currentIndex()) == (False, 0)
+    window.close()
+
+
+def test_the_qtgui_shows_its_entry_while_it_is_on(
+        hello: Path, qtbot: Any, tmp_home: Path) -> None:
+    """On: an entry above Modules opening Hello's panel.  Off: the entry hides
+    and the window goes back to Devices."""
+    from trcc.ui.qtgui.app import MainWindow
+
+    app = _app(tmp_home, on=True)
+    window = MainWindow(app)
+    qtbot.addWidget(window)
+    window._on_navigate("hello")
+    shown: Any = window._content.currentWidget()
+    app.dispatch(SetModuleEnabled(key="hello", enabled=False))
+    window._sync_module_panels()
+    entry = window._sidebar._buttons["hello"]
+    assert (shown is window._panels["hello"], shown.label.text()) == (
+        True, "Hello, world!")
+    assert (entry.isVisibleTo(window),
+            window._content.currentWidget() is window._panels["devices"]) == (
+        False, True)
+    window.close()
 
 
 def test_new_module_makes_a_module_that_loads(
-        tmp_path: Path, importable: list[str], tmp_home: Path) -> None:
-    manifest_dir, code_dir = new_module.create(
+        tmp_path: Path, module_root: Callable[[Path], Path], tmp_home: Path) -> None:
+    folder = new_module.create(
         "weather", "Weather", "Today's forecast as a panel background.", repo=tmp_path)
-    manifest = read_manifest(manifest_dir / "module.json")
-    assert (manifest.title, manifest.entry, manifest.default_on, manifest.guide) == (
-        "Weather", "trcc.adapters.modules.weather", False,
+    manifest = read_manifest(folder / "module.json")
+    assert (manifest.title, manifest.default_on, manifest.guide) == (
+        "Weather", False,
         "https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/"
         "doc/GUIDE_MODULES.md#weather")
-    modules_package.__path__.append(str(code_dir.parent))
-    importable.append("weather")
-    app = App(platform=FakePlatform(tmp_home), modules=specs(manifest_dir.parent))
+    module_root(folder.parent)
+    app = App(platform=FakePlatform(tmp_home), modules=specs(folder.parent))
     assert app.dispatch(SetModuleEnabled(key="weather", enabled=True)).ok
     assert type(app.modules._modules["weather"]).__name__ == "WeatherModule"
+    answer = app.dispatch(ipc.decode_command({"command": "Greet", "kwargs": {}}))
+    assert answer.message == "Weather, world!"
 
 
 @pytest.mark.parametrize("key", ["Weather", "w", "2fast", "rgb-lights", "a" * 40])

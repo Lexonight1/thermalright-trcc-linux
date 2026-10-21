@@ -6,7 +6,7 @@ pre_disable -> _disable -> post_disable; ``SetModuleEnabled`` and
 """
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -319,34 +319,28 @@ def test_a_module_registers_by_the_key_in_its_class_line() -> None:
 
 
 @pytest.fixture
-def registered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
-    """A real module in the built-in catalog, for the faces that build their
-    own App: a manifest, and a package that registers it when imported."""
+def registered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+               module_root: Callable[[Path], Path]) -> str:
+    """The ONLY installed module, for the faces that build their own App: a
+    folder with a manifest and an ``app.py`` that registers it when imported."""
     import json
-    import sys
 
-    from trcc.adapters.modules import _catalog
+    import trcc.modules as package
 
-    code = tmp_path / "code" / "trcc_test_face"
-    code.mkdir(parents=True)
-    (code / "__init__.py").write_text(
+    folder = tmp_path / "modules" / "face"
+    folder.mkdir(parents=True)
+    (folder / "app.py").write_text(
         "from trcc.adapters.modules import BaseModule\n\n"
-        "class Face(BaseModule, key='test-face'):\n"
+        "class Face(BaseModule, key='face'):\n"
         "    title, summary, default_on = 'Face', 'Reached from every UI.', False\n"
         "    def _enable(self, host): pass\n"
         "    def _disable(self, host): pass\n")
-    monkeypatch.syspath_prepend(str(tmp_path / "code"))
-    folder = tmp_path / "catalog" / "test-face"
-    folder.mkdir(parents=True)
     (folder / "module.json").write_text(json.dumps({
-        "key": "test-face", "title": "Face", "summary": "Reached from every UI.",
-        "entry": "trcc_test_face", "default_on": False}))
-    monkeypatch.setattr(_catalog, "BUILTIN", tmp_path / "catalog")
-    try:
-        yield "test-face"
-    finally:
-        sys.modules.pop("trcc_test_face", None)
-        MODULES._table.pop("test-face", None)
+        "key": "face", "title": "Face", "summary": "Reached from every UI.",
+        "default_on": False}))
+    module_root(folder.parent)
+    monkeypatch.setattr(package, "__path__", [str(folder.parent)])
+    return "face"
 
 
 def test_the_cli_lists_and_switches(cli_runner: Any, registered: str,
@@ -361,7 +355,7 @@ def test_the_cli_lists_and_switches(cli_runner: Any, registered: str,
     on = cli_runner.invoke(app, ["system", "modules", "on", registered])
     nope = cli_runner.invoke(app, ["system", "modules", "on", "no-such"])
     assert (listed.exit_code, on.exit_code, nope.exit_code) == (0, 0, 1)
-    assert "[off] test-face        Face -- Reached from every UI." in listed.output
+    assert "[off] face             Face -- Reached from every UI." in listed.output
     assert (on.output.strip(), nope.output.strip().splitlines()[-1]) == (
         "Face on", "no module 'no-such'")
 

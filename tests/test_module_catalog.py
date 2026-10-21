@@ -7,19 +7,20 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from trcc.adapters.modules import MODULES, ManifestError, read_manifest, specs
+from trcc.adapters.modules import ManifestError, read_manifest, specs
 from trcc.app import App
 from trcc.core.commands import ListModules, SetModuleEnabled
 
 from .conftest import FakePlatform
 
-_PACKAGE = "trcc_test_lazy_module"
+#: Where the lazy module's code lands once imported.
+_PACKAGE = "trcc.modules.lazy.app"
 
 _CODE = '''
 from trcc.adapters.modules import BaseModule
@@ -43,7 +44,7 @@ def _manifest(folder: Path, **fields: Any) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     data = {"key": folder.name, "title": "Lazy",
             "summary": "Proves an off module is never imported.",
-            "entry": _PACKAGE, "default_on": False, "icon": "icon.svg",
+            "default_on": False, "icon": "icon.svg",
             "guide": "https://example.invalid/GUIDE_MODULES.md#lazy",
             "capabilities": ["events"], **fields}
     path = folder / "module.json"
@@ -52,32 +53,35 @@ def _manifest(folder: Path, **fields: Any) -> Path:
 
 
 @pytest.fixture
-def lazy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    """A catalog root holding the lazy module, its code importable but not
-    imported; registration and the import are undone afterwards."""
-    code = tmp_path / "code" / _PACKAGE
-    code.mkdir(parents=True)
-    (code / "__init__.py").write_text(_CODE)
-    monkeypatch.syspath_prepend(str(tmp_path / "code"))
-    root = tmp_path / "catalog"
+def lazy(tmp_path: Path, module_root: Callable[[Path], Path]) -> Path:
+    """A modules folder holding the lazy module, importable as a built-in is
+    but not imported; every trace undone afterwards (``module_root``)."""
+    root = tmp_path / "modules"
     _manifest(root / "lazy")
-    yield root
-    sys.modules.pop(_PACKAGE, None)
-    MODULES._table.pop("lazy", None)
+    (root / "lazy" / "app.py").write_text(_CODE)
+    return module_root(root)
 
 
 def test_a_manifest_is_read_with_its_icon_beside_it(tmp_path: Path) -> None:
     path = _manifest(tmp_path / "lazy")
     manifest = read_manifest(path)
-    assert (manifest.key, manifest.title, manifest.entry, manifest.default_on,
+    assert (manifest.key, manifest.title, manifest.default_on,
             manifest.icon, manifest.capabilities) == (
-        "lazy", "Lazy", _PACKAGE, False, str(tmp_path / "lazy" / "icon.svg"),
-        ("events",))
+        "lazy", "Lazy", False, str(tmp_path / "lazy" / "icon.svg"), ("events",))
+
+
+def test_a_key_must_be_a_package_name(tmp_path: Path) -> None:
+    """The key names the folder and the package ``trcc.modules.<key>``."""
+    path = _manifest(tmp_path / "rgb-lights")
+    with pytest.raises(ManifestError) as e:
+        read_manifest(path)
+    assert str(e.value) == (f"{path}: key 'rgb-lights' is not 2-31 lowercase "
+                            "letters, digits or _ -- it is also a package name")
 
 
 @pytest.mark.parametrize(("change", "reason"), [
     ({"title": ""}, "missing title"),
-    ({"entry": None}, "missing entry"),
+    ({"summary": None}, "missing summary"),
     ({"key": "other"}, "key 'other' is not its folder's name"),
     ({"capabilities": "events"}, "capabilities must be a list of names"),
     ({"capabilities": ["events", "root"]}, "no such capability: root"),
@@ -115,7 +119,7 @@ def test_an_off_module_is_listed_but_never_imported(
 
 def test_a_module_whose_code_does_not_load_says_so(
         lazy: Path, tmp_home: Path) -> None:
-    _manifest(lazy / "lazy", entry="trcc_test_no_such_package")
+    (lazy / "lazy" / "app.py").write_text("raise ImportError('broken on purpose')\n")
     app = App(platform=FakePlatform(tmp_home), modules=specs(lazy))
     result = app.dispatch(SetModuleEnabled(key="lazy", enabled=True))
     assert (result.ok, result.message.split(":")[0]) == (

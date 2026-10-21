@@ -2,10 +2,11 @@
   "key": "hello",
   "title": "Hello",
   "summary": "The smallest module there is: it hears the app and says so in the log.",
-  "entry": "trcc.adapters.modules.hello",
   "version": "1",
   "default_on": false,
   "icon": "icon.svg",
   "guide": "https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_MODULES.md#writing-a-module",
-  "capabilities": ["events"]
+  "capabilities": [
+    "events"
+  ]
 }

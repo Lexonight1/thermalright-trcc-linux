@@ -745,6 +745,51 @@ def _root(
     )
 
 
+#: The groups a module's commands may join, by name -- ``""`` is the top level.
+_GROUPS: dict[str, typer.Typer] = {
+    "": app, "device": device.app, "display": display.app, "led": led.app,
+    "system": system.app, "config": config.app, "theme": theme.app,
+}
+#: The modules whose commands are in already.
+_ADDED: set[str] = set()
+
+
+def add_module_commands() -> list[str]:
+    """Every installed module's commands, into the group each names
+    (``ui/cli/``'s ``GROUP`` and ``COMMANDS``) -- on or off: an off module's
+    command still runs, and the App says it is off.  Each module once; a
+    name already taken in its group is refused and logged.  The modules added
+    now, by key."""
+    from .._module_faces import contribution, installed
+
+    added: list[str] = []
+    for key in installed():
+        if key in _ADDED:
+            continue
+        commands = contribution(key, "cli", "COMMANDS")
+        if commands is None:
+            continue
+        name = contribution(key, "cli", "GROUP")
+        group = _GROUPS.get(name) if isinstance(name, str) else None
+        if group is None:
+            log.error("module %s: no trcc group %r for its commands", key, name)
+            continue
+        taken = {c.name for c in group.registered_commands}
+        for command in commands.registered_commands:
+            if command.name in taken:
+                log.error("module %s: trcc command %r is taken -- not added",
+                          key, command.name)
+                continue
+            group.registered_commands.append(command)
+        _ADDED.add(key)
+        added.append(key)
+    log.info("add_module_commands: %s", added)
+    return added
+
+
+add_module_commands()
+
+
 def main() -> None:
     """Entry point for console_scripts and python -m trcc.ui.cli."""
     log.debug("main")

@@ -57,6 +57,8 @@ def module_of(dotted: str) -> str:
     """The module *dotted* belongs to -- ``trcc.modules.<key>...`` -> ``<key>``;
     "" for the main app."""
     parts = dotted.split(".")
+    # A module is a FOLDER named by its key, which starts with a letter;
+    # ``__init__`` and any ``_private`` file are the package's own finder.
     inside = (parts[:2] == ["trcc", MODULES] and len(parts) > 2
-              and parts[2] != "__init__")
+              and not parts[2].startswith("_"))
     return parts[2] if inside else ""

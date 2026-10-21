@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -43,13 +43,27 @@ from ._shared import is_loopback_client
 if TYPE_CHECKING:
     from starlette.routing import BaseRoute
 
+log = logging.getLogger(__name__)
+
+
+def module_routers() -> tuple[APIRouter, ...]:
+    """Every installed module's routers (its ``ui/api/``'s ``ROUTERS``) -- on
+    or off: an off module's route answers that it is off."""
+    from .._module_faces import contributions
+
+    found = tuple(router for routers in contributions("api", "ROUTERS").values()
+                  for router in routers)
+    log.info("module_routers: %d", len(found))
+    return found
+
+
 #: Every router the API includes, in order -- the ONE list.  ``build_app``
 #: includes it and :func:`api_routes` walks it.  ``events`` is the observe half:
 #: dispatch and read were always here, the bus was not.
 ROUTERS = (
     devices.router, display.router, display.meta_router, led.router,
     led.meta_router, system.router, config.router, theme.router,
-    _trcc_router.router, events.router,
+    _trcc_router.router, events.router, *module_routers(),
 )
 
 
@@ -77,7 +91,6 @@ def api_routes(api: FastAPI) -> list[BaseRoute]:
     log.debug("api_routes: %d route(s)", len(routes))
     return routes
 
-log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 
