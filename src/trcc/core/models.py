@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -1348,7 +1348,24 @@ MODULE_CAPABILITIES: dict[str, str] = {
     "sound": "hears what the computer is playing",
     "gpu": "draws with the graphics card",
     "files": "reads its own files in TRCC's data folder, and makes PNG pictures",
+    "frames": "sees the picture each LCD panel shows",
+    "readings": "reads the computer's sensor readings",
+    "hardware": "reaches lighting chips: memory, the motherboard, OpenRGB",
+    "password": "may ask for your password, to reach hardware the system guards",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelPicture:
+    """A picture LCD panel *key* was just sent, without the theme's text
+    drawn over it -- a theme's clock and readings are white digits, and a
+    light that follows the picture takes the video's colours, not theirs.
+
+    ``argb32()`` reads its pixels (``bytes, width, height, stride``) only
+    when asked: a watcher that skips this frame costs nothing.
+    """
+    key: str
+    argb32: Callable[[], tuple[bytes, int, int, int]]
 
 
 @dataclass(frozen=True, slots=True)

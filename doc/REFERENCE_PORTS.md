@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-76 ports.
+80 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -18,7 +18,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`ModuleCommand`](#modulecommand) | 1 | 1 | 6 |
 | [`ModuleQuery`](#modulequery) | 1 | 0 | 2 |
+| [`PasswordPort`](#passwordport) | 1 | 0 | 1 |
 | [`Query`](#query) | 1 | 0 | 46 |
+| [`ReadingsPort`](#readingsport) | 1 | 0 | 1 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
@@ -28,6 +30,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`FilesPort`](#filesport) | 2 | 0 | 1 |
 | [`FrameSource`](#framesource) | 2 | 0 | 1 |
+| [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
 | [`Module`](#module) | 2 | 9 | 1 |
@@ -51,7 +54,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
-| [`ModuleHost`](#modulehost) | 3 | 7 | 1 |
+| [`ModuleHost`](#modulehost) | 3 | 11 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
@@ -64,6 +67,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseScsiTransport`](#basescsitransport) | 4 | 5 | 4 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`GlSurface`](#glsurface) | 4 | 0 | 3 |
+| [`HardwarePort`](#hardwareport) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
@@ -83,8 +87,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 20 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`ModuleServices`](#moduleservices) | 23 | 0 | 1 |
 | [`Platform`](#platform) | 25 | 9 | 8 |
+| [`ModuleServices`](#moduleservices) | 30 | 0 | 1 |
 | [`ContentStore`](#contentstore) | 32 | 0 | 1 |
 
 ---
@@ -209,6 +213,20 @@ run(module: 'M') -> R_co
 
 **Implementations (2):** `ListVisuals` · `VisualTile`
 
+## PasswordPort
+
+`core/ports.py`
+
+The ``password`` capability: system access the user grants once.
+
+**You implement (1):**
+
+```python
+memory_access() -> RamAccess
+```
+
+**Implementations (1):** `_Password`
+
 ## Query
 
 `core/commands/_base.py`
@@ -222,6 +240,20 @@ execute(app: 'App') -> R_co
 ```
 
 **Implementations (46):** `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
+
+## ReadingsPort
+
+`core/ports.py`
+
+The ``readings`` capability: the computer's sensor readings.
+
+**You implement (1):**
+
+```python
+latest() -> Mapping[str, float] | None
+```
+
+**Implementations (1):** `_Readings`
 
 ## ScreenCapture
 
@@ -361,6 +393,21 @@ latest() -> RawFrame
 ```
 
 **Implementations (1):** `VisualReader`
+
+## FramesPort
+
+`core/ports.py`
+
+The ``frames`` capability: the pictures the LCD panels are sent.
+
+**You implement (2):**
+
+```python
+unwatch(handler: 'Callable[[PanelPicture], None]') -> None
+watch(handler: 'Callable[[PanelPicture], None]') -> None
+```
+
+**Implementations (1):** `_Frames`
 
 ## GpuPort
 
@@ -756,7 +803,7 @@ subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 ```
 
-**You inherit (7):** `background` · `files` · `gpu` · `panels` · `settings` · `sound` · `themes`
+**You inherit (11):** `background` · `files` · `frames` · `gpu` · `hardware` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
 
 **Implementations (1):** `ModuleScope`
 
@@ -961,6 +1008,23 @@ open() -> GlSurface
 ```
 
 **Implementations (3):** `CglSurface` · `EglSurface` · `WglSurface`
+
+## HardwarePort
+
+`core/ports.py`
+
+The ``hardware`` capability: lighting chips TRCC does not drive as a panel -- each reached through the OS, so a stand-in platform's scripted twin is all a test or a mock run touches.
+
+**You implement (4):**
+
+```python
+ids() -> RgbHardware
+open_hid(vid: 'int', pid: 'int', report_id: 'int') -> Transport
+smbuses() -> tuple[SmBus, ...]
+substitute(cls: '_C') -> _C
+```
+
+**Implementations (1):** `_Hardware`
 
 ## MemorySource
 
@@ -1335,42 +1399,6 @@ surface_size(surface: 'Any') -> tuple[int, int]
 
 **Implementations (1):** `QtRenderer`
 
-## ModuleServices
-
-`core/ports.py`
-
-The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
-
-**You implement (23):**
-
-```python
-add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
-data_root() -> Path
-encode_png(frame: 'RawFrame') -> bytes
-end_source(key: 'str', keep_choice: 'bool' = False) -> None
-gl_surface() -> type[GlSurface] | None
-module_settings(module: 'str') -> dict[str, Any]
-panel_keys() -> tuple[str, ...]
-panel_settings(module: 'str', key: 'str') -> dict[str, Any]
-panel_size(key: 'str') -> tuple[int, int] | None
-panel_source(key: 'str') -> str | None
-publish(event: 'Event') -> None
-remove_background_kind(prefix: 'str') -> None
-resume_backgrounds(module: 'str') -> None
-save_module_settings(module: 'str', data: 'Mapping[str, Any]') -> None
-save_panel_settings(module: 'str', key: 'str', data: 'Mapping[str, Any]') -> None
-show_source(module: 'str', key: 'str', source: 'FrameSource', fps: 'float') -> None
-sound_input() -> SoundInput
-sound_problem() -> str
-source(key: 'str') -> FrameSource | None
-subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
-substitute(cls: '_C') -> _C
-unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
-worker_thread() -> AbstractContextManager[None]
-```
-
-**Implementations (1):** `App`
-
 ## Platform
 
 `core/ports.py`
@@ -1418,6 +1446,49 @@ worker_thread_context() -> AbstractContextManager[None]
 **You inherit (9):** `adopt_session` · `hard_exit` · `openrgb` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
+
+## ModuleServices
+
+`core/ports.py`
+
+The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
+
+**You implement (30):**
+
+```python
+add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
+data_root() -> Path
+encode_png(frame: 'RawFrame') -> bytes
+end_source(key: 'str', keep_choice: 'bool' = False) -> None
+gl_surface() -> type[GlSurface] | None
+hardware_ids() -> RgbHardware
+latest_readings() -> Mapping[str, float] | None
+memory_access() -> RamAccess
+module_settings(module: 'str') -> dict[str, Any]
+open_hid(vid: 'int', pid: 'int', report_id: 'int') -> Transport
+panel_keys() -> tuple[str, ...]
+panel_settings(module: 'str', key: 'str') -> dict[str, Any]
+panel_size(key: 'str') -> tuple[int, int] | None
+panel_source(key: 'str') -> str | None
+publish(event: 'Event') -> None
+remove_background_kind(prefix: 'str') -> None
+resume_backgrounds(module: 'str') -> None
+save_module_settings(module: 'str', data: 'Mapping[str, Any]') -> None
+save_panel_settings(module: 'str', key: 'str', data: 'Mapping[str, Any]') -> None
+show_source(module: 'str', key: 'str', source: 'FrameSource', fps: 'float') -> None
+smbuses() -> tuple[SmBus, ...]
+sound_input() -> SoundInput
+sound_problem() -> str
+source(key: 'str') -> FrameSource | None
+subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+substitute(cls: '_C') -> _C
+unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+unwatch_frames(handler: 'Callable[[PanelPicture], None]') -> None
+watch_frames(handler: 'Callable[[PanelPicture], None]') -> None
+worker_thread() -> AbstractContextManager[None]
+```
+
+**Implementations (1):** `App`
 
 ## ContentStore
 

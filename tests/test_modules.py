@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import pytest
 
@@ -17,7 +17,8 @@ from trcc.adapters.modules import MODULES, BaseModule
 from trcc.app import App
 from trcc.core.commands import Command, ListModules, SetModuleEnabled
 from trcc.core.errors import ModuleUnavailable
-from trcc.core.events import Event, ModuleChanged
+from trcc.core.events import Event, FrameSent, ModuleChanged
+from trcc.core.models import PanelPicture, Wire
 from trcc.core.ports import Module, ModuleHost
 from trcc.core.results import Result
 
@@ -529,3 +530,150 @@ def test_a_switch_turns_a_module_off_too(qtbot: Any, tmp_home: Path) -> None:
     qtbot.addWidget(view)
     view.switches["on"].click()
     assert app.modules.on == set()
+
+
+# ── frames, readings, hardware, password: what RGB reaches through its host ──
+
+class _Watches(_Recording):
+    """Watches every panel's pictures -- and never unwatches, as a careless
+    module.  Reads the pixels only of panel ``read``."""
+    key, title, capabilities = "watches", "Watches", ("frames",)
+    SEEN: ClassVar[list[tuple[str, Any]]] = []
+
+    def _enable(self, host: ModuleHost) -> None:
+        host.frames.watch(self._picture)
+
+    def _picture(self, picture: PanelPicture) -> None:
+        pixels = picture.argb32() if picture.key == "read" else None
+        _Watches.SEEN.append((picture.key, pixels))
+
+
+class _Renderer:
+    """Just the one call a picture's pixels come from, counted."""
+
+    def __init__(self) -> None:
+        self.read: list[object] = []
+
+    def raw_argb32(self, surface: object) -> tuple[bytes, int, int, int]:
+        self.read.append(surface)
+        return b"\x01\x02\x03\x04", 1, 1, 4
+
+
+def _watching(tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+              ) -> tuple[App, _Renderer, list[str]]:
+    """An App with ``_Watches`` on; the pixel reads and the picture lookups
+    it makes, counted."""
+    from trcc.adapters.render.qt import QtRenderer
+
+    _Watches.SEEN.clear()
+    real = QtRenderer()
+    app = App(platform=FakePlatform(tmp_home), renderer=real,
+              modules={"watches": _Watches})
+    renderer = _Renderer()
+    monkeypatch.setattr(real, "raw_argb32", renderer.raw_argb32)
+    looked: list[str] = []
+
+    def background_surface(key: str) -> None:
+        looked.append(key)
+
+    monkeypatch.setattr(app.display, "background_surface", background_surface)
+    return app, renderer, looked
+
+
+def test_a_module_sees_each_picture_and_reads_pixels_only_when_it_asks(
+        tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each sent frame reaches the watcher as that panel's picture; the
+    pixels are converted only for the one it reads.  MUTATION CHECK: read
+    ``renderer.raw_argb32(surface)`` eagerly in ``App._picture_sent``."""
+    app, renderer, _ = _watching(tmp_home, monkeypatch)
+    shown, read = object(), object()
+    app.events.publish(FrameSent(key="shown", bytes_sent=1, surface=shown))
+    app.events.publish(FrameSent(key="read", bytes_sent=1, surface=read))
+    assert _Watches.SEEN == [("shown", None), ("read", (b"\x01\x02\x03\x04", 1, 1, 4))]
+    assert renderer.read == [read]
+
+
+def test_switched_off_a_module_sees_no_pictures_and_the_app_stops_hearing_frames(
+        tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The scope takes the watcher back even when the module forgets, and
+    with no watcher the App stops hearing frames for modules at all.
+    MUTATION CHECK: drop the watchers from ``ModuleScope.release`` -- it
+    still sees; or keep ``FrameSent`` subscribed in ``unwatch_frames``."""
+    app, _, _ = _watching(tmp_home, monkeypatch)
+    heard = app.events.subscriber_count(FrameSent)
+    app.events.publish(FrameSent(key="a", bytes_sent=1, surface=object()))
+    assert app.dispatch(SetModuleEnabled(key="watches", enabled=False)).ok
+    app.events.publish(FrameSent(key="b", bytes_sent=1, surface=object()))
+    assert _Watches.SEEN == [("a", None)]
+    assert app.events.subscriber_count(FrameSent) == heard - 1
+
+
+class _Reaches(_Recording):
+    """Asks the host for readings, hardware and the password, once."""
+    key, title = "reaches", "Reaches"
+    capabilities = ("readings", "hardware", "password")
+    GOT: ClassVar[dict[str, Any]] = {}
+
+    def _enable(self, host: ModuleHost) -> None:
+        try:
+            buses: Any = host.hardware.smbuses()
+        except OSError as e:          # the Platform's own refusal, passed on
+            buses = str(e)
+        _Reaches.GOT.update(
+            readings=host.readings.latest(), smbuses=buses,
+            ids=host.hardware.ids(), hid=host.hardware.open_hid(0x0B05, 0x19AF, 0xEC),
+            access=host.password.memory_access())
+
+
+def test_readings_hardware_and_the_password_come_from_the_platform(
+        tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each is the Platform's own answer -- a stand-in's scripted twin under
+    test, so a module never reaches real hardware.  The HID transport is a
+    lighting controller's: HID reports, its report id.  MUTATION CHECK:
+    drop ``hid_reports=True`` from ``App.open_hid``."""
+    platform = FakePlatform(tmp_home)
+    opened: list[tuple[Any, ...]] = []
+
+    def open_transport(wire: Wire, vid: int, pid: int, serial: str | None = None,
+                       unit: str = "", *, hid_reports: bool = False,
+                       report_id: int = 0) -> Any:
+        opened.append((wire, vid, pid, hid_reports, report_id))
+        return platform.bulk
+
+    monkeypatch.setattr(platform, "open_transport", open_transport)
+    _Reaches.GOT.clear()
+    App(platform=platform, modules={"reaches": _Reaches})
+    got = _Reaches.GOT
+    assert opened == [(Wire.HID, 0x0B05, 0x19AF, True, 0xEC)]
+    assert (got["readings"], got["smbuses"], got["hid"]) == (
+        None, "no SMBus access on FakePlatform", platform.bulk)
+    assert type(got["ids"]) is type(platform.rgb_hardware())
+    assert type(got["access"]) is type(platform.ram_access())
+
+
+def test_the_readings_are_the_last_sweep_and_read_only(tmp_home: Path) -> None:
+    """MUTATION CHECK: return ``self.last_raw_readings`` itself."""
+    app = App(platform=FakePlatform(tmp_home), modules={})
+    app.last_raw_readings = {"cpu:temp": 41.0}
+    latest = app.latest_readings()
+    assert latest == {"cpu:temp": 41.0}
+    with pytest.raises(TypeError):
+        cast("dict[str, float]", latest)["cpu:temp"] = 99.0
+
+
+@pytest.mark.parametrize("capability", ["frames", "readings", "hardware", "password"])
+def test_each_new_capability_must_be_declared(tmp_home: Path,
+                                              capability: str) -> None:
+    """MUTATION CHECK: return the port without ``_need`` in ``_port``."""
+
+    class Asks(_Recording):
+        key, title, capabilities = "asks", "Asks", ()
+
+        def _enable(self, host: ModuleHost) -> None:
+            getattr(host, capability)
+
+    app = App(platform=FakePlatform(tmp_home), modules={"asks": Asks})
+    result = app.dispatch(SetModuleEnabled(key="asks", enabled=True))
+    assert (result.ok, result.message) == (
+        False, f"Asks asked for {capability!r} without declaring it in its module.json")
+

@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 from .adapters import modules as module_catalog
@@ -59,9 +60,11 @@ from .core.models import (
     DeviceInfo,
     DeviceQuirks,
     HardwareMetrics,
+    PanelPicture,
     RawFrame,
     RgbFollowMode,
     Theme,
+    Wire,
     format_device_key,
     oriented_resolution,
     parse_device_key,
@@ -79,12 +82,16 @@ from .core.ports import (
     Module,
     ModuleServices,
     Platform,
+    RamAccess,
     Renderer,
+    RgbHardware,
     RgbMirror,
     SendScheduler,
     SendTask,
+    SmBus,
     SoundInput,
     TlsIdentity,
+    Transport,
     VideoExportRunner,
 )
 from .core.protocol import background_variant, mask_variant, theme_variant
@@ -196,6 +203,10 @@ class App(CommandBus, ModuleServices):
         # own temp-unit conversion exactly as a fresh read did.  ``None`` until
         # the first broadcast — consumers fall back to a one-off read.
         self.last_raw_readings: dict[str, float] | None = None
+        # What modules watch the panels' pictures (``watch_frames``): the App
+        # hears frames for them only while one does.
+        self._picture_watchers: list[Callable[[PanelPicture], None]] = []
+        self._watchers_lock = threading.Lock()
         self.last_raw_snapshot: HardwareMetrics | None = None
         # Each panel's game-mode hysteresis -- whether a busy CPU holds it and
         # how far the count has run.  The App's, not the task's, because
@@ -1044,6 +1055,71 @@ class App(CommandBus, ModuleServices):
         """Whether a Renderer is attached -- an LED-only App has none (#299)."""
         frame_log.debug("App.has_renderer: %s", self._renderer is not None)
         return self._renderer is not None
+
+    # ── what modules see and reach (ModuleServices) ────────────────────────
+
+    def watch_frames(self, handler: Callable[[PanelPicture], None]) -> None:
+        """*handler* gets each panel's picture -- the App hears frames only
+        while someone watches, so with none it does no work per frame."""
+        with self._watchers_lock:
+            first = not self._picture_watchers
+            self._picture_watchers.append(handler)
+        log.info("watch_frames: %d watcher(s)", len(self._picture_watchers))
+        if first:
+            self.events.subscribe(FrameSent, self._picture_sent)
+
+    def unwatch_frames(self, handler: Callable[[PanelPicture], None]) -> None:
+        with self._watchers_lock:
+            if handler in self._picture_watchers:
+                self._picture_watchers.remove(handler)
+            last = not self._picture_watchers
+        log.info("unwatch_frames: %d watcher(s) left", len(self._picture_watchers))
+        if last:
+            self.events.unsubscribe(FrameSent, self._picture_sent)
+
+    def _picture_sent(self, event: Event) -> None:
+        """A sent frame to every watcher, as the picture under the theme's
+        text -- or, for a frame drawn on no theme (an image, a cast), as
+        sent.  Pixels are read only by a watcher that asks."""
+        renderer = self._renderer
+        if not isinstance(event, FrameSent) or renderer is None:
+            frame_log.debug("App._picture_sent: nothing to read")
+            return
+        surface = self.display.background_surface(event.key)
+        if surface is None:
+            surface = event.surface
+        if surface is None:
+            frame_log.debug("App._picture_sent: %s has no picture", event.key)
+            return
+        picture = PanelPicture(event.key, partial(renderer.raw_argb32, surface))
+        with self._watchers_lock:
+            watchers = tuple(self._picture_watchers)
+        frame_log.debug("App._picture_sent: %s to %d", event.key, len(watchers))
+        for watcher in watchers:
+            watcher(picture)
+
+    def latest_readings(self) -> Mapping[str, float] | None:
+        """The metrics loop's last raw sample (°C, %), read-only."""
+        raw = self.last_raw_readings
+        frame_log.debug("App.latest_readings: %s", raw is not None)
+        return None if raw is None else MappingProxyType(raw)
+
+    def smbuses(self) -> tuple[SmBus, ...]:
+        log.debug("smbuses")
+        return self.platform.smbuses()
+
+    def hardware_ids(self) -> RgbHardware:
+        log.debug("hardware_ids")
+        return self.platform.rgb_hardware()
+
+    def open_hid(self, vid: int, pid: int, report_id: int) -> Transport:
+        log.info("open_hid: %04x:%04x report %#x", vid, pid, report_id)
+        return self.platform.open_transport(Wire.HID, vid, pid, hid_reports=True,
+                                            report_id=report_id)
+
+    def memory_access(self) -> RamAccess:
+        log.debug("memory_access")
+        return self.platform.ram_access()
 
     def _follow_frame(self, event: Event) -> None:
         """A sent frame to the RGB follower, when it follows that LCD.

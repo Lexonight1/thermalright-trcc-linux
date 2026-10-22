@@ -27,22 +27,30 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from ..core.errors import ModuleUnavailable
-from ..core.models import ModuleInfo, ModuleManifest, RawFrame
+from ..core.models import ModuleInfo, ModuleManifest, PanelPicture, RawFrame
 from ..core.ports import (
     BackgroundKind,
     BackgroundPort,
     FilesPort,
     FrameSource,
+    FramesPort,
     GlSurface,
     GpuPort,
+    HardwarePort,
     Module,
     ModuleHost,
     ModuleServices,
     PanelsPort,
+    PasswordPort,
+    RamAccess,
+    ReadingsPort,
+    RgbHardware,
     SettingsPort,
+    SmBus,
     SoundInput,
     SoundPort,
     ThemesPort,
+    Transport,
 )
 from .settings import Settings
 
@@ -187,6 +195,62 @@ class _Files(FilesPort):
         return self._services.encode_png(frame)
 
 
+class _Frames(FramesPort):
+    def __init__(self, scope: ModuleScope) -> None:
+        log.debug("_Frames.__init__")
+        self._scope = scope
+
+    def watch(self, handler: Callable[[PanelPicture], None]) -> None:
+        log.debug("_Frames.watch")
+        self._scope._watch(handler)
+
+    def unwatch(self, handler: Callable[[PanelPicture], None]) -> None:
+        log.debug("_Frames.unwatch")
+        self._scope._unwatch(handler)
+
+
+class _Readings(ReadingsPort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Readings.__init__")
+        self._services = services
+
+    def latest(self) -> Mapping[str, float] | None:
+        log.debug("_Readings.latest")
+        return self._services.latest_readings()
+
+
+class _Hardware(HardwarePort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Hardware.__init__")
+        self._services = services
+
+    def smbuses(self) -> tuple[SmBus, ...]:
+        log.debug("_Hardware.smbuses")
+        return self._services.smbuses()
+
+    def ids(self) -> RgbHardware:
+        log.debug("_Hardware.ids")
+        return self._services.hardware_ids()
+
+    def open_hid(self, vid: int, pid: int, report_id: int) -> Transport:
+        log.info("hardware.open_hid: %04x:%04x report %#x", vid, pid, report_id)
+        return self._services.open_hid(vid, pid, report_id)
+
+    def substitute(self, cls: _C) -> _C:
+        log.debug("_Hardware.substitute")
+        return self._services.substitute(cls)
+
+
+class _Password(PasswordPort):
+    def __init__(self, services: ModuleServices) -> None:
+        log.debug("_Password.__init__")
+        self._services = services
+
+    def memory_access(self) -> RamAccess:
+        log.debug("_Password.memory_access")
+        return self._services.memory_access()
+
+
 class ModuleScope(ModuleHost):
     """One module's view of the App: only the capabilities its manifest
     declares, with its own key bound in -- and everything it still holds is
@@ -200,6 +264,7 @@ class ModuleScope(ModuleHost):
         self._key = manifest.key
         self._subscriptions: list[tuple[Any, Any]] = []
         self._kinds: list[str] = []
+        self._watchers: list[Callable[[PanelPicture], None]] = []
         self._ports: dict[str, Any] = {
             "panels": _Panels(services),
             "background": _Background(services, self._key),
@@ -208,6 +273,10 @@ class ModuleScope(ModuleHost):
             "sound": _Sound(services),
             "gpu": _Gpu(services),
             "files": _Files(services),
+            "frames": _Frames(self),
+            "readings": _Readings(services),
+            "hardware": _Hardware(services),
+            "password": _Password(services),
         }
 
     def publish(self, event: Any) -> None:
@@ -262,6 +331,38 @@ class ModuleScope(ModuleHost):
         log.debug("ModuleScope.files")
         return self._port("files")
 
+    @property
+    def frames(self) -> FramesPort:
+        log.debug("ModuleScope.frames")
+        return self._port("frames")
+
+    @property
+    def readings(self) -> ReadingsPort:
+        log.debug("ModuleScope.readings")
+        return self._port("readings")
+
+    @property
+    def hardware(self) -> HardwarePort:
+        log.debug("ModuleScope.hardware")
+        return self._port("hardware")
+
+    @property
+    def password(self) -> PasswordPort:
+        log.debug("ModuleScope.password")
+        return self._port("password")
+
+    def _watch(self, handler: Callable[[PanelPicture], None]) -> None:
+        """A frame watcher the module holds -- taken back on switch-off."""
+        log.info("ModuleScope._watch: %s", self._key)
+        self._services.watch_frames(handler)
+        self._watchers.append(handler)
+
+    def _unwatch(self, handler: Callable[[PanelPicture], None]) -> None:
+        log.info("ModuleScope._unwatch: %s", self._key)
+        self._services.unwatch_frames(handler)
+        if handler in self._watchers:
+            self._watchers.remove(handler)
+
     def _port(self, capability: str) -> Any:
         """The port for *capability*, if the manifest declares it."""
         log.debug("ModuleScope._port")
@@ -287,11 +388,15 @@ class ModuleScope(ModuleHost):
         """Take back everything the module still holds.  *end_sources*: stop
         the panels it draws, each keeping its choice -- not while the App is
         closing, which stops every panel anyway."""
-        log.info("ModuleScope.release: %s, %d subscription(s), kinds %s",
-                 self._key, len(self._subscriptions), self._kinds)
+        log.info("ModuleScope.release: %s, %d subscription(s), %d watcher(s), "
+                 "kinds %s", self._key, len(self._subscriptions),
+                 len(self._watchers), self._kinds)
         for event_type, handler in reversed(self._subscriptions):
             self._services.unsubscribe(event_type, handler)
         self._subscriptions.clear()
+        for watcher in reversed(self._watchers):
+            self._services.unwatch_frames(watcher)
+        self._watchers.clear()
         for prefix in self._kinds:
             self._services.remove_background_kind(prefix)
         self._kinds.clear()

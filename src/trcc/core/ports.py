@@ -25,6 +25,7 @@ from .models import (
     MIN_REFRESH_INTERVAL_S,
     BoardIdentity,
     HidInterface,
+    PanelPicture,
     RamAccessState,
     RamAccessStatus,
     RamEffectSettings,
@@ -2705,6 +2706,62 @@ class FilesPort(ABC):
         """*frame* as a PNG."""
 
 
+class FramesPort(ABC):
+    """The ``frames`` capability: the pictures the LCD panels are sent."""
+
+    @abstractmethod
+    def watch(self, handler: Callable[[PanelPicture], None]) -> None:
+        """Hand *handler* each picture any LCD panel is sent, on the thread
+        that sent it; ended when the module is switched off."""
+
+    @abstractmethod
+    def unwatch(self, handler: Callable[[PanelPicture], None]) -> None:
+        """Stop handing *handler* pictures."""
+
+
+class ReadingsPort(ABC):
+    """The ``readings`` capability: the computer's sensor readings."""
+
+    @abstractmethod
+    def latest(self) -> Mapping[str, float] | None:
+        """The last sweep's readings, in °C and %, by sensor key
+        (``cpu:temp``, ``gpu:primary:usage``); None before the first."""
+
+
+class HardwarePort(ABC):
+    """The ``hardware`` capability: lighting chips TRCC does not drive as a
+    panel -- each reached through the OS, so a stand-in platform's scripted
+    twin is all a test or a mock run touches."""
+
+    @abstractmethod
+    def smbuses(self) -> tuple[SmBus, ...]:
+        """The memory's SMBus adapters this user may open."""
+
+    @abstractmethod
+    def ids(self) -> RgbHardware:
+        """What the OS already knows: the motherboard, and its USB HID
+        interfaces -- nothing is opened to answer."""
+
+    @abstractmethod
+    def open_hid(self, vid: int, pid: int, report_id: int) -> Transport:
+        """An unopened HID transport to *vid*:*pid* writing report
+        *report_id*."""
+
+    @abstractmethod
+    def substitute(self, cls: _C) -> _C:
+        """*cls* as this machine runs it: itself, or a stand-in platform's
+        scripted twin (an OpenRGB client)."""
+
+
+class PasswordPort(ABC):
+    """The ``password`` capability: system access the user grants once."""
+
+    @abstractmethod
+    def memory_access(self) -> RamAccess:
+        """Access to the memory's lighting chips: whether it is granted, and
+        granting or taking it back -- each asking for the password."""
+
+
 class ModuleHost(ABC):
     """What a module may do to the App -- and nothing more.
 
@@ -2768,6 +2825,26 @@ class ModuleHost(ABC):
     def files(self) -> FilesPort:
         log.debug("ModuleHost.files")
         self._not_offered("files")
+
+    @property
+    def frames(self) -> FramesPort:
+        log.debug("ModuleHost.frames")
+        self._not_offered("frames")
+
+    @property
+    def readings(self) -> ReadingsPort:
+        log.debug("ModuleHost.readings")
+        self._not_offered("readings")
+
+    @property
+    def hardware(self) -> HardwarePort:
+        log.debug("ModuleHost.hardware")
+        self._not_offered("hardware")
+
+    @property
+    def password(self) -> PasswordPort:
+        log.debug("ModuleHost.password")
+        self._not_offered("password")
 
 
 class ModuleServices(ABC):
@@ -2849,6 +2926,27 @@ class ModuleServices(ABC):
 
     @abstractmethod
     def encode_png(self, frame: RawFrame) -> bytes: ...
+
+    @abstractmethod
+    def watch_frames(self, handler: Callable[[PanelPicture], None]) -> None: ...
+
+    @abstractmethod
+    def unwatch_frames(self, handler: Callable[[PanelPicture], None]) -> None: ...
+
+    @abstractmethod
+    def latest_readings(self) -> Mapping[str, float] | None: ...
+
+    @abstractmethod
+    def smbuses(self) -> tuple[SmBus, ...]: ...
+
+    @abstractmethod
+    def hardware_ids(self) -> RgbHardware: ...
+
+    @abstractmethod
+    def open_hid(self, vid: int, pid: int, report_id: int) -> Transport: ...
+
+    @abstractmethod
+    def memory_access(self) -> RamAccess: ...
 
 
 class Module(ABC):

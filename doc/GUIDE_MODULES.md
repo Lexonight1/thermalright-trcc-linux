@@ -114,7 +114,7 @@ A module that raises in any hook is switched back off and its row says why — i
 
 ### Capabilities
 
-A module never gets the App itself. It gets a **host** that offers only what its `module.json` declares. Beside the events (`host.subscribe`, `host.publish`), each capability is one small port on the host — `host.panels`, `host.background`, `host.settings`, `host.themes`, `host.sound`, `host.gpu`, `host.files` — and reaching one its manifest does not declare is refused:
+A module never gets the App itself. It gets a **host** that offers only what its `module.json` declares. Beside the events (`host.subscribe`, `host.publish`), each capability is one small port on the host — `host.panels`, `host.background`, `host.settings`, `host.themes`, `host.sound`, `host.gpu`, `host.files`, `host.frames`, `host.readings`, `host.hardware`, `host.password` — and reaching one its manifest does not declare is refused:
 
 | Capability | What it lets the module do |
 |---|---|
@@ -126,8 +126,12 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `sound` | hears what the computer is playing |
 | `gpu` | draws with the graphics card |
 | `files` | reads its own files in TRCC's data folder, and makes PNG pictures |
+| `frames` | sees the picture each LCD panel shows |
+| `readings` | reads the computer's sensor readings |
+| `hardware` | reaches lighting chips: memory, the motherboard, OpenRGB |
+| `password` | may ask for your password, to reach hardware the system guards |
 
-When it is switched off, TRCC takes back what it still holds: its subscriptions, its background kinds, and the panels it draws, each keeping its choice. More capabilities arrive as modules need them — one at a time, each with a reason.
+When it is switched off, TRCC takes back what it still holds: its subscriptions, its frame watchers, its background kinds, and the panels it draws, each keeping its choice. More capabilities arrive as modules need them — one at a time, each with a reason.
 
 ### Rules
 
