@@ -94,6 +94,7 @@ from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
 from .module_page import ModulePage
+from .module_view import ModuleView
 from .uc_about import UCAbout, ensure_autostart
 from .uc_activity_sidebar import UCActivitySidebar
 from .uc_brightness import UCBrightness
@@ -548,6 +549,8 @@ class TRCCApp(QMainWindow):
                   type(event).__name__, event.key)
         for page in self._module_pages.values():
             cast(ModulePage, page).on_settings_changed(event)
+        for view in self._module_views.values():
+            cast(ModuleView, view).on_settings_changed(event)
         handler = self._handlers.get(event.key)
         if handler is not None:
             handler.follow_app()
@@ -573,7 +576,7 @@ class TRCCApp(QMainWindow):
             case RamLightingChanged() | RgbLightsChanged() | RgbFollowChanged():
                 self.uc_rgb.page.on_app_event(event)
             case ModuleChanged():
-                self._sync_module_tabs()
+                self._sync_modules()
             case _:
                 self._show_app_settings(self._app.dispatch(ControlCenterSnapshot()))
 
@@ -614,6 +617,8 @@ class TRCCApp(QMainWindow):
         self.uc_led_control.set_language(lang)
         for page in self._module_pages.values():
             cast(ModulePage, page).set_language(lang)
+        for key, view in self._module_views.items():
+            self._translate_view(key, view, lang)
         self.uc_modules.view.set_translate(partial(tr, lang=lang))
 
     def _on_bus_slideshow_changed(self, event: SlideshowChanged) -> None:
@@ -1160,7 +1165,8 @@ class TRCCApp(QMainWindow):
         # What the modules add: built once, after the stack and the labels.
         self._module_pages: dict[str, QWidget] = {}
         self._module_tabs: dict[str, QPushButton] = {}
-        self._sync_module_tabs()
+        self._module_views: dict[str, QWidget] = {}
+        self._sync_modules()
 
     def _i18n_label(self, parent: QWidget, text: str, x: int, y: int, w: int,
                     h: int, pt: int, key: str | None = None,
@@ -1184,9 +1190,69 @@ class TRCCApp(QMainWindow):
         self._i18n_labels.append((lbl, key))
         return lbl
 
-    # ── Module tabs ─────────────────────────────────────────────────
+    # ── Module tabs and views ───────────────────────────────────────
 
-    def _sync_module_tabs(self) -> None:
+    def _sync_modules(self) -> None:
+        """What the modules that are on add to this window -- after a switch
+        in any UI, and once at start."""
+        on = {m.key for m in self._app.dispatch(ListModules()).modules
+              if m.enabled}
+        log.info("_sync_modules: on %s", sorted(on))
+        self._sync_module_tabs(on)
+        self._sync_module_views(on)
+
+    def _sync_module_views(self, on: set[str]) -> None:
+        """A sidebar button for each module that is on and adds a gui view
+        (``ui/gui/``'s ``VIEW``); the buttons of the rest hidden.  A view is
+        built the first time its module is on and kept -- and one showing
+        when its module goes off gives way to the home view."""
+        from .._module_faces import contribution
+
+        log.info("_sync_module_views: built %s", sorted(self._module_views))
+        for key in sorted(on - set(self._module_views)):
+            view_class = contribution(key, "gui", "VIEW", optional=True)
+            if view_class is not None:
+                self._add_module_view(key, view_class)
+        for key, button in self.uc_device.view_buttons.items():
+            button.setVisible(key in on)
+        if any(view.isVisible() for key, view in self._module_views.items()
+               if key not in on):
+            log.info("_sync_module_views: the view showing is off -- home")
+            self.uc_device.sensor_btn.click()
+
+    def _add_module_view(self, key: str,
+                         view_class: Callable[..., ModuleView]) -> None:
+        """Build module *key*'s view and its sidebar button -- neither when
+        every slot is taken (logged by the sidebar)."""
+        from ...core.i18n import tr
+
+        lang = self._app.dispatch(ControlCenterSnapshot()).language
+        cls = cast(type[ModuleView], view_class)
+        button = self.uc_device.add_view_button(
+            key, tr(cls.BUTTON_TEXT, lang), tr(cls.TOOLTIP, lang))
+        if button is None:
+            return
+        view = view_class(app=self._app, bridge=self._bus)
+        widget = cast(QWidget, view)
+        widget.setParent(self.uc_modules.parentWidget())
+        widget.setGeometry(*Layout.FORM_CONTAINER)
+        widget.setVisible(False)
+        self._module_views[key] = widget
+        view.set_language(lang)
+        log.info("_add_module_view: %s", key)
+
+    def _translate_view(self, key: str, view: QWidget, lang: str) -> None:
+        """Module *key*'s view and its button, in *lang*."""
+        from ...core.i18n import tr
+
+        log.debug("_translate_view: %s %s", key, lang)
+        module_view = cast(ModuleView, view)
+        button = self.uc_device.view_buttons[key]
+        button.setText(tr(module_view.BUTTON_TEXT, lang))
+        button.setToolTip(tr(module_view.TOOLTIP, lang))
+        module_view.set_language(lang)
+
+    def _sync_module_tabs(self, on: set[str]) -> None:
         """A mode tab for each module that is on and adds a gui page
         (``ui/gui/``'s ``PAGE``); the tabs of the rest hidden.  A page is
         built the first time its module is on and kept, so switching it back
@@ -1194,12 +1260,10 @@ class TRCCApp(QMainWindow):
         off gives way to Local themes."""
         from .._module_faces import contribution
 
-        on = {m.key for m in self._app.dispatch(ListModules()).modules
-              if m.enabled}
         log.info("_sync_module_tabs: on %s, built %s", sorted(on),
                  sorted(self._module_pages))
         for key in sorted(on - set(self._module_pages)):
-            page_class = contribution(key, "gui", "PAGE")
+            page_class = contribution(key, "gui", "PAGE", optional=True)
             if page_class is not None:
                 self._add_module_page(key, page_class)
         for key, button in self._module_tabs.items():
@@ -1589,6 +1653,10 @@ class TRCCApp(QMainWindow):
         log.info("_on_modules_clicked")
         self._show_view('modules')
 
+    def _on_view_clicked(self, key: str) -> None:
+        log.info("_on_view_clicked: %s", key)
+        self._show_view(f"module:{key}")
+
     # ── Download status slots ───────────────────────────────────────
 
     def _on_theme_download_started(self, theme_id: str) -> None:
@@ -1629,6 +1697,8 @@ class TRCCApp(QMainWindow):
         self.uc_rgb.setVisible(view == 'rgb')
         self.uc_thanks.setVisible(view == 'thanks')
         self.uc_modules.setVisible(view == 'modules')
+        for key, module_view in self._module_views.items():
+            module_view.setVisible(view == f"module:{key}")
         self.uc_system_info.setVisible(view == 'sysinfo')
         self.uc_led_control.setVisible(view == 'led')
         self.uc_activity_sidebar.setVisible(False)
@@ -1650,6 +1720,7 @@ class TRCCApp(QMainWindow):
         self.uc_device.home_clicked.connect(self._on_home_clicked)
         self.uc_device.about_clicked.connect(self._on_about_clicked)
         self.uc_device.rgb_clicked.connect(self._on_rgb_clicked)
+        self.uc_device.view_clicked.connect(self._on_view_clicked)
 
         self.uc_theme_local.theme_selected.connect(self._on_local_theme_clicked)
         self.uc_theme_local.delete_requested.connect(self._on_delete_theme)

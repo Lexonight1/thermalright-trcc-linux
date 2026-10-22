@@ -150,6 +150,9 @@ class BusBridge(QObject):
     # Frames flow again after the window was hidden: show the current one
     # now, since a still panel may not send another for a while.
     frames_resumed = Signal()
+    # A module's own event, which this bridge cannot name: re-emitted here
+    # when its page or view asks (``forward(MyEvent, "module_event")``).
+    module_event = Signal(object)
 
     def __init__(self, bus: EventBus) -> None:
         super().__init__()
@@ -157,6 +160,9 @@ class BusBridge(QObject):
         self._frames = _FrameForwarder(self.frame_sent, FrameSent.__name__)
         self._frames_on = False
         self._previews: tuple[QWidget, ...] = ()
+        #: A module page's previews (``add_preview``), kept apart from the
+        #: window's own so ``follow_previews`` never drops one.
+        self._added: tuple[QWidget, ...] = ()
         log.info("BusBridge.__init__: wiring EventBus → Qt signals")
         self._wire()
 
@@ -184,6 +190,25 @@ class BusBridge(QObject):
             widget.installEventFilter(self)
         self._sync_frames()
 
+    def add_preview(self, widget: QWidget) -> None:
+        """Take frames while *widget* is on screen too -- a module's preview,
+        which the window cannot name.  Once per widget."""
+        if widget in self._added:
+            log.debug("BusBridge.add_preview: %s already", type(widget).__name__)
+            return
+        log.info("BusBridge.add_preview: %s", type(widget).__name__)
+        self._added = (*self._added, widget)
+        for watched in {widget, widget.window()}:
+            watched.installEventFilter(self)
+        self._sync_frames()
+
+    def remove_preview(self, widget: QWidget) -> None:
+        """Stop taking frames for *widget* -- its module was switched off."""
+        log.info("BusBridge.remove_preview: %s", type(widget).__name__)
+        self._added = tuple(w for w in self._added if w is not widget)
+        widget.removeEventFilter(self)
+        self._sync_frames()
+
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """Show, hide and minimise of a followed preview or its window."""
         if event.type() in (QEvent.Type.Show, QEvent.Type.Hide,
@@ -196,7 +221,7 @@ class BusBridge(QObject):
     def _sync_frames(self) -> None:
         """Frames on while any followed preview is on screen."""
         on = any(w.isVisible() and not w.window().isMinimized()
-                 for w in self._previews)
+                 for w in (*self._previews, *self._added))
         log.debug("BusBridge._sync_frames: %s -> %s", self._frames_on, on)
         self._set_frames(on)
 

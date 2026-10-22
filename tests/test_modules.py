@@ -677,3 +677,111 @@ def test_each_new_capability_must_be_declared(tmp_home: Path,
     assert (result.ok, result.message) == (
         False, f"Asks asked for {capability!r} without declaring it in its module.json")
 
+
+# ── a module's gui view: a whole page behind its own sidebar button ──────────
+
+_VIEW_MODULE = {
+    "module.json": '{"key": "viewer", "title": "Viewer", "summary": "A view.",'
+                   ' "default_on": true, "capabilities": []}\n',
+    "__init__.py": "",
+    "app.py": "from trcc.adapters.modules import BaseModule\n\n\n"
+              "class Viewer(BaseModule, key='viewer'):\n"
+              "    title, summary = 'Viewer', 'A view.'\n\n"
+              "    def _enable(self, host) -> None:\n        pass\n\n"
+              "    def _disable(self, host) -> None:\n        pass\n",
+    "ui/__init__.py": "",
+    "ui/gui/__init__.py":
+        "from PySide6.QtWidgets import QLabel, QWidget\n"
+        "from trcc.ui.gui.module_view import ModuleView\n\n\n"
+        "class ViewerView(QWidget, ModuleView):\n"
+        "    BUTTON_TEXT, TOOLTIP = 'Viewer', 'The viewer'\n\n"
+        "    def __init__(self, app, bridge) -> None:\n"
+        "        super().__init__()\n"
+        "        self.label = QLabel('a view', self)\n"
+        "        self.languages = []\n"
+        "        bridge.add_preview(self.label)\n\n"
+        "    def set_language(self, lang: str) -> None:\n"
+        "        self.languages.append(lang)\n\n\n"
+        "VIEW = ViewerView\n",
+}
+
+
+@pytest.fixture
+def viewer(module_root: Callable[[Path], Path], tmp_path: Path) -> Path:
+    """A module whose gui adds a VIEW, installed as a built-in is."""
+    root = tmp_path / "modules"
+    for rel, text in _VIEW_MODULE.items():
+        (root / "viewer" / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / "viewer" / rel).write_text(text, encoding="utf-8")
+    return module_root(root)
+
+
+def test_the_gui_shows_a_modules_view_behind_its_button_while_it_is_on(
+        viewer: Path, qtbot: Any, tmp_home: Path) -> None:
+    """On: a button in the sidebar's module slot opens the view, the rest of
+    the window hidden.  Off: the button hides and the window goes home.
+    MUTATION CHECK: skip the hiding in ``_sync_module_views`` and the
+    button stays."""
+    from trcc.adapters.modules import specs
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.ui.gui.constants import Layout
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = App(platform=FakePlatform(tmp_home), renderer=QtRenderer(),
+              modules=specs(viewer))
+    window = TRCCApp(app=app)
+    qtbot.addWidget(window)
+    window.show()
+    button = window.uc_device.view_buttons["viewer"]
+    view: Any = window._module_views["viewer"]
+    button.click()
+    opened = (view.isVisible(), window.uc_about.isVisible(),
+              window.form_container.isVisible(), button.isChecked())
+    app.dispatch(SetModuleEnabled(key="viewer", enabled=False))
+    window._sync_modules()
+    assert (button.geometry().getRect(), button.text(), button.toolTip(),
+            view.languages[-1]) == (Layout.SIDEBAR_MODULE_SLOTS[0], "Viewer",
+                                    "The viewer", "en")
+    assert opened == (True, False, False, True)
+    assert (button.isVisibleTo(window), view.isVisible(),
+            window.uc_system_info.isVisible()) == (False, False, True)
+    window.close()
+
+
+def test_a_modules_preview_takes_frames_only_while_it_is_on_screen(
+        qtbot: Any, tmp_home: Path) -> None:
+    """``add_preview`` joins the window's own previews -- and
+    ``follow_previews`` (the window's) never drops it.  MUTATION CHECK:
+    read only ``self._previews`` in ``BusBridge._sync_frames``."""
+    from PySide6.QtWidgets import QWidget
+
+    from trcc.ui.bus_bridge import BusBridge
+
+    app = App(platform=FakePlatform(tmp_home), modules={})
+    bridge = BusBridge(app.events)
+    window, other = QWidget(), QWidget()
+    preview, mine = QWidget(window), QWidget(window)
+    qtbot.addWidget(window)
+    qtbot.addWidget(other)
+    bridge.add_preview(mine)
+    bridge.follow_previews(preview)
+    window.show()
+    preview.hide()
+    taking = bridge._frames_on
+    mine.hide()
+    assert (taking, bridge._frames_on) == (True, False)
+
+
+def test_a_modules_own_event_reaches_its_page_on_the_module_signal(
+        qtbot: Any, tmp_home: Path) -> None:
+    """The bridge cannot name a module's events; a page forwards each to
+    ``module_event``.  MUTATION CHECK: forward to ``settings_changed``
+    instead -- an event with no ``key`` would reach every LCD handler."""
+    from trcc.ui.bus_bridge import BusBridge
+
+    app = App(platform=FakePlatform(tmp_home), modules={})
+    bridge = BusBridge(app.events)
+    bridge.forward(ModuleChanged, "module_event")
+    with qtbot.waitSignal(bridge.module_event, timeout=1000) as got:
+        app.events.publish(ModuleChanged(key="rgb", enabled=True))
+    assert got.args == [ModuleChanged(key="rgb", enabled=True)]

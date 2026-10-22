@@ -7,6 +7,7 @@ A module's ``ui/<face>/`` exports fixed names, the way a Django app's
 face          names
 ============  ==============================================================
 ``gui``       ``PAGE`` -- the page its mode tab opens (a ``ModulePage``)
+``gui``       ``VIEW`` -- a whole page its sidebar button opens (a ``ModuleView``)
 ``qtgui``     ``PANEL`` -- its sidebar panel (a ``BasePanel`` with ``LABEL``)
 ``cli``       ``GROUP`` (the ``trcc`` group, ``""`` for the top) + ``COMMANDS``
 ``api``       ``ROUTERS`` -- the FastAPI routers it adds
@@ -34,9 +35,13 @@ def installed() -> list[str]:
     return keys
 
 
-def contribution(key: str, face: str, name: str) -> Any | None:
+def contribution(key: str, face: str, name: str,
+                 optional: bool = False) -> Any | None:
     """Module *key*'s *name* for *face* (``PAGE`` for ``gui`` ...), or None
-    when it adds nothing there -- or failed to load, which is logged."""
+    when it adds nothing there -- or failed to load, which is logged.  A
+    face that lacks *name* is an author's slip, logged as an error -- unless
+    *optional*: the gui's ``PAGE`` and ``VIEW``, either of which a module may
+    add without the other."""
     try:
         part = modules.load_face(key, face)
     except Exception:
@@ -44,6 +49,9 @@ def contribution(key: str, face: str, name: str) -> Any | None:
         return None
     found = getattr(part, name, None) if part is not None else None
     if part is not None and found is None:
+        if optional:
+            log.debug("module %s: ui/%s/ adds no %s", key, face, name)
+            return None
         if getattr(part.__spec__, "_initializing", False):
             # Asked while the face itself is mid-import (it imported this UI
             # first) -- the flag behind Python's "partially initialized

@@ -233,6 +233,9 @@ class Layout:
     ABOUT_BTN = (25, 730, 140, 50)
     # RGB Lighting sits above About; the device list scrolls in what is left.
     RGB_BTN = (25, 670, 140, 50)
+    #: Where a module's view button goes in the sidebar, in the order modules
+    #: claim them -- RGB Lighting's place.  TRCC's own, not the C#'s.
+    SIDEBAR_MODULE_SLOTS = ((25, 670, 140, 50),)
     DEVICE_AREA = (0, 160, 180, 500)
     NO_DEVICES_LABEL = (25, 10, 140, 50)
     HINT_LABEL = (15, 55, 150, 40)

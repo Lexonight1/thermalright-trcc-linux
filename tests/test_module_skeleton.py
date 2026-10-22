@@ -212,7 +212,7 @@ def test_the_gui_shows_its_tab_while_it_is_on(
     tab.click()
     shown: Any = window.panel_stack.currentWidget()
     app.dispatch(SetModuleEnabled(key="hello", enabled=False))
-    window._sync_module_tabs()
+    window._sync_modules()
     assert (tab.geometry().getRect(), shown is window._module_pages["hello"],
             shown.label.text()) == (Layout.TAB_MODULE_SLOTS[0], True, "Hello, world!")
     assert (tab.isVisibleTo(window), window.panel_stack.currentIndex()) == (False, 0)

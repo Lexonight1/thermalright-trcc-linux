@@ -64,15 +64,15 @@ A module is a small copy of TRCC's own layout. Each part has a fixed name, and T
 | `module.json`, `icon.svg`, `i18n.json` | its row on the Modules page, and its words in every language | always — without importing anything |
 | `core/` | its Commands, Results and events | always, so its Commands are known in every window and refused while it is off |
 | `app.py` | its root: the `Module` class, holding its own state | when it is switched on |
-| `services/`, `adapters/` | its own logic and hardware code | by `app.py` |
-| `ui/gui/` | exports `PAGE`: a widget that also extends `ModulePage` — the page its mode tab opens | while it is on |
+| `services/`, `adapters/` | its own logic, and the protocols it speaks to hardware the host lets it reach | by `app.py` |
+| `ui/gui/` | exports `PAGE`: a widget that also extends `ModulePage` — the page its mode tab opens; and/or `VIEW`: a widget that also extends `ModuleView` — a whole page its sidebar button opens (built with `app=` and `bridge=`, the window's events: `bridge.frame_sent`, `bridge.forward(MyEvent, "module_event")`, `bridge.add_preview(widget)`) | while it is on |
 | `ui/qtgui/` | exports `PANEL`: a `BasePanel` with a `LABEL` — its sidebar entry | while it is on |
 | `ui/cli/` | exports `GROUP` (the `trcc` group, `""` for the top) and `COMMANDS` (a Typer app) | always, on or off |
 | `ui/api/` | exports `ROUTERS`, the FastAPI routers it adds | always, on or off |
 
-The windows show a module's tab or entry only while it is on, and follow it being switched in any window. The CLI and the API carry an installed module's commands whether it is on or off; while it is off, they answer that it is off and where to turn it on.
+The windows show a module's tab, button or entry only while it is on, and follow it being switched in any window. The CLI and the API carry an installed module's commands whether it is on or off; while it is off, they answer that it is off and where to turn it on.
 
-The same layer rules apply inside a module as in TRCC itself, and the same tests check them. TRCC never imports a module by name, and a module never imports TRCC's App or another module.
+The same layer rules apply inside a module as in TRCC itself, and the same tests check them. TRCC never imports a module by name, and a module never imports another module, or anything of TRCC's but its core, its UI and the module SDK.
 
 ### Its Commands
 

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from functools import partial
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QFrame, QScrollArea, QWidget
+from PySide6.QtWidgets import QFrame, QPushButton, QScrollArea, QWidget
 
 from ..presentation.panel_spec import (
     Background,
@@ -229,8 +230,8 @@ _SPEC_CONTENT = PanelSpec(
 )
 
 
-#: No bitmap of the original carries an RGB button: drawn in the sidebar's
-#: colours, gold when chosen like the RGB page's title bar.
+#: No bitmap of the original carries an RGB button, nor a module's: drawn in
+#: the sidebar's colours, gold when chosen like a page's title bar.
 _RGB_BTN_QSS = """
     QPushButton { background: #2d2d33; color: #cfcfd4; font-size: 13pt;
         font-weight: bold; border: 1px solid #4a4a52; border-radius: 6px; }
@@ -259,6 +260,8 @@ class UCDevice(BasePanel):
     about_clicked = Signal()
     rgb_clicked = Signal()
     home_clicked = Signal()
+    #: A module's view button, by its module's key.
+    view_clicked = Signal(str)
 
     def __init__(self, parent: QWidget | None = None,
                  detect_fn: Callable[[], list[dict]] | None = None):
@@ -322,6 +325,40 @@ class UCDevice(BasePanel):
         self.rgb_btn = built.button("rgb_btn")
         self.rgb_btn.setStyleSheet(_RGB_BTN_QSS)
         self.rgb_btn.clicked.connect(self._on_rgb_clicked)
+        #: Each module's view button, by its module's key.
+        self.view_buttons: dict[str, QPushButton] = {}
+
+    def add_view_button(self, key: str, text: str,
+                        tooltip: str) -> QPushButton | None:
+        """Module *key*'s view button, in the next free sidebar slot -- None
+        when every slot is taken (logged)."""
+        if len(self.view_buttons) >= len(Layout.SIDEBAR_MODULE_SLOTS):
+            log.warning("add_view_button: no free sidebar slot for module %s", key)
+            return None
+        rect = Layout.SIDEBAR_MODULE_SLOTS[len(self.view_buttons)]
+        button = QPushButton(text, self)
+        button.setGeometry(*rect)
+        button.setCheckable(True)
+        button.setStyleSheet(_RGB_BTN_QSS)
+        button.setToolTip(tooltip)
+        button.clicked.connect(partial(self._on_view_clicked, key))
+        button.show()
+        self.view_buttons[key] = button
+        log.info("add_view_button: %s %r at %s", key, text, rect)
+        return button
+
+    def _uncheck_views(self) -> None:
+        log.debug("_uncheck_views: %d", len(self.view_buttons))
+        for button in self.view_buttons.values():
+            button.setChecked(False)
+
+    def _on_view_clicked(self, key: str) -> None:
+        """A module's view button -- deselects the rest, as About does."""
+        log.info("_on_view_clicked: %s", key)
+        self._deselect_header_buttons()
+        self.view_buttons[key].setChecked(True)
+        self._deselect_all_devices()
+        self.view_clicked.emit(key)
 
     def set_no_devices_hint(self, text: str) -> None:
         """Set the per-OS guidance shown in the sidebar when no device is found.
@@ -426,6 +463,7 @@ class UCDevice(BasePanel):
         self.sensor_btn.setChecked(False)
         self.about_btn.setChecked(False)
         self.rgb_btn.setChecked(False)
+        self._uncheck_views()
 
     def _restore_selection(self, device_info: dict) -> None:
         """Restore visual selection after sidebar rebuild — no signal emitted.
@@ -459,6 +497,7 @@ class UCDevice(BasePanel):
         self.sensor_btn.setChecked(True)
         self.about_btn.setChecked(False)
         self.rgb_btn.setChecked(False)
+        self._uncheck_views()
         self._deselect_all_devices()
         self.home_clicked.emit()
         self.invoke_delegate(self.CMD_HOME)
@@ -469,6 +508,7 @@ class UCDevice(BasePanel):
         self.about_btn.setChecked(True)
         self.sensor_btn.setChecked(False)
         self.rgb_btn.setChecked(False)
+        self._uncheck_views()
         self._deselect_all_devices()
         self.about_clicked.emit()
         self.invoke_delegate(self.CMD_ABOUT)
