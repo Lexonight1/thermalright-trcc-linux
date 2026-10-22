@@ -465,7 +465,7 @@ def test_what_following_sent_crosses_the_socket_as_tuples() -> None:
     colours, three levels deep, must come back as the same tuples."""
     import json
 
-    from trcc.core.events import RgbFollowSent
+    from trcc.modules.rgb.core.events import RgbFollowSent
     event = RgbFollowSent(source="0402:3922",
                           columns=(((152, 18, 23),) * 10, ((0, 0, 255),) * 10))
 

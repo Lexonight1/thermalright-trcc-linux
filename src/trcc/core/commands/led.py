@@ -11,14 +11,7 @@ from ..errors import (
     DeviceNotFoundError,
     TransportError,
 )
-from ..events import (
-    ErrorOccurred,
-    FrameSent,
-    HddEnabledChanged,
-    LedColorsChanged,
-    RamLightingChanged,
-    RgbFollowChanged,
-)
+from ..events import ErrorOccurred, FrameSent, HddEnabledChanged, LedColorsChanged
 from ..led_models import (
     LED_STYLES,
     LEDMode,
@@ -28,13 +21,6 @@ from ..led_models import (
     one_hot,
 )
 from ..logs import per_frame
-from ..models import (
-    FollowColors,
-    FollowMapping,
-    RamAccessState,
-    RamAccessStatus,
-    RgbFollowMode,
-)
 from ..results import (
     ClockFormatResult,
     HddEnabledResult,
@@ -45,8 +31,6 @@ from ..results import (
     LedStylesListResult,
     LedZoneEntry,
     MemoryRatioResult,
-    RamLightingResult,
-    RgbFollowResult,
     WeekStartResult,
 )
 from ._base import Command, Query
@@ -1083,151 +1067,6 @@ def _rgb_tuples(colors: Sequence[Sequence[int]]) -> tuple[tuple[int, int, int], 
     """Colours as ``(r, g, b)`` tuples -- over IPC they arrive as lists."""
     frame_log.debug("_rgb_tuples: %d colour(s)", len(colors))
     return tuple((int(c[0]), int(c[1]), int(c[2])) for c in colors)
-
-
-def _rgb_follow_result(app: App, message: str) -> RgbFollowResult:
-    """The follow setting and the follower's live status, as one Result."""
-    settings, status = app.settings.app, app.rgb_mirror.status
-    mode = app.settings.rgb_follow_mode()
-    log.debug("_rgb_follow_result: %s connected=%s", mode.value,
-              status.connected)
-    return RgbFollowResult(
-        ok=True, mode=mode,
-        host=settings.openrgb_host, port=settings.openrgb_port,
-        source=settings.rgb_follow_source,
-        mapping=app.settings.rgb_follow_mapping(),
-        targets=app.settings.rgb_follow_targets(),
-        colors=app.settings.rgb_follow_colors(),
-        connected=status.connected, devices=status.devices,
-        lead=status.lead, error=status.error, message=message,
-    )
-
-
-def _rgb_follow_label(mode: RgbFollowMode, host: str, port: int,
-                      source: str = "") -> str:
-    """What follows which device, in words -- *source* empty is the cooler."""
-    log.debug("_rgb_follow_label: %s source=%r", mode.value, source)
-    lead = f"device {source}" if source else "the cooler"
-    match mode:
-        case RgbFollowMode.OPENRGB:
-            return f"OpenRGB at {host}:{port} follows {lead}"
-        case RgbFollowMode.RAM:
-            return f"Corsair RAM follows {lead}"
-        case RgbFollowMode.BOARD:
-            return f"The motherboard's RGB follows {lead}"
-    return "Nothing follows -- TRCC sends no colours to other lights"
-
-
-@dataclass(frozen=True, slots=True)
-class SetRgbFollow(Command[RgbFollowResult]):
-    """Pick what follows the LED cooler's colours (#160): one at a time.
-
-    TRCC leads.  ``OPENRGB``: TRCC connects to the OpenRGB SDK server at
-    host:port as a client and sends the cooler's colours to every OpenRGB
-    device, in OpenRGB's direct mode.  ``RAM``: TRCC sends them to Corsair RGB
-    memory over the SMBus itself, with no OpenRGB running.  ``BOARD``: to the
-    motherboard's own RGB -- its LEDs and ARGB headers -- directly; stopping
-    hands each header back to the effect it ran, unsaved.  ``OFF`` stops.
-    An empty host or a port of 0 keeps the one saved.
-
-    ``source`` is the device that leads: empty for the first LED cooler, an
-    LCD's key to follow its picture, mapped by ``mapping``, each region
-    becoming one colour by ``colors``.  ``targets`` are the lights that
-    follow (refs; empty for every one).  None keeps each saved.
-    """
-    mode: RgbFollowMode
-    host: str = ""
-    port: int = 0
-    source: str | None = None
-    mapping: FollowMapping | None = None
-    targets: tuple[str, ...] | None = None
-    colors: FollowColors | None = None
-
-    def execute(self, app: App) -> RgbFollowResult:
-        current = app.settings.app
-        host = self.host or current.openrgb_host
-        port = self.port or current.openrgb_port
-        source = (current.rgb_follow_source if self.source is None
-                  else self.source)
-        mapping = (app.settings.rgb_follow_mapping() if self.mapping is None
-                   else self.mapping)
-        targets = (app.settings.rgb_follow_targets() if self.targets is None
-                   else self.targets)
-        colors = (app.settings.rgb_follow_colors() if self.colors is None
-                  else self.colors)
-        log.info("SetRgbFollow: %s %s:%d source=%r %s %s targets=%s",
-                 self.mode.value, host, port, source, mapping.value,
-                 colors.value, list(targets) or "all")
-        try:
-            app.settings.set_rgb_follow(self.mode, host, port, source,
-                                        mapping, targets, colors=colors)
-        except ValueError as e:
-            log.warning("SetRgbFollow: refused — %s", e)
-            return RgbFollowResult(ok=False, message=str(e))
-        app.rgb_mirror.configure(self.mode, host, port, source, mapping,
-                                 targets, colors=colors,
-                                 effects=app.settings.follow_effects())
-        app.events.publish(RgbFollowChanged(mode=self.mode))
-        return _rgb_follow_result(
-            app, _rgb_follow_label(self.mode, host, port, source))
-
-
-@dataclass(frozen=True, slots=True)
-class RgbFollow(Query[RgbFollowResult]):
-    """What follows the cooler, and what it is doing (#160)."""
-
-    def execute(self, app: App) -> RgbFollowResult:
-        log.debug("RgbFollow: query")
-        current = app.settings.app
-        return _rgb_follow_result(app, _rgb_follow_label(
-            app.settings.rgb_follow_mode(), current.openrgb_host,
-            current.openrgb_port, current.rgb_follow_source))
-
-
-def _ram_lighting_result(status: RamAccessStatus, *,
-                         ok: bool = True) -> RamLightingResult:
-    """A ``RamAccessStatus`` as the Result every UI reads."""
-    log.debug("_ram_lighting_result: %s ok=%s", status, ok)
-    return RamLightingResult(ok=ok, state=status.state, message=status.message,
-                             command=status.command)
-
-
-@dataclass(frozen=True, slots=True)
-class RamLighting(Query[RamLightingResult]):
-    """Whether TRCC may reach RGB memory's bus -- read from files, no bus."""
-
-    def execute(self, app: App) -> RamLightingResult:
-        log.debug("RamLighting: query")
-        return _ram_lighting_result(app.platform.ram_access().status())
-
-
-@dataclass(frozen=True, slots=True)
-class SetRamLighting(Command[RamLightingResult]):
-    """Switch the opt-in RAM-lighting grant on or off.
-
-    The grant lets the user at this seat open the chipset SMBus, where RGB
-    memory's lighting controller answers -- beside the memory's own settings
-    chips, which is why it is never on by default and asks for a password
-    every time.  ``ok`` says whether the asked-for state was reached: a
-    closed password prompt changes nothing and answers ``ok=False``.
-    """
-    #: Answers when the person types the password or closes the prompt.
-    WAITS_ON_USER: ClassVar[bool] = True
-    enabled: bool
-
-    def execute(self, app: App) -> RamLightingResult:
-        log.info("SetRamLighting: %s", "on" if self.enabled else "off")
-        access = app.platform.ram_access()
-        status = access.enable() if self.enabled else access.disable()
-        reached = (status.state in (RamAccessState.ON, RamAccessState.ELSEWHERE)
-                   if self.enabled else
-                   status.state not in (RamAccessState.ON,
-                                        RamAccessState.NOT_APPLIED))
-        if not reached:
-            log.warning("SetRamLighting: still %s -- %s", status.state.value,
-                        status.message)
-        app.events.publish(RamLightingChanged(state=status.state))
-        return _ram_lighting_result(status, ok=reached)
 
 
 @dataclass(frozen=True, slots=True)

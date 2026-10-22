@@ -3,21 +3,22 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.core.models import (
+from trcc.core.models import RamAccessState
+from trcc.core.results import DeviceEntry
+from trcc.modules.rgb.core.models import (
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,
     FollowColors,
     FollowMapping,
     LightKind,
-    RamAccessState,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbLight,
 )
-from trcc.core.results import DeviceEntry, RgbFollowResult, RgbLightsResult
-from trcc.ui.presentation.rgb_page import (
+from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.ui.presentation.rgb_page import (
     BAD_ADDRESS,
     DEFAULT_COLORS,
     EFFECT_LABELS,
@@ -121,7 +122,7 @@ def test_a_reload_keeps_the_users_picks_while_the_lights_stay_the_same() -> None
     on stick A's effect; the next Apply made them the same (2026-10-21).
 
     MUTATION CHECK: start again on every load -- stick A is ticked again."""
-    from trcc.core.models import EFFECT_SOURCE
+    from trcc.modules.rgb.core.models import EFFECT_SOURCE
     page = _page(STICK_A, STICK_B)
     page.set_source(RgbSource.EFFECT)
     page.set_checked(STICK_A.ref, False)
@@ -173,7 +174,7 @@ def test_lights_from_the_last_find_say_so() -> None:
     device -- one searched this run says nothing."""
     from dataclasses import replace
 
-    from trcc.ui.presentation.rgb_page import REMEMBERED_NOTE
+    from trcc.modules.rgb.ui.presentation.rgb_page import REMEMBERED_NOTE
 
     old_stick = replace(STICK_A, remembered=True)
     old_fan = replace(FAN, remembered=True)
@@ -313,7 +314,7 @@ def test_openrgbs_lights_take_no_effect() -> None:
 def test_a_board_running_trccs_effect_opens_on_that_effect() -> None:
     """Following with the effect clock as the source is shown as the effect
     it runs -- not as following a device called "effect"."""
-    from trcc.core.models import EFFECT_SOURCE
+    from trcc.modules.rgb.core.models import EFFECT_SOURCE
     rainbow = RamEffectSettings(effect=RamEffect.RAINBOW)
     one = RgbLight("aura/argb1", "ARGB header 1", 8, LightKind.BOARD, rainbow)
     page = _page(STICK_A, one, follow=RgbFollowResult(
@@ -432,7 +433,7 @@ def test_a_ticked_stick_shows_what_it_runs_beside_what_apply_gives_it() -> None:
 
     MUTATION CHECK: draw only the pick on ticked sticks (drop ``runs``) --
     A reads "GPU temp"."""
-    from trcc.core.models import LinkedEffect
+    from trcc.modules.rgb.core.models import LinkedEffect
     cpu, gpu = LinkedEffect("temp", "cpu"), LinkedEffect("temp", "gpu")
     page = _page(RgbLight(STICK_A.ref, STICK_A.name, 10, LightKind.RAM, cpu),
                  RgbLight(STICK_B.ref, STICK_B.name, 10, LightKind.RAM, gpu))
@@ -532,8 +533,8 @@ def test_following_the_board_starts_on_its_saved_headers() -> None:
 def test_a_header_can_follow_the_gpu_load() -> None:
     """MUTATION CHECK: ignore ``linked`` in ``light_effect`` -- the plan
     carries a built-in effect."""
-    from trcc.core.models import LinkedEffect
-    from trcc.ui.presentation.rgb_page import effect_label
+    from trcc.modules.rgb.core.models import LinkedEffect
+    from trcc.modules.rgb.ui.presentation.rgb_page import effect_label
     page = _on(_page(LIT_HEADER), RgbDevice.MOTHERBOARD, RgbSource.EFFECT)
     page.set_checked(LIT_HEADER.ref, True)
     picks = page.effect_picks
@@ -551,8 +552,8 @@ def test_memory_takes_a_linked_colour_live() -> None:
     the plan names the ticked sticks, and the hint says it is live.
 
     MUTATION CHECK: keep linked colours to the Motherboard -- a SaveEffect."""
-    from trcc.core.models import LinkedEffect
-    from trcc.ui.presentation.rgb_page import LINKED_HINT
+    from trcc.modules.rgb.core.models import LinkedEffect
+    from trcc.modules.rgb.ui.presentation.rgb_page import LINKED_HINT
     page = _on(_page(STICK_A, STICK_B), RgbDevice.MEMORY, RgbSource.EFFECT)
     page.effect_picks.linked = "temp"
     assert page.apply() == LinkColor((STICK_A.ref, STICK_B.ref), LinkedEffect("temp", "cpu"))

@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.core.models import (
+from trcc.modules.rgb.core.models import (
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,
     RamEffect,
     RamEffectSettings,
 )
-from trcc.services.effect_frames import LEDS, PERIOD_S, effect_frame
+from trcc.modules.rgb.services.effect_frames import LEDS, PERIOD_S, effect_frame
 
 RED, BLUE = (255, 0, 0), (0, 0, 255)
 TIMES = [i * 0.13 for i in range(40)]

@@ -6,13 +6,12 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout
 
-from ....core.commands import (
+from trcc.core.commands import Command, ListDevices
+from trcc.core.results import DeviceEntry
+from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
-    Command,
-    ListDevices,
     RgbFollow,
     RgbLights,
     ScanRgbLights,
@@ -22,10 +21,9 @@ from ....core.commands import (
     SetRamEffect,
     SetRgbFollow,
 )
-from ....core.events import RamLightingChanged, RgbFollowChanged, RgbLightsChanged
-from ....core.models import RgbFollowMode
-from ....core.results import DeviceEntry, RgbFollowResult, RgbLightsResult
-from ...presentation.rgb_page import (
+from trcc.modules.rgb.core.models import RgbFollowMode
+from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.ui.presentation.rgb_page import (
     ApplyPlan,
     FindLights,
     FollowDevice,
@@ -35,15 +33,14 @@ from ...presentation.rgb_page import (
     RunBoardEffect,
     SaveEffect,
 )
-from ...qt_ram_access import RamAccessRow
-from ...qt_rgb_page import RgbPageView
-from ..base import BasePanel
-from .ram_access import RamAccessControl
+from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
+from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView, hear
+from trcc.modules.rgb.ui.qtgui.ram_access import RamAccessControl
+from trcc.ui.qtgui.base import BasePanel
 
 log = logging.getLogger(__name__)
 
 #: The events that change what the page shows, from any UI.
-_RGB_EVENTS = (RgbLightsChanged, RgbFollowChanged, RamLightingChanged)
 
 
 class QtRgbPage(RgbPageView):
@@ -104,27 +101,13 @@ class QtRgbPage(RgbPageView):
 class RgbPanel(BasePanel):
     """RGB Lighting: the memory's own effects, and what follows a device."""
 
+    #: Its sidebar entry.
+    LABEL = "RGB Lighting"
+
     def _setup_ui(self) -> None:
         log.debug("RgbPanel._setup_ui")
         self.page = QtRgbPage(self._app, self)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(self.page)
-        self._bus.app_settings_changed.connect(
-            self._on_app_settings_changed,
-            type=Qt.ConnectionType.QueuedConnection)
-        # A followed LCD's frames, a followed cooler's colours, and what
-        # following sent the lights, for the live preview.
-        self._bus.frame_sent.connect(self.page.follow.on_frame,
-                                     type=Qt.ConnectionType.QueuedConnection)
-        self._bus.led_colors_changed.connect(
-            self.page.follow.on_led_colors,
-            type=Qt.ConnectionType.QueuedConnection)
-        self._bus.rgb_follow_sent.connect(
-            self.page.follow.on_follow_sent,
-            type=Qt.ConnectionType.QueuedConnection)
-
-    def _on_app_settings_changed(self, event: object) -> None:
-        log.debug("RgbPanel._on_app_settings_changed: %s", type(event).__name__)
-        if isinstance(event, _RGB_EVENTS):
-            self.page.on_app_event(event)
+        hear(self.page, self._bus)

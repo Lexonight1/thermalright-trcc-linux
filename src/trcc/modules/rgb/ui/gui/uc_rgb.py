@@ -13,10 +13,12 @@ from typing import Any
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
-from ...core.commands import (
+from trcc.core.commands import Command, ListDevices
+from trcc.core.logs import per_frame
+from trcc.core.ports import CommandBus
+from trcc.core.results import DeviceEntry
+from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
-    Command,
-    ListDevices,
     RgbFollow,
     RgbLights,
     ScanRgbLights,
@@ -26,11 +28,10 @@ from ...core.commands import (
     SetRamEffect,
     SetRgbFollow,
 )
-from ...core.logs import per_frame
-from ...core.models import RgbFollowMode
-from ...core.ports import CommandBus
-from ...core.results import DeviceEntry, RgbFollowResult, RgbLightsResult
-from ..presentation.rgb_page import (
+from trcc.modules.rgb.core.models import RgbFollowMode
+from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.ui.gui.uc_ram_access import UCRamAccess
+from trcc.modules.rgb.ui.presentation.rgb_page import (
     ApplyPlan,
     FindLights,
     FollowDevice,
@@ -40,11 +41,12 @@ from ..presentation.rgb_page import (
     RunBoardEffect,
     SaveEffect,
 )
-from ..qt_ram_access import RamAccessRow
-from ..qt_rgb_page import RgbPageView
-from .base import paint_page
-from .constants import Colors, Sizes
-from .uc_ram_access import UCRamAccess
+from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
+from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView, hear
+from trcc.ui.bus_bridge import BusBridge
+from trcc.ui.gui.base import paint_page
+from trcc.ui.gui.constants import Colors, Sizes
+from trcc.ui.gui.module_view import ModuleView
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -173,20 +175,26 @@ class UCRgbPage(RgbPageView):
                     colors=plan.colors, targets=plan.targets)
 
 
-class UCRgb(QWidget):
-    """The RGB Lighting view: title bar, framed body, the page inside."""
+class UCRgb(QWidget, ModuleView):
+    """The RGB Lighting view: title bar, framed body, the page inside --
+    opened by its button in the sidebar."""
+
+    BUTTON_TEXT = "RGB"
+    TOOLTIP = "RGB Lighting -- memory and OpenRGB devices"
 
     #: The title bar and the framed body, in this view's coordinates -- where
     #: a device page's gold bar and the settings page's frame sit.
     BODY = (50, 120, 1170, 630)
 
-    def __init__(self, app: CommandBus, parent: QWidget | None = None) -> None:
+    def __init__(self, app: CommandBus, bridge: BusBridge,
+                 parent: QWidget | None = None) -> None:
         super().__init__(parent)
         log.debug("UCRgb.__init__")
         self.setFixedSize(Sizes.FORM_W, Sizes.FORM_H)
         self.page = UCRgbPage(app, self)
         self.page.setGeometry(*self.BODY)
         self.page.setStyleSheet(_QSS)
+        hear(self.page, bridge)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         frame_log.debug("UCRgb.paintEvent")

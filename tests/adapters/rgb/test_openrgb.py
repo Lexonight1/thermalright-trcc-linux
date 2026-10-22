@@ -16,12 +16,8 @@ from typing import Any
 
 import pytest
 
-from trcc.adapters.rgb.openrgb import (
-    OpenRgbMirror,
-    stretch,
-    update_leds_payload,
-)
-from trcc.core.models import RgbMirrorDevice
+from trcc.modules.rgb.adapters.openrgb import OpenRgbMirror, stretch, update_leds_payload
+from trcc.modules.rgb.core.models import RgbMirrorDevice
 
 
 def _text(s: str) -> bytes:
@@ -213,7 +209,7 @@ def test_stretch(source, count, out) -> None:
 
 
 def test_the_credit_names_openrgb_its_licence_and_commit() -> None:
-    from trcc.adapters.rgb import openrgb
+    from trcc.modules.rgb.adapters import openrgb
     doc = openrgb.__doc__ or ""
     for needed in ("OpenRGB", "GPL-2.0-or-later", "9515475",
                    "gitlab.com/CalcProgrammer1/OpenRGB"):
@@ -232,8 +228,9 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:
     import sys
 
     from trcc.app import App
-    from trcc.core.commands import ConnectDevice, RenderLed, SetRgbFollow
-    from trcc.core.models import RgbFollowMode
+    from trcc.core.commands import ConnectDevice, RenderLed
+    from trcc.modules.rgb.core.commands import SetRgbFollow
+    from trcc.modules.rgb.core.models import RgbFollowMode
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
     from tests.mock_platform import MockPlatform
@@ -267,7 +264,7 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:
 
 def test_twin_devices_get_names_that_survive_a_reorder() -> None:
     """OpenRGB's index follows detection order; a ticked light must not."""
-    from trcc.adapters.rgb.openrgb import named_by_ref
+    from trcc.modules.rgb.adapters.openrgb import named_by_ref
     devices = named_by_ref([RgbMirrorDevice(0, "Fan", 4),
                             RgbMirrorDevice(1, "Board", 8),
                             RgbMirrorDevice(2, "Fan", 4)])

@@ -216,11 +216,6 @@ _SPEC_CONTENT = PanelSpec(
             parent="device_area",
         ),
         ImageButton(
-            id="rgb_btn", rect=Layout.RGB_BTN,
-            normal="", active="", checkable=True, fallback_text="RGB",
-            tooltip="RGB Lighting -- memory and OpenRGB devices",
-        ),
-        ImageButton(
             id="about_btn", rect=Layout.ABOUT_BTN,
             normal="ABOUT_BTN", active="ABOUT_BTN_ACTIVE",
             checkable=True, fallback_text="About",
@@ -230,9 +225,9 @@ _SPEC_CONTENT = PanelSpec(
 )
 
 
-#: No bitmap of the original carries an RGB button, nor a module's: drawn in
-#: the sidebar's colours, gold when chosen like a page's title bar.
-_RGB_BTN_QSS = """
+#: No bitmap of the original carries a module's view button (RGB Lighting's):
+#: drawn in the sidebar's colours, gold when chosen like a page's title bar.
+_VIEW_BTN_QSS = """
     QPushButton { background: #2d2d33; color: #cfcfd4; font-size: 13pt;
         font-weight: bold; border: 1px solid #4a4a52; border-radius: 6px; }
     QPushButton:hover { color: white; border-color: #d9b45a; }
@@ -258,7 +253,6 @@ class UCDevice(BasePanel):
     #: choice anybody made.
     device_clicked = Signal(dict)
     about_clicked = Signal()
-    rgb_clicked = Signal()
     home_clicked = Signal()
     #: A module's view button, by its module's key.
     view_clicked = Signal(str)
@@ -322,9 +316,6 @@ class UCDevice(BasePanel):
         self.hint_label = built.label("hint_label")
         self.about_btn = built.button("about_btn")
         self.about_btn.clicked.connect(self._on_about_clicked)
-        self.rgb_btn = built.button("rgb_btn")
-        self.rgb_btn.setStyleSheet(_RGB_BTN_QSS)
-        self.rgb_btn.clicked.connect(self._on_rgb_clicked)
         #: Each module's view button, by its module's key.
         self.view_buttons: dict[str, QPushButton] = {}
 
@@ -339,7 +330,7 @@ class UCDevice(BasePanel):
         button = QPushButton(text, self)
         button.setGeometry(*rect)
         button.setCheckable(True)
-        button.setStyleSheet(_RGB_BTN_QSS)
+        button.setStyleSheet(_VIEW_BTN_QSS)
         button.setToolTip(tooltip)
         button.clicked.connect(partial(self._on_view_clicked, key))
         button.show()
@@ -462,7 +453,6 @@ class UCDevice(BasePanel):
         """Deselect sensor and about buttons (Windows: set to inactive images)."""
         self.sensor_btn.setChecked(False)
         self.about_btn.setChecked(False)
-        self.rgb_btn.setChecked(False)
         self._uncheck_views()
 
     def _restore_selection(self, device_info: dict) -> None:
@@ -496,7 +486,6 @@ class UCDevice(BasePanel):
         log.debug("_on_home_clicked: sensor/home button clicked")
         self.sensor_btn.setChecked(True)
         self.about_btn.setChecked(False)
-        self.rgb_btn.setChecked(False)
         self._uncheck_views()
         self._deselect_all_devices()
         self.home_clicked.emit()
@@ -507,19 +496,10 @@ class UCDevice(BasePanel):
         log.debug("_on_about_clicked: about/control-center button clicked")
         self.about_btn.setChecked(True)
         self.sensor_btn.setChecked(False)
-        self.rgb_btn.setChecked(False)
         self._uncheck_views()
         self._deselect_all_devices()
         self.about_clicked.emit()
         self.invoke_delegate(self.CMD_ABOUT)
-
-    def _on_rgb_clicked(self) -> None:
-        """RGB Lighting clicked -- deselects the rest, as About does."""
-        log.debug("_on_rgb_clicked: RGB Lighting button clicked")
-        self._deselect_header_buttons()
-        self.rgb_btn.setChecked(True)
-        self._deselect_all_devices()
-        self.rgb_clicked.emit()
 
     def update_device_button(self, device_info: dict) -> None:
         """Update button image after handshake resolves real product (C# SetButtonImage).

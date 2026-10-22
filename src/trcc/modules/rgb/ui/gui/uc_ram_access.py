@@ -6,10 +6,11 @@ from typing import Any
 
 from PySide6.QtWidgets import QWidget
 
-from ...core.commands import Command, RamLighting, SetRamLighting
-from ...core.ports import CommandBus
-from ...core.results import RamLightingResult
-from ..qt_ram_access import RamAccessRow
+from trcc.core.commands import Command
+from trcc.core.ports import CommandBus
+from trcc.modules.rgb.core.commands import RamLighting, SetRamLighting
+from trcc.modules.rgb.core.results import RamLightingResult
+from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
 
 log = logging.getLogger(__name__)
 

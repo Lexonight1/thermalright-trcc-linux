@@ -369,12 +369,15 @@ def mislocated(ui_root: Path | None = None,
     module reads as having no consumer at all.  Measured without this, two
     modules reported zero consumers when both have one — the false-zero shape
     this file's own docstring warns about, one level down.
+    Every module's ``ui/`` is read too, each file judged as the layer it sits
+    in (``layers.logical``): RGB Lighting's ``qt_rgb_page`` is shared by its
+    two faces exactly as it was when it lived in ``trcc/ui``.
     """
+    files = layers.files("ui") if ui_root is None else _ui_files(ui_root)
     ui_root = ui_root or _UI_ROOT
     skins = skins if skins is not None else frozenset(_UIS)
     anchor = _package_anchor(ui_root)
     ui_pkg = _module_name(ui_root, anchor)
-    files = _ui_files(ui_root)
     trees = {p: ast.parse(p.read_text(encoding="utf-8")) for p in files}
 
     # name -> defining module, for every `from .sub import Name` in a package
@@ -398,12 +401,12 @@ def mislocated(ui_root: Path | None = None,
     shared_importers: dict[str, set[str]] = {}
     for path, tree in trees.items():
         this = _module_name(path, anchor)
-        src = _area(this, ui_pkg, skins)
+        src = _area(layers.logical(this), ui_pkg, skins)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom):
                 continue
             target = _resolve_import(node, this, path.name == "__init__.py")
-            if not target or _area(target, ui_pkg, skins) is None:
+            if not target or _area(layers.logical(target), ui_pkg, skins) is None:
                 continue
             for alias in node.names:
                 real = reexport.get((target, alias.name), target)
@@ -425,10 +428,10 @@ def mislocated(ui_root: Path | None = None,
 
     out: list[tuple[str, int, str]] = []
     for path in files:
-        rel = path.relative_to(ui_root)
-        if rel.parts[0] in skins or path.name == "__init__.py":
-            continue                          # a skin's own code, or a package door
         module = _module_name(path, anchor)
+        if (_area(layers.logical(module), ui_pkg, skins) != "shared"
+                or path.name == "__init__.py"):
+            continue                          # a skin's own code, or a package door
         if len(found := consumers.get(module, set())) == 1:
             lines = len(path.read_text(encoding="utf-8").splitlines())
             out.append((module, lines, next(iter(found))))

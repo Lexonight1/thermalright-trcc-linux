@@ -49,12 +49,14 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
-from ...core.errors import TrccError
-from ...core.led_models import stretch
-from ...core.logs import per_frame
-from ...core.models import AURA_HEADER_REF, MAINBOARD_DETECTOR, RgbMirrorDevice
-from ...core.ports import BulkTransport, RgbMirror
-from ...core.rgb_catalog import MOTHERBOARD_CONTROLLERS
+from trcc.core.errors import TrccError
+from trcc.core.led_models import stretch
+from trcc.core.logs import per_frame
+from trcc.core.models import MAINBOARD_DETECTOR
+from trcc.core.ports import BulkTransport
+from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
+from trcc.modules.rgb.core.models import AURA_HEADER_REF, RgbMirrorDevice
+from trcc.modules.rgb.core.ports import RgbMirror
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

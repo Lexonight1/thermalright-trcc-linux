@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from ...core.models import RamAccessState
-from ...core.results import RamLightingResult
+from trcc.core.models import RamAccessState
+from trcc.modules.rgb.core.results import RamLightingResult
 
 log = logging.getLogger(__name__)
 

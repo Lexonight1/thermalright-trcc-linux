@@ -13,13 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from .logs import per_frame
-from .models import (
-    IN_PROCESS_ONLY,
-    HardwareMetrics,
-    RamAccessState,
-    RgbFollowMode,
-    TempUnit,
-)
+from .models import IN_PROCESS_ONLY, HardwareMetrics, TempUnit
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -334,7 +328,6 @@ class ModuleChanged(Event):
     enabled: bool
 
 
-
 @dataclass(frozen=True, slots=True)
 class BackgroundChanged(Event):
     """Published when the device's static background override changes.
@@ -452,44 +445,6 @@ class ErrorOccurred(Event):
 @dataclass(frozen=True, slots=True)
 class TempUnitChanged(Event):
     unit: str   # "C" or "F"
-
-
-@dataclass(frozen=True, slots=True)
-class RgbLightsChanged(Event):
-    """The RGB lights or their effects changed -- a scan, an effect saved --
-    from any UI; every window re-reads ``RgbLights``."""
-
-
-@dataclass(frozen=True, slots=True)
-class RamLightingChanged(Event):
-    """RAM lighting was switched on or off, from any UI -- so every window
-    shows the new state, not only the one whose button was pressed."""
-    state: RamAccessState
-
-
-@dataclass(frozen=True, slots=True)
-class RgbFollowChanged(Event):
-    """What follows the cooler changed (#160), from any UI.
-
-    Published by ``SetRgbFollow``; every window shows the choice from the
-    ``RgbFollow`` Query on it, so a change from the CLI, the API or the
-    other window shows up too.
-    """
-    mode: RgbFollowMode
-
-
-@dataclass(frozen=True, slots=True)
-class RgbFollowSent(Event):
-    """The colours following just sent (#160): light *i* got column *i*
-    (wrapping), top to bottom.
-
-    As a screen shows them -- before the LEDs' gamma -- so a window's preview
-    looks like the lights.  ``source`` is the device that led: the followed
-    LCD's key, or the cooler's.  Published only after a send succeeded, at
-    most as often as the follower sends.
-    """
-    source: str
-    columns: tuple[tuple[tuple[int, int, int], ...], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -975,14 +975,6 @@ Enumerate every LED style the PM registry can resolve.
 
 Takes no arguments.
 
-### `RamLighting`
-
-Whether TRCC may reach RGB memory's bus -- read from files, no bus.
-
-*Query* → `RamLightingResult`
-
-Takes no arguments.
-
 ### `RenderLed`
 
 Compute one LED frame from current settings + sensors and send it.
@@ -995,14 +987,6 @@ Compute one LED frame from current settings + sensors and send it.
 | `color` | `tuple[int, int, int] | None` | no |
 | `phase` | `int` | no |
 | `advance` | `bool` | no |
-
-### `RgbFollow`
-
-What follows the cooler, and what it is doing (#160).
-
-*Query* → `RgbFollowResult`
-
-Takes no arguments.
 
 ### `SelectZone`
 
@@ -1183,32 +1167,6 @@ Set the DDR memory multiplier (1, 2, or 4) for the LED memory gauge.
 |---|---|---|
 | `key` | `str` | yes |
 | `ratio` | `int` | yes |
-
-### `SetRamLighting`
-
-Switch the opt-in RAM-lighting grant on or off.
-
-*Command* → `RamLightingResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `enabled` | `bool` | yes |
-
-### `SetRgbFollow`
-
-Pick what follows the LED cooler's colours (#160): one at a time.
-
-*Command* → `RgbFollowResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `mode` | `RgbFollowMode` | yes |
-| `host` | `str` | no |
-| `port` | `int` | no |
-| `source` | `str | None` | no |
-| `mapping` | `FollowMapping | None` | no |
-| `targets` | `tuple[str, Ellipsis] | None` | no |
-| `colors` | `FollowColors | None` | no |
 
 ### `SetWeekStart`
 
@@ -1642,7 +1600,7 @@ Switch module *key* on or off -- remembered, and every UI hears it. A module tha
 | `key` | `str` | yes |
 | `enabled` | `bool` | yes |
 
-## rgb
+## rgb module
 
 ### `BlinkAuraHeader`
 
@@ -1653,6 +1611,22 @@ Blink an ASUS Aura ARGB header for two seconds, so the user can see which header
 | Field | Type | Required |
 |---|---|---|
 | `header` | `int` | yes |
+
+### `RamLighting`
+
+Whether TRCC may reach RGB memory's bus -- read from files, no bus.
+
+*Query* → `RamLightingResult`
+
+Takes no arguments.
+
+### `RgbFollow`
+
+What follows the cooler, and what it is doing (#160).
+
+*Query* → `RgbFollowResult`
+
+Takes no arguments.
 
 ### `RgbLights`
 
@@ -1727,6 +1701,32 @@ Save one of the memory's own effects on the sticks named by ``refs`` (every stic
 | `colors` | `tuple[tuple[int, int, int], Ellipsis]` | no |
 | `random_colors` | `bool` | no |
 | `brightness` | `int` | no |
+
+### `SetRamLighting`
+
+Switch the opt-in RAM-lighting grant on or off.
+
+*Command* → `RamLightingResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `enabled` | `bool` | yes |
+
+### `SetRgbFollow`
+
+Pick what follows the LED cooler's colours (#160): one at a time.
+
+*Command* → `RgbFollowResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `mode` | `RgbFollowMode` | yes |
+| `host` | `str` | no |
+| `port` | `int` | no |
+| `source` | `str | None` | no |
+| `mapping` | `FollowMapping | None` | no |
+| `targets` | `tuple[str, Ellipsis] | None` | no |
+| `colors` | `FollowColors | None` | no |
 
 ## visualizer module
 

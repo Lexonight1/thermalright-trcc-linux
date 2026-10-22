@@ -13,8 +13,8 @@ desktop (memory: reference_drive_windows_on_xvfb)::
         --module visualizer=off --open visualizer
 
 ``--module KEY=on|off`` switches a module first (repeatable); ``--open KEY``
-opens that module's tab (gui) or sidebar page (qtgui) before the picture -- or,
-in the gui, a full-window view by name (``about``, ``rgb``, ``thanks``,
+opens that module's tab or view (gui) or sidebar page (qtgui) before the
+picture -- or, in the gui, a full-window view by name (``about``, ``rgb``, ``thanks``,
 ``modules``, ``sysinfo``, ``led``);
 ``--lang CODE`` sets the window's language.
 Prints what it saw: each module's tab or entry and whether it is visible.
@@ -85,6 +85,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
         _settle(qapp)
         if open_key in window._module_tabs:
             window._module_tabs[open_key].click()
+        elif open_key in window.uc_device.view_buttons:
+            window.uc_device.view_buttons[open_key].click()
         elif open_key:
             window._show_view(open_key)
         for key, tab in window._module_tabs.items():

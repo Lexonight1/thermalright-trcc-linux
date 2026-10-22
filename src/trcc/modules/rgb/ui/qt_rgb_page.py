@@ -19,7 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QHideEvent,
@@ -49,11 +49,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.commands import Command
-from ..core.events import RgbFollowChanged
-from ..core.led_models import linked_preview, stretch
-from ..core.logs import per_frame
-from ..core.models import (
+from trcc.core.commands import Command
+from trcc.core.led_models import linked_preview, stretch
+from trcc.core.logs import per_frame
+from trcc.core.ports import CommandBus
+from trcc.core.results import DeviceEntry, Result
+from trcc.modules.rgb.core.events import RGB_CHANGES, RgbFollowChanged, RgbFollowSent
+from trcc.modules.rgb.core.models import (
     MAX_ARGB_LEDS,
     EffectDirection,
     EffectSpeed,
@@ -63,12 +65,11 @@ from ..core.models import (
     RamEffect,
     RamEffectSettings,
 )
-from ..core.ports import CommandBus
-from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
-from ..services.effect_clock import LIGHT_GRADIENTS
-from ..services.effect_frames import APPROXIMATE, LEDS, effect_frame
-from ..services.follow_colors import Rgb, strip_spans
-from .presentation.rgb_page import (
+from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.services.effect_clock import LIGHT_GRADIENTS
+from trcc.modules.rgb.services.effect_frames import APPROXIMATE, LEDS, effect_frame
+from trcc.modules.rgb.services.follow_colors import Rgb, strip_spans
+from trcc.modules.rgb.ui.presentation.rgb_page import (
     BLINK_TIP,
     BOARD_NOTE,
     COLORS_LABELS,
@@ -93,8 +94,9 @@ from .presentation.rgb_page import (
     effect_label,
     strip_legend,
 )
-from .qt_background import dispatch_in_background
-from .qt_ram_access import RamAccessRow
+from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
+from trcc.ui.bus_bridge import BusBridge
+from trcc.ui.qt_background import dispatch_in_background
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -1220,3 +1222,36 @@ class RgbPageView(QWidget):
             self.refresh()
         else:
             self._on_changed()
+
+
+class _RgbEvents(QObject):
+    """What a page hears of RGB's own events -- a QObject of the page's, so
+    the bridge's queued signal lands on the window's thread."""
+
+    def __init__(self, page: RgbPageView) -> None:
+        super().__init__(page)
+        log.debug("_RgbEvents.__init__")
+        self._page = page
+
+    def route(self, event: object) -> None:
+        """A module's event: RGB's own, to the preview or the page."""
+        log.debug("_RgbEvents.route: %s", type(event).__name__)
+        if isinstance(event, RgbFollowSent):
+            self._page.follow.on_follow_sent(event)
+        elif isinstance(event, RGB_CHANGES):
+            self._page.on_app_event(event)
+
+
+def hear(page: RgbPageView, bridge: BusBridge) -> None:
+    """*page* follows the App through the window's *bridge*: a followed
+    LCD's frames (only while its preview is on screen), a followed cooler's
+    colours, what following sent the lights, and every change any UI made --
+    the same in both windows."""
+    log.info("hear: %s", type(page).__name__)
+    queued = Qt.ConnectionType.QueuedConnection
+    bridge.add_preview(page.follow.preview)
+    bridge.frame_sent.connect(page.follow.on_frame, type=queued)
+    bridge.led_colors_changed.connect(page.follow.on_led_colors, type=queued)
+    for event_type in (*RGB_CHANGES, RgbFollowSent):
+        bridge.forward(event_type, "module_event")
+    bridge.module_event.connect(_RgbEvents(page).route, type=queued)

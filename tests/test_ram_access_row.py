@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from trcc.core.commands import RamLighting, SetRamLighting
 from trcc.core.models import RamAccessState
-from trcc.core.results import RamLightingResult
+from trcc.modules.rgb.core.commands import RamLighting, SetRamLighting
+from trcc.modules.rgb.core.results import RamLightingResult
 
 
 class _Bus:
@@ -34,8 +34,8 @@ class _Bus:
 
 
 def _rows() -> list[Any]:
-    from trcc.ui.gui.uc_ram_access import UCRamAccess
-    from trcc.ui.qtgui.panels.ram_access import RamAccessControl
+    from trcc.modules.rgb.ui.gui.uc_ram_access import UCRamAccess
+    from trcc.modules.rgb.ui.qtgui.ram_access import RamAccessControl
     return [UCRamAccess, RamAccessControl]
 
 

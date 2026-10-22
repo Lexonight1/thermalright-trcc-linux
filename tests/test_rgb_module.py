@@ -1,0 +1,107 @@
+"""RGB Lighting as a module: what moving it out of the App must not change,
+and what being a module adds -- it can be off.
+
+Its Commands, follower, drivers and pages keep their own tests
+(``test_rgb_mirror.py``, ``test_rgb_boards.py``, ``tests/adapters/rgb/``,
+``test_rgb_page_view.py``); these are the seams the move made.
+"""
+from __future__ import annotations
+
+import json
+import threading
+from pathlib import Path
+
+from tests.conftest import FakePaths, rgb_module
+from tests.mock_platform import MockPlatform
+from trcc.adapters.render.qt import QtRenderer
+from trcc.app import App
+from trcc.core.commands import SetModuleEnabled
+from trcc.core.events import FrameSent
+from trcc.modules.rgb.core import RgbFollow, RgbLights, SetRgbFollow
+from trcc.modules.rgb.core.models import FollowColors, FollowMapping, RgbFollowMode
+from trcc.services.settings import Settings
+
+from .test_rgb_mirror import FakeMirror
+
+_SPEC = {"vid": "0416", "pid": "8001", "pm": 1}
+_LCD = "0402:3922"
+
+
+def _app(tmp_path: Path) -> tuple[App, list[FakeMirror]]:
+    """An App on the mock whose follower drives fakes."""
+    made: list[FakeMirror] = []
+
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    rgb_module(app).mirror._make = make
+    return app, made
+
+
+def test_a_settings_file_from_before_keeps_what_follows(tmp_path: Path) -> None:
+    """Schema 6 -> 7: RGB's app-wide settings move, under the same names,
+    into its own section -- and the module reads them back as they were.
+    MUTATION CHECK: drop the ``schema < 7`` fold in ``_migrate_app`` and the
+    RAM follows nothing after the upgrade."""
+    saved = {"rgb_follow": "ram", "openrgb_host": "pc.lan", "openrgb_port": 7000,
+             "rgb_follow_source": _LCD, "rgb_follow_mapping": "single",
+             "rgb_follow_colors": "smooth", "rgb_follow_targets": ["i2c-3/0x19"],
+             "ram_effects": {"i2c-3/0x19": {"effect": "rainbow"}},
+             "rgb_lights": [{"kind": "ram", "ref": "i2c-3/0x19", "name": "Stick",
+                             "led_count": 10}],
+             "aura_argb_leds": {"1": 8}}
+    (tmp_path / "trcc.json").write_text(json.dumps({
+        "schema": 6, "app": {"temp_unit": "F", **saved},
+        "devices": {}, "led_devices": {}}), encoding="utf-8")
+
+    settings = Settings(FakePaths(tmp_path))
+    assert settings.module_settings("rgb") == saved
+    assert settings.app.temp_unit == "F"                 # the rest stays put
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    rgb = rgb_module(app).settings
+    assert (rgb.rgb_follow_mode(), rgb.rgb_follow_mapping(), rgb.rgb_follow_colors(),
+            rgb.rgb_follow_targets(), rgb.aura_argb_leds(), rgb.prefs.openrgb_host) == (
+        RgbFollowMode.RAM, FollowMapping.SINGLE, FollowColors.SMOOTH,
+        ("i2c-3/0x19",), {1: 8}, "pc.lan")
+    app.close()
+    assert json.loads((tmp_path / "trcc.json").read_text())["schema"] == 7
+
+
+def test_the_panels_pictures_are_watched_only_while_a_device_leads(
+        tmp_path: Path) -> None:
+    """Following an LCD watches its pictures; following the cooler, or
+    nothing, watches none -- so a frame costs RGB nothing then.  MUTATION
+    CHECK: watch whenever following is on, whatever leads."""
+    app, _made = _app(tmp_path)
+    heard = app.events.subscriber_count(FrameSent)
+    assert app.dispatch(SetRgbFollow(mode=RgbFollowMode.OPENRGB, source=_LCD)).ok
+    following_an_lcd = app.events.subscriber_count(FrameSent)
+    assert app.dispatch(SetRgbFollow(mode=RgbFollowMode.OPENRGB, source="")).ok
+    following_the_cooler = app.events.subscriber_count(FrameSent)
+    assert app.dispatch(SetRgbFollow(mode=RgbFollowMode.OFF, source=_LCD)).ok
+    assert (following_an_lcd, following_the_cooler,
+            app.events.subscriber_count(FrameSent)) == (heard + 1, heard, heard)
+    app.close()
+
+
+def test_switched_off_it_stops_following_and_answers_that_it_is_off(
+        tmp_path: Path) -> None:
+    """Off: the follower stops (its thread ends, the lights are let go), no
+    picture is watched, and its Commands say where to turn it on.
+    MUTATION CHECK: leave ``mirror.close`` out of both ``RgbModule.stop``
+    and ``_disable`` (either alone still closes it -- by design: the second
+    lets go of a follower a one-off Command started with no session)."""
+    app, made = _app(tmp_path)
+    app.start_session()
+    assert app.dispatch(SetRgbFollow(mode=RgbFollowMode.OPENRGB, source=_LCD)).ok
+    assert app.dispatch(RgbFollow()).ok
+    heard = app.events.subscriber_count(FrameSent)
+    assert app.dispatch(SetModuleEnabled(key="rgb", enabled=False)).ok
+    names = {t.name for t in threading.enumerate()}
+    off = app.dispatch(RgbLights())
+    assert ("trcc-rgb-mirror" in names, made[-1].closed >= 1,
+            app.events.subscriber_count(FrameSent)) == (False, True, heard - 1)
+    assert (off.ok, off.message) == (False, "RGB Lighting is off -- turn it on in Modules")
+    app.close()

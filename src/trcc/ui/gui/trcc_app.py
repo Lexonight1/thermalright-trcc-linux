@@ -68,9 +68,6 @@ from ...core.events import (
     AutostartChanged,
     DiskDeviceChanged,
     ModuleChanged,
-    RamLightingChanged,
-    RgbFollowChanged,
-    RgbLightsChanged,
     SensorDashboardChanged,
 )
 from ...core.logs import per_frame
@@ -103,7 +100,6 @@ from .uc_image_cut import UCImageCut
 from .uc_led_control import UCLedControl
 from .uc_modules import UCModules
 from .uc_preview import UCPreview
-from .uc_rgb import UCRgb
 from .uc_system_info import UCSystemInfo
 from .uc_thanks import UCThanks
 from .uc_theme_local import UCThemeLocal
@@ -434,14 +430,7 @@ class TRCCApp(QMainWindow):
         log.debug("_follow_frames")
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
         self._bus.frames_resumed.connect(self._on_frames_resumed, type=qconn)
-        self._bus.follow_previews(self.uc_preview, self.uc_led_control,
-                                  self.uc_rgb.page.follow.preview)
-        # A followed cooler's colours, and what following sent the lights,
-        # for the RGB page's preview.
-        self._bus.led_colors_changed.connect(self.uc_rgb.page.follow.on_led_colors,
-                                             type=qconn)
-        self._bus.rgb_follow_sent.connect(self.uc_rgb.page.follow.on_follow_sent,
-                                          type=qconn)
+        self._bus.follow_previews(self.uc_preview, self.uc_led_control)
 
     def _on_bus_frame_sent(self, event: FrameSent) -> None:
         """A frame just went out on the wire.
@@ -454,7 +443,6 @@ class TRCCApp(QMainWindow):
         re-render.  Only the active device writes the shared preview.
         """
         frame_log.debug("_on_bus_frame_sent")  # per-frame — DEBUG so reports aren't flooded
-        self.uc_rgb.page.follow.on_frame(event)   # the RGB page follows any LCD
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)
@@ -573,8 +561,6 @@ class TRCCApp(QMainWindow):
                 self.uc_led_control.show_disk_identity()
             case SensorDashboardChanged():
                 self.uc_system_info.show_dashboard()
-            case RamLightingChanged() | RgbLightsChanged() | RgbFollowChanged():
-                self.uc_rgb.page.on_app_event(event)
             case ModuleChanged():
                 self._sync_modules()
             case _:
@@ -1120,10 +1106,6 @@ class TRCCApp(QMainWindow):
         # ``SensorEnumerator`` plus a ``SysInfoConfig`` built here, which it
         # then passed on to the sensor picker; both are gone, so nothing in
         # this window holds a sensor port any more.
-        # RGB Lighting -- the memory's own effects, and what follows a device.
-        self.uc_rgb = UCRgb(self._app, central)
-        self.uc_rgb.setGeometry(*Layout.FORM_CONTAINER)
-        self.uc_rgb.setVisible(False)
         # About -- inspired by, what TRCC does, thanks to the community.
         self.uc_thanks = UCThanks(central)
         self.uc_thanks.setGeometry(*Layout.FORM_CONTAINER)
@@ -1237,6 +1219,10 @@ class TRCCApp(QMainWindow):
         widget.setParent(self.uc_modules.parentWidget())
         widget.setGeometry(*Layout.FORM_CONTAINER)
         widget.setVisible(False)
+        # Built after the window's own Help and Close, so it would cover them:
+        # they stay on top, as they are on every built-in page.
+        self.form1_help_btn.raise_()
+        self.form1_close_btn.raise_()
         self._module_views[key] = widget
         view.set_language(lang)
         log.info("_add_module_view: %s", key)
@@ -1641,10 +1627,6 @@ class TRCCApp(QMainWindow):
         log.info("_on_about_clicked")
         self._show_view('about')
 
-    def _on_rgb_clicked(self) -> None:
-        log.info("_on_rgb_clicked")
-        self._show_view('rgb')
-
     def _on_thanks_clicked(self) -> None:
         log.info("_on_thanks_clicked")
         self._show_view('thanks')
@@ -1694,7 +1676,6 @@ class TRCCApp(QMainWindow):
             self._active_key = ''  # allow re-selecting same device on return
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
-        self.uc_rgb.setVisible(view == 'rgb')
         self.uc_thanks.setVisible(view == 'thanks')
         self.uc_modules.setVisible(view == 'modules')
         for key, module_view in self._module_views.items():
@@ -1719,7 +1700,6 @@ class TRCCApp(QMainWindow):
         self.uc_device.device_clicked.connect(self._on_device_picked)
         self.uc_device.home_clicked.connect(self._on_home_clicked)
         self.uc_device.about_clicked.connect(self._on_about_clicked)
-        self.uc_device.rgb_clicked.connect(self._on_rgb_clicked)
         self.uc_device.view_clicked.connect(self._on_view_clicked)
 
         self.uc_theme_local.theme_selected.connect(self._on_local_theme_clicked)

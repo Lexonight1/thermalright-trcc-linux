@@ -16,8 +16,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
-| [`ModuleCommand`](#modulecommand) | 1 | 1 | 6 |
-| [`ModuleQuery`](#modulequery) | 1 | 0 | 2 |
+| [`ModuleCommand`](#modulecommand) | 1 | 1 | 17 |
+| [`ModuleQuery`](#modulequery) | 1 | 0 | 5 |
 | [`PasswordPort`](#passwordport) | 1 | 0 | 1 |
 | [`Query`](#query) | 1 | 0 | 46 |
 | [`ReadingsPort`](#readingsport) | 1 | 0 | 1 |
@@ -26,14 +26,14 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
-| [`BaseModule`](#basemodule) | 2 | 0 | 1 |
+| [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`FilesPort`](#filesport) | 2 | 0 | 1 |
 | [`FrameSource`](#framesource) | 2 | 0 | 1 |
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Module`](#module) | 2 | 9 | 1 |
+| [`Module`](#module) | 2 | 9 | 2 |
 | [`PanelsPort`](#panelsport) | 2 | 0 | 1 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -197,7 +197,7 @@ run(module: 'M') -> R_co
 
 **You inherit (1):** `execute`
 
-**Implementations (6):** `ListVisuals` · `PlayVisual` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `VisualTile`
+**Implementations (17):** `BlinkAuraHeader` · `ListVisuals` · `PlayVisual` · `RamLighting` · `RgbFollow` · `RgbLights` · `ScanRgbLights` · `SetAuraEffect` · `SetAuraLeds` · `SetLinkedColor` · `SetRamEffect` · `SetRamLighting` · `SetRgbFollow` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `VisualTile`
 
 ## ModuleQuery
 
@@ -211,7 +211,7 @@ A question a module answers -- a :class:`Query` (changes nothing, logs at DEBUG)
 run(module: 'M') -> R_co
 ```
 
-**Implementations (2):** `ListVisuals` · `VisualTile`
+**Implementations (5):** `ListVisuals` · `RamLighting` · `RgbFollow` · `RgbLights` · `VisualTile`
 
 ## PasswordPort
 
@@ -347,7 +347,7 @@ _disable(host: 'ModuleHost') -> None
 _enable(host: 'ModuleHost') -> None
 ```
 
-**Implementations (1):** `VisualizerModule`
+**Implementations (2):** `RgbModule` · `VisualizerModule`
 
 ## DataInstallRunner
 
@@ -454,7 +454,7 @@ _enable(host: 'ModuleHost') -> None
 
 **You inherit (9):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem` · `start` · `stop`
 
-**Implementations (1):** `VisualizerModule`
+**Implementations (2):** `RgbModule` · `VisualizerModule`
 
 ## PanelsPort
 
@@ -825,7 +825,7 @@ status() -> RamAccessStatus
 
 ## RgbMirror
 
-`core/ports.py`
+`modules/rgb/core/ports.py`
 
 Another RGB system whose devices follow the cooler's colours.
 
@@ -1209,7 +1209,7 @@ render() -> RawFrame
 
 ## RamLights
 
-`core/ports.py`
+`modules/rgb/core/ports.py`
 
 RGB memory TRCC drives itself: it follows, and it keeps effects.
 

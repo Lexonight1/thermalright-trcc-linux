@@ -327,10 +327,10 @@ def test_a_mock_fleet_lights_only_its_own_ram(
     MUTATION CHECK -- delete ``DevMockPlatform.smbuses`` and this fails on the
     tripwire (Linux) or on the base port's refusal (any other host).
     """
-    from trcc.adapters import rgb
-    from trcc.adapters.rgb.openrgb import OpenRgbMirror
     from trcc.adapters.system import linux
-    from trcc.core.models import RgbFollowMode
+    from trcc.modules.rgb import adapters as rgb
+    from trcc.modules.rgb.adapters.openrgb import OpenRgbMirror
+    from trcc.modules.rgb.core.models import RgbFollowMode
 
     def tripwire(number: int) -> None:
         raise AssertionError(f"the mock opened the REAL /dev/i2c-{number}")
@@ -359,7 +359,7 @@ def test_a_mock_fleet_reaches_no_openrgb() -> None:
     running on this machine.  ``--hardware`` keeps the real client.
 
     MUTATION CHECK: return ``cls`` for every class in ``stand_in``."""
-    from trcc.adapters.rgb.openrgb import OpenRgbMirror
+    from trcc.modules.rgb.adapters.openrgb import OpenRgbMirror
 
     fleet: Any = _build_dev_platform([_SPEC])
     with pytest.raises(OSError, match=r"^no OpenRGB client on a stand-in platform "

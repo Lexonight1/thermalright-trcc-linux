@@ -15,16 +15,12 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from ..core.logs import per_frame
-from ..core.models import (
-    BoardIdentity,
-    FoundBoard,
-    HidInterface,
-    RgbControllerId,
-    RgbMirrorDevice,
-)
-from ..core.ports import RgbHardware, RgbMirror
-from ..core.rgb_catalog import MOTHERBOARD_CONTROLLERS
+from trcc.core.logs import per_frame
+from trcc.core.models import BoardIdentity, HidInterface, RgbControllerId
+from trcc.core.ports import RgbHardware
+from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
+from trcc.modules.rgb.core.models import FoundBoard, RgbMirrorDevice
+from trcc.modules.rgb.core.ports import RgbMirror
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)        # matches: every row x every interface

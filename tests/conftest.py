@@ -384,6 +384,12 @@ class FakeMic:
         return (0.0, 0.5, 1.0, 0.5)
 
 
+def rgb_module(app: Any) -> Any:
+    """RGB Lighting's root in *app* -- its follower, finder and settings,
+    where a test reaches them now RGB is a module."""
+    return app.modules.root("rgb")
+
+
 class NoOpenRgb:
     """A stand-in platform's OpenRGB client: it refuses, so no test or mock
     run lists -- or writes to -- an OpenRGB running on this computer."""
@@ -395,7 +401,7 @@ class NoOpenRgb:
 def stand_in(cls: Any) -> Any:
     """*cls* as every stand-in platform runs it: the OpenRGB client
     refused, anything else itself."""
-    from trcc.adapters.rgb.openrgb import OpenRgbMirror
+    from trcc.modules.rgb.adapters.openrgb import OpenRgbMirror
 
     return NoOpenRgb if isinstance(cls, type) and issubclass(cls, OpenRgbMirror) else cls
 

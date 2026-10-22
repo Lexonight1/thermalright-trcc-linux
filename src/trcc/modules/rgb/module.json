@@ -1,0 +1,10 @@
+{
+  "key": "rgb",
+  "title": "RGB Lighting",
+  "summary": "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.",
+  "version": "1",
+  "default_on": true,
+  "icon": "icon.svg",
+  "guide": "https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_MODULES.md#rgb-lighting",
+  "capabilities": ["events", "settings", "frames", "readings", "hardware", "password"]
+}

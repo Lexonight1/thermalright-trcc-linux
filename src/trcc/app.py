@@ -18,8 +18,6 @@ from typing import Any, TypeVar
 from .adapters import modules as module_catalog
 from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
-from .adapters.rgb import make_board_driver, make_mirror
-from .adapters.rgb.openrgb import OpenRgbMirror
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
@@ -37,14 +35,12 @@ from .core.events import (
     EventBus,
     FitModeChanged,
     FrameSent,
-    LedColorsChanged,
     LedSettingsChanged,
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
     OrientationChanged,
     OverlayChanged,
-    RgbFollowSent,
     SensorsUpdated,
     SplitModeChanged,
     SystemResumed,
@@ -63,7 +59,6 @@ from .core.models import (
     HardwareMetrics,
     PanelPicture,
     RawFrame,
-    RgbFollowMode,
     Theme,
     Wire,
     format_device_key,
@@ -86,7 +81,6 @@ from .core.ports import (
     RamAccess,
     Renderer,
     RgbHardware,
-    RgbMirror,
     SendScheduler,
     SendTask,
     SmBus,
@@ -114,8 +108,6 @@ from .services.modules import ModuleRunner, ModuleSpec
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.reconnect_watcher import ReconnectWatcher
-from .services.rgb_boards import MotherboardFinder
-from .services.rgb_mirror import Columns, RgbMirrorService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
 from .services.update_watch import UpdateWatch
@@ -150,8 +142,6 @@ class App(CommandBus, ModuleServices):
                  send_scheduler: SendScheduler | None = None,
                  data_install_runner: DataInstallRunner | None = None,
                  video_export_runner: VideoExportRunner | None = None,
-                 make_rgb_mirror: Callable[[RgbFollowMode, str, int],
-                                           RgbMirror] | None = None,
                  led_stream: LedColorStream | None = None,
                  modules: Mapping[str, type[Module] | ModuleSpec] | None = None,
                  ) -> None:
@@ -404,33 +394,10 @@ class App(CommandBus, ModuleServices):
         # its resolution's videos their GIFs, off every caller's thread.
         self._preview_backfill_lock = threading.Lock()
         self.events.subscribe(DataInstalled, self._on_data_installed)
-        # Motherboard RGB, found the way OpenRGB finds it -- only on a Find.
-        # Read through ``platform``, so a stand-in's scripted board is all a
-        # test or mock run sees; each header's LED count is the user's.
-        self.rgb_boards = MotherboardFinder(
-            platform.rgb_hardware,
-            partial(make_board_driver, open_transport=platform.open_transport,
-                    argb_leds=self.settings.aura_argb_leds))
-        # Other RGB follows the cooler (#160): the LED render's colours go to
-        # OpenRGB's devices, Corsair RAM or the motherboard's own RGB, from
-        # the follower's own thread.  RAM, board and OpenRGB are reached only
-        # through ``platform``, so a stand-in's are all a test touches.
-        self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
-            make_mirror, smbuses=platform.smbuses,
-            board=self.rgb_boards.driver, openrgb=self._openrgb_client),
-            on_sent=self._follow_sent, readings=self._raw_readings)
-        self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
         # Whether a newer TRCC exists: asked here, for every window, from
         # start_session on -- never by a window (services/update_watch.py).
         self.update_watch = UpdateWatch(self._check_for_update,
                                         self._update_checked)
-        # An LCD as the source: its frames' backgrounds, read through the
-        # renderer.
-        self.events.subscribe(FrameSent, self._follow_frame)
-        # Following starts again with the session (``resume_following``), not
-        # here: an App built only to run one caller-side Command (``trcc
-        # kill``) took the board -- or the RAM's SMBus -- from the running
-        # App the moment it was built (2026-10-21).
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -1122,44 +1089,6 @@ class App(CommandBus, ModuleServices):
         log.debug("memory_access")
         return self.platform.ram_access()
 
-    def _follow_frame(self, event: Event) -> None:
-        """A sent frame to the RGB follower, when it follows that LCD.
-
-        The follower takes the picture under the overlay: a theme's clock
-        and readings are white text, and the lights should take the video's
-        colours.  A frame not drawn on a theme (an image, a cast) has no
-        separate background, so it is followed as sent.
-        """
-        renderer = self._renderer
-        frame_log.debug("App._follow_frame: %s renderer=%s",
-                        type(event).__name__, renderer is not None)
-        if not isinstance(event, FrameSent) or renderer is None:
-            return
-        surface = self.display.background_surface(event.key)
-        if surface is None:
-            surface = event.surface
-        if surface is not None:
-            self.rgb_mirror.on_frame(event.key, surface, renderer.raw_argb32)
-
-    def _openrgb_client(self, host: str, port: int) -> RgbMirror:
-        """OpenRGB's SDK client for *host*:*port*, not connected yet -- as
-        this machine runs it: a stand-in platform refuses, so no test or mock
-        run reaches an OpenRGB on this computer."""
-        log.debug("_openrgb_client: %s:%d", host, port)
-        return self.platform.substitute(OpenRgbMirror)(host, port)
-
-    def _raw_readings(self) -> dict[str, float] | None:
-        """The metrics loop's last raw sample (°C), None before its first --
-        what a motherboard light's linked colour reads."""
-        frame_log.debug("App._raw_readings: %s", self.last_raw_readings is not None)
-        return self.last_raw_readings
-
-    def _follow_sent(self, source: str, columns: Columns) -> None:
-        """What following just sent, for every window's preview."""
-        frame_log.debug("App._follow_sent: %s %d column(s)", source,
-                        len(columns))
-        self.events.publish(RgbFollowSent(source=source, columns=columns))
-
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""
         log.info("set_renderer: renderer=%s", type(renderer).__name__)
@@ -1441,23 +1370,7 @@ class App(CommandBus, ModuleServices):
         self.led_animation_loop.start()
         self.video_loop.start()
         self.update_watch.start()
-        self.resume_following()
         self.modules.start_session()
-
-    def resume_following(self) -> None:
-        """Follow again as the settings say -- what a session starts with.
-        Never at construction: only the App that owns the session drives the
-        RGB hardware."""
-        prefs = self.settings.app
-        log.info("resume_following: %s source=%r", prefs.rgb_follow,
-                 prefs.rgb_follow_source)
-        self.rgb_mirror.configure(self.settings.rgb_follow_mode(),
-                                  prefs.openrgb_host, prefs.openrgb_port,
-                                  prefs.rgb_follow_source,
-                                  self.settings.rgb_follow_mapping(),
-                                  self.settings.rgb_follow_targets(),
-                                  colors=self.settings.rgb_follow_colors(),
-                                  effects=self.settings.follow_effects())
 
     def _check_for_update(self) -> UpdateCheckResult:
         """The watch's check: the one Command every UI's check goes through."""
@@ -1533,7 +1446,6 @@ class App(CommandBus, ModuleServices):
         """
         log.info("close: devices=%d", len(self.devices))
         self.update_watch.stop()
-        self.rgb_mirror.close()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
         self.led_stream.stop()

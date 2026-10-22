@@ -68,7 +68,7 @@ def main() -> int:
                     help="the controller's USB product id, hex (default: find it)")
     args = ap.parse_args()
 
-    from trcc.adapters.rgb import asus_aura
+    from trcc.modules.rgb.adapters import asus_aura
     from trcc.adapters.system import current_platform
     from trcc.core.models import Wire
 

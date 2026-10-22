@@ -25,8 +25,8 @@ import sys
 
 import numpy as np
 
-from ..core.logs import per_frame
-from ..core.models import FollowColors
+from trcc.core.logs import per_frame
+from trcc.modules.rgb.core.models import FollowColors
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

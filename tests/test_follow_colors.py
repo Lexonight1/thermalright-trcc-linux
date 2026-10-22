@@ -7,8 +7,8 @@ from collections.abc import Callable
 
 import pytest
 
-from trcc.core.models import FollowColors
-from trcc.services.follow_colors import (
+from trcc.modules.rgb.core.models import FollowColors
+from trcc.modules.rgb.services.follow_colors import (
     SAMPLES,
     for_leds,
     frame_columns,

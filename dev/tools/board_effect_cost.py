@@ -35,8 +35,8 @@ def main() -> int:
     args = parser.parse_args()
 
     from trcc.app import App
-    from trcc.core.commands import ScanRgbLights, SetAuraEffect, SetAuraLeds
-    from trcc.core.models import RamEffect
+    from trcc.modules.rgb.core.commands import ScanRgbLights, SetAuraEffect, SetAuraLeds
+    from trcc.modules.rgb.core.models import RamEffect
 
     with tempfile.TemporaryDirectory() as tmp:
         platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], Path(tmp))

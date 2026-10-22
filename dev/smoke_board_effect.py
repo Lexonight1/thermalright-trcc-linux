@@ -52,9 +52,9 @@ def _painted(platform: MockPlatform, rgb: tuple[int, int, int]) -> bool:
 def _drive(skin: type, seconds: float) -> tuple[bool, str]:
     """One window: Static on header 1, then Rainbow for *seconds*."""
     from trcc.app import App
-    from trcc.core.commands import SetRgbFollow
-    from trcc.core.models import RamEffect, RgbFollowMode
-    from trcc.ui.presentation.rgb_page import RgbDevice, RgbSource
+    from trcc.modules.rgb.core.commands import SetRgbFollow
+    from trcc.modules.rgb.core.models import RamEffect, RgbFollowMode
+    from trcc.modules.rgb.ui.presentation.rgb_page import RgbDevice, RgbSource
 
     with tempfile.TemporaryDirectory() as tmp:
         platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], Path(tmp))
@@ -108,8 +108,8 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
     _qt = QApplication.instance() or QApplication(sys.argv)  # kept alive for the run
 
-    from trcc.ui.gui.uc_rgb import UCRgbPage
-    from trcc.ui.qtgui.panels.rgb_panel import QtRgbPage
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbPage
+    from trcc.modules.rgb.ui.qtgui.rgb_panel import QtRgbPage
 
     ok = True
     for name, skin in (("gui", UCRgbPage), ("qtgui", QtRgbPage)):

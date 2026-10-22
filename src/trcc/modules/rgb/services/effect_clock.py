@@ -13,17 +13,17 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 
-from ..core.led_models import Gradient, linked_color
-from ..core.logs import per_frame
-from ..core.models import (
+from trcc.core.led_models import Gradient, linked_color
+from trcc.core.logs import per_frame
+from trcc.core.models import LinkedMetric
+from trcc.modules.rgb.core.models import (
     LightEffect,
     LinkedEffect,
-    LinkedMetric,
     RamEffect,
     RamEffectSettings,
     RgbMirrorDevice,
 )
-from .effect_frames import effect_frame
+from trcc.modules.rgb.services.effect_frames import effect_frame
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

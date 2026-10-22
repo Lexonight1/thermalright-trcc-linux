@@ -68,7 +68,6 @@ from .panels import (
     ModulesPanel,
     OverlayEditorPanel,
     PreviewPanel,
-    RgbPanel,
     ScreencastPanel,
     StatusPanel,
     SystemPanel,
@@ -120,9 +119,6 @@ class MainWindow(QMainWindow):
             app, self._bus, self, selection=self._lcd_selection,
         )
 
-        # Held typed too: its live preview is one the bridge follows.
-        self._rgb_panel = RgbPanel(app, self._bus, self)
-
         # Register panels.  Key matches the sidebar entry's key.
         self._panels: dict[str, QWidget] = {
             "devices": DevicePanel(app, self._bus, self),
@@ -143,7 +139,6 @@ class MainWindow(QMainWindow):
                                     selection=self._lcd_selection),
             "led":     LedPanel(app, self._bus, self,
                                     selection=self._led_selection),
-            "rgb":     self._rgb_panel,
             "status":  StatusPanel(app, self._bus, self,
                                     selection=self._lcd_selection),
             "system":  SystemPanel(app, self._bus, self),
@@ -286,8 +281,7 @@ class MainWindow(QMainWindow):
         # window is); on its return, the current one -- a still theme may not
         # send another for a while.
         self._bus.frames_resumed.connect(self._preview_surface.refresh)
-        self._bus.follow_previews(self._preview_surface,
-                                  self._rgb_panel.page.follow.preview)
+        self._bus.follow_previews(self._preview_surface)
         # A file dropped on the preview: what this window's pickers do (#265).
         self._file_drop = FileDropTarget(self._preview_surface)
         self._file_drop.dropped.connect(self._on_file_dropped)

@@ -719,9 +719,10 @@ def viewer(module_root: Callable[[Path], Path], tmp_path: Path) -> Path:
 def test_the_gui_shows_a_modules_view_behind_its_button_while_it_is_on(
         viewer: Path, qtbot: Any, tmp_home: Path) -> None:
     """On: a button in the sidebar's module slot opens the view, the rest of
-    the window hidden.  Off: the button hides and the window goes home.
-    MUTATION CHECK: skip the hiding in ``_sync_module_views`` and the
-    button stays."""
+    the window hidden, its Help and Close still on top.  Off: the button
+    hides and the window goes home.  MUTATION CHECK: skip the hiding in
+    ``_sync_module_views`` and the button stays; drop the raises in
+    ``_add_module_view`` and the view covers Help."""
     from trcc.adapters.modules import specs
     from trcc.adapters.render.qt import QtRenderer
     from trcc.ui.gui.constants import Layout
@@ -737,12 +738,16 @@ def test_the_gui_shows_a_modules_view_behind_its_button_while_it_is_on(
     button.click()
     opened = (view.isVisible(), window.uc_about.isVisible(),
               window.form_container.isVisible(), button.isChecked())
+    # The window's own Help and Close stay above it, as on every built-in page.
+    help_btn = window.form1_help_btn
+    on_top = help_btn.parentWidget().childAt(help_btn.geometry().center())
     app.dispatch(SetModuleEnabled(key="viewer", enabled=False))
     window._sync_modules()
     assert (button.geometry().getRect(), button.text(), button.toolTip(),
             view.languages[-1]) == (Layout.SIDEBAR_MODULE_SLOTS[0], "Viewer",
                                     "The viewer", "en")
     assert opened == (True, False, False, True)
+    assert on_top is help_btn
     assert (button.isVisibleTo(window), view.isVisible(),
             window.uc_system_info.isVisible()) == (False, False, True)
     window.close()

@@ -7,9 +7,12 @@ from typing import Any
 import pytest
 from PySide6.QtGui import QImage
 
-from trcc.core.commands import (
+from trcc.core.commands import ListDevices
+from trcc.core.events import FrameSent
+from trcc.core.models import RamAccessState
+from trcc.core.results import DeviceEntry, DevicesListResult
+from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
-    ListDevices,
     RamLighting,
     RgbFollow,
     RgbLights,
@@ -20,24 +23,16 @@ from trcc.core.commands import (
     SetRamEffect,
     SetRgbFollow,
 )
-from trcc.core.events import FrameSent
-from trcc.core.models import (
+from trcc.modules.rgb.core.models import (
     FollowColors,
     FollowMapping,
     LightKind,
-    RamAccessState,
     RamEffect,
     RgbFollowMode,
     RgbLight,
 )
-from trcc.core.results import (
-    DeviceEntry,
-    DevicesListResult,
-    RamLightingResult,
-    RgbFollowResult,
-    RgbLightsResult,
-)
-from trcc.ui.presentation.rgb_page import RgbDevice, RgbSource, Strip, strip_legend
+from trcc.modules.rgb.core.results import RamLightingResult, RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.ui.presentation.rgb_page import RgbDevice, RgbSource, Strip, strip_legend
 
 LCD = "0402:3922"
 STICKS = (RgbLight("i2c-3/0x19", "Stick A", 10, LightKind.RAM),
@@ -78,8 +73,8 @@ class _Bus:
 
 
 def _skins() -> list[Any]:
-    from trcc.ui.gui.uc_rgb import UCRgbPage
-    from trcc.ui.qtgui.panels.rgb_panel import QtRgbPage
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbPage
+    from trcc.modules.rgb.ui.qtgui.rgb_panel import QtRgbPage
     return [UCRgbPage, QtRgbPage]
 
 
@@ -187,8 +182,8 @@ def test_the_strips_show_what_the_app_sent_from_what_is_followed(
         view: Any) -> None:
     """The window never samples: the App samples the picture under the
     overlay, which no window sees, and reports what it sent."""
-    from trcc.core.events import RgbFollowChanged, RgbFollowSent
-    from trcc.core.models import RgbFollowMode
+    from trcc.modules.rgb.core.events import RgbFollowChanged, RgbFollowSent
+    from trcc.modules.rgb.core.models import RgbFollowMode
 
     view._source_buttons[RgbSource.FOLLOW].click()
     view.follow._on_source(view.follow._source.findData(LCD))
@@ -277,7 +272,7 @@ def test_a_headers_led_count_is_sent_when_the_edit_ends(view: Any,
     MUTATION CHECK: send on every value change instead."""
     from PySide6.QtWidgets import QLabel, QSpinBox
 
-    from trcc.ui.presentation.rgb_page import BOARD_NOTE, LEDS_TIP
+    from trcc.modules.rgb.ui.presentation.rgb_page import BOARD_NOTE, LEDS_TIP
 
     view._devices_column.buttons[RgbDevice.MOTHERBOARD].click()
     (box,) = [b for b in view.findChildren(QSpinBox)
@@ -351,7 +346,7 @@ def test_a_linked_or_static_strip_is_drawn_once_not_animated(view: Any) -> None:
     every LED 20 times a second, ~1000 log lines a second (2026-10-21).
 
     MUTATION CHECK: animate any strip with an effect -- the timer runs."""
-    from trcc.core.models import LinkedEffect, RamEffectSettings
+    from trcc.modules.rgb.core.models import LinkedEffect, RamEffectSettings
     view._source_buttons[RgbSource.EFFECT].click()      # the strips on screen
     strips = view._previews[1].strips
     strips.set_strips((Strip(LinkedEffect("temp", "cpu")),
@@ -359,3 +354,36 @@ def test_a_linked_or_static_strip_is_drawn_once_not_animated(view: Any) -> None:
     assert not strips.animating
     strips.set_strips((Strip(None, RamEffectSettings(RamEffect.RAIN)),))
     assert strips.animating
+
+
+def _changes() -> list[object]:
+    from trcc.core.models import RamAccessState
+    from trcc.modules.rgb.core.events import (
+        RamLightingChanged,
+        RgbFollowChanged,
+        RgbLightsChanged,
+    )
+    from trcc.modules.rgb.core.models import RgbFollowMode
+
+    return [RgbLightsChanged(), RgbFollowChanged(mode=RgbFollowMode.RAM),
+            RamLightingChanged(state=RamAccessState.ON)]
+
+
+@pytest.mark.parametrize("change", _changes(), ids=type)
+def test_a_change_from_any_ui_reaches_the_page(view: Any, qtbot: Any,
+                                               monkeypatch: Any, change: object) -> None:
+    """A switch from the CLI, the API or the other window shows on this page:
+    ``hear`` forwards RGB's events from the window's bridge.  MUTATION CHECK:
+    drop ``RamLightingChanged`` from ``RGB_CHANGES``."""
+    from trcc.core.events import EventBus
+    from trcc.modules.rgb.ui.qt_rgb_page import hear
+    from trcc.ui.bus_bridge import BusBridge
+
+    heard: list[object] = []
+    monkeypatch.setattr(view, "on_app_event", heard.append)
+    bus = EventBus()
+    bridge = BusBridge(bus)            # a window keeps its bridge
+    hear(view, bridge)
+    bus.publish(change)
+    qtbot.waitUntil(lambda: bool(heard), timeout=2000)
+    assert heard == [change]

@@ -37,10 +37,10 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from typing import Any
 
-from ..core.logs import per_frame
-from ..core.models import (
+from trcc.core.logs import per_frame
+from trcc.core.models import PanelPicture
+from trcc.modules.rgb.core.models import (
     EFFECT_SOURCE,
     MAX_ARGB_LEDS,
     FollowColors,
@@ -50,18 +50,14 @@ from ..core.models import (
     RgbFollowMode,
     RgbMirrorDevice,
 )
-from ..core.ports import RamLights, RgbMirror
-from .effect_clock import EffectClock, Readings
-from .follow_colors import for_leds, frame_columns
+from trcc.modules.rgb.core.ports import RamLights, RgbMirror
+from trcc.modules.rgb.services.effect_clock import Columns, EffectClock, Readings
+from trcc.modules.rgb.services.follow_colors import for_leds, frame_columns
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 Rgb = tuple[int, int, int]
-Columns = tuple[tuple[Rgb, ...], ...]
-#: A surface's ARGB32 pixels: ``(bytes, width, height, stride)``.  The
-#: Renderer port's ``raw_argb32``.
-Pixels = Callable[[Any], tuple[bytes, int, int, int]]
 #: Told of every send: the device that led, and the screen colours sent.
 Sent = Callable[[str, Columns], None]
 
@@ -206,16 +202,16 @@ class RgbMirrorService:
             self._pending = ((tuple(colors),), False)
             self._cond.notify()
 
-    def on_frame(self, key: str, surface: Any, pixels: Pixels) -> None:
-        """A frame of LCD *key* -> a column of colours per device, when *key*
-        leads.  *surface* is the picture to follow -- its background, without
-        the overlay's text.
+    def on_frame(self, picture: PanelPicture) -> None:
+        """A panel's picture -> a column of colours per device, when that
+        panel leads.  The picture is its background, without the overlay's
+        text; its pixels are read only here, only for the panel that leads.
 
         Sampled on the publishing thread, outside the lock.
         """
+        key = picture.key
         with self._cond:
-            if (not self._running or not self._source or key != self._source
-                    or surface is None):
+            if not self._running or not self._source or key != self._source:
                 return
             now = time.monotonic()
             if now - self._last_frame < FRAME_INTERVAL_S:
@@ -224,7 +220,7 @@ class RgbMirrorService:
             columns = (1 if self._mapping is FollowMapping.SINGLE
                        else max(1, self._device_count))
             how = self._how
-        sampled = frame_columns(*pixels(surface), columns, FRAME_ROWS, how)
+        sampled = frame_columns(*picture.argb32(), columns, FRAME_ROWS, how)
         frame_log.debug("RgbMirrorService.on_frame: %s %dx%d %s", key, columns,
                         FRAME_ROWS, how.value)
         with self._cond:

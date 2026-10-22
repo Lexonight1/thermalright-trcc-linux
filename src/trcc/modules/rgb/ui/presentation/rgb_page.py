@@ -18,8 +18,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from ...core.logs import per_frame
-from ...core.models import (
+from trcc.core.logs import per_frame
+from trcc.core.models import Kind, LinkedMetric, RamAccessState, SensorLink
+from trcc.core.results import DeviceEntry, Result
+from trcc.modules.rgb.core.models import (
     EFFECT_SOURCE,
     EFFECT_TRAITS,
     EffectDirection,
@@ -27,23 +29,22 @@ from ...core.models import (
     EffectTraits,
     FollowColors,
     FollowMapping,
-    Kind,
     LightEffect,
     LightKind,
     LinkedEffect,
-    LinkedMetric,
-    RamAccessState,
     RamEffect,
     RamEffectSettings,
     RgbFollowMode,
     RgbLight,
-    SensorLink,
     aura_header,
 )
-from ...core.ram_effects import effect_problem
-from ...core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
-from ...services.rgb_mirror import FRAME_ROWS
-from .openrgb_address import format_openrgb_address, parse_openrgb_address
+from trcc.modules.rgb.core.ram_effects import effect_problem
+from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.services.rgb_mirror import FRAME_ROWS
+from trcc.modules.rgb.ui.presentation.openrgb_address import (
+    format_openrgb_address,
+    parse_openrgb_address,
+)
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

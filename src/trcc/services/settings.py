@@ -14,13 +14,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
+from ..core._colors import rgb_rows
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
 from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings, one_hot
@@ -28,8 +29,6 @@ from ..core.logs import per_frame
 from ..core.models import (
     DATE_FORMATS,
     DEFAULT_REFRESH_INTERVAL_S,
-    EFFECT_SOURCE,
-    MAX_ARGB_LEDS,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
     RECENT_COLOR_DEFAULT,
@@ -37,24 +36,10 @@ from ..core.models import (
     TIME_FORMATS,
     BackgroundMode,
     DeviceSettings,
-    EffectDirection,
-    EffectSpeed,
     FitMode,
-    FollowColors,
-    FollowMapping,
-    LightEffect,
-    LightKind,
-    LinkedEffect,
-    LinkedMetric,
     OrientationState,
     OverlayElement,
-    RamEffect,
-    RamEffectSettings,
-    RgbFollowMode,
-    RgbMirrorDevice,
-    SensorLink,
     TempUnit,
-    parse_device_key,
 )
 from ..core.ports import Paths
 
@@ -105,38 +90,6 @@ class AppSettings:
     # rather than pretend the divergence is not there.
     active_disk: str | None = None
 
-    # What follows the cooler (#160): an ``RgbFollowMode`` value.  "openrgb"
-    # sends the LED cooler's colours to the devices of the OpenRGB SDK server
-    # at host:port; "ram" to Corsair RGB memory directly.  Off until the user
-    # picks one -- either takes over those devices' lighting.
-    rgb_follow: str = RgbFollowMode.OFF.value
-    openrgb_host: str = "127.0.0.1"
-    openrgb_port: int = 6742
-    # The device that leads: empty for the first LED cooler, as before; an
-    # LCD's key to follow its picture, mapped by ``rgb_follow_mapping`` (a
-    # ``FollowMapping`` value).
-    rgb_follow_source: str = ""
-    rgb_follow_mapping: str = FollowMapping.HALVES.value
-    # How a region of that picture becomes a light's colour (a
-    # ``FollowColors`` value): its brightest pixels, or its average.
-    rgb_follow_colors: str = FollowColors.VIVID.value
-    # Refs of the lights that follow (a stick's "i2c-3/0x19", an OpenRGB
-    # device's name); empty for every one.
-    rgb_follow_targets: list[str] = field(default_factory=list)
-    # The built-in effect TRCC last gave each light, by ref -- a RAM stick's
-    # (saved on the stick) or an ARGB header's (``aura/argb1``, run by TRCC).
-    # What it set, not read back.  Plain JSON; ``light_effect`` validates it
-    # on the way out.  Named before headers had effects; kept, so a settings
-    # file from then still loads.
-    ram_effects: dict[str, dict[str, Any]] = field(default_factory=dict)
-    # The lights the last Find found -- kind, ref, name and LED count each --
-    # so a restart lists them without reading a bus.  ``found_lights``
-    # validates.
-    rgb_lights: list[dict[str, Any]] = field(default_factory=list)
-    # How many LEDs each ASUS Aura ARGB header drives, by header number from
-    # 1 (JSON keys are text).  The board cannot say: the header's data line
-    # runs one way.  ``aura_argb_leds`` validates.
-    aura_argb_leds: dict[str, int] = field(default_factory=dict)
     # Modules the user switched, key -> on.  One never switched is absent and
     # takes its own ``default_on``.
     modules: dict[str, bool] = field(default_factory=dict)
@@ -188,15 +141,24 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #                         own sections, and ``visual`` becomes
 #                         ``module_source``.  ``_fold_visual`` /
 #                         ``_migrate_app`` move them.
+#   7                     RGB Lighting is a module: the app's ``rgb_follow*``,
+#                         ``openrgb_*``, ``ram_effects``, ``rgb_lights`` and
+#                         ``aura_argb_leds`` move, under the same names, into
+#                         its own section.  ``_migrate_app`` moves them.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 
 #: The module the pre-6 visual fields belong to -- data, not an import.
 _VISUALIZER = "visualizer"
+#: The module the pre-7 RGB fields belong to, and the fields -- data too.
+_RGB = "rgb"
+_RGB_KEYS = ("rgb_follow", "openrgb_host", "openrgb_port", "rgb_follow_source",
+             "rgb_follow_mapping", "rgb_follow_colors", "rgb_follow_targets",
+             "ram_effects", "rgb_lights", "aura_argb_leds")
 
 _S = TypeVar("_S")
 
@@ -228,18 +190,6 @@ def _is_background_mode(mode: str) -> TypeGuard[BackgroundMode]:
     valid = mode in get_args(BackgroundMode)
     log.debug("_is_background_mode: %r -> %s", mode, valid)
     return valid
-
-
-def _linked_effect(ref: str, record: dict[str, Any]) -> LinkedEffect | None:
-    """A saved linked colour; one this build cannot read is None."""
-    metric, source = record.get("linked"), record.get("source", "cpu")
-    log.debug("_linked_effect: %s %r %r", ref, metric, source)
-    if metric not in get_args(LinkedMetric) or source not in get_args(SensorLink):
-        log.warning("_linked_effect: %s's linked colour %r/%r is unreadable -- "
-                    "shown as unknown", ref, metric, source)
-        return None
-    return LinkedEffect(metric=cast(LinkedMetric, metric),
-                        source=cast(SensorLink, source))
 
 
 class Settings:
@@ -926,192 +876,6 @@ class Settings:
             self.for_led(key).memory_ratio = clamped
             self._save()
 
-    def rgb_follow_mode(self) -> RgbFollowMode:
-        """What follows the cooler; a value this build does not know is OFF."""
-        value = self._app.rgb_follow
-        log.debug("rgb_follow_mode: %r", value)
-        try:
-            return RgbFollowMode(value)
-        except ValueError:
-            log.warning("rgb_follow_mode: unknown %r in the settings -- off",
-                        value)
-            return RgbFollowMode.OFF
-
-    def rgb_follow_mapping(self) -> FollowMapping:
-        """How an LCD's picture maps onto the followers; unknown is halves."""
-        value = self._app.rgb_follow_mapping
-        log.debug("rgb_follow_mapping: %r", value)
-        try:
-            return FollowMapping(value)
-        except ValueError:
-            log.warning("rgb_follow_mapping: unknown %r in the settings -- "
-                        "halves", value)
-            return FollowMapping.HALVES
-
-    def rgb_follow_colors(self) -> FollowColors:
-        """How a region of an LCD's picture becomes a light's colour; unknown
-        is vivid."""
-        value = self._app.rgb_follow_colors
-        log.debug("rgb_follow_colors: %r", value)
-        try:
-            return FollowColors(value)
-        except ValueError:
-            log.warning("rgb_follow_colors: unknown %r in the settings -- "
-                        "vivid", value)
-            return FollowColors.VIVID
-
-    def light_effect(self, ref: str) -> LightEffect | None:
-        """The effect TRCC last gave light *ref* -- a stick's or an ARGB
-        header's built-in effect, or a header's linked colour -- or None; a
-        damaged record is None too, never a guess."""
-        record = (self._app.ram_effects.get(ref)
-                  if isinstance(self._app.ram_effects, dict) else None)
-        log.debug("light_effect: %s -> %r", ref, record)
-        if not isinstance(record, dict):
-            return None
-        if "linked" in record:
-            return _linked_effect(ref, record)
-        colors = _rgb_list(record.get("colors", []))
-        try:
-            return RamEffectSettings(
-                effect=RamEffect(record["effect"]),
-                speed=EffectSpeed(record.get("speed", EffectSpeed.MEDIUM.value)),
-                direction=(EffectDirection(record["direction"])
-                           if record.get("direction") else None),
-                colors=tuple(colors) if isinstance(colors, list) else (),
-                random_colors=bool(record.get("random_colors", False)),
-                brightness=int(record.get("brightness", 255)))
-        except (KeyError, ValueError, TypeError) as e:
-            log.warning("light_effect: %s's saved effect is unreadable (%s) -- "
-                        "shown as unknown", ref, e)
-            return None
-
-    def set_light_effect(self, ref: str, effect: LightEffect) -> None:
-        """Remember the effect TRCC gave light *ref*, a stick or a header."""
-        log.info("set_light_effect: %s %s", ref, effect)
-        record: dict[str, Any]
-        if isinstance(effect, LinkedEffect):
-            record = {"linked": effect.metric, "source": effect.source}
-        else:
-            record = {"effect": effect.effect.value, "speed": effect.speed.value,
-                      "direction": (effect.direction.value if effect.direction
-                                    else None),
-                      "colors": [list(c) for c in effect.colors],
-                      "random_colors": effect.random_colors,
-                      "brightness": effect.brightness}
-        with self._lock:
-            if not isinstance(self._app.ram_effects, dict):
-                self._app.ram_effects = {}
-            self._app.ram_effects[ref] = record
-            self._save()
-
-    def found_lights(self, kind: LightKind) -> tuple[RgbMirrorDevice, ...]:
-        """The lights of *kind* the last Find found -- no bus.  A damaged
-        entry is dropped, never guessed."""
-        records = (self._app.rgb_lights
-                   if isinstance(self._app.rgb_lights, list) else [])
-        lights: list[RgbMirrorDevice] = []
-        for record in records:
-            if not (isinstance(record, dict)
-                    and isinstance(ref := record.get("ref"), str) and ref
-                    and isinstance(name := record.get("name"), str)
-                    and type(count := record.get("led_count")) is int
-                    and count >= 0 and isinstance(record.get("kind"), str)):
-                log.warning("found_lights: unreadable entry %r -- dropped",
-                            record)
-            elif record["kind"] == kind.value:
-                lights.append(RgbMirrorDevice(len(lights), name, count, ref))
-        log.debug("found_lights: %s -> %s", kind.value,
-                  [light.ref for light in lights])
-        return tuple(lights)
-
-    def set_found_lights(self, kind: LightKind,
-                         lights: Sequence[RgbMirrorDevice]) -> None:
-        """Remember what a Find found of *kind* -- all of it, so a light that
-        is gone is forgotten; other kinds' records are kept."""
-        log.info("set_found_lights: %s %s", kind.value,
-                 [light.ref for light in lights])
-        with self._lock:
-            kept = [r for r in self._app.rgb_lights
-                    if isinstance(r, dict) and r.get("kind") != kind.value
-                    ] if isinstance(self._app.rgb_lights, list) else []
-            self._app.rgb_lights = kept + [
-                {"kind": kind.value, "ref": light.ref, "name": light.name,
-                 "led_count": light.led_count} for light in lights]
-            self._save()
-
-    def aura_argb_leds(self) -> dict[int, int]:
-        """LEDs per Aura ARGB header, by header number; a damaged entry is
-        dropped, never guessed."""
-        raw = self._app.aura_argb_leds
-        counts = {int(header): leds for header, leds in
-                  (raw.items() if isinstance(raw, dict) else ())
-                  if str(header).isdigit() and int(header) > 0
-                  and type(leds) is int and 0 <= leds <= MAX_ARGB_LEDS}
-        if isinstance(raw, dict) and len(counts) != len(raw):
-            log.warning("aura_argb_leds: unreadable entries in %r dropped", raw)
-        log.debug("aura_argb_leds: %s", counts)
-        return counts
-
-    def set_aura_leds(self, header: int, leds: int) -> None:
-        """Remember how many LEDs Aura ARGB *header* drives."""
-        log.info("set_aura_leds: header %d -> %d LED(s)", header, leds)
-        with self._lock:
-            if not isinstance(self._app.aura_argb_leds, dict):
-                self._app.aura_argb_leds = {}
-            self._app.aura_argb_leds[str(header)] = leds
-            self._save()
-
-    def rgb_follow_targets(self) -> tuple[str, ...]:
-        """The lights that follow (refs); anything not a list of text is all.
-
-        Settings load JSON as it is, so a hand-edited string here would
-        otherwise become one target per character."""
-        value = self._app.rgb_follow_targets
-        log.debug("rgb_follow_targets: %r", value)
-        if not isinstance(value, list) or not all(isinstance(t, str)
-                                                  for t in value):
-            log.warning("rgb_follow_targets: %r is not a list of names -- "
-                        "every light follows", value)
-            return ()
-        return tuple(value)
-
-    def follow_effects(self) -> dict[str, LightEffect]:
-        """Each followed light's built-in effect, by ref, while the source
-        is TRCC's effect clock -- empty for any other source.  What the
-        follower is configured with, wherever following starts."""
-        if self._app.rgb_follow_source != EFFECT_SOURCE:
-            log.debug("follow_effects: source %r -- none",
-                      self._app.rgb_follow_source)
-            return {}
-        effects = {ref: effect for ref in self.rgb_follow_targets()
-                   if (effect := self.light_effect(ref)) is not None}
-        log.debug("follow_effects: %s", effects)
-        return effects
-
-    def set_rgb_follow(self, mode: RgbFollowMode, host: str, port: int,
-                       source: str, mapping: FollowMapping,
-                       targets: tuple[str, ...], *,
-                       colors: FollowColors) -> None:
-        """Pick what follows, OpenRGB's *host*:*port*, and the device that
-        leads (#160): empty *source* for the first LED cooler, else a key.
-        *colors* is required by name, so no caller drops the saved one."""
-        log.info("set_rgb_follow: %s %s:%d source=%r %s %s targets=%s",
-                 mode.value, host, port, source, mapping.value, colors.value,
-                 list(targets) or "all")
-        if not 0 < port < 65536:
-            raise ValueError(f"port out of range (1-65535): {port}")
-        if source and source != EFFECT_SOURCE:
-            parse_device_key(source)       # ValueError for a malformed key
-        with self._lock:
-            self._app.rgb_follow = mode.value
-            self._app.openrgb_host = host
-            self._app.openrgb_port = port
-            self._app.rgb_follow_source = source
-            self._app.rgb_follow_mapping = mapping.value
-            self._app.rgb_follow_colors = colors.value
-            self._app.rgb_follow_targets = list(targets)
-            self._save()
 
     def set_hdd_enabled(self, enabled: bool) -> None:
         """Toggle HDD inclusion in sensor metrics broadcasts."""
@@ -1478,19 +1242,25 @@ def _fold_visual(data: dict[str, Any], key: str) -> None:
 def _migrate_app(data: Any, schema: int) -> dict[str, Any]:
     """The app-wide settings, brought up to :data:`_SCHEMA_VERSION`.  v5 ->
     v6: the audio visuals' centre picture moves into the visualizer's
-    section, under the same names."""
+    section; v6 -> v7: RGB Lighting's settings move into its own -- each
+    under the same names."""
     if not isinstance(data, dict):
         return {}
-    if schema >= 6:
-        return data
     out = dict(data)
-    picture = {name: out.pop(f"visual_{name}") for name in
-               ("center", "center_shown", "center_fire")
-               if f"visual_{name}" in out}
-    if picture:
-        out.setdefault("module_settings", {})[_VISUALIZER] = picture
-        log.info("_migrate_app: the centre picture moves to the %s module: %s",
-                 _VISUALIZER, picture)
+    if schema < 6:
+        picture = {name: out.pop(f"visual_{name}") for name in
+                   ("center", "center_shown", "center_fire")
+                   if f"visual_{name}" in out}
+        if picture:
+            out.setdefault("module_settings", {})[_VISUALIZER] = picture
+            log.info("_migrate_app: the centre picture moves to the %s module: %s",
+                     _VISUALIZER, picture)
+    if schema < 7:
+        rgb = {name: out.pop(name) for name in _RGB_KEYS if name in out}
+        if rgb:
+            out.setdefault("module_settings", {}).setdefault(_RGB, {}).update(rgb)
+            log.info("_migrate_app: RGB Lighting's settings move to its module: %s",
+                     sorted(rgb))
     return out
 
 
@@ -1624,11 +1394,7 @@ def _only_source(dev: DeviceSettings, keep: str) -> None:
 def _rgb_list(value: Any) -> Any:
     """``[[r, g, b], ...]`` -> a list of tuples; a malformed row is dropped."""
     log.debug("_rgb_list: %r", value)
-    if not isinstance(value, list):
-        return _DROP
-    return [tuple(int(c) for c in row) for row in value
-            if isinstance(row, list) and len(row) == 3
-            and all(isinstance(c, int) and 0 <= c <= 255 for c in row)]
+    return rgb_rows(value) if isinstance(value, list) else _DROP
 
 
 def _fit_mode(value: Any) -> Any:

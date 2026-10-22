@@ -83,7 +83,7 @@ def test_a_catalog_row_is_never_a_trcc_cooler(row) -> None:
 
 
 def test_the_aura_driver_takes_its_boards_from_the_catalog() -> None:
-    from trcc.adapters.rgb.asus_aura import AURA_VID, MAINBOARD_PIDS
+    from trcc.modules.rgb.adapters.asus_aura import AURA_VID, MAINBOARD_PIDS
 
     assert 0x19AF in MAINBOARD_PIDS        # the maintainer's PRIME Z790-V AX
     assert all((AURA_VID, pid) in {(r.vid, r.pid) for r in MOTHERBOARD_CONTROLLERS}

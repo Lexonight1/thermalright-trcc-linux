@@ -6,22 +6,17 @@ from typing import cast
 
 import pytest
 
-from trcc.adapters.rgb import make_board_driver
 from trcc.app import App
-from trcc.core.commands import RgbLights, ScanRgbLights
 from trcc.core.errors import PermissionError_, TransportError
-from trcc.core.models import (
-    BoardIdentity,
-    FoundBoard,
-    HidInterface,
-    LightKind,
-    RgbControllerId,
-    RgbMirrorDevice,
-)
-from trcc.core.ports import RgbMirror, Transport
-from trcc.services.rgb_boards import MotherboardFinder, matches, spot
+from trcc.core.models import BoardIdentity, HidInterface, RgbControllerId
+from trcc.core.ports import Transport
+from trcc.modules.rgb.adapters import make_board_driver
+from trcc.modules.rgb.core.commands import RgbLights, ScanRgbLights
+from trcc.modules.rgb.core.models import FoundBoard, LightKind, RgbMirrorDevice
+from trcc.modules.rgb.core.ports import RgbMirror
+from trcc.modules.rgb.services.rgb_boards import MotherboardFinder, matches, spot
 
-from .conftest import FakeBulkTransport
+from .conftest import FakeBulkTransport, rgb_module
 from .mock_platform import (
     AURA_INTERFACE,
     MAINTAINER_BOARD,
@@ -74,15 +69,13 @@ def test_only_the_aura_motherboard_gets_a_trcc_driver() -> None:
     aura, msi = spot((AURA_INTERFACE, MSI), MSI_BOARD)
     opened: list = []
 
-    def open_transport(*a: object, **k: object) -> Transport:
+    def open_hid(*a: object) -> Transport:
         opened.append(a)
         return FakeBulkTransport()
 
-    driver = make_board_driver(aura, open_transport=open_transport,
-                               argb_leds=lambda: {1: 8})
+    driver = make_board_driver(aura, open_hid=open_hid, argb_leds=lambda: {1: 8})
     assert driver is not None and opened == []        # made, not yet opened
-    assert make_board_driver(msi, open_transport=open_transport,
-                             argb_leds=dict) is None
+    assert make_board_driver(msi, open_hid=open_hid, argb_leds=dict) is None
 
 
 # ── Find, through the App ──────────────────────────────────────────────────
@@ -156,14 +149,14 @@ def test_a_board_that_cannot_be_read_says_why_and_is_not_called_found() -> None:
 def test_a_failed_board_read_keeps_the_last_find(tmp_path) -> None:
     app = App(_platform(tmp_path, AURA_INTERFACE))
     app.dispatch(ScanRgbLights())
-    saved = app.settings.found_lights(LightKind.BOARD)
-    app.rgb_boards = MotherboardFinder(lambda: ScriptedRgbHardware(),
+    saved = rgb_module(app).settings.found_lights(LightKind.BOARD)
+    rgb_module(app).boards = MotherboardFinder(lambda: ScriptedRgbHardware(),
                                        lambda board: _Unreadable())
     failed = app.dispatch(ScanRgbLights())
     assert not failed.ok
     assert failed.message.endswith("; motherboard: ASUS PRIME Z790-V AX: "
                                    "permission denied: /dev/hidraw0")
-    assert app.settings.found_lights(LightKind.BOARD) == saved
+    assert rgb_module(app).settings.found_lights(LightKind.BOARD) == saved
     app.close()
 
 
@@ -225,7 +218,7 @@ def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> No
     out of range; saved and re-read -- read requests only -- otherwise.
 
     MUTATION CHECK: skip the header check (set any header)."""
-    from trcc.core.commands import SetAuraLeds
+    from trcc.modules.rgb.core.commands import SetAuraLeds
 
     platform = _platform(tmp_path, AURA_INTERFACE)
     app = App(platform)
@@ -238,7 +231,7 @@ def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> No
             (1, 121, "an ARGB header drives 0-120 LEDs, not 121")):
         refused = app.dispatch(SetAuraLeds(header=header, leds=leds))
         assert (refused.ok, refused.message) == (False, message)
-    assert app.settings.aura_argb_leds() == {}
+    assert rgb_module(app).settings.aura_argb_leds() == {}
     result = app.dispatch(SetAuraLeds(header=1, leds=8))
     assert (result.ok, result.message) == (True, "ARGB header 1: 8 LED(s)")
     assert {bytes(w[1])[:1] for w in platform.aura.writes} <= READ_REQUESTS
@@ -247,7 +240,7 @@ def test_a_headers_led_count_is_saved_and_listed_after_a_restart(tmp_path) -> No
     assert [(light.ref, light.led_count) for light in
             again.dispatch(RgbLights()).lights
             if light.kind is LightKind.BOARD][1] == ("aura/argb1", 8)
-    assert again.settings.aura_argb_leds() == {1: 8}
+    assert rgb_module(again).settings.aura_argb_leds() == {1: 8}
     again.close()
 
 
@@ -255,8 +248,8 @@ def test_a_damaged_led_count_is_dropped_not_guessed(tmp_path) -> None:
     app = App(_platform(tmp_path))
     # cast: the entries are deliberately ill-typed, as a hand-edited
     # trcc.json can be -- the field's type is exactly what is being violated.
-    app.settings.app.aura_argb_leds = cast(
+    rgb_module(app).settings.prefs.aura_argb_leds = cast(
         "dict[str, int]",
         {"1": 8, "2": "8", "x": 3, "3": 999, "0": 4, "4": -1})
-    assert app.settings.aura_argb_leds() == {1: 8}
+    assert rgb_module(app).settings.aura_argb_leds() == {1: 8}
     app.close()

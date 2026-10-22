@@ -8,7 +8,8 @@ from __future__ import annotations
 import pytest
 
 from tests.mock_platform import MockPlatform, ScriptedAuraController
-from trcc.adapters.rgb.asus_aura import (
+from trcc.core.models import Wire
+from trcc.modules.rgb.adapters.asus_aura import (
     AURA_VID,
     REPORT_ID,
     AuraLayout,
@@ -19,7 +20,6 @@ from trcc.adapters.rgb.asus_aura import (
     parse_firmware,
     request,
 )
-from trcc.core.models import Wire
 
 
 def _board(**kw: int) -> tuple[AuraMainboard, ScriptedAuraController]:

@@ -4,8 +4,8 @@ from __future__ import annotations
 import pytest
 
 from trcc.core.models import RamAccessState
-from trcc.core.results import RamLightingResult
-from trcc.ui.presentation.ram_access import WAITING, RamAccessView, ram_access_view
+from trcc.modules.rgb.core.results import RamLightingResult
+from trcc.modules.rgb.ui.presentation.ram_access import WAITING, RamAccessView, ram_access_view
 
 
 def _result(state: RamAccessState, command: str = "") -> RamLightingResult:

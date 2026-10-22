@@ -14,8 +14,9 @@ from tests.mock_platform import (
     ScriptedCorsairStick,
     ScriptedSmBus,
 )
-from trcc.adapters.rgb import corsair_dram
-from trcc.adapters.rgb.corsair_dram import (
+from trcc.adapters.system._smbus import find_smbus
+from trcc.modules.rgb.adapters import corsair_dram
+from trcc.modules.rgb.adapters.corsair_dram import (
     ADDRESSES,
     MODELS,
     CorsairDramMirror,
@@ -24,8 +25,7 @@ from trcc.adapters.rgb.corsair_dram import (
     direct_packet,
     effect_packet,
 )
-from trcc.adapters.system._smbus import find_smbus
-from trcc.core.models import (
+from trcc.modules.rgb.core.models import (
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,

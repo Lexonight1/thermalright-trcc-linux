@@ -41,8 +41,6 @@ from trcc.adapters.device.hid_lcd import (
 )
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
-from trcc.adapters.rgb.asus_aura import AURA_VID, MAINBOARD_PIDS, REPORT_ID
-from trcc.adapters.rgb.corsair_dram import crc8
 from trcc.adapters.system import host_platform_class
 from trcc.adapters.system._base import disambiguate
 from trcc.core.models import (
@@ -68,6 +66,8 @@ from trcc.core.ports import (
 )
 from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.registry import find_product
+from trcc.modules.rgb.adapters.asus_aura import AURA_VID, MAINBOARD_PIDS, REPORT_ID
+from trcc.modules.rgb.adapters.corsair_dram import crc8
 from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
 from trcc.modules.visualizer.core.models import VisualSpec
 from trcc.modules.visualizer.core.ports import VisualEngine

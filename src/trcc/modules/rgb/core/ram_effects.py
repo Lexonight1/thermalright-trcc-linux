@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from .models import EFFECT_TRAITS, RamEffect, RamEffectSettings
+from trcc.modules.rgb.core.models import EFFECT_TRAITS, RamEffect, RamEffectSettings
 
 log = logging.getLogger(__name__)
 

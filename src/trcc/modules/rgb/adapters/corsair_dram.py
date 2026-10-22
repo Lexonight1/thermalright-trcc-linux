@@ -50,9 +50,10 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from ...core.led_models import stretch
-from ...core.logs import per_frame
-from ...core.models import (
+from trcc.core.led_models import stretch
+from trcc.core.logs import per_frame
+from trcc.core.ports import SMBUS_BLOCK_MAX, SmBus
+from trcc.modules.rgb.core.models import (
     EFFECT_TRAITS,
     EffectDirection,
     EffectSpeed,
@@ -60,8 +61,8 @@ from ...core.models import (
     RamEffectSettings,
     RgbMirrorDevice,
 )
-from ...core.ports import SMBUS_BLOCK_MAX, RamLights, SmBus
-from ...core.ram_effects import effect_problem
+from trcc.modules.rgb.core.ports import RamLights
+from trcc.modules.rgb.core.ram_effects import effect_problem
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

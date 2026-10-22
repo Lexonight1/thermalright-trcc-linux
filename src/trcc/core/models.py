@@ -1321,7 +1321,6 @@ SOUND_RATE = 44100
 SOUND_CHANNELS = 2
 
 
-
 @dataclass(frozen=True, slots=True)
 class ModuleInfo:
     """One module as the Modules page shows it: its tile and its switch.
@@ -1387,7 +1386,6 @@ class ModuleManifest:
     #: The theme background refs it draws (``<prefix>/<id>``) -- known
     #: without loading it, so a theme can say which module it needs.
     backgrounds: tuple[str, ...] = ()
-
 
 
 #: The URL schemes the media player will open.  An allow-list, not a deny-list:
@@ -1568,59 +1566,6 @@ CUTTER_DEFAULT_FPS: int = 15
 ZT_MAX_DURATION_MS: int = 300_000
 
 
-class RgbFollowMode(str, Enum):
-    """What follows the LED cooler's colours (#160) -- one at a time.
-
-    ``OPENRGB``: the devices of an OpenRGB SDK server.  ``RAM``: Corsair RGB
-    memory, driven directly over the SMBus with no OpenRGB running.
-    ``BOARD``: the motherboard's own RGB -- its LEDs and ARGB headers --
-    driven directly.  One choice, so TRCC and OpenRGB never drive the same
-    lights at once.
-    """
-    OFF = "off"
-    OPENRGB = "openrgb"
-    RAM = "ram"
-    BOARD = "board"
-
-
-class FollowMapping(str, Enum):
-    """How an LCD's picture lights the devices that follow it.
-
-    ``HALVES``: the panel split into a column per device, left to right; each
-    device shows its column top to bottom.  ``SINGLE``: the whole panel as one
-    column, top to bottom, the same on every device.
-    """
-    HALVES = "halves"
-    SINGLE = "single"
-
-
-class FollowColors(str, Enum):
-    """How a region of an LCD's picture becomes one light's colour.
-
-    ``VIVID``: its brightest pixels -- a small yellow star in a red sky still
-    shows.  ``SMOOTH``: all of it, averaged -- steadier, but small bright
-    details drown.  Picked between on the maintainer's sticks, 2026-10-10.
-    """
-    VIVID = "vivid"
-    SMOOTH = "smooth"
-
-
-@dataclass(frozen=True, slots=True)
-class RgbMirrorDevice:
-    """One device of another RGB system that follows the cooler (#160).
-
-    ``index`` is the device's place in that system's list -- what every
-    later request names it by.  ``led_count`` is how many colours it takes.
-    ``ref`` names it across scans, which ``index`` cannot: a rescan renumbers.
-    Corsair RAM's is its bus and address, ``i2c-3/0x19``; empty where the
-    other system has no stable name.
-    """
-    index: int
-    name: str
-    led_count: int
-    ref: str = ""
-
-
 @dataclass(frozen=True, slots=True)
 class RgbControllerId:
     """An RGB controller OpenRGB finds by its USB HID ids -- one row of the
@@ -1668,36 +1613,6 @@ class BoardIdentity:
     name: str
 
 
-#: The most LEDs an ASUS Aura ARGB header drives -- its config table's 0x78
-#: per header (OpenRGB #3693), a limit, not a count.
-MAX_ARGB_LEDS = 120
-#: An ASUS Aura ARGB header's light ref, by header number from 1 -- made by
-#: the driver, named by ``SetAuraLeds``.
-AURA_HEADER_REF = "aura/argb{}"
-#: The follow source that is TRCC's own effect clock: the motherboard's
-#: lights run the built-in effect each was given (``SetAuraEffect``), drawn
-#: by TRCC, instead of following a cooler or an LCD.
-EFFECT_SOURCE = "effect"
-
-
-def aura_header(ref: str) -> int | None:
-    """The ARGB header number *ref* names, or None for any other light."""
-    prefix = AURA_HEADER_REF.format("")
-    number = ref.removeprefix(prefix)
-    frame_log.debug("aura_header: %s", ref)
-    return int(number) if ref.startswith(prefix) and number.isdigit() else None
-
-
-@dataclass(frozen=True, slots=True)
-class FoundBoard:
-    """A motherboard RGB controller Find spotted: its catalog row, the HID
-    interface it matched, and the name its lights take -- OpenRGB's naming,
-    the brand and the board's DMI name ("ASUS PRIME Z790-V AX")."""
-    controller: RgbControllerId
-    interface: HidInterface
-    label: str
-
-
 class RamAccessState(str, Enum):
     """Whether this user may reach RGB memory's bus (the chipset SMBus).
 
@@ -1727,137 +1642,10 @@ class RamAccessStatus:
     command: str = ""
 
 
-class RamEffect(str, Enum):
-    """An effect Corsair RGB memory runs by itself, saved on the stick."""
-    STATIC = "static"
-    COLOR_SHIFT = "color-shift"
-    COLOR_PULSE = "color-pulse"
-    RAINBOW = "rainbow"
-    RAINBOW_WAVE = "rainbow-wave"
-    COLOR_WAVE = "color-wave"
-    VISOR = "visor"
-    RAIN = "rain"
-    MARQUEE = "marquee"
-    SEQUENTIAL = "sequential"
-
-
-class EffectSpeed(str, Enum):
-    """The three speeds the stick knows."""
-    SLOW = "slow"
-    MEDIUM = "medium"
-    FAST = "fast"
-
-
-class EffectDirection(str, Enum):
-    """Which way an effect moves along the stick."""
-    UP = "up"
-    DOWN = "down"
-    LEFT = "left"
-    RIGHT = "right"
-    VERTICAL = "vertical"
-    HORIZONTAL = "horizontal"
-
-
-@dataclass(frozen=True, slots=True)
-class EffectTraits:
-    """What an effect takes -- the controls a UI shows for it.
-
-    ``colors`` is how many it needs (0-2); ``random`` whether the stick can
-    pick them itself; ``directions`` the ways it can move, the first being
-    its default.
-    """
-    speed: bool
-    colors: int
-    random: bool
-    brightness: bool
-    directions: tuple[EffectDirection, ...] = ()
-
-
-_UD = (EffectDirection.DOWN, EffectDirection.UP)
-_UDLR = (*_UD, EffectDirection.LEFT, EffectDirection.RIGHT)
-
-#: Each effect's controls, as OpenRGB's ``RGBController_CorsairDRAM.cpp``
-#: declares them (credited in ``adapters/rgb/corsair_dram.py``).
-EFFECT_TRAITS: dict[RamEffect, EffectTraits] = {
-    RamEffect.STATIC: EffectTraits(speed=False, colors=1, random=False,
-                                   brightness=False),
-    RamEffect.COLOR_SHIFT: EffectTraits(True, 2, True, True),
-    RamEffect.COLOR_PULSE: EffectTraits(True, 2, True, True),
-    RamEffect.RAINBOW: EffectTraits(True, 0, False, False),
-    RamEffect.RAINBOW_WAVE: EffectTraits(True, 0, False, False, _UDLR),
-    RamEffect.COLOR_WAVE: EffectTraits(True, 2, True, True, _UDLR),
-    RamEffect.VISOR: EffectTraits(
-        True, 2, True, True,
-        (EffectDirection.VERTICAL, EffectDirection.HORIZONTAL)),
-    RamEffect.RAIN: EffectTraits(True, 2, True, True, _UD),
-    RamEffect.MARQUEE: EffectTraits(True, 1, False, True),
-    RamEffect.SEQUENTIAL: EffectTraits(True, 1, True, True, _UD),
-}
-
-
-@dataclass(frozen=True, slots=True)
-class RamEffectSettings:
-    """One effect, as the user set it.  ``direction`` None is the effect's
-    default; ``colors`` holds as many as its traits ask for."""
-    effect: RamEffect
-    speed: EffectSpeed = EffectSpeed.MEDIUM
-    direction: EffectDirection | None = None
-    colors: tuple[tuple[int, int, int], ...] = ()
-    random_colors: bool = False
-    brightness: int = 255
-
-
 #: Which device a linked colour reads: the CPU's or the GPU's.
 SensorLink = Literal["cpu", "gpu"]
 #: What a linked colour follows: a temperature or a load.
 LinkedMetric = Literal["temp", "load"]
-
-
-@dataclass(frozen=True, slots=True)
-class LinkedEffect:
-    """A light whose colour follows a reading -- *metric* of *source* -- through
-    a green-yellow-orange-red scale (``LIGHT_GRADIENTS``), red when hot or busy.
-    The LED cooler's Temperature-linked and Load-linked modes, for a light
-    TRCC draws (a motherboard header)."""
-    metric: LinkedMetric
-    source: SensorLink = "cpu"
-
-
-#: What a light TRCC drives can run: a built-in effect, or a linked colour.
-LightEffect = RamEffectSettings | LinkedEffect
-
-
-class LightKind(str, Enum):
-    """What a light is and what drives it.
-
-    ``RAM``: RGB memory, driven by TRCC.  ``OPENRGB``: one of OpenRGB's
-    devices.  ``BOARD``: a motherboard's lights TRCC drives (an ASUS Aura
-    header).  ``FOUND``: a motherboard controller OpenRGB knows that TRCC
-    does not drive -- listed, never written to.
-    """
-    RAM = "ram"
-    OPENRGB = "openrgb"
-    BOARD = "board"
-    FOUND = "found"
-
-
-@dataclass(frozen=True, slots=True)
-class RgbLight:
-    """One light the RGB page lists: a RAM stick, or one of OpenRGB's devices.
-
-    ``ref`` names it across scans (a stick's ``i2c-3/0x19``, an OpenRGB
-    device's name).  ``effect`` is the built-in effect TRCC last gave it --
-    saved on a RAM stick, run by TRCC on a motherboard light -- what TRCC
-    set, not read back.
-    ``remembered``: listed from the last Find's record in the settings, not
-    looked for since the App started.
-    """
-    ref: str
-    name: str
-    led_count: int
-    kind: LightKind
-    effect: LightEffect | None = None
-    remembered: bool = False
 
 
 #: The overlay colour editor's recent-colour row: 11 swatches, Silver until
@@ -2130,8 +1918,6 @@ class OverlayElementConfig:
     #: The sensor a HARDWARE cell shows, when the DC pair table cannot name it
     #: (a board probe, a voltage, one DIMM) -- the pair is then (0, 0).
     metric: str = ""
-
-
 
 
 #: The dashboard's FAN panel, and the slot each of its four rows fills -- the
@@ -2432,13 +2218,10 @@ class SensorInfo:
     source: str
 
 
-
 def is_safe_archive_member(name: str) -> bool:
     """Reject archive members that would escape the destination (zip slip)."""
     log.debug("is_safe_archive_member: name=%r", name)
     return not (Path(name).is_absolute() or '..' in name.split('/'))
-
-
 
 
 # =========================================================================

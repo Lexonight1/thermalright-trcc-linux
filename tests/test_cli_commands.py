@@ -2356,9 +2356,11 @@ def test_system_linked_color_dispatches_and_refuses(cli_runner: CliRunner, cli_a
 def test_system_rgb_lists_the_last_find_and_says_so(cli_runner: CliRunner, cli_app) -> None:
     """After a restart the sticks come from the settings -- listed, marked,
     and no bus touched."""
-    from trcc.core.models import LightKind, RgbMirrorDevice
+    from trcc.modules.rgb.core.models import LightKind, RgbMirrorDevice
 
-    cli_app.settings.set_found_lights(LightKind.RAM, (
+    from .conftest import rgb_module
+
+    rgb_module(cli_app).settings.set_found_lights(LightKind.RAM, (
         RgbMirrorDevice(0, "Vengeance (i2c-3 0x19)", 10, "i2c-3/0x19"),))
     listed = cli_runner.invoke(_app(), ["system", "rgb"])
     assert listed.exit_code == 0, listed.output

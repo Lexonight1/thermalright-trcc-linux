@@ -52,11 +52,7 @@ from trcc.core.events import (
     ModuleChanged,
     OrientationChanged,
     OverlayChanged,
-    RamLightingChanged,
     RefreshIntervalChanged,
-    RgbFollowChanged,
-    RgbFollowSent,
-    RgbLightsChanged,
     ScreencastRegionChanged,
     ScreencastStarted,
     ScreencastStopped,
@@ -115,7 +111,6 @@ class BusBridge(QObject):
     brightness_changed = Signal(object)        # BrightnessChanged
     theme_loaded = Signal(object)              # ThemeLoaded
     led_colors_changed = Signal(object)        # LedColorsChanged
-    rgb_follow_sent = Signal(object)           # RgbFollowSent
     update_checked = Signal(object)            # UpdateChecked
     sensors_updated = Signal(object)           # SensorsUpdated
     error_occurred = Signal(object)            # ErrorOccurred
@@ -246,7 +241,6 @@ class BusBridge(QObject):
             (BrightnessChanged, self.brightness_changed),
             (ThemeLoaded, self.theme_loaded),
             (LedColorsChanged, self.led_colors_changed),
-            (RgbFollowSent, self.rgb_follow_sent),
             (UpdateChecked, self.update_checked),
             (SensorsUpdated, self.sensors_updated),
             (ErrorOccurred, self.error_occurred),
@@ -274,9 +268,6 @@ class BusBridge(QObject):
             (GpuDeviceChanged, self.app_settings_changed),
             (RefreshIntervalChanged, self.app_settings_changed),
             (HddEnabledChanged, self.app_settings_changed),
-            (RgbFollowChanged, self.app_settings_changed),
-            (RamLightingChanged, self.app_settings_changed),
-            (RgbLightsChanged, self.app_settings_changed),
             (DiskDeviceChanged, self.app_settings_changed),
             (SensorDashboardChanged, self.app_settings_changed),
             (AutostartChanged, self.app_settings_changed),

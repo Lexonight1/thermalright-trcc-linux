@@ -231,10 +231,9 @@ class Layout:
     # Sensor button (within sidebar)
     SENSOR_BTN = (25, 100, 140, 50)
     ABOUT_BTN = (25, 730, 140, 50)
-    # RGB Lighting sits above About; the device list scrolls in what is left.
-    RGB_BTN = (25, 670, 140, 50)
-    #: Where a module's view button goes in the sidebar, in the order modules
-    #: claim them -- RGB Lighting's place.  TRCC's own, not the C#'s.
+    #: Where a module's view button goes in the sidebar, above About, in the
+    #: order modules claim them -- RGB Lighting's.  TRCC's own, not the C#'s;
+    #: the device list scrolls in what is left.
     SIDEBAR_MODULE_SLOTS = ((25, 670, 140, 50),)
     DEVICE_AREA = (0, 160, 180, 500)
     NO_DEVICES_LABEL = (25, 10, 140, 50)

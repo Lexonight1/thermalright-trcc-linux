@@ -17,6 +17,7 @@ Pure-stdlib, no project imports.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -40,3 +41,12 @@ def parse_hex(value: str) -> tuple[int, int, int, int]:
     raise ValueError(
         f"hex color must be #RRGGBB or #RRGGBBAA, got {value!r}"
     )
+
+
+def rgb_rows(rows: list[Any]) -> list[tuple[int, int, int]]:
+    """``[[r, g, b], ...]`` as saved in JSON -> colour tuples; a malformed
+    row is dropped, never guessed."""
+    log.debug("rgb_rows: %d row(s)", len(rows))
+    return [(row[0], row[1], row[2]) for row in rows
+            if isinstance(row, list) and len(row) == 3
+            and all(isinstance(c, int) and 0 <= c <= 255 for c in row)]

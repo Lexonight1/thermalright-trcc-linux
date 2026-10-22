@@ -18,12 +18,12 @@ from typing import Any
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
 
-from ..core.commands import Command
-from ..core.models import RamAccessState
-from ..core.ports import CommandBus
-from ..core.results import RamLightingResult
-from .presentation.ram_access import CONFIRM_TEXT, CONFIRM_TITLE, ram_access_view
-from .qt_background import dispatch_in_background
+from trcc.core.commands import Command
+from trcc.core.models import RamAccessState
+from trcc.core.ports import CommandBus
+from trcc.modules.rgb.core.results import RamLightingResult
+from trcc.modules.rgb.ui.presentation.ram_access import CONFIRM_TEXT, CONFIRM_TITLE, ram_access_view
+from trcc.ui.qt_background import dispatch_in_background
 
 log = logging.getLogger(__name__)
 

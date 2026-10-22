@@ -38,10 +38,10 @@ import struct
 from collections import Counter
 from collections.abc import Sequence
 
-from ...core.led_models import stretch
-from ...core.logs import per_frame
-from ...core.models import RgbMirrorDevice
-from ...core.ports import RgbMirror
+from trcc.core.led_models import stretch
+from trcc.core.logs import per_frame
+from trcc.modules.rgb.core.models import RgbMirrorDevice
+from trcc.modules.rgb.core.ports import RgbMirror
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
