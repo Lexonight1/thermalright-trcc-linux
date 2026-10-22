@@ -159,6 +159,16 @@ def test_the_ram_is_reachable_only_with_access(access: RamAccessState,
     assert _page(access=access).ram_reachable is reachable
 
 
+@pytest.mark.parametrize("access", list(RamAccessState))
+def test_the_card_offers_turning_it_on_only_when_it_is_off(
+        access: RamAccessState) -> None:
+    """"RAM lighting is off -- TRCC needs permission" is true of OFF alone:
+    with no bus, an OS that cannot (or NixOS's configuration), or installed
+    but not yet active, it contradicts the status line under it.
+    MUTATION CHECK: return ``not self.ram_reachable``."""
+    assert _page(access=access).ram_offer is (access is RamAccessState.OFF)
+
+
 def test_the_note_says_whether_the_device_was_looked_for() -> None:
     assert _page(scanned=False).note == "Not searched yet -- press Find lights."
     assert _page().note == "No memory lights found."

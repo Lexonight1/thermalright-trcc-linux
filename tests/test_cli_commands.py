@@ -2297,7 +2297,7 @@ def test_system_ram_lighting_on_an_os_without_it(cli_runner: CliRunner, cli_app)
     del cli_app
     status = cli_runner.invoke(_app(), ["system", "ram-lighting"])
     assert status.exit_code == 0, status.output
-    assert status.output == ("RAM lighting is not available on FakePlatform yet\n"
+    assert status.output == ("RAM lighting is not available on this system yet\n"
                              "  state: unsupported\n")
     enable = cli_runner.invoke(_app(), ["system", "ram-lighting", "enable"])
     assert enable.exit_code == 1, enable.output

@@ -343,11 +343,11 @@ class _LightsColumn(QWidget):
         self._note.setText(page.note)
         self._note.setVisible(bool(page.note))
         memory = device is RgbDevice.MEMORY
-        reachable = page.ram_reachable
         self._access_card.setVisible(memory)
-        # Off: the card explains and offers the switch.  On: just the switch.
-        self._access_title.setVisible(not reachable)
-        self._access_text.setVisible(not reachable)
+        # Off: the card explains and offers the switch.  Otherwise just the
+        # status line and the switch it offers, if any.
+        self._access_title.setVisible(page.ram_offer)
+        self._access_text.setVisible(page.ram_offer)
         self._address_row.setVisible(device is RgbDevice.OPENRGB)
         self._address.setText(page.address)
         self._board_note.setVisible(board)

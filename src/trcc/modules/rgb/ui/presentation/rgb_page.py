@@ -644,6 +644,15 @@ class RgbPage:
         return self.ram_access in (RamAccessState.ON, RamAccessState.ELSEWHERE)
 
     @property
+    def ram_offer(self) -> bool:
+        """Whether the card offers turning RAM lighting on -- its "off" title
+        and "TRCC needs permission" text.  Only OFF: with no bus, on an OS
+        TRCC cannot switch it on (or NixOS's configuration), or installed but
+        not yet active, the status line alone says what is true."""
+        log.debug("RgbPage.ram_offer: %s", self.ram_access.value)
+        return self.ram_access is RamAccessState.OFF
+
+    @property
     def note(self) -> str:
         """The line under the device's lights: where the list came from, or
         why it is empty."""

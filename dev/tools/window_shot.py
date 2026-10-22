@@ -81,6 +81,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
         from trcc.ui.gui.trcc_app import TRCCApp
 
         window = TRCCApp(app=app)
+        # As GuiUI.run does (ui/_uis.py): the sidebar lists the App's panels.
+        window.replay_initial_devices()
         window.show()
         _settle(qapp)
         if open_key in window._module_tabs:

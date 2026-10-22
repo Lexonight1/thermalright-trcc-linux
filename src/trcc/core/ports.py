@@ -2357,9 +2357,10 @@ class _NoRamAccess(RamAccess):
 
     def __init__(self, os_name: str) -> None:
         log.debug("_NoRamAccess: %s", os_name)
+        # *os_name* is a class name (WindowsPlatform): the log's, never the user's.
         self._status = RamAccessStatus(
             RamAccessState.UNSUPPORTED,
-            f"RAM lighting is not available on {os_name} yet")
+            "RAM lighting is not available on this system yet")
 
     def status(self) -> RamAccessStatus:
         log.debug("_NoRamAccess.status")

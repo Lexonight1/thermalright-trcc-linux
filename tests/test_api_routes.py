@@ -2112,10 +2112,10 @@ def test_system_rgb_follow_takes_a_host_not_a_url(api_client: TestClient) -> Non
 def test_system_ram_lighting_on_an_os_without_it(api_client: TestClient) -> None:
     status = api_client.get("/system/ram-lighting").json()
     assert (status["state"], status["message"]) == (
-        "unsupported", "RAM lighting is not available on FakePlatform yet")
+        "unsupported", "RAM lighting is not available on this system yet")
     resp = api_client.post("/system/ram-lighting", json={"enabled": True})
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "RAM lighting is not available on FakePlatform yet"
+    assert resp.json()["detail"] == "RAM lighting is not available on this system yet"
     assert api_client.post("/system/ram-lighting", json={}).status_code == 422
 
 
