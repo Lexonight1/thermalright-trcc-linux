@@ -35,6 +35,8 @@ def _switch(key: str, enabled: bool) -> None:
     log.info("cli module %s: %s", "on" if enabled else "off", key)
     result = get_app().dispatch(SetModuleEnabled(key=key, enabled=enabled))
     typer.echo(result.message)
+    if result.note:
+        typer.echo(result.note)
     if not result.ok:
         raise typer.Exit(code=1)
 

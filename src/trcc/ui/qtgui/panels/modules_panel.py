@@ -31,7 +31,7 @@ class ModulesPanel(BasePanel):
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
-        self.view = ModulesView(self.dispatch, ListModules, self._switch, self)
+        self.view = ModulesView(self._app, ListModules, self._switch, self)
         layout.addWidget(self.view, 1)
         self._bus.app_settings_changed.connect(
             self.view.on_event, type=Qt.ConnectionType.QueuedConnection)

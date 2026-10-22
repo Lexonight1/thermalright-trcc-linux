@@ -11,12 +11,17 @@ import json
 import threading
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import FakePaths, rgb_module
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import SetModuleEnabled
 from trcc.core.events import FrameSent
+from trcc.core.models import RamAccessState, RamAccessStatus
+from trcc.core.ports import RamAccess
+from trcc.modules.rgb.app import STILL_GRANTED
 from trcc.modules.rgb.core import RgbFollow, RgbLights, SetRgbFollow
 from trcc.modules.rgb.core.models import FollowColors, FollowMapping, RgbFollowMode
 from trcc.services.settings import Settings
@@ -104,4 +109,83 @@ def test_switched_off_it_stops_following_and_answers_that_it_is_off(
     assert ("trcc-rgb-mirror" in names, made[-1].closed >= 1,
             app.events.subscriber_count(FrameSent)) == (False, True, heard - 1)
     assert (off.ok, off.message) == (False, "RGB Lighting is off -- turn it on in Modules")
+    app.close()
+
+
+# ── switching it off takes back the memory's permission ──────────────
+
+class _Grant(RamAccess):
+    """TRCC's RAM-lighting permission, recorded.  *after* is what removing it
+    leaves: OFF, or ON again when the password prompt is closed."""
+
+    def __init__(self, state: RamAccessState,
+                 after: RamAccessState = RamAccessState.OFF) -> None:
+        self.state, self.after, self.removed = state, after, 0
+
+    def status(self) -> RamAccessStatus:
+        return RamAccessStatus(self.state, f"now {self.state.value}")
+
+    def enable(self) -> RamAccessStatus:
+        raise AssertionError("switching off never grants")
+
+    def disable(self) -> RamAccessStatus:
+        self.removed += 1
+        self.state = self.after
+        return RamAccessStatus(self.state, f"now {self.state.value}")
+
+
+def _granted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, grant: _Grant) -> App:
+    """An App on the mock whose memory permission is *grant*."""
+    app, _made = _app(tmp_path)
+    monkeypatch.setattr(app.platform, "ram_access", lambda: grant)
+    return app
+
+
+@pytest.mark.parametrize("state", [RamAccessState.ON, RamAccessState.NOT_APPLIED])
+def test_switching_rgb_off_removes_trccs_ram_permission(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: RamAccessState) -> None:
+    """With RGB off nothing in TRCC could take the permission back, so it
+    goes with the switch -- installed but not yet picked up (NOT_APPLIED)
+    too.  MUTATION CHECK: drop ``NOT_APPLIED`` from ``_TRCC_GRANT``."""
+    grant = _Grant(state)
+    app = _granted(tmp_path, monkeypatch, grant)
+    result = app.dispatch(SetModuleEnabled(key="rgb", enabled=False))
+    assert (result.ok, result.note, grant.removed, grant.state) == (
+        True, "", 1, RamAccessState.OFF)
+    app.close()
+
+
+def test_closing_the_app_keeps_the_ram_permission(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A logout, a reboot, ``trcc kill``: RGB goes off with the App, and the
+    permission the user gave stays -- no password prompt either.
+    MUTATION CHECK: move the removal into ``RgbModule._disable``."""
+    grant = _Grant(RamAccessState.ON)
+    app = _granted(tmp_path, monkeypatch, grant)
+    app.start_session()
+    app.close()
+    assert (grant.removed, grant.state) == (0, RamAccessState.ON)
+
+
+def test_a_closed_prompt_still_switches_rgb_off_and_says_how_to_remove_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    grant = _Grant(RamAccessState.ON, after=RamAccessState.ON)
+    app = _granted(tmp_path, monkeypatch, grant)
+    result = app.dispatch(SetModuleEnabled(key="rgb", enabled=False))
+    assert (result.ok, result.enabled, result.note, grant.removed) == (
+        True, False, STILL_GRANTED, 1)
+    assert app.dispatch(RgbLights()).ok is False             # RGB is off
+    app.close()
+
+
+@pytest.mark.parametrize("state", [RamAccessState.ELSEWHERE, RamAccessState.OFF,
+                                   RamAccessState.NO_BUS, RamAccessState.UNSUPPORTED])
+def test_a_permission_trcc_did_not_grant_is_left_alone(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: RamAccessState) -> None:
+    """Another rule's access (OpenRGB's) is not TRCC's to take, and with
+    none there is nothing to ask the password for."""
+    grant = _Grant(state)
+    app = _granted(tmp_path, monkeypatch, grant)
+    result = app.dispatch(SetModuleEnabled(key="rgb", enabled=False))
+    assert (result.ok, result.note, grant.removed) == (True, "", 0)
     app.close()

@@ -17,9 +17,9 @@ from trcc.adapters.modules import MODULES, BaseModule
 from trcc.app import App
 from trcc.core.commands import Command, ListModules, SetModuleEnabled
 from trcc.core.errors import ModuleUnavailable
-from trcc.core.events import Event, FrameSent, ModuleChanged
+from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
 from trcc.core.models import PanelPicture, Wire
-from trcc.core.ports import Module, ModuleHost
+from trcc.core.ports import CommandBus, Module, ModuleHost
 from trcc.core.results import Result
 
 from .conftest import FakePlatform
@@ -413,6 +413,32 @@ def _switch(key: str, enabled: bool) -> SetModuleEnabled:
     return SetModuleEnabled(key=key, enabled=enabled)
 
 
+def _notes(view: Any) -> list[str]:
+    """What the tiles say beside their switches -- the tiles of now: a
+    rebuilt list's old ones are hidden until Qt deletes them."""
+    from PySide6.QtWidgets import QLabel
+    return [label.text() for label in view.findChildren(QLabel)
+            if label.objectName() == "moduleProblem" and label.isVisibleTo(view)]
+
+
+class _Lists(CommandBus):
+    """Answers every Command with one listing -- a page with nothing behind it."""
+
+    def __init__(self, listing: Result) -> None:
+        self.listing = listing
+
+    def dispatch(self, cmd: Any) -> Any:
+        return self.listing
+
+    @property
+    def events(self) -> EventBus:
+        return EventBus()
+
+    @property
+    def remote(self) -> bool:
+        return False
+
+
 def test_the_page_lists_switches_and_follows_other_uis(
         qtbot: Any, tmp_home: Path) -> None:
     """The shared list: a tile per module, its switch sends SetModuleEnabled,
@@ -421,12 +447,12 @@ def test_the_page_lists_switches_and_follows_other_uis(
     from trcc.ui.qt_modules import ModulesView
 
     app = _app(tmp_home)
-    view = ModulesView(app.dispatch, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch)
     qtbot.addWidget(view)
     assert {k: s.isChecked() for k, s in view.switches.items()} == {
         "off": False, "on": True, "refuses": False}
     view.switches["off"].click()                        # this UI
-    assert app.modules.on == {"on", "off"}
+    qtbot.waitUntil(lambda: app.modules.on == {"on", "off"}, timeout=3000)
     app.dispatch(SetModuleEnabled(key="on", enabled=False))   # another UI
     view.on_event(ModuleChanged(key="on", enabled=False))
     assert {k: s.isChecked() for k, s in view.switches.items()} == {
@@ -436,9 +462,10 @@ def test_the_page_lists_switches_and_follows_other_uis(
 def test_a_refused_switch_stays_off(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
-    view = ModulesView(_app(tmp_home).dispatch, ListModules, _switch)
+    view = ModulesView(_app(tmp_home), ListModules, _switch)
     qtbot.addWidget(view)
     view.switches["refuses"].click()
+    qtbot.waitUntil(lambda: "refuses" in view.notes, timeout=3000)
     assert view.switches["refuses"].isChecked() is False
 
 
@@ -446,18 +473,17 @@ def test_a_refusal_is_shown_on_its_tile(qtbot: Any, tmp_home: Path) -> None:
     """A failure shows where the user is looking: the tile says why, until
     a switch succeeds.  It used to reach only the log.
 
-    MUTATION CHECK: drop ``self.refused[key] = ...`` in ``_on_switch``."""
-    from PySide6.QtWidgets import QLabel
+    MUTATION CHECK: drop ``self.notes[result.key] = ...`` in ``_switched``."""
 
     from trcc.ui.qt_modules import ModulesView
 
     app = App(platform=FakePlatform(tmp_home), modules={"undeclared": _Undeclared})
-    view = ModulesView(app.dispatch, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch)
     qtbot.addWidget(view)
     view.switches["undeclared"].click()
-    notes = [label.text() for label in view.findChildren(QLabel)
-             if label.objectName() == "moduleProblem"]
-    assert notes == ["Undeclared asked for 'events' without declaring it in its module.json"]
+    qtbot.waitUntil(lambda: _notes(view) != [], timeout=3000)
+    assert _notes(view) == [
+        "Undeclared asked for 'events' without declaring it in its module.json"]
 
 
 def test_a_tile_shows_its_symbol_and_opens_its_guide(
@@ -475,7 +501,7 @@ def test_a_tile_shows_its_symbol_and_opens_its_guide(
     guide = "https://example.invalid/GUIDE_MODULES.md#face"
     tile = ModuleInfo(key="face", title="Face", summary="s", enabled=True,
                       icon=str(icon), guide=guide)
-    view = ModulesView(lambda _cmd: ModulesResult(modules=(tile,)), ListModules, _switch)
+    view = ModulesView(_Lists(ModulesResult(modules=(tile,))), ListModules, _switch)
     qtbot.addWidget(view)
     [symbol] = [w for w in view.findChildren(QLabel) if w.objectName() == "moduleIcon"]
     assert not symbol.pixmap().isNull()
@@ -491,7 +517,7 @@ def test_no_modules_says_so(qtbot: Any, tmp_home: Path) -> None:
 
     from trcc.ui.qt_modules import NONE_YET, ModulesView
 
-    view = ModulesView(App(platform=FakePlatform(tmp_home), modules={}).dispatch,
+    view = ModulesView(App(platform=FakePlatform(tmp_home), modules={}),
                        ListModules, _switch)
     qtbot.addWidget(view)
     assert [w.text() for w in view.findChildren(QLabel)] == [NONE_YET]
@@ -526,10 +552,85 @@ def test_a_switch_turns_a_module_off_too(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
     app = _app(tmp_home)
-    view = ModulesView(app.dispatch, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch)
     qtbot.addWidget(view)
     view.switches["on"].click()
-    assert app.modules.on == set()
+    qtbot.waitUntil(lambda: app.modules.on == set(), timeout=3000)
+
+
+# ── what only the user's switch-off undoes ───────────────────────────
+
+class _Tidies(_Recording):
+    """Takes something back when the user switches it off -- *note* is what
+    it could not."""
+    key, title = "tidies", "Tidies"
+    note: ClassVar[str] = ""
+
+    def turning_off(self, host: ModuleHost) -> str:
+        CALLS.append(f"{self.key}:turning_off")
+        return self.note
+
+
+class _TidiesBadly(_Tidies):
+    def turning_off(self, host: ModuleHost) -> str:
+        CALLS.append(f"{self.key}:turning_off")
+        raise OSError("the prompt went away")
+
+
+def test_closing_the_app_never_runs_turning_off(tmp_home: Path) -> None:
+    """The App closing switches every module off too, but only the user's
+    switch-off undoes what that choice undoes: a logout must not ask for a
+    password or take back a permission.  MUTATION CHECK: call
+    ``turning_off`` from ``Module.disable``."""
+    app = App(platform=FakePlatform(tmp_home), modules={"tidies": _Tidies})
+    CALLS.clear()
+    app.close()
+    assert CALLS == ["tidies:pre_disable", "tidies:disable", "tidies:post_disable"]
+
+
+def test_a_switch_off_note_reaches_the_result_and_every_ui(
+        tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: drop ``note=note`` from the ``ModuleChanged``."""
+    monkeypatch.setattr(_Tidies, "note", "left a thing behind")
+    app = App(platform=FakePlatform(tmp_home), modules={"tidies": _Tidies})
+    heard: list[ModuleChanged] = []
+    app.events.subscribe(ModuleChanged, heard.append)
+    CALLS.clear()
+    result = app.dispatch(SetModuleEnabled(key="tidies", enabled=False))
+    assert (result.ok, result.enabled, result.note) == (True, False, "left a thing behind")
+    assert heard == [ModuleChanged(key="tidies", enabled=False, note="left a thing behind")]
+    # Before it goes, while it can still reach its host.
+    assert CALLS[:2] == ["tidies:turning_off", "tidies:pre_disable"]
+    app.close()
+
+
+def test_a_failed_tidy_up_still_switches_off(tmp_home: Path) -> None:
+    app = App(platform=FakePlatform(tmp_home), modules={"tidies": _TidiesBadly})
+    result = app.dispatch(SetModuleEnabled(key="tidies", enabled=False))
+    assert (result.ok, app.modules.on, result.note) == (
+        True, set(), "Tidies did not tidy up: the prompt went away")
+    app.close()
+
+
+def test_a_tile_shows_a_note_from_any_ui(
+        qtbot: Any, tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """This UI's switch and another UI's both reach the tile; a switch with
+    nothing to say clears it.  MUTATION CHECK: drop ``self._note`` from
+    ``ModulesView.on_event``."""
+    from trcc.ui.qt_modules import ModulesView
+
+    monkeypatch.setattr(_Tidies, "note", "left a thing behind")
+    app = App(platform=FakePlatform(tmp_home), modules={"tidies": _Tidies, "on": _On})
+    view = ModulesView(app, ListModules, _switch)
+    qtbot.addWidget(view)
+    view.switches["tidies"].click()                     # this UI
+    qtbot.waitUntil(lambda: _notes(view) == ["left a thing behind"], timeout=3000)
+    app.dispatch(SetModuleEnabled(key="tidies", enabled=True))   # another UI
+    view.on_event(ModuleChanged(key="tidies", enabled=True))
+    assert _notes(view) == []
+    view.on_event(ModuleChanged(key="on", enabled=False, note="from elsewhere"))
+    assert _notes(view) == ["from elsewhere"]
+    app.close()
 
 
 # ── frames, readings, hardware, password: what RGB reaches through its host ──

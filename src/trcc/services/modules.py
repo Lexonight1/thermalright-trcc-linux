@@ -512,17 +512,32 @@ class ModuleRunner:
                 except ModuleUnavailable as e:
                     log.warning("start_session: %s stays off: %s", key, e)
 
-    def switch(self, key: str, enabled: bool) -> None:
+    def switch(self, key: str, enabled: bool) -> str:
         """Switch module *key* on or off -- started too, inside a session.
-        ``ModuleUnavailable`` when it cannot run here or failed; nothing changed."""
+        ``ModuleUnavailable`` when it cannot run here or failed; nothing changed.
+        Returns what the module has to tell the user ("" for nothing)."""
         log.info("ModuleRunner.switch: %s -> %s", key, enabled)
         with self._lock:
             if enabled:
                 self._enable(key)
                 if self._session:
                     self._start(key)
-            else:
-                self._disable(key)
+                return ""
+            note = self._turning_off(key)
+            self._disable(key)
+            return note
+
+    def _turning_off(self, key: str) -> str:
+        """The user's switch-off, before *key* goes: what only that choice
+        undoes.  A failure there never keeps the module on."""
+        module = self._modules[key]
+        try:
+            note = module.turning_off(self._scopes[key])
+        except Exception as e:
+            log.exception("_turning_off: %s could not tidy up", key)
+            return f"{module.title} did not tidy up: {e}"
+        log.info("ModuleRunner._turning_off: %s note=%r", key, note)
+        return note
 
     def close(self) -> None:
         """The App is closing: stop and switch off every module.  The user's

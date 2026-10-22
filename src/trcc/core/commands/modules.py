@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from ..errors import ModuleUnavailable
 from ..events import ModuleChanged
@@ -35,6 +35,9 @@ class ListModules(Query[ModulesResult]):
 class SetModuleEnabled(Command[ModuleResult]):
     """Switch module *key* on or off -- remembered, and every UI hears it.
     A module that cannot run here refuses, and nothing changes."""
+    #: Switching off may ask for the password (a module taking back a
+    #: permission it was granted), so no timeout cuts the prompt off.
+    WAITS_ON_USER: ClassVar[bool] = True
     key: str
     enabled: bool
 
@@ -52,14 +55,18 @@ class SetModuleEnabled(Command[ModuleResult]):
                                 message=f"{module.title} already "
                                         f"{'on' if self.enabled else 'off'}")
         try:
-            app.modules.switch(self.key, self.enabled)
+            note = app.modules.switch(self.key, self.enabled)
         except ModuleUnavailable as e:
             log.warning("SetModuleEnabled: %s refused: %s", self.key, e)
             return ModuleResult(ok=False, key=self.key,
                                 enabled=app.modules.is_on(self.key),
                                 message=str(e))
         app.settings.set_module_enabled(self.key, self.enabled)
-        app.events.publish(ModuleChanged(key=self.key, enabled=self.enabled))
+        if note:
+            log.warning("SetModuleEnabled: %s -- %s", self.key, note)
+        app.events.publish(ModuleChanged(key=self.key, enabled=self.enabled,
+                                         note=note))
         return ModuleResult(ok=True, key=self.key, enabled=self.enabled,
                             message=f"{module.title} "
-                                    f"{'on' if self.enabled else 'off'}")
+                                    f"{'on' if self.enabled else 'off'}",
+                            note=note)

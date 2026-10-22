@@ -602,6 +602,9 @@ class ModuleResult(Result):
     key: str = ""
     enabled: bool = False
     found: bool = True
+    #: What the module had to tell the user as it went off -- the switch
+    #: still worked.  "" for nothing.
+    note: str = ""
 
 
 @dataclass(frozen=True, slots=True)

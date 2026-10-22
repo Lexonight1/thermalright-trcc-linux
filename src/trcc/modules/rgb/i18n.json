@@ -112,7 +112,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB Lighting -- memory and OpenRGB devices",
     "RGB Lighting": "RGB Lighting",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it."
   },
   "de": {
     "Memory": "Arbeitsspeicher",
@@ -227,7 +228,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-Beleuchtung -- Arbeitsspeicher und OpenRGB-Geräte",
     "RGB Lighting": "RGB-Beleuchtung",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Beleuchtet Ihren Arbeitsspeicher, das RGB Ihres Mainboards und die Geräte von OpenRGB -- mit Effekten oder einem Kühler bzw. LCD folgend."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Beleuchtet Ihren Arbeitsspeicher, das RGB Ihres Mainboards und die Geräte von OpenRGB -- mit Effekten oder einem Kühler bzw. LCD folgend.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Die RAM-Beleuchtungsberechtigung besteht weiterhin -- schalten Sie RGB-Beleuchtung ein und wieder aus, um sie zu entfernen."
   },
   "fr": {
     "Memory": "Mémoire",
@@ -342,7 +344,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Éclairage RGB -- mémoire et appareils OpenRGB",
     "RGB Lighting": "Éclairage RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Éclaire votre mémoire, le RGB de votre carte mère et les appareils d'OpenRGB -- avec des effets, ou en suivant un refroidisseur ou un LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Éclaire votre mémoire, le RGB de votre carte mère et les appareils d'OpenRGB -- avec des effets, ou en suivant un refroidisseur ou un LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "L'autorisation d'éclairage de la RAM est toujours accordée -- activez puis désactivez l'éclairage RGB pour la retirer."
   },
   "es": {
     "Memory": "Memoria",
@@ -457,7 +460,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Iluminación RGB -- memoria y dispositivos OpenRGB",
     "RGB Lighting": "Iluminación RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Ilumina su memoria, el RGB de su placa base y los dispositivos de OpenRGB -- con efectos, o siguiendo un disipador o un LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Ilumina su memoria, el RGB de su placa base y los dispositivos de OpenRGB -- con efectos, o siguiendo un disipador o un LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "El permiso de iluminación de la RAM sigue concedido -- activa y vuelve a desactivar la Iluminación RGB para quitarlo."
   },
   "it": {
     "Memory": "Memoria",
@@ -572,7 +576,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Illuminazione RGB -- memoria e dispositivi OpenRGB",
     "RGB Lighting": "Illuminazione RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Illumina la memoria, l'RGB della scheda madre e i dispositivi di OpenRGB -- con effetti, o seguendo un dissipatore o un LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Illumina la memoria, l'RGB della scheda madre e i dispositivi di OpenRGB -- con effetti, o seguendo un dissipatore o un LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Il permesso di illuminazione della RAM è ancora concesso -- attiva e disattiva di nuovo l'Illuminazione RGB per rimuoverlo."
   },
   "pt": {
     "Memory": "Memória",
@@ -687,7 +692,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Iluminação RGB -- memória e dispositivos OpenRGB",
     "RGB Lighting": "Iluminação RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Ilumina sua memória, o RGB da placa-mãe e os dispositivos do OpenRGB -- com efeitos, ou seguindo um cooler ou um LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Ilumina sua memória, o RGB da placa-mãe e os dispositivos do OpenRGB -- com efeitos, ou seguindo um cooler ou um LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "A permissão de iluminação da RAM ainda está concedida -- ligue e desligue a Iluminação RGB para removê-la."
   },
   "nl": {
     "Memory": "Geheugen",
@@ -802,7 +808,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-verlichting -- geheugen en OpenRGB-apparaten",
     "RGB Lighting": "RGB-verlichting",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Verlicht uw geheugen, de RGB van uw moederbord en de apparaten van OpenRGB -- met effecten, of een koeler of LCD volgend."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Verlicht uw geheugen, de RGB van uw moederbord en de apparaten van OpenRGB -- met effecten, of een koeler of LCD volgend.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "De toestemming voor RAM-verlichting is nog verleend -- zet RGB-verlichting aan en weer uit om die te verwijderen."
   },
   "pl": {
     "Memory": "Pamięć",
@@ -917,7 +924,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Oświetlenie RGB -- pamięć i urządzenia OpenRGB",
     "RGB Lighting": "Oświetlenie RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Oświetla pamięć, RGB płyty głównej i urządzenia OpenRGB -- efektami albo podążając za chłodzeniem lub LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Oświetla pamięć, RGB płyty głównej i urządzenia OpenRGB -- efektami albo podążając za chłodzeniem lub LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Uprawnienie do podświetlenia RAM jest nadal przyznane -- włącz i ponownie wyłącz Podświetlenie RGB, aby je usunąć."
   },
   "ru": {
     "Memory": "Память",
@@ -1032,7 +1040,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-подсветка -- память и устройства OpenRGB",
     "RGB Lighting": "RGB-подсветка",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Подсвечивает память, RGB материнской платы и устройства OpenRGB -- эффектами или следуя за кулером или LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Подсвечивает память, RGB материнской платы и устройства OpenRGB -- эффектами или следуя за кулером или LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Разрешение на подсветку ОЗУ всё ещё выдано -- включите и снова выключите RGB-подсветку, чтобы его снять."
   },
   "uk": {
     "Memory": "Пам'ять",
@@ -1147,7 +1156,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-підсвічування -- пам'ять і пристрої OpenRGB",
     "RGB Lighting": "RGB-підсвічування",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Підсвічує пам'ять, RGB материнської плати й пристрої OpenRGB -- ефектами або стежачи за кулером чи LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Підсвічує пам'ять, RGB материнської плати й пристрої OpenRGB -- ефектами або стежачи за кулером чи LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Дозвіл на підсвічування ОЗП досі надано -- увімкніть і знову вимкніть RGB-підсвічування, щоб його зняти."
   },
   "zh": {
     "Memory": "内存",
@@ -1262,7 +1272,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB 灯光 -- 内存和 OpenRGB 设备",
     "RGB Lighting": "RGB 灯光",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "点亮您的内存、主板 RGB 和 OpenRGB 的设备 -- 使用效果，或跟随散热器或 LCD。"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "点亮您的内存、主板 RGB 和 OpenRGB 的设备 -- 使用效果，或跟随散热器或 LCD。",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM 灯光权限仍被授予 -- 将 RGB 灯光打开再关闭即可移除。"
   },
   "zh_TW": {
     "Memory": "記憶體",
@@ -1377,7 +1388,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB 燈光 -- 記憶體和 OpenRGB 裝置",
     "RGB Lighting": "RGB 燈光",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "點亮您的記憶體、主機板 RGB 和 OpenRGB 的裝置 -- 使用效果，或跟隨散熱器或 LCD。"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "點亮您的記憶體、主機板 RGB 和 OpenRGB 的裝置 -- 使用效果，或跟隨散熱器或 LCD。",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM 燈光權限仍被授予 -- 將 RGB 燈光開啟再關閉即可移除。"
   },
   "ja": {
     "Memory": "メモリー",
@@ -1492,7 +1504,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB ライティング -- メモリーと OpenRGB デバイス",
     "RGB Lighting": "RGB ライティング",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "メモリー、マザーボードの RGB、OpenRGB のデバイスを光らせます -- エフェクトで、またはクーラーや LCD に追従して。"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "メモリー、マザーボードの RGB、OpenRGB のデバイスを光らせます -- エフェクトで、またはクーラーや LCD に追従して。",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM ライティングの許可はまだ付与されています -- 削除するには RGB ライティングをオンにしてから再びオフにしてください。"
   },
   "ko": {
     "Memory": "메모리",
@@ -1607,7 +1620,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB 조명 -- 메모리와 OpenRGB 장치",
     "RGB Lighting": "RGB 조명",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "메모리, 메인보드 RGB, OpenRGB 장치를 밝힙니다 -- 효과로, 또는 쿨러나 LCD를 따라서."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "메모리, 메인보드 RGB, OpenRGB 장치를 밝힙니다 -- 효과로, 또는 쿨러나 LCD를 따라서.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM 조명 권한이 아직 부여되어 있습니다 -- 제거하려면 RGB 조명을 켰다가 다시 끄세요."
   },
   "tr": {
     "Memory": "Bellek",
@@ -1722,7 +1736,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB aydınlatma -- bellek ve OpenRGB aygıtları",
     "RGB Lighting": "RGB aydınlatma",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Belleğinizi, anakartınızın RGB'sini ve OpenRGB'nin aygıtlarını aydınlatır -- efektlerle ya da bir soğutucuyu veya LCD'yi izleyerek."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Belleğinizi, anakartınızın RGB'sini ve OpenRGB'nin aygıtlarını aydınlatır -- efektlerle ya da bir soğutucuyu veya LCD'yi izleyerek.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM aydınlatma izni hâlâ verili -- kaldırmak için RGB Aydınlatmayı açıp yeniden kapatın."
   },
   "cs": {
     "Memory": "Paměť",
@@ -1837,7 +1852,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB osvětlení -- paměť a zařízení OpenRGB",
     "RGB Lighting": "RGB osvětlení",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Rozsvítí vaši paměť, RGB základní desky a zařízení OpenRGB -- efekty, nebo sledováním chladiče či LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Rozsvítí vaši paměť, RGB základní desky a zařízení OpenRGB -- efekty, nebo sledováním chladiče či LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Oprávnění k osvětlení RAM je stále uděleno -- pro jeho odebrání zapněte a znovu vypněte RGB osvětlení."
   },
   "sv": {
     "Memory": "Minne",
@@ -1952,7 +1968,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-belysning -- minne och OpenRGB-enheter",
     "RGB Lighting": "RGB-belysning",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lyser upp ditt minne, moderkortets RGB och OpenRGB:s enheter -- med effekter, eller genom att följa en kylare eller LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lyser upp ditt minne, moderkortets RGB och OpenRGB:s enheter -- med effekter, eller genom att följa en kylare eller LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Behörigheten för RAM-belysning är fortfarande beviljad -- slå på och av RGB-belysning igen för att ta bort den."
   },
   "da": {
     "Memory": "Hukommelse",
@@ -2067,7 +2084,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-belysning -- hukommelse og OpenRGB-enheder",
     "RGB Lighting": "RGB-belysning",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lyser din hukommelse, dit bundkorts RGB og OpenRGB's enheder op -- med effekter, eller ved at følge en køler eller LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lyser din hukommelse, dit bundkorts RGB og OpenRGB's enheder op -- med effekter, eller ved at følge en køler eller LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Tilladelsen til RAM-belysning er stadig givet -- slå RGB-belysning til og fra igen for at fjerne den."
   },
   "no": {
     "Memory": "Minne",
@@ -2182,7 +2200,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-belysning -- minne og OpenRGB-enheter",
     "RGB Lighting": "RGB-belysning",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lyser opp minnet ditt, hovedkortets RGB og OpenRGBs enheter -- med effekter, eller ved å følge en kjøler eller LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Lyser opp minnet ditt, hovedkortets RGB og OpenRGBs enheter -- med effekter, eller ved å følge en kjøler eller LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Tillatelsen til RAM-belysning er fortsatt gitt -- slå RGB-belysning på og av igjen for å fjerne den."
   },
   "fi": {
     "Memory": "Muisti",
@@ -2297,7 +2316,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-valaistus -- muisti ja OpenRGB-laitteet",
     "RGB Lighting": "RGB-valaistus",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Valaisee muistisi, emolevysi RGB:n ja OpenRGB:n laitteet -- tehosteilla tai seuraamalla jäähdytintä tai LCD:tä."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Valaisee muistisi, emolevysi RGB:n ja OpenRGB:n laitteet -- tehosteilla tai seuraamalla jäähdytintä tai LCD:tä.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM-valaistuksen lupa on yhä myönnetty -- poista se kytkemällä RGB-valaistus päälle ja taas pois."
   },
   "hu": {
     "Memory": "Memória",
@@ -2412,7 +2432,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-világítás -- memória és OpenRGB-eszközök",
     "RGB Lighting": "RGB-világítás",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Megvilágítja a memóriát, az alaplap RGB-jét és az OpenRGB eszközeit -- effektekkel, vagy egy hűtőt vagy LCD-t követve."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Megvilágítja a memóriát, az alaplap RGB-jét és az OpenRGB eszközeit -- effektekkel, vagy egy hűtőt vagy LCD-t követve.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "A RAM-világítás engedélye még mindig meg van adva -- eltávolításához kapcsolja be, majd ki az RGB-világítást."
   },
   "ro": {
     "Memory": "Memorie",
@@ -2527,7 +2548,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Iluminare RGB -- memorie și dispozitive OpenRGB",
     "RGB Lighting": "Iluminare RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Luminează memoria, RGB-ul plăcii de bază și dispozitivele OpenRGB -- cu efecte, sau urmând un cooler ori un LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Luminează memoria, RGB-ul plăcii de bază și dispozitivele OpenRGB -- cu efecte, sau urmând un cooler ori un LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Permisiunea pentru iluminarea RAM este încă acordată -- porniți și opriți din nou Iluminarea RGB pentru a o elimina."
   },
   "el": {
     "Memory": "Μνήμη",
@@ -2642,7 +2664,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Φωτισμός RGB -- μνήμη και συσκευές OpenRGB",
     "RGB Lighting": "Φωτισμός RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Φωτίζει τη μνήμη σας, το RGB της μητρικής και τις συσκευές του OpenRGB -- με εφέ, ή ακολουθώντας έναν ψύκτη ή μια LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Φωτίζει τη μνήμη σας, το RGB της μητρικής και τις συσκευές του OpenRGB -- με εφέ, ή ακολουθώντας έναν ψύκτη ή μια LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Η άδεια φωτισμού RAM εξακολουθεί να έχει δοθεί -- ενεργοποιήστε και απενεργοποιήστε ξανά τον Φωτισμό RGB για να την αφαιρέσετε."
   },
   "he": {
     "Memory": "זיכרון",
@@ -2757,7 +2780,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "תאורת RGB -- זיכרון והתקני OpenRGB",
     "RGB Lighting": "תאורת RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "מאיר את הזיכרון, את ה-RGB של לוח האם ואת ההתקנים של OpenRGB -- באפקטים, או במעקב אחר מקרר או LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "מאיר את הזיכרון, את ה-RGB של לוח האם ואת ההתקנים של OpenRGB -- באפקטים, או במעקב אחר מקרר או LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "ההרשאה לתאורת ה-RAM עדיין ניתנת -- הפעילו וכבו שוב את תאורת RGB כדי להסיר אותה."
   },
   "ar": {
     "Memory": "الذاكرة",
@@ -2872,7 +2896,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "إضاءة RGB -- الذاكرة وأجهزة OpenRGB",
     "RGB Lighting": "إضاءة RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "يضيء ذاكرتك وRGB لوحتك الأم وأجهزة OpenRGB -- بالتأثيرات، أو بمتابعة مبرّد أو شاشة LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "يضيء ذاكرتك وRGB لوحتك الأم وأجهزة OpenRGB -- بالتأثيرات، أو بمتابعة مبرّد أو شاشة LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "إذن إضاءة ذاكرة RAM لا يزال ممنوحًا -- شغّل إضاءة RGB ثم أوقفها مرة أخرى لإزالته."
   },
   "hi": {
     "Memory": "मेमोरी",
@@ -2987,7 +3012,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB लाइटिंग -- मेमोरी और OpenRGB डिवाइस",
     "RGB Lighting": "RGB लाइटिंग",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "आपकी मेमोरी, मदरबोर्ड के RGB और OpenRGB के डिवाइसों को रोशन करता है -- इफ़ेक्ट्स से, या किसी कूलर या LCD का अनुसरण करके।"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "आपकी मेमोरी, मदरबोर्ड के RGB और OpenRGB के डिवाइसों को रोशन करता है -- इफ़ेक्ट्स से, या किसी कूलर या LCD का अनुसरण करके।",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM लाइटिंग की अनुमति अभी भी दी हुई है -- इसे हटाने के लिए RGB लाइटिंग चालू करें और फिर बंद करें।"
   },
   "bn": {
     "Memory": "মেমরি",
@@ -3102,7 +3128,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB আলো -- মেমরি ও OpenRGB ডিভাইস",
     "RGB Lighting": "RGB আলো",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "আপনার মেমরি, মাদারবোর্ডের RGB ও OpenRGB-এর ডিভাইস আলোকিত করে -- ইফেক্ট দিয়ে, বা কোনো কুলার বা LCD অনুসরণ করে।"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "আপনার মেমরি, মাদারবোর্ডের RGB ও OpenRGB-এর ডিভাইস আলোকিত করে -- ইফেক্ট দিয়ে, বা কোনো কুলার বা LCD অনুসরণ করে।",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM আলোর অনুমতি এখনো দেওয়া আছে -- এটি সরাতে RGB আলো চালু করে আবার বন্ধ করুন।"
   },
   "ur": {
     "Memory": "میموری",
@@ -3217,7 +3244,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB لائٹنگ -- میموری اور OpenRGB ڈیوائسز",
     "RGB Lighting": "RGB لائٹنگ",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "آپ کی میموری، مدر بورڈ کے RGB اور OpenRGB کی ڈیوائسز کو روشن کرتا ہے -- اثرات کے ساتھ، یا کسی کولر یا LCD کی پیروی کرتے ہوئے۔"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "آپ کی میموری، مدر بورڈ کے RGB اور OpenRGB کی ڈیوائسز کو روشن کرتا ہے -- اثرات کے ساتھ، یا کسی کولر یا LCD کی پیروی کرتے ہوئے۔",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM لائٹنگ کی اجازت اب بھی دی ہوئی ہے -- اسے ہٹانے کے لیے RGB لائٹنگ آن کر کے دوبارہ بند کریں۔"
   },
   "fa": {
     "Memory": "حافظه",
@@ -3332,7 +3360,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "روشنایی RGB -- حافظه و دستگاه‌های OpenRGB",
     "RGB Lighting": "روشنایی RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "حافظه، RGB مادربرد و دستگاه‌های OpenRGB را روشن می‌کند -- با افکت‌ها، یا با دنبال کردن یک خنک‌کننده یا LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "حافظه، RGB مادربرد و دستگاه‌های OpenRGB را روشن می‌کند -- با افکت‌ها، یا با دنبال کردن یک خنک‌کننده یا LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "مجوز روشنایی RAM هنوز داده شده است -- برای حذف آن، روشنایی RGB را روشن و دوباره خاموش کنید."
   },
   "pa": {
     "Memory": "ਮੈਮੋਰੀ",
@@ -3447,7 +3476,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB ਲਾਈਟਿੰਗ -- ਮੈਮੋਰੀ ਅਤੇ OpenRGB ਡਿਵਾਈਸ",
     "RGB Lighting": "RGB ਲਾਈਟਿੰਗ",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "ਤੁਹਾਡੀ ਮੈਮੋਰੀ, ਮਦਰਬੋਰਡ ਦੇ RGB ਅਤੇ OpenRGB ਦੇ ਡਿਵਾਈਸਾਂ ਨੂੰ ਰੌਸ਼ਨ ਕਰਦਾ ਹੈ -- ਪ੍ਰਭਾਵਾਂ ਨਾਲ, ਜਾਂ ਕਿਸੇ ਕੂਲਰ ਜਾਂ LCD ਦੀ ਪਾਲਣਾ ਕਰਕੇ।"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "ਤੁਹਾਡੀ ਮੈਮੋਰੀ, ਮਦਰਬੋਰਡ ਦੇ RGB ਅਤੇ OpenRGB ਦੇ ਡਿਵਾਈਸਾਂ ਨੂੰ ਰੌਸ਼ਨ ਕਰਦਾ ਹੈ -- ਪ੍ਰਭਾਵਾਂ ਨਾਲ, ਜਾਂ ਕਿਸੇ ਕੂਲਰ ਜਾਂ LCD ਦੀ ਪਾਲਣਾ ਕਰਕੇ।",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM ਲਾਈਟਿੰਗ ਦੀ ਇਜਾਜ਼ਤ ਹਾਲੇ ਵੀ ਦਿੱਤੀ ਹੋਈ ਹੈ -- ਇਸਨੂੰ ਹਟਾਉਣ ਲਈ RGB ਲਾਈਟਿੰਗ ਚਾਲੂ ਕਰਕੇ ਫਿਰ ਬੰਦ ਕਰੋ।"
   },
   "ta": {
     "Memory": "நினைவகம்",
@@ -3562,7 +3592,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB ஒளி -- நினைவகம் மற்றும் OpenRGB சாதனங்கள்",
     "RGB Lighting": "RGB ஒளி",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "உங்கள் நினைவகம், மதர்போர்டின் RGB மற்றும் OpenRGB சாதனங்களை ஒளிரச் செய்கிறது -- விளைவுகளுடன், அல்லது ஒரு குளிரூட்டி அல்லது LCD ஐப் பின்தொடர்ந்து."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "உங்கள் நினைவகம், மதர்போர்டின் RGB மற்றும் OpenRGB சாதனங்களை ஒளிரச் செய்கிறது -- விளைவுகளுடன், அல்லது ஒரு குளிரூட்டி அல்லது LCD ஐப் பின்தொடர்ந்து.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM ஒளி அனுமதி இன்னும் வழங்கப்பட்டுள்ளது -- அதை நீக்க RGB ஒளியை இயக்கி மீண்டும் அணைக்கவும்."
   },
   "th": {
     "Memory": "หน่วยความจำ",
@@ -3677,7 +3708,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "ไฟ RGB -- หน่วยความจำและอุปกรณ์ OpenRGB",
     "RGB Lighting": "ไฟ RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "ให้แสงกับหน่วยความจำ ไฟ RGB ของเมนบอร์ด และอุปกรณ์ของ OpenRGB -- ด้วยเอฟเฟกต์ หรือโดยตามคูลเลอร์หรือ LCD"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "ให้แสงกับหน่วยความจำ ไฟ RGB ของเมนบอร์ด และอุปกรณ์ของ OpenRGB -- ด้วยเอฟเฟกต์ หรือโดยตามคูลเลอร์หรือ LCD",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "สิทธิ์ไฟแรมยังคงได้รับอยู่ -- เปิดไฟ RGB แล้วปิดอีกครั้งเพื่อลบออก"
   },
   "vi": {
     "Memory": "Bộ nhớ",
@@ -3792,7 +3824,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Đèn RGB -- bộ nhớ và thiết bị OpenRGB",
     "RGB Lighting": "Đèn RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Chiếu sáng bộ nhớ, RGB của bo mạch chủ và các thiết bị của OpenRGB -- bằng hiệu ứng, hoặc theo một tản nhiệt hay một LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Chiếu sáng bộ nhớ, RGB của bo mạch chủ và các thiết bị của OpenRGB -- bằng hiệu ứng, hoặc theo một tản nhiệt hay một LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Quyền đèn RAM vẫn đang được cấp -- bật rồi tắt lại Đèn RGB để gỡ bỏ."
   },
   "id": {
     "Memory": "Memori",
@@ -3907,7 +3940,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Pencahayaan RGB -- memori dan perangkat OpenRGB",
     "RGB Lighting": "Pencahayaan RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Menyalakan memori, RGB motherboard, dan perangkat OpenRGB Anda -- dengan efek, atau mengikuti pendingin atau LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Menyalakan memori, RGB motherboard, dan perangkat OpenRGB Anda -- dengan efek, atau mengikuti pendingin atau LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Izin pencahayaan RAM masih diberikan -- nyalakan lalu matikan lagi Pencahayaan RGB untuk menghapusnya."
   },
   "ms": {
     "Memory": "Memori",
@@ -4022,7 +4056,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Lampu RGB -- memori dan peranti OpenRGB",
     "RGB Lighting": "Lampu RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Menyalakan memori, RGB papan induk dan peranti OpenRGB anda -- dengan kesan, atau mengikut penyejuk atau LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Menyalakan memori, RGB papan induk dan peranti OpenRGB anda -- dengan kesan, atau mengikut penyejuk atau LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Kebenaran lampu RAM masih diberikan -- hidupkan dan matikan semula Lampu RGB untuk membuangnya."
   },
   "tl": {
     "Memory": "Memory",
@@ -4137,7 +4172,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Ilaw na RGB -- memory at mga device ng OpenRGB",
     "RGB Lighting": "Ilaw na RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Pinapailaw ang iyong memory, ang RGB ng motherboard at ang mga device ng OpenRGB -- gamit ang mga epekto, o sa pagsunod sa isang cooler o LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Pinapailaw ang iyong memory, ang RGB ng motherboard at ang mga device ng OpenRGB -- gamit ang mga epekto, o sa pagsunod sa isang cooler o LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Nakabigay pa rin ang pahintulot sa ilaw ng RAM -- i-on at i-off ulit ang Ilaw na RGB para alisin ito."
   },
   "sw": {
     "Memory": "Kumbukumbu",
@@ -4252,7 +4288,8 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Taa za RGB -- kumbukumbu na vifaa vya OpenRGB",
     "RGB Lighting": "Taa za RGB",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Huwasha kumbukumbu yako, RGB ya ubao mama na vifaa vya OpenRGB -- kwa athari, au kwa kufuata kipozaji au LCD."
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "Huwasha kumbukumbu yako, RGB ya ubao mama na vifaa vya OpenRGB -- kwa athari, au kwa kufuata kipozaji au LCD.",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "Ruhusa ya taa za RAM bado imetolewa -- washa kisha uzime tena Taa za RGB ili kuiondoa."
   },
   "my": {
     "Memory": "မှတ်ဉာဏ်",
@@ -4367,6 +4404,7 @@
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB မီး -- မှတ်ဉာဏ်နှင့် OpenRGB စက်များ",
     "RGB Lighting": "RGB မီး",
-    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "သင့်မှတ်ဉာဏ်၊ မားသားဘုတ်၏ RGB နှင့် OpenRGB ၏စက်များကို အလင်းပေးသည် -- အထူးပြုချက်များဖြင့်၊ သို့မဟုတ် အအေးပေးစက် သို့မဟုတ် LCD ကိုလိုက်၍။"
+    "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.": "သင့်မှတ်ဉာဏ်၊ မားသားဘုတ်၏ RGB နှင့် OpenRGB ၏စက်များကို အလင်းပေးသည် -- အထူးပြုချက်များဖြင့်၊ သို့မဟုတ် အအေးပေးစက် သို့မဟုတ် LCD ကိုလိုက်၍။",
+    "The RAM-lighting permission is still granted -- switch RGB Lighting on and off again to remove it.": "RAM မီးခွင့်ပြုချက် ပေးထားဆဲဖြစ်သည် -- ဖယ်ရှားရန် RGB မီးကို ဖွင့်ပြီး ပြန်ပိတ်ပါ။"
   }
 }

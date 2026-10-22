@@ -462,10 +462,14 @@ def test_event_registry_covers_every_bus_bridge_subscription() -> None:
 
 def test_what_following_sent_crosses_the_socket_as_tuples() -> None:
     """``RgbFollowSent`` reaches a window's preview through JSON: columns of
-    colours, three levels deep, must come back as the same tuples."""
+    colours, three levels deep, must come back as the same tuples.  RGB's
+    events cross the socket once its core is loaded, as every process
+    that runs it loads it -- not because another test happened to first."""
     import json
 
+    from trcc.modules import load_core
     from trcc.modules.rgb.core.events import RgbFollowSent
+    load_core("rgb")
     event = RgbFollowSent(source="0402:3922",
                           columns=(((152, 18, 23),) * 10, ((0, 0, 255),) * 10))
 

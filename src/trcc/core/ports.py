@@ -2958,6 +2958,14 @@ class Module(ABC):
         """After switching off."""
         log.debug("Module %s: post_disable", self.key)
 
+    def turning_off(self, host: ModuleHost) -> str:
+        """The user is switching it off -- not the App closing, which runs
+        :meth:`disable` alone.  Undo here what only that choice should undo
+        (a permission it was granted, say), while the module can still reach
+        its host.  Returns a note for the user, "" when there is none."""
+        log.debug("Module %s: turning_off -- nothing to undo", self.key)
+        return ""
+
     def start(self, host: ModuleHost) -> None:
         """Begin the work that touches hardware or runs a thread -- when the
         App's session starts, or when the module is switched on inside one.

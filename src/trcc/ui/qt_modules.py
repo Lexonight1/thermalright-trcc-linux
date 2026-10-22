@@ -2,16 +2,19 @@
 
 One tile per module: its symbol on the left, its name, what it does, a
 "Guide ›" to its section of the guide, an On/Off switch, and why it cannot
-run -- or why a switch was refused -- when it cannot.  The window builds the Commands, as the
+run -- or why a switch was refused, or what switching off could not undo --
+when there is something to say.  The window builds the Commands, as the
 visual controls' windows do: *listing* makes its ``ListModules``, *switch*
-its ``SetModuleEnabled``.  The list follows ``ModuleChanged`` -- so a module
-switched in another UI turns here too.  Each window frames it in its own page
-and style.
+its ``SetModuleEnabled``.  A switch is sent off the GUI thread: switching a
+module off may ask for the password.  The list follows ``ModuleChanged`` --
+so a module switched in another UI turns here too, with its note.  Each
+window frames it in its own page and style.
 """
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 from PySide6.QtCore import Qt, QUrl
@@ -29,6 +32,9 @@ from PySide6.QtWidgets import (
 from ..core.commands import Command
 from ..core.events import ModuleChanged
 from ..core.models import ModuleInfo
+from ..core.ports import CommandBus
+from ..core.results import ModuleResult
+from .qt_background import dispatch_in_background
 
 log = logging.getLogger(__name__)
 
@@ -43,16 +49,16 @@ ICON_SIZE = 40
 
 
 class ModulesView(QScrollArea):
-    """Every module as a tile with its switch.  *dispatch* runs a Command on
-    the App -- whichever window, in-process or over the socket."""
+    """Every module as a tile with its switch, on *app* -- whichever window,
+    in-process or over the socket."""
 
-    def __init__(self, dispatch: Callable[[Command[Any]], Any],
+    def __init__(self, app: CommandBus,
                  listing: Callable[[], Command[Any]],
                  switch: Callable[[str, bool], Command[Any]],
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         log.info("ModulesView: built")
-        self._dispatch = dispatch
+        self._app = app
         self._listing = listing
         self._switch = switch
         self.setWidgetResizable(True)
@@ -63,9 +69,10 @@ class ModulesView(QScrollArea):
         self.setWidget(self._body)
         #: The switches by module key -- what a test or a refresh reads.
         self.switches: dict[str, QPushButton] = {}
-        #: Why the last switch of each module was refused -- shown on its
-        #: tile until one succeeds, never only in a log.
-        self.refused: dict[str, str] = {}
+        #: What the last switch of each module left to say -- why it was
+        #: refused, or what switching off could not undo -- shown on its tile
+        #: until a switch with nothing to say, never only in a log.
+        self.notes: dict[str, str] = {}
         #: A module's title and summary in the window's language -- the gui
         #: sets it (its ``tr``, which holds each module's ``i18n.json``).
         self._translate: Callable[[str], str] = str
@@ -79,7 +86,7 @@ class ModulesView(QScrollArea):
 
     def refresh(self) -> None:
         """Rebuild the tiles from what the App says now."""
-        modules = self._dispatch(self._listing()).modules
+        modules = self._app.dispatch(self._listing()).modules
         log.info("ModulesView.refresh: %s", {m.key: m.enabled for m in modules})
         while self._column.count():
             item = self._column.takeAt(0)
@@ -100,7 +107,9 @@ class ModulesView(QScrollArea):
     def on_event(self, event: object) -> None:
         """Follow a module switched in any UI."""
         if isinstance(event, ModuleChanged):
-            log.info("ModulesView.on_event: %s -> %s", event.key, event.enabled)
+            log.info("ModulesView.on_event: %s -> %s note=%r", event.key,
+                     event.enabled, event.note)
+            self._note(event.key, event.note)
             self.refresh()
 
     def _tile(self, module: ModuleInfo) -> QFrame:
@@ -122,7 +131,7 @@ class ModulesView(QScrollArea):
         summary.setWordWrap(True)
         text.addWidget(summary)
         note = (f"Cannot run here: {module.problem}" if module.problem
-                else self.refused.get(module.key, ""))
+                else self._translate(self.notes.get(module.key, "")))
         if note:
             problem = QLabel(note)
             problem.setObjectName("moduleProblem")
@@ -148,18 +157,37 @@ class ModulesView(QScrollArea):
         return tile
 
     def _on_switch(self, checked: bool) -> None:
-        """Ask the App to switch the module; the list then shows its answer."""
+        """Ask the App to switch the module -- off the GUI thread, since
+        switching off may ask for the password; the list then shows its
+        answer."""
         sender = self.sender()
         key = str(sender.property(_KEY_PROPERTY)) if sender is not None else ""
         log.info("ModulesView._on_switch: %s -> %s", key, checked)
-        result = self._dispatch(self._switch(key, checked))
+        if isinstance(sender, QPushButton):
+            sender.setEnabled(False)       # one switch at a time
+        dispatch_in_background(self._app, self._switch(key, checked),
+                               self._switched,
+                               failed=partial(_could_not_switch, key))
+
+    def _switched(self, result: ModuleResult) -> None:
+        """The App's answer to a switch: its refusal or its note, on the tile."""
         if result.ok:
-            self.refused.pop(key, None)
+            log.info("ModulesView._switched: %s -> %s note=%r", result.key,
+                     result.enabled, result.note)
+            self._note(result.key, result.note)
         else:
-            log.warning("ModulesView._on_switch: %s refused: %s", key,
+            log.warning("ModulesView._switched: %s refused: %s", result.key,
                         result.message)
-            self.refused[key] = result.message
+            self.notes[result.key] = result.message
         self.refresh()
+
+    def _note(self, key: str, note: str) -> None:
+        """*key*'s tile says *note* from now on -- or nothing, for ""."""
+        log.debug("ModulesView._note: %s %r", key, note)
+        if note:
+            self.notes[key] = note
+        else:
+            self.notes.pop(key, None)
 
     def _on_guide(self) -> None:
         """Open the module's section of the guide, as the "?" button opens
@@ -168,3 +196,9 @@ class ModulesView(QScrollArea):
         url = str(sender.property(_GUIDE_PROPERTY)) if sender is not None else ""
         log.info("ModulesView._on_guide: %s", url)
         QDesktopServices.openUrl(QUrl(url))
+
+
+def _could_not_switch(key: str, message: str) -> ModuleResult:
+    """The App went away while a switch waited -- the tile says so."""
+    log.warning("_could_not_switch: %s -- %s", key, message)
+    return ModuleResult(ok=False, key=key, message=message)

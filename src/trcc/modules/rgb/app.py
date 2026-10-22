@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from trcc.adapters.modules import BaseModule
 from trcc.core.events import Event, LedColorsChanged
 from trcc.core.logs import per_frame
-from trcc.core.models import PanelPicture
+from trcc.core.models import PanelPicture, RamAccessState
 from trcc.core.ports import ModuleHost, RamAccess
 
 from .adapters import make_board_driver, make_mirror
@@ -42,6 +42,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
+
+#: The memory's permission as TRCC granted it -- installed, whether or not
+#: this session has picked it up yet.
+_TRCC_GRANT = (RamAccessState.ON, RamAccessState.NOT_APPLIED)
+#: Said on RGB's Modules row when switching it off could not take the
+#: permission back (the password prompt was closed).
+STILL_GRANTED = ("The RAM-lighting permission is still granted -- switch RGB "
+                 "Lighting on and off again to remove it.")
 
 
 class RgbModule(BaseModule, key="rgb"):
@@ -90,6 +98,23 @@ class RgbModule(BaseModule, key="rgb"):
         log.info("rgb: off")
         self._watch_frames(False)
         self.mirror.close()
+
+    def turning_off(self, host: ModuleHost) -> str:
+        """The user switches RGB off: TRCC's permission to reach the memory's
+        bus goes with it -- a password prompt -- since with RGB off nothing
+        in TRCC could take it back.  Access another rule gives (OpenRGB's)
+        is not TRCC's and stays.  A closed prompt leaves the permission, and
+        the note says how to remove it."""
+        access = host.password.memory_access()
+        state = access.status().state
+        log.info("rgb.turning_off: memory access %s", state.value)
+        if state not in _TRCC_GRANT:
+            return ""
+        status = access.disable()
+        if status.state in _TRCC_GRANT:
+            log.warning("rgb.turning_off: the permission stays -- %s", status.message)
+            return STILL_GRANTED
+        return ""
 
     # ── what the Commands reach ────────────────────────────────────────
 

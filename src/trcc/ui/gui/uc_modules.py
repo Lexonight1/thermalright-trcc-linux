@@ -4,15 +4,14 @@ list itself is ``ui.qt_modules.ModulesView``, shared with qtgui."""
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
-from ...core.commands import Command, ListModules, SetModuleEnabled
+from ...core.commands import ListModules, SetModuleEnabled
 from ...core.logs import per_frame
+from ...core.ports import CommandBus
 from ..bus_bridge import BusBridge
 from ..qt_modules import ModulesView
 from .base import paint_page
@@ -42,13 +41,13 @@ _STYLE = (f"QFrame#moduleTile {{ background: #2a2a30; border: 1px solid {Colors.
 class UCModules(QWidget):
     """The Modules page: its gold title bar, then the shared list."""
 
-    def __init__(self, dispatch: Callable[[Command[Any]], Any], bus: BusBridge,
+    def __init__(self, app: CommandBus, bus: BusBridge,
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         log.info("UCModules: built")
         self.setFixedSize(Sizes.FORM_W, Sizes.FORM_H)
         self._title = "Modules"
-        self.view = ModulesView(dispatch, ListModules, self._switch, self)
+        self.view = ModulesView(app, ListModules, self._switch, self)
         self.view.setGeometry(*_BODY)
         self.view.setStyleSheet(_STYLE)
         # A module switched in any UI: this page follows.

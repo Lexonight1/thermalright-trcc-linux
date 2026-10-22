@@ -1111,7 +1111,7 @@ class TRCCApp(QMainWindow):
         self.uc_thanks.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_thanks.setVisible(False)
         # Modules -- every module, switched on or off.
-        self.uc_modules = UCModules(self._app.dispatch, self._bus, central)
+        self.uc_modules = UCModules(self._app, self._bus, central)
         self.uc_modules.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_modules.setVisible(False)
 

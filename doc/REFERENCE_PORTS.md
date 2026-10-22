@@ -33,7 +33,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Module`](#module) | 2 | 9 | 2 |
+| [`Module`](#module) | 2 | 10 | 2 |
 | [`PanelsPort`](#panelsport) | 2 | 0 | 1 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -452,7 +452,7 @@ _disable(host: 'ModuleHost') -> None
 _enable(host: 'ModuleHost') -> None
 ```
 
-**You inherit (9):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem` · `start` · `stop`
+**You inherit (10):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem` · `start` · `stop` · `turning_off`
 
 **Implementations (2):** `RgbModule` · `VisualizerModule`
 
