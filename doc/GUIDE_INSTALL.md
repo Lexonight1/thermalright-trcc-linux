@@ -246,6 +246,8 @@ trcc gui
 
 > **NixOS note:** The `trcc system setup` command won't work because NixOS manages udev rules declaratively. You don't need it: `programs.trcc-linux.enable = true;` installs the packaged udev rules (`packaging/udev/99-trcc-lcd.rules` and `70-trcc-rgb.rules`), loads the `sg` module and sets the usb-storage quirks. Don't write your own rules for TRCC devices.
 
+> **RGB memory lighting on NixOS:** the RGB page cannot switch it on here, because NixOS builds `/etc` from your configuration. Add `programs.trcc-linux.ramLighting = true;` beside `enable`, run `sudo nixos-rebuild switch`, then restart. It lets the person logged in at the computer open the chipset SMBus, which also holds the memory's own settings chips, so every program they run could reach them. To remove it, set it to `false`, rebuild and restart.
+
 ---
 
 ### Gentoo

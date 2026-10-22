@@ -15,6 +15,9 @@ seat; this adapter reports where the user stands and runs the helper:
   ``sudo trcc ...`` would not: sudo drops ``~/.local/bin`` from PATH and root's
   Python cannot import a package installed for the user, so the command names
   the interpreter and the helper file instead.
+* NixOS (``NixosRamAccess``): /etc is built from the system configuration, so
+  the helper cannot write there; the grant is the flake's
+  ``programs.trcc-linux.ramLighting`` and the status names that line.
 
 ``status`` reads the filesystem only.  Nothing here touches the bus.
 """
@@ -27,6 +30,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import ClassVar
 
 from ...core.models import RamAccessState, RamAccessStatus
 from ...core.ports import RamAccess
@@ -40,6 +44,11 @@ RULE_PATH = Path("/etc/udev/rules.d/70-trcc-ram-lighting.rules")
 HEADER = ("# TRCC RAM lighting -- written by trcc-ram-access; "
           "`trcc system ram-lighting disable` removes it.")
 HELPER = "/usr/bin/trcc-ram-access"
+#: The first line of the rule ``programs.trcc-linux.ramLighting`` declares on
+#: NixOS (``packaging/nixos/``, gated equal by a test).
+NIXOS_HEADER = ("# TRCC RAM lighting -- declared by programs.trcc-linux.ramLighting "
+                "in the NixOS configuration.")
+NIXOS_OPTION = "programs.trcc-linux.ramLighting"
 #: Turning OFF only takes access away, so its own polkit action asks the
 #: person at the seat for no password (``assets/trcc-ram-access-off``).
 HELPER_OFF = "/usr/bin/trcc-ram-access-off"
@@ -59,6 +68,9 @@ def _effective_root() -> bool:
 
 class LinuxRamAccess(RamAccess):
     """Where this user stands on the RAM bus, and the helper that changes it."""
+
+    #: The first line that makes the rule file TRCC's.
+    _HEADER: ClassVar[str] = HEADER
 
     def __init__(self, pkexec: Callable[[str], list[str] | None],
                  *, find: Callable[[], tuple[int, ...]] = find_smbus,
@@ -113,8 +125,8 @@ class LinuxRamAccess(RamAccess):
         except OSError:
             log.debug("_ours: no %s", self._rule)
             return False
-        log.debug("_ours: %s", first == HEADER)
-        return first == HEADER
+        log.debug("_ours: %s", first == self._HEADER)
+        return first == self._HEADER
 
     def _command_for(self, action: str) -> str:
         """Empty when this App can do *action* itself, else the command."""
@@ -197,3 +209,51 @@ def _outcome(action: str, code: int, state: RamAccessState) -> str:
         return _MESSAGES[state]
     return (f"Could not {action} RAM lighting (exit {code}) -- "
             f"{_MESSAGES[state].lower()}")
+
+
+def _nixos_line(enabled: bool) -> str:
+    """The configuration line that switches it, on NixOS."""
+    line = f"{NIXOS_OPTION} = {'true' if enabled else 'false'};"
+    log.debug("_nixos_line: %s", line)
+    return line
+
+
+def _nixos_how(enabled: bool) -> str:
+    """How to switch it on NixOS, in words."""
+    log.debug("_nixos_how: %s", enabled)
+    return (f"set {_nixos_line(enabled)} in your NixOS configuration, run "
+            "sudo nixos-rebuild switch, then restart")
+
+
+class NixosRamAccess(LinuxRamAccess):
+    """NixOS: /etc is built from the system configuration, read-only, so the
+    helper cannot write its rule -- the grant is declared instead, by the
+    flake's ``programs.trcc-linux.ramLighting``, and status reads that rule
+    the same way.  Nothing here runs a helper: switching it names the line.
+
+    Off reads ``UNSUPPORTED``: no button can switch it from here, and every
+    window shows that state as its message alone.
+    """
+
+    _HEADER: ClassVar[str] = NIXOS_HEADER
+
+    def status(self) -> RamAccessStatus:
+        state = self._state()
+        if state is RamAccessState.OFF:
+            status = RamAccessStatus(
+                RamAccessState.UNSUPPORTED,
+                f"RAM lighting is off -- to enable it, {_nixos_how(True)}",
+                _nixos_line(True))
+        else:
+            status = RamAccessStatus(state, _MESSAGES[state])
+        log.info("NixosRamAccess.status: %s", status)
+        return status
+
+    def _change(self, action: str) -> RamAccessStatus:
+        enabled = action == "enable"
+        state = self.status().state
+        log.warning("NixosRamAccess: %s is declared, not switched -- %s", action,
+                    _nixos_line(enabled))
+        return RamAccessStatus(
+            state, f"RAM lighting is part of your NixOS configuration -- to "
+                   f"{action} it, {_nixos_how(enabled)}", _nixos_line(enabled))

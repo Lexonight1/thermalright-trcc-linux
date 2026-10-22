@@ -105,7 +105,9 @@ class RgbModule(BaseModule, key="rgb"):
         are installed (its own "off" action), a prompt otherwise -- since with
         RGB off nothing in TRCC could take it back.  Access another rule gives (OpenRGB's)
         is not TRCC's and stays.  A closed prompt leaves the permission, and
-        the note says how to remove it."""
+        the note says how to remove it -- in the status's own words when TRCC
+        cannot remove it from here at all (no polkit, or NixOS, where the
+        system configuration holds it)."""
         access = host.password.memory_access()
         state = access.status().state
         log.info("rgb.turning_off: memory access %s", state.value)
@@ -114,7 +116,7 @@ class RgbModule(BaseModule, key="rgb"):
         status = access.disable()
         if status.state in _TRCC_GRANT:
             log.warning("rgb.turning_off: the permission stays -- %s", status.message)
-            return STILL_GRANTED
+            return status.message if status.command else STILL_GRANTED
         return ""
 
     # ── what the Commands reach ────────────────────────────────────────

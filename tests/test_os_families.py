@@ -170,6 +170,37 @@ def test_enterprise_linux_is_told_apart_from_fedora(
     assert _is_enterprise_linux(text) is is_el, label
 
 
+#: nixpkgs nixos/modules/misc/version.nix: ``ID=nixos``; a NixOS renamed by
+#: ``system.nixos.distroId`` writes its own ID and ``ID_LIKE=nixos``.
+_NIXOS_RELEASE = ('NAME=NixOS\nID=nixos\nVERSION_ID="24.05"\n'
+                  'PRETTY_NAME="NixOS 24.05 (Uakari)"\n')
+
+
+@pytest.mark.parametrize("label, text, nixos", [
+    ("NixOS", _NIXOS_RELEASE, True),
+    ("renamed NixOS", 'NAME=MyOS\nID=myos\nID_LIKE=nixos\n', True),
+    ("Fedora with Nix", 'NAME="Fedora Linux"\nID=fedora\nVERSION_ID=44\n', False),
+    ("no os-release", "", False)])
+def test_nixos_is_told_apart_from_nix_on_another_distro(
+        label: str, text: str, nixos: bool) -> None:
+    """Both answer ``nix-env``; only os-release says /etc is built by NixOS."""
+    from trcc.adapters.system.linux import _is_nixos
+
+    assert _is_nixos(text) is nixos, label
+
+
+def test_nixos_gets_the_declared_ram_grant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: always build ``LinuxRamAccess``."""
+    import trcc.adapters.system.linux as linux_mod
+    from trcc.adapters.system._ram_access import LinuxRamAccess, NixosRamAccess
+
+    os_ = object.__new__(LinuxOS)
+    monkeypatch.setattr(linux_mod, "_is_nixos", lambda text=None: True)
+    assert type(os_.ram_access()) is NixosRamAccess
+    monkeypatch.setattr(linux_mod, "_is_nixos", lambda text=None: False)
+    assert type(os_.ram_access()) is LinuxRamAccess
+
+
 class _Packages(PackageManager):
     """A PackageManager whose EPEL answer the test dictates."""
 

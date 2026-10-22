@@ -53,7 +53,7 @@ from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
 from ._desktop_entry import XdgDesktopEntry
 from ._polkit_install import POLKIT_POLICY
 from ._polkit_install import install as install_polkit_files
-from ._ram_access import LinuxRamAccess
+from ._ram_access import LinuxRamAccess, NixosRamAccess
 from ._rgb_hardware import SysfsRgbHardware
 from ._selinux import install as install_selinux_policy
 from ._smbus import LinuxSmBus, find_smbus, silent_memory_sensors
@@ -565,6 +565,25 @@ _UNCONFIRMED_FALLBACK: dict[str, str] = {
 # per package manager, each owning its own command and names.  They used to be
 # four parallel tables in three files, and one had already drifted short by two.
 
+def _os_release_ids(text: str | None = None) -> tuple[str, str]:
+    """``ID`` and ``ID_LIKE`` from /etc/os-release (*text* when given); empty
+    when unreadable.  *text* is injectable so tests feed real contents."""
+    if text is None:
+        try:
+            text = Path("/etc/os-release").read_text(encoding="utf-8")
+        except OSError as e:
+            log.debug("_os_release_ids: unreadable (%s)", e)
+            return "", ""
+    ident, like = "", ""
+    for line in text.splitlines():
+        if line.startswith("ID="):
+            ident = line[3:].strip().strip('"')
+        elif line.startswith("ID_LIKE="):
+            like = line[8:].strip().strip('"')
+    log.debug("_os_release_ids: ID=%r ID_LIKE=%r", ident, like)
+    return ident, like
+
+
 def _is_enterprise_linux(text: str | None = None) -> bool:
     """Does /etc/os-release describe RHEL or a rebuild of it?
 
@@ -576,19 +595,20 @@ def _is_enterprise_linux(text: str | None = None) -> bool:
     *text* is injectable because there is no EL box here to test on; the tests
     feed real os-release contents rather than mocking the outcome.
     """
-    if text is None:
-        try:
-            text = Path("/etc/os-release").read_text(encoding="utf-8")
-        except OSError:
-            return False
-    ident, like = "", ""
-    for line in text.splitlines():
-        if line.startswith("ID="):
-            ident = line[3:].strip().strip('"')
-        elif line.startswith("ID_LIKE="):
-            like = line[8:].strip().strip('"')
+    ident, like = _os_release_ids(text)
     hit = ident in _EL_IDS or "rhel" in like.split()
     log.debug("_is_enterprise_linux: ID=%r ID_LIKE=%r -> %s", ident, like, hit)
+    return hit
+
+
+def _is_nixos(text: str | None = None) -> bool:
+    """Is this NixOS -- not Nix installed on another distro, which the
+    package-manager probe cannot tell apart (both answer ``nix-env``)?  A
+    NixOS that renames itself (``system.nixos.distroId``) writes
+    ``ID_LIKE=nixos`` instead (nixpkgs ``nixos/modules/misc/version.nix``)."""
+    ident, like = _os_release_ids(text)
+    hit = ident == "nixos" or "nixos" in like.split()
+    log.debug("_is_nixos: %s", hit)
     return hit
 
 
@@ -1068,8 +1088,9 @@ class LinuxOS(BaseOS, key="linux"):
 
     def ram_access(self) -> RamAccess:
         """The opt-in grant to reach RGB memory's bus (``trcc-ram-access``)."""
-        log.debug("LinuxOS.ram_access")
-        return LinuxRamAccess(_pkexec_helper)
+        nixos = _is_nixos()
+        log.debug("LinuxOS.ram_access: nixos=%s", nixos)
+        return (NixosRamAccess if nixos else LinuxRamAccess)(_pkexec_helper)
 
     def smbuses(self) -> tuple[SmBus, ...]:
         """Every chipset SMBus, through i2c-dev; all or none."""

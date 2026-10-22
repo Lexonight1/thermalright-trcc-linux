@@ -122,9 +122,16 @@
         in {
           options.programs.trcc-linux = {
             enable = lib.mkEnableOption "TRCC Linux — Thermalright LCD/LED Control Center";
+            # Opt-in, as on every distro: the chipset SMBus also carries the
+            # memory's own settings chips, and Linux grants a whole bus, so
+            # every program the seat user runs could reach them.  /etc is
+            # read-only here, so `trcc system ram-lighting enable` cannot
+            # write this rule -- it is declared instead, and TRCC reads it.
+            ramLighting = lib.mkEnableOption
+              "RGB memory lighting: the user at the seat may open the chipset SMBus";
           };
 
-          config = lib.mkIf cfg.enable {
+          config = lib.mkIf cfg.enable (lib.mkMerge [ {
             environment.systemPackages = [ self.packages.${pkgs.system}.default ];
 
             # Read the shipped rules but rewrite the RAPL rule's `/bin/chmod`
@@ -149,7 +156,16 @@
             boot.extraModprobeConfig = ''
               options usb-storage quirks=0402:3922:u,0416:5406:u,87cd:70db:u
             '';
-          };
+          }
+          (lib.mkIf cfg.ramLighting {
+            # A 70- rule package, like the RGB rule: uaccess must land before
+            # 73-seat-late.rules.  i2c-dev creates the bus's device file.
+            services.udev.packages = [
+              (pkgs.writeTextDir "lib/udev/rules.d/70-trcc-ram-lighting.rules"
+                (builtins.readFile ./packaging/nixos/70-trcc-ram-lighting.rules))
+            ];
+            boot.kernelModules = [ "i2c-dev" ];
+          }) ]);
         };
     };
 }

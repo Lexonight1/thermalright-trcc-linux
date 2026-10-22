@@ -679,6 +679,32 @@ def test_trcc_reads_the_rule_the_helper_writes() -> None:
     assert _ram_access.HELPER_ASSET == _ASSETS / "trcc-ram-access"
 
 
+_NIXOS_RULE = _ASSETS.parents[2] / "packaging" / "nixos" / "70-trcc-ram-lighting.rules"
+
+
+def test_nixos_declares_the_rule_the_helper_writes() -> None:
+    """The same rule, under the header that tells TRCC NixOS declared it --
+    the helper's would claim ``disable`` removes it, which it cannot there."""
+    from trcc.adapters.system import _ram_access
+    helper = _load_helper("trcc-ram-access")
+    assert _NIXOS_RULE.read_text(encoding="utf-8") == (
+        _ram_access.NIXOS_HEADER + "\n" + helper.RULE_TEXT.partition("\n")[2])
+    assert _NIXOS_RULE.name == helper.RULE_PATH.name     # where TRCC reads it
+
+
+def test_only_the_nixos_option_installs_the_nixos_rule() -> None:
+    """It grants the bus: no distro package may ship it, and the flake only
+    behind ``ramLighting``.  MUTATION CHECK: move the readFile out of the
+    ``lib.mkIf cfg.ramLighting`` block."""
+    flake = (_ASSETS.parents[2] / "flake.nix").read_text(encoding="utf-8")
+    gated = flake.partition("(lib.mkIf cfg.ramLighting {")[2].partition("})")[0]
+    assert "readFile ./packaging/nixos/70-trcc-ram-lighting.rules" in gated
+    assert '"i2c-dev"' in gated
+    assert flake.count("packaging/nixos/") == 1
+    for path in (_ASSETS.parents[2] / ".github/workflows/release.yml", _INSTALL_SH):
+        assert "packaging/nixos" not in path.read_text(encoding="utf-8"), path
+
+
 def test_the_off_helper_can_only_ever_disable(monkeypatch: pytest.MonkeyPatch) -> None:
     """Password-free for the person at the seat, so it must be unable to do
     anything but take the grant away -- whatever its caller passes."""

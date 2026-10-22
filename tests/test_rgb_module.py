@@ -119,8 +119,10 @@ class _Grant(RamAccess):
     leaves: OFF, or ON again when the password prompt is closed."""
 
     def __init__(self, state: RamAccessState,
-                 after: RamAccessState = RamAccessState.OFF) -> None:
+                 after: RamAccessState = RamAccessState.OFF,
+                 command: str = "") -> None:
         self.state, self.after, self.removed = state, after, 0
+        self.command = command
 
     def status(self) -> RamAccessStatus:
         return RamAccessStatus(self.state, f"now {self.state.value}")
@@ -131,7 +133,7 @@ class _Grant(RamAccess):
     def disable(self) -> RamAccessStatus:
         self.removed += 1
         self.state = self.after
-        return RamAccessStatus(self.state, f"now {self.state.value}")
+        return RamAccessStatus(self.state, f"now {self.state.value}", self.command)
 
 
 def _granted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, grant: _Grant) -> App:
@@ -175,6 +177,19 @@ def test_a_closed_prompt_still_switches_rgb_off_and_says_how_to_remove_it(
     assert (result.ok, result.enabled, result.note, grant.removed) == (
         True, False, STILL_GRANTED, 1)
     assert app.dispatch(RgbLights()).ok is False             # RGB is off
+    app.close()
+
+
+def test_a_permission_trcc_cannot_remove_here_says_what_will(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No polkit, or NixOS's declared grant: switching RGB on and off again
+    would not help, so the note is the status's own instruction.
+    MUTATION CHECK: always return ``STILL_GRANTED``."""
+    grant = _Grant(RamAccessState.ON, after=RamAccessState.ON,
+                   command="programs.trcc-linux.ramLighting = false;")
+    app = _granted(tmp_path, monkeypatch, grant)
+    result = app.dispatch(SetModuleEnabled(key="rgb", enabled=False))
+    assert (result.ok, result.enabled, result.note) == (True, False, "now on")
     app.close()
 
 

@@ -55,7 +55,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
 | [`ModuleHost`](#modulehost) | 3 | 11 | 1 |
-| [`RamAccess`](#ramaccess) | 3 | 0 | 2 |
+| [`RamAccess`](#ramaccess) | 3 | 0 | 3 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`SoundInput`](#soundinput) | 3 | 0 | 3 |
@@ -821,7 +821,7 @@ enable() -> RamAccessStatus
 status() -> RamAccessStatus
 ```
 
-**Implementations (2):** `LinuxRamAccess` · `_NoRamAccess`
+**Implementations (3):** `LinuxRamAccess` · `NixosRamAccess` · `_NoRamAccess`
 
 ## RgbMirror
 

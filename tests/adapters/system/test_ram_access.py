@@ -12,8 +12,14 @@ from pathlib import Path
 import pytest
 
 from trcc.adapters.system import _ram_access
-from trcc.adapters.system._ram_access import HEADER, HELPER, LinuxRamAccess
-from trcc.core.models import RamAccessState
+from trcc.adapters.system._ram_access import (
+    HEADER,
+    HELPER,
+    NIXOS_HEADER,
+    LinuxRamAccess,
+    NixosRamAccess,
+)
+from trcc.core.models import RamAccessState, RamAccessStatus
 
 
 class _Run:
@@ -135,3 +141,64 @@ def test_turning_off_takes_the_password_free_helper(tmp_path: Path) -> None:
     access.enable()
     assert run.argv == [["pkexec", _ram_access.HELPER_OFF],
                         ["pkexec", HELPER, "enable"]]
+
+
+# ── NixOS: the grant is declared, never written ───────────────────────
+
+def _nixos(tmp_path: Path, *, nodes=(3,), header: str | None = None,
+           run: _Run | None = None) -> NixosRamAccess:
+    """NixOS's /etc rule (declared when *header* is NIXOS_HEADER), fake /dev."""
+    dev = tmp_path / "dev"
+    dev.mkdir(exist_ok=True)
+    for n in nodes:
+        (dev / f"i2c-{n}").write_bytes(b"")
+    rule = tmp_path / "70-trcc-ram-lighting.rules"
+    if header is not None:
+        rule.write_text(header + "\n", encoding="utf-8")
+    return NixosRamAccess(lambda helper: ["pkexec", helper], find=lambda: (3,),
+                          dev=dev, rule=rule, run=run or _Run(),
+                          is_root=lambda: False,
+                          which=lambda name: f"/usr/bin/{name}")
+
+
+_NIXOS_HOW_ON = ("set programs.trcc-linux.ramLighting = true; in your NixOS "
+                 "configuration, run sudo nixos-rebuild switch, then restart")
+
+
+def test_on_nixos_off_says_the_line_and_offers_no_button(tmp_path: Path) -> None:
+    """NixOS builds /etc from its configuration: no helper can write the rule,
+    so "off" is UNSUPPORTED -- every window shows that as its message alone."""
+    status = _nixos(tmp_path, nodes=()).status()
+    assert status == RamAccessStatus(
+        RamAccessState.UNSUPPORTED,
+        f"RAM lighting is off -- to enable it, {_NIXOS_HOW_ON}",
+        "programs.trcc-linux.ramLighting = true;")
+
+
+@pytest.mark.parametrize("nodes, header, state", [
+    ((3,), NIXOS_HEADER, RamAccessState.ON),
+    ((), NIXOS_HEADER, RamAccessState.NOT_APPLIED),
+    ((3,), None, RamAccessState.ELSEWHERE),
+    ((3,), HEADER, RamAccessState.ELSEWHERE),
+], ids=["declared", "declared-not-applied", "someone-elses", "not-the-nixos-rule"])
+def test_on_nixos_the_declared_rule_is_trccs(tmp_path: Path, nodes, header,
+                                             state) -> None:
+    """MUTATION CHECK: drop ``NixosRamAccess._HEADER``."""
+    assert _nixos(tmp_path, nodes=nodes, header=header).status().state is state
+
+
+@pytest.mark.parametrize("action, line", [
+    ("enable", "programs.trcc-linux.ramLighting = true;"),
+    ("disable", "programs.trcc-linux.ramLighting = false;")])
+def test_on_nixos_switching_runs_nothing_and_names_the_line(
+        tmp_path: Path, action: str, line: str) -> None:
+    """MUTATION CHECK: drop ``NixosRamAccess._change``."""
+    run = _Run()
+    access = _nixos(tmp_path, header=NIXOS_HEADER, run=run)
+    status = getattr(access, action)()
+    assert run.argv == []
+    assert status == RamAccessStatus(
+        RamAccessState.ON,
+        f"RAM lighting is part of your NixOS configuration -- to {action} it, "
+        f"set {line} in your NixOS configuration, run sudo nixos-rebuild "
+        "switch, then restart", line)

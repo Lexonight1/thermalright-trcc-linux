@@ -29,8 +29,8 @@ Kept as small as ``trcc-dmi``:
     hook run it whether or not RAM lighting was ever enabled.
 
 This file may import nothing from trcc, so what TRCC also spells is gated
-equal by tests: the rule's path and header (``_ram_access``), and its bus match
-(``_smbus.SMBUS_PREFIX``).
+equal by tests: the rule's path and header (``_ram_access``), its bus match
+(``_smbus.SMBUS_PREFIX``), and the rule NixOS declares (``packaging/nixos/``).
 
 Exit codes: 0 ok · 1 a step failed · 2 bad invocation · 3 not root.
 """

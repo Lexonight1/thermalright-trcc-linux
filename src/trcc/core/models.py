@@ -1620,7 +1620,8 @@ class RamAccessState(str, Enum):
     access comes from another rule (OpenRGB's, say), not TRCC's.  ``OFF``: no
     access; enabling grants it.  ``NOT_APPLIED``: TRCC's grant is installed but
     this session did not get it (log out and back in).  ``NO_BUS``: no chipset
-    SMBus here.  ``UNSUPPORTED``: not on this OS yet.
+    SMBus here.  ``UNSUPPORTED``: TRCC cannot switch it here -- not on this OS
+    yet, or (NixOS) the system configuration declares it.
     """
     ON = "on"
     ELSEWHERE = "elsewhere"

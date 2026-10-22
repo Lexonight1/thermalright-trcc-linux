@@ -1,0 +1,4 @@
+# TRCC RAM lighting -- declared by programs.trcc-linux.ramLighting in the NixOS configuration.
+# Lets the user at this seat open the chipset SMBus, where RGB memory's
+# lighting controller answers.  No other bus.
+SUBSYSTEM=="i2c-dev", ATTR{name}=="SMBus*", TAG+="uaccess"
