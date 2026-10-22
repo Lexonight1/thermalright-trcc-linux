@@ -23,6 +23,7 @@ from trcc.core.models import RamAccessState
 from trcc.core.ports import CommandBus
 from trcc.modules.rgb.core.results import RamLightingResult
 from trcc.modules.rgb.ui.presentation.ram_access import CONFIRM_TEXT, CONFIRM_TITLE, ram_access_view
+from trcc.modules.rgb.ui.presentation.rgb_page import Tr, same
 from trcc.ui.qt_background import dispatch_in_background
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,8 @@ class RamAccessRow(QWidget):
     """Status + one button; a skin's subclass supplies the two Commands."""
 
     _app: CommandBus                    # set by the skin
+    #: The window's language for the row's own words (the page's ``speak``).
+    translate: Tr = staticmethod(same)
 
     def __init__(self, parent: QWidget | None = None, *,
                  text_style: str = "", button_style: str = "") -> None:
@@ -72,7 +75,7 @@ class RamAccessRow(QWidget):
         self._show(self._status())
 
     def _show(self, result: RamLightingResult, *, busy: bool = False) -> None:
-        view = ram_access_view(result, busy=busy)
+        view = ram_access_view(result, busy=busy, tr=self.translate)
         log.info("RamAccessRow: %s / %r", view.status, view.button)
         self._status_label.setText(view.status)
         self._button.setText(view.button)
@@ -85,7 +88,8 @@ class RamAccessRow(QWidget):
         if enable is None:
             return
         if enable and QMessageBox.question(
-                self, CONFIRM_TITLE, CONFIRM_TEXT) != QMessageBox.StandardButton.Yes:
+                self, self.translate(CONFIRM_TITLE),
+                self.translate(CONFIRM_TEXT)) != QMessageBox.StandardButton.Yes:
             log.info("RamAccessRow: the warning was declined")
             return
         self._show(RamLightingResult(), busy=True)

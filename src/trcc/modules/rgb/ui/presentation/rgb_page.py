@@ -14,7 +14,7 @@ and the refusals are made once, here.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -50,6 +50,14 @@ log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 Rgb = tuple[int, int, int]
+#: A translation: English in, the window's language out.
+Tr = Callable[[str], str]
+
+
+def same(text: str) -> str:
+    """No translation: the English, as a window without one shows it."""
+    frame_log.debug("same: %r", text[:40])
+    return text
 
 
 class RgbSource(str, Enum):
@@ -129,6 +137,11 @@ class RgbDevice(str, Enum):
 DEVICE_LABELS: dict[RgbDevice, str] = {
     RgbDevice.MEMORY: "Memory", RgbDevice.MOTHERBOARD: "Motherboard",
     RgbDevice.OPENRGB: "OpenRGB"}
+#: What a device without lights says, after a search.
+NO_LIGHTS: dict[RgbDevice, str] = {
+    RgbDevice.MEMORY: "No memory lights found.",
+    RgbDevice.MOTHERBOARD: "No motherboard lights found.",
+    RgbDevice.OPENRGB: "No OpenRGB lights found."}
 #: The kinds of light each device lists; the first is the one it drives.
 DEVICE_KINDS: dict[RgbDevice, tuple[LightKind, ...]] = {
     RgbDevice.MEMORY: (LightKind.RAM,),
@@ -235,12 +248,12 @@ NOT_KNOWN_NOTE = ("Not known: its factory default, or what OpenRGB or the "
                   "motherboard's own lighting control last set.")
 
 
-def effect_label(effect: LightEffect) -> str:
+def effect_label(effect: LightEffect, tr: Tr = same) -> str:
     """What a light runs, in words: "Rain", "CPU temp"."""
     log.debug("effect_label: %s", effect)
     if isinstance(effect, LinkedEffect):
-        return f"{SENSOR_LABELS[effect.source]} {LINKED_LABELS[effect.metric]}"
-    return EFFECT_LABELS[effect.effect]
+        return tr(f"{SENSOR_LABELS[effect.source]} {LINKED_LABELS[effect.metric]}")
+    return tr(EFFECT_LABELS[effect.effect])
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,22 +274,23 @@ class Strip:
         return self.runs if self.on_apply is None else self.on_apply
 
 
-def strip_legend(strips: Sequence[Strip]) -> str:
+def strip_legend(strips: Sequence[Strip], tr: Tr = same) -> str:
     """The effect preview's legend: one line per lettered strip, what it runs
     and what Apply would give it.  Letters only: the lights' names are on
     their cards, in the same order (his call, 2026-10-21)."""
     log.debug("strip_legend: %d", len(strips))
     lines = []
     for i, strip in enumerate(strips):
-        runs = "not known" if strip.runs is None else effect_label(strip.runs)
+        runs = tr("not known") if strip.runs is None else effect_label(strip.runs, tr)
         line = f"{chr(ord('A') + i)}: {runs}"
         if strip.on_apply is not None:
-            line += f"  ->  on Apply: {effect_label(strip.on_apply)}"
+            line += "  ->  " + tr("on Apply: {effect}").format(
+                effect=effect_label(strip.on_apply, tr))
         lines.append(line)
     legend = "\n".join(lines)
     # Said once, under the letters -- on every line it was noise (his call).
     if any(strip.runs is None for strip in strips):
-        legend += "\n\n" + NOT_KNOWN_NOTE
+        legend += "\n\n" + tr(NOT_KNOWN_NOTE)
     return legend
 
 
@@ -333,24 +347,31 @@ def _remembered(lights: Sequence[RgbLight], kind: LightKind) -> bool:
     return remembered
 
 
-def _detail(light: RgbLight) -> str:
+def _leds(count: int, tr: Tr) -> str:
+    """"1 LED", "8 LEDs" -- two keys, so a language says each its own way."""
+    log.debug("_leds: %d", count)
+    return tr("1 LED") if count == 1 else tr("{count} LEDs").format(count=count)
+
+
+def _detail(light: RgbLight, tr: Tr = same) -> str:
     """The grey line under a light's name."""
     log.debug("_detail: %s %s", light.kind.value, light.ref)
     if light.kind is LightKind.OPENRGB:
-        return f"via OpenRGB · {light.led_count} LEDs"
+        return tr("via OpenRGB · {leds}").format(leds=_leds(light.led_count, tr))
     if light.kind is LightKind.FOUND:
-        return "found -- TRCC does not drive it; another app may"
+        return tr("found -- TRCC does not drive it; another app may")
     if light.kind is LightKind.BOARD:
         count = light.led_count
-        effect = f" · {effect_label(light.effect)}" if light.effect else ""
-        return (f"direct · {count} LED{'' if count == 1 else 's'}{effect}" if count
-                else "direct · LED count not set")
+        effect = f" · {effect_label(light.effect, tr)}" if light.effect else ""
+        return (tr("direct · {leds}").format(leds=_leds(count, tr)) + effect if count
+                else tr("direct · LED count not set"))
     # The name already says where the stick sits (``named_by_ref``).
     saved = ("" if light.effect is None
-             else f" · {effect_label(light.effect)}"
+             else f" · {effect_label(light.effect, tr)}"
              if isinstance(light.effect, LinkedEffect)       # live, not saved
-             else f" · {effect_label(light.effect)} saved")
-    return f"direct · {light.led_count} LEDs{saved}"
+             else " · " + tr("{effect} saved").format(
+                 effect=effect_label(light.effect, tr)))
+    return tr("direct · {leds}").format(leds=_leds(light.led_count, tr)) + saved
 
 
 class EffectPicks:
@@ -449,17 +470,18 @@ class FollowPicks:
         self.mapping, self.colors = follow.mapping, follow.colors
         self.devices = tuple(devices)
 
-    def choices(self) -> tuple[FollowChoice, ...]:
+    def choices(self, tr: Tr = same) -> tuple[FollowChoice, ...]:
         """The first LED cooler, every attached device, and a saved one that
         is not attached now -- so the picker can show what is set."""
-        choices = [FollowChoice(FIRST_COOLER, "The first LED cooler")]
-        choices += [FollowChoice(d.key, f"{d.product or d.key} "
-                                 f"({'LCD' if d.kind == Kind.LCD.value else 'LED cooler'})",
+        choices = [FollowChoice(FIRST_COOLER, tr("The first LED cooler"))]
+        choices += [FollowChoice(d.key, tr("{device} (LCD)" if d.kind == Kind.LCD.value
+                                           else "{device} (LED cooler)").format(
+                                               device=d.product or d.key),
                                  d.kind == Kind.LCD.value)
                     for d in self.devices]
         if self.source not in {c.key for c in choices}:
-            choices.append(FollowChoice(self.source,
-                                        f"{self.source} (not connected)", True))
+            choices.append(FollowChoice(self.source, tr("{device} (not connected)").format(
+                device=self.source), True))
         log.debug("FollowPicks.choices: %d", len(choices))
         return tuple(choices)
 
@@ -496,6 +518,8 @@ class RgbPage:
         self.follow_picks = FollowPicks()
         self.address = format_openrgb_address("127.0.0.1", 6742)
         self.message = ""
+        #: The window's language: what every text this composes goes through.
+        self.tr: Tr = same
 
     # ── From the App ─────────────────────────────────────────────────
 
@@ -596,7 +620,7 @@ class RgbPage:
 
     def rows(self, kind: LightKind) -> tuple[LightRow, ...]:
         """The lights of *kind*, with whether each is ticked."""
-        rows = tuple(LightRow(light.ref, light.name, _detail(light),
+        rows = tuple(LightRow(light.ref, light.name, _detail(light, self.tr),
                               light.kind, light.ref in self._checked,
                               light.kind in TICKABLE,
                               aura_header(light.ref)
@@ -624,14 +648,15 @@ class RgbPage:
         """The line under the device's lights: where the list came from, or
         why it is empty."""
         kind = DEVICE_KINDS[self.device][0]
+        tr = self.tr
         if self.device is RgbDevice.OPENRGB and self.openrgb_error:
-            note = f"not reachable -- {self.openrgb_error}"
+            note = tr("not reachable -- {error}").format(error=self.openrgb_error)
         elif self.rows(kind):
-            note = REMEMBERED_NOTE if _remembered(self._lights, kind) else ""
+            note = tr(REMEMBERED_NOTE) if _remembered(self._lights, kind) else ""
         elif not self.scanned:
-            note = "Not searched yet -- press Find lights."
+            note = tr("Not searched yet -- press Find lights.")
         else:
-            note = f"No {DEVICE_LABELS[self.device].lower()} lights found."
+            note = tr(NO_LIGHTS[self.device])
         log.debug("RgbPage.note: %s %s", self.device.value, note)
         return note
 
@@ -669,30 +694,33 @@ class RgbPage:
         takes the one follower from another device, which."""
         linked = (self.source is RgbSource.EFFECT
                   and isinstance(self.effect_picks.light_effect(), LinkedEffect))
-        hint = LINKED_HINT if linked else HINTS[self.device, self.source]
+        tr = self.tr
+        hint = tr(LINKED_HINT if linked else HINTS[self.device, self.source])
         other = self.follower
         takes_follower = (self.source is RgbSource.FOLLOW or linked
                           or (self.source is RgbSource.EFFECT
                               and self.device is RgbDevice.MOTHERBOARD))
         if takes_follower and other is not None and other is not self.device:
-            hint += (f"  TRCC sends to one device at a time: "
-                     f"{DEVICE_LABELS[other]} stops when you apply this.")
+            hint += "  " + tr("TRCC sends to one device at a time: {device} stops "
+                              "when you apply this.").format(device=tr(DEVICE_LABELS[other]))
         log.debug("RgbPage.hint: %s %s", self.device.value, self.source.value)
         return hint
 
     @property
     def follow_status(self) -> str:
         """What following is doing now, as the App last said."""
-        follow = self._follow
-        who = _FOLLOWER_NAMES.get(follow.mode, "")
+        follow, tr = self._follow, self.tr
+        who = tr(_FOLLOWER_NAMES.get(follow.mode, ""))
         if follow.mode is RgbFollowMode.OFF:
-            status = "Not following."
+            status = tr("Not following.")
         elif follow.error:
-            status = f"{who} is not reachable -- {follow.error}"
+            status = tr("{who} is not reachable -- {error}").format(
+                who=who, error=follow.error)
         elif follow.connected:
-            status = f"Following on: {', '.join(follow.devices) or 'no lights'}"
+            status = tr("Following on: {lights}").format(
+                lights=", ".join(follow.devices) or tr("no lights"))
         else:
-            status = f"{who} is waiting for colours."
+            status = tr("{who} is waiting for colours.").format(who=who)
         log.debug("RgbPage.follow_status: %s", status)
         return status
 
@@ -752,21 +780,22 @@ class RgbPage:
         silent = [row.title for row in ticked
                   if kind is LightKind.BOARD and not row.leds]
         problem: str | None = None
+        tr = self.tr
         if self.source is RgbSource.LEAVE:
             if self.follower is not self.device:
-                problem = "TRCC is not sending to these lights."
+                problem = tr("TRCC is not sending to these lights.")
         elif not ticked:
-            problem = ("Tick the lights that should follow."
-                       if self.source is RgbSource.FOLLOW
-                       else "Tick the lights the effect runs on.")
+            problem = tr("Tick the lights that should follow."
+                         if self.source is RgbSource.FOLLOW
+                         else "Tick the lights the effect runs on.")
         elif silent:
-            problem = f"Give {silent[0]} its number of LEDs first."
+            problem = tr("Give {light} its number of LEDs first.").format(light=silent[0])
         elif (self.source is RgbSource.EFFECT and isinstance(
                 effect := self.effect_picks.light_effect(), RamEffectSettings)):
             problem = effect_problem(effect)
         elif (self.device is RgbDevice.OPENRGB
               and parse_openrgb_address(self.address) is None):
-            problem = BAD_ADDRESS
+            problem = tr(BAD_ADDRESS)
         log.debug("RgbPage.problem: %s %s -> %s", self.device.value,
                   self.source.value, problem)
         return problem

@@ -162,7 +162,7 @@ def test_the_ram_is_reachable_only_with_access(access: RamAccessState,
 def test_the_note_says_whether_the_device_was_looked_for() -> None:
     assert _page(scanned=False).note == "Not searched yet -- press Find lights."
     assert _page().note == "No memory lights found."
-    assert _on(_page(), RgbDevice.OPENRGB).note == "No openrgb lights found."
+    assert _on(_page(), RgbDevice.OPENRGB).note == "No OpenRGB lights found."
     assert _page(STICK_A).note == ""
     page = _page(FAN)
     page.openrgb_error = "refused"

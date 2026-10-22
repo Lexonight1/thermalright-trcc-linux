@@ -740,7 +740,9 @@ def test_the_gui_shows_a_modules_view_behind_its_button_while_it_is_on(
               window.form_container.isVisible(), button.isChecked())
     # The window's own Help and Close stay above it, as on every built-in page.
     help_btn = window.form1_help_btn
-    on_top = help_btn.parentWidget().childAt(help_btn.geometry().center())
+    parent = help_btn.parentWidget()
+    assert parent is not None
+    on_top = parent.childAt(help_btn.geometry().center())
     app.dispatch(SetModuleEnabled(key="viewer", enabled=False))
     window._sync_modules()
     assert (button.geometry().getRect(), button.text(), button.toolTip(),

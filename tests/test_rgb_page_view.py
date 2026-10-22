@@ -8,8 +8,9 @@ import pytest
 from PySide6.QtGui import QImage
 
 from trcc.core.commands import ListDevices
-from trcc.core.events import FrameSent
+from trcc.core.events import Event, EventBus, FrameSent
 from trcc.core.models import RamAccessState
+from trcc.core.ports import CommandBus
 from trcc.core.results import DeviceEntry, DevicesListResult
 from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
@@ -42,13 +43,21 @@ HEADER = RgbLight("aura/argb1", "ASUS Board -- ARGB header 1", 0,
                   LightKind.BOARD)
 
 
-class _Bus:
+class _Bus(CommandBus):
     """Answers the page's reads; records every Command it is sent."""
 
     def __init__(self, lights: tuple[RgbLight, ...] = (*STICKS, HEADER)) -> None:
         self.sent: list[Any] = []
         self.lights = lights
         self.follow_mode = RgbFollowMode.OFF
+
+    @property
+    def events(self) -> EventBus:
+        return EventBus()
+
+    @property
+    def remote(self) -> bool:
+        return False
 
     def dispatch(self, cmd: Any) -> Any:
         self.sent.append(cmd)
@@ -356,7 +365,7 @@ def test_a_linked_or_static_strip_is_drawn_once_not_animated(view: Any) -> None:
     assert strips.animating
 
 
-def _changes() -> list[object]:
+def _changes() -> list[Event]:
     from trcc.core.models import RamAccessState
     from trcc.modules.rgb.core.events import (
         RamLightingChanged,
@@ -371,11 +380,10 @@ def _changes() -> list[object]:
 
 @pytest.mark.parametrize("change", _changes(), ids=type)
 def test_a_change_from_any_ui_reaches_the_page(view: Any, qtbot: Any,
-                                               monkeypatch: Any, change: object) -> None:
+                                               monkeypatch: Any, change: Event) -> None:
     """A switch from the CLI, the API or the other window shows on this page:
     ``hear`` forwards RGB's events from the window's bridge.  MUTATION CHECK:
     drop ``RamLightingChanged`` from ``RGB_CHANGES``."""
-    from trcc.core.events import EventBus
     from trcc.modules.rgb.ui.qt_rgb_page import hear
     from trcc.ui.bus_bridge import BusBridge
 
@@ -387,3 +395,80 @@ def test_a_change_from_any_ui_reaches_the_page(view: Any, qtbot: Any,
     bus.publish(change)
     qtbot.waitUntil(lambda: bool(heard), timeout=2000)
     assert heard == [change]
+
+
+def _rgb_english() -> set[str]:
+    """The English keys of RGB's own table -- every text it may translate."""
+    import json
+
+    from trcc.modules import TABLE, folders
+    return set(json.loads((folders()["rgb"] / TABLE).read_text(encoding="utf-8"))["en"])
+
+
+def test_every_word_the_page_translates_is_in_its_table(qtbot: Any) -> None:
+    """Each text the page puts through its translator, in every device,
+    source and effect, is a key of ``modules/rgb/i18n.json`` -- a text that
+    is not stays English in every language, and the completeness gate
+    cannot see it.  MUTATION CHECK: drop ``"Blink"`` from the table's
+    English block."""
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbPage
+    from trcc.modules.rgb.ui.qt_rgb_page import speak
+
+    heard: set[str] = set()
+
+    def record(text: str) -> str:
+        heard.add(text)
+        return text
+
+    page = UCRgbPage(_Bus())
+    qtbot.addWidget(page)
+    page.resize(1170, 630)
+    page.show()
+    speak(page, record)
+    for device in RgbDevice:
+        page._devices_column.buttons[device].click()
+        for source in RgbSource:
+            page._source_buttons[source].click()
+            combo = page._effect._effect
+            for i in range(combo.count()):
+                page._effect._on_effect(i)
+    assert {"Find lights", "Blink", "Rainbow", "Leave alone"} <= heard
+    # "" is a message not yet given; the App's own answers stay English
+    assert heard - _rgb_english() - {"", "done"} == set()
+
+
+def test_the_classic_window_shows_the_page_in_its_language(qtbot: Any) -> None:
+    """The gui's language reaches the RGB view: its title, its buttons and
+    its pickers -- and back to English.  MUTATION CHECK: make
+    ``UCRgb.set_language`` skip ``speak``."""
+    from PySide6.QtWidgets import QComboBox, QLabel, QPushButton
+
+    from trcc.core.i18n import tr
+    from trcc.modules import load_core
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgb
+    from trcc.ui.bus_bridge import BusBridge
+
+    load_core("rgb")                   # what the window does for a module
+    view = UCRgb(_Bus(), BusBridge(EventBus()))
+    qtbot.addWidget(view)
+
+    def shown() -> set[str]:
+        combos = view.findChildren(QComboBox)
+        return ({b.text() for b in view.findChildren(QPushButton)}
+                | {label.text() for label in view.findChildren(QLabel)}
+                | {c.itemText(i) for c in combos for i in range(c.count())})
+
+    def detail(lang: str) -> str:
+        leds = tr("{count} LEDs", lang).format(count=STICKS[0].led_count)
+        return tr("direct · {leds}", lang).format(leds=leds)
+
+    view.show()
+    qtbot.waitUntil(lambda: detail("en") in shown(), timeout=3000)  # lights read
+    view.set_language("de")
+    german = shown()
+    assert {tr("Find lights", "de"), tr("Rainbow", "de"), detail("de")} <= german
+    assert "Find lights" not in german
+    assert view._title == tr("RGB Lighting", "de") != "RGB Lighting"
+    view.set_language("en")
+    assert {"Find lights", "Rainbow", detail("en")} <= shown()
+    assert view._title == "RGB Lighting"

@@ -83,7 +83,6 @@ from trcc.modules.rgb.ui.presentation.rgb_page import (
     SOURCE_LABELS,
     SPEED_LABELS,
     ApplyPlan,
-    EffectPicks,
     FindLights,
     HeaderLeds,
     LightRow,
@@ -91,10 +90,13 @@ from trcc.modules.rgb.ui.presentation.rgb_page import (
     RgbPage,
     RgbSource,
     Strip,
+    Tr,
     effect_label,
+    same,
     strip_legend,
 )
 from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
+from trcc.modules.rgb.ui.words import retranslate, say, say_item, say_tip
 from trcc.ui.bus_bridge import BusBridge
 from trcc.ui.qt_background import dispatch_in_background
 
@@ -105,8 +107,9 @@ ACCESS_OFF_TEXT = (
     "TRCC needs permission to reach the memory's lighting chips.  Nothing is "
     "changed until you turn it on, and you can turn it off here again.")
 WORKING = "Working..."
-#: The devices column: "Motherboard (3) · on", the longest button, and no
-#: wider -- 240 left a wide empty band (his note, 2026-10-21).
+#: The devices column: "Motherboard (3) · on", the longest English button,
+#: and no wider -- 240 left a wide empty band (his note, 2026-10-21).  A
+#: longer word in another language widens it rather than being cut off.
 DEVICES_WIDTH = 180
 #: The follow picker: room for a device's name, not the whole panel.
 FOLLOW_PICKER_WIDTH = 300
@@ -130,25 +133,17 @@ def _clear(layout: QVBoxLayout) -> None:
 
 
 def _muted(text: str = "") -> QLabel:
-    """A wrapped grey note."""
+    """A wrapped grey note -- *text* said in the window's language."""
     log.debug("_muted: %r", text[:40])
-    label = QLabel(text)
+    label = say(QLabel(), text) if text else QLabel()
     label.setObjectName("rgb-muted")
     label.setWordWrap(True)
     return label
 
 
-def _title(text: str) -> QLabel:
-    """A box's title -- OpenRGB's, the motherboard's."""
-    log.debug("_title: %s", text)
-    label = QLabel(text)
-    label.setObjectName("rgb-title")
-    return label
-
-
 def _heading(text: str) -> QLabel:
     log.debug("_heading: %s", text)
-    label = QLabel(text)
+    label = say(QLabel(), text) if text else QLabel()
     label.setObjectName("rgb-heading")
     return label
 
@@ -175,7 +170,9 @@ class _LightCard(QFrame):
             title = QLabel(row.title, self)
             title.setObjectName("rgb-light")
             layout.addWidget(title)
-        layout.addWidget(_muted(row.detail))
+        detail = _muted()
+        detail.setText(row.detail)     # composed in the window's language
+        layout.addWidget(detail)
         if row.header is not None and leds_set is not None:
             layout.addLayout(self._leds_box(row, leds_set, blink))
 
@@ -189,16 +186,16 @@ class _LightCard(QFrame):
         box.setObjectName("rgb-leds")
         box.setRange(0, MAX_ARGB_LEDS)
         box.setValue(row.leds)
-        box.setToolTip(LEDS_TIP)
+        say_tip(box, LEDS_TIP)
         box.editingFinished.connect(
             partial(self._on_leds, box, header, row.leds, leds_set))
         line = QHBoxLayout()
         line.addWidget(_muted("LEDs on this header"))
         line.addWidget(box)
         if blink is not None:
-            button = QPushButton("Blink", self)
+            button = say(QPushButton(self), "Blink")
             button.setObjectName("rgb-blink")
-            button.setToolTip(BLINK_TIP)
+            say_tip(button, BLINK_TIP)
             button.clicked.connect(partial(blink, header))
             line.addWidget(button)
         line.addStretch(1)
@@ -257,7 +254,7 @@ class _DeviceList(QWidget):
             self.buttons[device] = button
             layout.addWidget(button)
         layout.addSpacing(12)
-        self.find_button = QPushButton("Find lights", self)
+        self.find_button = say(QPushButton(self), "Find lights")
         self.find_button.setObjectName("rgb-button")
         self.find_button.clicked.connect(self.find_clicked)
         layout.addWidget(self.find_button)
@@ -274,8 +271,8 @@ class _DeviceList(QWidget):
         log.debug("_DeviceList.show_page: %s", page.device.value)
         for device, button in self.buttons.items():
             count = len(page.rows(DEVICE_KINDS[device][0]))
-            following = " · on" if page.follower is device else ""
-            button.setText(f"{DEVICE_LABELS[device]} ({count}){following}")
+            following = " · " + page.tr("on") if page.follower is device else ""
+            button.setText(f"{page.tr(DEVICE_LABELS[device])} ({count}){following}")
             button.setChecked(device is page.device)
 
     def set_busy(self, busy: bool) -> None:
@@ -298,7 +295,7 @@ class _LightsColumn(QWidget):
         self._access_card = QFrame(self)
         self._access_card.setObjectName("rgb-card")
         card = QVBoxLayout(self._access_card)
-        self._access_title = QLabel("RAM lighting is off")
+        self._access_title = say(QLabel(), "RAM lighting is off")
         self._access_title.setObjectName("rgb-title")
         self._access_text = _muted(ACCESS_OFF_TEXT)
         card.addWidget(self._access_title)
@@ -309,7 +306,7 @@ class _LightsColumn(QWidget):
         address.setContentsMargins(0, 0, 0, 0)
         self._address = QLineEdit(self)
         self._address.setObjectName("rgb-address")
-        self._address.setToolTip("OpenRGB's SDK server, host:port")
+        say_tip(self._address, "OpenRGB's SDK server, host:port")
         self._address.textEdited.connect(self._on_address_edited)
         address.addWidget(_muted("SDK server"))
         address.addWidget(self._address, 1)
@@ -379,7 +376,7 @@ class _ChoiceButtons(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         for value, text in labels.items():
-            button = QPushButton(text, self)
+            button = say(QPushButton(self), text)
             button.setObjectName("rgb-choice")
             button.setCheckable(True)
             button.clicked.connect(partial(picked, value))
@@ -399,11 +396,11 @@ class _ChoiceButtons(QWidget):
 class _EffectForm(QWidget):
     """The controls of one built-in effect -- only those it takes."""
 
-    def __init__(self, picks: EffectPicks,
-                 changed: Callable[[], None]) -> None:
+    def __init__(self, page: RgbPage, changed: Callable[[], None]) -> None:
         super().__init__()
         log.debug("_EffectForm.__init__")
-        self._picks, self._changed = picks, changed
+        picks = page.effect_picks
+        self._page, self._picks, self._changed = page, picks, changed
         self._effect = QComboBox(self)
         # Wide enough for the longest name, not the whole form (his note).
         self._effect.setFixedWidth(EFFECT_PICKER_WIDTH)
@@ -413,7 +410,7 @@ class _EffectForm(QWidget):
             swatch.setObjectName("rgb-swatch")
             swatch.setFixedSize(34, 26)
             swatch.clicked.connect(partial(self._on_swatch, index))
-        self._random = QCheckBox("random colours", self)
+        self._random = say(QCheckBox(self), "random colours")
         self._random.toggled.connect(self._on_random)
         self._takes = _muted()
         self._speed = _ChoiceButtons(SPEED_LABELS, self._on_speed)
@@ -443,7 +440,7 @@ class _EffectForm(QWidget):
     def _add_row(self, name: str, widget: QWidget | QHBoxLayout) -> None:
         log.debug("_EffectForm._add_row: %s", name)
         row = self._grid.rowCount()
-        label = QLabel(name, self)
+        label = say(QLabel(self), name)
         self._grid.addWidget(label, row, 0)
         if isinstance(widget, QHBoxLayout):
             holder = QWidget(self)
@@ -481,8 +478,8 @@ class _EffectForm(QWidget):
         self._random.blockSignals(True)
         self._random.setChecked(page.random_colors)
         self._random.blockSignals(False)
-        self._takes.setText(f"(this effect takes {traits.colors})"
-                            if traits.colors > 1 else "")
+        self._takes.setText(self._page.tr("(this effect takes {count})").format(
+            count=traits.colors) if traits.colors > 1 else "")
         self._show_row("Colours", traits.colors > 0)
         self._show_row("Speed", traits.speed)
         self._speed.show_values(tuple(EffectSpeed), page.speed)
@@ -505,7 +502,7 @@ class _EffectForm(QWidget):
             return
         self._effect.clear()
         for label, data in items:
-            self._effect.addItem(label, data)
+            say_item(self._effect, label, data, self._page.tr)
 
     def _on_effect(self, index: int) -> None:
         # Qt hands item data back as a plain string, not the enum stored.
@@ -521,7 +518,8 @@ class _EffectForm(QWidget):
     def _on_swatch(self, index: int) -> None:
         r, g, b = self._picks.colors[index]
         log.info("_EffectForm._on_swatch: %d from %s", index, (r, g, b))
-        color = QColorDialog.getColor(QColor(r, g, b), self, "Pick a colour")
+        color = QColorDialog.getColor(QColor(r, g, b), self,
+                                      self._page.tr("Pick a colour"))
         if not color.isValid():
             log.info("_EffectForm._on_swatch: cancelled")
             return
@@ -575,6 +573,8 @@ class _FollowPreview(QWidget):
         self._lights: tuple[str, ...] = ()
         self._columns = 1
         self.follows_picture = True
+        #: The window's language, for its waiting notes (the form sets it).
+        self.translate: Tr = same
         self.setFixedHeight(self.PICTURE + 26)
 
     def set_layout(self, lights: tuple[str, ...], columns: int,
@@ -637,7 +637,7 @@ class _FollowPreview(QWidget):
         frame_log.debug("_FollowPreview._paint_picture: %d column(s)",
                         self._columns)
         if self._image is None or self._image.isNull():
-            self._paint_waiting(p, "Waiting for the device's\nnext frame...")
+            self._paint_waiting(p, self.translate("Waiting for the device's\nnext frame..."))
             return self.PICTURE
         picture = self._image.scaled(
             self.PICTURE, self.PICTURE, Qt.AspectRatioMode.KeepAspectRatio,
@@ -653,7 +653,7 @@ class _FollowPreview(QWidget):
         frame_log.debug("_FollowPreview._paint_cooler: %d LED(s)",
                         len(self._colors))
         if not self._colors:
-            self._paint_waiting(p, "Waiting for the cooler's\ncolours...")
+            self._paint_waiting(p, self.translate("Waiting for the cooler's\ncolours..."))
             return self.PICTURE
         size = self.PICTURE // self.COOLER_ROW
         for i, rgb in enumerate(self._colors):
@@ -792,13 +792,13 @@ class _EffectPreview(QWidget):
         layout.addLayout(row)
         layout.addWidget(self._approximate)
 
-    def show_strips(self, strips: Strips, *, approximate: bool) -> None:
+    def show_strips(self, strips: Strips, *, approximate: bool, tr: Tr = same) -> None:
         """*approximate*: the lights run the effect themselves (RAM), so the
         drawing is TRCC's guess; a board light shows exactly what TRCC sends."""
         log.debug("_EffectPreview.show_strips: %d approximate=%s", len(strips),
                   approximate)
         self.strips.set_strips(strips)
-        self.legend.setText(strip_legend(strips))
+        self.legend.setText(strip_legend(strips, tr))
         self._approximate.setVisible(approximate)
         self.setVisible(bool(strips))
 
@@ -817,9 +817,9 @@ class _FollowForm(QWidget):
         self._source = QComboBox(self)
         self._source.setFixedWidth(FOLLOW_PICKER_WIDTH)
         self._source.activated.connect(self._on_source)
-        self._mapping_label = QLabel("Mapping", self)
+        self._mapping_label = say(QLabel(self), "Mapping")
         self._mapping = _ChoiceButtons(MAPPING_LABELS, self._on_mapping)
-        self._colors_label = QLabel("Colours", self)
+        self._colors_label = say(QLabel(self), "Colours")
         self._colors = _ChoiceButtons(COLORS_LABELS, self._on_colors)
         self.preview = _FollowPreview()
         self._legend = _muted()
@@ -830,7 +830,7 @@ class _FollowForm(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(14)
-        grid.addWidget(QLabel("Follow", self), 0, 0)
+        grid.addWidget(say(QLabel(self), "Follow"), 0, 0)
         grid.addWidget(self._source, 0, 1)
         note = _muted("Any connected LCD, or an LED cooler -- which sends its "
                       "own colours.")
@@ -860,8 +860,9 @@ class _FollowForm(QWidget):
         page = self._page
         picks = page.follow_picks
         log.debug("_FollowForm.show_page: %r %s", picks.source, picks.mapping.value)
+        self.preview.translate = page.tr
         self._source.clear()
-        for choice in picks.choices():
+        for choice in picks.choices(page.tr):
             self._source.addItem(choice.label, choice.key)
         self._source.setCurrentIndex(self._source.findData(picks.source))
         applies = picks.mapping_applies
@@ -971,19 +972,19 @@ class RgbPageView(QWidget):
         self.page = RgbPage()
         self._busy = False
         self._reload = False            # the running job: a scan reloads
-        self._access = self._access_row()
+        self.access = self._access_row()
         self._devices_column = _DeviceList()
-        self._devices_column.setFixedWidth(DEVICES_WIDTH)
+        self._devices_column.setMinimumWidth(DEVICES_WIDTH)
         self._devices_column.picked.connect(self._on_device)
         self._devices_column.find_clicked.connect(self._on_find)
-        self._lights_column = _LightsColumn(self.page, self._access,
+        self._lights_column = _LightsColumn(self.page, self.access,
                                             self._on_changed)
         self._lights_column.leds_set.connect(self._on_leds)
         self._lights_column.blinked.connect(self._on_blink)
         self._title = _heading("")
         self._sources = QButtonGroup(self)
         self._source_buttons: dict[RgbSource, QRadioButton] = {}
-        self._effect = _EffectForm(self.page.effect_picks, self._on_changed)
+        self._effect = _EffectForm(self.page, self._on_changed)
         self.follow = _FollowForm(self.page, self._on_changed,
                                   self._following)
         self._previews: list[_EffectPreview] = []
@@ -996,9 +997,10 @@ class RgbPageView(QWidget):
         self._problem.setObjectName("rgb-problem")
         self._problem.setWordWrap(True)
         self._message = _muted()
-        self._apply = QPushButton("Apply", self)
+        self._apply = say(QPushButton(self), "Apply")
         self._apply.setObjectName("rgb-apply")
-        self._apply.setFixedSize(120, 34)
+        self._apply.setMinimumWidth(120)    # wider for a longer word
+        self._apply.setFixedHeight(34)
         self._apply.clicked.connect(self._on_apply)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1030,7 +1032,7 @@ class RgbPageView(QWidget):
         radios = QHBoxLayout()
         radios.setSpacing(36)
         for source, label in SOURCE_LABELS.items():
-            button = QRadioButton(label, self)
+            button = say(QRadioButton(self), label)
             button.clicked.connect(partial(self._on_source, source))
             self._sources.addButton(button)
             self._source_buttons[source] = button
@@ -1126,15 +1128,15 @@ class RgbPageView(QWidget):
         """Start again from the App -- three reads, no bus traffic."""
         log.info("RgbPageView.refresh")
         self.follow.lead = ""
-        self._access.refresh()
+        self.access.refresh()
         self.page.load(self._lights(), self._following(), self._devices())
-        self._show()
+        self.show_page()
 
-    def _show(self) -> None:
+    def show_page(self) -> None:
         page = self.page
-        log.debug("RgbPageView._show: %s source=%s", page.device.value,
+        log.debug("RgbPageView.show_page: %s source=%s", page.device.value,
                   page.source.value)
-        self._title.setText(DEVICE_LABELS[page.device])
+        self._title.setText(page.tr(DEVICE_LABELS[page.device]))
         self._devices_column.show_page(page)
         self._lights_column.show_page()
         self._lights_area.setMinimumHeight(
@@ -1146,6 +1148,8 @@ class RgbPageView(QWidget):
         self._effect.show_page()
         self.follow.show_page()
         self._on_changed()
+        # Cards are made anew on each show: they speak the window's language.
+        retranslate(self, page.tr)
 
     def _on_changed(self) -> None:
         """A pick changed: say what Apply would do, or why it cannot."""
@@ -1157,10 +1161,11 @@ class RgbPageView(QWidget):
         self.follow.show_layout()
         strips = page.effect_strips()
         for preview in self._previews:
-            preview.show_strips(strips, approximate=page.preview_approximate)
+            preview.show_strips(strips, approximate=page.preview_approximate,
+                                tr=page.tr)
         self._problem.setText(problem or "")
         self._problem.setVisible(problem is not None)
-        self._message.setText(WORKING if self._busy else page.message)
+        self._message.setText(page.tr(WORKING if self._busy else page.message))
         self._apply.setEnabled(problem is None and not self._busy)
         self._devices_column.set_busy(self._busy)
 
@@ -1168,7 +1173,7 @@ class RgbPageView(QWidget):
         """Show another device's lights and source."""
         log.info("RgbPageView._on_device: %s", device.value)
         self.page.set_device(device)
-        self._show()
+        self.show_page()
 
     def _on_source(self, source: RgbSource) -> None:
         log.info("RgbPageView._on_source: %s", source.value)
@@ -1255,3 +1260,14 @@ def hear(page: RgbPageView, bridge: BusBridge) -> None:
     for event_type in (*RGB_CHANGES, RgbFollowSent):
         bridge.forward(event_type, "module_event")
     bridge.module_event.connect(_RgbEvents(page).route, type=queued)
+
+
+def speak(page: RgbPageView, tr: Tr) -> None:
+    """*page* in the language *tr* speaks: every label it set, every text its
+    model composes, and the RAM-access row -- at build time and on every
+    change of the window's language."""
+    log.info("speak: %s", type(page).__name__)
+    page.page.tr = tr
+    page.access.translate = tr
+    page.access.refresh()
+    page.show_page()                   # ends by retranslating every label

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from trcc.core.models import RamAccessState
 from trcc.modules.rgb.core.results import RamLightingResult
+from trcc.modules.rgb.ui.presentation.rgb_page import Tr, same
 
 log = logging.getLogger(__name__)
 
@@ -39,19 +40,21 @@ class RamAccessView:
     enables: bool | None = None
 
 
-def ram_access_view(result: RamLightingResult, *, busy: bool = False
-                    ) -> RamAccessView:
-    """*result* as the row shows it; *busy* while a switch waits on the user."""
+def ram_access_view(result: RamLightingResult, *, busy: bool = False,
+                    tr: Tr = same) -> RamAccessView:
+    """*result* as the row shows it; *busy* while a switch waits on the user.
+    *tr* says the row's own words in the window's language; the App's
+    message stays as the App wrote it."""
     log.debug("ram_access_view: %s busy=%s", result.state.value, busy)
     if busy:
-        return RamAccessView(WAITING)
+        return RamAccessView(tr(WAITING))
     state = result.state
     if state in (RamAccessState.UNSUPPORTED, RamAccessState.NO_BUS):
         return RamAccessView(result.message)
     if state in (RamAccessState.ON, RamAccessState.NOT_APPLIED):
-        return RamAccessView(result.message, "Turn off RAM lighting", False)
+        return RamAccessView(result.message, tr("Turn off RAM lighting"), False)
     if result.command:
         # No password prompt from here (a pip install): say what will do it.
-        return RamAccessView(f"{result.message} -- to enable, run: "
-                             f"{result.command}")
-    return RamAccessView(result.message, "Enable RAM lighting...", True)
+        return RamAccessView(tr("{status} -- to enable, run: {command}").format(
+            status=result.message, command=result.command))
+    return RamAccessView(result.message, tr("Enable RAM lighting..."), True)

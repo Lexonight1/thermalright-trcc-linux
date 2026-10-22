@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from functools import partial
 from typing import Any
 
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 from trcc.core.commands import Command, ListDevices
+from trcc.core.i18n import tr
 from trcc.core.logs import per_frame
 from trcc.core.ports import CommandBus
 from trcc.core.results import DeviceEntry
@@ -42,7 +44,7 @@ from trcc.modules.rgb.ui.presentation.rgb_page import (
     SaveEffect,
 )
 from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
-from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView, hear
+from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView, hear, speak
 from trcc.ui.bus_bridge import BusBridge
 from trcc.ui.gui.base import paint_page
 from trcc.ui.gui.constants import Colors, Sizes
@@ -195,8 +197,17 @@ class UCRgb(QWidget, ModuleView):
         self.page.setGeometry(*self.BODY)
         self.page.setStyleSheet(_QSS)
         hear(self.page, bridge)
+        self._title = "RGB Lighting"
+
+    def set_language(self, lang: str) -> None:
+        """The window's language: the page's words, and its title."""
+        log.info("UCRgb.set_language: %s", lang)
+        words = partial(tr, lang=lang)
+        speak(self.page, words)
+        self._title = words("RGB Lighting")
+        self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         frame_log.debug("UCRgb.paintEvent")
-        paint_page(self, "RGB Lighting")
+        paint_page(self, self._title)
 
