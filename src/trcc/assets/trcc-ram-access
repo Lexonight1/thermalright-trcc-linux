@@ -22,11 +22,15 @@ Kept as small as ``trcc-dmi``:
     refused before a file or a process is touched.
   * writes only the two fixed files below, with fixed text, and removes only a
     file that carries TRCC's header -- never one an admin wrote.
-  * runs only modprobe, udevadm and setfacl, from fixed system paths, with a
-    fixed environment.
+  * runs only modprobe, udevadm, getfacl and setfacl, from fixed system
+    paths, with a fixed environment.
+  * ``disable`` touches nothing unless TRCC's rule was there to remove: its
+    password-free twin ``trcc-ram-access-off`` and every package's uninstall
+    hook run it whether or not RAM lighting was ever enabled.
 
-The rule and module text must equal ``trcc.adapters.system._udev``'s (gated by
-a test, since this file may import nothing from trcc).
+This file may import nothing from trcc, so what TRCC also spells is gated
+equal by tests: the rule's path and header (``_ram_access``), and its bus match
+(``_smbus.SMBUS_PREFIX``).
 
 Exit codes: 0 ok · 1 a step failed · 2 bad invocation · 3 not root.
 """
@@ -56,6 +60,7 @@ _TOOLS = {
     "modprobe": ("/usr/sbin/modprobe", "/sbin/modprobe", "/usr/bin/modprobe"),
     "udevadm": ("/usr/bin/udevadm", "/bin/udevadm", "/usr/sbin/udevadm",
                 "/sbin/udevadm"),
+    "getfacl": ("/usr/bin/getfacl", "/bin/getfacl"),
     "setfacl": ("/usr/bin/setfacl", "/bin/setfacl"),
 }
 _I2C_DEV = Path("/sys/class/i2c-dev")
@@ -74,6 +79,16 @@ def _run(*argv: str) -> bool:
         return False
 
 
+def _read(*argv: str) -> str | None:
+    """A tool's output, or None if it failed."""
+    try:
+        result = subprocess.run(argv, env=_ENV, timeout=30, check=False,
+                                capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
 def write(root: Path = Path("/")) -> None:
     """Both files, atomically, root-owned 0644."""
     for path, text in FILES.items():
@@ -88,8 +103,9 @@ def write(root: Path = Path("/")) -> None:
         os.replace(tmp, target)
 
 
-def remove(root: Path = Path("/")) -> None:
-    """Both files -- each only if TRCC wrote it."""
+def remove(root: Path = Path("/")) -> bool:
+    """Both files -- each only if TRCC wrote it.  True if the rule was one."""
+    removed_rule = False
     for path in FILES:
         target = root / path.relative_to("/")
         try:
@@ -98,6 +114,8 @@ def remove(root: Path = Path("/")) -> None:
             continue
         if first == HEADER:
             target.unlink()
+            removed_rule |= path == RULE_PATH
+    return removed_rule
 
 
 def smbus_nodes(sys_root: Path = _I2C_DEV) -> list[str]:
@@ -113,13 +131,27 @@ def smbus_nodes(sys_root: Path = _I2C_DEV) -> list[str]:
     return nodes
 
 
+def named_users(acl: str) -> list[str]:
+    """The uids of ``getfacl -cpn``'s named-user entries (``user:1000:rw-``)."""
+    uids = []
+    for line in acl.splitlines():
+        tag, _, rest = line.partition(":")
+        uid = rest.partition(":")[0]
+        if tag == "user" and uid.isdigit():     # ``user::`` is the owner
+            uids.append(uid)
+    return uids
+
+
 def apply(enabled: bool) -> bool:
     """Make the files take effect now, without a reboot.
 
-    Disabling also strips the SMBus nodes' ACLs before re-triggering: udev
-    only ever ADDS a uaccess grant, so without this the access would last until
-    the next login.  Any other rule that tags the bus (OpenRGB's, say) grants it
-    again on the trigger -- which is the truth, and what status then reports.
+    Disabling also takes the SMBus nodes' named-USER ACL entries away before
+    re-triggering: once the rule is gone udev no longer visits the node, so
+    without this the access would last until the next login.  Only USER
+    entries, as systemd's own ``devnode_acl`` resets a uaccess node -- a GROUP
+    entry is never a uaccess grant, and an admin's stays.  Any other rule that
+    tags the bus (OpenRGB's, say) grants it again on the trigger -- which is
+    the truth, and what status then reports.
     """
     udevadm = _tool("udevadm")
     if udevadm is None:
@@ -128,9 +160,14 @@ def apply(enabled: bool) -> bool:
     if enabled and (modprobe := _tool("modprobe")) is not None:
         ok &= _run(modprobe, "i2c-dev")
     ok &= _run(udevadm, "control", "--reload")
-    if not enabled and (setfacl := _tool("setfacl")) is not None:
+    getfacl, setfacl = _tool("getfacl"), _tool("setfacl")
+    if not enabled and getfacl is not None and setfacl is not None:
         for node in smbus_nodes():
-            ok &= _run(setfacl, "-b", node)
+            if (acl := _read(getfacl, "-cpn", node)) is None:
+                ok = False
+            elif users := named_users(acl):
+                ok &= _run(setfacl, "-x", ",".join(f"u:{u}" for u in users),
+                           node)
     ok &= _run(udevadm, "trigger", "--subsystem-match=i2c-dev",
                "--action=change")
     ok &= _run(udevadm, "settle", "--timeout=10")
@@ -146,8 +183,8 @@ def main() -> int:
     try:
         if enabled:
             write()
-        else:
-            remove()
+        elif not remove():
+            return 0                   # nothing of TRCC's: touch nothing
     except OSError:
         return 1
     return 0 if apply(enabled) else 1

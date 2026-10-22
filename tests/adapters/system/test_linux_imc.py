@@ -467,11 +467,12 @@ def test_ram_access_writes_and_removes_only_its_own_files(tmp_path: Path) -> Non
     assert rule.read_text(encoding="utf-8") == helper.RULE_TEXT
     assert modules.read_text(encoding="utf-8") == helper.MODULES_TEXT
     assert oct(rule.stat().st_mode & 0o777) == "0o644"
-    helper.remove(tmp_path)
+    assert helper.remove(tmp_path) is True
     assert not rule.exists() and not modules.exists()
+    assert helper.remove(tmp_path) is False
     # An admin's file at the same path is not ours to delete.
     rule.write_text("# my own rule\n", encoding="utf-8")
-    helper.remove(tmp_path)
+    assert helper.remove(tmp_path) is False
     assert rule.read_text(encoding="utf-8") == "# my own rule\n"
 
 
@@ -486,27 +487,76 @@ def test_ram_access_finds_only_the_chipset_smbus(tmp_path: Path) -> None:
     assert helper.smbus_nodes(tmp_path) == ["/dev/i2c-3", "/dev/i2c-9"]
 
 
-def test_ram_access_disable_takes_the_access_back_now(
-        monkeypatch: pytest.MonkeyPatch) -> None:
-    """udev only ever ADDS a uaccess grant, so disable strips the SMBus nodes'
-    ACLs before re-triggering -- otherwise access lasts until the next login.
+#: ``getfacl -cpn`` of a uaccess-granted SMBus node an admin also gave a group.
+_GRANTED_ACL = ("user::rw-\nuser:1000:rw-\nuser:1001:rw-\ngroup::rw-\n"
+                "group:42:rw-\nmask::rw-\nother::---\n")
 
-    MUTATION CHECK: drop the setfacl loop in ``apply``."""
-    helper = _load_helper("trcc-ram-access")
+
+def _recording_apply(helper: ModuleType, monkeypatch: pytest.MonkeyPatch,
+                     acl: str) -> list[tuple[str, ...]]:
+    """Every tool ``apply`` runs, against one fake node whose ACL is *acl*."""
     ran: list[tuple[str, ...]] = []
     monkeypatch.setattr(helper, "_tool", lambda name: f"/x/{name}")
     monkeypatch.setattr(helper, "_run", lambda *argv: ran.append(argv) or True)
+    monkeypatch.setattr(helper, "_read", lambda *argv: ran.append(argv) or acl)
     monkeypatch.setattr(helper, "smbus_nodes", lambda: ["/dev/i2c-3"])
+    return ran
+
+
+def test_ram_access_disable_takes_the_access_back_now(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Once the rule is gone udev no longer visits the node, so disable takes
+    its named-USER entries away before re-triggering -- otherwise access lasts
+    until the next login.  Only USER entries, as systemd's devnode_acl does:
+    the admin's group:42 stays.
+
+    MUTATION CHECK: drop the setfacl call, or put back ``setfacl -b``."""
+    helper = _load_helper("trcc-ram-access")
+    ran = _recording_apply(helper, monkeypatch, _GRANTED_ACL)
     assert helper.apply(False)
     assert ran == [
         ("/x/udevadm", "control", "--reload"),
-        ("/x/setfacl", "-b", "/dev/i2c-3"),
+        ("/x/getfacl", "-cpn", "/dev/i2c-3"),
+        ("/x/setfacl", "-x", "u:1000,u:1001", "/dev/i2c-3"),
         ("/x/udevadm", "trigger", "--subsystem-match=i2c-dev", "--action=change"),
         ("/x/udevadm", "settle", "--timeout=10")]
     ran.clear()
     assert helper.apply(True)
     assert ran[0] == ("/x/modprobe", "i2c-dev")
+    assert not [r for r in ran if "facl" in r[0]]
+
+
+def test_ram_access_leaves_a_node_with_no_user_entries_alone(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    helper = _load_helper("trcc-ram-access")
+    ran = _recording_apply(helper, monkeypatch,
+                           "user::rw-\ngroup::rw-\ngroup:42:rw-\nmask::rw-\nother::---\n")
+    assert helper.apply(False)
     assert not [r for r in ran if "setfacl" in r[0]]
+
+
+def test_ram_access_disable_touches_nothing_unless_trcc_granted(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """``trcc-ram-access-off`` needs no password and every package's uninstall
+    hook runs ``disable``, granted or not -- so without TRCC's rule it must
+    change no ACL and run no tool.
+
+    MUTATION CHECK: drop the ``elif not remove(): return 0``."""
+    helper = _load_helper("trcc-ram-access")
+    applied: list[bool] = []
+    monkeypatch.setattr(helper.sys, "argv", ["trcc-ram-access", "disable"])
+    monkeypatch.setattr(helper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(helper, "apply", lambda enabled: applied.append(enabled) or True)
+    monkeypatch.setattr(helper, "remove", lambda: False)
+    assert helper.main() == 0 and applied == []
+    monkeypatch.setattr(helper, "remove", lambda: True)
+    assert helper.main() == 0 and applied == [False]
+
+
+def test_ram_access_reads_getfacls_named_users() -> None:
+    helper = _load_helper("trcc-ram-access")
+    assert helper.named_users(_GRANTED_ACL) == ["1000", "1001"]
+    assert helper.named_users("user::rw-\ngroup:1000:rw-\nother::---\n") == []
 
 
 @pytest.mark.parametrize("argv, code", [
@@ -588,8 +638,8 @@ def test_install_sh_takes_the_ram_grant_back_before_pip_removes_its_helper() -> 
 @pytest.mark.parametrize("granted", [True, False], ids=["granted", "never-granted"])
 def test_install_sh_runs_the_helper_only_when_trcc_granted(
         tmp_path: Path, granted: bool) -> None:
-    """Disabling strips every ACL on the memory's bus (``setfacl -b``), so an
-    uninstall that never enabled RAM lighting must not run it at all.
+    """An uninstall that never enabled RAM lighting has nothing to take back,
+    so it runs no root helper at all.
     MUTATION CHECK: drop the ``[ ! -f "$RAM_RULE" ]`` early return."""
     helper, ran = _recording_helper(tmp_path)
     rule = tmp_path / "70-trcc-ram-lighting.rules"
@@ -608,7 +658,10 @@ def test_install_sh_finds_the_helper_inside_the_package(tmp_path: Path) -> None:
     venv = tmp_path / "venv" / "bin"
     venv.mkdir(parents=True)
     python = venv / "python"          # this test's interpreter, venv and all
-    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    # The tree's src by absolute path: install.sh runs it from tmp_path, where
+    # a relative PYTHONPATH=src finds nothing unless TRCC is pip-installed.
+    python.write_text(f'#!/bin/sh\nPYTHONPATH="{_ASSETS.parent.parent}" '
+                      f'exec "{sys.executable}" "$@"\n')
     python.chmod(0o755)
     result = _install_sh(f'VENV_DIR="{venv.parent}"; packaged_ram_helper', tmp_path)
     assert (result.returncode, result.stdout.strip()) == (
