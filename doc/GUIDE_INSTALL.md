@@ -640,6 +640,7 @@ Then open **TRCC** from the application menu. To update, run the same line again
 To remove it:
 
 ```bash
+trcc system ram-lighting disable          # first, if you enabled RAM lighting (switching RGB Lighting off does it too)
 systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service
 rm -rf ~/.local/share/trcc-linux ~/.local/bin/trcc ~/.local/share/applications/trcc-linux.desktop
 sudo rm /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
@@ -1011,7 +1012,7 @@ not been restored. Remove the pieces directly:
 
 ```bash
 trcc system autostart disable                 # drop the autostart entry
-trcc system ram-lighting disable              # BEFORE uninstalling: take back the RAM-bus grant, if you enabled it
+trcc system ram-lighting disable              # BEFORE uninstalling: take back the RAM-bus grant, if you enabled it (switching RGB Lighting off does it too)
 systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service   # the App's user service setup added
 pipx uninstall trcc-linux                     # or pip uninstall trcc-linux, or your package manager
 sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules   # udev rules
@@ -1023,9 +1024,9 @@ sudo rm -f /usr/bin/trcc-ram-access /usr/bin/trcc-ram-access-off \
 rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
 ```
 
-The distro packages (rpm, deb, Arch) remove the RAM-lighting grant themselves
-when uninstalled; a pip or source install cannot, so run `ram-lighting
-disable` first.
+The distro packages (rpm, deb, Arch) and `sudo ./install.sh --uninstall` remove
+the RAM-lighting grant themselves; `pip`/`pipx uninstall` cannot, so run
+`ram-lighting disable` first.
 
 `~/.trcc-user/` holds themes and backgrounds **you** authored — back it up
 first if you want to keep them.
@@ -1038,7 +1039,7 @@ pip uninstall trcc-linux                      # or pipx uninstall trcc-linux
 sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
-sudo rm -f /etc/udev/rules.d/70-trcc-ram-lighting.rules /etc/modules-load.d/trcc-i2c.conf   # RAM-lighting grant
+sudo rm -f /etc/udev/rules.d/70-trcc-ram-lighting.rules /etc/modules-load.d/trcc-i2c.conf   # RAM-lighting grant; the bus access itself ends at the next restart
 sudo udevadm control --reload-rules
 rm -rf ~/.trcc ~/.trcc-user                   # back up ~/.trcc-user first to keep your themes
 rm -f ~/.config/autostart/trcc*.desktop

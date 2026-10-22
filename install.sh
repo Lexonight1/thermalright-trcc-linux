@@ -19,6 +19,11 @@ TRCC_VERSION="$(grep '^__version__ =' "$SCRIPT_DIR/src/trcc/__version__.py" 2>/d
 UDEV_RULES="/etc/udev/rules.d/99-trcc-lcd.rules"
 RGB_UDEV_RULES="/etc/udev/rules.d/70-trcc-rgb.rules"
 MODPROBE_CONF="/etc/modprobe.d/trcc-lcd.conf"
+# The opt-in RAM-lighting grant: what `trcc system ram-lighting enable` writes,
+# and the helper that takes it back (both spelled as the helper spells them --
+# a test holds them equal).
+RAM_RULE="/etc/udev/rules.d/70-trcc-ram-lighting.rules"
+RAM_HELPER="/usr/bin/trcc-ram-access"
 
 # Resolve real user when running under sudo
 REAL_USER="${SUDO_USER:-$USER}"
@@ -321,6 +326,44 @@ print_success() {
 
 # ── Uninstall ──────────────────────────────────────────────────────────────
 
+# The helper inside the installed package -- asked of the Python that has TRCC,
+# as the user it was installed for (a pip --user install is invisible to root).
+packaged_ram_helper() {
+    local py
+    for py in "$VENV_DIR/bin/python" python3; do
+        if sudo -u "$REAL_USER" "$py" -c 'import pathlib, trcc
+print(pathlib.Path(trcc.__file__).parent / "assets" / "trcc-ram-access")' 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Take back the RAM-lighting grant -- its rule, its i2c-dev entry and the live
+# ACL on the memory's bus -- through TRCC's own helper, which removes only files
+# carrying TRCC's header.  Runs before pip removes the package that carries the
+# helper.  With no rule, nothing was granted: the bus's ACLs are left alone.
+revoke_ram_grant() {
+    if [ ! -f "$RAM_RULE" ]; then
+        return 0
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        warn "Skipped the RAM-lighting permission (run with sudo to remove it)"
+        return 0
+    fi
+    local helper="$RAM_HELPER"
+    if [ ! -f "$helper" ]; then
+        helper="$(packaged_ram_helper)" || helper=""
+    fi
+    if [ -n "$helper" ] && [ -f "$helper" ] && python3 -I "$helper" disable; then
+        info "Took back the RAM-lighting permission"
+        removed=1
+    else
+        warn "Could not take back the RAM-lighting permission -- remove $RAM_RULE"
+        warn "and /etc/modules-load.d/trcc-i2c.conf, then restart"
+    fi
+}
+
 do_uninstall() {
     echo -e "${BOLD}TRCC Linux Uninstaller${RESET}"
     echo ""
@@ -328,6 +371,9 @@ do_uninstall() {
     check_bash_version
 
     local removed=0
+
+    # 0. The RAM-lighting grant, while its helper is still installed.
+    revoke_ram_grant
 
     # 1. pip uninstall
     info "Removing TRCC Python package..."

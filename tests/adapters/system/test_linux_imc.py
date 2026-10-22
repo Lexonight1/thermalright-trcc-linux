@@ -543,6 +543,78 @@ def test_every_package_takes_the_ram_grant_back_on_uninstall(package: str) -> No
     assert line in block.split(hook, 1)[1], f"{package}: {hook} lacks the disable"
 
 
+_INSTALL_SH = _ASSETS.parents[2] / "install.sh"
+
+
+def _install_sh(script: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """install.sh's functions, loaded without running it, then *script* --
+    as root (``id`` answers 0) and with ``sudo -u USER`` running in place, so
+    no test needs root.  *script* points RAM_RULE and RAM_HELPER somewhere
+    safe: nothing here may reach /etc or the real helper."""
+    functions = tmp_path / "install-functions.sh"
+    functions.write_text(_INSTALL_SH.read_text(encoding="utf-8").replace(
+        '\nmain "$@"\n', "\n"), encoding="utf-8")
+    stubs = 'id() { echo 0; }\nsudo() { shift 2; "$@"; }\n'
+    return subprocess.run(["bash", "-c", f'source "{functions}"\n{stubs}{script}'],
+                          cwd=tmp_path, capture_output=True, text=True, timeout=60,
+                          check=False)
+
+
+def _recording_helper(tmp_path: Path) -> tuple[Path, Path]:
+    """A stand-in for trcc-ram-access that writes down how it was run."""
+    ran = tmp_path / "ran"
+    helper = tmp_path / "helper"
+    helper.write_text(f"import sys\nopen({str(ran)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n")
+    return helper, ran
+
+
+def test_install_sh_spells_the_grant_as_the_helper_does() -> None:
+    """install.sh may import nothing from trcc either."""
+    from trcc.adapters.system import _ram_access
+    text = _INSTALL_SH.read_text(encoding="utf-8")
+    assert f'RAM_RULE="{_ram_access.RULE_PATH}"' in text
+    assert f'RAM_HELPER="{_ram_access.HELPER}"' in text
+
+
+def test_install_sh_takes_the_ram_grant_back_before_pip_removes_its_helper() -> None:
+    """pip uninstall deletes the helper inside the package; after it, a pip
+    or source install has nothing left to take the grant back with.
+    MUTATION CHECK: move ``revoke_ram_grant`` below the pip uninstall."""
+    text = _INSTALL_SH.read_text(encoding="utf-8")
+    body = text.split("do_uninstall() {", 1)[1]
+    assert body.index("revoke_ram_grant") < body.index("pip uninstall")
+
+
+@pytest.mark.parametrize("granted", [True, False], ids=["granted", "never-granted"])
+def test_install_sh_runs_the_helper_only_when_trcc_granted(
+        tmp_path: Path, granted: bool) -> None:
+    """Disabling strips every ACL on the memory's bus (``setfacl -b``), so an
+    uninstall that never enabled RAM lighting must not run it at all.
+    MUTATION CHECK: drop the ``[ ! -f "$RAM_RULE" ]`` early return."""
+    helper, ran = _recording_helper(tmp_path)
+    rule = tmp_path / "70-trcc-ram-lighting.rules"
+    if granted:
+        rule.write_text("rule\n")
+    result = _install_sh(f'RAM_RULE="{rule}"; RAM_HELPER="{helper}"; revoke_ram_grant',
+                         tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert (ran.read_text() if ran.exists() else "") == ("disable\n" if granted else "")
+
+
+def test_install_sh_finds_the_helper_inside_the_package(tmp_path: Path) -> None:
+    """With no /usr/bin copy (a pip or source install that never ran setup's
+    polkit step), the package's own copy, found by the Python that has TRCC."""
+    import sys
+    venv = tmp_path / "venv" / "bin"
+    venv.mkdir(parents=True)
+    python = venv / "python"          # this test's interpreter, venv and all
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    result = _install_sh(f'VENV_DIR="{venv.parent}"; packaged_ram_helper', tmp_path)
+    assert (result.returncode, result.stdout.strip()) == (
+        0, str(_ASSETS / "trcc-ram-access"))
+
+
 def test_trcc_reads_the_rule_the_helper_writes() -> None:
     """The helper may import nothing from trcc, so the path, header and
     install location are spelled twice -- and must agree."""
