@@ -2375,11 +2375,28 @@ def test_system_aura_leds_refuses_a_header_no_find_listed(cli_runner: CliRunner,
     del cli_app
     refused = cli_runner.invoke(_app(), ["system", "aura-leds", "1", "8"])
     assert refused.exit_code == 1
-    assert ("\nno ARGB header 1 -- press Find lights to list the board's "
-            "headers\n  (not searched yet -- `trcc system rgb --scan`)\n"
-            ) in refused.output
+    # An error is its message alone (his rule, 2026-10-22): nothing after it.
+    assert refused.output.endswith(
+        "\nno ARGB header 1 -- press Find lights to list the board's headers\n")
     zero = cli_runner.invoke(_app(), ["system", "aura-leds", "0", "8"])
     assert zero.exit_code != 0                 # headers count from 1
+
+
+def test_rgb_off_is_an_error_and_says_nothing_else(cli_runner: CliRunner,
+                                                    cli_app) -> None:
+    """A refusal is an error: its message, exit 1, and none of the Result's
+    other fields -- they are defaults ("not searched yet", "RAM access:
+    unsupported"), not facts.  MUTATION CHECK: drop the early return in
+    ``_echo_lights`` or move ``ram-lighting``'s exit below its fields."""
+    from trcc.core.commands import SetModuleEnabled
+
+    cli_app.dispatch(SetModuleEnabled(key="rgb", enabled=False))
+    for argv in (["system", "rgb"], ["system", "ram-lighting"],
+                 ["system", "ram-effect", "rainbow"]):
+        result = cli_runner.invoke(_app(), argv)
+        assert (result.exit_code, result.output.splitlines()[-1:]) == (
+            1, ["RGB Lighting is off -- turn it on in Modules"]), argv
+        assert "RAM access" not in result.output and "state:" not in result.output
 
 
 def test_system_aura_blink_says_why_with_no_board(cli_runner: CliRunner, cli_app) -> None:

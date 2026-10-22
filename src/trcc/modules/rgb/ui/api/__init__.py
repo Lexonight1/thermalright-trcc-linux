@@ -45,7 +45,9 @@ router = APIRouter(prefix="/system", tags=["system"])
 def rgb_follow_status(request: Request) -> RgbFollowResult:
     """What follows the cooler's colours, and what it is doing (#160)."""
     log.info("api GET /system/rgb-follow")
-    return request.app.state.trcc.dispatch(RgbFollow())
+    result = request.app.state.trcc.dispatch(RgbFollow())
+    http_error_if_failed(result)
+    return result
 
 
 @router.post("/rgb-follow")
@@ -67,7 +69,9 @@ def rgb_follow_set(body: RgbFollowRequest,
 def rgb_lights(request: Request) -> RgbLightsResult:
     """The RGB lights from the last scan -- no bus traffic."""
     log.info("api GET /system/rgb")
-    return request.app.state.trcc.dispatch(RgbLights())
+    result = request.app.state.trcc.dispatch(RgbLights())
+    http_error_if_failed(result)
+    return result
 
 
 @router.post("/rgb/scan")
@@ -145,7 +149,9 @@ def ram_effect_set(body: RamEffectRequest, request: Request) -> RgbLightsResult:
 def ram_lighting_status(request: Request) -> RamLightingResult:
     """Whether TRCC may reach RGB memory -- read from files, no bus traffic."""
     log.info("api GET /system/ram-lighting")
-    return request.app.state.trcc.dispatch(RamLighting())
+    result = request.app.state.trcc.dispatch(RamLighting())
+    http_error_if_failed(result)
+    return result
 
 
 @router.post("/ram-lighting")

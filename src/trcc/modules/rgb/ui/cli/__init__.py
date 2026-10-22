@@ -134,19 +134,23 @@ def ram_lighting(
         RamLighting() if choice == "status" else
         SetRamLighting(enabled=choice == "enable"))
     typer.echo(result.message)
+    if not result.ok:              # an error is its message: nothing beside it
+        raise typer.Exit(code=1)
     typer.echo(f"  state: {result.state.value}")
     if result.command and result.state not in (RamAccessState.ON,
                                                RamAccessState.ELSEWHERE):
         typer.echo(f"  to enable: {result.command}")
-    if not result.ok:
-        raise typer.Exit(code=1)
 
 
 def _echo_lights(result: RgbLightsResult) -> None:
-    """The lights, one per line, with what TRCC last saved on each stick."""
-    log.debug("_echo_lights: %d", len(result.lights))
+    """The lights, one per line, with what TRCC last saved on each stick --
+    or, for an error, its message alone: a refused or failed Command's other
+    fields are defaults, not facts, as ``follow`` already treats them."""
+    log.debug("_echo_lights: %d ok=%s", len(result.lights), result.ok)
     if result.message:
         typer.echo(result.message)
+    if not result.ok:
+        return
     if any(light.remembered for light in result.lights):
         typer.echo("  (found at the last search -- `trcc system rgb --scan` "
                    "to check again)")

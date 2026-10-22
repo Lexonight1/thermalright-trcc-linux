@@ -2109,6 +2109,17 @@ def test_system_rgb_follow_takes_a_host_not_a_url(api_client: TestClient) -> Non
                                ).status_code == 422, bad
 
 
+def test_rgb_off_is_an_http_error_not_default_fields(api_client: TestClient) -> None:
+    """A refusal is an error: 400 with its message, never 200 + ``ok: false``
+    + defaults.  MUTATION CHECK: drop ``http_error_if_failed`` from a GET."""
+    assert api_client.post("/system/modules/rgb", json={"enabled": False}
+                           ).status_code == 200
+    for route in ("/system/rgb", "/system/ram-lighting", "/system/rgb-follow"):
+        resp = api_client.get(route)
+        assert (resp.status_code, resp.json()) == (
+            400, {"detail": "RGB Lighting is off -- turn it on in Modules"}), route
+
+
 def test_system_ram_lighting_on_an_os_without_it(api_client: TestClient) -> None:
     status = api_client.get("/system/ram-lighting").json()
     assert (status["state"], status["message"]) == (
