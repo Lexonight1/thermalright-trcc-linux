@@ -5,7 +5,8 @@ One tile per module: its symbol on the left, its name, what it does, a
 run -- or why a switch was refused, or what switching off could not undo --
 when there is something to say.  The window builds the Commands, as the
 visual controls' windows do: *listing* makes its ``ListModules``, *switch*
-its ``SetModuleEnabled``.  A switch is sent off the GUI thread: switching a
+its ``SetModuleEnabled``, *icon* its ``ModuleIcon`` -- the symbol arrives as
+bytes the App read, so a window over the socket draws it too.  A switch is sent off the GUI thread: switching a
 module off may ask for the password.  The list follows ``ModuleChanged`` --
 so a module switched in another UI turns here too, with its note.  Each
 window frames it in its own page and style.
@@ -17,8 +18,8 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QImageReader, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -55,12 +56,14 @@ class ModulesView(QScrollArea):
     def __init__(self, app: CommandBus,
                  listing: Callable[[], Command[Any]],
                  switch: Callable[[str, bool], Command[Any]],
+                 icon: Callable[[str], Command[Any]],
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         log.info("ModulesView: built")
         self._app = app
         self._listing = listing
         self._switch = switch
+        self._icon = icon
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self._body = QWidget()
@@ -112,16 +115,34 @@ class ModulesView(QScrollArea):
             self._note(event.key, event.note)
             self.refresh()
 
+    def _symbol(self, key: str) -> QPixmap:
+        """Module *key*'s symbol at the tile's size, from the bytes the App
+        sends -- an SVG drawn at that size, not scaled up.  Null if none."""
+        result = self._app.dispatch(self._icon(key))
+        if not result.ok:
+            log.warning("ModulesView._symbol: %s -- %s", key, result.message)
+            return QPixmap()
+        buffer = QBuffer()
+        buffer.setData(QByteArray(result.image))
+        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        reader = QImageReader(buffer)
+        reader.setScaledSize(reader.size().scaled(
+            ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio))
+        image = reader.read()
+        log.debug("ModulesView._symbol: %s %dx%d %s", key, image.width(),
+                  image.height(), reader.errorString() if image.isNull() else "ok")
+        return QPixmap.fromImage(image)
+
     def _tile(self, module: ModuleInfo) -> QFrame:
         """One module: name, what it does, why not here, and its switch."""
         log.debug("ModulesView._tile: %s", module.key)
         tile = QFrame()
         tile.setObjectName("moduleTile")
         row = QHBoxLayout(tile)
-        if module.icon and not (icon := QIcon(module.icon)).isNull():
+        if module.icon and not (pixmap := self._symbol(module.key)).isNull():
             symbol = QLabel()
             symbol.setObjectName("moduleIcon")
-            symbol.setPixmap(icon.pixmap(ICON_SIZE, ICON_SIZE))
+            symbol.setPixmap(pixmap)
             row.addWidget(symbol, 0, Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
         name = QLabel(self._translate(module.title))

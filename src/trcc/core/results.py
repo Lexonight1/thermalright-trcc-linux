@@ -608,6 +608,17 @@ class ModuleResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleIconResult(Result):
+    """``ModuleIcon``: a module's symbol as its file's bytes, read by the App
+    -- so a window or the API shows it from wherever it runs.  ``found`` is
+    False for a key no module has, or a module with no symbol."""
+    key: str = ""
+    image: bytes = field(default=b"", repr=False)
+    media_type: str = ""
+    found: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class MediaPlayerResult(Result):
     """Result of ``SetMediaPlayer`` — the media-player source (a local URI or a
     web URL/stream).  ``playing`` is True when the source started: a local file

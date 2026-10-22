@@ -99,6 +99,7 @@ from .led import (
 )
 from .modules import (
     ListModules,
+    ModuleIcon,
     SetModuleEnabled,
 )
 from .system import (
@@ -237,6 +238,7 @@ __all__ = [
     "LoadVideo",
     "LoopVideo",
     "MarkFirstRunDone",
+    "ModuleIcon",
     "PauseVideo",
     "PlayVideo",
     "PreviewSize",

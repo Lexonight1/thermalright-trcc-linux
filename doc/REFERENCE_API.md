@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**153 endpoints.**
+**154 endpoints.**
 
 ## Running it
 
@@ -169,8 +169,9 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/mark-setup-done` | `FirstRunStatusResult` | Mark the first-run flow as completed. |
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |
-| `GET /system/modules` | `ModulesResult` | Every module, on or off -- the API's Modules page. |
+| `GET /system/modules` | `ModulesResult` | Every module, on or off -- the API's Modules page.  ``icon`` says whether ``GET /system/modules/{key}/icon`` has a symbol to serve. |
 | `POST /system/modules/{key}` | `ModuleResult` | Switch module *key* on or off; 404 for a key no module has. |
+| `GET /system/modules/{key}/icon` | — | Module *key*'s symbol, as the App reads it (``ModuleIcon``) -- the API opens no file; 404 for a key with none. |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
 | `POST /system/ram-effect` | `RgbLightsResult` | Save one of the memory's own effects on the sticks. |
 | `GET /system/ram-lighting` | `RamLightingResult` | Whether TRCC may reach RGB memory -- read from files, no bus traffic. |

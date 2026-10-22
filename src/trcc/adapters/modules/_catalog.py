@@ -92,9 +92,37 @@ def specs(root: Path | None = None) -> dict[str, ModuleSpec]:
             log.exception("catalog.specs: skipping %s -- its core/ did not load",
                           manifest.key)
             continue
-        found[manifest.key] = ModuleSpec(manifest, _loader(manifest))
+        found[manifest.key] = ModuleSpec(manifest, _loader(manifest),
+                                         _icon_reader(manifest))
     log.info("catalog.specs: %s", sorted(found))
     return found
+
+
+#: The symbol types a manifest may name, and how they are served.
+_ICON_TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
+
+
+def _icon_reader(manifest: ModuleManifest) -> Callable[[], tuple[bytes, str] | None]:
+    """How to read *manifest*'s symbol: its file's bytes and media type, or
+    None -- no symbol, a type no window draws, or a file that is gone."""
+    log.debug("catalog._icon_reader: %s %r", manifest.key, manifest.icon)
+
+    def read() -> tuple[bytes, str] | None:
+        path = Path(manifest.icon) if manifest.icon else None
+        media_type = _ICON_TYPES.get(path.suffix.lower()) if path is not None else None
+        if path is None or media_type is None:
+            log.debug("catalog: %s has no symbol to show (%s)", manifest.key, path)
+            return None
+        try:
+            image = path.read_bytes()
+        except OSError as e:
+            log.warning("catalog: %s's symbol %s unreadable -- %s", manifest.key,
+                        path, e)
+            return None
+        log.debug("catalog: %s's symbol %d bytes %s", manifest.key, len(image),
+                  media_type)
+        return image, media_type
+    return read
 
 
 def _loader(manifest: ModuleManifest) -> Callable[[], type[Module]]:

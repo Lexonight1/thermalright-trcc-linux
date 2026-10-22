@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
-from ...core.commands import ListModules, SetModuleEnabled
+from ...core.commands import ListModules, ModuleIcon, SetModuleEnabled
 from ...core.logs import per_frame
 from ...core.ports import CommandBus
 from ..bus_bridge import BusBridge
@@ -47,7 +47,7 @@ class UCModules(QWidget):
         log.info("UCModules: built")
         self.setFixedSize(Sizes.FORM_W, Sizes.FORM_H)
         self._title = "Modules"
-        self.view = ModulesView(app, ListModules, self._switch, self)
+        self.view = ModulesView(app, ListModules, self._switch, ModuleIcon, self)
         self.view.setGeometry(*_BODY)
         self.view.setStyleSheet(_STYLE)
         # A module switched in any UI: this page follows.

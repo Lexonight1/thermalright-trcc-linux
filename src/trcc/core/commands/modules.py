@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from ..errors import ModuleUnavailable
 from ..events import ModuleChanged
-from ..results import ModuleResult, ModulesResult
+from ..results import ModuleIconResult, ModuleResult, ModulesResult
 from ._base import Command, Query
 
 if TYPE_CHECKING:
@@ -29,6 +29,23 @@ class ListModules(Query[ModulesResult]):
         infos = app.modules.infos()
         log.info("ListModules: %s", {m.key: m.enabled for m in infos})
         return ModulesResult(ok=True, modules=infos)
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleIcon(Query[ModuleIconResult]):
+    """Module *key*'s symbol, as bytes -- every window's tile and the API's
+    route draw it from here, never from a path."""
+    key: str
+
+    def execute(self, app: App) -> ModuleIconResult:
+        log.debug("ModuleIcon: %s", self.key)
+        if (icon := app.modules.icon(self.key)) is None:
+            log.warning("ModuleIcon: no symbol for %r", self.key)
+            return ModuleIconResult(ok=False, message=f"no icon for module {self.key!r}",
+                                    key=self.key, found=False)
+        image, media_type = icon
+        return ModuleIconResult(ok=True, key=self.key, image=image,
+                                media_type=media_type)
 
 
 @dataclass(frozen=True, slots=True)

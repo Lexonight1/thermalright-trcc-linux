@@ -1324,14 +1324,16 @@ SOUND_CHANNELS = 2
 @dataclass(frozen=True, slots=True)
 class ModuleInfo:
     """One module as the Modules page shows it: its tile and its switch.
-    ``problem`` says why it cannot run here; "" when it can.  ``icon`` is a
-    file path ("" for none); ``guide`` links its section of the guide."""
+    ``problem`` says why it cannot run here; "" when it can.  ``icon`` says
+    whether it has a symbol -- its picture is ``ModuleIcon``'s, never a path,
+    which would name a file on the App's machine; ``guide`` links its section
+    of the guide."""
     key: str
     title: str
     summary: str
     enabled: bool
     problem: str = ""
-    icon: str = ""
+    icon: bool = False
     guide: str = ""
 
 

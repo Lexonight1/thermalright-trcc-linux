@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 
 from ...core.commands import (
     CheckForUpdate,
@@ -27,6 +27,7 @@ from ...core.commands import (
     ListModules,
     ListSensors,
     MarkFirstRunDone,
+    ModuleIcon,
     ReadSensors,
     RefreshAutostart,
     RunDoctor,
@@ -240,9 +241,20 @@ def list_disk_sensors(request: Request) -> DiskSensorsResult:
 
 @router.get("/modules")
 def list_modules(request: Request) -> ModulesResult:
-    """Every module, on or off -- the API's Modules page."""
+    """Every module, on or off -- the API's Modules page.  ``icon`` says
+    whether ``GET /system/modules/{key}/icon`` has a symbol to serve."""
     log.info("api GET /system/modules")
     return request.app.state.trcc.dispatch(ListModules())
+
+
+@router.get("/modules/{key}/icon")
+def module_icon(key: str, request: Request) -> Response:
+    """Module *key*'s symbol, as the App reads it (``ModuleIcon``) -- the
+    API opens no file; 404 for a key with none."""
+    log.info("api GET /system/modules/%s/icon", key)
+    result = request.app.state.trcc.dispatch(ModuleIcon(key=key))
+    http_error_if_failed(result, status_code=404)
+    return Response(content=result.image, media_type=result.media_type)
 
 
 @router.post("/modules/{key}")

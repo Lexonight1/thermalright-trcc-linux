@@ -144,6 +144,12 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Listings each surface answers its own way ─────────────────────────
     # ListDevices: retired 2026-09-25 -- the CLI reaches it too now, through
     # the exit hook that names panels which blank when frames stop (#228).
+    "ModuleIcon": (frozenset({"api", "gui", "qtgui"}), (
+        "scoped: a module's symbol as the bytes the App read (2026-10-22) -- "
+        "the API serves it at /system/modules/{key}/icon and both windows "
+        "draw it on the tile; a terminal draws no pictures, and `trcc system "
+        "modules list` names each module instead"
+    )),
     "SetOverlayConfig": (frozenset({"api"}), (
         "scoped: a bulk replace for scripts; every UI edits overlays "
         "element-wise (Add/Update/DeleteOverlayElement, all four).  The gui "

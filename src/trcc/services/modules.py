@@ -22,7 +22,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -59,11 +59,19 @@ log = logging.getLogger(__name__)
 _C = TypeVar("_C", bound=type)
 
 
+def _no_icon() -> None:
+    """A module registered in code has no symbol file to read."""
+    log.debug("_no_icon: a module registered in code")
+
+
 @dataclass(frozen=True, slots=True)
 class ModuleSpec:
-    """A module as the App first meets it: what it is, and how to load it."""
+    """A module as the App first meets it: what it is, how to load it, and
+    how to read its symbol -- ``(bytes, media type)``, or None for none.  The
+    catalog adapter supplies both readers, so nothing here opens a file."""
     manifest: ModuleManifest
     load: Callable[[], type[Module]]
+    icon: Callable[[], tuple[bytes, str] | None] = field(default=_no_icon)
 
     @classmethod
     def of(cls, module: type[Module]) -> ModuleSpec:
@@ -485,7 +493,14 @@ class ModuleRunner:
         return ModuleInfo(key=key, title=manifest.title, summary=manifest.summary,
                           enabled=key in self._on,
                           problem=module.problem() if module is not None else "",
-                          icon=manifest.icon, guide=manifest.guide)
+                          icon=bool(manifest.icon), guide=manifest.guide)
+
+    def icon(self, key: str) -> tuple[bytes, str] | None:
+        """Module *key*'s symbol and its media type, or None: no such module,
+        or none it can show."""
+        spec = self._specs.get(key)
+        log.debug("ModuleRunner.icon: %s known=%s", key, spec is not None)
+        return spec.icon() if spec is not None else None
 
     def enable_saved(self) -> None:
         """Register each module the user has on, or that is on by default.

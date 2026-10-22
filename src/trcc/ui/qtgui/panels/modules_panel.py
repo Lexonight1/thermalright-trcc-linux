@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QLabel, QVBoxLayout
 
-from ....core.commands import ListModules, SetModuleEnabled
+from ....core.commands import ListModules, ModuleIcon, SetModuleEnabled
 from ...qt_modules import ModulesView
 from ..base import BasePanel
 
@@ -31,7 +31,7 @@ class ModulesPanel(BasePanel):
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
-        self.view = ModulesView(self._app, ListModules, self._switch, self)
+        self.view = ModulesView(self._app, ListModules, self._switch, ModuleIcon, self)
         layout.addWidget(self.view, 1)
         self._bus.app_settings_changed.connect(
             self.view.on_event, type=Qt.ConnectionType.QueuedConnection)

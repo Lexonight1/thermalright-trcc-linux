@@ -107,7 +107,7 @@ def test_an_off_module_is_listed_but_never_imported(
     app = App(platform=FakePlatform(tmp_home), modules=specs(lazy))
     [tile] = app.dispatch(ListModules()).modules
     assert (tile.key, tile.title, tile.enabled, tile.icon, tile.guide) == (
-        "lazy", "Lazy", False, str(lazy / "lazy" / "icon.svg"),
+        "lazy", "Lazy", False, True,
         "https://example.invalid/GUIDE_MODULES.md#lazy")
     assert _PACKAGE not in sys.modules
     assert app.modules.loaded == frozenset()

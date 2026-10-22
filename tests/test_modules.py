@@ -15,7 +15,7 @@ import pytest
 
 from trcc.adapters.modules import MODULES, BaseModule
 from trcc.app import App
-from trcc.core.commands import Command, ListModules, SetModuleEnabled
+from trcc.core.commands import Command, ListModules, ModuleIcon, SetModuleEnabled
 from trcc.core.errors import ModuleUnavailable
 from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
 from trcc.core.models import PanelPicture, Wire
@@ -380,6 +380,55 @@ def test_the_api_lists_and_switches(fake_platform: FakePlatform,
             missing.status_code) == (200, True, 404)
 
 
+def test_the_app_reads_a_modules_symbol(fake_platform: FakePlatform,
+                                       registered: str, tmp_path: Path) -> None:
+    """``ModuleIcon`` answers with the file's bytes -- read in the App, so a
+    window over the socket draws it -- and says when there is none.
+    MUTATION CHECK: return None from ``ModuleRunner.icon``."""
+    import json
+
+    from trcc.core.results import ModuleIconResult
+
+    bare = App(platform=fake_platform).dispatch(ModuleIcon(key=registered))
+    folder = tmp_path / "modules" / registered
+    (folder / "icon.png").write_bytes(b"\x89PNG fake")
+    manifest = json.loads((folder / "module.json").read_text())
+    (folder / "module.json").write_text(json.dumps({**manifest, "icon": "icon.png"}))
+    app = App(platform=fake_platform)
+    assert (bare.ok, bare.found) == (False, False)
+    assert app.dispatch(ModuleIcon(key=registered)) == ModuleIconResult(
+        ok=True, key=registered, image=b"\x89PNG fake", media_type="image/png")
+    assert app.dispatch(ModuleIcon(key="no-such")).found is False
+
+
+def test_the_api_serves_a_modules_icon_and_never_its_path(
+        fake_platform: FakePlatform, registered: str, tmp_path: Path) -> None:
+    """The path carries the user's home folder: the list says only that a
+    symbol exists, and the route serves the bytes ``ModuleIcon`` read.
+    MUTATION CHECK: put the manifest's path back in ``ModuleRunner._info``."""
+    import json
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.ui.api.main import build_app
+
+    from .conftest import loopback_client
+
+    folder = tmp_path / "modules" / registered
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+    (folder / "icon.svg").write_bytes(svg)
+    manifest = json.loads((folder / "module.json").read_text())
+    (folder / "module.json").write_text(json.dumps({**manifest, "icon": "icon.svg"}))
+    with loopback_client(build_app(trcc=App(platform=fake_platform,
+                                            renderer=QtRenderer()))) as client:
+        listed = client.get("/system/modules").json()["modules"]
+        icon = client.get(f"/system/modules/{registered}/icon")
+        missing = client.get("/system/modules/no-such/icon")
+    assert [m["icon"] for m in listed] == [True]
+    assert (icon.status_code, icon.headers["content-type"], icon.content) == (
+        200, "image/svg+xml", svg)
+    assert missing.status_code == 404
+
+
 def test_a_module_reaches_the_app_only_through_its_host() -> None:
     """Hexagonal: a module is handed a ModuleHost, never the App -- a fake
     host is all it needs."""
@@ -447,7 +496,7 @@ def test_the_page_lists_switches_and_follows_other_uis(
     from trcc.ui.qt_modules import ModulesView
 
     app = _app(tmp_home)
-    view = ModulesView(app, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon)
     qtbot.addWidget(view)
     assert {k: s.isChecked() for k, s in view.switches.items()} == {
         "off": False, "on": True, "refuses": False}
@@ -462,7 +511,7 @@ def test_the_page_lists_switches_and_follows_other_uis(
 def test_a_refused_switch_stays_off(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
-    view = ModulesView(_app(tmp_home), ListModules, _switch)
+    view = ModulesView(_app(tmp_home), ListModules, _switch, ModuleIcon)
     qtbot.addWidget(view)
     view.switches["refuses"].click()
     qtbot.waitUntil(lambda: "refuses" in view.notes, timeout=3000)
@@ -478,12 +527,29 @@ def test_a_refusal_is_shown_on_its_tile(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
     app = App(platform=FakePlatform(tmp_home), modules={"undeclared": _Undeclared})
-    view = ModulesView(app, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon)
     qtbot.addWidget(view)
     view.switches["undeclared"].click()
     qtbot.waitUntil(lambda: _notes(view) != [], timeout=3000)
     assert _notes(view) == [
         "Undeclared asked for 'events' without declaring it in its module.json"]
+
+
+class _Symbol(_Lists):
+    """The listing, and *svg* for every ``ModuleIcon`` -- the bytes the App
+    would read; no file behind them."""
+
+    def __init__(self, listing: Result, svg: bytes) -> None:
+        super().__init__(listing)
+        self.svg = svg
+
+    def dispatch(self, cmd: Any) -> Any:
+        from trcc.core.results import ModuleIconResult
+
+        if isinstance(cmd, ModuleIcon):
+            return ModuleIconResult(key=cmd.key, image=self.svg,
+                                    media_type="image/svg+xml")
+        return self.listing
 
 
 def test_a_tile_shows_its_symbol_and_opens_its_guide(
@@ -495,16 +561,16 @@ def test_a_tile_shows_its_symbol_and_opens_its_guide(
     from trcc.core.results import ModulesResult
     from trcc.ui.qt_modules import ModulesView
 
-    icon = tmp_path / "icon.svg"
-    icon.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">'
-                    '<circle cx="20" cy="20" r="18" fill="gold"/></svg>')
+    svg = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">'
+           b'<circle cx="20" cy="20" r="18" fill="gold"/></svg>')
     guide = "https://example.invalid/GUIDE_MODULES.md#face"
     tile = ModuleInfo(key="face", title="Face", summary="s", enabled=True,
-                      icon=str(icon), guide=guide)
-    view = ModulesView(_Lists(ModulesResult(modules=(tile,))), ListModules, _switch)
+                      icon=True, guide=guide)
+    view = ModulesView(_Symbol(ModulesResult(modules=(tile,)), svg), ListModules,
+                       _switch, ModuleIcon)
     qtbot.addWidget(view)
     [symbol] = [w for w in view.findChildren(QLabel) if w.objectName() == "moduleIcon"]
-    assert not symbol.pixmap().isNull()
+    assert (symbol.pixmap().width(), symbol.pixmap().height()) == (40, 40)
     opened: list[str] = []
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
     [link] = [b for b in view.findChildren(QPushButton) if b.objectName() == "moduleGuide"]
@@ -518,7 +584,7 @@ def test_no_modules_says_so(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import NONE_YET, ModulesView
 
     view = ModulesView(App(platform=FakePlatform(tmp_home), modules={}),
-                       ListModules, _switch)
+                       ListModules, _switch, ModuleIcon)
     qtbot.addWidget(view)
     assert [w.text() for w in view.findChildren(QLabel)] == [NONE_YET]
 
@@ -552,7 +618,7 @@ def test_a_switch_turns_a_module_off_too(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
     app = _app(tmp_home)
-    view = ModulesView(app, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon)
     qtbot.addWidget(view)
     view.switches["on"].click()
     qtbot.waitUntil(lambda: app.modules.on == set(), timeout=3000)
@@ -621,7 +687,7 @@ def test_a_tile_shows_a_note_from_any_ui(
 
     monkeypatch.setattr(_Tidies, "note", "left a thing behind")
     app = App(platform=FakePlatform(tmp_home), modules={"tidies": _Tidies, "on": _On})
-    view = ModulesView(app, ListModules, _switch)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon)
     qtbot.addWidget(view)
     view.switches["tidies"].click()                     # this UI
     qtbot.waitUntil(lambda: _notes(view) == ["left a thing behind"], timeout=3000)
