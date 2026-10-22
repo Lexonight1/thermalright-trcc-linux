@@ -101,8 +101,9 @@ class RgbModule(BaseModule, key="rgb"):
 
     def turning_off(self, host: ModuleHost) -> str:
         """The user switches RGB off: TRCC's permission to reach the memory's
-        bus goes with it -- a password prompt -- since with RGB off nothing
-        in TRCC could take it back.  Access another rule gives (OpenRGB's)
+        bus goes with it -- no password at the seat where TRCC's polkit files
+        are installed (its own "off" action), a prompt otherwise -- since with
+        RGB off nothing in TRCC could take it back.  Access another rule gives (OpenRGB's)
         is not TRCC's and stays.  A closed prompt leaves the permission, and
         the note says how to remove it."""
         access = host.password.memory_access()
