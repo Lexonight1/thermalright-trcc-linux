@@ -2,7 +2,7 @@
 
 A **module** is a feature you can switch on or off on the **Modules** page, in every TRCC window. A module that is off costs nothing: TRCC does not even load its code.
 
-> **Where this stands.** The **Audio Visualizer** is the first module. RGB Lighting moves in next, and installing, updating and deleting modules comes after that.
+> **Where this stands.** Two features are modules: the **Audio Visualizer** and **RGB Lighting**. Installing, updating and deleting modules comes next.
 
 ---
 
@@ -13,7 +13,7 @@ Open it from the Control Center's title bar (gui) or the sidebar (qtgui). Each m
 - **Its symbol** on the left, its **name**, and one sentence on **what it does**.
 - **Guide ›** opens that module's section of this guide.
 - **On / Off** switches it, at once and in every open window — no restart.
-- When a module cannot run on your computer, or a switch was refused, the row says **why, and what to do**, in plain words.
+- When a module cannot run on your computer, a switch was refused, or switching it off could not undo something, the row says **why, and what to do**, in plain words.
 
 From the command line: `trcc system modules list`, `trcc system modules on <key>`, `trcc system modules off <key>`. From the API: `GET /system/modules`, `POST /system/modules/{key}`.
 
@@ -21,7 +21,6 @@ When a module is off, its tab or sidebar entry is hidden in every window and com
 
 ### Coming next
 
-- **RGB Lighting** as a module, on by default, so nothing changes for anyone who uses it.
 - A module's **themes kept with it**, and hidden while it is off.
 - **Install, Update and Delete**, from TRCC's own GitHub releases only. Every download is checked against a list signed by the maintainer (see [Verify Your Download](GUIDE_INSTALL.md#verify-your-download)); a failed or tampered download is never installed, and a failed update keeps the old version working.
 
@@ -39,6 +38,21 @@ Draws what your computer is playing as a panel's background — TRCC Pipes, the 
 **What it needs to hear the music:** on Linux, ffmpeg with PulseAudio (or PipeWire's PulseAudio layer), or PipeWire's `pw-record`; on Windows, the `soundcard` package; on a Mac, macOS 14.2 or later and the `catap` package. A visual that cannot hear or draw on your computer says why on its tile. MilkDrop presets go in `~/.trcc/data/visuals/`.
 
 **Switching it off:** every panel playing a visual goes back to its theme, mask and readings still on top, and keeps its choice. Switch it on again and each panel plays its visual again. A theme whose background is a visual, loaded while the Visualizer is off, shows its mask and readings and says it needs the Audio Visualizer; its visual plays the moment you switch it on. To stop a panel's visual for good, pick any other background, or run `trcc display visual <key>`. That works whether the Visualizer is on or off.
+
+---
+
+## RGB Lighting
+
+Lights your RGB memory, your motherboard's RGB (ASUS Aura headers and onboard LEDs) and the devices OpenRGB runs — with built-in effects, a colour that follows a temperature or a load, or the colours of a cooler or an LCD. **On by default.**
+
+- **gui:** the **RGB** button in the sidebar opens its page — [how to use it](GUIDE_USER.md#rgb-lighting).
+- **qtgui:** *RGB Lighting* in the sidebar.
+- **Command line:** `trcc system rgb` lists the lights (`--scan` looks again); `ram-effect`, `aura-effect`, `aura-leds`, `aura-blink`, `linked-color` and `follow` set them; `ram-lighting` shows or switches the memory's permission.
+- **API:** `GET /system/rgb`, `POST /system/rgb/scan`, `/system/ram-effect`, `/system/aura-effect`, `/system/aura-leds`, `/system/aura-blink`, `/system/linked-color`, `/system/rgb-follow` and `/system/ram-lighting`.
+
+**What it needs:** memory lighting is off until you allow it on the page, which asks for your password (Linux only, for now). OpenRGB's devices need OpenRGB running with its SDK server on (`127.0.0.1:6742` unless you change it).
+
+**Switching it off:** following stops. The motherboard's lights go back to the board's own effect, OpenRGB's devices keep what OpenRGB shows, and memory keeps the last colours it was sent — an effect saved on a stick stays saved on it. If you allowed memory lighting, switching RGB off takes that permission back, asking for your password once: with RGB off, nothing in TRCC could remove it later. Close the prompt and RGB still goes off; its row then says the permission is still there, and switching RGB on and off again removes it. Closing TRCC, logging out or restarting never removes it. Your choices stay saved — switch RGB on again and it picks up where it left off.
 
 ---
 
@@ -108,7 +122,8 @@ A module's class extends `BaseModule` and names its key in the class line: `clas
 | `_enable` | switching on — in **every** TRCC process, a one-shot command's too | **register only**: subscriptions, entries. Never hardware, never a thread |
 | `start` | when the session starts, or when switched on inside one | hardware and threads |
 | `stop` | when the session ends, or before switching off | stop what `start` began |
-| `_disable` | switching off | take out what `_enable` registered (subscriptions are taken back for you) |
+| `turning_off` | before switching off — **only** when the user does it, never when TRCC closes | undo what that choice alone should undo, such as a permission the user granted; return a note for the row, or `""` |
+| `_disable` | switching off, and when TRCC closes | take out what `_enable` registered (subscriptions are taken back for you) |
 
 A module that raises in any hook is switched back off and its row says why — it can never break TRCC or be left half on.
 

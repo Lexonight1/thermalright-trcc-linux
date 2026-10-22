@@ -231,6 +231,8 @@ The **RGB** button in the sidebar opens the RGB Lighting page, for lights that a
 
 Memory lighting is off until you allow it (the page offers this; it asks for your password). CLI: `trcc system ram-lighting enable`, `trcc system rgb --scan`, `trcc system ram-effect`, `trcc system aura-effect`, `trcc system linked-color`, `trcc system follow`.
 
+RGB Lighting is a module: switch it off on the [Modules page](#control-center-modules-and-about) and its button goes. [What switching it off does](GUIDE_MODULES.md#rgb-lighting) — including taking back the memory's permission.
+
 ---
 
 ## System Monitoring

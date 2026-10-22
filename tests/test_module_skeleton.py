@@ -284,6 +284,37 @@ def test_the_guide_lists_every_manifest_field() -> None:
     assert list(_table("module.json")) == [f.name for f in fields(ModuleManifest)]
 
 
+#: Where a manifest's "guide" points: this repository's docs on GitHub.
+_BLOB = "https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/"
+
+
+def _anchors(markdown: str) -> set[str]:
+    """The anchors GitHub gives a document's headings: lower case, the
+    punctuation dropped, spaces turned into hyphens."""
+    return {re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+            for heading in re.findall(r"^#{1,6} (.+)$", markdown, re.M)}
+
+
+def test_every_modules_guide_link_lands_on_a_heading() -> None:
+    """"Guide ›" opens the module's section -- every shipped module's and the
+    skeleton's.  RGB's pointed at ``#rgb-lighting`` for a commit before that
+    heading was written, and nothing said so.  MUTATION CHECK: rename
+    GUIDE_MODULES.md's "## RGB Lighting"."""
+    from trcc.modules import folders
+
+    manifests = [folder / "module.json" for folder in folders().values()]
+    manifests += sorted(_TEMPLATE.glob("*/module.json"))
+    landed: dict[str, bool] = {}
+    for path in manifests:
+        guide = read_manifest(path).guide
+        assert guide.startswith(_BLOB), f"{path}: {guide}"
+        doc, _, anchor = guide.removeprefix(_BLOB).partition("#")
+        landed[f"{path.parent.name} -> {doc}#{anchor}"] = anchor in _anchors(
+            (_REPO / doc).read_text(encoding="utf-8"))
+    assert {"rgb", "visualizer", "hello"} <= {k.split(" ")[0] for k in landed}
+    assert [link for link, ok in landed.items() if not ok] == []
+
+
 def test_every_folder_of_module_code_is_a_package() -> None:
     """A module's folders of Python code each carry an ``__init__.py``.
     Without one Python still imports it, as a namespace package, so every
