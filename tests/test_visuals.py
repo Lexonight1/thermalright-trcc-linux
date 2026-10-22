@@ -38,10 +38,10 @@ from trcc.core.commands import (
 )
 from trcc.core.events import BackgroundChanged, ErrorOccurred, Event
 from trcc.core.models import SOUND_RATE, RawFrame
-from trcc.core.ports import CaptureNotReady
+from trcc.core.ports import CaptureNotReady, GlSurface
 from trcc.modules.visualizer.adapters import pipes as pipes_module
 from trcc.modules.visualizer.adapters import projectm as projectm_module
-from trcc.modules.visualizer.adapters._base import VISUALS, catalog
+from trcc.modules.visualizer.adapters._base import VISUALS, drawn_on
 from trcc.modules.visualizer.core.commands import (
     ListVisuals,
     PlayVisual,
@@ -51,6 +51,7 @@ from trcc.modules.visualizer.core.commands import (
     VisualTile,
 )
 from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
+from trcc.modules.visualizer.core.ports import ranked_visuals
 from trcc.services.source_driver import task_key
 
 _E = TypeVar("_E", bound=Event)
@@ -104,6 +105,10 @@ class _FakeSurface:
     def __init__(self, width: int, height: int, core: bool = False) -> None:
         pass
 
+    @classmethod
+    def with_buffer(cls, width: int, height: int) -> _FakeSurface:
+        return cls(width, height, core=True)
+
     def close(self) -> None:
         _FakeSurface.closed += 1
 
@@ -125,12 +130,12 @@ def test_milkdrop_is_offered_only_where_projectm_can_draw(
             raise OSError("OpenGL (EGL) is not available")
         return lib
 
-    monkeypatch.setattr(projectm_module.MilkdropVisual, "_draws", None)
+    drawn = drawn_on(cast("type[GlSurface]", _FakeSurface))
+    monkeypatch.setattr(drawn["milkdrop"], "_draws", None)
     monkeypatch.setattr(projectm_module.ctypes.util, "find_library",
                         lambda name: "libprojectM-4.so.4" if installed else None)
     monkeypatch.setattr(projectm_module, "load_projectm", load)
-    monkeypatch.setattr(projectm_module, "EglSurface", _FakeSurface)
-    kinds = [info.kind for info in catalog()
+    kinds = [info.kind for info in ranked_visuals(drawn.values())
              if not info.kind.startswith("cavalier-")]
     assert kinds == (["trcc-pipes", "trcc-spikes", "karmaviz", "milkdrop"]
                      if offered else ["trcc-pipes", "trcc-spikes", "karmaviz"])

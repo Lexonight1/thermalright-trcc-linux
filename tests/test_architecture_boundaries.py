@@ -697,8 +697,12 @@ def test_presentation_layer_is_qt_app_and_adapter_free() -> None:
 # into another module.  TYPE_CHECKING imports count here: a type-only import of
 # a module still breaks the type check the day that module is deleted.
 
-#: What a module may never import: the App and what builds or fronts it.
-_PAST_THE_HOST = ("trcc.app", "trcc._boot", "trcc.proxy", "trcc.daemon")
+#: All a module may import from the main app (decision 14, strict): its
+#: shared types (``core``), the UI it plugs its faces into (``ui`` -- the
+#: layer gates keep a module's own core and services off it), and the module
+#: SDK it is built on (``BaseModule``).  Services and hardware -- the App, the
+#: Platform, any adapter -- come through its host, never by import.
+_MODULE_MAY_IMPORT = ("trcc.core", "trcc.ui", "trcc.adapters.modules")
 
 
 def _module_boundary_breaches(src: Path) -> list[str]:
@@ -726,20 +730,37 @@ def _module_boundary_breaches(src: Path) -> list[str]:
                 elif owner and into and into != owner:
                     breaches.append(f"  {rel}:{node.lineno} -> {target} "
                                     "(one module reaches into another)")
-                elif owner and any(target == p or target.startswith(p + ".")
-                                   for p in _PAST_THE_HOST):
+                elif (owner and not into
+                      and (target == "trcc" or target.startswith("trcc."))
+                      and not any(target == p or target.startswith(p + ".")
+                                  for p in _MODULE_MAY_IMPORT)):
                     breaches.append(f"  {rel}:{node.lineno} -> {target} "
                                     "(a module reaches past its host)")
     return breaches
 
 
 def test_modules_meet_the_main_app_only_through_the_host() -> None:
-    """The main app never imports a module, a module never imports the App or
-    another module.  MUTATION CHECK: the self-test below plants each breach."""
+    """The main app never imports a module; a module imports nothing of the
+    main app but its core, its UI and the module SDK -- never a service, an
+    adapter, the App or another module.  MUTATION CHECK: the self-test below
+    plants each breach."""
     breaches = _module_boundary_breaches(_SRC)
     assert not breaches, (
         "a module is a mini hexagon -- the main app finds it by its manifest "
         "and it reaches the app through its host:\n" + "\n".join(breaches))
+
+
+
+def test_the_module_template_meets_the_app_only_through_its_host(
+        tmp_path: Path) -> None:
+    """Every module starts as a copy of ``dev/module_template/hello``, so it
+    is held to the same imports -- checked where a module lives.  MUTATION
+    CHECK: import ``trcc.services.display`` in the template's ``app.py``."""
+    import shutil
+
+    template = _SRC.parent / "dev" / "module_template" / "hello"
+    shutil.copytree(template, tmp_path / "trcc" / "modules" / "hello")
+    assert _module_boundary_breaches(tmp_path) == []
 
 
 def test_selftest_module_boundary_sees_each_breach(tmp_path: Path) -> None:
@@ -748,8 +769,12 @@ def test_selftest_module_boundary_sees_each_breach(tmp_path: Path) -> None:
     for rel, text in {
         "core/a.py": "from ..modules.viz.core import x\n",                # main -> module
         "modules/viz/core/b.py": "from ...other.core import y\n",         # module -> module
-        "modules/viz/app.py": "if TYPE_CHECKING:\n    from trcc.app import App\n",
+        "modules/viz/app.py": "if TYPE_CHECKING:\n    from trcc.app import App\n"
+                              "from trcc.adapters.modules import BaseModule\n",  # SDK: fine
+        "modules/viz/services/d.py": "from trcc.services.display import D\n",
+        "modules/viz/adapters/e.py": "import trcc.adapters.visual._gl\n",
         "modules/viz/ui/gui/c.py": "from trcc.core.models import Wire\n"  # inward: fine
+                                   "from trcc.ui.gui.base import paint_page\n"  # its UI: fine
                                    "from ...core import z\n",             # its own: fine
     }.items():
         (pkg / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -757,9 +782,13 @@ def test_selftest_module_boundary_sees_each_breach(tmp_path: Path) -> None:
     found = _module_boundary_breaches(tmp_path)
     assert found == [
         "  trcc/core/a.py:1 -> trcc.modules.viz.core (the main app names a module)",
+        "  trcc/modules/viz/adapters/e.py:1 -> trcc.adapters.visual._gl "
+        "(a module reaches past its host)",
         "  trcc/modules/viz/app.py:2 -> trcc.app (a module reaches past its host)",
         "  trcc/modules/viz/core/b.py:1 -> trcc.modules.other.core "
         "(one module reaches into another)",
+        "  trcc/modules/viz/services/d.py:1 -> trcc.services.display "
+        "(a module reaches past its host)",
     ]
 
 

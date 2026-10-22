@@ -31,7 +31,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from trcc.adapters.visual._gl import (
+from trcc.core.logs import per_frame
+from trcc.core.ports import GlSurface
+
+from ._gl_draw import (
     FULL_QUAD,
     GL_BLEND,
     GL_COLOR_BUFFER_BIT,
@@ -53,7 +56,6 @@ from trcc.adapters.visual._gl import (
     GL_TEXTURE_WRAP_T,
     GL_TRIANGLES,
     Framebuffer,
-    GlSurface,
     c_floats,
     program,
     read_rgb,
@@ -61,8 +63,6 @@ from trcc.adapters.visual._gl import (
     upload,
     vertex_array,
 )
-from trcc.core.logs import per_frame
-
 from ._shaders import SHADERS, shader
 
 log = logging.getLogger(__name__)

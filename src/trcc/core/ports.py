@@ -2640,11 +2640,51 @@ class SoundPort(ABC):
         (Windows' COM)."""
 
 
+class GlSurface(ABC):
+    """An OpenGL context with nowhere on screen to draw: current on the
+    thread that made it, until :meth:`close`.  Each OS names its kind
+    (``Platform.GL_SURFACE``: EGL, WGL, CGL); a module draws on it through
+    ``host.gpu`` and never imports one.
+
+    ``gl`` is OpenGL's calls on this context, bound the first time each is
+    used: ``surface.gl.glClear(...)``.
+    """
+
+    gl: Any
+
+    @classmethod
+    @abstractmethod
+    def open(cls) -> GlSurface:
+        """A context of this kind, as the platform opens one for a visual;
+        ``OSError`` saying why there is none."""
+
+    @classmethod
+    def with_buffer(cls, width: int, height: int) -> GlSurface:
+        """A context with a *width* x *height* picture buffer of its own, on
+        OpenGL 3.3 core -- what a library that draws into framebuffer 0
+        needs (projectM).  Not every OS's kind has one."""
+        log.debug("%s.with_buffer: %dx%d -- none", cls.__name__, width, height)
+        raise UnsupportedOperationError(
+            f"{cls.__name__} has no picture buffer of its own")
+
+    @abstractmethod
+    def describe(self) -> str:
+        """Which OpenGL this is -- for the log and a refusal."""
+
+    @abstractmethod
+    def address(self, name: str) -> int:
+        """Where OpenGL function *name* is; 0 when this OpenGL lacks it."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Let go of the context (idempotent)."""
+
+
 class GpuPort(ABC):
     """The ``gpu`` capability: the graphics card."""
 
     @abstractmethod
-    def surface(self) -> type | None:
+    def surface(self) -> type[GlSurface] | None:
         """The OS's kind of OpenGL context; None where none is named."""
 
     @abstractmethod
@@ -2799,7 +2839,7 @@ class ModuleServices(ABC):
     def worker_thread(self) -> AbstractContextManager[None]: ...
 
     @abstractmethod
-    def gl_surface(self) -> type | None: ...
+    def gl_surface(self) -> type[GlSurface] | None: ...
 
     @abstractmethod
     def substitute(self, cls: _C) -> _C: ...
@@ -3667,7 +3707,7 @@ class Platform(ABC):
     #: The OS's kind of OpenGL context (``EglSurface``, ``WglSurface``,
     #: ``CglSurface``) -- a table entry like ``RGB_HARDWARE``, handed to a
     #: module that draws with the graphics card.  None: none named here.
-    GL_SURFACE: ClassVar[type | None] = None
+    GL_SURFACE: ClassVar[type[GlSurface] | None] = None
 
     def substitute(self, cls: _C) -> _C:
         """*cls* as this machine runs it -- itself here.  A stand-in platform

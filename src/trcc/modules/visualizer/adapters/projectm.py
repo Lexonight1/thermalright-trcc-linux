@@ -4,7 +4,10 @@ projectM is a MilkDrop engine: fed sound, it draws a preset with OpenGL.  It
 draws its finished picture into framebuffer 0 -- "the surface's own buffer"
 -- so it needs a surface with one and no window: an EGL *pbuffer*.  Each
 picture is read back with ``glReadPixels`` and handed on as RGB24, top row
-first, like every other frame TRCC sends.
+first, like every other frame TRCC sends.  The pbuffer is the OS's kind of
+context (``host.gpu.surface()``) asked for one of its own
+(:meth:`~trcc.core.ports.GlSurface.with_buffer`) -- EGL has one; where the
+OS's kind has none, MilkDrop is not offered.
 
 libprojectM 4's C API is called through ``ctypes``; it has been stable since
 4.0 (``docs``: "the API will remain stable ... until the next major
@@ -25,13 +28,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import ClassVar
 
-from trcc.adapters.visual._gl import EglSurface, read_rgb
 from trcc.core._safe import is_under
+from trcc.core.errors import UnsupportedOperationError
 from trcc.core.logs import per_frame
 from trcc.core.models import SOUND_CHANNELS, RawFrame
+from trcc.core.ports import GlSurface
 
 from ..core.models import VISUAL_FPS, VisualAdjustment, VisualInfo, VisualSpec
-from ._base import BaseVisual
+from ..core.ports import VisualEngine
+from ._base import BaseVisual, _bound
+from ._gl_draw import read_rgb
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -82,6 +88,16 @@ class MilkdropVisual(BaseVisual, key="milkdrop"):
 
     #: Whether libprojectM can draw on this computer -- tried once.
     _draws: ClassVar[bool | None] = None
+    #: The OS's kind of OpenGL context; ``None`` until :meth:`on_surface`.
+    SURFACE: ClassVar[type[GlSurface] | None] = None
+
+    @classmethod
+    def on_surface(cls, surface: type | None) -> type[VisualEngine]:
+        """MilkDrop on *surface*, the OS's kind of context -- the one its
+        picture buffer comes from."""
+        log.debug("MilkdropVisual.on_surface: %s",
+                  getattr(surface, "__name__", None))
+        return _bound(cls, surface)
 
     @classmethod
     def available(cls) -> bool:
@@ -100,9 +116,12 @@ class MilkdropVisual(BaseVisual, key="milkdrop"):
         if ctypes.util.find_library(_LIBRARY[0]) is None:
             log.info("MilkdropVisual: libprojectM 4 is not installed")
             return False
+        if cls.SURFACE is None:
+            log.info("MilkdropVisual: no OpenGL context named on this OS")
+            return False
         try:
-            lib, surface = load_projectm(), EglSurface(16, 16, core=True)
-        except OSError as e:
+            lib, surface = load_projectm(), cls.SURFACE.with_buffer(16, 16)
+        except (OSError, UnsupportedOperationError) as e:
             log.warning("MilkdropVisual: cannot draw here -- %s", e)
             return False
         try:
@@ -137,7 +156,7 @@ class MilkdropVisual(BaseVisual, key="milkdrop"):
     def __init__(self) -> None:
         log.debug("MilkdropVisual.__init__")
         self._lib: ctypes.CDLL | None = None
-        self._surface: EglSurface | None = None
+        self._surface: GlSurface | None = None
         self._handle: int | None = None
         self._size = (0, 0)
 
@@ -146,8 +165,14 @@ class MilkdropVisual(BaseVisual, key="milkdrop"):
         log.info("MilkdropVisual.open: %s at %dx%d", preset, width, height)
         if preset is None:
             raise OSError("a MilkDrop visual needs a preset file")
+        surface = type(self).SURFACE
+        if surface is None:
+            raise OSError("MilkDrop has no OpenGL context on this computer")
         self._lib = lib = load_projectm()
-        self._surface = EglSurface(width, height, core=True)
+        try:
+            self._surface = surface.with_buffer(width, height)
+        except UnsupportedOperationError as e:
+            raise OSError(f"MilkDrop cannot draw here: {e}") from e
         self._handle = lib.projectm_create()
         if not self._handle:
             self.close()

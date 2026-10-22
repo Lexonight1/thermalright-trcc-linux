@@ -74,6 +74,7 @@ from .core.ports import (
     Device,
     Diagnostics,
     FrameSource,
+    GlSurface,
     LedColorStream,
     Module,
     ModuleServices,
@@ -649,7 +650,7 @@ class App(CommandBus, ModuleServices):
         log.debug("worker_thread")
         return self.platform.worker_thread_context()
 
-    def gl_surface(self) -> type | None:
+    def gl_surface(self) -> type[GlSurface] | None:
         surface = type(self.platform).GL_SURFACE
         log.debug("gl_surface: %s", getattr(surface, "__name__", None))
         return surface

@@ -33,6 +33,7 @@ from ..core.ports import (
     BackgroundPort,
     FilesPort,
     FrameSource,
+    GlSurface,
     GpuPort,
     Module,
     ModuleHost,
@@ -163,7 +164,7 @@ class _Gpu(GpuPort):
         log.debug("_Gpu.__init__")
         self._services = services
 
-    def surface(self) -> type | None:
+    def surface(self) -> type[GlSurface] | None:
         log.debug("_Gpu.surface")
         return self._services.gl_surface()
 

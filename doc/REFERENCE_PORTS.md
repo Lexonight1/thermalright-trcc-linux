@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-75 ports.
+76 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -23,11 +23,11 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
+| [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 1 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`FilesPort`](#filesport) | 2 | 0 | 1 |
 | [`FrameSource`](#framesource) | 2 | 0 | 1 |
-| [`GlSurface`](#glsurface) | 2 | 1 | 3 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
 | [`Module`](#module) | 2 | 9 | 1 |
@@ -63,6 +63,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BackgroundPort`](#backgroundport) | 4 | 0 | 1 |
 | [`BaseScsiTransport`](#basescsitransport) | 4 | 5 | 4 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
+| [`GlSurface`](#glsurface) | 4 | 0 | 3 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
@@ -284,6 +285,23 @@ run() -> int
 
 **Implementations (2):** `GuiUI` · `QtGuiUI`
 
+## BaseGlSurface
+
+`adapters/visual/_gl.py`
+
+What every OS's context shares: its calls bound (``gl``), and the check that its OpenGL can draw at all.
+
+**You implement (2):**
+
+```python
+address(name: 'str') -> int
+close() -> None
+```
+
+**You inherit (1):** `describe`
+
+**Implementations (3):** `CglSurface` · `EglSurface` · `WglSurface`
+
 ## BaseModule
 
 `adapters/modules/_base.py`
@@ -344,23 +362,6 @@ latest() -> RawFrame
 
 **Implementations (1):** `VisualReader`
 
-## GlSurface
-
-`adapters/visual/_gl.py`
-
-An OpenGL context with nowhere on screen to draw: current on the thread that made it, until :meth:`close`.  Draw into a :class:`Framebuffer`; read back with :func:`read_rgb`.
-
-**You implement (2):**
-
-```python
-address(name: 'str') -> int
-close() -> None
-```
-
-**You inherit (1):** `describe`
-
-**Implementations (3):** `CglSurface` · `EglSurface` · `WglSurface`
-
 ## GpuPort
 
 `core/ports.py`
@@ -371,7 +372,7 @@ The ``gpu`` capability: the graphics card.
 
 ```python
 substitute(cls: '_C') -> _C
-surface() -> type | None
+surface() -> type[GlSurface] | None
 ```
 
 **Implementations (1):** `_Gpu`
@@ -944,6 +945,23 @@ list_themes(category: 'str' = 'all') -> list[CloudThemeEntry]
 
 **Implementations (1):** `CzhordeCatalog`
 
+## GlSurface
+
+`core/ports.py`
+
+An OpenGL context with nowhere on screen to draw: current on the thread that made it, until :meth:`close`.  Each OS names its kind (``Platform.GL_SURFACE``: EGL, WGL, CGL); a module draws on it through ``host.gpu`` and never imports one.
+
+**You implement (4):**
+
+```python
+address(name: 'str') -> int
+close() -> None
+describe() -> str
+open() -> GlSurface
+```
+
+**Implementations (3):** `CglSurface` · `EglSurface` · `WglSurface`
+
 ## MemorySource
 
 `core/ports.py`
@@ -1330,7 +1348,7 @@ add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
 data_root() -> Path
 encode_png(frame: 'RawFrame') -> bytes
 end_source(key: 'str', keep_choice: 'bool' = False) -> None
-gl_surface() -> type | None
+gl_surface() -> type[GlSurface] | None
 module_settings(module: 'str') -> dict[str, Any]
 panel_keys() -> tuple[str, ...]
 panel_settings(module: 'str', key: 'str') -> dict[str, Any]

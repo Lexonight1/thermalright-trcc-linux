@@ -7,6 +7,6 @@ from . import (  # noqa: F401 -- each class registers itself
     projectm,
     spikes,
 )
-from ._base import VISUALS, BaseVisual, GlVisual, catalog, drawn_on
+from ._base import VISUALS, BaseVisual, GlVisual, drawn_on
 
-__all__ = ["VISUALS", "BaseVisual", "GlVisual", "catalog", "drawn_on"]
+__all__ = ["VISUALS", "BaseVisual", "GlVisual", "drawn_on"]

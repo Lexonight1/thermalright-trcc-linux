@@ -52,12 +52,8 @@ from trcc.modules.visualizer.adapters._shaders import SHADERS
 from dataclasses import dataclass
 from pathlib import Path
 
-from trcc.adapters.visual._gl import (
-    GL_FRAGMENT_SHADER,
-    EglSurface,
-    Gl,
-    _compiled,
-)
+from trcc.adapters.visual._gl import EglSurface, Gl
+from trcc.modules.visualizer.adapters._gl_draw import GL_FRAGMENT_SHADER, _compiled
 
 ASSETS = SHADERS.parent / "karmaviz"
 OUT = SHADERS / "karmaviz"

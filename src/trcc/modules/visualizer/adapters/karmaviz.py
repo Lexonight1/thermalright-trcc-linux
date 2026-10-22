@@ -38,9 +38,9 @@ from pathlib import Path
 
 import numpy as np
 
-from trcc.adapters.visual._gl import GlSurface
 from trcc.core.logs import per_frame
 from trcc.core.models import SOUND_CHANNELS, SOUND_RATE, RawFrame
+from trcc.core.ports import GlSurface
 
 from ..core.models import VISUAL_FPS, VisualAdjustment, VisualInfo, VisualSpec
 from ._base import GlVisual

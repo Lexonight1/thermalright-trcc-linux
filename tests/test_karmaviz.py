@@ -133,7 +133,7 @@ def test_every_shader_compiles_in_the_frame_it_is_drawn_in() -> None:
     visual composes it, through the one program() and its header rule --
     on this host's OpenGL (Mesa's software one in CI)."""
     from tests.mock_platform import host_drawn
-    from trcc.adapters.visual._gl import program
+    from trcc.modules.visualizer.adapters._gl_draw import program
     from trcc.modules.visualizer.adapters._karmaviz_gl import (
         frame_source,
         warp_names,

@@ -133,7 +133,7 @@ When it is switched off, TRCC takes back what it still holds: its subscriptions,
 
 1. **Plain words with a next step.** Every refusal is shown to the user as written: *"Needs working graphics drivers — see the guide"*, not *"no OpenGL"*.
 2. **Register in `_enable`, run in `start`.** `_enable` runs even for a one-shot command; hardware grabbed there would be grabbed by every `trcc …` call.
-3. **Everything through the host.** If you need something the host does not offer, that is a new capability, added to TRCC itself.
+3. **Everything through the host.** From TRCC itself a module imports only `trcc.core` (shared types), `trcc.ui` (for its faces) and `trcc.adapters.modules` (`BaseModule`). The App, the Platform, any service or adapter comes through the host. If you need something the host does not offer, that is a new capability, added to TRCC itself. A test enforces this, on the skeleton too.
 4. **Your Commands live in your module.** They extend `ModuleCommand` and set `MODULE = "<key>"`; TRCC then refuses them, in every window, while the module is off.
 5. **Log every function**, as all TRCC code does — a user's `trcc report` is often all there is to go on.
 6. **Test it** through the App and each UI, the way `tests/test_module_skeleton.py` tests `hello`.

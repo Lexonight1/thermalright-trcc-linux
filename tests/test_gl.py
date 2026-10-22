@@ -21,7 +21,8 @@ from trcc.adapters.visual import _gl as gl_module
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
 from trcc.core.models import SOUND_RATE, RawFrame
-from trcc.core.ports import Platform
+from trcc.core.ports import GlSurface, Platform
+from trcc.modules.visualizer.adapters import _gl_draw as draw
 from trcc.modules.visualizer.adapters._base import VISUALS, GlVisual, drawn_on
 from trcc.modules.visualizer.adapters.cavalier import CavalierVisual
 from trcc.modules.visualizer.adapters.pipes import TrccPipes
@@ -42,7 +43,7 @@ _KEY = "0402:3922"
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
 
 
-def _surface() -> gl_module.GlSurface:
+def _surface() -> GlSurface:
     """This host's context, as the App would open it."""
     surface = _HOST_PIPES.SURFACE
     assert surface is not None
@@ -78,7 +79,7 @@ def test_every_os_names_a_context() -> None:
                      "MacOSPlatform": gl_module.CglSurface}
 
 
-class _NoOpenGL(gl_module.GlSurface):
+class _NoOpenGL(gl_module.BaseGlSurface):
     """A computer whose OpenGL will not open."""
 
     def __init__(self) -> None:
@@ -146,25 +147,25 @@ def test_a_picture_reads_back_top_row_first(
     surface = _surface()
     gl = surface.gl
     try:
-        made = gl_module.program(gl, *_TOP_RED, ("corner", "uv"))
-        target = gl_module.Framebuffer(gl, 8, 6)
+        made = draw.program(gl, *_TOP_RED, ("corner", "uv"))
+        target = draw.Framebuffer(gl, 8, 6)
         vao, vbo = ctypes.c_uint(), ctypes.c_uint()
         gl.glGenVertexArrays(1, ctypes.byref(vao))
         gl.glBindVertexArray(vao.value)
         gl.glGenBuffers(1, ctypes.byref(vbo))
-        gl.glBindBuffer(gl_module.GL_ARRAY_BUFFER, vbo.value)
+        gl.glBindBuffer(draw.GL_ARRAY_BUFFER, vbo.value)
         quad = np.array([-1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1,
                          -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1], np.float32)
-        gl.glBufferData(gl_module.GL_ARRAY_BUFFER, quad.nbytes,
-                        quad.ctypes.data, gl_module.GL_STREAM_DRAW)
+        gl.glBufferData(draw.GL_ARRAY_BUFFER, quad.nbytes,
+                        quad.ctypes.data, draw.GL_STREAM_DRAW)
         for location in (0, 1):
-            gl.glVertexAttribPointer(location, 2, gl_module.GL_FLOAT, 0, 16,
+            gl.glVertexAttribPointer(location, 2, draw.GL_FLOAT, 0, 16,
                                      ctypes.c_void_p(location * 8))
             gl.glEnableVertexAttribArray(location)
         target.bind(gl)
         gl.glUseProgram(made)
-        gl.glDrawArrays(gl_module.GL_TRIANGLES, 0, 6)
-        rows = np.frombuffer(gl_module.read_rgb(gl, target.name, 8, 6),
+        gl.glDrawArrays(draw.GL_TRIANGLES, 0, 6)
+        rows = np.frombuffer(draw.read_rgb(gl, target.name, 8, 6),
                              np.uint8).reshape(6, 8, 3)
         assert rows[0].tolist() == [[255, 0, 0]] * 8           # top: red
         assert rows[-1].tolist() == [[0, 0, 255]] * 8          # bottom: blue
@@ -184,7 +185,7 @@ def test_an_opengl_older_than_3_is_refused_by_name() -> None:
 
     get_string = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint)(string_at)
 
-    class Old(gl_module.GlSurface):
+    class Old(gl_module.BaseGlSurface):
         def __init__(self) -> None:
             super().__init__()
             self._ready()
@@ -282,7 +283,50 @@ def test_pipes_draw_the_same_in_macos_glsl_on_a_core_profile(
         return np.frombuffer(drawn.data, np.uint8).reshape(96, 96, 3).astype(int)
 
     usual = frame(_HOST_PIPES)
-    monkeypatch.setattr(gl_module, "_HEADERS", gl_module._HEADERS[1:])
+    monkeypatch.setattr(draw, "_HEADERS", draw._HEADERS[1:])
     core = frame(drawn_on(_CoreProfile)["trcc-pipes"])
     assert (usual.max(axis=2) > 30).sum() > 500           # it drew something
     assert np.abs(usual - core).max() <= 1
+
+
+# ── a picture buffer of its own (projectM) ──────────────────────────
+
+@pytest.mark.parametrize("kind", ["WglSurface", "CglSurface"])
+def test_only_egl_gives_a_context_a_picture_buffer(kind: str) -> None:
+    """projectM draws into framebuffer 0, which only an EGL pbuffer has
+    here: Windows' and macOS's kinds refuse, by name.  MUTATION CHECK:
+    return ``cls.open()`` from the port's ``with_buffer``."""
+    from trcc.core.errors import UnsupportedOperationError
+
+    with pytest.raises(UnsupportedOperationError, match=f"^{kind} has no picture"):
+        getattr(gl_module, kind).with_buffer(16, 16)
+
+
+def test_egl_makes_its_buffer_the_size_asked_on_a_core_profile(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """What projectM is given: a pbuffer of the panel's size, OpenGL 3.3
+    core.  MUTATION CHECK: drop ``core=True``."""
+    made: list[tuple[int, int, bool]] = []
+
+    def init(self: object, width: int = 1, height: int = 1,
+             core: bool = False) -> None:
+        made.append((width, height, core))
+
+    monkeypatch.setattr(gl_module.EglSurface, "__init__", init)
+    gl_module.EglSurface.with_buffer(320, 240)
+    assert made == [(320, 240, True)]
+
+
+def test_milkdrop_is_not_offered_where_the_context_has_no_buffer(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bound to Windows' kind, MilkDrop is hidden -- not offered and then
+    failing when picked.  MUTATION CHECK: catch only ``OSError`` in
+    ``MilkdropVisual._starts``."""
+    from trcc.modules.visualizer.adapters import projectm
+
+    monkeypatch.setattr(projectm.ctypes.util, "find_library",
+                        lambda name: "libprojectM-4.so.4")
+    monkeypatch.setattr(projectm, "load_projectm", lambda: object())
+    milkdrop = projectm.MilkdropVisual.on_surface(gl_module.WglSurface)
+    monkeypatch.setattr(milkdrop, "_draws", None)
+    assert milkdrop.available() is False

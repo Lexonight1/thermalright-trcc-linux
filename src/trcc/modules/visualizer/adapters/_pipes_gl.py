@@ -28,7 +28,10 @@ from typing import Any
 
 import numpy as np
 
-from trcc.adapters.visual._gl import (
+from trcc.core.logs import per_frame
+from trcc.core.ports import GlSurface
+
+from ._gl_draw import (
     FULL_QUAD,
     GL_BLEND,
     GL_COLOR_BUFFER_BIT,
@@ -44,7 +47,6 @@ from trcc.adapters.visual._gl import (
     GL_TRIANGLES,
     GL_UNSIGNED_BYTE,
     Framebuffer,
-    GlSurface,
     c_floats,
     program,
     read_rgb,
@@ -53,8 +55,6 @@ from trcc.adapters.visual._gl import (
     upload,
     vertex_array,
 )
-from trcc.core.logs import per_frame
-
 from ._shaders import shader
 
 log = logging.getLogger(__name__)

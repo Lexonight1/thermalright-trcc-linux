@@ -9,7 +9,7 @@ import pytest
 from PySide6.QtGui import QImage
 
 from trcc.core.models import SOUND_RATE, RawFrame
-from trcc.modules.visualizer.adapters._base import VISUALS, BaseVisual, catalog
+from trcc.modules.visualizer.adapters._base import VISUALS, BaseVisual
 from trcc.modules.visualizer.adapters._cava import Cava, monstercat
 from trcc.modules.visualizer.adapters.cavalier import CavalierBars
 from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
@@ -108,7 +108,6 @@ def test_cavaliers_eleven_modes_come_after_trccs_own() -> None:
 
     surface = host_platform_class().GL_SURFACE
     drawn = [cls.on_surface(surface) for cls in VISUALS.values()]
-    assert [i.kind for i in catalog()] == [i.kind for i in ranked_visuals(drawn)]
     kinds = [info.kind for info in ranked_visuals(drawn)]
     assert kinds[:2] == ["trcc-pipes", "trcc-spikes"]
     assert len(_MODES) == 11

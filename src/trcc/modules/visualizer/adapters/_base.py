@@ -16,13 +16,13 @@ import functools
 import logging
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar, cast
 
-from trcc.adapters.visual._gl import GlSurface
 from trcc.core.factory import Registry, Reject
+from trcc.core.ports import GlSurface
 
 from ..core.models import VisualInfo
-from ..core.ports import VisualEngine, ranked_visuals
+from ..core.ports import VisualEngine
 
 log = logging.getLogger(__name__)
 
@@ -97,15 +97,20 @@ class GlVisual(BaseVisual):
         return surface.open()
 
 
+_V = TypeVar("_V", bound=BaseVisual)
+
+
 @functools.cache
-def _bound(cls: type[GlVisual], surface: type[GlSurface] | None) -> type[GlVisual]:
+def _bound(cls: type[_V], surface: type[GlSurface] | None) -> type[_V]:
     """*cls* bound to *surface* -- a subclass, made once, so each binding
-    keeps its own answer to :meth:`GlVisual.problem`."""
+    keeps its own answer to :meth:`GlVisual.problem` (and MilkDrop its own
+    :meth:`~VisualEngine.available`)."""
     log.debug("_bound: %s on %s", cls.__name__,
               surface.__name__ if surface else None)
-    return type(cls.__name__, (cls,), {"SURFACE": surface,
+    made = type(cls.__name__, (cls,), {"SURFACE": surface,
                                        "__module__": cls.__module__,
                                        "__doc__": cls.__doc__})
+    return cast("type[_V]", made)
 
 
 def drawn_on(surface: type[GlSurface]) -> Mapping[str, type[VisualEngine]]:
@@ -115,10 +120,3 @@ def drawn_on(surface: type[GlSurface]) -> Mapping[str, type[VisualEngine]]:
     return MappingProxyType({key: cls.on_surface(surface)
                              for key, cls in VISUALS.items()})
 
-
-def catalog() -> tuple[VisualInfo, ...]:
-    """Every visual this machine can draw, in gallery order -- the same
-    ranking the platform's gallery uses."""
-    infos = ranked_visuals(VISUALS.values())
-    log.info("catalog: %s", [info.kind for info in infos])
-    return infos
