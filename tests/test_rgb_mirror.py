@@ -1195,21 +1195,21 @@ def test_a_stand_in_platform_reaches_no_openrgb(tmp_path: Path,
     app, platform, _ = _lights_app(tmp_path)
     found = app.dispatch(ScanRgbLights())
     assert found.openrgb_error == (
-        f"OSError: no OpenRGB client on {type(platform).__name__}")
+        "OSError: no OpenRGB client on a stand-in platform (127.0.0.1:6742)")
     app.dispatch(SetRgbFollow(mode=OPENRGB, host="127.0.0.1", port=6742))
     assert app.dispatch(RgbFollow()).error == (
-        f"no OpenRGB client on {type(platform).__name__}")
+        "no OpenRGB client on a stand-in platform (127.0.0.1:6742)")
     assert opened == []
     app.close()
 
 
-def test_every_os_platform_names_the_real_openrgb_client() -> None:
-    from trcc.adapters.rgb.openrgb import OpenRgbMirror
+def test_every_os_platform_runs_the_real_openrgb_client() -> None:
+    """A real OS runs the client itself; only a stand-in swaps it.
+    MUTATION CHECK: override ``substitute`` in ``BaseOS``."""
     from trcc.adapters.system import host_platform_class
     from trcc.core.ports import Platform
 
-    assert Platform.OPENRGB is None
-    assert host_platform_class().OPENRGB is OpenRgbMirror
+    assert host_platform_class().substitute is Platform.substitute
 
 
 # ── TRCC's own effect as the source ─────────────────────────────────────
@@ -1519,8 +1519,8 @@ def test_a_linked_light_reads_green_fine_to_red_too_much(metric, value, rgb) -> 
     too hot -- not the cooler's cyan, which read as cold.
 
     MUTATION CHECK: use the cooler's gradient -- 5 % load is cyan."""
+    from trcc.core.led_models import linked_color
     from trcc.services.effect_clock import LIGHT_GRADIENTS
-    from trcc.services.led_effects import linked_color
     sensor = "cpu:temp" if metric == "temp" else "cpu:usage"
     assert linked_color(metric, "cpu", {sensor: value}, LIGHT_GRADIENTS[metric]) == rgb
 

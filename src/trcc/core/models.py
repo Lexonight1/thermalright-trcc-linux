@@ -1639,6 +1639,12 @@ class RgbControllerId:
     usage: int | None = None
 
 
+#: OpenRGB's detect function for the boards TRCC drives itself (ASUS Aura
+#: motherboards): the udev rule that lets the user reach them and the driver
+#: that writes to them pick their ids from the catalog by it.
+MAINBOARD_DETECTOR = "DetectAsusAuraUSBMotherboards"
+
+
 @dataclass(frozen=True, slots=True)
 class HidInterface:
     """One USB HID interface as the OS lists it -- from what the OS already

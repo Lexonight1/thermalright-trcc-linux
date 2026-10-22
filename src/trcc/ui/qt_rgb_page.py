@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 
 from ..core.commands import Command
 from ..core.events import RgbFollowChanged
-from ..core.led_models import stretch
+from ..core.led_models import linked_preview, stretch
 from ..core.logs import per_frame
 from ..core.models import (
     MAX_ARGB_LEDS,
@@ -68,7 +68,6 @@ from ..core.results import DeviceEntry, Result, RgbFollowResult, RgbLightsResult
 from ..services.effect_clock import LIGHT_GRADIENTS
 from ..services.effect_frames import APPROXIMATE, LEDS, effect_frame
 from ..services.follow_colors import Rgb, strip_spans
-from ..services.led_effects import linked_preview
 from .presentation.rgb_page import (
     BLINK_TIP,
     BOARD_NOTE,

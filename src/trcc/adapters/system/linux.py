@@ -41,7 +41,6 @@ from ...core.ports import (
     SmBus,
 )
 from ..device.scsi_transport import BaseScsiTransport, CdbResult
-from ..rgb.smbus import LinuxSmBus, find_smbus, silent_memory_sensors
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
     detect_gpu_vendors,
@@ -57,6 +56,7 @@ from ._polkit_install import install as install_polkit_files
 from ._ram_access import LinuxRamAccess
 from ._rgb_hardware import SysfsRgbHardware
 from ._selinux import install as install_selinux_policy
+from ._smbus import LinuxSmBus, find_smbus, silent_memory_sensors
 from ._udev import install as install_udev_rules
 
 log = logging.getLogger(__name__)

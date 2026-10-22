@@ -384,8 +384,28 @@ class FakeMic:
         return (0.0, 0.5, 1.0, 0.5)
 
 
+class NoOpenRgb:
+    """A stand-in platform's OpenRGB client: it refuses, so no test or mock
+    run lists -- or writes to -- an OpenRGB running on this computer."""
+
+    def __init__(self, host: str, port: int) -> None:
+        raise OSError(f"no OpenRGB client on a stand-in platform ({host}:{port})")
+
+
+def stand_in(cls: Any) -> Any:
+    """*cls* as every stand-in platform runs it: the OpenRGB client
+    refused, anything else itself."""
+    from trcc.adapters.rgb.openrgb import OpenRgbMirror
+
+    return NoOpenRgb if isinstance(cls, type) and issubclass(cls, OpenRgbMirror) else cls
+
+
 class FakePlatform(Platform):
     """Minimal Platform fake — bulk/scsi transports replayable from tests."""
+
+    def substitute(self, cls: Any) -> Any:
+        """*cls* as a stand-in runs it -- an OpenRGB client refused."""
+        return stand_in(cls)
 
     def http_fetcher(self) -> HttpFetcher:
         """Offline: a test reaches the network only through a fetcher it

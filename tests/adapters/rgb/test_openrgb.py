@@ -12,6 +12,7 @@ import struct
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -238,9 +239,11 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:
     from tests.mock_platform import MockPlatform
 
     class _WithOpenRgb(MockPlatform):
-        """A stand-in has no OpenRGB client; this one names the real one,
+        """A stand-in refuses the OpenRGB client; this one runs the real one,
         pointed at the test's own server."""
-        OPENRGB = OpenRgbMirror
+
+        def substitute(self, cls: Any) -> Any:
+            return cls if cls is OpenRgbMirror else super().substitute(cls)
 
     server, _ = fake([("Motherboard", 3)])
     app = App(_WithOpenRgb([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path))

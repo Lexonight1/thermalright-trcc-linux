@@ -7,12 +7,12 @@ source of truth.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 
 from .logs import per_frame
-from .models import LedStyle, SensorLink
+from .models import LedStyle, LinkedMetric, SensorLink
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -491,3 +491,65 @@ def stretch(colors: Sequence[tuple[int, int, int]],
     if not colors or count <= 0:
         return []
     return [colors[i * len(colors) // count] for i in range(count)]
+
+
+# ── colour scales: the LED cooler's linked modes and RGB's lights ─────────
+
+#: A colour scale: (value, colour) stops, lowest first.
+Gradient = tuple[tuple[float, tuple[int, int, int]], ...]
+
+
+def color_for_value(
+    value: float,
+    gradient: Gradient,
+) -> tuple[int, int, int]:
+    """Map *value* to an RGB color via linear interpolation between stops."""
+    # Per LED, per frame: the RGB page's preview wrote ~1000 a second on
+    # ``log`` (2026-10-21).
+    frame_log.debug("color_for_value: value=%s", value)
+    if value <= gradient[0][0]:
+        return gradient[0][1]
+    if value >= gradient[-1][0]:
+        return gradient[-1][1]
+    for i in range(len(gradient) - 1):
+        lo_val, lo_color = gradient[i]
+        hi_val, hi_color = gradient[i + 1]
+        if lo_val <= value <= hi_val:
+            t = (value - lo_val) / (hi_val - lo_val)
+            return (
+                int(lo_color[0] + (hi_color[0] - lo_color[0]) * t),
+                int(lo_color[1] + (hi_color[1] - lo_color[1]) * t),
+                int(lo_color[2] + (hi_color[2] - lo_color[2]) * t),
+            )
+    return gradient[-1][1]
+
+
+#: The reading each linked metric follows, per source -- the keys
+#: ``App.last_raw_readings`` carries (°C, not the user's display unit).
+LINKED_SENSORS: dict[LinkedMetric, dict[SensorLink, str]] = {
+    "temp": {"cpu": "cpu:temp", "gpu": "gpu:primary:temp"},
+    "load": {"cpu": "cpu:usage", "gpu": "gpu:primary:usage"},
+}
+
+
+def linked_color(metric: LinkedMetric, source: SensorLink,
+                 readings: Mapping[str, float],
+                 gradient: Gradient) -> tuple[int, int, int] | None:
+    """The colour *metric* of *source* maps to on *gradient* now -- None
+    without a reading, so a caller keeps the last colour rather than going
+    dark.  The LED cooler's linked modes and the RGB page's lights both use
+    it, each with its own scale."""
+    value = readings.get(LINKED_SENSORS[metric][source])
+    frame_log.debug("linked_color: %s %s -> %s", metric, source, value)
+    if value is None:
+        return None
+    return color_for_value(value, gradient)
+
+
+def linked_preview(gradient: Gradient, leds: int) -> list[tuple[int, int, int]]:
+    """A strip showing *gradient*, its top end at the top -- how a page draws
+    a linked light it has no live reading for."""
+    low, high = gradient[0][0], gradient[-1][0]
+    frame_log.debug("linked_preview: %d stop(s) %d LED(s)", len(gradient), leds)
+    return [color_for_value(high - (high - low) * i / max(1, leds - 1),
+                            gradient) for i in range(leds)]

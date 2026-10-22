@@ -4,9 +4,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 
-from ...core.models import FoundBoard, RgbFollowMode, Wire
+from ...core.models import MAINBOARD_DETECTOR, FoundBoard, RgbFollowMode, Wire
 from ...core.ports import BulkTransport, RgbMirror, SmBus, Transport
-from .asus_aura import MAINBOARD_DETECTOR, REPORT_ID, AuraMainboard
+from .asus_aura import REPORT_ID, AuraMainboard
 from .corsair_dram import CorsairDramMirror
 
 log = logging.getLogger(__name__)

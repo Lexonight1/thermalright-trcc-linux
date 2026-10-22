@@ -619,9 +619,6 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
             log.debug("DevMockPlatform.rgb_hardware: scripted, not the host's")
             return self.rgb
 
-        # No OpenRGB client: inherited, Find would ask a real OpenRGB on this
-        # machine for its devices.
-        OPENRGB = None
         # Audio visuals: a scripted beat, never the host's sound, and a
         # scripted MilkDrop, never the host's GPU.
         SOUND_INPUT = ScriptedSound

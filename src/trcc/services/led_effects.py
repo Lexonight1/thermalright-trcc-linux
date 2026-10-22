@@ -28,12 +28,17 @@ lets the App keep one runtime dict keyed by device.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from typing import ClassVar
 
-from ..core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
+from ..core.led_models import (
+    LedDeviceSettings,
+    LEDMode,
+    LedRuntimeState,
+    color_for_value,
+    linked_color,
+)
 from ..core.logs import per_frame
-from ..core.models import LinkedMetric, SensorLink
+from ..core.models import SensorLink
 from ..core.ports import LedColorStream
 
 log = logging.getLogger(__name__)
@@ -120,30 +125,8 @@ class ColorEngine:
                     table.append((255, 0, 255 - t))
         return table
 
-    @staticmethod
-    def color_for_value(
-        value: float,
-        gradient: tuple[tuple[float, tuple[int, int, int]], ...],
-    ) -> tuple[int, int, int]:
-        """Map *value* to an RGB color via linear interpolation between stops."""
-        # Per LED, per frame: the RGB page's preview wrote ~1000 a second on
-        # ``log`` (2026-10-21).
-        frame_log.debug("color_for_value: value=%s", value)
-        if value <= gradient[0][0]:
-            return gradient[0][1]
-        if value >= gradient[-1][0]:
-            return gradient[-1][1]
-        for i in range(len(gradient) - 1):
-            lo_val, lo_color = gradient[i]
-            hi_val, hi_color = gradient[i + 1]
-            if lo_val <= value <= hi_val:
-                t = (value - lo_val) / (hi_val - lo_val)
-                return (
-                    int(lo_color[0] + (hi_color[0] - lo_color[0]) * t),
-                    int(lo_color[1] + (hi_color[1] - lo_color[1]) * t),
-                    int(lo_color[2] + (hi_color[2] - lo_color[2]) * t),
-                )
-        return gradient[-1][1]
+    #: The core's (``core/led_models.py``): the RGB page's lights use it too.
+    color_for_value = staticmethod(color_for_value)
 
 
 # =========================================================================
@@ -171,10 +154,6 @@ _RAINBOW_GROUP_STEP = 768 // 10 // 6        # ≈ 12 / 768  ≈ 1.6 % of the whe
 _COLORFUL_GROUP_STEP = _COLORFUL_PERIOD // 10 // 6   # ≈ 2 / 168
 
 
-#: A colour scale: (value, colour) stops, lowest first.
-Gradient = tuple[tuple[float, tuple[int, int, int]], ...]
-
-
 def _link(source: str) -> SensorLink:
     """A settings string as a source: anything but "cpu" read the GPU, as the
     engine always has."""
@@ -182,35 +161,6 @@ def _link(source: str) -> SensorLink:
     return "cpu" if source == "cpu" else "gpu"
 
 
-#: The reading each linked metric follows, per source -- the keys
-#: ``App.last_raw_readings`` carries (°C, not the user's display unit).
-LINKED_SENSORS: dict[LinkedMetric, dict[SensorLink, str]] = {
-    "temp": {"cpu": "cpu:temp", "gpu": "gpu:primary:temp"},
-    "load": {"cpu": "cpu:usage", "gpu": "gpu:primary:usage"},
-}
-
-
-def linked_color(metric: LinkedMetric, source: SensorLink,
-                 readings: Mapping[str, float],
-                 gradient: Gradient) -> tuple[int, int, int] | None:
-    """The colour *metric* of *source* maps to on *gradient* now -- None
-    without a reading, so a caller keeps the last colour rather than going
-    dark.  The LED cooler's linked modes and the RGB page's lights both use
-    it, each with its own scale."""
-    value = readings.get(LINKED_SENSORS[metric][source])
-    frame_log.debug("linked_color: %s %s -> %s", metric, source, value)
-    if value is None:
-        return None
-    return ColorEngine.color_for_value(value, gradient)
-
-
-def linked_preview(gradient: Gradient, leds: int) -> list[tuple[int, int, int]]:
-    """A strip showing *gradient*, its top end at the top -- how a page draws
-    a linked light it has no live reading for."""
-    low, high = gradient[0][0], gradient[-1][0]
-    frame_log.debug("linked_preview: %d stop(s) %d LED(s)", len(gradient), leds)
-    return [ColorEngine.color_for_value(high - (high - low) * i / max(1, leds - 1),
-                                        gradient) for i in range(leds)]
 
 
 class LEDEffectEngine:

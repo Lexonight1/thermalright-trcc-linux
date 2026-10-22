@@ -202,8 +202,8 @@ def test_the_rgb_rule_grants_the_seat_every_aura_board_trcc_drives() -> None:
     """Derived from the catalog by detector, never typed: hidraw + usb,
     uaccess only -- no MODE (that would be every user) and no power line
     (the controller is the board's)."""
-    from trcc.adapters.rgb.asus_aura import MAINBOARD_DETECTOR
     from trcc.adapters.system._udev import build_rgb_udev_rules
+    from trcc.core.models import MAINBOARD_DETECTOR
     from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
 
     ids = sorted({(c.vid, c.pid) for c in MOTHERBOARD_CONTROLLERS

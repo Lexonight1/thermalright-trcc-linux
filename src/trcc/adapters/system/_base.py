@@ -56,7 +56,6 @@ from ..device._pyusb_find import find as usb_find
 from ..device._pyusb_find import usb_path
 from ..device.transport import PyUsbBulkTransport
 from ..infra.unix_socket import UnixSocketChannel
-from ..rgb.openrgb import OpenRgbMirror
 
 if TYPE_CHECKING:
     from ...core.models import UsbPowerState
@@ -204,8 +203,6 @@ class BaseOS(Platform):
     instantiating on its own and what tells a new OS's author what to write.
     """
 
-    #: OpenRGB's SDK client -- plain TCP, the same on every OS.
-    OPENRGB = OpenRgbMirror
     #: The shared App's channel: a socket file wherever there is AF_UNIX.
     IPC_CHANNEL = UnixSocketChannel
 

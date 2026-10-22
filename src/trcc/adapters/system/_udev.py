@@ -38,10 +38,9 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...core.models import Wire
+from ...core.models import MAINBOARD_DETECTOR, Wire
 from ...core.registry import ALL_DEVICES
 from ...core.rgb_catalog import MOTHERBOARD_CONTROLLERS
-from ..rgb.asus_aura import MAINBOARD_DETECTOR
 from ._elevate import reexec_as_root
 
 log = logging.getLogger(__name__)

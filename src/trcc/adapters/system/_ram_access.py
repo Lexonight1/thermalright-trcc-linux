@@ -30,7 +30,7 @@ from pathlib import Path
 
 from ...core.models import RamAccessState, RamAccessStatus
 from ...core.ports import RamAccess
-from ..rgb.smbus import find_smbus
+from ._smbus import find_smbus
 
 log = logging.getLogger(__name__)
 

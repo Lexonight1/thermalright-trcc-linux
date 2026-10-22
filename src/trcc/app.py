@@ -19,6 +19,7 @@ from .adapters import modules as module_catalog
 from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.rgb import make_board_driver, make_mirror
+from .adapters.rgb.openrgb import OpenRgbMirror
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
@@ -416,7 +417,7 @@ class App(CommandBus, ModuleServices):
         # through ``platform``, so a stand-in's are all a test touches.
         self.rgb_mirror = RgbMirrorService(make_rgb_mirror or partial(
             make_mirror, smbuses=platform.smbuses,
-            board=self.rgb_boards.driver, openrgb=platform.openrgb),
+            board=self.rgb_boards.driver, openrgb=self._openrgb_client),
             on_sent=self._follow_sent, readings=self._raw_readings)
         self.events.subscribe(LedColorsChanged, self.rgb_mirror.on_colors)
         # Whether a newer TRCC exists: asked here, for every window, from
@@ -1139,6 +1140,13 @@ class App(CommandBus, ModuleServices):
             surface = event.surface
         if surface is not None:
             self.rgb_mirror.on_frame(event.key, surface, renderer.raw_argb32)
+
+    def _openrgb_client(self, host: str, port: int) -> RgbMirror:
+        """OpenRGB's SDK client for *host*:*port*, not connected yet -- as
+        this machine runs it: a stand-in platform refuses, so no test or mock
+        run reaches an OpenRGB on this computer."""
+        log.debug("_openrgb_client: %s:%d", host, port)
+        return self.platform.substitute(OpenRgbMirror)(host, port)
 
     def _raw_readings(self) -> dict[str, float] | None:
         """The metrics loop's last raw sample (°C), None before its first --

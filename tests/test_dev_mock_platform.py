@@ -328,6 +328,7 @@ def test_a_mock_fleet_lights_only_its_own_ram(
     tripwire (Linux) or on the base port's refusal (any other host).
     """
     from trcc.adapters import rgb
+    from trcc.adapters.rgb.openrgb import OpenRgbMirror
     from trcc.adapters.system import linux
     from trcc.core.models import RgbFollowMode
 
@@ -342,7 +343,8 @@ def test_a_mock_fleet_lights_only_its_own_ram(
         raise AssertionError("RAM following never asks for the board")
 
     mirror = rgb.make_mirror(RgbFollowMode.RAM, "", 0, smbuses=platform.smbuses,
-                             board=no_board, openrgb=platform.openrgb)
+                             board=no_board,
+                             openrgb=platform.substitute(OpenRgbMirror))
     sticks = mirror.devices()
     for stick in sticks:
         mirror.show(stick, [(0, 255, 0)])
@@ -356,10 +358,11 @@ def test_a_mock_fleet_reaches_no_openrgb() -> None:
     """Inherited from the host, the fleet's Find would list a real OpenRGB
     running on this machine.  ``--hardware`` keeps the real client.
 
-    MUTATION CHECK: delete ``DevMockPlatform.OPENRGB``."""
+    MUTATION CHECK: return ``cls`` for every class in ``stand_in``."""
     from trcc.adapters.rgb.openrgb import OpenRgbMirror
 
     fleet: Any = _build_dev_platform([_SPEC])
-    with pytest.raises(OSError, match=f"no OpenRGB client on {type(fleet).__name__}"):
-        fleet.openrgb("127.0.0.1", 6742)
-    assert type(_build_dev_platform(None)).OPENRGB is OpenRgbMirror
+    with pytest.raises(OSError, match=r"^no OpenRGB client on a stand-in platform "
+                                      r"\(127\.0\.0\.1:6742\)$"):
+        fleet.substitute(OpenRgbMirror)("127.0.0.1", 6742)
+    assert _build_dev_platform(None).substitute(OpenRgbMirror) is OpenRgbMirror

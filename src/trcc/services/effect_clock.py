@@ -13,6 +13,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 
+from ..core.led_models import Gradient, linked_color
 from ..core.logs import per_frame
 from ..core.models import (
     LightEffect,
@@ -23,7 +24,6 @@ from ..core.models import (
     RgbMirrorDevice,
 )
 from .effect_frames import effect_frame
-from .led_effects import Gradient, linked_color
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

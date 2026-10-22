@@ -72,7 +72,7 @@ from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
 from trcc.modules.visualizer.core.models import VisualSpec
 from trcc.modules.visualizer.core.ports import VisualEngine
 
-from .conftest import FakeBulkTransport, FakePlatform, FakeScsiTransport
+from .conftest import FakeBulkTransport, FakePlatform, FakeScsiTransport, stand_in
 
 log = logging.getLogger(__name__)
 
@@ -951,9 +951,11 @@ class ScriptedMilkdrop(MilkdropVisual):
 
 def scripted(cls: _C) -> _C:
     """*cls* as a stand-in platform runs it: MilkDrop scripted -- no
-    libprojectM, no GPU -- and every other visual as it is, so a new one
-    reaches the mocks without anyone remembering to add it here."""
-    found = ScriptedMilkdrop if issubclass(cls, MilkdropVisual) else cls
+    libprojectM, no GPU -- an OpenRGB client refused, and every other visual
+    as it is, so a new one reaches the mocks without anyone remembering to
+    add it here."""
+    found = (ScriptedMilkdrop if issubclass(cls, MilkdropVisual)
+             else stand_in(cls))
     log.debug("scripted: %s -> %s", cls.__name__, found.__name__)
     return cast("_C", found)
 

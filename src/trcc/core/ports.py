@@ -2301,7 +2301,7 @@ SMBUS_BLOCK_MAX = 32
 class SmBus(ABC):
     """One SMBus: byte reads and writes, and block writes, to one address.
 
-    Concrete: ``LinuxSmBus`` (``adapters/rgb/smbus.py``, ``/dev/i2c-N``),
+    Concrete: ``LinuxSmBus`` (``adapters/system/_smbus.py``, ``/dev/i2c-N``),
     opened by ``Platform.smbuses``.  Every failure is an ``OSError``.
     """
 
@@ -3809,25 +3809,11 @@ class Platform(ABC):
 
     def substitute(self, cls: _C) -> _C:
         """*cls* as this machine runs it -- itself here.  A stand-in platform
-        returns a scripted twin for anything that would reach hardware it
-        does not own (a GPU, a library), as it scripts the transports."""
+        returns a scripted twin for anything that would reach hardware or a
+        service it does not own (a GPU, a library, an OpenRGB server), as it
+        scripts the transports."""
         log.debug("substitute: %s -> itself", cls.__name__)
         return cls
-
-    #: The OS adapter's OpenRGB SDK client, made with the server's host and
-    #: port -- a table entry like ``RGB_HARDWARE``.  None on a stand-in
-    #: platform, so no test or mock run reaches an OpenRGB on this machine.
-    OPENRGB: ClassVar[Callable[[str, int], RgbMirror] | None] = None
-
-    def openrgb(self, host: str, port: int) -> RgbMirror:
-        """A client for OpenRGB at *host*:*port*, not connected yet.
-        ``OSError`` on a platform with none."""
-        made = type(self).OPENRGB
-        log.debug("openrgb: %s %s:%d -> %s", type(self).__name__, host, port,
-                  getattr(made, "__name__", None))
-        if made is None:
-            raise OSError(f"no OpenRGB client on {type(self).__name__}")
-        return made(host, port)
 
     def rgb_hardware(self) -> RgbHardware:
         """What Find reads to spot RGB controllers -- it opens nothing.  A

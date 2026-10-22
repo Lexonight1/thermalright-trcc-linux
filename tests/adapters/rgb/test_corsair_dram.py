@@ -24,7 +24,7 @@ from trcc.adapters.rgb.corsair_dram import (
     direct_packet,
     effect_packet,
 )
-from trcc.adapters.rgb.smbus import find_smbus
+from trcc.adapters.system._smbus import find_smbus
 from trcc.core.models import (
     EFFECT_TRAITS,
     EffectDirection,
@@ -142,7 +142,7 @@ def test_only_the_chipset_smbus_is_probed(tmp_path: Path) -> None:
 
 def test_the_bus_is_found_where_current_kernels_list_it() -> None:
     """``/sys/class/i2c-adapter`` is gone on kernel 7.2; the bus list is here."""
-    from trcc.adapters.rgb.smbus import ADAPTERS
+    from trcc.adapters.system._smbus import ADAPTERS
     assert Path("/sys/bus/i2c/devices") == ADAPTERS
 
 
@@ -278,7 +278,7 @@ def _memory_sensor(drivers: Path, driver: str, device: str, answers: bool) -> No
 
 def test_a_stuck_memory_sensor_is_named(tmp_path: Path) -> None:
     """Measured on the maintainer's box 2026-10-10: both spd5118 hubs ENXIO."""
-    from trcc.adapters.rgb.smbus import silent_memory_sensors
+    from trcc.adapters.system._smbus import silent_memory_sensors
     _memory_sensor(tmp_path, "spd5118", "3-0051", answers=False)
     _memory_sensor(tmp_path, "spd5118", "3-0053", answers=True)
     _memory_sensor(tmp_path, "jc42", "7-0018", answers=False)

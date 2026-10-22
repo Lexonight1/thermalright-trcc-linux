@@ -447,7 +447,7 @@ def test_ram_access_asks_for_a_password_every_time() -> None:
 def test_ram_access_grants_the_bus_trcc_drives_and_no_other() -> None:
     """The rule's name match is the RAM driver's: access goes to exactly the
     bus TRCC talks to -- never the GPU's DDC or the DesignWare buses."""
-    from trcc.adapters.rgb.smbus import SMBUS_PREFIX
+    from trcc.adapters.system._smbus import SMBUS_PREFIX
     helper = _load_helper("trcc-ram-access")
     assert helper.SMBUS_PREFIX == SMBUS_PREFIX
     rule = [line for line in helper.RULE_TEXT.splitlines()
