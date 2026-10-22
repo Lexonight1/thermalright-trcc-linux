@@ -5,8 +5,9 @@
 #   dev/ci_local.sh 3.12            one Python, then the smoke job
 #   dev/ci_local.sh --no-smokes     skip the smoke job
 #
-# Mirrors .github/workflows/ci.yml: per Python -- ruff, pyright src/ at the
-# version CI pins, the suite; then, on 3.12, the "dev harnesses + meters" job.
+# Mirrors .github/workflows/ci.yml: per Python -- ruff, pyright as CI runs it
+# (bare: [tool.pyright] include names src AND tests) at the version CI pins,
+# the suite; then, on 3.12, the "dev harnesses + meters" job.
 # It stops at the first failure.  GitHub's run stays the clean-room check (a
 # fresh machine, and Windows); this exists so that run is green the first time.
 #
@@ -60,8 +61,10 @@ step "ruff"
 
 for version in "${pythons[@]}"; do
   py=$(venv_python "$version")
-  step "$version: pyright $pyright_pin src/"
-  "$py" -m pyright src/
+  # Bare, as CI runs it.  It read `pyright src/` until 2026-10-21, and
+  # four type errors in tests passed here and would have failed CI.
+  step "$version: pyright $pyright_pin"
+  "$py" -m pyright
   step "$version: tests"
   "$py" -m pytest tests/ --tb=short -q -p no:cacheprovider
 done
