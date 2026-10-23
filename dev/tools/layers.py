@@ -11,6 +11,7 @@ rule written for ``trcc.adapters`` also catches ``trcc.modules.<key>.adapters``.
 """
 from __future__ import annotations
 
+import ast
 import logging
 from pathlib import Path
 
@@ -62,3 +63,65 @@ def module_of(dotted: str) -> str:
     inside = (parts[:2] == ["trcc", MODULES] and len(parts) > 2
               and not parts[2].startswith("_"))
     return parts[2] if inside else ""
+
+
+def resolve_import(node: ast.ImportFrom, module_name: str) -> str:
+    """Resolve a (possibly relative) ``from ... import`` in *module_name* to
+    an absolute module."""
+    if node.level == 0:
+        return node.module or ""
+    parts = module_name.split(".")
+    base = parts[: len(parts) - node.level]
+    return ".".join(base + ([node.module] if node.module else []))
+
+
+# ── Modules: mini hexagons ───────────────────────────────────────────────────
+# A module (``trcc/modules/<key>/``) plugs into the main app through its host
+# and is found by its manifest.  So deleting its folder must break nothing in
+# the main app, and a module must never reach past its host for the App -- or
+# into another module.  TYPE_CHECKING imports count here: a type-only import of
+# a module still breaks the type check the day that module is deleted.
+# Here, not in the test, because the module review (``review_module.py``)
+# holds a submitted module to the very same check.
+
+#: All a module may import from the main app (decision 14, strict): its
+#: shared types (``core``), the UI it plugs its faces into (``ui`` -- the
+#: layer gates keep a module's own core and services off it), and the module
+#: SDK it is built on (``BaseModule``).  Services and hardware -- the App, the
+#: Platform, any adapter -- come through its host, never by import.
+MODULE_MAY_IMPORT = ("trcc.core", "trcc.ui", "trcc.adapters.modules")
+
+
+def module_boundary_breaches(src: Path) -> list[str]:
+    """Every import, under *src*``/trcc``, that crosses a module's boundary the
+    wrong way -- fixture-pointable, so the self-test can prove it sees one."""
+    breaches: list[str] = []
+    for path in sorted((src / "trcc").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        name = ".".join(path.relative_to(src).with_suffix("").parts)
+        owner = module_of(name)
+        rel = path.relative_to(src).as_posix()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                targets = [resolve_import(node, name)]
+            elif isinstance(node, ast.Import):
+                targets = [a.name for a in node.names]
+            else:
+                continue
+            for target in targets:
+                into = module_of(target)
+                if not owner and into:
+                    breaches.append(f"  {rel}:{node.lineno} -> {target} "
+                                    "(the main app names a module)")
+                elif owner and into and into != owner:
+                    breaches.append(f"  {rel}:{node.lineno} -> {target} "
+                                    "(one module reaches into another)")
+                elif (owner and not into
+                      and (target == "trcc" or target.startswith("trcc."))
+                      and not any(target == p or target.startswith(p + ".")
+                                  for p in MODULE_MAY_IMPORT)):
+                    breaches.append(f"  {rel}:{node.lineno} -> {target} "
+                                    "(a module reaches past its host)")
+    log.debug("layers.module_boundary_breaches: %s -> %d", src, len(breaches))
+    return breaches
