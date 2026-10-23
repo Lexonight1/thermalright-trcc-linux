@@ -14,6 +14,15 @@ on the device, with the work counted independently.
     # the workload the CPU hunt used
     PYTHONPATH=src python3.12 dev/tools/glass_bench.py --video ~/.trcc/data/web/320320/a008.mp4
 
+    # no panel: a scripted 320x320 one -- the render path, no USB
+    PYTHONPATH=src python3.12 dev/tools/glass_bench.py --mock --against /tmp/base/src
+
+``--mock`` measures everything a frame costs up to the wire -- render, the
+App's per-frame work, logging -- on a scripted panel, so it compares builds
+without touching the user's hardware.  It cannot see the real send (USB
+transfer, the panel's pace): for a change to the send path, use the device.
+Ratios between trees only, never CPU%.
+
 NEVER measure CPU% to compare builds on a scaling box.  ``ps %cpu``, ``utime``
 and ``task-clock`` measure TIME ON CPU, and `intel_pstate`/`powersave` moves the
 clock with the load: silencing logging once measured 24%% fewer instructions and
@@ -61,6 +70,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 # dev/, for the side-effect-free check (NOT the bootstrap -- see main()).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -155,7 +165,7 @@ def _warm_bytecode(src: str | None) -> None:
 
 
 def _slope(src: str | None, lo: int, hi: int, video: Path | None,
-           reps: int, label: str, gui: bool = False) -> float:
+           reps: int, label: str, gui: bool = False, mock: bool = False) -> float:
     """Median instructions/frame across *reps* differential pairs."""
     _warm_bytecode(src)
     inner = [sys.executable, str(Path(__file__).resolve()), "--run", "0"]
@@ -169,6 +179,8 @@ def _slope(src: str | None, lo: int, hi: int, video: Path | None,
                 cmd += ["--video", str(video)]
             if gui:
                 cmd += ["--gui"]
+            if mock:
+                cmd += ["--mock"]
             instr, requested, sent = _perf_instructions(cmd, src)
             # Divide by OBSERVED work, never requested.  The GUI arm cannot stop
             # mid-tick -- the event loop processes a build or two after quit() --
@@ -352,8 +364,33 @@ def _run_gui_arm(n: int) -> None:
     print(f"RESULT requested={n} sent={counter['frames']}", file=sys.stderr)
 
 
-def _run_arm(n: int, video: Path | None) -> None:
-    """Inner mode: build *n* frames on the real device and report the count."""
+def _mock_app() -> object:
+    """A session App on a scripted 320x320 panel, in a throwaway root holding a
+    copy of the user's Theme1 -- never their ``~/.trcc``, which the App would
+    write its settings and log into.  The mock is imported from the tree under
+    measurement (``--against``'s own ``tests/``), never this one."""
+    import shutil
+    import tempfile
+
+    import trcc
+
+    sys.path.insert(0, str(Path(trcc.__file__).resolve().parents[2]))
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+
+    root = Path(tempfile.mkdtemp(prefix="glass-bench-mock-"))
+    platform = MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], root)
+    shutil.copytree(Path.home() / ".trcc" / "data" / "theme320320" / "Theme1",
+                    platform.paths().data_dir() / "theme320320" / "Theme1")
+    app = App(platform, renderer=QtRenderer())
+    app.start_session()
+    return app
+
+
+def _run_arm(n: int, video: Path | None, mock: bool = False) -> None:
+    """Inner mode: build *n* frames on the real device -- or the scripted one
+    (*mock*) -- and report the count."""
     import inspect
     import logging
     import os
@@ -383,7 +420,7 @@ def _run_arm(n: int, video: Path | None) -> None:
 
     # ``trcc()`` auto-detects the platform: ``current_platform`` moved between
     # releases, so importing it by path would measure the import, not the drift.
-    app = trcc()
+    app: Any = _mock_app() if mock else trcc()
     platform = app.platform
 
     # Configure logging exactly as the shipping app does at default verbosity
@@ -452,6 +489,8 @@ def main() -> None:
     ap.add_argument("--reps", type=int, default=3, help="replicates per arm")
     ap.add_argument("--gui", action="store_true",
                     help="measure the REAL GUI shell, not just the render path")
+    ap.add_argument("--mock", action="store_true",
+                    help="a scripted 320x320 panel, no USB: the render path only")
     ap.add_argument("--selftest", action="store_true",
                     help="validate perf counting against a known answer, then exit")
     args = ap.parse_args()
@@ -463,25 +502,27 @@ def main() -> None:
         if args.gui:
             _run_gui_arm(args.run)
         else:
-            _run_arm(args.run, args.video)
+            _run_arm(args.run, args.video, args.mock)
         return
 
     # The orchestrator only: a ``--run`` child may be ANOTHER tree's src
     # (``--against``), and importing the dev bootstrap there would put this
     # tree's src first on its path and measure the wrong build.
-    refuse_while_trcc_runs("glass_bench")
+    if not args.mock:               # a mock run reaches no USB, so no contention
+        refuse_while_trcc_runs("glass_bench")
     workload = f"advancing video ({args.video.name})" if args.video else "static theme"
     workload += " · REAL GUI" if args.gui else " · headless"
+    workload += " · MOCK panel (no USB)" if args.mock else " · real panel"
     print(f"workload: {workload}   span: {args.lo} → {args.hi} frames   "
           f"reps: {args.reps}")
 
     here = _slope(None, args.lo, args.hi, args.video, args.reps, "this tree",
-                  args.gui)
+                  args.gui, args.mock)
     print(f"\nthis tree : {here / 1e6:7.3f} M instructions/frame (median)")
 
     if args.against:
         there = _slope(args.against, args.lo, args.hi, args.video, args.reps,
-                       "--against", args.gui)
+                       "--against", args.gui, args.mock)
         print(f"--against : {there / 1e6:7.3f} M instructions/frame (median)")
         faster = "cheaper" if here < there else "MORE EXPENSIVE"
         print(f"\nthis tree is {max(here, there) / min(here, there):.1f}x "
