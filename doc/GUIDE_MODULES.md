@@ -19,9 +19,10 @@ From the command line: `trcc system modules list`, `trcc system modules on <key>
 
 When a module is off, its tab or sidebar entry is hidden in every window and comes back the moment you switch it on. Anything you still ask of it — from the command line, the API or another window — is refused, with a line saying it is off and where to turn it on. Your choices stay saved: switching a module back on picks up where it left off.
 
+A module's **themes are kept with it**: a theme whose background is an audio visual is saved with the Audio Visualizer and listed only while it is on.
+
 ### Coming next
 
-- A module's **themes kept with it**, and hidden while it is off.
 - **Install, Update and Delete**, from TRCC's own GitHub releases only. Every download is checked against a list signed by the maintainer (see [Verify Your Download](GUIDE_INSTALL.md#verify-your-download)); a failed or tampered download is never installed, and a failed update keeps the old version working.
 
 ---
@@ -58,7 +59,7 @@ Lights your RGB memory, your motherboard's RGB (ASUS Aura headers and onboard LE
 
 ## Writing a module
 
-This part is for contributors. Modules are written by the TRCC project itself — there are no third-party modules yet.
+This part is for anyone who wants to make one. You can write a module today in your own copy of TRCC, starting from the skeleton below. **A website for TRCC modules is on the way**, for finding and sharing them; until then TRCC does not install modules from anywhere, so a module you write runs in your own copy.
 
 ### Start from the skeleton
 
