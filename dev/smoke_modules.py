@@ -31,7 +31,9 @@ desktop or ``dev/.trcc`` (memory: reference_drive_windows_on_xvfb)::
     PYTHONPATH=src python3.12 dev/smoke_modules.py [--template]
 
 ``--template`` adds ``dev/module_template/hello`` -- every face a module can
-have -- to what is driven.  Without ``xvfb-run`` and ``dbus-run-session`` the
+have -- to what is driven.  ``--only <key>`` drives that one module alone:
+the module review (``dev/tools/review_module.py``) drives the module it
+reviews, so a failure is never another module's.  Without ``xvfb-run`` and ``dbus-run-session`` the
 window probes are skipped, saying so.  Exit 1 on any FAIL.
 """
 from __future__ import annotations
@@ -520,6 +522,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--template", action="store_true",
                     help="drive dev/module_template/hello too")
+    ap.add_argument("--only", metavar="KEY", help="drive this one module alone")
     ap.add_argument("--serve", type=Path, help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
     if args.serve is not None:
@@ -544,6 +547,12 @@ def main(argv: list[str] | None = None) -> int:
     app = App(MockPlatform(_SPECS, root), renderer=QtRenderer(), modules=specs())
     app.start_session()
     keys = sorted(app.modules)
+    if args.only is not None:
+        if args.only not in keys:
+            app.close()
+            print(f"  no module {args.only!r} -- found {keys}")
+            return 1
+        keys = [args.only]
     print(f"\n  TRCC Smoke -- modules: {keys}\n")
     sections: list[Section] = []
     try:

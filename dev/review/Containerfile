@@ -1,0 +1,37 @@
+# The sandbox stage 2 of a module review runs in (dev/tools/review_module.py).
+#
+# Built ONCE, with network -- the only step that ever has it.  The review then
+# runs a submitted module's own tests and dev/smoke_modules.py in here with no
+# network, no devices, no capabilities, a read-only tree and a throwaway home.
+#
+# Ubuntu 24.04: its python3 is 3.12, the dev gate, and CI's tests run on
+# Ubuntu.  The image is tagged by a hash of this file and pyproject.toml, so a
+# dependency change builds a new one.  Build context: a folder holding only
+# this file and pyproject.toml (review_module.py makes it).
+FROM docker.io/library/ubuntu:24.04
+
+# CI's GL/EGL set (.github/workflows/ci.yml), plus what the smoke's private
+# display needs: Xvfb + xauth for xvfb-run, a session bus, and the xcb
+# libraries Qt's X11 platform plugin loads.
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      python3 python3-venv \
+      libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri \
+      xvfb xauth dbus \
+      libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libfreetype6 libdbus-1-3 \
+      libglib2.0-0t64 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+      libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+      libxcb-xfixes0 libx11-xcb1 libusb-1.0-0 libudev1 fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+
+# TRCC's dependencies and its dev extra (pytest, pytest-qt, xdist), read
+# from pyproject.toml -- never TRCC itself: the tree under review is mounted
+# at run time.
+COPY pyproject.toml /deps/pyproject.toml
+RUN python3 -m venv /venv \
+ && /venv/bin/python -c "import tomllib; p = tomllib.load(open('/deps/pyproject.toml', 'rb'))['project']; print('\n'.join(p['dependencies'] + p['optional-dependencies']['dev']))" > /deps/requirements.txt \
+ && /venv/bin/pip install --no-cache-dir -r /deps/requirements.txt
+
+# Not root inside, either: ubuntu:24.04's own uid-1000 user.
+USER ubuntu
+WORKDIR /review

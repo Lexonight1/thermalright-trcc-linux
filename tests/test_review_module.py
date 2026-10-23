@@ -331,7 +331,7 @@ def test_a_clean_release_passes_stage_one_and_leaves_no_worktree(
     assert str(workdir / "tree") not in _git(_REPO, "worktree", "list")
     report = review.render(result, workdir / "files.txt")
     assert "## Verdict: stage 1 passed" in report
-    assert "NOT listable yet: stage 2" in report
+    assert "NOT listable yet: read this report and the diff, then run again with --run" in report
 
 
 @pytest.mark.usefixtures("lint_tools")
@@ -347,3 +347,147 @@ def test_the_lint_gates_fail_on_what_they_should(author: Path, tmp_path: Path) -
     assert [f.where for f in gates["ruff"].findings] == [
         "src/trcc/modules/hello/core/bad.py:2:8"]
     assert [f.where for f in gates["pyright"].findings] == ["core/bad.py:4"]
+
+
+# ── stage 2: the sandbox, its tests, the smoke ────────────────────────────
+# A real container needs the image this machine built; ``review_module.py
+# --selftest-sandbox`` runs that half.  Here podman is replaced by canned runs,
+# so what is proven is what the tool asks for and what it makes of the answer.
+
+
+def test_the_sandbox_command_is_exactly_this(tmp_path: Path) -> None:
+    """Every flag that keeps the module in: drop one and this fails."""
+    assert review.sandbox("img", tmp_path, "python", "-c", "x") == [
+        "podman", "run", "--rm", "--network=none", "--cap-drop=all",
+        "--security-opt=no-new-privileges", "--read-only",
+        "--tmpfs=/tmp:rw,size=1g,mode=1777",
+        "--tmpfs=/home/ubuntu:rw,size=256m,mode=1777",
+        "--memory=4g", "--pids-limit=1024", "--timeout=900",
+        "--env=HOME=/home/ubuntu", "--env=PYTHONDONTWRITEBYTECODE=1",
+        "--env=PYTHONPATH=/review/src", "--env=QT_QPA_PLATFORM=offscreen",
+        f"--volume={tmp_path}:/review:ro,Z", "--workdir=/review", "img",
+        "python", "-c", "x"]
+
+
+def test_the_image_changes_with_its_dependencies(tmp_path: Path,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    before = review.image_tag()
+    changed = tmp_path / "Containerfile"
+    changed.write_bytes(review.CONTAINERFILE.read_bytes() + b"\n# changed\n")
+    monkeypatch.setattr(review, "CONTAINERFILE", changed)
+    assert review.image_tag() != before
+    assert before.startswith("localhost/trcc-review:")
+
+
+def _canned(monkeypatch: pytest.MonkeyPatch, code: int, out: str) -> list[tuple[str, ...]]:
+    """podman replaced: every run returns *code* and *out*; the commands asked
+    for are recorded."""
+    asked: list[tuple[str, ...]] = []
+
+    def run(workdir: Path, image: str, tree: Path, *command: str):
+        asked.append(command)
+        return subprocess.CompletedProcess(command, code, out, "")
+
+    monkeypatch.setattr(review, "_contained", run)
+    return asked
+
+
+def test_the_sandbox_must_hold_every_probe(tmp_path: Path,
+                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    held = {"no network": True, "tree read-only": True, "not root": True}
+    _canned(monkeypatch, 0, json.dumps(held))
+    assert review.proven(tmp_path, "img", tmp_path).passed
+    _canned(monkeypatch, 0, json.dumps({**held, "no network": False}))
+    gate = review.proven(tmp_path, "img", tmp_path)
+    assert [(f.where, f.text) for f in gate.findings] == [
+        ("no network", "NOT held inside the sandbox")]
+    _canned(monkeypatch, 125, "")
+    assert [f.where for f in review.proven(tmp_path, "img", tmp_path).findings] == ["probe"]
+
+
+def test_the_probe_runs_isolated_and_names_this_machines_home(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = _canned(monkeypatch, 0, "{}")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1234")
+    review.proven(tmp_path, "img", tmp_path)
+    assert asked == [(review.PYTHON, "-I", "-c", review.PROBE, str(Path.home()),
+                      "/run/user/1234")]
+
+
+def test_the_export_holds_the_module_its_tests_and_no_git(
+        author: Path, tmp_path: Path) -> None:
+    staged = _staged(author, tmp_path / "stage")
+    tree = review.export(tmp_path, staged, "hello", author / "tests")
+    assert (tree / "src" / "trcc" / "modules" / "hello" / "module.json").is_file()
+    assert sorted(p.name for p in (tree / "tests" / "module_hello").iterdir()) == [
+        "__init__.py", "test_hello.py"]
+    assert (tree / "tests" / "conftest.py").is_file()
+    assert not (tree / ".git").exists()
+    assert (tree / "dev" / ".trcc" / "data").is_dir() and (tree / "dev" / ".trcc-user").is_dir()
+
+
+def test_a_module_without_tests_fails_without_running_anything(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = _canned(monkeypatch, 0, "")
+    gate = review.own_tests(tmp_path, "img", tmp_path, "hello")
+    assert [f.text for f in gate.findings] == ["no tests -- a module ships its own"]
+    assert asked == []
+
+
+@pytest.mark.parametrize(("code", "failures"), [
+    (0, []), (1, ["failed, exit 1"]), (5, ["no test was collected"])])
+def test_its_tests_pass_or_say_why_not(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                       code: int, failures: list[str]) -> None:
+    (tmp_path / "tests" / "module_hello").mkdir(parents=True)
+    asked = _canned(monkeypatch, code, "== 1 passed ==\n")
+    gate = review.own_tests(tmp_path, "img", tmp_path, "hello")
+    assert [f.text for f in gate.findings] == failures
+    assert asked == [(review.PYTHON, "-m", "pytest", "tests/module_hello", "-q",
+                      "-n", "0", "-p", "no:cacheprovider")]
+
+
+@pytest.mark.parametrize(("code", "out", "failures"), [
+    (0, "    [OK]     cli    ['hello']\n  Summary: 13 pass\n", []),
+    (1, "    [FAIL]   gui    tab never shown\n  Summary: 12 pass, 1 fail\n",
+     ["gui    tab never shown"]),
+    (1, "", ["exit 1: "]),
+])
+def test_the_smoke_drives_the_module_alone(tmp_path: Path,
+                                           monkeypatch: pytest.MonkeyPatch, code: int,
+                                           out: str, failures: list[str]) -> None:
+    asked = _canned(monkeypatch, code, out)
+    gate = review.smoke(tmp_path, "img", tmp_path, "hello")
+    assert [f.text for f in gate.findings] == failures
+    assert asked == [(review.PYTHON, "dev/smoke_modules.py", "--only", "hello")]
+
+
+def test_nothing_of_the_authors_runs_when_the_sandbox_leaks(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ran: list[str] = []
+    leaky = review.Gate("Sandbox")
+    leaky.fail("no network", "NOT held inside the sandbox")
+    monkeypatch.setattr(review, "ensure_image", lambda workdir: "img")
+    monkeypatch.setattr(review, "export", lambda *a: tmp_path)
+    monkeypatch.setattr(review, "proven", lambda *a: leaky)
+    monkeypatch.setattr(review, "own_tests", lambda *a: ran.append("tests"))
+    monkeypatch.setattr(review, "smoke", lambda *a: ran.append("smoke"))
+    result = review.Review("hello", "1", COMMIT, [], "", "")
+    review.stage_two(result, tmp_path)
+    assert ran == [] and [g.name for g in result.gates] == ["Sandbox"]
+    assert result.ran and not result.passed
+
+
+@pytest.mark.parametrize(("hard", "ran", "verdict"), [
+    (True, False, "## Verdict: NOT listable -- see each FAIL above"),
+    (False, False, "## Verdict: stage 1 passed"),
+    (False, True, "## Verdict: listable -- if your read agrees"),
+])
+def test_the_verdict_says_listable_only_after_both_stages(
+        tmp_path: Path, hard: bool, ran: bool, verdict: str) -> None:
+    gate = review.Gate("Code")
+    if hard:
+        gate.fail("x.py:1", "exec() -- runs text as code")
+    result = review.Review("hello", "1", COMMIT, [gate], "", "", ran=ran)
+    report = review.render(result, tmp_path / "files.txt")
+    assert verdict in report
+    assert ("sign_module_index.py add" in report) == (not hard and ran)

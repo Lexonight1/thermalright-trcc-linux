@@ -145,6 +145,8 @@ class Review:
     diff: str
     since: str
     capabilities: tuple[str, ...] = ()
+    #: Whether stage 2 -- its own code, in the sandbox -- ran.
+    ran: bool = False
 
     @property
     def passed(self) -> bool:
@@ -465,6 +467,190 @@ def judgement(staged: Path, key: str) -> Gate:
     return gate
 
 
+# ── stage 2: its code runs, in the sandbox ────────────────────────────────
+
+CONTAINERFILE = _REPO / "dev" / "review" / "Containerfile"
+#: The longest one sandboxed run may take.
+STAGE_TWO_SECONDS = 900
+#: Where the tree under review sits inside the sandbox.
+INSIDE = "/review"
+#: The interpreter in the image, with TRCC's dependencies.
+PYTHON = "/venv/bin/python"
+
+#: Run inside the sandbox before anything of the author's: each must say True,
+#: or stage 2 does not run.  Argument 1 is this machine's home, 2 its runtime
+#: directory -- where the running App's socket is.
+PROBE = """
+import json, os, socket, sys
+from pathlib import Path
+
+def refused(attempt):
+    try:
+        attempt()
+    except OSError:
+        return True
+    return False
+
+caps = Path("/proc/self/status").read_text().split("CapEff:")[1].split()[0]
+print(json.dumps({
+    "no network": refused(lambda: socket.create_connection(("1.1.1.1", 443), timeout=3)),
+    "no name lookup": refused(lambda: socket.getaddrinfo("github.com", 443)),
+    "tree read-only": refused(lambda: Path("/review/.probe").write_text("x")),
+    "no USB devices": not Path("/dev/bus/usb").exists(),
+    "no host home": not Path(sys.argv[1]).exists(),
+    "no host runtime dir": not Path(sys.argv[2]).exists(),
+    "not root": os.geteuid() != 0,
+    "no capabilities": int(caps, 16) == 0,
+}))
+"""
+
+
+def image_tag() -> str:
+    """The sandbox image for this Containerfile and these dependencies."""
+    digest = hashlib.sha256(CONTAINERFILE.read_bytes()
+                            + (_REPO / "pyproject.toml").read_bytes()).hexdigest()
+    return f"localhost/trcc-review:{digest[:12]}"
+
+
+def ensure_image(workdir: Path) -> str:
+    """The sandbox image, built first if this machine lacks it -- the one
+    step with network.  Built from a folder holding only its two inputs."""
+    tag = image_tag()
+    if subprocess.run(["podman", "image", "exists", tag], check=False).returncode == 0:
+        return tag
+    context = workdir / "image"
+    context.mkdir()
+    for source in (CONTAINERFILE, _REPO / "pyproject.toml"):
+        shutil.copyfile(source, context / source.name)
+    print(f"Building {tag} -- once, with network; this takes minutes ...")
+    subprocess.run(["podman", "build", "-t", tag, "-f", "Containerfile", "."],
+                   cwd=context, check=True)
+    return tag
+
+
+def sandbox(image: str, tree: Path, *command: str) -> list[str]:
+    """The podman command that runs *command* on *tree* in *image*: no
+    network, no device, no capability, no privilege to gain; the tree
+    read-only and a throwaway /tmp and home; capped in memory, processes
+    and time."""
+    return ["podman", "run", "--rm", "--network=none", "--cap-drop=all",
+            "--security-opt=no-new-privileges", "--read-only",
+            "--tmpfs=/tmp:rw,size=1g,mode=1777",
+            "--tmpfs=/home/ubuntu:rw,size=256m,mode=1777",
+            "--memory=4g", "--pids-limit=1024", f"--timeout={STAGE_TWO_SECONDS}",
+            "--env=HOME=/home/ubuntu", "--env=PYTHONDONTWRITEBYTECODE=1",
+            f"--env=PYTHONPATH={INSIDE}/src", "--env=QT_QPA_PLATFORM=offscreen",
+            f"--volume={tree}:{INSIDE}:ro,Z", f"--workdir={INSIDE}", image, *command]
+
+
+def _contained(workdir: Path, image: str, tree: Path,
+               *command: str) -> subprocess.CompletedProcess[str]:
+    """*command* in the sandbox, started from *workdir* -- never from the
+    repo (SELinux asks about a container started there)."""
+    return subprocess.run(sandbox(image, tree, *command), cwd=workdir,
+                          capture_output=True, text=True, check=False,
+                          timeout=STAGE_TWO_SECONDS + 60)
+
+
+def proven(workdir: Path, image: str, tree: Path) -> Gate:
+    """The sandbox refuses what it must, measured inside it."""
+    gate = Gate("Sandbox")
+    result = _contained(workdir, image, tree, PYTHON, "-I", "-c", PROBE,
+                        str(Path.home()), os.environ.get("XDG_RUNTIME_DIR", "/run/user"))
+    try:
+        probes = json.loads(result.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        gate.fail("probe", f"did not run: {(result.stderr or result.stdout)[-300:]}")
+        return gate
+    for name, held in probes.items():
+        if held:
+            gate.notes.append(f"{name}: held")
+        else:
+            gate.fail(name, "NOT held inside the sandbox")
+    return gate
+
+
+def export(workdir: Path, staged: Path, key: str, tests: Path) -> Path:
+    """This checkout's HEAD with no ``.git``, the module in it as a built-in
+    is, and its tests under ``tests/module_<key>/`` -- where TRCC's own
+    ``conftest.py`` gives them its fakes and its HOME guard."""
+    tree = workdir / "export"
+    tree.mkdir()
+    archive = subprocess.run(["git", "-C", str(_REPO), "archive", "--format=tar",
+                              "HEAD"], capture_output=True, check=True).stdout
+    subprocess.run(["tar", "-x", "-C", str(tree)], input=archive, check=True)
+    shutil.copytree(staged, tree / "src" / "trcc" / "modules" / key)
+    # dev/_mock_bootstrap.py makes these on IMPORT (the smoke imports it), and
+    # git keeps none of them: present, the read-only tree still refuses any
+    # write into them.
+    for folder in (".trcc/data", ".trcc-user"):
+        (tree / "dev" / folder).mkdir(parents=True, exist_ok=True)
+    if tests.is_dir():
+        into = tree / "tests" / f"module_{key}"
+        shutil.copytree(tests, into, symlinks=True)
+        (into / "__init__.py").touch()
+    return tree
+
+
+def _log(workdir: Path, name: str, result: subprocess.CompletedProcess[str]) -> Path:
+    path = workdir / f"{name}.log"
+    path.write_text(f"exit {result.returncode}\n{result.stdout}\n{result.stderr}",
+                    encoding="utf-8")
+    return path
+
+
+def own_tests(workdir: Path, image: str, tree: Path, key: str) -> Gate:
+    """Its ``tests/`` pass, in the sandbox -- and there are some."""
+    gate = Gate("Its own tests")
+    if not (tree / "tests" / f"module_{key}").is_dir():
+        gate.fail("tests/", "no tests -- a module ships its own")
+        return gate
+    result = _contained(workdir, image, tree, PYTHON, "-m", "pytest",
+                        f"tests/module_{key}", "-q", "-n", "0", "-p", "no:cacheprovider")
+    log = _log(workdir, "own-tests", result)
+    tail = (result.stdout.strip().splitlines() or [""])[-1]
+    gate.notes.append(f"{tail}  (full output: {log})")
+    if result.returncode == 5:
+        gate.fail("tests/", "no test was collected")
+    elif result.returncode != 0:
+        gate.fail("tests/", f"failed, exit {result.returncode}")
+    return gate
+
+
+def smoke(workdir: Path, image: str, tree: Path, key: str) -> Gate:
+    """``dev/smoke_modules.py --only <key>``: every UI and a real daemon, on
+    the mock panel, in the sandbox."""
+    gate = Gate("Smoke (every UI and a daemon, on the mock)")
+    result = _contained(workdir, image, tree, PYTHON, "dev/smoke_modules.py",
+                        "--only", key)
+    log = _log(workdir, "smoke", result)
+    lines = result.stdout.splitlines()
+    gate.notes += [line.strip() for line in lines if "Summary:" in line]
+    gate.notes.append(f"full output: {log}")
+    for line in lines:
+        if "[FAIL]" in line:
+            gate.fail("smoke", line.strip().removeprefix("[FAIL]").strip())
+    if result.returncode != 0 and gate.passed:
+        gate.fail("smoke", f"exit {result.returncode}: {(result.stderr or '')[-300:]}")
+    return gate
+
+
+def stage_two(result: Review, workdir: Path) -> None:
+    """Run the module's own code in the sandbox -- once the sandbox has
+    proven itself -- and add what it found to *result*."""
+    source = workdir / "repo"
+    staged = workdir / "staged" / "trcc" / "modules" / result.key
+    image = ensure_image(workdir)
+    tree = export(workdir, staged, result.key, source / "tests")
+    sandbox_gate = proven(workdir, image, tree)
+    result.gates.append(sandbox_gate)
+    result.ran = True
+    if not sandbox_gate.passed:
+        return
+    result.gates += [own_tests(workdir, image, tree, result.key),
+                     smoke(workdir, image, tree, result.key)]
+
+
 # ── the review ────────────────────────────────────────────────────────────
 
 
@@ -518,8 +704,10 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
 
 def render(result: Review, diff_file: Path) -> str:
     """The report, as Markdown."""
+    ran = ("stages 1 and 2 -- its own code ran only in the sandbox" if result.ran
+           else "stage 1 -- none of its code was run")
     lines = [f"# Review: {result.key} {result.version}", "",
-             f"Commit `{result.commit}` -- stage 1, none of its code was run.", ""]
+             f"Commit `{result.commit}` -- {ran}.", ""]
     for gate in result.gates:
         hard = [f for f in gate.findings if f.hard]
         status = "PASS" if gate.passed else f"FAIL ({len(hard)})"
@@ -529,31 +717,60 @@ def render(result: Review, diff_file: Path) -> str:
         lines += [f"- read: {f.where}: {f.text}" for f in gate.findings if not f.hard]
         lines.append("")
     lines += [f"The {'diff' if result.since else 'file list'} to read: `{diff_file}`", ""]
-    if result.passed:
+    if not result.passed:
+        lines += ["## Verdict: NOT listable -- see each FAIL above"]
+    elif not result.ran:
         lines += ["## Verdict: stage 1 passed", "",
-                  "NOT listable yet: stage 2 (its tests and smoke_modules, run in a "
-                  "container) is not built.  When it is and passes, after your read:", "",
+                  "NOT listable yet: read this report and the diff, then run again "
+                  "with --run for stage 2 (its tests and smoke_modules, in the sandbox)."]
+    else:
+        lines += ["## Verdict: listable -- if your read agrees", "",
+                  "Both stages passed.  The decision is yours; to list it:", "",
                   "```",
                   f"sign_module_index.py add index.json --root root.json --module "
                   f"{result.key} --version {result.version} --commit {result.commit} "
                   f"--capabilities {','.join(result.capabilities)} --bundle <asset> "
                   "--url <asset url> --min-trcc <version> --author-key <pub> "
                   "--author-sig <sig>", "```"]
-    else:
-        lines += ["## Verdict: NOT listable -- see each FAIL above"]
     return "\n".join(lines) + "\n"
 
 
+def _selftest_sandbox() -> int:
+    """``--selftest-sandbox``: the probes alone, on an export of HEAD."""
+    workdir = Path(tempfile.mkdtemp(prefix="trcc-review-"))
+    image = ensure_image(workdir)
+    tree = workdir / "export"
+    tree.mkdir()
+    archive = subprocess.run(["git", "-C", str(_REPO), "archive", "--format=tar",
+                              "HEAD"], capture_output=True, check=True).stdout
+    subprocess.run(["tar", "-x", "-C", str(tree)], input=archive, check=True)
+    gate = proven(workdir, image, tree)
+    for note in gate.notes:
+        print(f"  ok    {note}")
+    for finding in gate.findings:
+        print(f"  FAIL  {finding.where}: {finding.text}")
+    return 0 if gate.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Review a module, stage 1.")
-    parser.add_argument("repo", help="the author's repository: a URL or a path")
-    parser.add_argument("--tag", required=True)
+    parser = argparse.ArgumentParser(description="Review a module submitted for the index.")
+    parser.add_argument("repo", nargs="?", help="the author's repository: a URL or a path")
+    parser.add_argument("--tag")
     parser.add_argument("--asset", help="the release bundle: a path or an https URL")
     parser.add_argument("--author-key", type=Path, help="the author's public key (PEM)")
     parser.add_argument("--author-sig", help="the author's signature, base64")
     parser.add_argument("--index", type=Path, help="the index: what was approved last")
     parser.add_argument("--out", type=Path, help="where to write the report")
+    parser.add_argument("--run", action="store_true",
+                        help="after stage 1 passes and you have read it: stage 2, "
+                             "its own code in the sandbox")
+    parser.add_argument("--selftest-sandbox", action="store_true",
+                        help="prove the sandbox refuses what it must, and stop")
     args = parser.parse_args(argv)
+    if args.selftest_sandbox:
+        return _selftest_sandbox()
+    if args.repo is None or args.tag is None:
+        parser.error("a repository and --tag are needed")
     workdir = Path(tempfile.mkdtemp(prefix="trcc-review-"))
     result = review(args.repo, args.tag, workdir,
                     read_asset(args.asset) if args.asset else None,
@@ -561,9 +778,15 @@ def main(argv: list[str] | None = None) -> int:
                     args.author_sig, args.index)
     diff_file = workdir / ("diff.patch" if result.since else "files.txt")
     diff_file.write_text(result.diff, encoding="utf-8")
-    report = render(result, diff_file)
     out = args.out or workdir / "review.md"
-    out.write_text(report, encoding="utf-8")
+    out.write_text(render(result, diff_file), encoding="utf-8")
+    if args.run and result.passed:
+        print(f"Stage 1 passed.  Read {out} and {diff_file} before its code runs.")
+        if input("Run stage 2 -- its tests and smoke, in the sandbox? [y/N] ") == "y":
+            stage_two(result, workdir)
+            out.write_text(render(result, diff_file), encoding="utf-8")
+    elif args.run:
+        print("Stage 1 failed: stage 2 does not run.")
     for gate in result.gates:
         print(f"{'PASS' if gate.passed else 'FAIL'}  {gate.name}")
     print(f"Report: {out}")
