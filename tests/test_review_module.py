@@ -235,14 +235,14 @@ def test_a_built_in_modules_key_is_refused(author: Path, tmp_path: Path) -> None
     assert [f.text for f in gate.findings if f.hard][0] == "key 'rgb' is a built-in module's"
 
 
+_NETWORK = "network -- a module fetches through host.network, from the sites it names"
+
+
 @pytest.mark.parametrize(("source", "hard", "text"), [
-    ("import socket\n", True, "imports socket: network -- TRCC has no network "
-                              "capability yet"),
-    ("from urllib.request import urlopen\n", True, "imports urllib.request: network "
-                                                   "-- TRCC has no network capability yet"),
+    ("import socket\n", True, f"imports socket: {_NETWORK}"),
+    ("from urllib.request import urlopen\n", True, f"imports urllib.request: {_NETWORK}"),
     ("import psutil\n", True, "imports psutil: not a library a module may use"),
-    ("import requests\n", True, "imports requests: network -- TRCC has no network "
-                                "capability yet"),
+    ("import requests\n", True, f"imports requests: {_NETWORK}"),
     ("import leftpad\n", True, "imports leftpad: not a library a module may use"),
     ("exec('1')\n", True, "exec() -- runs text as code"),
     ("eval('1')\n", True, "eval() -- runs text as code"),
@@ -487,6 +487,16 @@ def test_the_verdict_says_listable_only_after_both_stages(
     report = review.render(result, tmp_path / "files.txt")
     assert verdict in report
     assert ("sign_module_index.py add" in report) == (not hard and ran)
+
+
+def test_the_add_command_carries_the_sites_it_fetches_from(tmp_path: Path) -> None:
+    """They go into the signed index, so an update naming a new one is asked
+    about again."""
+    result = review.Review("weather", "3", COMMIT, [], "", "", ("network",),
+                           ("api.example.com",), ran=True)
+    report = review.render(result, tmp_path / "files.txt")
+    assert ("--capabilities network --network-hosts api.example.com --bundle"
+            in report)
 
 
 @pytest.mark.parametrize(("stage_one_passes", "answer", "asked", "ran"), [

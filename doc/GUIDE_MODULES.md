@@ -112,6 +112,7 @@ The Modules page lists a module from this file alone.
 | `guide` | a link to its section of this guide |
 | `capabilities` | what it may ask TRCC for — see below; anything else is refused |
 | `backgrounds` | the theme background refs it draws (`<prefix>/<id>`), so a theme can name the module it needs even while that module is off |
+| `network_hosts` | the internet sites it fetches from, as public hostnames (`api.open-meteo.com`) — required with the `network` capability, refused without it; never `localhost` or an IP address |
 
 ### When each hook runs
 
@@ -130,7 +131,7 @@ A module that raises in any hook is switched back off and its row says why — i
 
 ### Capabilities
 
-A module never gets the App itself. It gets a **host** that offers only what its `module.json` declares. Beside the events (`host.subscribe`, `host.publish`), each capability is one small port on the host — `host.panels`, `host.background`, `host.settings`, `host.themes`, `host.sound`, `host.gpu`, `host.files`, `host.frames`, `host.readings`, `host.hardware`, `host.password` — and reaching one its manifest does not declare is refused:
+A module never gets the App itself. It gets a **host** that offers only what its `module.json` declares. Beside the events (`host.subscribe`, `host.publish`), each capability is one small port on the host — `host.panels`, `host.background`, `host.settings`, `host.themes`, `host.sound`, `host.gpu`, `host.files`, `host.frames`, `host.readings`, `host.hardware`, `host.password`, `host.network` — and reaching one its manifest does not declare is refused:
 
 | Capability | What it lets the module do |
 |---|---|
@@ -146,6 +147,9 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `readings` | reads the computer's sensor readings |
 | `hardware` | reaches lighting chips: memory, the motherboard, OpenRGB |
 | `password` | may ask for your password, to reach hardware the system guards |
+| `network` | fetches from the internet sites its module.json names, and no others |
+
+`host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
 
 When it is switched off, TRCC takes back what it still holds: its subscriptions, its frame watchers, its background kinds, and the panels it draws, each keeping its choice. More capabilities arrive as modules need them — one at a time, each with a reason.
 

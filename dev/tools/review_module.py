@@ -79,7 +79,8 @@ _REPO = Path(__file__).resolve().parents[2]
 #: own two modules use (measured 2026-10-23).  psutil, pyusb and hid ship too
 #: but are left out -- hardware is reached through the host's port.
 ALLOWED_LIBRARIES = frozenset({"numpy", "PySide6", "fastapi", "pydantic", "typer"})
-#: Network libraries: a hard stop until a ``network`` capability exists.
+#: Network libraries: a hard stop -- a module reaches the internet only
+#: through ``host.network``, which holds it to the sites it names.
 NETWORK = frozenset({"socket", "ssl", "http", "urllib", "urllib3", "ftplib",
                      "smtplib", "poplib", "imaplib", "telnetlib", "xmlrpc",
                      "socketserver", "requests", "httpx", "aiohttp", "websockets"})
@@ -145,6 +146,7 @@ class Review:
     diff: str
     since: str
     capabilities: tuple[str, ...] = ()
+    network_hosts: tuple[str, ...] = ()
     #: Whether stage 2 -- its own code, in the sandbox -- ran.
     ran: bool = False
 
@@ -269,6 +271,8 @@ def layout(source: Path, staged: Path) -> Gate:
     else:
         gate.notes.append(f"{manifest.key} {manifest.version}: {manifest.title}; "
                           f"capabilities {', '.join(manifest.capabilities) or 'none'}")
+        if manifest.network_hosts:
+            gate.notes.append(f"fetches from: {', '.join(manifest.network_hosts)}")
     if extra := module_bundle.left_out(source):
         gate.notes.append(f"not packed (not part of a module): {', '.join(extra)}")
     for path in sorted(p for p in staged.rglob("*") if p.is_file()):
@@ -295,8 +299,8 @@ class _Scanner(ast.NodeVisitor):
         if top == "trcc":
             return                       # the boundary gate's
         if top in NETWORK:
-            self._gate.fail(self._at(node), f"imports {name}: network -- TRCC has "
-                            "no network capability yet")
+            self._gate.fail(self._at(node), f"imports {name}: network -- a module "
+                            "fetches through host.network, from the sites it names")
         elif top in READ_IMPORTS:
             self._gate.read(self._at(node), f"imports {name}: {READ_IMPORTS[top]}")
         elif top not in sys.stdlib_module_names and top not in ALLOWED_LIBRARIES:
@@ -696,10 +700,11 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
         _git("-C", str(_REPO), "worktree", "remove", "--force", str(tree.path))
     gates.append(judgement(staged, key))
     try:
-        capabilities = read_manifest(staged / "module.json").capabilities
+        manifest = read_manifest(staged / "module.json")
     except ManifestError:
-        capabilities = ()
-    return Review(key, version, commit, gates, diff, since, capabilities)
+        return Review(key, version, commit, gates, diff, since)
+    return Review(key, version, commit, gates, diff, since, manifest.capabilities,
+                  manifest.network_hosts)
 
 
 def render(result: Review, diff_file: Path) -> str:
@@ -729,7 +734,10 @@ def render(result: Review, diff_file: Path) -> str:
                   "```",
                   f"sign_module_index.py add index.json --root root.json --module "
                   f"{result.key} --version {result.version} --commit {result.commit} "
-                  f"--capabilities {','.join(result.capabilities)} --bundle <asset> "
+                  f"--capabilities {','.join(result.capabilities)} "
+                  + (f"--network-hosts {','.join(result.network_hosts)} "
+                     if result.network_hosts else "")
+                  + "--bundle <asset> "
                   "--url <asset url> --min-trcc <version> --author-key <pub> "
                   "--author-sig <sig>", "```"]
     return "\n".join(lines) + "\n"

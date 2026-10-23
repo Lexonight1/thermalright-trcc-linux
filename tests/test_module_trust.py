@@ -81,7 +81,8 @@ def _entry(keys: Keys, bundle: bytes = BUNDLE, version: str = "3",
     """What ``add`` is told about a release, signed by *author*."""
     return {"version": version, "url": "https://example.org/weather-3.zip",
             "commit": COMMIT, "min_trcc": "9.12.0",
-            "capabilities": ["events", "readings"],
+            "capabilities": ["events", "readings", "network"],
+            "network_hosts": ["api.example.com"],
             "author_key": keys.raw(author),
             "author_sig": tool.author_sign(bundle, "weather", version, keys[author][0]),
             **changes}
@@ -146,7 +147,8 @@ def test_what_the_tool_signs_the_app_installs(keys: Keys, trust: ModuleTrust,
     assert (release.key, release.version, release.size, release.sha256,
             release.capabilities, release.commit) == (
         "weather", "3", len(BUNDLE), hashlib.sha256(BUNDLE).hexdigest(),
-        ("events", "readings"), COMMIT)
+        ("events", "readings", "network"), COMMIT)
+    assert release.network_hosts == ("api.example.com",)
     assert index.version == 1
     assert index.expires == NOW + timedelta(days=90)
 
@@ -181,6 +183,8 @@ def test_a_signature_from_a_key_nobody_trusts_is_passed_over(
         url="https://evil.example/w.zip"), id="url"),
     pytest.param(lambda s: s["modules"]["weather"].update(
         capabilities=["events", "readings", "password"]), id="capabilities"),
+    pytest.param(lambda s: s["modules"]["weather"].update(
+        network_hosts=["api.example.com", "evil.example.net"]), id="network-hosts"),
     pytest.param(lambda s: s.update(version=99), id="version"),
     pytest.param(lambda s: s.update(revoked=[]), id="revoked"),
     pytest.param(lambda s: s["modules"].clear(), id="modules"),
@@ -375,6 +379,8 @@ def test_a_revoked_release_is_refused(keys: Keys, trust: ModuleTrust,
      "index.json: expires is not an ISO 8601 time"),
     (lambda s: s.update(revoked=[{"key": "weather", "reason": "x", "sha256": "z"}]),
      "index.json revoked: sha256 is not the text it should be"),
+    (lambda s: s["modules"]["weather"].update(network_hosts=["192.168.1.1"]),
+     "index.json module weather: '192.168.1.1' is not a public hostname"),
 ])
 def test_a_signed_but_malformed_index_is_refused(
         keys: Keys, trust: ModuleTrust, root_file: bytes, change: Any,

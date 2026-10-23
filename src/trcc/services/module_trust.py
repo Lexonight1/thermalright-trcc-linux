@@ -40,7 +40,14 @@ from types import MappingProxyType
 from typing import Any
 
 from ..core.errors import UntrustedModule
-from ..core.models import MODULE_KEY, ModuleIndex, ModuleRelease, Revocation, TrustRoot
+from ..core.models import (
+    MODULE_HOST,
+    MODULE_KEY,
+    ModuleIndex,
+    ModuleRelease,
+    Revocation,
+    TrustRoot,
+)
 from ..core.ports import SignatureChecker
 from ..core.trust_keys import ROOT_KEYS
 
@@ -175,7 +182,18 @@ def parse_release(key: str, entry: Any) -> ModuleRelease:
         key=key, version=f.text("version"), url=url, size=f.number("size"),
         sha256=f.text("sha256", _SHA256), min_trcc=f.text("min_trcc"),
         commit=f.text("commit", _COMMIT), capabilities=f.texts("capabilities"),
-        author_key=author_key, author_sig=f.text("author_sig"))
+        author_key=author_key, author_sig=f.text("author_sig"),
+        network_hosts=_hosts(f, key))
+
+
+def _hosts(f: _Fields, key: str) -> tuple[str, ...]:
+    """The sites module *key*'s release may fetch from -- public hostnames."""
+    hosts = f.texts("network_hosts")
+    log.debug("module_trust._hosts: %s %s", key, hosts)
+    if bad := [h for h in hosts if not MODULE_HOST.fullmatch(h)]:
+        raise UntrustedModule(f"index.json module {key}: {bad[0]!r} is not a "
+                              "public hostname")
+    return hosts
 
 
 def _revocation(entry: Any) -> Revocation:

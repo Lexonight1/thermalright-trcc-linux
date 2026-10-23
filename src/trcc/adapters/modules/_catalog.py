@@ -18,7 +18,7 @@ from typing import Any
 
 from ... import modules as module_folders
 from ...core.errors import TrccError
-from ...core.models import MODULE_CAPABILITIES, ModuleManifest
+from ...core.models import MODULE_CAPABILITIES, MODULE_HOST, ModuleManifest
 from ...core.ports import Module
 from ...services.modules import ModuleSpec
 from ._base import MODULES
@@ -30,6 +30,18 @@ MANIFEST = module_folders.MANIFEST
 
 class ManifestError(TrccError):
     """A ``module.json`` that cannot be used, and why."""
+
+
+def _names(data: dict[str, Any], field: str, path: Path, wanted: str,
+           valid: Callable[[str], object] | None = None) -> tuple[str, ...]:
+    """Manifest *field*: a list of strings, each passing *valid* when given --
+    or ``ManifestError`` saying it must be *wanted*."""
+    value = data.get(field, [])
+    log.debug("read_manifest: %s %s", field, value)
+    if not isinstance(value, list) or not all(
+            isinstance(v, str) and (valid is None or valid(v)) for v in value):
+        raise ManifestError(f"{path}: {field} must be {wanted}")
+    return tuple(value)
 
 
 def read_manifest(path: Path) -> ModuleManifest:
@@ -50,23 +62,23 @@ def read_manifest(path: Path) -> ModuleManifest:
     if not module_folders.KEY.fullmatch(data["key"]):
         raise ManifestError(f"{path}: key {data['key']!r} is not 2-31 lowercase "
                             "letters, digits or _ -- it is also a package name")
-    caps = data.get("capabilities", [])
-    if not isinstance(caps, list) or not all(isinstance(c, str) for c in caps):
-        raise ManifestError(f"{path}: capabilities must be a list of names")
+    caps = _names(data, "capabilities", path, "a list of names")
     if unknown := sorted(set(caps) - set(MODULE_CAPABILITIES)):
         raise ManifestError(f"{path}: no such capability: {', '.join(unknown)}")
-    backgrounds = data.get("backgrounds", [])
-    if not isinstance(backgrounds, list) or not all(
-            isinstance(b, str) and b for b in backgrounds):
-        raise ManifestError(f"{path}: backgrounds must be a list of ref prefixes")
+    backgrounds = _names(data, "backgrounds", path, "a list of ref prefixes", bool)
+    hosts = _names(data, "network_hosts", path, "a list of public hostnames, "
+                   "lowercase -- no localhost, no IP address", MODULE_HOST.fullmatch)
+    if bool(hosts) != ("network" in caps):
+        raise ManifestError(f"{path}: the network capability and network_hosts "
+                            "go together -- name the sites it fetches from")
     icon = data.get("icon", "")
     return ModuleManifest(
         key=data["key"], title=data["title"], summary=data["summary"],
         version=str(data.get("version", "0")),
         default_on=bool(data.get("default_on", True)),
         icon=str(path.parent / icon) if icon else "",
-        guide=str(data.get("guide", "")), capabilities=tuple(caps),
-        backgrounds=tuple(backgrounds))
+        guide=str(data.get("guide", "")), capabilities=caps,
+        backgrounds=backgrounds, network_hosts=hosts)
 
 
 def specs(root: Path | None = None) -> dict[str, ModuleSpec]:

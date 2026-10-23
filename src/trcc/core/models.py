@@ -1354,7 +1354,18 @@ MODULE_CAPABILITIES: dict[str, str] = {
     "readings": "reads the computer's sensor readings",
     "hardware": "reaches lighting chips: memory, the motherboard, OpenRGB",
     "password": "may ask for your password, to reach hardware the system guards",
+    "network": "fetches from the internet sites its module.json names, and no others",
 }
+
+#: A site a module may fetch from (``network_hosts``): a public hostname --
+#: at least one dot, its last label starting with a letter -- so never
+#: ``localhost`` and never an IP address: the LAN, the router and TRCC's own
+#: API are not on the internet a module was granted.
+MODULE_HOST = re.compile(
+    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?")
+#: The most one ``host.network.fetch`` reads, and how long it waits.
+MODULE_FETCH_MAX_BYTES = 2 << 20
+MODULE_FETCH_TIMEOUT_S = 20.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1394,6 +1405,8 @@ class ModuleManifest:
     #: The theme background refs it draws (``<prefix>/<id>``) -- known
     #: without loading it, so a theme can say which module it needs.
     backgrounds: tuple[str, ...] = ()
+    #: The sites the ``network`` capability may fetch from (``MODULE_HOST``).
+    network_hosts: tuple[str, ...] = ()
 
 
 # =========================================================================
@@ -1428,6 +1441,9 @@ class ModuleRelease:
     capabilities: tuple[str, ...]
     author_key: str
     author_sig: str
+    #: The sites it may fetch from -- in the signed index, so an update that
+    #: adds one is asked about again.
+    network_hosts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

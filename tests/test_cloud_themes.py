@@ -7,6 +7,7 @@ can pick it up from there.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -44,6 +45,7 @@ class FakeHttp(HttpFetcher):
 
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+        allow: Callable[[str], bool] | None = None,
     ) -> bytes:
         del max_bytes
         self.calls.append(url)
@@ -189,7 +191,8 @@ def test_a_second_request_for_a_theme_downloading_waits_for_that_download(
 
     class _Slow(FakeHttp):
         def fetch(self, url: str, timeout_s: float = 30.0,
-                  max_bytes: int | None = None) -> bytes:
+                  max_bytes: int | None = None,
+                  allow: Callable[[str], bool] | None = None) -> bytes:
             started.set()
             release.wait(5)
             return super().fetch(url, timeout_s, max_bytes)

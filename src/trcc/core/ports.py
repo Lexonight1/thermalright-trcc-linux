@@ -2690,6 +2690,19 @@ class HardwarePort(ABC):
         scripted twin (an OpenRGB client)."""
 
 
+class NetworkPort(ABC):
+    """The ``network`` capability: fetching from the internet sites the
+    module's manifest names (``network_hosts``) -- https, the default port,
+    every redirect held to the same rule, at most
+    ``MODULE_FETCH_MAX_BYTES``."""
+
+    @abstractmethod
+    def fetch(self, url: str) -> bytes:
+        """*url*'s body.  A site the manifest does not name is refused
+        (``ModuleUnavailable``) before anything is sent; a failed fetch, or a
+        redirect off the named sites, raises ``HttpFetchError``."""
+
+
 class PasswordPort(ABC):
     """The ``password`` capability: system access the user grants once."""
 
@@ -2782,6 +2795,11 @@ class ModuleHost(ABC):
     def password(self) -> PasswordPort:
         log.debug("ModuleHost.password")
         self._not_offered("password")
+
+    @property
+    def network(self) -> NetworkPort:
+        log.debug("ModuleHost.network")
+        self._not_offered("network")
 
 
 class ModuleServices(ABC):
@@ -2884,6 +2902,11 @@ class ModuleServices(ABC):
 
     @abstractmethod
     def memory_access(self) -> RamAccess: ...
+
+    @abstractmethod
+    def fetch(self, url: str, allow: Callable[[str], bool]) -> bytes:
+        """*url* through the App's fetcher, every hop asked of *allow*,
+        capped at ``MODULE_FETCH_MAX_BYTES`` and ``MODULE_FETCH_TIMEOUT_S``."""
 
 
 class Module(ABC):
@@ -3122,11 +3145,17 @@ class HttpFetcher(ABC):
     @abstractmethod
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+        allow: Callable[[str], bool] | None = None,
     ) -> bytes:
         """Fetch a URL's body.  Raise on non-200 status or transport error.
 
         ``max_bytes`` refuses a body longer than that WITHOUT reading the rest
         of it: a capped caller must never hold more than the cap in memory.
+
+        ``allow``, when given, is asked about every URL before it is
+        requested -- *url* and each redirect -- and one it refuses raises
+        ``HttpFetchError``: a redirect is where an allowed site sends a
+        caller somewhere it was not allowed to go.
         """
         ...
 

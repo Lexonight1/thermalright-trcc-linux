@@ -25,6 +25,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
+from urllib.parse import urlsplit
 
 from ..core.errors import ModuleUnavailable
 from ..core.models import ModuleInfo, ModuleManifest, PanelPicture, RawFrame
@@ -40,6 +41,7 @@ from ..core.ports import (
     Module,
     ModuleHost,
     ModuleServices,
+    NetworkPort,
     PanelsPort,
     PasswordPort,
     RamAccess,
@@ -259,6 +261,37 @@ class _Password(PasswordPort):
         return self._services.memory_access()
 
 
+class _Network(NetworkPort):
+    """Fetches only from the sites *manifest* names: https, the default
+    port, no user in the URL -- asked again of every redirect."""
+
+    def __init__(self, services: ModuleServices, manifest: ModuleManifest) -> None:
+        log.debug("_Network.__init__: %s %s", manifest.key, manifest.network_hosts)
+        self._services, self._manifest = services, manifest
+        self._hosts = frozenset(manifest.network_hosts)
+
+    def allowed(self, url: str) -> bool:
+        """Whether *url* is on a site this module may fetch from."""
+        try:
+            parts = urlsplit(url)
+            port = parts.port
+        except ValueError:
+            log.debug("_Network.allowed: %s -> not a URL", url)
+            return False
+        ok = (parts.scheme == "https" and parts.hostname in self._hosts
+              and port in (None, 443) and parts.username is None)
+        log.debug("_Network.allowed: %s -> %s", url, ok)
+        return ok
+
+    def fetch(self, url: str) -> bytes:
+        log.info("_Network.fetch: %s %s", self._manifest.key, url)
+        if not self.allowed(url):
+            raise ModuleUnavailable(
+                f"{self._manifest.title} asked for {url} -- not https on a site "
+                "its module.json names")
+        return self._services.fetch(url, self.allowed)
+
+
 class ModuleScope(ModuleHost):
     """One module's view of the App: only the capabilities its manifest
     declares, with its own key bound in -- and everything it still holds is
@@ -285,6 +318,7 @@ class ModuleScope(ModuleHost):
             "readings": _Readings(services),
             "hardware": _Hardware(services),
             "password": _Password(services),
+            "network": _Network(services, manifest),
         }
 
     def publish(self, event: Any) -> None:
@@ -358,6 +392,11 @@ class ModuleScope(ModuleHost):
     def password(self) -> PasswordPort:
         log.debug("ModuleScope.password")
         return self._port("password")
+
+    @property
+    def network(self) -> NetworkPort:
+        log.debug("ModuleScope.network")
+        return self._port("network")
 
     def _watch(self, handler: Callable[[PanelPicture], None]) -> None:
         """A frame watcher the module holds -- taken back on switch-off."""

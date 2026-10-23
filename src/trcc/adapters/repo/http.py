@@ -1,6 +1,7 @@
 """``HttpFetcher`` implementation backed by ``urllib.request``.
 
-Single GET, no redirects beyond what urllib does by default, no keep-alive
+Single GET, no redirects beyond what urllib does by default -- each one
+asked of the caller's ``allow`` when it passes one -- no keep-alive
 — this adapter intentionally stays small.  Anything fancier (parallel
 downloads, retries, progress callbacks) is the caller's concern so the
 port stays trivial to mock.
@@ -9,8 +10,10 @@ from __future__ import annotations
 
 import logging
 import ssl
+from collections.abc import Callable
+from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from ...core.errors import HttpFetchError
 from ...core.ports import HttpFetcher
@@ -27,6 +30,7 @@ class OfflineHttpFetcher(HttpFetcher):
 
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+        allow: Callable[[str], bool] | None = None,
     ) -> bytes:
         log.warning("OfflineHttpFetcher: refused GET %s (offline run)", url)
         raise HttpFetchError(f"offline: {url} was not fetched")
@@ -54,6 +58,25 @@ def _default_context() -> ssl.SSLContext:
     return ctx
 
 
+class _CheckedRedirects(HTTPRedirectHandler):
+    """urllib's redirects, each asked of *allow* before it is followed."""
+
+    def __init__(self, allow: Callable[[str], bool]) -> None:
+        log.debug("_CheckedRedirects.__init__")
+        self._allow = allow
+
+    def redirect_request(self, req: Request, fp: Any, code: int, msg: str,
+                         headers: Any, newurl: str) -> Request | None:
+        if not self._allow(newurl):
+            log.warning("HTTP GET %s → redirect %d to %s refused", req.full_url,
+                        code, newurl)
+            fp.close()
+            raise HttpFetchError(f"GET {req.full_url} redirected to {newurl}, "
+                                 "which is not allowed")
+        log.info("HTTP GET %s → redirect %d to %s", req.full_url, code, newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class UrllibHttpFetcher(HttpFetcher):
     """Minimal stdlib HTTP GET."""
 
@@ -66,12 +89,19 @@ class UrllibHttpFetcher(HttpFetcher):
 
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+        allow: Callable[[str], bool] | None = None,
     ) -> bytes:
-        log.info("HTTP GET %s (timeout=%.1fs, max_bytes=%s)",
-                 url, timeout_s, max_bytes)
+        log.info("HTTP GET %s (timeout=%.1fs, max_bytes=%s, checked=%s)",
+                 url, timeout_s, max_bytes, allow is not None)
+        if allow is not None and not allow(url):
+            log.warning("HTTP GET %s refused before sending", url)
+            raise HttpFetchError(f"GET {url} is not allowed")
         req = Request(url, headers={"User-Agent": self._USER_AGENT})
+        handlers: list[Any] = [HTTPSHandler(context=self._ctx)]
+        if allow is not None:
+            handlers.append(_CheckedRedirects(allow))
         try:
-            with urlopen(req, timeout=timeout_s, context=self._ctx) as resp:
+            with build_opener(*handlers).open(req, timeout=timeout_s) as resp:
                 status = getattr(resp, "status", 200)
                 if status != 200:
                     log.warning("HTTP GET %s → status %s", url, status)

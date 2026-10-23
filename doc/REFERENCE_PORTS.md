@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-81 ports.
+82 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -18,6 +18,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`ModuleCommand`](#modulecommand) | 1 | 1 | 17 |
 | [`ModuleQuery`](#modulequery) | 1 | 0 | 5 |
+| [`NetworkPort`](#networkport) | 1 | 0 | 1 |
 | [`PasswordPort`](#passwordport) | 1 | 0 | 1 |
 | [`Query`](#query) | 1 | 0 | 47 |
 | [`ReadingsPort`](#readingsport) | 1 | 0 | 1 |
@@ -55,7 +56,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
-| [`ModuleHost`](#modulehost) | 3 | 11 | 1 |
+| [`ModuleHost`](#modulehost) | 3 | 12 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 3 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
@@ -89,7 +90,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 8 | 8 |
-| [`ModuleServices`](#moduleservices) | 30 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 31 | 0 | 1 |
 | [`ContentStore`](#contentstore) | 32 | 0 | 1 |
 
 ---
@@ -165,7 +166,7 @@ Tiny port for "fetch bytes from URL" used by cloud-theme adapters.
 **You implement (1):**
 
 ```python
-fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None) -> bytes
+fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None, allow: 'Callable[[str], bool] | None' = None) -> bytes
 ```
 
 **Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`
@@ -213,6 +214,20 @@ run(module: 'M') -> R_co
 ```
 
 **Implementations (5):** `ListVisuals` · `RamLighting` · `RgbFollow` · `RgbLights` · `VisualTile`
+
+## NetworkPort
+
+`core/ports.py`
+
+The ``network`` capability: fetching from the internet sites the module's manifest names (``network_hosts``) -- https, the default port, every redirect held to the same rule, at most ``MODULE_FETCH_MAX_BYTES``.
+
+**You implement (1):**
+
+```python
+fetch(url: 'str') -> bytes
+```
+
+**Implementations (1):** `_Network`
 
 ## PasswordPort
 
@@ -818,7 +833,7 @@ subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 ```
 
-**You inherit (11):** `background` · `files` · `frames` · `gpu` · `hardware` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
+**You inherit (12):** `background` · `files` · `frames` · `gpu` · `hardware` · `network` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
 
 **Implementations (1):** `ModuleScope`
 
@@ -1468,13 +1483,14 @@ worker_thread_context() -> AbstractContextManager[None]
 
 The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
 
-**You implement (30):**
+**You implement (31):**
 
 ```python
 add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
 data_root() -> Path
 encode_png(frame: 'RawFrame') -> bytes
 end_source(key: 'str', keep_choice: 'bool' = False) -> None
+fetch(url: 'str', allow: 'Callable[[str], bool]') -> bytes
 gl_surface() -> type[GlSurface] | None
 hardware_ids() -> RgbHardware
 latest_readings() -> Mapping[str, float] | None

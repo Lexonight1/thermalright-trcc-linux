@@ -4,6 +4,8 @@ loop service + Command.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from trcc.adapters.repo.github_releases import GitHubReleases
@@ -58,6 +60,7 @@ class _FakeHttp(HttpFetcher):
 
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+        allow: Callable[[str], bool] | None = None,
     ) -> bytes:
         del timeout_s, max_bytes
         self.calls.append(url)

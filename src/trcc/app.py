@@ -53,6 +53,8 @@ from .core.led_models import LedRuntimeState
 from .core.libraries import DeviceLibraries
 from .core.logs import current_origin, per_frame, recurring_warning, sink_for
 from .core.models import (
+    MODULE_FETCH_MAX_BYTES,
+    MODULE_FETCH_TIMEOUT_S,
     Capability,
     DeviceInfo,
     DeviceQuirks,
@@ -1088,6 +1090,13 @@ class App(CommandBus, ModuleServices):
     def memory_access(self) -> RamAccess:
         log.debug("memory_access")
         return self.platform.ram_access()
+
+    def fetch(self, url: str, allow: Callable[[str], bool]) -> bytes:
+        """A module's ``host.network.fetch``: the App's fetcher, every hop
+        asked of *allow*, at most ``MODULE_FETCH_MAX_BYTES``."""
+        log.info("App.fetch: %s", url)
+        return self.http.fetch(url, timeout_s=MODULE_FETCH_TIMEOUT_S,
+                               max_bytes=MODULE_FETCH_MAX_BYTES, allow=allow)
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

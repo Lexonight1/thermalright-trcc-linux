@@ -164,7 +164,8 @@ def reissue(signed: dict[str, Any], root: TrustRoot, days: int, now: datetime,
 def add(signed: dict[str, Any], module: str, bundle: bytes,
         entry: dict[str, Any], trust: ModuleTrust) -> dict[str, Any]:
     """*signed* listing *bundle* as *module*'s release, described by *entry*
-    (version, url, commit, min_trcc, capabilities, author_key, author_sig).
+    (version, url, commit, min_trcc, capabilities, network_hosts, author_key,
+    author_sig).
     Refused unless its author signed it -- with the key its listed release
     carries, when it has one: the verifier's own checks, not a copy."""
     entry = {**entry, "size": len(bundle),
@@ -220,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
                 p.add_argument(flag, required=True)
             p.add_argument("--bundle", type=Path, required=True)
             p.add_argument("--capabilities", default="")
+            p.add_argument("--network-hosts", default="",
+                           help="the sites it fetches from, comma-separated")
             p.add_argument("--author-key", type=Path, required=True)
         elif name == "revoke":
             p.add_argument("--module", required=True)
@@ -250,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
                         "version": args.version, "url": args.url, "commit": args.commit,
                         "min_trcc": args.min_trcc,
                         "capabilities": [c for c in args.capabilities.split(",") if c],
+                        "network_hosts": [h for h in args.network_hosts.split(",") if h],
                         "author_key": public_key(args.author_key),
                         "author_sig": args.author_sig}, trust)
                 elif args.action == "revoke":

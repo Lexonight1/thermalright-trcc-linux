@@ -10,6 +10,7 @@ call it directly.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -75,7 +76,7 @@ def test_http_data_installer_implements_the_core_data_installer_port() -> None:
     from trcc.core.ports import DataInstaller
 
     class _FakeHttp(HttpFetcher):
-        def fetch(self, url, timeout_s=30.0, max_bytes=None):
+        def fetch(self, url, timeout_s=30.0, max_bytes=None, allow=None):
             return b""
 
     assert issubclass(HttpDataInstaller, DataInstaller)
@@ -254,6 +255,7 @@ def test_every_reachable_resolution_has_both_shipped_catalogs() -> None:
 class _Fetches(HttpFetcher):
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
+        allow: Callable[[str], bool] | None = None,
     ) -> bytes:
         return b"ARCHIVE"
 
