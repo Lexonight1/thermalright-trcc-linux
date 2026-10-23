@@ -245,11 +245,22 @@ class LCDHandler(BaseHandler):
         """
         self.log.info("apply_device_config: %s %dx%d", key, w, h)
         self._pm.ui_active = True
+        self._configured(key)
+        self._refresh(w, h)
+
+    def prepare(self, key: str, w: int, h: int) -> None:
+        """Set up a panel the window does not show: configured, writing none
+        of the shared widgets -- picking it (``reactivate``) fills them."""
+        self.log.info("prepare: %s %dx%d (off screen)", key, w, h)
+        self._configured(key)
+        self._pm.set_canvas(w, h)
+
+    def _configured(self, key: str) -> None:
+        """Mark it set up, its logs tagged with its key."""
         self._pm.configured = True
-        # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{key}")
         self.frame_log = per_frame(f"{__name__}.{key}")
-        self._refresh(w, h)
+        self.log.debug("_configured: %s", key)
 
     def reactivate(self, w: int, h: int) -> None:
         """Return to known device — device already configured from connect()."""
@@ -1268,14 +1279,9 @@ class LCDHandler(BaseHandler):
             if web_dir:
                 self._w['theme_web'].set_web_directory(web_dir)
             self._w['theme_web'].set_resolution(f'{bw}x{bh}')
-            # Key and resolution BEFORE the directory, because
-            # ``set_mask_directory`` is the call that triggers the refresh and
-            # ``ListMasks`` needs both to resolve the per-SKU library.  The old
-            # order worked only because the panel read its user-mask dir from
-            # whatever resolution it happened to be holding.
-            self._w['theme_mask'].set_device_key(self._device_key)
-            for page in self._w.get('module_pages', {}).values():
-                page.set_device_key(self._device_key)
+            # Resolution BEFORE the directory, because ``set_mask_directory``
+            # is the call that triggers the refresh and ``ListMasks`` needs it.
+            # The key the panel follows itself (the window's LCD selection).
             self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
             if masks_dir:
                 self._w['theme_mask'].set_mask_directory(masks_dir)
@@ -1326,5 +1332,7 @@ class LCDHandler(BaseHandler):
         Only the gate drops (``_pm.ui_active``).  The panel keeps playing
         because the App's VideoLoop drives it, not this window.
         """
+        self.log.info("set_inactive: %s gives up the shared widgets",
+                      self._device_key)
         self._pm.ui_active = False
 

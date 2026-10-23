@@ -146,10 +146,14 @@ class UCThemeMask(DownloadableThemeBrowser):
         ``ListMasks`` resolves the per-SKU cloud library from this key, so a
         cooler with its own artwork sees its own masks.  Without it the panel
         could only name a resolution, and two coolers sharing a panel size would
-        show each other's libraries.
+        show each other's libraries.  A new key re-lists them: two panels of
+        one size share the folder, so nothing else would.
         """
-        log.debug("set_device_key: %s", key)
+        log.debug("set_device_key: %s -> %s", self._device_key, key)
+        changed = key != self._device_key
         self._device_key = key
+        if changed and self.mask_directory is not None:
+            self.refresh_masks()
 
     def set_resolution(self, resolution: str):
         """Set resolution for cloud downloads."""

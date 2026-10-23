@@ -1,4 +1,11 @@
-"""DeviceSelection — the ONE device a window is working on.
+"""DeviceSelection — the ONE device a window is working on, for both windows.
+
+A current value with a change signal: a part built late reads :attr:`key`
+when it is built and follows :attr:`changed` after, so it cannot miss the
+moment the device was chosen.  A value pushed at chosen moments can be missed,
+and in the gui it was (2026-10-22): a module tab added while the Modules page
+showed never learned the panel, and the cache that skipped the push on the way
+back left it dropping every click.
 
 **Why this exists.**  qtgui gave every panel its own
 :class:`~trcc.ui.qtgui.device_picker.DevicePickerWidget` — ten of them — and
@@ -13,13 +20,13 @@ defaults to index 0 and they agree by accident.
 **Why it is view state and not a Setting.**  Which device a *window* is
 currently editing is not app state — it is not persisted, it is not shared
 with the CLI, and a second window would legitimately want its own.  ``ui/gui``
-models it the same way, as ``TRCCApp._active_key``; there is deliberately no
+holds one for its LCDs (``TRCCApp``); there is deliberately no
 ``selected_device`` anywhere in ``Settings`` or the Command surface.
 
 **Why one per KIND.**  An LCD workspace and an LED workspace are different
 contexts — ``ui/gui`` makes them different top-level views — so selecting an
-LCD must not blank the LED panel.  MainWindow owns one of these per kind and
-hands each panel the one matching its filter.
+LCD must not blank the LED panel.  qtgui's MainWindow owns one of these per
+kind and hands each panel the one matching its filter.
 """
 from __future__ import annotations
 

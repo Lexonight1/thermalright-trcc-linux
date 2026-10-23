@@ -37,7 +37,7 @@ from .base import TicksWhileShown
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
-    from .device_selection import DeviceSelection
+    from ..device_selection import DeviceSelection
 
 log = logging.getLogger(__name__)
 #: Fires once per frame the device sends — TRACE rung, never the -v rung.

@@ -314,6 +314,29 @@ def test_the_api_loads_a_module_theme(app: App, tmp_path: Path) -> None:
     assert loaded.status_code == 200, loaded.text
 
 
+def test_switched_on_mid_session_its_tab_plays_on_the_panel(
+        qtbot: Any, app: App) -> None:
+    """His find on real glass (2026-10-22): the visualizer switched on from
+    the Modules page -- no panel active there -- then back to the panel, a
+    tile clicked: "no panel to play on -- dropped".  The tab was added
+    without the panel, and coming back to the same panel never told it.
+    MUTATION CHECK: drop the module-page call from ``_activate_device``."""
+    from trcc.modules.visualizer.ui.presentation.visual_gallery import VisualItem
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    _switch(app, False)
+    window = TRCCApp(app=app)
+    qtbot.addWidget(window)
+    window.replay_initial_devices()
+    window._show_view("modules")
+    _switch(app, True)
+    qtbot.waitUntil(lambda: "visualizer" in window._module_pages, timeout=3000)
+    window._activate_device(_KEY)
+    page: Any = window._module_pages["visualizer"]
+    page._on_play(VisualItem(visual="trcc-pipes", preset="", name="Pipes"))
+    assert _choice(app)[0] == "visualizer"
+
+
 def test_a_switch_re_lists_the_themes_in_every_window(qtbot: Any, app: App) -> None:
     """MUTATION CHECK: drop ModuleChanged -> themes_changed in the bridge."""
     from trcc.ui.bus_bridge import BusBridge

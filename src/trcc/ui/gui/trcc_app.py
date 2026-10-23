@@ -80,6 +80,7 @@ from ...core.models import (
 )
 from ...core.results import ControlCenterSnapshotResult, LanguageEntry
 from ..bus_bridge import BusBridge, DeviceSettingsEvent
+from ..device_selection import DeviceSelection
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
 from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
@@ -234,6 +235,7 @@ class TRCCApp(QMainWindow):
         # Per-device handlers keyed by ``device.info.key`` ("vid:pid")
         self._handlers: dict[str, BaseHandler] = {}
         self._active_key = ''         # vid:pid of currently active device
+        self._lcd_selection = DeviceSelection(self)   # the LCD picked; kept by full-window views
         # The device the view was taken from when it went away -- shown again
         # when it comes back, unless the user picked another one meanwhile.
         self._view_lost_from = ''
@@ -755,9 +757,8 @@ class TRCCApp(QMainWindow):
         Used for non-target devices at startup AND for late (hotplug) connects,
         so EVERY connected cooler renders its content — matching real hardware
         where every screen shows at once.  No-op for non-LCD or already-
-        configured handlers.  ``set_inactive`` keeps a background one rendering
-        to the wire but drops ``_ui_active`` so it never fights the active
-        device for the shared preview widgets.  The one on screen was set
+        configured handlers.  One off screen is only prepared: it writes none
+        of the shared widgets until it is picked.  The one on screen was set
         inactive too until 2026-10-21: a window opened before the App connected
         the panel then dropped every preview frame -- a still preview.
         """
@@ -771,12 +772,22 @@ class TRCCApp(QMainWindow):
         if (w, h) == (0, 0):
             return
         log.info("_configure_lcd: %s %dx%d on_screen=%s", key, w, h, on_screen)
+        self._configure(handler, key, w, h, on_screen=on_screen)
+
+    def _configure(self, handler: LCDHandler, key: str, w: int, h: int, *,
+                   on_screen: bool) -> None:
+        """First setup of an LCD's handler.  On screen it takes the shared
+        widgets, as ``_activate_device``'s first config; off screen it is only
+        prepared -- writing them then left that panel's mask library, device
+        line and brightness on screen while another panel showed (two panels
+        of one size, 2026-10-22)."""
+        log.debug("_configure: %s on_screen=%s", key, on_screen)
+        if not on_screen:
+            handler.prepare(key, w, h)
+            return
         handler.apply_device_config(key, w, h)
-        if on_screen:                   # as _activate_device's first config
-            self._show_brightness()
-            self._show_cast()
-        else:
-            handler.set_inactive()
+        self._show_brightness()
+        self._show_cast()
 
     # ── Handler lifecycle ───────────────────────────────────────────
 
@@ -820,7 +831,6 @@ class TRCCApp(QMainWindow):
             'theme_local': self.uc_theme_local,
             'theme_web': self.uc_theme_web,
             'theme_mask': self.uc_theme_mask,
-            'module_pages': self._module_pages,
             'image_cut': self.uc_image_cut,
             'video_cut': self.uc_video_cut,
             'rotation_combo': self.rotation_combo,
@@ -841,6 +851,8 @@ class TRCCApp(QMainWindow):
         handler.cleanup()
         log.info("%s handler removed: %s", type(handler).__name__, key)
 
+        if self._lcd_selection.key == key:      # gone, or re-keyed (#287)
+            self._lcd_selection.set_key('')
         if self._active_key == key:
             self._active_key = ''
             self._view_lost_from = key
@@ -909,6 +921,7 @@ class TRCCApp(QMainWindow):
 
         state = self._app.dispatch(DeviceState(key=key))
         if isinstance(handler, LCDHandler):
+            self._lcd_selection.set_key(key)
             if state.ok and state.connected:
                 if state.resolution is not None:
                     w, h = state.resolution
@@ -1069,6 +1082,8 @@ class TRCCApp(QMainWindow):
         self.panel_stack.addWidget(self.uc_theme_setting)
 
         self.uc_theme_mask = UCThemeMask(app=self._app)
+        self.uc_theme_mask.set_device_key(self._lcd_selection.key)
+        self._lcd_selection.changed.connect(self.uc_theme_mask.set_device_key)
         self._set_panel_bg(self.uc_theme_mask, Assets.THEME_MASK_BG)
         self.panel_stack.addWidget(self.uc_theme_mask)
 
@@ -1290,8 +1305,8 @@ class TRCCApp(QMainWindow):
         self._module_tabs[key] = button
         self._module_pages[key] = widget
         page.set_language(lang)
-        if self._active_key:
-            page.set_device_key(self._active_key)
+        page.set_device_key(self._lcd_selection.key)
+        self._lcd_selection.changed.connect(page.set_device_key)
         log.info("_add_module_page: %s at panel %d, tab at %s", key, index, (x, y))
 
     def _set_panel_bg(self, widget: QWidget, asset_name: str) -> None:
@@ -1845,10 +1860,8 @@ class TRCCApp(QMainWindow):
         if isinstance(handler, LCDHandler):
             log.debug("_on_handshake_done: handler is_configured=%r", handler.is_configured)
             if not handler.is_configured:
-                handler.apply_device_config(key, w, h)
-                self._show_brightness()
-                if key == self._active_key:
-                    self._show_cast()
+                self._configure(handler, key, w, h,
+                                on_screen=key == self._active_key)
             else:
                 log.debug("_on_handshake_done: skipping apply_device_config — already initialized")
 

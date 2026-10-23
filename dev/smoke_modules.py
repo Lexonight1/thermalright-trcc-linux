@@ -287,6 +287,47 @@ class ModuleSmoke:
             window.close()
             window.deleteLater()
 
+    def gui_on_late(self) -> str:
+        """His flow on real glass (2026-10-22): the module OFF when the
+        window opens, switched on from the Modules page, then back to the
+        panel -- its page must be told that panel, or it drops every click.
+        A page built at start-up cannot meet this, which is why ``gui``
+        never could."""
+        from _mock_bootstrap import select_device
+
+        from trcc.ui._module_faces import contribution
+        from trcc.ui.gui.trcc_app import TRCCApp
+
+        page_class = contribution(self.key, "gui", "PAGE", optional=True)
+        if page_class is None:
+            return "adds no gui tab"
+        told: list[str] = []
+        real = page_class.set_device_key
+
+        def telling(page: Any, key: str) -> None:
+            told.append(key)
+            real(page, key)
+
+        page_class.set_device_key = telling
+        self.switch(False)
+        window = TRCCApp(app=self.app)
+        try:
+            window.replay_initial_devices()
+            panel = window._lcd_selection.key
+            assert panel, "no LCD selected after start-up"
+            window._show_view("modules")
+            self.switch(True)
+            window._sync_modules()
+            select_device(window, panel)             # the sidebar click
+            assert told[-1:] == [panel], f"its page was told {told}, not {panel}"
+            return f"on from Modules, back to {panel}: its page has the panel"
+        finally:
+            page_class.set_device_key = real
+            if self.key not in self.app.modules.on:
+                self.switch(True)
+            window.close()
+            window.deleteLater()
+
     def qtgui(self) -> str:
         from trcc.ui.qtgui.app import MainWindow
 
@@ -519,6 +560,7 @@ def main(argv: list[str] | None = None) -> int:
             section.run("api", smoke.api)
             if windows:
                 section.run("gui", smoke.gui)
+                section.run("gui, on from Modules", smoke.gui_on_late)
                 section.run("qtgui", smoke.qtgui)
                 qapp.processEvents()
             else:

@@ -295,6 +295,58 @@ def _two_panels(tmp_path: Path, qtbot: Any) -> Any:
     return win
 
 
+def test_the_shared_widgets_show_the_panel_picked_from_start_on(
+    tmp_path: Path, qtbot: Any,
+) -> None:
+    """Two panels of one size share theme folders, so nothing about the
+    folders tells them apart.  Measured 2026-10-22: from start-up, and on
+    every return to the first panel, its mask tab and device line showed the
+    OTHER panel -- set up off screen, the second panel wrote the shared
+    widgets, and the folder cache then skipped re-writing them.
+    MUTATION CHECK: configure off screen with ``apply_device_config``, or
+    stop the mask tab following the window's LCD selection."""
+    from trcc.core.commands import ListMasks
+
+    win = _two_panels(tmp_path, qtbot)
+    visuals = win._module_pages["visualizer"]
+    asked: list[str] = []            # whose masks the tab asks the App for
+    dispatch = win.uc_theme_mask._app.dispatch
+
+    def spy(cmd: Any) -> Any:
+        if isinstance(cmd, ListMasks):
+            asked.append(cmd.key)
+        return dispatch(cmd)
+
+    win.uc_theme_mask._app = SimpleNamespace(dispatch=spy)
+
+    def shown() -> tuple[str, str, bool]:
+        return (win.uc_theme_mask._device_key, visuals._key,
+                win._active_key in win.device_info_label.text())
+
+    assert shown() == (_KEY, _KEY, True)
+    for key in (_OTHER_KEY, _KEY, _OTHER_KEY):
+        win._activate_device(key)
+        assert shown() == (key, key, True), key
+        assert asked[-1:] == [key], key
+    win.close()
+
+
+def test_a_panel_unplugged_is_let_go_of(tmp_path: Path, qtbot: Any) -> None:
+    """The selected panel leaves -- unplugged, or re-keyed when a twin
+    arrives (#287): every part follows the panel left, and with none left
+    holds no key a click would send to.
+    MUTATION CHECK: drop the selection's clear from ``_remove_handler``."""
+    win = _two_panels(tmp_path, qtbot)
+    visuals = win._module_pages["visualizer"]
+    win._remove_handler(_KEY)
+    assert (win._lcd_selection.key, visuals._key) == (_OTHER_KEY, _OTHER_KEY)
+    win._show_view("modules")              # no panel view: nothing re-picks
+    win._remove_handler(_OTHER_KEY)
+    assert (win._lcd_selection.key, visuals._key,
+            win.uc_theme_mask._device_key) == ("", "", "")
+    win.close()
+
+
 def test_a_change_to_the_panel_not_shown_leaves_the_shared_widgets_alone(
     tmp_path: Path, qtbot: Any,
 ) -> None:

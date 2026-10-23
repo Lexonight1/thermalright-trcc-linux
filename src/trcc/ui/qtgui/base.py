@@ -30,8 +30,8 @@ from PySide6.QtGui import QHideEvent, QShowEvent
 from PySide6.QtWidgets import QFrame, QWidget
 
 from ...core.results import Result
+from ..device_selection import DeviceSelection
 from ..qt_periodic import PeriodicUpdater
-from .device_selection import DeviceSelection
 
 if TYPE_CHECKING:
     from ...core.commands import Command

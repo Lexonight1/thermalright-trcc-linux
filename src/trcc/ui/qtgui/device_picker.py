@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import DiscoverDevices, ListDevices
-from .device_selection import DeviceSelection
+from ..device_selection import DeviceSelection
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus

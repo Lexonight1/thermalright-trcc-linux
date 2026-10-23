@@ -18,9 +18,9 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QLabel, QListWidget
 
 from ....core.commands import DeviceCanvas
+from ...device_selection import DeviceSelection
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
-from ..device_selection import DeviceSelection
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget

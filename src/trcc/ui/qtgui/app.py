@@ -51,10 +51,10 @@ from ...core.events import (
     ModuleChanged,
 )
 from ..bus_bridge import BusBridge
+from ..device_selection import DeviceSelection
 from ..qt_file_drop import FileDropTarget
 from ..qt_tray import TrayController
 from ..viewfinder import ViewfinderFleet
-from .device_selection import DeviceSelection
 from .panels import (
     AboutPanel,
     ActivitySidebar,

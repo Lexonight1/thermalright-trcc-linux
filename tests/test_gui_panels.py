@@ -1148,7 +1148,7 @@ def test_preview_surface_unknown_key_shows_placeholder(gui_app: App) -> None:
     the state read-out.  The behaviour is unchanged and still worth holding —
     a silent black rectangle is the one outcome that tells the user nothing.
     """
-    from trcc.ui.qtgui.device_selection import DeviceSelection
+    from trcc.ui.device_selection import DeviceSelection
     from trcc.ui.qtgui.preview_surface import PreviewSurface
 
     selection = DeviceSelection()
@@ -4131,8 +4131,8 @@ def test_the_preview_wears_the_panel_s_bezel(qapp: object, tmp_path: Path) -> No
     reachable the whole time.
     """
     del qapp
+    from trcc.ui.device_selection import DeviceSelection
     from trcc.ui.presentation.lcd_panel import lcd_panel_for
-    from trcc.ui.qtgui.device_selection import DeviceSelection
     from trcc.ui.qtgui.preview_surface import FRAME_EDGE, PreviewSurface
 
     app = _two_device_app(tmp_path)
@@ -4530,7 +4530,7 @@ def test_qtgui_shows_the_sent_frame_without_rendering_another(gui_app: App) -> N
 
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.events import FrameSent
-    from trcc.ui.qtgui.device_selection import DeviceSelection
+    from trcc.ui.device_selection import DeviceSelection
     from trcc.ui.qtgui.preview_surface import PreviewSurface
 
     selection = DeviceSelection()
