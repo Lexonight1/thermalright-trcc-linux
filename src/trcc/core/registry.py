@@ -111,10 +111,12 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         orientations=(0, 90, 180, 270),
     ),
 
-    # --- HID LCD Type 3 ("ALi" variant, F5 prefix) ---------------------
+    # --- HID LCD Type 3 (F5 prefix) -----------------------------------
+    # 0418 is "AST Research" in usb.ids (2026.06.26) -- what lsusb shows --
+    # not ALi (0402); the label was carried over wrong until 2026-10-22.
     (0x0418, 0x5303): ProductInfo(
         vid=0x0418, pid=0x5303,
-        vendor="ALi Corp",
+        vendor="AST Research",
         product="LCD Display",
         wire=Wire.HID, kind=Kind.LCD,
         device_type=3, fbl=100,
@@ -123,7 +125,7 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
     ),
     (0x0418, 0x5304): ProductInfo(
         vid=0x0418, pid=0x5304,
-        vendor="ALi Corp",
+        vendor="AST Research",
         product="LCD Display",
         wire=Wire.HID, kind=Kind.LCD,
         device_type=3, fbl=100,

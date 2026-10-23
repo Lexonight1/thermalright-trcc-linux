@@ -9,8 +9,8 @@ Run `lsusb` and look for your VID:PID:
 | VID:PID | lsusb shows | Protocol | Known Products |
 |---------|-------------|----------|----------------|
 | `0416:5302` | Winbond Electronics Corp. USBDISPLAY | HID Type 2 (LCD) | Trofeo Vision, AS120 VISION, BA120 VISION, FROZEN WARFRAME PRO |
-| `0418:5303` | ALi Corp. LCD Display | HID Type 3 (LCD) | TARAN ARMS |
-| `0418:5304` | ALi Corp. LCD Display | HID Type 3 (LCD) | TARAN ARMS |
+| `0418:5303` | AST Research LCD Display | HID Type 3 (LCD) | TARAN ARMS |
+| `0418:5304` | AST Research LCD Display | HID Type 3 (LCD) | TARAN ARMS |
 | `0416:8001` | Winbond Electronics Corp. LED Controller | HID LED (RGB) | AX120 DIGITAL, PA120 DIGITAL, HR10 2280 PRO DIGITAL, Phantom Spirit 120 Digital EVO, Assassin X 120R Digital ARGB, Peerless Assassin 120 Digital ARGB White |
 | `0416:5408` | Winbond Electronics Corp. USBDISPLAY | LY Bulk (LCD) | Trofeo Vision 9.16 LCD |
 | `0416:5409` | Winbond Electronics Corp. USBDISPLAY | LY1 Bulk (LCD) | |
