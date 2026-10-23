@@ -25,6 +25,7 @@ import module_bundle
 import new_module
 import sign_module_index as tool
 
+from trcc import ipc
 from trcc import modules as module_folders
 from trcc.adapters.modules import (
     BundleRefused,
@@ -374,6 +375,9 @@ def test_a_removal_deletes_it_and_forgets_it(cli_app: App, shop: Shop,
     assert KEY not in cli_app.modules
     assert cli_app.settings.module_install(KEY) is None
     assert not any(name.startswith(f"trcc.modules.{KEY}") for name in sys.modules)
+    # Nothing of it left on the wire either -- CI met a removed module's
+    # Command still registered, in a later test in the same process.
+    assert "GreeterSay" not in ipc.COMMAND_TYPES
     assert heard[-2:] == [ModuleChanged(key=KEY, enabled=False), ModuleRemoved(key=KEY)]
 
 

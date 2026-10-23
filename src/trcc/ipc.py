@@ -298,6 +298,18 @@ def register_types(namespace: Any) -> None:
     _register(EVENT_TYPES, Event, namespace)
 
 
+def forget_types(package: str) -> None:
+    """Drop every Command, Result and event that *package* (``trcc.modules.
+    <key>``) registered -- a module removed, or about to be imported afresh,
+    leaves nothing the wire would still decode."""
+    gone = [(table, name) for table in (COMMAND_TYPES, RESULT_TYPES, EVENT_TYPES)
+            for name, cls in table.items()
+            if cls.__module__ == package or cls.__module__.startswith(f"{package}.")]
+    for table, name in gone:
+        del table[name]
+    log.info("forget_types: %s -- %d type(s) dropped", package, len(gone))
+
+
 _T = typing.TypeVar("_T")
 
 

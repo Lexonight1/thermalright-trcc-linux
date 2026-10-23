@@ -478,9 +478,12 @@ class App(CommandBus, ModuleServices):
     def _forget_module(key: str) -> None:
         """Module *key*'s code and class gone from this process -- so a newer
         copy is imported, and registered, as if for the first time."""
+        from . import ipc
+
         log.info("_forget_module: %s", key)
         module_folders.forget(key)
         module_catalog.MODULES.unregister(key)
+        ipc.forget_types(f"{module_folders.__name__}.{key}")
 
     @staticmethod
     def _built_in_module(key: str) -> bool:
