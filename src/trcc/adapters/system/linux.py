@@ -740,8 +740,9 @@ class LinuxOS(BaseOS, key="linux"):
         """Run one-time Linux setup.
 
         Six things happen here and none can silently no-op:
-          1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
-             every device in the registry, 70-trcc-rgb.rules for the
+          1. udev rules — write /etc/udev/rules.d/70-trcc-lcd.rules for
+             every device in the registry (the seat + the trcc group, which
+             setup creates and adds the user to), 70-trcc-rgb.rules for the
              motherboard RGB TRCC drives, + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
           2. GPU Python extras — detect GPU vendors via PCI sysfs and

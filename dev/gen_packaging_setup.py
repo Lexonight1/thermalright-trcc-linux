@@ -20,7 +20,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from trcc.adapters.system._udev import host_files
+from trcc.adapters.system._udev import host_files, sysusers_conf
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,11 +33,15 @@ _PACKAGING_DIR = {
 
 
 def generate() -> dict[Path, str]:
-    """Every packaged setup file, keyed by its path in the repository."""
-    return {
+    """Every packaged setup file, keyed by its path in the repository --
+    setup's host files, and the packages' own ``sysusers.d`` entry for the
+    device group."""
+    files = {
         _ROOT / "packaging" / _PACKAGING_DIR[host.parent.name] / host.name: content
         for host, content in host_files().items()
     }
+    files[_ROOT / "packaging" / "sysusers" / "trcc.conf"] = sysusers_conf()
+    return files
 
 
 def main(argv: list[str]) -> int:

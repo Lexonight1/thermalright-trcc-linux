@@ -113,24 +113,26 @@ trcc system setup
 
 **Affects:** Bazzite, Fedora Silverblue, Fedora Kinoite, Aurora, Bluefin, and any SELinux-enforcing distro.
 
-Versions before v1.2.16 used `TAG+="uaccess"` in udev rules, which relies on systemd-logind ACLs. **SELinux blocks these ACLs**, so the device stays root-only even after `trcc system setup`.
+**Who reaches the coolers.** TRCC's udev rules give the panels to the person logged in at the computer (`TAG+="uaccess"`) and to members of the `trcc` group (`GROUP="trcc"`) -- nobody else. The group is what keeps them reachable when nobody is at the seat: TRCC running as your user service after you log out, or a machine nobody logs in to. `trcc system setup` creates the group and adds you; it takes effect at your next login.
+
+> **Earlier versions let every user reach them (`MODE="0666"`).** v1.2.16 switched to that, blaming SELinux for blocking `uaccess`. The cause was the rule's file name: a `uaccess` tag only takes effect in a file numbered below `73-` (`73-seat-late.rules` turns it into an access entry), and the rules lived in `99-trcc-lcd.rules`, where it never applies -- SELinux or not. The rules now live in `70-trcc-lcd.rules`. Checked on SELinux-enforcing Fedora on 2026-10-22: TRCC's motherboard RGB rule, `70-trcc-rgb.rules`, tags `uaccess` the same way, and its device node carries the logged-in user's access entry.
 
 **Symptoms:**
-- `ls -la /dev/sgX` shows `crw-rw----. 1 root root` (no ACL `+` marker)
-- `getenforce` returns `Enforcing`
-- Device works with `sudo` but not as regular user
+- The panel works while you are logged in, but not after you log out, or not on a headless machine
+- `ls -la /dev/sgX` shows no `+` at the end of the permissions and you are not at the seat
 
-**Fix:** Upgrade to v1.2.16+ which uses `MODE="0666"`:
+**Fix:**
 ```bash
-pip install --upgrade trcc-linux
-trcc system setup    # as your own user — it asks for sudo itself
-# Unplug/replug USB cable
+trcc system setup                 # as your own user — it asks for sudo itself
+sudo usermod -aG trcc "$USER"     # only if setup said it could not add you
+# Log out and back in once, then unplug/replug the USB cable
 ```
 
-**Verify:** After replug, check permissions:
+**Verify:** after replugging, check the permissions:
 ```bash
 ls -la /dev/sg*
-# Should show: crw-rw-rw- (world-readable/writable)
+# Should show: crw-rw----+ 1 root trcc   (the + is your seat's access entry)
+id -nG | grep -w trcc   # prints your groups, the device group among them, once you are in it
 ```
 
 ### Bulk Device EBUSY on SELinux

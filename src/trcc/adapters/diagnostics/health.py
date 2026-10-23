@@ -18,6 +18,7 @@ go through that function, so registration = inclusion.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -396,6 +397,16 @@ def check_udev_rules_linux() -> HealthCheckResult:
     # configured.
     from ..system._udev import RULES_DIRS, RULES_PATH
 
+    if legacy := _legacy_lcd_rules():
+        # It still works -- every user reaches the coolers through it -- and
+        # read after the new rule, its mode wins over it (2026-10-22).
+        return HealthCheckResult(
+            name="udev-rules", severity="WARN",
+            message=f"udev rules in {legacy} are from an older TRCC and let "
+                    "every user on this computer reach the coolers",
+            fix_hint="Run `trcc system setup` -- it replaces them with rules "
+                     "for you and the trcc group only",
+        )
     candidate_paths = [
         *(directory / RULES_PATH.name for directory in RULES_DIRS),
         Path("/etc/udev/rules.d/99-trcc.rules"),
@@ -553,6 +564,73 @@ def _read_name(path: Path) -> str:
     return name
 
 
+def check_device_group_linux() -> HealthCheckResult:
+    """When TRCC runs as this user's service, is the user in the ``trcc`` group?
+
+    The rules give the coolers to the user at the seat and to that group.  The
+    service keeps the panels running after a logout -- with nobody at the seat,
+    only the group reaches them.  Setup adds the user it runs for; someone who
+    set the service up before 2026-10-22, or by hand, may not be in it.
+    """
+    log.info("check_device_group_linux: called")
+    if sys.platform != "linux" or os.geteuid() == 0:
+        return HealthCheckResult(name="device-group", severity="OK",
+                                 message="Not applicable here")
+    import grp
+    import pwd
+
+    from ..system._autostart import SystemdUserService
+    from ..system._udev import DEVICE_GROUP
+
+    if not SystemdUserService().path.is_file():
+        log.info("check_device_group_linux: no user service -- nothing to keep")
+        return HealthCheckResult(
+            name="device-group", severity="OK",
+            message="TRCC is not set up as your user service")
+    user = pwd.getpwuid(os.getuid())
+    try:
+        group = grp.getgrnam(DEVICE_GROUP)
+    except KeyError:
+        group = None
+    member = group is not None and (user.pw_name in group.gr_mem
+                                    or user.pw_gid == group.gr_gid)
+    log.info("check_device_group_linux: %s member of %s: %s", user.pw_name,
+             DEVICE_GROUP, member)
+    if member:
+        return HealthCheckResult(
+            name="device-group", severity="OK",
+            message=f"{user.pw_name} is in the {DEVICE_GROUP} group: TRCC keeps "
+                    "the panels after you log out")
+    return HealthCheckResult(
+        name="device-group", severity="WARN",
+        message=f"TRCC runs as your user service, which keeps the panels after "
+                f"you log out, but {user.pw_name} is not in the {DEVICE_GROUP} "
+                "group -- after a logout it cannot reach them",
+        fix_hint=f"sudo usermod -aG {DEVICE_GROUP} {user.pw_name}, then log out "
+                 "and back in (or run `trcc system setup`)",
+    )
+
+
+def _legacy_lcd_rules() -> Path | None:
+    """TRCC's every-user rule file from before 2026-10-22, if one is in any
+    directory udev reads -- an admin's own file of that name is not ours."""
+    from ..system._udev import LEGACY_RULES_NAME, RULES_DIRS, _written_by_trcc
+
+    for directory in RULES_DIRS:
+        path = directory / LEGACY_RULES_NAME
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _written_by_trcc(text):
+            log.info("_legacy_lcd_rules: %s", path)
+            return path
+    log.debug("_legacy_lcd_rules: none")
+    return None
+
+
 def _current_rules() -> str:
     """The rule file this version generates."""
     from ..system._udev import build_udev_rules
@@ -612,6 +690,7 @@ def run_health_checks(
         check_ffmpeg_present(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
+        check_device_group_linux(),
         check_fan_chip_linux(platform),
         check_cpu_sensors_windows(),
         check_seven_zip_present(platform),

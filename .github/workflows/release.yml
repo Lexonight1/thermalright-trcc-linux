@@ -141,7 +141,8 @@ jobs:
           rm -f "$PKG"/usr/lib/python*/site-packages/example.py \
                 "$PKG"/usr/lib/python*/site-packages/__pycache__/example.*
 
-          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/etc/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/etc/udev/rules.d/70-trcc-lcd.rules"
+          install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
           install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/etc/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
@@ -203,7 +204,8 @@ jobs:
           %description
           Controls LCD displays and LED segment displays on Thermalright CPU coolers.
           %files
-          /etc/udev/rules.d/99-trcc-lcd.rules
+          /etc/udev/rules.d/70-trcc-lcd.rules
+          /usr/lib/sysusers.d/trcc.conf
           /etc/udev/rules.d/70-trcc-rgb.rules
           /etc/modprobe.d/trcc-lcd.conf
           /etc/modules-load.d/trcc-sg.conf
@@ -227,6 +229,8 @@ jobs:
           /usr/bin/trcc-ram-access
           /usr/bin/trcc-ram-access-off
           %post
+          # The device group, made before udev resolves GROUP="trcc" in the rules.
+          systemd-sysusers trcc.conf 2>/dev/null || groupadd --system trcc 2>/dev/null || :
           udevadm control --reload-rules 2>/dev/null || :
           udevadm trigger 2>/dev/null || :
           modprobe sg 2>/dev/null || :
@@ -305,7 +309,8 @@ jobs:
           done
           find "$PKG/usr/lib" "$PKG/usr/local/lib" -maxdepth 1 -type d -name 'python3.*' -empty -delete 2>/dev/null || true
 
-          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/lib/udev/rules.d/70-trcc-lcd.rules"
+          install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
           install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
@@ -351,6 +356,8 @@ jobs:
           cat > "$PKG/DEBIAN/postinst" << POST
           #!/bin/sh
           set -e
+          # The device group, made before udev resolves GROUP="trcc" in the rules.
+          systemd-sysusers trcc.conf 2>/dev/null || groupadd --system trcc 2>/dev/null || true
           udevadm control --reload-rules 2>/dev/null || true
           udevadm trigger 2>/dev/null || true
           modprobe sg 2>/dev/null || true
@@ -391,7 +398,8 @@ jobs:
           PKG=/tmp/deb-legacy-root
           mkdir -p "$PKG/DEBIAN"
 
-          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/lib/udev/rules.d/70-trcc-lcd.rules"
+          install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
           install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
@@ -440,6 +448,8 @@ jobs:
             echo "exec /opt/trcc-linux/bin/\$cmd \"\\\$@\"" >> /usr/bin/\$cmd
             chmod 755 /usr/bin/\$cmd
           done
+          # The device group, made before udev resolves GROUP="trcc" in the rules.
+          systemd-sysusers trcc.conf 2>/dev/null || groupadd --system trcc 2>/dev/null || true
           udevadm control --reload-rules 2>/dev/null || true
           udevadm trigger 2>/dev/null || true
           modprobe sg 2>/dev/null || true
@@ -494,7 +504,8 @@ jobs:
           # websockets, so trcc api could not start (measured 2026-10-09).
           pip install --root="$PKG" --prefix=/usr --no-deps sounddevice
 
-          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/70-trcc-lcd.rules"
+          install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
           install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/usr/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/usr/lib/modules-load.d/trcc-sg.conf"
@@ -574,6 +585,8 @@ jobs:
           cat > "$PKG/.INSTALL" << INST
           post_install() {
             grep -qs com.github.lexonight1.trcc /etc/polkit-1/rules.d/50-trcc.rules && rm -f /etc/polkit-1/rules.d/50-trcc.rules
+            # The device group, made before udev resolves GROUP="trcc" in the rules.
+            systemd-sysusers trcc.conf 2>/dev/null || groupadd --system trcc 2>/dev/null
             return 0
           }
           post_upgrade() {

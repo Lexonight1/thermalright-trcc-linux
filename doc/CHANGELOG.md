@@ -31,6 +31,20 @@
   Modules" and exits 1, instead of following it with details that were not
   true; the API answers such a read with an HTTP 400.
 
+- **Only you and the `trcc` group can reach the coolers.** TRCC's device rules
+  gave every user on the computer read and write access; they now give it to
+  the person logged in at the computer and to members of the `trcc` group,
+  which keeps the panels -- and the motherboard RGB TRCC drives -- running
+  after a logout or on a headless machine. `trcc doctor` says when an old rules
+  file still lets every user in, and when TRCC runs as your user service but
+  you are not in the group.
+  `trcc system setup` creates the group, adds you, and removes the old rules
+  file. The packages create the group and replace the old file on upgrade, but
+  cannot know who to add: if TRCC must keep running after you log out, run
+  `sudo usermod -aG trcc $USER` once. Group membership starts at your next
+  login; the panel keeps working meanwhile while you are logged in. The rules
+  file is now `70-trcc-lcd.rules`.
+
 ### Fixed
 
 - **A module switched on from the Modules page works straight away.**

@@ -244,7 +244,7 @@ Then:
 trcc gui
 ```
 
-> **NixOS note:** The `trcc system setup` command won't work because NixOS manages udev rules declaratively. You don't need it: `programs.trcc-linux.enable = true;` installs the packaged udev rules (`packaging/udev/99-trcc-lcd.rules` and `70-trcc-rgb.rules`), loads the `sg` module and sets the usb-storage quirks. Don't write your own rules for TRCC devices.
+> **NixOS note:** The `trcc system setup` command won't work because NixOS manages udev rules declaratively. You don't need it: `programs.trcc-linux.enable = true;` installs the packaged udev rules (`packaging/udev/70-trcc-lcd.rules` and `70-trcc-rgb.rules`), creates the `trcc` group, loads the `sg` module and sets the usb-storage quirks. Don't write your own rules for TRCC devices. The person logged in at the computer reaches the coolers; for TRCC to keep driving them after you log out, or on a machine nobody logs in to, add `users.users.<you>.extraGroups = [ "trcc" ];`.
 
 > **RGB memory lighting on NixOS:** the RGB page cannot switch it on here, because NixOS builds `/etc` from your configuration. Add `programs.trcc-linux.ramLighting = true;` beside `enable`, run `sudo nixos-rebuild switch`, then restart. It lets the person logged in at the computer open the chipset SMBus, which also holds the memory's own settings chips, so every program they run could reach them. To remove it, set it to `false`, rebuild and restart.
 
@@ -645,7 +645,7 @@ To remove it:
 trcc system ram-lighting disable          # first, if you enabled RAM lighting (switching RGB Lighting off does it too)
 systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service
 rm -rf ~/.local/share/trcc-linux ~/.local/bin/trcc ~/.local/share/applications/trcc-linux.desktop
-sudo rm /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
+sudo rm -f /etc/udev/rules.d/70-trcc-lcd.rules /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
     /etc/modprobe.d/trcc-lcd.conf /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf \
     /etc/atomic-update.conf.d/trcc-linux.conf
 ```
@@ -670,15 +670,17 @@ exit
 # it installs the same files the Arch package does, straight from the repo.
 sudo steamos-readonly disable
 base=https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/packaging
-sudo curl -fsSLo /etc/udev/rules.d/99-trcc-lcd.rules "$base/udev/99-trcc-lcd.rules"
+sudo curl -fsSLo /etc/udev/rules.d/70-trcc-lcd.rules "$base/udev/70-trcc-lcd.rules"
 sudo curl -fsSLo /etc/udev/rules.d/70-trcc-rgb.rules "$base/udev/70-trcc-rgb.rules"
 sudo curl -fsSLo /etc/modprobe.d/trcc-lcd.conf "$base/modprobe/trcc-lcd.conf"
 sudo curl -fsSLo /etc/modules-load.d/trcc-sg.conf "$base/modprobe/trcc-sg.conf"
 sudo curl -fsSLo /etc/modules-load.d/trcc-rapl.conf "$base/modprobe/trcc-rapl.conf"
+# The rules give the coolers to you at the seat and to the group named "trcc"
+sudo groupadd -f --system trcc && sudo usermod -aG trcc "$USER"
 sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo modprobe sg; sudo modprobe intel_rapl_msr
 # Keep those files through SteamOS updates, which reset /etc to the new image
-printf '%s\n' /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
+printf '%s\n' /etc/udev/rules.d/70-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules \
     /etc/modprobe.d/trcc-lcd.conf /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf \
     | sudo tee /etc/atomic-update.conf.d/trcc-linux.conf >/dev/null
 sudo steamos-readonly enable
@@ -1017,7 +1019,8 @@ trcc system autostart disable                 # drop the autostart entry
 trcc system ram-lighting disable              # BEFORE uninstalling: take back the RAM-bus grant, if you enabled it (switching RGB Lighting off does it too)
 systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service   # the App's user service setup added
 pipx uninstall trcc-linux                     # or pip uninstall trcc-linux, or your package manager
-sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules   # udev rules
+sudo rm -f /etc/udev/rules.d/70-trcc-lcd.rules /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules   # udev rules (99-: before 2026-10)
+sudo groupdel trcc                            # the device group setup made (optional)
 sudo rm -f /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 rm -f ~/.local/share/applications/trcc-linux.desktop   # menu entry setup added (pip/source only)
@@ -1038,7 +1041,7 @@ first if you want to keep them.
 ```bash
 systemctl --user disable --now trccd.service && rm ~/.config/systemd/user/trccd.service
 pip uninstall trcc-linux                      # or pipx uninstall trcc-linux
-sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules
+sudo rm -f /etc/udev/rules.d/70-trcc-lcd.rules /etc/udev/rules.d/99-trcc-lcd.rules /etc/udev/rules.d/70-trcc-rgb.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 sudo rm -f /etc/udev/rules.d/70-trcc-ram-lighting.rules /etc/modules-load.d/trcc-i2c.conf   # RAM-lighting grant; the bus access itself ends at the next restart

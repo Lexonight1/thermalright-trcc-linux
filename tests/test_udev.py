@@ -13,7 +13,7 @@ from trcc.core.models import Wire
 from trcc.core.registry import ALL_DEVICES
 
 _PACKAGED_RULE = (
-    Path(__file__).resolve().parents[1] / "packaging" / "udev" / "99-trcc-lcd.rules"
+    Path(__file__).resolve().parents[1] / "packaging" / "udev" / "70-trcc-lcd.rules"
 )
 
 
@@ -111,7 +111,7 @@ def test_scsi_devices_get_scsi_generic_subsystem_rule() -> None:
             f'SUBSYSTEM=="scsi_generic", '
             f'ATTRS{{idVendor}}=="{vid:04x}", '
             f'ATTRS{{idProduct}}=="{pid:04x}", '
-            f'MODE="0666"'
+            f'MODE="0660", GROUP="trcc", TAG+="uaccess"'
         )
         assert expected in rules, f"missing scsi_generic rule for SCSI device {vid:04x}:{pid:04x}"
 
@@ -126,7 +126,7 @@ def test_hid_devices_get_hidraw_subsystem_rule() -> None:
             f'SUBSYSTEM=="hidraw", '
             f'ATTRS{{idVendor}}=="{vid:04x}", '
             f'ATTRS{{idProduct}}=="{pid:04x}", '
-            f'MODE="0666"'
+            f'MODE="0660", GROUP="trcc", TAG+="uaccess"'
         )
         assert expected in rules, (
             f"missing hidraw rule for HID/LED device {vid:04x}:{pid:04x}"
@@ -192,16 +192,17 @@ def test_packaged_setup_files_are_what_setup_writes() -> None:
     # And nothing packaged that setup no longer writes: an orphan would keep
     # being installed by every package after the code stopped producing it.
     packaging = Path(__file__).resolve().parents[1] / "packaging"
-    shipped = {*packaging.glob("udev/*"), *packaging.glob("modprobe/*")}
+    shipped = {*packaging.glob("udev/*"), *packaging.glob("modprobe/*"),
+               *packaging.glob("sysusers/*")}
     assert shipped == set(gen_packaging_setup.generate()), (
         f"packaged files setup does not write: "
         f"{sorted(map(str, shipped - set(gen_packaging_setup.generate())))}")
 
 
 def test_the_rgb_rule_grants_the_seat_every_aura_board_trcc_drives() -> None:
-    """Derived from the catalog by detector, never typed: hidraw + usb,
-    uaccess only -- no MODE (that would be every user) and no power line
-    (the controller is the board's)."""
+    """Derived from the catalog by detector, never typed: hidraw + usb, the
+    seat (uaccess) and the trcc group as the coolers -- never every user --
+    and no power line (the controller is the board's)."""
     from trcc.adapters.system._udev import build_rgb_udev_rules
     from trcc.core.models import MAINBOARD_DETECTOR
     from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
@@ -213,7 +214,7 @@ def test_the_rgb_rule_grants_the_seat_every_aura_board_trcc_drives() -> None:
              if ln and not ln.startswith("#")]
     assert rules == [
         f'SUBSYSTEM=="{s}", {a}{{idVendor}}=="{v:04x}", {a}{{idProduct}}=="{p:04x}", '
-        f'TAG+="uaccess"'
+        f'MODE="0660", GROUP="trcc", TAG+="uaccess"'
         for v, p in ids for s, a in (("hidraw", "ATTRS"), ("usb", "ATTR"))]
 
 
@@ -261,3 +262,39 @@ def test_no_keep_list_off_steamos(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(_udev, "KEEP_LIST_DIR", tmp_path / "absent")
     assert _udev.keep_list(_udev.host_files()) == {}
+
+
+# ── who reaches the coolers: the seat and the trcc group (2026-10-22) ──
+
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def test_install_sh_spells_the_rule_files_as_setup_does() -> None:
+    """install.sh imports nothing from trcc: its paths are spelled twice."""
+    from trcc.adapters.system import _udev
+
+    text = (_REPO / "install.sh").read_text(encoding="utf-8")
+    assert f'UDEV_RULES="{_udev.RULES_PATH}"' in text
+    assert (f'LEGACY_UDEV_RULES="'
+            f'{_udev.RULES_PATH.with_name(_udev.LEGACY_RULES_NAME)}"') in text
+
+
+def test_every_package_ships_the_seat_and_group_rule_and_makes_the_group() -> None:
+    """Four packages (rpm, deb, legacy deb, Arch): each installs the 70- rule
+    and the sysusers entry and creates the group in its install step -- the
+    every-user 99- file is gone from all of them.
+    MUTATION CHECK: drop one package's systemd-sysusers line."""
+    text = (_REPO / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "99-trcc-lcd.rules" not in text
+    assert text.count("/src/packaging/udev/70-trcc-lcd.rules") == 4
+    assert text.count("/src/packaging/sysusers/trcc.conf") == 4
+    assert text.count("systemd-sysusers trcc.conf 2>/dev/null || groupadd "
+                      "--system trcc 2>/dev/null") == 4
+
+
+def test_the_packages_sysusers_entry_names_the_rules_group() -> None:
+    from trcc.adapters.system._udev import DEVICE_GROUP, build_udev_rules
+
+    entry = (_REPO / "packaging" / "sysusers" / "trcc.conf").read_text(encoding="utf-8")
+    assert f"g {DEVICE_GROUP} -" in entry.splitlines()
+    assert f'GROUP="{DEVICE_GROUP}"' in build_udev_rules()

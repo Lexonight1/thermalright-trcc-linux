@@ -72,7 +72,7 @@ if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
         echo "pre-commit: packaged setup generation FAILED (dev/gen_packaging_setup.py)" >&2
         exit 1
     fi
-    git add packaging/udev packaging/modprobe
+    git add packaging/udev packaging/modprobe packaging/sysusers
 fi
 
 # ── Command reference ──────────────────────────────────────────────────

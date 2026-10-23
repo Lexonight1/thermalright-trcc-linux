@@ -16,7 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TRCC_VERSION="$(grep '^__version__ =' "$SCRIPT_DIR/src/trcc/__version__.py" 2>/dev/null | sed 's/.*"\(.*\)"/\1/' || echo "unknown")"
 
 # Paths
-UDEV_RULES="/etc/udev/rules.d/99-trcc-lcd.rules"
+UDEV_RULES="/etc/udev/rules.d/70-trcc-lcd.rules"
+# Its name until 2026-10-22, when it let every user reach the coolers.
+LEGACY_UDEV_RULES="/etc/udev/rules.d/99-trcc-lcd.rules"
 RGB_UDEV_RULES="/etc/udev/rules.d/70-trcc-rgb.rules"
 MODPROBE_CONF="/etc/modprobe.d/trcc-lcd.conf"
 # The opt-in RAM-lighting grant: what `trcc system ram-lighting enable` writes,
@@ -393,7 +395,7 @@ do_uninstall() {
 
     # 2. System files (need root)
     if [ "$(id -u)" -eq 0 ]; then
-        for f in "$UDEV_RULES" "$RGB_UDEV_RULES" "$MODPROBE_CONF"; do
+        for f in "$UDEV_RULES" "$LEGACY_UDEV_RULES" "$RGB_UDEV_RULES" "$MODPROBE_CONF"; do
             if [ -f "$f" ]; then
                 rm -f "$f"
                 info "Removed $f"
@@ -405,7 +407,7 @@ do_uninstall() {
             udevadm trigger 2>/dev/null || true
         fi
     else
-        for f in "$UDEV_RULES" "$RGB_UDEV_RULES" "$MODPROBE_CONF"; do
+        for f in "$UDEV_RULES" "$LEGACY_UDEV_RULES" "$RGB_UDEV_RULES" "$MODPROBE_CONF"; do
             if [ -f "$f" ]; then
                 warn "Skipped $f (run with sudo to remove)"
             fi

@@ -58,8 +58,8 @@
 
           postInstall = ''
             # udev rules
-            install -Dm644 packaging/udev/99-trcc-lcd.rules \
-              $out/lib/udev/rules.d/99-trcc-lcd.rules
+            install -Dm644 packaging/udev/70-trcc-lcd.rules \
+              $out/lib/udev/rules.d/70-trcc-lcd.rules
             install -Dm644 packaging/udev/70-trcc-rgb.rules \
               $out/lib/udev/rules.d/70-trcc-rgb.rules
 
@@ -134,22 +134,26 @@
           config = lib.mkIf cfg.enable (lib.mkMerge [ {
             environment.systemPackages = [ self.packages.${pkgs.system}.default ];
 
-            # Read the shipped rules but rewrite the RAPL rule's `/bin/chmod`
-            # (fine on FHS distros) to the Nix store path — NixOS has no
-            # `/bin/chmod`, and its udev-rules builder rejects absolute-path
-            # programs that don't exist, failing the whole system build (#207).
-            services.udev.extraRules =
-              builtins.replaceStrings
-                [ "/bin/chmod" ] [ "${pkgs.coreutils}/bin/chmod" ]
-                (builtins.readFile ./packaging/udev/99-trcc-lcd.rules);
-
-            # The motherboard RGB rule tags uaccess, which 73-seat-late.rules
-            # applies -- extraRules land in 99-local.rules, too late, so it
-            # goes in as its own 70- rule package.
+            # Both rule files tag uaccess, which 73-seat-late.rules applies --
+            # extraRules land in 99-local.rules, too late, so each goes in as
+            # its own 70- rule package.  The coolers' rule has its RAPL line's
+            # `/bin/chmod` (fine on FHS distros) rewritten to the Nix store
+            # path: NixOS has no `/bin/chmod`, and its udev-rules builder
+            # rejects absolute-path programs that don't exist, failing the
+            # whole system build (#207).
             services.udev.packages = [
+              (pkgs.writeTextDir "lib/udev/rules.d/70-trcc-lcd.rules"
+                (builtins.replaceStrings
+                  [ "/bin/chmod" ] [ "${pkgs.coreutils}/bin/chmod" ]
+                  (builtins.readFile ./packaging/udev/70-trcc-lcd.rules)))
               (pkgs.writeTextDir "lib/udev/rules.d/70-trcc-rgb.rules"
                 (builtins.readFile ./packaging/udev/70-trcc-rgb.rules))
             ];
+
+            # The coolers' rule gives them to the user at the seat and to this
+            # group -- the App's user service after a logout, a headless box.
+            # Join it with users.users.<name>.extraGroups = [ "trcc" ];
+            users.groups.trcc = { };
 
             boot.kernelModules = [ "sg" ];
 

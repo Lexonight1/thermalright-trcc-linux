@@ -541,9 +541,10 @@ trcc serve                                    # start REST API server
 > the rebuild and has not been restored. Remove the package with your package
 > manager (or `pip uninstall trcc-linux`), then delete `~/.trcc/`,
 > `~/.trcc-user/`, and the files `trcc system setup` installs: the udev rules
-> `/etc/udev/rules.d/99-trcc-lcd.rules` and `/etc/udev/rules.d/70-trcc-rgb.rules`,
-> `/etc/modules-load.d/trcc-sg.conf`, `/etc/modules-load.d/trcc-rapl.conf`, and
-> `/etc/modprobe.d/trcc-lcd.conf` if present.
+> `/etc/udev/rules.d/70-trcc-lcd.rules` (`99-trcc-lcd.rules` before 2026-10)
+> and `/etc/udev/rules.d/70-trcc-rgb.rules`, `/etc/modules-load.d/trcc-sg.conf`,
+> `/etc/modules-load.d/trcc-rapl.conf`, and `/etc/modprobe.d/trcc-lcd.conf` if
+> present.  The `trcc` group setup creates can go too: `sudo groupdel trcc`.
 
 ## Troubleshooting
 
