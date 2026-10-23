@@ -22,17 +22,18 @@ import importlib
 import importlib.util
 import json
 import logging
-import re
 from pathlib import Path
 from types import ModuleType
+
+from ..core.models import MODULE_KEY
 
 log = logging.getLogger(__name__)
 
 #: A module's manifest and its words, at the top of its folder.
 MANIFEST = "module.json"
 TABLE = "i18n.json"
-#: A key is also a Python package name: 2-31 lowercase letters, digits or _.
-KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")
+#: A key is also a Python package name (``core.models.MODULE_KEY``).
+KEY = MODULE_KEY
 
 
 def folders() -> dict[str, Path]:

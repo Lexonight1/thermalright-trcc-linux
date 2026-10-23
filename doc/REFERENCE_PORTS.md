@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-80 ports.
+81 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -22,6 +22,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Query`](#query) | 1 | 0 | 47 |
 | [`ReadingsPort`](#readingsport) | 1 | 0 | 1 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
+| [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 3 | 2 |
@@ -270,6 +271,20 @@ grab_region(x: 'int', y: 'int', width: 'int', height: 'int') -> RawFrame
 **You inherit (1):** `stop`
 
 **Implementations (4):** `GdiScreenCapture` · `PipeWireScreenCapture` · `QtNativeCapture` · `ToolCapture`
+
+## SignatureChecker
+
+`core/ports.py`
+
+Checks one signature, so the module index's trust rules (``services/module_trust.py``) stay free of a crypto library.
+
+**You implement (1):**
+
+```python
+verify(key: 'bytes', message: 'bytes', signature: 'bytes') -> bool
+```
+
+**Implementations (1):** `Ed25519Checker`
 
 ## ThemesPort
 

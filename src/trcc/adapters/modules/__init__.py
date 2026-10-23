@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from ._base import MODULES, BaseModule, ModuleNotFound
 from ._catalog import MANIFEST, ManifestError, read_manifest, specs
+from ._signing import Ed25519Checker
 
-__all__ = ["MANIFEST", "MODULES", "BaseModule", "ManifestError",
+__all__ = ["MANIFEST", "MODULES", "BaseModule", "Ed25519Checker", "ManifestError",
            "ModuleNotFound", "read_manifest", "specs"]

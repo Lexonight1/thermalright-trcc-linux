@@ -3088,6 +3088,24 @@ class ScreenCapture(ABC):
 
 
 # =========================================================================
+# SignatureChecker — does this key sign this message?
+# =========================================================================
+
+
+class SignatureChecker(ABC):
+    """Checks one signature, so the module index's trust rules
+    (``services/module_trust.py``) stay free of a crypto library.
+
+    Adapter: ``Ed25519Checker`` (``adapters/modules/_signing.py``)."""
+
+    @abstractmethod
+    def verify(self, key: bytes, message: bytes, signature: bytes) -> bool:
+        """Whether *signature* is raw public *key* signing *message*.  A key
+        or signature of the wrong shape is ``False``, never a raise."""
+        ...
+
+
+# =========================================================================
 # HttpFetcher — minimal HTTP GET, abstracted so tests can intercept
 # =========================================================================
 

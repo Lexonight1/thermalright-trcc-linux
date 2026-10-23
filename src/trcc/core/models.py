@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -1369,6 +1370,11 @@ class PanelPicture:
     argb32: Callable[[], tuple[bytes, int, int, int]]
 
 
+#: A module's key, which is also its folder's and its Python package's name:
+#: 2-31 lowercase letters, digits or _.
+MODULE_KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")
+
+
 @dataclass(frozen=True, slots=True)
 class ModuleManifest:
     """What a module is, without its code -- read from its ``module.json``.
@@ -1388,6 +1394,60 @@ class ModuleManifest:
     #: The theme background refs it draws (``<prefix>/<id>``) -- known
     #: without loading it, so a theme can say which module it needs.
     backgrounds: tuple[str, ...] = ()
+
+
+# =========================================================================
+# The module index -- which modules may be installed, signed
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class TrustRoot:
+    """A verified ``root.json``: the keys that sign the module index, and
+    until when.  Signed by a key in ``core.trust_keys.ROOT_KEYS``."""
+    version: int
+    expires: datetime
+    index_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleRelease:
+    """One module the index lists: the release TRCC may install.
+
+    ``author_sig`` is the author's key signing the statement
+    ``key + version + sha256`` -- the index adds TRCC's countersignature, so
+    an install needs both.  ``url`` is the bundle (a GitHub release asset);
+    ``commit`` the tagged source it was reviewed at."""
+    key: str
+    version: str
+    url: str
+    size: int
+    sha256: str
+    min_trcc: str
+    commit: str
+    capabilities: tuple[str, ...]
+    author_key: str
+    author_sig: str
+
+
+@dataclass(frozen=True, slots=True)
+class Revocation:
+    """A release taken back: every release of ``key`` when ``sha256`` is "",
+    else just that one.  An installed module it names is switched off, with
+    ``reason`` on its tile."""
+    key: str
+    reason: str
+    sha256: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleIndex:
+    """A verified ``index.json``.  ``expires`` is the earlier of the index's
+    and its root's: past it, nothing new is installed or updated."""
+    version: int
+    expires: datetime
+    releases: Mapping[str, ModuleRelease]
+    revoked: tuple[Revocation, ...] = ()
 
 
 #: The URL schemes the media player will open.  An allow-list, not a deny-list:

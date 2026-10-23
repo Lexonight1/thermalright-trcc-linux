@@ -114,6 +114,12 @@ class ModuleUnavailable(TrccError):
     """A module cannot run on this machine -- its ``pre_enable`` says why."""
 
 
+class UntrustedModule(TrccError):
+    """The module index, or a module bundle, did not pass TRCC's checks --
+    a bad or missing signature, a rollback, a changed author key, a bundle
+    that is not the one listed.  Its message says which."""
+
+
 class HttpFetchError(RuntimeError):
     """Raised on any transport or HTTP-level fetch failure.
 
