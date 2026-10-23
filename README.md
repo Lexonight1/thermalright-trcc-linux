@@ -147,7 +147,7 @@ Full desktop app with theme browser, video player, overlay editor, LED control p
 
 ### CLI
 
-Device commands take your device **key** (its `VID:PID`, from `trcc detect`) as the first argument — e.g. `0402:3922`:
+Device commands take your device **key** (its `VID:PID`, from `trcc detect`) as the first argument — e.g. `0402:3922`. Two identical coolers are told apart by the USB port they are plugged into: each key gains it, e.g. `87ad:70db@1-13`, and `trcc detect` shows it:
 
 ```bash
 trcc detect                                     # Show connected devices + their keys

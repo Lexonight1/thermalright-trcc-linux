@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Modules.** The Audio Visualizer and RGB Lighting are now modules you
+  switch on and off on the new Modules page (in every window, and with
+  `trcc system modules`). Each row has a **Guide ›** link to its section of
+  the modules guide. A module switched off hides its tab or page; your
+  choices stay saved for when you switch it on again.
+- **A module's themes are kept with it.** Themes with a visual background are
+  saved with the Audio Visualizer and listed only while it is on. Visual
+  themes you saved before move there once, automatically.
+- **The Audio Visualizer and the RGB page speak every language TRCC offers.**
+- **NixOS: RGB memory lighting is a setting.** Add
+  `programs.trcc-linux.ramLighting = true;` and rebuild; the RGB page tells
+  you this instead of failing.
+- **A device that answers like no Thermalright panel is named as such.** If
+  another USB product happens to share a cooler's id, the error says so and
+  how to make TRCC leave it alone: `trcc device disconnect KEY`.
+
+### Changed
+
+- **Switching RGB Lighting off takes back the RAM-lighting permission** --
+  with RGB off, nothing in TRCC could remove it later. Where TRCC's polkit
+  files are installed (a distro package, or `trcc system setup`) this needs no
+  password.
+- **A refused or failed command shows its message and nothing else.** With RGB
+  Lighting off, `trcc system rgb` says "RGB Lighting is off -- turn it on in
+  Modules" and exits 1, instead of following it with details that were not
+  true; the API answers such a read with an HTTP 400.
+
+### Fixed
+
+- **A module switched on from the Modules page works straight away.**
+  Switching the Audio Visualizer on and going back to your panel left its tab
+  without a panel: clicking a visual did nothing until the window was
+  reopened.
+- **Two panels of the same size:** the mask list, the device line and the
+  brightness now show the panel you picked, from start-up on. They could show
+  the other one.
+- **TRCC gives a USB device back its system driver when it lets go of it** --
+  on quitting, `trcc device disconnect`, or a failed connect. A device it
+  matched by mistake no longer stays without one until it is unplugged.
+- **Turning RAM lighting off removes only TRCC's own access**, and does nothing
+  where TRCC never granted any; it used to clear every access entry on the
+  memory's bus. `sudo ./install.sh --uninstall` now takes the permission back
+  too.
+- **The RAM lighting card says only what is true** where it cannot be switched
+  on (no memory bus, Windows, macOS, BSD, NixOS), and no longer names an
+  internal class ("not available on WindowsPlatform").
+- **A theme whose visual cannot play no longer keeps showing the previous
+  visual.**
+- The `0418:5303` and `0418:5304` devices are labelled AST Research, the name
+  `lsusb` shows.
+
 ## v9.11.2
 
 ### Added
@@ -11,6 +66,9 @@
   again to update. Tested on SteamOS 3.8 in a virtual machine, through a
   real SteamOS update and with a real panel; not yet on a Steam Deck.
 - Python 3.13 and 3.14 are tested in CI (SteamOS 3.7/3.8 and 3.9 ship them).
+- **Every release comes with a complete, signed `SHA256SUMS.txt`** (and
+  `SHA256SUMS.txt.sig`): the checksums of every download, Windows and macOS
+  installers included, signed with the project's key (`packaging/keys/`).
 
 ### Fixed
 

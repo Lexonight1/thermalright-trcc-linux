@@ -8,6 +8,7 @@ Quick reference for common TRCC Linux issues. For full installation instructions
 
 1. [Command Not Found](#trcc-command-not-found)
 2. [No Device Detected](#no-device-detected)
+   - [A device answered, but not as a Thermalright panel](#a-device-answered-but-not-as-a-thermalright-panel)
 3. [Permission Denied](#permission-denied-when-accessing-the-device)
 4. [SELinux / Immutable Distros](#selinux--immutable-distros)
 5. [PySide6 Issues](#pyside6-issues)
@@ -80,6 +81,16 @@ trcc --version
 5. Check kernel messages: `dmesg | tail -20` right after plugging in
 
 > **HID, LY and Bulk devices** (0416:5302, 0416:5406, 0418:5303, 0418:5304, 0416:8001, 0416:5408, 0416:5409, 87ad:70db) don't use `/dev/sg*`. Use `trcc detect` instead.
+
+### A device answered, but not as a Thermalright panel
+
+**Symptom:** the connect fails with "`KEY` answered, but not as a Thermalright panel does".
+
+**Cause:** TRCC recognises a cooler by its USB id alone, and some of those ids belong to chip makers whose ids other products use too. The device replied, but not the way any Thermalright panel TRCC knows does. Either it is your cooler on a firmware TRCC has not met yet, or it is another product that shares the id.
+
+**Fix:**
+- **It is your cooler:** run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with it. The report includes the start of the device's reply, which is where support for a new firmware begins.
+- **It is another product:** `trcc device disconnect KEY` makes TRCC leave it alone, across restarts and replugs. TRCC gives the device back its system driver as it lets go, so the product works normally again. To undo it: `trcc device connect KEY`.
 
 ---
 
@@ -465,6 +476,9 @@ usb-storage quirk:
 ```
 
 See [Install Guide → NixOS](GUIDE_INSTALL.md#nixos) for the full setup.
+
+**RGB memory lighting** cannot be switched on from the RGB page on NixOS: add
+`programs.trcc-linux.ramLighting = true;` beside `enable`, rebuild, and restart.
 
 Then rebuild: `sudo nixos-rebuild switch`
 
