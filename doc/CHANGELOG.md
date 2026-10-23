@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- **Linux: TRCC hears the computer going to sleep and waking up again**
+  (#323). The listener registered but never received a signal, so the panels
+  were not looked after across a suspend: the background process's own Qt
+  set-up held on to GLib's event loop, and the listener's loop never ran.
 - **A module switched on from the Modules page works straight away.**
   Switching the Audio Visualizer on and going back to your panel left its tab
   without a panel: clicking a visual did nothing until the window was

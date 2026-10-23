@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import array
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,8 @@ _FONT_CACHE: dict[tuple[int, bool, bool, str], QFont] = {}
 # user who lacks YaHei still gets it.  The default font then resolves from the
 # union — the user's installed copy if present, else the bundled one.
 _FONT_SUFFIXES = (".ttf", ".ttc", ".otf")
+#: Qt's switch for its GLib event dispatcher, read when an app is built.
+_NO_GLIB = "QT_NO_GLIB"
 _FONTS_REGISTERED = False
 
 
@@ -91,7 +94,25 @@ def _ensure_qt_app() -> None:
                 "-platform", "offscreen", "-platformtheme", "none"]
         log.info("QtRenderer: bootstrapping offscreen QGuiApplication "
                  "(headless mode) argv=%s", argv[1:])
-        QGuiApplication(argv)
+        # Without Qt's GLib event dispatcher (#323).  With it, creating the
+        # app takes GLib's DEFAULT main context for this thread and keeps
+        # it -- and in a headless process nothing ever runs Qt's loop, so
+        # every GLib loop on another thread waits forever to acquire it: the
+        # logind listener never heard PrepareForSleep, the PipeWire portal's
+        # Response rides the same loop.  Measured: after the app, another
+        # thread's ``acquire()`` is False; with QT_NO_GLIB it is True and both
+        # signals arrive.  Set only while the app is built, and removed --
+        # Qt reads it once, here, and a child process must not inherit it.
+        # A window builds its own QApplication first and never reaches this.
+        inherited = os.environ.get(_NO_GLIB)
+        os.environ[_NO_GLIB] = "1"
+        try:
+            QGuiApplication(argv)
+        finally:
+            if inherited is None:
+                del os.environ[_NO_GLIB]
+            else:
+                os.environ[_NO_GLIB] = inherited
     else:
         log.debug("QtRenderer: reusing existing QGuiApplication")
     _register_bundled_fonts()

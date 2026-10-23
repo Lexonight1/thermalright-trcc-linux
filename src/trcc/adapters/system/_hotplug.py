@@ -140,9 +140,11 @@ class _LinuxPowerListener:
     Composed inside :class:`LinuxHotplugMonitor` — same start/stop
     cadence, single background thread per OS-event source.  Ports
     ``legacy/adapters/system/linux_platform.py:920-993`` but uses
-    dbus-python + GLib mainloop instead of QtDBus (the daemon has no
-    QApplication; the GUI has its own QApplication but routing through
-    Qt would tie the daemon to a GUI dep we don't otherwise need).
+    dbus-python + a GLib mainloop on GLib's default context instead of
+    QtDBus.  The daemon DOES build a QGuiApplication -- the renderer's
+    headless one -- and that app must be built without Qt's GLib
+    dispatcher (``adapters/render/qt._ensure_qt_app``), or it owns the
+    default context and this loop never runs (#323).
 
     Lifecycle:
 
