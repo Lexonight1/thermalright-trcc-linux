@@ -523,15 +523,38 @@ class ModuleRunner:
         log.debug("ModuleRunner.infos: %d", len(self._specs))
         return tuple(self._info(key) for key in sorted(self._specs))
 
+    def add(self, spec: ModuleSpec) -> None:
+        """A module installed while the App runs -- off until switched on."""
+        key = spec.manifest.key
+        log.info("ModuleRunner.add: %s %s", key, spec.manifest.version)
+        with self._lock:
+            if key in self._on:
+                raise ModuleUnavailable(f"{spec.manifest.title} is on -- switch "
+                                        "it off before it is replaced")
+            self._specs[key] = spec
+
+    def remove(self, key: str) -> None:
+        """Module *key* is going -- switched off first if it is on; its
+        loaded code is dropped, so a newer copy is imported afresh."""
+        log.info("ModuleRunner.remove: %s on=%s", key, key in self._on)
+        with self._lock:
+            if key in self._on:
+                self._disable(key)
+            self._specs.pop(key, None)
+            self._modules.pop(key, None)
+            self._scopes.pop(key, None)
+
     def _info(self, key: str) -> ModuleInfo:
         """One tile.  A loaded module can say why it cannot run here; one
-        never loaded shows its manifest alone."""
+        never loaded shows its manifest alone; one taken back says why."""
         manifest = self._specs[key].manifest
         module = self._modules.get(key)
+        revoked = self._settings.module_revoked(key)
         log.debug("ModuleRunner._info: %s loaded=%s", key, module is not None)
+        problem = (f"taken back: {revoked}" if revoked
+                   else module.problem() if module is not None else "")
         return ModuleInfo(key=key, title=manifest.title, summary=manifest.summary,
-                          enabled=key in self._on,
-                          problem=module.problem() if module is not None else "",
+                          enabled=key in self._on, problem=problem,
                           icon=bool(manifest.icon), guide=manifest.guide)
 
     def icon(self, key: str) -> tuple[bytes, str] | None:
@@ -622,7 +645,11 @@ class ModuleRunner:
         return module
 
     def _enable(self, key: str) -> None:
-        """Register *key*; a failure is undone and reported."""
+        """Register *key*; a failure is undone and reported.  A module TRCC
+        took back never switches on."""
+        if reason := self._settings.module_revoked(key):
+            raise ModuleUnavailable(f"{self._specs[key].manifest.title} was taken "
+                                    f"back: {reason}")
         module = self._module(key)
         log.debug("ModuleRunner._enable: %s", key)
         try:

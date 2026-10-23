@@ -1367,6 +1367,17 @@ MODULE_HOST = re.compile(
 MODULE_FETCH_MAX_BYTES = 2 << 20
 MODULE_FETCH_TIMEOUT_S = 20.0
 
+#: Where the signed module index is published (``doc/`` on GitHub Pages):
+#: ``root.json`` and ``index.json`` under it.
+MODULE_INDEX_URL = "https://lexonight1.github.io/thermalright-trcc-linux/modules/"
+#: The largest root, index and module bundle TRCC reads.  A bundle is stored,
+#: not compressed (``module_bundle.py``), so its size bounds what it unpacks to.
+MODULE_ROOT_MAX_BYTES = 64 << 10
+MODULE_INDEX_MAX_BYTES = 1 << 20
+MODULE_BUNDLE_MAX_BYTES = 32 << 20
+#: How often the App reads the index by itself, for revocations.
+MODULE_INDEX_CHECK_S = 24 * 3600.0
+
 
 @dataclass(frozen=True, slots=True)
 class PanelPicture:
@@ -1444,6 +1455,38 @@ class ModuleRelease:
     #: The sites it may fetch from -- in the signed index, so an update that
     #: adds one is asked about again.
     network_hosts: tuple[str, ...] = ()
+    #: Its manifest's, so the list shows what it is before it is installed.
+    title: str = ""
+    summary: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleInstall:
+    """A module the user installed, as installed: what the next update must
+    match -- the same author key (key continuity) -- and what it was granted."""
+    key: str
+    version: str
+    sha256: str
+    author_key: str
+    commit: str
+    capabilities: tuple[str, ...] = ()
+    network_hosts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AvailableModule:
+    """One module the index lists, as "Get modules" shows it.  ``status`` is
+    ``available`` (not installed), ``installed``, ``update`` (a new version is
+    listed) or ``revoked`` (taken back -- ``reason`` says why)."""
+    key: str
+    title: str
+    summary: str
+    version: str
+    status: Literal["available", "installed", "update", "revoked"]
+    capabilities: tuple[str, ...] = ()
+    network_hosts: tuple[str, ...] = ()
+    installed_version: str = ""
+    reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)

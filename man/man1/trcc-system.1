@@ -618,7 +618,41 @@ Show this command's help and exit.
 .RE
 .SS modules
 .PP
-Modules: list them, switch one on or off.
+Modules: list them, switch one on or off, get more.
+.SS modules available
+.PP
+\fBtrcc system modules available\fR
+.PP
+Every module you can install, and the ones you have.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS modules install
+.PP
+\fBtrcc system modules install\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Install a module from the list, or update it \-\- after saying what it may do.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+The module's key
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-yes, \-y\fR
+Accept what it asks for without asking
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS modules list
 .PP
 \fBtrcc system modules list\fR
@@ -665,6 +699,28 @@ The module's key
 .PP
 Options:
 .RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS modules remove
+.PP
+\fBtrcc system modules remove\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Remove a module you installed. Themes made with it stay.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+The module's key
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-yes, \-y\fR
+Do not ask first
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

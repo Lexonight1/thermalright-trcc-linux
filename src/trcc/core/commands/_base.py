@@ -73,6 +73,10 @@ class Command(ABC, Generic[R_co]):
     #: the transport's usual limit.  The App's own wait always ends: the
     #: person answers, closes the prompt, or there is no prompt to show.
     WAITS_ON_USER: ClassVar[bool] = False
+    #: The longest the Command may take, when that is longer than the
+    #: transport's usual limit -- downloads (an install) -- so a client
+    #: waits that long for its answer.  None for the usual limit.
+    TAKES_S: ClassVar[float | None] = None
     #: The module this Command belongs to ("" for none).  ``App.dispatch``
     #: refuses it while that module is off or not installed, saying where to
     #: turn it on -- every UI the same, instead of each hiding its own way.

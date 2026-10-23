@@ -332,6 +332,20 @@ class ModuleChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleInstalled(Event):
+    """A module was installed or updated -- every UI adds it, or reloads it
+    (an open window finishes an update when it is reopened)."""
+    key: str
+    version: str
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleRemoved(Event):
+    """An installed module was removed -- every UI takes it out."""
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
 class BackgroundChanged(Event):
     """Published when the device's static background override changes.
 

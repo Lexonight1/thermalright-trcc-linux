@@ -29,10 +29,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-#: What a module is, at the top of its folder (``trcc.modules``).
-BUNDLE_FILES = frozenset({"__init__.py", "module.json", "i18n.json", "icon.svg",
-                          "icon.png", "app.py"})
-BUNDLE_DIRS = frozenset({"core", "services", "adapters", "ui", "assets"})
+from trcc.modules import BUNDLE_DIRS, BUNDLE_FILES
+
 #: 1980-01-01, the earliest time a zip can hold.
 _EPOCH = (1980, 1, 1, 0, 0, 0)
 

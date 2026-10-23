@@ -1947,7 +1947,31 @@ trcc system memory-slots
 
 ### `trcc system modules`
 
-Modules: list them, switch one on or off.
+Modules: list them, switch one on or off, get more.
+
+#### `trcc system modules available`
+
+Every module you can install, and the ones you have.
+
+```bash
+trcc system modules available
+```
+
+#### `trcc system modules install`
+
+Install a module from the list, or update it -- after saying what it may do.
+
+```bash
+trcc system modules install [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | The module's key |
+
+| Option | Description |
+|---|---|
+| `--yes`, `-y` | Accept what it asks for without asking |
 
 #### `trcc system modules list`
 
@@ -1980,6 +2004,22 @@ trcc system modules on KEY
 | Argument | Description |
 |---|---|
 | `KEY` | The module's key |
+
+#### `trcc system modules remove`
+
+Remove a module you installed. Themes made with it stay.
+
+```bash
+trcc system modules remove [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | The module's key |
+
+| Option | Description |
+|---|---|
+| `--yes`, `-y` | Do not ask first |
 
 ### `trcc system paths`
 

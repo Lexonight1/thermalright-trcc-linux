@@ -94,20 +94,26 @@ def specs(root: Path | None = None) -> dict[str, ModuleSpec]:
     found: dict[str, ModuleSpec] = {}
     for path in paths:
         try:
-            manifest = read_manifest(path)
+            found_spec = spec(path)
         except ManifestError as e:
             log.warning("catalog.specs: skipping %s", e)
             continue
-        try:
-            module_folders.load_core(manifest.key)
         except Exception:
             log.exception("catalog.specs: skipping %s -- its core/ did not load",
-                          manifest.key)
+                          path.parent.name)
             continue
-        found[manifest.key] = ModuleSpec(manifest, _loader(manifest),
-                                         _icon_reader(manifest))
+        found[found_spec.manifest.key] = found_spec
     log.info("catalog.specs: %s", sorted(found))
     return found
+
+
+def spec(path: Path) -> ModuleSpec:
+    """The module whose manifest is at *path*, its light ``core/`` loaded --
+    ``ManifestError``, or whatever its ``core/`` raised, when it will not."""
+    manifest = read_manifest(path)
+    log.info("catalog.spec: %s %s", manifest.key, manifest.version)
+    module_folders.load_core(manifest.key)
+    return ModuleSpec(manifest, _loader(manifest), _icon_reader(manifest))
 
 
 #: The symbol types a manifest may name, and how they are served.

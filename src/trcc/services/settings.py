@@ -37,6 +37,7 @@ from ..core.models import (
     BackgroundMode,
     DeviceSettings,
     FitMode,
+    ModuleInstall,
     OrientationState,
     OverlayElement,
     TempUnit,
@@ -99,6 +100,17 @@ class AppSettings:
     # The one-time move of themes a module draws into its folder has run
     # (``ModuleThemeMove``) -- so no later start scans the user's themes.
     module_themes_moved: bool = False
+    # Each module the user installed (``ModuleInstall`` as a dict), by key --
+    # what the next update must match.
+    module_installs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # The newest root.json and index.json versions accepted: an older one is
+    # refused as a rollback.
+    module_root_seen: int = 0
+    module_index_seen: int = 0
+    # When the App last read the index by itself (epoch seconds), and the
+    # installed modules it took back, key -> why.
+    module_index_checked: float = 0.0
+    module_revoked: dict[str, str] = field(default_factory=dict)
 
 
 # =========================================================================
@@ -670,6 +682,81 @@ class Settings:
             if not isinstance(self._app.modules, dict):
                 self._app.modules = {}
             self._app.modules[key] = enabled
+            self._save()
+
+    def module_install(self, key: str) -> ModuleInstall | None:
+        """Module *key* as the user installed it, or None -- built in, never
+        installed, or a record that no longer reads."""
+        raw = self._app.module_installs.get(key) if isinstance(
+            self._app.module_installs, dict) else None
+        try:
+            record = ModuleInstall(**{**raw, "capabilities": tuple(raw["capabilities"]),
+                                      "network_hosts": tuple(raw["network_hosts"])}
+                                   ) if isinstance(raw, dict) else None
+        except (TypeError, KeyError):
+            log.warning("module_install: %s's record does not read -- %r", key, raw)
+            record = None
+        log.debug("module_install: %s -> %s", key, record)
+        return record
+
+    def installed_modules(self) -> tuple[str, ...]:
+        """Every module the user installed, by key."""
+        keys = tuple(sorted(self._app.module_installs)) if isinstance(
+            self._app.module_installs, dict) else ()
+        log.debug("installed_modules: %s", keys)
+        return keys
+
+    def set_module_install(self, key: str, record: ModuleInstall | None) -> None:
+        """Remember module *key* as installed now -- or forget it (None)."""
+        log.info("set_module_install: %s -> %s", key,
+                 record.version if record is not None else "removed")
+        with self._lock:
+            if not isinstance(self._app.module_installs, dict):
+                self._app.module_installs = {}
+            if record is None:
+                self._app.module_installs.pop(key, None)
+            else:
+                self._app.module_installs[key] = asdict(record)
+            self._save()
+
+    def module_index_seen(self) -> tuple[int, int]:
+        """The newest root and index versions accepted."""
+        seen = (int(self._app.module_root_seen), int(self._app.module_index_seen))
+        log.debug("module_index_seen: %s", seen)
+        return seen
+
+    def set_module_index_seen(self, root: int, index: int, checked: float) -> None:
+        """An index was accepted: its root's and its own versions, and when."""
+        log.info("set_module_index_seen: root %d, index %d", root, index)
+        with self._lock:
+            self._app.module_root_seen = max(int(self._app.module_root_seen), root)
+            self._app.module_index_seen = max(int(self._app.module_index_seen), index)
+            self._app.module_index_checked = checked
+            self._save()
+
+    def module_index_checked(self) -> float:
+        """When the index was last accepted (epoch seconds; 0 for never)."""
+        checked = float(self._app.module_index_checked or 0.0)
+        log.debug("module_index_checked: %s", checked)
+        return checked
+
+    def module_revoked(self, key: str) -> str:
+        """Why module *key* was taken back; "" when it was not."""
+        reason = self._app.module_revoked.get(key, "") if isinstance(
+            self._app.module_revoked, dict) else ""
+        log.debug("module_revoked: %s -> %r", key, reason)
+        return reason if isinstance(reason, str) else ""
+
+    def set_module_revoked(self, key: str, reason: str) -> None:
+        """Module *key* was taken back for *reason* -- or is no longer ("")."""
+        log.info("set_module_revoked: %s -> %r", key, reason)
+        with self._lock:
+            if not isinstance(self._app.module_revoked, dict):
+                self._app.module_revoked = {}
+            if reason:
+                self._app.module_revoked[key] = reason
+            else:
+                self._app.module_revoked.pop(key, None)
             self._save()
 
     def set_fit_mode(self, key: str, mode: FitMode) -> None:

@@ -7,6 +7,7 @@ from dataclasses import replace
 from fastapi import APIRouter, Request, Response
 
 from ...core.commands import (
+    BrowseModules,
     CheckForUpdate,
     ControlCenterSnapshot,
     DisableAutostart,
@@ -16,6 +17,7 @@ from ...core.commands import (
     GetFirstRunStatus,
     GetPlatformInfo,
     GetSensorDashboard,
+    InstallModule,
     ListDevices,
     ListDisks,
     ListDiskSensors,
@@ -30,6 +32,7 @@ from ...core.commands import (
     ModuleIcon,
     ReadSensors,
     RefreshAutostart,
+    RemoveModule,
     RunDoctor,
     RunHealthCheck,
     RunQuickstart,
@@ -58,6 +61,7 @@ from ...core.results import (
     LanguageResult,
     LanguagesListResult,
     MemorySlotsResult,
+    ModuleCatalogResult,
     ModuleResult,
     ModulesResult,
     QuickstartResult,
@@ -76,6 +80,7 @@ from .schemas import (
     DebugReportRequest,
     DiskDeviceRequest,
     HddEnabledRequest,
+    ModuleInstallRequest,
     ModuleSwitchRequest,
     SensorDashboardRequest,
     UpgradeRequest,
@@ -255,6 +260,39 @@ def module_icon(key: str, request: Request) -> Response:
     result = request.app.state.trcc.dispatch(ModuleIcon(key=key))
     http_error_if_failed(result, status_code=404)
     return Response(content=result.image, media_type=result.media_type)
+
+
+@router.get("/modules/available")
+def available_modules(request: Request) -> ModuleCatalogResult:
+    """Every module the signed index lists, and where this machine stands
+    with each; 502 when the index cannot be read."""
+    log.info("api GET /system/modules/available")
+    result = request.app.state.trcc.dispatch(BrowseModules())
+    http_error_if_failed(result, status_code=502)
+    return result
+
+
+@router.post("/modules/{key}/install")
+def install_module(key: str, body: ModuleInstallRequest,
+                   request: Request) -> ModuleResult:
+    """Install or update module *key*.  The body is what the user accepted;
+    409 when that is not exactly what the index lists, or it is refused."""
+    log.info("api POST /system/modules/%s/install: %s %s", key, body.capabilities,
+             body.network_hosts)
+    result = request.app.state.trcc.dispatch(InstallModule(
+        key=key, capabilities=tuple(body.capabilities),
+        network_hosts=tuple(body.network_hosts)))
+    http_error_if_failed(result, status_code=409)
+    return result
+
+
+@router.delete("/modules/{key}")
+def remove_module(key: str, request: Request) -> ModuleResult:
+    """Remove installed module *key*; 409 for a built-in or one not installed."""
+    log.info("api DELETE /system/modules/%s", key)
+    result = request.app.state.trcc.dispatch(RemoveModule(key=key))
+    http_error_if_failed(result, status_code=409)
+    return result
 
 
 @router.post("/modules/{key}")

@@ -186,7 +186,8 @@ class AppProxy(CommandBus):
         try:
             # A Command waiting on the person (a password prompt) answers
             # when they do; the App's death still ends the wait at once.
-            timeout = None if cmd.WAITS_ON_USER else self._timeout
+            timeout = (None if cmd.WAITS_ON_USER
+                       else max(cmd.TAKES_S or 0.0, self._timeout))
             response = ipc.one_shot_request(envelope, timeout=timeout)
         except OSError as e:
             log.warning("AppProxy.dispatch: %s unreachable (%s: %s)",

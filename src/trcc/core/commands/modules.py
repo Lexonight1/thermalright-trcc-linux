@@ -1,18 +1,20 @@
-"""Modules: what the Modules page lists, and switching one on or off.
+"""Modules: what the Modules page lists, switching one on or off, and getting
+more from the signed index.
 
 Every UI's Modules page -- gui, qtgui, ``trcc system modules``, the API -- is these
-two.  A module's own work runs in its ``Module.enable`` / ``disable``, hooks
+Commands.  A module's own work runs in its ``Module.enable`` / ``disable``, hooks
 and all; this only asks, records and announces.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, ClassVar
 
-from ..errors import ModuleUnavailable
+from ..errors import HttpFetchError, ModuleUnavailable, TrccError
 from ..events import ModuleChanged
-from ..results import ModuleIconResult, ModuleResult, ModulesResult
+from ..results import ModuleCatalogResult, ModuleIconResult, ModuleResult, ModulesResult
 from ._base import Command, Query
 
 if TYPE_CHECKING:
@@ -87,3 +89,70 @@ class SetModuleEnabled(Command[ModuleResult]):
                             message=f"{module.title} "
                                     f"{'on' if self.enabled else 'off'}",
                             note=note)
+
+
+def _now() -> datetime:
+    """The time an index is judged by."""
+    now = datetime.now(timezone.utc)
+    log.debug("modules._now: %s", now.isoformat())
+    return now
+
+
+@dataclass(frozen=True, slots=True)
+class BrowseModules(Query[ModuleCatalogResult]):
+    """Every module the signed index lists -- available, installed, with an
+    update, or taken back."""
+    #: Two downloads, the root and the index.
+    TAKES_S: ClassVar[float | None] = 130.0
+
+    def execute(self, app: App) -> ModuleCatalogResult:
+        log.info("BrowseModules")
+        try:
+            modules = app.module_installer.browse(_now())
+        except (TrccError, HttpFetchError) as e:
+            log.warning("BrowseModules: %s", e)
+            return ModuleCatalogResult(ok=False, message=f"the module list could not "
+                                                         f"be read: {e}")
+        return ModuleCatalogResult(ok=True, modules=modules)
+
+
+@dataclass(frozen=True, slots=True)
+class InstallModule(Command[ModuleResult]):
+    """Install module *key* from the index, or update it.  *capabilities*
+    and *network_hosts* are what the user accepted: they must be exactly what
+    the index lists, or nothing is installed -- an update asking for more is
+    asked about again."""
+    #: The root, the index and the bundle.
+    TAKES_S: ClassVar[float | None] = 200.0
+    key: str
+    capabilities: tuple[str, ...] = ()
+    network_hosts: tuple[str, ...] = ()
+
+    def execute(self, app: App) -> ModuleResult:
+        log.info("InstallModule: %s accepting %s %s", self.key, self.capabilities,
+                 self.network_hosts)
+        try:
+            record, note = app.module_installer.install(
+                self.key, self.capabilities, self.network_hosts, _now())
+        except (TrccError, HttpFetchError) as e:
+            log.warning("InstallModule: %s refused: %s", self.key, e)
+            return ModuleResult(ok=False, message=str(e))
+        return ModuleResult(ok=True, key=self.key, enabled=app.modules.is_on(self.key),
+                            message=f"{app.modules.manifest(self.key).title} "
+                                    f"{record.version} installed", note=note)
+
+
+@dataclass(frozen=True, slots=True)
+class RemoveModule(Command[ModuleResult]):
+    """Remove installed module *key*.  A built-in module cannot be removed;
+    themes made with it stay."""
+    key: str
+
+    def execute(self, app: App) -> ModuleResult:
+        log.info("RemoveModule: %s", self.key)
+        try:
+            app.module_installer.remove(self.key)
+        except TrccError as e:
+            log.warning("RemoveModule: %s refused: %s", self.key, e)
+            return ModuleResult(ok=False, message=str(e))
+        return ModuleResult(ok=True, key=self.key, message=f"{self.key} removed")

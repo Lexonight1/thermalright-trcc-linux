@@ -9,8 +9,11 @@ imported only when it is switched on; that import registers its class in
 from __future__ import annotations
 
 from ._base import MODULES, BaseModule, ModuleNotFound
-from ._catalog import MANIFEST, ManifestError, read_manifest, specs
+from ._bundle import BundleRefused, read_bundle
+from ._catalog import MANIFEST, ManifestError, read_manifest, spec, specs
 from ._signing import Ed25519Checker
+from ._store import FolderModuleStore
 
-__all__ = ["MANIFEST", "MODULES", "BaseModule", "Ed25519Checker", "ManifestError",
-           "ModuleNotFound", "read_manifest", "specs"]
+__all__ = ["MANIFEST", "MODULES", "BaseModule", "BundleRefused", "Ed25519Checker",
+           "FolderModuleStore", "ManifestError", "ModuleNotFound", "read_bundle",
+           "read_manifest", "spec", "specs"]

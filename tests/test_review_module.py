@@ -495,8 +495,8 @@ def test_the_add_command_carries_the_sites_it_fetches_from(tmp_path: Path) -> No
     result = review.Review("weather", "3", COMMIT, [], "", "", ("network",),
                            ("api.example.com",), ran=True)
     report = review.render(result, tmp_path / "files.txt")
-    assert ("--capabilities network --network-hosts api.example.com --bundle"
-            in report)
+    assert ("--capabilities network --network-hosts api.example.com --title '' "
+            "--summary '' --bundle" in report)
 
 
 @pytest.mark.parametrize(("stage_one_passes", "answer", "asked", "ran"), [

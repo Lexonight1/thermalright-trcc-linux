@@ -17,6 +17,7 @@ from .models import (
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
+    AvailableModule,
     DeviceInfo,
     HandshakeResult,
     HardwareMetrics,
@@ -605,6 +606,13 @@ class ModuleResult(Result):
     #: What the module had to tell the user as it went off -- the switch
     #: still worked.  "" for nothing.
     note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleCatalogResult(Result):
+    """``BrowseModules``: every module the signed index lists, and where this
+    machine stands with each."""
+    modules: tuple[AvailableModule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**154 endpoints.**
+**157 endpoints.**
 
 ## Running it
 
@@ -170,8 +170,11 @@ Interactive docs are served at `/docs` while the API is running.
 | `GET /system/memory-slots` | `MemorySlotsResult` | DRAM slots — identity everywhere, timings on Linux (empty = not probed). |
 | `GET /system/metrics` | `dict` | Raw flat metric map: ``sensor_id`` → current (personalized) value. |
 | `GET /system/modules` | `ModulesResult` | Every module, on or off -- the API's Modules page.  ``icon`` says whether ``GET /system/modules/{key}/icon`` has a symbol to serve. |
+| `GET /system/modules/available` | `ModuleCatalogResult` | Every module the signed index lists, and where this machine stands with each; 502 when the index cannot be read. |
+| `DELETE /system/modules/{key}` | `ModuleResult` | Remove installed module *key*; 409 for a built-in or one not installed. |
 | `POST /system/modules/{key}` | `ModuleResult` | Switch module *key* on or off; 404 for a key no module has. |
 | `GET /system/modules/{key}/icon` | — | Module *key*'s symbol, as the App reads it (``ModuleIcon``) -- the API opens no file; 404 for a key with none. |
+| `POST /system/modules/{key}/install` | `ModuleResult` | Install or update module *key*.  The body is what the user accepted; 409 when that is not exactly what the index lists, or it is refused. |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
 | `POST /system/ram-effect` | `RgbLightsResult` | Save one of the memory's own effects on the sticks. |
 | `GET /system/ram-lighting` | `RamLightingResult` | Whether TRCC may reach RGB memory -- read from files, no bus traffic. |

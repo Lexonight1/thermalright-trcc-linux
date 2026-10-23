@@ -685,6 +685,13 @@ class ModuleSwitchRequest(BaseModel):
     enabled: bool
 
 
+class ModuleInstallRequest(BaseModel):
+    """Body for ``POST /system/modules/{key}/install``: what the user accepted
+    -- exactly what ``GET /system/modules/available`` lists for it."""
+    capabilities: list[str] = Field(default_factory=list)
+    network_hosts: list[str] = Field(default_factory=list)
+
+
 class DiskDeviceRequest(BaseModel):
     """Body for ``POST /system/disk-sensors/active``."""
     disk_key: str = ""

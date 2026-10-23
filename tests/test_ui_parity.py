@@ -241,6 +241,12 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "`display visual KEY` and the API's visual '' send it, and work with "
         "the module off (2026-10-21)"
     )),
+    **{name: (frozenset({"cli", "api"}), (
+        "gap: getting modules from the signed index -- the windows' Get modules "
+        "page and its permission dialog are increment 4b-2, next; the CLI's "
+        "`system modules available|install|remove` and the API send it now "
+        "(2026-10-23)"
+    )) for name in ("BrowseModules", "InstallModule", "RemoveModule")},
     "ResetDevice": (frozenset({"cli", "api"}), (
         "gap: power-cycle + restore. It sat in exactly this blind spot, which is "
         "why nobody noticed it was DisconnectDevice byte-for-byte for the "

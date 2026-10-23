@@ -10,11 +10,14 @@ import logging
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar
 
+from . import modules as module_folders
+from .__version__ import __version__
 from .adapters import modules as module_catalog
 from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
@@ -106,6 +109,8 @@ from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
 from .services.migration import LibraryMigration, ModuleThemeMove
+from .services.module_install import ModuleInstaller
+from .services.module_trust import ModuleTrust
 from .services.modules import ModuleRunner, ModuleSpec
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
@@ -449,10 +454,41 @@ class App(CommandBus, ModuleServices):
                 for key, m in modules.items()},
             host=self, settings=self.settings)
         self.modules.enable_saved()
+        #: Getting more modules: the signed index, and the user's own folder.
+        self.module_installer = ModuleInstaller(
+            trust=ModuleTrust(module_catalog.Ed25519Checker()), http=self.http,
+            store=module_catalog.FolderModuleStore(platform.paths().user_modules_dir()),
+            settings=self.settings, runner=self.modules, load_spec=self._installed_spec,
+            forget=self._forget_module, built_in=self._built_in_module,
+            publish=self.events.publish, trcc_version=__version__)
         # Once per user: themes a module draws move into its folder.  After
         # the modules, whose manifests say which module draws what.
         ModuleThemeMove(self.themes, platform.paths(), self.settings,
                         self.background_owner).run()
+
+    def _installed_spec(self, key: str) -> ModuleSpec:
+        """Installed module *key*, read from the user's folder -- which every
+        import of it then searches."""
+        root = self.platform.paths().user_modules_dir()
+        log.info("_installed_spec: %s in %s", key, root)
+        module_folders.use_folder(root)
+        return module_catalog.spec(root / key / module_folders.MANIFEST)
+
+    @staticmethod
+    def _forget_module(key: str) -> None:
+        """Module *key*'s code and class gone from this process -- so a newer
+        copy is imported, and registered, as if for the first time."""
+        log.info("_forget_module: %s", key)
+        module_folders.forget(key)
+        module_catalog.MODULES.unregister(key)
+
+    @staticmethod
+    def _built_in_module(key: str) -> bool:
+        """Whether *key* ships with TRCC -- never installed over, nor removed."""
+        built_in = (Path(module_folders.__file__).parent / key
+                    / module_folders.MANIFEST).is_file()
+        log.debug("_built_in_module: %s -> %s", key, built_in)
+        return built_in
 
     # ── ModuleServices: what every module's host reaches ───────────────
 
@@ -1382,8 +1418,11 @@ class App(CommandBus, ModuleServices):
         self.modules.start_session()
 
     def _check_for_update(self) -> UpdateCheckResult:
-        """The watch's check: the one Command every UI's check goes through."""
+        """The watch's check: the one Command every UI's check goes through.
+        The module index rides along -- read once a day at most, and only
+        when a module is installed -- so a module taken back stops."""
         log.debug("App._check_for_update")
+        self.module_installer.check_daily(datetime.now(timezone.utc))
         from .core.commands import CheckForUpdate
         return self.dispatch(CheckForUpdate())
 

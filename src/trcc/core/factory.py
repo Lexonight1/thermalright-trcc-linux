@@ -124,6 +124,13 @@ class Registry(Mapping[K, V]):
             return value
         return deco
 
+    def unregister(self, key: K) -> None:
+        """Forget *key* -- a module removed or about to be imported afresh,
+        whose next registration is then a first, not a replacement."""
+        log.debug("%s: %r unregistered (was there: %s)", self._name, key,
+                  key in self._table)
+        self._table.pop(key, None)
+
     # ── Mapping protocol ──────────────────────────────────────────────
     # Subclassing ``Mapping`` means these three are the ONLY accessors we
     # write; ``keys`` / ``values`` / ``items`` / ``__contains__`` / ``__eq__``

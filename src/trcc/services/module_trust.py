@@ -183,7 +183,15 @@ def parse_release(key: str, entry: Any) -> ModuleRelease:
         sha256=f.text("sha256", _SHA256), min_trcc=f.text("min_trcc"),
         commit=f.text("commit", _COMMIT), capabilities=f.texts("capabilities"),
         author_key=author_key, author_sig=f.text("author_sig"),
-        network_hosts=_hosts(f, key))
+        network_hosts=_hosts(f, key), title=_optional(entry, "title"),
+        summary=_optional(entry, "summary"))
+
+
+def _optional(entry: dict[str, Any], name: str) -> str:
+    """Text the list only shows -- "" when absent or not text."""
+    value = entry.get(name, "")
+    log.debug("module_trust._optional: %s", name)
+    return value if isinstance(value, str) else ""
 
 
 def _hosts(f: _Fields, key: str) -> tuple[str, ...]:

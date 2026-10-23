@@ -1,8 +1,10 @@
-"""``trcc system modules`` -- list the modules, switch one on or off.
+"""``trcc system modules`` -- list the modules, switch one on or off, and get
+more from the signed index.
 
 The CLI's Modules page, under ``system`` as the gui keeps it in the Control
 Center and the API at ``/system/modules``: the same ``ListModules`` /
-``SetModuleEnabled`` every other UI sends.
+``SetModuleEnabled`` / ``BrowseModules`` / ``InstallModule`` / ``RemoveModule``
+every other UI sends.  The App does the installing; this asks and prints.
 """
 from __future__ import annotations
 
@@ -10,12 +12,19 @@ import logging
 
 import typer
 
-from ...core.commands import ListModules, SetModuleEnabled
+from ...core.commands import (
+    BrowseModules,
+    InstallModule,
+    ListModules,
+    RemoveModule,
+    SetModuleEnabled,
+)
+from ...core.models import MODULE_CAPABILITIES, AvailableModule
 from ._ctx import get_app
 
 log = logging.getLogger(__name__)
 
-app = typer.Typer(help="Modules: list them, switch one on or off.",
+app = typer.Typer(help="Modules: list them, switch one on or off, get more.",
                   no_args_is_help=True)
 
 
@@ -53,3 +62,72 @@ def module_off(key: str = typer.Argument(..., help="The module's key")) -> None:
     """Switch a module off."""
     log.info("cli system modules off: %s", key)
     _switch(key, False)
+
+
+def _listed() -> tuple[AvailableModule, ...]:
+    """What the index lists -- or the command fails, saying why."""
+    log.info("cli module: reading the index")
+    result = get_app().dispatch(BrowseModules())
+    if not result.ok:
+        typer.echo(result.message)
+        raise typer.Exit(code=1)
+    return result.modules
+
+
+@app.command("available")
+def available() -> None:
+    """Every module you can install, and the ones you have."""
+    log.info("cli system modules available")
+    for m in _listed():
+        typer.echo(f"  [{m.status:<9}] {m.key:<16} {m.version:<8} {m.title} -- {m.summary}")
+        if m.status == "update":
+            typer.echo(f"        installed: {m.installed_version}")
+        if m.reason:
+            typer.echo(f"        taken back: {m.reason}")
+
+
+def _asks(module: AvailableModule) -> list[str]:
+    """What *module* may do, in the words its tile shows."""
+    log.debug("cli module _asks: %s", module.key)
+    lines = [f"  - {MODULE_CAPABILITIES.get(c, c)}" for c in module.capabilities]
+    lines += [f"  - fetches from {host}" for host in module.network_hosts]
+    return lines or ["  - nothing beyond showing on the Modules page"]
+
+
+@app.command("install")
+def install(key: str = typer.Argument(..., help="The module's key"),
+            yes: bool = typer.Option(False, "--yes", "-y",
+                                     help="Accept what it asks for without asking")) -> None:
+    """Install a module from the list, or update it -- after saying what it may do."""
+    log.info("cli system modules install: %s yes=%s", key, yes)
+    module = next((m for m in _listed() if m.key == key), None)
+    if module is None:
+        typer.echo(f"no module {key!r} in the list -- see: trcc system modules available")
+        raise typer.Exit(code=1)
+    typer.echo(f"{module.title} {module.version} -- reviewed by TRCC, not guaranteed "
+               "safe.  It may:")
+    typer.echo("\n".join(_asks(module)))
+    if not yes and not typer.confirm("Install it?"):
+        log.info("cli system modules install: %s declined", key)
+        raise typer.Exit(code=1)
+    result = get_app().dispatch(InstallModule(key=key, capabilities=module.capabilities,
+                                              network_hosts=module.network_hosts))
+    typer.echo(result.message)
+    if result.note:
+        typer.echo(result.note)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("remove")
+def remove(key: str = typer.Argument(..., help="The module's key"),
+           yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask first")) -> None:
+    """Remove a module you installed.  Themes made with it stay."""
+    log.info("cli system modules remove: %s yes=%s", key, yes)
+    if not yes and not typer.confirm(f"Remove {key}?"):
+        log.info("cli system modules remove: %s declined", key)
+        raise typer.Exit(code=1)
+    result = get_app().dispatch(RemoveModule(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)

@@ -155,6 +155,11 @@ class UserInterface(CommandBus):
                  type(platform).__name__)
         self._platform = platform
         self._relaunched_at = os.environ.pop(RELAUNCHED_ENV, "")
+        # The modules the user installed are found by every process, the
+        # App's and each UI's alike -- a UI finds a module's faces itself.
+        from .. import modules
+        from .._boot import host_platform
+        modules.use_folder(host_platform(platform).paths().user_modules_dir())
         if (code := self.preflight()) is not None:
             log.info("start: %s refused to launch, exit=%d",
                      type(self).__name__, code)

@@ -223,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--capabilities", default="")
             p.add_argument("--network-hosts", default="",
                            help="the sites it fetches from, comma-separated")
+            p.add_argument("--title", default="", help="its manifest's title")
+            p.add_argument("--summary", default="", help="its manifest's summary")
             p.add_argument("--author-key", type=Path, required=True)
         elif name == "revoke":
             p.add_argument("--module", required=True)
@@ -254,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
                         "min_trcc": args.min_trcc,
                         "capabilities": [c for c in args.capabilities.split(",") if c],
                         "network_hosts": [h for h in args.network_hosts.split(",") if h],
+                        "title": args.title, "summary": args.summary,
                         "author_key": public_key(args.author_key),
                         "author_sig": args.author_sig}, trust)
                 elif args.action == "revoke":

@@ -22,6 +22,7 @@ import importlib
 import importlib.util
 import json
 import logging
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -34,6 +35,32 @@ MANIFEST = "module.json"
 TABLE = "i18n.json"
 #: A key is also a Python package name (``core.models.MODULE_KEY``).
 KEY = MODULE_KEY
+#: What a module is, at the top of its folder -- all a release bundle holds
+#: (``dev/tools/module_bundle.py`` packs these, the installer takes only these).
+BUNDLE_FILES = frozenset({"__init__.py", MANIFEST, TABLE, "icon.svg", "icon.png",
+                          "app.py"})
+BUNDLE_DIRS = frozenset({"core", "services", "adapters", "ui", "assets"})
+
+
+def use_folder(folder: Path) -> None:
+    """Find modules in *folder* too -- the user's installed ones.  Each
+    process does this once (``UserInterface.start``); again is a no-op."""
+    if str(folder) in __path__:
+        log.debug("modules.use_folder: %s already searched", folder)
+        return
+    __path__.append(str(folder))
+    log.info("modules.use_folder: %s", folder)
+
+
+def forget(key: str) -> None:
+    """Drop module *key*'s imported code, so the next import reads its files
+    again -- after an update or a removal.  What a window already built from
+    the old code stays until the window is reopened."""
+    gone = [name for name in sys.modules
+            if name == f"{__name__}.{key}" or name.startswith(f"{__name__}.{key}.")]
+    for name in gone:
+        del sys.modules[name]
+    log.info("modules.forget: %s -- %d imported part(s) dropped", key, len(gone))
 
 
 def folders() -> dict[str, Path]:

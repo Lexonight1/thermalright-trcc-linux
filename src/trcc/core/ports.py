@@ -25,6 +25,7 @@ from .models import (
     MIN_REFRESH_INTERVAL_S,
     BoardIdentity,
     HidInterface,
+    ModuleManifest,
     PanelPicture,
     RamAccessState,
     RamAccessStatus,
@@ -1398,6 +1399,12 @@ class Paths(ABC):
         """
         frame_log.debug("user_data_dir: called")
         return self.user_content_dir() / "data"
+
+    def user_modules_dir(self) -> Path:
+        """Where the modules the user installed live, one folder each --
+        beside their data, never inside the app's own files."""
+        log.debug("user_modules_dir: called")
+        return self.user_content_dir() / "modules"
 
     def is_user_content(self, path: Path) -> bool:
         """True when *path* is an asset the USER authored, not a shipped one.
@@ -3108,6 +3115,33 @@ class ScreenCapture(ABC):
         nobody is showing.
         """
         log.debug("%s.stop: nothing held", type(self).__name__)
+
+
+# =========================================================================
+# ModuleStore — where installed modules live on disk
+# =========================================================================
+
+
+class ModuleStore(ABC):
+    """The folder the user's installed modules live in, one folder each.
+
+    Adapter: ``FolderModuleStore`` (``adapters/modules/_store.py``)."""
+
+    @abstractmethod
+    def root(self) -> Path:
+        """The folder: ``Paths.user_modules_dir()``."""
+
+    @abstractmethod
+    def install(self, bundle: bytes,
+                check: Callable[[ModuleManifest], None]) -> ModuleManifest:
+        """Unpack *bundle* in place of any copy installed -- atomically: it is
+        unpacked aside, *check* is asked about its manifest (raise to
+        refuse), and only then does it replace the old one.  A refusal or a
+        failure leaves the old copy as it was."""
+
+    @abstractmethod
+    def remove(self, key: str) -> None:
+        """Delete module *key*'s folder; nothing when there is none."""
 
 
 # =========================================================================

@@ -49,6 +49,7 @@ import base64
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -147,6 +148,8 @@ class Review:
     since: str
     capabilities: tuple[str, ...] = ()
     network_hosts: tuple[str, ...] = ()
+    title: str = ""
+    summary: str = ""
     #: Whether stage 2 -- its own code, in the sandbox -- ran.
     ran: bool = False
 
@@ -704,7 +707,7 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
     except ManifestError:
         return Review(key, version, commit, gates, diff, since)
     return Review(key, version, commit, gates, diff, since, manifest.capabilities,
-                  manifest.network_hosts)
+                  manifest.network_hosts, manifest.title, manifest.summary)
 
 
 def render(result: Review, diff_file: Path) -> str:
@@ -737,6 +740,8 @@ def render(result: Review, diff_file: Path) -> str:
                   f"--capabilities {','.join(result.capabilities)} "
                   + (f"--network-hosts {','.join(result.network_hosts)} "
                      if result.network_hosts else "")
+                  + f"--title {shlex.quote(result.title)} "
+                  f"--summary {shlex.quote(result.summary)} "
                   + "--bundle <asset> "
                   "--url <asset url> --min-trcc <version> --author-key <pub> "
                   "--author-sig <sig>", "```"]

@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**165 total: 118 Commands and 47 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**168 total: 120 Commands and 48 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1581,6 +1581,26 @@ Takes no arguments.
 
 ## modules
 
+### `BrowseModules`
+
+Every module the signed index lists -- available, installed, with an update, or taken back.
+
+*Query* → `ModuleCatalogResult`
+
+Takes no arguments.
+
+### `InstallModule`
+
+Install module *key* from the index, or update it.  *capabilities* and *network_hosts* are what the user accepted: they must be exactly what the index lists, or nothing is installed -- an update asking for more is asked about again.
+
+*Command* → `ModuleResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `capabilities` | `tuple[str, Ellipsis]` | no |
+| `network_hosts` | `tuple[str, Ellipsis]` | no |
+
 ### `ListModules`
 
 Every module, on or off, with why one cannot run here.
@@ -1594,6 +1614,16 @@ Takes no arguments.
 Module *key*'s symbol, as bytes -- every window's tile and the API's route draw it from here, never from a path.
 
 *Query* → `ModuleIconResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+
+### `RemoveModule`
+
+Remove installed module *key*.  A built-in module cannot be removed; themes made with it stay.
+
+*Command* → `ModuleResult`
 
 | Field | Type | Required |
 |---|---|---|

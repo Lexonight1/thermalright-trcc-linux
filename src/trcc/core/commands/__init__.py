@@ -98,8 +98,11 @@ from .led import (
     ToggleLed,
 )
 from .modules import (
+    BrowseModules,
+    InstallModule,
     ListModules,
     ModuleIcon,
+    RemoveModule,
     SetModuleEnabled,
 )
 from .system import (
@@ -174,6 +177,7 @@ __all__ = [
     "AddOverlayElement",
     "AdvanceSlideshow",
     "ApplyMask",
+    "BrowseModules",
     "BuildPreview",
     "CaptureScreencastFrame",
     "CaptureSourceFrame",
@@ -213,6 +217,7 @@ __all__ = [
     "GetSensorDashboard",
     "ImportTheme",
     "InitializeLed",
+    "InstallModule",
     "KeepAliveLoop",
     "LcdSnapshot",
     "LedSnapshot",
@@ -249,6 +254,7 @@ __all__ = [
     "RecentColors",
     "RefreshAutostart",
     "RememberColor",
+    "RemoveModule",
     "RenderAndSend",
     "RenderDcStandalone",
     "RenderLed",
