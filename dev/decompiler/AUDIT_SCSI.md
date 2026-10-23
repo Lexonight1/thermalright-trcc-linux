@@ -72,17 +72,22 @@ data starts at `shm + 0x25800`.
 `response[4..7] == A1 A2 A3 A4` the panel is still booting → `Sleep(3000)` and
 retry.  Init is `cmd=0x1F5`, `size=0xE100`, data-OUT, then `Sleep(100)`.
 
-**Panel class comes from `response[0]`**, as an ASCII digit — `'$'`, `'2'`,
-`'3'` — not from a resolution lookup.  We derive chunking from the resolution
-instead and arrive at the same answer; different route, same bytes.
+**Panel class comes from `response[0]`**, an ASCII byte — `'$'` is class 1,
+`'2'` and `'3'` are both class 2, `'d'` and `'e'` are class 3; any other byte
+is never classified, and TRCC.exe shows no panel for it.  We derive chunking
+from the resolution instead (`FBL_PROFILES`: 36 → 240x240, 50 and 51 → 320x240,
+100 and 101 → 320x320) and arrive at the same answer; different route, same
+bytes.  This table read `'3'` → 320x320 and left `'d'`/`'e'` out until
+2026-10-22, when the 2.1.8 `USBLCD.exe` was decompiled (Ghidra, `FUN_00410d00`)
+and read: the code was right, only this page was not.
 
 **Chunking.**  Command word is `0x101F5 | (index << 24)`:
 
 | class | chunks (cmd / size) | total | panel |
 |---|---|---|---|
 | `'$'` | `0x101F5`/0xE100, `0x10101F5`/0xE100 | 115,200 | 240x240 |
-| `'2'` | `0x101F5`/0xE100, `0x10101F5`/0xE100, `0x20101F5`/**0x9600** | 153,600 | 320x240 |
-| `'3'` | `0x101F5`/0x10000 x3, `0x30101F5`/**0x2000** | 204,800 | 320x320 |
+| `'2'`, `'3'` | `0x101F5`/0xE100, `0x10101F5`/0xE100, `0x20101F5`/**0x9600** | 153,600 | 320x240 |
+| `'d'`, `'e'` | `0x101F5`/0x10000 x3, `0x30101F5`/**0x2000** | 204,800 | 320x320 |
 
 `ScsiLcd._frame_chunks` reproduces all three **byte for byte**, and
 `_SMALL_DISPLAY_PIXELS = 76800` lands the 0xE100-vs-0x10000 switch exactly
