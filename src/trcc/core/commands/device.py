@@ -17,6 +17,7 @@ from ..errors import (
     ThemeError,
     TransportError,
     TrccError,
+    UnrecognisedReply,
 )
 from ..events import (
     BackgroundChanged,
@@ -197,8 +198,8 @@ def _is_element_type(kind: str) -> TypeGuard[OverlayElementType]:
     return valid
 
 
-def _connect_failure_hints(app: App, error: Exception, vid: int, pid: int,
-                           unit: str) -> list[str]:
+def _connect_failure_hints(app: App, error: Exception, key: str, vid: int,
+                           pid: int, unit: str) -> list[str]:
     """What to tell the user when a connect fails with *error*.
 
     The OS's standing checks, then its advice for a REFUSED open -- the
@@ -208,6 +209,10 @@ def _connect_failure_hints(app: App, error: Exception, vid: int, pid: int,
     hints = app.platform.check_permissions()
     if isinstance(error, PermissionError_):
         hints.append(app.platform.permission_denied_hint())
+    if isinstance(error, UnrecognisedReply):
+        hints.append(f"{key} answered, but not as a Thermalright panel does.  If "
+                     f"it is another product, `trcc device disconnect {key}` "
+                     "leaves it alone.")
     hints += _suspended_panel_hints(app, vid, pid, unit)
     log.info("_connect_failure_hints: %s -> %d hint(s)", type(error).__name__,
              len(hints))
@@ -375,7 +380,7 @@ class ConnectDevice(Command[ConnectResult]):
             # The device only: a retry that fails here must not throw away what
             # the panel is coming back to (its theme, a cast, a slideshow).
             app.release_device(self.key)
-            hints = _connect_failure_hints(app, e, vid, pid, unit)
+            hints = _connect_failure_hints(app, e, self.key, vid, pid, unit)
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),

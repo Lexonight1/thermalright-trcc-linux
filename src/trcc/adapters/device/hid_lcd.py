@@ -24,6 +24,7 @@ from pathlib import Path
 from ...core.errors import (
     HandshakeError,
     TransportError,
+    UnrecognisedReply,
     UnsupportedOperationError,
 )
 from ...core.logs import Blob, per_frame
@@ -213,7 +214,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         if not self._validate_response(resp):
             log.warning("HidLcd handshake: invalid response (len=%d, first 16: %s)",
                         len(resp), resp[:16].hex() if resp else "empty")
-            raise HandshakeError(
+            raise (UnrecognisedReply if resp else HandshakeError)(
                 f"Invalid handshake response for {self.info.key}"
             )
         return self._parse_response(resp)

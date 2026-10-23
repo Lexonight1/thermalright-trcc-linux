@@ -24,6 +24,7 @@ import time
 
 from ...core.errors import (
     HandshakeError,
+    UnrecognisedReply,
 )
 from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
@@ -118,7 +119,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
         if (len(resp) < 37 or resp[0] != 3 or resp[1] != 0xFF or resp[8] != 1):
             log.error("LyLcd %s: handshake validation failed (len=%d)",
                       self.info.key, len(resp))
-            raise HandshakeError(
+            raise (UnrecognisedReply if resp else HandshakeError)(
                 f"LyLcd handshake validation failed "
                 f"([0]={resp[0] if len(resp) > 0 else 'N/A'}, "
                 f"[1]={resp[1] if len(resp) > 1 else 'N/A'}, "

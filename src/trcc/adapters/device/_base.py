@@ -29,7 +29,12 @@ from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ...core.errors import DeviceNotFoundError, HandshakeError, TransportError
+from ...core.errors import (
+    DeviceNotFoundError,
+    HandshakeError,
+    TransportError,
+    UnrecognisedReply,
+)
 from ...core.factory import Registry, Reject
 from ...core.logs import Blob, per_frame, trace
 from ...core.models import HandshakeResult, ProductInfo, Wire
@@ -381,7 +386,11 @@ class BaseBulkDevice(BaseDevice[BulkTransport]):
                 if attempt < _HANDSHAKE_MAX_RETRIES:
                     time.sleep(_HANDSHAKE_RETRY_DELAY_S)
 
-        raise HandshakeError(
+        # A reply that was not a panel's stays one through the retries: the
+        # failure hint offers to leave such a device alone.
+        error = (UnrecognisedReply if isinstance(last_err, UnrecognisedReply)
+                 else HandshakeError)
+        raise error(
             f"{type(self).__name__} handshake failed after "
             f"{_HANDSHAKE_MAX_RETRIES} attempts"
         ) from last_err

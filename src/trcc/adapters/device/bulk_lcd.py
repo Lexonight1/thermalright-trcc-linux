@@ -18,6 +18,7 @@ import struct
 from ...core.errors import (
     HandshakeError,
     TransportError,
+    UnrecognisedReply,
 )
 from ...core.logs import Blob, per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
@@ -181,7 +182,7 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
                 self.info.key, len(resp),
                 resp[24] if len(resp) > 24 else "N/A",
             )
-            raise HandshakeError(
+            raise (UnrecognisedReply if resp else HandshakeError)(
                 f"BulkLcd handshake validation failed "
                 f"(len={len(resp)}, resp[24]={resp[24] if len(resp) > 24 else 'N/A'})"
             )

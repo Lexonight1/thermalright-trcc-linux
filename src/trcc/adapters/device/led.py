@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ...core.errors import (
     HandshakeError,
+    UnrecognisedReply,
     UnsupportedOperationError,
 )
 from ...core.led_models import LedPayload
@@ -225,7 +226,8 @@ class Led(BaseBulkDevice, wire=Wire.LED):
         """Resolve style + model from the reply, or reject it as retryable."""
         self._trace_reply(resp)
         if len(resp) < 7:
-            raise HandshakeError(f"Response too short ({len(resp)} bytes)")
+            raise (UnrecognisedReply if resp else HandshakeError)(
+                f"Response too short ({len(resp)} bytes)")
 
         # Windows DeviceDataReceived1 doesn't validate magic/cmd — we
         # accept regardless.  A recognised fingerprint header (e.g. the

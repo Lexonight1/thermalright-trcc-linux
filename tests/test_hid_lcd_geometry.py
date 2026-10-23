@@ -557,3 +557,56 @@ def test_type2_sub_selects_the_encode_rotation(
         f"SUB={sub} on a 1280x480 panel must encode at {expected_base}°; the "
         f"SUB byte is not reaching get_profile"
     )
+
+
+
+# ── A reply that is not a panel's (2026-10-22) ───────────────────────
+
+@pytest.fixture
+def no_retry_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trcc.adapters.device import _base
+    monkeypatch.setattr(_base, "_HANDSHAKE_RETRY_DELAY_S", 0)
+
+
+def test_a_reply_that_is_not_a_panels_is_unrecognised(no_retry_wait: None) -> None:
+    """A vid:pid match is all the scan checks: a device that ANSWERS, but not
+    as a Thermalright panel does, is told apart from one that says nothing --
+    through the retries -- so the failure can offer to leave it alone.
+    MUTATION CHECK: raise a plain HandshakeError from ``_handshake_retry``."""
+    from trcc.core.errors import UnrecognisedReply
+
+    transport = FakeBulkTransport()
+    transport.read_script = [b"\x01" * 512] * 3     # an answer, no magic
+    with pytest.raises(UnrecognisedReply):
+        _make_type2(transport).connect()
+
+
+def test_silence_is_not_an_unrecognised_reply(no_retry_wait: None) -> None:
+    """An asleep panel says nothing, as a missing one does: never offer to
+    leave a real cooler alone for that."""
+    from trcc.core.errors import UnrecognisedReply
+
+    transport = FakeBulkTransport()                   # every read comes back empty
+    with pytest.raises(HandshakeError) as caught:
+        _make_type2(transport).connect()
+    assert not isinstance(caught.value, UnrecognisedReply)
+
+
+def test_the_failure_offers_to_leave_an_unrecognised_device_alone(
+        tmp_path) -> None:
+    """MUTATION CHECK: drop the UnrecognisedReply hint."""
+    from trcc.app import App
+    from trcc.core.commands.device import _connect_failure_hints
+    from trcc.core.errors import UnrecognisedReply
+
+    from .conftest import FakePlatform
+
+    app = App(platform=FakePlatform(tmp_path))
+    hints = _connect_failure_hints(app, UnrecognisedReply("x"), "0416:8001",
+                                   0x0416, 0x8001, "")
+    assert ("0416:8001 answered, but not as a Thermalright panel does.  If it is "
+            "another product, `trcc device disconnect 0416:8001` leaves it "
+            "alone.") in hints
+    assert not any("disconnect" in h for h in _connect_failure_hints(
+        app, HandshakeError("silent"), "0416:8001", 0x0416, 0x8001, ""))
+    app.close()

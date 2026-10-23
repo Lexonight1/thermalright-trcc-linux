@@ -18,6 +18,13 @@ class HandshakeError(TrccError):
     """Device handshake failed or returned invalid data."""
 
 
+class UnrecognisedReply(HandshakeError):
+    """The device answered the handshake, but not as a Thermalright panel
+    does: a firmware not met yet, or not a panel at all -- a vid:pid match is
+    all the scan checks.  Silence is a plain HandshakeError (an asleep panel
+    looks the same)."""
+
+
 class TransportError(TrccError):
     """Underlying USB/transport layer failed."""
 
