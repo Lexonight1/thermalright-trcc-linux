@@ -99,6 +99,9 @@ class PyUsbBulkTransport(BulkTransport):
         self._is_open = False
         self._ep_out: int | None = None
         self._ep_in: int | None = None
+        #: Interfaces whose kernel driver this transport detached -- handed
+        #: back on close, so the device is left as it was found.
+        self._detached: list[int] = []
         log.debug("PyUsbBulkTransport.__init__: %04x:%04x serial=%s unit=%s",
                   vid, pid, serial or "(any)", unit or "(only)")
 
@@ -191,11 +194,13 @@ class PyUsbBulkTransport(BulkTransport):
         appropriately.
         """
         detach_blocked = False
+        self._detached = []              # a re-found handle starts afresh
         for i in range(_DETACH_INTERFACES):
             try:
                 if not self._device.is_kernel_driver_active(i):
                     continue
                 self._device.detach_kernel_driver(i)
+                self._detached.append(i)
                 # Verify the detach actually took.
                 if self._device.is_kernel_driver_active(i):
                     detach_blocked = True
@@ -261,12 +266,31 @@ class PyUsbBulkTransport(BulkTransport):
                 usb.util.release_interface(self._device, USB_INTERFACE)
             except Exception:
                 pass
+            self._reattach_kernel_drivers()
             try:
                 usb.util.dispose_resources(self._device)
             except Exception:
                 pass
             self._device = None
         self._is_open = False
+
+    def _reattach_kernel_drivers(self) -> None:
+        """Hand back every kernel driver :meth:`_detach_kernel_drivers` took.
+
+        Left detached, the device stayed driverless until it was unplugged:
+        harmless for a panel, but a vid:pid match is all the scan checks, so a
+        foreign device sharing one (a gadget on Nuvoton's sample firmware, say)
+        lost its driver for good.  Released now, the device is as it was found
+        -- what ``trcc device release`` promises any other program.
+        """
+        log.info("_reattach_kernel_drivers: %04x:%04x ifaces %s",
+                 self._vid, self._pid, self._detached)
+        for i in self._detached:
+            try:
+                self._device.attach_kernel_driver(i)
+            except (usb.core.USBError, NotImplementedError) as e:
+                log.debug("Could not re-attach kernel driver to iface %d: %s", i, e)
+        self._detached = []
 
     @property
     def is_open(self) -> bool:

@@ -29,12 +29,12 @@ SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="8001", MODE="06
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="8001", MODE="0666"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="8001", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
-# ALi Corp LCD Display
+# AST Research LCD Display
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5303", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", MODE="0666"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
-# ALi Corp LCD Display
+# AST Research LCD Display
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5304", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", MODE="0666"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"

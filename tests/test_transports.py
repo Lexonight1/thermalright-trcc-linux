@@ -443,3 +443,47 @@ def test_endpoint_detection_survives_a_device_that_cannot_answer() -> None:
     transport._detect_endpoints()
 
     assert transport.ep_out is None and transport.ep_in is None
+
+
+class _DriverDevice:
+    """A USB device whose interfaces 0 and 2 have kernel drivers bound."""
+
+    def __init__(self) -> None:
+        self.bound = {0, 2}
+        self.calls: list[str] = []
+
+    def is_kernel_driver_active(self, i: int) -> bool:
+        return i in self.bound
+
+    def detach_kernel_driver(self, i: int) -> None:
+        self.bound.discard(i)
+        self.calls.append(f"detach {i}")
+
+    def attach_kernel_driver(self, i: int) -> None:
+        self.bound.add(i)
+        self.calls.append(f"attach {i}")
+
+
+def test_close_hands_back_the_kernel_drivers_it_took(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A vid:pid match is all the scan checks: a foreign device sharing one
+    lost its kernel driver until it was unplugged (2026-10-22).  Released --
+    a failed handshake, or ``trcc device release`` -- the device is left as
+    it was found, before the handle is let go.
+    MUTATION CHECK: drop ``_reattach_kernel_drivers`` from ``close``."""
+    import usb.util
+
+    from trcc.adapters.device.transport import PyUsbBulkTransport
+
+    device = _DriverDevice()
+    monkeypatch.setattr(usb.util, "release_interface",
+                        lambda dev, i: device.calls.append("release"))
+    monkeypatch.setattr(usb.util, "dispose_resources",
+                        lambda dev: device.calls.append("dispose"))
+    bulk = PyUsbBulkTransport(0x0416, 0x8001)
+    bulk._device = device
+    bulk._detach_kernel_drivers()
+    bulk.close()
+    assert device.bound == {0, 2}
+    assert device.calls == ["detach 0", "detach 2", "release",
+                            "attach 0", "attach 2", "dispose"]
