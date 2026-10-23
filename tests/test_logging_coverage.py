@@ -137,7 +137,11 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: ``LCDHandler.has_video_playback``, ``download_preview`` and the unreachable
 #: ``UCInfoModule`` strip with ``set_show_info_module``.  The two silent ones
 #: were gui's ``stop_periodic_updates`` and ``set_show_info_module``.
-MAX_SILENT = 283
+#: 283 -> 282 on 2026-10-23: ``VisualTiles.waiting`` DELETED -- zero readers
+#: (src + tests + dev) since it was written; the module review
+#: (``dev/tools/review_module.py``) named it, holding the visualizer to a
+#: log line in every function.
+MAX_SILENT = 282
 
 
 def test_logging_coverage_only_improves() -> None:

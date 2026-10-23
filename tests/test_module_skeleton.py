@@ -120,8 +120,11 @@ def test_a_name_the_app_already_uses_is_refused() -> None:
 
 
 def test_its_words_join_the_translations(hello: Path) -> None:
+    """The skeleton has its word in every language, as a module must; the
+    English fallback is ``test_i18n``'s."""
     specs(hello)
-    assert (tr("Hello", "de"), tr("Hello", "fr")) == ("Hallo", "Hello")
+    assert (tr("Hello", "de"), tr("Hello", "fr"), tr("Hello", "ja")) == (
+        "Hallo", "Bonjour", "こんにちは")
 
 
 def test_the_cli_runs_its_command_on_or_off(

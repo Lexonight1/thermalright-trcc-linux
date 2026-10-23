@@ -33,11 +33,6 @@ class VisualTiles:
         self._bus, self._ask, self._show = bus, ask, show
         self._waiting: list[VisualItem] = []
 
-    @property
-    def waiting(self) -> int:
-        """How many tiles have not arrived yet."""
-        return len(self._waiting)
-
     def fetch(self, items: list[VisualItem]) -> None:
         """Ask for *items*' tiles -- in place of any still waiting."""
         log.info("VisualTiles.fetch: %d tile(s)", len(items))

@@ -18,7 +18,6 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
-import i18n_gaps
 import module_bundle
 import review_module as review
 import sign_module_index as signer
@@ -43,13 +42,10 @@ def _release(repo: Path, tag: str) -> str:
 
 @pytest.fixture
 def author(tmp_path: Path) -> Path:
-    """An author's repository: the skeleton at its root, every word in every
-    language, plus the tests and README a repo has and a bundle leaves out."""
+    """An author's repository: the skeleton at its root, plus the tests and
+    README a repo has and a bundle leaves out."""
     repo = tmp_path / "author"
     shutil.copytree(_TEMPLATE, repo, ignore=shutil.ignore_patterns("__pycache__"))
-    words = json.loads((repo / "i18n.json").read_text(encoding="utf-8"))["en"]
-    (repo / "i18n.json").write_text(json.dumps(
-        {lang: dict(words) for lang in i18n_gaps.languages()}), encoding="utf-8")
     (repo / "tests").mkdir()
     (repo / "tests" / "test_hello.py").write_text("def test_x():\n    pass\n")
     (repo / "README.md").write_text("# Hello\n")
@@ -491,3 +487,26 @@ def test_the_verdict_says_listable_only_after_both_stages(
     report = review.render(result, tmp_path / "files.txt")
     assert verdict in report
     assert ("sign_module_index.py add" in report) == (not hard and ran)
+
+
+@pytest.mark.parametrize(("stage_one_passes", "answer", "asked", "ran"), [
+    (True, "y", True, True),
+    (True, "n", True, False),
+    (True, "", True, False),        # Enter is No
+    (False, "y", False, False),     # a failed stage 1 never reaches the question
+])
+def test_its_code_runs_only_after_a_yes(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage_one_passes: bool,
+        answer: str, asked: bool, ran: bool) -> None:
+    """``--run`` points at the report, then asks; only "y" runs stage 2."""
+    gate = review.Gate("Code")
+    if not stage_one_passes:
+        gate.fail("x.py:1", "exec() -- runs text as code")
+    monkeypatch.setattr(review, "review", lambda *a: review.Review(
+        "hello", "1", COMMIT, [gate], "", ""))
+    questions: list[str] = []
+    stage_two: list[bool] = []
+    monkeypatch.setattr("builtins.input", lambda q: questions.append(q) or answer)
+    monkeypatch.setattr(review, "stage_two", lambda result, workdir: stage_two.append(True))
+    review.main(["repo", "--tag", "v1", "--run", "--out", str(tmp_path / "r.md")])
+    assert (questions != [], stage_two != []) == (asked, ran)
