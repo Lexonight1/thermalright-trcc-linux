@@ -499,7 +499,8 @@ def test_the_cli_says_what_it_may_do_then_installs_and_removes(
             removed.exit_code) == (0, 1, 0, 0)
     assert "[available] greeter          1        Greeter -- Says hello." in listed.output
     assert installed.output.splitlines() == [
-        "Greeter 1 -- reviewed by TRCC, not guaranteed safe.  It may:",
+        "Reviewed by TRCC -- not guaranteed safe.",
+        "It may:",
         "  - hears what happens in the app",
         "  - fetches from the internet sites its module.json names, and no others",
         "  - fetches from api.example.com",
@@ -536,3 +537,41 @@ def test_the_api_lists_installs_and_removes(cli_app: App, shop: Shop) -> None:
     assert (refused.status_code, installed.status_code, removed.status_code,
             built_in.status_code) == (409, 200, 200, 409)
     assert installed.json()["message"] == "Greeter 1 installed"
+
+
+def test_the_gui_page_installs_updates_and_removes(
+        qtbot: Any, cli_app: App, shop: Shop, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gui's own Modules page on the real App: every Command through the
+    App, every event back through the window's bridge -- as the gui runs it.
+    The user says yes to each question."""
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.gui.uc_modules import UCModules
+
+    shop.list("1")
+    bridge = BusBridge(cli_app.events)
+    page = UCModules(cli_app, bridge)
+    qtbot.addWidget(page)
+    view = page.view
+    monkeypatch.setattr(view, "ask", lambda question, details, confirm: True)
+
+    view.open_catalog()
+    qtbot.waitUntil(lambda: KEY in view.actions, timeout=5000)
+    assert view.actions[KEY].text() == "Install"
+    view.actions[KEY].click()
+    qtbot.waitUntil(lambda: view.actions[KEY].text() == "Installed", timeout=5000)
+    assert cli_app.modules.is_on(KEY)
+
+    shop.list("2")
+    view.open_catalog()
+    qtbot.waitUntil(lambda: KEY in view.actions and view.actions[KEY].text() == "Update",
+                    timeout=5000)
+    view.actions[KEY].click()
+    qtbot.waitUntil(lambda: view.actions[KEY].text() == "Installed", timeout=5000)
+    record = cli_app.settings.module_install(KEY)
+    assert record is not None and record.version == "2"
+
+    view.close_catalog()
+    assert KEY in view.removes
+    view.removes[KEY].click()
+    qtbot.waitUntil(lambda: KEY not in view.switches, timeout=5000)
+    assert KEY not in cli_app.modules and not _installed_folder(cli_app).exists()

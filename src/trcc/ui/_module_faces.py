@@ -21,6 +21,7 @@ skipped: one broken module never breaks a window.
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any
 
 from .. import modules
@@ -61,6 +62,15 @@ def contribution(key: str, face: str, name: str,
         log.error("module %s: ui/%s/ exports no %s -- skipped", key, face, name)
     log.debug("contribution: %s %s %s -> %s", key, face, name, found is not None)
     return found
+
+
+def face_loaded(key: str) -> bool:
+    """Whether this process imported any of module *key*'s UI -- so a window
+    built from it holds the old code after an update, until reopened."""
+    prefix = f"{modules.__name__}.{key}.ui"
+    loaded = any(name == prefix or name.startswith(f"{prefix}.") for name in sys.modules)
+    log.debug("face_loaded: %s -> %s", key, loaded)
+    return loaded
 
 
 def contributions(face: str, name: str,

@@ -15,7 +15,15 @@ import pytest
 
 from trcc.adapters.modules import MODULES, BaseModule
 from trcc.app import App
-from trcc.core.commands import Command, ListModules, ModuleIcon, SetModuleEnabled
+from trcc.core.commands import (
+    BrowseModules,
+    Command,
+    InstallModule,
+    ListModules,
+    ModuleIcon,
+    RemoveModule,
+    SetModuleEnabled,
+)
 from trcc.core.errors import ModuleUnavailable
 from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
 from trcc.core.models import PanelPicture, Wire
@@ -458,6 +466,16 @@ def test_a_module_reaches_the_app_only_through_its_host() -> None:
 
 # ── The Modules page, in both windows ────────────────────────────────
 
+def _install(key: str, capabilities: tuple[str, ...],
+             network_hosts: tuple[str, ...]) -> InstallModule:
+    return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)
+
+
+#: What every page's view is handed for getting modules.
+_GET: dict[str, Any] = {"browse": BrowseModules, "install": _install,
+                        "remove": RemoveModule}
+
+
 def _switch(key: str, enabled: bool) -> SetModuleEnabled:
     return SetModuleEnabled(key=key, enabled=enabled)
 
@@ -496,7 +514,7 @@ def test_the_page_lists_switches_and_follows_other_uis(
     from trcc.ui.qt_modules import ModulesView
 
     app = _app(tmp_home)
-    view = ModulesView(app, ListModules, _switch, ModuleIcon)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     assert {k: s.isChecked() for k, s in view.switches.items()} == {
         "off": False, "on": True, "refuses": False}
@@ -511,7 +529,7 @@ def test_the_page_lists_switches_and_follows_other_uis(
 def test_a_refused_switch_stays_off(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
-    view = ModulesView(_app(tmp_home), ListModules, _switch, ModuleIcon)
+    view = ModulesView(_app(tmp_home), ListModules, _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     view.switches["refuses"].click()
     qtbot.waitUntil(lambda: "refuses" in view.notes, timeout=3000)
@@ -527,7 +545,7 @@ def test_a_refusal_is_shown_on_its_tile(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
     app = App(platform=FakePlatform(tmp_home), modules={"undeclared": _Undeclared})
-    view = ModulesView(app, ListModules, _switch, ModuleIcon)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     view.switches["undeclared"].click()
     qtbot.waitUntil(lambda: _notes(view) != [], timeout=3000)
@@ -567,7 +585,7 @@ def test_a_tile_shows_its_symbol_and_opens_its_guide(
     tile = ModuleInfo(key="face", title="Face", summary="s", enabled=True,
                       icon=True, guide=guide)
     view = ModulesView(_Symbol(ModulesResult(modules=(tile,)), svg), ListModules,
-                       _switch, ModuleIcon)
+                       _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     [symbol] = [w for w in view.findChildren(QLabel) if w.objectName() == "moduleIcon"]
     assert (symbol.pixmap().width(), symbol.pixmap().height()) == (40, 40)
@@ -584,7 +602,7 @@ def test_no_modules_says_so(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import NONE_YET, ModulesView
 
     view = ModulesView(App(platform=FakePlatform(tmp_home), modules={}),
-                       ListModules, _switch, ModuleIcon)
+                       ListModules, _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     assert [w.text() for w in view.findChildren(QLabel)] == [NONE_YET]
 
@@ -618,7 +636,7 @@ def test_a_switch_turns_a_module_off_too(qtbot: Any, tmp_home: Path) -> None:
     from trcc.ui.qt_modules import ModulesView
 
     app = _app(tmp_home)
-    view = ModulesView(app, ListModules, _switch, ModuleIcon)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     view.switches["on"].click()
     qtbot.waitUntil(lambda: app.modules.on == set(), timeout=3000)
@@ -687,7 +705,7 @@ def test_a_tile_shows_a_note_from_any_ui(
 
     monkeypatch.setattr(_Tidies, "note", "left a thing behind")
     app = App(platform=FakePlatform(tmp_home), modules={"tidies": _Tidies, "on": _On})
-    view = ModulesView(app, ListModules, _switch, ModuleIcon)
+    view = ModulesView(app, ListModules, _switch, ModuleIcon, **_GET)
     qtbot.addWidget(view)
     view.switches["tidies"].click()                     # this UI
     qtbot.waitUntil(lambda: _notes(view) == ["left a thing behind"], timeout=3000)

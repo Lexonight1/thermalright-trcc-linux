@@ -9,7 +9,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QWidget
 
-from ...core.commands import ListModules, ModuleIcon, SetModuleEnabled
+from ...core.commands import (
+    BrowseModules,
+    InstallModule,
+    ListModules,
+    ModuleIcon,
+    RemoveModule,
+    SetModuleEnabled,
+)
 from ...core.logs import per_frame
 from ...core.ports import CommandBus
 from ..bus_bridge import BusBridge
@@ -47,7 +54,9 @@ class UCModules(QWidget):
         log.info("UCModules: built")
         self.setFixedSize(Sizes.FORM_W, Sizes.FORM_H)
         self._title = "Modules"
-        self.view = ModulesView(app, ListModules, self._switch, ModuleIcon, self)
+        self.view = ModulesView(app, ListModules, self._switch, ModuleIcon, self,
+                            browse=BrowseModules, install=self._install,
+                            remove=RemoveModule)
         self.view.setGeometry(*_BODY)
         self.view.setStyleSheet(_STYLE)
         # A module switched in any UI: this page follows.
@@ -59,6 +68,13 @@ class UCModules(QWidget):
         """The Command a tile's switch sends."""
         log.debug("UCModules._switch: %s -> %s", key, enabled)
         return SetModuleEnabled(key=key, enabled=enabled)
+
+    @staticmethod
+    def _install(key: str, capabilities: tuple[str, ...],
+                 network_hosts: tuple[str, ...]) -> InstallModule:
+        """The Command an Install sends: what the user accepted."""
+        log.debug("UCModules._install: %s %s %s", key, capabilities, network_hosts)
+        return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)
 
     def set_title(self, title: str) -> None:
         """The title bar's text -- retranslated with the window's language."""

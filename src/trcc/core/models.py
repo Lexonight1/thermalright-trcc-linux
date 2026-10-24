@@ -1336,6 +1336,9 @@ class ModuleInfo:
     problem: str = ""
     icon: bool = False
     guide: str = ""
+    #: The user installed it from the index -- so it can be removed; a
+    #: built-in module never can.
+    installed: bool = False
 
 
 #: What a module may ask its host for: the name its manifest declares, and

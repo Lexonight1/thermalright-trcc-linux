@@ -11,7 +11,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QLabel, QVBoxLayout
 
-from ....core.commands import ListModules, ModuleIcon, SetModuleEnabled
+from ....core.commands import (
+    BrowseModules,
+    InstallModule,
+    ListModules,
+    ModuleIcon,
+    RemoveModule,
+    SetModuleEnabled,
+)
 from ...qt_modules import ModulesView
 from ..base import BasePanel
 
@@ -31,7 +38,9 @@ class ModulesPanel(BasePanel):
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
-        self.view = ModulesView(self._app, ListModules, self._switch, ModuleIcon, self)
+        self.view = ModulesView(self._app, ListModules, self._switch, ModuleIcon, self,
+                            browse=BrowseModules, install=self._install,
+                            remove=RemoveModule)
         layout.addWidget(self.view, 1)
         self._bus.app_settings_changed.connect(
             self.view.on_event, type=Qt.ConnectionType.QueuedConnection)
@@ -41,3 +50,10 @@ class ModulesPanel(BasePanel):
         """The Command a tile's switch sends."""
         log.debug("ModulesPanel._switch: %s -> %s", key, enabled)
         return SetModuleEnabled(key=key, enabled=enabled)
+
+    @staticmethod
+    def _install(key: str, capabilities: tuple[str, ...],
+                 network_hosts: tuple[str, ...]) -> InstallModule:
+        """The Command an Install sends: what the user accepted."""
+        log.debug("ModulesPanel._install: %s %s %s", key, capabilities, network_hosts)
+        return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)

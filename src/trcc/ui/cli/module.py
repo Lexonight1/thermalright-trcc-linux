@@ -19,7 +19,8 @@ from ...core.commands import (
     RemoveModule,
     SetModuleEnabled,
 )
-from ...core.models import MODULE_CAPABILITIES, AvailableModule
+from ...core.models import AvailableModule
+from ..presentation.module_catalog import consent, removal_question
 from ._ctx import get_app
 
 log = logging.getLogger(__name__)
@@ -86,14 +87,6 @@ def available() -> None:
             typer.echo(f"        taken back: {m.reason}")
 
 
-def _asks(module: AvailableModule) -> list[str]:
-    """What *module* may do, in the words its tile shows."""
-    log.debug("cli module _asks: %s", module.key)
-    lines = [f"  - {MODULE_CAPABILITIES.get(c, c)}" for c in module.capabilities]
-    lines += [f"  - fetches from {host}" for host in module.network_hosts]
-    return lines or ["  - nothing beyond showing on the Modules page"]
-
-
 @app.command("install")
 def install(key: str = typer.Argument(..., help="The module's key"),
             yes: bool = typer.Option(False, "--yes", "-y",
@@ -104,10 +97,9 @@ def install(key: str = typer.Argument(..., help="The module's key"),
     if module is None:
         typer.echo(f"no module {key!r} in the list -- see: trcc system modules available")
         raise typer.Exit(code=1)
-    typer.echo(f"{module.title} {module.version} -- reviewed by TRCC, not guaranteed "
-               "safe.  It may:")
-    typer.echo("\n".join(_asks(module)))
-    if not yes and not typer.confirm("Install it?"):
+    question, lines = consent(module, str)
+    typer.echo("\n".join(lines))
+    if not yes and not typer.confirm(question):
         log.info("cli system modules install: %s declined", key)
         raise typer.Exit(code=1)
     result = get_app().dispatch(InstallModule(key=key, capabilities=module.capabilities,
@@ -124,7 +116,7 @@ def remove(key: str = typer.Argument(..., help="The module's key"),
            yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask first")) -> None:
     """Remove a module you installed.  Themes made with it stay."""
     log.info("cli system modules remove: %s yes=%s", key, yes)
-    if not yes and not typer.confirm(f"Remove {key}?"):
+    if not yes and not typer.confirm(removal_question(key, str)):
         log.info("cli system modules remove: %s declined", key)
         raise typer.Exit(code=1)
     result = get_app().dispatch(RemoveModule(key=key))

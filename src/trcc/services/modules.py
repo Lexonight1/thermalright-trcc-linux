@@ -555,7 +555,8 @@ class ModuleRunner:
                    else module.problem() if module is not None else "")
         return ModuleInfo(key=key, title=manifest.title, summary=manifest.summary,
                           enabled=key in self._on, problem=problem,
-                          icon=bool(manifest.icon), guide=manifest.guide)
+                          icon=bool(manifest.icon), guide=manifest.guide,
+                          installed=self._settings.module_install(key) is not None)
 
     def icon(self, key: str) -> tuple[bytes, str] | None:
         """Module *key*'s symbol and its media type, or None: no such module,
