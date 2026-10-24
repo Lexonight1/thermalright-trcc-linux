@@ -53,13 +53,15 @@ Type: files; Name: "{app}\trcc-gui.exe"
 ; LibreHardwareMonitor, which older versions shipped and launched; 0.9.5 dropped
 ; the WMI TRCC read it through, so nothing uses it now (#319)
 Type: filesandordirs; Name: "{app}\lhm"
+; A WinUSB .inf older versions copied here "for reference" and never installed
+; (unsigned).  Hand-written, it went stale: it still called the Elite Vision
+; 360 (0416:5406) a SCSI panel months after it proved to be a bulk one.  Who
+; needs WinUSB is told by `trcc doctor`, from the device registry.
+Type: filesandordirs; Name: "{app}\driver"
 
 [Files]
 ; PyInstaller output directory (all DLLs, Python runtime, Qt, app code)
 Source: "..\dist\trcc\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; WinUSB driver .inf kept for reference — not auto-installed (requires signed cert)
-; Users needing WinUSB (bulk/HID devices) are guided to Zadig via `trcc doctor`
-Source: "trcc-usb.inf"; DestDir: "{app}\driver"; Flags: ignoreversion
 ; PawnIO (namazso, https://pawnio.eu): the signed driver TRCC reads CPU
 ; temperature and power through (#319).  Downloaded and hash-checked by
 ; windows.yml; run below, then deleted.  Redistribution of its installer is
