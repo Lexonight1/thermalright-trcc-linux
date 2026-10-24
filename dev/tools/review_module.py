@@ -85,20 +85,46 @@ ALLOWED_LIBRARIES = frozenset({"numpy", "PySide6", "fastapi", "pydantic", "typer
 NETWORK = frozenset({"socket", "ssl", "http", "urllib", "urllib3", "ftplib",
                      "smtplib", "poplib", "imaplib", "telnetlib", "xmlrpc",
                      "socketserver", "requests", "httpx", "aiohttp", "websockets"})
-#: Imports to read closely, and why.
-READ_IMPORTS = {
+#: Imports that keep a module out, and why: each escapes everything the host
+#: guards -- programs run with the user's rights, native code, Python's own
+#: functions reached by name.
+HARD_IMPORTS = {
     "subprocess": "runs programs", "pty": "runs programs",
     "multiprocessing": "starts processes", "ctypes": "calls native code",
-    "cffi": "calls native code", "pickle": "loads data that can carry code",
+    "cffi": "calls native code", "builtins": "reaches Python's own functions by name",
+}
+#: Imports to read closely, and why.
+READ_IMPORTS = {
+    "pickle": "loads data that can carry code",
     "marshal": "loads data that can carry code", "shelve": "loads data that can carry code",
     "importlib": "imports by name", "shutil": "moves or deletes files",
 }
-#: Calls that run text as code.
-HARD_CALLS = frozenset({"exec", "eval", "compile", "__import__"})
+#: Names that run text as code -- refused when merely REACHED, not only when
+#: called: ``run = exec; run(...)`` is the same act.
+HARD_NAMES = frozenset({"exec", "eval", "compile", "__import__", "__builtins__",
+                        "globals", "locals", "vars", "breakpoint"})
+#: ``getattr`` and kin: with a computed name, any attribute -- ``os.system``
+#: spelled ``"sys" + "tem"`` -- is reachable.
+BY_NAME = frozenset({"getattr", "setattr", "delattr", "hasattr"})
+#: Attributes that reach Python's internals: the classic escapes.
+#: Not ``exec`` / ``eval`` / ``compile`` as attributes: ``re.compile`` and a Qt
+#: dialog's ``exec()`` are everyday code; Python's own are caught by name and by
+#: refusing ``builtins``.
+HARD_ATTRS = frozenset({"__builtins__", "__globals__", "__code__", "__subclasses__",
+                        "__getattribute__", "__import__"})
+#: ``os.<name>`` calls that run a program or replace the process.
+HARD_OS_CALLS = frozenset({"system", "popen", "fork", "forkpty", "execv", "execve",
+                           "execl", "execle", "execlp", "execlpe", "execvp", "execvpe",
+                           "spawnv", "spawnve", "spawnl", "spawnle", "spawnlp",
+                           "spawnvp", "posix_spawn", "posix_spawnp", "startfile"})
 #: ``os.<name>`` calls to read closely.
-READ_OS_CALLS = frozenset({"system", "popen", "fork", "forkpty", "kill", "remove",
-                           "unlink", "rmdir", "removedirs", "execv", "execve",
-                           "execl", "execlp", "execvp", "spawnv", "spawnl"})
+READ_OS_CALLS = frozenset({"kill", "remove", "unlink", "rmdir", "removedirs"})
+#: Calls that open a connection without a network import: asyncio's.
+NETWORK_CALLS = frozenset({"open_connection", "open_unix_connection", "start_server",
+                           "start_unix_server", "create_connection",
+                           "create_datagram_endpoint", "create_server",
+                           "create_unix_connection", "create_unix_server",
+                           "sock_connect"})
 COMPILED = frozenset({".pyc", ".pyo", ".so", ".pyd", ".dll", ".dylib", ".exe",
                       ".bin", ".whl", ".zip", ".egg", ".jar"})
 #: Files that are binary by nature.
@@ -304,6 +330,8 @@ class _Scanner(ast.NodeVisitor):
         if top in NETWORK:
             self._gate.fail(self._at(node), f"imports {name}: network -- a module "
                             "fetches through host.network, from the sites it names")
+        elif top in HARD_IMPORTS:
+            self._gate.fail(self._at(node), f"imports {name}: {HARD_IMPORTS[top]}")
         elif top in READ_IMPORTS:
             self._gate.read(self._at(node), f"imports {name}: {READ_IMPORTS[top]}")
         elif top not in sys.stdlib_module_names and top not in ALLOWED_LIBRARIES:
@@ -320,20 +348,40 @@ class _Scanner(ast.NodeVisitor):
             self._imported(node, node.module)
         self.generic_visit(node)
 
+    def visit_Name(self, node: ast.Name) -> None:
+        if node.id in HARD_NAMES:
+            self._gate.fail(self._at(node), f"{node.id} -- runs text as code, or "
+                            "reaches names by text")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        owner = node.value.id if isinstance(node.value, ast.Name) else ""
+        if node.attr in HARD_ATTRS:
+            self._gate.fail(self._at(node), f".{node.attr} -- reaches Python's internals")
+        elif owner == "sys" and node.attr == "modules":
+            self._gate.fail(self._at(node), "sys.modules -- reaches any module by name")
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         literal = bool(node.args) and isinstance(node.args[0], ast.Constant)
-        if isinstance(func, ast.Name) and func.id in HARD_CALLS:
-            self._gate.fail(self._at(node), f"{func.id}() -- runs text as code")
+        if isinstance(func, ast.Name) and func.id in BY_NAME and not (
+                len(node.args) > 1 and isinstance(node.args[1], ast.Constant)):
+            self._gate.fail(self._at(node), f"{func.id}() of a computed name")
         elif isinstance(func, ast.Attribute):
             owner = func.value.id if isinstance(func.value, ast.Name) else ""
-            if func.attr in ("import_module", "__import__"):
+            if func.attr == "import_module":
                 if literal:
                     self._gate.read(self._at(node), f"{func.attr}() of a fixed name")
                 else:
                     self._gate.fail(self._at(node), f"{func.attr}() of a computed name")
+            elif owner == "os" and func.attr in HARD_OS_CALLS:
+                self._gate.fail(self._at(node), f"os.{func.attr}() -- runs a program")
             elif owner == "os" and func.attr in READ_OS_CALLS:
                 self._gate.read(self._at(node), f"os.{func.attr}()")
+            elif func.attr in NETWORK_CALLS:
+                self._gate.fail(self._at(node), f".{func.attr}() -- network; a module "
+                                "fetches through host.network, from the sites it names")
             elif func.attr in ("write_text", "write_bytes", "rmtree", "unlink"):
                 self._gate.read(self._at(node), f".{func.attr}() -- changes files")
         if isinstance(func, ast.Name) and func.id == "open":

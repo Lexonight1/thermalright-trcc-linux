@@ -236,6 +236,7 @@ def test_a_built_in_modules_key_is_refused(author: Path, tmp_path: Path) -> None
 
 
 _NETWORK = "network -- a module fetches through host.network, from the sites it names"
+_BY_TEXT = "-- runs text as code, or reaches names by text"
 
 
 @pytest.mark.parametrize(("source", "hard", "text"), [
@@ -244,14 +245,32 @@ _NETWORK = "network -- a module fetches through host.network, from the sites it 
     ("import psutil\n", True, "imports psutil: not a library a module may use"),
     ("import requests\n", True, f"imports requests: {_NETWORK}"),
     ("import leftpad\n", True, "imports leftpad: not a library a module may use"),
-    ("exec('1')\n", True, "exec() -- runs text as code"),
-    ("eval('1')\n", True, "eval() -- runs text as code"),
+    ("exec('1')\n", True, f"exec {_BY_TEXT}"),
+    ("eval('1')\n", True, f"eval {_BY_TEXT}"),
     ("import importlib\nimportlib.import_module(name)\n", True,
      "import_module() of a computed name"),
-    ("import subprocess\n", False, "imports subprocess: runs programs"),
-    ("import ctypes\n", False, "imports ctypes: calls native code"),
+    ("import subprocess\n", True, "imports subprocess: runs programs"),
+    ("import ctypes\n", True, "imports ctypes: calls native code"),
     ("import pickle\n", False, "imports pickle: loads data that can carry code"),
-    ("import os\nos.system('x')\n", False, "os.system()"),
+    ("import os\nos.system('x')\n", True, "os.system() -- runs a program"),
+    # Disguises -- each measured MISSED before 2026-10-23, now each a hard stop.
+    ("run = exec\nrun('x')\n", True, f"exec {_BY_TEXT}"),
+    ("import builtins\n", True, "imports builtins: reaches Python's own functions "
+                                 "by name"),
+    ("__builtins__['exec']('x')\n", True, f"__builtins__ {_BY_TEXT}"),
+    ("globals()['__builtins__']\n", True, f"globals {_BY_TEXT}"),
+    ("import sys\nsys.modules['os'].system('id')\n", True,
+     "sys.modules -- reaches any module by name"),
+    ("import os\ngetattr(os, 'sys' + 'tem')('id')\n", True,
+     "getattr() of a computed name"),
+    ("().__class__.__base__.__subclasses__()\n", True,
+     ".__subclasses__ -- reaches Python's internals"),
+    ("f.__globals__\n", True, ".__globals__ -- reaches Python's internals"),
+    ("import asyncio\nasyncio.open_connection('evil.example', 80)\n", True,
+     ".open_connection() -- network; a module fetches through host.network, "
+     "from the sites it names"),
+    ("import os\nos.execv('/bin/sh', ['sh'])\n", True, "os.execv() -- runs a program"),
+    ("__import__('so' + 'cket')\n", True, f"__import__ {_BY_TEXT}"),
     ("open(p, 'w')\n", False, "open() for writing"),
     ("open(p, mode=m)\n", False, "open() for writing"),
     ("p.write_bytes(b'')\n", False, ".write_bytes() -- changes files"),
@@ -271,6 +290,11 @@ def test_each_code_flag_is_seen(tmp_path: Path, source: str, hard: bool,
     "import json\nimport numpy\nfrom PySide6.QtGui import QImage\nimport typer\n",
     "open(p)\nopen(p, 'rb')\nopen(p, encoding='utf-8')\n",
     "from ..core import x\nfrom trcc.core.models import Wire\n",
+    "import re\nre.compile('x')\n",                  # not Python's compile
+    "dialog.exec()\n",                                # a Qt dialog, not exec
+    "getattr(obj, 'name', None)\nhasattr(obj, 'x')\n",
+    "import asyncio\nasyncio.sleep(1)\n",
+    "import sys\nsys.argv\n",
     f"'''{'a long docstring with spaces ' * 20}'''\n",
 ])
 def test_ordinary_code_raises_no_flag(tmp_path: Path, source: str) -> None:
