@@ -303,6 +303,11 @@ class _PipeListener:
             win32api.CloseHandle(overlapped.hEvent)
             with self._lock:
                 self._accepting = False
+                # Woken while this client was being handed over: :meth:`wake`
+                # left the instance to us, and the loop may not come back to
+                # close it -- so it goes here.
+                if win32event.WaitForSingleObject(self._stop, 0) == win32event.WAIT_OBJECT_0:
+                    self._drop_pending()
         return _PipeStream(handle, self._name), None
 
     @staticmethod
@@ -330,9 +335,17 @@ class _PipeListener:
         raise OSError(_ERROR_NO_DATA, "clients keep leaving before they speak")
 
     def wake(self) -> None:
-        """Wake a blocked :meth:`accept` (it raises ``OSError``)."""
+        """Stop answering now: a blocked :meth:`accept` raises ``OSError``, and
+        the waiting instance goes -- here when no accept is under way, else in
+        accept itself.  As a Unix socket's ``shutdown``: the server loop may
+        exit on its own stop flag without calling accept again, and the
+        instance then answered "an App is here" until ``shutdown`` (Windows
+        CI, 2026-10-21 and 2026-10-24)."""
         log.debug("_PipeListener.wake: %s", self._name)
-        win32event.SetEvent(self._stop)
+        with self._lock:
+            win32event.SetEvent(self._stop)
+            if not self._accepting:
+                self._drop_pending()
 
     def close(self) -> None:
         """Stop serving: no instance waits any more."""

@@ -288,6 +288,36 @@ def test_a_listener_woken_before_it_accepts_answers_no_one(
         listener.remove()
 
 
+def test_a_listener_woken_after_it_handed_over_a_client_answers_no_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The order the kill test left to the scheduler, forced: a client is
+    accepted (the next instance now waits), THEN the listener is woken -- and
+    the server loop, seeing its stop flag, never calls accept again.  The App
+    must be gone at once, as a Unix socket's ``shutdown`` makes it; on Windows
+    the waiting instance answered until ``shutdown`` (CI, 2026-10-21 and
+    2026-10-24).
+
+    MUTATION CHECK (Windows): drop the ``_drop_pending`` call in ``wake`` --
+    the pipe stays reachable."""
+    _private_channel(tmp_path, monkeypatch)
+    chan = ipc.channel()
+    assert chan is not None
+    listener = chan.listen()
+    try:
+        # A client that stays until it is accepted: one that came and went
+        # first leaves the pipe's accept waiting for the next.
+        client = chan.connect(5.0)
+        stream, _ = listener.accept()
+        stream.close()
+        client.close()
+        listener.wake()
+        assert not chan.reachable()
+    finally:
+        listener.close()
+        listener.remove()
+
+
 def test_malformed_envelope_returns_typed_error(
     running_server: tuple[ipc.IPCServer, App],
 ) -> None:
