@@ -21,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-import click
+from typing import Any
 import typer.main
 
 from _cli_tree import is_group as _is_group
@@ -69,15 +69,15 @@ def esc(text: str | None) -> str:
     return flat
 
 
-def _metavar(param: click.Argument) -> str:
+def _metavar(param: Any) -> str:
     """UPPERCASE metavar for a positional argument (``hex_color`` -> HEX_COLOR)."""
     return param.name.upper() if param.name else "ARG"
 
 
-def _visible_params(cmd: click.Command) -> tuple[list[click.Argument], list[click.Option]]:
+def _visible_params(cmd: Any) -> tuple[list[Any], list[Any]]:
     """Split a command's params into (arguments, options), dropping hidden/help."""
-    args: list[click.Argument] = []
-    opts: list[click.Option] = []
+    args: list[Any] = []
+    opts: list[Any] = []
     for param in cmd.params:
         # `.param_type_name` ("argument"/"option") is stable click API and works
         # regardless of whether the object comes from click or typer's vendored
@@ -89,7 +89,7 @@ def _visible_params(cmd: click.Command) -> tuple[list[click.Argument], list[clic
     return args, opts
 
 
-def _synopsis(prog: str, cmd: click.Command) -> str:
+def _synopsis(prog: str, cmd: Any) -> str:
     """`.B prog` followed by italic metavars for a leaf command's synopsis."""
     args, opts = _visible_params(cmd)
     parts = [f"\\fB{esc(prog)}\\fR"]
@@ -101,7 +101,7 @@ def _synopsis(prog: str, cmd: click.Command) -> str:
     return " ".join(parts)
 
 
-def _arg_lines(cmd: click.Command) -> list[str]:
+def _arg_lines(cmd: Any) -> list[str]:
     """Troff ``.TP`` block describing a command's positional arguments."""
     args, _ = _visible_params(cmd)
     if not args:
@@ -115,7 +115,7 @@ def _arg_lines(cmd: click.Command) -> list[str]:
     return out
 
 
-def _opt_entries(cmd: click.Command) -> list[str]:
+def _opt_entries(cmd: Any) -> list[str]:
     """The ``.TP`` entries for a command's options (always includes --help).
 
     Split from :func:`_opt_lines` so the ROOT page can render the same options
@@ -142,7 +142,7 @@ def _opt_entries(cmd: click.Command) -> list[str]:
     return out
 
 
-def _opt_lines(cmd: click.Command) -> list[str]:
+def _opt_lines(cmd: Any) -> list[str]:
     """Indented ``Options:`` sub-block, for a subcommand entry."""
     return [".PP", "Options:", ".RS 4", *_opt_entries(cmd), ".RE"]
 
@@ -163,13 +163,13 @@ def _footer() -> list[str]:
     ]
 
 
-def _short(cmd: click.Command, fallback: str) -> str:
+def _short(cmd: Any, fallback: str) -> str:
     """First line of a command's help, for NAME / one-line summaries."""
     text = cmd.help or cmd.short_help or fallback
     return " ".join(text.split()).split(". ")[0].rstrip(".")
 
 
-def _subcommand_lines(prog: str, group: click.Group, path: str) -> list[str]:
+def _subcommand_lines(prog: str, group: Any, path: str) -> list[str]:
     """``.SS`` entries for every subcommand under *group*, recursing into groups.
 
     troff has ``.SS`` but no ``.SSS``, so a nested command is FLATTENED into a
@@ -205,7 +205,7 @@ def _subcommand_lines(prog: str, group: click.Group, path: str) -> list[str]:
     return lines
 
 
-def render_group_page(name: str, group: click.Group) -> str:
+def render_group_page(name: str, group: Any) -> str:
     """A full man page for one command group (e.g. ``trcc-display``)."""
     prog = f"trcc {name}"
     lines = [
@@ -225,7 +225,7 @@ def render_group_page(name: str, group: click.Group) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_root_page(cli: click.Group, groups: list[str]) -> str:
+def render_root_page(cli: Any, groups: list[str]) -> str:
     """The top-level ``trcc.1`` page: commands, groups, and the key convention."""
     lines = [
         _th("TRCC"),
@@ -279,7 +279,7 @@ def render_root_page(cli: click.Group, groups: list[str]) -> str:
 
 def generate() -> dict[str, str]:
     """Build every man page as {filename: troff}, deterministically."""
-    cli = typer.main.get_command(app)
+    cli: Any = typer.main.get_command(app)
     assert _is_group(cli), f"expected a command group, got {type(cli).__name__}"
     groups = sorted(
         name for name, cmd in cli.commands.items()

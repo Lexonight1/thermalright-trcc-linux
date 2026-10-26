@@ -26,11 +26,12 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "src"))
-sys.path.insert(0, str(_ROOT / "tests"))
+sys.path.insert(0, str(_ROOT / "tests"))   # the gate imports its siblings bare
+sys.path.insert(0, str(_ROOT))
 
 
 def main() -> int:
-    import test_architecture_boundaries as gate
+    from tests import test_architecture_boundaries as gate
 
     checks: list[tuple[str, object]] = []
     skipped: list[str] = []

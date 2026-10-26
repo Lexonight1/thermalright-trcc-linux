@@ -29,6 +29,9 @@ import struct
 import sys
 import time
 
+if sys.platform != "win32":
+    sys.exit("gone_probe: Windows only -- run it in the VM (gone_probe.ps1)")
+
 sys.path.insert(0, r"C:\trccdev\tree\src")
 from trcc.adapters.device.scsi_lcd import ScsiLcd
 from trcc.adapters.system._service_broker import SCSI_PANELS
@@ -41,6 +44,8 @@ vid, pid = (int(v, 16) for v in (sys.argv[1:3] or ["46f4", "0001"]))
 seconds = float(sys.argv[3]) if len(sys.argv) > 3 else 60.0
 drive = find_physical_drive(vid, pid)
 print(f"drive {drive}")
+if drive is None:
+    sys.exit(f"no {vid:04x}:{pid:04x} drive -- is the panel passed through to this VM?")
 t = WindowsScsiTransport(drive)
 
 

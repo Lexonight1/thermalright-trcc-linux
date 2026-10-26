@@ -63,7 +63,7 @@ def _trimmed(reply: bytes) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--pid", type=lambda s: int(s, 16),
                     help="the controller's USB product id, hex (default: find it)")
     args = ap.parse_args()
@@ -71,6 +71,7 @@ def main() -> int:
     from trcc.modules.rgb.adapters import asus_aura
     from trcc.adapters.system import current_platform
     from trcc.core.models import Wire
+    from trcc.core.ports import BulkTransport
 
     pid = args.pid or _plugged_pid(asus_aura.AURA_VID, asus_aura.MAINBOARD_PIDS)
     if pid is None:
@@ -79,6 +80,10 @@ def main() -> int:
     hid = current_platform().open_transport(
         Wire.HID, asus_aura.AURA_VID, pid, hid_reports=True,
         report_id=asus_aura.REPORT_ID)
+    # As the RGB module's driver does: a HID report transport, or nothing to ask.
+    if not isinstance(hid, BulkTransport):
+        print(f"0b05:{pid:04x}: no HID transport ({type(hid).__name__})")
+        return 1
     try:
         hid.open()
     except OSError as e:

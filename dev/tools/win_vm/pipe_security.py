@@ -1,4 +1,9 @@
 """NON-ADMIN: step 5 on real Windows -- squat, second server, rights, real client."""
+import sys
+
+if sys.platform != "win32":
+    sys.exit("pipe_security: Windows only -- run it in the VM (pipe_security.ps1)")
+
 import ctypes
 import pywintypes
 import win32file

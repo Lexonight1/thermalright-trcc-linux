@@ -98,7 +98,7 @@ def main() -> int:
     configure_logging(platform.paths().log_file(), level=logging.DEBUG)
 
     from PySide6.QtWidgets import QApplication
-    QApplication.instance() or QApplication(sys.argv)
+    _qapp = QApplication.instance() or QApplication(sys.argv)
 
     from trcc._boot import trcc
     from trcc.adapters.render.qt import QtRenderer

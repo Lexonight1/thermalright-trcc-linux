@@ -165,7 +165,9 @@ def _png(path: Path, size: tuple[int, int], value: int) -> None:
     from PySide6.QtGui import QColor, QImage, QPainter
 
     log.debug("_png: %s %dx%d value=%d", path.name, *size, value)
-    img = QImage(size[0], size[1], QImage.Format.Format_ARGB32)
+    # Any, as src's renderer surfaces are: PySide6's stub types save()'s format
+    # as bytes, and the runtime raises ValueError on bytes (6.11 and 6.12).
+    img: Any = QImage(size[0], size[1], QImage.Format.Format_ARGB32)
     img.fill(QColor(value & 0xFF, (value >> 8) & 0xFF, 0x40, 0xFF))
     painter = QPainter(img)
     painter.fillRect(0, 0, size[0] // 4, size[1] // 8, QColor(255, 255, 0))
@@ -208,7 +210,7 @@ def _jpeg(size: tuple[int, int], value: int) -> bytes:
     from PySide6.QtCore import QBuffer, QByteArray
     from PySide6.QtGui import QColor, QImage, QPainter
 
-    img = QImage(size[0], size[1], QImage.Format.Format_RGB888)
+    img: Any = QImage(size[0], size[1], QImage.Format.Format_RGB888)
     img.fill(QColor(value & 0xFF, (value >> 8) & 0xFF, 0x60))
     painter = QPainter(img)
     painter.fillRect(0, 0, size[0] // 4, size[1] // 8, QColor(255, 255, 0))
@@ -218,7 +220,7 @@ def _jpeg(size: tuple[int, int], value: int) -> bytes:
     buf.open(QBuffer.OpenModeFlag.WriteOnly)
     img.save(buf, "JPEG", 92)
     buf.close()
-    return bytes(ba)
+    return bytes(ba.data())
 
 
 def _info(fbl: int, resolution: tuple[int, int]) -> ProductInfo:

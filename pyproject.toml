@@ -372,7 +372,16 @@ exclude_lines = [
 pythonVersion = "3.10"
 pythonPlatform = "Linux"
 # tests/ was outside this until 2026-10-20 and had 397 errors nobody saw.
-include = ["src", "tests"]
+# dev/ until 2026-10-26: 73, three of them tools that crashed when run.
+include = ["src", "tests", "dev"]
+# Naming any exclude replaces pyright's defaults, so they are restated (the
+# hidden dev/.trcc-user holds copies of modules).  Then the files importing the
+# `legacy` branch's tree, which is not on main: `dev/tools/stale_refs.py
+# --check` holds this list equal to its _EXPECTED_LEGACY.
+exclude = [
+    "**/node_modules", "**/__pycache__", "**/.*",
+    "dev/_dc_legacy_dump.py", "dev/smoke_color_path_bytes.py",
+]
 # Tests import the dev harnesses (_mock_bootstrap, check_program_deps) the way
 # they run them: with dev/, dev/tools/ and dev/decompiler/ on sys.path.
 extraPaths = ["dev", "dev/tools", "dev/decompiler"]

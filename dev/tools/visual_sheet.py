@@ -42,7 +42,8 @@ def _pink(n: int) -> np.ndarray:
 
 def _saw(freq: np.ndarray | float, t: np.ndarray, harmonics: int = 12) -> np.ndarray:
     """A sawtooth from its harmonics: a lead with a real top end."""
-    return sum(np.sin(2 * np.pi * k * freq * t) / k for k in range(1, harmonics + 1))
+    return sum((np.sin(2 * np.pi * k * freq * t) / k for k in range(1, harmonics + 1)),
+               np.zeros_like(t, dtype=float))
 
 
 def synthetic(rate: int, seconds: float) -> np.ndarray:
@@ -73,7 +74,7 @@ def decoded(path: Path, rate: int, seconds: float, start: float) -> np.ndarray:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("out", type=Path, help="the contact sheet (.png)")
     ap.add_argument("--audio", type=Path, help="an audio file to play instead")
     ap.add_argument("--start", type=float, default=0.0,

@@ -177,7 +177,7 @@ def check(skin: Skin, phase: str) -> str:
               "proved the running case, not start-up")
         return "SKIP"
 
-    required = list(ALWAYS)
+    required: list[str] = list(ALWAYS)
     devices = _devices_at_close(tail)
     if devices:
         required += IF_DEVICES

@@ -128,6 +128,27 @@ _EXPECTED_LEGACY: dict[tuple[str, str], str] = {
 }
 
 
+def pyright_exclude_drift() -> list[str]:
+    """Where ``[tool.pyright] exclude`` and :data:`_EXPECTED_LEGACY` disagree.
+
+    The files that import the ``legacy`` tree are the files pyright cannot
+    check on main, for the same reason -- one fact, so it lives here and the
+    pyproject list is held equal to it.  [] when they name the same files.
+    """
+    try:
+        import tomllib
+    except ImportError:
+        return ["pyright's exclude not compared: tomllib needs Python 3.11+"]
+    config = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    excluded = {path for path in config["tool"]["pyright"].get("exclude", [])
+                if not path.startswith("**/")}         # the restated defaults
+    legacy = {path for path, _module in _EXPECTED_LEGACY}
+    return ([f"pyright excludes {path}, which imports no legacy module -- "
+             f"check it again" for path in sorted(excluded - legacy)]
+            + [f"{path} imports the legacy tree but pyright checks it -- add "
+               f"it to [tool.pyright] exclude" for path in sorted(legacy - excluded)])
+
+
 def expected_legacy(finding: Stale) -> str | None:
     """The recorded reason this reference is deliberate, or None."""
     return _EXPECTED_LEGACY.get((finding.where.split(":")[0], finding.module))
@@ -414,10 +435,14 @@ def main(argv: list[str]) -> int:
         print(f"  ORPHANED EXEMPTION {path}: {module} — no longer present; "
               f"remove it from _EXPECTED_LEGACY")
 
+    drift = pyright_exclude_drift()
+    for line in drift:
+        print(f"  PYRIGHT EXCLUDE {line}")
+
     print(f"\n{len(findings)} stale reference(s), {len(expected)} expected, "
-          f"{len(orphaned)} orphaned exemption(s) "
-          f"in {'/, '.join(_SCANNED)}/")
-    if "--check" in argv and (findings or orphaned):
+          f"{len(orphaned)} orphaned exemption(s), {len(drift)} pyright "
+          f"exclude mismatch(es) in {'/, '.join(_SCANNED)}/")
+    if "--check" in argv and (findings or orphaned or drift):
         return 1
     return 0
 

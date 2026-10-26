@@ -4,12 +4,17 @@ refused, and what CreateSemaphoreW said."""
 import ctypes
 import sys
 
+if sys.platform != "win32":
+    sys.exit("claim_probe: Windows only -- run it in the VM (claim_probe.ps1)")
+
 sys.path.insert(0, r"C:\trccdev\tree\src")
 import trcc.adapters.system.windows as w
 from trcc.adapters.system._windows_drives import find_physical_drive
 
 path = find_physical_drive(0x0402, 0x3922)
 print("drive:", path)
+if path is None:
+    sys.exit("no 0402:3922 drive -- is the panel passed through to this VM?")
 name = w._CLAIM_PREFIX + path.rsplit("\\", 1)[-1].upper()
 handle = ctypes.windll.kernel32.CreateSemaphoreW(None, 1, 1, name)
 print("semaphore", name, "handle:", handle, "last error:", ctypes.GetLastError())

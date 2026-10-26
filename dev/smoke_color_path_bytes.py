@@ -18,6 +18,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -65,7 +66,9 @@ def _build_test_theme_png(tmp: Path) -> Path:
     """Write a 64x64 PNG with 4 colored quadrants + center mid-gray."""
     from PySide6.QtGui import QColor, QImage, QPainter
 
-    img = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_ARGB32)
+    # Any, as src's renderer surfaces are: PySide6's stub types save()'s format
+    # as bytes, and the runtime raises ValueError on bytes (6.11 and 6.12).
+    img: Any = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_ARGB32)
     img.fill(QColor(128, 128, 128, 255))   # center = mid-gray base
 
     painter = QPainter(img)

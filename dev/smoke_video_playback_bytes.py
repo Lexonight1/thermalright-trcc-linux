@@ -20,8 +20,11 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+_REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO / "src"))
+sys.path.insert(0, str(_REPO))          # tests.conftest: FakePaths
 
 
 CANVAS_W = 8
@@ -50,14 +53,16 @@ def _make_raw_frame(rgb: tuple[int, int, int]) -> bytes:
     from PySide6.QtGui import QImage
 
     r, g, b = rgb
-    img = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_RGB888)
+    # Any, as src's renderer surfaces are: PySide6's stub types save()'s format
+    # as bytes, and the runtime raises ValueError on bytes (6.11 and 6.12).
+    img: Any = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_RGB888)
     img.fill((0xFF << 24) | (r << 16) | (g << 8) | b)
     ba = QByteArray()
     buf = QBuffer(ba)
     buf.open(QBuffer.OpenModeFlag.WriteOnly)
     img.save(buf, "JPEG", 100)
     buf.close()
-    return bytes(ba)
+    return bytes(ba.data())
 
 
 def _decode_first_pixel(buf: bytes) -> tuple[int, int, int]:
@@ -92,21 +97,8 @@ def main() -> int:
     from trcc.services.settings import Settings
     from trcc.adapters.theme.filesystem import FileContentStore
 
-    # Minimal Paths stub so Settings can boot.
-    class _Paths:
-        def __init__(self, base: Path) -> None:
-            self._b = base
-
-        def app_data_dir(self) -> Path:        return self._b
-        def config_dir(self) -> Path:          return self._b
-        def log_dir(self) -> Path:             return self._b
-        def cache_dir(self) -> Path:           return self._b
-        def user_content_dir(self) -> Path:    return self._b
-        def cloud_theme_dir(self, w: int, h: int) -> Path:  return self._b
-        def cloud_mask_dir(self, w: int, h: int) -> Path:   return self._b
-        def theme_dir(self, w: int, h: int) -> Path:        return self._b
-        def user_theme_dir(self, w: int, h: int) -> Path:   return self._b
-        def data_dir(self) -> Path:            return self._b
+    # A real Paths, as every test's (never a duck-typed stand-in).
+    from tests.conftest import FakePaths
 
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
@@ -114,7 +106,7 @@ def main() -> int:
         media = MediaService()
         themes = FileContentStore()
         overlay = OverlayService(renderer)
-        settings = Settings(_Paths(base))
+        settings = Settings(FakePaths(base))
 
         display = DisplayService(
             renderer=renderer,
@@ -123,7 +115,7 @@ def main() -> int:
             settings=settings,
             media=media,
             backgrounds=BackgroundSlot(),
-            paths=_Paths(base),
+            paths=FakePaths(base),
         )
 
         # Fabricate a theme dir containing a PNG background (image-theme
@@ -132,7 +124,7 @@ def main() -> int:
         theme_dir.mkdir()
         # 00.png = solid yellow background (anything not red/green/blue)
         from PySide6.QtGui import QColor, QImage
-        bg = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_ARGB32)
+        bg: Any = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_ARGB32)
         bg.fill(QColor(255, 255, 0, 255))
         bg.save(str(theme_dir / "00.png"), "PNG")
         theme = Theme(

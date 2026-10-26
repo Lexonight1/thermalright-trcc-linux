@@ -116,7 +116,9 @@ def _calls_per_frame(pr: cProfile.Profile,
     row and over-reported the hot set by 2.2x.
     """
     out: dict[tuple[str, int, str], float] = {}
-    for (path, lineno, name), (_, calls, *_rest) in pstats.Stats(pr).stats.items():
+    # ``Stats.stats`` is the table itself; typeshed does not declare it.
+    table = vars(pstats.Stats(pr))["stats"]
+    for (path, lineno, name), (_, calls, *_rest) in table.items():
         if "/src/trcc/" in path:
             out[(path.split("/src/trcc/")[1], lineno, name)] = calls / frames
     log.info("frame_profile: %d function(s) over %d frames", len(out), frames)

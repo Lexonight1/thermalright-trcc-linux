@@ -6,8 +6,10 @@ import sys
 sys.path.insert(0, r"C:\trccdev\tree\src")
 import trcc.adapters.system.windows as w
 
-path = w._find_physical_drive(0x0402, 0x3922)
+path = w.find_physical_drive(0x0402, 0x3922)
 print("drive:", path)
+if path is None:
+    sys.exit("no 0402:3922 drive -- is the panel passed through to this VM?")
 t = w.WindowsScsiTransport(path)
 print("open:", t.open())
 cdb = struct.pack("<I", 0xF5) + bytes(8) + struct.pack("<I", 0xE100)

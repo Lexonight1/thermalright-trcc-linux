@@ -38,7 +38,7 @@ def rainbow(leds: int, phase: float) -> bytes:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=4048)
     ap.add_argument("--leds", type=int, default=84)

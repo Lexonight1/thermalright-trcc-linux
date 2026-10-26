@@ -234,7 +234,7 @@ def guest_exec(argv: list[str]) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("shot")
     s.add_argument("out", nargs="?", type=Path, default=CACHE / "shot.png")

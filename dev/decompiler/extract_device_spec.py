@@ -44,6 +44,7 @@ import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from core.csharp import CSharpSource
 
@@ -100,7 +101,7 @@ class OracleSpec:
     decompile: str
     frame_headers: list[dict[str, object]] = field(default_factory=list)
     markers: list[dict[str, object]] = field(default_factory=list)
-    families: dict[str, dict[str, object]] = field(default_factory=dict)
+    families: dict[str, dict[str, Any]] = field(default_factory=dict)
     coverage: dict[str, str] = field(default_factory=dict)
 
 

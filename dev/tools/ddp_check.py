@@ -40,7 +40,7 @@ def _check(name: str, ok: bool, detail: str) -> bool:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--pm", type=int, default=16,
                     help="the cooler's PM byte (16 = PA120, 1 = AX120)")
     ap.add_argument("--leds", type=int, default=128,

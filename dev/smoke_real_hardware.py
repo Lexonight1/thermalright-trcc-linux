@@ -457,7 +457,7 @@ def _print_report(walker: _Walker) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument(
         "--lcd-key",
         help="LCD device key to verify (skip auto-detect).",

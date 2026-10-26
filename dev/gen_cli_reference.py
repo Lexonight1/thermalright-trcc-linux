@@ -26,7 +26,7 @@ import re
 import sys
 from pathlib import Path
 
-import click
+from typing import Any
 import typer.main
 
 from _cli_tree import is_group as _is_group
@@ -47,11 +47,11 @@ _KEY_NOTE = (
 
 
 def _visible_params(
-    cmd: click.Command,
-) -> tuple[list[click.Argument], list[click.Option]]:
+    cmd: Any,
+) -> tuple[list[Any], list[Any]]:
     """Split a command's params into (arguments, options); drop hidden ones."""
-    args: list[click.Argument] = []
-    opts: list[click.Option] = []
+    args: list[Any] = []
+    opts: list[Any] = []
     for param in cmd.params:
         if param.param_type_name == "argument":
             args.append(param)
@@ -62,7 +62,7 @@ def _visible_params(
     return args, opts
 
 
-def _metavar(param: click.Argument) -> str:
+def _metavar(param: Any) -> str:
     """UPPERCASE metavar for a positional argument (``hex_color`` -> HEX_COLOR)."""
     return param.name.upper() if param.name else "ARG"
 
@@ -75,7 +75,7 @@ def _text(raw: str | None, fallback: str = "") -> str:
     return _RST_ROLE_RE.sub("", flat)
 
 
-def _synopsis(prog: str, cmd: click.Command) -> str:
+def _synopsis(prog: str, cmd: Any) -> str:
     """The copy-pasteable usage line for a leaf command."""
     args, opts = _visible_params(cmd)
     parts = [prog]
@@ -87,7 +87,7 @@ def _synopsis(prog: str, cmd: click.Command) -> str:
     return " ".join(parts)
 
 
-def _param_table(cmd: click.Command) -> list[str]:
+def _param_table(cmd: Any) -> list[str]:
     """Markdown tables for a command's arguments and options."""
     args, opts = _visible_params(cmd)
     out: list[str] = []
@@ -107,7 +107,7 @@ def _param_table(cmd: click.Command) -> list[str]:
     return out
 
 
-def _render_command(prog: str, cmd: click.Command, level: str) -> list[str]:
+def _render_command(prog: str, cmd: Any, level: str) -> list[str]:
     """One command's section: heading, description, synopsis, param tables."""
     lines = [f"{level} `{prog}`", ""]
     body = _text(cmd.help) or _text(cmd.short_help) or "_(no description)_"
@@ -117,7 +117,7 @@ def _render_command(prog: str, cmd: click.Command, level: str) -> list[str]:
     return lines
 
 
-def _render_group(name: str, group: click.Group, level: str = "##") -> list[str]:
+def _render_group(name: str, group: Any, level: str = "##") -> list[str]:
     """A group's section, with one subsection per subcommand.
 
     Recurses, because a group can hold a group: ``trcc system autostart`` has
@@ -148,7 +148,7 @@ def _render_group(name: str, group: click.Group, level: str = "##") -> list[str]
 
 def generate() -> str:
     """Build the whole reference page, deterministically."""
-    cli = typer.main.get_command(app)
+    cli: Any = typer.main.get_command(app)
     assert _is_group(cli), f"expected a command group, got {type(cli).__name__}"
 
     groups = sorted(

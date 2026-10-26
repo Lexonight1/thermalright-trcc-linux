@@ -207,18 +207,25 @@ def apply_fake_gpus(platform: Platform, specs: list[tuple[str, bool]]) -> None:
     box drive the real GUI as a multi-GPU machine, which is the only way to see
     the Control Center's GPU select (it renders a plain label at one GPU).
     """
-    from trcc.adapters.sensors.aggregator import _gpu_order
+    from trcc.adapters.sensors.aggregator import BaselineSensors, _gpu_order
+    from trcc.core.ports import GpuSource
 
     from tests.conftest import FakeGpu
 
     per_vendor: dict[str, int] = {}
-    gpus = []
+    gpus: list[GpuSource] = []
     for vendor, discrete in specs:
         index = per_vendor.get(vendor, 0)
         per_vendor[vendor] = index + 1
         gpus.append(FakeGpu(index, discrete=discrete, vendor=vendor))
 
     enumerator = platform.sensors()
+    # The list it swaps is BaselineSensors' own -- every OS builds one today.
+    # Another enumerator would keep its real GPUs and the flag would do
+    # nothing, so say so rather than carry on.
+    if not isinstance(enumerator, BaselineSensors):
+        sys.exit(f"--gpus: {type(enumerator).__name__} is not BaselineSensors, "
+                 "whose GPU list this swaps")
     enumerator._gpus = sorted(gpus, key=_gpu_order)
     log.info("apply_fake_gpus: %s", [(g.key, g.is_discrete) for g in gpus])
     print(f"Mock GPUs: {len(gpus)} simulated — "

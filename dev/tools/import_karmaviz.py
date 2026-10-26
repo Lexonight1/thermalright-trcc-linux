@@ -378,7 +378,7 @@ def write_data(root: Path, names: set[tuple[bool, str]], commit: str,
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("clone", type=Path, help="a clone of KarmaViz")
     root = parser.parse_args().clone.resolve()
     commit = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],

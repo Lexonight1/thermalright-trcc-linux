@@ -57,7 +57,10 @@ import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    from trcc.core.ports import Platform
 
 _ROOT = Path(__file__).resolve().parents[2]
 _PYPROJECT = _ROOT / "pyproject.toml"
@@ -1391,7 +1394,7 @@ _NO_CHANNEL_REASON: dict[str, str] = {
 }
 
 
-def _os_instances() -> list[tuple[str, object]]:
+def _os_instances() -> list[tuple[str, Platform]]:
     """(label, OS) for every hint-rendering target, built not just detected.
 
     The Linux families are injected rather than probed: this tool must be able
@@ -1409,7 +1412,7 @@ def _os_instances() -> list[tuple[str, object]]:
     labels = {"dnf": "DnfLinux", "apt": "AptLinux", "pacman": "PacmanLinux",
               "zypper": "ZypperLinux", "xbps-install": "XbpsLinux",
               "apk": "ApkLinux", "nix-env": "NixLinux"}
-    out: list[tuple[str, object]] = [
+    out: list[tuple[str, Platform]] = [
         (labels[f.manager], LinuxOS(f)) for f in _FAMILIES
     ]
     out.append(("GenericLinux", LinuxOS(_GENERIC_FAMILY)))
@@ -1507,7 +1510,7 @@ def check_install_hints() -> list[Finding]:
             # how the row printed "ffmpeg(MISSING)" for a hint that satisfied
             # the check.  Name the alias that satisfied it, so a NetBSD row
             # reads ffmpeg7 rather than a bare ffmpeg the box does not have.
-            def _shown(binary: str) -> str:
+            def _shown(binary: str, shipped: list[str] = shipped) -> str:
                 for alias in _aliases_of(binary):
                     if alias in shipped:
                         return alias if alias == binary else f"{alias}={binary}"

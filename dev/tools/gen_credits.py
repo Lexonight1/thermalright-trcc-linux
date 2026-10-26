@@ -101,24 +101,30 @@ def _clean(who: str) -> str:
     return who.strip(" .,")
 
 
+def _field(meta: md.PackageMetadata, name: str) -> str:
+    """*name*'s first value, "" when absent -- ``get_all``, which every
+    Python's ``PackageMetadata`` declares (``get`` arrived in 3.12's)."""
+    return next(iter(meta.get_all(name) or []), "")
+
+
 def author(meta: md.PackageMetadata) -> str:
     for field in ("Author", "Maintainer"):
-        if (value := (meta.get(field) or "").strip()) and value.upper() != "UNKNOWN":
+        if (value := _field(meta, field).strip()) and value.upper() != "UNKNOWN":
             return _clean(value)
     for field in ("Author-email", "Maintainer-email"):
-        if value := (meta.get(field) or "").strip():
+        if value := _field(meta, field).strip():
             return re.sub(r"\s*<[^>]*>", "", value).strip(' "')
     return ""
 
 
 def licence(meta: md.PackageMetadata) -> str:
-    if expression := (meta.get("License-Expression") or "").strip():
+    if expression := _field(meta, "License-Expression").strip():
         return expression
     classifiers = [c.split(" :: ")[-1] for c in meta.get_all("Classifier") or []
                    if c.startswith("License ::") and c.split(" :: ")[-1] != "OSI Approved"]
     if classifiers:
         return " / ".join(classifiers)
-    first = (meta.get("License") or "").strip().splitlines()
+    first = _field(meta, "License").strip().splitlines()
     return first[0][:60] if first and first[0].upper() != "UNKNOWN" else ""
 
 

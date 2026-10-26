@@ -225,15 +225,19 @@ def _probe_windows_specifics() -> Section:
     except BaseException as exc:
         s.warn('LHM namespace probe', short_exc(exc))
 
-    # HWiNFO MMF probe (if running).
+    # HWiNFO MMF probe (if running).  The mapping opens in its constructor and
+    # raises OSError when there is none; it called ``.open()`` until 2026-10,
+    # long after that method was gone, and the AttributeError below read as
+    # a WARN -- so this probe had not probed since May.
     try:
         from trcc.adapters.sensors._hwinfo import _HWiNFOMapping
-        m = _HWiNFOMapping()
-        if m.open():
+        try:
+            m = _HWiNFOMapping()
+        except OSError as exc:
+            s.skip('HWiNFO SHM', f'not available — {exc}')
+        else:
             s.ok('HWiNFO SHM (Global\\HWiNFO_SENS_SM2)', 'mapped successfully')
             m.close()
-        else:
-            s.skip('HWiNFO SHM', 'not available — HWiNFO not running or SHM disabled')
     except BaseException as exc:
         s.warn('HWiNFO probe', short_exc(exc))
     return s

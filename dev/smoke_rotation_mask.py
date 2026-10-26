@@ -105,7 +105,7 @@ def main() -> int:
     configure_logging(platform.paths().log_file(), level=logging.INFO)
 
     from PySide6.QtWidgets import QApplication
-    QApplication.instance() or QApplication(sys.argv)
+    _qapp = QApplication.instance() or QApplication(sys.argv)
 
     from trcc._boot import trcc
     from trcc.adapters.render.qt import QtRenderer
@@ -122,6 +122,8 @@ def main() -> int:
     app.dispatch(ConnectDevice(key=_KEY))
     device = app.devices[_KEY]
     info, profile = device.info, device.profile
+    if profile is None:
+        sys.exit(f"{_KEY}: no profile -- the scripted handshake did not complete")
     print(f"connected {_KEY}: resolution={profile.resolution} rotate={profile.rotate}")
     assert profile.resolution == (854, 480), profile.resolution
 
