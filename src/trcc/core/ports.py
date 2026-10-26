@@ -56,6 +56,7 @@ if TYPE_CHECKING:
         HandshakeResult,
         HardwareMetrics,
         LedHandshakeResult,
+        ModuleInfo,
         ProductInfo,
         RawFrame,
         RenderContent,
@@ -2229,12 +2230,16 @@ class Diagnostics(ABC):
     @abstractmethod
     def debug_report(self, log_tail_lines: int, *,
                      held: Mapping[str, Mapping[str, str]] | None = None,
-                     probe: bool = True) -> str:
+                     probe: bool = True,
+                     modules: Sequence[ModuleInfo] = (),
+                     modules_error: str = "") -> str:
         """Build the debug bundle and return its rendered, paste-ready text.
 
         *held*: device key -> the handshake the running App reported; those
         devices are not probed (a probe is a second handle on a driven panel).
         *probe* False: probe nothing, for an App that is running but silent.
+        *modules*: every module, on or off, as the App that runs them said --
+        or *modules_error*, why it could not say.
         """
         ...
 

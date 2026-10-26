@@ -29,6 +29,7 @@ from ..models import (
     MIN_REFRESH_INTERVAL_S,
     TIME_FORMATS,
     Capability,
+    ModuleInfo,
     PanelConfig,
     SensorBinding,
 )
@@ -782,8 +783,10 @@ class GenerateDebugReport(Command[DebugReportPayload]):
 
     def execute(self, app: App) -> DebugReportPayload:
         held, probe = self._held_devices(app)
-        rendered = app.diagnostics.debug_report(self.log_tail_lines,
-                                                held=held, probe=probe)
+        modules, modules_error = self._modules(app)
+        rendered = app.diagnostics.debug_report(
+            self.log_tail_lines, held=held, probe=probe,
+            modules=modules, modules_error=modules_error)
         out: str = ""
         if self.output_path is not None:
             try:
@@ -838,6 +841,35 @@ class GenerateDebugReport(Command[DebugReportPayload]):
         log.info("GenerateDebugReport._held_devices: held=%s probe=%s",
                  sorted(held), probe)
         return held, probe
+
+    @staticmethod
+    def _modules(app: App) -> tuple[tuple[ModuleInfo, ...], str]:
+        """Every module, on or off, as the App that runs them says -- and
+        "" or why it could not say.
+
+        A running App elsewhere answers for itself: this process's own App
+        would only say what it read from the disk.  Best-effort like every
+        other section -- a report is wanted most when something is broken.
+        """
+        from ...daemon import is_this_process_the_daemon, running_modules
+        from ...ipc import daemon_running
+        from .modules import ListModules
+        if daemon_running() and not is_this_process_the_daemon():
+            if (theirs := running_modules()) is None:
+                log.warning("GenerateDebugReport._modules: the running App "
+                            "did not answer")
+                return (), "the running App did not answer"
+            log.info("GenerateDebugReport._modules: %d from the running App",
+                     len(theirs))
+            return theirs, ""
+        try:
+            listed = app.dispatch(ListModules())
+        except Exception as e:
+            log.exception("GenerateDebugReport._modules: ListModules failed")
+            return (), f"{type(e).__name__}: {e}"
+        log.info("GenerateDebugReport._modules: %d from this App, ok=%s",
+                 len(listed.modules), listed.ok)
+        return listed.modules, "" if listed.ok else listed.message
 
 
 @dataclass(frozen=True, slots=True)

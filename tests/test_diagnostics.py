@@ -1422,7 +1422,7 @@ def test_build_debug_report_returns_filled_struct(fake_platform) -> None:
 #: conditional section (only when the log scrape found lines) and is covered by
 #: ``test_debug_report_captures_live_handshake``.
 _REPORT_SECTIONS = frozenset({
-    "Install", "Platform", "Paths", "Devices", "Sensors", "CPU power",
+    "Install", "Platform", "Paths", "Devices", "Modules", "Sensors", "CPU power",
     "Settings", "State files", "Health", "Actions", "Log tail",
 })
 
@@ -4168,9 +4168,11 @@ def test_a_silent_app_means_no_probe_at_all(
 
 
 def _report_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                running: bool, answer: list | None):
+                running: bool, answer: list | None,
+                modules: tuple | None = ()):
     """An App whose report call is recorded, with a running App elsewhere
-    (``running``) that answers ``answer`` (None = did not answer)."""
+    (``running``) that answers ``answer`` for its devices and ``modules`` for
+    its modules (None = did not answer)."""
     from trcc import daemon, ipc
     from trcc.app import App
 
@@ -4187,6 +4189,7 @@ def _report_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(ipc, "daemon_running", lambda: running)
     monkeypatch.setattr(daemon, "is_this_process_the_daemon", lambda: False)
     monkeypatch.setattr(daemon, "held_devices", lambda: answer)
+    monkeypatch.setattr(daemon, "running_modules", lambda: modules)
     return app, calls
 
 
@@ -4202,29 +4205,84 @@ def test_the_report_asks_the_running_app_what_it_holds(
 
     GenerateDebugReport().execute(app)
 
-    assert calls == [{"held": {"87ad:70db": _HELD_BYTES}, "probe": True}]
+    assert calls == [{"held": {"87ad:70db": _HELD_BYTES}, "probe": True,
+                      "modules": (), "modules_error": ""}]
 
 
 def test_a_running_app_that_does_not_answer_stops_every_probe(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from trcc.core.commands import GenerateDebugReport
 
-    app, calls = _report_app(tmp_path, monkeypatch, True, None)
+    app, calls = _report_app(tmp_path, monkeypatch, True, None, None)
 
     GenerateDebugReport().execute(app)
 
-    assert calls == [{"held": {}, "probe": False}]
+    assert calls == [{"held": {}, "probe": False, "modules": (),
+                      "modules_error": "the running App did not answer"}]
 
 
 def test_with_no_app_elsewhere_the_report_probes_as_before(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from trcc.core.commands import GenerateDebugReport
+    from trcc.core.commands import GenerateDebugReport, ListModules
 
     app, calls = _report_app(tmp_path, monkeypatch, False, None)
 
     GenerateDebugReport().execute(app)
 
-    assert calls == [{"held": {}, "probe": True}]
+    assert calls == [{"held": {}, "probe": True,
+                      "modules": app.dispatch(ListModules()).modules,
+                      "modules_error": ""}]
+
+
+def test_the_report_lists_the_modules_the_running_app_has(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Which modules are on is the running App's to say, not what this
+    process reads from the disk.  MUTATION CHECK: ask this process's App even
+    when one runs elsewhere and the list is this App's."""
+    from trcc.core.commands import GenerateDebugReport
+    from trcc.core.models import ModuleInfo
+
+    theirs = (ModuleInfo(key="visualizer", title="Audio Visualizer",
+                         summary="", enabled=False, version="1"),)
+    app, calls = _report_app(tmp_path, monkeypatch, True, [], theirs)
+
+    GenerateDebugReport().execute(app)
+
+    assert (calls[0]["modules"], calls[0]["modules_error"]) == (theirs, "")
+
+
+def test_the_modules_section_says_which_are_on_and_why_one_does_not_run() -> None:
+    """MUTATION CHECK: drop ``not`` from the on/off choice, or the problem
+    line, and the section is wrong."""
+    from trcc.adapters.diagnostics.debug_report import _render_modules
+    from trcc.core.models import ModuleInfo
+
+    text = _render_modules([
+        ModuleInfo(key="hello", title="Hello", summary="", enabled=False,
+                   problem="copied in by hand", origin="by hand",
+                   allowed=False, version="1"),
+        ModuleInfo(key="rgb", title="RGB", summary="", enabled=True,
+                   version="1", author="Lexonight"),
+        ModuleInfo(key="visualizer", title="Visualizer", summary="",
+                   enabled=True, problem="no sound server", version="2",
+                   author="Lexonight"),
+    ], "")
+
+    assert text.splitlines() == [
+        "## Modules (2 of 3 on)",
+        "  [off] hello             version 1  by hand",
+        "        not run: copied in by hand",
+        "  [on ] rgb               version 1  built-in  by Lexonight",
+        "  [on ] visualizer        version 2  built-in  by Lexonight",
+        "        cannot run here: no sound server",
+    ]
+
+
+def test_the_modules_section_says_why_there_is_no_list() -> None:
+    from trcc.adapters.diagnostics.debug_report import _render_modules
+
+    assert _render_modules([], "the running App did not answer") == (
+        "## Modules\n  Not listed: the running App did not answer")
 
 
 # ── fan-chip: the motherboard's fans need their chip's driver (#301) ──

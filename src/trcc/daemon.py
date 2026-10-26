@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 from . import ipc
 
 if TYPE_CHECKING:
+    from .core.models import ModuleInfo
     from .core.ports import Platform, Renderer
     from .core.results import DaemonResult, DeviceStateResult
 
@@ -356,6 +357,26 @@ def held_devices() -> list[DeviceStateResult] | None:
     log.info("held_devices: %s",
              None if states is None else [s.key for s in states])
     return states
+
+
+def running_modules() -> tuple[ModuleInfo, ...] | None:
+    """Every module the running App has, on or off -- over its socket, like
+    :func:`held_devices`: which are on is the App's to say, never this
+    process's reading of the disk.  None when it does not answer."""
+    from .core.commands import ListModules
+    from .proxy import AppProxy
+    proxy = AppProxy(timeout=5.0)
+    try:
+        modules: tuple[ModuleInfo, ...] | None = proxy.dispatch(ListModules()).modules
+    except Exception as e:
+        log.warning("running_modules: the running App did not answer (%s: %s)",
+                    type(e).__name__, e)
+        modules = None
+    finally:
+        proxy.close()
+    log.info("running_modules: %s",
+             None if modules is None else {m.key: m.enabled for m in modules})
+    return modules
 
 
 def _running_version() -> str:

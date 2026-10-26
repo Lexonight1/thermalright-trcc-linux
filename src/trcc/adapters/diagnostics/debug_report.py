@@ -31,13 +31,13 @@ import os
 import platform as py_platform
 import sys
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ...core.errors import HandshakeError, TransportError
-from ...core.models import DeviceInfo, Kind, ProductInfo, format_device_key
+from ...core.models import DeviceInfo, Kind, ModuleInfo, ProductInfo, format_device_key
 from ...core.ports import Paths, Platform
 from ...core.registry import find_product
 from ...core.variants import get_variant_override
@@ -64,6 +64,8 @@ class DebugReport:
     install: InstallInfo | None = None
     devices: list[dict[str, str]] = field(default_factory=list)
     devices_error: str = ""
+    modules: list[ModuleInfo] = field(default_factory=list)
+    modules_error: str = ""
     sensors: list[dict[str, str]] = field(default_factory=list)
     sensors_error: str = ""
     powercap: list[dict[str, str]] = field(default_factory=list)
@@ -89,6 +91,7 @@ class DebugReport:
         handshake = _render_handshake_log(self.handshake_log)
         if handshake:
             sections.append(handshake)
+        sections.append(_render_modules(self.modules, self.modules_error))
         sections.append(_render_sensors(self.sensors, self.sensors_error))
         sections.append(_render_powercap(self.powercap))
         sections.append(_render_settings(self.settings_json, self.settings_error))
@@ -114,10 +117,14 @@ def build_debug_report(
     log_action_lines: int = 500,
     held: Mapping[str, Mapping[str, str]] | None = None,
     probe: bool = True,
+    modules: Sequence[ModuleInfo] = (),
+    modules_error: str = "",
 ) -> DebugReport:
     """Collect every section into a DebugReport.
 
-    *held* and *probe*: see :func:`_collect_devices`.
+    *held* and *probe*: see :func:`_collect_devices`.  *modules* and
+    *modules_error*: what the App that runs them said, gathered by the caller
+    -- this collects nothing of them itself.
     """
     log.info("build_debug_report: gathering sections "
              "(log_tail=%d actions=%d)", log_tail_lines, log_action_lines)
@@ -153,6 +160,8 @@ def build_debug_report(
         install=install,
         devices=devices,
         devices_error=devices_err,
+        modules=list(modules),
+        modules_error=modules_error,
         sensors=sensors,
         sensors_error=sensors_err,
         powercap=powercap,
@@ -615,6 +624,28 @@ def _render_devices(rows: list[dict[str, str]], error: str) -> str:
                 "see Handshake-from-log below)"
             )
     return f"## Devices ({len(rows)})\n" + "\n".join(lines)
+
+
+def _render_modules(modules: list[ModuleInfo], error: str) -> str:
+    """Which modules are on, as the App that runs them said -- and why one
+    does not run.  ``trcc.json`` holds the switches; only the App knows a
+    folder copied in by hand, or a module that cannot run on this machine."""
+    log.debug("_render_modules: %s error=%s",
+              {m.key: m.enabled for m in modules}, error)
+    if error:
+        return f"## Modules\n  Not listed: {error}"
+    if not modules:
+        return "## Modules\n  (none)"
+    lines: list[str] = []
+    for m in modules:
+        by = f"  by {m.author}" if m.author else ""
+        lines.append(f"  [{'on ' if m.enabled else 'off'}] {m.key:16}  "
+                     f"version {m.version or '?'}  {m.origin}{by}")
+        if m.problem:
+            why = "cannot run here" if m.allowed else "not run"
+            lines.append(f"        {why}: {m.problem}")
+    on = sum(m.enabled for m in modules)
+    return f"## Modules ({on} of {len(modules)} on)\n" + "\n".join(lines)
 
 
 def _render_handshake_log(lines: list[str]) -> str:

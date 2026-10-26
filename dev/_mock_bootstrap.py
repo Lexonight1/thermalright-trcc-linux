@@ -634,6 +634,32 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
 
 # ─── Main bootstrap ──────────────────────────────────────────────────────────
 
+def _private_runtime() -> None:
+    """This process reaches no TRCC App but its own -- as every test is kept
+    from one (``tests/conftest.py::_runtime_dir_is_never_the_real_one``).
+
+    The developer's ``$XDG_RUNTIME_DIR`` holds their RUNNING App, and a
+    caller-side Command asks it: a mock ``trcc report`` listed the
+    developer's real modules and panels, not the mock's (2026-10-26).  Short,
+    since an AF_UNIX path stops at 107 bytes; on Windows a pipe of its own.
+    """
+    import atexit
+    import shutil
+    import socket
+    import tempfile
+
+    from trcc import ipc
+
+    runtime = tempfile.mkdtemp(prefix="trcc-mock-")
+    atexit.register(shutil.rmtree, runtime, ignore_errors=True)
+    os.environ["XDG_RUNTIME_DIR"] = runtime
+    if not hasattr(socket, "AF_UNIX"):
+        from trcc.adapters.infra.named_pipe import NamedPipeChannel
+        pipe = NamedPipeChannel(name=rf"\\.\pipe\trcc-mock-{Path(runtime).name}")
+        ipc.channel = lambda: pipe
+    log.info("_private_runtime: %s -> %s", runtime, ipc.socket_path())
+
+
 def bootstrap(report_path: str | None = None,
               verbosity: int = 0, all_devices: bool = False,
               specs: list[dict] | None = None,
@@ -729,6 +755,9 @@ def bootstrap(report_path: str | None = None,
         # looked like it did nothing, when it was simply never switched on.
         per_frame=verbosity > 0,
     )
+    # After the --hardware refusal above, which must see the REAL socket;
+    # after logging, so the log says where this process's sockets went.
+    _private_runtime()
     log.info(
         "dev bootstrap: platform=%s paths.config=%s source=%s specs=%d "
         "network=%s",

@@ -12,10 +12,11 @@ and have the adapter see it — the attribute resolves at call time.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from ...core.diagnostics import DoctorResult, GpuReaderState, HealthReport
+from ...core.models import ModuleInfo
 from ...core.ports import Diagnostics, Platform
 from ..sensors import nvml as _nvml
 from . import debug_report as _debug_report
@@ -51,12 +52,16 @@ class DiagnosticsAdapter(Diagnostics):
 
     def debug_report(self, log_tail_lines: int, *,
                      held: Mapping[str, Mapping[str, str]] | None = None,
-                     probe: bool = True) -> str:
+                     probe: bool = True,
+                     modules: Sequence[ModuleInfo] = (),
+                     modules_error: str = "") -> str:
         log.info("DiagnosticsAdapter.debug_report: log_tail_lines=%d held=%s "
-                 "probe=%s", log_tail_lines, sorted(held or {}), probe)
+                 "probe=%s modules=%d", log_tail_lines, sorted(held or {}),
+                 probe, len(modules))
         return _debug_report.build_debug_report(
             self._platform, log_tail_lines=log_tail_lines,
             held=held, probe=probe,
+            modules=modules, modules_error=modules_error,
         ).render_text()
 
     def write_debug_report(self, rendered: str, path: Path) -> Path:
