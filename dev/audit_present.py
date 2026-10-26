@@ -162,7 +162,7 @@ def _run_audit(window: Any) -> None:
     # The fetcher raises HttpFetchError on failure (the installer catches it), so
     # raising instantly = a fast no-op download.  Everything else stays real.
     from trcc.adapters.repo.http import HttpFetchError, UrllibHttpFetcher
-    UrllibHttpFetcher.fetch = (  # type: ignore[method-assign]
+    UrllibHttpFetcher.fetch = (
         lambda self, url, *a, **k: (_ for _ in ()).throw(
             HttpFetchError(f"audit: network disabled ({url})")))
 

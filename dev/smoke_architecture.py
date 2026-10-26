@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -33,7 +34,7 @@ sys.path.insert(0, str(_ROOT))
 def main() -> int:
     from tests import test_architecture_boundaries as gate
 
-    checks: list[tuple[str, object]] = []
+    checks: list[tuple[str, Callable[[], object]]] = []
     skipped: list[str] = []
     for name, fn in sorted(vars(gate).items()):
         if not (name.startswith("test_") and inspect.isfunction(fn)):
@@ -46,7 +47,7 @@ def main() -> int:
     failures: list[tuple[str, str]] = []
     for name, fn in checks:
         try:
-            fn()                          # type: ignore[operator]
+            fn()
         except AssertionError as e:
             failures.append((name, str(e)))
             print(f"FAIL  {name}")

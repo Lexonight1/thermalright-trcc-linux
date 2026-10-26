@@ -21,7 +21,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from trcc.core.models import DeviceInfo, Wire
@@ -81,7 +81,7 @@ def _specs_from_report(report_path: str) -> list[dict]:
     style harnesses that want a fixed device list.
     """
     sys.path.insert(0, str(_REPO_ROOT / 'dev' / 'tools'))
-    from diagnose import parse_report  # type: ignore[import-not-found]
+    from diagnose import parse_report
 
     text = Path(report_path).read_text(encoding='utf-8')
     report = parse_report(text)
@@ -417,7 +417,8 @@ class _NoRealSetup:
     def setup(self, dry_run: bool = False) -> int:
         if dry_run:
             log.info("dev platform: setup dry run — the host's, read-only")
-            return super().setup(dry_run=True)  # type: ignore[misc]
+            # A mixin: super() is the host class at runtime, unseen statically.
+            return cast("Platform", super()).setup(dry_run=True)
         log.warning("dev platform: refusing the real setup (sudo, /etc, pip)")
         print("dev platform: `system setup` writes /etc via sudo and installs "
               "into this interpreter — run the installed `trcc setup` instead "

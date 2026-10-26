@@ -303,8 +303,8 @@ def main() -> None:
             print(f"\nCHECK {'PASS' if ok else 'FAIL'}: {Path(label).name} — "
                   f"devices={sum(bool(c) for c in connected)}/{len(connected)} "
                   f"replay_actions={replayed} replay_fail={replay_failed}")
-            from PySide6.QtCore import QTimer  # type: ignore[import-not-found]
-            from PySide6.QtWidgets import QApplication  # type: ignore[import-not-found]
+            from PySide6.QtCore import QTimer
+            from PySide6.QtWidgets import QApplication
             QTimer.singleShot(400, QApplication.quit)
 
     sys.exit(run_gui(
@@ -380,7 +380,7 @@ def _replay_report_actions(app: Any, report_path: str) -> tuple[int, int]:
     localise it to the universal Command bus.  Returns
     ``(replayed, failed)`` counts for ``--check``."""
     sys.path.insert(0, str(Path(__file__).resolve().parent / 'tools'))
-    from diagnose import parse_dispatch_sequence  # type: ignore[import-not-found]
+    from diagnose import parse_dispatch_sequence
     from trcc.ipc import decode_command
 
     seq = parse_dispatch_sequence(Path(report_path).read_text(encoding="utf-8", errors="replace"))

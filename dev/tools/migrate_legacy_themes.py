@@ -42,7 +42,7 @@ from pathlib import Path
 # Resolve PNG size via PIL when available; fall back to raw header
 # parsing so the script runs in environments without Pillow.
 try:
-    from PIL import Image as _PIL_Image  # type: ignore[import-untyped]
+    from PIL import Image as _PIL_Image
     _HAS_PIL = True
 except ImportError:
     _PIL_Image = None

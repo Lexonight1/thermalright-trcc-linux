@@ -31,6 +31,7 @@ Requires: py7zr (pip install py7zr) or the system ``7z`` command.
 """
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import subprocess
@@ -92,7 +93,9 @@ def _pack(source_dir: Path, archive: Path, label: str) -> bool:
     print(f"Packing {label}  {source_dir.name}/ -> {archive.name} ...", end=" ")
 
     try:
-        import py7zr
+        # Optional, not a dependency: by name, so a box without it (CI) reads
+        # no unresolved import -- the 7z binary below is the fallback.
+        py7zr = importlib.import_module("py7zr")
         with py7zr.SevenZipFile(str(archive), "w") as z:
             for root, _, files in os.walk(source_dir):
                 for f in files:

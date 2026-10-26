@@ -135,10 +135,9 @@ def pyright_exclude_drift() -> list[str]:
     check on main, for the same reason -- one fact, so it lives here and the
     pyproject list is held equal to it.  [] when they name the same files.
     """
-    try:
-        import tomllib
-    except ImportError:
+    if sys.version_info < (3, 11):
         return ["pyright's exclude not compared: tomllib needs Python 3.11+"]
+    import tomllib
     config = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     excluded = {path for path in config["tool"]["pyright"].get("exclude", [])
                 if not path.startswith("**/")}         # the restated defaults

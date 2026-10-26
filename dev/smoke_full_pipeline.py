@@ -66,11 +66,9 @@ def _platform() -> Any:
     import shutil
     import tempfile
 
-    sys.path.insert(0, str(_REPO_ROOT / "tests"))
-    # ``tests/conftest.py`` exports FakePlatform; import path works
-    # once the tests/ dir is on sys.path.  Static analyzers won't
-    # resolve it from the dev script — runtime-only.
-    from conftest import FakePlatform  # type: ignore[import-not-found]
+    # As tests/mock_platform imports it: one conftest module, not two copies.
+    sys.path.insert(0, str(_REPO_ROOT))
+    from tests.conftest import FakePlatform
 
     # Registered rather than wrapped in ``try/finally`` so it also fires when
     # a step raises, and under pytest, where this module is imported and

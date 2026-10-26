@@ -79,7 +79,7 @@ def drive_gui(*, frames: int, on_mark: Callable[[], None],
     # Counting at ``build_frame`` rather than at the timer: the tick is what we
     # ASK for, a composed frame is what actually happened, and the two differ
     # whenever a dispatch bails early.
-    DisplayService.build_frame = counting_build   # type: ignore[method-assign]
+    DisplayService.build_frame = counting_build
     state: dict = {}
 
     def on_ready(window) -> None:
@@ -114,5 +114,5 @@ def drive_gui(*, frames: int, on_mark: Callable[[], None],
         run(current_platform(), single_instance=False,
             force_exit=False, on_ready=on_ready)
     finally:
-        DisplayService.build_frame = real_build  # type: ignore[method-assign]
+        DisplayService.build_frame = real_build
     return max(counter["frames"] - warmup, 0)

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -88,7 +89,7 @@ def main() -> int:
         value = "nonexistent"
 
     try:
-        DEVICES[_FakeWire()]  # type: ignore[arg-type]
+        DEVICES[cast(Wire, _FakeWire())]     # deliberately not a Wire
     except DeviceNotFoundError:
         print("OK  DEVICES[unregistered] → DeviceNotFoundError")
     else:

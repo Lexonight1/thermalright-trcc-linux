@@ -2629,7 +2629,7 @@ def _suppressions() -> Iterator[tuple[str, int, str, str]]:
     import tokenize
 
     repo = _SRC.parent
-    for root in ("src", "tests"):
+    for root in ("src", "tests", "dev"):                 # all that pyright checks
         for path in sorted((repo / root).rglob("*.py")):
             text = path.read_text(encoding="utf-8")
             lines = text.split("\n")

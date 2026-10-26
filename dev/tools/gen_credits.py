@@ -16,7 +16,6 @@ import importlib.metadata as md
 import json
 import re
 import sys
-import tomllib
 import urllib.request
 from pathlib import Path
 
@@ -61,6 +60,10 @@ def _needed(requirement: str) -> bool:
 
 def roots() -> list[str]:
     """Every dependency ``pyproject.toml`` declares, on every OS."""
+    # Here, not at the top: tomllib is 3.11+ and the project's floor is 3.10.
+    if sys.version_info < (3, 11):
+        raise RuntimeError("reading pyproject needs Python 3.11+ (tomllib)")
+    import tomllib
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     return [_requirement_name(r) for r in project["dependencies"] if _needed(r)]
 

@@ -10,7 +10,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
 import typer
 from typer.core import TyperGroup
 
@@ -32,7 +31,10 @@ class _AsksTheApp(TyperGroup):
     then: a built-in command never waits on the App, so ``trcc daemon``,
     ``kill`` and ``report`` never start or reach one."""
 
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+    # Unannotated on purpose: the types come from TyperGroup.get_command, so
+    # they are Typer's own Click since 0.26 and the ``click`` package before --
+    # no annotation names both (2026-10-26: one naming ``click`` failed CI).
+    def get_command(self, ctx, cmd_name):
         found = super().get_command(ctx, cmd_name)
         if found is not None or ctx.resilient_parsing or cmd_name.startswith("-"):
             return found
@@ -47,7 +49,7 @@ class _AsksTheApp(TyperGroup):
         while at.parent is not None:
             names.append(str(at.info_name))
             at = at.parent
-        group: click.Command | None = typer.main.get_command(app)
+        group = typer.main.get_command(app)
         # TyperGroup, not click.Group: a newer Typer (0.26, 0.27 measured)
         # builds groups on a Click of its own, not the ``click`` package's.
         for name in reversed(names):

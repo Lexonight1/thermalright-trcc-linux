@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 
 CHUNKS = [b"\xf8" * 65536] * 3 + [b"\xf8" * 8192]       # one 320x320 RGB565 frame
 CDB = b"\x00" * 16
@@ -42,7 +43,7 @@ def _linux_frames(n: int) -> None:
 
     from trcc.adapters.system.linux import LinuxScsiTransport
 
-    fcntl.ioctl = lambda fd, req, buf: 0                  # type: ignore[assignment]
+    fcntl.ioctl = lambda fd, req, buf: 0
     node = Path(tempfile.mkdtemp()) / "sg0"
     node.write_bytes(b"")
     t = LinuxScsiTransport(str(node))
@@ -55,14 +56,23 @@ def _linux_frames(n: int) -> None:
 def _windows_frames(n: int) -> None:
     import trcc.adapters.system.windows as w
 
-    class Kernel32:
+    class Win32:
+        """The kernel32 and advapi32 calls the transport makes -- the open's
+        single-owner claim (#287) included, granted at once."""
         def CreateFileW(self, *a): return 7
         def CloseHandle(self, h): return 1
         def DeviceIoControl(self, *a): return 1
+        def ConvertStringSecurityDescriptorToSecurityDescriptorW(self, *a): return 1
+        def CreateSemaphoreW(self, *a): return 9
+        def LocalFree(self, p): return 0
+        def WaitForSingleObject(self, h, ms): return 0      # WAIT_OBJECT_0
+        def ReleaseSemaphore(self, *a): return 1
 
-    k = Kernel32()
+    k = Win32()
     w._kernel32 = lambda: k
-    ctypes.GetLastError = lambda: 0                      # type: ignore[attr-defined]
+    w._advapi32 = lambda: k
+    # Off Windows ctypes has no GetLastError: this run stands one in.
+    cast(Any, ctypes).GetLastError = lambda: 0
     t = w.WindowsScsiTransport(r"\\.\PhysicalDrive1")
     assert t.open()
     for _ in range(n):

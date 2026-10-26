@@ -170,7 +170,7 @@ def _our_angles(fbl: int, pm: int, sub: int, mode: int) -> dict[int, int] | None
     try:
         import dataclasses
 
-        from trcc.core.protocol import (  # type: ignore[import-not-found]
+        from trcc.core.protocol import (
             get_profile,
             resolve_encode_base,
             wire_angle,

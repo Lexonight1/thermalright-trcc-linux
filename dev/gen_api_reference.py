@@ -75,7 +75,7 @@ def generate() -> str:
     rows: list[tuple[str, str, str, str, str]] = []   # tag, path, methods, resp, summary
     for route in api_routes(build_app()):
         if isinstance(route, APIRoute):
-            methods = " ".join(sorted(m for m in route.methods
+            methods = " ".join(sorted(m for m in route.methods or ()
                                       if m not in ("HEAD", "OPTIONS")))
             response = getattr(route.response_model, "__name__", "") or ""
             tag = str(route.tags[0]) if route.tags else "(untagged)"

@@ -203,6 +203,8 @@ def pyproject_runtime_deps(include_other_os: bool = False) -> list[str]:
     # Here, not at the top: tomllib is 3.11+, and importing this module (its
     # offline tests do) must work on the 3.10 the package still supports.
     # The tool itself runs on 3.12, the dev gate.
+    if sys.version_info < (3, 11):
+        raise RuntimeError("reading pyproject needs Python 3.11+ (tomllib)")
     import tomllib
     data = tomllib.loads(_PYPROJECT.read_text())
     out: list[str] = []
@@ -450,7 +452,7 @@ def package_from_hint(hint: str) -> str | None:
 # ── the channels ──────────────────────────────────────────────────────────
 #
 # Five parallel free functions dispatched through a ``dict[str, tuple[str,
-# object]]`` and invoked as ``probe(pkg)  # type: ignore[operator]``.  The
+# object]]`` and invoked as ``probe(pkg)`` behind a ``# type: ignore[operator]``.  The
 # ignore was the tell: a callable stored as ``object`` is a table that has
 # stopped describing itself.  Adding the EL, SUSE, Alpine, Void, Nix and BSD
 # channels would have made it thirteen of them.

@@ -92,7 +92,7 @@ from trcc.adapters.device.led import (
 
 # Transport fakes — the canonical ones the test suite drives connect()
 # through.  ``tests/`` is on the path above.
-from conftest import (  # type: ignore[import-not-found]
+from tests.conftest import (
     FakeBulkTransport,
     FakeScsiTransport,
 )

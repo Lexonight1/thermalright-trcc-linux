@@ -64,7 +64,10 @@ for version in "${pythons[@]}"; do
   # Bare, as CI runs it.  It read `pyright src/` until 2026-10-21, and
   # four type errors in tests passed here and would have failed CI.
   step "$version: pyright $pyright_pin"
-  "$py" -m pyright
+  # Pinned to the venv: the pip pyright otherwise resolves imports through
+  # whatever `python` is on PATH -- the system's, with other versions -- and
+  # passed 6 errors CI failed on (2026-10-26).
+  "$py" -m pyright --pythonpath "$py"
   step "$version: tests"
   "$py" -m pytest tests/ --tb=short -q -p no:cacheprovider
 done

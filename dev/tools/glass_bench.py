@@ -331,7 +331,7 @@ def _run_gui_arm(n: int) -> None:
         counter["frames"] += 1
         return real_build(self, *a, **kw)
 
-    DisplayService.build_frame = counting_build   # type: ignore[method-assign]
+    DisplayService.build_frame = counting_build
 
     state: dict = {}
 
@@ -416,7 +416,7 @@ def _run_arm(n: int, video: Path | None, mock: bool = False) -> None:
         counter["frames"] += 1
         return real_build(self, *a, **kw)
 
-    DisplayService.build_frame = counting_build   # type: ignore[method-assign]
+    DisplayService.build_frame = counting_build
 
     # ``trcc()`` auto-detects the platform: ``current_platform`` moved between
     # releases, so importing it by path would measure the import, not the drift.

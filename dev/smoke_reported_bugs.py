@@ -267,7 +267,7 @@ def repro_162_daemon_flag_strip() -> ReproResult:
 
     captured: dict = {}
 
-    def _popen_spy(cmd, **kw):  # type: ignore[no-untyped-def]
+    def _popen_spy(cmd, **kw):
         captured["env"] = kw.get("env", {})
         return object()
 
@@ -283,7 +283,7 @@ def repro_162_daemon_flag_strip() -> ReproResult:
 
         seen: dict = {}
 
-        def _build_spy(**kw):  # type: ignore[no-untyped-def]
+        def _build_spy(**kw):
             seen["flag"] = os.environ.get("TRCC_DAEMON")
             raise RuntimeError("stop before serve")
 
@@ -408,7 +408,7 @@ def repro_166_linux_import_no_fcntl() -> ReproResult:
 
     real_import = builtins.__import__
 
-    def _blocker(name, *a, **k):  # type: ignore[no-untyped-def]
+    def _blocker(name, *a, **k):
         if name == "fcntl":
             raise ModuleNotFoundError("No module named 'fcntl'")
         return real_import(name, *a, **k)

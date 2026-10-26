@@ -36,7 +36,7 @@ os.environ.pop("QT_QPA_PLATFORM", None)
 
 from trcc.adapters.screencast import build_screen_capture
 from trcc.adapters.system import current_platform
-from trcc.core.models import SCREENCAST_TICK_S, DisplayServer
+from trcc.core.models import SCREENCAST_TICK_S, DisplayServer, RawFrame
 from trcc.core.ports import CaptureNotReady
 
 GREEN, RED, YELLOW, DIM, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
@@ -67,9 +67,9 @@ def _describe(chain: object, depth: int = 0) -> list[str]:
     return [f"{pad}{type(chain).__name__}"]
 
 
-def _looks_blank(frame: object) -> bool:
+def _looks_blank(frame: RawFrame) -> bool:
     """A frame of one colour is what a refused capture returns."""
-    data = frame.data  # type: ignore[attr-defined]
+    data = frame.data
     step = max(3, (len(data) // 3 // 500) * 3)
     sample = {tuple(data[i:i + 3]) for i in range(0, len(data) - 2, step)}
     return len(sample) <= 1
