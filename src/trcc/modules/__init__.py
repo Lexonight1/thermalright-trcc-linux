@@ -42,9 +42,15 @@ BUNDLE_FILES = frozenset({"__init__.py", MANIFEST, TABLE, "icon.svg", "icon.png"
 BUNDLE_DIRS = frozenset({"core", "services", "adapters", "ui", "assets"})
 
 
+#: The folders :func:`use_folder` added -- the user's, whose modules run only
+#: when the App says so.
+_USERS: set[str] = set()
+
+
 def use_folder(folder: Path) -> None:
     """Find modules in *folder* too -- the user's installed ones.  Each
     process does this once (``UserInterface.start``); again is a no-op."""
+    _USERS.add(str(folder))
     if str(folder) in __path__:
         log.debug("modules.use_folder: %s already searched", folder)
         return
@@ -65,11 +71,25 @@ def forget(key: str) -> None:
 
 def folders() -> dict[str, Path]:
     """Every module folder -- one holding a ``module.json`` -- on this
-    package's search path, by key.  A test adds a folder to ``__path__``."""
-    found = {path.parent.name: path.parent
-             for root in __path__ for path in sorted(Path(root).glob(f"*/{MANIFEST}"))
-             if KEY.fullmatch(path.parent.name)}
+    package's search path, by key.  A test adds a folder to ``__path__``.
+    The first folder of a key wins, as an import of it does: one in the
+    user's folder never stands in for TRCC's own."""
+    found: dict[str, Path] = {}
+    for root in __path__:
+        for path in sorted(Path(root).glob(f"*/{MANIFEST}")):
+            if KEY.fullmatch(path.parent.name):
+                found.setdefault(path.parent.name, path.parent)
     log.debug("modules.folders: %s", sorted(found))
+    return found
+
+
+def shipped() -> dict[str, Path]:
+    """The module folders found without the user's (:func:`use_folder`) --
+    TRCC's own, and a test's.  Which of the user's may run is the App's to
+    say, never a UI's."""
+    found = {key: folder for key, folder in folders().items()
+             if str(folder.parent) not in _USERS}
+    log.debug("modules.shipped: %s", sorted(found))
     return found
 
 

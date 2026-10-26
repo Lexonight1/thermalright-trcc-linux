@@ -2,6 +2,7 @@
   "key": "rgb",
   "title": "RGB Lighting",
   "summary": "Lights your memory, your motherboard's RGB and OpenRGB's devices -- with effects, or following a cooler or an LCD.",
+  "author": "Lexonight",
   "version": "1",
   "default_on": true,
   "icon": "icon.svg",

@@ -1336,9 +1336,16 @@ class ModuleInfo:
     problem: str = ""
     icon: bool = False
     guide: str = ""
-    #: The user installed it from the index -- so it can be removed; a
-    #: built-in module never can.
-    installed: bool = False
+    #: Where it came from: ``built-in`` (ships with TRCC), ``installed`` (from
+    #: the index, signed), or ``by hand`` (copied into the user's modules
+    #: folder -- TRCC never runs its code).
+    origin: str = "built-in"
+    #: TRCC runs this module's code -- a UI loads its faces only then.
+    allowed: bool = True
+    version: str = ""
+    #: Who wrote it, as its ``module.json`` says -- for one installed from the
+    #: index, the name TRCC reviewed (the installer refuses any other).
+    author: str = ""
 
 
 #: What a module may ask its host for: the name its manifest declares, and
@@ -1398,6 +1405,9 @@ class PanelPicture:
 #: A module's key, which is also its folder's and its Python package's name:
 #: 2-31 lowercase letters, digits or _.
 MODULE_KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")
+#: The author every module that ships with TRCC names -- TRCC's maintainer --
+#: and no other module may.
+MODULE_BUILT_IN_AUTHOR = "Lexonight"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1421,6 +1431,8 @@ class ModuleManifest:
     backgrounds: tuple[str, ...] = ()
     #: The sites the ``network`` capability may fetch from (``MODULE_HOST``).
     network_hosts: tuple[str, ...] = ()
+    #: Who wrote it -- a name, shown on its tile and in the module list.
+    author: str = ""
 
 
 # =========================================================================
@@ -1461,6 +1473,8 @@ class ModuleRelease:
     #: Its manifest's, so the list shows what it is before it is installed.
     title: str = ""
     summary: str = ""
+    #: Its manifest's author, as reviewed -- the bundle must say the same.
+    author: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1490,6 +1504,7 @@ class AvailableModule:
     network_hosts: tuple[str, ...] = ()
     installed_version: str = ""
     reason: str = ""
+    author: str = ""
 
 
 @dataclass(frozen=True, slots=True)

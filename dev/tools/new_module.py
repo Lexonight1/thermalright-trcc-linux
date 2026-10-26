@@ -23,6 +23,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from trcc.core.models import MODULE_BUILT_IN_AUTHOR
 from trcc.modules import KEY
 
 REPO = Path(__file__).resolve().parents[2]
@@ -36,7 +37,8 @@ def class_prefix(key: str) -> str:
     return "".join(part.capitalize() for part in key.split("_"))
 
 
-def create(key: str, title: str, summary: str, repo: Path = REPO) -> Path:
+def create(key: str, title: str, summary: str, repo: Path = REPO,
+           author: str = MODULE_BUILT_IN_AUTHOR) -> Path:
     """Copy the skeleton into *repo* as module *key*; the folder made."""
     if not KEY.fullmatch(key):
         raise SystemExit(f"{key!r}: a key is 2-31 lowercase letters, digits or _, "
@@ -52,7 +54,8 @@ def create(key: str, title: str, summary: str, repo: Path = REPO) -> Path:
                             .replace("hello", key), encoding="utf-8")
     manifest_path = folder / "module.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest.update(key=key, title=title, summary=summary, default_on=False,
+    manifest.update(key=key, title=title, summary=summary, author=author,
+                    default_on=False,
                     guide=GUIDE + title.lower().replace(" ", "-"))
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return folder

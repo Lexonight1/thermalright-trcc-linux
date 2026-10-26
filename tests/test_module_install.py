@@ -47,7 +47,11 @@ from trcc.core.ports import HttpFetcher
 from trcc.services.module_install import ModuleInstaller
 from trcc.services.module_trust import ModuleTrust
 
+from .conftest import loopback_client
+
 KEY = "greeter"
+#: The name the greeter's author signs as -- in its module.json and the index.
+AUTHOR = "Ada Author"
 INDEX = "https://index.test/modules/"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -99,7 +103,8 @@ class Shop:
         """``greeter``, made by ``new_module.py`` as an author would -- its
         Query renamed, since every skeleton names one ``Greet``."""
         repo = self._folder / "author"
-        folder = new_module.create(KEY, "Greeter", "Says hello.", repo=repo)
+        folder = new_module.create(KEY, "Greeter", "Says hello.", repo=repo,
+                                   author=AUTHOR)
         for path in folder.rglob("*.py"):
             path.write_text(path.read_text(encoding="utf-8").replace(
                 "Greet", "GreeterSay"), encoding="utf-8")
@@ -116,16 +121,18 @@ class Shop:
 
     def list(self, version: str, *, author: str = "author", min_trcc: str = "9.0.0",
              capabilities: tuple[str, ...] = ("events",), hosts: tuple[str, ...] = (),
-             bundle: bytes | None = None, listed_capabilities: tuple[str, ...] | None = None) -> bytes:
+             bundle: bytes | None = None, listed_capabilities: tuple[str, ...] | None = None,
+             listed_author: str | None = None) -> bytes:
         """Publish *version* in a new index; the bundle served at its URL."""
         data = bundle if bundle is not None else self.bundle(version, capabilities, hosts)
         url = f"https://github.test/greeter-{version}.zip"
         self.web.files[url] = data
         listed = listed_capabilities if listed_capabilities is not None else capabilities
+        listed_author = AUTHOR if listed_author is None else listed_author
         entry = {"version": version, "url": url, "commit": COMMIT, "min_trcc": min_trcc,
                  "capabilities": list(listed), "network_hosts": list(hosts),
                  "author_key": self.raw(author), "title": "Greeter",
-                 "summary": "Says hello.",
+                 "summary": "Says hello.", "author": listed_author,
                  "author_sig": tool.author_sign(data, KEY, version, self.key(author))}
         # Listed afresh: whether a new author key may replace the old is the
         # app's to judge, on the machine that installed the old one.
@@ -157,9 +164,12 @@ def heard(cli_app: App) -> list[Any]:
 def shop(cli_app: App, tmp_path: Path) -> Iterator[Shop]:
     """The App's installer, pointed at a throwaway index; the module search
     path and the greeter's imports put back afterwards."""
+    from trcc.ui.cli import main as cli_main
+
     web = _Web()
     shop = Shop(tmp_path / "shop", web)
     search = list(module_folders.__path__)
+    users = set(module_folders._USERS)
     cli_app.module_installer = ModuleInstaller(
         trust=shop.trust, http=web,
         store=FolderModuleStore(cli_app.platform.paths().user_modules_dir()),
@@ -172,6 +182,15 @@ def shop(cli_app: App, tmp_path: Path) -> Iterator[Shop]:
         cli_app.modules.remove(KEY)
     App._forget_module(KEY)
     module_folders.__path__[:] = search
+    module_folders._USERS.clear()
+    module_folders._USERS.update(users)
+    # A command the CLI added for the greeter goes with it.
+    for group in cli_main._GROUPS.values():
+        group.registered_commands[:] = [
+            c for c in group.registered_commands
+            if not (getattr(c.callback, "__module__", "") or "").startswith(
+                f"{module_folders.__name__}.{KEY}.")]
+    cli_main._ADDED.discard(KEY)
 
 
 def _install(app: App, capabilities: tuple[str, ...] = ("events",),
@@ -253,11 +272,18 @@ def test_a_tampered_bundle_is_refused_and_nothing_lands(cli_app: App, shop: Shop
     assert not _installed_folder(cli_app).exists()
 
 
-def test_a_bundle_unlike_its_index_entry_is_refused(cli_app: App, shop: Shop) -> None:
-    """Signed and listed, but its own module.json asks for something the
-    index does not say: refused after unpacking aside, before it lands."""
-    shop.list("1", listed_capabilities=("events", "readings"))
-    result = _install(cli_app, ("events", "readings"))
+@pytest.mark.parametrize("unlike", ["capabilities", "author"])
+def test_a_bundle_unlike_its_index_entry_is_refused(cli_app: App, shop: Shop,
+                                                    unlike: str) -> None:
+    """Signed and listed, but its own module.json says something the index
+    does not -- asks for more, or names another author than the one
+    reviewed: refused after unpacking aside, before it lands."""
+    if unlike == "author":
+        shop.list("1", listed_author="Someone Reviewed")
+        result = _install(cli_app)
+    else:
+        shop.list("1", listed_capabilities=("events", "readings"))
+        result = _install(cli_app, ("events", "readings"))
     assert (result.ok, result.message) == (False, "greeter: its module.json is not "
                                                   "what the index lists -- refused")
     store = cli_app.platform.paths().user_modules_dir()
@@ -411,6 +437,147 @@ def test_the_records_survive_a_restart(cli_app: App, shop: Shop) -> None:
     again = Settings(cli_app.platform.paths())
     assert again.module_install(KEY) == cli_app.settings.module_install(KEY)
     assert again.module_index_seen() == (1, 1)
+
+
+# ── copied in by hand ─────────────────────────────────────────────────────
+#
+# Only an install checks what a module is, so a folder put into the user's
+# modules folder by hand is listed -- saying so -- and never run: none of its
+# code imported, by the App or by any UI.
+
+
+#: Each part a UI or the App would import, marked if it ever is.
+_MARKED = ("core", "ui/cli", "ui/api")
+
+
+def _copy_in_by_hand(app: App, shop: Shop, key: str = KEY) -> Path:
+    """The greeter as *key*, put into the user's modules folder by hand: on
+    by default, claiming a background, and leaving a mark if imported."""
+    folder = app.platform.paths().user_modules_dir() / key
+    shutil.copytree(shop._source, folder, ignore=shutil.ignore_patterns("__pycache__"))
+    manifest = json.loads((folder / "module.json").read_text(encoding="utf-8"))
+    manifest.update(key=key, default_on=True, backgrounds=["greeter_bg"])
+    (folder / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
+    for part in _MARKED:
+        with (folder / part / "__init__.py").open("a", encoding="utf-8") as f:
+            f.write("\nfrom pathlib import Path\nPath(__file__).with_name('RAN').touch()\n")
+    return folder
+
+
+def _ran(folder: Path) -> list[str]:
+    """The parts of *folder* that were imported."""
+    return sorted(p.parent.relative_to(folder).as_posix() for p in folder.rglob("RAN"))
+
+
+def _restart(app: App) -> App:
+    """The next start of the App on this machine: what it finds on disk."""
+    return App(platform=app.platform)
+
+
+def _tile(app: App, key: str) -> Any:
+    return next(m for m in app.dispatch(ListModules()).modules if m.key == key)
+
+
+def test_a_module_copied_in_by_hand_is_listed_and_never_run(
+        cli_app: App, shop: Shop) -> None:
+    """Listed, saying why -- never imported, never on (its manifest asks to
+    be), claiming nothing.  MUTATION CHECK: drop the refusal in
+    ``App._not_installed`` and its core is imported and it switches on."""
+    folder = _copy_in_by_hand(cli_app, shop)
+    again = _restart(cli_app)
+    tile = _tile(again, KEY)
+    switched = again.dispatch(SetModuleEnabled(key=KEY, enabled=True))
+    assert (tile.origin, tile.allowed, tile.enabled, tile.author) == (
+        "by hand", False, False, AUTHOR)
+    assert tile.problem == ("greeter was copied into TRCC's modules folder by hand, "
+                            "not installed through TRCC -- TRCC does not run it")
+    assert (switched.ok, switched.message) == (False, tile.problem)
+    assert again.background_owner("greeter_bg") is None
+    assert _ran(folder) == []
+    assert [n for n in sys.modules if n.startswith(f"trcc.modules.{KEY}")] == []
+
+
+def test_one_copied_in_by_hand_never_stands_in_for_a_built_in(
+        cli_app: App, shop: Shop) -> None:
+    """A folder named like TRCC's own module: TRCC's runs, the copy is not
+    even read.  The user's folder is searched first, as every process's
+    ``UserInterface.start`` does.  MUTATION CHECK: let the last folder of a
+    key win in ``modules.folders``, or in ``catalog.specs``'s user folder,
+    and the Visualizer's tile is the copy's."""
+    folder = _copy_in_by_hand(cli_app, shop, key="visualizer")
+    module_folders.use_folder(cli_app.platform.paths().user_modules_dir())
+    tile = _tile(_restart(cli_app), "visualizer")
+    assert (tile.title, tile.origin, tile.allowed, tile.author) == (
+        "Audio Visualizer", "built-in", True, "Lexonight")
+    assert _ran(folder) == []
+
+
+def test_an_installed_module_runs_after_a_restart(cli_app: App, shop: Shop) -> None:
+    """Installed through TRCC, it is found again at the next start: listed
+    as installed, with its version and its reviewed author, and on."""
+    shop.list("1")
+    assert _install(cli_app).ok
+    App._forget_module(KEY)
+    tile = _tile(_restart(cli_app), KEY)
+    assert (tile.origin, tile.allowed, tile.enabled, tile.version, tile.author,
+            tile.problem) == ("installed", True, True, "1", AUTHOR, "")
+
+
+def test_the_cli_list_says_where_each_module_came_from(
+        cli_runner: Any, cli_app: App, shop: Shop) -> None:
+    from trcc.ui.cli.main import app
+
+    shop.list("1")
+    assert _install(cli_app).ok
+    listed = cli_runner.invoke(app, ["system", "modules", "list"])
+    assert listed.exit_code == 0
+    lines = listed.output.splitlines()
+    at = lines.index("  [on ] greeter          Greeter -- Says hello.")
+    assert lines[at + 1] == "        Version 1 · by Ada Author · Installed"
+
+
+def test_the_cli_asks_the_app_for_an_installed_modules_command(
+        cli_runner: Any, cli_app: App, shop: Shop) -> None:
+    """Not a command this process has: the CLI asks the App which modules it
+    runs, adds theirs, and runs it.  MUTATION CHECK: return the miss in
+    ``_AsksTheApp.get_command`` and it is "No such command"."""
+    from trcc.ui.cli.main import app
+
+    shop.list("1")
+    assert _install(cli_app).ok
+    ran = cli_runner.invoke(app, ["greeter", "Ada"])
+    assert (ran.exit_code, ran.output) == (0, "GreeterSayer, Ada!\n")
+
+
+def test_the_cli_never_runs_a_module_copied_in_by_hand(
+        cli_runner: Any, cli_app: App, shop: Shop) -> None:
+    """The App does not run it, so the CLI never imports it: no such
+    command.  MUTATION CHECK: list every folder in ``_module_faces.listed``
+    and its CLI part is imported."""
+    from trcc.ui.cli.main import app
+
+    folder = _copy_in_by_hand(cli_app, shop)
+    cli_app.modules.add(_restart(cli_app).modules._specs[KEY])
+    ran = cli_runner.invoke(app, ["greeter", "Ada"])
+    assert ran.exit_code == 2
+    assert _ran(folder) == []
+
+
+def test_the_api_serves_what_the_app_runs_and_nothing_copied_in(
+        cli_app: App, shop: Shop, tmp_path: Path) -> None:
+    """Built with an App, the API serves the routes of the modules that App
+    runs -- an installed one -- and none of a copy.  MUTATION CHECK: build
+    module routes from every folder and the copy's API part is imported."""
+    from trcc.ui.api.main import build_app
+
+    shop.list("1")
+    assert _install(cli_app).ok
+    copied = _copy_in_by_hand(cli_app, shop, key="copied")
+    cli_app.modules.add(_restart(cli_app).modules._specs["copied"])
+    with loopback_client(build_app(trcc=cli_app)) as client:
+        greeted = client.get("/modules/greeter", params={"name": "Ada"})
+    assert (greeted.status_code, greeted.json()["greeting"]) == (200, "GreeterSayer, Ada!")
+    assert _ran(copied) == []
 
 
 # ── the bundle, unpacked ──────────────────────────────────────────────────

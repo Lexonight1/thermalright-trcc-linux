@@ -2,6 +2,7 @@
   "key": "hello",
   "title": "Hello",
   "summary": "The smallest module there is: it hears the app and says so in the log.",
+  "author": "",
   "version": "1",
   "default_on": false,
   "icon": "icon.svg",

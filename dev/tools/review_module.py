@@ -72,6 +72,7 @@ from cryptography.hazmat.primitives.serialization import (
 
 from trcc.adapters.modules import Ed25519Checker, ManifestError, read_manifest
 from trcc.core.errors import UntrustedModule
+from trcc.core.models import MODULE_BUILT_IN_AUTHOR as BUILT_IN_AUTHOR
 from trcc.services.module_trust import ModuleTrust, parse_release
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -176,6 +177,7 @@ class Review:
     network_hosts: tuple[str, ...] = ()
     title: str = ""
     summary: str = ""
+    author: str = ""
     #: Whether stage 2 -- its own code, in the sandbox -- ran.
     ran: bool = False
 
@@ -298,8 +300,12 @@ def layout(source: Path, staged: Path) -> Gate:
     except ManifestError as e:
         gate.fail("module.json", str(e))
     else:
-        gate.notes.append(f"{manifest.key} {manifest.version}: {manifest.title}; "
-                          f"capabilities {', '.join(manifest.capabilities) or 'none'}")
+        gate.notes.append(f"{manifest.key} {manifest.version}: {manifest.title} by "
+                          f"{manifest.author or '(nobody)'}; capabilities "
+                          f"{', '.join(manifest.capabilities) or 'none'}")
+        if not manifest.author.strip() or manifest.author.strip() == BUILT_IN_AUTHOR:
+            gate.fail("module.json", "author must name who wrote it -- not empty, "
+                      f"and not {BUILT_IN_AUTHOR!r}, the name TRCC's own modules carry")
         if manifest.network_hosts:
             gate.notes.append(f"fetches from: {', '.join(manifest.network_hosts)}")
     if extra := module_bundle.left_out(source):
@@ -755,7 +761,8 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
     except ManifestError:
         return Review(key, version, commit, gates, diff, since)
     return Review(key, version, commit, gates, diff, since, manifest.capabilities,
-                  manifest.network_hosts, manifest.title, manifest.summary)
+                  manifest.network_hosts, manifest.title, manifest.summary,
+                  manifest.author)
 
 
 def render(result: Review, diff_file: Path) -> str:
@@ -790,6 +797,7 @@ def render(result: Review, diff_file: Path) -> str:
                      if result.network_hosts else "")
                   + f"--title {shlex.quote(result.title)} "
                   f"--summary {shlex.quote(result.summary)} "
+                  f"--author {shlex.quote(result.author)} "
                   + "--bundle <asset> "
                   "--url <asset url> --min-trcc <version> --author-key <pub> "
                   "--author-sig <sig>", "```"]

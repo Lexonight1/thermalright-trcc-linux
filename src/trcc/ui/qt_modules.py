@@ -44,7 +44,14 @@ from ..core.models import AvailableModule, ModuleInfo
 from ..core.ports import CommandBus
 from ..core.results import ModuleCatalogResult, ModuleResult
 from ._module_faces import face_loaded
-from .presentation.module_catalog import REOPEN, catalog_rows, consent, removal_question
+from .presentation.module_catalog import (
+    REOPEN,
+    byline,
+    catalog_rows,
+    consent,
+    problem_line,
+    removal_question,
+)
 from .qt_background import dispatch_in_background
 
 log = logging.getLogger(__name__)
@@ -218,12 +225,14 @@ class ModulesView(QScrollArea):
         name = QLabel(self._translate(module.title))
         name.setObjectName("moduleTitle")
         text.addWidget(name)
+        about = QLabel(byline(module, self._translate))
+        about.setObjectName("moduleByline")
+        text.addWidget(about)
         summary = QLabel(self._translate(module.summary))
         summary.setWordWrap(True)
         text.addWidget(summary)
-        note = (self._translate("Cannot run here: {problem}").format(problem=module.problem)
-                if module.problem
-                else self._translate(self.notes.get(module.key, "")))
+        note = (problem_line(module, self._translate)
+                or self._translate(self.notes.get(module.key, "")))
         if note:
             problem = QLabel(note)
             problem.setObjectName("moduleProblem")
@@ -239,7 +248,7 @@ class ModulesView(QScrollArea):
             text.addWidget(guide, 0, Qt.AlignmentFlag.AlignLeft)
         row.addLayout(text, 1)
         self._titles[module.key] = module.title
-        if module.installed:
+        if module.origin == "installed":     # TRCC's own are never removed
             remove = QPushButton(self._translate("Remove"))
             remove.setObjectName("moduleRemove")
             remove.setCursor(Qt.CursorShape.PointingHandCursor)

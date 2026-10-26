@@ -10,7 +10,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import click
 import typer
+from typer.core import TyperGroup
 
 from ...core.commands import DaemonStatus, StopDaemon
 from . import config, device, display, led, system, theme
@@ -23,18 +25,52 @@ from ..presentation.display_source import describe_game_mode, describe_source
 
 log = logging.getLogger(__name__)
 
+class _AsksTheApp(TyperGroup):
+    """A ``trcc`` group a module may add commands to.  Meeting a name it does
+    not have, it asks the App which modules it runs and adds their commands
+    -- an installed module is the App's to know, not this process's.  Only
+    then: a built-in command never waits on the App, so ``trcc daemon``,
+    ``kill`` and ``report`` never start or reach one."""
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        found = super().get_command(ctx, cmd_name)
+        if found is not None or ctx.resilient_parsing or cmd_name.startswith("-"):
+            return found
+        log.info("trcc %s: no %r here -- asking the App for its modules",
+                 ctx.info_name, cmd_name)
+        if not add_app_module_commands():
+            return None
+        # This group was built before they were added: find its twin in a
+        # tree built now, by the names that led here.
+        names: list[str] = []
+        at = ctx
+        while at.parent is not None:
+            names.append(str(at.info_name))
+            at = at.parent
+        group: click.Command | None = typer.main.get_command(app)
+        # TyperGroup, not click.Group: a newer Typer (0.26, 0.27 measured)
+        # builds groups on a Click of its own, not the ``click`` package's.
+        for name in reversed(names):
+            group = group.commands.get(name) if isinstance(group, TyperGroup) else None
+        found = group.commands.get(cmd_name) if isinstance(group, TyperGroup) else None
+        log.debug("trcc %s: %r after asking -> %s", ctx.info_name, cmd_name,
+                  found is not None)
+        return found
+
+
 app = typer.Typer(
     help="TRCC — Thermalright LCD/LED cooler control.",
     no_args_is_help=True,
     add_completion=False,
+    cls=_AsksTheApp,
 )
 
-app.add_typer(device.app, name="device")
-app.add_typer(display.app, name="display")
-app.add_typer(led.app, name="led")
-app.add_typer(system.app, name="system")
-app.add_typer(config.app, name="config")
-app.add_typer(theme.app, name="theme")
+app.add_typer(device.app, name="device", cls=_AsksTheApp)
+app.add_typer(display.app, name="display", cls=_AsksTheApp)
+app.add_typer(led.app, name="led", cls=_AsksTheApp)
+app.add_typer(system.app, name="system", cls=_AsksTheApp)
+app.add_typer(config.app, name="config", cls=_AsksTheApp)
+app.add_typer(theme.app, name="theme", cls=_AsksTheApp)
 
 
 @app.command("quickstart")
@@ -754,16 +790,16 @@ _GROUPS: dict[str, typer.Typer] = {
 _ADDED: set[str] = set()
 
 
-def add_module_commands() -> list[str]:
-    """Every installed module's commands, into the group each names
-    (``ui/cli/``'s ``GROUP`` and ``COMMANDS``) -- on or off: an off module's
-    command still runs, and the App says it is off.  Each module once; a
-    name already taken in its group is refused and logged.  The modules added
-    now, by key."""
+def add_module_commands(keys: list[str] | None = None) -> list[str]:
+    """The commands of each module in *keys* -- by default those that ship
+    with TRCC -- into the group each names (``ui/cli/``'s ``GROUP`` and
+    ``COMMANDS``), on or off: an off module's command still runs, and the App
+    says it is off.  Each module once; a name already taken in its group is
+    refused and logged.  The modules added now, by key."""
     from .._module_faces import contribution, installed
 
     added: list[str] = []
-    for key in installed():
+    for key in installed() if keys is None else keys:
         if key in _ADDED:
             continue
         commands = contribution(key, "cli", "COMMANDS")
@@ -784,6 +820,19 @@ def add_module_commands() -> list[str]:
         _ADDED.add(key)
         added.append(key)
     log.info("add_module_commands: %s", added)
+    return added
+
+
+def add_app_module_commands() -> list[str]:
+    """The commands of every module the App runs, on or off -- asked of the
+    App, with the user's modules folder searched so they import.  The
+    modules added now, by key."""
+    from .._module_faces import listed, search_user_folder
+    from . import _ctx
+
+    search_user_folder(_ctx._platform_override)
+    added = add_module_commands(listed(get_app()))
+    log.info("add_app_module_commands: %s", added)
     return added
 
 

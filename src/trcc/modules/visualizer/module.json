@@ -2,6 +2,7 @@
   "key": "visualizer",
   "title": "Audio Visualizer",
   "summary": "Draws what your computer is playing as a panel's background, with the theme's mask and readings on top.",
+  "author": "Lexonight",
   "version": "1",
   "default_on": true,
   "icon": "icon.svg",

@@ -55,7 +55,7 @@ class _App(CommandBus):
         self.tiles: tuple[ModuleInfo, ...] = (
             ModuleInfo(key="rgb", title="RGB", summary="Lights.", enabled=True),
             ModuleInfo(key="ticker", title="Ticker", summary="Prices.", enabled=True,
-                       installed=True))
+                       origin="installed"))
         self.catalog = ModuleCatalogResult(ok=True, modules=_LISTED)
         self.installed = ModuleResult(ok=True, key="weather", message="Weather 3 installed")
         self.removed = ModuleResult(ok=True, key="ticker", message="ticker removed")

@@ -74,6 +74,11 @@ class ModuleSpec:
     manifest: ModuleManifest
     load: Callable[[], type[Module]]
     icon: Callable[[], tuple[bytes, str] | None] = field(default=_no_icon)
+    #: Where it came from -- ``ModuleInfo.origin``.
+    origin: str = "built-in"
+    #: Why TRCC will not run its code; "" when it will.  Its manifest is all
+    #: the App has of it: nothing imported, nothing claimed.
+    refused: str = ""
 
     @classmethod
     def of(cls, module: type[Module]) -> ModuleSpec:
@@ -551,12 +556,14 @@ class ModuleRunner:
         module = self._modules.get(key)
         revoked = self._settings.module_revoked(key)
         log.debug("ModuleRunner._info: %s loaded=%s", key, module is not None)
-        problem = (f"taken back: {revoked}" if revoked
-                   else module.problem() if module is not None else "")
+        spec = self._specs[key]
+        problem = (spec.refused or (f"taken back: {revoked}" if revoked else "")
+                   or (module.problem() if module is not None else ""))
         return ModuleInfo(key=key, title=manifest.title, summary=manifest.summary,
                           enabled=key in self._on, problem=problem,
                           icon=bool(manifest.icon), guide=manifest.guide,
-                          installed=self._settings.module_install(key) is not None)
+                          origin=spec.origin, allowed=not spec.refused,
+                          version=manifest.version, author=manifest.author)
 
     def icon(self, key: str) -> tuple[bytes, str] | None:
         """Module *key*'s symbol and its media type, or None: no such module,
@@ -647,7 +654,10 @@ class ModuleRunner:
 
     def _enable(self, key: str) -> None:
         """Register *key*; a failure is undone and reported.  A module TRCC
-        took back never switches on."""
+        took back never switches on, nor one whose code TRCC will not run."""
+        if refused := self._specs[key].refused:
+            log.warning("ModuleRunner._enable: %s refused -- %s", key, refused)
+            raise ModuleUnavailable(refused)
         if reason := self._settings.module_revoked(key):
             raise ModuleUnavailable(f"{self._specs[key].manifest.title} was taken "
                                     f"back: {reason}")

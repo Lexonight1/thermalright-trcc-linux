@@ -156,7 +156,8 @@ class ModuleInstaller:
             key=release.key, title=release.title or release.key,
             summary=release.summary, version=release.version, status=status,
             capabilities=release.capabilities, network_hosts=release.network_hosts,
-            installed_version=record.version if record else "", reason=reason)
+            installed_version=record.version if record else "", reason=reason,
+            author=release.author)
 
     # ── installing ────────────────────────────────────────────────────────
 
@@ -210,11 +211,12 @@ class ModuleInstaller:
         log.info("ModuleInstaller._put_in_place: %s %s", key, release.version)
 
         def matches(manifest: ModuleManifest) -> None:
-            """The bundle's own ``module.json`` says what the index says."""
+            """The bundle's own ``module.json`` says what the index says --
+            its author too, so the name a tile shows is the one reviewed."""
             said = (manifest.key, manifest.version, set(manifest.capabilities),
-                    set(manifest.network_hosts))
+                    set(manifest.network_hosts), manifest.author)
             listed = (key, release.version, set(release.capabilities),
-                      set(release.network_hosts))
+                      set(release.network_hosts), release.author)
             log.debug("matches: %s vs %s", said, listed)
             if said != listed:
                 raise UntrustedModule(f"{key}: its module.json is not what the index "

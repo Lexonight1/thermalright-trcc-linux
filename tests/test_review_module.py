@@ -40,12 +40,21 @@ def _release(repo: Path, tag: str) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
+def _set_author(repo: Path, name: str) -> None:
+    """The skeleton names no author; its author signs it with theirs."""
+    manifest = repo / "module.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["author"] = name
+    manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
 @pytest.fixture
 def author(tmp_path: Path) -> Path:
     """An author's repository: the skeleton at its root, plus the tests and
     README a repo has and a bundle leaves out."""
     repo = tmp_path / "author"
     shutil.copytree(_TEMPLATE, repo, ignore=shutil.ignore_patterns("__pycache__"))
+    _set_author(repo, "Ada Author")
     (repo / "tests").mkdir()
     (repo / "tests" / "test_hello.py").write_text("def test_x():\n    pass\n")
     (repo / "README.md").write_text("# Hello\n")
@@ -520,7 +529,7 @@ def test_the_add_command_carries_the_sites_it_fetches_from(tmp_path: Path) -> No
                            ("api.example.com",), ran=True)
     report = review.render(result, tmp_path / "files.txt")
     assert ("--capabilities network --network-hosts api.example.com --title '' "
-            "--summary '' --bundle" in report)
+            "--summary '' --author '' --bundle" in report)
 
 
 @pytest.mark.parametrize(("stage_one_passes", "answer", "asked", "ran"), [

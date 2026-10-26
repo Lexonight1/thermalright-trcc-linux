@@ -449,7 +449,8 @@ class App(CommandBus, ModuleServices):
         #: module, and how themes play, save and resume it.
         self._background_kinds: dict[str, tuple[str, BackgroundKind]] = {}
         self.modules = ModuleRunner(
-            module_catalog.specs() if modules is None else {
+            module_catalog.specs(user_root=platform.paths().user_modules_dir(),
+                                 refuse=self._not_installed) if modules is None else {
                 key: m if isinstance(m, ModuleSpec) else ModuleSpec.of(m)
                 for key, m in modules.items()},
             host=self, settings=self.settings)
@@ -471,8 +472,19 @@ class App(CommandBus, ModuleServices):
         import of it then searches."""
         root = self.platform.paths().user_modules_dir()
         log.info("_installed_spec: %s in %s", key, root)
-        module_folders.use_folder(root)
-        return module_catalog.spec(root / key / module_folders.MANIFEST)
+        return module_catalog.spec(root / key / module_folders.MANIFEST,
+                                   origin="installed", user_root=root)
+
+    def _not_installed(self, key: str) -> str:
+        """Why module *key*, in the user's modules folder, does not run -- ""
+        when TRCC installed it there.  A folder copied in by hand is never
+        imported: only an install checks what a module is."""
+        if self.settings.module_install(key) is not None:
+            log.debug("_not_installed: %s was installed", key)
+            return ""
+        log.warning("_not_installed: %s has no install record", key)
+        return (f"{key} was copied into TRCC's modules folder by hand, not "
+                "installed through TRCC -- TRCC does not run it")
 
     @staticmethod
     def _forget_module(key: str) -> None:

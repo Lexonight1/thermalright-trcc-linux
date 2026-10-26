@@ -46,12 +46,14 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def module_routers() -> tuple[APIRouter, ...]:
-    """Every installed module's routers (its ``ui/api/``'s ``ROUTERS``) -- on
-    or off: an off module's route answers that it is off."""
-    from .._module_faces import contributions
+def module_routers(bus: CommandBus | None = None) -> tuple[APIRouter, ...]:
+    """The routers (``ui/api/``'s ``ROUTERS``) of every module *bus*'s App
+    runs -- on or off: an off module's route answers that it is off.  With
+    no App to ask, those that ship with TRCC."""
+    from .._module_faces import contributions, listed
 
-    found = tuple(router for routers in contributions("api", "ROUTERS").values()
+    keys = listed(bus) if bus is not None else None
+    found = tuple(router for routers in contributions("api", "ROUTERS", keys).values()
                   for router in routers)
     log.info("module_routers: %d", len(found))
     return found
@@ -67,12 +69,12 @@ ROUTERS = (
 )
 
 
-def routers() -> tuple[APIRouter, ...]:
+def routers(bus: CommandBus | None = None) -> tuple[APIRouter, ...]:
     """The app's routers and every installed module's, asked for when the
     API is BUILT, never when this file is imported: a module's ``ui/api``
     imported first (anything that walks the packages) imports this file
     while it is itself half-loaded, and its routes were skipped for good."""
-    found = (*ROUTERS, *module_routers())
+    found = (*ROUTERS, *module_routers(bus))
     log.debug("routers: %d", len(found))
     return found
 
@@ -89,7 +91,8 @@ def api_routes(api: FastAPI) -> list[BaseRoute]:
     """
     seen: set[tuple[str, str, tuple[str, ...]]] = set()
     routes: list[BaseRoute] = []
-    for route in [*api.routes, *(r for router in routers() for r in router.routes)]:
+    bus = getattr(api.state, "trcc", None)
+    for route in [*api.routes, *(r for router in routers(bus) for r in router.routes)]:
         path = getattr(route, "path", None)
         if path is None:
             continue
@@ -254,7 +257,7 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
         log.info("API pair: remote device paired successfully")
         return {"success": True, "token": _api_token}
 
-    for router in routers():
+    for router in routers(trcc):
         api.include_router(router)
 
     # ── Static serving for cloud previews ───────────────────────────

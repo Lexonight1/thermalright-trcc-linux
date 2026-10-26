@@ -20,7 +20,12 @@ from ...core.commands import (
     SetModuleEnabled,
 )
 from ...core.models import AvailableModule
-from ..presentation.module_catalog import consent, removal_question
+from ..presentation.module_catalog import (
+    byline,
+    consent,
+    problem_line,
+    removal_question,
+)
 from ._ctx import get_app
 
 log = logging.getLogger(__name__)
@@ -31,13 +36,15 @@ app = typer.Typer(help="Modules: list them, switch one on or off, get more.",
 
 @app.command("list")
 def list_modules() -> None:
-    """Every module, on or off, and why one cannot run here."""
+    """Every module: on or off, its version, where it came from (built-in,
+    installed, or copied in by hand), who wrote it -- and why one cannot run."""
     log.info("cli module list")
     for m in get_app().dispatch(ListModules()).modules:
         state = "on " if m.enabled else "off"
         typer.echo(f"  [{state}] {m.key:<16} {m.title} -- {m.summary}")
-        if m.problem:
-            typer.echo(f"        cannot run here: {m.problem}")
+        typer.echo(f"        {byline(m, str)}")
+        if problem := problem_line(m, str):
+            typer.echo(f"        {problem}")
 
 
 def _switch(key: str, enabled: bool) -> None:

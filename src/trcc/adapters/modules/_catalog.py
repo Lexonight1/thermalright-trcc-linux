@@ -10,6 +10,7 @@ downloaded bundle will be the same folder, read by the same
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from collections.abc import Callable
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ... import modules as module_folders
-from ...core.errors import TrccError
+from ...core.errors import ModuleUnavailable, TrccError
 from ...core.models import MODULE_CAPABILITIES, MODULE_HOST, ModuleManifest
 from ...core.ports import Module
 from ...services.modules import ModuleSpec
@@ -72,29 +73,49 @@ def read_manifest(path: Path) -> ModuleManifest:
         raise ManifestError(f"{path}: the network capability and network_hosts "
                             "go together -- name the sites it fetches from")
     icon = data.get("icon", "")
+    author = data.get("author", "")
+    if not isinstance(author, str):
+        raise ManifestError(f"{path}: author must be a name")
     return ModuleManifest(
         key=data["key"], title=data["title"], summary=data["summary"],
         version=str(data.get("version", "0")),
         default_on=bool(data.get("default_on", True)),
         icon=str(path.parent / icon) if icon else "",
         guide=str(data.get("guide", "")), capabilities=caps,
-        backgrounds=backgrounds, network_hosts=hosts)
+        backgrounds=backgrounds, network_hosts=hosts, author=author)
 
 
-def specs(root: Path | None = None) -> dict[str, ModuleSpec]:
-    """Every module: each folder of :mod:`trcc.modules` with a manifest -- or
-    each under *root*, for a test that has added *root* to that package's
-    path.  Nothing is imported but each module's light ``core/``.  A broken
-    manifest, or a ``core/`` that will not load, is logged and that module
-    left out -- one bad module never stops the others."""
-    paths = (sorted(root.glob(f"*/{MANIFEST}")) if root is not None
-             else [folder / MANIFEST for folder in module_folders.folders().values()])
+def specs(root: Path | None = None, *, user_root: Path | None = None,
+          refuse: Callable[[str], str] | None = None) -> dict[str, ModuleSpec]:
+    """Every module: each folder of :mod:`trcc.modules` with a manifest, and
+    each in *user_root*, the user's folder -- or each under *root*, for a test
+    that has added *root* to that package's path.  Nothing is imported but
+    each module's light ``core/``.  A broken manifest, or a ``core/`` that will
+    not load, is logged and that module left out -- one bad module never stops
+    the others.
+
+    A module in *user_root* runs only if *refuse* (the App's word, from what
+    it installed) says nothing against it; else it is its manifest alone,
+    saying why -- nothing of it imported.  The first folder of a key wins, so
+    one there never stands in for TRCC's own."""
+    if root is not None:
+        paths = sorted(root.glob(f"*/{MANIFEST}"))
+    else:
+        found = module_folders.folders()
+        if user_root is not None:
+            for path in sorted(user_root.glob(f"*/{MANIFEST}")):
+                found.setdefault(path.parent.name, path.parent)
+        paths = [folder / MANIFEST for folder in found.values()]
     log.info("catalog.specs: %d manifest(s)%s", len(paths),
              f" under {root}" if root is not None else "")
-    found: dict[str, ModuleSpec] = {}
+    result: dict[str, ModuleSpec] = {}
     for path in paths:
         try:
-            found_spec = spec(path)
+            if user_root is not None and path.parent.parent == user_root:
+                found_spec = spec(path, origin="installed", user_root=user_root,
+                                  refused=refuse(path.parent.name) if refuse else "")
+            else:
+                found_spec = spec(path)
         except ManifestError as e:
             log.warning("catalog.specs: skipping %s", e)
             continue
@@ -102,18 +123,40 @@ def specs(root: Path | None = None) -> dict[str, ModuleSpec]:
             log.exception("catalog.specs: skipping %s -- its core/ did not load",
                           path.parent.name)
             continue
-        found[found_spec.manifest.key] = found_spec
-    log.info("catalog.specs: %s", sorted(found))
-    return found
+        result[found_spec.manifest.key] = found_spec
+    log.info("catalog.specs: %s", sorted(result))
+    return result
 
 
-def spec(path: Path) -> ModuleSpec:
+def spec(path: Path, *, origin: str = "built-in", refused: str = "",
+         user_root: Path | None = None) -> ModuleSpec:
     """The module whose manifest is at *path*, its light ``core/`` loaded --
-    ``ManifestError``, or whatever its ``core/`` raised, when it will not."""
+    ``ManifestError``, or whatever its ``core/`` raised, when it will not.
+    *refused* says why TRCC will not run it: then it is its manifest alone,
+    claiming no background, and none of it is imported.  One in the user's
+    folder (*user_root*) has that folder searched first."""
     manifest = read_manifest(path)
-    log.info("catalog.spec: %s %s", manifest.key, manifest.version)
+    log.info("catalog.spec: %s %s (%s)", manifest.key, manifest.version, origin)
+    if refused:
+        log.warning("catalog.spec: %s is not run -- %s", manifest.key, refused)
+        return ModuleSpec(dataclasses.replace(manifest, backgrounds=()),
+                          _refusing_loader(refused), _icon_reader(manifest),
+                          origin="by hand", refused=refused)
+    if user_root is not None:
+        module_folders.use_folder(user_root)
     module_folders.load_core(manifest.key)
-    return ModuleSpec(manifest, _loader(manifest), _icon_reader(manifest))
+    return ModuleSpec(manifest, _loader(manifest), _icon_reader(manifest),
+                      origin=origin)
+
+
+def _refusing_loader(refused: str) -> Callable[[], type[Module]]:
+    """A loader that loads nothing: why, instead."""
+    log.debug("catalog._refusing_loader: %s", refused)
+
+    def load() -> type[Module]:
+        log.warning("catalog: not loading -- %s", refused)
+        raise ModuleUnavailable(refused)
+    return load
 
 
 #: The symbol types a manifest may name, and how they are served.

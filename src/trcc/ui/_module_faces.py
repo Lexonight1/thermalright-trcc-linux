@@ -13,27 +13,56 @@ face          names
 ``api``       ``ROUTERS`` -- the FastAPI routers it adds
 ============  ==============================================================
 
-The CLI and the API add every INSTALLED module's -- an off module's command
-still answers, and the App says it is off.  The windows add only what is on,
-and follow ``ModuleChanged``.  A module that fails to load is logged and
-skipped: one broken module never breaks a window.
+Which modules a UI loads is the App's to say (``ListModules``): one in the
+user's folder runs only if the App runs it.  The CLI and the API add every
+module the App runs, on or off -- an off module's command still answers, and
+the App says it is off.  The windows add only what is on, and follow
+``ModuleChanged``.  A module that fails to load is logged and skipped: one
+broken module never breaks a window.
 """
 from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .. import modules
+
+if TYPE_CHECKING:
+    from ..core.ports import CommandBus, Platform
 
 log = logging.getLogger(__name__)
 
 
 def installed() -> list[str]:
-    """Every installed module's key, on or off."""
-    keys = sorted(modules.folders())
+    """The modules a UI may load before it has asked the App: those that ship
+    with TRCC (and a test's) -- never one from the user's folder."""
+    keys = sorted(modules.shipped())
     log.debug("installed: %s", keys)
     return keys
+
+
+def listed(bus: CommandBus) -> list[str]:
+    """Every module the App runs, on or off -- [] when it cannot be asked."""
+    from ..core.commands import ListModules
+
+    try:
+        result = bus.dispatch(ListModules())
+    except Exception:
+        log.exception("listed: the App could not be asked for its modules")
+        return []
+    keys = sorted(m.key for m in result.modules if m.allowed)
+    log.info("listed: %s%s", keys, "" if result.ok else f" ({result.message})")
+    return keys
+
+
+def search_user_folder(platform: Platform | None) -> None:
+    """This process finds the user's installed modules too -- each UI does,
+    so it can load the faces of those the App runs."""
+    from .._boot import host_platform
+
+    log.debug("search_user_folder: %s", type(platform).__name__)
+    modules.use_folder(host_platform(platform).paths().user_modules_dir())
 
 
 def contribution(key: str, face: str, name: str,

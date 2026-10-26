@@ -1975,7 +1975,7 @@ trcc system modules install [OPTIONS] KEY
 
 #### `trcc system modules list`
 
-Every module, on or off, and why one cannot run here.
+Every module: on or off, its version, where it came from (built-in, installed, or copied in by hand), who wrote it -- and why one cannot run.
 
 ```bash
 trcc system modules list
