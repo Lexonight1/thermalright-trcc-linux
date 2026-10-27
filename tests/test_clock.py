@@ -5,9 +5,9 @@ from datetime import datetime
 
 import pytest
 
+from trcc.core.i18n import LANGUAGE_NAMES, WEEKDAY_KEYS, weekdays
 from trcc.core.models import DATE_FORMATS, TIME_FORMATS, format_clock
 from trcc.services._clock import (
-    WEEKDAYS_BY_LANG,
     _translate_date_pattern,
     clock_text,
     compute_clock,
@@ -144,10 +144,25 @@ def test_pattern_translator_yy_short() -> None:
 # ── weekday table integrity ───────────────────────────────────────────
 
 
-def test_weekday_table_all_have_seven_entries() -> None:
-    for lang, names in WEEKDAYS_BY_LANG.items():
-        assert len(names) == 7, f"{lang!r} has {len(names)} entries, expected 7"
+@pytest.mark.parametrize("lang", list(LANGUAGE_NAMES))
+def test_every_language_has_seven_different_weekdays(lang: str) -> None:
+    """From CLDR (``dev/tools/cldr_weekdays.py``) for all 38 -- the panel
+    showed English in 28 of them.  No language's abbreviation equals the
+    English one, so a day that does is a missing translation falling back.
+    MUTATION CHECK: delete German's "WED" in ``TRANSLATIONS``."""
+    days = weekdays(lang)
+    assert len(days) == 7 and len(set(days)) == 7 and all(days)
+    if lang != "en":
+        assert [k for k, d in zip(WEEKDAY_KEYS, days, strict=True) if d == k] == []
 
 
-def test_weekday_table_has_english() -> None:
-    assert "en" in WEEKDAYS_BY_LANG
+@pytest.mark.parametrize(("lang", "days"), [
+    ("en", "MON TUE WED THU FRI SAT SUN"), ("de", "MO DI MI DO FR SA SO"),
+    ("fr", "LUN MAR MER JEU VEN SAM DIM"), ("es", "LUN MAR MIÉ JUE VIE SÁB DOM"),
+    ("pt", "SEG TER QUA QUI SEX SÁB DOM"), ("ru", "ПН ВТ СР ЧТ ПТ СБ ВС"),
+    ("ja", "月 火 水 木 金 土 日"), ("ko", "월 화 수 목 금 토 일"),
+    ("zh", "星期一 星期二 星期三 星期四 星期五 星期六 星期日"),
+    ("zh_TW", "星期一 星期二 星期三 星期四 星期五 星期六 星期日"),
+])
+def test_the_ten_languages_the_panel_had_are_unchanged(lang: str, days: str) -> None:
+    assert weekdays(lang) == tuple(days.split())

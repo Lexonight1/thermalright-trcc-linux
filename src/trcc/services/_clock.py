@@ -10,55 +10,16 @@ once per frame; ``OverlayService`` draws each element with ``clock_text``.
 """
 from __future__ import annotations
 
-import functools
 import logging
 from datetime import datetime
 
+from ..core.i18n import weekdays
 from ..core.logs import per_frame
 from ..core.models import DATE_FORMATS, TIME_FORMATS, format_clock
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
-# Weekday names per ISO 639-1 language code.  Index by ``datetime.weekday()``
-# (Monday=0 … Sunday=6).  Add a language = paste a 7-element list.  Unknown
-# codes fall back to the language's base subtag, then to English.
-WEEKDAYS_BY_LANG: dict[str, list[str]] = {
-    "en":    ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"],
-    "de":    ["MO",  "DI",  "MI",  "DO",  "FR",  "SA",  "SO"],
-    "fr":    ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"],
-    "es":    ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"],
-    "pt":    ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"],
-    "ru":    ["ПН",  "ВТ",  "СР",  "ЧТ",  "ПТ",  "СБ",  "ВС"],
-    "ja":    ["月",   "火",   "水",   "木",   "金",   "土",   "日"],
-    "ko":    ["월",   "화",   "수",   "목",   "금",   "토",   "일"],
-    "zh":    ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"],
-    "zh_TW": ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"],
-}
-
-
-@functools.cache
-def _weekday_names(language: str) -> list[str]:
-    """Resolve language → weekday name list, with fallback chain.
-
-    Cached because the render path asks once per frame while the answer only
-    changes when the user changes language.  Without it the unknown-language
-    WARNING below fires at frame rate and buries the rest of the report; once
-    per language it is the line that explains English weekdays on a non-English
-    install.  The single caller indexes the result and never mutates it, and the
-    uncached version already handed out the shared ``WEEKDAYS_BY_LANG`` list, so
-    nothing about aliasing changes.
-    """
-    base = language.split("_", 1)[0]
-    for rung, names in (("exact", WEEKDAYS_BY_LANG.get(language)),
-                        (f"base subtag {base!r}", WEEKDAYS_BY_LANG.get(base))):
-        if names is not None:
-            log.info("_weekday_names: %r matched on %s", language, rung)
-            return names
-    log.warning("_weekday_names: %r is not a known language and its base "
-                "subtag %r isn't either — weekdays fall back to English; "
-                "known: %s", language, base, sorted(WEEKDAYS_BY_LANG))
-    return WEEKDAYS_BY_LANG["en"]
 
 
 # Legacy yyyy/MM/dd pattern → strftime translation.  Order matters: longer
@@ -128,5 +89,5 @@ def compute_clock(
     frame_log.debug("compute_clock: %s lang=%s", moment, language)
     return {
         "now": moment.isoformat(),
-        "weekday": _weekday_names(language)[moment.weekday()],
+        "weekday": weekdays(language)[moment.weekday()],
     }

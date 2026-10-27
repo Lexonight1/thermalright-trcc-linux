@@ -112,6 +112,12 @@ class OverlayGridPanel(QFrame):
                 cell.double_clicked.connect(self._on_cell_double_clicked)
                 self._cells.append(cell)
 
+    def set_language(self, lang: str) -> None:
+        """The window's language, for every cell -- a weekday is drawn in it."""
+        log.info("OverlayGridPanel.set_language: %s", lang)
+        for cell in self._cells:
+            cell.set_language(lang)
+
     def _refresh_cells(self):
         """Sync cell widgets with the model's element list."""
         log.debug("_refresh_cells")

@@ -8,6 +8,8 @@ exactly what ``qtbot.waitSignal`` is for — proving a real Qt signal fires.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from trcc.core.models import OverlayElementConfig, OverlayMode
 from trcc.ui.gui.overlay_grid import OverlayGridPanel
 
@@ -70,40 +72,93 @@ def test_a_refill_that_changes_nothing_logs_nothing(qtbot, caplog) -> None:
         "OverlayElementWidget.set_selected: index=1 False → True"]
 
 
-def _fit(qtbot, text: str) -> float:
-    """The value row's point size for *text*, as a tile draws it."""
+def _fit(qtbot, text: str) -> tuple[float, tuple[str, ...]]:
+    """The value row's point size and lines for *text*, as a tile draws it."""
     from trcc.ui.gui.overlay_element import OverlayElementWidget
 
     tile = OverlayElementWidget(0)
     qtbot.addWidget(tile)
-    return tile._fit_value(text).pointSizeF()
+    font, lines = tile._fit_value(text)
+    return font.pointSizeF(), lines
 
 
-def test_a_tile_shrinks_a_long_date_instead_of_cutting_it(qtbot) -> None:
-    """"2026/10/27" was cut off at both ends of the 56 px row; the whole date
-    shows, smaller, and still centered.  MUTATION CHECK: drop the loop."""
-    from PySide6.QtGui import QFontMetrics
+def _width(qtbot, text: str, size: float) -> int:
+    from PySide6.QtGui import QFont, QFontMetrics
 
     from trcc.ui.gui.overlay_element import OverlayElementWidget
 
-    full = OverlayElementWidget._CARD_FONT.pointSizeF()
-    width = OverlayElementWidget._VALUE_ROW[2]
+    font = QFont(OverlayElementWidget._CARD_FONT)
+    font.setPointSizeF(size)
+    return QFontMetrics(font).horizontalAdvance(text)
+
+
+def test_a_tile_shrinks_a_long_date_onto_one_line(qtbot) -> None:
+    """"2026/10/27" was cut off at both ends of the 56 px row; it shows
+    whole, smaller, centered.  MUTATION CHECK: never shrink."""
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    full, row = OverlayElementWidget._CARD_FONT.pointSizeF(), OverlayElementWidget._VALUE_ROW[2]
     for date in ("2026/10/27", "27/10/2026"):
-        tile = OverlayElementWidget(0)
-        qtbot.addWidget(tile)
-        font = tile._fit_value(date)
-        assert font.pointSizeF() < full
-        assert QFontMetrics(font).horizontalAdvance(date) <= width
+        size, lines = _fit(qtbot, date)
+        assert (lines, size < full, _width(qtbot, date, size) <= row) == ((date,), True, True)
+
+
+def test_a_time_stays_on_one_line(qtbot) -> None:
+    """"12:59 PM" is half a point too wide: it shrinks, it does not become
+    "12:59" over "PM".  MUTATION CHECK: try two lines before shrinking."""
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    size, lines = _fit(qtbot, "12:59 PM")
+    assert lines == ("12:59 PM",) and size >= OverlayElementWidget._ONE_LINE_MIN
+
+
+def test_words_that_do_not_fit_take_two_lines(qtbot) -> None:
+    """His rule: words that do not fit go on two lines -- at full size here,
+    not shrunk to the minimum.  MUTATION CHECK: drop the two-line step."""
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    assert _fit(qtbot, "Memory Clock") == (
+        OverlayElementWidget._CARD_FONT.pointSizeF(), ("Memory", "Clock"))
+
+
+def test_a_long_text_takes_two_lines_never_more(qtbot) -> None:
+    """Too long even at the smallest size: still two lines, centered -- Qt's
+    own word wrap gave three."""
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    size, lines = _fit(qtbot, "Thermalright Peerless Assassin")
+    assert (size, lines) == (OverlayElementWidget._MIN_POINT,
+                             ("Thermalright", "Peerless Assassin"))
 
 
 def test_a_tile_keeps_a_short_value_at_full_size(qtbot) -> None:
     from trcc.ui.gui.overlay_element import OverlayElementWidget
 
-    assert _fit(qtbot, "10/27") == OverlayElementWidget._CARD_FONT.pointSizeF()
+    assert _fit(qtbot, "10/27") == (OverlayElementWidget._CARD_FONT.pointSizeF(), ("10/27",))
 
 
-def test_a_tile_stops_shrinking_at_its_smallest(qtbot) -> None:
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+def test_the_weekday_tile_speaks_the_windows_language(qtbot, monkeypatch) -> None:
+    """It drew English whatever the language: the window's language now
+    reaches every tile, and the weekday is the panel's, in it.  MUTATION
+    CHECK: drop the grid's set_language loop."""
+    import trcc.ui.gui.overlay_element as tile_module
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+    from trcc.ui.gui.overlay_grid import OverlayGridPanel
 
-    assert _fit(qtbot, "Thermalright Peerless Assassin 120 SE") == (
-        OverlayElementWidget._MIN_POINT)
+    asked: list[Any] = []
+    real = tile_module.format_metric
+
+    def spy(metric: str, value: float, **kw: Any) -> str:
+        if metric == "weekday":
+            asked.append(kw.get("lang"))
+        return real(metric, value, **kw)
+
+    monkeypatch.setattr(tile_module, "format_metric", spy)
+    grid = OverlayGridPanel()
+    qtbot.addWidget(grid)
+    grid.add_element(OverlayElementConfig(mode=OverlayMode.WEEKDAY))
+    grid.set_language("de")
+    cell = grid._cells[0]
+    cell.show()
+    cell.grab()
+    assert asked and set(asked) == {"de"}

@@ -610,6 +610,7 @@ class TRCCApp(QMainWindow):
         for key, view in self._module_views.items():
             self._translate_view(key, view, lang)
         self.uc_modules.view.set_language(lang)
+        self.uc_theme_setting.overlay_grid.set_language(lang)
 
     def _on_bus_slideshow_changed(self, event: SlideshowChanged) -> None:
         """Route a ``SlideshowChanged`` event to its LCD's handler."""

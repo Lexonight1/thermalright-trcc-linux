@@ -135,6 +135,9 @@ dev = [
     # starlette drops the fallback. Nothing of ours imports httpx directly.
     "httpx2>=2.0",
     "types-qrcode>=7.0",
+    # CLDR's locale data, read by dev/tools/cldr_weekdays.py to make the panel's
+    # weekdays in every language.  A dev tool's only: TRCC never imports it.
+    "babel>=2.12",
 ]
 all = [
     "trcc-linux[nvidia,wayland,hid,remote,dev]",

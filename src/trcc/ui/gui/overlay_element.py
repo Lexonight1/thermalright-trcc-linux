@@ -6,6 +6,7 @@ live hardware metrics, and selection overlay.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
@@ -72,6 +73,7 @@ class OverlayElementWidget(QWidget):
         self._selected = False
         self._live_value = ''   # label2: formatted value
         self._live_unit = ''    # label3: unit suffix
+        self._lang = 'en'       # the window's: a weekday is drawn in it
 
         self.setFixedSize(Sizes.OVERLAY_CELL, Sizes.OVERLAY_CELL)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -94,6 +96,13 @@ class OverlayElementWidget(QWidget):
         self.config = config
         self._live_value = ''
         self._live_unit = ''
+        self.update()
+
+    def set_language(self, lang: str) -> None:
+        """The window's language -- the weekday tile is drawn in it."""
+        log.debug("OverlayElementWidget.set_language: index=%d %s -> %s",
+                  self.index, self._lang, lang)
+        self._lang = lang
         self.update()
 
     def set_selected(self, selected):
@@ -128,31 +137,81 @@ class OverlayElementWidget(QWidget):
     #: The smallest a value shrinks to; past it, it stays centered and its
     #: ends go past the row equally.
     _MIN_POINT = 6.0
+    #: One line keeps the value down to this size ("12:59 PM" at 9.5 pt reads
+    #: better than "12:59" over "PM"); a text that would need smaller goes on
+    #: two lines -- the value row and the unit row under it, which the tiles
+    #: that draw a value alone (clock and custom text) leave empty.
+    _ONE_LINE_MIN = 8.0
 
-    def _fit_value(self, text: str) -> QFont:
-        """*text*'s font for the value row: the card font, shrunk until the
-        text fits -- a long date ("2026/10/27") was cut off at both ends.
-        Never cut with "…": the text stays whole and centered."""
+    @staticmethod
+    def _split(text: str, metrics: QFontMetrics) -> tuple[str, str] | None:
+        """*text* broken at the space that makes its two lines most even --
+        None when it has no space.  Done by hand: Qt's word wrap takes as
+        many lines as it likes, and a tile has room for two."""
+        cuts = [i for i, c in enumerate(text) if c == " "]
+        frame_log.debug("_split: %r at %d space(s)", text, len(cuts))
+        if not cuts:
+            return None
+
+        def wider_line(cut: int) -> int:
+            """The wider of the two lines broken at *cut*."""
+            frame_log.debug("wider_line: cut=%d", cut)
+            return max(metrics.horizontalAdvance(text[:cut]),
+                       metrics.horizontalAdvance(text[cut + 1:]))
+
+        cut = min(cuts, key=wider_line)
+        return text[:cut], text[cut + 1:]
+
+    def _fit_value(self, text: str) -> tuple[QFont, tuple[str, ...]]:
+        """*text*'s font for the value row, and its lines: one line, shrunk
+        down to ``_ONE_LINE_MIN``; else two (broken at a space), shrunk from
+        the card font down to ``_MIN_POINT``.  Past that it is what it is --
+        centered, never cut with "…".  A long date ("2026/10/27") was cut off
+        at both ends."""
         w = self._VALUE_ROW[2]
-        font = QFont(self._CARD_FONT)
-        while (QFontMetrics(font).horizontalAdvance(text) > w
-               and font.pointSizeF() > self._MIN_POINT):
-            font.setPointSizeF(font.pointSizeF() - 0.5)
-        frame_log.debug("_fit_value: %r at %.1fpt", text, font.pointSizeF())
-        return font
+
+        def sizes(low: float) -> Iterator[QFont]:
+            """The card font, then half a point smaller each time, to *low*."""
+            frame_log.debug("sizes: down to %.1fpt", low)
+            font = QFont(self._CARD_FONT)
+            while font.pointSizeF() >= low:
+                yield font
+                font = QFont(font)
+                font.setPointSizeF(font.pointSizeF() - 0.5)
+
+        def fits(lines: tuple[str, ...] | None, font: QFont) -> bool:
+            """Every one of *lines* fits the row at *font*."""
+            frame_log.debug("fits: %s at %.1fpt", lines, font.pointSizeF())
+            return bool(lines) and all(QFontMetrics(font).horizontalAdvance(line) <= w
+                                       for line in lines or ())
+
+        found = (next(((f, (text,)) for f in sizes(self._ONE_LINE_MIN)
+                       if fits((text,), f)), None)
+                 or next(((f, two) for f in sizes(self._MIN_POINT)
+                          if (two := self._split(text, QFontMetrics(f)))
+                          and fits(two, f)), None))
+        if found is None:
+            smallest = list(sizes(self._MIN_POINT))[-1]
+            found = (smallest, self._split(text, QFontMetrics(smallest)) or (text,))
+        font, lines = found
+        frame_log.debug("_fit_value: %r at %.1fpt -> %s", text, font.pointSizeF(), lines)
+        return font, lines
 
     def _draw_value(self, painter: QPainter, text: str) -> None:
-        """*text* centered left to right in the value row, fitted
-        (:meth:`_fit_value`).  The rect is widened to the text, so a text
-        wider than the row is never clipped to one side."""
+        """*text* fitted (:meth:`_fit_value`), each line centered left to
+        right in its row -- the value row, then the unit row under it.  A
+        line wider than the row is widened around its center, never clipped
+        to one side."""
         x, y, w, h = self._VALUE_ROW
-        font = self._fit_value(text)
-        spill = max(0, QFontMetrics(font).horizontalAdvance(text) - w)
-        frame_log.debug("_draw_value: %r spill=%d", text, spill)
+        font, lines = self._fit_value(text)
+        metrics = QFontMetrics(font)
+        frame_log.debug("_draw_value: %s", lines)
         painter.save()
         painter.setFont(font)
-        painter.drawText(x - spill // 2 - 1, y, w + spill + 2, h,
-                         Qt.AlignmentFlag.AlignCenter, text)
+        for row, line in enumerate(lines):
+            spill = max(0, metrics.horizontalAdvance(line) - w)
+            painter.drawText(x - spill // 2 - 1, y + row * h, w + spill + 2, h,
+                             Qt.AlignmentFlag.AlignCenter, line)
         painter.restore()
 
     def paintEvent(self, event):
@@ -204,12 +263,10 @@ class OverlayElementWidget(QWidget):
                 painter.setPen(QColor(color_str))
                 self._draw_value(painter, text)
             elif mode == OverlayMode.WEEKDAY:
-                # Windows: label1+label3 hidden, only label2 visible
-                # Windows uses SUN=0..SAT=6 array indexed by DayOfWeek
-                from datetime import datetime
-                days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+                # Windows: label1+label3 hidden, only label2 visible --
+                # the panel's weekday, in the window's language
                 painter.setPen(QColor(color_str))
-                self._draw_value(painter, days[datetime.now().weekday()])
+                self._draw_value(painter, format_metric("weekday", 0, lang=self._lang))
             elif mode == OverlayMode.CUSTOM:
                 # Windows: label1+label3 hidden, label2.Text = myText
                 painter.setPen(QColor(color_str))

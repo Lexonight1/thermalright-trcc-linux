@@ -15,6 +15,7 @@ were stripped because next/ GUI uses Qt layouts instead of pixel positions.
 """
 from __future__ import annotations
 
+import functools
 import logging
 
 log = logging.getLogger(__name__)
@@ -264,6 +265,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': '访问灯光芯片：内存、主板、OpenRGB',
         'may ask for your password, to reach hardware the system guards': '可能会请求您的密码，以访问系统保护的硬件',
         'fetches from the internet sites its module.json names, and no others': '仅从其 module.json 中列出的网站获取数据',
+        'MON': '星期一',
+        'TUE': '星期二',
+        'WED': '星期三',
+        'THU': '星期四',
+        'FRI': '星期五',
+        'SAT': '星期六',
+        'SUN': '星期日',
     },
     'zh_TW': {
         'Layer Mask': '佈局蒙板',
@@ -385,6 +393,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': '存取燈光晶片：記憶體、主機板、OpenRGB',
         'may ask for your password, to reach hardware the system guards': '可能會要求您的密碼，以存取系統保護的硬體',
         'fetches from the internet sites its module.json names, and no others': '僅從其 module.json 中列出的網站取得資料',
+        'MON': '星期一',
+        'TUE': '星期二',
+        'WED': '星期三',
+        'THU': '星期四',
+        'FRI': '星期五',
+        'SAT': '星期六',
+        'SUN': '星期日',
     },
     'en': {
         'Layer Mask': 'Layer Mask',
@@ -506,6 +521,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'reaches lighting chips: memory, the motherboard, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'may ask for your password, to reach hardware the system guards',
         'fetches from the internet sites its module.json names, and no others': 'fetches from the internet sites its module.json names, and no others',
+        # The panel's short weekdays (dev/tools/cldr_weekdays.py)
+        'MON': 'MON',
+        'TUE': 'TUE',
+        'WED': 'WED',
+        'THU': 'THU',
+        'FRI': 'FRI',
+        'SAT': 'SAT',
+        'SUN': 'SUN',
     },
     'de': {
         'Layer Mask': 'Ebenenmaske',
@@ -627,6 +650,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'erreicht Beleuchtungschips: Arbeitsspeicher, Mainboard, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'kann nach deinem Passwort fragen, um Hardware zu erreichen, die das System schützt',
         'fetches from the internet sites its module.json names, and no others': 'ruft Daten nur von den Websites ab, die seine module.json nennt',
+        'MON': 'MO',
+        'TUE': 'DI',
+        'WED': 'MI',
+        'THU': 'DO',
+        'FRI': 'FR',
+        'SAT': 'SA',
+        'SUN': 'SO',
     },
     'ru': {
         'Layer Mask': 'Покрытие',
@@ -748,6 +778,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'обращается к чипам подсветки: память, материнская плата, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'может запросить ваш пароль для доступа к оборудованию, защищённому системой',
         'fetches from the internet sites its module.json names, and no others': 'получает данные только с сайтов, указанных в его module.json',
+        'MON': 'ПН',
+        'TUE': 'ВТ',
+        'WED': 'СР',
+        'THU': 'ЧТ',
+        'FRI': 'ПТ',
+        'SAT': 'СБ',
+        'SUN': 'ВС',
     },
     'fr': {
         'Layer Mask': 'Masque de couche',
@@ -869,6 +906,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': "accède aux puces d'éclairage : mémoire, carte mère, OpenRGB",
         'may ask for your password, to reach hardware the system guards': 'peut demander votre mot de passe pour accéder au matériel que le système protège',
         'fetches from the internet sites its module.json names, and no others': 'récupère des données uniquement depuis les sites indiqués dans son module.json',
+        'MON': 'LUN',
+        'TUE': 'MAR',
+        'WED': 'MER',
+        'THU': 'JEU',
+        'FRI': 'VEN',
+        'SAT': 'SAM',
+        'SUN': 'DIM',
     },
     'pt': {
         'Layer Mask': 'Máscara de camada',
@@ -990,6 +1034,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'acede a chips de iluminação: memória, placa-mãe, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'pode pedir a sua palavra-passe para aceder a hardware que o sistema protege',
         'fetches from the internet sites its module.json names, and no others': 'obtém dados apenas dos sites indicados no seu module.json',
+        'MON': 'SEG',
+        'TUE': 'TER',
+        'WED': 'QUA',
+        'THU': 'QUI',
+        'FRI': 'SEX',
+        'SAT': 'SÁB',
+        'SUN': 'DOM',
     },
     'ja': {
         'Layer Mask': 'レイヤーマスク',
@@ -1111,6 +1162,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'ライティングチップにアクセスする：メモリー、マザーボード、OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'システムが保護するハードウェアにアクセスするため、パスワードを求めることがある',
         'fetches from the internet sites its module.json names, and no others': 'module.json に記載したサイトからのみデータを取得する',
+        'MON': '月',
+        'TUE': '火',
+        'WED': '水',
+        'THU': '木',
+        'FRI': '金',
+        'SAT': '土',
+        'SUN': '日',
     },
     'es': {
         'Layer Mask': 'Mascarilla de capa',
@@ -1232,6 +1290,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'accede a chips de iluminación: memoria, placa base, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'puede pedir tu contraseña para acceder a hardware que el sistema protege',
         'fetches from the internet sites its module.json names, and no others': 'obtiene datos solo de los sitios que indica su module.json',
+        'MON': 'LUN',
+        'TUE': 'MAR',
+        'WED': 'MIÉ',
+        'THU': 'JUE',
+        'FRI': 'VIE',
+        'SAT': 'SÁB',
+        'SUN': 'DOM',
     },
     'ko': {
         'Layer Mask': '레이어 마스크',
@@ -1353,6 +1418,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': '조명 칩에 접근합니다: 메모리, 메인보드, OpenRGB',
         'may ask for your password, to reach hardware the system guards': '시스템이 보호하는 하드웨어에 접근하려고 비밀번호를 요청할 수 있습니다',
         'fetches from the internet sites its module.json names, and no others': 'module.json에 적힌 사이트에서만 데이터를 가져옵니다',
+        'MON': '월',
+        'TUE': '화',
+        'WED': '수',
+        'THU': '목',
+        'FRI': '금',
+        'SAT': '토',
+        'SUN': '일',
     },
     'it': {
         'Layer Mask': 'Maschera livello',
@@ -1474,6 +1546,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'raggiunge i chip di illuminazione: memoria, scheda madre, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'può chiedere la tua password per raggiungere hardware protetto dal sistema',
         'fetches from the internet sites its module.json names, and no others': 'scarica dati solo dai siti indicati nel suo module.json',
+        'MON': 'LUN',
+        'TUE': 'MAR',
+        'WED': 'MER',
+        'THU': 'GIO',
+        'FRI': 'VEN',
+        'SAT': 'SAB',
+        'SUN': 'DOM',
     },
     'nl': {
         'Layer Mask': 'Laagmasker',
@@ -1595,6 +1674,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'bereikt verlichtingschips: geheugen, moederbord, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'kan om je wachtwoord vragen om hardware te bereiken die het systeem beschermt',
         'fetches from the internet sites its module.json names, and no others': 'haalt alleen gegevens op van de sites die zijn module.json noemt',
+        'MON': 'MA',
+        'TUE': 'DI',
+        'WED': 'WO',
+        'THU': 'DO',
+        'FRI': 'VR',
+        'SAT': 'ZA',
+        'SUN': 'ZO',
     },
     'pl': {
         'Layer Mask': 'Maska warstwy',
@@ -1716,6 +1802,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'sięga do układów podświetlenia: pamięć, płyta główna, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'może poprosić o hasło, by sięgnąć do sprzętu chronionego przez system',
         'fetches from the internet sites its module.json names, and no others': 'pobiera dane tylko ze stron wymienionych w jego module.json',
+        'MON': 'PON',
+        'TUE': 'WTO',
+        'WED': 'ŚRO',
+        'THU': 'CZW',
+        'FRI': 'PIĄ',
+        'SAT': 'SOB',
+        'SUN': 'NIE',
     },
     'tr': {
         'Layer Mask': 'Katman maskesi',
@@ -1837,6 +1930,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'aydınlatma çiplerine erişir: bellek, anakart, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'sistemin koruduğu donanıma erişmek için parolanızı isteyebilir',
         'fetches from the internet sites its module.json names, and no others': 'yalnızca module.json dosyasında adı geçen sitelerden veri alır',
+        'MON': 'PZT',
+        'TUE': 'SAL',
+        'WED': 'ÇAR',
+        'THU': 'PER',
+        'FRI': 'CUM',
+        'SAT': 'CMT',
+        'SUN': 'PAZ',
     },
     'ar': {
         'Layer Mask': 'قناع الطبقة',
@@ -1958,6 +2058,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'تصل إلى شرائح الإضاءة: الذاكرة واللوحة الأم وOpenRGB',
         'may ask for your password, to reach hardware the system guards': 'قد تطلب كلمة مرورك للوصول إلى عتاد يحميه النظام',
         'fetches from the internet sites its module.json names, and no others': 'تجلب البيانات فقط من المواقع المذكورة في ملف module.json الخاص بها',
+        'MON': 'إثنين',
+        'TUE': 'ثلاثاء',
+        'WED': 'أربعاء',
+        'THU': 'خميس',
+        'FRI': 'جمعة',
+        'SAT': 'سبت',
+        'SUN': 'أحد',
     },
     'hi': {
         'Layer Mask': 'लेयर मास्क',
@@ -2079,6 +2186,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'लाइटिंग चिप तक पहुँचता है: मेमोरी, मदरबोर्ड, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'सिस्टम द्वारा सुरक्षित हार्डवेयर तक पहुँचने के लिए आपका पासवर्ड माँग सकता है',
         'fetches from the internet sites its module.json names, and no others': 'केवल अपनी module.json में लिखी साइटों से डेटा लाता है',
+        'MON': 'सो',
+        'TUE': 'मं',
+        'WED': 'बु',
+        'THU': 'गु',
+        'FRI': 'शु',
+        'SAT': 'श',
+        'SUN': 'र',
     },
     'th': {
         'Layer Mask': 'มาสก์เลเยอร์',
@@ -2200,6 +2314,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'เข้าถึงชิปไฟ: หน่วยความจำ เมนบอร์ด OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'อาจขอรหัสผ่านของคุณ เพื่อเข้าถึงฮาร์ดแวร์ที่ระบบปกป้องไว้',
         'fetches from the internet sites its module.json names, and no others': 'ดึงข้อมูลเฉพาะจากเว็บไซต์ที่ระบุใน module.json ของตัวเอง',
+        'MON': 'จ',
+        'TUE': 'อ',
+        'WED': 'พ',
+        'THU': 'พฤ',
+        'FRI': 'ศ',
+        'SAT': 'ส',
+        'SUN': 'อา',
     },
     'vi': {
         'Layer Mask': 'Mặt nạ lớp',
@@ -2321,6 +2442,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'truy cập chip đèn: bộ nhớ, bo mạch chủ, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'có thể hỏi mật khẩu của bạn để truy cập phần cứng do hệ thống bảo vệ',
         'fetches from the internet sites its module.json names, and no others': 'chỉ lấy dữ liệu từ các trang mà module.json của nó nêu tên',
+        'MON': 'T2',
+        'TUE': 'T3',
+        'WED': 'T4',
+        'THU': 'T5',
+        'FRI': 'T6',
+        'SAT': 'T7',
+        'SUN': 'CN',
     },
     'id': {
         'Layer Mask': 'Masker lapisan',
@@ -2442,6 +2570,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'menjangkau chip lampu: memori, motherboard, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'dapat meminta kata sandi Anda untuk menjangkau perangkat keras yang dilindungi sistem',
         'fetches from the internet sites its module.json names, and no others': 'hanya mengambil data dari situs yang disebut di module.json-nya',
+        'MON': 'SEN',
+        'TUE': 'SEL',
+        'WED': 'RAB',
+        'THU': 'KAM',
+        'FRI': 'JUM',
+        'SAT': 'SAB',
+        'SUN': 'MIN',
     },
     'cs': {
         'Layer Mask': 'Maska vrstvy',
@@ -2563,6 +2698,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'přistupuje k čipům osvětlení: paměť, základní deska, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'může požádat o vaše heslo, aby dosáhl na hardware chráněný systémem',
         'fetches from the internet sites its module.json names, and no others': 'získává data jen ze stránek uvedených v jeho module.json',
+        'MON': 'PO',
+        'TUE': 'ÚT',
+        'WED': 'ST',
+        'THU': 'ČT',
+        'FRI': 'PÁ',
+        'SAT': 'SO',
+        'SUN': 'NE',
     },
     'sv': {
         'Layer Mask': 'Lagermask',
@@ -2684,6 +2826,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'når belysningschip: minne, moderkort, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'kan be om ditt lösenord för att nå hårdvara som systemet skyddar',
         'fetches from the internet sites its module.json names, and no others': 'hämtar data bara från de webbplatser dess module.json anger',
+        'MON': 'MÅN',
+        'TUE': 'TIS',
+        'WED': 'ONS',
+        'THU': 'TORS',
+        'FRI': 'FRE',
+        'SAT': 'LÖR',
+        'SUN': 'SÖN',
     },
     'da': {
         'Layer Mask': 'Lagmaske',
@@ -2805,6 +2954,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'når lyschips: hukommelse, bundkort, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'kan bede om din adgangskode for at nå hardware, systemet beskytter',
         'fetches from the internet sites its module.json names, and no others': 'henter kun data fra de websteder, dets module.json nævner',
+        'MON': 'MAN',
+        'TUE': 'TIRS',
+        'WED': 'ONS',
+        'THU': 'TORS',
+        'FRI': 'FRE',
+        'SAT': 'LØR',
+        'SUN': 'SØN',
     },
     'no': {
         'Layer Mask': 'Lagmaske',
@@ -2926,6 +3082,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'når lysbrikker: minne, hovedkort, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'kan be om passordet ditt for å nå maskinvare systemet beskytter',
         'fetches from the internet sites its module.json names, and no others': 'henter data bare fra nettstedene modulens module.json nevner',
+        'MON': 'MAN',
+        'TUE': 'TIR',
+        'WED': 'ONS',
+        'THU': 'TOR',
+        'FRI': 'FRE',
+        'SAT': 'LØR',
+        'SUN': 'SØN',
     },
     'fi': {
         'Layer Mask': 'Tasomaski',
@@ -3047,6 +3210,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'pääsee valaistuspiireihin: muisti, emolevy, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'voi pyytää salasanaasi päästäkseen järjestelmän suojaamaan laitteistoon',
         'fetches from the internet sites its module.json names, and no others': 'hakee tietoja vain sivustoilta, jotka sen module.json nimeää',
+        'MON': 'MA',
+        'TUE': 'TI',
+        'WED': 'KE',
+        'THU': 'TO',
+        'FRI': 'PE',
+        'SAT': 'LA',
+        'SUN': 'SU',
     },
     'hu': {
         'Layer Mask': 'Rétegmaszk',
@@ -3168,6 +3338,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'eléri a világításvezérlő chipeket: memória, alaplap, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'kérheti a jelszavadat, hogy elérje a rendszer által védett hardvert',
         'fetches from the internet sites its module.json names, and no others': 'csak a module.json-jában megnevezett oldalakról kér le adatot',
+        'MON': 'H',
+        'TUE': 'K',
+        'WED': 'SZE',
+        'THU': 'CS',
+        'FRI': 'P',
+        'SAT': 'SZO',
+        'SUN': 'V',
     },
     'ro': {
         'Layer Mask': 'Mască strat',
@@ -3289,6 +3466,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'ajunge la cipurile de iluminare: memorie, placă de bază, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'îți poate cere parola pentru a ajunge la hardware protejat de sistem',
         'fetches from the internet sites its module.json names, and no others': 'preia date doar de pe site-urile numite în module.json-ul său',
+        'MON': 'LUN',
+        'TUE': 'MAR',
+        'WED': 'MIE',
+        'THU': 'JOI',
+        'FRI': 'VIN',
+        'SAT': 'SÂM',
+        'SUN': 'DUM',
     },
     'uk': {
         'Layer Mask': 'Маска шару',
@@ -3410,6 +3594,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'звертається до чипів підсвічування: пам’ять, материнська плата, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'може запитати ваш пароль для доступу до обладнання, яке захищає система',
         'fetches from the internet sites its module.json names, and no others': 'отримує дані лише із сайтів, названих у його module.json',
+        'MON': 'ПН',
+        'TUE': 'ВТ',
+        'WED': 'СР',
+        'THU': 'ЧТ',
+        'FRI': 'ПТ',
+        'SAT': 'СБ',
+        'SUN': 'НД',
     },
     'el': {
         'Layer Mask': 'Μάσκα στρώματος',
@@ -3531,6 +3722,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'φτάνει σε τσιπ φωτισμού: μνήμη, μητρική, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'μπορεί να ζητήσει τον κωδικό σας για να φτάσει σε υλικό που προστατεύει το σύστημα',
         'fetches from the internet sites its module.json names, and no others': 'λαμβάνει δεδομένα μόνο από τους ιστότοπους που αναφέρει το module.json του',
+        'MON': 'ΔΕΥ',
+        'TUE': 'ΤΡΊ',
+        'WED': 'ΤΕΤ',
+        'THU': 'ΠΈΜ',
+        'FRI': 'ΠΑΡ',
+        'SAT': 'ΣΆΒ',
+        'SUN': 'ΚΥΡ',
     },
     'he': {
         'Layer Mask': 'מסכת שכבה',
@@ -3652,6 +3850,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'ניגש לשבבי תאורה: זיכרון, לוח אם, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'עשוי לבקש את הסיסמה שלך כדי לגשת לחומרה שהמערכת מגינה עליה',
         'fetches from the internet sites its module.json names, and no others': 'מביא נתונים רק מהאתרים שה-module.json שלו מציין',
+        'MON': 'ב׳',
+        'TUE': 'ג׳',
+        'WED': 'ד׳',
+        'THU': 'ה׳',
+        'FRI': 'ו׳',
+        'SAT': 'ש׳',
+        'SUN': 'א׳',
     },
     'ms': {
         'Layer Mask': 'Topeng lapisan',
@@ -3773,6 +3978,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'mencapai cip lampu: memori, papan induk, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'mungkin meminta kata laluan anda untuk mencapai perkakasan yang dilindungi sistem',
         'fetches from the internet sites its module.json names, and no others': 'mendapatkan data hanya dari laman yang dinamakan dalam module.json miliknya',
+        'MON': 'ISN',
+        'TUE': 'SEL',
+        'WED': 'RAB',
+        'THU': 'KHA',
+        'FRI': 'JUM',
+        'SAT': 'SAB',
+        'SUN': 'AHD',
     },
     # --- New languages (v8.3.9) ---
     'bn': {
@@ -3895,6 +4107,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'লাইটিং চিপে পৌঁছায়: মেমরি, মাদারবোর্ড, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'সিস্টেম যে হার্ডওয়্যার সুরক্ষিত রাখে তাতে পৌঁছাতে আপনার পাসওয়ার্ড চাইতে পারে',
         'fetches from the internet sites its module.json names, and no others': 'শুধু নিজের module.json-এ লেখা সাইট থেকে ডেটা আনে',
+        'MON': 'সোম',
+        'TUE': 'মঙ্গল',
+        'WED': 'বুধ',
+        'THU': 'বৃহস্পতি',
+        'FRI': 'শুক্র',
+        'SAT': 'শনি',
+        'SUN': 'রবি',
     },
     'ur': {
         'Layer Mask': 'لیئر ماسک',
@@ -4016,6 +4235,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'لائٹنگ چپس تک پہنچتا ہے: میموری، مدر بورڈ، OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'سسٹم کے محفوظ کردہ ہارڈویئر تک پہنچنے کے لیے آپ کا پاس ورڈ مانگ سکتا ہے',
         'fetches from the internet sites its module.json names, and no others': 'صرف اپنی module.json میں درج سائٹس سے ڈیٹا لاتا ہے',
+        'MON': 'پیر',
+        'TUE': 'منگل',
+        'WED': 'بدھ',
+        'THU': 'جمعرات',
+        'FRI': 'جمعہ',
+        'SAT': 'ہفتہ',
+        'SUN': 'اتوار',
     },
     'fa': {
         'Layer Mask': 'ماسک لایه',
@@ -4137,6 +4363,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'به تراشه\u200cهای نور دسترسی دارد: حافظه، مادربرد، OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'ممکن است برای دسترسی به سخت\u200cافزاری که سیستم محافظت می\u200cکند گذرواژه\u200cتان را بخواهد',
         'fetches from the internet sites its module.json names, and no others': 'فقط از سایت\u200cهایی که module.json آن نام می\u200cبرد داده می\u200cگیرد',
+        'MON': 'دوشنبه',
+        'TUE': 'سه\u200cشنبه',
+        'WED': 'چهارشنبه',
+        'THU': 'پنجشنبه',
+        'FRI': 'جمعه',
+        'SAT': 'شنبه',
+        'SUN': 'یکشنبه',
     },
     'tl': {
         'Layer Mask': 'Layer Mask',
@@ -4258,6 +4491,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'naaabot ang mga chip ng ilaw: memorya, motherboard, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'maaaring hingin ang iyong password para maabot ang hardware na binabantayan ng system',
         'fetches from the internet sites its module.json names, and no others': 'kumukuha lang ng data mula sa mga site na nakasaad sa module.json nito',
+        'MON': 'LUN',
+        'TUE': 'MAR',
+        'WED': 'MIY',
+        'THU': 'HUW',
+        'FRI': 'BIY',
+        'SAT': 'SAB',
+        'SUN': 'LIN',
     },
     'ta': {
         'Layer Mask': 'லேயர் மாஸ்க்',
@@ -4379,6 +4619,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'ஒளி சில்லுகளை அணுகும்: நினைவகம், மதர்போர்டு, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'கணினி பாதுகாக்கும் வன்பொருளை அணுக உங்கள் கடவுச்சொல்லைக் கேட்கலாம்',
         'fetches from the internet sites its module.json names, and no others': 'தன் module.json இல் குறிப்பிட்ட தளங்களிலிருந்து மட்டுமே தரவைப் பெறும்',
+        'MON': 'தி',
+        'TUE': 'செ',
+        'WED': 'பு',
+        'THU': 'வி',
+        'FRI': 'வெ',
+        'SAT': 'ச',
+        'SUN': 'ஞா',
     },
     'pa': {
         'Layer Mask': 'ਲੇਅਰ ਮਾਸਕ',
@@ -4500,6 +4747,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'ਲਾਈਟਿੰਗ ਚਿੱਪਾਂ ਤੱਕ ਪਹੁੰਚਦਾ ਹੈ: ਮੈਮੋਰੀ, ਮਦਰਬੋਰਡ, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'ਸਿਸਟਮ ਦੁਆਰਾ ਸੁਰੱਖਿਅਤ ਹਾਰਡਵੇਅਰ ਤੱਕ ਪਹੁੰਚਣ ਲਈ ਤੁਹਾਡਾ ਪਾਸਵਰਡ ਮੰਗ ਸਕਦਾ ਹੈ',
         'fetches from the internet sites its module.json names, and no others': 'ਸਿਰਫ਼ ਆਪਣੀ module.json ਵਿੱਚ ਲਿਖੀਆਂ ਸਾਈਟਾਂ ਤੋਂ ਡਾਟਾ ਲਿਆਉਂਦਾ ਹੈ',
+        'MON': 'ਸੋਮ',
+        'TUE': 'ਮੰਗਲ',
+        'WED': 'ਬੁੱਧ',
+        'THU': 'ਵੀਰ',
+        'FRI': 'ਸ਼ੁੱਕਰ',
+        'SAT': 'ਸ਼ਨਿੱਚਰ',
+        'SUN': 'ਐਤ',
     },
     'sw': {
         'Layer Mask': 'Mask ya Tabaka',
@@ -4621,6 +4875,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'hufikia chipu za mwanga: kumbukumbu, ubao mama, OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'inaweza kuuliza nenosiri lako ili kufikia vifaa ambavyo mfumo unalinda',
         'fetches from the internet sites its module.json names, and no others': 'huleta data tu kutoka tovuti zinazotajwa katika module.json yake',
+        'MON': 'JUMATATU',
+        'TUE': 'JUMANNE',
+        'WED': 'JUMATANO',
+        'THU': 'ALHAMISI',
+        'FRI': 'IJUMAA',
+        'SAT': 'JUMAMOSI',
+        'SUN': 'JUMAPILI',
     },
     'my': {
         'Layer Mask': 'အလွှာမျက်နှာဖုံး',
@@ -4742,6 +5003,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'reaches lighting chips: memory, the motherboard, OpenRGB': 'မီးချစ်ပ်များကို ရောက်ရှိသည်: မမ်မိုရီ၊ မားသားဘုတ်၊ OpenRGB',
         'may ask for your password, to reach hardware the system guards': 'စနစ်က ကာကွယ်ထားသော ဟာ့ဒ်ဝဲကို ရောက်ရှိရန် သင့်စကားဝှက်ကို တောင်းနိုင်သည်',
         'fetches from the internet sites its module.json names, and no others': '၎င်း၏ module.json တွင် ဖော်ပြထားသော ဝဘ်ဆိုက်များမှသာ ဒေတာ ယူသည်',
+        'MON': 'လာ',
+        'TUE': 'ဂါ',
+        'WED': 'ဟူး',
+        'THU': 'တေး',
+        'FRI': 'ကြာ',
+        'SAT': 'နေ',
+        'SUN': 'နွေ',
     },
 }
 
@@ -4798,6 +5066,30 @@ def drop_translations(module: str) -> None:
     """Module *module*'s words gone -- it was removed, or is being re-read."""
     gone = _MODULE_WORDS.pop(module, None)
     log.info("drop_translations: %s (%s)", module, "dropped" if gone else "none")
+
+
+#: The panel's short weekdays, Monday first (``datetime.weekday()``'s order):
+#: keys of ``TRANSLATIONS``, so a module uses them by reference.  Every
+#: language's are from CLDR (``dev/tools/cldr_weekdays.py``).
+WEEKDAY_KEYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+@functools.cache
+def weekdays(lang: str) -> tuple[str, ...]:
+    """*lang*'s seven short weekdays, Monday first -- the language itself,
+    else its base subtag (``de_AT`` -> ``de``), else English.
+
+    Cached: the render path asks once per frame and the answer changes only
+    with the language, so the unknown-language WARNING fires once per
+    language -- the line that explains English weekdays on a report."""
+    base = lang.split("_", 1)[0]
+    found = next((code for code in (lang, base) if code in TRANSLATIONS), "")
+    if found:
+        log.info("weekdays: %r -> %r", lang, found)
+    else:
+        log.warning("weekdays: %r is not a known language and its base subtag "
+                    "%r isn't either -- weekdays fall back to English", lang, base)
+    return tuple(tr(key, found or "en") for key in WEEKDAY_KEYS)
 
 
 def supported_languages() -> list[str]:

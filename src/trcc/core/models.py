@@ -12,6 +12,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Literal
 
+from .i18n import weekdays
 from .logs import per_frame
 
 log = logging.getLogger(__name__)
@@ -1919,19 +1920,6 @@ def format_clock(pattern: str, moment: datetime) -> str:
     return text
 
 
-WEEKDAYS_BY_LANG: dict[str, list[str]] = {
-    "en":    ["MON",   "TUE",   "WED",   "THU",   "FRI",   "SAT",   "SUN"],
-    "de":    ["MO",    "DI",    "MI",    "DO",    "FR",    "SA",    "SO"],
-    "fr":    ["LUN",   "MAR",   "MER",   "JEU",   "VEN",   "SAM",   "DIM"],
-    "es":    ["LUN",   "MAR",   "MIÉ",   "JUE",   "VIE",   "SÁB",   "DOM"],
-    "pt":    ["SEG",   "TER",   "QUA",   "QUI",   "SEX",   "SÁB",   "DOM"],
-    "ru":    ["ПН",    "ВТ",    "СР",    "ЧТ",    "ПТ",    "СБ",    "ВС"],
-    "ja":    ["月",    "火",    "水",    "木",    "金",    "土",    "日"],
-    "ko":    ["월",    "화",    "수",    "목",    "금",    "토",    "일"],
-    "zh":    ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"],
-    "zh_TW": ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"],
-}
-WEEKDAYS = WEEKDAYS_BY_LANG["en"]
 
 
 def celsius_to_fahrenheit(celsius: float) -> float:
@@ -1964,19 +1952,9 @@ def format_metric(
         return format_clock(TIME_FORMATS.get(time_format, TIME_FORMATS[0]),
                             _dt.now())
     if metric == "weekday":
-        weekdays = (
-            WEEKDAYS_BY_LANG.get(lang or "en")
-            or WEEKDAYS_BY_LANG.get((lang or "en").split("_", 1)[0])
-            or WEEKDAYS
-        )
-        return weekdays[_dt.now().weekday()]
+        return weekdays(lang or "en")[_dt.now().weekday()]
     if metric == "day_of_week":
-        weekdays = (
-            WEEKDAYS_BY_LANG.get(lang or "en")
-            or WEEKDAYS_BY_LANG.get((lang or "en").split("_", 1)[0])
-            or WEEKDAYS
-        )
-        return weekdays[int(value)]
+        return weekdays(lang or "en")[int(value)]
     if metric.startswith(("time_", "date_")):
         return f"{int(value):02d}"
     if "temp" in metric:
