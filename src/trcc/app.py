@@ -123,6 +123,10 @@ from .services.video_loop import VideoLoop
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
+#: The thread that gives downloaded cloud videos their tile GIFs -- it starts on
+#: its own after a data install, so a log watcher can tell its lines apart.
+PREVIEW_BACKFILL_THREAD = "trcc-cloud-previews"
+
 
 R = TypeVar("R", bound=Result)
 _C = TypeVar("_C", bound=type)
@@ -900,7 +904,7 @@ class App(CommandBus, ModuleServices):
             return
         threading.Thread(target=self._backfill_previews,
                          args=(event.resolution,), daemon=True,
-                         name="trcc-cloud-previews").start()
+                         name=PREVIEW_BACKFILL_THREAD).start()
 
     def _backfill_previews(self, resolution: tuple[int, int]) -> None:
         """Both orientations' cloud videos; one backfill at a time."""

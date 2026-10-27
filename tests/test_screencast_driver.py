@@ -1093,10 +1093,18 @@ def test_a_cast_frame_writes_nothing_to_the_log(
 ) -> None:
     """Grab -> surface -> resize ran on the plain logger, ~16 times a second.
 
-    MUTATION CHECK: log ``from_raw_rgb24`` or ``resize`` on the plain logger
-    again and the frames below reach the file.
+    caplog hears every thread, and the App's preview backfill starts on its
+    own after the data install -- its lines landed in the window on CI 3.13
+    (2026-10-27) and failed this.  They are not the cast's, so they are left
+    out.  MUTATION CHECK: log ``DisplayService.build_screencast_frame`` on the
+    plain logger and the frames below reach the file.  (This App draws with
+    ``_CliRenderer``, so a ``QtRenderer`` line never runs here -- that is
+    ``test_the_qt_renderer_writes_nothing_per_cast_frame``'s; this docstring
+    named it until 2026-10-27, and the claim could not fail.)
     """
     import logging
+
+    from trcc.app import PREVIEW_BACKFILL_THREAD
 
     _cast_frame(casting, {"cpu:temp": 41.0})
     with caplog.at_level(logging.DEBUG):
@@ -1105,7 +1113,8 @@ def test_a_cast_frame_writes_nothing_to_the_log(
             _cast_frame(casting, {"cpu:temp": 41.0})
 
     assert [f"{r.name}: {r.getMessage()}" for r in caplog.records
-            if not r.name.startswith("trcc.frame")] == []
+            if not r.name.startswith("trcc.frame")
+            and r.threadName != PREVIEW_BACKFILL_THREAD] == []
 
 
 def test_a_single_send_still_says_its_brightness_and_angle(
