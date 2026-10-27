@@ -615,7 +615,7 @@ def test_the_control_center_bar_opens_the_modules_page(
 
     window = TRCCApp(app=App(platform=fake_platform, renderer=QtRenderer()))
     qtbot.addWidget(window)
-    keys = [key for _w, key in window._i18n_labels]
+    keys = [key for _w, key, _module in window._i18n_labels]
     assert keys.index("Control Center") < keys.index("Modules") < keys.index("About")
     window._show_view("about")
     window.uc_about.modules_link.click()

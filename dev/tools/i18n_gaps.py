@@ -8,11 +8,19 @@ a language without a key falls back to English:
 * each module's ``i18n.json`` in its own folder (``src/trcc/modules/<key>/``),
   beside its manifest, so a module's words leave with it.
 
+A module's text is its own word first, then TRCC's (``tr(..., module=KEY)``).
+So a word TRCC already translates is covered for a module without a copy:
+an entry identical to TRCC's is REDUNDANT (``--drop-redundant`` removes
+them), and one that differs is an OVERRIDE -- the module's own wording, for
+that module only.  Both are listed, so an override is visibly deliberate.
+
 Usage::
 
     PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py                # every gap
     PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py --table main   # one table
     PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py --write new.json --table main
+    PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py --module ~/weather   # an author's
+    PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py --module ~/weather --drop-redundant
 
 ``--write`` merges ``{"<lang>": {"<English>": "<translation>"}}`` into the
 table, and refuses the whole file if any entry is wrong: a key English does
@@ -63,15 +71,67 @@ def tables(modules: Path = MODULES) -> dict[str, Table]:
     return found
 
 
-def gaps(table: Table) -> dict[str, list[str]]:
+def main_table() -> Table:
+    """TRCC's own table -- what a module's words fall back to."""
+    from trcc.core.i18n import TRANSLATIONS
+
+    log.debug("main_table: %d language(s)", len(TRANSLATIONS))
+    return TRANSLATIONS
+
+
+def gaps(table: Table, reference: Table | None = None) -> dict[str, list[str]]:
     """``{language: [English keys it lacks]}`` -- only languages with a gap.
-    A language with no block at all lacks every key."""
+    A language with no block at all lacks every key.  A module's table passes
+    TRCC's as *reference*: a word TRCC has in that language is covered."""
     english = list(table.get("en", {}))
-    missing = {lang: [k for k in english if not table.get(lang, {}).get(k)]
+    ref = reference or {}
+    missing = {lang: [k for k in english if not table.get(lang, {}).get(k)
+                      and not ref.get(lang, {}).get(k)]
                for lang in languages() if lang != "en"}
     found = {lang: keys for lang, keys in missing.items() if keys}
     log.debug("gaps: %d language(s) short", len(found))
     return found
+
+
+def references(table: Table, reference: Table) -> tuple[dict[str, list[str]],
+                                                       dict[str, list[str]]]:
+    """A module's entries TRCC also has: ``(redundant, overrides)``, each
+    ``{language: [keys]}`` -- the same text as TRCC's, or a different one."""
+    redundant: dict[str, list[str]] = {}
+    overrides: dict[str, list[str]] = {}
+    for lang, entries in table.items():
+        if lang == "en":
+            continue
+        for key, text in entries.items():
+            theirs = reference.get(lang, {}).get(key)
+            if theirs:
+                (redundant if theirs == text else overrides).setdefault(lang, []).append(key)
+    log.debug("references: %d redundant, %d override(s)",
+              sum(map(len, redundant.values())), sum(map(len, overrides.values())))
+    return redundant, overrides
+
+
+def drop_redundant(key: str, reference: Table, modules: Path = MODULES) -> int:
+    """Remove from module *key*'s ``i18n.json`` every entry identical to
+    *reference*'s -- TRCC's word is used by reference; how many went.  An
+    English entry goes too once no language of the module has a key it just
+    dropped -- never a new word not translated yet."""
+    path = modules / key / MODULE_TABLE
+    table: Table = json.loads(path.read_text(encoding="utf-8"))
+    redundant, _ = references(table, reference)
+    for lang, keys in redundant.items():
+        for k in keys:
+            del table[lang][k]
+    english = table.get("en", {})
+    dropped_keys = {k for keys in redundant.values() for k in keys}
+    for k in [k for k in dropped_keys & set(english)
+              if not any(k in table[lang] for lang in table if lang != "en")]:
+        del english[k]
+    path.write_text(json.dumps(table, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+    dropped = sum(map(len, redundant.values()))
+    log.info("drop_redundant: %d entr(ies) from %s", dropped, path)
+    return dropped
 
 
 def problems(table: Table, new: Table) -> list[str]:
@@ -142,8 +202,10 @@ def write_module(key: str, new: Table, modules: Path = MODULES) -> int:
 
 
 def _report(name: str, table: Table) -> int:
-    """Print one table's gaps; how many are missing."""
-    short = gaps(table)
+    """Print one table's gaps -- for a module, what it references of TRCC's
+    too; how many are missing."""
+    reference = None if name == "main" else main_table()
+    short = gaps(table, reference)
     total = sum(len(keys) for keys in short.values())
     print(f"{name}: {len(table.get('en', {}))} English key(s), "
           f"{total} missing across {len(short)} language(s)")
@@ -153,6 +215,12 @@ def _report(name: str, table: Table) -> int:
             by_key.setdefault(k, []).append(lang)
     for k, langs in by_key.items():
         print(f"  {k!r}: {len(langs)} -- {' '.join(langs)}")
+    if reference is not None:
+        redundant, overrides = references(table, reference)
+        for label, found in (("redundant (same as TRCC's -- --drop-redundant)", redundant),
+                             ("override (its own wording, this module only)", overrides)):
+            for lang, keys in sorted(found.items()):
+                print(f"  {lang}: {label}: {', '.join(keys)}")
     return total
 
 
@@ -161,8 +229,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--table", help='"main" or a module key (default: every table)')
     ap.add_argument("--write", type=Path, metavar="FILE",
                     help="merge this JSON of translations into --table")
+    ap.add_argument("--module", type=Path, metavar="FOLDER",
+                    help="a module's folder anywhere -- an author's own")
+    ap.add_argument("--drop-redundant", action="store_true",
+                    help="remove the module's entries identical to TRCC's")
     args = ap.parse_args(argv)
-    every = tables()
+    modules = MODULES
+    if args.module:
+        folder = args.module.expanduser().resolve()
+        if not (folder / MODULE_TABLE).is_file():
+            print(f"{folder}: no {MODULE_TABLE}")
+            return 1
+        modules, args.table = folder.parent, folder.name
+        every = {"main": main_table(), folder.name: json.loads(
+            (folder / MODULE_TABLE).read_text(encoding="utf-8"))}
+    else:
+        every = tables()
+    if args.drop_redundant:
+        if args.table in (None, "main") or args.table not in every:
+            print("--drop-redundant needs --module or a module --table")
+            return 1
+        dropped = drop_redundant(args.table, main_table(), modules)
+        print(f"{dropped} redundant entr(ies) removed from {args.table}")
+        return 0
     if args.write:
         if args.table not in every:
             print(f"--write needs --table, one of: {', '.join(every)}")
@@ -172,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
             print("nothing written:\n  " + "\n  ".join(wrong))
             return 1
         added = (write_main(new) if args.table == "main"
-                 else write_module(args.table, new))
+                 else write_module(args.table, new, modules))
         print(f"{added} translation(s) added to {args.table}")
         return 0
     chosen = {args.table: every[args.table]} if args.table else every

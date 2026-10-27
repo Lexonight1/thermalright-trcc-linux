@@ -123,7 +123,7 @@ def test_the_control_center_bar_names_it_and_opens_about(
     window = TRCCApp(app=App(platform=fake_platform, renderer=QtRenderer()))
     qtbot.addWidget(window)
     cc = window.uc_about
-    keys = {key for _label, key in window._i18n_labels}
+    keys = {key for _label, key, _module in window._i18n_labels}
     assert {"Control Center", "About"} <= keys
     assert (cc.title_label.text(), cc.about_link.text()) == ("Control Center", "About")
     window._show_view('about')

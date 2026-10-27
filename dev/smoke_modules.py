@@ -179,13 +179,13 @@ class ModuleSmoke:
         import json
 
         sys.path.insert(0, str(_DEV / "tools"))
-        from i18n_gaps import gaps
+        from i18n_gaps import gaps, main_table
 
         table = _folder(self.key) / "i18n.json"
         if not table.is_file():
             section.warn("words", "no i18n.json -- it speaks English only")
             return
-        missing = gaps(json.loads(table.read_text(encoding="utf-8")))
+        missing = gaps(json.loads(table.read_text(encoding="utf-8")), main_table())
         if missing:
             section.warn("words", f"{len(missing)} language(s) incomplete: "
                          f"{sorted(missing)[:5]}")

@@ -96,9 +96,9 @@ from trcc.modules.rgb.ui.presentation.rgb_page import (
     strip_legend,
 )
 from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
-from trcc.modules.rgb.ui.words import retranslate, say, say_item, say_tip
 from trcc.ui.bus_bridge import BusBridge
 from trcc.ui.qt_background import dispatch_in_background
+from trcc.ui.qt_words import retranslate, say, say_item, say_tip
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

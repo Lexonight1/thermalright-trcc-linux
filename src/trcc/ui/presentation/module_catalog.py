@@ -94,10 +94,12 @@ def _row(module: AvailableModule, tr: Callable[[str], str]) -> CatalogRow:
                       detail=detail)
 
 
-def consent(module: AvailableModule, tr: Callable[[str], str]) -> tuple[str, list[str]]:
+def consent(module: AvailableModule, tr: Callable[[str], str],
+            title: str = "") -> tuple[str, list[str]]:
     """The permission screen: its question, and each line under it -- every
-    capability in its own words, then every site."""
-    question = tr("Install {title} {version}?").format(title=tr(module.title),
+    capability in its own words, then every site.  *title* is the module's,
+    as the caller translated it (its own words); every other line is TRCC's."""
+    question = tr("Install {title} {version}?").format(title=title or tr(module.title),
                                                        version=module.version)
     lines = [tr(REVIEWED)]
     asks = [tr(MODULE_CAPABILITIES.get(c, c)) for c in module.capabilities]
@@ -109,6 +111,6 @@ def consent(module: AvailableModule, tr: Callable[[str], str]) -> tuple[str, lis
 
 
 def removal_question(title: str, tr: Callable[[str], str]) -> str:
-    """What a Remove asks first."""
+    """What a Remove asks first -- *title* as the caller translated it."""
     log.debug("removal_question: %s", title)
-    return tr("Remove {title}? Themes made with it stay.").format(title=tr(title))
+    return tr("Remove {title}? Themes made with it stay.").format(title=title)

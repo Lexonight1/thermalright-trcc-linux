@@ -202,7 +202,7 @@ class UCRgb(QWidget, ModuleView):
     def set_language(self, lang: str) -> None:
         """The window's language: the page's words, and its title."""
         log.info("UCRgb.set_language: %s", lang)
-        words = partial(tr, lang=lang)
+        words = partial(tr, lang=lang, module="rgb")
         speak(self.page, words)
         self._title = words("RGB Lighting")
         self.update()

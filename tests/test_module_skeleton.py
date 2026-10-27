@@ -123,8 +123,9 @@ def test_its_words_join_the_translations(hello: Path) -> None:
     """The skeleton has its word in every language, as a module must; the
     English fallback is ``test_i18n``'s."""
     specs(hello)
-    assert (tr("Hello", "de"), tr("Hello", "fr"), tr("Hello", "ja")) == (
-        "Hallo", "Bonjour", "こんにちは")
+    assert (tr("Hello", "de", "hello"), tr("Hello", "fr", "hello"),
+            tr("Hello", "ja", "hello")) == ("Hallo", "Bonjour", "こんにちは")
+    assert tr("Hello", "de") == "Hello"      # its own words, for it alone
 
 
 def test_the_cli_runs_its_command_on_or_off(

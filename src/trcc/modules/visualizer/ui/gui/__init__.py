@@ -155,7 +155,7 @@ class UCVisuals(BaseThemeBrowser, ModulePage):
     def set_language(self, lang: str) -> None:
         """Its words, and its sliders', in the window's language."""
         log.info("UCVisuals.set_language: %s", lang)
-        self._tr = partial(tr, lang=lang)
+        self._tr = partial(tr, lang=lang, module="visualizer")
         if self._controls is not None:
             self._controls.set_translate(self._tr)
             self._fit_controls()

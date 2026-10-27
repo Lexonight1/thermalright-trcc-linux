@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from ..core.commands import Command
 from ..core.events import ModuleChanged, ModuleInstalled, ModuleRemoved
+from ..core.i18n import tr
 from ..core.models import AvailableModule, ModuleInfo
 from ..core.ports import CommandBus
 from ..core.results import ModuleCatalogResult, ModuleResult
@@ -115,16 +116,24 @@ class ModulesView(QScrollArea):
         #: The module an install or removal is under way for -- its answer
         #: may carry only a message.  One at a time.
         self._pending = ""
-        #: A module's title and summary in the window's language -- the gui
-        #: sets it (its ``tr``, which holds each module's ``i18n.json``).
+        #: The window's language -- "" until it says, English as written.
+        self._lang = ""
+        #: TRCC's own words in it.
         self._translate: Callable[[str], str] = str
         self.refresh()
 
-    def set_translate(self, translate: Callable[[str], str]) -> None:
+    def set_language(self, lang: str) -> None:
         """The window's language changed: the tiles again, in it."""
-        log.info("ModulesView.set_translate")
-        self._translate = translate
+        log.info("ModulesView.set_language: %s", lang)
+        self._lang = lang
+        self._translate = partial(tr, lang=lang)
         self.refresh()
+
+    def _words(self, key: str) -> Callable[[str], str]:
+        """Module *key*'s title and summary: its own words, else TRCC's --
+        never around them, so no module rewords what TRCC says of it."""
+        log.debug("ModulesView._words: %s in %r", key, self._lang)
+        return partial(tr, lang=self._lang, module=key) if self._lang else str
 
     def refresh(self) -> None:
         """Rebuild the tiles from what the App says now -- or the index's
@@ -213,6 +222,7 @@ class ModulesView(QScrollArea):
         """One module: name, what it does, why not here, its switch -- and,
         installed by the user, its Remove."""
         log.debug("ModulesView._tile: %s", module.key)
+        words = self._words(module.key)
         tile = QFrame()
         tile.setObjectName("moduleTile")
         row = QHBoxLayout(tile)
@@ -222,13 +232,13 @@ class ModulesView(QScrollArea):
             symbol.setPixmap(pixmap)
             row.addWidget(symbol, 0, Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
-        name = QLabel(self._translate(module.title))
+        name = QLabel(words(module.title))
         name.setObjectName("moduleTitle")
         text.addWidget(name)
         about = QLabel(byline(module, self._translate))
         about.setObjectName("moduleByline")
         text.addWidget(about)
-        summary = QLabel(self._translate(module.summary))
+        summary = QLabel(words(module.summary))
         summary.setWordWrap(True)
         text.addWidget(summary)
         note = (problem_line(module, self._translate)
@@ -315,7 +325,8 @@ class ModulesView(QScrollArea):
         key = str(sender.property(_KEY_PROPERTY)) if sender is not None else ""
         log.info("ModulesView._on_remove: %s", key)
         if self._pending or not self.ask(
-                removal_question(self._titles.get(key, key), self._translate), "",
+                removal_question(self._words(key)(self._titles.get(key, key)),
+                                 self._translate), "",
                 self._translate("Remove")):
             log.info("ModulesView._on_remove: %s kept (busy with %r)", key, self._pending)
             return
@@ -373,10 +384,11 @@ class ModulesView(QScrollArea):
             frame.setObjectName("moduleTile")
             line = QHBoxLayout(frame)
             text = QVBoxLayout()
-            name = QLabel(f"{self._translate(row.title)}  {row.version}")
+            words = self._words(row.key)
+            name = QLabel(f"{words(row.title)}  {row.version}")
             name.setObjectName("moduleTitle")
             text.addWidget(name)
-            summary = QLabel(self._translate(row.summary))
+            summary = QLabel(words(row.summary))
             summary.setWordWrap(True)
             text.addWidget(summary)
             if row.detail:
@@ -405,7 +417,8 @@ class ModulesView(QScrollArea):
                  module.version if module else "not listed", self._pending)
         if module is None or self._pending:
             return
-        question, lines = consent(module, self._translate)
+        question, lines = consent(module, self._translate,
+                                  title=self._words(key)(module.title))
         confirm = "Update" if module.status == "update" else "Install"
         if not self.ask(question, "\n".join(lines), self._translate(confirm)):
             log.info("ModulesView._on_install: %s declined", key)

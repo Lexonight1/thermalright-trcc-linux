@@ -438,13 +438,14 @@ def logging_lines(staged: Path) -> Gate:
 
 
 def words(modules: Path, key: str) -> Gate:
-    """Its ``i18n.json`` has every word in every language."""
+    """Its ``i18n.json`` has every word in every language -- or TRCC does,
+    and the module uses TRCC's by reference."""
     gate = Gate("Every word in every language")
     table = i18n_gaps.tables(modules).get(key)
     if table is None:
         gate.fail("i18n.json", "missing")
         return gate
-    for lang, missing in sorted(i18n_gaps.gaps(table).items()):
+    for lang, missing in sorted(i18n_gaps.gaps(table, i18n_gaps.main_table()).items()):
         gate.fail(f"i18n.json {lang}", f"{len(missing)} word(s) missing: "
                   f"{', '.join(missing[:3])}{' ...' if len(missing) > 3 else ''}")
     return gate

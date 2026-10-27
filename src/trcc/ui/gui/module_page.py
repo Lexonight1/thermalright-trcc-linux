@@ -38,8 +38,10 @@ class ModulePage:
 
     def set_language(self, lang: str) -> None:
         """The window's language -- at build time, and on every change.  The
-        page translates its own words (``trcc.core.i18n.tr``, which holds its
-        module's ``i18n.json`` too); its title and tooltip the window does."""
+        page translates its own words -- ``tr(text, lang, module=KEY)``, its
+        module's ``i18n.json`` first, then TRCC's by reference; ``trcc.ui.
+        qt_words`` keeps a page's labels for it.  Its title and tooltip the
+        window does."""
         log.debug("%s.set_language: %s", type(self).__name__, lang)
 
     def on_settings_changed(self, event: object) -> None:

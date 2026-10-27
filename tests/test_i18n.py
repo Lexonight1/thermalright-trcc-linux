@@ -25,8 +25,9 @@ def test_every_language_translates_every_english_key() -> None:
     2026-10-21 because nothing measured it; ``dev/tools/i18n_gaps.py`` lists
     a gap and fills it.  MUTATION CHECK: drop one German entry and this
     names it."""
+    main = i18n_gaps.main_table()
     short = {name: gaps for name, table in i18n_gaps.tables().items()
-             if (gaps := i18n_gaps.gaps(table))}
+             if (gaps := i18n_gaps.gaps(table, None if name == "main" else main))}
     assert short == {}, (
         "untranslated -- run PYTHONPATH=src python3.12 dev/tools/i18n_gaps.py:\n"
         + "\n".join(f"  {name} {lang}: {keys}" for name, langs in short.items()
@@ -78,6 +79,38 @@ def test_a_module_table_merges_into_its_json(tmp_path: Path) -> None:
     assert i18n_gaps.write_module("viz", {"de": {"A": "Ah"}}, tmp_path) == 1
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "en": {"A": "A"}, "de": {"A": "Ah"}}
+
+
+def test_our_modules_reference_trccs_words_instead_of_copying_them() -> None:
+    """A word TRCC already translates is used by reference: our own modules
+    carry no copy of it (RGB's "Rainbow" and the visualizer's "Colour" did,
+    and 7 of the copies had drifted from TRCC's wording).  MUTATION CHECK:
+    put a German "Background" back in RGB's ``i18n.json`` -- this names it."""
+    main = i18n_gaps.main_table()
+    copies = {name: found for name, table in i18n_gaps.tables().items()
+              if name != "main" and (found := i18n_gaps.references(table, main)[0])}
+    assert copies == {}, (
+        "a module copies TRCC's words -- run i18n_gaps.py --drop-redundant:\n"
+        + "\n".join(f"  {name}: {langs}" for name, langs in copies.items()))
+
+
+def test_the_gap_tool_counts_trccs_words_and_drops_only_copies(tmp_path: Path) -> None:
+    """For a module, a word TRCC has is covered; a copy of it is removed, an
+    override kept, and a new word not translated yet is never touched."""
+    main = {"en": {"Cancel": "Cancel", "Rainbow": "Rainbow"},
+            "de": {"Cancel": "Abbrechen", "Rainbow": "Regenbogen"}}
+    table = {"en": {"Cancel": "Cancel", "Rainbow": "Rainbow", "Gust": "Gust"},
+             "de": {"Cancel": "Abbrechen", "Rainbow": "Regenbogen-Effekt"}}
+    (tmp_path / "weather").mkdir()
+    (tmp_path / "weather" / "i18n.json").write_text(json.dumps(table), encoding="utf-8")
+
+    assert i18n_gaps.gaps(table, main)["de"] == ["Gust"]
+    assert i18n_gaps.references(table, main) == ({"de": ["Cancel"]},
+                                                 {"de": ["Rainbow"]})
+    assert i18n_gaps.drop_redundant("weather", main, tmp_path) == 1
+    assert json.loads((tmp_path / "weather" / "i18n.json").read_text(encoding="utf-8")) == {
+        "en": {"Rainbow": "Rainbow", "Gust": "Gust"},
+        "de": {"Rainbow": "Regenbogen-Effekt"}}
 
 
 def test_every_language_in_table_has_a_name() -> None:
@@ -214,3 +247,54 @@ def test_every_legacy_language_present(lang_code: str) -> None:
     drop one — they're an audited set."""
     assert lang_code in LANGUAGE_NAMES
     assert lang_code in TRANSLATIONS
+
+
+# ── A module's words: its own first, then TRCC's -- for it alone ─────────
+
+
+@pytest.fixture
+def module_words(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """An empty module-word store, put back after."""
+    from trcc.core import i18n
+
+    store: dict = {}
+    monkeypatch.setattr(i18n, "_MODULE_WORDS", store)
+    return store
+
+
+def test_a_module_uses_trccs_word_unless_it_sets_its_own(module_words: dict) -> None:
+    """MUTATION CHECK: look TRCC's table up first in ``tr`` -- the override
+    is ignored."""
+    from trcc.core.i18n import add_translations
+
+    add_translations("weather", {"en": {"Background": "Background"},
+                                 "de": {"Background": "Wetterhintergrund"}})
+
+    assert tr("Background", "de", "weather") == "Wetterhintergrund"
+    assert tr("Layer Mask", "de", "weather") == TRANSLATIONS["de"]["Layer Mask"]
+
+
+def test_a_modules_words_never_reach_trcc_or_another_module(module_words: dict) -> None:
+    """An installed module's ``i18n.json`` loads even while it is off, so its
+    words must not fill TRCC's text -- the "Unsigned" badge included -- or
+    another module's.  MUTATION CHECK: let ``tr`` fall back to every
+    module's words -- both fail."""
+    from trcc.core.i18n import add_translations
+
+    add_translations("weather", {"de": {"Background": "Geprüft", "Gust": "Böe"}})
+
+    assert tr("Background", "de") == TRANSLATIONS["de"]["Background"]
+    assert tr("Gust", "de", "rgb") == "Gust"
+
+
+def test_an_update_replaces_a_modules_words(module_words: dict) -> None:
+    """They used to be first-come: an update's corrected words waited for a
+    restart.  MUTATION CHECK: merge instead of replace -- the old word stays."""
+    from trcc.core.i18n import add_translations, drop_translations
+
+    add_translations("weather", {"de": {"Gust": "Boe"}})
+    add_translations("weather", {"de": {"Gust": "Böe"}})
+    assert tr("Gust", "de", "weather") == "Böe"
+
+    drop_translations("weather")
+    assert tr("Gust", "de", "weather") == "Gust"

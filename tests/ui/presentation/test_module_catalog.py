@@ -65,6 +65,6 @@ def test_the_texts_are_translated_then_filled() -> None:
         return words.get(text, text)
 
     assert consent(_module(), tr)[0] == "Wetter 3 installieren?"
-    assert removal_question("Weather", tr) == "Wetter entfernen?"
+    assert removal_question(tr("Weather"), tr) == "Wetter entfernen?"
     assert catalog_rows([_module("update", installed_version="2")], tr)[0].detail == (
         "installiert: 2")

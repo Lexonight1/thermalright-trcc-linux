@@ -398,11 +398,14 @@ def test_a_change_from_any_ui_reaches_the_page(view: Any, qtbot: Any,
 
 
 def _rgb_english() -> set[str]:
-    """The English keys of RGB's own table -- every text it may translate."""
+    """Every text RGB may translate: its own table's English keys, and TRCC's
+    -- a word TRCC translates is used by reference, never copied."""
     import json
 
+    from trcc.core.i18n import TRANSLATIONS
     from trcc.modules import TABLE, folders
-    return set(json.loads((folders()["rgb"] / TABLE).read_text(encoding="utf-8"))["en"])
+    own = json.loads((folders()["rgb"] / TABLE).read_text(encoding="utf-8"))["en"]
+    return set(own) | set(TRANSLATIONS["en"])
 
 
 def test_every_word_the_page_translates_is_in_its_table(qtbot: Any) -> None:
@@ -459,16 +462,16 @@ def test_the_classic_window_shows_the_page_in_its_language(qtbot: Any) -> None:
                 | {c.itemText(i) for c in combos for i in range(c.count())})
 
     def detail(lang: str) -> str:
-        leds = tr("{count} LEDs", lang).format(count=STICKS[0].led_count)
-        return tr("direct · {leds}", lang).format(leds=leds)
+        leds = tr("{count} LEDs", lang, "rgb").format(count=STICKS[0].led_count)
+        return tr("direct · {leds}", lang, "rgb").format(leds=leds)
 
     view.show()
     qtbot.waitUntil(lambda: detail("en") in shown(), timeout=3000)  # lights read
     view.set_language("de")
     german = shown()
-    assert {tr("Find lights", "de"), tr("Rainbow", "de"), detail("de")} <= german
+    assert {tr("Find lights", "de", "rgb"), tr("Rainbow", "de"), detail("de")} <= german
     assert "Find lights" not in german
-    assert view._title == tr("RGB Lighting", "de") != "RGB Lighting"
+    assert view._title == tr("RGB Lighting", "de", "rgb") != "RGB Lighting"
     view.set_language("en")
     assert {"Find lights", "Rainbow", detail("en")} <= shown()
     assert view._title == "RGB Lighting"

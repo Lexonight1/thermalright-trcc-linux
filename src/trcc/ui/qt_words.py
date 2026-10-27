@@ -1,29 +1,30 @@
-"""What the RGB page says, in the window's language.
+"""A page's fixed words, kept in English and put in the window's language --
+for any page, TRCC's own or a module's, in either window.
 
 Every fixed label is set once through :func:`say` (or :func:`say_tip`,
 :func:`say_item`), which keeps its English beside it; :func:`retranslate`
 walks a widget and puts every one of them in another language -- so a
 language change reaches the labels a widget made long ago without each one
-being remembered by hand.  Texts the page model composes (a note, a hint, a
-light's detail line) come out of ``RgbPage.tr`` already translated, each time
-the page is shown.
+being remembered by hand.
 
-The translation itself is ``trcc.core.i18n.tr``, which holds this module's
-``i18n.json``; a window that translates nothing passes the English back.
+The translation is whatever *tr* the page passes: a module's page passes
+``partial(tr, lang=lang, module=KEY)`` (``trcc.core.i18n.tr``) -- its own
+``i18n.json`` first, then TRCC's words by reference.
 """
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import TypeVar
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QAbstractButton, QComboBox, QLabel, QWidget
 
-from .presentation.rgb_page import Tr
-
 log = logging.getLogger(__name__)
 
 _W = TypeVar("_W", bound=QLabel | QAbstractButton)
+#: English in, the window's language out.
+Tr = Callable[[str], str]
 
 #: Where a widget keeps the English it was given.
 _EN = "trccEnglish"

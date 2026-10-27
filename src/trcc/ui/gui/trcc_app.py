@@ -597,17 +597,19 @@ class TRCCApp(QMainWindow):
         self._lang_combo.blockSignals(True)
         self._lang_combo.setCurrentIndex(self._lang_combo.findData(lang))
         self._lang_combo.blockSignals(False)
-        for label, key in self._i18n_labels:
+        for label, key, module in self._i18n_labels:
             if key is not None:
-                label.setText(tr(key, lang))
+                label.setText(tr(key, lang, module))
         for panel, key in self._i18n_panel_tables:
             panel.set_title(tr(key, lang))
         self.uc_led_control.set_language(lang)
-        for page in self._module_pages.values():
+        for key, page in self._module_pages.items():
             cast(ModulePage, page).set_language(lang)
+            self._module_tabs[key].setToolTip(
+                tr(cast(ModulePage, page).TOOLTIP, lang, key))
         for key, view in self._module_views.items():
             self._translate_view(key, view, lang)
-        self.uc_modules.view.set_translate(partial(tr, lang=lang))
+        self.uc_modules.view.set_language(lang)
 
     def _on_bus_slideshow_changed(self, event: SlideshowChanged) -> None:
         """Route a ``SlideshowChanged`` event to its LCD's handler."""
@@ -1168,9 +1170,11 @@ class TRCCApp(QMainWindow):
     def _i18n_label(self, parent: QWidget, text: str, x: int, y: int, w: int,
                     h: int, pt: int, key: str | None = None,
                     bold: bool = False, color: str = 'white',
-                    wrap: bool = False, center: bool = False) -> QLabel:
+                    wrap: bool = False, center: bool = False,
+                    module: str = "") -> QLabel:
         """A text label over the skin; with *key*, re-translated when the
-        language changes (``_show_language``)."""
+        language changes (``_show_language``) -- in *module*'s own words
+        when it is a module's."""
         log.debug("_i18n_label: %r key=%r", text, key)
         y_offset = max(2, pt // 4)
         lbl = QLabel(text, parent)
@@ -1184,7 +1188,7 @@ class TRCCApp(QMainWindow):
         if center:
             lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lbl.raise_()
-        self._i18n_labels.append((lbl, key))
+        self._i18n_labels.append((lbl, key, module))
         return lbl
 
     # ── Module tabs and views ───────────────────────────────────────
@@ -1249,8 +1253,8 @@ class TRCCApp(QMainWindow):
         log.debug("_translate_view: %s %s", key, lang)
         module_view = cast(ModuleView, view)
         button = self.uc_device.view_buttons[key]
-        button.setText(tr(module_view.BUTTON_TEXT, lang))
-        button.setToolTip(tr(module_view.TOOLTIP, lang))
+        button.setText(tr(module_view.BUTTON_TEXT, lang, key))
+        button.setToolTip(tr(module_view.TOOLTIP, lang, key))
         module_view.set_language(lang)
 
     def _sync_module_tabs(self, on: set[str]) -> None:
@@ -1292,12 +1296,13 @@ class TRCCApp(QMainWindow):
         self._set_panel_bg(widget, Assets.THEME_WEB_BG)
         index = self.panel_stack.addWidget(widget)
         x, y, w, h, pt = ONLINE_THEME_POS
-        self._i18n_label(widget, tr(page.TITLE, lang), x, y, w, h, pt, page.TITLE)
+        self._i18n_label(widget, tr(page.TITLE, lang, key), x, y, w, h, pt, page.TITLE,
+                         module=key)
         x, y, w, h = Layout.TAB_MODULE_SLOTS[len(self._module_tabs)]
         button = create_image_button(self.form_container, x, y, w, h,
                                      page.TAB_IMAGE, page.TAB_IMAGE_ACTIVE,
                                      checkable=True)
-        button.setToolTip(tr(page.TOOLTIP, lang))
+        button.setToolTip(tr(page.TOOLTIP, lang, key))
         button.setProperty('panel_idx', index)
         button.clicked.connect(self._on_mode_button_clicked)
         button.show()
@@ -1467,7 +1472,8 @@ class TRCCApp(QMainWindow):
         )
         lang = self._app.dispatch(ControlCenterSnapshot()).language
         log.info("_create_i18n_overlays: lang=%s", lang)
-        self._i18n_labels: list[tuple[QLabel | QPushButton, str | None]] = []
+        #: Each label, its English, and the module whose words it is ("" for TRCC's).
+        self._i18n_labels: list[tuple[QLabel | QPushButton, str | None, str]] = []
 
         _lbl = self._i18n_label
 
@@ -1507,7 +1513,7 @@ class TRCCApp(QMainWindow):
                             (self.uc_about.modules_link, 'Modules'),
                             (self.uc_about.about_link, 'About')):
             widget.setText(tr(key, lang))
-            self._i18n_labels.append((widget, key))
+            self._i18n_labels.append((widget, key, ""))
         self._i18n_panel_tables = [
             (s.mask_panel, 'Layer Mask'),
             (s.background_panel, 'Background'),

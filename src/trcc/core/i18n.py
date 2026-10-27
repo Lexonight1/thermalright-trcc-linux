@@ -4753,44 +4753,51 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 # =========================================================================
 
 
-def tr(key: str, lang: str = "en") -> str:
+def tr(key: str, lang: str = "en", module: str = "") -> str:
     """Look up an English key in *lang*'s table.
+
+    With *module*, that module's own word comes first -- set in its
+    ``i18n.json``, for that module only -- and TRCC's is used where it has
+    none, by reference rather than a copy.  Without, only TRCC's table: no
+    module's word ever reaches TRCC's own text.
 
     Falls back to English when *lang* is missing or the key isn't
     translated; falls back to the key itself if even English doesn't
     have it (the key *is* English — this only happens for unregistered
     strings, which are the bug to fix rather than the data to add).
     """
-    log.debug("tr: key=%r lang=%s", key, lang)
-    translated = (TRANSLATIONS.get(lang, {}).get(key)
-                  or _MODULE_WORDS.get(lang, {}).get(key))
+    log.debug("tr: key=%r lang=%s module=%s", key, lang, module)
+    translated = (_MODULE_WORDS.get(module, {}).get(lang, {}).get(key)
+                  or TRANSLATIONS.get(lang, {}).get(key))
     if translated:
         return translated
     english = TRANSLATIONS.get("en", {})
     return english.get(key, key)
 
 
-#: Every module's words, by language -- kept apart from ``TRANSLATIONS``,
-#: which is the app's own table and never changes at run time.
-_MODULE_WORDS: dict[str, dict[str, str]] = {}
+#: Each module's own words, by module key then language -- kept apart from
+#: ``TRANSLATIONS``, which is the app's own table and never changes at run
+#: time, and apart from each other: one module's words never translate
+#: another's text.
+_MODULE_WORDS: dict[str, dict[str, dict[str, str]]] = {}
 
 
-def add_translations(table: dict[str, dict[str, str]]) -> None:
-    """Add a module's words (its ``i18n.json``, keyed like ``TRANSLATIONS``)
-    so :func:`tr` finds them.  English is not added: an English key is its
-    own text, so ``tr`` already returns it.  The app's table wins a clash,
-    and a language TRCC does not offer is skipped."""
-    added = 0
-    for lang, entries in table.items():
-        if lang == "en" or lang not in TRANSLATIONS:
-            continue
-        words = _MODULE_WORDS.setdefault(lang, {})
-        for key, text in entries.items():
-            if key not in words:
-                words[key] = text
-                added += 1
-    log.info("add_translations: %d entr(ies) across %d language(s)", added,
-             len(table))
+def add_translations(module: str, table: dict[str, dict[str, str]]) -> None:
+    """Module *module*'s words (its ``i18n.json``, keyed like
+    ``TRANSLATIONS``), in place of any it had -- so an update's words apply
+    at once.  English is not added: an English key is its own text.  A
+    language TRCC does not offer is skipped."""
+    words = {lang: dict(entries) for lang, entries in table.items()
+             if lang != "en" and lang in TRANSLATIONS and isinstance(entries, dict)}
+    _MODULE_WORDS[module] = words
+    log.info("add_translations: %s -- %d entr(ies) across %d language(s)", module,
+             sum(len(w) for w in words.values()), len(words))
+
+
+def drop_translations(module: str) -> None:
+    """Module *module*'s words gone -- it was removed, or is being re-read."""
+    gone = _MODULE_WORDS.pop(module, None)
+    log.info("drop_translations: %s (%s)", module, "dropped" if gone else "none")
 
 
 def supported_languages() -> list[str]:

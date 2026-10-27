@@ -31,7 +31,8 @@ class ModuleView:
 
     def set_language(self, lang: str) -> None:
         """The window's language -- at build time, and on every change.  The
-        view translates its own words (``trcc.core.i18n.tr``); its button the
+        view translates its own words -- ``tr(text, lang, module=KEY)``, its
+        module's ``i18n.json`` first, then TRCC's by reference; its button the
         window does."""
         log.debug("%s.set_language: %s", type(self).__name__, lang)
 

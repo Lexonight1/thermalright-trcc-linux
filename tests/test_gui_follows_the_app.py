@@ -58,8 +58,8 @@ _OTHER_KEY = "87ad:70db"
 
 def _translated(window: Any, lang: str) -> bool:
     """Every translatable label reads in *lang*."""
-    return all(label.text() == tr(key, lang)
-               for label, key in window._i18n_labels if key is not None)
+    return all(label.text() == tr(key, lang, module)
+               for label, key, module in window._i18n_labels if key is not None)
 
 
 def _local_names(window: Any) -> set[str]:
@@ -466,7 +466,7 @@ def test_the_game_mode_controls_sit_where_ucthemelocal_puts_them(
     assert rect(game.cpu_input) == (336, 29, 24, 16)
     assert game.cpu_input.maxLength() == 2
     assert any(label.text() == "CPU(%)>" and label.parent() is local
-               for label, _key in window._i18n_labels)
+               for label, _key, _module in window._i18n_labels)
     sent: list[Any] = []
     dispatch = window._app.dispatch
     monkeypatch.setattr(window._app, "dispatch",

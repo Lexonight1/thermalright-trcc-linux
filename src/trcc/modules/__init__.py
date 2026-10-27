@@ -60,12 +60,16 @@ def use_folder(folder: Path) -> None:
 
 def forget(key: str) -> None:
     """Drop module *key*'s imported code, so the next import reads its files
-    again -- after an update or a removal.  What a window already built from
-    the old code stays until the window is reopened."""
+    again -- after an update or a removal -- and its words with it.  What a
+    window already built from the old code stays until the window is
+    reopened."""
+    from ..core.i18n import drop_translations
+
     gone = [name for name in sys.modules
             if name == f"{__name__}.{key}" or name.startswith(f"{__name__}.{key}.")]
     for name in gone:
         del sys.modules[name]
+    drop_translations(key)
     log.info("modules.forget: %s -- %d imported part(s) dropped", key, len(gone))
 
 
@@ -107,7 +111,7 @@ def part(key: str, name: str) -> ModuleType | None:
 
 def load_core(key: str) -> ModuleType | None:
     """Module *key*'s Commands, Results and events, known to IPC, and its
-    words added to the translations -- the light half, for any process."""
+    own words (``tr(..., module=key)``) -- the light half, for any process."""
     from .. import ipc
     from ..core.i18n import add_translations
 
@@ -117,7 +121,7 @@ def load_core(key: str) -> ModuleType | None:
         ipc.register_types(core)
     table = folders().get(key, Path()) / TABLE
     if table.is_file():
-        add_translations(json.loads(table.read_text(encoding="utf-8")))
+        add_translations(key, json.loads(table.read_text(encoding="utf-8")))
     return core
 
 
