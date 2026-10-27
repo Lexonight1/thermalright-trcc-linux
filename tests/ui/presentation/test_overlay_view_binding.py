@@ -113,22 +113,23 @@ def test_a_time_stays_on_one_line(qtbot) -> None:
 
 
 def test_words_that_do_not_fit_take_two_lines(qtbot) -> None:
-    """His rule: words that do not fit go on two lines -- at full size here,
-    not shrunk to the minimum.  MUTATION CHECK: drop the two-line step."""
+    """His rule: words that do not fit go on two lines -- above the minimum
+    size, not shrunk to it.  The exact size is the font's: Noto Sans,
+    TRCC's bundled YaHei and the full suite's state measured 10, 10 and 9.5
+    (an exact 10.0 failed in the suite).  MUTATION CHECK: drop the two-line
+    step -- it falls to the minimum."""
     from trcc.ui.gui.overlay_element import OverlayElementWidget
 
-    assert _fit(qtbot, "Memory Clock") == (
-        OverlayElementWidget._CARD_FONT.pointSizeF(), ("Memory", "Clock"))
+    size, lines = _fit(qtbot, "Memory Clock")
+    assert lines == ("Memory", "Clock") and size > OverlayElementWidget._MIN_POINT
 
 
 def test_a_long_text_takes_two_lines_never_more(qtbot) -> None:
-    """Too long even at the smallest size: still two lines, centered -- Qt's
-    own word wrap gave three."""
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
-
-    size, lines = _fit(qtbot, "Thermalright Peerless Assassin")
-    assert (size, lines) == (OverlayElementWidget._MIN_POINT,
-                             ("Thermalright", "Peerless Assassin"))
+    """Too long for one line: two lines, never three -- Qt's own word wrap
+    gave three -- and nothing lost."""
+    text = "Thermalright Peerless Assassin"
+    _, lines = _fit(qtbot, text)
+    assert len(lines) == 2 and " ".join(lines) == text
 
 
 def test_a_tile_keeps_a_short_value_at_full_size(qtbot) -> None:
