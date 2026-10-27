@@ -68,3 +68,42 @@ def test_a_refill_that_changes_nothing_logs_nothing(qtbot, caplog) -> None:
     assert quiet == [], "an unchanged selection still logged"
     assert [r.getMessage() for r in loud] == [
         "OverlayElementWidget.set_selected: index=1 False → True"]
+
+
+def _fit(qtbot, text: str) -> float:
+    """The value row's point size for *text*, as a tile draws it."""
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    tile = OverlayElementWidget(0)
+    qtbot.addWidget(tile)
+    return tile._fit_value(text).pointSizeF()
+
+
+def test_a_tile_shrinks_a_long_date_instead_of_cutting_it(qtbot) -> None:
+    """"2026/10/27" was cut off at both ends of the 56 px row; the whole date
+    shows, smaller, and still centered.  MUTATION CHECK: drop the loop."""
+    from PySide6.QtGui import QFontMetrics
+
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    full = OverlayElementWidget._CARD_FONT.pointSizeF()
+    width = OverlayElementWidget._VALUE_ROW[2]
+    for date in ("2026/10/27", "27/10/2026"):
+        tile = OverlayElementWidget(0)
+        qtbot.addWidget(tile)
+        font = tile._fit_value(date)
+        assert font.pointSizeF() < full
+        assert QFontMetrics(font).horizontalAdvance(date) <= width
+
+
+def test_a_tile_keeps_a_short_value_at_full_size(qtbot) -> None:
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    assert _fit(qtbot, "10/27") == OverlayElementWidget._CARD_FONT.pointSizeF()
+
+
+def test_a_tile_stops_shrinking_at_its_smallest(qtbot) -> None:
+    from trcc.ui.gui.overlay_element import OverlayElementWidget
+
+    assert _fit(qtbot, "Thermalright Peerless Assassin 120 SE") == (
+        OverlayElementWidget._MIN_POINT)

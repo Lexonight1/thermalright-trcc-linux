@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QMenu, QWidget
 
 from ...core.logs import per_frame
@@ -123,6 +123,37 @@ class OverlayElementWidget(QWidget):
 
     # Card UI font matching Windows 微软雅黑 10.5pt
     _CARD_FONT = QFont('Microsoft YaHei', 10)
+    #: The value row -- a clock's or custom text: x, y, width, height.
+    _VALUE_ROW = (2, 21, 56, 18)
+    #: The smallest a value shrinks to; past it, it stays centered and its
+    #: ends go past the row equally.
+    _MIN_POINT = 6.0
+
+    def _fit_value(self, text: str) -> QFont:
+        """*text*'s font for the value row: the card font, shrunk until the
+        text fits -- a long date ("2026/10/27") was cut off at both ends.
+        Never cut with "…": the text stays whole and centered."""
+        w = self._VALUE_ROW[2]
+        font = QFont(self._CARD_FONT)
+        while (QFontMetrics(font).horizontalAdvance(text) > w
+               and font.pointSizeF() > self._MIN_POINT):
+            font.setPointSizeF(font.pointSizeF() - 0.5)
+        frame_log.debug("_fit_value: %r at %.1fpt", text, font.pointSizeF())
+        return font
+
+    def _draw_value(self, painter: QPainter, text: str) -> None:
+        """*text* centered left to right in the value row, fitted
+        (:meth:`_fit_value`).  The rect is widened to the text, so a text
+        wider than the row is never clipped to one side."""
+        x, y, w, h = self._VALUE_ROW
+        font = self._fit_value(text)
+        spill = max(0, QFontMetrics(font).horizontalAdvance(text) - w)
+        frame_log.debug("_draw_value: %r spill=%d", text, spill)
+        painter.save()
+        painter.setFont(font)
+        painter.drawText(x - spill // 2 - 1, y, w + spill + 2, h,
+                         Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -166,25 +197,23 @@ class OverlayElementWidget(QWidget):
                 # the text the panel draws, so the two never disagree
                 text = format_metric("time", 0, time_format=self.config.mode_sub)
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
+                self._draw_value(painter, text)
             elif mode == OverlayMode.DATE:
                 # Windows: label1+label3 hidden, only label2 visible
                 text = format_metric("date", 0, date_format=self.config.mode_sub)
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
+                self._draw_value(painter, text)
             elif mode == OverlayMode.WEEKDAY:
                 # Windows: label1+label3 hidden, only label2 visible
                 # Windows uses SUN=0..SAT=6 array indexed by DayOfWeek
                 from datetime import datetime
                 days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
-                                 days[datetime.now().weekday()])
+                self._draw_value(painter, days[datetime.now().weekday()])
             elif mode == OverlayMode.CUSTOM:
                 # Windows: label1+label3 hidden, label2.Text = myText
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
-                                 self.config.text)
+                self._draw_value(painter, self.config.text)
 
             # Selection overlay (Windows: OnPaint draws imageSelect)
             if self._selected and not self._select_pixmap.isNull():
