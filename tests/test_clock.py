@@ -28,9 +28,13 @@ def test_time_24h() -> None:
     assert format_clock(TIME_FORMATS[0], _NOW) == "14:58"
 
 
-def test_time_12h_is_the_csharps_hh_mm_tt() -> None:
-    """``hh:mm tt``: leading zero kept, AM/PM appended."""
-    assert format_clock(TIME_FORMATS[1], _NOW) == "02:58 PM"
+def test_time_12h_drops_the_leading_zero() -> None:
+    """The C#'s ``hh:mm tt`` pads the hour ("02:58 PM"); TRCC does not, by
+    his choice -- it looked unprofessional.  A two-digit hour keeps both.
+    MUTATION CHECK: drop the ``%I`` replacement in ``format_clock``."""
+    assert format_clock(TIME_FORMATS[1], _NOW) == "2:58 PM"
+    assert format_clock(TIME_FORMATS[1], datetime(2026, 5, 20, 10, 5)) == "10:05 AM"
+    assert format_clock(TIME_FORMATS[1], datetime(2026, 5, 20, 9, 7)) == "9:07 AM"
 
 
 def test_time_12h_midnight_renders_as_12() -> None:
@@ -50,7 +54,7 @@ def test_the_meridiem_ignores_the_process_locale(monkeypatch) -> None:
     except locale.Error:
         pytest.skip("de_DE.UTF-8 not installed")
     try:
-        assert format_clock(TIME_FORMATS[1], _NOW) == "02:58 PM"
+        assert format_clock(TIME_FORMATS[1], _NOW) == "2:58 PM"
     finally:
         locale.setlocale(locale.LC_TIME, "C")
 
@@ -68,7 +72,7 @@ def test_every_csharp_date_format(index: int, text: str) -> None:
 
 def test_a_time_element_draws_in_its_own_pattern() -> None:
     clock = _at(_NOW)
-    assert clock_text("time", TIME_FORMATS[1], clock) == "02:58 PM"
+    assert clock_text("time", TIME_FORMATS[1], clock) == "2:58 PM"
     assert clock_text("time", TIME_FORMATS[0], clock) == "14:58"
 
 

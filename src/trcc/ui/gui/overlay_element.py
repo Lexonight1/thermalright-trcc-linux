@@ -19,6 +19,7 @@ from ...core.models import (
     SUB_METRICS,
     OverlayElementConfig,
     OverlayMode,
+    format_metric,
 )
 from ..presentation.sensor_display import source_label
 from .assets import Assets
@@ -161,19 +162,14 @@ class OverlayElementWidget(QWidget):
                 painter.drawText(2, 41, 56, 18, Qt.AlignmentFlag.AlignCenter,
                                  self._live_unit or '--')
             elif mode == OverlayMode.TIME:
-                # Windows: label1+label3 hidden, only label2 visible
-                from datetime import datetime
-                if self.config.mode_sub == 1:
-                    text = datetime.now().strftime('%I:%M').lstrip('0')
-                else:
-                    text = datetime.now().strftime('%H:%M')
+                # Windows: label1+label3 hidden, only label2 visible --
+                # the text the panel draws, so the two never disagree
+                text = format_metric("time", 0, time_format=self.config.mode_sub)
                 painter.setPen(QColor(color_str))
                 painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
             elif mode == OverlayMode.DATE:
                 # Windows: label1+label3 hidden, only label2 visible
-                from datetime import datetime
-                fmts = {0: '%Y/%m/%d', 1: '%Y/%m/%d', 2: '%d/%m/%Y', 3: '%m/%d', 4: '%d/%m'}
-                text = datetime.now().strftime(fmts.get(self.config.mode_sub, '%Y/%m/%d'))
+                text = format_metric("date", 0, date_format=self.config.mode_sub)
                 painter.setPen(QColor(color_str))
                 painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
             elif mode == OverlayMode.WEEKDAY:

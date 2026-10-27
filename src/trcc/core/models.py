@@ -1877,7 +1877,7 @@ CATEGORY_COLORS: dict[int, str] = {
 # these are the ones the Windows app can set, and the index a DC file stores.
 TIME_FORMATS: dict[int, str] = {
     0: "%H:%M",     # 24-hour (14:58)
-    1: "%I:%M %p",  # 12-hour, C# "hh:mm tt" (02:58 PM)
+    1: "%I:%M %p",  # 12-hour, C# "hh:mm tt" -- drawn without its leading zero (2:58 PM)
     2: "%H:%M",     # 24-hour (same as 0 in the C#)
 }
 
@@ -1906,9 +1906,15 @@ def format_clock(pattern: str, moment: datetime) -> str:
 
     ``%p`` is always AM/PM: the C# formats with InvariantCulture, and
     ``strftime``'s ``%p`` follows the process locale, which can be empty.
+
+    ``%I`` is the 12-hour hour WITHOUT a leading zero -- "2:58 PM".  The C#'s
+    ``hh:mm tt`` pads it ("02:58 PM"); TRCC does not, by choice (2026-10-27).
+    It is drawn here rather than with ``%-I``, which Windows' ``strftime``
+    does not have, and the stored pattern stays ``%I`` so saved themes match.
     """
     meridiem = "AM" if moment.hour < 12 else "PM"
-    text = moment.strftime(pattern.replace("%p", meridiem))
+    hour = str(moment.hour % 12 or 12)
+    text = moment.strftime(pattern.replace("%p", meridiem).replace("%I", hour))
     frame_log.debug("format_clock: %r -> %r", pattern, text)
     return text
 

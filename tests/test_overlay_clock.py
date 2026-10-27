@@ -135,7 +135,7 @@ def test_a_12h_time_element_draws_the_csharps_hh_mm_tt() -> None:
         clock=_CLOCK,
     )
 
-    assert rec.drawn[0][2] == "02:58 PM"
+    assert rec.drawn[0][2] == "2:58 PM"
 
 
 def test_an_element_without_a_pattern_draws_the_default() -> None:
