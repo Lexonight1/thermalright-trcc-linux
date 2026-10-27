@@ -279,21 +279,25 @@ def _write_after_stale(dev, transport) -> tuple[bool, int]:
     return ok, transport.opens - opens
 
 
-def test_a_407_panel_that_answers_the_handshake_still_never_reopens(
+def test_a_407_panel_that_answers_the_handshake_may_reconnect(
     tmp_path, monkeypatch,
 ) -> None:
-    """#283: a 4.07 panel that answers the ordinary handshake (PM 52) was let
-    reopen after a failed send, and went black after every wake.  It keeps
-    its session like the Warframe SE: a failed write soft-fails, the
-    keepalive resends, nothing reopens.  MUTATION CHECK: drop
-    ``single_session`` from the 4.07 row -- the write reopens."""
+    """A 0416:5302 firmware-4.07 panel that is NOT the Warframe SE -- silent to
+    the probe, then a full PM 52 reply to the ordinary handshake -- reopens
+    after a failed send.  Measured on real glass: kept single-session it went
+    black after every wake, and a reopen brought it back (#228 run A/B,
+    2026-10-23; #283's macOS hotplug reopens, Oct 19 and 21).  Resending
+    stays: it blanks when frames stop.  MUTATION CHECK: drop the
+    ``single_session`` narrowing in ``HidLcd._do_handshake`` -- 0 reopens."""
     full = bytearray(512)
     full[0:4] = b"\xda\xdb\xdc\xdd"
     full[4], full[5], full[12] = 0, 52, 0x01
-    dev, transport = _quirked(tmp_path, monkeypatch, [b"", bytes(full)])
+    # probe: silent; handshake; then the reconnect's handshake
+    dev, transport = _quirked(tmp_path, monkeypatch,
+                              [b"", bytes(full), bytes(full)])
 
-    assert (dev.quirks.single_session, dev.needs_keepalive) == (True, True)
-    assert _write_after_stale(dev, transport) == (False, 0)
+    assert (dev.quirks.single_session, dev.needs_keepalive) == (False, True)
+    assert _write_after_stale(dev, transport) == (True, 1)
 
 
 def test_the_warframe_se_still_never_reconnects(tmp_path, monkeypatch) -> None:
@@ -304,6 +308,28 @@ def test_the_warframe_se_still_never_reconnects(tmp_path, monkeypatch) -> None:
 
     assert dev.quirks.single_session is True
     assert _write_after_stale(dev, transport) == (False, 0)
+
+
+def test_the_warframe_se_is_disconnected_once_it_leaves_the_bus(
+    tmp_path, monkeypatch,
+) -> None:
+    """#323: after a wake reset the panel, every write failed ENODEV for 84 s
+    and the App never noted it lost -- single-session soft-failed every
+    error.  No session survives the device leaving the bus, so it is
+    disconnected: the transport closed, nothing reopened, the App told.
+    MUTATION CHECK: drop the ``is_gone_error`` exit in
+    ``_send_with_recovery`` -- it soft-fails and the transport stays open."""
+    from trcc.core.errors import DeviceDisconnectedError, TransportError
+
+    dev, transport = _quirked(tmp_path, monkeypatch, [_short_reply()])
+    opens = transport.opens
+
+    def gone() -> bool:
+        raise TransportError("USB write failed") from OSError(19, "No such device")
+
+    with pytest.raises(DeviceDisconnectedError):
+        dev._send_with_recovery(gone)
+    assert (transport.is_open, transport.opens - opens) == (False, 0)
 
 
 # ── Isolation: a normal Type-2 device is completely unaffected ────────
@@ -337,7 +363,8 @@ def _quirk_app(tmp_path, scanned: bool):
 
     platform = MockPlatform(
         [{"type": "lcd", "name": "Frozen Warframe SE", "vid": "0416",
-          "pid": "5302", "pm": 58, "sub": 0, "bcd": "0x0407"}],
+          "pid": "5302", "pm": 58, "sub": 0, "bcd": "0x0407",
+          "reply": "da db dc dd 00 3a 00 00"}],
         tmp_path,
     )
     app = App(platform=platform)

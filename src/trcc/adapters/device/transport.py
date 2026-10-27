@@ -356,7 +356,7 @@ class PyUsbBulkTransport(BulkTransport):
             sent = self._device.write(ep, data, timeout=timeout_ms)
         except usb.core.USBError as e:
             log.warning("PyUsbBulkTransport.write: ep=0x%02x %d byte(s) failed "
-                        "after %dms: %s", ep, len(data), timeout_ms, e)
+                        "(timeout %d ms): %s", ep, len(data), timeout_ms, e)
             raise TransportError(f"USB write failed: {e}") from e
         frame_log.debug("PyUsbBulkTransport.write: ep=0x%02x %d/%d byte(s)",
                         ep, sent, len(data))
@@ -373,7 +373,7 @@ class PyUsbBulkTransport(BulkTransport):
             data = bytes(self._device.read(ep, length, timeout=timeout_ms))
         except usb.core.USBError as e:
             log.warning("PyUsbBulkTransport.read: ep=0x%02x want %d byte(s), "
-                        "failed after %dms: %s", ep, length, timeout_ms, e)
+                        "failed (timeout %d ms): %s", ep, length, timeout_ms, e)
             raise TransportError(f"USB read failed: {e}") from e
         frame_log.debug("PyUsbBulkTransport.read: ep=0x%02x %d/%d byte(s)",
                         ep, len(data), length)

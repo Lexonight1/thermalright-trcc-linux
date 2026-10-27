@@ -462,9 +462,12 @@ class DeviceQuirks:
     short_handshake: bool = False   # accept the firmware's short (<20-byte) reply
     portrait_native: bool = False   # device self-orients: 240×320 raster, no pre-rotate
     # Never reopen -- not after a failed send, not after a wake: a close→reopen
-    # wedges the panel until a replug (#228).  Every 4.07 panel keeps it: one
-    # allowed to reopen (#283's, which answers the ordinary handshake) went
-    # black after every wake, where keeping its session had brought it back.
+    # wedges the panel until a replug (#228).  A GUESS from the fingerprint
+    # until the panel answers: only the short volunteered reply keeps it.  A
+    # 4.07 panel that takes the ordinary handshake reopens fine on real glass
+    # (#228 Oct 23, #283 Oct 19/21), so HidLcd drops it there.  The one exit
+    # it keeps: a device that left the bus (ENODEV) is disconnected, as no
+    # session survives that.
     single_session: bool = False
 
 

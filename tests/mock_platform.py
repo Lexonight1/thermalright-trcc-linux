@@ -54,6 +54,7 @@ from trcc.core.models import (
     RamAccessStatus,
     RawFrame,
     Wire,
+    quirks_for,
 )
 from trcc.core.ports import (
     RamAccess,
@@ -475,13 +476,39 @@ class _AckingBulkTransport(FakeBulkTransport):
         return super().read(endpoint, length, timeout_ms)
 
 
+class _SilentUntilInit(_AckingBulkTransport):
+    """A firmware-4.07 ``0416:5302`` panel that is NOT the Warframe SE.
+
+    It says nothing until the init packet, then gives the ordinary full reply
+    -- so the skip-init probe hears silence, as the real ones do: the #244
+    Trofeo Vision and #283's PM 52 panel both logged "no streaming handshake
+    reply" before answering the ordinary handshake.  Without this every 4.07
+    spec answered the probe, and the mock could only ever be the SE.
+    """
+
+    def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
+        if not self.writes:
+            log.debug("mock: silent before the init packet (ep=0x%02x)", endpoint)
+            self.reads.append((endpoint, length))
+            return b""
+        return super().read(endpoint, length, timeout_ms)
+
+
 def scripted_bulk_transport(
     by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
     override: ReplyOverride | None = None,
 ) -> FakeBulkTransport:
-    """Fresh bulk transport (every non-SCSI wire: BULK/HID/LY/LED)."""
-    transport = _AckingBulkTransport()
-    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid, override))
+    """Fresh bulk transport (every non-SCSI wire: BULK/HID/LY/LED).
+
+    On a skip-init fingerprint only the SHORT reply is volunteered -- that is
+    the streaming firmware; a full reply waits for the init packet.
+    """
+    reply = scripted_handshake_bytes(by_key, vid, pid, override)
+    spec = by_key.get((vid, pid))
+    probed = spec is not None and quirks_for(vid, pid, spec.bcd).skip_init
+    transport = (_SilentUntilInit() if probed and len(reply) >= 20
+                 else _AckingBulkTransport())
+    transport.read_script.append(reply)
     return transport
 
 

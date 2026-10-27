@@ -611,7 +611,7 @@ def test_a_twin_resolves_its_quirks_from_its_own_scan_entry(tmp_path) -> None:
     from .mock_platform import MockPlatform
 
     spec = {"type": "lcd", "name": "Warframe SE", "vid": "0416", "pid": "5302",
-            "pm": 58, "bcd": "0407"}
+            "pm": 58, "bcd": "0407", "reply": "da db dc dd 00 3a 00 00"}
     app = App(platform=MockPlatform([dict(spec), dict(spec)], tmp_path),
               send_scheduler=SyncSendScheduler(),
               renderer=_CliRenderer())

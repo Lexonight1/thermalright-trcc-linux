@@ -108,7 +108,8 @@ def test_the_dev_mock_scripts_the_hid_report_transport(
     monkeypatch.setattr(transport_mod, "HidApiTransport", real_hidapi)
     platform = _build_dev_platform([{
         "type": "lcd", "name": "warframe se", "vid": "0416", "pid": "5302",
-        "pm": 58, "sub": 0, "bcd": "0x0407"}])
+        "pm": 58, "sub": 0, "bcd": "0x0407",
+        "reply": "da db dc dd 00 3a 00 00"}])
 
     transport = platform.open_transport(Wire.HID, 0x0416, 0x5302, None, "",
                                         hid_reports=True)

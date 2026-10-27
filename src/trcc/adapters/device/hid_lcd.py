@@ -206,6 +206,16 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             raise
         if probed:
             memory.remember(silent=True)
+        if self._quirks.single_session:
+            # It took the init packet and answered, so it is not the firmware a
+            # reopen wedges (#228's short-reply Warframe SE).  Measured on real
+            # glass: a 4.07 PM 52 panel kept "single session" went black after
+            # every wake, and a reopen brought it back -- on Linux (#228, Oct 23)
+            # and through macOS hotplug (#283, Oct 19 and 21).
+            log.info("HidLcd %s: answered the ordinary handshake -- it may "
+                     "reconnect", self.info.key)
+            self.set_quirks(dataclasses.replace(self._quirks,
+                                                single_session=False))
         return result
 
     def _validate_and_parse(self, resp: bytes) -> HandshakeResult:

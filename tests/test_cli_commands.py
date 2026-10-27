@@ -1718,7 +1718,8 @@ def _cli_on(tmp_path, cli_runner, spec: dict, args: list[str]) -> str:
 
 
 _WARFRAME_SE = {"type": "lcd", "name": "Warframe SE", "vid": "0416",
-                "pid": "5302", "pm": 58, "bcd": "0407"}
+                "pid": "5302", "pm": 58, "bcd": "0407",
+                "reply": "da db dc dd 00 3a 00 00"}
 
 
 def test_a_one_shot_on_a_blanking_panel_says_how_to_keep_it_lit(

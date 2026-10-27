@@ -101,6 +101,18 @@ def is_disconnect_error(exc: BaseException) -> bool:
     return False
 
 
+def is_gone_error(exc: BaseException) -> bool:
+    """True if *exc* says the USB device itself left the bus (ENODEV).
+
+    Narrower than :func:`is_disconnect_error`: EIO, EBADF and the rest can
+    come from a handle the device still answers on.  ENODEV cannot -- the
+    device object is gone, and no session survives it (#323's wake).
+    """
+    gone = _has_usb_errno(exc, _ERRNO_ENODEV)
+    log.debug("is_gone_error: %s -> %s", type(exc).__name__, gone)
+    return gone
+
+
 class RecoveryTracker:
     """Per-device consecutive-disconnect counter + rate-limited logger.
 

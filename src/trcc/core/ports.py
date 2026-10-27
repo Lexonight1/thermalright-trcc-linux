@@ -495,6 +495,14 @@ class Device(ABC, Generic[T]):
                     # original error goes to the tracker below.
                     log.info("%s: the reconnect left it closed — no retry", self.key)
                 if self._quirks.single_session:
+                    from .device_recovery import is_gone_error
+                    if is_gone_error(e):
+                        # The device left the bus -- a wake that reset it
+                        # (#323).  No session survives that to keep, and
+                        # closing a handle to nothing wedges nothing: it is
+                        # disconnected, like a replug, and the App watches
+                        # for its return.
+                        self._give_up("left the USB bus (no such device)", e)
                     # Single-session firmware: a close→reopen wedges the panel
                     # until a physical replug (#228), so NEVER reconnect — soft-
                     # fail and let the next keepalive tick resend the frame.
@@ -503,14 +511,9 @@ class Device(ABC, Generic[T]):
                     return False
                 verdict = self._recovery.note_error(e)
                 if verdict == "threshold":
-                    try:
-                        self._transport.close()
-                    except OSError as close_err:
-                        log.debug("%s: close raised: %s", self.key, close_err)
-                    raise DeviceDisconnectedError(
-                        f"{self.key} disconnected after "
-                        f"{self._recovery.consecutive_failures} consecutive failures",
-                    ) from e
+                    self._give_up(
+                        f"disconnected after {self._recovery.consecutive_failures} "
+                        "consecutive failures", e)
                 return False
             else:
                 if ok:
@@ -520,6 +523,18 @@ class Device(ABC, Generic[T]):
                                  self.key, recovered)
                 return ok
         return False  # pragma: no cover — loop always returns or raises
+
+    def _give_up(self, reason: str, cause: BaseException) -> NoReturn:
+        """Close the dead transport and raise that the device is gone -- the
+        one exit for a recovery threshold and for a device that left the bus.
+        A closed transport is what tells the App to mark it lost and watch
+        for its return."""
+        log.warning("%s: %s -- closing the transport", self.key, reason)
+        try:
+            self._transport.close()
+        except OSError as close_err:
+            log.debug("%s: close raised: %s", self.key, close_err)
+        raise DeviceDisconnectedError(f"{self.key} {reason}") from cause
 
 
 # =========================================================================

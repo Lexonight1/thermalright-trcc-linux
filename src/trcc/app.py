@@ -928,7 +928,9 @@ class App(CommandBus, ModuleServices):
         displays and the LCD panels recover without a manual restart (#189).
 
         A single-session panel (``DeviceQuirks.single_session``) is left alone:
-        its session outlives the sleep, and a reopen is what wedges it (#283).
+        a reopen wedges that firmware until a replug (#228).  Only the Warframe
+        SE keeps it -- a 4.07 panel that answers the ordinary handshake drops
+        it, and is reopened here like any other (#228 run A/B, 2026-10-23).
 
         The reconnect is :meth:`connect_unit`, the replug's own path, so a
         panel whose node is late after the wake is retried by the reconnect
@@ -943,9 +945,11 @@ class App(CommandBus, ModuleServices):
             with self._connect_lock:
                 old = self.devices.get(key)
                 if old is not None and old.quirks.single_session:
-                    # A reopen wedges it (#228) and blacked #283's panel after
-                    # every wake.  Its session survives the sleep: the sender
-                    # keeps streaming and the panel comes back by itself.
+                    # A reopen wedges it until a replug (#228).  If the wake
+                    # reset it off the bus, its next write fails ENODEV and
+                    # the send path disconnects it, so the App watches for its
+                    # return (#323).  Whether a fresh open then works on this
+                    # firmware is unmeasured.
                     log.info("_on_system_resumed: %s keeps its session -- a "
                              "reopen wedges this firmware", key)
                     continue

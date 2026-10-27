@@ -103,11 +103,10 @@ def test_resume_actually_REBUILDS_the_device(fake_platform: FakePlatform) -> Non
 def test_a_single_session_panel_keeps_its_session_through_a_wake(
     fake_platform: FakePlatform,
 ) -> None:
-    """#283: a 4.07 panel came back after a wake while nothing reopened it,
-    and went black once the wake reopened it -- a reopen wedges that firmware
-    (#228).  Its device, transport and sender stay exactly as they were.
-    MUTATION CHECK: drop the single-session ``continue`` in
-    ``_on_system_resumed`` -- the device is rebuilt."""
+    """A reopen wedges the Warframe SE's firmware until a replug (#228), so
+    a single-session panel's device, transport and sender stay exactly as
+    they were through a wake.  MUTATION CHECK: drop the single-session
+    ``continue`` in ``_on_system_resumed`` -- the device is rebuilt."""
     app = _app(fake_platform, pm=1)
     before = app.get(_LED_KEY)
     before.set_quirks(DeviceQuirks(single_session=True))
@@ -117,3 +116,87 @@ def test_a_single_session_panel_keeps_its_session_through_a_wake(
 
     assert (app.get(_LED_KEY) is before, before.is_connected,
             app.senders.get(_LED_KEY) is sender) == (True, True, True)
+
+
+# ── Firmware 4.07: only the panel that volunteers the short reply keeps its
+#    session (#228, #283, #323) ─────────────────────────────────────────────
+
+_407_KEY = "0416:5302"
+#: happyendingll's panel: silent to the probe, PM 52 to the ordinary handshake.
+_PM52_407 = {"type": "lcd", "name": "4.07 PM 52", "vid": "0416", "pid": "5302",
+             "pm": 52, "bcd": "0407"}
+#: The Frozen Warframe SE: volunteers its 8-byte reply before any init packet.
+_WARFRAME_SE = {"type": "lcd", "name": "Warframe SE", "vid": "0416",
+                "pid": "5302", "pm": 58, "bcd": "0407",
+                "reply": "da db dc dd 00 3a 00 00"}
+
+
+def _app_on(tmp_path, monkeypatch, spec: dict) -> App:
+    from trcc.adapters.infra.send_scheduler import SyncSendScheduler
+    from trcc.core.commands import ConnectDevice
+
+    from .mock_platform import MockPlatform
+
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep",
+                        lambda *_: None)
+    app = App(platform=MockPlatform([spec], tmp_path),
+              send_scheduler=SyncSendScheduler(), renderer=_CliRenderer())
+    assert app.dispatch(ConnectDevice(key=_407_KEY)).ok
+    return app
+
+
+def test_a_407_panel_that_answers_the_handshake_is_reopened_on_a_wake(
+    tmp_path, monkeypatch,
+) -> None:
+    """Measured on real glass (#228 run A/B, 2026-10-23): this panel kept its
+    session and stayed black after the wake; reopened, it showed the theme.
+    MUTATION CHECK: drop the ``single_session`` narrowing in
+    ``HidLcd._do_handshake`` -- the wake leaves the stale device in place."""
+    app = _app_on(tmp_path, monkeypatch, _PM52_407)
+    before = app.get(_407_KEY)
+    assert before.quirks.single_session is False
+
+    app.events.publish(SystemResumed())
+
+    after = app.get(_407_KEY)
+    assert (after is not before, before.is_connected, after.is_connected,
+            app.senders[_407_KEY].device is after) == (True, False, True, True)
+
+
+def test_the_warframe_se_keeps_its_session_on_a_wake(tmp_path, monkeypatch) -> None:
+    app = _app_on(tmp_path, monkeypatch, _WARFRAME_SE)
+    before = app.get(_407_KEY)
+    assert before.quirks.single_session is True
+
+    app.events.publish(SystemResumed())
+
+    assert app.get(_407_KEY) is before and before.is_connected
+
+
+def test_a_warframe_se_that_left_the_bus_is_announced_lost(
+    tmp_path, monkeypatch,
+) -> None:
+    """#323's log: ENODEV on every write for 84 s, and ``note_lost`` answered
+    ``attached=True lost=False`` -- the App never told anyone or watched for
+    the panel's return.  MUTATION CHECK: drop the ``is_gone_error`` exit in
+    ``_send_with_recovery`` -- nothing is announced."""
+    import errno
+
+    import pytest
+
+    from trcc.core.errors import DeviceDisconnectedError
+    from trcc.core.events import DeviceDisconnected, Event
+
+    app = _app_on(tmp_path, monkeypatch, _WARFRAME_SE)
+    seen: list[Event] = []
+    app.events.subscribe(DeviceDisconnected, seen.append)
+
+    def gone(*_args: object, **_kwargs: object) -> int:
+        raise OSError(errno.ENODEV, "No such device")
+
+    app.get(_407_KEY)._transport.write = gone
+    with pytest.raises(DeviceDisconnectedError):
+        app.send(_407_KEY, b"\x00" * 153600)
+
+    assert seen == [DeviceDisconnected(key=_407_KEY)]
+    assert not app.get(_407_KEY).is_connected
