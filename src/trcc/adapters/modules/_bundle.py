@@ -1,8 +1,11 @@
-"""A module's release bundle, read and unpacked -- every entry checked first.
+"""A module's release bundle: packed from a folder, read, and unpacked --
+every entry checked first.
 
-A bundle is the zip ``dev/tools/module_bundle.py`` packs: one folder named for
-the module's key, holding only a module's fixed names (``trcc.modules``), each
-entry STORED.  Anything else is refused before a byte is written:
+A bundle is the zip :func:`pack` makes -- for an author's release
+(``dev/tools/module_bundle.py``), for the review that packs the reviewed commit
+again, and for developer mode's install from a folder: one folder named for the
+module's key, holding only a module's fixed names (``trcc.modules``), each entry
+STORED.  Anything else is refused before a byte is written:
 
 * a name outside ``<key>/``, absolute, with ``..``, a backslash or a drive;
 * a symbolic link -- it could point anywhere on the user's disk;
@@ -13,6 +16,12 @@ entry STORED.  Anything else is refused before a byte is written:
 
 The sha256 the signed index lists is checked before this runs
 (``ModuleTrust.check_bundle``); this guards the user's disk even so.
+
+**Packing is deterministic**, the same bytes on every machine, because the
+review compares bytes: entries sorted, each under ``<key>/``, dated 1980-01-01,
+mode 0644, STORED -- two zlibs need not compress alike (Fedora's zlib-ng does
+not match stock zlib).  Only a module's fixed names go in, never the repo
+around them; a symbolic link is refused, never followed.
 """
 from __future__ import annotations
 
@@ -31,9 +40,67 @@ log = logging.getLogger(__name__)
 
 _MAX_FILES = 4000
 
+#: 1980-01-01, the earliest time a zip can hold.
+_EPOCH = (1980, 1, 1, 0, 0, 0)
+
 
 class BundleRefused(TrccError):
-    """A bundle that will not be unpacked, and why."""
+    """A bundle that will not be made or unpacked, and why."""
+
+
+def module_key(folder: Path) -> str:
+    """The key *folder*'s ``module.json`` names."""
+    log.debug("module_key: %s", folder)
+    try:
+        manifest = json.loads((folder / module_folders.MANIFEST).read_text(encoding="utf-8"))
+        return str(manifest["key"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise BundleRefused(f"{folder}: no readable module.json key ({e})") from e
+
+
+def members(folder: Path) -> list[Path]:
+    """Every file of *folder* that goes in its bundle, relative, sorted --
+    refusing a symbolic link anywhere in it."""
+    log.debug("members: %s", folder)
+    found: list[Path] = []
+    for top in sorted(folder.iterdir()):
+        if top.is_symlink():
+            raise BundleRefused(f"{top.name}: a symbolic link")
+        if top.is_file() and top.name in module_folders.BUNDLE_FILES:
+            found.append(Path(top.name))
+        elif top.is_dir() and top.name in module_folders.BUNDLE_DIRS:
+            for path in sorted(top.rglob("*")):
+                if path.is_symlink():
+                    raise BundleRefused(f"{path.relative_to(folder)}: a symbolic link")
+                if path.is_file() and "__pycache__" not in path.parts:
+                    found.append(path.relative_to(folder))
+    return found
+
+
+def left_out(folder: Path) -> list[str]:
+    """What sits at the top of *folder* but stays out of its bundle."""
+    log.debug("left_out: %s", folder)
+    return sorted(p.name for p in folder.iterdir()
+                  if not (p.is_file() and p.name in module_folders.BUNDLE_FILES)
+                  and not (p.is_dir() and p.name in module_folders.BUNDLE_DIRS)
+                  and p.name != "__pycache__")
+
+
+def pack(folder: Path) -> bytes:
+    """*folder*'s bundle: its fixed names under ``<key>/``, deterministic."""
+    key = module_key(folder)
+    files = members(folder)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as bundle:
+        for rel in files:
+            info = zipfile.ZipInfo(f"{key}/{rel.as_posix()}", date_time=_EPOCH)
+            info.compress_type = zipfile.ZIP_STORED
+            info.external_attr = 0o644 << 16
+            info.create_system = 3          # Unix, so the mode means the same everywhere
+            bundle.writestr(info, (folder / rel).read_bytes())
+    data = buffer.getvalue()
+    log.info("pack: %s from %s, %d file(s), %d bytes", key, folder, len(files), len(data))
+    return data
 
 
 def _entries(bundle: zipfile.ZipFile) -> tuple[str, list[zipfile.ZipInfo]]:

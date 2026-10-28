@@ -122,7 +122,7 @@ def test_a_symbolic_link_is_refused_never_followed(author: Path, where: str) -> 
     link = author / where
     link.unlink(missing_ok=True)
     link.symlink_to(Path.home() / ".ssh" / "id_ed25519")
-    with pytest.raises(module_bundle.BundleError) as e:
+    with pytest.raises(module_bundle.BundleRefused) as e:
         module_bundle.pack(author)
     assert str(e.value) == f"{where}: a symbolic link"
 

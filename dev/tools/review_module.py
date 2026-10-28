@@ -724,7 +724,7 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
     try:
         rebuilt = module_bundle.pack(source)
         key = module_bundle.module_key(source)
-    except module_bundle.BundleError as e:
+    except module_bundle.BundleRefused as e:
         gate = Gate("Layout")
         gate.fail("bundle", str(e))
         return Review("?", "?", commit, [gate], "", "")
