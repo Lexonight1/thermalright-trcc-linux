@@ -25,10 +25,10 @@ import numpy as np
 
 from trcc.core.logs import per_frame
 from trcc.core.models import SOUND_RATE
+from trcc.core.spectrum import Spectrum
 
 from ..core.models import VisualAdjustment, VisualInfo
 from ._painted import PaintedVisual
-from ._spectrum import Spectrum
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)

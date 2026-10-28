@@ -684,7 +684,7 @@ trcc display overlay-add [OPTIONS] KEY TYPE_
 | Argument | Description |
 |---|---|
 | `KEY` | Device key, e.g. 0402:3922 |
-| `TYPE_` | 'text' / 'metric' / 'clock' |
+| `TYPE_` | 'text' / 'metric' / 'clock' / 'spectrum' |
 
 | Option | Description |
 |---|---|

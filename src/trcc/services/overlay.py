@@ -385,6 +385,10 @@ class OverlayService:
             )
         elif kind == "clock":
             self._draw_clock(surface, element, clock, source=source)
+        elif kind == "spectrum":
+            # Live, so it is not part of the cached overlay: the display
+            # service paints it over the finished composite every frame.
+            pass
         else:
             log.warning("draw_element %s: unknown type %r — skipping (element=%r)",
                         source, kind, element)

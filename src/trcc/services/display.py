@@ -20,7 +20,8 @@ Device.send.  Order mirrors the C# ground truth
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -143,6 +144,13 @@ class SceneCache:
 # =========================================================================
 
 
+def _hex_rgba(color: str, alpha: int) -> tuple[int, int, int, int]:
+    """``#rrggbb`` as an RGBA tuple."""
+    frame_log.debug("_hex_rgba: %s", color)
+    c = color.lstrip("#")
+    return int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16), alpha
+
+
 class DisplayService:
     """Build device-ready frame bytes, caching the expensive layers."""
 
@@ -155,8 +163,11 @@ class DisplayService:
         media: MediaService,
         backgrounds: BackgroundSlot,
         paths: Paths,
+        spectrum: Callable[[], tuple[Any, Any] | None] | None = None,
     ) -> None:
         log.debug("__init__: renderer=%s themes=%s", renderer, themes)
+        # Newest (heights, peaks) of the sound, for ``spectrum`` elements.
+        self._spectrum = spectrum
         self._r = renderer
         self._themes = themes
         self._overlay = overlay
@@ -338,8 +349,10 @@ class DisplayService:
             resolved_profile.rotate,
             id(resolved_profile),
         )
+        spectrum_elements = self.spectrum_elements(info.key)
         if (
-            scene is not None
+            not spectrum_elements
+            and scene is not None
             and scene.frame_key == frame_key
             and scene.frame_bytes is not None
         ):
@@ -354,6 +367,10 @@ class DisplayService:
 
         # Compose: bg+mask below, overlay on top
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        # Live equaliser bars go over the finished composite, never into the
+        # cached overlay: they change every frame.
+        if spectrum_elements:
+            surface = self._draw_spectrum_elements(surface, spectrum_elements)
 
         # Split-mode overlay (Dynamic Island) — 1600x720 widescreen only.
         # Picks an asset by (split_mode, rotation, SUB byte), as the C# does.
@@ -763,6 +780,49 @@ class DisplayService:
         surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
+
+    def spectrum_elements(self, key: str) -> list[dict[str, Any]]:
+        """The ``spectrum`` elements in *key*'s working layout, as dicts."""
+        elements = self._settings.for_device(key).user_overlay_elements or ()
+        frame_log.debug("spectrum_elements: %s has %d element(s)", key,
+                        len(elements))
+        return [e.to_dict() for e in elements
+                if e.type == "spectrum" and e.width > 0 and e.height > 0]
+
+    def _draw_spectrum_elements(self, surface: Any,
+                                elements: list[dict[str, Any]]) -> Any:
+        """Paint each LED-style equaliser: lit cells up to the band's height,
+        a dim cap where its peak hangs.  Nothing is drawn while no sound."""
+        heard = self._spectrum() if self._spectrum is not None else None
+        _now = time.monotonic()
+        if _now - getattr(self, "_spectrum_log_t", 0) > 1.0:
+            self._spectrum_log_t = _now
+            log.debug("spectrum draw: %d element(s), heard=%s max=%s", len(elements),
+                     heard is not None,
+                     None if heard is None else round(float(max(heard[0])), 2))
+        for el in elements:
+            bars, cell, gap = max(1, el["bars"]), max(1, el["cell"]), el["gap"]
+            x0, y0, w, h = el["x"], el["y"], el["width"], el["height"]
+            bar_w = max(1, (w - gap * (bars - 1)) // bars)
+            rows = max(1, h // cell)
+            lit = _hex_rgba(el["color"], 255)
+            cap = _hex_rgba(el["color"], 150)
+            heights, peaks = heard if heard is not None else ([0.0] * bars,) * 2
+            if len(heights) != bars:
+                continue
+            for i in range(bars):
+                x = x0 + i * (bar_w + gap)
+                on = round(float(heights[i]) * rows)
+                for r in range(on):
+                    y = y0 + h - (r + 1) * cell
+                    surface = self._r.fill_rect(
+                        surface, x, y, bar_w, max(1, cell - 1), lit)
+                top = min(rows - 1, round(float(peaks[i]) * rows))
+                if top > on:
+                    y = y0 + h - (top + 1) * cell
+                    surface = self._r.fill_rect(
+                        surface, x, y, bar_w, max(1, cell - 1), cap)
+        return surface
 
     def _scene_overlay(
         self,

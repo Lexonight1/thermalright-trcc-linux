@@ -117,6 +117,7 @@ from .services.quickstart import QuickstartService
 from .services.reconnect_watcher import ReconnectWatcher
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
+from .services.spectrum_feed import SpectrumFeed
 from .services.update_watch import UpdateWatch
 from .services.video_loop import VideoLoop
 
@@ -356,6 +357,8 @@ class App(CommandBus, ModuleServices):
         # The one video ticker (#249) — see services/video_loop.py.
         self.video_loop = VideoLoop(self)
         self._renderer = renderer
+        # What a theme's spectrum elements hear; opened only while one draws.
+        self.spectrum_feed = SpectrumFeed(self.sound_input)
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
         if renderer is not None:
@@ -1186,6 +1189,7 @@ class App(CommandBus, ModuleServices):
             media=self.media,
             backgrounds=self.backgrounds,
             paths=self.platform.paths(),
+            spectrum=self.spectrum_feed.latest,
         )
 
     @property
@@ -1517,6 +1521,7 @@ class App(CommandBus, ModuleServices):
         """
         log.info("close: devices=%d", len(self.devices))
         self.update_watch.stop()
+        self.spectrum_feed.stop()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
         self.led_stream.stop()

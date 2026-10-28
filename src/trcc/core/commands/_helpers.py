@@ -806,6 +806,14 @@ def _game_row(app: App) -> SensorBinding | None:
     return row
 
 
+def _drive_spectrum(app: App, key: str) -> None:
+    """Keep *key*'s spectrum driver running; it idles while the layout has none."""
+    from ...services.spectrum_driver import SpectrumDriver
+
+    log.info("_drive_spectrum: %s", key)
+    app.add_task(SpectrumDriver(app, key))
+
+
 def _drive_slideshow(app: App, key: str) -> None:
     """Rotate *key*'s slideshow while it is switched on, and only then.
 

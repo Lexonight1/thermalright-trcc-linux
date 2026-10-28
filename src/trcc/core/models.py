@@ -888,7 +888,7 @@ RENDER_CACHE_MAX_BYTES = 128 * 1024 * 1024
 # =========================================================================
 
 
-OverlayElementType = Literal["text", "metric", "clock"]
+OverlayElementType = Literal["text", "metric", "clock", "spectrum"]
 ClockSource = Literal["time", "weekday", "date"]
 
 # The element field vocabulary is restated wherever an overlay element
@@ -984,6 +984,21 @@ class OverlayElement:
     show_unit: bool = True
     # type == "clock"
     source: ClockSource = OVERLAY_DEFAULT_CLOCK_SOURCE
+    # type == "spectrum" -- a live LED-style equaliser in the rectangle
+    # (x, y, width, height): *bars* bands of stacked cells *cell* px tall,
+    # *gap* px apart, with a hanging peak cap.  ``color`` is the lit cell.
+    width: int = 0
+    height: int = 0
+    bars: int = 18
+    cell: int = 6
+    gap: int = 2
+    # mode "audio" listens to the computer's sound; "simulated" dances while
+    # a player plays: an LMS player (lms_url + lms_player) or an MPRIS one
+    # whose name contains a word of *mpris* (comma-separated, any when empty).
+    mode: str = "audio"
+    lms_url: str = ""
+    lms_player: str = ""
+    mpris: str = "strawberry"
 
     def to_dict(self) -> dict:
         """Flat dict — the shape ``OverlayService.render`` consumes."""
@@ -1009,6 +1024,11 @@ class OverlayElement:
             # "%m/%d"); render honours it.  The metric default "{value}"
             # is meaningless for a clock and ignored by the renderer.
             out["format"] = self.format
+        elif self.type == "spectrum":
+            out["width"], out["height"] = self.width, self.height
+            out["bars"], out["cell"], out["gap"] = self.bars, self.cell, self.gap
+            out["mode"], out["mpris"] = self.mode, self.mpris
+            out["lms_url"], out["lms_player"] = self.lms_url, self.lms_player
         return out
 
     @classmethod
@@ -1039,6 +1059,15 @@ class OverlayElement:
             format=str(data.get("format", "{value}")),
             show_unit=bool(data.get("show_unit", True)),
             source=data.get("source", "time"),
+            width=int(data.get("width", 0)),
+            height=int(data.get("height", 0)),
+            bars=int(data.get("bars", 18)),
+            cell=int(data.get("cell", 6)),
+            gap=int(data.get("gap", 2)),
+            mode=str(data.get("mode", "audio")),
+            lms_url=str(data.get("lms_url", "")),
+            lms_player=str(data.get("lms_player", "")),
+            mpris=str(data.get("mpris", "strawberry")),
         )
 
 
