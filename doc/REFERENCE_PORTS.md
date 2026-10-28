@@ -10,7 +10,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
-| [`BaseSendTask`](#basesendtask) | 1 | 4 | 6 |
+| [`BaseSendTask`](#basesendtask) | 1 | 4 | 7 |
 | [`Command`](#command) | 1 | 1 | 168 |
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
@@ -75,7 +75,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 13 | 5 |
-| [`SendTask`](#sendtask) | 4 | 1 | 7 |
+| [`SendTask`](#sendtask) | 4 | 1 | 8 |
 | [`SettingsPort`](#settingsport) | 4 | 0 | 1 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
@@ -110,7 +110,7 @@ _run(now: 'float') -> float
 
 **You inherit (4):** `key` · `run_once` · `wait` · `wake`
 
-**Implementations (6):** `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `StreamDriver`
+**Implementations (7):** `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `SpectrumDriver` · `StreamDriver`
 
 ## Command
 
@@ -1164,7 +1164,7 @@ wake() -> None
 
 **You inherit (1):** `runs_on_caller`
 
-**Implementations (7):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `StreamDriver`
+**Implementations (8):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `SpectrumDriver` · `StreamDriver`
 
 ## SettingsPort
 

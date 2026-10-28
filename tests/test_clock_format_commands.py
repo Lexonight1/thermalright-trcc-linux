@@ -162,5 +162,5 @@ def test_an_unknown_element_type_is_refused_and_nothing_is_saved(app: App) -> No
     added = app.dispatch(AddOverlayElement(key=_A, element_id="box", type="box"))
 
     assert (added.ok, added.message) == (
-        False, "Invalid element type 'box' (expected one of text, metric, clock)")
+        False, "Invalid element type 'box' (expected one of text, metric, clock, spectrum)")
     assert _formats(app, _A) == before

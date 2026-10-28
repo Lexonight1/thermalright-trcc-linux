@@ -64,6 +64,7 @@ from ._base import Command, Query
 from ._helpers import (
     _drive_game_mode,
     _drive_slideshow,
+    _drive_spectrum,
     _invalidate_scene,
     _live_sensors,
     _publish_if_disconnect,
@@ -2047,6 +2048,7 @@ def show_orientation_theme(app: App, key: str, degrees: int | None = None) -> No
         app.settings.mark_entered(key)
     _drive_slideshow(app, key)
     _drive_game_mode(app, key)
+    _drive_spectrum(app, key)
 
 
 @dataclass(frozen=True, slots=True)

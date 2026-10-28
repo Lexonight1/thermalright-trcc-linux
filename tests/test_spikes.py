@@ -13,8 +13,8 @@ import pytest
 from PySide6.QtGui import QImage
 
 from trcc.core.models import SOUND_RATE
+from trcc.core.spectrum import FALL, HOLD, Spectrum
 from trcc.modules.visualizer.adapters._base import VISUALS, BaseVisual
-from trcc.modules.visualizer.adapters._spectrum import FALL, HOLD, Spectrum
 from trcc.modules.visualizer.adapters.spikes import SpikeCircle
 from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 
