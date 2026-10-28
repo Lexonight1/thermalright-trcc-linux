@@ -221,9 +221,23 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool,
             replay, check, hardware)
 
 
-def main() -> None:
+def main(ui: str = "gui") -> None:
+    """Boot *ui* (``gui`` or ``qtgui``) on the mock fleet the flags name.
+
+    One launcher for both windows, so every fleet flag -- ``device=``,
+    ``--report``/``--issue``/``--replay``, ``--hardware``, ``--check``, ``-v``
+    -- means the same in each.  ``dev/mock.py --ui qtgui`` had its own copy
+    that knew only ``--report``.  Two things stay gui-only because they belong
+    to the gui's window: ``--decorated`` and the dev console.
+    """
     (decorated, verbosity, report_path, all_devices, device_spec,
      replay, check, hardware) = _parse_args()
+    log.info("main: ui=%s report=%s all=%s device=%s replay=%s check=%s "
+             "hardware=%s", ui, report_path, all_devices, device_spec,
+             replay, check, hardware)
+    if decorated and ui != "gui":
+        log.warning("main: --decorated is the gui window's own flag -- "
+                    "ignored for %s", ui)
 
     # Bootstrap: dev paths + rotating log at dev/.trcc/trcc.log.  This is the
     # ONLY thing the mock does differently — substitute the dev platform and
@@ -241,12 +255,10 @@ def main() -> None:
     print(f"Devices: {DEVICES_JSON}")
     print("Close window or Ctrl+C to quit.\n")
 
-    # Run the SAME composition root the shipping GUI runs, with the dev seams
+    # Run the SAME composition root the shipping UI runs, with the dev seams
     # off: no single-instance lock + no IPC server (would collide with a real
     # install), and return normally instead of os._exit.  on_ready mounts the
-    # developer console once the window is built (guarded to a mock fleet).
-    from trcc.ui.gui import run_gui
-
+    # developer console once the gui's window is built (guarded to a mock fleet).
     # A ``--report`` file means "show me THIS reporter's fleet".  DevMockPlatform
     # scans to [] by dev rule, so — exactly like the ``device=`` form — nothing
     # presents unless we auto-connect it.  Resolve the reported specs (vid:pid +
@@ -259,15 +271,16 @@ def main() -> None:
         # Passing None here is what makes the plain ``dev/mock_gui.py -v``
         # present the fleet the README promises: DevMockPlatform scans to []
         # by dev rule, so without this the window boots BLANK even with three
-        # devices configured — while ``dev/mock.py --ui qtgui`` connected them,
-        # because that path already called this. Same fleet, two behaviours.
+        # devices configured.  Both windows run through here now
+        # (``dev/mock.py --ui qtgui`` included), so they boot the same fleet.
         auto_specs = load_device_specs(report_path)
 
     def _on_ready(window: Any) -> None:
         # Headless ``--check`` skips the dev console: it kicks off a full
         # theme/mask/web data prefetch (network + threads) that a batch boot
-        # check neither needs nor should wait on.
-        if not check:
+        # check neither needs nor should wait on.  It docks into the gui's
+        # device sidebar, which the qtgui window does not have.
+        if not check and ui == "gui":
             _mount_dev_console(window)
         from _mock_bootstrap import app_behind
         app = app_behind(window)
@@ -307,6 +320,10 @@ def main() -> None:
             from PySide6.QtWidgets import QApplication
             QTimer.singleShot(400, QApplication.quit)
 
+    if ui == "qtgui":
+        from trcc.ui.qtgui import run
+        sys.exit(run(platform, on_ready=_on_ready, force_exit=False))
+    from trcc.ui.gui import run_gui
     sys.exit(run_gui(
         cast(Any, platform), decorated=decorated,
         single_instance=False, force_exit=False,

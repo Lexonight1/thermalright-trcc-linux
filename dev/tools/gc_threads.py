@@ -12,9 +12,12 @@ Two hazards, one drive of the REAL window on the mock fleet:
   object a thread OWNS.  Every 2 s a GUI-thread timer walks ``gc.get_objects()``
   and names each live QObject whose thread affinity is not the GUI thread.
 
-A run is only evidence if the instrument ran, so it also reports how many
-collections ran on the GUI thread and how many scans happened; zero of either
-voids the verdict.  ``--selftest`` proves it can fail: the collector stubbed out
+Both windows get the same three panels -- a SCSI LCD, a HID LCD and an LED --
+so their senders, renders and previews run.  A run is only evidence if the
+instrument ran AND the panels were there, so it also reports collections on
+the GUI thread, scans, and the most panels the App held; zero of any voids the
+verdict.  (An earlier version drove ``--all``, which connects nothing at boot:
+every count it gave was of an empty window.)  ``--selftest`` proves it can fail: the collector stubbed out
 must show off-thread collections, and a QTimer planted on a thread must be named.
 
     PYTHONPATH=src python3.12 dev/tools/gc_threads.py                  # gui, 30 s
@@ -50,9 +53,17 @@ MARK = "GC_THREADS "
 SCAN_MS = 2000
 PLANT_AFTER_S = 5.0
 UI_ENTRY = {
-    "gui": ("dev/mock_gui.py", ["--all"]),
+    "gui": ("dev/mock_gui.py", []),
     "qtgui": ("dev/mock.py", ["--ui", "qtgui"]),
 }
+#: Connected at boot in either window, through the harness's devices.json path.
+FLEET = [
+    {"type": "lcd", "name": "SCSI LCD", "vid": "0402", "pid": "3922",
+     "pm": 32, "fbl": 100, "resolution": "320x320"},
+    {"type": "lcd", "name": "HID LCD", "vid": "0416", "pid": "5302",
+     "pm": 5, "fbl": 50, "resolution": "240x320"},
+    {"type": "led", "name": "LED", "vid": "0416", "pid": "8001", "pm": 16},
+]
 
 
 @dataclass
@@ -66,12 +77,14 @@ class Verdict:
     off_gui: dict[str, int]
     foreign: dict[str, int]
     scans: int
+    panels: int
     instructions: int | None = None
 
     @property
     def alive(self) -> bool:
-        """The instrument ran: the GUI thread collected and the scan fired."""
-        return self.on_gui > 0 and self.scans > 0
+        """The instrument ran on a window with panels: the GUI thread
+        collected, the scan fired, and the App held every panel."""
+        return self.on_gui > 0 and self.scans > 0 and self.panels == len(FLEET)
 
     @property
     def clean(self) -> bool:
@@ -85,6 +98,7 @@ class Verdict:
             f"  collections on GUI      : {self.on_gui}",
             f"  collections off GUI     : {sum(self.off_gui.values())} {self.off_gui or ''}",
             f"  QObjects off GUI thread : {self.foreign or 'none'} (over {self.scans} scans)",
+            f"  panels connected        : {self.panels} of {len(FLEET)}",
         ]
         if self.instructions is not None:
             out.append(f"  instructions:u          : {self.instructions:,}")
@@ -102,6 +116,7 @@ class _Probe:
     off_gui: dict[str, int] = field(default_factory=dict)
     foreign: dict[str, int] = field(default_factory=dict)
     scans: int = 0
+    panels: int = 0
     armed: bool = False
     _keep: list[object] = field(default_factory=list)
 
@@ -122,17 +137,22 @@ class _Probe:
             self.off_gui[thread.name] = self.off_gui.get(thread.name, 0) + 1
 
     def scan(self) -> None:
-        """On the GUI thread: name every live QObject owned by another thread."""
+        """On the GUI thread: name every live QObject owned by another thread,
+        and note how many panels the App holds."""
         import gc
 
         from PySide6.QtCore import QObject
         from PySide6.QtWidgets import QApplication
+
+        from trcc.app import App
         qapp = QApplication.instance()
         if qapp is None:
             return
         gui = qapp.thread()
         self.scans += 1
         for obj in gc.get_objects():
+            if isinstance(obj, App):
+                self.panels = max(self.panels, len(obj.devices))
             if not isinstance(obj, QObject):
                 continue
             try:
@@ -170,6 +190,7 @@ class _Probe:
             "ui": ui, "flags": flags, "gc_enabled": gc.isenabled(),
             "on_gui": self.on_gui, "off_gui": self.off_gui,
             "foreign": self.foreign, "scans": self.scans,
+            "panels": self.panels,
         }), file=sys.stderr, flush=True)
 
 
@@ -194,6 +215,13 @@ def _child(args: argparse.Namespace, flags: list[str]) -> None:
     import signal
     import threading
 
+    # The harness reads its boot fleet from DEVICES_JSON when it is called;
+    # point it at FLEET, so a local dev/devices.json changes nothing here.
+    sys.path.insert(0, str(REPO / "dev"))
+    import _mock_bootstrap
+    fleet = Path(os.environ["HOME"]) / "devices.json"
+    fleet.write_text(json.dumps(FLEET), encoding="utf-8")
+    _mock_bootstrap.DEVICES_JSON = fleet
     probe = _Probe(control=args.control)
     gc.callbacks.append(probe.note)
     probe.hook_collector()
@@ -308,7 +336,8 @@ def main(argv: list[str] | None = None) -> int:
     verdict = drive(args.ui, args.seconds, flags, args.perf)
     print("\n".join(verdict.lines()))
     if not verdict.alive:
-        print("VOID: the instrument did not run (no GUI-thread collection or no scan)")
+        print("VOID: the instrument did not run (no GUI-thread collection, "
+              "no scan, or not every panel connected)")
         return 2
     print("CLEAN" if verdict.clean else "HAZARD")
     return 0 if verdict.clean else 1
