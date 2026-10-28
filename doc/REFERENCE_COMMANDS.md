@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**168 total: 120 Commands and 48 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**171 total: 122 Commands and 49 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1601,6 +1601,18 @@ Install module *key* from the index, or update it.  *capabilities* and *network_
 | `capabilities` | `tuple[str, Ellipsis]` | no |
 | `network_hosts` | `tuple[str, Ellipsis]` | no |
 
+### `InstallModuleFolder`
+
+Install the module in folder *path*, unsigned -- developer mode only. *capabilities* and *network_hosts* are what the user accepted: exactly what its ``module.json`` asks for, or nothing is installed.  It is off after install; the user switches it on.
+
+*Command* → `ModuleResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `path` | `Path` | yes |
+| `capabilities` | `tuple[str, Ellipsis]` | no |
+| `network_hosts` | `tuple[str, Ellipsis]` | no |
+
 ### `ListModules`
 
 Every module, on or off, with why one cannot run here.
@@ -1619,6 +1631,16 @@ Module *key*'s symbol, as bytes -- every window's tile and the API's route draw 
 |---|---|---|
 | `key` | `str` | yes |
 
+### `ReadModuleFolder`
+
+The module in folder *path*: what it is and what it asks for -- the permission screen an ``InstallModuleFolder`` is asked after.  The App reads it, so every UI asks about the same thing.
+
+*Query* → `ModuleFolderResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `path` | `Path` | yes |
+
 ### `RemoveModule`
 
 Remove installed module *key*.  A built-in module cannot be removed; themes made with it stay.
@@ -1628,6 +1650,16 @@ Remove installed module *key*.  A built-in module cannot be removed; themes made
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
+
+### `SetDeveloperMode`
+
+Developer mode on or off: whether a module may be installed from a folder, unsigned.  Switching it off installs nothing more; modules already installed that way stay, still saying "unsigned".
+
+*Command* → `ModuleResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `on` | `bool` | yes |
 
 ### `SetModuleEnabled`
 

@@ -19,9 +19,12 @@ from trcc.core.commands import (
     BrowseModules,
     Command,
     InstallModule,
+    InstallModuleFolder,
     ListModules,
     ModuleIcon,
+    ReadModuleFolder,
     RemoveModule,
+    SetDeveloperMode,
     SetModuleEnabled,
 )
 from trcc.core.errors import ModuleUnavailable
@@ -473,7 +476,9 @@ def _install(key: str, capabilities: tuple[str, ...],
 
 #: What every page's view is handed for getting modules.
 _GET: dict[str, Any] = {"browse": BrowseModules, "install": _install,
-                        "remove": RemoveModule}
+                        "remove": RemoveModule, "developer": SetDeveloperMode,
+                        "read_folder": ReadModuleFolder,
+                        "install_folder": InstallModuleFolder}
 
 
 def _switch(key: str, enabled: bool) -> SetModuleEnabled:

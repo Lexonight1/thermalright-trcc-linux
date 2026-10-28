@@ -631,6 +631,25 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS modules developer
+.PP
+\fBtrcc system modules developer\fR \fISTATE\fR
+.PP
+Developer mode: whether a module may be installed from a folder, unsigned.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBSTATE\fR
+on or off
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS modules install
 .PP
 \fBtrcc system modules install\fR \fIKEY\fR [\fIOPTIONS\fR]
@@ -642,6 +661,28 @@ Arguments:
 .TP
 \fBKEY\fR
 The module's key
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-yes, \-y\fR
+Accept what it asks for without asking
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS modules install\-folder
+.PP
+\fBtrcc system modules install\-folder\fR \fIFOLDER\fR [\fIOPTIONS\fR]
+.PP
+Install a module from a folder, unsigned \-\- developer mode only.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBFOLDER\fR
+The module's folder
 .RE
 .PP
 Options:

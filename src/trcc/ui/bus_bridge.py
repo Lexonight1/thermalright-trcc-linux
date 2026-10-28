@@ -30,6 +30,7 @@ from trcc.core.events import (
     BackgroundChanged,
     BrightnessChanged,
     DataInstalled,
+    DeveloperModeChanged,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
@@ -276,6 +277,7 @@ class BusBridge(QObject):
             (ModuleChanged, self.app_settings_changed),
             (ModuleInstalled, self.app_settings_changed),
             (ModuleRemoved, self.app_settings_changed),
+            (DeveloperModeChanged, self.app_settings_changed),
             # A module's themes show only while it is on -- or installed.
             (ModuleChanged, self.themes_changed),
             (ModuleInstalled, self.themes_changed),

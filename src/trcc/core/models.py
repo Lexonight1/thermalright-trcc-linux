@@ -1492,6 +1492,10 @@ class ModuleInstall:
     commit: str
     capabilities: tuple[str, ...] = ()
     network_hosts: tuple[str, ...] = ()
+    #: Installed from a folder in developer mode: no signature, no author
+    #: key, nothing reviewed.  Never updated or swept; every UI and the report
+    #: say "unsigned".  A record written before this field reads as signed.
+    unsigned: bool = False
 
 
 @dataclass(frozen=True, slots=True)

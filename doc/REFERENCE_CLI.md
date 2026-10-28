@@ -1957,6 +1957,18 @@ Every module you can install, and the ones you have.
 trcc system modules available
 ```
 
+#### `trcc system modules developer`
+
+Developer mode: whether a module may be installed from a folder, unsigned.
+
+```bash
+trcc system modules developer STATE
+```
+
+| Argument | Description |
+|---|---|
+| `STATE` | on or off |
+
 #### `trcc system modules install`
 
 Install a module from the list, or update it -- after saying what it may do.
@@ -1968,6 +1980,22 @@ trcc system modules install [OPTIONS] KEY
 | Argument | Description |
 |---|---|
 | `KEY` | The module's key |
+
+| Option | Description |
+|---|---|
+| `--yes`, `-y` | Accept what it asks for without asking |
+
+#### `trcc system modules install-folder`
+
+Install a module from a folder, unsigned -- developer mode only.
+
+```bash
+trcc system modules install-folder [OPTIONS] FOLDER
+```
+
+| Argument | Description |
+|---|---|
+| `FOLDER` | The module's folder |
 
 | Option | Description |
 |---|---|

@@ -3163,6 +3163,13 @@ class ModuleStore(ABC):
     def remove(self, key: str) -> None:
         """Delete module *key*'s folder; nothing when there is none."""
 
+    @abstractmethod
+    def pack(self, folder: Path) -> tuple[bytes, ModuleManifest]:
+        """The module in *folder* as a bundle, packed as an author's release
+        is, and its manifest, read as an install reads it -- developer mode's
+        install from a folder.  A ``TrccError`` when it cannot be packed (a
+        symbolic link, no readable ``module.json``)."""
+
 
 # =========================================================================
 # SignatureChecker — does this key sign this message?

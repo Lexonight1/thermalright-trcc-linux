@@ -591,8 +591,10 @@ class ScreencastResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class ModulesResult(Result):
-    """``ListModules``: every module, on or off."""
+    """``ListModules``: every module, on or off -- and whether developer mode
+    is on, so every Modules page shows its switch from the App."""
     modules: tuple[ModuleInfo, ...] = ()
+    developer_mode: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -613,6 +615,13 @@ class ModuleCatalogResult(Result):
     """``BrowseModules``: every module the signed index lists, and where this
     machine stands with each."""
     modules: tuple[AvailableModule, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleFolderResult(Result):
+    """``ReadModuleFolder``: the module in a folder as its permission screen
+    shows it -- what it is and what it asks for -- or why it cannot be read."""
+    module: AvailableModule | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -100,9 +100,12 @@ from .led import (
 from .modules import (
     BrowseModules,
     InstallModule,
+    InstallModuleFolder,
     ListModules,
     ModuleIcon,
+    ReadModuleFolder,
     RemoveModule,
+    SetDeveloperMode,
     SetModuleEnabled,
 )
 from .system import (
@@ -218,6 +221,7 @@ __all__ = [
     "ImportTheme",
     "InitializeLed",
     "InstallModule",
+    "InstallModuleFolder",
     "KeepAliveLoop",
     "LcdSnapshot",
     "LedSnapshot",
@@ -250,6 +254,7 @@ __all__ = [
     "ProbeVideoDuration",
     "ProvideApiTls",
     "Query",
+    "ReadModuleFolder",
     "ReadSensors",
     "RecentColors",
     "RefreshAutostart",
@@ -279,6 +284,7 @@ __all__ = [
     "SetBrightness",
     "SetClockFormat",
     "SetDateFormat",
+    "SetDeveloperMode",
     "SetDiskDevice",
     "SetFitMode",
     "SetGameMode",

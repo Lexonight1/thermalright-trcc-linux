@@ -150,6 +150,14 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "draw it on the tile; a terminal draws no pictures, and `trcc system "
         "modules list` names each module instead"
     )),
+    # Developer mode installs code nobody reviewed.  No API route reaches it,
+    # so a browser page cannot switch it on or install a folder through a
+    # token that leaked: only a UI on this machine -- a window, or ``trcc``.
+    **{name: (frozenset({"cli", "gui", "qtgui"}), (
+        "scoped: developer mode (2026-10-28) -- unsigned installs from a folder "
+        "on this machine; deliberately no API route, so nothing remote can "
+        "switch it on or install code nobody reviewed"))
+       for name in ("SetDeveloperMode", "ReadModuleFolder", "InstallModuleFolder")},
     "SetOverlayConfig": (frozenset({"api"}), (
         "scoped: a bulk replace for scripts; every UI edits overlays "
         "element-wise (Add/Update/DeleteOverlayElement, all four).  The gui "

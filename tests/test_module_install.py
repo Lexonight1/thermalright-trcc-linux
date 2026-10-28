@@ -37,8 +37,10 @@ from trcc.app import App
 from trcc.core.commands import (
     BrowseModules,
     InstallModule,
+    InstallModuleFolder,
     ListModules,
     RemoveModule,
+    SetDeveloperMode,
     SetModuleEnabled,
 )
 from trcc.core.errors import HttpFetchError
@@ -742,3 +744,189 @@ def test_the_gui_page_installs_updates_and_removes(
     view.removes[KEY].click()
     qtbot.waitUntil(lambda: KEY not in view.switches, timeout=5000)
     assert KEY not in cli_app.modules and not _installed_folder(cli_app).exists()
+
+
+# ── developer mode: a folder, installed unsigned ─────────────────────────
+
+
+def _folder(shop: Shop, version: str = "1") -> Path:
+    """The greeter's source folder, its module.json at *version*, asking for
+    ``events`` and to be on by default -- what a developer points developer
+    mode at."""
+    shop.bundle(version)
+    manifest_path = shop._source / "module.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["default_on"] = True
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return shop._source
+
+
+def _install_folder(app: App, folder: Path,
+                    capabilities: tuple[str, ...] = ("events",)) -> Any:
+    return app.dispatch(InstallModuleFolder(path=folder, capabilities=capabilities))
+
+
+def test_a_folder_install_is_refused_without_developer_mode(
+        cli_app: App, shop: Shop) -> None:
+    assert cli_app.dispatch(ListModules()).developer_mode is False
+    refused = _install_folder(cli_app, _folder(shop))
+    assert (refused.ok, refused.message) == (
+        False, "installing a module from a folder needs developer mode -- "
+               "switch it on first")
+    assert not _installed_folder(cli_app).exists()
+    assert cli_app.settings.module_install(KEY) is None
+
+
+def test_a_folder_installs_unsigned_and_off_and_stays_off_after_a_restart(
+        cli_app: App, shop: Shop) -> None:
+    """Its manifest asks to be on by default; installed unsigned it is off,
+    there and at the next start, until the user switches it on.  MUTATION
+    CHECK: drop the ``set_module_enabled(key, False)`` in ``install_folder``
+    and the restart switches it on."""
+    assert cli_app.dispatch(SetDeveloperMode(on=True)).ok
+    assert cli_app.dispatch(ListModules()).developer_mode is True
+    installed = _install_folder(cli_app, _folder(shop))
+    assert (installed.ok, installed.key, installed.enabled, installed.message) == (
+        True, KEY, False, "Greeter 1 installed unsigned -- off until you switch it on")
+    record = cli_app.settings.module_install(KEY)
+    assert record is not None
+    assert (record.unsigned, record.author_key, record.commit, record.capabilities) == (
+        True, "", "", ("events",))
+    tile = _tile(cli_app, KEY)
+    assert (tile.origin, tile.allowed, tile.enabled) == ("unsigned", True, False)
+    App._forget_module(KEY)
+    again = _restart(cli_app)
+    tile = _tile(again, KEY)
+    assert (tile.origin, tile.enabled) == ("unsigned", False)
+    assert again.dispatch(SetModuleEnabled(key=KEY, enabled=True)).ok
+    assert again.modules.is_on(KEY)
+
+
+def test_a_folder_install_asks_exactly_what_its_module_json_asks(
+        cli_app: App, shop: Shop) -> None:
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    refused = _install_folder(cli_app, _folder(shop), capabilities=())
+    assert (refused.ok, refused.message) == (
+        False, "Greeter 1 asks for: events -- confirm that first")
+    assert not _installed_folder(cli_app).exists()
+
+
+def test_a_folder_never_replaces_a_built_in_module(cli_app: App, shop: Shop,
+                                                  tmp_path: Path) -> None:
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    rgb = tmp_path / "rgb"
+    shutil.copytree(_folder(shop), rgb, ignore=shutil.ignore_patterns("__pycache__"))
+    manifest = json.loads((rgb / "module.json").read_text(encoding="utf-8"))
+    manifest["key"] = "rgb"
+    (rgb / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
+    refused = _install_folder(cli_app, rgb)
+    assert (refused.ok, refused.message) == (
+        False, "rgb is built into TRCC -- a folder cannot replace it")
+    assert _tile(cli_app, "rgb").origin == "built-in"
+
+
+def test_a_folder_never_replaces_a_signed_install_but_a_signed_one_replaces_it(
+        cli_app: App, shop: Shop) -> None:
+    """Signed beats unsigned, one way only.  Over an unsigned copy a signed
+    install is a first install: on, and no author key pinned from the copy."""
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    assert _install_folder(cli_app, _folder(shop)).ok
+    shop.list("2")
+    signed = _install(cli_app)
+    assert (signed.ok, signed.enabled) == (True, True)
+    record = cli_app.settings.module_install(KEY)
+    assert record is not None and (record.unsigned, record.version) == (False, "2")
+    assert _tile(cli_app, KEY).origin == "installed"
+    refused = _install_folder(cli_app, _folder(shop, "3"))
+    assert (refused.ok, refused.message) == (
+        False, "greeter is installed from the module index, signed -- remove it "
+               "before installing a folder over it")
+    record = cli_app.settings.module_install(KEY)
+    assert record is not None and (record.unsigned, record.version) == (False, "2")
+
+
+def test_the_daily_sweep_leaves_an_unsigned_module_alone(
+        cli_app: App, shop: Shop) -> None:
+    """The index takes back the greeter it lists; the unsigned copy of that
+    key is not what it lists, so it runs on.  MUTATION CHECK: drop the skip in
+    ``_sweep`` and this switches it off."""
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    assert _install_folder(cli_app, _folder(shop)).ok
+    assert cli_app.dispatch(SetModuleEnabled(key=KEY, enabled=True)).ok
+    shop.list("1")
+    shop.revoke("sends your readings away")
+    (listed,) = cli_app.dispatch(BrowseModules()).modules
+    assert listed.status == "revoked"
+    assert cli_app.modules.is_on(KEY)
+    assert _tile(cli_app, KEY).problem == ""
+
+
+def test_the_index_shows_an_unsigned_copy_as_not_installed(
+        cli_app: App, shop: Shop) -> None:
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    assert _install_folder(cli_app, _folder(shop)).ok
+    shop.list("1")
+    (listed,) = cli_app.dispatch(BrowseModules()).modules
+    assert (listed.status, listed.installed_version) == ("available", "")
+
+
+def test_every_start_warns_which_unsigned_modules_are_on(
+        cli_app: App, shop: Shop, caplog: pytest.LogCaptureFixture) -> None:
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    assert _install_folder(cli_app, _folder(shop)).ok
+    assert cli_app.dispatch(SetModuleEnabled(key=KEY, enabled=True)).ok
+    App._forget_module(KEY)
+    with caplog.at_level("WARNING", logger="trcc.app"):
+        _restart(cli_app)
+    assert ("unsigned modules ON (installed from a folder in developer mode, "
+            "never reviewed): greeter") in caplog.messages
+
+
+def test_developer_mode_off_keeps_what_it_installed(cli_app: App, shop: Shop) -> None:
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    assert _install_folder(cli_app, _folder(shop)).ok
+    assert cli_app.dispatch(SetDeveloperMode(on=False)).ok
+    assert _tile(cli_app, KEY).origin == "unsigned"
+    refused = _install_folder(cli_app, _folder(shop, "2"))
+    assert refused.ok is False
+    assert cli_app.dispatch(RemoveModule(key=KEY)).ok
+    assert not _installed_folder(cli_app).exists()
+
+
+def test_a_record_from_before_developer_mode_reads_as_signed(cli_app: App) -> None:
+    """``trcc.json`` written by an older TRCC has no ``unsigned``."""
+    cli_app.settings.app.module_installs[KEY] = {
+        "key": KEY, "version": "1", "sha256": "ab" * 32, "author_key": "k",
+        "commit": COMMIT, "capabilities": ["events"], "network_hosts": []}
+    record = cli_app.settings.module_install(KEY)
+    assert record is not None and record.unsigned is False
+    cli_app.settings.app.module_installs.pop(KEY)
+
+
+def test_the_cli_switches_developer_mode_and_installs_a_folder(
+        cli_runner: Any, cli_app: App, shop: Shop) -> None:
+    from trcc.ui.cli.main import app
+
+    folder = _folder(shop)
+    refused = cli_runner.invoke(app, ["system", "modules", "install-folder", str(folder),
+                                      "--yes"])
+    switched = cli_runner.invoke(app, ["system", "modules", "developer", "on"])
+    declined = cli_runner.invoke(app, ["system", "modules", "install-folder", str(folder)],
+                                 input="n\n")
+    installed = cli_runner.invoke(app, ["system", "modules", "install-folder", str(folder),
+                                        "--yes"])
+    listed = cli_runner.invoke(app, ["system", "modules", "list"])
+    assert (refused.exit_code, switched.exit_code, declined.exit_code,
+            installed.exit_code, listed.exit_code) == (1, 0, 1, 0, 0)
+    assert refused.output.splitlines()[-1] == (
+        "installing a module from a folder needs developer mode -- switch it on first")
+    assert switched.output.strip() == "developer mode on"
+    assert installed.output.splitlines() == [
+        "Unsigned: nobody reviewed it. Install only code you trust.",
+        "It may:",
+        "  - hears what happens in the app",
+        "Greeter 1 installed unsigned -- off until you switch it on"]
+    lines = listed.output.splitlines()
+    at = lines.index("  [off] greeter          Greeter -- Says hello.")
+    assert lines[at + 1] == ("        Version 1 · by Ada Author · Unsigned -- never "
+                             "reviewed")

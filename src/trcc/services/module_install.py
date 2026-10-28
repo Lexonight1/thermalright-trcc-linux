@@ -19,13 +19,24 @@ link that does not hold (memory: project_modules_trust_design):
 
 Built-in modules are never installed over, nor removed.  An installed module
 the index later takes back is switched off, and says why on its tile.
+
+**Developer mode** adds one more way in, ``adb install``'s: a module folder the
+user picks, packed and put through the same store (``install_folder``).  It is
+the trust chain with the signature taken out, and says so everywhere -- an
+``unsigned`` record and origin, off after install, never updated nor swept,
+refused over a built-in or a signed install.  The consent link stays: what the
+user accepted is exactly what its ``module.json`` asks for.  A signed install
+of the same key replaces an unsigned one, as a first install would.
 """
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import logging
 import threading
 from collections.abc import Callable, Iterable
 from datetime import datetime
+from pathlib import Path
 
 from ..core._version import parse_version
 from ..core.errors import HttpFetchError, ModuleUnavailable, UntrustedModule
@@ -66,6 +77,13 @@ def _https(url: str) -> bool:
     ok = url.startswith("https://")
     log.debug("module_install._https: %s -> %s", url, ok)
     return ok
+
+
+def _as_written(manifest: ModuleManifest) -> ModuleManifest:
+    """*manifest* as its ``module.json`` says it: the icon a file name, not
+    the path the reader resolved it to."""
+    log.debug("_as_written: %s", manifest.key)
+    return dataclasses.replace(manifest, icon=Path(manifest.icon).name if manifest.icon else "")
 
 
 class ModuleInstaller:
@@ -121,6 +139,11 @@ class ModuleInstaller:
         no longer does (it stays off until the user switches it on)."""
         for key in self._settings.installed_modules():
             record = self._settings.module_install(key)
+            if record is not None and record.unsigned:
+                # Nothing of it is in the index to take back -- a revocation of
+                # the same key, or of an empty hash, is about another module.
+                log.debug("ModuleInstaller._sweep: %s is unsigned -- skipped", key)
+                continue
             reason = (self._trust.revoked(index, key, record.sha256) or ""
                       if record is not None else "")
             log.debug("ModuleInstaller._sweep: %s -> %r", key, reason)
@@ -146,7 +169,7 @@ class ModuleInstaller:
         return found
 
     def _available(self, index: ModuleIndex, release: ModuleRelease) -> AvailableModule:
-        record = self._settings.module_install(release.key)
+        record = self._signed_install(release.key)
         reason = self._trust.revoked(index, release.key,
                                      record.sha256 if record else release.sha256) or ""
         status = ("revoked" if reason else "available" if record is None
@@ -179,10 +202,94 @@ class ModuleInstaller:
             bundle = self._http.fetch(release.url, timeout_s=_FETCH_S,
                                       max_bytes=release.size, allow=_https)
             old = self._settings.module_install(key)
+            signed = self._signed_install(key)
             self._trust.check_bundle(index, key, bundle, now,
-                                     pinned_author=old.author_key if old else None)
-            return self._put_in_place(release, bundle, was_on=self._runner.is_on(key),
-                                      fresh=old is None)
+                                     pinned_author=signed.author_key if signed else None)
+            record = ModuleInstall(key=key, version=release.version, sha256=release.sha256,
+                                   author_key=release.author_key, commit=release.commit,
+                                   capabilities=release.capabilities,
+                                   network_hosts=release.network_hosts)
+            # Over an unsigned copy it is a first install: on, nothing pinned.
+            return self._put_in_place(record, bundle, self._matches_release(release),
+                                      switch_on=signed is None or self._runner.is_on(key),
+                                      restore=old is not None)
+
+    def install_folder(self, folder: Path, accept_capabilities: Iterable[str],
+                       accept_hosts: Iterable[str]) -> ModuleInstall:
+        """Install the module in *folder*, unsigned -- developer mode only.
+        Refused, before anything is touched, over a built-in or a signed
+        install, or when what the user accepted is not exactly what its
+        ``module.json`` asks for.  Off after install, whatever its default."""
+        log.info("ModuleInstaller.install_folder: %s", folder)
+        if not self._settings.app.developer_mode:
+            raise ModuleUnavailable("installing a module from a folder needs "
+                                    "developer mode -- switch it on first")
+        bundle, manifest = self._store.pack(folder)
+        key = manifest.key
+        if self._built_in(key):
+            raise ModuleUnavailable(f"{key} is built into TRCC -- a folder cannot "
+                                    "replace it")
+        if len(bundle) > MODULE_BUNDLE_MAX_BYTES:
+            raise ModuleUnavailable(f"{key}: {len(bundle)} bytes -- larger than a "
+                                    "module may be")
+        if (set(accept_capabilities) != set(manifest.capabilities)
+                or set(accept_hosts) != set(manifest.network_hosts)):
+            asks = ", ".join(manifest.capabilities) or "nothing"
+            sites = (f"; sites: {', '.join(manifest.network_hosts)}"
+                     if manifest.network_hosts else "")
+            raise ModuleUnavailable(f"{manifest.title} {manifest.version} asks for: "
+                                    f"{asks}{sites} -- confirm that first")
+        with self._lock:
+            old = self._settings.module_install(key)
+            if old is not None and not old.unsigned:
+                raise ModuleUnavailable(f"{key} is installed from the module index, "
+                                        "signed -- remove it before installing a "
+                                        "folder over it")
+            record = ModuleInstall(key=key, version=manifest.version,
+                                   sha256=hashlib.sha256(bundle).hexdigest(),
+                                   author_key="", commit="",
+                                   capabilities=manifest.capabilities,
+                                   network_hosts=manifest.network_hosts, unsigned=True)
+            was_on = self._runner.is_on(key)
+
+            def matches(unpacked: ModuleManifest) -> None:
+                """What was unpacked is what was packed -- its icon read where
+                each copy sits, so compared by name."""
+                if _as_written(unpacked) != _as_written(manifest):
+                    log.warning("matches: packed %s, unpacked %s", manifest, unpacked)
+                    raise UntrustedModule(f"{key}: the bundle is not the folder it "
+                                          "was packed from -- refused")
+
+            self._put_in_place(record, bundle, matches, switch_on=False,
+                               restore=old is not None)
+            # Off, remembered: a default_on module must not come on at the
+            # next start without the user switching it on.
+            self._settings.set_module_enabled(key, False)
+            if was_on:
+                self._publish(ModuleChanged(key=key, enabled=False))
+            log.info("ModuleInstaller.install_folder: %s %s installed UNSIGNED "
+                     "from %s -- off until switched on", key, manifest.version, folder)
+            return record
+
+    def read_folder(self, folder: Path) -> AvailableModule:
+        """The module in *folder* as its permission screen shows it -- packed
+        and read as ``install_folder`` will, so what the user is asked about
+        is what installs."""
+        log.info("ModuleInstaller.read_folder: %s", folder)
+        _, manifest = self._store.pack(folder)
+        return AvailableModule(key=manifest.key, title=manifest.title,
+                               summary=manifest.summary, version=manifest.version,
+                               status="available", capabilities=manifest.capabilities,
+                               network_hosts=manifest.network_hosts,
+                               author=manifest.author)
+
+    def _signed_install(self, key: str) -> ModuleInstall | None:
+        """Module *key*'s record when it came from the index -- None for none,
+        or for one installed unsigned from a folder."""
+        record = self._settings.module_install(key)
+        signed = record if record is not None and not record.unsigned else None
+        log.debug("ModuleInstaller._signed_install: %s -> %s", key, signed is not None)
+        return signed
 
     def _may_install(self, release: ModuleRelease, capabilities: set[str],
                      hosts: set[str]) -> None:
@@ -202,44 +309,47 @@ class ModuleInstaller:
             raise ModuleUnavailable(f"{release.title or release.key} {release.version} "
                                     f"asks for: {asks}{sites} -- confirm that first")
 
-    def _put_in_place(self, release: ModuleRelease, bundle: bytes, was_on: bool,
-                      fresh: bool) -> tuple[ModuleInstall, str]:
-        """The checked *bundle* in place of any old copy, then switched on:
-        a fresh install, or one that was on.  A failure brings the old copy
-        back as it was."""
-        key = release.key
-        log.info("ModuleInstaller._put_in_place: %s %s", key, release.version)
+    @staticmethod
+    def _matches_release(release: ModuleRelease) -> Callable[[ModuleManifest], None]:
+        """The check that a bundle's own ``module.json`` says what the index
+        says -- its author too, so the name a tile shows is the one reviewed."""
+        log.debug("ModuleInstaller._matches_release: %s %s", release.key, release.version)
 
         def matches(manifest: ModuleManifest) -> None:
-            """The bundle's own ``module.json`` says what the index says --
-            its author too, so the name a tile shows is the one reviewed."""
             said = (manifest.key, manifest.version, set(manifest.capabilities),
                     set(manifest.network_hosts), manifest.author)
-            listed = (key, release.version, set(release.capabilities),
+            listed = (release.key, release.version, set(release.capabilities),
                       set(release.network_hosts), release.author)
             log.debug("matches: %s vs %s", said, listed)
             if said != listed:
-                raise UntrustedModule(f"{key}: its module.json is not what the index "
-                                      "lists -- refused")
+                raise UntrustedModule(f"{release.key}: its module.json is not what "
+                                      "the index lists -- refused")
+        return matches
 
+    def _put_in_place(self, record: ModuleInstall, bundle: bytes,
+                      matches: Callable[[ModuleManifest], None], *, switch_on: bool,
+                      restore: bool) -> tuple[ModuleInstall, str]:
+        """The *bundle*, passing *matches*, in place of any old copy and
+        remembered as *record* -- switched on when *switch_on*.  A failure
+        brings the old copy back as it was, when there is one (*restore*)."""
+        key = record.key
+        was_on = self._runner.is_on(key)
+        log.info("ModuleInstaller._put_in_place: %s %s (unsigned=%s, on after=%s)",
+                 key, record.version, record.unsigned, switch_on)
         self._runner.remove(key)
         self._forget(key)
         try:
             self._store.install(bundle, matches)
         except Exception:
             log.exception("ModuleInstaller._put_in_place: %s refused or failed", key)
-            if not fresh:
+            if restore:
                 self._restore(key, was_on)
             raise
-        record = ModuleInstall(key=key, version=release.version, sha256=release.sha256,
-                               author_key=release.author_key, commit=release.commit,
-                               capabilities=release.capabilities,
-                               network_hosts=release.network_hosts)
         self._settings.set_module_install(key, record)
         self._settings.set_module_revoked(key, "")
         self._runner.add(self._load_spec(key))
-        note = self._switch_on(key) if fresh or was_on else ""
-        self._publish(ModuleInstalled(key=key, version=release.version))
+        note = self._switch_on(key) if switch_on else ""
+        self._publish(ModuleInstalled(key=key, version=record.version))
         return record, note
 
     def _restore(self, key: str, was_on: bool) -> None:

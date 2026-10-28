@@ -5,18 +5,25 @@ The CLI's Modules page, under ``system`` as the gui keeps it in the Control
 Center and the API at ``/system/modules``: the same ``ListModules`` /
 ``SetModuleEnabled`` / ``BrowseModules`` / ``InstallModule`` / ``RemoveModule``
 every other UI sends.  The App does the installing; this asks and prints.
+
+``developer on|off`` and ``install-folder`` are developer mode's: a module folder
+installed unsigned, after the same permission screen saying nobody reviewed it.
 """
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import typer
 
 from ...core.commands import (
     BrowseModules,
     InstallModule,
+    InstallModuleFolder,
     ListModules,
+    ReadModuleFolder,
     RemoveModule,
+    SetDeveloperMode,
     SetModuleEnabled,
 )
 from ...core.models import AvailableModule
@@ -127,6 +134,44 @@ def remove(key: str = typer.Argument(..., help="The module's key"),
         log.info("cli system modules remove: %s declined", key)
         raise typer.Exit(code=1)
     result = get_app().dispatch(RemoveModule(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("developer")
+def developer(state: str = typer.Argument(..., help="on or off")) -> None:
+    """Developer mode: whether a module may be installed from a folder, unsigned."""
+    log.info("cli system modules developer: %s", state)
+    if state not in ("on", "off"):
+        typer.echo(f"{state!r}: say on or off")
+        raise typer.Exit(code=1)
+    result = get_app().dispatch(SetDeveloperMode(on=state == "on"))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("install-folder")
+def install_folder(folder: Path = typer.Argument(..., help="The module's folder"),
+                   yes: bool = typer.Option(False, "--yes", "-y",
+                                            help="Accept what it asks for without asking")
+                   ) -> None:
+    """Install a module from a folder, unsigned -- developer mode only."""
+    log.info("cli system modules install-folder: %s yes=%s", folder, yes)
+    read = get_app().dispatch(ReadModuleFolder(path=folder.resolve()))
+    if not read.ok or read.module is None:
+        typer.echo(read.message)
+        raise typer.Exit(code=1)
+    module = read.module
+    question, lines = consent(module, str, unsigned=True)
+    typer.echo("\n".join(lines))
+    if not yes and not typer.confirm(question):
+        log.info("cli system modules install-folder: %s declined", module.key)
+        raise typer.Exit(code=1)
+    result = get_app().dispatch(InstallModuleFolder(
+        path=folder.resolve(), capabilities=module.capabilities,
+        network_hosts=module.network_hosts))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

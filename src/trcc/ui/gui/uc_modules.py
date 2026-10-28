@@ -12,9 +12,12 @@ from PySide6.QtWidgets import QWidget
 from ...core.commands import (
     BrowseModules,
     InstallModule,
+    InstallModuleFolder,
     ListModules,
     ModuleIcon,
+    ReadModuleFolder,
     RemoveModule,
+    SetDeveloperMode,
     SetModuleEnabled,
 )
 from ...core.logs import per_frame
@@ -56,7 +59,9 @@ class UCModules(QWidget):
         self._title = "Modules"
         self.view = ModulesView(app, ListModules, self._switch, ModuleIcon, self,
                             browse=BrowseModules, install=self._install,
-                            remove=RemoveModule)
+                            remove=RemoveModule, developer=SetDeveloperMode,
+                            read_folder=ReadModuleFolder,
+                            install_folder=InstallModuleFolder)
         self.view.setGeometry(*_BODY)
         self.view.setStyleSheet(_STYLE)
         # A module switched in any UI: this page follows.

@@ -346,6 +346,13 @@ class ModuleRemoved(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class DeveloperModeChanged(Event):
+    """Developer mode was switched on or off -- every Modules page shows, or
+    hides, its install from a folder."""
+    on: bool
+
+
+@dataclass(frozen=True, slots=True)
 class BackgroundChanged(Event):
     """Published when the device's static background override changes.
 

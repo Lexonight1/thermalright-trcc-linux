@@ -18,7 +18,7 @@ from pathlib import Path
 from ... import modules as module_folders
 from ...core.models import ModuleManifest
 from ...core.ports import ModuleStore
-from ._bundle import unpack
+from ._bundle import pack, unpack
 from ._catalog import read_manifest
 
 log = logging.getLogger(__name__)
@@ -64,6 +64,11 @@ class FolderModuleStore(ModuleStore):
         log.info("FolderModuleStore.install: %s %s in %s", manifest.key,
                  manifest.version, target)
         return read_manifest(target / module_folders.MANIFEST)
+
+    def pack(self, folder: Path) -> tuple[bytes, ModuleManifest]:
+        log.info("FolderModuleStore.pack: %s", folder)
+        manifest = read_manifest(folder / module_folders.MANIFEST)
+        return pack(folder), manifest
 
     def remove(self, key: str) -> None:
         target = self._root / key

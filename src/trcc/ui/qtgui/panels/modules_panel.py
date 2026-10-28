@@ -14,9 +14,12 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout
 from ....core.commands import (
     BrowseModules,
     InstallModule,
+    InstallModuleFolder,
     ListModules,
     ModuleIcon,
+    ReadModuleFolder,
     RemoveModule,
+    SetDeveloperMode,
     SetModuleEnabled,
 )
 from ...qt_modules import ModulesView
@@ -40,7 +43,9 @@ class ModulesPanel(BasePanel):
         layout.addWidget(title)
         self.view = ModulesView(self._app, ListModules, self._switch, ModuleIcon, self,
                             browse=BrowseModules, install=self._install,
-                            remove=RemoveModule)
+                            remove=RemoveModule, developer=SetDeveloperMode,
+                            read_folder=ReadModuleFolder,
+                            install_folder=InstallModuleFolder)
         layout.addWidget(self.view, 1)
         self._bus.app_settings_changed.connect(
             self.view.on_event, type=Qt.ConnectionType.QueuedConnection)

@@ -111,6 +111,9 @@ class AppSettings:
     # installed modules it took back, key -> why.
     module_index_checked: float = 0.0
     module_revoked: dict[str, str] = field(default_factory=dict)
+    # Developer mode: a module may be installed from a folder, unsigned.
+    # Off by default; switching it off leaves installed ones as they are.
+    developer_mode: bool = False
 
 
 # =========================================================================
@@ -746,6 +749,14 @@ class Settings:
             self._app.module_revoked, dict) else ""
         log.debug("module_revoked: %s -> %r", key, reason)
         return reason if isinstance(reason, str) else ""
+
+    def set_developer_mode(self, on: bool) -> None:
+        """Developer mode on or off: whether a module may be installed from a
+        folder, unsigned."""
+        log.info("set_developer_mode: %s -> %s", self._app.developer_mode, on)
+        with self._lock:
+            self._app.developer_mode = on
+            self._save()
 
     def set_module_revoked(self, key: str, reason: str) -> None:
         """Module *key* was taken back for *reason* -- or is no longer ("")."""

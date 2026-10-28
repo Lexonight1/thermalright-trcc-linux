@@ -31,12 +31,18 @@ _ACTIONS: dict[str, tuple[str, bool]] = {
 #: What a tile says after an update, while this window holds the old code.
 REOPEN = "Reopen this window to finish updating."
 REVIEWED = "Reviewed by TRCC -- not guaranteed safe."
+#: What a folder install's permission screen says in its place.
+UNSIGNED = "Unsigned: nobody reviewed it. Install only code you trust."
+#: Developer mode's switch, and the button it shows.
+DEVELOPER_MODE = "Developer mode"
+FROM_FOLDER = "Install from folder…"
 MAY = "It may:"
 #: Where a module came from (``ModuleInfo.origin``), in its tile's words.
 _ORIGINS: dict[str, str] = {
     "built-in": "Built-in",
     "installed": "Installed",
     "by hand": "Copied in by hand",
+    "unsigned": "Unsigned -- never reviewed",
 }
 
 
@@ -95,18 +101,20 @@ def _row(module: AvailableModule, tr: Callable[[str], str]) -> CatalogRow:
 
 
 def consent(module: AvailableModule, tr: Callable[[str], str],
-            title: str = "") -> tuple[str, list[str]]:
+            title: str = "", *, unsigned: bool = False) -> tuple[str, list[str]]:
     """The permission screen: its question, and each line under it -- every
     capability in its own words, then every site.  *title* is the module's,
-    as the caller translated it (its own words); every other line is TRCC's."""
+    as the caller translated it (its own words); every other line is TRCC's.
+    An *unsigned* one, from a folder, says nobody reviewed it."""
     question = tr("Install {title} {version}?").format(title=title or tr(module.title),
                                                        version=module.version)
-    lines = [tr(REVIEWED)]
+    lines = [tr(UNSIGNED if unsigned else REVIEWED)]
     asks = [tr(MODULE_CAPABILITIES.get(c, c)) for c in module.capabilities]
     asks += [tr("fetches from {site}").format(site=h) for h in module.network_hosts]
     if asks:
         lines += [tr(MAY), *(f"  - {a}" for a in asks)]
-    log.info("consent: %s %s asks %d thing(s)", module.key, module.version, len(asks))
+    log.info("consent: %s %s asks %d thing(s) unsigned=%s", module.key, module.version,
+             len(asks), unsigned)
     return question, lines
 
 

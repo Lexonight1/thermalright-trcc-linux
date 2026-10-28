@@ -6,6 +6,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import threading
 from collections.abc import Callable, Mapping
@@ -453,12 +454,14 @@ class App(CommandBus, ModuleServices):
         #: module, and how themes play, save and resume it.
         self._background_kinds: dict[str, tuple[str, BackgroundKind]] = {}
         self.modules = ModuleRunner(
-            module_catalog.specs(user_root=platform.paths().user_modules_dir(),
-                                 refuse=self._not_installed) if modules is None else {
+            {key: self._as_installed(spec) for key, spec in module_catalog.specs(
+                user_root=platform.paths().user_modules_dir(),
+                refuse=self._not_installed).items()} if modules is None else {
                 key: m if isinstance(m, ModuleSpec) else ModuleSpec.of(m)
                 for key, m in modules.items()},
             host=self, settings=self.settings)
         self.modules.enable_saved()
+        self._warn_unsigned_on()
         #: Getting more modules: the signed index, and the user's own folder.
         self.module_installer = ModuleInstaller(
             trust=ModuleTrust(module_catalog.Ed25519Checker()), http=self.http,
@@ -476,8 +479,29 @@ class App(CommandBus, ModuleServices):
         import of it then searches."""
         root = self.platform.paths().user_modules_dir()
         log.info("_installed_spec: %s in %s", key, root)
-        return module_catalog.spec(root / key / module_folders.MANIFEST,
-                                   origin="installed", user_root=root)
+        return self._as_installed(module_catalog.spec(
+            root / key / module_folders.MANIFEST, origin="installed", user_root=root))
+
+    def _as_installed(self, spec: ModuleSpec) -> ModuleSpec:
+        """*spec* as the App installed it: one installed from a folder in
+        developer mode says ``unsigned`` wherever its origin shows."""
+        record = (self.settings.module_install(spec.manifest.key)
+                  if spec.origin == "installed" else None)
+        if record is None or not record.unsigned:
+            return spec
+        log.info("_as_installed: %s is unsigned", spec.manifest.key)
+        return dataclasses.replace(spec, origin="unsigned")
+
+    def _warn_unsigned_on(self) -> None:
+        """Say, every start, which unsigned modules are on -- so a report
+        shows code that nobody reviewed is running."""
+        unsigned = sorted(info.key for info in self.modules.infos()
+                          if info.origin == "unsigned" and info.enabled)
+        if unsigned:
+            log.warning("unsigned modules ON (installed from a folder in developer "
+                        "mode, never reviewed): %s", ", ".join(unsigned))
+        else:
+            log.debug("_warn_unsigned_on: none on")
 
     def _not_installed(self, key: str) -> str:
         """Why module *key*, in the user's modules folder, does not run -- ""

@@ -6,11 +6,16 @@ user installed, and why it cannot run -- or why a switch was refused, or what
 switching off could not undo -- when there is something to say.  "Get
 modules" turns the page into the signed index's list: Install or Update after
 a permission screen that says what the module may do, in the words its
-capabilities are known by (``ui/presentation/module_catalog``).
+capabilities are known by (``ui/presentation/module_catalog``).  With
+developer mode on (its switch sits beside "Get modules"), "Install from
+folder…" installs a module folder the user picks, unsigned, after the same
+screen saying nobody reviewed it -- the App reads the folder
+(``ReadModuleFolder``), so the screen shows what will install.
 
 The window builds the Commands, as the visual controls' windows do: *listing*
 makes its ``ListModules``, *switch* its ``SetModuleEnabled``, *icon* its
-``ModuleIcon``, *browse* / *install* / *remove* the index's -- the symbol
+``ModuleIcon``, *browse* / *install* / *remove* the index's, *developer* /
+*read_folder* / *install_folder* developer mode's -- the symbol
 arrives as bytes the App read, so a window over the socket draws it too.
 Everything that may wait -- a switch can ask for the password, the index and
 a bundle are downloads -- is sent off the GUI thread.  The list follows
@@ -23,11 +28,14 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QImageReader, QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -39,13 +47,15 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.commands import Command
-from ..core.events import ModuleChanged, ModuleInstalled, ModuleRemoved
+from ..core.events import DeveloperModeChanged, ModuleChanged, ModuleInstalled, ModuleRemoved
 from ..core.i18n import tr
 from ..core.models import AvailableModule, ModuleInfo
 from ..core.ports import CommandBus
 from ..core.results import ModuleCatalogResult, ModuleResult
 from ._module_faces import face_loaded
 from .presentation.module_catalog import (
+    DEVELOPER_MODE,
+    FROM_FOLDER,
     REOPEN,
     byline,
     catalog_rows,
@@ -59,6 +69,8 @@ log = logging.getLogger(__name__)
 
 #: What the page says before any feature is a module.
 NONE_YET = "No modules yet -- features arrive here as they become modules."
+#: The folder dialog's title.
+CHOOSE_FOLDER = "Choose a module folder"
 READING = "Reading the module list…"
 #: The property a switch, a Remove or an Install carries: the module it acts on.
 _KEY_PROPERTY = "trcc_module_key"
@@ -79,7 +91,10 @@ class ModulesView(QScrollArea):
                  parent: QWidget | None = None, *,
                  browse: Callable[[], Command[Any]],
                  install: Callable[[str, tuple[str, ...], tuple[str, ...]], Command[Any]],
-                 remove: Callable[[str], Command[Any]]) -> None:
+                 remove: Callable[[str], Command[Any]],
+                 developer: Callable[..., Command[Any]],
+                 read_folder: Callable[..., Command[Any]],
+                 install_folder: Callable[..., Command[Any]]) -> None:
         super().__init__(parent)
         log.info("ModulesView: built")
         self._app = app
@@ -116,6 +131,8 @@ class ModulesView(QScrollArea):
         #: The module an install or removal is under way for -- its answer
         #: may carry only a message.  One at a time.
         self._pending = ""
+        #: Developer mode's switch and its install from a folder.
+        self.developer = DeveloperMode(self, developer, read_folder, install_folder)
         #: The window's language -- "" until it says, English as written.
         self._lang = ""
         #: TRCC's own words in it.
@@ -141,11 +158,20 @@ class ModulesView(QScrollArea):
         if self.browsing:
             self._show_catalog()
             return
-        modules = self._app.dispatch(self._listing()).modules
-        log.info("ModulesView.refresh: %s", {m.key: m.enabled for m in modules})
+        listed = self._app.dispatch(self._listing())
+        modules = listed.modules
+        self.developer.on = bool(getattr(listed, "developer_mode", False))
+        log.info("ModulesView.refresh: %s developer_mode=%s",
+                 {m.key: m.enabled for m in modules}, self.developer.on)
         self._clear()
         self._with_faces = {m.key for m in modules if face_loaded(m.key)}
-        self._column.addWidget(self._bar("Get modules", "modulesGet", self.open_catalog))
+        self._column.addWidget(self._bar("Get modules", "modulesGet", self.open_catalog,
+                                         *self.developer.controls()))
+        if self.developer.note:
+            note = QLabel(self.developer.note)
+            note.setObjectName("modulesFolderNote")
+            note.setWordWrap(True)
+            self._column.addWidget(note)
         if not modules:
             empty = QLabel(self._translate(NONE_YET))
             empty.setObjectName("modulesEmpty")
@@ -168,9 +194,10 @@ class ModulesView(QScrollArea):
         self.actions.clear()
         self._titles.clear()
 
-    def _bar(self, text: str, name: str, action: Callable[[], None]) -> QWidget:
-        """The row above the list: one button."""
-        log.debug("ModulesView._bar: %s", text)
+    def _bar(self, text: str, name: str, action: Callable[[], None],
+             *extra: QWidget) -> QWidget:
+        """The row above the list: one button, then any *extra*."""
+        log.debug("ModulesView._bar: %s + %d", text, len(extra))
         bar = QWidget()
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
@@ -179,6 +206,8 @@ class ModulesView(QScrollArea):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(action)
         row.addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
+        for widget in extra:
+            row.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft)
         row.addStretch(1)
         return bar
 
@@ -198,6 +227,9 @@ class ModulesView(QScrollArea):
         elif isinstance(event, ModuleRemoved):
             log.info("ModulesView.on_event: %s removed", event.key)
             self.notes.pop(event.key, None)
+            self.refresh()
+        elif isinstance(event, DeveloperModeChanged):
+            log.info("ModulesView.on_event: developer mode %s", event.on)
             self.refresh()
 
     def _symbol(self, key: str) -> QPixmap:
@@ -460,6 +492,97 @@ class ModulesView(QScrollArea):
         answered = box.clickedButton() is yes
         log.info("ModulesView.ask: %s -> %s", question, answered)
         return answered
+
+
+class DeveloperMode:
+    """Developer mode on the Modules page: its switch, and -- while it is on
+    -- "Install from folder…", the folder flow behind it.  The page owns one;
+    it reads the page's bus and words (same module), and asks it only for
+    its question box (``ask``) and a ``refresh``."""
+
+    def __init__(self, view: ModulesView, developer: Callable[..., Command[Any]],
+                 read_folder: Callable[..., Command[Any]],
+                 install_folder: Callable[..., Command[Any]]) -> None:
+        log.debug("DeveloperMode: built")
+        self._view = view
+        self._developer, self._read, self._install = developer, read_folder, install_folder
+        #: Developer mode, as the App last said.
+        self.on = False
+        #: The switch and the button, as last built; None while not shown.
+        self.switch: QCheckBox | None = None
+        self.button: QPushButton | None = None
+        #: What the last install from a folder had to say.
+        self.note = ""
+        #: The module an install from a folder is under way for.
+        self.busy = ""
+
+    def controls(self) -> list[QWidget]:
+        """The switch -- and, while developer mode is on, the button."""
+        log.debug("DeveloperMode.controls: on=%s busy=%r", self.on, self.busy)
+        translate = self._view._translate
+        switch = QCheckBox(translate(DEVELOPER_MODE))
+        switch.setObjectName("modulesDeveloper")
+        switch.setChecked(self.on)
+        switch.toggled.connect(self._on_switch)
+        self.switch, self.button = switch, None
+        if not self.on:
+            return [switch]
+        button = QPushButton(translate(FROM_FOLDER))
+        button.setObjectName("modulesFromFolder")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setEnabled(not self.busy)
+        button.clicked.connect(self._on_from_folder)
+        self.button = button
+        return [switch, button]
+
+    def _on_switch(self, on: bool) -> None:
+        """Developer mode on or off, in the App -- the page follows the event
+        every UI hears."""
+        log.info("DeveloperMode._on_switch: %s", on)
+        result = self._view._app.dispatch(self._developer(on=on))
+        if not result.ok:
+            log.warning("DeveloperMode._on_switch: %s", result.message)
+
+    def choose_folder(self) -> Path | None:
+        """The folder the user picks, or None -- a method, so a test picks."""
+        log.info("DeveloperMode.choose_folder")
+        chosen = QFileDialog.getExistingDirectory(
+            self._view.window(), self._view._translate(CHOOSE_FOLDER))
+        return Path(chosen) if chosen else None
+
+    def _on_from_folder(self) -> None:
+        """Install the module in a folder the user picks -- after the
+        permission screen, which says nobody reviewed it."""
+        folder = self.choose_folder()
+        log.info("DeveloperMode._on_from_folder: %s (busy with %r)", folder, self.busy)
+        if folder is None or self.busy:
+            return
+        read = self._view._app.dispatch(self._read(path=folder))
+        module = getattr(read, "module", None)
+        if not read.ok or module is None:
+            self.note = read.message
+            self._view.refresh()
+            return
+        question, lines = consent(module, self._view._translate,
+                                  title=self._view._words(module.key)(module.title),
+                                  unsigned=True)
+        if not self._view.ask(question, "\n".join(lines), self._view._translate("Install")):
+            log.info("DeveloperMode._on_from_folder: %s declined", module.key)
+            return
+        self.busy = module.key
+        if self.button is not None:
+            self.button.setEnabled(False)
+        dispatch_in_background(
+            self._view._app, self._install(path=folder, capabilities=module.capabilities,
+                                          network_hosts=module.network_hosts),
+            self._installed, failed=partial(_could_not, module.key))
+
+    def _installed(self, result: ModuleResult) -> None:
+        """The App's answer to an install from a folder, shown on the page."""
+        key, self.busy = self.busy, ""
+        log.info("DeveloperMode._installed: %s ok=%s %s", key, result.ok, result.message)
+        self.note = result.message
+        self._view.refresh()
 
 
 def _could_not(key: str, message: str) -> ModuleResult:
