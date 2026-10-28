@@ -103,14 +103,10 @@ class Shop:
 
     def _author_copy(self) -> Path:
         """``greeter``, made by ``new_module.py`` as an author would -- its
-        Query renamed, since every skeleton names one ``Greet``."""
+        Query ``GreeterGreet``, named for it by the skeleton's rename."""
         repo = self._folder / "author"
-        folder = new_module.create(KEY, "Greeter", "Says hello.", repo=repo,
-                                   author=AUTHOR)
-        for path in folder.rglob("*.py"):
-            path.write_text(path.read_text(encoding="utf-8").replace(
-                "Greet", "GreeterSay"), encoding="utf-8")
-        return folder
+        return new_module.create(KEY, "Greeter", "Says hello.", repo=repo,
+                                 author=AUTHOR)
 
     def bundle(self, version: str, capabilities: tuple[str, ...] = ("events",),
                hosts: tuple[str, ...] = ()) -> bytes:
@@ -397,6 +393,7 @@ def test_a_removal_deletes_it_and_forgets_it(cli_app: App, shop: Shop,
                                              heard: list[Any]) -> None:
     shop.list("1")
     assert _install(cli_app).ok
+    assert "GreeterGreet" in ipc.COMMAND_TYPES       # on the wire while installed
     result = cli_app.dispatch(RemoveModule(key=KEY))
     assert (result.ok, result.message) == (True, "greeter removed")
     assert not _installed_folder(cli_app).exists()
@@ -405,7 +402,7 @@ def test_a_removal_deletes_it_and_forgets_it(cli_app: App, shop: Shop,
     assert not any(name.startswith(f"trcc.modules.{KEY}") for name in sys.modules)
     # Nothing of it left on the wire either -- CI met a removed module's
     # Command still registered, in a later test in the same process.
-    assert "GreeterSay" not in ipc.COMMAND_TYPES
+    assert "GreeterGreet" not in ipc.COMMAND_TYPES
     assert heard[-2:] == [ModuleChanged(key=KEY, enabled=False), ModuleRemoved(key=KEY)]
 
 
@@ -548,7 +545,7 @@ def test_the_cli_asks_the_app_for_an_installed_modules_command(
     shop.list("1")
     assert _install(cli_app).ok
     ran = cli_runner.invoke(app, ["greeter", "Ada"])
-    assert (ran.exit_code, ran.output) == (0, "GreeterSayer, Ada!\n")
+    assert (ran.exit_code, ran.output) == (0, "Greeter, Ada!\n")
 
 
 def test_the_cli_never_runs_a_module_copied_in_by_hand(
@@ -578,7 +575,7 @@ def test_the_api_serves_what_the_app_runs_and_nothing_copied_in(
     cli_app.modules.add(_restart(cli_app).modules._specs["copied"])
     with loopback_client(build_app(trcc=cli_app)) as client:
         greeted = client.get("/modules/greeter", params={"name": "Ada"})
-    assert (greeted.status_code, greeted.json()["greeting"]) == (200, "GreeterSayer, Ada!")
+    assert (greeted.status_code, greeted.json()["greeting"]) == (200, "Greeter, Ada!")
     assert _ran(copied) == []
 
 

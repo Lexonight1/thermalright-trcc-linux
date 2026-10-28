@@ -22,7 +22,7 @@ from trcc.core.ports import CommandBus
 from trcc.ui.gui.module_page import ModulePage
 from trcc.ui.qt_words import retranslate, say
 
-from ...core import Greet
+from ...core import HelloGreet
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class HelloPage(QWidget, ModulePage):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.addWidget(say(QLabel(self), "Hello"))
-        self.label = QLabel(app.dispatch(Greet()).message if app else "", self)
+        self.label = QLabel(app.dispatch(HelloGreet()).message if app else "", self)
         layout.addWidget(self.label)
 
     def set_language(self, lang: str) -> None:

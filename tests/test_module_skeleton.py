@@ -43,7 +43,7 @@ def hello(module_root: Callable[[Path], Path]) -> Path:
 
 def _greet(**kwargs: Any) -> Command[Any]:
     """Hello's own Query -- reached by its wire name, as any UI reaches it."""
-    return ipc.decode_command({"command": "Greet", "kwargs": kwargs})
+    return ipc.decode_command({"command": "HelloGreet", "kwargs": kwargs})
 
 
 def _app(tmp_home: Path, on: bool = False) -> App:
@@ -79,9 +79,9 @@ def test_the_skeletons_manifest_is_valid() -> None:
 
 def test_a_modules_query_runs_in_the_module_and_only_while_it_is_on(
         hello: Path, tmp_home: Path) -> None:
-    """``Greet`` is answered by Hello's own root, never the App; while Hello
+    """``HelloGreet`` is answered by Hello's own root, never the App; while Hello
     is off every UI is told so.  MUTATION CHECK: drop ``MODULE`` from
-    ``Greet`` and the off case reaches a module that is not loaded."""
+    ``HelloGreet`` and the off case reaches a module that is not loaded."""
     app = _app(tmp_home)
     off = app.dispatch(_greet(name="Ada"))
     app.dispatch(SetModuleEnabled(key="hello", enabled=True))
@@ -258,8 +258,24 @@ def test_new_module_makes_a_module_that_loads(
     app = App(platform=FakePlatform(tmp_home), modules=specs(folder.parent))
     assert app.dispatch(SetModuleEnabled(key="weather", enabled=True)).ok
     assert type(app.modules._modules["weather"]).__name__ == "WeatherModule"
-    answer = app.dispatch(ipc.decode_command({"command": "Greet", "kwargs": {}}))
+    answer = app.dispatch(ipc.decode_command({"command": "WeatherGreet", "kwargs": {}}))
     assert answer.message == "Weather, world!"
+
+
+def test_two_modules_from_the_skeleton_load_side_by_side(
+        tmp_path: Path, module_root: Callable[[Path], Path], tmp_home: Path) -> None:
+    """Each names its Query for itself (``AlphaGreet``, ``BetaGreet``), so the
+    wire tells them apart.  MUTATION CHECK: name the skeleton's Query a bare
+    ``Greet`` again and the second module's registration raises a clash."""
+    alpha = new_module.create("alpha", "Alpha", "First.", repo=tmp_path)
+    new_module.create("beta", "Beta", "Second.", repo=tmp_path)
+    module_root(alpha.parent)
+    app = App(platform=FakePlatform(tmp_home), modules=specs(alpha.parent))
+    for key in ("alpha", "beta"):
+        assert app.dispatch(SetModuleEnabled(key=key, enabled=True)).ok
+    answers = [app.dispatch(ipc.decode_command({"command": name, "kwargs": {}})).message
+               for name in ("AlphaGreet", "BetaGreet")]
+    assert answers == ["Alpha, world!", "Beta, world!"]
 
 
 @pytest.mark.parametrize("key", ["Weather", "w", "2fast", "rgb-lights", "a" * 40])

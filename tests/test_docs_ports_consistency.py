@@ -142,7 +142,7 @@ def test_a_weakproxy_wearing_a_trcc_module_name_is_not_swept_up_as_a_class() -> 
 def test_a_class_from_an_unloaded_module_is_not_swept() -> None:
     """An unloaded module's classes linger in the collector until collected.
     The ``hello`` template module the module tests install and unload left
-    its ``Greet`` -- a ``Command`` -- behind, and a worker that ran one first
+    its ``HelloGreet`` -- a ``Command`` -- behind, and a worker that ran one first
     generated ``Command`` with one implementation too many: the page failed
     its gate by test order.  MUTATION CHECK: drop the ``sys.modules`` clause
     in ``_all_classes`` and Ghost is swept."""

@@ -109,7 +109,7 @@ def _all_classes() -> list[type]:
 
     And only a class whose module is still LOADED: an unloaded module's
     classes linger in the collector.  The test fixture that installs the
-    template module ``hello`` unloads it after, and its ``Greet`` -- a
+    template module ``hello`` unloads it after, and its ``HelloGreet`` -- a
     ``Command`` -- was counted by any worker that had run a hello test first:
     ``Command`` read 165 implementations instead of 164, and the gate failed
     by test order.  (Loaded, not "still named by its module": conftest swaps

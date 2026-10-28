@@ -13,7 +13,7 @@ import typer
 
 from trcc.ui.cli._ctx import get_app
 
-from ...core import Greet
+from ...core import HelloGreet
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ COMMANDS = typer.Typer()
 def hello(name: str = typer.Argument("world", help="Who to greet.")) -> None:
     """Say hello -- the module skeleton's command."""
     log.info("cli hello: %s", name)
-    result = get_app().dispatch(Greet(name=name))
+    result = get_app().dispatch(HelloGreet(name=name))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

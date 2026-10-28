@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Request
 
-from ...core import Greet, HelloResult
+from ...core import HelloGreet, HelloResult
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/modules/hello", tags=["hello"])
 def greet(request: Request, name: str = "world") -> HelloResult:
     """Hello's greeting."""
     log.info("api GET /modules/hello: name=%r", name)
-    return request.app.state.trcc.dispatch(Greet(name=name))
+    return request.app.state.trcc.dispatch(HelloGreet(name=name))
 
 
 ROUTERS = (router,)

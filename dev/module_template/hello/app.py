@@ -67,6 +67,6 @@ class HelloModule(BaseModule, key="hello"):
                  "on" if event.enabled else "off")
 
     def greet(self, name: str) -> str:
-        """What ``Greet`` answers -- a module's work lives in the module."""
+        """What ``HelloGreet`` answers -- a module's work lives in the module."""
         log.info("hello: greeting %s", name)
         return f"Hello, {name}!"

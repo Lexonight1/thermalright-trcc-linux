@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout
 
 from trcc.ui.qtgui.base import BasePanel
 
-from ...core import Greet
+from ...core import HelloGreet
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class HelloPanel(BasePanel):
 
     def _setup_ui(self) -> None:
         log.debug("HelloPanel._setup_ui")
-        self.label = QLabel(self.dispatch(Greet()).message, self)
+        self.label = QLabel(self.dispatch(HelloGreet()).message, self)
         QVBoxLayout(self).addWidget(self.label)
 
 
