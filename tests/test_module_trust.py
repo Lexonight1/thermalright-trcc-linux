@@ -472,3 +472,41 @@ def test_private_key_pem_round_trips(tmp_path: Path) -> None:
     pem = tmp_path / "k.key"
     pem.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
     assert tool._raw(tool.private_key(pem)) == tool._raw(key)
+
+
+def test_the_cli_lists_what_the_bundles_module_json_says(
+        keys: Keys, trust: ModuleTrust, root_file: bytes, tmp_path: Path,
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """``author-sign`` and ``add`` take what a release IS from its bundle --
+    no flag can list a release whose module.json says otherwise, which every
+    machine would refuse."""
+    import new_module
+
+    from trcc.adapters.modules._bundle import pack
+
+    folder = new_module.create("weather", "Weather", "The forecast.",
+                               repo=tmp_path / "repo", author="Ada")
+    manifest = json.loads((folder / "module.json").read_text(encoding="utf-8"))
+    manifest.update(version="3", capabilities=["events", "network"],
+                    network_hosts=["api.example.com"])
+    (folder / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
+    bundle, root, index = tmp_path / "weather-3.zip", tmp_path / "root.json", tmp_path / "index.json"
+    bundle.write_bytes(pack(folder))
+    root.write_bytes(root_file)
+    trusting = ["--trust", str(keys["root"][1])]
+
+    assert tool.main([*trusting, "author-sign", str(bundle), "--key",
+                      str(keys["author"][0])]) == 0
+    signature = capsys.readouterr().out.strip()
+    assert tool.main([*trusting, "add", str(index), "--root", str(root),
+                      "--key", str(keys["index"][0]), "--bundle", str(bundle),
+                      "--url", "https://example.org/weather-3.zip", "--commit", COMMIT,
+                      "--min-trcc", "9.12.0", "--author-key", str(keys["author"][1]),
+                      "--author-sig", signature]) == 0
+
+    listed = trust.open_index(index.read_bytes(), trust.open_root(root.read_bytes()))
+    release = listed.releases["weather"]
+    assert (release.version, release.capabilities, release.network_hosts, release.title,
+            release.summary, release.author) == (
+        "3", ("events", "network"), ("api.example.com",), "Weather", "The forecast.", "Ada")
+    trust.check_release(release, bundle.read_bytes())

@@ -522,14 +522,20 @@ def test_the_verdict_says_listable_only_after_both_stages(
     assert ("sign_module_index.py add" in report) == (not hard and ran)
 
 
-def test_the_add_command_carries_the_sites_it_fetches_from(tmp_path: Path) -> None:
-    """They go into the signed index, so an update naming a new one is asked
-    about again."""
+def test_the_add_command_lets_the_bundle_say_what_it_is(tmp_path: Path) -> None:
+    """The signer reads the key, version, capabilities and sites from the
+    bundle's module.json, so the command carries none of them -- and the report
+    says what will be listed, sites too: an update naming a new one is asked
+    about again on every machine."""
     result = review.Review("weather", "3", COMMIT, [], "", "", ("network",),
                            ("api.example.com",), ran=True)
     report = review.render(result, tmp_path / "files.txt")
-    assert ("--capabilities network --network-hosts api.example.com --title '' "
-            "--summary '' --author '' --bundle" in report)
+    assert (f"sign_module_index.py add index.json --root root.json --commit {COMMIT} "
+            "--bundle <asset> --url <asset url> --min-trcc <version> "
+            "--author-key <pub> --author-sig <sig>") in report
+    assert ("It lists weather 3 as its module.json says: asks for network; "
+            "sites api.example.com.") in report
+    assert "--capabilities" not in report and "--module" not in report
 
 
 @pytest.mark.parametrize(("stage_one_passes", "answer", "asked", "ran"), [

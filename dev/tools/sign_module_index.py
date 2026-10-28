@@ -10,12 +10,11 @@ Usage::
 
     # an author signs a release of their module
     PYTHONPATH=src python3.12 dev/tools/sign_module_index.py author-sign weather-3.zip \\
-        --key author.key --module weather --version 3
+        --key author.key
 
     # after reviewing it: list it, take one back, or just renew the expiry
     PYTHONPATH=src python3.12 dev/tools/sign_module_index.py add index.json --root root.json \\
-        --module weather --version 3 --bundle weather-3.zip --url https://... \\
-        --commit <sha> --min-trcc 9.12.0 --capabilities events,readings \\
+        --bundle weather-3.zip --url https://... --commit <sha> --min-trcc 9.12.0 \\
         --author-key author.pub --author-sig <base64>
     PYTHONPATH=src python3.12 dev/tools/sign_module_index.py revoke index.json --root root.json \\
         --module weather [--sha256 <hex>] --reason "sends your readings away"
@@ -30,6 +29,13 @@ The bytes signed are the verifier's own ``canonical`` and
 ``add`` refuses a release whose author signature does not check, and an update
 signed by a different author key than the release it replaces -- key
 continuity, which TRCC enforces again on every machine.
+
+What a release IS -- its key, version, capabilities, sites, title, summary and
+author -- comes from the bundle's own ``module.json`` (``entry_from_bundle``),
+never from flags.  TRCC refuses a bundle whose ``module.json`` differs from its
+index entry, so a typo in a flag listed a release no machine would install.
+Only what the bundle cannot know is a flag: where it is, the reviewed commit,
+the TRCC it needs, and its author's key and signature.
 
 Private keys are PEM files like the release keys (``sign_release.py``) and
 never leave this machine.
@@ -56,7 +62,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from sign_release import sign
 
-from trcc.adapters.modules import Ed25519Checker
+from trcc.adapters.modules import Ed25519Checker, read_bundle
 from trcc.core.errors import UntrustedModule
 from trcc.core.models import TrustRoot
 from trcc.core.trust_keys import ROOT_KEYS
@@ -176,6 +182,18 @@ def add(signed: dict[str, Any], module: str, bundle: bytes,
     return {**signed, "modules": {**signed["modules"], module: entry}}
 
 
+def entry_from_bundle(bundle: bytes) -> tuple[str, dict[str, Any]]:
+    """The module key *bundle* holds, and the index fields its ``module.json``
+    says -- version, capabilities, sites, title, summary, author."""
+    key, manifest = read_bundle(bundle)
+    return key, {"version": str(manifest.get("version", "0")),
+                 "capabilities": list(manifest.get("capabilities", [])),
+                 "network_hosts": list(manifest.get("network_hosts", [])),
+                 "title": str(manifest.get("title", "")),
+                 "summary": str(manifest.get("summary", "")),
+                 "author": str(manifest.get("author", ""))}
+
+
 def revoke(signed: dict[str, Any], module: str, reason: str,
            sha256: str = "") -> dict[str, Any]:
     """*signed* taking back *module* -- every release, or only *sha256*."""
@@ -204,8 +222,6 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("author-sign", help="an author signs a release bundle")
     p.add_argument("bundle", type=Path)
     p.add_argument("--key", type=Path, required=True)
-    p.add_argument("--module", required=True)
-    p.add_argument("--version", required=True)
 
     for name, text in (("add", "list a reviewed release"),
                        ("revoke", "take a module or one release back"),
@@ -216,16 +232,10 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--key", type=Path, default=DEFAULT_INDEX_KEY)
         p.add_argument("--days", type=int, default=90)
         if name == "add":
-            for flag in ("--module", "--version", "--url", "--commit",
-                         "--min-trcc", "--author-sig"):
+            for flag in ("--url", "--commit", "--min-trcc", "--author-sig"):
                 p.add_argument(flag, required=True)
-            p.add_argument("--bundle", type=Path, required=True)
-            p.add_argument("--capabilities", default="")
-            p.add_argument("--network-hosts", default="",
-                           help="the sites it fetches from, comma-separated")
-            p.add_argument("--title", default="", help="its manifest's title")
-            p.add_argument("--summary", default="", help="its manifest's summary")
-            p.add_argument("--author", default="", help="its manifest's author")
+            p.add_argument("--bundle", type=Path, required=True,
+                           help="the release -- what it is comes from its module.json")
             p.add_argument("--author-key", type=Path, required=True)
         elif name == "revoke":
             p.add_argument("--module", required=True)
@@ -246,21 +256,25 @@ def main(argv: list[str] | None = None) -> int:
                                                args.key, trust))
                 print(f"Wrote {args.out}: version {args.version}, {len(keys)} index key(s).")
             case "author-sign":
-                print(author_sign(args.bundle.read_bytes(), args.module, args.version,
-                                  args.key))
+                bundle = args.bundle.read_bytes()
+                module, said = entry_from_bundle(bundle)
+                print(author_sign(bundle, module, said["version"], args.key))
             case _:
                 root = trust.open_root(args.root.read_bytes())
                 signed = _signed(args.index)
                 if args.action == "add":
-                    signed = add(signed, args.module, args.bundle.read_bytes(), {
-                        "version": args.version, "url": args.url, "commit": args.commit,
+                    bundle = args.bundle.read_bytes()
+                    module, said = entry_from_bundle(bundle)
+                    signed = add(signed, module, bundle, {
+                        **said, "url": args.url, "commit": args.commit,
                         "min_trcc": args.min_trcc,
-                        "capabilities": [c for c in args.capabilities.split(",") if c],
-                        "network_hosts": [h for h in args.network_hosts.split(",") if h],
-                        "title": args.title, "summary": args.summary,
-                        "author": args.author,
                         "author_key": public_key(args.author_key),
                         "author_sig": args.author_sig}, trust)
+                    print(f"Listing {module} {said['version']}: {said['title']!r} by "
+                          f"{said['author']!r}, asks for "
+                          f"{', '.join(said['capabilities']) or 'nothing'}"
+                          + (f"; sites {', '.join(said['network_hosts'])}"
+                             if said["network_hosts"] else ""))
                 elif args.action == "revoke":
                     signed = revoke(signed, args.module, args.reason, args.sha256)
                 data = reissue(signed, root, args.days, now, args.key, trust)

@@ -49,7 +49,6 @@ import base64
 import hashlib
 import json
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -791,17 +790,16 @@ def render(result: Review, diff_file: Path) -> str:
         lines += ["## Verdict: listable -- if your read agrees", "",
                   "Both stages passed.  The decision is yours; to list it:", "",
                   "```",
-                  f"sign_module_index.py add index.json --root root.json --module "
-                  f"{result.key} --version {result.version} --commit {result.commit} "
-                  f"--capabilities {','.join(result.capabilities)} "
-                  + (f"--network-hosts {','.join(result.network_hosts)} "
-                     if result.network_hosts else "")
-                  + f"--title {shlex.quote(result.title)} "
-                  f"--summary {shlex.quote(result.summary)} "
-                  f"--author {shlex.quote(result.author)} "
-                  + "--bundle <asset> "
+                  f"sign_module_index.py add index.json --root root.json "
+                  f"--commit {result.commit} --bundle <asset> "
                   "--url <asset url> --min-trcc <version> --author-key <pub> "
-                  "--author-sig <sig>", "```"]
+                  "--author-sig <sig>", "```", "",
+                  # What it is comes from the bundle's module.json, which is
+                  # the reviewed source byte for byte (Provenance above).
+                  f"It lists {result.key} {result.version} as its module.json says: "
+                  f"asks for {', '.join(result.capabilities) or 'nothing'}"
+                  + (f"; sites {', '.join(result.network_hosts)}"
+                     if result.network_hosts else "") + "."]
     return "\n".join(lines) + "\n"
 
 
