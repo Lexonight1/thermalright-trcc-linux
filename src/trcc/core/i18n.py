@@ -277,6 +277,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': '开发者模式',
         'Install from folder…': '从文件夹安装…',
         'Choose a module folder': '选择模块文件夹',
+        'On': '开启',
+        'Off': '关闭',
     },
     'zh_TW': {
         'Layer Mask': '佈局蒙板',
@@ -410,6 +412,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': '開發人員模式',
         'Install from folder…': '從資料夾安裝…',
         'Choose a module folder': '選擇模組資料夾',
+        'On': '開啟',
+        'Off': '關閉',
     },
     'en': {
         'Layer Mask': 'Layer Mask',
@@ -517,6 +521,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'by {author}': 'by {author}',
         'Built-in': 'Built-in',
         'Copied in by hand': 'Copied in by hand',
+        'On': 'On',
+        'Off': 'Off',
         'Unsigned -- never reviewed': 'Unsigned -- never reviewed',
         'Unsigned: nobody reviewed it. Install only code you trust.': 'Unsigned: nobody reviewed it. Install only code you trust.',
         'Developer mode': 'Developer mode',
@@ -677,6 +683,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Entwicklermodus',
         'Install from folder…': 'Aus Ordner installieren…',
         'Choose a module folder': 'Modulordner auswählen',
+        'On': 'Ein',
+        'Off': 'Aus',
     },
     'ru': {
         'Layer Mask': 'Покрытие',
@@ -810,6 +818,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Режим разработчика',
         'Install from folder…': 'Установить из папки…',
         'Choose a module folder': 'Выберите папку модуля',
+        'On': 'Вкл',
+        'Off': 'Выкл',
     },
     'fr': {
         'Layer Mask': 'Masque de couche',
@@ -943,6 +953,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Mode développeur',
         'Install from folder…': 'Installer depuis un dossier…',
         'Choose a module folder': 'Choisir un dossier de module',
+        'On': 'Activé',
+        'Off': 'Désactivé',
     },
     'pt': {
         'Layer Mask': 'Máscara de camada',
@@ -1076,6 +1088,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Modo de desenvolvedor',
         'Install from folder…': 'Instalar de uma pasta…',
         'Choose a module folder': 'Escolher uma pasta de módulo',
+        'On': 'Ligado',
+        'Off': 'Desligado',
     },
     'ja': {
         'Layer Mask': 'レイヤーマスク',
@@ -1209,6 +1223,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': '開発者モード',
         'Install from folder…': 'フォルダーからインストール…',
         'Choose a module folder': 'モジュールフォルダーを選択',
+        'On': 'オン',
+        'Off': 'オフ',
     },
     'es': {
         'Layer Mask': 'Mascarilla de capa',
@@ -1342,6 +1358,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Modo de desarrollador',
         'Install from folder…': 'Instalar desde carpeta…',
         'Choose a module folder': 'Elegir una carpeta de módulo',
+        'On': 'Activado',
+        'Off': 'Desactivado',
     },
     'ko': {
         'Layer Mask': '레이어 마스크',
@@ -1475,6 +1493,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': '개발자 모드',
         'Install from folder…': '폴더에서 설치…',
         'Choose a module folder': '모듈 폴더 선택',
+        'On': '켜짐',
+        'Off': '꺼짐',
     },
     'it': {
         'Layer Mask': 'Maschera livello',
@@ -1608,6 +1628,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Modalità sviluppatore',
         'Install from folder…': 'Installa da cartella…',
         'Choose a module folder': 'Scegli una cartella del modulo',
+        'On': 'Attivo',
+        'Off': 'Disattivo',
     },
     'nl': {
         'Layer Mask': 'Laagmasker',
@@ -1741,6 +1763,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Ontwikkelaarsmodus',
         'Install from folder…': 'Installeren vanuit map…',
         'Choose a module folder': 'Kies een modulemap',
+        'On': 'Aan',
+        'Off': 'Uit',
     },
     'pl': {
         'Layer Mask': 'Maska warstwy',
@@ -1874,6 +1898,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Tryb dewelopera',
         'Install from folder…': 'Zainstaluj z folderu…',
         'Choose a module folder': 'Wybierz folder modułu',
+        'On': 'Wł.',
+        'Off': 'Wył.',
     },
     'tr': {
         'Layer Mask': 'Katman maskesi',
@@ -2007,6 +2033,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Geliştirici modu',
         'Install from folder…': 'Klasörden yükle…',
         'Choose a module folder': 'Bir modül klasörü seçin',
+        'On': 'Açık',
+        'Off': 'Kapalı',
     },
     'ar': {
         'Layer Mask': 'قناع الطبقة',
@@ -2140,6 +2168,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'وضع المطوّر',
         'Install from folder…': 'التثبيت من مجلد…',
         'Choose a module folder': 'اختر مجلد الوحدة',
+        'On': 'تشغيل',
+        'Off': 'إيقاف',
     },
     'hi': {
         'Layer Mask': 'लेयर मास्क',
@@ -2273,6 +2303,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'डेवलपर मोड',
         'Install from folder…': 'फ़ोल्डर से इंस्टॉल करें…',
         'Choose a module folder': 'मॉड्यूल फ़ोल्डर चुनें',
+        'On': 'चालू',
+        'Off': 'बंद',
     },
     'th': {
         'Layer Mask': 'มาสก์เลเยอร์',
@@ -2406,6 +2438,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'โหมดนักพัฒนา',
         'Install from folder…': 'ติดตั้งจากโฟลเดอร์…',
         'Choose a module folder': 'เลือกโฟลเดอร์โมดูล',
+        'On': 'เปิด',
+        'Off': 'ปิด',
     },
     'vi': {
         'Layer Mask': 'Mặt nạ lớp',
@@ -2539,6 +2573,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Chế độ nhà phát triển',
         'Install from folder…': 'Cài đặt từ thư mục…',
         'Choose a module folder': 'Chọn thư mục mô-đun',
+        'On': 'Bật',
+        'Off': 'Tắt',
     },
     'id': {
         'Layer Mask': 'Masker lapisan',
@@ -2672,6 +2708,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Mode pengembang',
         'Install from folder…': 'Pasang dari folder…',
         'Choose a module folder': 'Pilih folder modul',
+        'On': 'Aktif',
+        'Off': 'Nonaktif',
     },
     'cs': {
         'Layer Mask': 'Maska vrstvy',
@@ -2805,6 +2843,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Režim vývojáře',
         'Install from folder…': 'Instalovat ze složky…',
         'Choose a module folder': 'Vyberte složku modulu',
+        'On': 'Zapnuto',
+        'Off': 'Vypnuto',
     },
     'sv': {
         'Layer Mask': 'Lagermask',
@@ -2938,6 +2978,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Utvecklarläge',
         'Install from folder…': 'Installera från mapp…',
         'Choose a module folder': 'Välj en modulmapp',
+        'On': 'På',
+        'Off': 'Av',
     },
     'da': {
         'Layer Mask': 'Lagmaske',
@@ -3071,6 +3113,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Udviklertilstand',
         'Install from folder…': 'Installer fra mappe…',
         'Choose a module folder': 'Vælg en modulmappe',
+        'On': 'Til',
+        'Off': 'Fra',
     },
     'no': {
         'Layer Mask': 'Lagmaske',
@@ -3204,6 +3248,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Utviklermodus',
         'Install from folder…': 'Installer fra mappe…',
         'Choose a module folder': 'Velg en modulmappe',
+        'On': 'På',
+        'Off': 'Av',
     },
     'fi': {
         'Layer Mask': 'Tasomaski',
@@ -3337,6 +3383,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Kehittäjätila',
         'Install from folder…': 'Asenna kansiosta…',
         'Choose a module folder': 'Valitse moduulikansio',
+        'On': 'Päällä',
+        'Off': 'Pois',
     },
     'hu': {
         'Layer Mask': 'Rétegmaszk',
@@ -3470,6 +3518,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Fejlesztői mód',
         'Install from folder…': 'Telepítés mappából…',
         'Choose a module folder': 'Válasszon modulmappát',
+        'On': 'Be',
+        'Off': 'Ki',
     },
     'ro': {
         'Layer Mask': 'Mască strat',
@@ -3603,6 +3653,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Mod dezvoltator',
         'Install from folder…': 'Instalează din dosar…',
         'Choose a module folder': 'Alegeți un dosar de modul',
+        'On': 'Pornit',
+        'Off': 'Oprit',
     },
     'uk': {
         'Layer Mask': 'Маска шару',
@@ -3736,6 +3788,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Режим розробника',
         'Install from folder…': 'Встановити з теки…',
         'Choose a module folder': 'Виберіть теку модуля',
+        'On': 'Увімк.',
+        'Off': 'Вимк.',
     },
     'el': {
         'Layer Mask': 'Μάσκα στρώματος',
@@ -3869,6 +3923,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Λειτουργία προγραμματιστή',
         'Install from folder…': 'Εγκατάσταση από φάκελο…',
         'Choose a module folder': 'Επιλέξτε φάκελο λειτουργικής μονάδας',
+        'On': 'Ενεργό',
+        'Off': 'Ανενεργό',
     },
     'he': {
         'Layer Mask': 'מסכת שכבה',
@@ -4002,6 +4058,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'מצב מפתחים',
         'Install from folder…': 'התקנה מתיקייה…',
         'Choose a module folder': 'בחרו תיקיית מודול',
+        'On': 'פועל',
+        'Off': 'כבוי',
     },
     'ms': {
         'Layer Mask': 'Topeng lapisan',
@@ -4135,6 +4193,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Mod pembangun',
         'Install from folder…': 'Pasang daripada folder…',
         'Choose a module folder': 'Pilih folder modul',
+        'On': 'Hidup',
+        'Off': 'Mati',
     },
     # --- New languages (v8.3.9) ---
     'bn': {
@@ -4269,6 +4329,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'ডেভেলপার মোড',
         'Install from folder…': 'ফোল্ডার থেকে ইনস্টল করুন…',
         'Choose a module folder': 'একটি মডিউল ফোল্ডার বেছে নিন',
+        'On': 'চালু',
+        'Off': 'বন্ধ',
     },
     'ur': {
         'Layer Mask': 'لیئر ماسک',
@@ -4402,6 +4464,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'ڈویلپر موڈ',
         'Install from folder…': 'فولڈر سے انسٹال کریں…',
         'Choose a module folder': 'ماڈیول فولڈر منتخب کریں',
+        'On': 'آن',
+        'Off': 'آف',
     },
     'fa': {
         'Layer Mask': 'ماسک لایه',
@@ -4535,6 +4599,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'حالت توسعه\u200cدهنده',
         'Install from folder…': 'نصب از پوشه…',
         'Choose a module folder': 'یک پوشهٔ ماژول انتخاب کنید',
+        'On': 'روشن',
+        'Off': 'خاموش',
     },
     'tl': {
         'Layer Mask': 'Layer Mask',
@@ -4668,6 +4734,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Mode ng developer',
         'Install from folder…': 'I-install mula sa folder…',
         'Choose a module folder': 'Pumili ng folder ng module',
+        'On': 'Naka-on',
+        'Off': 'Naka-off',
     },
     'ta': {
         'Layer Mask': 'லேயர் மாஸ்க்',
@@ -4801,6 +4869,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'டெவலப்பர் பயன்முறை',
         'Install from folder…': 'கோப்புறையிலிருந்து நிறுவு…',
         'Choose a module folder': 'தொகுதி கோப்புறையைத் தேர்ந்தெடுக்கவும்',
+        'On': 'இயக்கம்',
+        'Off': 'முடக்கம்',
     },
     'pa': {
         'Layer Mask': 'ਲੇਅਰ ਮਾਸਕ',
@@ -4934,6 +5004,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'ਡਿਵੈਲਪਰ ਮੋਡ',
         'Install from folder…': 'ਫੋਲਡਰ ਤੋਂ ਇੰਸਟਾਲ ਕਰੋ…',
         'Choose a module folder': 'ਮੋਡੀਊਲ ਫੋਲਡਰ ਚੁਣੋ',
+        'On': 'ਚਾਲੂ',
+        'Off': 'ਬੰਦ',
     },
     'sw': {
         'Layer Mask': 'Mask ya Tabaka',
@@ -5067,6 +5139,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'Hali ya msanidi programu',
         'Install from folder…': 'Sakinisha kutoka folda…',
         'Choose a module folder': 'Chagua folda ya moduli',
+        'On': 'Imewashwa',
+        'Off': 'Imezimwa',
     },
     'my': {
         'Layer Mask': 'အလွှာမျက်နှာဖုံး',
@@ -5200,6 +5274,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Developer mode': 'ဆော့ဖ်ဝဲရေးသူ မုဒ်',
         'Install from folder…': 'ဖိုင်တွဲမှ ထည့်သွင်းရန်…',
         'Choose a module folder': 'မော်ဂျူး ဖိုင်တွဲကို ရွေးပါ',
+        'On': 'ဖွင့်',
+        'Off': 'ပိတ်',
     },
 }
 

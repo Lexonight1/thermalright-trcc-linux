@@ -298,7 +298,7 @@ class ModulesView(QScrollArea):
             remove.clicked.connect(self._on_remove)
             row.addWidget(remove, 0, Qt.AlignmentFlag.AlignVCenter)
             self.removes[module.key] = remove
-        switch = QPushButton("On" if module.enabled else "Off")
+        switch = QPushButton(self._translate("On" if module.enabled else "Off"))
         switch.setCheckable(True)
         switch.setChecked(module.enabled)
         switch.setCursor(Qt.CursorShape.PointingHandCursor)

@@ -318,3 +318,11 @@ def test_a_folder_that_cannot_be_read_says_why(view: Any, app: _App,
     view.developer.button.click()
     assert (asked, app.of(InstallModuleFolder)) == ([], [])
     assert view.developer.note == "core/link.py: a symbolic link"
+
+
+def test_a_tiles_switch_speaks_the_windows_language(view: Any) -> None:
+    """``On`` / ``Off`` were drawn in English whatever the window's language."""
+    view.set_language("de")
+    assert (view.switches["rgb"].text(), view.switches["ticker"].text()) == ("Ein", "Ein")
+    view.set_language("en")
+    assert view.switches["rgb"].text() == "On"
