@@ -26,7 +26,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
-| [`_QtUI`](#_qtui) | 1 | 3 | 2 |
+| [`_QtUI`](#_qtui) | 1 | 4 | 2 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
@@ -344,7 +344,7 @@ Shared base for the two widget skins.  Intermediate — not registered.
 run() -> int
 ```
 
-**You inherit (3):** `announce` · `compose` · `stop`
+**You inherit (4):** `announce` · `compose` · `stop` · `teardown`
 
 **Implementations (2):** `GuiUI` · `QtGuiUI`
 

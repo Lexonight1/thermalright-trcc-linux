@@ -24,7 +24,11 @@ close is not enough: the event loop must be told to stop or the process lives
 on with the metrics thread still polling.
 
 A skin PASSES only when the process is gone AND its log shows the teardown
-markers.  Exiting without them is the #143 bug, not a pass.
+markers AND it exited rather than crashed.  Exiting without the markers is the
+#143 bug, not a pass.  A crash (a negative return code: killed by a signal)
+FAILS even with every marker present -- the qtgui segfaulted at interpreter
+exit after logging its whole cleanup, and this smoke reported it as PASS until
+2026-10-28, with the process's output thrown away so nobody saw why.
 
 Runs against the MOCK fleet — never touches real hardware.
 
@@ -84,21 +88,36 @@ SKINS = (
     # Its own runtime dir: a real daemon on this machine would otherwise own
     # the socket and the mock one would refuse to start.
     Skin("daemon", ["dev/_mock_daemon.py"],
-         boot_marker="IPC server listening on",
+         # Its own loop, as ``_LOOP`` is for the Qt skins.  It read "IPC
+         # server listening on" until 2026-10-28 -- a line nothing has
+         # logged since August, so this case SKIPped on every run.
+         boot_marker="DaemonUI.run: serving until shutdown",
          env={"XDG_RUNTIME_DIR": tempfile.mkdtemp(prefix="trcc-smoke-")}),
 )
 PHASES = ("start-up", "running")
 
 
-def _launch(skin: Skin) -> subprocess.Popen[bytes]:
+def _launch(skin: Skin, output: Path) -> subprocess.Popen[bytes]:
+    """Start *skin*, its stdout and stderr in *output*.  ``-X faulthandler``,
+    so a crash leaves its Python stack there.  A file, not a pipe: ``-v``
+    writes the log to stderr, and a pipe nobody reads blocks the child."""
     env = {**os.environ, "PYTHONPATH": "src", "QT_QPA_PLATFORM": "offscreen",
            **skin.env}
-    return subprocess.Popen(
-        [sys.executable, *skin.argv],
-        cwd=REPO, env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    with output.open("wb") as sink:
+        return subprocess.Popen(
+            [sys.executable, "-X", "faulthandler", *skin.argv],
+            cwd=REPO, env=env, stdout=sink, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+
+def _crash_lines(output: Path, limit: int = 25) -> list[str]:
+    """The faulthandler report in *output*, else its last *limit* lines."""
+    lines = output.read_text(encoding="utf-8", errors="replace").splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("Fatal Python error"):
+            return lines[i:i + limit]
+    return lines[-limit:]
 
 
 def _wait_for_boot(proc: subprocess.Popen[bytes], since: int,
@@ -144,7 +163,10 @@ def _log_since(offset: int) -> str:
 def check(skin: Skin, phase: str) -> str:
     print(f"\n── {skin.name} / {phase} ──────────────────────────────")
     start = LOG.stat().st_size if LOG.exists() else 0
-    proc = _launch(skin)
+    fd, name = tempfile.mkstemp(prefix=f"smoke-{skin.name}-", suffix=".out")
+    os.close(fd)
+    output = Path(name)
+    proc = _launch(skin, output)
     early = phase == "start-up"
     marker = _STARTUP if early else skin.boot_marker
     if not _wait_for_boot(proc, start, marker, settle_s=0 if early else 2):
@@ -172,6 +194,12 @@ def check(skin: Skin, phase: str) -> str:
 
     tail = _log_since(offset)
     print(f"  exited rc={rc} in {time.monotonic() - t0:.1f}s")
+    if rc < 0:
+        print(f"  FAIL  crashed: killed by {signal.Signals(-rc).name} -- output "
+              f"in {output}")
+        for line in _crash_lines(output):
+            print(f"        {line}")
+        return "FAIL"
     if early and skin.boot_marker in tail:
         print("  SKIP  the signal landed after the loop started — this run "
               "proved the running case, not start-up")

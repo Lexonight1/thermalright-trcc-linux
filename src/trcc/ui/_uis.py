@@ -244,6 +244,9 @@ class _QtUI(UserInterface):
     the launch seam inject a ``Platform`` rather than a pre-built ``App``.
     """
 
+    #: The window :meth:`run` built.  :meth:`teardown` destroys it.
+    _window: QWidget | None = None
+
     def compose(self, platform: Platform | None) -> App:
         log.info("%s.compose: Qt-first via build_qt_app", type(self).__name__)
         from .qapp import build_qt_app
@@ -298,6 +301,30 @@ class _QtUI(UserInterface):
             return 0
         log.info("_exec: entering the Qt event loop")
         return qapp.exec()
+
+    def teardown(self) -> None:
+        """Destroy the window now, while Python can still run its handlers.
+
+        Runs after the App has closed, so no event reaches a dead widget.  Left
+        alive, the window was destroyed by PySide at interpreter exit instead:
+        closing it hid its children, and a Python widget's handler was looked
+        up after Python had freed it -- the qtgui's shutdown segfault (core dump
+        2026-10-28: ``visitAllPyObjects`` -> ``~QWidget`` -> ``QWindow::close``
+        -> ``getOverride`` -> ``func_dealloc``; 2-3 runs in 3, before the GC
+        change too).  The gui left its window alive the same way and survived
+        by luck.  The production launchers hard-exit first, so only the dev
+        mock and tests reached it.
+        """
+        window, self._window = self._window, None
+        if window is None:
+            log.debug("%s.teardown: no window to destroy", type(self).__name__)
+        else:
+            import shiboken6
+            log.info("%s.teardown: destroying %s", type(self).__name__,
+                     type(window).__name__)
+            if shiboken6.isValid(window):
+                shiboken6.delete(window)
+        super().teardown()
 
 
 class GuiUI(_QtUI, key="gui"):
@@ -369,7 +396,7 @@ class GuiUI(_QtUI, key="gui"):
         from ..core.commands import DeviceConnectionIssues
         from .gui.trcc_app import TRCCApp
 
-        window = TRCCApp(app=self, decorated=self.decorated)
+        window = self._window = TRCCApp(app=self, decorated=self.decorated)
         if self._instance is not None:
             # Fired from SingleInstance's accept thread; the Qt signal marshals
             # it onto the GUI thread (a direct cross-thread QWidget call
@@ -393,6 +420,7 @@ class GuiUI(_QtUI, key="gui"):
             log.info("GuiUI.teardown: releasing the single-instance lock")
             self._instance.close()
             self._instance = None
+        super().teardown()
 
 
 class QtGuiUI(_QtUI, key="qtgui"):
@@ -429,7 +457,7 @@ class QtGuiUI(_QtUI, key="qtgui"):
         from .qtgui.app import MainWindow
         from .qtgui.splash import auto_close
 
-        window = MainWindow(self)
+        window = self._window = MainWindow(self)
         if self.start_hidden:
             log.info("QtGuiUI.run: --resume — starting hidden in the tray")
         else:
