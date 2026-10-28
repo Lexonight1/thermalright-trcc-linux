@@ -888,6 +888,7 @@ class LCDHandler(BaseHandler):
         self.log.info("_sync_preview_size: composed=%s → preview %dx%d",
                       size.composed, size.width, size.height)
         self._w['preview'].set_resolution(size.width, size.height)
+        self._w['theme_setting'].set_canvas(size.width, size.height)
 
     def rebuild_preview(self) -> None:
         """Fallback preview refresh for sends that carry no surface.
