@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import gc
 import threading
+import time
 import weakref
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -117,18 +119,13 @@ def test_the_generations_collected_match_what_automatic_gc_runs(
     assert collected == generations
 
 
-def _off_gui_thread_qobjects() -> dict[str, int]:
-    """Live QObjects whose thread affinity is not the GUI thread, by type.
-
-    The collector cannot help an object a background thread OWNS: its
-    destructor and its events belong to that thread.  ``dev/tools/gc_threads.py``
-    runs the same scan beside the running window.
-    """
+def _off_gui_thread_now() -> dict[int, str]:
+    """Live QObjects whose thread affinity is not the GUI thread: id -> type."""
     from PySide6.QtCore import QObject
     qapp_instance = QApplication.instance()
     assert qapp_instance is not None
     gui = qapp_instance.thread()
-    found: dict[str, int] = {}
+    found: dict[int, str] = {}
     for obj in gc.get_objects():
         if not isinstance(obj, QObject):
             continue
@@ -137,9 +134,27 @@ def _off_gui_thread_qobjects() -> dict[str, int]:
         except RuntimeError:        # C++ side already deleted
             continue
         if owner != gui:
-            key = f"{type(obj).__module__}.{type(obj).__qualname__}"
-            found[key] = found.get(key, 0) + 1
+            found[id(obj)] = f"{type(obj).__module__}.{type(obj).__qualname__}"
     return found
+
+
+def _living_off_gui_thread(pause: Callable[[], None]) -> dict[str, int]:
+    """QObjects that LIVE on another thread, by type: seen at two scans.
+
+    The collector cannot help an object a background thread owns.  A thread
+    may use one of its own for a moment -- the renderer's ``QBuffer`` lives one
+    ``encode_png`` call, freed by refcount on that thread, which is sound -- so
+    only an object present at both scans counts.  ``dev/tools/gc_threads.py``
+    applies the same rule beside the running window.
+    """
+    before = _off_gui_thread_now()
+    pause()
+    after = _off_gui_thread_now()
+    living: dict[str, int] = {}
+    for oid, key in after.items():
+        if before.get(oid) == key:
+            living[key] = living.get(key, 0) + 1
+    return living
 
 
 def test_the_scan_names_a_qobject_made_on_a_thread(
@@ -151,7 +166,8 @@ def test_the_scan_names_a_qobject_made_on_a_thread(
     thread.start()
     thread.join()
 
-    assert _off_gui_thread_qobjects().get("PySide6.QtCore.QTimer", 0) >= 1
+    assert _living_off_gui_thread(lambda: time.sleep(0.05)).get(
+        "PySide6.QtCore.QTimer", 0) >= 1
     made.clear()
     gc.collect()
 
@@ -189,7 +205,7 @@ def test_the_window_and_its_app_own_no_qobject_off_the_gui_thread(
             win._activate_device(key)
             qtbot.wait(750)
 
-        assert _off_gui_thread_qobjects() == {}
+        assert _living_off_gui_thread(lambda: qtbot.wait(300)) == {}
         win.close()
     finally:
         app.close()

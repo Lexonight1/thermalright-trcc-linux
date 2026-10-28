@@ -10,7 +10,11 @@ Two hazards, one drive of the REAL window on the mock fleet:
   collection that freed something, by the thread it ran on.
 * **A QObject living on a background thread.**  The collector cannot help an
   object a thread OWNS.  Every 2 s a GUI-thread timer walks ``gc.get_objects()``
-  and names each live QObject whose thread affinity is not the GUI thread.
+  and names each QObject whose thread affinity is not the GUI thread and that
+  was there at the scan before too.  A thread may use a QObject of its own --
+  the renderer's ``QBuffer`` lives one ``encode_png`` call -- and freeing it by
+  refcount on that thread is sound; only one that LIVES there is the hazard.
+  Those passing ones are counted apart, as ``transient``.
 
 Both windows get the same three panels -- a SCSI LCD, a HID LCD and an LED --
 so their senders, renders and previews run.  A run is only evidence if the
@@ -27,6 +31,16 @@ must show off-thread collections, and a QTimer planted on a thread must be named
     PYTHONPATH=src python3.12 dev/tools/gc_threads.py --plant          # QTimer made on a thread
     PYTHONPATH=src python3.12 dev/tools/gc_threads.py --perf           # + perf instructions:u
     PYTHONPATH=src python3.12 dev/tools/gc_threads.py --selftest       # the answers it must give
+    PYTHONPATH=src python3.12 dev/tools/gc_threads.py --ui daemon      # the App with no window
+
+``--ui daemon`` runs the real ``run_daemon`` on the same fleet and drives it
+through a real ``AppProxy`` over its socket -- an event stream open, the panels
+connected, a theme, a video, a preview every half second -- while a side thread
+scans (it has no Qt loop).  The daemon keeps automatic gc, so it is safe only
+if it holds no Python-subclass QObject at all, on any thread: that is its
+verdict.  It runs in bubblewrap with an empty ``/dev``, so nothing in it can
+reach a USB device even if something went wrong; the verdict is void unless
+``/dev/bus/usb`` really is hidden.
 
 Every drive runs sandboxed: a throwaway HOME and XDG dirs, ``xvfb-run`` and
 ``dbus-run-session`` (memory: reference_drive_windows_on_xvfb), so it never
@@ -45,6 +59,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
+from typing import Any
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -78,16 +93,27 @@ class Verdict:
     foreign: dict[str, int]
     scans: int
     panels: int
+    transient: dict[str, int] = field(default_factory=dict)
+    py_qobjects: dict[str, int] = field(default_factory=dict)
+    client: dict[str, list[int]] = field(default_factory=dict)
+    refused: dict[str, str] = field(default_factory=dict)
+    usb_hidden: bool = False
     instructions: int | None = None
 
     @property
     def alive(self) -> bool:
-        """The instrument ran on a window with panels: the GUI thread
-        collected, the scan fired, and the App held every panel."""
+        """The instrument ran with every panel connected: the scan fired, the
+        App held every panel, and -- in a window -- the GUI thread collected;
+        the daemon instead needs its USB hidden."""
+        if self.ui == "daemon":
+            return self.scans > 0 and self.panels == len(FLEET) and self.usb_hidden
         return self.on_gui > 0 and self.scans > 0 and self.panels == len(FLEET)
 
     @property
     def clean(self) -> bool:
+        if self.ui == "daemon":
+            # Automatic gc stays on: safe only with no Python QObject to free.
+            return not self.foreign and not self.py_qobjects
         return not self.gc_enabled and not self.off_gui and not self.foreign
 
     def lines(self) -> list[str]:
@@ -98,8 +124,16 @@ class Verdict:
             f"  collections on GUI      : {self.on_gui}",
             f"  collections off GUI     : {sum(self.off_gui.values())} {self.off_gui or ''}",
             f"  QObjects off GUI thread : {self.foreign or 'none'} (over {self.scans} scans)",
+            f"    passing, not living   : {self.transient or 'none'}",
             f"  panels connected        : {self.panels} of {len(FLEET)}",
         ]
+        if self.ui == "daemon":
+            out += [
+                f"  Python QObjects (any)   : {self.py_qobjects or 'none'}",
+                f"  client Commands ok/sent : {self.client}",
+                f"  first refusal each      : {self.refused or 'none'}",
+                f"  /dev/bus/usb hidden     : {self.usb_hidden}",
+            ]
         if self.instructions is not None:
             out.append(f"  instructions:u          : {self.instructions:,}")
         return out
@@ -112,12 +146,18 @@ class _Probe:
     """Counts collections by thread and QObjects by thread affinity."""
 
     control: bool
+    daemon: bool = False
     on_gui: int = 0
     off_gui: dict[str, int] = field(default_factory=dict)
     foreign: dict[str, int] = field(default_factory=dict)
     scans: int = 0
     panels: int = 0
     armed: bool = False
+    transient: dict[str, int] = field(default_factory=dict)
+    py_qobjects: dict[str, int] = field(default_factory=dict)
+    client: dict[str, list[int]] = field(default_factory=dict)
+    refused: dict[str, str] = field(default_factory=dict)
+    _last_off_gui: set[int] = field(default_factory=set)
     _keep: list[object] = field(default_factory=list)
 
     def note(self, phase: str, info: dict[str, int]) -> None:
@@ -141,15 +181,15 @@ class _Probe:
         and note how many panels the App holds."""
         import gc
 
-        from PySide6.QtCore import QObject
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import QCoreApplication, QObject
 
         from trcc.app import App
-        qapp = QApplication.instance()
+        qapp = QCoreApplication.instance()
         if qapp is None:
             return
         gui = qapp.thread()
         self.scans += 1
+        off_gui: set[int] = set()
         for obj in gc.get_objects():
             if isinstance(obj, App):
                 self.panels = max(self.panels, len(obj.devices))
@@ -159,9 +199,14 @@ class _Probe:
                 owner = obj.thread()
             except RuntimeError:        # C++ side already deleted
                 continue
+            key = f"{type(obj).__module__}.{type(obj).__qualname__}"
             if owner != gui:
-                key = f"{type(obj).__module__}.{type(obj).__qualname__}"
-                self.foreign[key] = self.foreign.get(key, 0) + 1
+                off_gui.add(id(obj))
+                seen = self.foreign if id(obj) in self._last_off_gui else self.transient
+                seen[key] = seen.get(key, 0) + 1
+            if self.daemon and not type(obj).__module__.startswith("PySide6"):
+                self.py_qobjects[key] = self.py_qobjects.get(key, 0) + 1
+        self._last_off_gui = off_gui
 
     def hook_collector(self) -> None:
         """Start the scan where the collector starts; stub the collector under --control."""
@@ -180,17 +225,35 @@ class _Probe:
         qapp_module.collect_on_gui_thread = wrapped
 
     def plant(self) -> None:
-        """Make a QTimer on a plain thread -- the object the scan must name."""
+        """Make a Python-subclass QTimer on a plain thread -- the object the
+        scan must name, as off-thread and, in the daemon, as a Python QObject."""
         from PySide6.QtCore import QTimer
-        self._keep.append(QTimer())
+
+        class Planted(QTimer):
+            pass
+
+        self._keep.append(Planted())
+
+    def sent(self, result: object, command: object) -> None:
+        """Tally one client Command: [ok, sent] by Command name."""
+        name = type(command).__name__
+        tally = self.client.setdefault(name, [0, 0])
+        ok = bool(getattr(result, "ok", False))
+        tally[0] += ok
+        tally[1] += 1
+        if not ok:
+            self.refused.setdefault(name, str(getattr(result, "message", result)))
 
     def report(self, ui: str, flags: list[str]) -> None:
         import gc
         print(MARK + json.dumps({
             "ui": ui, "flags": flags, "gc_enabled": gc.isenabled(),
             "on_gui": self.on_gui, "off_gui": self.off_gui,
-            "foreign": self.foreign, "scans": self.scans,
-            "panels": self.panels,
+            "foreign": self.foreign, "transient": self.transient,
+            "scans": self.scans,
+            "panels": self.panels, "py_qobjects": self.py_qobjects,
+            "client": self.client, "refused": self.refused,
+            "usb_hidden": not Path("/dev/bus/usb").exists(),
         }), file=sys.stderr, flush=True)
 
 
@@ -208,12 +271,87 @@ def _make_garbage() -> None:
         time.sleep(0.1)
 
 
+def _drive_daemon(probe: _Probe, platform: Any, seconds: int) -> None:
+    """The client: what a window does to the App, over the real socket --
+    then SIGTERM, which the daemon's own stop handler answers."""
+    import signal
+    import time
+
+    from tests.conftest import renderable_theme
+    from trcc import ipc
+    from trcc.core.commands import BuildPreview, ConnectDevice, LoadTheme, PlayVideo
+    from trcc.core.events import FrameSent
+    from trcc.proxy import AppProxy
+
+    def send(command: Any) -> None:
+        probe.sent(proxy.dispatch(command), command)
+
+    deadline = time.monotonic() + seconds
+    try:
+        if not ipc.wait_for_daemon(timeout=30):
+            print("gc_threads: the daemon never answered", file=sys.stderr)
+            return
+        proxy = AppProxy()
+        proxy.events.subscribe(FrameSent, lambda _event: None)
+        keys = [f"{spec['vid']}:{spec['pid']}" for spec in FLEET]
+        for key in keys:
+            send(ConnectDevice(key=key))
+        paths = platform.paths()
+        send(LoadTheme(key=keys[0],
+                       path=renderable_theme(paths.theme_dir(320, 320), "Theme1")))
+        clip = Path(os.environ["HOME"]) / "clip.mp4"
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f",
+                        "lavfi", "-i", "testsrc=size=320x320:rate=15:duration=4",
+                        "-y", str(clip)], check=True)
+        send(PlayVideo(key=keys[0], path=clip))     # on the panel with a theme
+        while time.monotonic() < deadline:
+            for key in keys[:2]:
+                send(BuildPreview(key=key, encode="png"))
+            time.sleep(0.5)
+        proxy.close()
+    finally:
+        os.kill(os.getpid(), signal.SIGTERM)
+
+
+def _child_daemon(args: argparse.Namespace, flags: list[str]) -> None:
+    """The real ``run_daemon`` on the fleet, a client thread and a scan thread."""
+    import atexit
+    import gc
+    import threading
+    import time
+
+    sys.path.insert(0, str(REPO))           # tests.* -- the scripted platform
+    from tests.mock_platform import MockPlatform
+    from trcc.daemon import run_daemon
+
+    probe = _Probe(control=False, daemon=True, armed=True)
+    gc.callbacks.append(probe.note)
+    platform = MockPlatform(FLEET, Path(os.environ["HOME"]) / "trcc")
+
+    def scan_forever() -> None:
+        while True:
+            time.sleep(SCAN_MS / 1000)
+            probe.scan()
+
+    threading.Thread(target=scan_forever, name="gc-threads-scan", daemon=True).start()
+    threading.Thread(target=_drive_daemon, args=(probe, platform, args.seconds),
+                     name="gc-threads-client", daemon=True).start()
+    if args.plant:
+        threading.Timer(PLANT_AFTER_S, probe.plant).start()
+    atexit.register(probe.report, args.ui, flags)
+    run_daemon(platform=platform)
+
+
 def _child(args: argparse.Namespace, flags: list[str]) -> None:
     import atexit
     import gc
     import runpy
     import signal
     import threading
+
+    if args.ui == "daemon":
+        _child_daemon(args, flags)
+        return
 
     # The harness reads its boot fleet from DEVICES_JSON when it is called;
     # point it at FLEET, so a local dev/devices.json changes nothing here.
@@ -270,8 +408,13 @@ def drive(ui: str, seconds: int, flags: list[str], perf: bool) -> Verdict:
         if perf:
             child = ["perf", "stat", "-x,", "-e", "instructions:u",
                      "-o", str(perf_out), "--", *child]
-        cmd = ["timeout", "-s", "KILL", str(seconds + 90),
-               "xvfb-run", "-a", "dbus-run-session", "--", *child]
+        if ui == "daemon":
+            # No display, and no /dev beyond the basics: nothing can open USB.
+            wrap = ["bwrap", "--dev-bind", "/", "/", "--dev", "/dev",
+                    "--proc", "/proc", "--die-with-parent", "--"]
+        else:
+            wrap = ["xvfb-run", "-a", "dbus-run-session", "--"]
+        cmd = ["timeout", "-s", "KILL", str(seconds + 90), *wrap, *child]
         proc = subprocess.run(cmd, env=env, cwd=REPO, capture_output=True,
                               text=True, check=False)
         # xvfb-run folds the client's stderr into stdout, so read both.
@@ -294,25 +437,34 @@ SELFTEST: tuple[tuple[str, list[str], Callable[[Verdict], bool]], ...] = (
     ("collector stubbed, garbage thread -> off-GUI collections", ["--control", "--alloc"],
      lambda v: v.gc_enabled and bool(v.off_gui)),
     ("QTimer planted on a thread -> named", ["--plant"],
-     lambda v: "PySide6.QtCore.QTimer" in v.foreign),
+     lambda v: any(key.endswith(".Planted") for key in v.foreign)),
+)
+
+DAEMON_SELFTEST: tuple[tuple[str, list[str], Callable[[Verdict], bool]], ...] = (
+    ("daemon -> no Python QObject, none off the main thread", [],
+     lambda v: v.clean),
+    ("Python QTimer planted on a thread -> named twice", ["--plant"],
+     lambda v: any(key.endswith(".Planted") for key in v.foreign)
+     and any(key.endswith(".Planted") for key in v.py_qobjects)),
 )
 
 
 def _selftest(ui: str, seconds: int) -> int:
     wrong = 0
-    for name, flags, expected in SELFTEST:
+    table = DAEMON_SELFTEST if ui == "daemon" else SELFTEST
+    for name, flags, expected in table:
         verdict = drive(ui, seconds, flags, perf=False)
         ok = verdict.alive and expected(verdict)
         wrong += not ok
         print(f"{'OK   ' if ok else 'WRONG'} {name}")
         print("\n".join(verdict.lines()))
-    print(f"selftest: {len(SELFTEST) - wrong}/{len(SELFTEST)} answers right")
+    print(f"selftest: {len(table) - wrong}/{len(table)} answers right")
     return 1 if wrong else 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
-    parser.add_argument("--ui", choices=sorted(UI_ENTRY), default="gui")
+    parser.add_argument("--ui", choices=sorted([*UI_ENTRY, "daemon"]), default="gui")
     parser.add_argument("--seconds", type=int, default=30)
     parser.add_argument("--control", action="store_true",
                         help="stub the collector out: automatic gc stays on")
