@@ -17,6 +17,8 @@ opens that module's tab or view (gui) or sidebar page (qtgui) before the
 picture -- or, in the gui, a full-window view by name (``about``, ``rgb``, ``thanks``,
 ``modules``, ``sysinfo``, ``led``);
 ``--lang CODE`` sets the window's language.
+``--developer`` switches developer mode on through the App AFTER the window is
+up -- as another UI would -- so the picture shows the Modules page following it.
 Prints what it saw: each module's tab or entry and whether it is visible.
 """
 from __future__ import annotations
@@ -26,6 +28,7 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ def _settle(app: object, seconds: float = 0.2) -> None:
 
 
 def shoot(face: str, out: Path, modules: list[str], open_key: str,
-          wait: float = 3.0, lang: str = "") -> list[str]:
+          wait: float = 3.0, lang: str = "", developer: bool = False) -> list[str]:
     """Build *face*, switch *modules*, open *open_key*, save the window to
     *out*; what each module's tab or entry looked like."""
     from PySide6.QtWidgets import QApplication
@@ -64,7 +67,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
     from trcc.app import App
     from trcc.core.commands import ConnectDevice, SetLanguage, SetModuleEnabled
 
-    log.info("shoot: %s -> %s modules=%s open=%r", face, out, modules, open_key)
+    log.info("shoot: %s -> %s modules=%s open=%r developer=%s", face, out, modules,
+             open_key, developer)
     qapp = QApplication.instance() or QApplication(sys.argv)
     root = Path(tempfile.mkdtemp(prefix="trcc-shot-"))
     app = App(MockPlatform([_SPEC], root), renderer=QtRenderer())
@@ -106,11 +110,33 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
             entry = window._sidebar._buttons[key]
             seen.append(f"qtgui entry {key}: {entry.text()!r} "
                         f"visible={entry.isVisibleTo(window)}")
+    if developer:
+        seen += _developer_mode(app, window, qapp)
     _settle(qapp, wait)
     window.grab().save(str(out))
     window.close()
     app.close()
     return seen
+
+
+def _developer_mode(app: Any, window: Any, qapp: Any) -> list[str]:
+    """Developer mode on, as another UI would switch it; what each Modules
+    page in *window* then shows."""
+    from trcc.core.commands import SetDeveloperMode
+    from trcc.ui.qt_modules import ModulesView
+
+    result = app.dispatch(SetDeveloperMode(on=True))
+    print(f"developer mode: {result.message}")
+    _settle(qapp)
+    lines = []
+    for view in window.findChildren(ModulesView):
+        dev = view.developer
+        lines.append(f"modules page: switch checked="
+                     f"{dev.switch is not None and dev.switch.isChecked()} "
+                     f"folder button={dev.button.text() if dev.button else None!r} "
+                     f"visible={dev.button is not None and dev.button.isVisibleTo(window)}")
+    log.info("_developer_mode: %s", lines)
+    return lines or ["modules page: none in this window"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,11 +147,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--open", default="", metavar="KEY",
                     help="open this module's tab or page first (gui: or a view)")
     ap.add_argument("--lang", default="", help="the window's language, e.g. de")
+    ap.add_argument("--developer", action="store_true",
+                    help="switch developer mode on after the window is up")
     ap.add_argument("--wait", type=float, default=3.0,
                     help="seconds to let background answers arrive first")
     args = ap.parse_args(argv)
     for line in shoot(args.face, args.out, args.module, args.open, args.wait,
-                      args.lang):
+                      args.lang, args.developer):
         print(line)
     print(f"saved {args.out}")
     return 0

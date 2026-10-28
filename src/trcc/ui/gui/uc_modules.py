@@ -38,6 +38,13 @@ _STYLE = (f"QFrame#moduleTile {{ background: #2a2a30; border: 1px solid {Colors.
           "QLabel#moduleTitle { color: white; font-size: 14pt; font-weight: bold; }"
           f"QLabel#moduleProblem {{ color: {Colors.PAGE_GOLD}; }}"
           "QLabel#modulesEmpty { color: #b3b3b3; font-size: 13pt; }"
+          # Developer mode's switch reads like the labels beside it; its box
+          # drawn here, since a styled QCheckBox drops the native one (an
+          # unchecked switch showed no box at all), and filled gold when on.
+          "QCheckBox { background: transparent; color: #d0d0d0; font-size: 11pt; }"
+          "QCheckBox::indicator { width: 14px; height: 14px; background: #3a3a3a;"
+          f" border: 1px solid {Colors.PAGE_FRAME}; border-radius: 3px; }}"
+          f"QCheckBox::indicator:checked {{ background: {Colors.PAGE_GOLD}; }}"
           "QPushButton { min-width: 70px; min-height: 32px; color: white;"
           f" background: #3a3a3a; border: 1px solid {Colors.PAGE_FRAME}; border-radius: 4px; }}"
           f"QPushButton:checked {{ background: {Colors.PAGE_GOLD}; color: #3a3a3a; }}"
