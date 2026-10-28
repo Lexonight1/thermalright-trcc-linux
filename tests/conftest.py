@@ -42,10 +42,12 @@ os.environ["_TYPER_FORCE_DISABLE_TERMINAL"] = "1"
 os.environ["TRCC_DAEMON"] = "0"
 
 
+import gc
 import inspect
 import ipaddress
 import logging
 import socket
+import threading
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, NoReturn, Optional, Tuple
@@ -743,6 +745,52 @@ def _no_user_manager() -> Iterator[None]:
         mp.setattr(_autostart, "_systemctl_user", lambda *args: 127)
         mp.setattr(linux, "_user_manager_environment", lambda: "")
         yield
+
+
+# Python's garbage is collected on the MAIN thread only, as the windows do it
+# (``trcc.ui.qapp.collect_on_gui_thread``).  A collection on a background
+# thread that frees a widget runs its C++ destructor there, while the main
+# thread may be inside Qt: the CI hang, twice.  One full run counted 1,961 such
+# collections, on the preview backfill, IPC, sender, video and API threads.
+#
+# Automatic gc is off for the whole session, from :func:`pytest_configure` --
+# before any test module, and never at import: ``dev/_mock_bootstrap`` imports
+# this file for ``FakePlatform``, and a mock gui must keep the gui's own
+# collector.  :func:`_garbage_is_collected_on_the_main_thread` runs the due
+# collections between tests and fails the test during which any thread other
+# than the main one collected and freed something.
+_OFF_MAIN_COLLECTIONS: list[tuple[str, int, int]] = []
+
+
+def _note_off_main_collection(phase: str, info: dict[str, int]) -> None:
+    """``gc.callbacks`` hook: record a collection off the main thread that freed."""
+    if (phase == "stop" and info["collected"]
+            and threading.current_thread() is not threading.main_thread()):
+        _OFF_MAIN_COLLECTIONS.append((threading.current_thread().name,
+                                      info["generation"], info["collected"]))
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Hand the session's garbage to the main thread (see above)."""
+    gc.disable()
+    gc.callbacks.append(_note_off_main_collection)
+
+
+@pytest.fixture(autouse=True)
+def _garbage_is_collected_on_the_main_thread() -> Iterator[None]:
+    """After each test: collect what is due, here; fail if a thread collected."""
+    yield
+    from trcc.ui.qapp import collect_due_garbage
+    collect_due_garbage()
+    if not gc.isenabled() and not _OFF_MAIN_COLLECTIONS:
+        return
+    hits = list(_OFF_MAIN_COLLECTIONS)
+    _OFF_MAIN_COLLECTIONS.clear()
+    enabled = gc.isenabled()
+    gc.disable()
+    pytest.fail(f"garbage was collected off the main thread "
+                f"(thread, generation, freed): {hits}; automatic gc "
+                f"{'was re-enabled' if enabled else 'is off'}", pytrace=False)
 
 
 @pytest.hookimpl(wrapper=True)

@@ -19,19 +19,91 @@ a ``QApplication`` and pass it here exactly once during composition.
 """
 from __future__ import annotations
 
+import gc
 import logging
 import os
 import sys
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont, QScreen
 from PySide6.QtWidgets import QApplication
+
+from ..core.logs import per_frame
 
 if TYPE_CHECKING:
     from ..app import App
     from ..core.ports import Platform
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
+
+#: How often the GUI thread checks whether a collection is due -- pyqtgraph's
+#: default.  Garbage made in between waits at most this long.
+GC_INTERVAL_MS = 1000
+
+#: 3.14 made the collector incremental: what runs automatically is the young
+#: generation plus one slice of the old, which is ``gc.collect(1)``, and it
+#: never runs a full collection on its own.
+_INCREMENTAL_GC = sys.version_info >= (3, 14)
+
+
+def collect_due_garbage() -> int:
+    """Run the collections Python would have run by now; return objects freed.
+
+    Call it only from the GUI thread -- that is the point of it (see
+    :func:`collect_on_gui_thread`).  The threshold check is pyqtgraph's
+    ``GarbageCollector.check`` (``pyqtgraph/util/garbage_collector.py``, MIT,
+    credited there to Erik Janssens): gen 0 when its count passes its threshold,
+    then gen 1 and gen 2 the same way.  One difference from automatic gc
+    before 3.14: it also holds a full collection back until the long-lived
+    objects pending exceed a quarter of the total, a number Python code cannot
+    read -- so this runs gen 2 somewhat more often, at most once per ~100 s.
+    """
+    counts = gc.get_count()
+    thresholds = gc.get_threshold()
+    if counts[0] <= thresholds[0]:
+        return 0
+    if _INCREMENTAL_GC:
+        generations = [1]
+    else:
+        generations = [0]
+        if counts[1] > thresholds[1]:
+            generations.append(1)
+            if counts[2] > thresholds[2]:
+                generations.append(2)
+    freed = sum(gc.collect(generation) for generation in generations)
+    frame_log.debug("collect_due_garbage: counts=%s generations=%s freed=%d",
+                    counts, generations, freed)
+    return freed
+
+
+def collect_on_gui_thread(qapp: QApplication) -> QTimer:
+    """Turn automatic gc off and collect from a GUI-thread timer instead.
+
+    Automatic gc runs on whichever thread happens to allocate when a threshold
+    is crossed.  When that collection frees a widget, PySide runs its C++
+    destructor on that thread with the GIL released -- for every Python
+    SUBCLASS of a widget, which is every TRCC widget (shiboken's
+    ``SbkDeallocWrapperCommon``; only a plain ``QWidget`` is deferred to the
+    main thread).  A widget torn down off the GUI thread while the GUI thread
+    is inside Qt crashes or deadlocks: the CI hang twice caught the main thread
+    in ``setStyleSheet`` while the preview backfill thread sat in Python.
+    A test-suite trip-wire counted 1,961 such collections in one run.
+
+    The cure is pyqtgraph's: collect on the GUI thread only.  The timer is
+    parented to *qapp*, which keeps it alive.  The daemon keeps automatic gc --
+    it has no Qt loop to run this, and it makes no QObjects.
+    """
+    gc.disable()
+    timer = QTimer(qapp)
+    timer.setInterval(GC_INTERVAL_MS)
+    timer.timeout.connect(collect_due_garbage)
+    timer.start()
+    log.info("collect_on_gui_thread: automatic gc off, collecting every %d ms "
+             "on the GUI thread (incremental=%s, thresholds=%s)",
+             GC_INTERVAL_MS, _INCREMENTAL_GC, gc.get_threshold())
+    return timer
 
 
 def configure_qt_environment() -> None:
@@ -171,6 +243,8 @@ def build_qt_app(platform: Platform | None = None) -> App:
         qapp = QApplication(sys.argv)
     configure_qapplication(qapp)
     probe_screens(qapp)
+    # Before the App: its threads, and the proxy's, must never collect.
+    collect_on_gui_thread(qapp)
     from .._boot import trcc
     from ..adapters.render.qt import QtRenderer
     return trcc(platform=platform, renderer=QtRenderer())

@@ -163,6 +163,9 @@ BUILT_FROM: tuple[Credit, ...] = (
            "unpacking the theme archives"),
     Credit("Qt for Python (PySide6)", "The Qt Company", "LGPL-3.0",
            "both windows and the frame renderer"),
+    Credit("pyqtgraph", "Luke Campagnola", "MIT",
+           "collecting garbage on the windows' own thread (a check credited "
+           "to Erik Janssens)"),
     Credit("OpenRGB", "Adam Honse, OpenRGB Team", "GPL-2.0-or-later",
            "OpenRGB devices, Corsair RAM and ASUS Aura lighting"),
     Credit("3D Pipes", "Microsoft", "",

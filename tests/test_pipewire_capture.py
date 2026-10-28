@@ -962,6 +962,7 @@ def test_a_portal_cast_writes_nothing_per_frame(
     # ``__del__`` -> ``stop`` lines here (CI 3.12, fc69ddf4).  Collect first and
     # hold the collector off, so the window holds only these 20 frames.
     gc.collect()
+    was_enabled = gc.isenabled()
     gc.disable()
     try:
         with caplog.at_level(logging.DEBUG):
@@ -970,7 +971,8 @@ def test_a_portal_cast_writes_nothing_per_frame(
             for _ in range(20):
                 capture.grab_region(1, 1, 2, 2)
     finally:
-        gc.enable()
+        if was_enabled:
+            gc.enable()
 
     assert [r.getMessage() for r in caplog.records
             if not r.name.startswith("trcc.frame")] == []
