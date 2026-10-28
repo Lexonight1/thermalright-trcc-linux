@@ -8,7 +8,9 @@ GUI-thread timer; ``tests/conftest.py`` holds the suite to the same rule.
 from __future__ import annotations
 
 import gc
+import threading
 import weakref
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -113,3 +115,81 @@ def test_the_generations_collected_match_what_automatic_gc_runs(
     qapp.collect_due_garbage()
 
     assert collected == generations
+
+
+def _off_gui_thread_qobjects() -> dict[str, int]:
+    """Live QObjects whose thread affinity is not the GUI thread, by type.
+
+    The collector cannot help an object a background thread OWNS: its
+    destructor and its events belong to that thread.  ``dev/tools/gc_threads.py``
+    runs the same scan beside the running window.
+    """
+    from PySide6.QtCore import QObject
+    qapp_instance = QApplication.instance()
+    assert qapp_instance is not None
+    gui = qapp_instance.thread()
+    found: dict[str, int] = {}
+    for obj in gc.get_objects():
+        if not isinstance(obj, QObject):
+            continue
+        try:
+            owner = obj.thread()
+        except RuntimeError:        # C++ side already deleted
+            continue
+        if owner != gui:
+            key = f"{type(obj).__module__}.{type(obj).__qualname__}"
+            found[key] = found.get(key, 0) + 1
+    return found
+
+
+def test_the_scan_names_a_qobject_made_on_a_thread(
+    _qapplication: QApplication,
+) -> None:
+    from PySide6.QtCore import QTimer
+    made: list[QTimer] = []
+    thread = threading.Thread(target=lambda: made.append(QTimer()))
+    thread.start()
+    thread.join()
+
+    assert _off_gui_thread_qobjects().get("PySide6.QtCore.QTimer", 0) >= 1
+    made.clear()
+    gc.collect()
+
+
+def test_the_window_and_its_app_own_no_qobject_off_the_gui_thread(
+    tmp_path: Path, qtbot: Any,
+) -> None:
+    """Two panels connected, a theme playing, the window open on each in turn,
+    the App's threads (render, sender, metrics, LED) running -- and every
+    QObject still lives on the GUI thread.  Measured 0 in a 40 s drive of the
+    whole mock fleet before this gate was written."""
+    from tests.conftest import renderable_theme
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice, LoadTheme
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    lcd, led = "0402:3922", "0416:8001"
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100},
+                            {"type": "led", "vid": "0416", "pid": "8001", "pm": 16}],
+                           tmp_path), renderer=QtRenderer())
+    try:
+        for key in (lcd, led):
+            assert app.dispatch(ConnectDevice(key=key)).ok
+        theme = renderable_theme(app.platform.paths().theme_dir(320, 320), "Theme1")
+        assert app.dispatch(LoadTheme(key=lcd, path=theme)).ok
+        app.start_session()             # the loops the window's launcher starts
+        assert app.led_animation_loop.is_running and app.metrics_loop.is_running
+        win = TRCCApp(app=app)
+        qtbot.addWidget(win)
+        win.replay_initial_devices()
+        qtbot.waitUntil(lambda: lcd in win._handlers and led in win._handlers)
+        for key in (led, lcd):
+            win._activate_device(key)
+            qtbot.wait(750)
+
+        assert _off_gui_thread_qobjects() == {}
+        win.close()
+    finally:
+        app.close()
