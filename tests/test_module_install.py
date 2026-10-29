@@ -111,26 +111,28 @@ class Shop:
                                  author=AUTHOR)
 
     def bundle(self, version: str, capabilities: tuple[str, ...] = ("events",),
-               hosts: tuple[str, ...] = ()) -> bytes:
+               hosts: tuple[str, ...] = (), devices: tuple[str, ...] = ()) -> bytes:
         """The greeter at *version*, as its author packs it."""
         manifest = json.loads((self._source / "module.json").read_text(encoding="utf-8"))
         manifest.update(version=version, capabilities=list(capabilities),
-                        network_hosts=list(hosts))
+                        network_hosts=list(hosts), devices=list(devices))
         (self._source / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
         return module_bundle.pack(self._source)
 
     def list(self, version: str, *, author: str = "author", min_trcc: str = "9.0.0",
              capabilities: tuple[str, ...] = ("events",), hosts: tuple[str, ...] = (),
-             bundle: bytes | None = None, listed_capabilities: tuple[str, ...] | None = None,
+             devices: tuple[str, ...] = (), bundle: bytes | None = None, listed_capabilities: tuple[str, ...] | None = None,
              listed_author: str | None = None) -> bytes:
         """Publish *version* in a new index; the bundle served at its URL."""
-        data = bundle if bundle is not None else self.bundle(version, capabilities, hosts)
+        data = (bundle if bundle is not None
+                else self.bundle(version, capabilities, hosts, devices))
         url = f"https://github.test/greeter-{version}.zip"
         self.web.files[url] = data
         listed = listed_capabilities if listed_capabilities is not None else capabilities
         listed_author = AUTHOR if listed_author is None else listed_author
         entry = {"version": version, "url": url, "commit": COMMIT, "min_trcc": min_trcc,
                  "capabilities": list(listed), "network_hosts": list(hosts),
+                 "devices": list(devices),
                  "author_key": self.raw(author), "title": "Greeter",
                  "summary": "Says hello.", "author": listed_author,
                  "author_sig": tool.author_sign(data, KEY, version, self.key(author))}
@@ -194,9 +196,9 @@ def shop(cli_app: App, tmp_path: Path) -> Iterator[Shop]:
 
 
 def _install(app: App, capabilities: tuple[str, ...] = ("events",),
-             hosts: tuple[str, ...] = ()) -> Any:
+             hosts: tuple[str, ...] = (), devices: tuple[str, ...] = ()) -> Any:
     return app.dispatch(InstallModule(key=KEY, asks=ModuleAsks(
-        capabilities=capabilities, network_hosts=hosts)))
+        capabilities=capabilities, network_hosts=hosts, devices=devices)))
 
 
 def _installed_folder(app: App) -> Path:
@@ -254,6 +256,23 @@ def test_consent_must_be_exactly_what_it_asks_for(cli_app: App, shop: Shop) -> N
     assert not _installed_folder(cli_app).exists()
     assert not any("greeter-1.zip" in url for url in shop.web.asked[asked_before:])
     assert _install(cli_app, ("network", "events"), ("api.example.com",)).ok
+
+
+def test_consent_names_every_usb_device_and_the_record_keeps_them(
+        cli_app: App, shop: Shop) -> None:
+    """A device is asked for like a capability: an install that did not
+    accept it is refused before anything is downloaded."""
+    shop.list("1", capabilities=("events", "hardware"), devices=("0b05:19af",))
+    asked_before = len(shop.web.asked)
+    for devices in ((), ("0b05:1aa6",)):
+        result = _install(cli_app, ("events", "hardware"), devices=devices)
+        assert (result.ok, result.message) == (
+            False, "Greeter 1 asks for: events, hardware; devices: 0b05:19af -- "
+                   "confirm that first")
+    assert not any("greeter-1.zip" in url for url in shop.web.asked[asked_before:])
+    assert _install(cli_app, ("events", "hardware"), devices=("0b05:19af",)).ok
+    record = cli_app.settings.module_install(KEY)
+    assert record is not None and record.asks.devices == ("0b05:19af",)
 
 
 def test_a_module_needing_a_newer_trcc_is_refused(cli_app: App, shop: Shop) -> None:
@@ -707,6 +726,21 @@ def test_the_api_lists_installs_and_removes(cli_app: App, shop: Shop) -> None:
     assert installed.json()["message"] == "Greeter 1 installed"
 
 
+def test_the_api_install_body_carries_the_devices_accepted(
+        cli_app: App, shop: Shop) -> None:
+    from trcc.ui.api.main import build_app
+
+    from .conftest import loopback_client
+
+    shop.list("1", capabilities=("events", "hardware"), devices=("0b05:19af",))
+    body = {"capabilities": ["events", "hardware"]}
+    with loopback_client(build_app(trcc=cli_app)) as client:
+        refused = client.post(f"/system/modules/{KEY}/install", json=body)
+        installed = client.post(f"/system/modules/{KEY}/install",
+                                json={**body, "devices": ["0b05:19af"]})
+    assert (refused.status_code, installed.status_code) == (409, 200)
+
+
 def test_the_gui_page_installs_updates_and_removes(
         qtbot: Any, cli_app: App, shop: Shop, monkeypatch: pytest.MonkeyPatch) -> None:
     """The gui's own Modules page on the real App: every Command through the
@@ -908,14 +942,16 @@ def test_a_record_is_saved_flat_as_it_always_was(cli_app: App) -> None:
     other fields, as every TRCC before wrote and read it -- and it comes back
     whole after a restart."""
     record = ModuleInstall(key=KEY, version="1", sha256="ab" * 32, author_key="k",
-                           commit=COMMIT, asks=ModuleAsks(("events", "network"),
-                                                          ("api.example.com",)))
+                           commit=COMMIT, asks=ModuleAsks(("events", "network", "hardware"),
+                                                          ("api.example.com",),
+                                                          ("0b05:19af",)))
     cli_app.settings.set_module_install(KEY, record)
     saved = json.loads(config_path(cli_app.platform.paths()).read_text())
     assert saved["app"]["module_installs"][KEY] == {
         "key": KEY, "version": "1", "sha256": "ab" * 32, "author_key": "k",
-        "commit": COMMIT, "unsigned": False, "capabilities": ["events", "network"],
-        "network_hosts": ["api.example.com"]}
+        "commit": COMMIT, "unsigned": False,
+        "capabilities": ["events", "network", "hardware"],
+        "network_hosts": ["api.example.com"], "devices": ["0b05:19af"]}
     assert _restart(cli_app).settings.module_install(KEY) == record
     cli_app.settings.set_module_install(KEY, None)
 

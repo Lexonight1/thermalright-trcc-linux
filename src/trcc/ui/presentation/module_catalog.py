@@ -103,14 +103,17 @@ def _row(module: AvailableModule, tr: Callable[[str], str]) -> CatalogRow:
 def consent(module: AvailableModule, tr: Callable[[str], str],
             title: str = "", *, unsigned: bool = False) -> tuple[str, list[str]]:
     """The permission screen: its question, and each line under it -- every
-    capability in its own words, then every site.  *title* is the module's,
-    as the caller translated it (its own words); every other line is TRCC's.
+    capability in its own words, then every site, then every USB device.
+    *title* is the module's, as the caller translated it (its own words);
+    every other line is TRCC's.
     An *unsigned* one, from a folder, says nobody reviewed it."""
     question = tr("Install {title} {version}?").format(title=title or tr(module.title),
                                                        version=module.version)
     lines = [tr(UNSIGNED if unsigned else REVIEWED)]
     asks = [tr(MODULE_CAPABILITIES.get(c, c)) for c in module.asks.capabilities]
     asks += [tr("fetches from {site}").format(site=h) for h in module.asks.network_hosts]
+    asks += [tr("unlocks USB device {device} for every program you run").format(device=d)
+             for d in module.asks.devices]
     if asks:
         lines += [tr(MAY), *(f"  - {a}" for a in asks)]
     log.info("consent: %s %s asks %d thing(s) unsigned=%s", module.key, module.version,

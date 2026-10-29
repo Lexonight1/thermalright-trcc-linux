@@ -114,6 +114,7 @@ The Modules page lists a module from this file alone.
 | `backgrounds` | the theme background refs it draws (`<prefix>/<id>`), so a theme can name the module it needs even while that module is off |
 | `network_hosts` | the internet sites it fetches from, as public hostnames (`api.open-meteo.com`) — required with the `network` capability, refused without it; never `localhost` or an IP address |
 | `author` | who wrote it, by name — shown on its tile and by `trcc system modules list`; for a module from the index it must be the name TRCC reviewed, and only TRCC's own modules say `Lexonight` |
+| `devices` | the USB devices it needs you to reach, as `lsusb` prints their ids (`0b05:19af`) — needs the `hardware` capability; its install screen names each one, and an update that adds one is asked about again |
 
 ### When each hook runs
 

@@ -85,6 +85,11 @@ def test_a_key_must_be_a_package_name(tmp_path: Path) -> None:
     ({"key": "other"}, "key 'other' is not its folder's name"),
     ({"capabilities": "events"}, "capabilities must be a list of names"),
     ({"capabilities": ["events", "root"]}, "no such capability: root"),
+    *[({"capabilities": ["hardware"], "devices": [bad]}, "devices must be a list of USB "
+       "ids, lowercase vvvv:pppp as lsusb prints them")
+      for bad in ("0B05:19AF", "0b05-19af", "0b0519af", "b05:19af", "0b05:19af:01")],
+    ({"devices": ["0b05:19af"]},
+     "devices needs the hardware capability -- it is how a module reaches them"),
 ])
 def test_a_bad_manifest_says_what_is_wrong(
         tmp_path: Path, change: dict[str, Any], reason: str) -> None:
@@ -92,6 +97,12 @@ def test_a_bad_manifest_says_what_is_wrong(
     with pytest.raises(ManifestError) as e:
         read_manifest(path)
     assert str(e.value) == f"{path}: {reason}"
+
+
+def test_a_module_names_the_usb_devices_it_needs(tmp_path: Path) -> None:
+    manifest = read_manifest(_manifest(tmp_path / "lazy", capabilities=["hardware"],
+                                       devices=["0b05:19af", "0b05:1aa6"]))
+    assert manifest.asks.devices == ("0b05:19af", "0b05:1aa6")
 
 
 def test_a_broken_manifest_never_hides_the_others(lazy: Path) -> None:

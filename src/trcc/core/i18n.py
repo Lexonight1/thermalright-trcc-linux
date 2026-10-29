@@ -279,6 +279,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': '选择模块文件夹',
         'On': '开启',
         'Off': '关闭',
+        'unlocks USB device {device} for every program you run': '向你运行的每个程序开放 USB 设备 {device}',
     },
     'zh_TW': {
         'Layer Mask': '佈局蒙板',
@@ -414,6 +415,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': '選擇模組資料夾',
         'On': '開啟',
         'Off': '關閉',
+        'unlocks USB device {device} for every program you run': '向你執行的每個程式開放 USB 裝置 {device}',
     },
     'en': {
         'Layer Mask': 'Layer Mask',
@@ -514,6 +516,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Reviewed by TRCC -- not guaranteed safe.': 'Reviewed by TRCC -- not guaranteed safe.',
         'It may:': 'It may:',
         'fetches from {site}': 'fetches from {site}',
+        'unlocks USB device {device} for every program you run': 'unlocks USB device {device} for every program you run',
         'Remove {title}? Themes made with it stay.': 'Remove {title}? Themes made with it stay.',
         'Reopen this window to finish updating.': 'Reopen this window to finish updating.',
         'installed: {version}': 'installed: {version}',
@@ -685,6 +688,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Modulordner auswählen',
         'On': 'Ein',
         'Off': 'Aus',
+        'unlocks USB device {device} for every program you run': 'gibt das USB-Gerät {device} für jedes Programm frei, das du ausführst',
     },
     'ru': {
         'Layer Mask': 'Покрытие',
@@ -820,6 +824,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Выберите папку модуля',
         'On': 'Вкл',
         'Off': 'Выкл',
+        'unlocks USB device {device} for every program you run': 'открывает USB-устройство {device} для каждой запускаемой вами программы',
     },
     'fr': {
         'Layer Mask': 'Masque de couche',
@@ -955,6 +960,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Choisir un dossier de module',
         'On': 'Activé',
         'Off': 'Désactivé',
+        'unlocks USB device {device} for every program you run': 'ouvre le périphérique USB {device} à chaque programme que vous lancez',
     },
     'pt': {
         'Layer Mask': 'Máscara de camada',
@@ -1090,6 +1096,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Escolher uma pasta de módulo',
         'On': 'Ligado',
         'Off': 'Desligado',
+        'unlocks USB device {device} for every program you run': 'libera o dispositivo USB {device} para todo programa que você executar',
     },
     'ja': {
         'Layer Mask': 'レイヤーマスク',
@@ -1225,6 +1232,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'モジュールフォルダーを選択',
         'On': 'オン',
         'Off': 'オフ',
+        'unlocks USB device {device} for every program you run': 'USB デバイス {device} を、あなたが実行するすべてのプログラムに開放します',
     },
     'es': {
         'Layer Mask': 'Mascarilla de capa',
@@ -1360,6 +1368,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Elegir una carpeta de módulo',
         'On': 'Activado',
         'Off': 'Desactivado',
+        'unlocks USB device {device} for every program you run': 'abre el dispositivo USB {device} a todos los programas que ejecutes',
     },
     'ko': {
         'Layer Mask': '레이어 마스크',
@@ -1495,6 +1504,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': '모듈 폴더 선택',
         'On': '켜짐',
         'Off': '꺼짐',
+        'unlocks USB device {device} for every program you run': '실행하는 모든 프로그램에 USB 장치 {device}를 개방합니다',
     },
     'it': {
         'Layer Mask': 'Maschera livello',
@@ -1630,6 +1640,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Scegli una cartella del modulo',
         'On': 'Attivo',
         'Off': 'Disattivo',
+        'unlocks USB device {device} for every program you run': 'sblocca il dispositivo USB {device} per ogni programma che esegui',
     },
     'nl': {
         'Layer Mask': 'Laagmasker',
@@ -1765,6 +1776,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Kies een modulemap',
         'On': 'Aan',
         'Off': 'Uit',
+        'unlocks USB device {device} for every program you run': 'geeft USB-apparaat {device} vrij voor elk programma dat je uitvoert',
     },
     'pl': {
         'Layer Mask': 'Maska warstwy',
@@ -1900,6 +1912,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Wybierz folder modułu',
         'On': 'Wł.',
         'Off': 'Wył.',
+        'unlocks USB device {device} for every program you run': 'odblokowuje urządzenie USB {device} dla każdego uruchamianego programu',
     },
     'tr': {
         'Layer Mask': 'Katman maskesi',
@@ -2035,6 +2048,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Bir modül klasörü seçin',
         'On': 'Açık',
         'Off': 'Kapalı',
+        'unlocks USB device {device} for every program you run': 'USB aygıtı {device} çalıştırdığınız her programa açılır',
     },
     'ar': {
         'Layer Mask': 'قناع الطبقة',
@@ -2170,6 +2184,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'اختر مجلد الوحدة',
         'On': 'تشغيل',
         'Off': 'إيقاف',
+        'unlocks USB device {device} for every program you run': 'يفتح جهاز USB \u200f{device} لكل برنامج تشغّله',
     },
     'hi': {
         'Layer Mask': 'लेयर मास्क',
@@ -2305,6 +2320,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'मॉड्यूल फ़ोल्डर चुनें',
         'On': 'चालू',
         'Off': 'बंद',
+        'unlocks USB device {device} for every program you run': 'आपके चलाए हर प्रोग्राम के लिए USB डिवाइस {device} खोल देता है',
     },
     'th': {
         'Layer Mask': 'มาสก์เลเยอร์',
@@ -2440,6 +2456,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'เลือกโฟลเดอร์โมดูล',
         'On': 'เปิด',
         'Off': 'ปิด',
+        'unlocks USB device {device} for every program you run': 'เปิดอุปกรณ์ USB {device} ให้ทุกโปรแกรมที่คุณเรียกใช้',
     },
     'vi': {
         'Layer Mask': 'Mặt nạ lớp',
@@ -2575,6 +2592,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Chọn thư mục mô-đun',
         'On': 'Bật',
         'Off': 'Tắt',
+        'unlocks USB device {device} for every program you run': 'mở thiết bị USB {device} cho mọi chương trình bạn chạy',
     },
     'id': {
         'Layer Mask': 'Masker lapisan',
@@ -2710,6 +2728,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Pilih folder modul',
         'On': 'Aktif',
         'Off': 'Nonaktif',
+        'unlocks USB device {device} for every program you run': 'membuka perangkat USB {device} untuk setiap program yang Anda jalankan',
     },
     'cs': {
         'Layer Mask': 'Maska vrstvy',
@@ -2845,6 +2864,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Vyberte složku modulu',
         'On': 'Zapnuto',
         'Off': 'Vypnuto',
+        'unlocks USB device {device} for every program you run': 'zpřístupní zařízení USB {device} každému programu, který spustíte',
     },
     'sv': {
         'Layer Mask': 'Lagermask',
@@ -2980,6 +3000,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Välj en modulmapp',
         'On': 'På',
         'Off': 'Av',
+        'unlocks USB device {device} for every program you run': 'låser upp USB-enheten {device} för varje program du kör',
     },
     'da': {
         'Layer Mask': 'Lagmaske',
@@ -3115,6 +3136,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Vælg en modulmappe',
         'On': 'Til',
         'Off': 'Fra',
+        'unlocks USB device {device} for every program you run': 'låser USB-enheden {device} op for hvert program, du kører',
     },
     'no': {
         'Layer Mask': 'Lagmaske',
@@ -3250,6 +3272,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Velg en modulmappe',
         'On': 'På',
         'Off': 'Av',
+        'unlocks USB device {device} for every program you run': 'låser opp USB-enheten {device} for hvert program du kjører',
     },
     'fi': {
         'Layer Mask': 'Tasomaski',
@@ -3385,6 +3408,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Valitse moduulikansio',
         'On': 'Päällä',
         'Off': 'Pois',
+        'unlocks USB device {device} for every program you run': 'avaa USB-laitteen {device} jokaiselle ajamallesi ohjelmalle',
     },
     'hu': {
         'Layer Mask': 'Rétegmaszk',
@@ -3520,6 +3544,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Válasszon modulmappát',
         'On': 'Be',
         'Off': 'Ki',
+        'unlocks USB device {device} for every program you run': 'megnyitja a(z) {device} USB-eszközt minden futtatott programnak',
     },
     'ro': {
         'Layer Mask': 'Mască strat',
@@ -3655,6 +3680,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Alegeți un dosar de modul',
         'On': 'Pornit',
         'Off': 'Oprit',
+        'unlocks USB device {device} for every program you run': 'deblochează dispozitivul USB {device} pentru fiecare program pe care îl rulezi',
     },
     'uk': {
         'Layer Mask': 'Маска шару',
@@ -3790,6 +3816,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Виберіть теку модуля',
         'On': 'Увімк.',
         'Off': 'Вимк.',
+        'unlocks USB device {device} for every program you run': 'відкриває USB-пристрій {device} для кожної програми, яку ви запускаєте',
     },
     'el': {
         'Layer Mask': 'Μάσκα στρώματος',
@@ -3925,6 +3952,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Επιλέξτε φάκελο λειτουργικής μονάδας',
         'On': 'Ενεργό',
         'Off': 'Ανενεργό',
+        'unlocks USB device {device} for every program you run': 'ξεκλειδώνει τη συσκευή USB {device} για κάθε πρόγραμμα που εκτελείτε',
     },
     'he': {
         'Layer Mask': 'מסכת שכבה',
@@ -4060,6 +4088,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'בחרו תיקיית מודול',
         'On': 'פועל',
         'Off': 'כבוי',
+        'unlocks USB device {device} for every program you run': 'פותח את התקן ה-USB\u200f {device} לכל תוכנה שאתה מריץ',
     },
     'ms': {
         'Layer Mask': 'Topeng lapisan',
@@ -4195,6 +4224,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Pilih folder modul',
         'On': 'Hidup',
         'Off': 'Mati',
+        'unlocks USB device {device} for every program you run': 'membuka peranti USB {device} untuk setiap program yang anda jalankan',
     },
     # --- New languages (v8.3.9) ---
     'bn': {
@@ -4331,6 +4361,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'একটি মডিউল ফোল্ডার বেছে নিন',
         'On': 'চালু',
         'Off': 'বন্ধ',
+        'unlocks USB device {device} for every program you run': 'আপনার চালানো প্রতিটি প্রোগ্রামের জন্য USB ডিভাইস {device} খুলে দেয়',
     },
     'ur': {
         'Layer Mask': 'لیئر ماسک',
@@ -4466,6 +4497,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'ماڈیول فولڈر منتخب کریں',
         'On': 'آن',
         'Off': 'آف',
+        'unlocks USB device {device} for every program you run': 'آپ کے چلائے ہر پروگرام کے لیے USB آلہ {device} کھول دیتا ہے',
     },
     'fa': {
         'Layer Mask': 'ماسک لایه',
@@ -4601,6 +4633,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'یک پوشهٔ ماژول انتخاب کنید',
         'On': 'روشن',
         'Off': 'خاموش',
+        'unlocks USB device {device} for every program you run': 'دستگاه USB \u200f{device} را برای هر برنامه\u200cای که اجرا می\u200cکنید باز می\u200cکند',
     },
     'tl': {
         'Layer Mask': 'Layer Mask',
@@ -4736,6 +4769,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Pumili ng folder ng module',
         'On': 'Naka-on',
         'Off': 'Naka-off',
+        'unlocks USB device {device} for every program you run': 'binubuksan ang USB device na {device} para sa bawat program na pinapatakbo mo',
     },
     'ta': {
         'Layer Mask': 'லேயர் மாஸ்க்',
@@ -4871,6 +4905,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'தொகுதி கோப்புறையைத் தேர்ந்தெடுக்கவும்',
         'On': 'இயக்கம்',
         'Off': 'முடக்கம்',
+        'unlocks USB device {device} for every program you run': 'நீங்கள் இயக்கும் ஒவ்வொரு நிரலுக்கும் USB சாதனம் {device} ஐத் திறக்கிறது',
     },
     'pa': {
         'Layer Mask': 'ਲੇਅਰ ਮਾਸਕ',
@@ -5006,6 +5041,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'ਮੋਡੀਊਲ ਫੋਲਡਰ ਚੁਣੋ',
         'On': 'ਚਾਲੂ',
         'Off': 'ਬੰਦ',
+        'unlocks USB device {device} for every program you run': 'ਤੁਹਾਡੇ ਚਲਾਏ ਹਰ ਪ੍ਰੋਗਰਾਮ ਲਈ USB ਡਿਵਾਈਸ {device} ਖੋਲ੍ਹ ਦਿੰਦਾ ਹੈ',
     },
     'sw': {
         'Layer Mask': 'Mask ya Tabaka',
@@ -5141,6 +5177,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'Chagua folda ya moduli',
         'On': 'Imewashwa',
         'Off': 'Imezimwa',
+        'unlocks USB device {device} for every program you run': 'hufungua kifaa cha USB {device} kwa kila programu unayoendesha',
     },
     'my': {
         'Layer Mask': 'အလွှာမျက်နှာဖုံး',
@@ -5276,6 +5313,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Choose a module folder': 'မော်ဂျူး ဖိုင်တွဲကို ရွေးပါ',
         'On': 'ဖွင့်',
         'Off': 'ပိတ်',
+        'unlocks USB device {device} for every program you run': 'သင်ဖွင့်သော ပရိုဂရမ်တိုင်းအတွက် USB စက် {device} ကို ဖွင့်ပေးသည်',
     },
 }
 

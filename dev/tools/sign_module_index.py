@@ -189,6 +189,7 @@ def entry_from_bundle(bundle: bytes) -> tuple[str, dict[str, Any]]:
     return key, {"version": str(manifest.get("version", "0")),
                  "capabilities": list(manifest.get("capabilities", [])),
                  "network_hosts": list(manifest.get("network_hosts", [])),
+                 "devices": list(manifest.get("devices", [])),
                  "title": str(manifest.get("title", "")),
                  "summary": str(manifest.get("summary", "")),
                  "author": str(manifest.get("author", ""))}
@@ -270,11 +271,10 @@ def main(argv: list[str] | None = None) -> int:
                         "min_trcc": args.min_trcc,
                         "author_key": public_key(args.author_key),
                         "author_sig": args.author_sig}, trust)
+                    # As the App reads it: the asks the user will be shown.
+                    asks = parse_release(module, signed["modules"][module]).asks
                     print(f"Listing {module} {said['version']}: {said['title']!r} by "
-                          f"{said['author']!r}, asks for "
-                          f"{', '.join(said['capabilities']) or 'nothing'}"
-                          + (f"; sites {', '.join(said['network_hosts'])}"
-                             if said["network_hosts"] else ""))
+                          f"{said['author']!r}, asks for {asks.describe()}")
                 elif args.action == "revoke":
                     signed = revoke(signed, args.module, args.reason, args.sha256)
                 data = reissue(signed, root, args.days, now, args.key, trust)

@@ -41,6 +41,7 @@ from typing import Any
 
 from ..core.errors import UntrustedModule
 from ..core.models import (
+    MODULE_DEVICE,
     MODULE_HOST,
     MODULE_KEY,
     ModuleAsks,
@@ -183,7 +184,11 @@ def parse_release(key: str, entry: Any) -> ModuleRelease:
         key=key, version=f.text("version"), url=url, size=f.number("size"),
         sha256=f.text("sha256", _SHA256), min_trcc=f.text("min_trcc"),
         commit=f.text("commit", _COMMIT),
-        asks=ModuleAsks(capabilities=f.texts("capabilities"), network_hosts=_hosts(f, key)),
+        asks=ModuleAsks(capabilities=f.texts("capabilities"),
+                        network_hosts=_matching(f, key, "network_hosts", MODULE_HOST,
+                                                "a public hostname"),
+                        devices=_matching(f, key, "devices", MODULE_DEVICE,
+                                          "a USB id (vvvv:pppp)")),
         author_key=author_key, author_sig=f.text("author_sig"), title=_optional(entry, "title"),
         summary=_optional(entry, "summary"), author=_optional(entry, "author"))
 
@@ -195,14 +200,15 @@ def _optional(entry: dict[str, Any], name: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _hosts(f: _Fields, key: str) -> tuple[str, ...]:
-    """The sites module *key*'s release may fetch from -- public hostnames."""
-    hosts = f.texts("network_hosts")
-    log.debug("module_trust._hosts: %s %s", key, hosts)
-    if bad := [h for h in hosts if not MODULE_HOST.fullmatch(h)]:
-        raise UntrustedModule(f"index.json module {key}: {bad[0]!r} is not a "
-                              "public hostname")
-    return hosts
+def _matching(f: _Fields, key: str, name: str, pattern: re.Pattern[str],
+              what: str) -> tuple[str, ...]:
+    """Module *key*'s release field *name*: texts, each all of *pattern* --
+    or ``UntrustedModule`` naming the first that is not *what*."""
+    texts = f.texts(name)
+    log.debug("module_trust._matching: %s %s %s", key, name, texts)
+    if bad := [t for t in texts if not pattern.fullmatch(t)]:
+        raise UntrustedModule(f"index.json module {key}: {bad[0]!r} is not {what}")
+    return texts
 
 
 def _revocation(entry: Any) -> Revocation:

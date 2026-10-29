@@ -19,10 +19,11 @@ Status = Literal["available", "installed", "update", "revoked"]
 
 def _module(status: Status = "available", *, installed_version: str = "",
             reason: str = "", capabilities: tuple[str, ...] = (),
-            network_hosts: tuple[str, ...] = ()) -> AvailableModule:
+            network_hosts: tuple[str, ...] = (),
+            devices: tuple[str, ...] = ()) -> AvailableModule:
     return AvailableModule(key="weather", title="Weather", summary="The forecast.",
                            version="3", status=status,
-                           asks=ModuleAsks(capabilities, network_hosts),
+                           asks=ModuleAsks(capabilities, network_hosts, devices),
                            installed_version=installed_version, reason=reason)
 
 
@@ -49,6 +50,16 @@ def test_the_permission_screen_says_every_capability_and_site() -> None:
     assert lines == [REVIEWED, MAY, f"  - {MODULE_CAPABILITIES['events']}",
                      f"  - {MODULE_CAPABILITIES['network']}",
                      "  - fetches from api.open-meteo.com"]
+
+
+def test_the_permission_screen_names_every_usb_device_it_unlocks() -> None:
+    """Every one by id, and for whom: granting a device lets every program
+    the user runs reach it, not only the module."""
+    module = _module(capabilities=("hardware",), devices=("0b05:19af", "0b05:1aa6"))
+    assert consent(module, str)[1] == [
+        REVIEWED, MAY, f"  - {MODULE_CAPABILITIES['hardware']}",
+        "  - unlocks USB device 0b05:19af for every program you run",
+        "  - unlocks USB device 0b05:1aa6 for every program you run"]
 
 
 def test_a_module_asking_for_nothing_says_only_that_it_was_reviewed() -> None:

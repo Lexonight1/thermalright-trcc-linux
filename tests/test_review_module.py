@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from trcc.core.models import ModuleAsks
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
 import module_bundle
 import review_module as review
@@ -527,14 +529,14 @@ def test_the_add_command_lets_the_bundle_say_what_it_is(tmp_path: Path) -> None:
     bundle's module.json, so the command carries none of them -- and the report
     says what will be listed, sites too: an update naming a new one is asked
     about again on every machine."""
-    result = review.Review("weather", "3", COMMIT, [], "", "", ("network",),
-                           ("api.example.com",), ran=True)
+    result = review.Review("weather", "3", COMMIT, [], "", "",
+                           ModuleAsks(("network",), ("api.example.com",)), ran=True)
     report = review.render(result, tmp_path / "files.txt")
     assert (f"sign_module_index.py add index.json --root root.json --commit {COMMIT} "
             "--bundle <asset> --url <asset url> --min-trcc <version> "
             "--author-key <pub> --author-sig <sig>") in report
     assert ("It lists weather 3 as its module.json says: asks for network; "
-            "sites api.example.com.") in report
+            "sites: api.example.com.") in report
     assert "--capabilities" not in report and "--module" not in report
 
 

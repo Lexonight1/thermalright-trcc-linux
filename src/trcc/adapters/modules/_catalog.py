@@ -19,7 +19,7 @@ from typing import Any
 
 from ... import modules as module_folders
 from ...core.errors import ModuleUnavailable, TrccError
-from ...core.models import MODULE_CAPABILITIES, MODULE_HOST, ModuleManifest
+from ...core.models import MODULE_CAPABILITIES, MODULE_DEVICE, MODULE_HOST, ModuleManifest
 from ...core.ports import Module
 from ...services.modules import ModuleSpec
 from ._base import MODULES
@@ -72,6 +72,11 @@ def read_manifest(path: Path) -> ModuleManifest:
     if bool(hosts) != ("network" in caps):
         raise ManifestError(f"{path}: the network capability and network_hosts "
                             "go together -- name the sites it fetches from")
+    devices = _names(data, "devices", path, "a list of USB ids, lowercase "
+                     "vvvv:pppp as lsusb prints them", MODULE_DEVICE.fullmatch)
+    if devices and "hardware" not in caps:
+        raise ManifestError(f"{path}: devices needs the hardware capability -- it "
+                            "is how a module reaches them")
     icon = data.get("icon", "")
     author = data.get("author", "")
     if not isinstance(author, str):
@@ -82,7 +87,7 @@ def read_manifest(path: Path) -> ModuleManifest:
         default_on=bool(data.get("default_on", True)),
         icon=str(path.parent / icon) if icon else "",
         guide=str(data.get("guide", "")), capabilities=caps,
-        backgrounds=backgrounds, network_hosts=hosts, author=author)
+        backgrounds=backgrounds, network_hosts=hosts, author=author, devices=devices)
 
 
 def specs(root: Path | None = None, *, user_root: Path | None = None,

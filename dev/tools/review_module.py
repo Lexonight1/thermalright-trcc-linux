@@ -72,6 +72,7 @@ from cryptography.hazmat.primitives.serialization import (
 from trcc.adapters.modules import Ed25519Checker, ManifestError, read_manifest
 from trcc.core.errors import UntrustedModule
 from trcc.core.models import MODULE_BUILT_IN_AUTHOR as BUILT_IN_AUTHOR
+from trcc.core.models import ModuleAsks
 from trcc.services.module_trust import ModuleTrust, parse_release
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -172,8 +173,7 @@ class Review:
     gates: list[Gate]
     diff: str
     since: str
-    capabilities: tuple[str, ...] = ()
-    network_hosts: tuple[str, ...] = ()
+    asks: ModuleAsks = field(default_factory=ModuleAsks)
     title: str = ""
     summary: str = ""
     author: str = ""
@@ -307,6 +307,11 @@ def layout(source: Path, staged: Path) -> Gate:
                       f"and not {BUILT_IN_AUTHOR!r}, the name TRCC's own modules carry")
         if manifest.network_hosts:
             gate.notes.append(f"fetches from: {', '.join(manifest.network_hosts)}")
+        if manifest.devices:
+            gate.notes.append(f"unlocks USB devices for every program the user runs: "
+                              f"{', '.join(manifest.devices)} -- check each is the "
+                              "hardware it drives, never a keyboard, storage or a "
+                              "security key")
     if extra := module_bundle.left_out(source):
         gate.notes.append(f"not packed (not part of a module): {', '.join(extra)}")
     for path in sorted(p for p in staged.rglob("*") if p.is_file()):
@@ -760,9 +765,8 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
         manifest = read_manifest(staged / "module.json")
     except ManifestError:
         return Review(key, version, commit, gates, diff, since)
-    return Review(key, version, commit, gates, diff, since, manifest.capabilities,
-                  manifest.network_hosts, manifest.title, manifest.summary,
-                  manifest.author)
+    return Review(key, version, commit, gates, diff, since, manifest.asks,
+                  manifest.title, manifest.summary, manifest.author)
 
 
 def render(result: Review, diff_file: Path) -> str:
@@ -797,9 +801,7 @@ def render(result: Review, diff_file: Path) -> str:
                   # What it is comes from the bundle's module.json, which is
                   # the reviewed source byte for byte (Provenance above).
                   f"It lists {result.key} {result.version} as its module.json says: "
-                  f"asks for {', '.join(result.capabilities) or 'nothing'}"
-                  + (f"; sites {', '.join(result.network_hosts)}"
-                     if result.network_hosts else "") + "."]
+                  f"asks for {result.asks.describe()}."]
     return "\n".join(lines) + "\n"
 
 

@@ -1377,6 +1377,9 @@ MODULE_CAPABILITIES: dict[str, str] = {
 #: API are not on the internet a module was granted.
 MODULE_HOST = re.compile(
     r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?")
+#: A USB device a module needs this user to reach (``devices``): its vendor
+#: and product id, lowercase hex, as ``lsusb`` prints them -- ``0b05:19af``.
+MODULE_DEVICE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{4}")
 #: The most one ``host.network.fetch`` reads, and how long it waits.
 MODULE_FETCH_MAX_BYTES = 2 << 20
 MODULE_FETCH_TIMEOUT_S = 20.0
@@ -1426,6 +1429,9 @@ class ModuleAsks:
     capabilities: tuple[str, ...] = ()
     #: The sites the ``network`` capability may fetch from (``MODULE_HOST``).
     network_hosts: tuple[str, ...] = ()
+    #: The USB devices this user is let reach, root setup asked once
+    #: (``MODULE_DEVICE``) -- and with them every program the user runs.
+    devices: tuple[str, ...] = ()
 
     def matches(self, other: ModuleAsks) -> bool:
         """Whether *other* asks for exactly what this does, in any order."""
@@ -1438,7 +1444,8 @@ class ModuleAsks:
         """What it asks for, as one line: ``events, network; sites: a.org``."""
         log.debug("ModuleAsks.describe: %s", self)
         sites = f"; sites: {', '.join(self.network_hosts)}" if self.network_hosts else ""
-        return f"{', '.join(self.capabilities) or 'nothing'}{sites}"
+        devices = f"; devices: {', '.join(self.devices)}" if self.devices else ""
+        return f"{', '.join(self.capabilities) or 'nothing'}{sites}{devices}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1464,12 +1471,15 @@ class ModuleManifest:
     network_hosts: tuple[str, ...] = ()
     #: Who wrote it -- a name, shown on its tile and in the module list.
     author: str = ""
+    #: The USB devices it needs this user to reach (``MODULE_DEVICE``).
+    devices: tuple[str, ...] = ()
 
     @property
     def asks(self) -> ModuleAsks:
         """What it asks the user for, as its install must match."""
         log.debug("ModuleManifest.asks: %s", self.key)
-        return ModuleAsks(capabilities=self.capabilities, network_hosts=self.network_hosts)
+        return ModuleAsks(capabilities=self.capabilities, network_hosts=self.network_hosts,
+                          devices=self.devices)
 
 
 # =========================================================================

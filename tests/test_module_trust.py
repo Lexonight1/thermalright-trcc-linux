@@ -380,6 +380,8 @@ def test_a_revoked_release_is_refused(keys: Keys, trust: ModuleTrust,
      "index.json revoked: sha256 is not the text it should be"),
     (lambda s: s["modules"]["weather"].update(network_hosts=["192.168.1.1"]),
      "index.json module weather: '192.168.1.1' is not a public hostname"),
+    (lambda s: s["modules"]["weather"].update(devices=["0B05:19AF"]),
+     "index.json module weather: '0B05:19AF' is not a USB id (vvvv:pppp)"),
 ])
 def test_a_signed_but_malformed_index_is_refused(
         keys: Keys, trust: ModuleTrust, root_file: bytes, change: Any,
