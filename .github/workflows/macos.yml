@@ -44,9 +44,19 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          brew install libusb create-dmg sevenzip ffmpeg dylibbundler
+          brew install libusb create-dmg sevenzip ffmpeg dylibbundler openssl@3
 
       - name: Install Python dependencies
+        # cryptography ships no Intel Mac wheel since 49.0.0, so on x86_64 pip
+        # builds it from source -- linked against Homebrew's libssl.3.dylib by
+        # default, which PyInstaller then bundles beside Python's own older
+        # libssl.3.dylib under the same name: the app died at startup on
+        # "Symbol not found: _SSL_get0_group_name".  OPENSSL_STATIC=1 links
+        # OpenSSL into the extension, as cryptography's own wheels are built
+        # (cryptography.io, "Building cryptography on macOS").  A wheel
+        # install -- arm64 -- never reads it.
+        env:
+          OPENSSL_STATIC: "1"
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
