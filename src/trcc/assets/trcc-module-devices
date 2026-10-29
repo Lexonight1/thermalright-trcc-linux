@@ -10,10 +10,16 @@ module; ``disable`` removes it and takes the access back at once.
 
 The rule's text is never the caller's.  The caller supplies only the module's
 key and the device ids, each checked against a fixed pattern; every line is
-built here, in the one shape the packaged RGB rule has: the device's
-``hidraw`` node and its USB node, ``MODE="0660"``, ``GROUP="trcc"``,
-``TAG+="uaccess"``.  So no caller can smuggle a ``RUN``, ``PROGRAM`` or
-``IMPORT`` into a root-written udev rule -- there is no udev syntax to send.
+built here: the device's USB node and each of its ``hidraw`` nodes,
+``MODE="0660"``, ``GROUP="trcc"``, ``TAG+="uaccess"``.  So no caller can
+smuggle a ``RUN``, ``PROGRAM`` or ``IMPORT`` into a root-written udev rule --
+there is no udev syntax to send.
+
+A hidraw node is matched by its HID device's own name (``KERNELS ==
+"0003:0B05:19AF.*"``), never by ``ATTRS{idVendor}``: ATTRS searches every
+ancestor, so a hub's ids would match the keyboard plugged into it -- a
+keylogger for every program the user runs.  Found driving it on a real
+desk: a hub's ``05e3:0608`` matched the Dell keyboard below it.
 
 What it grants is real: every program the user runs can then reach those
 devices, as the install screen says.  The polkit action asks for a password
@@ -82,13 +88,20 @@ def rule_text(key: str, devices: list[str]) -> str:
     """*key*'s rule file: its header, then each device's two lines."""
     lines = [header(key),
              "# The user at this seat and the trcc group reach these devices.", ""]
+    grant = f'MODE="0660", GROUP="{GROUP}", TAG+="uaccess"'
     for device in devices:
         vid, pid = device.split(":")
-        lines += [f'SUBSYSTEM=="{subsystem}", {attr}{{idVendor}}=="{vid}", '
-                  f'{attr}{{idProduct}}=="{pid}", '
-                  f'MODE="0660", GROUP="{GROUP}", TAG+="uaccess"'
-                  for subsystem, attr in (("hidraw", "ATTRS"), ("usb", "ATTR"))]
+        lines += [f'SUBSYSTEM=="hidraw", KERNELS=="{hid_name(device)}.*", {grant}',
+                  f'SUBSYSTEM=="usb", ATTR{{idVendor}}=="{vid}", '
+                  f'ATTR{{idProduct}}=="{pid}", {grant}']
     return "\n".join(lines) + "\n"
+
+
+def hid_name(device: str) -> str:
+    """The kernel's name for a USB HID device of *device*, less its instance:
+    ``0003:0B05:19AF`` -- bus 3 is USB, the ids in upper case."""
+    vid, pid = device.split(":")
+    return f"0003:{vid.upper()}:{pid.upper()}"
 
 
 def devices_in(text: str) -> list[str]:
@@ -167,19 +180,19 @@ def _attr(path: Path, name: str) -> str:
 
 def device_nodes(devices: list[str], usb: Path = _USB,
                  hidraw: Path = _HIDRAW) -> list[str]:
-    """``/dev`` nodes of the attached *devices*: each one's USB node and every
-    ``hidraw`` node under it."""
-    wanted, nodes, found = set(devices), [], set()
+    """``/dev`` nodes of the attached *devices*: each one's USB node and each
+    ``hidraw`` node of its own -- by its HID device's name, as the rule
+    matches, never a node of a device plugged in below it."""
+    wanted, nodes = set(devices), []
     for dev in sorted(usb.glob("*")):
         if f"{_attr(dev, 'idVendor')}:{_attr(dev, 'idProduct')}" not in wanted:
             continue
         busnum, devnum = _attr(dev, "busnum"), _attr(dev, "devnum")
         if busnum.isdigit() and devnum.isdigit():
             nodes.append(f"/dev/bus/usb/{int(busnum):03d}/{int(devnum):03d}")
-        found.add(dev.resolve())
+    names = {hid_name(device) for device in devices}
     for node in sorted(hidraw.glob("hidraw*")):
-        under = (node / "device").resolve()
-        if any(parent in found for parent in (under, *under.parents)):
+        if (node / "device").resolve().name.rpartition(".")[0] in names:
             nodes.append(f"/dev/{node.name}")
     return nodes
 

@@ -87,15 +87,25 @@ def test_a_refused_command_line_touches_nothing(
 # ── what it writes ────────────────────────────────────────────────────────
 
 
-def test_its_rule_has_the_packaged_rgb_rules_shape(helper: ModuleType) -> None:
-    """The same two lines per device as ``70-trcc-rgb.rules``: the helper
-    builds them itself, from ids alone."""
+def test_its_usb_lines_are_the_packaged_rgb_rules(helper: ModuleType) -> None:
+    """The USB node line is ``70-trcc-rgb.rules``'s, built from ids alone."""
     packaged = [line for line in _udev.build_rgb_udev_rules().splitlines()
-                if line.startswith("SUBSYSTEM")]
+                if line.startswith('SUBSYSTEM=="usb"')]
     ids = list(dict.fromkeys(helper.devices_in("\n".join(packaged))))
     built = [line for line in helper.rule_text("rgb", ids).splitlines()
-             if line.startswith("SUBSYSTEM")]
+             if line.startswith('SUBSYSTEM=="usb"')]
     assert ids and built == packaged
+
+
+def test_a_hidraw_node_is_matched_by_its_own_hid_device_never_an_ancestor(
+        helper: ModuleType) -> None:
+    """ATTRS searches every ancestor: a hub's ids would match the keyboard
+    plugged into it (measured with udevadm test on a real desk, 2026-10-29).
+    MUTATION CHECK: put ``ATTRS{idVendor}`` back on the hidraw line."""
+    text = helper.rule_text("hub", ["05e3:0608"])
+    assert "ATTRS" not in text
+    assert ('SUBSYSTEM=="hidraw", KERNELS=="0003:05E3:0608.*", MODE="0660", '
+            'GROUP="trcc", TAG+="uaccess"') in text.splitlines()
 
 
 def test_it_writes_and_removes_only_its_own_file(
@@ -164,8 +174,10 @@ def _usb(sysfs: Path, name: str, ids: str, bus: int, dev: int) -> Path:
     return device
 
 
-def _hidraw(sysfs: Path, name: str, under: Path) -> None:
-    interface = under / f"{under.name}:1.0" / "0003:0B05:19AF.0001"
+def _hidraw(sysfs: Path, name: str, under: Path, ids: str) -> None:
+    """A hidraw node of the HID device *ids*, plugged in at *under*."""
+    vid, pid = ids.upper().split(":")
+    interface = under / f"{under.name}:1.0" / f"0003:{vid}:{pid}.{name[-1]:0>4}"
     interface.mkdir(parents=True)
     node = sysfs / "class" / name
     node.mkdir(parents=True)
@@ -180,10 +192,25 @@ def test_it_finds_the_nodes_of_the_devices_it_named(
     other = _usb(tmp_path, "1-5", "046d:c52b", 1, 9)      # a keyboard receiver
     for device in (aura, other):
         (usb / device.name).symlink_to(device)
-    _hidraw(tmp_path, "hidraw2", aura)
-    _hidraw(tmp_path, "hidraw5", other)
+    _hidraw(tmp_path, "hidraw2", aura, "0b05:19af")
+    _hidraw(tmp_path, "hidraw5", other, "046d:c52b")
     assert helper.device_nodes(["0b05:19af"], usb, tmp_path / "class") == [
         "/dev/bus/usb/001/003", "/dev/hidraw2"]
+
+
+def test_a_hub_s_nodes_are_never_the_keyboard_plugged_into_it(
+        helper: ModuleType, tmp_path: Path) -> None:
+    """The real desk: a Genesys hub, a Dell keyboard below it.  Taking the hub
+    back must not strip the keyboard's ACL entries -- they are not the hub's."""
+    usb = tmp_path / "bus"
+    usb.mkdir()
+    hub = _usb(tmp_path, "1-11", "05e3:0608", 1, 3)
+    keyboard = _usb(hub, "1-11.3", "413c:2113", 1, 5)
+    for device in (hub, keyboard):
+        (usb / device.name).symlink_to(device)
+    _hidraw(tmp_path, "hidraw1", keyboard, "413c:2113")
+    assert helper.device_nodes(["05e3:0608"], usb, tmp_path / "class") == [
+        "/dev/bus/usb/001/003"]
 
 
 def test_disable_strips_only_named_user_entries_then_retriggers(
