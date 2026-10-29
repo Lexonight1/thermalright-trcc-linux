@@ -580,7 +580,7 @@ class DeveloperMode:
         """The App's answer to an install from a folder, shown on the page."""
         key, self.busy = self.busy, ""
         log.info("DeveloperMode._installed: %s ok=%s %s", key, result.ok, result.message)
-        self.note = result.message
+        self.note = "\n".join(filter(None, (result.message, result.note)))
         self._view.refresh()
 
 

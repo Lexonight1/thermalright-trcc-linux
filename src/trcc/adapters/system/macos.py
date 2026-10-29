@@ -23,6 +23,7 @@ from ...core.models import DeviceInfo, DisplayServer, DisplaySession
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
+    OpenModuleDevices,
     Paths,
     ScsiTransport,
     SensorEnumerator,
@@ -101,6 +102,10 @@ class MacOSPlatform(BaseOS, key="darwin"):
 
     Same OS contract as every other platform; only the internals below differ.
     """
+
+    #: Any program the user runs may open a USB HID device here: a module's
+    #: ``devices`` need no grant.
+    MODULE_DEVICES = staticmethod(OpenModuleDevices)
 
     _INSTALL_HINTS = _MAC_INSTALL_HINTS
 

@@ -2402,6 +2402,56 @@ class _NoRamAccess(RamAccess):
         return self._status
 
 
+class ModuleDevices(ABC):
+    """Letting this user reach an installed module's USB devices -- what its
+    ``devices`` ask needs of the OS once the user accepted them.
+
+    Concrete: ``LinuxModuleDevices`` (``adapters/system/_module_devices.py``);
+    an OS where any program may open a USB device needs nothing
+    (``OpenModuleDevices``).  An OS names its own in ``Platform.MODULE_DEVICES``.
+    """
+
+    @abstractmethod
+    def grant(self, key: str, devices: tuple[str, ...]) -> str:
+        """Let this user reach module *key*'s *devices*, in place of what it
+        had before (none: take it back) -- it may ask for a password.  "" when
+        they are reachable; otherwise what stands in the way, for the user."""
+
+    @abstractmethod
+    def revoke(self, key: str) -> None:
+        """Take back what module *key* was granted; nothing, when nothing was."""
+
+
+class OpenModuleDevices(ModuleDevices):
+    """An OS where any program the user runs may open a USB device: nothing
+    to grant, nothing to take back."""
+
+    def grant(self, key: str, devices: tuple[str, ...]) -> str:
+        log.info("OpenModuleDevices.grant: %s %s -- open to every program here",
+                 key, devices)
+        return ""
+
+    def revoke(self, key: str) -> None:
+        log.debug("OpenModuleDevices.revoke: %s -- nothing was granted", key)
+
+
+class _NoModuleDevices(ModuleDevices):
+    """An OS where TRCC cannot let a module reach its devices yet."""
+
+    def __init__(self, os_name: str) -> None:
+        # *os_name* is a class name (BsdOS): the log's, never the user's.
+        log.debug("_NoModuleDevices: %s", os_name)
+
+    def grant(self, key: str, devices: tuple[str, ...]) -> str:
+        log.warning("_NoModuleDevices.grant: %s %s -- not on this system yet",
+                    key, devices)
+        return ("" if not devices else
+                "TRCC cannot unlock a module's USB devices on this system yet")
+
+    def revoke(self, key: str) -> None:
+        log.debug("_NoModuleDevices.revoke: %s -- nothing was granted", key)
+
+
 class RgbHardware(ABC):
     """What Find reads to spot RGB controllers.
 
@@ -3825,6 +3875,17 @@ class Platform(ABC):
         """The opt-in grant to reach RGB memory -- on an OS that has one."""
         log.debug("ram_access: %s has none", type(self).__name__)
         return _NoRamAccess(type(self).__name__)
+
+    #: How this OS lets a user reach an installed module's USB devices -- a
+    #: table entry, as ``RGB_HARDWARE`` is: ``OpenModuleDevices`` where any
+    #: program may open one (Windows, macOS).  None: no way here yet.
+    MODULE_DEVICES: ClassVar[staticmethod[[], ModuleDevices] | None] = None
+
+    def module_devices(self) -> ModuleDevices:
+        """Letting this user reach an installed module's USB devices."""
+        build = self.MODULE_DEVICES
+        log.debug("module_devices: %s -> %s", type(self).__name__, build)
+        return build() if build is not None else _NoModuleDevices(type(self).__name__)
 
     #: The OS adapter's ``RgbHardware`` class -- a table entry, as
     #: ``BaseOS._transport_openers`` is, so an OS names it without a method

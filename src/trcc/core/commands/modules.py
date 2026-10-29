@@ -196,14 +196,14 @@ class InstallModuleFolder(Command[ModuleResult]):
     def execute(self, app: App) -> ModuleResult:
         log.info("InstallModuleFolder: %s accepting %s", self.path, self.asks)
         try:
-            record = app.module_installer.install_folder(self.path, self.asks)
+            record, note = app.module_installer.install_folder(self.path, self.asks)
         except TrccError as e:
             log.warning("InstallModuleFolder: %s refused: %s", self.path, e)
             return ModuleResult(ok=False, message=str(e))
         return ModuleResult(ok=True, key=record.key, enabled=False,
                             message=f"{app.modules.manifest(record.key).title} "
                                     f"{record.version} installed unsigned -- off "
-                                    "until you switch it on")
+                                    "until you switch it on", note=note)
 
 
 @dataclass(frozen=True, slots=True)

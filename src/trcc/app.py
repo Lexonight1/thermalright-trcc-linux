@@ -468,7 +468,8 @@ class App(CommandBus, ModuleServices):
             store=module_catalog.FolderModuleStore(platform.paths().user_modules_dir()),
             settings=self.settings, runner=self.modules, load_spec=self._installed_spec,
             forget=self._forget_module, built_in=self._built_in_module,
-            publish=self.events.publish, trcc_version=__version__)
+            publish=self.events.publish, devices=platform.module_devices(),
+            trcc_version=__version__)
         # Once per user: themes a module draws move into its folder.  After
         # the modules, whose manifests say which module draws what.
         ModuleThemeMove(self.themes, platform.paths(), self.settings,

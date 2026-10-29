@@ -55,7 +55,7 @@ from ..core.models import (
     ModuleManifest,
     ModuleRelease,
 )
-from ..core.ports import HttpFetcher, ModuleStore
+from ..core.ports import HttpFetcher, ModuleDevices, ModuleStore
 from .module_trust import ModuleTrust
 from .modules import ModuleRunner, ModuleSpec
 from .settings import Settings
@@ -95,9 +95,11 @@ class ModuleInstaller:
                  settings: Settings, runner: ModuleRunner,
                  load_spec: Callable[[str], ModuleSpec], forget: Callable[[str], None],
                  built_in: Callable[[str], bool], publish: Callable[[Event], None],
-                 trcc_version: str, index_url: str = MODULE_INDEX_URL) -> None:
+                 devices: ModuleDevices, trcc_version: str,
+                 index_url: str = MODULE_INDEX_URL) -> None:
         log.info("ModuleInstaller: index %s, store %s", index_url, store.root())
         self._trust, self._http, self._store = trust, http, store
+        self._devices = devices
         self._settings, self._runner = settings, runner
         self._load_spec, self._forget, self._built_in = load_spec, forget, built_in
         self._publish, self._url, self._version = publish, index_url, trcc_version
@@ -151,6 +153,9 @@ class ModuleInstaller:
             if reason == self._settings.module_revoked(key):
                 continue
             self._settings.set_module_revoked(key, reason)
+            if reason:
+                # Taken back: so is any USB device it was let reach.
+                self._devices.revoke(key)
             if reason and self._runner.is_on(key):
                 log.warning("ModuleInstaller._sweep: %s taken back -- %s", key, reason)
                 self._runner.switch(key, False)
@@ -209,15 +214,22 @@ class ModuleInstaller:
                                    author_key=release.author_key, commit=release.commit,
                                    asks=release.asks)
             # Over an unsigned copy it is a first install: on, nothing pinned.
-            return self._put_in_place(record, bundle, self._matches_release(release),
-                                      switch_on=signed is None or self._runner.is_on(key),
-                                      restore=old is not None)
+            record, note = self._put_in_place(
+                record, bundle, self._matches_release(release),
+                switch_on=signed is None or self._runner.is_on(key),
+                restore=old is not None)
+            # Its USB devices -- none takes back what an older release had.
+            locked = self._devices.grant(key, record.asks.devices)
+            return record, "; ".join(n for n in (note, locked) if n)
 
-    def install_folder(self, folder: Path, accepted: ModuleAsks) -> ModuleInstall:
-        """Install the module in *folder*, unsigned -- developer mode only.
-        Refused, before anything is touched, over a built-in or a signed
-        install, or when what the user accepted is not exactly what its
-        ``module.json`` asks for.  Off after install, whatever its default."""
+    def install_folder(self, folder: Path,
+                       accepted: ModuleAsks) -> tuple[ModuleInstall, str]:
+        """Install the module in *folder*, unsigned -- developer mode only --
+        and what the user must still do ("" for nothing).  Refused, before
+        anything is touched, over a built-in or a signed install, or when what
+        the user accepted is not exactly what its ``module.json`` asks for.
+        Off after install, whatever its default.  Never root setup: its USB
+        devices are the developer's own to unlock."""
         log.info("ModuleInstaller.install_folder: %s", folder)
         if not self._settings.app.developer_mode:
             raise ModuleUnavailable("installing a module from a folder needs "
@@ -262,7 +274,10 @@ class ModuleInstaller:
                 self._publish(ModuleChanged(key=key, enabled=False))
             log.info("ModuleInstaller.install_folder: %s %s installed UNSIGNED "
                      "from %s -- off until switched on", key, manifest.version, folder)
-            return record
+            note = (f"developer mode unlocks no USB devices -- give "
+                    f"{', '.join(manifest.devices)} a udev rule of your own"
+                    if manifest.devices else "")
+            return record, note
 
     def read_folder(self, folder: Path) -> AvailableModule:
         """The module in *folder* as its permission screen shows it -- packed
@@ -374,6 +389,7 @@ class ModuleInstaller:
             self._runner.remove(key)
             self._forget(key)
             self._store.remove(key)
+            self._devices.revoke(key)
             self._settings.set_module_install(key, None)
             self._settings.set_module_revoked(key, "")
             if was_on:

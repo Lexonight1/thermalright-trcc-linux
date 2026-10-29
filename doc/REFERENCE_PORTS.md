@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-83 ports.
+84 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -36,6 +36,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
 | [`Module`](#module) | 2 | 10 | 2 |
+| [`ModuleDevices`](#moduledevices) | 2 | 0 | 4 |
 | [`PanelsPort`](#panelsport) | 2 | 0 | 1 |
 | [`RgbHardware`](#rgbhardware) | 2 | 0 | 2 |
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
@@ -90,7 +91,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 8 | 8 |
+| [`Platform`](#platform) | 25 | 9 | 8 |
 | [`ModuleServices`](#moduleservices) | 31 | 0 | 1 |
 | [`ContentStore`](#contentstore) | 32 | 0 | 1 |
 
@@ -486,6 +487,21 @@ _enable(host: 'ModuleHost') -> None
 **You inherit (10):** `disable` · `enable` · `post_disable` · `post_enable` · `pre_disable` · `pre_enable` · `problem` · `start` · `stop` · `turning_off`
 
 **Implementations (2):** `RgbModule` · `VisualizerModule`
+
+## ModuleDevices
+
+`core/ports.py`
+
+Letting this user reach an installed module's USB devices -- what its ``devices`` ask needs of the OS once the user accepted them.
+
+**You implement (2):**
+
+```python
+grant(key: 'str', devices: 'tuple[str, ...]') -> str
+revoke(key: 'str') -> None
+```
+
+**Implementations (4):** `LinuxModuleDevices` · `NixosModuleDevices` · `OpenModuleDevices` · `_NoModuleDevices`
 
 ## PanelsPort
 
@@ -1491,7 +1507,7 @@ usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | Non
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**You inherit (8):** `adopt_session` · `hard_exit` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
+**You inherit (9):** `adopt_session` · `hard_exit` · `module_devices` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 

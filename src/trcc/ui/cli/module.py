@@ -171,5 +171,7 @@ def install_folder(folder: Path = typer.Argument(..., help="The module's folder"
     result = get_app().dispatch(InstallModuleFolder(path=folder.resolve(),
                                                     asks=module.asks))
     typer.echo(result.message)
+    if result.note:
+        typer.echo(result.note)
     if not result.ok:
         raise typer.Exit(code=1)

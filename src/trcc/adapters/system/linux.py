@@ -33,6 +33,7 @@ from ...core.models import UsbPowerState
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
+    ModuleDevices,
     PackageManager,
     Paths,
     RamAccess,
@@ -51,6 +52,7 @@ from ..visual.sound import MonitorSoundInput
 from ._autostart import SystemdUserService
 from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
 from ._desktop_entry import XdgDesktopEntry
+from ._module_devices import LinuxModuleDevices, NixosModuleDevices
 from ._polkit_install import POLKIT_POLICY
 from ._polkit_install import install as install_polkit_files
 from ._ram_access import LinuxRamAccess, NixosRamAccess
@@ -670,6 +672,14 @@ def adopt_user_session_environment(
     return adopted
 
 
+def _module_devices() -> ModuleDevices:
+    """An installed module's USB devices, through ``trcc-module-devices`` --
+    on NixOS, the rule to declare instead."""
+    nixos = _is_nixos()
+    log.debug("_module_devices: nixos=%s", nixos)
+    return (NixosModuleDevices if nixos else LinuxModuleDevices)(_pkexec_helper)
+
+
 class LinuxOS(BaseOS, key="linux"):
     """Linux implementation — same OS contract; only internals below differ.
 
@@ -679,6 +689,8 @@ class LinuxOS(BaseOS, key="linux"):
 
     #: Find spots RGB controllers from sysfs -- no device is opened.
     RGB_HARDWARE = SysfsRgbHardware
+    #: A module's USB devices: a udev rule each, by TRCC's root helper.
+    MODULE_DEVICES = staticmethod(_module_devices)
     #: Audio visuals: what is playing (the PulseAudio/PipeWire monitor),
     #: drawn off-screen on EGL -- no display needed.
     SOUND_INPUT = MonitorSoundInput

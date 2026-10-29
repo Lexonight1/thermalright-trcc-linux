@@ -30,6 +30,7 @@ from ...core.models import (
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
+    OpenModuleDevices,
     Paths,
     ScreenCapture,
     ScsiTransport,
@@ -547,6 +548,10 @@ _WIN_INSTALL_HINTS: dict[str, str] = {
 
 class WindowsPlatform(BaseOS, key="win32"):
     """Windows implementation — same OS contract; only internals below differ."""
+
+    #: Any program the user runs may open a USB HID device here: a module's
+    #: ``devices`` need no grant.
+    MODULE_DEVICES = staticmethod(OpenModuleDevices)
 
     _INSTALL_HINTS = _WIN_INSTALL_HINTS
 

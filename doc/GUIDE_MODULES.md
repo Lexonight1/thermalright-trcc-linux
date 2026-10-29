@@ -114,7 +114,7 @@ The Modules page lists a module from this file alone.
 | `backgrounds` | the theme background refs it draws (`<prefix>/<id>`), so a theme can name the module it needs even while that module is off |
 | `network_hosts` | the internet sites it fetches from, as public hostnames (`api.open-meteo.com`) — required with the `network` capability, refused without it; never `localhost` or an IP address |
 | `author` | who wrote it, by name — shown on its tile and by `trcc system modules list`; for a module from the index it must be the name TRCC reviewed, and only TRCC's own modules say `Lexonight` |
-| `devices` | the USB devices it needs you to reach, as `lsusb` prints their ids (`0b05:19af`) — needs the `hardware` capability; its install screen names each one, and an update that adds one is asked about again |
+| `devices` | the USB devices it needs you to reach, as `lsusb` prints their ids (`0b05:19af`) — needs the `hardware` capability; see [USB devices](#usb-devices) |
 
 ### When each hook runs
 
@@ -152,6 +152,10 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `network` | fetches from the internet sites its module.json names, and no others |
 
 `host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds — and only when the site's name resolves to an address on the public internet, never this computer or the local network. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
+
+#### USB devices
+
+A device the system guards — on Linux, any USB device without a udev rule — is reachable only by root. A module that drives one names it under `devices`, and its install screen names each one: *unlocks USB device 0b05:19af for every program you run*. That is what it does: once you accept, TRCC's root helper `trcc-module-devices` writes one udev rule for the module (`/etc/udev/rules.d/70-trcc-module-<key>.rules`), asking for your password, and from then on you — and every program you run — can open those devices. The helper builds that rule itself from the ids alone, so a module cannot put anything else in it. An update that adds a device asks again; removing the module, or TRCC taking it back, takes the devices back at once. On Windows and macOS any program may already open a USB HID device, so nothing is asked. On NixOS, where `/etc` is built from your configuration, TRCC names the rule to add. A module installed from a folder in developer mode never gets one — write your own rule while you develop it.
 
 When it is switched off, TRCC takes back what it still holds: its subscriptions, its frame watchers, its background kinds, and the panels it draws, each keeping its choice. More capabilities arrive as modules need them — one at a time, each with a reason.
 

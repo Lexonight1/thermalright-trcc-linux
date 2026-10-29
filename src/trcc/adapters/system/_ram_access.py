@@ -5,16 +5,10 @@ can open.  ``trcc-ram-access`` (``assets/``, packaged to /usr/bin) installs or
 removes a udev rule that tags that one bus ``uaccess`` for the user at the
 seat; this adapter reports where the user stands and runs the helper:
 
-* packaged install: ``pkexec /usr/bin/trcc-ram-access`` -- TRCC's own polkit
-  action (``auth_admin``: the password every time);
-* any other install with polkit (pip, pipx, a source checkout): ``pkexec`` runs
-  the SAME helper file from the package (``python -I``), under polkit's
-  standard run-as-administrator action -- also the password every time;
-* already root: that helper file, directly;
-* no polkit at all: the status names the ``sudo`` command that will.
-  ``sudo trcc ...`` would not: sudo drops ``~/.local/bin`` from PATH and root's
-  Python cannot import a package installed for the user, so the command names
-  the interpreter and the helper file instead.
+as every TRCC root helper is run (``_root_helper.RootHelper``: TRCC's own
+polkit action, ``auth_admin`` -- the password every time -- or polkit's generic
+one, or directly as root, or the ``sudo`` command when there is no polkit).
+
 * NixOS (``NixosRamAccess``): /etc is built from the system configuration, so
   the helper cannot write there; the grant is the flake's
   ``programs.trcc-linux.ramLighting`` and the status names that line.
@@ -27,13 +21,14 @@ import logging
 import os
 import shutil
 import subprocess
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
 
 from ...core.models import RamAccessState, RamAccessStatus
 from ...core.ports import RamAccess
+from . import _root_helper
+from ._root_helper import PKEXEC_DISMISSED, PKEXEC_REFUSED, RootHelper, effective_root
 from ._smbus import find_smbus
 
 log = logging.getLogger(__name__)
@@ -55,16 +50,6 @@ HELPER_OFF = "/usr/bin/trcc-ram-access-off"
 #: The helper as the package ships it -- what root runs when /usr/bin has none.
 HELPER_ASSET = Path(__file__).resolve().parents[2] / "assets" / "trcc-ram-access"
 
-# pkexec's own exits: the user dismissed the prompt, or polkit said no.
-_PKEXEC_DISMISSED, _PKEXEC_REFUSED = 126, 127
-
-
-def _effective_root() -> bool:
-    """Whether this process runs as root (``sudo``, ``pkexec``, a root login)."""
-    root = os.geteuid() == 0
-    log.debug("_effective_root: %s", root)
-    return root
-
 
 class LinuxRamAccess(RamAccess):
     """Where this user stands on the RAM bus, and the helper that changes it."""
@@ -76,12 +61,13 @@ class LinuxRamAccess(RamAccess):
                  *, find: Callable[[], tuple[int, ...]] = find_smbus,
                  dev: Path = Path("/dev"), rule: Path = RULE_PATH,
                  run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-                 is_root: Callable[[], bool] = _effective_root,
+                 is_root: Callable[[], bool] = effective_root,
                  which: Callable[[str], str | None] = shutil.which) -> None:
         log.debug("LinuxRamAccess: rule=%s", rule)
-        self._pkexec, self._find, self._dev = pkexec, find, dev
+        self._find, self._dev = find, dev
         self._rule, self._run, self._is_root = rule, run, is_root
-        self._which = which
+        self._helper = RootHelper(HELPER, HELPER_ASSET, pkexec, HELPER_OFF,
+                                  is_root, which)
 
     def status(self) -> RamAccessStatus:
         state = self._state()
@@ -137,23 +123,10 @@ class LinuxRamAccess(RamAccess):
     # ── Changing it ──────────────────────────────────────────────────
 
     def _argv(self, action: str) -> list[str] | None:
-        """How to run the helper from here, or None if nothing can."""
-        helper_file = [sys.executable, "-I", str(HELPER_ASSET), action]
-        if self._is_root():
-            log.info("_argv: root runs the packaged helper file directly")
-            return helper_file
-        if (action == "disable"
-                and (off := self._pkexec(HELPER_OFF)) is not None):
-            log.info("_argv: pkexec, the password-free turn-off")
-            return off
-        if (packaged := self._pkexec(HELPER)) is not None:
-            log.info("_argv: pkexec, TRCC's own polkit action")
-            return [*packaged, action]
-        if (pkexec := self._which("pkexec")) is not None:
-            log.info("_argv: pkexec, polkit's run-as-administrator action")
-            return [pkexec, *helper_file]
-        log.info("_argv: no polkit here")
-        return None
+        """How to run the helper from here, or None if nothing can --
+        ``disable`` by the password-free twin, which takes no argument."""
+        log.debug("_argv: %s", action)
+        return self._helper.argv([action], () if action == "disable" else None)
 
     def _change(self, action: str) -> RamAccessStatus:
         argv = self._argv(action)
@@ -163,18 +136,7 @@ class LinuxRamAccess(RamAccess):
                         "run: %s", action, command)
             return RamAccessStatus(self._state(),
                                    f"Run in a terminal: {command}", command)
-        try:
-            # No timeout: pkexec returns when the password is typed (0), the
-            # prompt is closed or cancelled (126), refused (127), or there is
-            # no prompt to show at all (127, at once).  A cap would report a
-            # failure that has not happened to someone who stepped away.
-            result = self._run(argv, capture_output=True, text=True,
-                               check=False)
-            code = result.returncode
-        except (OSError, subprocess.SubprocessError) as e:
-            log.warning("LinuxRamAccess: %s failed to run -- %s: %s", argv[0],
-                        type(e).__name__, e)
-            code = -1
+        code = self._helper.run(argv, self._run)
         log.info("LinuxRamAccess: %s exited %d", action, code)
         state = self._state()
         return RamAccessStatus(state, _outcome(action, code, state),
@@ -183,9 +145,8 @@ class LinuxRamAccess(RamAccess):
 
 def sudo_command(action: str) -> str:
     """The terminal command that runs the helper as root, on any install."""
-    command = f"sudo {sys.executable} -I {HELPER_ASSET} {action}"
-    log.debug("sudo_command: %s", command)
-    return command
+    log.debug("sudo_command: %s", action)
+    return _root_helper.sudo_command(HELPER_ASSET, [action])
 
 
 _MESSAGES = {
@@ -203,7 +164,7 @@ _MESSAGES = {
 def _outcome(action: str, code: int, state: RamAccessState) -> str:
     """What happened, in words, for the helper's exit *code*."""
     log.debug("_outcome: %s %d %s", action, code, state.value)
-    if code in (_PKEXEC_DISMISSED, _PKEXEC_REFUSED):
+    if code in (PKEXEC_DISMISSED, PKEXEC_REFUSED):
         return "Cancelled -- nothing was changed"
     if code == 0 or state in (RamAccessState.ON, RamAccessState.OFF):
         return _MESSAGES[state]

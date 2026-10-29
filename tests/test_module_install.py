@@ -46,7 +46,7 @@ from trcc.core.commands import (
 from trcc.core.errors import HttpFetchError
 from trcc.core.events import ModuleChanged, ModuleInstalled, ModuleRemoved
 from trcc.core.models import ModuleAsks, ModuleInstall
-from trcc.core.ports import HttpFetcher
+from trcc.core.ports import HttpFetcher, ModuleDevices
 from trcc.services.module_install import ModuleInstaller
 from trcc.services.module_trust import ModuleTrust
 from trcc.services.settings import config_path
@@ -79,12 +79,29 @@ class _Web(HttpFetcher):
         return data
 
 
+class _Devices(ModuleDevices):
+    """Writes down what the installer grants and takes back; a grant answers
+    *answer* -- "" for reachable, else what stands in the way."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+        self.answer = ""
+
+    def grant(self, key: str, devices: tuple[str, ...]) -> str:
+        self.calls.append(("grant", key, *devices))
+        return self.answer
+
+    def revoke(self, key: str) -> None:
+        self.calls.append(("revoke", key))
+
+
 class Shop:
     """The maintainer's side: keys, a root, and an index of greeter releases
     -- each one a real module folder, packed and signed."""
 
     def __init__(self, folder: Path, web: _Web) -> None:
         self._folder, self.web = folder, web
+        self.devices = _Devices()
         folder.mkdir()
         for name in ("root", "index", "author", "thief"):
             tool.keygen(folder / name)
@@ -178,7 +195,7 @@ def shop(cli_app: App, tmp_path: Path) -> Iterator[Shop]:
         settings=cli_app.settings, runner=cli_app.modules,
         load_spec=cli_app._installed_spec, forget=App._forget_module,
         built_in=App._built_in_module, publish=cli_app.events.publish,
-        trcc_version="9.12.0", index_url=INDEX)
+        devices=shop.devices, trcc_version="9.12.0", index_url=INDEX)
     yield shop
     if KEY in cli_app.modules:
         cli_app.modules.remove(KEY)
@@ -425,6 +442,47 @@ def test_a_removal_deletes_it_and_forgets_it(cli_app: App, shop: Shop,
     # Command still registered, in a later test in the same process.
     assert "GreeterGreet" not in ipc.COMMAND_TYPES
     assert heard[-2:] == [ModuleChanged(key=KEY, enabled=False), ModuleRemoved(key=KEY)]
+
+
+_HW = ("events", "hardware")
+
+
+def test_an_install_unlocks_its_usb_devices_and_a_removal_takes_them_back(
+        cli_app: App, shop: Shop) -> None:
+    shop.list("1", capabilities=_HW, devices=("0b05:19af",))
+    assert _install(cli_app, _HW, devices=("0b05:19af",)).ok
+    assert cli_app.dispatch(RemoveModule(key=KEY)).ok
+    assert shop.devices.calls == [("grant", KEY, "0b05:19af"), ("revoke", KEY)]
+
+
+def test_an_update_naming_no_device_takes_the_old_ones_back(
+        cli_app: App, shop: Shop) -> None:
+    """A grant of nothing is how the port hears "none now" -- the adapter
+    takes back what the old release had."""
+    shop.list("1", capabilities=_HW, devices=("0b05:19af",))
+    assert _install(cli_app, _HW, devices=("0b05:19af",)).ok
+    shop.list("2")
+    assert _install(cli_app).ok
+    assert shop.devices.calls == [("grant", KEY, "0b05:19af"), ("grant", KEY)]
+
+
+def test_devices_left_locked_install_it_and_say_what_stands_in_the_way(
+        cli_app: App, shop: Shop) -> None:
+    """A cancelled password is not a failed install: it runs, and says so."""
+    shop.devices.answer = "its USB devices stay locked -- the password was not given"
+    shop.list("1", capabilities=_HW, devices=("0b05:19af",))
+    result = _install(cli_app, _HW, devices=("0b05:19af",))
+    assert (result.ok, result.note) == (
+        True, "its USB devices stay locked -- the password was not given")
+    assert cli_app.settings.module_install(KEY) is not None
+
+
+def test_a_module_taken_back_loses_its_usb_devices(cli_app: App, shop: Shop) -> None:
+    shop.list("1", capabilities=_HW, devices=("0b05:19af",))
+    assert _install(cli_app, _HW, devices=("0b05:19af",)).ok
+    shop.revoke("reads your keyboard")
+    cli_app.dispatch(BrowseModules())
+    assert shop.devices.calls == [("grant", KEY, "0b05:19af"), ("revoke", KEY)]
 
 
 def test_removing_what_is_not_installed_is_refused(cli_app: App, shop: Shop) -> None:
@@ -782,16 +840,30 @@ def test_the_gui_page_installs_updates_and_removes(
 # ── developer mode: a folder, installed unsigned ─────────────────────────
 
 
-def _folder(shop: Shop, version: str = "1") -> Path:
+def _folder(shop: Shop, version: str = "1", capabilities: tuple[str, ...] = ("events",),
+            devices: tuple[str, ...] = ()) -> Path:
     """The greeter's source folder, its module.json at *version*, asking for
-    ``events`` and to be on by default -- what a developer points developer
-    mode at."""
-    shop.bundle(version)
+    *capabilities* (and *devices*) and to be on by default -- what a developer
+    points developer mode at."""
+    shop.bundle(version, capabilities, devices=devices)
     manifest_path = shop._source / "module.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["default_on"] = True
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     return shop._source
+
+
+def test_a_folder_install_never_unlocks_usb_devices_and_says_so(
+        cli_app: App, shop: Shop) -> None:
+    """Developer mode does no root setup: the developer writes the rule."""
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    folder = _folder(shop, capabilities=_HW, devices=("0b05:19af",))
+    result = cli_app.dispatch(InstallModuleFolder(
+        path=folder, asks=ModuleAsks(_HW, devices=("0b05:19af",))))
+    assert (result.ok, result.note) == (
+        True, "developer mode unlocks no USB devices -- give 0b05:19af a udev "
+              "rule of your own")
+    assert shop.devices.calls == []
 
 
 def _install_folder(app: App, folder: Path,
