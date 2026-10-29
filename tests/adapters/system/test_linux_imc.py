@@ -663,9 +663,9 @@ def test_install_sh_finds_the_helper_inside_the_package(tmp_path: Path) -> None:
     python.write_text(f'#!/bin/sh\nPYTHONPATH="{_ASSETS.parent.parent}" '
                       f'exec "{sys.executable}" "$@"\n')
     python.chmod(0o755)
-    result = _install_sh(f'VENV_DIR="{venv.parent}"; packaged_ram_helper', tmp_path)
-    assert (result.returncode, result.stdout.strip()) == (
-        0, str(_ASSETS / "trcc-ram-access"))
+    for helper in ("trcc-ram-access", "trcc-module-devices"):
+        result = _install_sh(f'VENV_DIR="{venv.parent}"; packaged_helper {helper}', tmp_path)
+        assert (result.returncode, result.stdout.strip()) == (0, str(_ASSETS / helper))
 
 
 def test_trcc_reads_the_rule_the_helper_writes() -> None:

@@ -154,6 +154,8 @@ jobs:
           install -Dm755 /src/src/trcc/assets/trcc-dmi "$PKG/usr/bin/trcc-dmi"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access "$PKG/usr/bin/trcc-ram-access"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access-off "$PKG/usr/bin/trcc-ram-access-off"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices "$PKG/usr/bin/trcc-module-devices"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices-off "$PKG/usr/bin/trcc-module-devices-off"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
           for size in 256 128 64 48 32 24 16; do
             install -Dm644 /src/src/trcc/assets/icons/trcc_${size}x${size}.png "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/trcc.png"
@@ -228,6 +230,8 @@ jobs:
           /usr/bin/trcc-dmi
           /usr/bin/trcc-ram-access
           /usr/bin/trcc-ram-access-off
+          /usr/bin/trcc-module-devices
+          /usr/bin/trcc-module-devices-off
           %post
           # The device group, made before udev resolves GROUP="trcc" in the rules.
           systemd-sysusers trcc.conf 2>/dev/null || groupadd --system trcc 2>/dev/null || :
@@ -240,8 +244,10 @@ jobs:
           # The rule older releases wrote: YES for dmidecode/smartctl in any session.
           grep -qs com.github.lexonight1.trcc /etc/polkit-1/rules.d/50-trcc.rules && rm -f /etc/polkit-1/rules.d/50-trcc.rules || :
           %preun
-          # Uninstall, not upgrade: take back the RAM-lighting grant, if any.
+          # Uninstall, not upgrade: take back the RAM-lighting grant and every
+          # module USB-device grant, if any.
           if [ \$1 -eq 0 ]; then /usr/bin/trcc-ram-access disable >/dev/null 2>&1 || :; fi
+          if [ \$1 -eq 0 ]; then /usr/bin/trcc-module-devices disable-all >/dev/null 2>&1 || :; fi
           %postun
           if [ \$1 -eq 0 ] && command -v semodule >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
               semodule -r trcc_usb 2>/dev/null || :
@@ -325,6 +331,8 @@ jobs:
           install -Dm755 /src/src/trcc/assets/trcc-dmi "$PKG/usr/bin/trcc-dmi"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access "$PKG/usr/bin/trcc-ram-access"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access-off "$PKG/usr/bin/trcc-ram-access-off"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices "$PKG/usr/bin/trcc-module-devices"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices-off "$PKG/usr/bin/trcc-module-devices-off"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/lib/systemd/system/trcc-quirk-fix.service"
 
           # python3-pynvml stays a Recommends below, NOT a Depends: it pulls
@@ -370,6 +378,7 @@ jobs:
           #!/bin/sh
           set -e
           if [ "\$1" = remove ]; then /usr/bin/trcc-ram-access disable >/dev/null 2>&1 || true; fi
+          if [ "\$1" = remove ]; then /usr/bin/trcc-module-devices disable-all >/dev/null 2>&1 || true; fi
           PRERM
           chmod 755 "$PKG/DEBIAN/prerm"
 
@@ -414,6 +423,8 @@ jobs:
           install -Dm755 /src/src/trcc/assets/trcc-dmi "$PKG/usr/bin/trcc-dmi"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access "$PKG/usr/bin/trcc-ram-access"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access-off "$PKG/usr/bin/trcc-ram-access-off"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices "$PKG/usr/bin/trcc-module-devices"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices-off "$PKG/usr/bin/trcc-module-devices-off"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/lib/systemd/system/trcc-quirk-fix.service"
 
           cat > "$PKG/DEBIAN/control" << CTRL
@@ -462,6 +473,7 @@ jobs:
           set -e
           # Uninstall, not upgrade: take back the RAM-lighting grant, if any.
           if [ "\$1" = remove ]; then /usr/bin/trcc-ram-access disable >/dev/null 2>&1 || true; fi
+          if [ "\$1" = remove ]; then /usr/bin/trcc-module-devices disable-all >/dev/null 2>&1 || true; fi
           for cmd in trcc trcc-gui trcc-lcd; do
             rm -f /usr/bin/\$cmd
           done
@@ -520,6 +532,8 @@ jobs:
           install -Dm755 /src/src/trcc/assets/trcc-dmi "$PKG/usr/bin/trcc-dmi"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access "$PKG/usr/bin/trcc-ram-access"
           install -Dm755 /src/src/trcc/assets/trcc-ram-access-off "$PKG/usr/bin/trcc-ram-access-off"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices "$PKG/usr/bin/trcc-module-devices"
+          install -Dm755 /src/src/trcc/assets/trcc-module-devices-off "$PKG/usr/bin/trcc-module-devices-off"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
           install -Dm644 /src/LICENSE "$PKG/usr/share/licenses/trcc-linux/LICENSE"
 
@@ -593,9 +607,10 @@ jobs:
             post_install
           }
           # Uninstall (pacman runs no pre_remove on upgrade): take back the
-          # RAM-lighting grant, if any.
+          # RAM-lighting grant and every module USB-device grant, if any.
           pre_remove() {
             /usr/bin/trcc-ram-access disable >/dev/null 2>&1
+            /usr/bin/trcc-module-devices disable-all >/dev/null 2>&1
             return 0
           }
           INST

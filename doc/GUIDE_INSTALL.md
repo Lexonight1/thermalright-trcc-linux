@@ -1024,14 +1024,17 @@ sudo groupdel trcc                            # the device group setup made (opt
 sudo rm -f /etc/modprobe.d/trcc-lcd.conf
 sudo rm -f /etc/modules-load.d/trcc-sg.conf /etc/modules-load.d/trcc-rapl.conf
 rm -f ~/.local/share/applications/trcc-linux.desktop   # menu entry setup added (pip/source only)
+sudo /usr/bin/trcc-module-devices disable-all  # take back any installed module's USB devices
 sudo rm -f /usr/bin/trcc-ram-access /usr/bin/trcc-ram-access-off \
+           /usr/bin/trcc-module-devices /usr/bin/trcc-module-devices-off \
            /usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy   # setup's polkit files (pip/source only)
 rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
 ```
 
 The distro packages (rpm, deb, Arch) and `sudo ./install.sh --uninstall` remove
-the RAM-lighting grant themselves; `pip`/`pipx uninstall` cannot, so run
-`ram-lighting disable` first.
+the RAM-lighting grant and every installed module's USB-device grant
+themselves; `pip`/`pipx uninstall` cannot, so run `ram-lighting disable` and
+`sudo /usr/bin/trcc-module-devices disable-all` first.
 
 `~/.trcc-user/` holds themes and backgrounds **you** authored — back it up
 first if you want to keep them.

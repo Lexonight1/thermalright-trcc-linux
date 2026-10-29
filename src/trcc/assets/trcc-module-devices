@@ -1,0 +1,272 @@
+#!/usr/bin/python3 -I
+"""trcc-module-devices — let this seat reach an installed module's USB devices
+(run via pkexec).
+
+A module that drives hardware the system guards -- a USB lighting controller
+-- names the devices it needs in its ``module.json`` (``0b05:19af``), the user
+accepts them on its install screen, and TRCC asks this helper to let the
+person at this seat open them.  ``enable`` writes one udev rule file for the
+module; ``disable`` removes it and takes the access back at once.
+
+The rule's text is never the caller's.  The caller supplies only the module's
+key and the device ids, each checked against a fixed pattern; every line is
+built here, in the one shape the packaged RGB rule has: the device's
+``hidraw`` node and its USB node, ``MODE="0660"``, ``GROUP="trcc"``,
+``TAG+="uaccess"``.  So no caller can smuggle a ``RUN``, ``PROGRAM`` or
+``IMPORT`` into a root-written udev rule -- there is no udev syntax to send.
+
+What it grants is real: every program the user runs can then reach those
+devices, as the install screen says.  The polkit action asks for a password
+on every use (``auth_admin``); the review behind the signed module index is
+what checks a module names only the hardware it drives.
+
+Kept as small as ``trcc-ram-access``:
+
+  * stdlib only — imports NOTHING from the trcc package, so running it as root
+    pulls in no untrusted code (``-I``: no user site, no PYTHON* variables).
+  * ``enable <key> <vvvv:pppp>...`` (1-16 ids), ``disable <key>`` or
+    ``disable-all`` (the packages' uninstall hooks); anything else is refused
+    before a file or a process is touched.
+  * writes only ``/etc/udev/rules.d/70-trcc-module-<key>.rules``, and removes
+    only a file whose first line is TRCC's header for that key -- never one an
+    admin wrote.
+  * runs only udevadm, getfacl and setfacl, from fixed system paths, with a
+    fixed environment.
+  * ``disable`` touches nothing unless TRCC's rule was there to remove: its
+    password-free twin ``trcc-module-devices-off`` can be run by any program
+    in the session.
+
+This file may import nothing from trcc, so what TRCC also spells is gated
+equal by tests: the key and id patterns (``core.models.MODULE_KEY`` and
+``MODULE_DEVICE``), the rule's shape (``_udev.build_rgb_udev_rules``), the
+group (``DEVICE_GROUP``) and the paths (``_module_devices``).
+
+Exit codes: 0 ok · 1 a step failed · 2 bad invocation · 3 not root.
+"""
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")
+DEVICE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{4}")
+#: The most devices one module may name.
+MAX_DEVICES = 16
+GROUP = "trcc"
+RULES_DIR = Path("/etc/udev/rules.d")
+RULE_GLOB = "70-trcc-module-*.rules"
+
+_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+_TOOLS = {
+    "udevadm": ("/usr/bin/udevadm", "/bin/udevadm", "/usr/sbin/udevadm",
+                "/sbin/udevadm"),
+    "getfacl": ("/usr/bin/getfacl", "/bin/getfacl"),
+    "setfacl": ("/usr/bin/setfacl", "/bin/setfacl"),
+}
+_USB = Path("/sys/bus/usb/devices")
+_HIDRAW = Path("/sys/class/hidraw")
+
+
+def header(key: str) -> str:
+    """The first line of *key*'s rule file -- how a file is known as TRCC's."""
+    return (f"# TRCC module {key} -- written by trcc-module-devices; removing "
+            "the module removes it.")
+
+
+def rule_path(key: str) -> Path:
+    return RULES_DIR / f"70-trcc-module-{key}.rules"
+
+
+def rule_text(key: str, devices: list[str]) -> str:
+    """*key*'s rule file: its header, then each device's two lines."""
+    lines = [header(key),
+             "# The user at this seat and the trcc group reach these devices.", ""]
+    for device in devices:
+        vid, pid = device.split(":")
+        lines += [f'SUBSYSTEM=="{subsystem}", {attr}{{idVendor}}=="{vid}", '
+                  f'{attr}{{idProduct}}=="{pid}", '
+                  f'MODE="0660", GROUP="{GROUP}", TAG+="uaccess"'
+                  for subsystem, attr in (("hidraw", "ATTRS"), ("usb", "ATTR"))]
+    return "\n".join(lines) + "\n"
+
+
+def devices_in(text: str) -> list[str]:
+    """The device ids a rule file of ours names, read back from its lines."""
+    found = re.findall(r'ATTR\{idVendor\}=="([0-9a-f]{4})", '
+                       r'ATTR\{idProduct\}=="([0-9a-f]{4})"', text)
+    return [f"{vid}:{pid}" for vid, pid in found]
+
+
+def _tool(name: str) -> str | None:
+    return next((p for p in _TOOLS[name] if os.path.isfile(p)), None)
+
+
+def _run(*argv: str) -> bool:
+    try:
+        return subprocess.run(argv, env=_ENV, timeout=30, check=False,
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _read(*argv: str) -> str | None:
+    """A tool's output, or None if it failed."""
+    try:
+        result = subprocess.run(argv, env=_ENV, timeout=30, check=False,
+                                capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def write(key: str, devices: list[str], root: Path = Path("/")) -> None:
+    """*key*'s rule file, atomically, root-owned 0644."""
+    target = root / rule_path(key).relative_to("/")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f".{target.name}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(rule_text(key, devices))
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, target)
+
+
+def remove(key: str, root: Path = Path("/")) -> list[str] | None:
+    """*key*'s rule file, only if TRCC wrote it: the devices it named, or
+    None when there was nothing of TRCC's to remove."""
+    target = root / rule_path(key).relative_to("/")
+    try:
+        text = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    if text.partition("\n")[0] != header(key):
+        return None
+    target.unlink()
+    return devices_in(text)
+
+
+def keys_written(root: Path = Path("/")) -> list[str]:
+    """Every module key with a rule file of ours -- for ``disable-all``."""
+    keys = []
+    for path in sorted((root / RULES_DIR.relative_to("/")).glob(RULE_GLOB)):
+        key = path.name[len("70-trcc-module-"):-len(".rules")]
+        if KEY.fullmatch(key):
+            keys.append(key)
+    return keys
+
+
+def _attr(path: Path, name: str) -> str:
+    try:
+        return (path / name).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def device_nodes(devices: list[str], usb: Path = _USB,
+                 hidraw: Path = _HIDRAW) -> list[str]:
+    """``/dev`` nodes of the attached *devices*: each one's USB node and every
+    ``hidraw`` node under it."""
+    wanted, nodes, found = set(devices), [], set()
+    for dev in sorted(usb.glob("*")):
+        if f"{_attr(dev, 'idVendor')}:{_attr(dev, 'idProduct')}" not in wanted:
+            continue
+        busnum, devnum = _attr(dev, "busnum"), _attr(dev, "devnum")
+        if busnum.isdigit() and devnum.isdigit():
+            nodes.append(f"/dev/bus/usb/{int(busnum):03d}/{int(devnum):03d}")
+        found.add(dev.resolve())
+    for node in sorted(hidraw.glob("hidraw*")):
+        under = (node / "device").resolve()
+        if any(parent in found for parent in (under, *under.parents)):
+            nodes.append(f"/dev/{node.name}")
+    return nodes
+
+
+def named_users(acl: str) -> list[str]:
+    """The uids of ``getfacl -cpn``'s named-user entries (``user:1000:rw-``)."""
+    uids = []
+    for line in acl.splitlines():
+        tag, _, rest = line.partition(":")
+        uid = rest.partition(":")[0]
+        if tag == "user" and uid.isdigit():     # ``user::`` is the owner
+            uids.append(uid)
+    return uids
+
+
+def apply(enabled: bool, devices: list[str]) -> bool:
+    """Make the rule take effect now, without a replug.
+
+    Disabling also takes the devices' named-USER ACL entries away before
+    re-triggering: once the rule is gone udev no longer visits the node, so
+    without this the access would last until the next login.  Only USER
+    entries, as systemd's own ``devnode_acl`` resets a uaccess node -- a GROUP
+    entry is never a uaccess grant, and an admin's stays.  Any other rule that
+    tags the device (OpenRGB's, TRCC's packaged RGB rule) grants it again on
+    the trigger -- which is the truth.
+    """
+    udevadm = _tool("udevadm")
+    if udevadm is None:
+        return False
+    ok = _run(udevadm, "control", "--reload")
+    getfacl, setfacl = _tool("getfacl"), _tool("setfacl")
+    if not enabled and getfacl is not None and setfacl is not None:
+        for node in device_nodes(devices):
+            if (acl := _read(getfacl, "-cpn", node)) is None:
+                ok = False
+            elif users := named_users(acl):
+                ok &= _run(setfacl, "-x", ",".join(f"u:{u}" for u in users),
+                           node)
+    ok &= _run(udevadm, "trigger", "--subsystem-match=hidraw", "--action=change")
+    for device in devices:
+        vid, pid = device.split(":")
+        ok &= _run(udevadm, "trigger", "--subsystem-match=usb",
+                   f"--attr-match=idVendor={vid}", f"--attr-match=idProduct={pid}",
+                   "--action=change")
+    ok &= _run(udevadm, "settle", "--timeout=10")
+    return ok
+
+
+def parse(argv: list[str]) -> tuple[str, list[str]] | None:
+    """``(action, words)`` for a valid command line, else None -- the whole
+    check, before anything is touched."""
+    match argv:
+        case ["enable", key, *devices] if (
+                KEY.fullmatch(key) and 0 < len(devices) <= MAX_DEVICES
+                and len(set(devices)) == len(devices)
+                and all(DEVICE.fullmatch(d) for d in devices)):
+            return "enable", [key, *devices]
+        case ["disable", key] if KEY.fullmatch(key):
+            return "disable", [key]
+        case ["disable-all"]:
+            return "disable-all", []
+    return None
+
+
+def main() -> int:
+    if (parsed := parse(sys.argv[1:])) is None:
+        return 2                       # argv-locked: refused before anything runs
+    if os.geteuid() != 0:
+        return 3
+    action, words = parsed
+    try:
+        if action == "enable":
+            key, devices = words[0], words[1:]
+            write(key, devices)
+            return 0 if apply(True, devices) else 1
+        removed: list[str] = []
+        found = False
+        for key in (words if action == "disable" else keys_written()):
+            if (devices := remove(key)) is not None:
+                found = True
+                removed += devices
+    except OSError:
+        return 1
+    if not found:
+        return 0                       # nothing of TRCC's: touch nothing
+    return 0 if apply(False, removed) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

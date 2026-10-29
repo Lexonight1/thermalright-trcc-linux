@@ -67,4 +67,34 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/trcc-ram-access-off</annotate>
   </action>
+
+  <!-- Lets the user at this seat open an installed module's USB devices,
+       and with them every program the user runs.  A grant, so a password on
+       every use; the message shows the command line, so the dialog names the
+       module and each device id it would unlock.  The helper builds the rule
+       itself from those ids: the caller sends no udev text. -->
+  <action id="com.github.lexonight1.trcc.module-devices">
+    <description>Let you reach a TRCC module's USB devices</description>
+    <message>TRCC needs your password to let you, and every program you run, reach a module's USB devices: $(command_line)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/trcc-module-devices</annotate>
+  </action>
+
+  <!-- Taking a module's devices back only removes a grant, so the person at
+       the seat needs no password for it; a separate program, for the same
+       reason as ram-access-off. -->
+  <action id="com.github.lexonight1.trcc.module-devices-off">
+    <description>Take back a TRCC module's USB devices</description>
+    <message>TRCC needs to remove a module's access to its USB devices.</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/trcc-module-devices-off</annotate>
+  </action>
 </policyconfig>

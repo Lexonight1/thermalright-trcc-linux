@@ -1,0 +1,40 @@
+#!/usr/bin/python3 -I
+"""trcc-module-devices-off — take a module's USB device access BACK (run via
+pkexec).
+
+Its polkit action needs no password from the person at the seat: this can
+only take a module's device grant away, never give one.  The worst a program
+that runs it can do is stop the user reaching a module's devices.  Granting
+stays ``trcc-module-devices enable``, which asks for the password every time
+-- and polkit grants a PROGRAM, not its arguments, which is why "off" is a
+program of its own rather than a password-free ``trcc-module-devices disable``.
+
+  * stdlib only, ``-I`` — no user site, no PYTHON* variables, no trcc import.
+  * takes exactly ONE argument, the module's key, checked here and again by
+    the helper -- never ``enable``, never ``disable-all``.
+  * does nothing itself: it runs the packaged ``trcc-module-devices disable``,
+    the one place that knows which files are TRCC's and how to remove them.
+
+Exit codes: the helper's own · 2 bad invocation · 3 not root · 4 no helper.
+"""
+import os
+import re
+import sys
+
+HELPER = "/usr/bin/trcc-module-devices"
+KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or not KEY.fullmatch(sys.argv[1]):
+        return 2                       # argv-locked: one module key, nothing else
+    if os.geteuid() != 0:
+        return 3
+    if not os.path.isfile(HELPER):
+        return 4
+    os.execv(HELPER, [HELPER, "disable", sys.argv[1]])
+    return 1                           # not reached: execv replaces this process
+
+
+if __name__ == "__main__":
+    sys.exit(main())

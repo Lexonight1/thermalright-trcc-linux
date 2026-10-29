@@ -33,7 +33,8 @@ _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 # matching ``[project.scripts]`` entry.  ``trcc-imc`` (MCHBAR timings) and
 # ``trcc-dmi`` (DRAM slots) are the standalone privileged helpers (pkexec targets).
 _ASSET_HELPERS = frozenset({"trcc-imc", "trcc-dmi", "trcc-ram-access",
-                            "trcc-ram-access-off"})
+                            "trcc-ram-access-off", "trcc-module-devices",
+                            "trcc-module-devices-off"})
 
 
 def _declared_scripts() -> set[str]:

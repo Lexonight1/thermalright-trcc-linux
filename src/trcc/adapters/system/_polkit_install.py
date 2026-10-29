@@ -1,14 +1,15 @@
-"""TRCC's polkit policy and RAM-lighting helpers, for an install no package made.
+"""TRCC's polkit policy and its grant helpers, for an install no package made.
 
 The distro packages install ``/usr/bin/trcc-ram-access``,
-``/usr/bin/trcc-ram-access-off`` and TRCC's polkit policy.  A pip, pipx or
+``/usr/bin/trcc-ram-access-off``, ``/usr/bin/trcc-module-devices``,
+``/usr/bin/trcc-module-devices-off`` and TRCC's polkit policy.  A pip, pipx or
 source install has none of them, so its RAM-lighting password prompt was
 polkit's generic "run python as administrator" dialog -- the whole command
 line, some 700 px wide -- and turning off asked for a password too.
-``trcc system setup`` installs the same three files from the package, so every
+``trcc system setup`` installs the same five files from the package, so every
 install gets TRCC's own short prompt and a password-free turn-off.
 
-Only those three.  The memory-info helpers (``trcc-dmi`` / ``trcc-imc``) stay
+Only those five.  The memory-info helpers (``trcc-dmi`` / ``trcc-imc``) stay
 package-only: their actions read as root with no password, and a pip install
 gets no silent privileged path.  The policy still names them; with no file at
 those paths, those actions run nothing.
@@ -23,6 +24,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from . import _module_devices
 from ._elevate import reexec_as_root
 from ._ram_access import HELPER, HELPER_OFF
 
@@ -34,6 +36,8 @@ _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 FILES: dict[Path, tuple[Path, int]] = {
     Path(HELPER): (_ASSETS / "trcc-ram-access", 0o755),
     Path(HELPER_OFF): (_ASSETS / "trcc-ram-access-off", 0o755),
+    Path(_module_devices.HELPER): (_module_devices.HELPER_ASSET, 0o755),
+    Path(_module_devices.HELPER_OFF): (_module_devices.HELPER_OFF_ASSET, 0o755),
     POLKIT_POLICY: (_ASSETS / "com.github.lexonight1.trcc.policy", 0o644),
 }
 
@@ -47,7 +51,7 @@ def _owned_by_nothing(path: str) -> str | None:
 def install(dry_run: bool = False,
             owns: Callable[[str], str | None] = _owned_by_nothing,
             files: dict[Path, tuple[Path, int]] = FILES) -> int:
-    """Copy the RAM-lighting helpers and the policy into place; 0 on success.
+    """Copy the grant helpers and the policy into place; 0 on success.
 
     *owns* names the package owning a path (``PackageManager.owns``).
     Re-runs itself as root via sudo when it is not root already.

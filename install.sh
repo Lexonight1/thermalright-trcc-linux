@@ -26,6 +26,10 @@ MODPROBE_CONF="/etc/modprobe.d/trcc-lcd.conf"
 # a test holds them equal).
 RAM_RULE="/etc/udev/rules.d/70-trcc-ram-lighting.rules"
 RAM_HELPER="/usr/bin/trcc-ram-access"
+# Each installed module's USB-device grant (the helper's own spelling, held
+# equal by the same test), and the helper that takes every one back.
+MODULE_RULES="/etc/udev/rules.d/70-trcc-module-*.rules"
+MODULE_DEVICES_HELPER="/usr/bin/trcc-module-devices"
 
 # Resolve real user when running under sudo
 REAL_USER="${SUDO_USER:-$USER}"
@@ -328,13 +332,16 @@ print_success() {
 
 # ── Uninstall ──────────────────────────────────────────────────────────────
 
-# The helper inside the installed package -- asked of the Python that has TRCC,
+# Helper $1 inside the installed package -- asked of the Python that has TRCC,
 # as the user it was installed for (a pip --user install is invisible to root).
-packaged_ram_helper() {
+packaged_helper() {
     local py
     for py in "$VENV_DIR/bin/python" python3; do
-        if sudo -u "$REAL_USER" "$py" -c 'import pathlib, trcc
-print(pathlib.Path(trcc.__file__).parent / "assets" / "trcc-ram-access")' 2>/dev/null; then
+        if sudo -u "$REAL_USER" "$py" - "$1" 2>/dev/null <<'PY'
+import pathlib, sys, trcc
+print(pathlib.Path(trcc.__file__).parent / "assets" / sys.argv[1])
+PY
+        then
             return 0
         fi
     done
@@ -355,7 +362,7 @@ revoke_ram_grant() {
     fi
     local helper="$RAM_HELPER"
     if [ ! -f "$helper" ]; then
-        helper="$(packaged_ram_helper)" || helper=""
+        helper="$(packaged_helper trcc-ram-access)" || helper=""
     fi
     if [ -n "$helper" ] && [ -f "$helper" ] && python3 -I "$helper" disable; then
         info "Took back the RAM-lighting permission"
@@ -363,6 +370,31 @@ revoke_ram_grant() {
     else
         warn "Could not take back the RAM-lighting permission -- remove $RAM_RULE"
         warn "and /etc/modules-load.d/trcc-i2c.conf, then restart"
+    fi
+}
+
+# Take back every installed module's USB devices -- each one's rule and the
+# live ACLs on its devices -- through TRCC's own helper, which removes only
+# files carrying TRCC's header.  Runs before pip removes the package that
+# carries the helper.  With no such rule, nothing was granted.
+revoke_module_devices() {
+    if ! compgen -G "$MODULE_RULES" > /dev/null; then
+        return 0
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        warn "Skipped the modules' USB devices (run with sudo to take them back)"
+        return 0
+    fi
+    local helper="$MODULE_DEVICES_HELPER"
+    if [ ! -f "$helper" ]; then
+        helper="$(packaged_helper trcc-module-devices)" || helper=""
+    fi
+    if [ -n "$helper" ] && [ -f "$helper" ] && python3 -I "$helper" disable-all; then
+        info "Took back the modules' USB devices"
+        removed=1
+    else
+        warn "Could not take back the modules' USB devices -- remove $MODULE_RULES,"
+        warn "then replug them"
     fi
 }
 
@@ -376,6 +408,7 @@ do_uninstall() {
 
     # 0. The RAM-lighting grant, while its helper is still installed.
     revoke_ram_grant
+    revoke_module_devices
 
     # 1. pip uninstall
     info "Removing TRCC Python package..."

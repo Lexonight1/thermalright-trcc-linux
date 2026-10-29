@@ -23,8 +23,10 @@ def _files(tmp_path: Path) -> dict[Path, tuple[Path, int]]:
     return {tmp_path / dest.name: source for dest, source in FILES.items()}
 
 
-def test_the_three_files_are_what_the_packages_install() -> None:
+def test_the_five_files_are_what_the_packages_install() -> None:
     assert set(FILES) == {Path(HELPER), Path(HELPER_OFF),
+                          Path("/usr/bin/trcc-module-devices"),
+                          Path("/usr/bin/trcc-module-devices-off"),
                           Path("/usr/share/polkit-1/actions/"
                                "com.github.lexonight1.trcc.policy")}
     assert all(src.is_file() for src, _mode in FILES.values())
@@ -72,7 +74,7 @@ def test_a_dry_run_writes_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[
     files = _files(tmp_path)
     assert install(dry_run=True, files=files) == 0
     assert not any(d.exists() for d in files)
-    assert capsys.readouterr().out.count("--- would install") == 3
+    assert capsys.readouterr().out.count("--- would install") == len(files)
 
 
 def test_a_read_only_system_is_not_a_failure(tmp_path: Path, as_root,

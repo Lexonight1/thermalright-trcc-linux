@@ -207,6 +207,9 @@ artifacts = [
     "**/assets/trcc-dmi",
     "**/assets/trcc-ram-access",
     "**/assets/trcc-ram-access-off",
+    # trcc-module-devices: an installed module's USB devices; -off: taking them back.
+    "**/assets/trcc-module-devices",
+    "**/assets/trcc-module-devices-off",
     # SELinux policy source — `trcc system setup` builds + loads it on Fedora
     # so source/pip installs can pass the USB/SCSI ioctls (packages ship the
     # compiled .pp via the rpm).
