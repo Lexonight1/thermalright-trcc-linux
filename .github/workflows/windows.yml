@@ -205,6 +205,37 @@ jobs:
           }
           Write-Host "PASSED — the frozen app draws TRCC Pipes without a graphics card"
 
+      - name: Smoke a user module in the frozen app
+        # A module the user installs lands in %LOCALAPPDATA%\trcc-user\modules,
+        # outside the bundle, and the frozen app must import it from there.
+        # The skeleton module is not in the bundle (it lives in dev/), so
+        # "Hello, CI!" can only come from the user folder: its Command ran in
+        # the App and its command reached trcc.
+        timeout-minutes: 5
+        run: |
+          $trcc = "dist\trcc\trcc.exe"
+          function Invoke-Trcc {
+            $out = & $trcc @args 2>&1 | Out-String
+            Write-Host "> trcc $args`n$out"
+            if ($LASTEXITCODE -ne 0) {
+              & $trcc report --log-lines 200
+              Write-Error "FAILED — trcc $args (exit $LASTEXITCODE)"
+              exit 1
+            }
+          }
+          Invoke-Trcc system modules developer on
+          Invoke-Trcc system modules install-folder dev\module_template\hello --yes
+          Invoke-Trcc system modules on hello
+          $out = & $trcc hello CI 2>&1 | Out-String
+          Write-Host "> trcc hello CI`n$out"
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch "Hello, CI!") {
+            & $trcc system modules list
+            & $trcc report --log-lines 200
+            Write-Error "FAILED — the frozen app did not run a module from the user folder (exit $LASTEXITCODE)"
+            exit 1
+          }
+          Write-Host "PASSED — the frozen app runs a module from the user folder"
+
       - name: Extract version
         id: version
         run: |

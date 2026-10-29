@@ -226,6 +226,47 @@ jobs:
           dist/TRCC.app/Contents/MacOS/7zz i > /dev/null && echo "7zz runs"
           dist/TRCC.app/Contents/MacOS/ffmpeg -hide_banner -version > /dev/null && echo "ffmpeg runs"
 
+      - name: Smoke-run the frozen CLI
+        # The checks above prove files exist and link, not that the frozen
+        # program starts -- on Windows, #166, #187 and #188 were all launch
+        # crashes of a bundle that passed them.
+        timeout-minutes: 5
+        run: |
+          out="$(dist/TRCC.app/Contents/MacOS/TRCC --version 2>&1)" || {
+            echo "$out"; echo "::error::the frozen TRCC did not run"; exit 1; }
+          echo "$out"
+          echo "$out" | grep -qE 'trcc [0-9]+\.[0-9]+\.[0-9]+' || {
+            echo "::error::the frozen TRCC did not print its version"; exit 1; }
+          echo "PASSED — the frozen TRCC runs"
+
+      - name: Smoke a user module in the frozen app
+        # A module the user installs lands in ~/Library/Application Support/
+        # trcc-user/modules, outside the bundle, and the frozen app must import
+        # it from there.  The skeleton module is not in the bundle (it lives in
+        # dev/), so "Hello, CI!" can only come from the user folder: its Command
+        # ran in the App and its command reached trcc.  Here the CLI starts the
+        # shared App, so the step stops it however it ends.
+        timeout-minutes: 5
+        run: |
+          trcc=dist/TRCC.app/Contents/MacOS/TRCC
+          trap '"$trcc" kill || true' EXIT
+          fail() { "$trcc" system modules list || true
+                   "$trcc" report --log-lines 200 || true
+                   echo "::error::$1"; exit 1; }
+          for step in "system modules developer on" \
+                      "system modules install-folder dev/module_template/hello --yes" \
+                      "system modules on hello"; do
+            echo "> trcc $step"
+            # shellcheck disable=SC2086  # each step is words, split on purpose
+            "$trcc" $step || fail "trcc $step (exit $?)"
+          done
+          rc=0; out="$("$trcc" hello CI 2>&1)" || rc=$?
+          [ "$rc" = 0 ] || { echo "$out"; fail "trcc hello CI (exit $rc)"; }
+          echo "$out"
+          echo "$out" | grep -qF 'Hello, CI!' \
+            || fail "the frozen app did not run a module from the user folder"
+          echo "PASSED — the frozen app runs a module from the user folder"
+
       - name: Create DMG
         run: |
           create-dmg \
