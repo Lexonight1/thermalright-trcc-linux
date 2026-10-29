@@ -150,7 +150,7 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `password` | may ask for your password, to reach hardware the system guards |
 | `network` | fetches from the internet sites its module.json names, and no others |
 
-`host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
+`host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds — and only when the site's name resolves to an address on the public internet, never this computer or the local network. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
 
 When it is switched off, TRCC takes back what it still holds: its subscriptions, its frame watchers, its background kinds, and the panels it draws, each keeping its choice. More capabilities arrive as modules need them — one at a time, each with a reason.
 

@@ -3206,7 +3206,7 @@ class HttpFetcher(ABC):
     @abstractmethod
     def fetch(
         self, url: str, timeout_s: float = 30.0, max_bytes: int | None = None,
-        allow: Callable[[str], bool] | None = None,
+        allow: Callable[[str], bool] | None = None, public_only: bool = False,
     ) -> bytes:
         """Fetch a URL's body.  Raise on non-200 status or transport error.
 
@@ -3217,6 +3217,12 @@ class HttpFetcher(ABC):
         requested -- *url* and each redirect -- and one it refuses raises
         ``HttpFetchError``: a redirect is where an allowed site sends a
         caller somewhere it was not allowed to go.
+
+        ``public_only`` refuses, with ``HttpFetchError``, a connection to an
+        address off the public internet -- this computer, the local network,
+        link-local -- judged by the address the name RESOLVED to, so a public
+        name pointed at a LAN address is refused too.  Through a proxy the
+        proxy resolves the name, and the proxy is the user's choice.
         """
         ...
 

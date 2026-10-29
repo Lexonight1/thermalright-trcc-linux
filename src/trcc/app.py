@@ -1176,10 +1176,12 @@ class App(CommandBus, ModuleServices):
 
     def fetch(self, url: str, allow: Callable[[str], bool]) -> bytes:
         """A module's ``host.network.fetch``: the App's fetcher, every hop
-        asked of *allow*, at most ``MODULE_FETCH_MAX_BYTES``."""
+        asked of *allow*, at most ``MODULE_FETCH_MAX_BYTES``, and only to a
+        public internet address -- never this computer or the local network."""
         log.info("App.fetch: %s", url)
         return self.http.fetch(url, timeout_s=MODULE_FETCH_TIMEOUT_S,
-                               max_bytes=MODULE_FETCH_MAX_BYTES, allow=allow)
+                               max_bytes=MODULE_FETCH_MAX_BYTES, allow=allow,
+                               public_only=True)
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

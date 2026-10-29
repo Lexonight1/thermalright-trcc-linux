@@ -167,7 +167,7 @@ Tiny port for "fetch bytes from URL" used by cloud-theme adapters.
 **You implement (1):**
 
 ```python
-fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None, allow: 'Callable[[str], bool] | None' = None) -> bytes
+fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None, allow: 'Callable[[str], bool] | None' = None, public_only: 'bool' = False) -> bytes
 ```
 
 **Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`
