@@ -22,6 +22,7 @@ from ....core.commands import (
     SetDeveloperMode,
     SetModuleEnabled,
 )
+from ....core.models import ModuleAsks
 from ...qt_modules import ModulesView
 from ..base import BasePanel
 
@@ -57,8 +58,7 @@ class ModulesPanel(BasePanel):
         return SetModuleEnabled(key=key, enabled=enabled)
 
     @staticmethod
-    def _install(key: str, capabilities: tuple[str, ...],
-                 network_hosts: tuple[str, ...]) -> InstallModule:
+    def _install(key: str, asks: ModuleAsks) -> InstallModule:
         """The Command an Install sends: what the user accepted."""
-        log.debug("ModulesPanel._install: %s %s %s", key, capabilities, network_hosts)
-        return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)
+        log.debug("ModulesPanel._install: %s %s", key, asks)
+        return InstallModule(key=key, asks=asks)

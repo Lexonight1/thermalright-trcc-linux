@@ -109,8 +109,8 @@ def consent(module: AvailableModule, tr: Callable[[str], str],
     question = tr("Install {title} {version}?").format(title=title or tr(module.title),
                                                        version=module.version)
     lines = [tr(UNSIGNED if unsigned else REVIEWED)]
-    asks = [tr(MODULE_CAPABILITIES.get(c, c)) for c in module.capabilities]
-    asks += [tr("fetches from {site}").format(site=h) for h in module.network_hosts]
+    asks = [tr(MODULE_CAPABILITIES.get(c, c)) for c in module.asks.capabilities]
+    asks += [tr("fetches from {site}").format(site=h) for h in module.asks.network_hosts]
     if asks:
         lines += [tr(MAY), *(f"  - {a}" for a in asks)]
     log.info("consent: %s %s asks %d thing(s) unsigned=%s", module.key, module.version,

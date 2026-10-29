@@ -43,7 +43,7 @@ from ...core.commands import (
     SetModuleEnabled,
     SetSensorDashboard,
 )
-from ...core.models import Kind, PanelConfig, SensorBinding
+from ...core.models import Kind, ModuleAsks, PanelConfig, SensorBinding
 from ...core.results import (
     AutostartResult,
     ControlCenterSnapshotResult,
@@ -279,9 +279,8 @@ def install_module(key: str, body: ModuleInstallRequest,
     409 when that is not exactly what the index lists, or it is refused."""
     log.info("api POST /system/modules/%s/install: %s %s", key, body.capabilities,
              body.network_hosts)
-    result = request.app.state.trcc.dispatch(InstallModule(
-        key=key, capabilities=tuple(body.capabilities),
-        network_hosts=tuple(body.network_hosts)))
+    result = request.app.state.trcc.dispatch(InstallModule(key=key, asks=ModuleAsks(
+        capabilities=tuple(body.capabilities), network_hosts=tuple(body.network_hosts))))
     http_error_if_failed(result, status_code=409)
     return result
 

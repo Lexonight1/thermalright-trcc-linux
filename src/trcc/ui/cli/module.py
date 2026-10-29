@@ -116,8 +116,7 @@ def install(key: str = typer.Argument(..., help="The module's key"),
     if not yes and not typer.confirm(question):
         log.info("cli system modules install: %s declined", key)
         raise typer.Exit(code=1)
-    result = get_app().dispatch(InstallModule(key=key, capabilities=module.capabilities,
-                                              network_hosts=module.network_hosts))
+    result = get_app().dispatch(InstallModule(key=key, asks=module.asks))
     typer.echo(result.message)
     if result.note:
         typer.echo(result.note)
@@ -169,9 +168,8 @@ def install_folder(folder: Path = typer.Argument(..., help="The module's folder"
     if not yes and not typer.confirm(question):
         log.info("cli system modules install-folder: %s declined", module.key)
         raise typer.Exit(code=1)
-    result = get_app().dispatch(InstallModuleFolder(
-        path=folder.resolve(), capabilities=module.capabilities,
-        network_hosts=module.network_hosts))
+    result = get_app().dispatch(InstallModuleFolder(path=folder.resolve(),
+                                                    asks=module.asks))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

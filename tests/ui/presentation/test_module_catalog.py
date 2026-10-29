@@ -5,7 +5,7 @@ from typing import Literal
 
 import pytest
 
-from trcc.core.models import MODULE_CAPABILITIES, AvailableModule
+from trcc.core.models import MODULE_CAPABILITIES, AvailableModule, ModuleAsks
 from trcc.ui.presentation.module_catalog import (
     MAY,
     REVIEWED,
@@ -21,8 +21,8 @@ def _module(status: Status = "available", *, installed_version: str = "",
             reason: str = "", capabilities: tuple[str, ...] = (),
             network_hosts: tuple[str, ...] = ()) -> AvailableModule:
     return AvailableModule(key="weather", title="Weather", summary="The forecast.",
-                           version="3", status=status, capabilities=capabilities,
-                           network_hosts=network_hosts,
+                           version="3", status=status,
+                           asks=ModuleAsks(capabilities, network_hosts),
                            installed_version=installed_version, reason=reason)
 
 

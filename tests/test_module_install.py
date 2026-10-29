@@ -45,9 +45,11 @@ from trcc.core.commands import (
 )
 from trcc.core.errors import HttpFetchError
 from trcc.core.events import ModuleChanged, ModuleInstalled, ModuleRemoved
+from trcc.core.models import ModuleAsks, ModuleInstall
 from trcc.core.ports import HttpFetcher
 from trcc.services.module_install import ModuleInstaller
 from trcc.services.module_trust import ModuleTrust
+from trcc.services.settings import config_path
 
 from .conftest import loopback_client
 
@@ -193,8 +195,8 @@ def shop(cli_app: App, tmp_path: Path) -> Iterator[Shop]:
 
 def _install(app: App, capabilities: tuple[str, ...] = ("events",),
              hosts: tuple[str, ...] = ()) -> Any:
-    return app.dispatch(InstallModule(key=KEY, capabilities=capabilities,
-                                      network_hosts=hosts))
+    return app.dispatch(InstallModule(key=KEY, asks=ModuleAsks(
+        capabilities=capabilities, network_hosts=hosts)))
 
 
 def _installed_folder(app: App) -> Path:
@@ -210,7 +212,7 @@ def test_the_list_shows_what_the_index_offers(cli_app: App, shop: Shop) -> None:
     assert result.ok
     (greeter,) = result.modules
     assert (greeter.key, greeter.title, greeter.version, greeter.status,
-            greeter.capabilities) == (KEY, "Greeter", "1", "available", ("events",))
+            greeter.asks) == (KEY, "Greeter", "1", "available", ModuleAsks(("events",)))
 
 
 def test_no_index_is_a_refusal_with_a_reason(cli_app: App, shop: Shop) -> None:
@@ -291,7 +293,7 @@ def test_a_bundle_unlike_its_index_entry_is_refused(cli_app: App, shop: Shop,
 @pytest.mark.parametrize("key", ["rgb", "visualizer"])
 def test_a_built_in_module_is_never_installed_over_or_removed(
         cli_app: App, shop: Shop, key: str) -> None:
-    install = cli_app.dispatch(InstallModule(key=key, capabilities=("events",)))
+    install = cli_app.dispatch(InstallModule(key=key, asks=ModuleAsks(("events",))))
     remove = cli_app.dispatch(RemoveModule(key=key))
     assert (install.message, remove.message) == (
         f"{key} is built into TRCC -- it is not installed",
@@ -760,7 +762,8 @@ def _folder(shop: Shop, version: str = "1") -> Path:
 
 def _install_folder(app: App, folder: Path,
                     capabilities: tuple[str, ...] = ("events",)) -> Any:
-    return app.dispatch(InstallModuleFolder(path=folder, capabilities=capabilities))
+    return app.dispatch(InstallModuleFolder(path=folder,
+                                            asks=ModuleAsks(capabilities=capabilities)))
 
 
 def test_a_folder_install_is_refused_without_developer_mode(
@@ -787,8 +790,8 @@ def test_a_folder_installs_unsigned_and_off_and_stays_off_after_a_restart(
         True, KEY, False, "Greeter 1 installed unsigned -- off until you switch it on")
     record = cli_app.settings.module_install(KEY)
     assert record is not None
-    assert (record.unsigned, record.author_key, record.commit, record.capabilities) == (
-        True, "", "", ("events",))
+    assert (record.unsigned, record.author_key, record.commit, record.asks) == (
+        True, "", "", ModuleAsks(("events",)))
     tile = _tile(cli_app, KEY)
     assert (tile.origin, tile.allowed, tile.enabled) == ("unsigned", True, False)
     App._forget_module(KEY)
@@ -898,6 +901,23 @@ def test_a_record_from_before_developer_mode_reads_as_signed(cli_app: App) -> No
     record = cli_app.settings.module_install(KEY)
     assert record is not None and record.unsigned is False
     cli_app.settings.app.module_installs.pop(KEY)
+
+
+def test_a_record_is_saved_flat_as_it_always_was(cli_app: App) -> None:
+    """``ModuleAsks`` changed no file: a record keeps its asks beside its
+    other fields, as every TRCC before wrote and read it -- and it comes back
+    whole after a restart."""
+    record = ModuleInstall(key=KEY, version="1", sha256="ab" * 32, author_key="k",
+                           commit=COMMIT, asks=ModuleAsks(("events", "network"),
+                                                          ("api.example.com",)))
+    cli_app.settings.set_module_install(KEY, record)
+    saved = json.loads(config_path(cli_app.platform.paths()).read_text())
+    assert saved["app"]["module_installs"][KEY] == {
+        "key": KEY, "version": "1", "sha256": "ab" * 32, "author_key": "k",
+        "commit": COMMIT, "unsigned": False, "capabilities": ["events", "network"],
+        "network_hosts": ["api.example.com"]}
+    assert _restart(cli_app).settings.module_install(KEY) == record
+    cli_app.settings.set_module_install(KEY, None)
 
 
 def test_the_cli_switches_developer_mode_and_installs_a_folder(

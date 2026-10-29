@@ -12,13 +12,14 @@ machine -- a window, or ``trcc`` -- may switch it on or use it.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from ..errors import HttpFetchError, ModuleUnavailable, TrccError
 from ..events import DeveloperModeChanged, ModuleChanged
+from ..models import ModuleAsks
 from ..results import (
     ModuleCatalogResult,
     ModuleFolderResult,
@@ -131,22 +132,18 @@ class BrowseModules(Query[ModuleCatalogResult]):
 
 @dataclass(frozen=True, slots=True)
 class InstallModule(Command[ModuleResult]):
-    """Install module *key* from the index, or update it.  *capabilities*
-    and *network_hosts* are what the user accepted: they must be exactly what
-    the index lists, or nothing is installed -- an update asking for more is
-    asked about again."""
+    """Install module *key* from the index, or update it.  *asks* is what the
+    user accepted: it must be exactly what the index lists, or nothing is
+    installed -- an update asking for more is asked about again."""
     #: The root, the index and the bundle.
     TAKES_S: ClassVar[float | None] = 200.0
     key: str
-    capabilities: tuple[str, ...] = ()
-    network_hosts: tuple[str, ...] = ()
+    asks: ModuleAsks = field(default_factory=ModuleAsks)
 
     def execute(self, app: App) -> ModuleResult:
-        log.info("InstallModule: %s accepting %s %s", self.key, self.capabilities,
-                 self.network_hosts)
+        log.info("InstallModule: %s accepting %s", self.key, self.asks)
         try:
-            record, note = app.module_installer.install(
-                self.key, self.capabilities, self.network_hosts, _now())
+            record, note = app.module_installer.install(self.key, self.asks, _now())
         except (TrccError, HttpFetchError) as e:
             log.warning("InstallModule: %s refused: %s", self.key, e)
             return ModuleResult(ok=False, message=str(e))
@@ -190,19 +187,16 @@ class ReadModuleFolder(Query[ModuleFolderResult]):
 @dataclass(frozen=True, slots=True)
 class InstallModuleFolder(Command[ModuleResult]):
     """Install the module in folder *path*, unsigned -- developer mode only.
-    *capabilities* and *network_hosts* are what the user accepted: exactly what
-    its ``module.json`` asks for, or nothing is installed.  It is off after
-    install; the user switches it on."""
+    *asks* is what the user accepted: exactly what its ``module.json`` asks
+    for, or nothing is installed.  It is off after install; the user switches
+    it on."""
     path: Path
-    capabilities: tuple[str, ...] = ()
-    network_hosts: tuple[str, ...] = ()
+    asks: ModuleAsks = field(default_factory=ModuleAsks)
 
     def execute(self, app: App) -> ModuleResult:
-        log.info("InstallModuleFolder: %s accepting %s %s", self.path,
-                 self.capabilities, self.network_hosts)
+        log.info("InstallModuleFolder: %s accepting %s", self.path, self.asks)
         try:
-            record = app.module_installer.install_folder(
-                self.path, self.capabilities, self.network_hosts)
+            record = app.module_installer.install_folder(self.path, self.asks)
         except TrccError as e:
             log.warning("InstallModuleFolder: %s refused: %s", self.path, e)
             return ModuleResult(ok=False, message=str(e))

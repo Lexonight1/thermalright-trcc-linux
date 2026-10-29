@@ -5,7 +5,7 @@ import logging
 import re
 import uuid
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -1415,6 +1415,33 @@ MODULE_BUILT_IN_AUTHOR = "Lexonight"
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleAsks:
+    """What a module asks the user for -- its permission screen, and what an
+    install must match exactly, so an update asking for more is asked again.
+
+    One object on every step from the index to the install record, so every
+    UI passes all of it: a new kind of ask is a field here, not a parameter
+    threaded through each UI by hand."""
+    #: What it may ask the App for (``MODULE_CAPABILITIES``).
+    capabilities: tuple[str, ...] = ()
+    #: The sites the ``network`` capability may fetch from (``MODULE_HOST``).
+    network_hosts: tuple[str, ...] = ()
+
+    def matches(self, other: ModuleAsks) -> bool:
+        """Whether *other* asks for exactly what this does, in any order."""
+        same = all(set(getattr(self, f.name)) == set(getattr(other, f.name))
+                   for f in fields(self))
+        log.debug("ModuleAsks.matches: %s vs %s -> %s", self, other, same)
+        return same
+
+    def describe(self) -> str:
+        """What it asks for, as one line: ``events, network; sites: a.org``."""
+        log.debug("ModuleAsks.describe: %s", self)
+        sites = f"; sites: {', '.join(self.network_hosts)}" if self.network_hosts else ""
+        return f"{', '.join(self.capabilities) or 'nothing'}{sites}"
+
+
+@dataclass(frozen=True, slots=True)
 class ModuleManifest:
     """What a module is, without its code -- read from its ``module.json``.
 
@@ -1437,6 +1464,12 @@ class ModuleManifest:
     network_hosts: tuple[str, ...] = ()
     #: Who wrote it -- a name, shown on its tile and in the module list.
     author: str = ""
+
+    @property
+    def asks(self) -> ModuleAsks:
+        """What it asks the user for, as its install must match."""
+        log.debug("ModuleManifest.asks: %s", self.key)
+        return ModuleAsks(capabilities=self.capabilities, network_hosts=self.network_hosts)
 
 
 # =========================================================================
@@ -1468,12 +1501,11 @@ class ModuleRelease:
     sha256: str
     min_trcc: str
     commit: str
-    capabilities: tuple[str, ...]
+    #: What it asks for -- in the signed index, so an update that asks for
+    #: more is asked about again.
+    asks: ModuleAsks
     author_key: str
     author_sig: str
-    #: The sites it may fetch from -- in the signed index, so an update that
-    #: adds one is asked about again.
-    network_hosts: tuple[str, ...] = ()
     #: Its manifest's, so the list shows what it is before it is installed.
     title: str = ""
     summary: str = ""
@@ -1490,8 +1522,9 @@ class ModuleInstall:
     sha256: str
     author_key: str
     commit: str
-    capabilities: tuple[str, ...] = ()
-    network_hosts: tuple[str, ...] = ()
+    #: What the user granted.  Saved flat, beside the other fields
+    #: (``Settings.set_module_install``).
+    asks: ModuleAsks = ModuleAsks()
     #: Installed from a folder in developer mode: no signature, no author
     #: key, nothing reviewed.  Never updated or swept; every UI and the report
     #: say "unsigned".  A record written before this field reads as signed.
@@ -1508,8 +1541,7 @@ class AvailableModule:
     summary: str
     version: str
     status: Literal["available", "installed", "update", "revoked"]
-    capabilities: tuple[str, ...] = ()
-    network_hosts: tuple[str, ...] = ()
+    asks: ModuleAsks = ModuleAsks()
     installed_version: str = ""
     reason: str = ""
     author: str = ""

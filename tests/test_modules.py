@@ -29,7 +29,7 @@ from trcc.core.commands import (
 )
 from trcc.core.errors import ModuleUnavailable
 from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
-from trcc.core.models import PanelPicture, Wire
+from trcc.core.models import ModuleAsks, PanelPicture, Wire
 from trcc.core.ports import CommandBus, Module, ModuleHost
 from trcc.core.results import Result
 
@@ -469,9 +469,8 @@ def test_a_module_reaches_the_app_only_through_its_host() -> None:
 
 # ── The Modules page, in both windows ────────────────────────────────
 
-def _install(key: str, capabilities: tuple[str, ...],
-             network_hosts: tuple[str, ...]) -> InstallModule:
-    return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)
+def _install(key: str, asks: ModuleAsks) -> InstallModule:
+    return InstallModule(key=key, asks=asks)
 
 
 #: What every page's view is handed for getting modules.

@@ -21,6 +21,7 @@ from ...core.commands import (
     SetModuleEnabled,
 )
 from ...core.logs import per_frame
+from ...core.models import ModuleAsks
 from ...core.ports import CommandBus
 from ..bus_bridge import BusBridge
 from ..qt_modules import ModulesView
@@ -82,11 +83,10 @@ class UCModules(QWidget):
         return SetModuleEnabled(key=key, enabled=enabled)
 
     @staticmethod
-    def _install(key: str, capabilities: tuple[str, ...],
-                 network_hosts: tuple[str, ...]) -> InstallModule:
+    def _install(key: str, asks: ModuleAsks) -> InstallModule:
         """The Command an Install sends: what the user accepted."""
-        log.debug("UCModules._install: %s %s %s", key, capabilities, network_hosts)
-        return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)
+        log.debug("UCModules._install: %s %s", key, asks)
+        return InstallModule(key=key, asks=asks)
 
     def set_title(self, title: str) -> None:
         """The title bar's text -- retranslated with the window's language."""

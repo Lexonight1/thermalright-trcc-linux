@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
 from ..core.commands import Command
 from ..core.events import DeveloperModeChanged, ModuleChanged, ModuleInstalled, ModuleRemoved
 from ..core.i18n import tr
-from ..core.models import AvailableModule, ModuleInfo
+from ..core.models import AvailableModule, ModuleAsks, ModuleInfo
 from ..core.ports import CommandBus
 from ..core.results import ModuleCatalogResult, ModuleResult
 from ._module_faces import face_loaded
@@ -90,7 +90,7 @@ class ModulesView(QScrollArea):
                  icon: Callable[[str], Command[Any]],
                  parent: QWidget | None = None, *,
                  browse: Callable[[], Command[Any]],
-                 install: Callable[[str, tuple[str, ...], tuple[str, ...]], Command[Any]],
+                 install: Callable[[str, ModuleAsks], Command[Any]],
                  remove: Callable[[str], Command[Any]],
                  developer: Callable[..., Command[Any]],
                  read_folder: Callable[..., Command[Any]],
@@ -459,7 +459,7 @@ class ModulesView(QScrollArea):
             sender.setEnabled(False)
         self._pending = key
         dispatch_in_background(
-            self._app, self._install(key, module.capabilities, module.network_hosts),
+            self._app, self._install(key, module.asks),
             self._installed, failed=partial(_could_not, key))
 
     def _installed(self, result: ModuleResult) -> None:
@@ -573,8 +573,7 @@ class DeveloperMode:
         if self.button is not None:
             self.button.setEnabled(False)
         dispatch_in_background(
-            self._view._app, self._install(path=folder, capabilities=module.capabilities,
-                                          network_hosts=module.network_hosts),
+            self._view._app, self._install(path=folder, asks=module.asks),
             self._installed, failed=partial(_could_not, module.key))
 
     def _installed(self, result: ModuleResult) -> None:

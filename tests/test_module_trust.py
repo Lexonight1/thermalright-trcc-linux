@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives.serialization import (
 
 from trcc.adapters.modules import Ed25519Checker
 from trcc.core.errors import UntrustedModule
-from trcc.core.models import ModuleIndex
+from trcc.core.models import ModuleAsks, ModuleIndex
 from trcc.core.trust_keys import ROOT_KEYS
 from trcc.services.module_trust import (
     INDEX_TYPE,
@@ -145,10 +145,9 @@ def test_what_the_tool_signs_the_app_installs(keys: Keys, trust: ModuleTrust,
     index = _opened(keys, trust, root_file)
     release = trust.check_bundle(index, "weather", BUNDLE, NOW)
     assert (release.key, release.version, release.size, release.sha256,
-            release.capabilities, release.commit) == (
+            release.asks, release.commit) == (
         "weather", "3", len(BUNDLE), hashlib.sha256(BUNDLE).hexdigest(),
-        ("events", "readings", "network"), COMMIT)
-    assert release.network_hosts == ("api.example.com",)
+        ModuleAsks(("events", "readings", "network"), ("api.example.com",)), COMMIT)
     assert index.version == 1
     assert index.expires == NOW + timedelta(days=90)
 
@@ -506,7 +505,8 @@ def test_the_cli_lists_what_the_bundles_module_json_says(
 
     listed = trust.open_index(index.read_bytes(), trust.open_root(root.read_bytes()))
     release = listed.releases["weather"]
-    assert (release.version, release.capabilities, release.network_hosts, release.title,
-            release.summary, release.author) == (
-        "3", ("events", "network"), ("api.example.com",), "Weather", "The forecast.", "Ada")
+    assert (release.version, release.asks, release.title, release.summary,
+            release.author) == (
+        "3", ModuleAsks(("events", "network"), ("api.example.com",)), "Weather",
+        "The forecast.", "Ada")
     trust.check_release(release, bundle.read_bytes())

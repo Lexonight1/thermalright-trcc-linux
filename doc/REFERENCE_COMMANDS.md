@@ -1591,27 +1591,25 @@ Takes no arguments.
 
 ### `InstallModule`
 
-Install module *key* from the index, or update it.  *capabilities* and *network_hosts* are what the user accepted: they must be exactly what the index lists, or nothing is installed -- an update asking for more is asked about again.
+Install module *key* from the index, or update it.  *asks* is what the user accepted: it must be exactly what the index lists, or nothing is installed -- an update asking for more is asked about again.
 
 *Command* → `ModuleResult`
 
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
-| `capabilities` | `tuple[str, Ellipsis]` | no |
-| `network_hosts` | `tuple[str, Ellipsis]` | no |
+| `asks` | `ModuleAsks` | no |
 
 ### `InstallModuleFolder`
 
-Install the module in folder *path*, unsigned -- developer mode only. *capabilities* and *network_hosts* are what the user accepted: exactly what its ``module.json`` asks for, or nothing is installed.  It is off after install; the user switches it on.
+Install the module in folder *path*, unsigned -- developer mode only. *asks* is what the user accepted: exactly what its ``module.json`` asks for, or nothing is installed.  It is off after install; the user switches it on.
 
 *Command* → `ModuleResult`
 
 | Field | Type | Required |
 |---|---|---|
 | `path` | `Path` | yes |
-| `capabilities` | `tuple[str, Ellipsis]` | no |
-| `network_hosts` | `tuple[str, Ellipsis]` | no |
+| `asks` | `ModuleAsks` | no |
 
 ### `ListModules`
 

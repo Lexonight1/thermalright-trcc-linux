@@ -43,6 +43,7 @@ from ..core.errors import UntrustedModule
 from ..core.models import (
     MODULE_HOST,
     MODULE_KEY,
+    ModuleAsks,
     ModuleIndex,
     ModuleRelease,
     Revocation,
@@ -181,9 +182,9 @@ def parse_release(key: str, entry: Any) -> ModuleRelease:
     return ModuleRelease(
         key=key, version=f.text("version"), url=url, size=f.number("size"),
         sha256=f.text("sha256", _SHA256), min_trcc=f.text("min_trcc"),
-        commit=f.text("commit", _COMMIT), capabilities=f.texts("capabilities"),
-        author_key=author_key, author_sig=f.text("author_sig"),
-        network_hosts=_hosts(f, key), title=_optional(entry, "title"),
+        commit=f.text("commit", _COMMIT),
+        asks=ModuleAsks(capabilities=f.texts("capabilities"), network_hosts=_hosts(f, key)),
+        author_key=author_key, author_sig=f.text("author_sig"), title=_optional(entry, "title"),
         summary=_optional(entry, "summary"), author=_optional(entry, "author"))
 
 

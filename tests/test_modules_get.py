@@ -27,7 +27,7 @@ from trcc.core.commands import (
     SetModuleEnabled,
 )
 from trcc.core.events import DeveloperModeChanged, EventBus, ModuleInstalled, ModuleRemoved
-from trcc.core.models import MODULE_CAPABILITIES, AvailableModule, ModuleInfo
+from trcc.core.models import MODULE_CAPABILITIES, AvailableModule, ModuleAsks, ModuleInfo
 from trcc.core.ports import CommandBus
 from trcc.core.results import (
     ModuleCatalogResult,
@@ -41,8 +41,8 @@ from trcc.ui.presentation.module_catalog import REOPEN
 
 _LISTED = (
     AvailableModule(key="weather", title="Weather", summary="The forecast.",
-                    version="3", status="available", capabilities=("events", "network"),
-                    network_hosts=("api.open-meteo.com",)),
+                    version="3", status="available",
+                    asks=ModuleAsks(("events", "network"), ("api.open-meteo.com",))),
     AvailableModule(key="ticker", title="Ticker", summary="Prices.", version="2",
                     status="update", installed_version="1"),
     AvailableModule(key="clock", title="Clock", summary="Time.", version="1",
@@ -67,7 +67,7 @@ class _App(CommandBus):
         self.developer = False
         self.folder = ModuleFolderResult(ok=True, module=AvailableModule(
             key="hello", title="Hello", summary="Says hello.", version="0.1",
-            status="available", capabilities=("events",)))
+            status="available", asks=ModuleAsks(("events",))))
         self.from_folder = ModuleResult(
             ok=True, key="hello", message="Hello 0.1 installed unsigned -- off until "
                                           "you switch it on")
@@ -101,9 +101,8 @@ def _switch(key: str, enabled: bool) -> SetModuleEnabled:
     return SetModuleEnabled(key=key, enabled=enabled)
 
 
-def _install(key: str, capabilities: tuple[str, ...],
-             network_hosts: tuple[str, ...]) -> InstallModule:
-    return InstallModule(key=key, capabilities=capabilities, network_hosts=network_hosts)
+def _install(key: str, asks: ModuleAsks) -> InstallModule:
+    return InstallModule(key=key, asks=asks)
 
 
 #: Developer mode's Commands, as both windows pass them.
@@ -183,8 +182,7 @@ def test_an_install_asks_first_then_sends_exactly_what_was_shown(
     view.actions["weather"].click()
     qtbot.waitUntil(lambda: bool(app.of(InstallModule)), timeout=3000)
     assert app.of(InstallModule) == [InstallModule(
-        key="weather", capabilities=("events", "network"),
-        network_hosts=("api.open-meteo.com",))]
+        key="weather", asks=ModuleAsks(("events", "network"), ("api.open-meteo.com",)))]
     (question, details, confirm), = asked
     assert (question, confirm) == ("Install Weather 3?", "Install")
     assert details.splitlines() == [
@@ -287,7 +285,7 @@ def test_a_folder_install_says_unsigned_then_sends_what_was_shown(
     qtbot.waitUntil(lambda: bool(app.of(InstallModuleFolder)), timeout=3000)
     assert app.of(ReadModuleFolder) == [ReadModuleFolder(path=tmp_path)]
     assert app.of(InstallModuleFolder) == [InstallModuleFolder(
-        path=tmp_path, capabilities=("events",), network_hosts=())]
+        path=tmp_path, asks=ModuleAsks(("events",)))]
     (question, details, confirm), = asked
     assert (question, confirm) == ("Install Hello 0.1?", "Install")
     assert details.splitlines() == [

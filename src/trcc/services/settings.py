@@ -37,6 +37,7 @@ from ..core.models import (
     BackgroundMode,
     DeviceSettings,
     FitMode,
+    ModuleAsks,
     ModuleInstall,
     OrientationState,
     OverlayElement,
@@ -205,6 +206,24 @@ def _is_background_mode(mode: str) -> TypeGuard[BackgroundMode]:
     valid = mode in get_args(BackgroundMode)
     log.debug("_is_background_mode: %r -> %s", mode, valid)
     return valid
+
+
+def _module_install_to(record: ModuleInstall) -> dict[str, Any]:
+    """An install record as ``trcc.json`` keeps it: flat, its asks beside the
+    other fields -- the shape every record had before ``ModuleAsks``."""
+    flat = {f.name: getattr(record, f.name) for f in fields(record) if f.name != "asks"}
+    flat |= asdict(record.asks)
+    log.debug("_module_install_to: %s", record.key)
+    return flat
+
+
+def _module_install_from(raw: dict[str, Any]) -> ModuleInstall:
+    """An install record read back: its asks gathered from the flat fields,
+    and an ask a record predates read as none."""
+    names = {f.name for f in fields(ModuleAsks)}
+    asks = ModuleAsks(**{name: tuple(raw.get(name, ())) for name in names})
+    log.debug("_module_install_from: %s", raw.get("key"))
+    return ModuleInstall(**{k: v for k, v in raw.items() if k not in names}, asks=asks)
 
 
 class Settings:
@@ -693,9 +712,7 @@ class Settings:
         raw = self._app.module_installs.get(key) if isinstance(
             self._app.module_installs, dict) else None
         try:
-            record = ModuleInstall(**{**raw, "capabilities": tuple(raw["capabilities"]),
-                                      "network_hosts": tuple(raw["network_hosts"])}
-                                   ) if isinstance(raw, dict) else None
+            record = _module_install_from(raw) if isinstance(raw, dict) else None
         except (TypeError, KeyError):
             log.warning("module_install: %s's record does not read -- %r", key, raw)
             record = None
@@ -719,7 +736,7 @@ class Settings:
             if record is None:
                 self._app.module_installs.pop(key, None)
             else:
-                self._app.module_installs[key] = asdict(record)
+                self._app.module_installs[key] = _module_install_to(record)
             self._save()
 
     def module_index_seen(self) -> tuple[int, int]:

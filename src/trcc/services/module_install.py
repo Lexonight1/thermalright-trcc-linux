@@ -34,7 +34,7 @@ import dataclasses
 import hashlib
 import logging
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -49,6 +49,7 @@ from ..core.models import (
     MODULE_KEY,
     MODULE_ROOT_MAX_BYTES,
     AvailableModule,
+    ModuleAsks,
     ModuleIndex,
     ModuleInstall,
     ModuleManifest,
@@ -178,14 +179,13 @@ class ModuleInstaller:
         return AvailableModule(
             key=release.key, title=release.title or release.key,
             summary=release.summary, version=release.version, status=status,
-            capabilities=release.capabilities, network_hosts=release.network_hosts,
-            installed_version=record.version if record else "", reason=reason,
+            asks=release.asks, installed_version=record.version if record else "", reason=reason,
             author=release.author)
 
     # ── installing ────────────────────────────────────────────────────────
 
-    def install(self, key: str, accept_capabilities: Iterable[str],
-                accept_hosts: Iterable[str], now: datetime) -> tuple[ModuleInstall, str]:
+    def install(self, key: str, accepted: ModuleAsks,
+                now: datetime) -> tuple[ModuleInstall, str]:
         """Install module *key*, or update it -- the record, and what switching
         it on had to say ("" for nothing).  Refused, with why, at the first
         link of the chain that does not hold (the module docstring)."""
@@ -198,7 +198,7 @@ class ModuleInstaller:
             release = index.releases.get(key)
             if release is None:
                 raise UntrustedModule(f"{key}: not in the module index")
-            self._may_install(release, set(accept_capabilities), set(accept_hosts))
+            self._may_install(release, accepted)
             bundle = self._http.fetch(release.url, timeout_s=_FETCH_S,
                                       max_bytes=release.size, allow=_https)
             old = self._settings.module_install(key)
@@ -207,15 +207,13 @@ class ModuleInstaller:
                                      pinned_author=signed.author_key if signed else None)
             record = ModuleInstall(key=key, version=release.version, sha256=release.sha256,
                                    author_key=release.author_key, commit=release.commit,
-                                   capabilities=release.capabilities,
-                                   network_hosts=release.network_hosts)
+                                   asks=release.asks)
             # Over an unsigned copy it is a first install: on, nothing pinned.
             return self._put_in_place(record, bundle, self._matches_release(release),
                                       switch_on=signed is None or self._runner.is_on(key),
                                       restore=old is not None)
 
-    def install_folder(self, folder: Path, accept_capabilities: Iterable[str],
-                       accept_hosts: Iterable[str]) -> ModuleInstall:
+    def install_folder(self, folder: Path, accepted: ModuleAsks) -> ModuleInstall:
         """Install the module in *folder*, unsigned -- developer mode only.
         Refused, before anything is touched, over a built-in or a signed
         install, or when what the user accepted is not exactly what its
@@ -232,13 +230,9 @@ class ModuleInstaller:
         if len(bundle) > MODULE_BUNDLE_MAX_BYTES:
             raise ModuleUnavailable(f"{key}: {len(bundle)} bytes -- larger than a "
                                     "module may be")
-        if (set(accept_capabilities) != set(manifest.capabilities)
-                or set(accept_hosts) != set(manifest.network_hosts)):
-            asks = ", ".join(manifest.capabilities) or "nothing"
-            sites = (f"; sites: {', '.join(manifest.network_hosts)}"
-                     if manifest.network_hosts else "")
+        if not accepted.matches(manifest.asks):
             raise ModuleUnavailable(f"{manifest.title} {manifest.version} asks for: "
-                                    f"{asks}{sites} -- confirm that first")
+                                    f"{manifest.asks.describe()} -- confirm that first")
         with self._lock:
             old = self._settings.module_install(key)
             if old is not None and not old.unsigned:
@@ -247,9 +241,8 @@ class ModuleInstaller:
                                         "folder over it")
             record = ModuleInstall(key=key, version=manifest.version,
                                    sha256=hashlib.sha256(bundle).hexdigest(),
-                                   author_key="", commit="",
-                                   capabilities=manifest.capabilities,
-                                   network_hosts=manifest.network_hosts, unsigned=True)
+                                   author_key="", commit="", asks=manifest.asks,
+                                   unsigned=True)
             was_on = self._runner.is_on(key)
 
             def matches(unpacked: ModuleManifest) -> None:
@@ -279,8 +272,7 @@ class ModuleInstaller:
         _, manifest = self._store.pack(folder)
         return AvailableModule(key=manifest.key, title=manifest.title,
                                summary=manifest.summary, version=manifest.version,
-                               status="available", capabilities=manifest.capabilities,
-                               network_hosts=manifest.network_hosts,
+                               status="available", asks=manifest.asks,
                                author=manifest.author)
 
     def _signed_install(self, key: str) -> ModuleInstall | None:
@@ -291,8 +283,7 @@ class ModuleInstaller:
         log.debug("ModuleInstaller._signed_install: %s -> %s", key, signed is not None)
         return signed
 
-    def _may_install(self, release: ModuleRelease, capabilities: set[str],
-                     hosts: set[str]) -> None:
+    def _may_install(self, release: ModuleRelease, accepted: ModuleAsks) -> None:
         """Refuse a release this TRCC is too old for, one too large, or one
         asking for more -- or other -- than the user accepted."""
         log.debug("ModuleInstaller._may_install: %s", release.key)
@@ -302,12 +293,10 @@ class ModuleInstaller:
         if release.size > MODULE_BUNDLE_MAX_BYTES:
             raise ModuleUnavailable(f"{release.key}: {release.size} bytes -- larger "
                                     "than a module may be")
-        if (capabilities != set(release.capabilities)
-                or hosts != set(release.network_hosts)):
-            asks = ", ".join(release.capabilities) or "nothing"
-            sites = f"; sites: {', '.join(release.network_hosts)}" if release.network_hosts else ""
+        if not accepted.matches(release.asks):
             raise ModuleUnavailable(f"{release.title or release.key} {release.version} "
-                                    f"asks for: {asks}{sites} -- confirm that first")
+                                    f"asks for: {release.asks.describe()} -- confirm "
+                                    "that first")
 
     @staticmethod
     def _matches_release(release: ModuleRelease) -> Callable[[ModuleManifest], None]:
@@ -316,12 +305,10 @@ class ModuleInstaller:
         log.debug("ModuleInstaller._matches_release: %s %s", release.key, release.version)
 
         def matches(manifest: ModuleManifest) -> None:
-            said = (manifest.key, manifest.version, set(manifest.capabilities),
-                    set(manifest.network_hosts), manifest.author)
-            listed = (release.key, release.version, set(release.capabilities),
-                      set(release.network_hosts), release.author)
+            said = (manifest.key, manifest.version, manifest.author)
+            listed = (release.key, release.version, release.author)
             log.debug("matches: %s vs %s", said, listed)
-            if said != listed:
+            if said != listed or not manifest.asks.matches(release.asks):
                 raise UntrustedModule(f"{release.key}: its module.json is not what "
                                       "the index lists -- refused")
         return matches
