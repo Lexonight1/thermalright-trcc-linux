@@ -38,6 +38,10 @@ Kept as small as ``trcc-ram-access``:
     admin wrote.
   * runs only udevadm, getfacl and setfacl, from fixed system paths, with a
     fixed environment.
+  * ``disable`` also deletes udev's own record of each node it granted
+    (``/run/udev/data/c<major>:<minor>`` and its ``uaccess`` tag link) and
+    gives the node back to group root if the group is ours -- nothing else
+    under ``/run/udev``, no other node.
   * ``disable`` touches nothing unless TRCC's rule was there to remove: its
     password-free twin ``trcc-module-devices-off`` can be run by any program
     in the session.
@@ -49,6 +53,7 @@ group (``DEVICE_GROUP``) and the paths (``_module_devices``).
 
 Exit codes: 0 ok · 1 a step failed · 2 bad invocation · 3 not root.
 """
+import grp
 import os
 import re
 import subprocess
@@ -72,6 +77,8 @@ _TOOLS = {
 }
 _USB = Path("/sys/bus/usb/devices")
 _HIDRAW = Path("/sys/class/hidraw")
+_UDEV_DATA = Path("/run/udev/data")
+_UDEV_UACCESS = Path("/run/udev/tags/uaccess")
 
 
 def header(key: str) -> str:
@@ -208,36 +215,82 @@ def named_users(acl: str) -> list[str]:
     return uids
 
 
+def udev_record(node: str) -> str:
+    """udev's name for *node*'s record: ``c189:3`` -- a char device, its
+    major and minor number."""
+    rdev = Path(node).stat().st_rdev
+    return f"c{os.major(rdev)}:{os.minor(rdev)}"
+
+
+def _gid(group: str) -> int | None:
+    try:
+        return grp.getgrnam(group).gr_gid
+    except KeyError:
+        return None
+
+
+def forget(node: str, data: Path = _UDEV_DATA, uaccess: Path = _UDEV_UACCESS) -> None:
+    """Drop udev's record of *node*, and our group from it, so the ``add``
+    that follows rebuilds both from the rules as they are now.
+
+    udev tags cannot be unset: once our rule tagged a node ``uaccess``, the
+    tag stays in its record after the rule is deleted, and
+    ``73-seat-late.rules`` grants the seat's user again on the node's next
+    ``change`` -- from anything that triggers udev.  Driven on systemd 259: a
+    hub re-granted on 5 of 5 change events.  A record dropped and rebuilt is
+    what a replug does to it, without touching the device.
+    """
+    record = udev_record(node)
+    for path in (data / record, uaccess / record):
+        path.unlink(missing_ok=True)
+    if (ours := _gid(GROUP)) is not None and Path(node).stat().st_gid == ours:
+        os.chown(node, -1, 0)
+
+
 def apply(enabled: bool, devices: list[str]) -> bool:
     """Make the rule take effect now, without a replug.
 
-    Disabling also takes the devices' named-USER ACL entries away before
-    re-triggering: once the rule is gone udev no longer visits the node, so
-    without this the access would last until the next login.  Only USER
-    entries, as systemd's own ``devnode_acl`` resets a uaccess node -- a GROUP
-    entry is never a uaccess grant, and an admin's stays.  Any other rule that
-    tags the device (OpenRGB's, TRCC's packaged RGB rule) grants it again on
-    the trigger -- which is the truth.
+    Enabling re-triggers the devices, so the new rule reaches them.
+    Disabling forgets each granted node's udev record (``forget``), rebuilds
+    it with an ``add``, and only then takes the named-USER ACL entries away
+    -- after udev has settled, so no event still in flight grants them back.
+    Only USER entries, as systemd's own ``devnode_acl`` resets a uaccess node
+    -- a GROUP entry is never a uaccess grant, and an admin's stays.  Any
+    other rule that tags the device (OpenRGB's, TRCC's packaged RGB rule)
+    grants it again on the rebuild -- which is the truth.
     """
     udevadm = _tool("udevadm")
     if udevadm is None:
         return False
     ok = _run(udevadm, "control", "--reload")
+    nodes = [] if enabled else device_nodes(devices)
+    if enabled:
+        ok &= _run(udevadm, "trigger", "--subsystem-match=hidraw", "--action=change")
+    else:
+        for node in nodes:
+            try:
+                forget(node)
+            except OSError:
+                ok = False
+        for node in nodes:
+            if node.startswith("/dev/hidraw"):
+                ok &= _run(udevadm, "trigger", "--action=add",
+                           str(_HIDRAW / node.removeprefix("/dev/")))
+    action = "--action=change" if enabled else "--action=add"
+    for device in devices:
+        vid, pid = device.split(":")
+        ok &= _run(udevadm, "trigger", "--subsystem-match=usb",
+                   f"--attr-match=idVendor={vid}", f"--attr-match=idProduct={pid}",
+                   action)
+    ok &= _run(udevadm, "settle", "--timeout=10")
     getfacl, setfacl = _tool("getfacl"), _tool("setfacl")
     if not enabled and getfacl is not None and setfacl is not None:
-        for node in device_nodes(devices):
+        for node in nodes:
             if (acl := _read(getfacl, "-cpn", node)) is None:
                 ok = False
             elif users := named_users(acl):
                 ok &= _run(setfacl, "-x", ",".join(f"u:{u}" for u in users),
                            node)
-    ok &= _run(udevadm, "trigger", "--subsystem-match=hidraw", "--action=change")
-    for device in devices:
-        vid, pid = device.split(":")
-        ok &= _run(udevadm, "trigger", "--subsystem-match=usb",
-                   f"--attr-match=idVendor={vid}", f"--attr-match=idProduct={pid}",
-                   "--action=change")
-    ok &= _run(udevadm, "settle", "--timeout=10")
     return ok
 
 

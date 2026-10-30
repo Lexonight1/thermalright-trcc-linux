@@ -213,23 +213,95 @@ def test_a_hub_s_nodes_are_never_the_keyboard_plugged_into_it(
         "/dev/bus/usb/001/003"]
 
 
-def test_disable_strips_only_named_user_entries_then_retriggers(
+def test_disable_forgets_rebuilds_settles_then_strips_only_named_users(
         helper: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The order is the fix: udev keeps a deleted rule's ``uaccess`` tag, so
+    each node's record is forgotten and rebuilt by an ``add`` -- and the ACL
+    is stripped only once udev has settled, or an event still in flight
+    grants it back.  MUTATION CHECK: strip before the settle; trigger
+    ``change`` instead of ``add``."""
     ran: list[tuple[str, ...]] = []
     acls = {"/dev/hidraw2": "user::rw-\nuser:1000:rw-\ngroup::rw-\ngroup:1001:rw-\n",
             "/dev/bus/usb/001/003": "user::rw-\ngroup::rw-\n"}
     monkeypatch.setattr(helper, "_tool", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(helper, "device_nodes", lambda devices: list(acls))
+    monkeypatch.setattr(helper, "forget", lambda node: ran.append(("forget", node)))
     monkeypatch.setattr(helper, "_read", lambda *argv: acls[argv[-1]])
     monkeypatch.setattr(helper, "_run", lambda *argv: ran.append(argv) or True)
     assert helper.apply(False, ["0b05:19af"]) is True
     assert ran == [
         ("/usr/bin/udevadm", "control", "--reload"),
-        ("/usr/bin/setfacl", "-x", "u:1000", "/dev/hidraw2"),
-        ("/usr/bin/udevadm", "trigger", "--subsystem-match=hidraw", "--action=change"),
+        ("forget", "/dev/hidraw2"), ("forget", "/dev/bus/usb/001/003"),
+        ("/usr/bin/udevadm", "trigger", "--action=add", "/sys/class/hidraw/hidraw2"),
         ("/usr/bin/udevadm", "trigger", "--subsystem-match=usb",
-         "--attr-match=idVendor=0b05", "--attr-match=idProduct=19af", "--action=change"),
-        ("/usr/bin/udevadm", "settle", "--timeout=10")]
+         "--attr-match=idVendor=0b05", "--attr-match=idProduct=19af", "--action=add"),
+        ("/usr/bin/udevadm", "settle", "--timeout=10"),
+        ("/usr/bin/setfacl", "-x", "u:1000", "/dev/hidraw2")]
+
+
+def test_a_node_it_cannot_forget_is_reported(
+        helper: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    def forget(node: str) -> None:
+        raise PermissionError(node)
+
+    monkeypatch.setattr(helper, "_tool", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(helper, "device_nodes", lambda devices: ["/dev/bus/usb/001/003"])
+    monkeypatch.setattr(helper, "forget", forget)
+    monkeypatch.setattr(helper, "_read", lambda *argv: "user::rw-\n")
+    monkeypatch.setattr(helper, "_run", lambda *argv: True)
+    assert helper.apply(False, ["0b05:19af"]) is False
+
+
+@pytest.fixture
+def udev_run(tmp_path: Path) -> tuple[Path, Path]:
+    """A ``/run/udev`` with records for two nodes, each tagged ``uaccess``."""
+    data, uaccess = tmp_path / "data", tmp_path / "tags" / "uaccess"
+    data.mkdir()
+    uaccess.mkdir(parents=True)
+    for record in ("c189:2", "c189:3"):
+        (data / record).write_text("G:uaccess\nG:seat\nQ:seat\n", encoding="utf-8")
+        (uaccess / record).symlink_to(f"../../devices/{record}")
+    return data, uaccess
+
+
+def _node(tmp_path: Path) -> str:
+    node = tmp_path / "node"
+    node.write_text("", encoding="utf-8")
+    return str(node)
+
+
+@pytest.mark.parametrize(("ours", "chowned"), [(True, [(-1, 0)]), (False, [])])
+def test_forget_drops_only_that_nodes_record_and_only_our_group(
+        helper: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+        udev_run: tuple[Path, Path], ours: bool, chowned: list[tuple[int, int]]) -> None:
+    """The other node's record is untouched; a group an admin's rule set
+    (``lp``, say) stays.  MUTATION CHECK: chown whatever the group."""
+    data, uaccess = udev_run
+    node = _node(tmp_path)
+    gid = Path(node).stat().st_gid
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(helper, "udev_record", lambda n: "c189:3")
+    monkeypatch.setattr(helper, "_gid", lambda group: gid if ours else gid + 1)
+    monkeypatch.setattr(helper.os, "chown", lambda n, uid, g: calls.append((uid, g)))
+    helper.forget(node, data, uaccess)
+    assert (sorted(p.name for p in data.iterdir()),
+            sorted(p.name for p in uaccess.iterdir()), calls) == (
+        ["c189:2"], ["c189:2"], chowned)
+
+
+def test_forget_a_node_udev_never_recorded_is_fine(
+        helper: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+        udev_run: tuple[Path, Path]) -> None:
+    data, uaccess = udev_run
+    monkeypatch.setattr(helper, "udev_record", lambda n: "c189:9")
+    monkeypatch.setattr(helper, "_gid", lambda group: None)
+    helper.forget(_node(tmp_path), data, uaccess)
+    assert sorted(p.name for p in data.iterdir()) == ["c189:2", "c189:3"]
+
+
+def test_udev_names_a_record_by_the_nodes_device_numbers(helper: ModuleType) -> None:
+    """``/dev/null`` is char 1:3 on every Linux."""
+    assert helper.udev_record("/dev/null") == "c1:3"
 
 
 def test_enable_reloads_and_triggers_without_touching_acls(
