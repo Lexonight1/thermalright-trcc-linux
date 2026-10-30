@@ -1,0 +1,15 @@
+{
+  "signatures": [
+    {
+      "key": "4K8L5bba1k4kKt7JJk7FCRsrI7fVWpjpeEF2VCdHWJ8=",
+      "sig": "nuv8EhyUUEz7CBzsqloHgfxQH4SUpqDA0CrhvrkLmUBoSSoa7x91Xd7ET9hkSQ6OvlmcF/i+cxcDQdReR/rmCg=="
+    }
+  ],
+  "signed": {
+    "expires": "2027-01-28T03:55:26Z",
+    "modules": {},
+    "revoked": [],
+    "type": "trcc-index",
+    "version": 1
+  }
+}

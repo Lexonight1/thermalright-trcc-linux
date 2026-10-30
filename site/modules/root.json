@@ -1,0 +1,16 @@
+{
+  "signatures": [
+    {
+      "key": "RXIMCPnS6Gm0y93UeLGsppzwWa/tA3KzCJre6KyQyls=",
+      "sig": "ZKBRb6RKy/vro511LiP7Q5tKbK1JGkxdjiJesd/Bv+8lG7C9MvnRejxzRdFBILGiUP8YuGAJQ3ck5VXNrfvCBA=="
+    }
+  ],
+  "signed": {
+    "expires": "2027-10-30T03:55:26Z",
+    "index_keys": [
+      "4K8L5bba1k4kKt7JJk7FCRsrI7fVWpjpeEF2VCdHWJ8="
+    ],
+    "type": "trcc-root",
+    "version": 1
+  }
+}
