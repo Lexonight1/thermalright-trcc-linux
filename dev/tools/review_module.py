@@ -22,8 +22,9 @@ and reports:
 * **Layout** -- the manifest reads, only a module's fixed names are packed,
   no symbolic link, no compiled or binary file.
 * **Code** -- from the syntax tree, never by running it.  Hard: a library
-  TRCC does not let a module use, any network use (there is no network
-  capability yet), ``exec``/``eval``/``compile``, an import by computed name.
+  TRCC does not let a module use, any network use outside ``host.network``
+  (the ``network`` capability, held to its ``network_hosts``),
+  ``exec``/``eval``/``compile``, an import by computed name.
   To read: running programs, native code, deleting or writing files,
   pickle/marshal, long encoded literals.
 * **The bar TRCC's own code meets** -- module boundaries (``layers``), a

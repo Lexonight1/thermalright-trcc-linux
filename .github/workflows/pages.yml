@@ -1,0 +1,63 @@
+name: Module index (GitHub Pages)
+
+# Publishes site/: the signed root.json and index.json TRCC reads its module
+# list from (MODULE_INDEX_URL in src/trcc/core/models.py), and a page made
+# from them.  Both files are signed on the maintainer's machine
+# (dev/tools/sign_module_index.py) and committed; this job never sees a key.
+# build_module_site.py opens them as TRCC does first: a file TRCC would
+# refuse fails the job, nothing is deployed, and Pages keeps serving the last
+# good one.
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'dev/tools/build_module_site.py', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and a running one is never cut off half way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # A ceiling, not a target: the build is seconds, the deploy a minute.
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # The verifier needs only cryptography -- not the app's GUI stack.
+      - name: Install the verifier's one dependency
+        run: pip install "cryptography>=3.4.8"
+
+      - name: Verify the signed index and build the site
+        run: PYTHONPATH=src python dev/tools/build_module_site.py site/modules -o _site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v5

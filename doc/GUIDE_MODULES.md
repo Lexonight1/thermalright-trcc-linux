@@ -2,7 +2,7 @@
 
 A **module** is a feature you can switch on or off on the **Modules** page, in every TRCC window. A module that is off costs nothing: TRCC does not even load its code.
 
-> **Where this stands.** Two features are modules: the **Audio Visualizer** and **RGB Lighting**. Installing, updating and deleting modules comes next.
+> **Where this stands.** Two of TRCC's own features are modules: the **Audio Visualizer** and **RGB Lighting**. Modules other people write can be installed too, from TRCC's signed module list — see [Getting more modules](#getting-more-modules).
 
 ---
 
@@ -21,9 +21,26 @@ When a module is off, its tab or sidebar entry is hidden in every window and com
 
 A module's **themes are kept with it**: a theme whose background is an audio visual is saved with the Audio Visualizer and listed only while it is on.
 
-### Coming next
+### Getting more modules
 
-- **Install, Update and Delete**, from TRCC's own GitHub releases only. Every download is checked against a list signed by the maintainer (see [Verify Your Download](GUIDE_INSTALL.md#verify-your-download)); a failed or tampered download is never installed, and a failed update keeps the old version working.
+**Get modules**, above the list, shows every module in TRCC's module list — the same list as the [modules website](https://lexonight1.github.io/thermalright-trcc-linux/modules/). Each one was read by the maintainer at the exact source it was built from, and signed; TRCC checks both signatures, the author's and the maintainer's, before it installs a byte. *Reviewed is not a guarantee of safety:* a module runs inside TRCC, with your permissions.
+
+- **Install** first says what the module may do — each capability, every website it fetches from, every USB device it unlocks — and installs it only if you accept. It arrives switched on.
+- **Update** appears when a newer version is listed. An update that asks for more than you accepted asks again; one from a different author is refused, and a failed update keeps the old version working. A window still running the old code says so — reopen it to finish.
+- **Remove** deletes it. Themes made with it stay.
+- **Taken back**: when the maintainer withdraws a module, TRCC switches it off on its daily check and its row says why.
+- The list carries an expiry date and is renewed by the maintainer. If yours has expired, TRCC installs and updates nothing until it is renewed; installed modules keep running.
+
+From the command line: `trcc system modules available`, `trcc system modules install <key>`, `trcc system modules remove <key>`. From the API: `GET /system/modules/available`, `POST /system/modules/{key}/install`, `DELETE /system/modules/{key}`.
+
+### Developer mode
+
+For trying a module before it is listed — your own, or one you have the source of. **Off by default.** Switch it on with **Developer mode** beside *Get modules*, or `trcc system modules developer on`; **Install from folder…** appears (`trcc system modules install-folder <folder>`).
+
+- It copies the folder in, **unsigned**: nobody reviewed it, and its permission screen says so. It arrives switched **off** — switch it on yourself. After you change the code, install the folder again.
+- Its row says *Unsigned — never reviewed* in every window, and while one is switched on TRCC logs a warning naming it at every start — so a `trcc report` shows it too.
+- It is never updated or taken back by the list, never unlocks USB devices (write your own udev rule while you develop it), and is refused where a built-in or a signed module of the same key is installed.
+- **Remove** deletes it as any other. Switching developer mode off installs nothing more; what you installed this way stays, still marked unsigned.
 
 ---
 
@@ -59,7 +76,7 @@ Lights your RGB memory, your motherboard's RGB (ASUS Aura headers and onboard LE
 
 ## Writing a module
 
-This part is for anyone who wants to make one. You can write a module today in your own copy of TRCC, starting from the skeleton below. **A website for TRCC modules is on the way**, for finding and sharing them; until then TRCC does not install modules from anywhere, so a module you write runs in your own copy.
+This part is for anyone who wants to make one. Write it in its own repository, try it in [developer mode](#developer-mode), and when it works, [get it listed](#getting-your-module-listed) so anyone can install it with **Get modules**.
 
 ### Start from the skeleton
 
@@ -68,7 +85,15 @@ PYTHONPATH=src python3.12 dev/tools/new_module.py weather --title "Weather" \
     --summary "Today's forecast as a panel background."
 ```
 
-That copies the `hello` skeleton (`dev/module_template/hello/`) to `src/trcc/modules/<key>/`, the one folder a module lives in. `hello` is a real, working module with one of everything: the tests load it through the same catalog as every built-in and drive each part, so the skeleton cannot silently go stale.
+That copies the `hello` skeleton (`dev/module_template/hello/`) to `src/trcc/modules/<key>/`, the one folder a module lives in — for a module that ships with TRCC. For **your own** module, add `--out` and your name; the folder it makes is the module, and becomes your repository's root:
+
+```bash
+PYTHONPATH=src python3.12 dev/tools/new_module.py weather --title "Weather" \
+    --summary "Today's forecast as a panel background." \
+    --out ~/src/trcc-weather --author "Your Name"
+```
+
+Set its `guide` in `module.json` to your README. `hello` is a real, working module with one of everything: the tests load it through the same catalog as every built-in and drive each part, so the skeleton cannot silently go stale.
 
 ### One folder, fixed names
 
@@ -169,3 +194,26 @@ When it is switched off, TRCC takes back what it still holds: its subscriptions,
 4. **Your Commands live in your module.** They extend `ModuleCommand` and set `MODULE = "<key>"`; TRCC then refuses them, in every window, while the module is off.
 5. **Log every function**, as all TRCC code does — a user's `trcc report` is often all there is to go on.
 6. **Test it** through the App and each UI, the way `tests/test_module_skeleton.py` tests `hello`.
+
+### Getting your module listed
+
+Listing is how a module reaches everyone through **Get modules**. Nothing is listed unread: the maintainer reads your source at the commit you tag, **every version**, and signs the list only then. The tools are in TRCC's repository, `dev/tools/`.
+
+1. **Make your author key**, once. Keep the `.key` file private and safe — every update must be signed by the same key, and a module whose key changes is refused as an update.
+   ```bash
+   PYTHONPATH=src python3.12 dev/tools/sign_module_index.py keygen ~/.config/trcc-author/me
+   ```
+2. **Pack a release** from the tagged commit, and attach the `.zip` to that tag's GitHub release. The bundle holds only a module's fixed names, packed the same on every machine, so the review can pack your commit again and get the same bytes.
+   ```bash
+   git tag v1 && git push origin v1
+   PYTHONPATH=src python3.12 dev/tools/module_bundle.py . -o weather-1.zip
+   ```
+3. **Sign it** with your key. It prints the signature.
+   ```bash
+   PYTHONPATH=src python3.12 dev/tools/sign_module_index.py author-sign weather-1.zip --key ~/.config/trcc-author/me.key
+   ```
+4. **Ask for it to be listed**: open a [List my module](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new?template=list-my-module.yml) issue with your repository, the tag, the bundle's URL, your `.pub` key and the signature, and say why it needs each thing it asks for.
+
+The review (`dev/tools/review_module.py`) packs your tagged commit again and compares it with your bundle byte for byte, checks your signature, and reads the code without running it. It refuses a library TRCC does not ship, any network use outside `host.network`, `exec`/`eval`, and an import by computed name; it flags running programs, native code and file writes for a closer read; and it holds a module to the bar TRCC's own code meets — the rules above, logging included. For an update it shows what changed since the version last listed: that difference is what gets read.
+
+**An update** is the same four steps with a new version in `module.json` and a new tag. **Taken back:** a listed module found doing something it should not is withdrawn from the list, and every TRCC that installed it switches it off and says why.

@@ -38,12 +38,14 @@ def class_prefix(key: str) -> str:
 
 
 def create(key: str, title: str, summary: str, repo: Path = REPO,
-           author: str = MODULE_BUILT_IN_AUTHOR) -> Path:
-    """Copy the skeleton into *repo* as module *key*; the folder made."""
+           author: str = MODULE_BUILT_IN_AUTHOR, into: Path | None = None) -> Path:
+    """Copy the skeleton into *repo* as built-in module *key* -- or, given
+    *into*, make *into* itself the module: the root of an author's own
+    repository, as the review reads it.  The folder made."""
     if not KEY.fullmatch(key):
         raise SystemExit(f"{key!r}: a key is 2-31 lowercase letters, digits or _, "
                          "starting with a letter -- it is also a Python package name")
-    folder = repo / "src" / "trcc" / "modules" / key
+    folder = into if into is not None else repo / "src" / "trcc" / "modules" / key
     if folder.exists():
         raise SystemExit(f"{folder} already exists -- pick another key")
     shutil.copytree(TEMPLATE, folder,
@@ -54,20 +56,39 @@ def create(key: str, title: str, summary: str, repo: Path = REPO,
                             .replace("hello", key), encoding="utf-8")
     manifest_path = folder / "module.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Its guide link: a built-in's section of TRCC's guide; an author's own
+    # module points at its own README, which only the author can name.
     manifest.update(key=key, title=title, summary=summary, author=author,
                     default_on=False,
-                    guide=GUIDE + title.lower().replace(" ", "-"))
+                    guide="" if into is not None else GUIDE + title.lower().replace(" ", "-"))
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return folder
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Start a new built-in module.")
+    parser = argparse.ArgumentParser(description="Start a new module: built-in, or "
+                                     "with --out, your own, in its own folder.")
     parser.add_argument("key", help="its key and package name, e.g. weather")
     parser.add_argument("--title", required=True, help='e.g. "Weather"')
     parser.add_argument("--summary", required=True,
                         help="one plain sentence on what it does for the user")
+    parser.add_argument("--out", type=Path,
+                        help="make this NEW folder the module -- your repository's root")
+    parser.add_argument("--author", help="your name, as the index will list it "
+                        "(required with --out)")
     args = parser.parse_args(argv)
+    if args.out is not None:
+        if not args.author or args.author == MODULE_BUILT_IN_AUTHOR:
+            parser.error(f"--out needs --author: your own name "
+                         f"({MODULE_BUILT_IN_AUTHOR!r} is TRCC's)")
+        folder = create(args.key, args.title, args.summary, author=args.author,
+                        into=args.out)
+        print(f"Created {folder}/")
+        print("Next: write _enable/start in app.py and its Commands in core/, declare its")
+        print("capabilities in module.json, set its \"guide\" to your README, draw icon.svg.")
+        print("Try it: switch on developer mode and install the folder -- doc/GUIDE_MODULES.md")
+        print('("Getting your module listed") says how to publish it.')
+        return 0
     folder = create(args.key, args.title, args.summary)
     print(f"Created {folder.relative_to(REPO)}/")
     print("Next: write _enable/start in app.py and its Commands in core/, declare its capabilities in")

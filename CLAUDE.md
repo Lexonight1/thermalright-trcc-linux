@@ -1179,6 +1179,15 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
     runs HERE, never in CI: the private key must not reach GitHub, or a
     stolen token could sign a forged release.  Public keys:
     `packaging/keys/` (main + spare, for retiring a lost main key).
+    **Then the module index, with the same offline keys.**  It expires by
+    design (90 days), and past that date every TRCC installs and updates
+    no module.  `PYTHONPATH=src python3.12 dev/tools/build_module_site.py
+    site/modules -o /tmp/site` prints `valid until`; under 30 days left,
+    `PYTHONPATH=src python3.12 dev/tools/sign_module_index.py renew
+    site/modules/index.json --root site/modules/root.json`, commit, push —
+    `pages.yml` verifies and publishes it.  A release is the one moment
+    this is looked at, so it is checked here; nothing in CI can, since only
+    this machine holds the key.
 15. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
     never announce an unconfirmed change as "the fix" (see
     `memory/feedback_fix_then_bump_then_reply.md`).  Upgrade commands must be

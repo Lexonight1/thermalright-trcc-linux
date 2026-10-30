@@ -1384,7 +1384,8 @@ MODULE_DEVICE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{4}")
 MODULE_FETCH_MAX_BYTES = 2 << 20
 MODULE_FETCH_TIMEOUT_S = 20.0
 
-#: Where the signed module index is published (``doc/`` on GitHub Pages):
+#: Where the signed module index is published -- ``site/modules/`` in the
+#: repository, deployed to GitHub Pages by ``.github/workflows/pages.yml``:
 #: ``root.json`` and ``index.json`` under it.
 MODULE_INDEX_URL = "https://lexonight1.github.io/thermalright-trcc-linux/modules/"
 #: The largest root, index and module bundle TRCC reads.  A bundle is stored,

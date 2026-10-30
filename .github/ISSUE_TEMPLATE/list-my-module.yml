@@ -1,0 +1,88 @@
+name: List my module
+description: Ask for a module you wrote to be reviewed and listed in TRCC's module index
+title: "[MODULE] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for writing a module! 🙂
+
+        Every module in the index is **read by the maintainer at the exact commit you tag**,
+        every version — nothing is listed unread. The steps that come before this form, and
+        what the review looks for, are in the guide:
+        [Getting your module listed](https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_MODULES.md#getting-your-module-listed).
+
+        In short: your repository's root is the module folder, the release bundle is packed
+        with `dev/tools/module_bundle.py`, and you signed it with your own author key.
+  - type: input
+    id: key
+    attributes:
+      label: Module key
+      description: Its `key` in module.json.
+      placeholder: weather
+    validations:
+      required: true
+  - type: input
+    id: repo
+    attributes:
+      label: Source repository
+      placeholder: https://github.com/you/trcc-weather
+    validations:
+      required: true
+  - type: input
+    id: tag
+    attributes:
+      label: Release tag
+      description: The tag the bundle was packed from — this commit is what gets reviewed.
+      placeholder: v1
+    validations:
+      required: true
+  - type: input
+    id: asset
+    attributes:
+      label: Bundle URL
+      description: The `.zip` attached to that GitHub release.
+      placeholder: https://github.com/you/trcc-weather/releases/download/v1/weather-1.zip
+    validations:
+      required: true
+  - type: textarea
+    id: author-key
+    attributes:
+      label: Your author public key
+      description: |
+        The `.pub` file from `sign_module_index.py keygen` (PEM). Keep the `.key` file to
+        yourself — every update must be signed by the same key.
+      render: text
+      placeholder: |
+        -----BEGIN PUBLIC KEY-----
+        ...
+        -----END PUBLIC KEY-----
+    validations:
+      required: true
+  - type: input
+    id: author-sig
+    attributes:
+      label: Your signature of the bundle
+      description: What `sign_module_index.py author-sign <bundle> --key <your .key>` printed.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it does, and why it needs what it asks for
+      description: |
+        One paragraph on what it does for the user. Then, for each capability it declares —
+        and every site (`network_hosts`) and USB device (`devices`) — why it needs it.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: The repository root is the module folder, and the bundle is what `module_bundle.py` packs from the tagged commit.
+          required: true
+        - label: It ran on my computer, installed from its folder in developer mode.
+          required: true
+        - label: It imports nothing TRCC does not ship, opens no network itself (only `host.network`), and runs no other program.
+          required: true
