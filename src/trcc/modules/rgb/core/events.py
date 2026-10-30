@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import ClassVar
 
 from trcc.core.events import Event
 from trcc.core.models import RamAccessState
@@ -45,6 +46,8 @@ class RgbFollowSent(Event):
     LCD's key, or the cooler's.  Published only after a send succeeded, at
     most as often as the follower sends.
     """
+    #: Every follow tick -- ~18 a second (measured 2026-10-30).
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     source: str
     columns: tuple[tuple[tuple[int, int, int], ...], ...] = ()
 

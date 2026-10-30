@@ -10,7 +10,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 from .logs import per_frame
 from .models import IN_PROCESS_ONLY, HardwareMetrics, TempUnit
@@ -26,7 +26,14 @@ frame_log = per_frame(__name__)
 
 @dataclass(frozen=True, slots=True)
 class Event:
-    """Base event."""
+    """Base event.
+
+    ``LOG_LEVEL`` says how often it fires, as a Command's does: one
+    published every tick sets DEBUG, and the lines that pass it on log it
+    through the per-frame logger (``core.logs.sink_for``) -- so it never
+    floods the file every report is read from.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.INFO
 
 
 @dataclass(frozen=True, slots=True)

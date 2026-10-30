@@ -865,6 +865,68 @@ def test_the_app_follows_the_picture_under_the_overlay_and_says_what_it_sent(
     app.close()
 
 
+def test_a_follow_tick_logs_only_through_the_per_frame_family(
+        tmp_path, monkeypatch, caplog) -> None:
+    """Following runs ~18 ticks a second.  Every line one tick writes goes
+    through ``trcc.frame``: on his desk six emitters wrote 109 lines a second
+    to the file a report is read from (one at INFO), and it rotated every
+    minute.  MUTATION CHECK: log ``App.publish`` with ``log.info`` again."""
+    import logging
+
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.events import FrameSent
+    from trcc.core.logs import PER_FRAME_ROOT
+    from trcc.modules.rgb.core.events import RgbFollowSent
+
+    made: list[FakeMirror] = []
+
+    def make(mode: RgbFollowMode, host: str, port: int) -> FakeMirror:
+        made.append(FakeMirror(mode, host, port))
+        return made[-1]
+
+    def filled(rgb: tuple[int, int, int]) -> QImage:
+        image = QImage(320, 320, QImage.Format.Format_ARGB32)
+        image.fill(QColor(*rgb))
+        return image
+
+    app = App(MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path),
+              renderer=QtRenderer())
+    rgb_module(app).mirror._make = make
+    under = [filled(BLUE)]                 # what the panel shows under its text
+    monkeypatch.setattr(app.display, "background_surface",
+                        lambda key: under[0] if key == "0402:3922" else None)
+    reported: list[RgbFollowSent] = []
+    app.events.subscribe(RgbFollowSent, reported.append)
+    assert app.dispatch(SetRgbFollow(mode=OPENRGB, source="0402:3922")).ok
+
+    def tick(rgb: tuple[int, int, int]) -> None:
+        """Frames, as a panel streams them, until one is sent: the picture
+        under them *rgb* -- new colours -- and frames inside the follower's
+        interval dropped, as on the desk."""
+        under[0] = filled(rgb)
+        sent = len(reported)
+
+        def sent_one() -> bool:
+            app.events.publish(FrameSent(key="0402:3922", bytes_sent=1,
+                                         surface=filled((255, 255, 255))))
+            return len(reported) > sent
+
+        _until(sent_one)
+
+    tick(BLUE)              # the first one connects -- a one-shot line, rightly
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        tick((255, 0, 0))
+        records = list(caplog.records)
+    app.close()
+    outside = sorted({f"{r.levelname} {r.name}:{r.funcName}" for r in records
+                      if r.name.startswith("trcc.")
+                      and not r.name.startswith(f"{PER_FRAME_ROOT}.")})
+    assert outside == []
+
+
 # ── The RGB page's Commands: lights, Find, effects ─────────────────────────
 
 def _lights_app(tmp_path: Path) -> tuple[App, _PlatformWithRam, list]:

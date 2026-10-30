@@ -28,6 +28,7 @@ from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 from ..core.errors import ModuleUnavailable
+from ..core.logs import per_frame, sink_for
 from ..core.models import ModuleInfo, ModuleManifest, PanelPicture, RawFrame
 from ..core.ports import (
     BackgroundKind,
@@ -58,6 +59,7 @@ from ..core.registry import ALL_DEVICES
 from .settings import Settings
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 _C = TypeVar("_C", bound=type)
 
@@ -231,7 +233,7 @@ class _Readings(ReadingsPort):
         self._services = services
 
     def latest(self) -> Mapping[str, float] | None:
-        log.debug("_Readings.latest")
+        frame_log.debug("_Readings.latest")         # every follow tick
         return self._services.latest_readings()
 
 
@@ -338,7 +340,8 @@ class ModuleScope(ModuleHost):
         }
 
     def publish(self, event: Any) -> None:
-        log.debug("ModuleScope.publish: %s %s", self._key, type(event).__name__)
+        sink = sink_for(type(event).LOG_LEVEL, log, frame_log)
+        sink.debug("ModuleScope.publish: %s %s", self._key, type(event).__name__)
         self._services.publish(event)
 
     def subscribe(self, event_type: Any, handler: Any) -> None:

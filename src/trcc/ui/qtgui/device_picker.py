@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import DiscoverDevices, ListDevices
+from ...core.logs import per_frame
 from ..device_selection import DeviceSelection
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class DevicePickerWidget(QWidget):
@@ -141,7 +143,7 @@ class DevicePickerWidget(QWidget):
         back to the typed text only when nothing is selected (the editable
         "type a raw key" path).
         """
-        log.debug("current_key")
+        frame_log.debug("current_key")     # read on every video frame
         data = self._combo.currentData()
         if data:
             return str(data).strip()

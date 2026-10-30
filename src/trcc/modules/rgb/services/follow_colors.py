@@ -50,7 +50,7 @@ _LED_LEVELS = tuple(round(255 * (v / 255) ** GAMMA) for v in range(256))
 
 def strip_spans(width: int, columns: int) -> tuple[tuple[int, int], ...]:
     """Each column's ``(x, width)`` in a picture *width* wide."""
-    log.debug("strip_spans: width=%d columns=%d", width, columns)
+    frame_log.debug("strip_spans: width=%d columns=%d", width, columns)  # per tick
     if columns <= 1:
         return ((0, width),)
     strip = max(1, round(width * STRIP_SHARE))

@@ -166,7 +166,7 @@ class RgbModule(BaseModule, key="rgb"):
 
     def _sent(self, source: str, columns: Columns) -> None:
         """What following just sent, for every window's preview."""
-        log.debug("rgb._sent: %s %d column(s)", source, len(columns))
+        frame_log.debug("rgb._sent: %s %d column(s)", source, len(columns))
         self.host.publish(RgbFollowSent(source=source, columns=columns))
 
     def _picture(self, picture: PanelPicture) -> None:

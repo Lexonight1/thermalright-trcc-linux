@@ -50,8 +50,9 @@ from PySide6.QtWidgets import (
 )
 
 from trcc.core.commands import Command
+from trcc.core.events import Event
 from trcc.core.led_models import linked_preview, stretch
-from trcc.core.logs import per_frame
+from trcc.core.logs import per_frame, sink_for
 from trcc.core.ports import CommandBus
 from trcc.core.results import DeviceEntry, Result
 from trcc.modules.rgb.core.events import RGB_CHANGES, RgbFollowChanged, RgbFollowSent
@@ -1238,9 +1239,10 @@ class _RgbEvents(QObject):
         log.debug("_RgbEvents.__init__")
         self._page = page
 
-    def route(self, event: object) -> None:
+    def route(self, event: Event) -> None:
         """A module's event: RGB's own, to the preview or the page."""
-        log.debug("_RgbEvents.route: %s", type(event).__name__)
+        sink = sink_for(type(event).LOG_LEVEL, log, frame_log)
+        sink.debug("_RgbEvents.route: %s", type(event).__name__)
         if isinstance(event, RgbFollowSent):
             self._page.follow.on_follow_sent(event)
         elif isinstance(event, RGB_CHANGES):

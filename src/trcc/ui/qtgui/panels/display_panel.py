@@ -42,6 +42,7 @@ from ....core.events import (
     VideoStarted,
     VideoStopped,
 )
+from ....core.logs import per_frame
 from ....core.models import MEDIA, MediaKind
 from ...bus_bridge import DeviceSettingsEvent
 from ...presentation.display_source import describe_source
@@ -50,6 +51,7 @@ from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class DisplayPanel(BasePanel):
@@ -369,7 +371,7 @@ class DisplayPanel(BasePanel):
         """
         if event.key != self._picker.current_key() or self._seek.isSliderDown():
             return
-        log.debug("_on_video_advanced: %s %d/%d",
+        frame_log.debug("_on_video_advanced: %s %d/%d",
                   event.key, event.cursor, event.frame_count)
         self._show_position(event.cursor, event.frame_count, event.fps)
 
@@ -389,7 +391,7 @@ class DisplayPanel(BasePanel):
 
     def _show_position(self, cursor: int, total: int, fps: int) -> None:
         """Put a playback position on the slider; ``total == 0`` is no video."""
-        log.debug("_show_position: %d/%d @ %d fps", cursor, total, fps)
+        frame_log.debug("_show_position: %d/%d @ %d fps", cursor, total, fps)
         if not total:
             self._seek.setEnabled(False)
             self._seek_label.setText("no video")

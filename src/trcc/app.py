@@ -538,7 +538,9 @@ class App(CommandBus, ModuleServices):
 
     def publish(self, event: Any) -> None:
         """A module tells every UI something happened."""
-        log.info("publish (module): %s", type(event).__name__)
+        level = type(event).LOG_LEVEL
+        sink = sink_for(level, log, frame_log)
+        sink.log(level, "publish (module): %s", type(event).__name__)
         self.events.publish(event)
 
     def subscribe(self, event_type: Any, handler: Any) -> None:

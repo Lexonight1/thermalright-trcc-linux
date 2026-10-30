@@ -242,7 +242,7 @@ class AuraMainboard(RgbMirror):
         if not self._channels:
             self._channels = self._make_channels(self.layout())
         devices = tuple(c.device for c in self._channels)
-        log.debug("AuraMainboard.devices: %s", [d.ref for d in devices])
+        frame_log.debug("AuraMainboard.devices: %s", [d.ref for d in devices])  # per tick
         return devices
 
     def show(self, device: RgbMirrorDevice, colors: Sequence[Rgb]) -> None:
