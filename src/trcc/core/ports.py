@@ -2759,7 +2759,8 @@ class HardwarePort(ABC):
     @abstractmethod
     def open_hid(self, vid: int, pid: int, report_id: int) -> Transport:
         """An unopened HID transport to *vid*:*pid* writing report
-        *report_id*."""
+        *report_id*.  Never one of TRCC's own panels (``ALL_DEVICES``): the
+        App drives those, so asking for one raises ``ModuleUnavailable``."""
 
     @abstractmethod
     def substitute(self, cls: _C) -> _C:

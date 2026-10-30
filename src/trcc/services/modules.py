@@ -54,6 +54,7 @@ from ..core.ports import (
     ThemesPort,
     Transport,
 )
+from ..core.registry import ALL_DEVICES
 from .settings import Settings
 
 log = logging.getLogger(__name__)
@@ -235,9 +236,12 @@ class _Readings(ReadingsPort):
 
 
 class _Hardware(HardwarePort):
-    def __init__(self, services: ModuleServices) -> None:
-        log.debug("_Hardware.__init__")
-        self._services = services
+    """Lighting hardware -- never one of TRCC's own panels, which the App
+    drives: a module opening one would be a second writer on its wire."""
+
+    def __init__(self, services: ModuleServices, manifest: ModuleManifest) -> None:
+        log.debug("_Hardware.__init__: %s", manifest.key)
+        self._services, self._manifest = services, manifest
 
     def smbuses(self) -> tuple[SmBus, ...]:
         log.debug("_Hardware.smbuses")
@@ -248,7 +252,14 @@ class _Hardware(HardwarePort):
         return self._services.hardware_ids()
 
     def open_hid(self, vid: int, pid: int, report_id: int) -> Transport:
-        log.info("hardware.open_hid: %04x:%04x report %#x", vid, pid, report_id)
+        log.info("hardware.open_hid: %s %04x:%04x report %#x", self._manifest.key,
+                 vid, pid, report_id)
+        if (vid, pid) in ALL_DEVICES:
+            log.warning("hardware.open_hid: %s refused %04x:%04x -- a TRCC panel",
+                        self._manifest.key, vid, pid)
+            raise ModuleUnavailable(
+                f"{self._manifest.title} asked for {vid:04x}:{pid:04x} -- a TRCC "
+                "panel, which TRCC drives itself")
         return self._services.open_hid(vid, pid, report_id)
 
     def substitute(self, cls: _C) -> _C:
@@ -321,7 +332,7 @@ class ModuleScope(ModuleHost):
             "files": _Files(services),
             "frames": _Frames(self),
             "readings": _Readings(services),
-            "hardware": _Hardware(services),
+            "hardware": _Hardware(services, manifest),
             "password": _Password(services),
             "network": _Network(services, manifest),
         }

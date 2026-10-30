@@ -31,6 +31,7 @@ from trcc.core.errors import ModuleUnavailable
 from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
 from trcc.core.models import ModuleAsks, PanelPicture, Wire
 from trcc.core.ports import CommandBus, Module, ModuleHost
+from trcc.core.registry import ALL_DEVICES
 from trcc.core.results import Result
 
 from .conftest import FakePlatform
@@ -838,6 +839,30 @@ def test_readings_hardware_and_the_password_come_from_the_platform(
         None, "no SMBus access on FakePlatform", platform.bulk)
     assert type(got["ids"]) is type(platform.rgb_hardware())
     assert type(got["access"]) is type(platform.ram_access())
+
+
+@pytest.mark.parametrize(("vid", "pid"), sorted(ALL_DEVICES))
+def test_a_module_never_opens_a_trcc_panel(tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+                                           vid: int, pid: int) -> None:
+    """The App drives its panels; a module opening one would be a second
+    writer on its wire.  Refused at the door, before the Platform is asked.
+    MUTATION CHECK: drop the ``ALL_DEVICES`` test in ``_Hardware.open_hid``."""
+    platform = FakePlatform(tmp_home)
+    opened: list[tuple[int, int]] = []
+    monkeypatch.setattr(platform, "open_transport",
+                        lambda wire, v, p, *a, **k: opened.append((v, p)))
+
+    class Grabs(_Recording):
+        key, title, capabilities = "grabs", "Grabs", ("hardware",)
+
+        def _enable(self, host: ModuleHost) -> None:
+            host.hardware.open_hid(vid, pid, 0)
+
+    app = App(platform=platform, modules={"grabs": Grabs})
+    result = app.dispatch(SetModuleEnabled(key="grabs", enabled=True))
+    assert (result.ok, result.message, opened) == (
+        False, f"Grabs asked for {vid:04x}:{pid:04x} -- a TRCC panel, which TRCC "
+               "drives itself", [])
 
 
 def test_the_readings_are_the_last_sweep_and_read_only(tmp_home: Path) -> None:
