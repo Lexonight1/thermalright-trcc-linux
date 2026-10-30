@@ -31,6 +31,9 @@ _ACTIONS: dict[str, tuple[str, bool]] = {
 #: What a tile says after an update, while this window holds the old code.
 REOPEN = "Reopen this window to finish updating."
 REVIEWED = "Reviewed by TRCC -- not guaranteed safe."
+#: What "Get modules" says when the index lists nothing -- never a blank
+#: page, which reads the same as a list that quietly failed.
+NONE_LISTED = "No modules are listed yet."
 #: What a folder install's permission screen says in its place.
 UNSIGNED = "Unsigned: nobody reviewed it. Install only code you trust."
 #: Developer mode's switch, and the button it shows.

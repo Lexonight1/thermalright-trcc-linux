@@ -164,6 +164,21 @@ def test_an_index_that_cannot_be_read_says_why(qtbot: Any, view: Any, app: _App)
     assert view.catalog == () and view.actions == {}
 
 
+def test_an_index_that_lists_nothing_says_so(qtbot: Any, view: Any, app: _App) -> None:
+    """Never a blank page: an empty list must not read like one that
+    quietly failed.  MUTATION CHECK: drop the ``elif not self.catalog`` branch."""
+    from PySide6.QtWidgets import QLabel
+
+    app.catalog = ModuleCatalogResult(ok=True, modules=())
+    view.open_catalog()
+
+    def said() -> list[str]:
+        return [label.text() for label in view.findChildren(QLabel, "modulesEmpty")]
+
+    qtbot.waitUntil(lambda: said() == ["No modules are listed yet."], timeout=3000)
+    assert (view.catalog, view.catalog_note, view.actions) == ((), "", {})
+
+
 def test_back_shows_the_tiles_again(qtbot: Any, view: Any) -> None:
     _browse(qtbot, view)
     view.close_catalog()

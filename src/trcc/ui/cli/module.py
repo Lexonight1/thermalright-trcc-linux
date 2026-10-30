@@ -28,6 +28,7 @@ from ...core.commands import (
 )
 from ...core.models import AvailableModule
 from ..presentation.module_catalog import (
+    NONE_LISTED,
     byline,
     consent,
     problem_line,
@@ -93,7 +94,11 @@ def _listed() -> tuple[AvailableModule, ...]:
 def available() -> None:
     """Every module you can install, and the ones you have."""
     log.info("cli system modules available")
-    for m in _listed():
+    if not (modules := _listed()):
+        log.info("cli system modules available: the index lists no module")
+        typer.echo(NONE_LISTED)
+        return
+    for m in modules:
         typer.echo(f"  [{m.status:<9}] {m.key:<16} {m.version:<8} {m.title} -- {m.summary}")
         if m.status == "update":
             typer.echo(f"        installed: {m.installed_version}")

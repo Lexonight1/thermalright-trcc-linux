@@ -614,6 +614,17 @@ def test_the_cli_list_says_where_each_module_came_from(
     assert lines[at + 1] == "        Version 1 · by Ada Author · Installed"
 
 
+def test_the_cli_says_when_the_index_lists_nothing(
+        cli_runner: Any, cli_app: App, shop: Shop) -> None:
+    """The live index's first state: signed, valid, empty.  A silent exit 0
+    read like a list that quietly failed."""
+    from trcc.ui.cli.main import app
+
+    shop._publish()
+    listed = cli_runner.invoke(app, ["system", "modules", "available"])
+    assert (listed.exit_code, listed.output) == (0, "No modules are listed yet.\n")
+
+
 def test_the_cli_asks_the_app_for_an_installed_modules_command(
         cli_runner: Any, cli_app: App, shop: Shop) -> None:
     """Not a command this process has: the CLI asks the App which modules it

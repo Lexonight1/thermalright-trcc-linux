@@ -56,6 +56,7 @@ from ._module_faces import face_loaded
 from .presentation.module_catalog import (
     DEVELOPER_MODE,
     FROM_FOLDER,
+    NONE_LISTED,
     REOPEN,
     byline,
     catalog_rows,
@@ -411,6 +412,12 @@ class ModulesView(QScrollArea):
             note.setObjectName("moduleProblem")
             note.setWordWrap(True)
             self._column.addWidget(note)
+        elif not self.catalog:
+            log.info("ModulesView._show_catalog: the index lists no module")
+            empty = QLabel(self._translate(NONE_LISTED))
+            empty.setObjectName("modulesEmpty")
+            empty.setWordWrap(True)
+            self._column.addWidget(empty)
         for row in catalog_rows(self.catalog, self._translate):
             frame = QFrame()
             frame.setObjectName("moduleTile")

@@ -19,6 +19,9 @@ picture -- or, in the gui, a full-window view by name (``about``, ``rgb``, ``tha
 ``--lang CODE`` sets the window's language.
 ``--developer`` switches developer mode on through the App AFTER the window is
 up -- as another UI would -- so the picture shows the Modules page following it.
+``--browse`` presses "Get modules" on each Modules page and prints what the
+page then says; with ``--online`` the App reads the REAL network (the live
+module index) while USB stays scripted -- without it, the index is offline.
 Prints what it saw: each module's tab or entry and whether it is visible.
 """
 from __future__ import annotations
@@ -56,13 +59,32 @@ def _settle(app: object, seconds: float = 0.2) -> None:
         time.sleep(0.02)
 
 
+def _platform(root: Path, online: bool) -> Any:
+    """One scripted panel; the real network only when *online*."""
+    from tests.mock_platform import MockPlatform
+
+    log.info("_platform: %s online=%s", root, online)
+    if not online:
+        return MockPlatform([_SPEC], root)
+    from trcc.adapters.repo.http import UrllibHttpFetcher
+
+    class _Online(MockPlatform):
+        """Scripted USB, the real network -- "Get modules" reads the live index."""
+
+        def http_fetcher(self) -> UrllibHttpFetcher:
+            log.info("_Online.http_fetcher: the real network")
+            return UrllibHttpFetcher()
+
+    return _Online([_SPEC], root)
+
+
 def shoot(face: str, out: Path, modules: list[str], open_key: str,
-          wait: float = 3.0, lang: str = "", developer: bool = False) -> list[str]:
+          wait: float = 3.0, lang: str = "", developer: bool = False,
+          browse: bool = False, online: bool = False) -> list[str]:
     """Build *face*, switch *modules*, open *open_key*, save the window to
     *out*; what each module's tab or entry looked like."""
     from PySide6.QtWidgets import QApplication
 
-    from tests.mock_platform import MockPlatform
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
     from trcc.core.commands import ConnectDevice, SetLanguage, SetModuleEnabled
@@ -71,7 +93,7 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
              open_key, developer)
     qapp = QApplication.instance() or QApplication(sys.argv)
     root = Path(tempfile.mkdtemp(prefix="trcc-shot-"))
-    app = App(MockPlatform([_SPEC], root), renderer=QtRenderer())
+    app = App(_platform(root, online), renderer=QtRenderer())
     app.start_session()
     app.dispatch(ConnectDevice(key=_KEY))
     if lang:
@@ -112,6 +134,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
                         f"visible={entry.isVisibleTo(window)}")
     if developer:
         seen += _developer_mode(app, window, qapp)
+    if browse:
+        seen += _browse(window, qapp, wait)
     _settle(qapp, wait)
     window.grab().save(str(out))
     window.close()
@@ -139,6 +163,28 @@ def _developer_mode(app: Any, window: Any, qapp: Any) -> list[str]:
     return lines or ["modules page: none in this window"]
 
 
+def _browse(window: Any, qapp: Any, wait: float) -> list[str]:
+    """Press "Get modules" on each Modules page in *window*; what each says
+    once the index has answered."""
+    from PySide6.QtWidgets import QLabel
+
+    from trcc.ui.qt_modules import ModulesView
+
+    views = window.findChildren(ModulesView)
+    log.info("_browse: %d Modules page(s)", len(views))
+    for view in views:
+        view.open_catalog()
+    _settle(qapp, wait)
+    lines = []
+    for view in views:
+        says = [label.text() for label in view.findChildren(QLabel)
+                if label.objectName() in ("modulesEmpty", "moduleProblem")
+                and label.isVisibleTo(window)]
+        lines.append(f"get modules: {len(view.catalog)} listed, note={view.catalog_note!r}, "
+                     f"says={says}")
+    return lines or ["get modules: no Modules page in this window"]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("face", choices=("gui", "qtgui"))
@@ -149,11 +195,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lang", default="", help="the window's language, e.g. de")
     ap.add_argument("--developer", action="store_true",
                     help="switch developer mode on after the window is up")
+    ap.add_argument("--browse", action="store_true",
+                    help='press "Get modules" and print what the page says')
+    ap.add_argument("--online", action="store_true",
+                    help="let the App reach the real network (the live module index)")
     ap.add_argument("--wait", type=float, default=3.0,
                     help="seconds to let background answers arrive first")
     args = ap.parse_args(argv)
     for line in shoot(args.face, args.out, args.module, args.open, args.wait,
-                      args.lang, args.developer):
+                      args.lang, args.developer, args.browse, args.online):
         print(line)
     print(f"saved {args.out}")
     return 0
