@@ -59,11 +59,11 @@ def _settle(app: object, seconds: float = 0.2) -> None:
         time.sleep(0.02)
 
 
-def _platform(root: Path, online: bool) -> Any:
+def mock_platform(root: Path, online: bool) -> Any:
     """One scripted panel; the real network only when *online*."""
     from tests.mock_platform import MockPlatform
 
-    log.info("_platform: %s online=%s", root, online)
+    log.info("mock_platform: %s online=%s", root, online)
     if not online:
         return MockPlatform([_SPEC], root)
     from trcc.adapters.repo.http import UrllibHttpFetcher
@@ -93,7 +93,7 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
              open_key, developer)
     qapp = QApplication.instance() or QApplication(sys.argv)
     root = Path(tempfile.mkdtemp(prefix="trcc-shot-"))
-    app = App(_platform(root, online), renderer=QtRenderer())
+    app = App(mock_platform(root, online), renderer=QtRenderer())
     app.start_session()
     app.dispatch(ConnectDevice(key=_KEY))
     if lang:

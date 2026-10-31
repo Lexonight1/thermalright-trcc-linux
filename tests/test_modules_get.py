@@ -242,6 +242,19 @@ def test_only_an_installed_module_has_a_remove(view: Any) -> None:
     assert set(view.removes) == {"ticker"}           # rgb is built in
 
 
+def test_a_module_installed_from_a_folder_has_a_remove(view: Any, app: _App) -> None:
+    """Install from folder had no way back in either window: Remove showed
+    only for "installed", never "unsigned" -- while the App, the CLI and the
+    API removed it.  Found by dev/tools/drive_modules.py.  MUTATION CHECK:
+    drop "unsigned" from ``_REMOVABLE``."""
+    app.tiles = (*app.tiles, ModuleInfo(key="hello", title="Hello", summary="Hi.",
+                                        enabled=False, origin="unsigned"),
+                 ModuleInfo(key="loose", title="Loose", summary="By hand.",
+                            enabled=False, origin="by hand"))
+    view.refresh()
+    assert set(view.removes) == {"ticker", "hello"}
+
+
 def test_a_removal_asks_first(qtbot: Any, view: Any, app: _App) -> None:
     asked = _answers(view, False, True)
     view.removes["ticker"].click()

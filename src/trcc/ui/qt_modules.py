@@ -62,6 +62,7 @@ from .presentation.module_catalog import (
     catalog_rows,
     consent,
     problem_line,
+    removable,
     removal_question,
 )
 from .qt_background import dispatch_in_background
@@ -291,7 +292,7 @@ class ModulesView(QScrollArea):
             text.addWidget(guide, 0, Qt.AlignmentFlag.AlignLeft)
         row.addLayout(text, 1)
         self._titles[module.key] = module.title
-        if module.origin == "installed":     # TRCC's own are never removed
+        if removable(module):     # never TRCC's own, nor one with no record
             remove = QPushButton(self._translate("Remove"))
             remove.setObjectName("moduleRemove")
             remove.setCursor(Qt.CursorShape.PointingHandCursor)

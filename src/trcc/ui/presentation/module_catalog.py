@@ -47,6 +47,16 @@ _ORIGINS: dict[str, str] = {
     "by hand": "Copied in by hand",
     "unsigned": "Unsigned -- never reviewed",
 }
+#: The origins with a record the App can remove: from the index, or from a
+#: folder.  A built-in ships with TRCC; one copied in by hand has no record.
+_REMOVABLE = frozenset({"installed", "unsigned"})
+
+
+def removable(module: ModuleInfo) -> bool:
+    """Whether *module*'s tile offers Remove -- the same in every window."""
+    can = module.origin in _REMOVABLE
+    log.debug("removable: %s (%s) -> %s", module.key, module.origin, can)
+    return can
 
 
 def byline(module: ModuleInfo, tr: Callable[[str], str]) -> str:
