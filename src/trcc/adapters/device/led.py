@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import struct
 import threading
+import time
 from pathlib import Path
 
 from ...core.errors import (
@@ -50,6 +51,10 @@ _CMD_DATA = 2
 _COLOR_SCALE = 0.4
 
 _DEFAULT_TIMEOUT_MS = 100
+
+#: Quiet gap between two frames: the firmware garbles a frame that arrives
+#: while it is still drawing the one before it.
+_MIN_FRAME_GAP_S = 0.030
 
 
 # =========================================================================
@@ -153,6 +158,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
         log.debug("__init__: info=%s transport=%s", info, transport)
         super().__init__(info, transport)
         self._send_lock = threading.Lock()
+        self._last_frame_at: float | None = None
         self._pm: int = 0
         self._sub: int = 0
         self._led_handshake: LedHandshakeResult | None = None
@@ -335,6 +341,9 @@ class Led(BaseBulkDevice, wire=Wire.LED):
         Wraps the shared send Template Method in the single-flight lock: the
         LED firmware can't take a second packet while one is in flight, so a
         colliding tick is dropped rather than queued.
+
+        Consecutive sends are throttled by :data:`_MIN_FRAME_GAP_S`: two frames
+        a few milliseconds apart garble the panel even when they do not overlap.
         """
         if not isinstance(payload, LedPayload):
             log.error("Led %s: send() got %s, expected LedPayload",
@@ -347,10 +356,18 @@ class Led(BaseBulkDevice, wire=Wire.LED):
             log.debug("Led %s: already sending — skipped", self.info.key)
             return False
         try:
+            # Don't hand the panel a second frame until it has drawn the first.
+            now = time.monotonic()
+            if self._last_frame_at is not None:
+                wait = _MIN_FRAME_GAP_S - (now - self._last_frame_at)
+                # Sub-millisecond remainders are float noise, not a pause.
+                if wait > 0.0005:
+                    time.sleep(wait)
             # Shared policy on the base: connected-guard → _prepare_frame →
             # _write_frame under the reconnect + recovery escalation.
             return super().send(payload)
         finally:
+            self._last_frame_at = time.monotonic()
             self._send_lock.release()
 
     def _prepare_frame(self, payload: LedPayload) -> bytes:

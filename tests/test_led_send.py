@@ -5,6 +5,9 @@ and asserts the wire bytes reflect the per-style remap.
 """
 from __future__ import annotations
 
+import time
+
+from trcc.adapters.device import led as led_module
 from trcc.adapters.device.led import (
     _COLOR_SCALE,
     _HID_REPORT_SIZE,
@@ -202,3 +205,60 @@ def test_the_per_frame_send_line_renders_an_led_frame(caplog) -> None:
     frame = led._prepare_frame(payload)       # pure: exactly what was written
     assert sends == [f"send: LedPayload -> frame={len(frame)} bytes, "
                      f"first 16: {frame[:16].hex(' ')}"]
+
+
+# ── frame throttling: a panel is never handed two frames back to back ─
+
+
+def _gap() -> float:
+    """The throttle gap, read off the module so this file still collects on a
+    build that predates it and fails on the assertion, not on the import."""
+    return float(getattr(led_module, "_MIN_FRAME_GAP_S", 0.0))
+
+
+def test_a_second_frame_waits_for_the_panel(monkeypatch) -> None:
+    """Two frames back to back garble the panel, so the wire throttles them.
+
+    A keepalive landing on a render tick is exactly that case.
+    """
+    gap = _gap()
+    led, _transport = _connected_led(pm=16)
+    clock = [1000.0]
+    slept: list[float] = []
+    # The stdlib module: a build without the fix never imports ``time``.
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", slept.append)
+
+    frame = LedPayload(colors=[(255, 0, 0)] * 84)
+    led.send(frame)
+    assert slept == [], "the first frame has nothing to wait for"
+
+    clock[0] += 0.005                       # a few ms after the last frame
+    led.send(LedPayload(colors=[(0, 255, 0)] * 84))
+    assert len(slept) == 1, "a frame 5 ms later must be held back"
+    assert abs(slept[0] - (gap - 0.005)) < 1e-9, \
+        "the second frame waits out only the missing part of the gap"
+
+    clock[0] += gap                         # already quiet long enough
+    led.send(frame)
+    assert len(slept) == 1, "a frame after a quiet gap is not delayed"
+
+
+def test_the_keepalive_and_the_render_tick_do_not_collide(monkeypatch) -> None:
+    """A keepalive, then the render a few milliseconds later."""
+    gap = _gap()
+    led, _transport = _connected_led(pm=16)
+    clock = [500.0]
+    slept: list[float] = []
+    # The stdlib module: a build without the fix never imports ``time``.
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", slept.append)
+
+    old = LedPayload(colors=[(10, 10, 10)] * 84)
+    new = LedPayload(colors=[(20, 20, 20)] * 84)
+    led.send(old)
+    clock[0] += 0.010                      # still inside the gap
+    led.send(new)
+
+    assert len(slept) == 1, "the keepalive and the render must not collide"
+    assert abs(slept[0] - (gap - 0.010)) < 1e-9
