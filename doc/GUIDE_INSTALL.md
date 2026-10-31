@@ -1039,6 +1039,12 @@ themselves; `pip`/`pipx uninstall` cannot, so run `ram-lighting disable` and
 `~/.trcc-user/` holds themes and backgrounds **you** authored — back it up
 first if you want to keep them.
 
+**Then unplug and replug your cooler's LCD (or restart).** Removing TRCC's
+udev rules does not take back the access they gave your panels and your
+motherboard's RGB chip: udev keeps the tag the rule set until the device is
+plugged in again, so until then you — and the `trcc` group — can still open
+them.
+
 ### Manual removal (if `trcc` command is unavailable)
 
 ```bash
