@@ -1261,7 +1261,7 @@ Install the OS-specific autostart entry (per-user, no sudo).
 
 ### `GenerateDebugReport`
 
-Build a debug report bundle for the user to paste into a GitHub issue.
+Build a debug report bundle for the user to attach to a GitHub issue.
 
 *Command* → `DebugReportPayload`
 
@@ -1269,6 +1269,7 @@ Build a debug report bundle for the user to paste into a GitHub issue.
 |---|---|---|
 | `output_path` | `Path | None` | no |
 | `log_tail_lines` | `int` | no |
+| `to_report_file` | `bool` | no |
 
 ### `GetAutostartStatus`
 

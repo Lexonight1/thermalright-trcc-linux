@@ -140,9 +140,10 @@ That is an alias for `trcc system debug-report`. It gathers the install and
 platform details, resolved paths, detected devices, the handshake probe
 (PM byte, resolution, serial), sensor readings, powercap state, your
 settings, the health checks, and the tail of `~/.trcc/trcc.log` — everything
-needed to diagnose a device, in one dump. Copy-paste the entire output into a
-[GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues),
-or use `trcc report -o report.txt` to write it to a file.
+needed to diagnose a device, in one file: it saves `trcc-report.txt` in your
+home folder and prints where. Attach that file to a
+[GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues)
+(`trcc report -o -` prints it to the terminal instead).
 
 **Also include:**
 

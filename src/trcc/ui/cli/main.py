@@ -618,23 +618,18 @@ def shell() -> None:
 def _alias_report(
     output: Path | None = typer.Option(
         None, "--output", "-o",
-        help="Write the report to this path instead of stdout.",
+        help="Where to write the report (default trcc-report.txt in your home "
+             "folder) -- attach that file to a GitHub issue.  '-' prints it instead.",
     ),
     log_lines: int = typer.Option(
         1000, "--log-lines",
         help="How many trailing log lines to include.",
     ),
 ) -> None:
-    """Alias for `trcc system debug-report` — full diagnostic dump."""
+    """Alias for `trcc system debug-report` — the report file for an issue."""
     log.info("cli report: output=%s log_lines=%s", output, log_lines)
-    from ...core.commands import GenerateDebugReport
-    result = get_app().dispatch(GenerateDebugReport(
-        output_path=output, log_tail_lines=log_lines,
-    ))
-    if output is None:
-        typer.echo(result.rendered_text)
-    else:
-        typer.echo(result.message)
+    from .system import debug_report
+    debug_report(output=output, log_lines=log_lines)
 
 
 @app.command("detect", rich_help_panel="Diagnostics")

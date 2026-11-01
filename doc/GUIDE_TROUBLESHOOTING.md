@@ -497,6 +497,6 @@ trcc system setup    # applies the setup (udev rules, quirks, …), then lists a
 
 ## Still Stuck?
 
-1. Run `trcc report` and copy the full output
-2. [Open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with the report
+1. Run `trcc report` — it saves `trcc-report.txt` in your home folder
+2. [Open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) and attach that file
 3. Include your distro, kernel version (`uname -r`), and what you've tried

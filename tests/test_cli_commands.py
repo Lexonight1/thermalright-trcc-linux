@@ -1150,9 +1150,27 @@ def test_system_debug_report_to_stdout(
     cli_runner: CliRunner, cli_app,
 ) -> None:
     del cli_app
-    result = cli_runner.invoke(_app(), ["system", "debug-report"])
+    result = cli_runner.invoke(_app(), ["system", "debug-report", "-o", "-"])
     assert result.exit_code == 0
     assert "## Platform" in result.output
+
+
+@pytest.mark.parametrize("command", [["report"], ["system", "debug-report"]])
+def test_the_report_goes_to_the_report_file_by_default(
+    cli_runner: CliRunner, cli_app, command: list[str],
+) -> None:
+    """#330's report was pasted from the terminal and arrived with every
+    section above the log tail cut off.  Without ``-o`` it is a file to
+    attach, where the OS says (``Paths.report_file``), and the command says
+    where -- both spellings, one body.  MUTATION CHECK: drop
+    ``to_report_file`` from the CLI."""
+    result = cli_runner.invoke(_app(), command)
+    report = cli_app.platform.paths().report_file()
+    assert result.exit_code == 0
+    assert "## Platform" in report.read_text(encoding="utf-8")
+    assert "## Platform" not in result.output
+    assert result.output.splitlines()[-1] == "Attach that file to your GitHub issue."
+    assert str(report) in result.output
 
 
 def test_system_debug_report_to_file(

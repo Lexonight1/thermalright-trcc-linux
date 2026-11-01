@@ -64,16 +64,25 @@ _ROUTING = frozenset({"key"})
 # ``test_ui_parity``).  The count is asserted below so the backlog is visible
 # and can only shrink by someone reading one.
 KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
+    # A terminal cannot ask where the report goes, so the CLI asks the OS
+    # (Paths.report_file, the home folder).  The windows ask the person.
+    ("GenerateDebugReport", "gui"): (frozenset({"to_report_file"}), (
+        "scoped: the window asks where with a save dialog and always passes "
+        "output_path; the default location is for a terminal, which cannot ask")),
+    ("GenerateDebugReport", "qtgui"): (frozenset({"to_report_file"}), (
+        "scoped: the window asks where with a save dialog and always passes "
+        "output_path; the default location is for a terminal, which cannot ask")),
     ("AddOverlayElement", "qtgui"): (frozenset({"element_id"}), (
         "scoped: the id is auto-generated (UUID4) when omitted and returned in "
         "the Result; the editor never needs to choose one, while a script or a "
         "REST client may want an idempotent id"
     )),
-    ("GenerateDebugReport", "api"): (frozenset({"output_path"}), (
+    ("GenerateDebugReport", "api"): (frozenset({"output_path", "to_report_file"}), (
         "scoped: TRACED 2026-09-26.  The API writes nothing where a client "
         "says -- it wrote this report over an existing file anywhere the "
         "process could (the trust-boundary pass).  The text comes back in the "
-        "response body; ``trcc report -o`` still writes a file, locally"
+        "response body; ``trcc report`` still writes a file, locally -- "
+        "to_report_file too: that file would land on the App's machine"
     )),
     ("BuildPreview", "api"): (frozenset({"sample_cols"}), (
         "unclassified: measured 2026-09-22, not traced"

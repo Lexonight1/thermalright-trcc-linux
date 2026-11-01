@@ -1422,6 +1422,17 @@ class Paths(ABC):
         log.debug("user_modules_dir: called")
         return self.user_content_dir() / "modules"
 
+    #: The report's file name when the user names no file (``trcc report``).
+    REPORT_FILE_NAME = "trcc-report.txt"
+
+    def report_file(self) -> Path:
+        """Where ``trcc report`` writes when the user names no file: one they
+        can find and attach whole.  Beside the settings by default; an OS
+        layer that knows the user's home puts it there."""
+        path = self.config_dir() / self.REPORT_FILE_NAME
+        log.debug("report_file: %s", path)
+        return path
+
     def is_user_content(self, path: Path) -> bool:
         """True when *path* is an asset the USER authored, not a shipped one.
 

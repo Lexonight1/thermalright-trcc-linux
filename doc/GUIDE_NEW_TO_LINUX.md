@@ -188,7 +188,7 @@ trcc system setup
 ```bash
 trcc report
 ```
-This generates a diagnostic report. Paste it in a [GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) and we'll help you out.
+This saves a diagnostic report, `trcc-report.txt`, in your home folder. Attach it to a [GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) and we'll help you out.
 
 ---
 

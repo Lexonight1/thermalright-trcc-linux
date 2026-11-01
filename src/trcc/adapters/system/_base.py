@@ -102,6 +102,13 @@ class BasePaths(Paths):
         log.debug("%s.log_file → %s", type(self).__name__, path)
         return path
 
+    def report_file(self) -> Path:
+        """The home folder: where a person looks for a file to attach --
+        never the hidden config folder."""
+        path = Path.home() / self.REPORT_FILE_NAME
+        log.debug("%s.report_file → %s", type(self).__name__, path)
+        return path
+
 
 
 

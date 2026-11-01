@@ -432,13 +432,20 @@ def doctor() -> None:
     raise typer.Exit(code=result.exit_code)
 
 
+#: ``-o -``: print the report instead, for a pipe.  Without ``-o`` it is a
+#: file the reporter attaches whole (``Paths.report_file``, the home folder):
+#: printed to the terminal it was cut by the scrollback -- #330's attachment
+#: began mid-log, every section above lost.
+_STDOUT = Path("-")
+
+
 @app.command("debug-report")
 def debug_report(
     output: Path | None = typer.Option(
         None, "--output", "-o",
         help=(
-            "Write the report to this path instead of stdout.  "
-            "Recommended when filing a GitHub issue — attach the file."
+            "Where to write the report (default trcc-report.txt in your home "
+            "folder) -- attach that file to a GitHub issue.  '-' prints it instead."
         ),
     ),
     log_lines: int = typer.Option(
@@ -446,18 +453,21 @@ def debug_report(
         help="How many trailing log lines to include (default 1000).",
     ),
 ) -> None:
-    """Generate a debug report bundle for GitHub issues."""
-    log.info(
-        "cli system debug-report: output=%s log_lines=%s", output, log_lines,
-    )
+    """Generate a debug report file to attach to a GitHub issue."""
+    log.info("cli system debug-report: output=%s log_lines=%s", output, log_lines)
+    to_terminal = output == _STDOUT
     result = get_app().dispatch(GenerateDebugReport(
-        output_path=output, log_tail_lines=log_lines,
+        output_path=None if to_terminal else output, log_tail_lines=log_lines,
+        to_report_file=not to_terminal,
     ))
-    if output is None:
+    if to_terminal:
         typer.echo(result.rendered_text)
+    elif result.ok:
+        typer.echo(f"{result.message}\nAttach that file to your GitHub issue.")
     else:
         typer.echo(result.message)
     if not result.ok:
+        log.warning("cli system debug-report: %s", result.message)
         raise typer.Exit(code=1)
 
 

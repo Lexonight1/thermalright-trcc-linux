@@ -769,35 +769,41 @@ class RunDoctor(Query[DoctorResultPayload]):
 
 @dataclass(frozen=True, slots=True)
 class GenerateDebugReport(Command[DebugReportPayload]):
-    """Build a debug report bundle for the user to paste into a GitHub issue.
+    """Build a debug report bundle for the user to attach to a GitHub issue.
 
     With ``output_path`` set, the bundle lands on disk at that path and
-    the rendered text comes back in the result.  With no output_path,
-    the bundle is rendered into memory only — useful for the API to
-    return the text body directly.
+    the rendered text comes back in the result.  With ``to_report_file``
+    and no path, it lands where the OS says a report goes
+    (``Paths.report_file`` -- the home folder).  With neither, the bundle
+    is rendered into memory only — useful for the API to return the text
+    body directly.
     """
     #: reads only the host + the SHARED log, so it works while the App is hung.
     RUNS_IN_CALLER: ClassVar[bool] = True
     output_path: Path | None = None
     log_tail_lines: int = 1000
+    to_report_file: bool = False
 
     def execute(self, app: App) -> DebugReportPayload:
+        target = self.output_path or (
+            app.platform.paths().report_file() if self.to_report_file else None)
+        log.info("GenerateDebugReport.execute: target=%s", target)
         held, probe = self._held_devices(app)
         modules, modules_error = self._modules(app)
         rendered = app.diagnostics.debug_report(
             self.log_tail_lines, held=held, probe=probe,
             modules=modules, modules_error=modules_error)
         out: str = ""
-        if self.output_path is not None:
+        if target is not None:
             try:
                 written = app.diagnostics.write_debug_report(
-                    rendered, self.output_path,
+                    rendered, target,
                 )
             except OSError as e:
                 log.warning("GenerateDebugReport.execute: write to %s failed: %s",
-                            self.output_path, e)
+                            target, e)
                 return DebugReportPayload(
-                    ok=False, output_path=str(self.output_path),
+                    ok=False, output_path=str(target),
                     rendered_text=rendered,
                     message=f"Generated report but write failed: {e}",
                 )

@@ -131,7 +131,7 @@ Fedora, Nobara, Ubuntu, Debian, Mint, Pop!_OS, Zorin, elementary OS, Arch, Manja
 
 ### Have an untested device?
 
-Run `trcc report` and [paste the output in an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — takes 30 seconds. See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**.
+Run `trcc report` and [attach the `trcc-report.txt` it saves in your home folder to an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — takes 30 seconds. See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**.
 
 ![TRCC Linux GUI](doc/screenshots/screenshot.png)
 

@@ -275,13 +275,13 @@ Show this command's help and exit.
 .PP
 \fBtrcc system debug\-report\fR [\fIOPTIONS\fR]
 .PP
-Generate a debug report bundle for GitHub issues.
+Generate a debug report file to attach to a GitHub issue.
 .PP
 Options:
 .RS 4
 .TP
 \fB\-\-output, \-o \fIOUTPUT\fR\fR
-Write the report to this path instead of stdout. Recommended when filing a GitHub issue  \-  attach the file.
+Where to write the report (default trcc\-report.txt in your home folder) \-\- attach that file to a GitHub issue. '\-' prints it instead.
 .TP
 \fB\-\-log\-lines \fILOG_LINES\fR\fR
 How many trailing log lines to include (default 1000).

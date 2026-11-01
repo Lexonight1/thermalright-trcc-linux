@@ -1066,6 +1066,6 @@ rm -f ~/.local/share/applications/trcc*.desktop
 
 - Run `trcc doctor` to check your system for missing dependencies
 - See the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) for verifying your setup
-- Run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output — this gives us everything we need to help you
+- Run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the `trcc-report.txt` it saves in your home folder attached — this gives us everything we need to help you
 - Check the [Troubleshooting Guide](GUIDE_TROUBLESHOOTING.md) for common issues and fixes
 - For verbose output: `trcc -v gui` (or `trcc -vv gui` for debug)

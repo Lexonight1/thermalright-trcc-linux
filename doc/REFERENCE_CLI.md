@@ -145,7 +145,7 @@ trcc quickstart [OPTIONS]
 
 ### `trcc report`
 
-Alias for `trcc system debug-report` — full diagnostic dump.
+Alias for `trcc system debug-report` — the report file for an issue.
 
 ```bash
 trcc report [OPTIONS]
@@ -153,7 +153,7 @@ trcc report [OPTIONS]
 
 | Option | Description |
 |---|---|
-| `--output`, `-o` `OUTPUT` | Write the report to this path instead of stdout. |
+| `--output`, `-o` `OUTPUT` | Where to write the report (default trcc-report.txt in your home folder) -- attach that file to a GitHub issue. '-' prints it instead. |
 | `--log-lines` `LOG_LINES` | How many trailing log lines to include. |
 
 ### `trcc sensors`
@@ -1719,7 +1719,7 @@ trcc system dashboard-rename INDEX NAME
 
 ### `trcc system debug-report`
 
-Generate a debug report bundle for GitHub issues.
+Generate a debug report file to attach to a GitHub issue.
 
 ```bash
 trcc system debug-report [OPTIONS]
@@ -1727,7 +1727,7 @@ trcc system debug-report [OPTIONS]
 
 | Option | Description |
 |---|---|
-| `--output`, `-o` `OUTPUT` | Write the report to this path instead of stdout. Recommended when filing a GitHub issue — attach the file. |
+| `--output`, `-o` `OUTPUT` | Where to write the report (default trcc-report.txt in your home folder) -- attach that file to a GitHub issue. '-' prints it instead. |
 | `--log-lines` `LOG_LINES` | How many trailing log lines to include (default 1000). |
 
 ### `trcc system doctor`

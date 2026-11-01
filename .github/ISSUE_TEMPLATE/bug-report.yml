@@ -9,10 +9,11 @@ body:
         Thanks for taking the time to report this — we genuinely want to get your
         device working. 🙂
 
-        **The one thing we truly need is a `trcc report`.** Run it in a terminal and
-        paste the output below — it's how we *see* what's actually happening instead
-        of guessing on your hardware. It works even when the GUI won't open, and it
-        doesn't change anything on your system.
+        **The one thing we truly need is a `trcc report`.** Run it in a terminal: it
+        saves `trcc-report.txt` in your home folder — attach that file below. It's how
+        we *see* what's actually happening instead of guessing on your hardware. It
+        works even when the GUI won't open, and it doesn't change anything on your
+        system.
 
         > Reports without a `trcc report` (or, if the app won't run, the install/launch
         > error) can't be diagnosed, so we'll have to kindly ask you to add one before
@@ -30,11 +31,12 @@ body:
     attributes:
       label: Diagnostic report (`trcc report`)
       description: |
-        Run `trcc report` in a terminal and paste the **full** output here.
+        Run `trcc report` in a terminal. It saves `trcc-report.txt` in your home
+        folder — **drag that file into this box** to attach it. (Pasted from the
+        terminal, the start of the report gets cut off, and it is too long for this box.)
         **If the app won't even install or launch**, paste the install/launch error
         instead — that's still the diagnostic we need.
-      render: shell
-      placeholder: Paste the full `trcc report` output (or your install/launch error) here
+      placeholder: Attach trcc-report.txt here (or paste your install/launch error)
     validations:
       required: true
   - type: input
@@ -61,5 +63,5 @@ body:
       options:
         - label: I'm on the latest version (`pip install --upgrade trcc-linux`, or the latest installer)
           required: false
-        - label: I pasted my `trcc report` above — or my install/launch error if it won't run
+        - label: I attached my `trcc-report.txt` above — or pasted my install/launch error if it won't run
           required: true

@@ -18,6 +18,8 @@ of this docstring predicted 2.  Run the mutation, then write the number.)
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
@@ -26,6 +28,7 @@ from trcc.adapters.system.linux import (
     _GENERIC_FAMILY,
     LinuxFamily,
     LinuxOS,
+    LinuxPaths,
 )
 from trcc.adapters.system.macos import MacOSPlatform
 from trcc.adapters.system.windows import WindowsPlatform
@@ -381,3 +384,13 @@ def test_native_windowing_ignores_leftover_session_variables(
     monkeypatch.setenv("DISPLAY", ":0")
 
     assert os_().display_session().server is DisplayServer.NATIVE
+
+
+def test_every_os_puts_the_report_in_the_home_folder(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``trcc report`` writes a file the person must find and attach: the
+    home folder, never the hidden config folder the port defaults to.  One
+    override on BasePaths serves every OS.  MUTATION CHECK: drop
+    ``BasePaths.report_file`` and Linux answers ``~/.trcc/trcc-report.txt``."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert LinuxPaths().report_file() == tmp_path / "trcc-report.txt"
