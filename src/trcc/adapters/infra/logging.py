@@ -23,20 +23,26 @@ import inspect
 import logging
 import logging.handlers
 import os
+import re
 import sys
 from abc import ABC, abstractmethod
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Iterator
+from dataclasses import dataclass, field
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 from ...core.logs import PER_FRAME_ROOT, levels_for
+from ...core.logs import per_frame as _per_frame
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
 
 log = logging.getLogger(__name__)
+#: Per-line reading of the log (``OwnLines.owns``): the -vvv rung only.
+frame_log = _per_frame(__name__)
 
 _HANDLER_TAG = "_trcc_handler"
 # ``name`` is the module logger; ``classname`` is injected by
@@ -807,17 +813,65 @@ def _stream_chain(log_file: Path) -> Iterator[tuple[bool, str]]:
             log.warning("_stream_chain: could not read %s — %s", segment, e)
 
 
-def tail_log(log_file: Path, n_lines: int = 1000) -> list[str]:
-    """Return the last *n_lines* of *log_file*'s rotation set.
+@dataclass(frozen=True, slots=True)
+class OwnLines:
+    """What the report itself logs while it reads the log: process *pid*'s
+    records from *since* (a record's first token) on.
+
+    ``trcc report`` reads the same file it writes to.  #330's attachment held
+    688 lines of the report talking to itself and five of the App's -- the
+    evidence it exists to carry, crowded out.  Its own process from the moment
+    it began is exact for every UI that asks: the lines a window wrote BEFORE
+    the click stay, they may be the bug."""
+    pid: int
+    since: str
+
+    @classmethod
+    def from_now(cls) -> OwnLines:
+        """This process, from this moment -- as ``_LOG_FORMAT`` stamps it."""
+        now = datetime.now()
+        own = cls(os.getpid(), f"{now.strftime(_LOG_DATEFMT)}.{now.microsecond // 1000:03d}")
+        log.info("OwnLines.from_now: pid %d since %s", own.pid, own.since)
+        return own
+
+    def owns(self, record: str) -> bool:
+        """Whether *record* (a record's first line) is one of these."""
+        parts = record.split(maxsplit=3)
+        mine = len(parts) >= 3 and parts[2] == f"[{self.pid}]" and parts[0] >= self.since
+        frame_log.debug("OwnLines.owns: %s", mine)
+        return mine
+
+
+def _records(log_file: Path, skip: OwnLines | None = None,
+             ) -> Iterator[tuple[bool, str | None, str]]:
+    """Every line of the rotation set, oldest first, as ``(is_first, level,
+    line)`` -- *level* None for a continuation (a traceback body) -- with
+    *skip*'s records left out whole, continuations included."""
+    log.debug("_records: base=%s skip=%s", log_file, skip)
+    dropping = False
+    for first, line in _stream_chain(log_file):
+        if first:
+            dropping = False        # a record never spans a rollover
+        level = _log_level_of(line)
+        if level is not None:
+            dropping = skip is not None and skip.owns(line)
+        if not dropping:
+            yield first, level, line
+
+
+def tail_log(log_file: Path, n_lines: int = 1000,
+             skip: OwnLines | None = None) -> list[str]:
+    """Return the last *n_lines* of *log_file*'s rotation set, *skip*'s
+    lines left out.
 
     Streams the chain with a bounded ``deque`` rather than reading it whole:
     the set is up to ``max_bytes x (backup_count + 1)`` — 6 MB at the shipped
     1 MB x 5 — so slicing a single ``read_text`` would hold all of it in memory
     to keep a thousand lines.  Same shape as :func:`tail_log_actions`.
     """
-    log.info("tail_log: file=%s n_lines=%d", log_file, n_lines)
+    log.info("tail_log: file=%s n_lines=%d skip=%s", log_file, n_lines, skip)
     kept: deque[str] = deque(maxlen=n_lines)
-    for _first, line in _stream_chain(log_file):
+    for _first, _level, line in _records(log_file, skip):
         kept.append(line)
     log.info("tail_log: kept %d line(s)", len(kept))
     return list(kept)
@@ -839,7 +893,8 @@ def _log_level_of(line: str) -> str | None:
     return None
 
 
-def tail_log_actions(log_file: Path, n_lines: int = 500) -> list[str]:
+def tail_log_actions(log_file: Path, n_lines: int = 500,
+                     skip: OwnLines | None = None) -> list[str]:
     """The last *n_lines* non-DEBUG records from the WHOLE log.
 
     ``tail_log`` selects by recency, which is the wrong axis for a bug
@@ -874,14 +929,13 @@ def tail_log_actions(log_file: Path, n_lines: int = 500) -> list[str]:
     in the worst case, while still reaching tens of thousands of raw lines
     back in the render-loop case, and keeps the pasted report a sane size.
     """
-    log.info("tail_log_actions: file=%s n_lines=%d", log_file, n_lines)
+    log.info("tail_log_actions: file=%s n_lines=%d skip=%s", log_file, n_lines, skip)
     kept: deque[str] = deque(maxlen=n_lines)
     keeping_record = False
-    for first_of_segment, line in _stream_chain(log_file):
+    for first_of_segment, level, line in _records(log_file, skip):
         if first_of_segment:
             # A record never spans a rollover, so nothing carries across.
             keeping_record = False
-        level = _log_level_of(line)
         if level is None:
             # Continuation — rides along iff its record was kept.
             if keeping_record:
@@ -892,6 +946,113 @@ def tail_log_actions(log_file: Path, n_lines: int = 500) -> list[str]:
             kept.append(line)
     log.info("tail_log_actions: kept %d significant line(s)", len(kept))
     return list(kept)
+
+
+#: The levels the Errors section is built around.
+_PROBLEM_LEVELS = frozenset({"WARNING", "ERROR", "CRITICAL"})
+
+
+def _repeat_key(record: str) -> str:
+    """What makes two warnings "the same one": the record without its time,
+    level and process, its numbers blanked -- attempt 1/3 and 2/3 are one."""
+    parts = record.split(maxsplit=3)
+    key = re.sub(r"\d+", "#", parts[3] if len(parts) > 3 else record)
+    log.debug("_repeat_key: %s", key[:80])
+    return key
+
+
+@dataclass(slots=True)
+class _Block:
+    """A run of the log around one or more warnings: its line numbers in the
+    chain, its lines, and the warnings in it (by :func:`_repeat_key`)."""
+    start: int
+    end: int
+    lines: list[str] = field(default_factory=list)
+    keys: list[str] = field(default_factory=list)
+
+
+def log_problems(log_file: Path, *, before: int = 40, after: int = 15,
+                 max_lines: int = 3000, skip: OwnLines | None = None) -> list[str]:
+    """Every WARNING and ERROR in the WHOLE log, each with the *before* lines
+    that led to it and the *after* lines that followed -- every level, every
+    process but *skip*'s.
+
+    A warning on its own says what went wrong and never why: #330's three
+    ``handshake attempt N/3 failed`` lines meant nothing without the open,
+    the write and the read around them.  Blocks that touch merge.  A warning
+    that keeps coming back (a reconnect retrying every few seconds) shows its
+    first and its latest occurrence whole; the blocks between are counted,
+    not shown.  Over *max_lines*, the newest blocks are kept."""
+    log.info("log_problems: file=%s before=%d after=%d max=%d skip=%s",
+             log_file, before, after, max_lines, skip)
+    blocks: list[_Block] = []
+    recent: deque[tuple[int, str]] = deque(maxlen=before)
+    block: _Block | None = None
+    left = 0
+    problem = False
+    for n, (_first, level, line) in enumerate(_records(log_file, skip)):
+        if level is not None:
+            problem = level in _PROBLEM_LEVELS
+        if problem:
+            if block is None:
+                block = _Block(start=recent[0][0] if recent else n, end=n,
+                               lines=[kept for _n, kept in recent])
+                blocks.append(block)
+                recent.clear()
+            block.lines.append(line)
+            block.end = n
+            if level is not None:
+                block.keys.append(_repeat_key(line))
+            left = after
+        elif block is not None and left > 0:
+            block.lines.append(line)
+            block.end = n
+            left -= 1
+        else:
+            block = None
+            recent.append((n, line))
+    lines = _render_problems(blocks, max_lines)
+    log.info("log_problems: %d warning(s) in %d block(s) -> %d line(s)",
+             sum(len(b.keys) for b in blocks), len(blocks), len(lines))
+    return lines
+
+
+def _render_problems(blocks: list[_Block], max_lines: int) -> list[str]:
+    """*blocks* as lines: repeats between a warning's first and latest
+    occurrence counted not shown, a gap line between blocks, the oldest
+    blocks dropped over *max_lines*."""
+    log.debug("_render_problems: %d block(s), max %d", len(blocks), max_lines)
+    total = Counter(key for b in blocks for key in b.keys)
+    seen: Counter[str] = Counter()
+    shown: list[tuple[_Block, int]] = []          # (block, repeats left out before it)
+    repeats = 0
+    for b in blocks:
+        ends = False
+        for key in b.keys:
+            seen[key] += 1
+            ends = ends or seen[key] in (1, total[key])
+        if ends:
+            shown.append((b, repeats))
+            repeats = 0
+        else:
+            repeats += len(b.keys)
+    dropped = 0
+    while shown and sum(len(b.lines) + 1 for b, _r in shown) > max_lines:
+        shown.pop(0)
+        dropped += 1
+    out: list[str] = []
+    if dropped:
+        out.append(f"⋯ {dropped} older block(s) left out -- over the {max_lines}-line cap")
+    previous: _Block | None = None
+    for b, left_out in shown:
+        gap = b.start - previous.end - 1 if previous is not None else 0
+        if gap > 0:
+            out.append(f"⋯ {gap} line(s) between" + (
+                f", among them {left_out} repeated warning(s) shown before and after"
+                if left_out else ""))
+        out.extend(b.lines)
+        previous = b
+    return out
 
 
 #: Where logging goes when the platform layer cannot say — see

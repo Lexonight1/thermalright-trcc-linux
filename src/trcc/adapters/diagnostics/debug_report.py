@@ -43,7 +43,7 @@ from ...core.registry import find_product
 from ...core.variants import get_variant_override
 from ...services.settings import resolve_config_path
 from ..device import DEVICES
-from ..infra.logging import log_chain, tail_log, tail_log_actions
+from ..infra.logging import OwnLines, log_chain, log_problems, tail_log, tail_log_actions
 from .health import HealthReport, run_health_checks
 from .install import InstallInfo, collect_install_info
 
@@ -75,6 +75,7 @@ class DebugReport:
     health: HealthReport = field(default_factory=HealthReport)
     log_tail: list[str] = field(default_factory=list)
     log_actions: list[str] = field(default_factory=list)
+    log_problems: list[str] = field(default_factory=list)
     handshake_log: list[str] = field(default_factory=list)
 
     def render_text(self) -> str:
@@ -97,8 +98,11 @@ class DebugReport:
         sections.append(_render_settings(self.settings_json, self.settings_error))
         sections.append(_render_state_files(self.state_files))
         sections.append(_render_health(self.health))
-        # Narrative before detail: what the reporter DID reaches back through
-        # the whole log, the raw tail is only the last moments before it.
+        # What went wrong, with what led up to it, before everything else in
+        # the log: it is what a report is read for.  Then the narrative --
+        # what the reporter DID reaches back through the whole log -- and the
+        # raw tail, only the last moments.
+        sections.append(_render_log_problems(self.log_problems))
         sections.append(_render_log_actions(self.log_actions))
         sections.append(_render_log_tail(self.log_tail))
         return "\n\n".join(sections) + "\n"
@@ -128,6 +132,9 @@ def build_debug_report(
     """
     log.info("build_debug_report: gathering sections "
              "(log_tail=%d actions=%d)", log_tail_lines, log_action_lines)
+    # From here on this process logs about reading the log; every log
+    # section leaves those lines out (#330: 688 of 694).
+    own = OwnLines.from_now()
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # Best-effort like every other collector: a report from a broken install is
@@ -149,8 +156,9 @@ def build_debug_report(
     state_files = _collect_state_files(platform.paths(), live_settings)
     health = run_health_checks(platform)
     log_path = platform.paths().log_file()
-    log_lines = tail_log(log_path, n_lines=log_tail_lines)
-    action_lines = tail_log_actions(log_path, n_lines=log_action_lines)
+    log_lines = tail_log(log_path, n_lines=log_tail_lines, skip=own)
+    action_lines = tail_log_actions(log_path, n_lines=log_action_lines, skip=own)
+    problem_lines = log_problems(log_path, skip=own)
     handshake_log = _scrape_handshake_lines(log_path)
 
     return DebugReport(
@@ -171,6 +179,7 @@ def build_debug_report(
         health=health,
         log_tail=log_lines,
         log_actions=action_lines,
+        log_problems=problem_lines,
         handshake_log=handshake_log,
     )
 
@@ -718,6 +727,19 @@ def _render_health(report: HealthReport) -> str:
         f"{len(report.checks)} total)"
     )
     return f"## Health {summary}\n" + "\n".join(lines)
+
+
+def _render_log_problems(lines: list[str]) -> str:
+    """Every warning and error, with the lines before and after each."""
+    log.debug("_render_log_problems: %d line(s)", len(lines))
+    if not lines:
+        return "## Errors\n  (no warnings or errors in the log)"
+    body = "\n".join(f"  {line}" for line in lines)
+    return (
+        f"## Errors ({len(lines)} lines: every warning and error in the WHOLE "
+        "log, with what led up to it and what followed)\n"
+        f"{body}"
+    )
 
 
 def _render_log_actions(lines: list[str]) -> str:

@@ -1148,6 +1148,118 @@ def test_tail_log_actions_is_bounded_and_keeps_the_most_recent(
     assert kept[-1].endswith("action 299")
 
 
+# ── The Errors section: every warning with what led up to it (#330) ──────────
+
+
+def _line(level: str, msg: str, i: int, pid: int = 100) -> str:
+    """One record as ``_LOG_FORMAT`` writes it: millisecond time, padded
+    level, process id -- what ``OwnLines`` and the repeat key read."""
+    return (f"2026-11-01T10:{i // 60 % 60:02d}:{i % 60:02d}.000 {level:<7} "
+            f"[{pid}] trcc.mod:fn:{i}: {msg}")
+
+
+def _write(log_file: Path, lines: list[str]) -> Path:
+    log_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return log_file
+
+
+def _messages(lines: list[str]) -> list[str]:
+    return [line.split(": ", 1)[-1] if line[:4] == "2026" else line for line in lines]
+
+
+def test_a_warning_comes_with_what_led_up_to_it_and_what_followed(
+        tmp_path: Path) -> None:
+    """#330: three ``attempt N/3 failed`` lines alone say nothing; the open,
+    write and read around them say why.  Far lines stay out.  MUTATION CHECK:
+    start a block at the warning instead of from ``recent``."""
+    from trcc.adapters.infra.logging import log_problems
+
+    lines = [_line("DEBUG", f"render {i}", i) for i in range(10)]
+    lines += [_line("INFO", "opening transport", 10),
+              _line("DEBUG", "write 1040 bytes", 11),
+              _line("WARNING", "HidLcd handshake attempt 1/3 failed: timed out", 12),
+              _line("DEBUG", "write 1040 bytes", 13),
+              _line("WARNING", "HidLcd handshake attempt 2/3 failed: timed out", 14),
+              _line("DEBUG", "release_device", 15),
+              _line("DEBUG", "far after", 16)]
+    log_file = _write(tmp_path / "trcc.log", lines)
+
+    assert _messages(log_problems(log_file, before=2, after=1)) == [
+        "opening transport", "write 1040 bytes",
+        "HidLcd handshake attempt 1/3 failed: timed out", "write 1040 bytes",
+        "HidLcd handshake attempt 2/3 failed: timed out", "release_device"]
+
+
+def test_a_warning_that_keeps_coming_back_shows_its_first_and_latest(
+        tmp_path: Path) -> None:
+    """A reconnect retrying every few seconds must not fill the section: the
+    first and the latest occurrence, whole, and a count of the rest.
+    MUTATION CHECK: show every block."""
+    from trcc.adapters.infra.logging import log_problems
+
+    lines: list[str] = []
+    for n in range(5):
+        base = n * 10
+        lines += [_line("DEBUG", f"quiet {base + k}", base + k) for k in range(9)]
+        lines.append(_line("WARNING", f"reconnect {n + 1} failed", base + 9))
+    log_file = _write(tmp_path / "trcc.log", lines)
+
+    assert _messages(log_problems(log_file, before=1, after=0)) == [
+        "quiet 8", "reconnect 1 failed",
+        "⋯ 38 line(s) between, among them 3 repeated warning(s) shown before and after",
+        "quiet 48", "reconnect 5 failed"]
+
+
+def test_over_the_cap_the_newest_warnings_are_kept(tmp_path: Path) -> None:
+    from trcc.adapters.infra.logging import log_problems
+
+    lines: list[str] = []
+    for n in range(4):
+        lines += [_line("DEBUG", f"quiet {n}", n * 3),
+                  _line("ERROR", f"distinct failure {chr(65 + n)}", n * 3 + 1)]
+        lines.append(_line("DEBUG", f"after {n}", n * 3 + 2))
+    log_file = _write(tmp_path / "trcc.log", lines)
+
+    kept = _messages(log_problems(log_file, before=0, after=0, max_lines=4))
+
+    assert kept == ["⋯ 2 older block(s) left out -- over the 4-line cap",
+                    "distinct failure C", "⋯ 2 line(s) between", "distinct failure D"]
+
+
+def test_the_report_leaves_its_own_lines_out_of_every_log_section(
+        tmp_path: Path) -> None:
+    """#330's attachment was 688 lines of the report reading the log and 5 of
+    the App's.  Its own process from the moment it began is left out -- the
+    same process's lines BEFORE that stay (a window's own history may be the
+    bug), and so does every other process.  MUTATION CHECK: drop the time
+    test from ``OwnLines.owns``."""
+    from trcc.adapters.infra.logging import OwnLines, log_problems
+
+    log_file = _write(tmp_path / "trcc.log", [
+        _line("INFO", "window: theme clicked", 1, pid=200),
+        _line("WARNING", "App: handshake failed", 2, pid=100),
+        _line("INFO", "report: reading the log", 3, pid=200),
+        "  a continuation of the report's own line",
+        _line("WARNING", "report: probe busy", 4, pid=200),
+        _line("INFO", "App: retrying", 5, pid=100)])
+    own = OwnLines(pid=200, since="2026-11-01T10:00:03.000")
+
+    expected = ["window: theme clicked", "App: handshake failed", "App: retrying"]
+    assert _messages(tail_log(log_file, 100, skip=own)) == expected
+    assert _messages(tail_log_actions(log_file, skip=own)) == expected
+    assert _messages(log_problems(log_file, before=5, after=5, skip=own)) == expected
+
+
+def test_the_report_puts_the_errors_first_among_the_log_sections() -> None:
+    from trcc.adapters.diagnostics.debug_report import DebugReport
+
+    text = DebugReport(timestamp="t", platform_info={}, paths={},
+                       log_problems=["2026 WARNING x"]).render_text()
+
+    assert text.index("## Errors (1 lines") < text.index("## Actions") < text.index(
+        "## Log tail")
+
+
 # =========================================================================
 # Health checks
 # =========================================================================
@@ -1423,7 +1535,7 @@ def test_build_debug_report_returns_filled_struct(fake_platform) -> None:
 #: ``test_debug_report_captures_live_handshake``.
 _REPORT_SECTIONS = frozenset({
     "Install", "Platform", "Paths", "Devices", "Modules", "Sensors", "CPU power",
-    "Settings", "State files", "Health", "Actions", "Log tail",
+    "Settings", "State files", "Health", "Errors", "Actions", "Log tail",
 })
 
 
