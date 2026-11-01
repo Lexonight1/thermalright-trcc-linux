@@ -88,7 +88,8 @@ jobs:
             --icon src/trcc/assets/icons/app.ico `
             --add-data "src/trcc/assets;trcc/assets" `
             --add-data "src/trcc/ui/gui/assets;trcc/ui/gui/assets" `
-            --add-data "src/trcc/modules;trcc/modules" `
+            --add-data "src/trcc/modules/rgb;trcc/modules/rgb" `
+            --exclude-module trcc.modules.visualizer `
             --hidden-import PySide6.QtSvg `
             --hidden-import pynvml `
             --hidden-import wmi `
@@ -106,7 +107,8 @@ jobs:
             --icon src/trcc/assets/icons/app.ico `
             --add-data "src/trcc/assets;trcc/assets" `
             --add-data "src/trcc/ui/gui/assets;trcc/ui/gui/assets" `
-            --add-data "src/trcc/modules;trcc/modules" `
+            --add-data "src/trcc/modules/rgb;trcc/modules/rgb" `
+            --exclude-module trcc.modules.visualizer `
             --hidden-import PySide6.QtSvg `
             --hidden-import pynvml `
             --hidden-import wmi `
@@ -185,7 +187,13 @@ jobs:
           }
           Write-Host "PASSED — the frozen trcc.exe runs"
 
-      - name: Smoke-draw TRCC Pipes in the frozen app
+      - name: Smoke the Visualizer as an add-on, then draw TRCC Pipes from it
+        # The Visualizer is an add-on: the frozen app must NOT carry it
+        # (--exclude-module above; 34 of its modules were baked in without
+        # it), and must run it once installed -- from the user folder, as an
+        # upgrader gets it.  Installed here from its source folder in
+        # developer mode, the same files the module index ships.
+        #
         # TRCC Pipes draws with OpenGL.  This runner has no graphics card --
         # Windows offers only its own OpenGL 1.1 ("GDI Generic"), which TRCC
         # refuses -- so the tile draws only if WglSurface.open finds the
@@ -195,6 +203,26 @@ jobs:
         # sound card and no panel.
         timeout-minutes: 5
         run: |
+          $trcc = "dist\trcc\trcc.exe"
+          function Invoke-Trcc {
+            $out = & $trcc @args 2>&1 | Out-String
+            Write-Host "> trcc $args`n$out"
+            if ($LASTEXITCODE -ne 0) {
+              & $trcc report -o - --log-lines 200
+              Write-Error "FAILED — trcc $args (exit $LASTEXITCODE)"
+              exit 1
+            }
+            return $out
+          }
+          $listed = Invoke-Trcc system modules list
+          if ($listed -match "visualizer") {
+            Write-Error "FAILED — the frozen app carries the Visualizer; it must be an add-on"
+            exit 1
+          }
+          Write-Host "PASSED — the frozen app does not carry the Visualizer"
+          Invoke-Trcc system modules developer on | Out-Null
+          Invoke-Trcc system modules install-folder src\trcc\modules\visualizer --yes | Out-Null
+          Invoke-Trcc system modules on visualizer | Out-Null
           $tile = Join-Path $env:RUNNER_TEMP "pipes.png"
           $out = & dist\trcc\trcc.exe display visual-tile trcc-pipes -o $tile --size 64 2>&1 | Out-String
           Write-Host $out
@@ -218,7 +246,7 @@ jobs:
             $out = & $trcc @args 2>&1 | Out-String
             Write-Host "> trcc $args`n$out"
             if ($LASTEXITCODE -ne 0) {
-              & $trcc report --log-lines 200
+              & $trcc report -o - --log-lines 200
               Write-Error "FAILED — trcc $args (exit $LASTEXITCODE)"
               exit 1
             }
@@ -230,7 +258,7 @@ jobs:
           Write-Host "> trcc hello CI`n$out"
           if ($LASTEXITCODE -ne 0 -or $out -notmatch "Hello, CI!") {
             & $trcc system modules list
-            & $trcc report --log-lines 200
+            & $trcc report -o - --log-lines 200
             Write-Error "FAILED — the frozen app did not run a module from the user folder (exit $LASTEXITCODE)"
             exit 1
           }

@@ -90,7 +90,8 @@ jobs:
             --icon src/trcc/assets/icons/app.icns \
             --add-data "src/trcc/assets:trcc/assets" \
             --add-data "src/trcc/ui/gui/assets:trcc/ui/gui/assets" \
-            --add-data "src/trcc/modules:trcc/modules" \
+            --add-data "src/trcc/modules/rgb:trcc/modules/rgb" \
+            --exclude-module trcc.modules.visualizer \
             --hidden-import PySide6.QtSvg \
             --hidden-import pynvml \
             --collect-all catap \
@@ -261,7 +262,7 @@ jobs:
           trcc=dist/TRCC.app/Contents/MacOS/TRCC
           trap '"$trcc" kill || true' EXIT
           fail() { "$trcc" system modules list || true
-                   "$trcc" report --log-lines 200 || true
+                   "$trcc" report -o - --log-lines 200 || true
                    echo "::error::$1"; exit 1; }
           for step in "system modules developer on" \
                       "system modules install-folder dev/module_template/hello --yes" \
@@ -276,6 +277,39 @@ jobs:
           echo "$out" | grep -qF 'Hello, CI!' \
             || fail "the frozen app did not run a module from the user folder"
           echo "PASSED — the frozen app runs a module from the user folder"
+
+      - name: Smoke the Visualizer as an add-on in the frozen app
+        # The Visualizer is an add-on: the frozen app must NOT carry it
+        # (--exclude-module above; 34 of its modules were baked in without
+        # it), and must run it once installed from the user folder, as an
+        # upgrader gets it -- here from its source folder in developer mode,
+        # the same files the module index ships.  Listing its visuals needs
+        # no graphics card, no sound card and no panel.
+        timeout-minutes: 5
+        run: |
+          trcc=dist/TRCC.app/Contents/MacOS/TRCC
+          trap '"$trcc" kill || true' EXIT
+          fail() { "$trcc" system modules list || true
+                   "$trcc" report -o - --log-lines 200 || true
+                   echo "::error::$1"; exit 1; }
+          listed="$("$trcc" system modules list 2>&1)" || fail "trcc system modules list (exit $?)"
+          echo "$listed"
+          ! echo "$listed" | grep -q visualizer \
+            || fail "the frozen app carries the Visualizer; it must be an add-on"
+          echo "PASSED — the frozen app does not carry the Visualizer"
+          for step in "system modules developer on" \
+                      "system modules install-folder src/trcc/modules/visualizer --yes" \
+                      "system modules on visualizer"; do
+            echo "> trcc $step"
+            # shellcheck disable=SC2086  # each step is words, split on purpose
+            "$trcc" $step || fail "trcc $step (exit $?)"
+          done
+          rc=0; out="$("$trcc" display visuals 2>&1)" || rc=$?
+          echo "$out"
+          [ "$rc" = 0 ] || fail "trcc display visuals (exit $rc)"
+          echo "$out" | grep -qF 'trcc-pipes' \
+            || fail "the installed Visualizer listed no TRCC Pipes"
+          echo "PASSED — the frozen app runs the Visualizer installed from the user folder"
 
       - name: Create DMG
         run: |

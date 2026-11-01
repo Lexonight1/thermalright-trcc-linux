@@ -178,6 +178,11 @@ exclude = [
     # Theme/web data is downloaded on first run — never ship in wheel.
     "**/data/Theme*/**",
     "**/data/Web/**",
+    # The Audio Visualizer is an ADD-ON: a user installs it from the signed
+    # module index, so no wheel — and therefore no deb/rpm/Arch/Nix package,
+    # which are all built from this wheel — carries it.  Its source stays in
+    # the tree so pyright, every gate and the tests still read it.
+    "src/trcc/modules/visualizer/**",
 ]
 artifacts = [
     # Only GUI assets — never data/ (themes are downloaded on first run).
@@ -214,6 +219,11 @@ artifacts = [
     # so source/pip installs can pass the USB/SCSI ioctls (packages ship the
     # compiled .pp via the rpm).
     "**/data/trcc_usb.te",
+    # LAST, because pathspec takes the last pattern that matches: the add-on
+    # module's files are not artifacts of THIS build (see the exclude above).
+    # Hatchling's artifact patterns override ``exclude`` -- measured, the
+    # exclude alone still shipped 305 of its asset files.
+    "!src/trcc/modules/visualizer/**",
 ]
 
 [tool.pytest.ini_options]
