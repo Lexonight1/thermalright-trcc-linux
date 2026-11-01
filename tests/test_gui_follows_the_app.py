@@ -755,3 +755,30 @@ def test_a_preview_cut_off_from_its_frames_is_logged_once(
             if r.name.startswith("trcc.ui.gui.lcd_handler") and "this window's preview" in r.getMessage()]
     assert said == [f"handle_frame: {_KEY}'s frames no longer reach this window's preview",
                     f"handle_frame: {_KEY}'s frames reach this window's preview"]
+
+
+def test_the_element_editor_reaches_the_edges_of_the_panel_on_screen(
+    tmp_path: Path, qtbot: Any,
+) -> None:
+    """#329: X/Y stopped at a fixed 480, so a 1920-tall panel could place an
+    element by number only in its top quarter.  The editor's range is the
+    canvas of the panel on screen -- 320 and 480 here, in turn -- and follows
+    every switch.  MUTATION CHECK: drop ``set_canvas`` from
+    ``LCDHandler._sync_preview_size`` and the 320 panel keeps 480."""
+    app = App(MockPlatform([
+        {"type": "lcd", "name": "FW", "vid": "0402", "pid": "3922", "fbl": 100},
+        {"type": "lcd", "name": "HR10", "vid": "87ad", "pid": "70db", "pm": 72,
+         "resolution": "480x480"}], tmp_path), renderer=QtRenderer())
+    assert app.dispatch(ConnectDevice(key=_A)).ok and app.dispatch(ConnectDevice(key=_B)).ok
+    win = _open(app, qtbot, key=_A)
+    qtbot.waitUntil(lambda: len(win._handlers) == 2)
+    picker = win.uc_theme_setting.color_panel
+
+    def reach() -> tuple[int, int]:
+        return picker.x_spin.maximum(), picker.y_spin.maximum()
+
+    assert reach() == (320, 320)
+    for key, size in ((_B, 480), (_A, 320), (_B, 480)):
+        win._activate_device(key)
+        qtbot.waitUntil(lambda size=size: reach() == (size, size), timeout=2000)
+    win.close()
