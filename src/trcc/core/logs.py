@@ -209,10 +209,15 @@ def per_frame(module_name: str) -> logging.Logger:
     silenced or enabled with every other per-frame logger at once.  The
     module's own path is preserved in the logger name, so a line still
     reports where it came from — ``trcc.frame.services.display``.
+
+    Its own line goes to that logger too: the mapping is the same on every
+    run of a version, ~100 lines at every start, so it is per-frame-rung
+    detail (``-vvv``), not a fact about this machine.
     """
     name = f"{PER_FRAME_ROOT}.{module_name.removeprefix('trcc.')}"
-    log.debug("per_frame: %s → %s", module_name, name)
-    return logging.getLogger(name)
+    frame_log = logging.getLogger(name)
+    frame_log.debug("per_frame: %s → %s", module_name, name)
+    return frame_log
 
 
 def sink_for(level: int, log: logging.Logger,

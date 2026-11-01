@@ -106,7 +106,7 @@ def _material(name: str, ka: tuple[float, float, float],
               kd: tuple[float, float, float], ks: tuple[float, float, float],
               spec_exp: float) -> _Material:
     """A row of MATERIAL.C's ``teaMaterialData``, ready to light."""
-    log.debug("_material: %s", name)
+    frame_log.debug("_material: %s", name)
     return _Material(name, np.array(ka, dtype=np.float32) * _AMBIENT,
                      np.array(kd, dtype=np.float32),
                      np.array(ks, dtype=np.float32), spec_exp * 128.0)

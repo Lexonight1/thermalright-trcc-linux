@@ -1143,11 +1143,21 @@ def _detach_early_logging(root: logging.Logger) -> list[logging.LogRecord]:
 def _replay_early_logging(
     root: logging.Logger, records: list[logging.LogRecord],
 ) -> None:
-    """Write the startup records through the now-real handlers, oldest first."""
+    """Write the startup records through the now-real handlers, oldest first
+    -- each only if its logger would take it NOW.
+
+    A record buffered before ``configure_logging`` was made while every
+    logger let everything through; the per-frame family is turned down only
+    by the configuration.  Replayed on the handler's level alone, 73 per-frame
+    lines reached the file on every start with the log saying "per-frame
+    logging OFF".  Asking the logger applies whatever the configuration set."""
     if not records:
         return
-    log.debug("_replay_early_logging: replaying %d record(s)", len(records))
-    for record in records:
+    kept = [r for r in records
+            if logging.getLogger(r.name).isEnabledFor(r.levelno)]
+    log.debug("_replay_early_logging: replaying %d of %d record(s)",
+              len(kept), len(records))
+    for record in kept:
         for handler in root.handlers:
             if record.levelno >= handler.level:
                 handler.handle(record)

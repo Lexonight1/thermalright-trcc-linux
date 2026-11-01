@@ -32,7 +32,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Mapping
 from typing import Generic, TypeVar
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+#: What registers where is the same on every run of a version: -vvv only.
+frame_log = per_frame(__name__)
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -119,8 +123,8 @@ class Registry(Mapping[K, V]):
                 log.warning("%s: %r re-registered, replacing %s",
                             self._name, key, self._table[key])
             self._table[key] = value
-            log.debug("%s: registered %s for %r", self._name,
-                      getattr(value, "__name__", value), key)
+            frame_log.debug("%s: registered %s for %r", self._name,
+                            getattr(value, "__name__", value), key)
             return value
         return deco
 

@@ -380,7 +380,7 @@ _INNER = VisualAdjustment("inner_radius", "Inner radius", 0.1, 0.9, 0.5)
 
 def _info(kind: str, title: str, *extra: VisualAdjustment) -> VisualInfo:
     """A Cavalier mode's gallery entry: bars, colour and mirror, and *extra*."""
-    log.debug("_info: %s", kind)
+    frame_log.debug("_info: %s", kind)
     return VisualInfo(kind=kind, title=title, category="Cavalier",
                       uses_center=True,
                       adjustments=(_BARS, _COLOUR, _MIRROR, *extra))

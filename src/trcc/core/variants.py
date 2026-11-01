@@ -32,7 +32,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+#: The table's rows, built at import -- the same on every run: -vvv only.
+frame_log = per_frame(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +53,7 @@ class VariantOverride:
 
 def _v(button_image: str) -> VariantOverride:
     """Shorthand for VariantOverride rows that carry only a button image."""
-    log.debug("_v: button_image=%s", button_image)
+    frame_log.debug("_v: button_image=%s", button_image)
     return VariantOverride(button_image=button_image)
 
 
@@ -68,7 +72,7 @@ def _named(button_image: str, display_name: str) -> VariantOverride:
     for an opaque one.  A row gets a display name only when a reporter has
     told us what is printed on the cooler in their hand.
     """
-    log.debug("_named: %s → %r", button_image, display_name)
+    frame_log.debug("_named: %s → %r", button_image, display_name)
     return VariantOverride(button_image=button_image, display_name=display_name)
 
 

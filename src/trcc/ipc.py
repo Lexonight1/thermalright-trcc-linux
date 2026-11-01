@@ -256,7 +256,7 @@ class AppLock:
 
 
 def _collect_classes(module: Any, base: type) -> dict[str, type]:
-    log.debug("_collect_classes: module=%s base=%s", module, base)
+    frame_log.debug("_collect_classes: module=%s base=%s", module, base)
     return {
         name: cls
         for name, cls in vars(module).items()
@@ -326,7 +326,7 @@ def _register(table: dict[str, type[_T]], base: type[_T], namespace: Any) -> Non
         if (old := table.get(name, cls)).__module__ != cls.__module__:
             raise ValueError(f"{cls.__module__}.{name}: the app already has a "
                              f"{name} ({old.__module__})")
-        log.debug("_register: %s", name)
+        frame_log.debug("_register: %s", name)
         table[name] = cls
 
 

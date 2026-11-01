@@ -36,6 +36,7 @@ from trcc.adapters.infra.logging import (
     ClassContextFilter,
     PosixSharedLogHandler,
     RenderOnceRotatingFileHandler,
+    _log_level_of,
     configure_logging,
     log_chain,
     shared_handler_class,
@@ -944,6 +945,30 @@ def test_early_records_reach_the_real_log_in_the_real_format(
     assert any("simulated startup failure" in line for line in actions), (
         "the traceback was dropped from the record it belongs to"
     )
+
+
+@pytest.mark.parametrize("per_frame_on", [False, True])
+def test_early_per_frame_records_obey_the_per_frame_switch(
+    tmp_path: Path, per_frame_on: bool,
+) -> None:
+    """Records buffered before the configuration were made while every logger
+    took everything; the per-frame family is turned down only BY the
+    configuration.  Measured 2026-11-01: 73 per-frame lines reached the file
+    on every start, under a log line saying per-frame logging was OFF.  The
+    one-shot DEBUG line beside them stays either way.  MUTATION CHECK: replay
+    on the handler's level alone."""
+    from trcc.core.logs import per_frame
+
+    start_early_logging()
+    per_frame("trcc.test.early").debug("PER-FRAME marker")
+    logging.getLogger("trcc.test.early").debug("ONE-SHOT marker")
+
+    log_file = tmp_path / "trcc.log"
+    configure_logging(log_file, level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL, per_frame=per_frame_on)
+
+    body = log_file.read_text(encoding="utf-8")
+    assert ("ONE-SHOT marker" in body, "PER-FRAME marker" in body) == (True, per_frame_on)
 
 
 def test_early_records_are_not_written_twice(tmp_path: Path) -> None:
@@ -4482,3 +4507,50 @@ def test_every_log_line_carries_milliseconds_in_its_first_token() -> None:
 
     assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3} ", line), line
     assert _log_level_of(line) == "INFO"
+
+
+#: Where the start-up lines that are the same on every run of a version are
+#: logged -- (logger, function): the code's facts, not the machine's.  They
+#: log on the per-frame rung (-vvv), so a default file never holds them.
+_VERSION_CONSTANT = frozenset({
+    ("trcc.core.logs", "per_frame"), ("trcc.core.factory", "deco"),
+    ("trcc.ipc", "_register"), ("trcc.ipc", "_collect_classes"),
+    ("trcc.core.variants", "_v"), ("trcc.core.variants", "_named"),
+    ("trcc.modules.visualizer.adapters.pipes", "_material"),
+    ("trcc.modules.visualizer.adapters.cavalier", "_info"),
+})
+
+
+def _site(line: str) -> tuple[str, str]:
+    """(logger, function) of a record line: ``name:Class.func:lineno:``."""
+    logger, where = line.split(maxsplit=4)[3].split(":")[:2]
+    return logger, where.rsplit(".", 1)[-1]
+
+
+def test_a_terminal_start_writes_no_version_constant_or_per_frame_lines(
+        tmp_path: Path) -> None:
+    """Every CLI command builds an App, and every start wrote 1,054 lines
+    (134 KB) at default verbosity -- 380 of them identical on every run, 73
+    per-frame lines that leaked past "per-frame logging OFF".  ~45 terminal
+    commands pushed everything older out of the 6 MB log, an App's handshake
+    failures included.  Measured on a real ``trcc report``: in its own process,
+    because a start-up's imports happen once.  MUTATION CHECK: log one of the
+    moved sites on ``log`` again, or replay the early buffer unfiltered."""
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path),
+           "XDG_CONFIG_HOME": str(tmp_path / ".config"),
+           "XDG_DATA_HOME": str(tmp_path / ".local" / "share"),
+           "TRCC_DAEMON": "0", "QT_QPA_PLATFORM": "offscreen",
+           "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
+    subprocess.run([sys.executable, "-m", "trcc", "report", "-o", str(tmp_path / "r.txt")],
+                   env=env, capture_output=True, timeout=120, check=True)
+    lines = (tmp_path / ".trcc" / "trcc.log").read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if "OwnLines.from_now" in line)
+
+    records = [line for line in lines[:start] if _log_level_of(line) is not None]
+    leaked = [line for line in records
+              if _site(line)[0].startswith("trcc.frame.") or _site(line) in _VERSION_CONSTANT]
+    assert leaked == [], f"{len(leaked)} line(s), first: {leaked[0][:160]}"
