@@ -362,6 +362,9 @@ class Led(BaseBulkDevice, wire=Wire.LED):
                 wait = _MIN_FRAME_GAP_S - (now - self._last_frame_at)
                 # Sub-millisecond remainders are float noise, not a pause.
                 if wait > 0.0005:
+                    frame_log.debug("Led %s: waiting %.1f ms for the panel to "
+                                    "draw the last frame", self.info.key,
+                                    wait * 1000)
                     time.sleep(wait)
             # Shared policy on the base: connected-guard → _prepare_frame →
             # _write_frame under the reconnect + recovery escalation.
