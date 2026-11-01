@@ -406,6 +406,17 @@ class ColorPickerPanel(QFrame):
                 "ColorPickerPanel.set_color_hex: invalid hex %r", hex_color,
             )
 
+    def set_position_range(self, width: int, height: int) -> None:
+        """Let X and Y reach the edges of the canvas being composed.
+
+        The spins start at 0..480, which fits the square panels but stopped a
+        462x1920 portrait panel at a fifth of its height.
+        """
+        log.info("ColorPickerPanel.set_position_range: x 0..%d, y 0..%d",
+                 width, height)
+        self.x_spin.setRange(0, width)
+        self.y_spin.setRange(0, height)
+
     def set_position(self, x, y):
         log.debug("ColorPickerPanel.set_position: (%d,%d)", x, y)
         self.x_spin.blockSignals(True)

@@ -357,6 +357,11 @@ class UCThemeSetting(BasePanel):
     def set_overlay_enabled(self, enabled: bool):
         self.overlay_grid.set_overlay_enabled(enabled)
 
+    def set_canvas(self, width: int, height: int) -> None:
+        """The size elements are placed on; bounds the X / Y inputs."""
+        log.info("UCThemeSetting.set_canvas: %dx%d", width, height)
+        self.color_panel.set_position_range(width, height)
+
     def set_mask_position(self, x: int, y: int):
         """Update mask panel X/Y fields (e.g. after mask load or drag)."""
         self.mask_panel.set_position(x, y)
