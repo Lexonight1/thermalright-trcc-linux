@@ -390,7 +390,11 @@ class BaseBulkDevice(BaseDevice[BulkTransport]):
         # failure hint offers to leave such a device alone.
         error = (UnrecognisedReply if isinstance(last_err, UnrecognisedReply)
                  else HandshakeError)
+        # The message is all a window, `trcc device issues` and the report
+        # show -- so it carries why the last attempt failed, not only that it
+        # did (#330: "failed after 3 attempts" was all the reporter saw).
+        reason = str(last_err) or type(last_err).__name__
         raise error(
             f"{type(self).__name__} handshake failed after "
-            f"{_HANDSHAKE_MAX_RETRIES} attempts"
+            f"{_HANDSHAKE_MAX_RETRIES} attempts: {reason}"
         ) from last_err

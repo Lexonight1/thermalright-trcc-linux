@@ -112,3 +112,35 @@ def test_a_command_that_connects_first_reports_a_missing_node(
 
     assert result.ok is False
     assert [i.message for i in app.connection_issues()] == [_NO_NODE]
+
+
+#: PyUsbBulkTransport.read on a timeout: "USB read failed: {pyusb error}".
+_TIMED_OUT = "USB read failed: [Errno 110] Operation timed out"
+
+
+def test_a_failed_handshake_says_why_the_last_attempt_failed(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#330: the window showed "HidLcd handshake failed after 3 attempts" and
+    nothing else -- the reason reached only the log.  Every UI shows the
+    Result's message, so the reason belongs in it.  MUTATION CHECK: drop
+    ``: {reason}`` from ``_handshake_retry``'s raise."""
+    from trcc.adapters.device import _base
+    from trcc.core.errors import TransportError
+
+    from .conftest import FakeBulkTransport
+
+    class Silent(FakeBulkTransport):
+        def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
+            raise TransportError(_TIMED_OUT)
+
+    monkeypatch.setattr(_base.time, "sleep", lambda _s: None)
+    app = App(fake_platform)
+    monkeypatch.setattr(app.platform, "open_transport",
+                        lambda *_a, **_k: Silent())
+
+    result = app.dispatch(ConnectDevice(key="0416:5406"))
+
+    said = f"HidLcd handshake failed after 3 attempts: {_TIMED_OUT}"
+    assert (result.ok, result.message) == (False, said)
+    assert [i.message for i in app.dispatch(DeviceConnectionIssues()).issues] == [said]
