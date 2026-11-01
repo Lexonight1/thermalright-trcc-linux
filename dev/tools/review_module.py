@@ -252,7 +252,9 @@ def provenance(key: str, version: str, commit: str, asset: bytes | None,
         gate.fail("signature", "no author signature given (--author-key, --author-sig)")
         return gate
     entry = {"version": version, "url": "https://review.invalid/", "size": len(asset),
-             "sha256": hashlib.sha256(asset).hexdigest(), "min_trcc": "-",
+             "sha256": hashlib.sha256(asset).hexdigest(),
+             # Not part of what the author signs (key, version, sha256).
+             "min_trcc": "0.0.0",
              "commit": commit, "capabilities": [], "author_key": author_key,
              "author_sig": author_sig}
     try:
@@ -303,6 +305,12 @@ def layout(source: Path, staged: Path) -> Gate:
         gate.notes.append(f"{manifest.key} {manifest.version}: {manifest.title} by "
                           f"{manifest.author or '(nobody)'}; capabilities "
                           f"{', '.join(manifest.capabilities) or 'none'}")
+        if not manifest.min_trcc:
+            gate.fail("module.json", "min_trcc must name the oldest TRCC it runs on "
+                      "(X.Y.Z) -- the index lists it, and an older TRCC will not "
+                      "install it")
+        else:
+            gate.notes.append(f"runs on TRCC {manifest.min_trcc} or newer")
         if not manifest.author.strip() or manifest.author.strip() == BUILT_IN_AUTHOR:
             gate.fail("module.json", "author must name who wrote it -- not empty, "
                       f"and not {BUILT_IN_AUTHOR!r}, the name TRCC's own modules carry")
@@ -797,7 +805,7 @@ def render(result: Review, diff_file: Path) -> str:
                   "```",
                   f"sign_module_index.py add index.json --root root.json "
                   f"--commit {result.commit} --bundle <asset> "
-                  "--url <asset url> --min-trcc <version> --author-key <pub> "
+                  "--url <asset url> --author-key <pub> "
                   "--author-sig <sig>", "```", "",
                   # What it is comes from the bundle's module.json, which is
                   # the reviewed source byte for byte (Provenance above).

@@ -23,6 +23,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from trcc.__version__ import __version__
 from trcc.core.models import MODULE_BUILT_IN_AUTHOR
 from trcc.modules import KEY
 
@@ -61,6 +62,10 @@ def create(key: str, title: str, summary: str, repo: Path = REPO,
     manifest.update(key=key, title=title, summary=summary, author=author,
                     default_on=False,
                     guide="" if into is not None else GUIDE + title.lower().replace(" ", "-"))
+    if into is not None:
+        # The TRCC it is written against -- the index lists it, so an older
+        # TRCC never installs it.  One built into TRCC always matches.
+        manifest["min_trcc"] = __version__
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return folder
 

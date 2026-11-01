@@ -44,6 +44,7 @@ from ..core.models import (
     MODULE_DEVICE,
     MODULE_HOST,
     MODULE_KEY,
+    MODULE_TRCC_VERSION,
     ModuleAsks,
     ModuleIndex,
     ModuleRelease,
@@ -182,7 +183,7 @@ def parse_release(key: str, entry: Any) -> ModuleRelease:
     _key(author_key, f"index.json module {key} author_key")
     return ModuleRelease(
         key=key, version=f.text("version"), url=url, size=f.number("size"),
-        sha256=f.text("sha256", _SHA256), min_trcc=f.text("min_trcc"),
+        sha256=f.text("sha256", _SHA256), min_trcc=f.text("min_trcc", MODULE_TRCC_VERSION),
         commit=f.text("commit", _COMMIT),
         asks=ModuleAsks(capabilities=f.texts("capabilities"),
                         network_hosts=_matching(f, key, "network_hosts", MODULE_HOST,

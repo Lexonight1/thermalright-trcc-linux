@@ -19,7 +19,13 @@ from typing import Any
 
 from ... import modules as module_folders
 from ...core.errors import ModuleUnavailable, TrccError
-from ...core.models import MODULE_CAPABILITIES, MODULE_DEVICE, MODULE_HOST, ModuleManifest
+from ...core.models import (
+    MODULE_CAPABILITIES,
+    MODULE_DEVICE,
+    MODULE_HOST,
+    MODULE_TRCC_VERSION,
+    ModuleManifest,
+)
 from ...core.ports import Module
 from ...services.modules import ModuleSpec
 from ._base import MODULES
@@ -81,13 +87,19 @@ def read_manifest(path: Path) -> ModuleManifest:
     author = data.get("author", "")
     if not isinstance(author, str):
         raise ManifestError(f"{path}: author must be a name")
+    min_trcc = data.get("min_trcc", "")
+    log.debug("read_manifest: min_trcc %r", min_trcc)
+    if not isinstance(min_trcc, str) or (min_trcc and not MODULE_TRCC_VERSION.fullmatch(min_trcc)):
+        raise ManifestError(f"{path}: min_trcc must be the oldest TRCC it runs on, "
+                            "as X.Y.Z (9.12.0)")
     return ModuleManifest(
         key=data["key"], title=data["title"], summary=data["summary"],
         version=str(data.get("version", "0")),
         default_on=bool(data.get("default_on", True)),
         icon=str(path.parent / icon) if icon else "",
         guide=str(data.get("guide", "")), capabilities=caps,
-        backgrounds=backgrounds, network_hosts=hosts, author=author, devices=devices)
+        backgrounds=backgrounds, network_hosts=hosts, author=author, devices=devices,
+        min_trcc=min_trcc)
 
 
 def specs(root: Path | None = None, *, user_root: Path | None = None,

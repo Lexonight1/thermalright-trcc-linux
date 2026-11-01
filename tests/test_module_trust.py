@@ -382,6 +382,8 @@ def test_a_revoked_release_is_refused(keys: Keys, trust: ModuleTrust,
      "index.json module weather: '192.168.1.1' is not a public hostname"),
     (lambda s: s["modules"]["weather"].update(devices=["0B05:19AF"]),
      "index.json module weather: '0B05:19AF' is not a USB id (vvvv:pppp)"),
+    (lambda s: s["modules"]["weather"].update(min_trcc="9.12"),
+     "index.json module weather: min_trcc is not the text it should be"),
 ])
 def test_a_signed_but_malformed_index_is_refused(
         keys: Keys, trust: ModuleTrust, root_file: bytes, change: Any,
@@ -489,7 +491,7 @@ def test_the_cli_lists_what_the_bundles_module_json_says(
                                repo=tmp_path / "repo", author="Ada")
     manifest = json.loads((folder / "module.json").read_text(encoding="utf-8"))
     manifest.update(version="3", capabilities=["events", "network"],
-                    network_hosts=["api.example.com"])
+                    network_hosts=["api.example.com"], min_trcc="9.12.0")
     (folder / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
     bundle, root, index = tmp_path / "weather-3.zip", tmp_path / "root.json", tmp_path / "index.json"
     bundle.write_bytes(pack(folder))
@@ -502,13 +504,31 @@ def test_the_cli_lists_what_the_bundles_module_json_says(
     assert tool.main([*trusting, "add", str(index), "--root", str(root),
                       "--key", str(keys["index"][0]), "--bundle", str(bundle),
                       "--url", "https://example.org/weather-3.zip", "--commit", COMMIT,
-                      "--min-trcc", "9.12.0", "--author-key", str(keys["author"][1]),
+                      "--author-key", str(keys["author"][1]),
                       "--author-sig", signature]) == 0
 
     listed = trust.open_index(index.read_bytes(), trust.open_root(root.read_bytes()))
     release = listed.releases["weather"]
-    assert (release.version, release.asks, release.title, release.summary,
-            release.author) == (
-        "3", ModuleAsks(("events", "network"), ("api.example.com",)), "Weather",
-        "The forecast.", "Ada")
+    assert (release.version, release.min_trcc, release.asks, release.title,
+            release.summary, release.author) == (
+        "3", "9.12.0", ModuleAsks(("events", "network"), ("api.example.com",)),
+        "Weather", "The forecast.", "Ada")
     trust.check_release(release, bundle.read_bytes())
+
+
+def test_signing_a_bundle_that_names_no_trcc_stops(
+        keys: Keys, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The author hears it when signing -- before asking anyone to list it.
+    ``new_module.py --out`` writes min_trcc; this author deleted it."""
+    import new_module
+
+    from trcc.adapters.modules._bundle import pack
+
+    folder = new_module.create("weather", "Weather", "The forecast.",
+                               repo=tmp_path / "repo", author="Ada")
+    bundle = tmp_path / "weather-1.zip"
+    bundle.write_bytes(pack(folder))           # a built-in-style folder: no min_trcc
+    assert tool.main(["--trust", str(keys["root"][1]), "author-sign", str(bundle),
+                      "--key", str(keys["author"][0])]) == 1
+    assert capsys.readouterr().out == ("STOP: weather: module.json must say min_trcc, "
+                                       "the oldest TRCC it runs on, as X.Y.Z (9.12.0)\n")

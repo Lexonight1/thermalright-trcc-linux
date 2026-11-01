@@ -128,11 +128,13 @@ class Shop:
                                  author=AUTHOR)
 
     def bundle(self, version: str, capabilities: tuple[str, ...] = ("events",),
-               hosts: tuple[str, ...] = (), devices: tuple[str, ...] = ()) -> bytes:
+               hosts: tuple[str, ...] = (), devices: tuple[str, ...] = (),
+               min_trcc: str = "9.0.0") -> bytes:
         """The greeter at *version*, as its author packs it."""
         manifest = json.loads((self._source / "module.json").read_text(encoding="utf-8"))
         manifest.update(version=version, capabilities=list(capabilities),
-                        network_hosts=list(hosts), devices=list(devices))
+                        network_hosts=list(hosts), devices=list(devices),
+                        min_trcc=min_trcc)
         (self._source / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
         return module_bundle.pack(self._source)
 
@@ -142,7 +144,7 @@ class Shop:
              listed_author: str | None = None) -> bytes:
         """Publish *version* in a new index; the bundle served at its URL."""
         data = (bundle if bundle is not None
-                else self.bundle(version, capabilities, hosts, devices))
+                else self.bundle(version, capabilities, hosts, devices, min_trcc))
         url = f"https://github.test/greeter-{version}.zip"
         self.web.files[url] = data
         listed = listed_capabilities if listed_capabilities is not None else capabilities
@@ -308,14 +310,18 @@ def test_a_tampered_bundle_is_refused_and_nothing_lands(cli_app: App, shop: Shop
     assert not _installed_folder(cli_app).exists()
 
 
-@pytest.mark.parametrize("unlike", ["capabilities", "author"])
+@pytest.mark.parametrize("unlike", ["capabilities", "author", "min_trcc"])
 def test_a_bundle_unlike_its_index_entry_is_refused(cli_app: App, shop: Shop,
                                                     unlike: str) -> None:
     """Signed and listed, but its own module.json says something the index
-    does not -- asks for more, or names another author than the one
-    reviewed: refused after unpacking aside, before it lands."""
+    does not -- asks for more, names another author than the one reviewed,
+    or needs a newer TRCC than the index says: refused after unpacking
+    aside, before it lands."""
     if unlike == "author":
         shop.list("1", listed_author="Someone Reviewed")
+        result = _install(cli_app)
+    elif unlike == "min_trcc":
+        shop.list("1", bundle=shop.bundle("1", min_trcc="9.12.1"))   # listed 9.0.0
         result = _install(cli_app)
     else:
         shop.list("1", listed_capabilities=("events", "readings"))
@@ -917,6 +923,21 @@ def test_a_folder_installs_unsigned_and_off_and_stays_off_after_a_restart(
     assert (tile.origin, tile.enabled) == ("unsigned", False)
     assert again.dispatch(SetModuleEnabled(key=KEY, enabled=True)).ok
     assert again.modules.is_on(KEY)
+
+
+def test_a_folder_needing_a_newer_trcc_is_refused(cli_app: App, shop: Shop) -> None:
+    """Developer mode or not, a module that says it needs a newer TRCC does
+    not land.  MUTATION CHECK: drop ``_runs_here`` in ``install_folder``."""
+    cli_app.dispatch(SetDeveloperMode(on=True))
+    folder = _folder(shop)
+    manifest = json.loads((folder / "module.json").read_text(encoding="utf-8"))
+    manifest["min_trcc"] = "10.0.0"
+    (folder / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
+    refused = _install_folder(cli_app, folder)
+    assert (refused.ok, refused.message) == (
+        False, "Greeter needs TRCC 10.0.0 -- this is 9.12.0")
+    assert not _installed_folder(cli_app).exists()
+    assert cli_app.settings.module_install(KEY) is None
 
 
 def test_a_folder_install_asks_exactly_what_its_module_json_asks(

@@ -132,6 +132,7 @@ The Modules page lists a module from this file alone.
 | `title` | the name on its row |
 | `summary` | one plain sentence on what it does for the user |
 | `version` | its version |
+| `min_trcc` | the oldest TRCC it runs on, as `X.Y.Z` — `new_module.py --out` fills in the TRCC you make it with; raise it when your module starts using something newer. Required to be listed: an older TRCC refuses to install it, saying which TRCC it needs. A module built into TRCC leaves it out |
 | `default_on` | on for someone who never chose (new modules start `false`) |
 | `icon` | a file beside `module.json`, drawn 40 × 40 on its row |
 | `guide` | a link to its section of this guide |
@@ -216,4 +217,4 @@ Listing is how a module reaches everyone through **Get modules**. Nothing is lis
 
 The review (`dev/tools/review_module.py`) packs your tagged commit again and compares it with your bundle byte for byte, checks your signature, and reads the code without running it. It refuses a library TRCC does not ship, any network use outside `host.network`, `exec`/`eval`, and an import by computed name; it flags running programs, native code and file writes for a closer read; and it holds a module to the bar TRCC's own code meets — the rules above, logging included. For an update it shows what changed since the version last listed: that difference is what gets read.
 
-**An update** is the same four steps with a new version in `module.json` and a new tag. **Taken back:** a listed module found doing something it should not is withdrawn from the list, and every TRCC that installed it switches it off and says why.
+**An update** is the same four steps with a new version in `module.json` and a new tag — and a new `min_trcc` if it now needs a newer TRCC. **Taken back:** a listed module found doing something it should not is withdrawn from the list, and every TRCC that installed it switches it off and says why.

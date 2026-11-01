@@ -1380,6 +1380,8 @@ MODULE_HOST = re.compile(
 #: A USB device a module needs this user to reach (``devices``): its vendor
 #: and product id, lowercase hex, as ``lsusb`` prints them -- ``0b05:19af``.
 MODULE_DEVICE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{4}")
+#: The oldest TRCC a module runs on (``min_trcc``): a release, ``X.Y.Z``.
+MODULE_TRCC_VERSION = re.compile(r"\d+\.\d+\.\d+")
 #: The most one ``host.network.fetch`` reads, and how long it waits.
 MODULE_FETCH_MAX_BYTES = 2 << 20
 MODULE_FETCH_TIMEOUT_S = 20.0
@@ -1461,6 +1463,9 @@ class ModuleManifest:
     title: str
     summary: str
     version: str = "0"
+    #: The oldest TRCC it runs on (``X.Y.Z``) -- its author's word, which the
+    #: index lists; "" for one that ships with TRCC.
+    min_trcc: str = ""
     default_on: bool = True
     icon: str = ""
     guide: str = ""

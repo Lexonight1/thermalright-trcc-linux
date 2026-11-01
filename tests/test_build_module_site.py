@@ -20,6 +20,7 @@ import module_bundle
 import new_module
 import sign_module_index as tool
 
+from trcc.__version__ import __version__
 from trcc.adapters.modules import Ed25519Checker
 from trcc.core.errors import UntrustedModule
 from trcc.services.module_trust import ModuleTrust
@@ -175,8 +176,8 @@ def test_new_module_out_makes_the_folder_the_module_with_its_authors_name(
                                author="Ada Author", into=tmp_path / "repo")
     manifest = json.loads((folder / "module.json").read_text(encoding="utf-8"))
     assert (folder, manifest["key"], manifest["author"], manifest["guide"],
-            (folder / "app.py").exists()) == (
-        tmp_path / "repo", "weather", "Ada Author", "", True)
+            manifest["min_trcc"], (folder / "app.py").exists()) == (
+        tmp_path / "repo", "weather", "Ada Author", "", __version__, True)
 
 
 def test_new_module_out_needs_an_author_who_is_not_trcc(

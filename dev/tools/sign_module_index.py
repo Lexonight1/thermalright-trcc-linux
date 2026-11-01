@@ -14,7 +14,7 @@ Usage::
 
     # after reviewing it: list it, take one back, or just renew the expiry
     PYTHONPATH=src python3.12 dev/tools/sign_module_index.py add index.json --root root.json \\
-        --bundle weather-3.zip --url https://... --commit <sha> --min-trcc 9.12.0 \\
+        --bundle weather-3.zip --url https://... --commit <sha> \\
         --author-key author.pub --author-sig <base64>
     PYTHONPATH=src python3.12 dev/tools/sign_module_index.py revoke index.json --root root.json \\
         --module weather [--sha256 <hex>] --reason "sends your readings away"
@@ -64,7 +64,7 @@ from sign_release import sign
 
 from trcc.adapters.modules import Ed25519Checker, read_bundle
 from trcc.core.errors import UntrustedModule
-from trcc.core.models import TrustRoot
+from trcc.core.models import MODULE_TRCC_VERSION, TrustRoot
 from trcc.core.trust_keys import ROOT_KEYS
 from trcc.services.module_trust import (
     INDEX_TYPE,
@@ -184,9 +184,15 @@ def add(signed: dict[str, Any], module: str, bundle: bytes,
 
 def entry_from_bundle(bundle: bytes) -> tuple[str, dict[str, Any]]:
     """The module key *bundle* holds, and the index fields its ``module.json``
-    says -- version, capabilities, sites, title, summary, author."""
+    says -- version, the oldest TRCC it runs on, capabilities, sites, title,
+    summary, author.  ``UntrustedModule`` when it does not say which TRCC:
+    the author is told when signing, before anything is asked of anyone."""
     key, manifest = read_bundle(bundle)
-    return key, {"version": str(manifest.get("version", "0")),
+    min_trcc = manifest.get("min_trcc", "")
+    if not isinstance(min_trcc, str) or not MODULE_TRCC_VERSION.fullmatch(min_trcc):
+        raise UntrustedModule(f"{key}: module.json must say min_trcc, the oldest "
+                              "TRCC it runs on, as X.Y.Z (9.12.0)")
+    return key, {"version": str(manifest.get("version", "0")), "min_trcc": min_trcc,
                  "capabilities": list(manifest.get("capabilities", [])),
                  "network_hosts": list(manifest.get("network_hosts", [])),
                  "devices": list(manifest.get("devices", [])),
@@ -233,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--key", type=Path, default=DEFAULT_INDEX_KEY)
         p.add_argument("--days", type=int, default=90)
         if name == "add":
-            for flag in ("--url", "--commit", "--min-trcc", "--author-sig"):
+            for flag in ("--url", "--commit", "--author-sig"):
                 p.add_argument(flag, required=True)
             p.add_argument("--bundle", type=Path, required=True,
                            help="the release -- what it is comes from its module.json")
@@ -268,7 +274,6 @@ def main(argv: list[str] | None = None) -> int:
                     module, said = entry_from_bundle(bundle)
                     signed = add(signed, module, bundle, {
                         **said, "url": args.url, "commit": args.commit,
-                        "min_trcc": args.min_trcc,
                         "author_key": public_key(args.author_key),
                         "author_sig": args.author_sig}, trust)
                     # As the App reads it: the asks the user will be shown.

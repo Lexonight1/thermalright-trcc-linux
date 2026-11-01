@@ -47,6 +47,7 @@ def _set_author(repo: Path, name: str) -> None:
     manifest = repo / "module.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
     data["author"] = name
+    data["min_trcc"] = "9.12.0"         # as new_module.py --out writes it
     manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
@@ -239,6 +240,17 @@ def test_compiled_and_binary_files_are_refused(author: Path, tmp_path: Path,
     (author / name).write_bytes(body)
     gate = review.layout(author, _staged(author, tmp_path / "stage"))
     assert [(f.where, f.text) for f in gate.findings] == [(name, message)]
+
+
+def test_a_module_naming_no_trcc_is_refused(author: Path, tmp_path: Path) -> None:
+    """Listed, it would install on any TRCC -- the index needs its word."""
+    manifest = json.loads((author / "module.json").read_text(encoding="utf-8"))
+    del manifest["min_trcc"]
+    (author / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
+    gate = review.layout(author, _staged(author, tmp_path / "stage"))
+    assert [f.text for f in gate.findings if f.hard] == [
+        "min_trcc must name the oldest TRCC it runs on (X.Y.Z) -- the index lists "
+        "it, and an older TRCC will not install it"]
 
 
 def test_a_built_in_modules_key_is_refused(author: Path, tmp_path: Path) -> None:
@@ -533,7 +545,7 @@ def test_the_add_command_lets_the_bundle_say_what_it_is(tmp_path: Path) -> None:
                            ModuleAsks(("network",), ("api.example.com",)), ran=True)
     report = review.render(result, tmp_path / "files.txt")
     assert (f"sign_module_index.py add index.json --root root.json --commit {COMMIT} "
-            "--bundle <asset> --url <asset url> --min-trcc <version> "
+            "--bundle <asset> --url <asset url> "
             "--author-key <pub> --author-sig <sig>") in report
     assert ("It lists weather 3 as its module.json says: asks for network; "
             "sites: api.example.com.") in report

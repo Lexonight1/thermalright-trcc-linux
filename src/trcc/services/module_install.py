@@ -242,6 +242,7 @@ class ModuleInstaller:
         if len(bundle) > MODULE_BUNDLE_MAX_BYTES:
             raise ModuleUnavailable(f"{key}: {len(bundle)} bytes -- larger than a "
                                     "module may be")
+        self._runs_here(manifest.title, manifest.min_trcc)
         if not accepted.matches(manifest.asks):
             raise ModuleUnavailable(f"{manifest.title} {manifest.version} asks for: "
                                     f"{manifest.asks.describe()} -- confirm that first")
@@ -298,13 +299,20 @@ class ModuleInstaller:
         log.debug("ModuleInstaller._signed_install: %s -> %s", key, signed is not None)
         return signed
 
+    def _runs_here(self, title: str, min_trcc: str) -> None:
+        """Refuse a module whose oldest TRCC (*min_trcc*) is newer than this
+        one -- "" says nothing against it."""
+        log.debug("ModuleInstaller._runs_here: %s needs %r, this is %s", title,
+                  min_trcc, self._version)
+        if min_trcc and parse_version(min_trcc) > parse_version(self._version):
+            raise ModuleUnavailable(f"{title} needs TRCC {min_trcc} -- this is "
+                                    f"{self._version}")
+
     def _may_install(self, release: ModuleRelease, accepted: ModuleAsks) -> None:
         """Refuse a release this TRCC is too old for, one too large, or one
         asking for more -- or other -- than the user accepted."""
         log.debug("ModuleInstaller._may_install: %s", release.key)
-        if parse_version(release.min_trcc) > parse_version(self._version):
-            raise ModuleUnavailable(f"{release.title or release.key} needs TRCC "
-                                    f"{release.min_trcc} -- this is {self._version}")
+        self._runs_here(release.title or release.key, release.min_trcc)
         if release.size > MODULE_BUNDLE_MAX_BYTES:
             raise ModuleUnavailable(f"{release.key}: {release.size} bytes -- larger "
                                     "than a module may be")
@@ -320,8 +328,8 @@ class ModuleInstaller:
         log.debug("ModuleInstaller._matches_release: %s %s", release.key, release.version)
 
         def matches(manifest: ModuleManifest) -> None:
-            said = (manifest.key, manifest.version, manifest.author)
-            listed = (release.key, release.version, release.author)
+            said = (manifest.key, manifest.version, manifest.author, manifest.min_trcc)
+            listed = (release.key, release.version, release.author, release.min_trcc)
             log.debug("matches: %s vs %s", said, listed)
             if said != listed or not manifest.asks.matches(release.asks):
                 raise UntrustedModule(f"{release.key}: its module.json is not what "

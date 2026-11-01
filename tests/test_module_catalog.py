@@ -90,6 +90,8 @@ def test_a_key_must_be_a_package_name(tmp_path: Path) -> None:
       for bad in ("0B05:19AF", "0b05-19af", "0b0519af", "b05:19af", "0b05:19af:01")],
     ({"devices": ["0b05:19af"]},
      "devices needs the hardware capability -- it is how a module reaches them"),
+    *[({"min_trcc": bad}, "min_trcc must be the oldest TRCC it runs on, as X.Y.Z (9.12.0)")
+      for bad in ("9.12", "v9.12.0", "9.12.0-rc1", 9)],
 ])
 def test_a_bad_manifest_says_what_is_wrong(
         tmp_path: Path, change: dict[str, Any], reason: str) -> None:
@@ -97,6 +99,13 @@ def test_a_bad_manifest_says_what_is_wrong(
     with pytest.raises(ManifestError) as e:
         read_manifest(path)
     assert str(e.value) == f"{path}: {reason}"
+
+
+def test_a_module_names_the_oldest_trcc_it_runs_on(tmp_path: Path) -> None:
+    """Its author's word; one shipped with TRCC says nothing ("")."""
+    said = read_manifest(_manifest(tmp_path / "lazy", min_trcc="9.12.0"))
+    silent = read_manifest(_manifest(tmp_path / "quiet"))
+    assert (said.min_trcc, silent.min_trcc) == ("9.12.0", "")
 
 
 def test_a_module_names_the_usb_devices_it_needs(tmp_path: Path) -> None:
