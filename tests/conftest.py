@@ -386,6 +386,18 @@ class FakeMic:
         return (0.0, 0.5, 1.0, 0.5)
 
 
+def register_shipped_modules() -> None:
+    """Every shipped module's Commands, Results and events in the IPC tables,
+    as the App's start puts them there.  A gate that reads ``ipc.COMMAND_TYPES``
+    calls this first: left to chance, a module's Commands were in the table
+    only if an earlier test had loaded that module, so the gate passed in the
+    full suite and failed alone -- and measured them or not by test order."""
+    from trcc import modules
+
+    for key in modules.shipped():
+        modules.load_core(key)
+
+
 def rgb_module(app: Any) -> Any:
     """RGB Lighting's root in *app* -- its follower, finder and settings,
     where a test reaches them now RGB is a module."""

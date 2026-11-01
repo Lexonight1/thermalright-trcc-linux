@@ -21,7 +21,12 @@ from trcc.core.commands._base import Command, result_type
 from trcc.core.models import Capability
 from trcc.modules.visualizer.core import PlayVisual, SetVisualSettings
 
+from .conftest import register_shipped_modules
 from .mock_platform import MockPlatform
+
+# The table below lists module Commands too; the IPC table holds them only
+# once their module is registered -- whatever test ran first.
+register_shipped_modules()
 
 _LED = "0416:8001"
 _LCD = "0402:3922"

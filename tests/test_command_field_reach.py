@@ -43,8 +43,13 @@ import pytest
 
 from trcc.ipc import COMMAND_TYPES
 
+from .conftest import register_shipped_modules
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "tools"))
 import layers
+
+# PlayVisual and every other module Command are measured whatever ran before.
+register_shipped_modules()
 
 _FACES = ("cli", "api", "gui", "qtgui")
 
