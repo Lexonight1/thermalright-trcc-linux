@@ -42,9 +42,12 @@ class ListModules(Query[ModulesResult]):
     def execute(self, app: App) -> ModulesResult:
         infos = app.modules.infos()
         developer = app.settings.app.developer_mode
-        log.info("ListModules: %s developer_mode=%s",
-                 {m.key: m.enabled for m in infos}, developer)
-        return ModulesResult(ok=True, modules=infos, developer_mode=developer)
+        wanted = app.modules_wanted()
+        log.info("ListModules: %s developer_mode=%s wanted=%s",
+                 {m.key: m.enabled for m in infos}, developer,
+                 [w.key for w in wanted])
+        return ModulesResult(ok=True, modules=infos, developer_mode=developer,
+                             wanted=wanted)
 
 
 @dataclass(frozen=True, slots=True)

@@ -26,6 +26,7 @@ from .models import (
     PanelConfig,
     ProductInfo,
     SensorReading,
+    WantedModule,
     WebPreviewInfo,
 )
 
@@ -595,6 +596,10 @@ class ModulesResult(Result):
     is on, so every Modules page shows its switch from the App."""
     modules: tuple[ModuleInfo, ...] = ()
     developer_mode: bool = False
+    #: Modules a panel chose that are NOT here -- the App's own join of the
+    #: saved choices and the modules it has, so no UI has to guess it (and
+    #: none can guess it: an absent module is in no other answer).
+    wanted: tuple[WantedModule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

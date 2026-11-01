@@ -33,6 +33,7 @@ from ..presentation.module_catalog import (
     consent,
     problem_line,
     removal_question,
+    wanted_line,
 )
 from ._ctx import get_app
 
@@ -47,12 +48,17 @@ def list_modules() -> None:
     """Every module: on or off, its version, where it came from (built-in,
     installed, or copied in by hand), who wrote it -- and why one cannot run."""
     log.info("cli module list")
-    for m in get_app().dispatch(ListModules()).modules:
+    listed = get_app().dispatch(ListModules())
+    for m in listed.modules:
         state = "on " if m.enabled else "off"
         typer.echo(f"  [{state}] {m.key:<16} {m.title} -- {m.summary}")
         typer.echo(f"        {byline(m, str)}")
         if problem := problem_line(m, str):
             typer.echo(f"        {problem}")
+    # A module a panel chose and this TRCC does not have has no row above --
+    # nothing here knows anything about it but its key.
+    for want in listed.wanted:
+        typer.echo(f"  [  -] {want.key:<16} {wanted_line(want, str)}")
 
 
 def _switch(key: str, enabled: bool) -> None:

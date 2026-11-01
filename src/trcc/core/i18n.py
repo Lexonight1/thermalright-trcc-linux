@@ -281,6 +281,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': '开启',
         'Off': '关闭',
         'unlocks USB device {device} for every program you run': '向你运行的每个程序开放 USB 设备 {device}',
+        'Your panel {panel} uses {module} — install it to get it back': '您的面板 {panel} 使用 {module} — 安装后即可恢复',
+        '{count} of your panels use {module} — install it to get them back': '您有 {count} 个面板使用 {module} — 安装后即可恢复',
     },
     'zh_TW': {
         'Layer Mask': '佈局蒙板',
@@ -418,6 +420,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': '開啟',
         'Off': '關閉',
         'unlocks USB device {device} for every program you run': '向你執行的每個程式開放 USB 裝置 {device}',
+        'Your panel {panel} uses {module} — install it to get it back': '您的面板 {panel} 使用 {module} — 安裝後即可恢復',
+        '{count} of your panels use {module} — install it to get them back': '您有 {count} 個面板使用 {module} — 安裝後即可恢復',
     },
     'en': {
         'Layer Mask': 'Layer Mask',
@@ -513,6 +517,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Reading the module list…': 'Reading the module list…',
         'No modules are listed yet.': 'No modules are listed yet.',
         'Cannot run here: {problem}': 'Cannot run here: {problem}',
+        'Your panel {panel} uses {module} — install it to get it back':
+            'Your panel {panel} uses {module} — install it to get it back',
+        '{count} of your panels use {module} — install it to get them back':
+            '{count} of your panels use {module} — install it to get them back',
         'Guide ›': 'Guide ›',
         'No modules yet -- features arrive here as they become modules.': 'No modules yet -- features arrive here as they become modules.',
         'Install {title} {version}?': 'Install {title} {version}?',
@@ -693,6 +701,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Ein',
         'Off': 'Aus',
         'unlocks USB device {device} for every program you run': 'gibt das USB-Gerät {device} für jedes Programm frei, das du ausführst',
+        'Your panel {panel} uses {module} — install it to get it back': 'Ihr Panel {panel} nutzt {module} — installieren Sie es, um es zurückzuholen',
+        '{count} of your panels use {module} — install it to get them back': '{count} Ihrer Panels nutzen {module} — installieren Sie es, um sie zurückzuholen',
     },
     'ru': {
         'Layer Mask': 'Покрытие',
@@ -830,6 +840,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Вкл',
         'Off': 'Выкл',
         'unlocks USB device {device} for every program you run': 'открывает USB-устройство {device} для каждой запускаемой вами программы',
+        'Your panel {panel} uses {module} — install it to get it back': 'Ваша панель {panel} использует {module} — установите его, чтобы вернуть',
+        '{count} of your panels use {module} — install it to get them back': '{count} ваших панелей используют {module} — установите его, чтобы вернуть их',
     },
     'fr': {
         'Layer Mask': 'Masque de couche',
@@ -967,6 +979,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Activé',
         'Off': 'Désactivé',
         'unlocks USB device {device} for every program you run': 'ouvre le périphérique USB {device} à chaque programme que vous lancez',
+        'Your panel {panel} uses {module} — install it to get it back': 'Votre panneau {panel} utilise {module} — installez-le pour le retrouver',
+        '{count} of your panels use {module} — install it to get them back': '{count} de vos panneaux utilisent {module} — installez-le pour les retrouver',
     },
     'pt': {
         'Layer Mask': 'Máscara de camada',
@@ -1104,6 +1118,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Ligado',
         'Off': 'Desligado',
         'unlocks USB device {device} for every program you run': 'libera o dispositivo USB {device} para todo programa que você executar',
+        'Your panel {panel} uses {module} — install it to get it back': 'O seu painel {panel} usa {module} — instale-o para o recuperar',
+        '{count} of your panels use {module} — install it to get them back': '{count} dos seus painéis usam {module} — instale-o para os recuperar',
     },
     'ja': {
         'Layer Mask': 'レイヤーマスク',
@@ -1241,6 +1257,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'オン',
         'Off': 'オフ',
         'unlocks USB device {device} for every program you run': 'USB デバイス {device} を、あなたが実行するすべてのプログラムに開放します',
+        'Your panel {panel} uses {module} — install it to get it back': 'パネル {panel} は {module} を使っています — インストールすると元に戻ります',
+        '{count} of your panels use {module} — install it to get them back': '{count} 台のパネルが {module} を使っています — インストールすると元に戻ります',
     },
     'es': {
         'Layer Mask': 'Mascarilla de capa',
@@ -1378,6 +1396,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Activado',
         'Off': 'Desactivado',
         'unlocks USB device {device} for every program you run': 'abre el dispositivo USB {device} a todos los programas que ejecutes',
+        'Your panel {panel} uses {module} — install it to get it back': 'Tu panel {panel} usa {module}: instálalo para recuperarlo',
+        '{count} of your panels use {module} — install it to get them back': '{count} de tus paneles usan {module}: instálalo para recuperarlos',
     },
     'ko': {
         'Layer Mask': '레이어 마스크',
@@ -1515,6 +1535,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': '켜짐',
         'Off': '꺼짐',
         'unlocks USB device {device} for every program you run': '실행하는 모든 프로그램에 USB 장치 {device}를 개방합니다',
+        'Your panel {panel} uses {module} — install it to get it back': '패널 {panel}이(가) {module}을(를) 사용합니다 — 설치하면 다시 표시됩니다',
+        '{count} of your panels use {module} — install it to get them back': '패널 {count}개가 {module}을(를) 사용합니다 — 설치하면 다시 표시됩니다',
     },
     'it': {
         'Layer Mask': 'Maschera livello',
@@ -1652,6 +1674,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Attivo',
         'Off': 'Disattivo',
         'unlocks USB device {device} for every program you run': 'sblocca il dispositivo USB {device} per ogni programma che esegui',
+        'Your panel {panel} uses {module} — install it to get it back': 'Il tuo pannello {panel} usa {module}: installalo per riaverlo',
+        '{count} of your panels use {module} — install it to get them back': '{count} dei tuoi pannelli usano {module}: installalo per riaverli',
     },
     'nl': {
         'Layer Mask': 'Laagmasker',
@@ -1789,6 +1813,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Aan',
         'Off': 'Uit',
         'unlocks USB device {device} for every program you run': 'geeft USB-apparaat {device} vrij voor elk programma dat je uitvoert',
+        'Your panel {panel} uses {module} — install it to get it back': 'Je paneel {panel} gebruikt {module} — installeer het om het terug te krijgen',
+        '{count} of your panels use {module} — install it to get them back': '{count} van je panelen gebruiken {module} — installeer het om ze terug te krijgen',
     },
     'pl': {
         'Layer Mask': 'Maska warstwy',
@@ -1926,6 +1952,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Wł.',
         'Off': 'Wył.',
         'unlocks USB device {device} for every program you run': 'odblokowuje urządzenie USB {device} dla każdego uruchamianego programu',
+        'Your panel {panel} uses {module} — install it to get it back': 'Twój panel {panel} używa {module} — zainstaluj go, aby go odzyskać',
+        '{count} of your panels use {module} — install it to get them back': '{count} Twoich paneli używa {module} — zainstaluj go, aby je odzyskać',
     },
     'tr': {
         'Layer Mask': 'Katman maskesi',
@@ -2063,6 +2091,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Açık',
         'Off': 'Kapalı',
         'unlocks USB device {device} for every program you run': 'USB aygıtı {device} çalıştırdığınız her programa açılır',
+        'Your panel {panel} uses {module} — install it to get it back': '{panel} paneliniz {module} kullanıyor — geri getirmek için yükleyin',
+        '{count} of your panels use {module} — install it to get them back': '{count} paneliniz {module} kullanıyor — geri getirmek için yükleyin',
     },
     'ar': {
         'Layer Mask': 'قناع الطبقة',
@@ -2200,6 +2230,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'تشغيل',
         'Off': 'إيقاف',
         'unlocks USB device {device} for every program you run': 'يفتح جهاز USB \u200f{device} لكل برنامج تشغّله',
+        'Your panel {panel} uses {module} — install it to get it back': 'لوحتك {panel} تستخدم {module} — ثبّته لاستعادتها',
+        '{count} of your panels use {module} — install it to get them back': '{count} من لوحاتك تستخدم {module} — ثبّته لاستعادتها',
     },
     'hi': {
         'Layer Mask': 'लेयर मास्क',
@@ -2337,6 +2369,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'चालू',
         'Off': 'बंद',
         'unlocks USB device {device} for every program you run': 'आपके चलाए हर प्रोग्राम के लिए USB डिवाइस {device} खोल देता है',
+        'Your panel {panel} uses {module} — install it to get it back': 'आपका पैनल {panel} {module} का उपयोग करता है — इसे वापस पाने के लिए इंस्टॉल करें',
+        '{count} of your panels use {module} — install it to get them back': 'आपके {count} पैनल {module} का उपयोग करते हैं — उन्हें वापस पाने के लिए इंस्टॉल करें',
     },
     'th': {
         'Layer Mask': 'มาสก์เลเยอร์',
@@ -2474,6 +2508,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'เปิด',
         'Off': 'ปิด',
         'unlocks USB device {device} for every program you run': 'เปิดอุปกรณ์ USB {device} ให้ทุกโปรแกรมที่คุณเรียกใช้',
+        'Your panel {panel} uses {module} — install it to get it back': 'แผง {panel} ของคุณใช้ {module} — ติดตั้งเพื่อให้กลับมา',
+        '{count} of your panels use {module} — install it to get them back': 'แผงของคุณ {count} แผงใช้ {module} — ติดตั้งเพื่อให้กลับมา',
     },
     'vi': {
         'Layer Mask': 'Mặt nạ lớp',
@@ -2611,6 +2647,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Bật',
         'Off': 'Tắt',
         'unlocks USB device {device} for every program you run': 'mở thiết bị USB {device} cho mọi chương trình bạn chạy',
+        'Your panel {panel} uses {module} — install it to get it back': 'Bảng {panel} của bạn dùng {module} — cài đặt để lấy lại',
+        '{count} of your panels use {module} — install it to get them back': '{count} bảng của bạn dùng {module} — cài đặt để lấy lại',
     },
     'id': {
         'Layer Mask': 'Masker lapisan',
@@ -2748,6 +2786,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Aktif',
         'Off': 'Nonaktif',
         'unlocks USB device {device} for every program you run': 'membuka perangkat USB {device} untuk setiap program yang Anda jalankan',
+        'Your panel {panel} uses {module} — install it to get it back': 'Panel {panel} Anda menggunakan {module} — pasang untuk mengembalikannya',
+        '{count} of your panels use {module} — install it to get them back': '{count} panel Anda menggunakan {module} — pasang untuk mengembalikannya',
     },
     'cs': {
         'Layer Mask': 'Maska vrstvy',
@@ -2885,6 +2925,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Zapnuto',
         'Off': 'Vypnuto',
         'unlocks USB device {device} for every program you run': 'zpřístupní zařízení USB {device} každému programu, který spustíte',
+        'Your panel {panel} uses {module} — install it to get it back': 'Váš panel {panel} používá {module} — nainstalujte jej a vrátí se',
+        '{count} of your panels use {module} — install it to get them back': '{count} vašich panelů používá {module} — nainstalujte jej a vrátí se',
     },
     'sv': {
         'Layer Mask': 'Lagermask',
@@ -3022,6 +3064,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'På',
         'Off': 'Av',
         'unlocks USB device {device} for every program you run': 'låser upp USB-enheten {device} för varje program du kör',
+        'Your panel {panel} uses {module} — install it to get it back': 'Din panel {panel} använder {module} — installera det för att få tillbaka det',
+        '{count} of your panels use {module} — install it to get them back': '{count} av dina paneler använder {module} — installera det för att få tillbaka dem',
     },
     'da': {
         'Layer Mask': 'Lagmaske',
@@ -3159,6 +3203,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Til',
         'Off': 'Fra',
         'unlocks USB device {device} for every program you run': 'låser USB-enheden {device} op for hvert program, du kører',
+        'Your panel {panel} uses {module} — install it to get it back': 'Dit panel {panel} bruger {module} — installér det for at få det tilbage',
+        '{count} of your panels use {module} — install it to get them back': '{count} af dine paneler bruger {module} — installér det for at få dem tilbage',
     },
     'no': {
         'Layer Mask': 'Lagmaske',
@@ -3296,6 +3342,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'På',
         'Off': 'Av',
         'unlocks USB device {device} for every program you run': 'låser opp USB-enheten {device} for hvert program du kjører',
+        'Your panel {panel} uses {module} — install it to get it back': 'Panelet {panel} bruker {module} — installer det for å få det tilbake',
+        '{count} of your panels use {module} — install it to get them back': '{count} av panelene dine bruker {module} — installer det for å få dem tilbake',
     },
     'fi': {
         'Layer Mask': 'Tasomaski',
@@ -3433,6 +3481,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Päällä',
         'Off': 'Pois',
         'unlocks USB device {device} for every program you run': 'avaa USB-laitteen {device} jokaiselle ajamallesi ohjelmalle',
+        'Your panel {panel} uses {module} — install it to get it back': 'Paneelisi {panel} käyttää {module}-moduulia — asenna se saadaksesi sen takaisin',
+        '{count} of your panels use {module} — install it to get them back': '{count} paneeliasi käyttää {module}-moduulia — asenna se saadaksesi ne takaisin',
     },
     'hu': {
         'Layer Mask': 'Rétegmaszk',
@@ -3570,6 +3620,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Be',
         'Off': 'Ki',
         'unlocks USB device {device} for every program you run': 'megnyitja a(z) {device} USB-eszközt minden futtatott programnak',
+        'Your panel {panel} uses {module} — install it to get it back': 'A {panel} paneled a {module} modult használja — telepítsd, hogy visszakapd',
+        '{count} of your panels use {module} — install it to get them back': '{count} paneled a {module} modult használja — telepítsd, hogy visszakapd őket',
     },
     'ro': {
         'Layer Mask': 'Mască strat',
@@ -3707,6 +3759,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Pornit',
         'Off': 'Oprit',
         'unlocks USB device {device} for every program you run': 'deblochează dispozitivul USB {device} pentru fiecare program pe care îl rulezi',
+        'Your panel {panel} uses {module} — install it to get it back': 'Panoul tău {panel} folosește {module} — instalează-l pentru a-l recupera',
+        '{count} of your panels use {module} — install it to get them back': '{count} dintre panourile tale folosesc {module} — instalează-l pentru a le recupera',
     },
     'uk': {
         'Layer Mask': 'Маска шару',
@@ -3844,6 +3898,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Увімк.',
         'Off': 'Вимк.',
         'unlocks USB device {device} for every program you run': 'відкриває USB-пристрій {device} для кожної програми, яку ви запускаєте',
+        'Your panel {panel} uses {module} — install it to get it back': 'Ваша панель {panel} використовує {module} — установіть його, щоб повернути',
+        '{count} of your panels use {module} — install it to get them back': '{count} ваших панелей використовують {module} — установіть його, щоб повернути їх',
     },
     'el': {
         'Layer Mask': 'Μάσκα στρώματος',
@@ -3981,6 +4037,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Ενεργό',
         'Off': 'Ανενεργό',
         'unlocks USB device {device} for every program you run': 'ξεκλειδώνει τη συσκευή USB {device} για κάθε πρόγραμμα που εκτελείτε',
+        'Your panel {panel} uses {module} — install it to get it back': 'Η οθόνη σας {panel} χρησιμοποιεί το {module} — εγκαταστήστε το για να επανέλθει',
+        '{count} of your panels use {module} — install it to get them back': '{count} από τις οθόνες σας χρησιμοποιούν το {module} — εγκαταστήστε το για να επανέλθουν',
     },
     'he': {
         'Layer Mask': 'מסכת שכבה',
@@ -4118,6 +4176,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'פועל',
         'Off': 'כבוי',
         'unlocks USB device {device} for every program you run': 'פותח את התקן ה-USB\u200f {device} לכל תוכנה שאתה מריץ',
+        'Your panel {panel} uses {module} — install it to get it back': 'הפאנל {panel} שלך משתמש ב-{module} — התקן אותו כדי להחזיר אותו',
+        '{count} of your panels use {module} — install it to get them back': '{count} מהפאנלים שלך משתמשים ב-{module} — התקן אותו כדי להחזיר אותם',
     },
     'ms': {
         'Layer Mask': 'Topeng lapisan',
@@ -4255,6 +4315,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Hidup',
         'Off': 'Mati',
         'unlocks USB device {device} for every program you run': 'membuka peranti USB {device} untuk setiap program yang anda jalankan',
+        'Your panel {panel} uses {module} — install it to get it back': 'Panel {panel} anda menggunakan {module} — pasang untuk mendapatkannya semula',
+        '{count} of your panels use {module} — install it to get them back': '{count} panel anda menggunakan {module} — pasang untuk mendapatkannya semula',
     },
     # --- New languages (v8.3.9) ---
     'bn': {
@@ -4393,6 +4455,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'চালু',
         'Off': 'বন্ধ',
         'unlocks USB device {device} for every program you run': 'আপনার চালানো প্রতিটি প্রোগ্রামের জন্য USB ডিভাইস {device} খুলে দেয়',
+        'Your panel {panel} uses {module} — install it to get it back': 'আপনার প্যানেল {panel} {module} ব্যবহার করে — ফিরে পেতে এটি ইনস্টল করুন',
+        '{count} of your panels use {module} — install it to get them back': 'আপনার {count}টি প্যানেল {module} ব্যবহার করে — ফিরে পেতে এটি ইনস্টল করুন',
     },
     'ur': {
         'Layer Mask': 'لیئر ماسک',
@@ -4530,6 +4594,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'آن',
         'Off': 'آف',
         'unlocks USB device {device} for every program you run': 'آپ کے چلائے ہر پروگرام کے لیے USB آلہ {device} کھول دیتا ہے',
+        'Your panel {panel} uses {module} — install it to get it back': 'آپ کا پینل {panel} {module} استعمال کرتا ہے — واپس لانے کے لیے اسے انسٹال کریں',
+        '{count} of your panels use {module} — install it to get them back': 'آپ کے {count} پینل {module} استعمال کرتے ہیں — واپس لانے کے لیے اسے انسٹال کریں',
     },
     'fa': {
         'Layer Mask': 'ماسک لایه',
@@ -4667,6 +4733,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'روشن',
         'Off': 'خاموش',
         'unlocks USB device {device} for every program you run': 'دستگاه USB \u200f{device} را برای هر برنامه\u200cای که اجرا می\u200cکنید باز می\u200cکند',
+        'Your panel {panel} uses {module} — install it to get it back': 'پنل {panel} شما از {module} استفاده می\u200cکند — برای بازگشت آن را نصب کنید',
+        '{count} of your panels use {module} — install it to get them back': '{count} پنل شما از {module} استفاده می\u200cکنند — برای بازگشت آن\u200cها را نصب کنید',
     },
     'tl': {
         'Layer Mask': 'Layer Mask',
@@ -4804,6 +4872,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Naka-on',
         'Off': 'Naka-off',
         'unlocks USB device {device} for every program you run': 'binubuksan ang USB device na {device} para sa bawat program na pinapatakbo mo',
+        'Your panel {panel} uses {module} — install it to get it back': 'Ang panel mong {panel} ay gumagamit ng {module} — i-install ito para maibalik',
+        '{count} of your panels use {module} — install it to get them back': '{count} sa mga panel mo ay gumagamit ng {module} — i-install ito para maibalik',
     },
     'ta': {
         'Layer Mask': 'லேயர் மாஸ்க்',
@@ -4941,6 +5011,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'இயக்கம்',
         'Off': 'முடக்கம்',
         'unlocks USB device {device} for every program you run': 'நீங்கள் இயக்கும் ஒவ்வொரு நிரலுக்கும் USB சாதனம் {device} ஐத் திறக்கிறது',
+        'Your panel {panel} uses {module} — install it to get it back': 'உங்கள் பேனல் {panel} {module} ஐப் பயன்படுத்துகிறது — மீண்டும் பெற அதை நிறுவுங்கள்',
+        '{count} of your panels use {module} — install it to get them back': 'உங்கள் {count} பேனல்கள் {module} ஐப் பயன்படுத்துகின்றன — மீண்டும் பெற அதை நிறுவுங்கள்',
     },
     'pa': {
         'Layer Mask': 'ਲੇਅਰ ਮਾਸਕ',
@@ -5078,6 +5150,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'ਚਾਲੂ',
         'Off': 'ਬੰਦ',
         'unlocks USB device {device} for every program you run': 'ਤੁਹਾਡੇ ਚਲਾਏ ਹਰ ਪ੍ਰੋਗਰਾਮ ਲਈ USB ਡਿਵਾਈਸ {device} ਖੋਲ੍ਹ ਦਿੰਦਾ ਹੈ',
+        'Your panel {panel} uses {module} — install it to get it back': 'ਤੁਹਾਡਾ ਪੈਨਲ {panel} {module} ਵਰਤਦਾ ਹੈ — ਇਸਨੂੰ ਵਾਪਸ ਲੈਣ ਲਈ ਇੰਸਟਾਲ ਕਰੋ',
+        '{count} of your panels use {module} — install it to get them back': 'ਤੁਹਾਡੇ {count} ਪੈਨਲ {module} ਵਰਤਦੇ ਹਨ — ਉਨ੍ਹਾਂ ਨੂੰ ਵਾਪਸ ਲੈਣ ਲਈ ਇੰਸਟਾਲ ਕਰੋ',
     },
     'sw': {
         'Layer Mask': 'Mask ya Tabaka',
@@ -5215,6 +5289,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'Imewashwa',
         'Off': 'Imezimwa',
         'unlocks USB device {device} for every program you run': 'hufungua kifaa cha USB {device} kwa kila programu unayoendesha',
+        'Your panel {panel} uses {module} — install it to get it back': 'Paneli yako {panel} inatumia {module} — isakinishe ili kuirejesha',
+        '{count} of your panels use {module} — install it to get them back': 'Paneli {count} zako zinatumia {module} — isakinishe ili kuzirejesha',
     },
     'my': {
         'Layer Mask': 'အလွှာမျက်နှာဖုံး',
@@ -5352,6 +5428,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'On': 'ဖွင့်',
         'Off': 'ပိတ်',
         'unlocks USB device {device} for every program you run': 'သင်ဖွင့်သော ပရိုဂရမ်တိုင်းအတွက် USB စက် {device} ကို ဖွင့်ပေးသည်',
+        'Your panel {panel} uses {module} — install it to get it back': 'သင့်ပန်နယ် {panel} သည် {module} ကို အသုံးပြုသည် — ပြန်ရရှိရန် ထည့်သွင်းပါ',
+        '{count} of your panels use {module} — install it to get them back': 'သင့်ပန်နယ် {count} ခုသည် {module} ကို အသုံးပြုသည် — ပြန်ရရှိရန် ထည့်သွင်းပါ',
     },
 }
 

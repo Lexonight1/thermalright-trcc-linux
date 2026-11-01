@@ -66,6 +66,7 @@ from .core.models import (
     PanelPicture,
     RawFrame,
     Theme,
+    WantedModule,
     Wire,
     format_device_key,
     oriented_resolution,
@@ -659,6 +660,27 @@ class App(CommandBus, ModuleServices):
         log.debug("background_owner: %s -> %s", prefix, found)
         return found
 
+    def modules_wanted(self) -> tuple[WantedModule, ...]:
+        """Every module a panel chose that this TRCC does not have, with the
+        panels that chose it -- the App's join of the saved choices and the
+        modules it has.
+
+        A key outlasts its module: an upgrade from a version that shipped one
+        as a core feature, or a fresh install, leaves the choice without the
+        code.  Only the App can answer it, because an absent module appears in
+        no other answer -- which is why every UI used to say nothing at all.
+        """
+        have = {info.key for info in self.modules.infos()}
+        panels: dict[str, list[str]] = {}
+        for key in self.settings.device_keys():
+            chosen = self.settings.for_device(key).module_source
+            if chosen is not None and chosen not in have:
+                panels.setdefault(chosen, []).append(key)
+        wanted = tuple(WantedModule(key=module, panels=tuple(keys))
+                       for module, keys in sorted(panels.items()))
+        log.info("modules_wanted: %s", {w.key: w.panels for w in wanted} or "none")
+        return wanted
+
     def resume_backgrounds(self, module: str) -> None:
         """*module* has started: each attached panel whose background is its
         draws again."""
@@ -690,8 +712,17 @@ class App(CommandBus, ModuleServices):
             return
         kind = self.background_kind_of(chosen)
         if kind is None:
-            log.info("resume_background: %s's %s is off -- kept for later",
-                     key, chosen)
+            # "off" and "not installed" are different problems with different
+            # fixes, and saying the wrong one sent a reporter looking for a
+            # switch that does not exist.  Not installed is also the louder
+            # one: nothing else in a report would mention the module at all.
+            if any(w.key == chosen for w in self.modules_wanted()):
+                log.warning("resume_background: %s chose %s, which is NOT "
+                            "INSTALLED -- its background waits; installing it "
+                            "brings the panel back to it", key, chosen)
+            else:
+                log.info("resume_background: %s's %s is off -- kept for later",
+                         key, chosen)
             return
         log.info("resume_background: %s resumes %s", key, chosen)
         kind.resume(key)

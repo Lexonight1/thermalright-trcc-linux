@@ -64,6 +64,7 @@ from .presentation.module_catalog import (
     problem_line,
     removable,
     removal_question,
+    wanted_line,
 )
 from .qt_background import dispatch_in_background
 
@@ -178,6 +179,14 @@ class ModulesView(QScrollArea):
             empty = QLabel(self._translate(NONE_YET))
             empty.setObjectName("modulesEmpty")
             self._column.addWidget(empty)
+        # A module a panel chose and this TRCC does not have is in no tile --
+        # there is nothing of it here to make one from -- so it is said above
+        # them, beside the button that installs it.
+        for want in getattr(listed, "wanted", ()):
+            line = QLabel(wanted_line(want, self._translate))
+            line.setObjectName("modulesWanted")
+            line.setWordWrap(True)
+            self._column.addWidget(line)
         for module in modules:
             self._column.addWidget(self._tile(module))
         self._column.addStretch(1)

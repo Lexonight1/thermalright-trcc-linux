@@ -17,7 +17,12 @@ import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-from ...core.models import MODULE_CAPABILITIES, AvailableModule, ModuleInfo
+from ...core.models import (
+    MODULE_CAPABILITIES,
+    AvailableModule,
+    ModuleInfo,
+    WantedModule,
+)
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +83,23 @@ def problem_line(module: ModuleInfo, tr: Callable[[str], str]) -> str:
     said = "Cannot run here: {problem}" if module.allowed else "Not run: {problem}"
     log.debug("problem_line: %s allowed=%s", module.key, module.allowed)
     return tr(said).format(problem=module.problem)
+
+
+#: What a panel wants that is not here, in the words every UI shows.  One
+#: panel names itself; several are counted, because a list of USB ids tells a
+#: user nothing their panel count does not.
+WANTED_ONE = "Your panel {panel} uses {module} — install it to get it back"
+WANTED_MANY = "{count} of your panels use {module} — install it to get them back"
+
+
+def wanted_line(wanted: WantedModule, tr: Callable[[str], str]) -> str:
+    """"Your panel uses this" -- for a module a panel chose and this TRCC does
+    not have.  Its key is all there is to call it: nothing here has its
+    manifest, so there is no title to show."""
+    said = WANTED_ONE if len(wanted.panels) == 1 else WANTED_MANY
+    log.debug("wanted_line: %s panels=%d", wanted.key, len(wanted.panels))
+    return tr(said).format(panel=wanted.panels[0] if wanted.panels else "",
+                           module=wanted.key, count=len(wanted.panels))
 
 
 @dataclass(frozen=True, slots=True)

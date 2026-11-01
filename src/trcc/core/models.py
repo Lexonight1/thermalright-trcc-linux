@@ -1352,6 +1352,25 @@ class ModuleInfo:
     author: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class WantedModule:
+    """A module a panel's saved choice needs and this TRCC does not have.
+
+    The App keeps each panel's background choice by module key, and a key
+    outlasts the module: a user who installed TRCC fresh, or upgraded from a
+    version that shipped one as a core feature, has the choice without the
+    code.  Nothing used to say so -- the panel simply drew its theme and the
+    one log line called the module "off", which sent a reporter looking for a
+    switch that does not exist.  Every UI reads this from ``ListModules``, so
+    all of them say the same thing: install it and the panel goes back to
+    what it was showing.
+    """
+    key: str
+    #: The panels that chose it, attached or not -- a choice survives an
+    #: unplug, so it is the saved settings that are asked, not the bus.
+    panels: tuple[str, ...] = ()
+
+
 #: What a module may ask its host for: the name its manifest declares, and
 #: what that lets it do, in the words its tile and the guide show.  The one
 #: list -- the manifest reader refuses any other name.
