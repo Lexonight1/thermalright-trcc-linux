@@ -45,6 +45,15 @@ jobs:
           echo "Python: $(python --version)"
           echo "pip: $(pip --version)"
 
+      - name: Refuse to release while an add-on is unpublished
+        # The wheel built below carries no add-on module, and so neither do
+        # the deb/rpm/Arch/Nix packages made from it.  Releasing before the
+        # module index offers one would take it off the panel of every user
+        # who had it, with no way to get it back.  dev/tools/add_ons.py owns it;
+        # it needs nothing installed.  BEFORE the build, so a release that
+        # would strand a user never produces an artifact at all.
+        run: python dev/tools/add_ons.py --release
+
       - name: Build sdist & wheel
         run: |
           python -m build --sdist --wheel --outdir dist
