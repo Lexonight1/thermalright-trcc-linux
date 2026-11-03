@@ -316,6 +316,19 @@ def test_the_visualizer_passes_layout_and_code_only_as_ours(tmp_path: Path) -> N
     assert all(not g.passed for g in theirs)
 
 
+def test_stage_two_runs_the_submitted_add_on_not_heads_copy(tmp_path: Path) -> None:
+    """Our add-on's source is ALSO in TRCC's HEAD, which stage 2 exports as the
+    tree it runs in.  The bundle under review must replace that copy -- it
+    raised FileExistsError on 2026-11-03 instead.  MUTATION CHECK: drop the
+    rmtree in export."""
+    staged = _staged(_VISUALIZER, tmp_path / "stage", key="visualizer")
+    (staged / "MARKER").write_text("the submitted bundle\n")
+    tree = review.export(tmp_path, staged, "visualizer", tmp_path / "no-tests")
+    into = tree / "src" / "trcc" / "modules" / "visualizer"
+    assert sorted(p.relative_to(into) for p in into.rglob("*")) == sorted(
+        p.relative_to(staged) for p in staged.rglob("*"))
+
+
 @pytest.mark.parametrize(("source", "hard", "text"), [
     ("import ctypes\n", False, "imports ctypes: calls native code"),
     ("import cffi\n", False, "imports cffi: calls native code"),

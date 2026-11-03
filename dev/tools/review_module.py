@@ -691,7 +691,11 @@ def export(workdir: Path, staged: Path, key: str, tests: Path) -> Path:
     archive = subprocess.run(["git", "-C", str(_REPO), "archive", "--format=tar",
                               "HEAD"], capture_output=True, check=True).stdout
     subprocess.run(["tar", "-x", "-C", str(tree)], input=archive, check=True)
-    shutil.copytree(staged, tree / "src" / "trcc" / "modules" / key)
+    into = tree / "src" / "trcc" / "modules" / key
+    if into.exists():                    # TRCC's own add-on: its source is in HEAD
+        log.info("export: %s is in HEAD -- the submitted bundle replaces it", key)
+        shutil.rmtree(into)
+    shutil.copytree(staged, into)
     # dev/_mock_bootstrap.py makes these on IMPORT (the smoke imports it), and
     # git keeps none of them: present, the read-only tree still refuses any
     # write into them.
