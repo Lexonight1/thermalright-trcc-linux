@@ -44,12 +44,8 @@ INDEX = REPO / "site" / "modules" / "index.json"
 #: An add-on NOT yet in the index, and why.  A release refuses while this
 #: holds anything: until the module is published there is no way for a user
 #: who had it to get it back.  Emptying it is the last step of publishing one.
-PENDING_PUBLISH: dict[str, str] = {
-    "visualizer": (
-        "left the base install 2026-11-01; its bundle is not packed, signed, "
-        "reviewed or listed yet -- the author steps of GUIDE_MODULES"
-    ),
-}
+#: The Visualizer left it on 2026-11-03, listed as version 1.
+PENDING_PUBLISH: dict[str, str] = {}
 
 
 def add_ons(pyproject: Path | None = None) -> set[str]:

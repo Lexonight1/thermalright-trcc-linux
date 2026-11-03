@@ -2,14 +2,40 @@
   "signatures": [
     {
       "key": "4K8L5bba1k4kKt7JJk7FCRsrI7fVWpjpeEF2VCdHWJ8=",
-      "sig": "nuv8EhyUUEz7CBzsqloHgfxQH4SUpqDA0CrhvrkLmUBoSSoa7x91Xd7ET9hkSQ6OvlmcF/i+cxcDQdReR/rmCg=="
+      "sig": "f2VpGWmIfZZKY02JCDCxH4kQKKkP7tOIF0PgI8iCa5IeFwNeHgS03J5zy/XGyS6IYNH8jvvKBJq2onxJvLW+Ag=="
     }
   ],
   "signed": {
-    "expires": "2027-01-28T03:55:26Z",
-    "modules": {},
+    "expires": "2027-02-01T10:30:26Z",
+    "modules": {
+      "visualizer": {
+        "author": "Lexonight",
+        "author_key": "XgOvx+p6Lz33OaO26/1QK68NIQxtAqYoFr95zPSDToY=",
+        "author_sig": "kDLuPHcMXPzxM/jUqYZPEWVuobikyMdqINZUFaxABW4EHwEc5UigzkdWOa6dteBdA/omG2W2TT0e55YBHH3OCQ==",
+        "capabilities": [
+          "events",
+          "panels",
+          "background",
+          "settings",
+          "themes",
+          "sound",
+          "gpu",
+          "files"
+        ],
+        "commit": "0e81bb49c61580fcfaec7f00fb2a43b82a6ace0b",
+        "devices": [],
+        "min_trcc": "9.12.0",
+        "network_hosts": [],
+        "sha256": "83083d912fc197eb72beb34bfc7f80e6fa1d3c10dd372bd9c2afff8f9e53d3b8",
+        "size": 988410,
+        "summary": "Draws what your computer is playing as a panel's background, with the theme's mask and readings on top.",
+        "title": "Audio Visualizer",
+        "url": "https://github.com/Lexonight1/thermalright-trcc-linux/releases/download/module-visualizer-v1/visualizer-1.zip",
+        "version": "1"
+      }
+    },
     "revoked": [],
     "type": "trcc-index",
-    "version": 1
+    "version": 2
   }
 }
