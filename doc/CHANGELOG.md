@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v9.12.0
 
 ### Added
 
@@ -61,6 +61,19 @@
 
 ### Fixed
 
+- **The Frozen Warframe 360 Pro connects** (0416:5406, #330). It never
+  answered TRCC: TRCC sent the same hello as Thermalright's own app, but not
+  the same way. TRCC now re-applies the cooler's USB configuration before
+  each hello and listens for the answer while it sends, as that app does.
+  Confirmed on the reporter's cooler.
+- **The Frozen Warframe 360 Pro stays connected.** Left idle, it dropped off
+  USB and came back every 15 seconds instead of sleeping; TRCC now keeps it
+  awake. The Elite Vision 360, which shares its USB id, no longer
+  idle-sleeps through USB suspend.
+- **A panel playing an audio visual keeps it through the upgrade** even if no
+  theme was ever saved: TRCC's automatic fallback theme no longer clears the
+  panel's choice, so the panel says it wants the Audio Visualizer and plays
+  the visual again once it is installed.
 - **Linux: TRCC hears the computer going to sleep and waking up again**
   (#323). The listener registered but never received a signal, so the panels
   were not looked after across a suspend: the background process's own Qt
