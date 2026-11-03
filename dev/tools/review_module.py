@@ -24,17 +24,24 @@ and reports:
 * **Code** -- from the syntax tree, never by running it.  Hard: a library
   TRCC does not let a module use, any network use outside ``host.network``
   (the ``network`` capability, held to its ``network_hosts``),
-  ``exec``/``eval``/``compile``, an import by computed name.
-  To read: running programs, native code, deleting or writing files,
-  pickle/marshal, long encoded literals.
+  ``exec``/``eval``/``compile``, an import or attribute by computed name,
+  running a program, native code (``ctypes``/``cffi``).
+  To read: deleting or writing files, signalling a process, pickle/marshal,
+  long encoded literals.
+* **TRCC's own add-ons** -- a key in ``add_ons`` signed with
+  :data:`FIRST_PARTY_AUTHOR_KEY` -- are TRCC's code, tested by TRCC's CI:
+  their native code and computed attributes are flagged to read, not refused.
+  Anyone else using that key or the author name ``Lexonight`` is refused.
 * **The bar TRCC's own code meets** -- module boundaries (``layers``), a
   log line in every function (``logging_coverage``), every word in every
   language (``i18n_gaps``), ruff and pyright clean in a copy of this tree.
 * **For judging KISS/SOLID/DRY** -- heaviest functions
   (``function_census``) and bodies copied within the module or from TRCC.
 
-Stage 2 -- its own tests and ``dev/smoke_modules.py``, which DO run its code --
-is not built yet; until it is, a module that passes here is not listable.
+Stage 2 (``--run``, after stage 1 passes and has been read) -- its own tests
+and ``dev/smoke_modules.py``, which DO run its code, in the podman sandbox
+(``sandbox``: no network, no capabilities).  A module is listable only when
+both stages pass.
 
 Untrusted input: everything fetched goes into a new, empty folder; nothing
 from it is imported or run, and ruff and pyright read a copy of only the
@@ -49,6 +56,7 @@ import ast
 import base64
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -59,6 +67,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import add_ons
 import function_census
 import i18n_gaps
 import layers
@@ -77,6 +86,15 @@ from trcc.core.models import ModuleAsks
 from trcc.services.module_trust import ModuleTrust, parse_release
 
 _REPO = Path(__file__).resolve().parents[2]
+log = logging.getLogger(__name__)
+
+#: The maintainer's author key (raw Ed25519, base64) -- the one that signs
+#: TRCC's own add-ons.  Its private half never leaves his machine
+#: (``~/.config/trcc-author/lexonight.key``).
+FIRST_PARTY_AUTHOR_KEY = "XgOvx+p6Lz33OaO26/1QK68NIQxtAqYoFr95zPSDToY="
+#: Hard imports a first-party add-on may use: native code.  Its own code needs
+#: it (OpenGL, libprojectM), and TRCC's CI tests it like the rest of TRCC.
+NATIVE = frozenset({"ctypes", "cffi"})
 
 #: Libraries beyond the stdlib a module may import: what TRCC ships and its
 #: own two modules use (measured 2026-10-23).  psutil, pyusb and hid ship too
@@ -291,12 +309,26 @@ def continuity(clone: Path, since: str, commit: str, version: str = "",
     return gate, _git("-C", str(clone), "diff", since, commit, "--", *paths)
 
 
-def layout(source: Path, staged: Path) -> Gate:
+def first_party(key: str, author_key: str | None) -> bool:
+    """Whether *key* is one of TRCC's own add-ons, signed by the maintainer."""
+    found = key in add_ons.add_ons() and author_key == FIRST_PARTY_AUTHOR_KEY
+    log.info("first_party: %s author_key=%s -> %s", key, author_key, found)
+    return found
+
+
+def layout(source: Path, staged: Path, first: bool = False) -> Gate:
     """The manifest reads; its key is free; only a module's files; nothing
-    compiled."""
+    compiled.  *first*: a first-party add-on (:func:`first_party`)."""
     gate = Gate("Layout")
-    if (_REPO / "src" / "trcc" / "modules" / staged.name).exists():
-        gate.fail("module.json", f"key {staged.name!r} is a built-in module's")
+    key, extras = staged.name, add_ons.add_ons()
+    if (_REPO / "src" / "trcc" / "modules" / key).exists() and key not in extras:
+        gate.fail("module.json", f"key {key!r} is a built-in module's")
+    elif key in extras and not first:
+        gate.fail("module.json", f"key {key!r} is TRCC's own add-on's -- only "
+                  "the maintainer's author key may release it")
+    elif first:
+        gate.notes.append("TRCC's own add-on, signed with the maintainer's key: "
+                          "native code and computed attributes are read, not refused")
     try:
         manifest = read_manifest(staged / "module.json")
     except ManifestError as e:
@@ -311,7 +343,8 @@ def layout(source: Path, staged: Path) -> Gate:
                       "install it")
         else:
             gate.notes.append(f"runs on TRCC {manifest.min_trcc} or newer")
-        if not manifest.author.strip() or manifest.author.strip() == BUILT_IN_AUTHOR:
+        if not manifest.author.strip() or (manifest.author.strip() == BUILT_IN_AUTHOR
+                                           and not first):
             gate.fail("module.json", "author must name who wrote it -- not empty, "
                       f"and not {BUILT_IN_AUTHOR!r}, the name TRCC's own modules carry")
         if manifest.network_hosts:
@@ -336,8 +369,8 @@ def layout(source: Path, staged: Path) -> Gate:
 class _Scanner(ast.NodeVisitor):
     """The code flags of one file, from its syntax tree."""
 
-    def __init__(self, gate: Gate, rel: str) -> None:
-        self._gate, self._rel = gate, rel
+    def __init__(self, gate: Gate, rel: str, first: bool = False) -> None:
+        self._gate, self._rel, self._first = gate, rel, first
 
     def _at(self, node: ast.AST) -> str:
         return f"{self._rel}:{getattr(node, 'lineno', 0)}"
@@ -349,6 +382,8 @@ class _Scanner(ast.NodeVisitor):
         if top in NETWORK:
             self._gate.fail(self._at(node), f"imports {name}: network -- a module "
                             "fetches through host.network, from the sites it names")
+        elif top in NATIVE and self._first:
+            self._gate.read(self._at(node), f"imports {name}: {HARD_IMPORTS[top]}")
         elif top in HARD_IMPORTS:
             self._gate.fail(self._at(node), f"imports {name}: {HARD_IMPORTS[top]}")
         elif top in READ_IMPORTS:
@@ -386,7 +421,8 @@ class _Scanner(ast.NodeVisitor):
         literal = bool(node.args) and isinstance(node.args[0], ast.Constant)
         if isinstance(func, ast.Name) and func.id in BY_NAME and not (
                 len(node.args) > 1 and isinstance(node.args[1], ast.Constant)):
-            self._gate.fail(self._at(node), f"{func.id}() of a computed name")
+            (self._gate.read if self._first else self._gate.fail)(
+                self._at(node), f"{func.id}() of a computed name")
         elif isinstance(func, ast.Attribute):
             owner = func.value.id if isinstance(func.value, ast.Name) else ""
             if func.attr == "import_module":
@@ -419,8 +455,9 @@ class _Scanner(ast.NodeVisitor):
                             "no spaces -- encoded data?")
 
 
-def code(staged: Path) -> Gate:
-    """The code flags of every packed ``.py`` file."""
+def code(staged: Path, first: bool = False) -> Gate:
+    """The code flags of every packed ``.py`` file.  *first*: a first-party
+    add-on (:func:`first_party`)."""
     gate = Gate("Code")
     for path in sorted(staged.rglob("*.py")):
         rel = path.relative_to(staged).as_posix()
@@ -429,7 +466,7 @@ def code(staged: Path) -> Gate:
         except (SyntaxError, UnicodeDecodeError) as e:
             gate.fail(rel, f"does not parse ({e})")
             continue
-        _Scanner(gate, rel).visit(tree)
+        _Scanner(gate, rel, first).visit(tree)
     return gate
 
 
@@ -756,9 +793,10 @@ def review(repo: str, tag: str, workdir: Path, asset: bytes | None = None,
             since, pinned = listed["commit"], listed["author_key"]
             approved = str(listed.get("version", ""))
     history, diff = continuity(source, since, commit, version, approved)
+    first = first_party(key, author_key)
     gates = [provenance(key, version, commit, asset, rebuilt, author_key,
-                        author_sig, pinned), history, layout(source, staged),
-             code(staged), boundaries(root), logging_lines(staged),
+                        author_sig, pinned), history, layout(source, staged, first),
+             code(staged, first), boundaries(root), logging_lines(staged),
              words(modules, key)]
     tree = _Tree(workdir / "tree")
     _git("-C", str(_REPO), "worktree", "add", "--quiet", "--detach", str(tree.path), "HEAD")

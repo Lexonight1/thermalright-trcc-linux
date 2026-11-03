@@ -258,6 +258,84 @@ def test_a_built_in_modules_key_is_refused(author: Path, tmp_path: Path) -> None
     assert [f.text for f in gate.findings if f.hard][0] == "key 'rgb' is a built-in module's"
 
 
+# ── TRCC's own add-ons ────────────────────────────────────────────────────
+
+_VISUALIZER = _REPO / "src" / "trcc" / "modules" / "visualizer"
+_ADD_ON_KEY = ("key 'visualizer' is TRCC's own add-on's -- only the maintainer's "
+               "author key may release it")
+_OUR_NAME = ("author must name who wrote it -- not empty, and not 'Lexonight', "
+             "the name TRCC's own modules carry")
+
+
+@pytest.mark.parametrize(("key", "author_key", "first"), [
+    ("visualizer", review.FIRST_PARTY_AUTHOR_KEY, True),
+    ("visualizer", "c29tZW9uZSBlbHNlJ3Mga2V5", False),   # another key
+    ("visualizer", None, False),                          # no key given
+    ("hello", review.FIRST_PARTY_AUTHOR_KEY, False),      # not an add-on
+    ("rgb", review.FIRST_PARTY_AUTHOR_KEY, False),        # built in, not an add-on
+])
+def test_only_an_add_on_signed_with_the_maintainers_key_is_first_party(
+        key: str, author_key: str | None, first: bool) -> None:
+    """MUTATION CHECK: drop either half of the ``and`` in first_party."""
+    assert review.first_party(key, author_key) is first
+
+
+def test_the_pinned_key_is_the_one_the_index_lists_for_our_add_ons() -> None:
+    """The key is spelled in the tool and in the signed index: two copies of
+    one fact.  Every add-on of ours the index lists must carry this one."""
+    listed = json.loads((_REPO / "site" / "modules" / "index.json")
+                        .read_text(encoding="utf-8"))["signed"]["modules"]
+    ours = {key: entry["author_key"] for key, entry in listed.items()
+            if key in review.add_ons.add_ons()}
+    assert ours == {key: review.FIRST_PARTY_AUTHOR_KEY for key in ours}
+
+
+def test_anyone_else_is_refused_our_add_ons_key_and_our_name(author: Path,
+                                                             tmp_path: Path) -> None:
+    """Somebody else's module may not take an add-on's key, nor sign as us.
+    MUTATION CHECK: let ``first`` default to True."""
+    _set_author(author, "Lexonight")
+    manifest = json.loads((author / "module.json").read_text(encoding="utf-8"))
+    manifest["key"] = "visualizer"
+    (author / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
+    gate = review.layout(author, _staged(author, tmp_path / "stage", key="visualizer"))
+    hard = [f.text for f in gate.findings if f.hard]
+    assert (_ADD_ON_KEY in hard, _OUR_NAME in hard) == (True, True)
+
+
+def test_the_visualizer_passes_layout_and_code_only_as_ours(tmp_path: Path) -> None:
+    """The real add-on, staged as the review stages it: as ours, nothing is
+    refused and its native code is left to read; as anyone else's, it is not
+    listable.  MUTATION CHECK: drop the NATIVE branch in _Scanner."""
+    staged = _staged(_VISUALIZER, tmp_path / "stage", key="visualizer")
+    ours = [review.layout(_VISUALIZER, staged, first=True), review.code(staged, first=True)]
+    theirs = [review.layout(_VISUALIZER, staged), review.code(staged)]
+    assert [f.text for g in ours for f in g.findings if f.hard] == []
+    assert any(f.text == "imports ctypes: calls native code"
+               for f in ours[1].findings if not f.hard)
+    assert all(not g.passed for g in theirs)
+
+
+@pytest.mark.parametrize(("source", "hard", "text"), [
+    ("import ctypes\n", False, "imports ctypes: calls native code"),
+    ("import cffi\n", False, "imports cffi: calls native code"),
+    ("getattr(lib, name)\n", False, "getattr() of a computed name"),
+    # What our own add-ons need is native code -- nothing else softens.
+    ("import subprocess\n", True, "imports subprocess: runs programs"),
+    ("import socket\n", True, "imports socket: network -- a module fetches through "
+                              "host.network, from the sites it names"),
+    ("exec('1')\n", True, "exec -- runs text as code, or reaches names by text"),
+    ("import os\nos.system('x')\n", True, "os.system() -- runs a program"),
+])
+def test_only_native_code_and_computed_attributes_soften_for_our_add_ons(
+        tmp_path: Path, source: str, hard: bool, text: str) -> None:
+    staged = tmp_path / "visualizer"
+    (staged / "core").mkdir(parents=True)
+    (staged / "core" / "x.py").write_text(source)
+    findings = review.code(staged, first=True).findings
+    assert [(f.hard, f.text) for f in findings][-1] == (hard, text)
+
+
 _NETWORK = "network -- a module fetches through host.network, from the sites it names"
 _BY_TEXT = "-- runs text as code, or reaches names by text"
 
