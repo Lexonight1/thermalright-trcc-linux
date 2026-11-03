@@ -524,7 +524,10 @@ def lint(tree: _Tree, key: str) -> list[Gate]:
     if result.returncode not in (0, 1):
         ruff.fail("ruff", result.stderr.strip() or f"exit {result.returncode}")
     pyright = Gate("pyright")
-    result = tree.run("pyright", "--outputjson", folder)
+    # Pinned to this interpreter: unpinned, pyright resolves imports against
+    # whatever python3 is on PATH, and a bare system Python (Fedora 45's 3.15,
+    # 2026-11-03) failed every module on fastapi and typer it could not see.
+    result = tree.run("pyright", "--pythonpath", sys.executable, "--outputjson", folder)
     try:
         diagnostics = json.loads(result.stdout)["generalDiagnostics"]
     except (ValueError, KeyError):

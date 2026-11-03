@@ -69,12 +69,6 @@ jobs:
           artifacts: dist/*
           skipIfReleaseExists: true
 
-      - name: Upload dist to actions artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist-${{ inputs.tag || github.ref_name }}
-          path: dist/*
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -92,12 +86,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # The tag, not the branch a re-run starts from: the udev rules, man
+          # pages and helpers packaged below are read from this checkout, and
+          # must be the ones the release was cut from.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Download wheel from release
-        uses: actions/download-artifact@v8
-        with:
-          name: dist-${{ inputs.tag || github.ref_name }}
-          path: dist/
+        # From the release, not from this run: a workflow_dispatch re-run
+        # rebuilds the wheel from the branch it runs on, and the rebuild is not
+        # byte-identical (measured 2026-11-03 on 9.12.0: same files, other
+        # hash).  Packages made from it would not match the wheel on PyPI, and
+        # SHA256SUMS would name a wheel nobody can download.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'trcc_linux-*' -D dist/
 
       - name: Extract version
         id: version
@@ -106,11 +110,17 @@ jobs:
           echo "ver=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build RPM (Fedora)
+        # One RPM per Fedora Python: rpm writes python(abi) = 3.X from the
+        # interpreter it built on, and a Fedora with another Python refuses it.
+        # 44 (Python 3.14) also serves 43; 45 is Python 3.15.  Pinned, never
+        # latest: 9.12.0 built on latest the day it became 45, and the RPM
+        # installed on no Fedora a user had.
         run: |
+          for FC in 44 45; do
           docker run --rm \
             -v "${{ github.workspace }}:/src" \
             -v "${{ github.workspace }}/packages:/output" \
-            fedora:latest bash -c '
+            "fedora:$FC" bash -c '
           set -e
           dnf install -y python3-devel python3-hatchling python3-pip python3-installer rpm-build checkpolicy policycoreutils >/dev/null 2>&1
           echo "=== RPM Build Environment ==="
@@ -265,13 +275,14 @@ jobs:
 
           rpmbuild -bb --buildroot="$PKG" --define "_rpmdir /output" /tmp/trcc.spec
           echo "=== RPM Verification ==="
-          RPM=$(find /output -name "*.rpm" | head -1)
+          RPM=$(find /output -name "*$(rpm -E %{dist}).noarch.rpm")
           echo "  Package: $RPM ($(du -h "$RPM" | cut -f1))"
           rpm -qlp "$RPM" | head -20
           echo "  Entry points:"
           rpm -qlp "$RPM" | grep "/usr/bin/" || echo "  (none)"
           echo "RPM build PASSED"
           '
+          done
 
       - name: Build DEB (Ubuntu/Debian)
         run: |
@@ -647,11 +658,14 @@ jobs:
           set -e
           P="${{ github.workspace }}/packages"
           IMPORTS="import trcc, trcc.ui.api.main, uvicorn.protocols.http.h11_impl, websockets, PySide6.QtWidgets"
-          for img in fedora:43 fedora:latest; do
-            echo "=== RPM on $img"
-            docker run --rm -v "$P:/p:ro" -e IMPORTS="$IMPORTS" "$img" bash -c '
+          # Every Fedora a user can run, each given the RPM its download link
+          # serves (target:built-on).
+          for target in 43:44 44:44 45:45; do
+            img="fedora:${target%%:*}" FC="${target#*:}"
+            echo "=== fc$FC RPM on $img"
+            docker run --rm -v "$P:/p:ro" -e IMPORTS="$IMPORTS" -e FC="$FC" "$img" bash -c '
               set -e
-              dnf install -y -q /p/noarch/*.rpm
+              dnf install -y -q /p/noarch/*.fc$FC.noarch.rpm
               python3 -c "$IMPORTS"
               trcc --version'
           done
@@ -698,11 +712,18 @@ jobs:
 
       - name: Create fixed-name aliases for stable download URLs
         run: |
-          RPM=$(find packages -name "*.rpm" | head -1)
+          RPM44=$(find packages -name "*.fc44.noarch.rpm")
+          RPM45=$(find packages -name "*.fc45.noarch.rpm")
           DEB=$(find packages -name "*_all.deb" ! -name "*legacy*" | head -1)
           DEB_LEGACY=$(find packages -name "*legacy*_all.deb" | head -1)
           ARCH=$(find packages -name "*.pkg.tar.zst" | head -1)
-          cp "$RPM" packages/trcc-linux-latest.noarch.rpm
+          # One link per Fedora, as fc$(rpm -E %fedora) spells it.  The
+          # unversioned name stays the fc44 RPM: every app up to 9.12.0 prints
+          # it in its upgrade hint, and those apps run on 43 and 44.
+          cp "$RPM44" packages/trcc-linux-latest.noarch.rpm
+          cp "$RPM44" packages/trcc-linux-latest.fc43.noarch.rpm
+          cp "$RPM44" packages/trcc-linux-latest.fc44.noarch.rpm
+          cp "$RPM45" packages/trcc-linux-latest.fc45.noarch.rpm
           cp "$DEB" packages/trcc-linux-latest_all.deb
           cp "$DEB_LEGACY" packages/trcc-linux-latest.legacy_all.deb
           cp "$ARCH" packages/trcc-linux-latest-any.pkg.tar.zst
@@ -711,13 +732,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RPM=$(find packages -name "*.rpm" ! -name "*latest*" | head -1)
+          RPM44=$(find packages -name "*.fc44.noarch.rpm" ! -name "*latest*")
+          RPM45=$(find packages -name "*.fc45.noarch.rpm" ! -name "*latest*")
           DEB=$(find packages -name "*_all.deb" ! -name "*legacy*" ! -name "*latest*" | head -1)
           DEB_LEGACY=$(find packages -name "*legacy*_all.deb" ! -name "*latest*" | head -1)
           ARCH=$(find packages -name "*.pkg.tar.zst" ! -name "*latest*" | head -1)
           gh release upload "${{ inputs.tag || github.ref_name }}" \
-            "$RPM" "$DEB" "$DEB_LEGACY" "$ARCH" \
+            "$RPM44" "$RPM45" "$DEB" "$DEB_LEGACY" "$ARCH" \
             packages/trcc-linux-latest.noarch.rpm \
+            packages/trcc-linux-latest.fc43.noarch.rpm \
+            packages/trcc-linux-latest.fc44.noarch.rpm \
+            packages/trcc-linux-latest.fc45.noarch.rpm \
             packages/trcc-linux-latest_all.deb \
             packages/trcc-linux-latest.legacy_all.deb \
             packages/trcc-linux-latest-any.pkg.tar.zst \
