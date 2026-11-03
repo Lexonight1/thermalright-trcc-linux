@@ -63,7 +63,7 @@ The GUI matches the Windows TRCC app layout. Here's what each area does:
 Below the preview: the rotation picker (0°/90°/180°/270°), the brightness slider, the device line (name · VID:PID · FBL/PM/SUB, selectable for bug reports), and the theme name box with its **Save** button.
 
 ### Tabs (Right)
-Five tabs across the top: **Local themes**, **Cloud masks**, **Cloud backgrounds** (the Gallery), **Audio visuals**, and **Settings**.
+Tabs across the top: **Local themes**, **Cloud masks**, **Cloud backgrounds** (the Gallery), **Audio visuals** (once the Audio Visualizer module is installed), and **Settings**.
 
 ### Settings Tab
 Four mode panels at the bottom:
@@ -197,7 +197,7 @@ On Wayland desktops, TRCC uses the PipeWire screen-cast portal for screen captur
 
 ## Audio Visuals
 
-The **Audio visuals** tab is a gallery of sound-driven animations: one tile per visual (and per preset). Clicking one makes it the panel's background; picking any other background ends it. CLI: `trcc display visuals` lists them, `trcc display visual` plays one.
+The **Audio visuals** tab comes with the Audio Visualizer module — install it from **Modules → Get modules** ([Modules Guide](GUIDE_MODULES.md#audio-visualizer)). It is a gallery of sound-driven animations: one tile per visual (and per preset). Clicking one makes it the panel's background; picking any other background ends it. CLI: `trcc display visuals` lists them, `trcc display visual` plays one.
 
 ---
 

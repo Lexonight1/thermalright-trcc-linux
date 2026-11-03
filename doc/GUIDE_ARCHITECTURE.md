@@ -45,7 +45,7 @@ imports no adapter, ever.
 | `services/` | business logic, pure Python — display, overlay, theme, LED effects, metrics. No Qt, no framework. |
 | `adapters/device/` | one class per wire: `ScsiLcd`, `HidLcd`, `BulkLcd`, `LyLcd`, `Led`. |
 | `adapters/system/` | one class per OS: `LinuxOS`, `WindowsPlatform`, `MacOSPlatform`, `BsdOS`. |
-| `adapters/render/qt.py` | `QtRenderer` — composites, draws text, rotates and encodes every frame. (The audio visuals in `adapters/visual/` also paint with Qt.) |
+| `adapters/render/qt.py` | `QtRenderer` — composites, draws text, rotates and encodes every frame. (The Audio Visualizer module's visuals, in `modules/visualizer/`, also paint with Qt.) |
 | `ui/{cli,api,gui,qtgui}/` | the four front-ends. Thin. |
 | `ui/presentation/` | toolkit-free presentation models shared by the graphical UIs. |
 | `app.py` | the `App`: owns devices, services, the bus, and `dispatch`. |

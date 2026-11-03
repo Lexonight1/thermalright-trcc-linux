@@ -9,6 +9,15 @@
   `trcc system modules`). Each row has a **Guide ›** link to its section of
   the modules guide. A module switched off hides its tab or page; your
   choices stay saved for when you switch it on again.
+- **Get modules.** Install, update and remove modules from TRCC's signed
+  module list, in every window and with `trcc system modules available` /
+  `install` / `remove`. Before a module installs, TRCC says what it may do and
+  checks two signatures, its author's and the maintainer's; an update from a
+  different author is refused, and a module taken off the list is switched off.
+  **Developer mode** installs a module from a folder, marked unsigned and off.
+- **A panel says which module it is waiting for.** A panel whose background
+  belongs to a module you do not have keeps that choice, and the Modules page,
+  `trcc system modules list` and the API say which module it wants.
 - **A module's themes are kept with it.** Themes with a visual background are
   saved with the Audio Visualizer and listed only while it is on. Visual
   themes you saved before move there once, automatically.
@@ -22,6 +31,11 @@
 
 ### Changed
 
+- **The Audio Visualizer is an add-on you install.** No TRCC package carries
+  it any more -- install it from **Modules → Get modules** (or
+  `trcc system modules install visualizer`). A panel that was playing a visual
+  keeps that choice, says it needs the Audio Visualizer, and plays the visual
+  again once it is installed. RGB Lighting stays built in.
 - **Switching RGB Lighting off takes back the RAM-lighting permission** --
   with RGB off, nothing in TRCC could remove it later. Where TRCC's polkit
   files are installed (a distro package, or `trcc system setup`) this needs no

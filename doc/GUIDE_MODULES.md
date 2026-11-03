@@ -2,7 +2,7 @@
 
 A **module** is a feature you can switch on or off on the **Modules** page, in every TRCC window. A module that is off costs nothing: TRCC does not even load its code.
 
-> **Where this stands.** Two of TRCC's own features are modules: the **Audio Visualizer** and **RGB Lighting**. Modules other people write can be installed too, from TRCC's signed module list — see [Getting more modules](#getting-more-modules).
+> **Where this stands.** **RGB Lighting** is built into TRCC. The **Audio Visualizer** is an add-on: no TRCC package carries it, and you install it from TRCC's signed module list, as you would a module someone else wrote — see [Getting more modules](#getting-more-modules).
 
 ---
 
@@ -46,7 +46,9 @@ For trying a module before it is listed — your own, or one you have the source
 
 ## Audio Visualizer
 
-Draws what your computer is playing as a panel's background — TRCC Pipes, the Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop — with the theme's mask and readings on top. **On by default.**
+Draws what your computer is playing as a panel's background — TRCC Pipes, the Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop — with the theme's mask and readings on top.
+
+**Installing it:** open **Modules → Get modules** and choose **Install** beside Audio Visualizer; it arrives switched on. From the command line, `trcc system modules install visualizer`; from the API, `POST /system/modules/visualizer/install`. It needs TRCC 9.12.0 or newer. If a panel was playing a visual before you upgraded, TRCC kept that choice: the Modules page says which panel wants the Audio Visualizer, and the panel plays its visual again the moment it is installed.
 
 - **gui:** the audio-bars tab beside Cloud backgrounds. Click a tile and it plays on the panel you have selected; its sliders and the centre picture are below the tiles.
 - **qtgui:** *Audio visuals* in the sidebar.

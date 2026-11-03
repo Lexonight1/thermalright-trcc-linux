@@ -159,7 +159,7 @@ trcc display set-brightness 0402:3922 80        # Brightness (0–100%)
 trcc display set-orientation 0402:3922 90       # Rotate display (0/90/180/270)
 trcc led color 0416:8001 "#00ff00"              # Set LED color
 trcc led mode 0416:8001 breathing               # Set LED effect mode
-trcc system modules list                        # Optional features (Audio Visualizer, RGB Lighting), on or off
+trcc system modules list                        # Optional features (RGB Lighting, any you installed), on or off
 trcc system rgb                                 # List the RGB lights TRCC can drive
 trcc system linked-color temp --sensor gpu      # RAM/board lights show the GPU temperature
 trcc report                                     # Generate diagnostic report
@@ -223,7 +223,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | [Install Guide](doc/GUIDE_INSTALL.md) | Installation for all major distros |
 | [CLI Reference](doc/REFERENCE_CLI.md) | All CLI commands with options and examples |
 | [User Guide](doc/GUIDE_USER.md) | How to use everything — GUI, themes, overlays, media, LED |
-| [Modules Guide](doc/GUIDE_MODULES.md) | The optional features you switch on and off — Audio Visualizer, RGB Lighting — and how to write one |
+| [Modules Guide](doc/GUIDE_MODULES.md) | The optional features you switch on and off — RGB Lighting, and the Audio Visualizer you install — and how to write one |
 | [API Reference](doc/REFERENCE_API.md) | Every REST API endpoint with request/response models |
 | [Troubleshooting](doc/GUIDE_TROUBLESHOOTING.md) | Common issues and fixes |
 | [New to Linux](doc/GUIDE_NEW_TO_LINUX.md) | Guide for Linux beginners |
@@ -254,9 +254,9 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Overlay Editor** | Text, sensors, date/time overlays — font picker, dynamic scaling, color picker |
 | **Hardware Sensors** | 77+ sensors — CPU/GPU temp, fan speed, power, usage — customizable dashboard |
 | **LED Control** | 13 LED styles, zone carousel, breathing/rainbow/static/wave modes, per-zone color |
-| **Modules** | Optional features you switch on and off on the **Modules** page, in every window and from the CLI and API — no restart. A module that is off is hidden and costs nothing. Two today: the **Audio Visualizer** and **RGB Lighting**. See the [Modules Guide](doc/GUIDE_MODULES.md) |
-| **Audio Visualizer** *(module)* | What your computer is playing, drawn as a panel's background with the theme's mask and readings on top — TRCC Pipes, Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop |
-| **RGB Lighting** *(module)* | Corsair RGB RAM, ASUS Aura motherboard headers, and anything OpenRGB drives, on one page — a built-in effect per stick or header, lights that show CPU or GPU temp or load (green → yellow → orange → red), or lights that follow the cooler's colours |
+| **Modules** | Optional features you switch on and off on the **Modules** page, in every window and from the CLI and API — no restart. A module that is off is hidden and costs nothing. **RGB Lighting** is built in; the **Audio Visualizer** you install from **Get modules**. See the [Modules Guide](doc/GUIDE_MODULES.md) |
+| **Audio Visualizer** *(module, install from Get modules)* | What your computer is playing, drawn as a panel's background with the theme's mask and readings on top — TRCC Pipes, Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop |
+| **RGB Lighting** *(module, built in)* | Corsair RGB RAM, ASUS Aura motherboard headers, and anything OpenRGB drives, on one page — a built-in effect per stick or header, lights that show CPU or GPU temp or load (green → yellow → orange → red), or lights that follow the cooler's colours |
 | **Display** | 16 resolutions (240x240 to 1920x462), 0/90/180/270 rotation, 3 brightness levels |
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules that give the devices to you and the `trcc` group only, polkit policy, SELinux support, no root required after setup |
@@ -276,7 +276,7 @@ Have an idea for the panel — weather, a stock ticker, your own visual? **You c
 - **Open source** — read the code, fix bugs, add features. Windows TRCC is closed-source .NET
 - **Screencast on Wayland** — Windows can't do that either
 - **Audio visualization** — mic spectrum analyzer on screencast. Windows doesn't have this
-- **Audio visuals as the panel's background** — MilkDrop, Cavalier and more, playing to whatever your computer plays (the Audio Visualizer module). Windows doesn't have this either
+- **Audio visuals as the panel's background** — MilkDrop, Cavalier and more, playing to whatever your computer plays (the Audio Visualizer module, installed from Get modules). Windows doesn't have this either
 - **Hexagonal architecture** — GUI, CLI, and API share the same core. No feature lag between interfaces
 
 ### 38-Language GUI (i18n)

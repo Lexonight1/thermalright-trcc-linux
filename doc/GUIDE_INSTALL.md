@@ -996,7 +996,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 | `lm-sensors` / `lm_sensors` | Provides `sensors-detect`, which finds the driver your motherboard's fan chip needs (`trcc doctor` suggests it when fans can't be read) — optional. TRCC reads the sensors from sysfs itself |
 | `grim` | Screen capture on Wayland desktops — optional |
 | `python3-gobject` / `python3-dbus` | PipeWire screen capture for GNOME/KDE on Wayland — optional |
-| `portaudio` / `libportaudio2` | Audio I/O library — required for the audio visualizer feature |
+| `portaudio` / `libportaudio2` | Audio I/O library — the sound bar a screen cast can draw (the Audio Visualizer module hears your computer through ffmpeg or PipeWire instead) |
 | `pyusb` + `libusb` | USB communication for HID LCD/LED devices (pulled in by pip automatically) |
 
 ---
