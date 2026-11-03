@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 import http.server
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -37,7 +38,7 @@ from trcc.core.events import ErrorOccurred
 from trcc.core.models import RawFrame
 from trcc.core.ports import CaptureNotReady
 from trcc.services.media import MediaService
-from trcc.services.media_stream import StreamReader
+from trcc.services.media_stream import StreamReader, explain_failure
 from trcc.services.stream_driver import task_key
 
 _KEY = "0402:3922"
@@ -305,14 +306,121 @@ def test_the_reader_yields_frames_at_the_panel_s_size(served: str) -> None:
         "close() left ffmpeg running")
 
 
-@_needs_ffmpeg
-def test_a_missing_source_says_why(served: str) -> None:
-    reader = StreamReader(f"{served}/missing.mp4", (64, 48), 16)
+def _failure_of(url: str) -> str:
+    """What a reader on *url* tells the user, with real ffmpeg."""
+    reader = StreamReader(url, (64, 48), 16)
     try:
-        with pytest.raises(OSError, match="no picture"):
-            _wait_for(reader.latest)
+        with pytest.raises(OSError) as caught:
+            _wait_for(reader.latest, timeout=30.0)
     finally:
         reader.close()
+    return str(caught.value)
+
+
+@_needs_ffmpeg
+def test_a_missing_source_says_why(served: str) -> None:
+    assert _failure_of(f"{served}/missing.mp4") == (
+        '127.0.0.1 answered "404 Not Found": the link is wrong, expired or private.')
+
+
+@_needs_ffmpeg
+def test_a_web_page_is_called_one(served: str, tmp_path: Path) -> None:
+    """A YouTube link is a web page, and ffmpeg's "Invalid data found" was
+    all the user got (2026-11-03)."""
+    (tmp_path / "watch.html").write_text("<html><body>a page</body></html>",
+                                         encoding="utf-8")
+    url = f"{served}/watch.html"
+    assert _failure_of(url) == (
+        f"There's no video at {url}. A YouTube or other web page isn't a video: "
+        "use a direct link to the file (.mp4, .m3u8) or a stream (rtsp://).")
+
+
+@_needs_ffmpeg
+def test_a_refused_connection_says_so() -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    assert _failure_of(f"http://127.0.0.1:{port}/x.mp4") == (
+        "127.0.0.1 refused the connection: nothing is serving video at that address.")
+
+
+@_needs_ffmpeg
+def test_a_host_that_does_not_exist_is_named() -> None:
+    """ffmpeg names the host four lines from the end; a three-line tail lost
+    it, and the user was told a missing host was a web page."""
+    assert _failure_of("http://no-such-host.invalid/x.mp4") == (
+        "Can't find no-such-host.invalid: check the address and your internet connection.")
+
+
+#: ffmpeg's last lines, as ``_one_run`` joins them, for each kind of link.
+#: Captured verbatim from ffmpeg 7.1 on 2026-11-03 (only the addresses after
+#: ``@`` normalised) -- all but ``unmeasured``, which is made up on purpose: it
+#: stands for any error not measured here, which must be quoted, not guessed.
+_FFMPEG_SAID = {
+    "youtube-embed": (
+        "https://www.youtube.com/embed/lxyKIWGqP00",
+        "[in#0 @ 0x55d0c0de0000] Error opening input: Input/output error Error opening input "
+        "file https://www.youtube.com/embed/lxyKIWGqP00. Error opening input files: "
+        "Input/output error",
+        "There's no video at https://www.youtube.com/embed/lxyKIWGqP00. A YouTube or other "
+        "web page isn't a video: use a direct link to the file (.mp4, .m3u8) or a stream "
+        "(rtsp://)."),
+    "youtube-watch": (
+        "https://www.youtube.com/watch?v=lxyKIWGqP00",
+        "[in#0 @ 0x55d0c0de0000] Error opening input: Invalid data found when processing "
+        "input Error opening input file https://www.youtube.com/watch?v=lxyKIWGqP00. Error "
+        "opening input files: Invalid data found when processing input",
+        "There's no video at https://www.youtube.com/watch?v=lxyKIWGqP00. A YouTube or other "
+        "web page isn't a video: use a direct link to the file (.mp4, .m3u8) or a stream "
+        "(rtsp://)."),
+    "404": (
+        "https://download.blender.org/peach/nope.mp4",
+        "[in#0 @ 0x55d0c0de0000] Error opening input: Server returned 404 Not Found Error "
+        "opening input file https://download.blender.org/peach/nope.mp4. Error opening input "
+        "files: Server returned 404 Not Found",
+        'download.blender.org answered "404 Not Found": the link is wrong, expired or '
+        "private."),
+    "403": (
+        "https://commondatastorage.googleapis.com/x/BigBuckBunny.mp4",
+        "[in#0 @ 0x55d0c0de0000] Error opening input: Server returned 403 Forbidden (access "
+        "denied) Error opening input file https://commondatastorage.googleapis.com/x/"
+        "BigBuckBunny.mp4. Error opening input files: Server returned 403 Forbidden (access "
+        "denied)",
+        'commondatastorage.googleapis.com answered "403 Forbidden": the link is wrong, '
+        "expired or private."),
+    "no-host": (
+        "https://no-such-host-trcc.invalid/x.mp4",
+        "[tcp @ 0x55d0c0de0000] Failed to resolve hostname no-such-host-trcc.invalid: Name or "
+        "service not known [in#0 @ 0x55d0c0de0000] Error opening input: Input/output error "
+        "Error opening input file https://no-such-host-trcc.invalid/x.mp4. Error opening "
+        "input files: Input/output error",
+        "Can't find no-such-host-trcc.invalid: check the address and your internet "
+        "connection."),
+    "refused": (
+        "https://127.0.0.1:9/x.mp4",
+        "[tcp @ 0x55d0c0de0000] Connection to tcp://127.0.0.1:9 failed: Connection refused "
+        "[in#0 @ 0x55d0c0de0000] Error opening input: Connection refused Error opening input "
+        "file https://127.0.0.1:9/x.mp4. Error opening input files: Connection refused",
+        "127.0.0.1 refused the connection: nothing is serving video at that address."),
+    "timed-out": (
+        "http://10.255.255.1/x.mp4",
+        "[tcp @ 0x55d0c0de0000] Connection to tcp://10.255.255.1:80 failed: Connection timed "
+        "out [in#0 @ 0x55d0c0de0000] Error opening input: Connection timed out Error opening "
+        "input file http://10.255.255.1/x.mp4. Error opening input files: Connection timed "
+        "out",
+        "10.255.255.1 didn't answer: check the address and your connection."),
+    "unmeasured": (
+        "https://example.test/clip.mkv",
+        "[vist#0:0 @ 0x55d0c0de0000] Decoding error: Function not implemented",
+        "No picture from https://example.test/clip.mkv: ffmpeg said [vist#0:0 @ "
+        "0x55d0c0de0000] Decoding error: Function not implemented"),
+}
+
+
+@pytest.mark.parametrize("case", _FFMPEG_SAID)
+def test_each_failure_is_told_in_plain_words(case: str) -> None:
+    url, stderr, told = _FFMPEG_SAID[case]
+    assert explain_failure(url, stderr) == told
 
 
 def test_ffmpeg_may_not_open_local_files_for_a_stream() -> None:

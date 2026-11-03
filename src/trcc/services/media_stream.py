@@ -18,11 +18,13 @@ before its first frame reports why, through :meth:`StreamReader.latest`.
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import threading
 import time
 from collections import deque
 from typing import IO
+from urllib.parse import urlsplit
 
 from ..core import toolchain
 from ..core.logs import per_frame
@@ -102,9 +104,9 @@ class StreamReader:
             if self._stop.is_set():
                 return
             if frames == 0:
-                self._error = (f"{self.url}: no picture (ffmpeg exit {code})"
-                               + (f": {stderr}" if stderr else ""))
-                log.warning("StreamReader: %s", self._error)
+                self._error = explain_failure(self.url, stderr)
+                log.warning("StreamReader: %s: no picture (ffmpeg exit %d): %s",
+                            self.url, code, stderr)
                 return
             log.info("StreamReader: %s ended after %d frames (exit %d) — "
                      "restarting", self.url, frames, code)
@@ -123,7 +125,9 @@ class StreamReader:
             self._command(), stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         assert proc.stdout is not None and proc.stderr is not None
-        tail: deque[bytes] = deque(maxlen=3)
+        # Six, not three: a host that cannot be found prints its reason four
+        # lines from the end, and three left it out (explain_failure).
+        tail: deque[bytes] = deque(maxlen=6)
         drain = threading.Thread(target=_drain, args=(proc.stderr, tail),
                                  daemon=True, name="trcc-stream-stderr")
         drain.start()
@@ -144,6 +148,37 @@ class StreamReader:
         text = b" ".join(tail).decode(errors="replace").strip()
         log.debug("_one_run: %s frames=%d exit=%d", self.url, frames, code)
         return frames, code, text
+
+
+#: ffmpeg's words when the link holds no video.  A web page -- YouTube, any
+#: site -- reads as "Invalid data found"; YouTube's embed page, and a host
+#: that cannot be found, as "Input/output error" (the second with its own
+#: resolve line first, matched before this).  Measured, ffmpeg 7.1, 2026-11-03.
+_NOT_A_VIDEO = ("Invalid data found", "Input/output error")
+
+
+def explain_failure(url: str, stderr: str) -> str:
+    """Why *url* gave no picture, in plain words, from ffmpeg's *stderr*.
+
+    ffmpeg's own text stays in the log; this is what the user is shown.  An
+    error not measured here is quoted rather than guessed at.
+    """
+    host = urlsplit(url).hostname or url
+    if status := re.search(r"Server returned (\w{3}\b.*?)(?= \(| Error opening|$)", stderr):
+        reason = f'{host} answered "{status.group(1)}": the link is wrong, expired or private.'
+    elif name := re.search(r"Failed to resolve hostname (\S+?):", stderr):
+        reason = f"Can't find {name.group(1)}: check the address and your internet connection."
+    elif "Connection refused" in stderr:
+        reason = f"{host} refused the connection: nothing is serving video at that address."
+    elif "Connection timed out" in stderr:
+        reason = f"{host} didn't answer: check the address and your connection."
+    elif any(words in stderr for words in _NOT_A_VIDEO):
+        reason = (f"There's no video at {url}. A YouTube or other web page isn't a video: "
+                  "use a direct link to the file (.mp4, .m3u8) or a stream (rtsp://).")
+    else:
+        reason = f"No picture from {url}" + (f": ffmpeg said {stderr}" if stderr else ".")
+    log.info("explain_failure: %s -> %s", url, reason)
+    return reason
 
 
 def _drain(stream: IO[bytes], tail: deque[bytes]) -> None:
