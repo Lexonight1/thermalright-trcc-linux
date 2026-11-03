@@ -568,6 +568,72 @@ def test_a_module_without_tests_fails_without_running_anything(
     assert asked == []
 
 
+def _suite(tree: Path, files: dict[str, str]) -> None:
+    (tree / "tests").mkdir(parents=True)
+    for name, body in files.items():
+        (tree / "tests" / name).write_text(body)
+
+
+def test_our_add_ons_tests_are_the_suite_files_that_import_it(tmp_path: Path) -> None:
+    """By syntax tree: naming it is not importing it, nor is a longer key.
+    MUTATION CHECK: match ``startswith(module)`` without the dot."""
+    _suite(tmp_path, {
+        "test_a.py": "from trcc.modules.visualizer.core import models\n",
+        "test_b.py": "def f():\n    import trcc.modules.visualizer\n",
+        "test_c.py": "from trcc.modules import visualizer\n",
+        "test_d.py": "KEY = 'visualizer'  # trcc.modules.visualizer\n",
+        "test_e.py": "import trcc.modules.visualizerx\n",
+        "test_f.py": "from trcc.modules.visualizerx import y\n",
+        "helper.py": "import trcc.modules.visualizer\n",          # not a test file
+    })
+    assert review.suite_tests_of(tmp_path, "visualizer") == [
+        "tests/test_a.py", "tests/test_b.py", "tests/test_c.py"]
+
+
+def test_our_add_on_runs_the_suite_files_that_import_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: ignore *first* in own_tests."""
+    _suite(tmp_path, {"test_a.py": "import trcc.modules.visualizer\n",
+                      "test_b.py": "import json\n"})
+    asked = _canned(monkeypatch, 0, "== 1 passed ==\n")
+    gate = review.own_tests(tmp_path, "img", tmp_path, "visualizer", first=True)
+    assert gate.findings == []
+    assert asked == [(review.PYTHON, "-m", "pytest", "tests/test_a.py", "-q",
+                      "-n", "0", "-p", "no:cacheprovider")]
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_stage_two_tells_its_tests_whether_the_add_on_is_ours(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: bool) -> None:
+    """The review's verdict reaches the gate that picks the tests.
+    MUTATION CHECK: drop ``result.first`` from stage_two's call."""
+    told: list[bool] = []
+    monkeypatch.setattr(review, "ensure_image", lambda workdir: "img")
+    monkeypatch.setattr(review, "export", lambda *a: tmp_path)
+    monkeypatch.setattr(review, "proven", lambda *a: review.Gate("Sandbox"))
+    monkeypatch.setattr(review, "smoke", lambda *a: review.Gate("Smoke"))
+
+    def own_tests(workdir: Path, image: str, tree: Path, key: str,
+                  first: bool = False) -> review.Gate:
+        told.append(first)
+        return review.Gate("Its own tests")
+
+    monkeypatch.setattr(review, "own_tests", own_tests)
+    review.stage_two(review.Review("visualizer", "1", COMMIT, [], "", "", first=first),
+                     tmp_path)
+    assert told == [first]
+
+
+def test_our_add_on_with_no_suite_tests_fails_without_running_anything(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _suite(tmp_path, {"test_b.py": "import json\n"})
+    asked = _canned(monkeypatch, 0, "")
+    gate = review.own_tests(tmp_path, "img", tmp_path, "visualizer", first=True)
+    assert [f.text for f in gate.findings] == [
+        "no tests -- nothing in TRCC's suite imports trcc.modules.visualizer"]
+    assert asked == []
+
+
 @pytest.mark.parametrize(("code", "failures"), [
     (0, []), (1, ["failed, exit 1"]), (5, ["no test was collected"])])
 def test_its_tests_pass_or_say_why_not(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
