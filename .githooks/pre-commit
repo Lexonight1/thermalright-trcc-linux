@@ -14,6 +14,16 @@
 # names the source paths it derives from, then it regenerates + `git add`s.
 set -e
 
+# The generators import the app (typer, fastapi, PySide6), so they need the
+# interpreter TRCC is developed on, not whatever the OS calls python3: Fedora
+# 45 made that a bare 3.15 and every commit touching src/ failed here.
+# TRCC_PYTHON wins; else the 3.12 dev venv (dev/ci_local.sh builds it); else
+# python3, which is an activated venv's when one is.
+PY=${TRCC_PYTHON:-python3}
+if [ -z "$TRCC_PYTHON" ] && [ -x .venv/3.12/bin/python ]; then
+    PY=.venv/3.12/bin/python
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR)
 
 # ── man pages ──────────────────────────────────────────────────────────
@@ -22,7 +32,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 # string (src/trcc/__version__.py).  Regenerate when either is staged.
 if printf '%s\n' "$staged" | grep -qE '^src/trcc/ui/cli/|^src/trcc/__version__\.py$'; then
     echo "pre-commit: CLI/version changed — regenerating man pages"
-    if ! PYTHONPATH=src python3 dev/gen_manpages.py >/dev/null; then
+    if ! PYTHONPATH=src "$PY" dev/gen_manpages.py >/dev/null; then
         echo "pre-commit: man page generation FAILED (dev/gen_manpages.py)" >&2
         exit 1
     fi
@@ -38,7 +48,7 @@ fi
 # its only trigger.
 if printf '%s\n' "$staged" | grep -qE '^src/trcc/ui/cli/'; then
     echo "pre-commit: CLI changed — regenerating doc/REFERENCE_CLI.md"
-    if ! PYTHONPATH=src python3 dev/gen_cli_reference.py >/dev/null; then
+    if ! PYTHONPATH=src "$PY" dev/gen_cli_reference.py >/dev/null; then
         echo "pre-commit: CLI reference generation FAILED (dev/gen_cli_reference.py)" >&2
         exit 1
     fi
@@ -53,7 +63,7 @@ fi
 # Any ABC or implementation can move, so the trigger is the whole tree.
 if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
     echo "pre-commit: src changed — regenerating doc/REFERENCE_PORTS.md"
-    if ! PYTHONPATH=src python3 dev/gen_ports_reference.py >/dev/null; then
+    if ! PYTHONPATH=src "$PY" dev/gen_ports_reference.py >/dev/null; then
         echo "pre-commit: port reference generation FAILED (dev/gen_ports_reference.py)" >&2
         exit 1
     fi
@@ -68,7 +78,7 @@ fi
 # trigger is the whole tree, like the port reference above.
 if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
     echo "pre-commit: src changed — regenerating packaged setup files"
-    if ! PYTHONPATH=src python3 dev/gen_packaging_setup.py >/dev/null; then
+    if ! PYTHONPATH=src "$PY" dev/gen_packaging_setup.py >/dev/null; then
         echo "pre-commit: packaged setup generation FAILED (dev/gen_packaging_setup.py)" >&2
         exit 1
     fi
@@ -83,7 +93,7 @@ fi
 # cutover.  Derived, so it cannot drift the same way.
 if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
     echo "pre-commit: src changed — regenerating doc/REFERENCE_COMMANDS.md"
-    if ! PYTHONPATH=src python3 dev/gen_commands_reference.py >/dev/null; then
+    if ! PYTHONPATH=src "$PY" dev/gen_commands_reference.py >/dev/null; then
         echo "pre-commit: command reference generation FAILED (dev/gen_commands_reference.py)" >&2
         exit 1
     fi
@@ -96,7 +106,7 @@ fi
 # did not exist, and documented 4 of the 133 actually served.
 if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
     echo "pre-commit: src changed — regenerating doc/REFERENCE_API.md"
-    if ! PYTHONPATH=src python3 dev/gen_api_reference.py >/dev/null; then
+    if ! PYTHONPATH=src "$PY" dev/gen_api_reference.py >/dev/null; then
         echo "pre-commit: API reference generation FAILED (dev/gen_api_reference.py)" >&2
         exit 1
     fi
