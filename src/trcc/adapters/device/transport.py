@@ -11,6 +11,7 @@ macOS/BSD fall back to userspace USB BOT.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
@@ -82,9 +83,11 @@ _ERRNO_EBUSY = 16    # Interface claimed by another process
 class PyUsbBulkTransport(BulkTransport):
     """USB transport via pyusb (libusb backend).
 
-    C# LibUsbDotNet parity:
-        find(vid, pid, serial?) → set_configuration(1) → claim_interface(0)
-        → auto-detect endpoints → bulk read/write → release/close.
+    find(vid, pid, serial?) → set_configuration(1) ONLY when the device is not
+    already in it (the kernel configured it at enumeration, so normally never)
+    → claim_interface(0) → auto-detect endpoints → bulk read/write →
+    release/close.  The C#'s ALi worker always sets it, before every
+    handshake: :meth:`reconfigure`.
     """
 
     def __init__(self, vid: int, pid: int,
@@ -378,6 +381,76 @@ class PyUsbBulkTransport(BulkTransport):
         frame_log.debug("PyUsbBulkTransport.read: ep=0x%02x %d/%d byte(s)",
                         ep, len(data), length)
         return data
+
+    def reconfigure(self) -> None:
+        """SET_CONFIGURATION(1) and claim interface 0 again -- what the C#'s
+        ALi worker does before every handshake, configured or not
+        (DCReadWriteAsync.cs:709-710).  On Linux setting the current
+        configuration is libusb's lightweight reset: the endpoints start
+        afresh.  libusb will not change it while we hold the interface, so it
+        is released first.  A refused SET_CONFIGURATION (WinUSB may refuse
+        one) is logged and the handshake goes on as before; failing to claim
+        the interface back fails it."""
+        if not self._is_open or self._device is None:
+            log.warning("PyUsbBulkTransport.reconfigure: transport not open "
+                        "(%04x:%04x)", self._vid, self._pid)
+            raise TransportError("Transport not open")
+        log.info("PyUsbBulkTransport.reconfigure: %04X:%04X set configuration %d, "
+                 "claim interface %d", self._vid, self._pid, USB_CONFIGURATION,
+                 USB_INTERFACE)
+        try:
+            usb.util.release_interface(self._device, USB_INTERFACE)
+            self._device.set_configuration(USB_CONFIGURATION)
+        except (usb.core.USBError, NotImplementedError) as e:
+            log.warning("PyUsbBulkTransport.reconfigure: %04X:%04X refused "
+                        "SET_CONFIGURATION (%s) -- going on without it",
+                        self._vid, self._pid, e)
+        try:
+            usb.util.claim_interface(self._device, USB_INTERFACE)
+        except usb.core.USBError as e:
+            log.warning("PyUsbBulkTransport.reconfigure: %04X:%04X could not "
+                        "claim interface %d back: %s", self._vid, self._pid,
+                        USB_INTERFACE, e)
+            raise TransportError(f"USB claim after reconfigure failed: {e}") from e
+
+    def exchange(self, out_endpoint: int, data: WriteBuffer, in_endpoint: int,
+                 length: int, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> bytes:
+        """The reply's read posted alongside the write, as the C#'s ALi
+        worker submits both and then waits (DCReadWriteAsync.cs:724-751): a
+        firmware that answers at once finds a read already waiting.  libusb
+        takes transfers on two endpoints from two threads."""
+        log.info("PyUsbBulkTransport.exchange: %04X:%04X write %d byte(s), "
+                 "read posted for %d", self._vid, self._pid, len(data), length)
+        reply: list[bytes] = []
+        failed: list[TransportError] = []
+        posted = threading.Event()
+
+        def receive() -> None:
+            log.debug("PyUsbBulkTransport.exchange: read posted on ep 0x%02x",
+                      self._ep_in if self._ep_in is not None else in_endpoint)
+            posted.set()
+            try:
+                reply.append(self.read(in_endpoint, length, timeout_ms))
+            except TransportError as e:
+                failed.append(e)
+
+        reader = threading.Thread(target=receive, name="trcc-usb-exchange",
+                                  daemon=True)
+        reader.start()
+        posted.wait(1.0)
+        try:
+            self.write(out_endpoint, data, timeout_ms)
+        finally:
+            reader.join(timeout_ms / 1000 + 1.0)
+        if failed:
+            raise failed[0]
+        if not reply:
+            log.warning("PyUsbBulkTransport.exchange: %04X:%04X the read did not "
+                        "finish", self._vid, self._pid)
+            raise TransportError("USB read did not finish")
+        log.info("PyUsbBulkTransport.exchange: %04X:%04X %d byte(s) back",
+                 self._vid, self._pid, len(reply[0]))
+        return reply[0]
 
     @property
     def ep_out(self) -> int | None:

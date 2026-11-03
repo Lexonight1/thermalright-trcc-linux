@@ -451,8 +451,10 @@ class DeviceQuirks:
     """Per-firmware behavior overrides for a device that diverges from its
     wire family's defaults.
 
-    Keyed on ``(vid, pid, bcd_device)`` so ONE firmware revision opts in;
-    every device without a row keeps its family default (all flags ``False``),
+    Keyed on ``(vid, pid, bcd_device)`` so ONE firmware revision opts in --
+    or ``(vid, pid, None)`` for every firmware of a product, which an exact
+    row overrides.  Every device without a row keeps its family default (all
+    flags ``False``),
     so shared wire code (all Type-2 HID panels, the sibling PID, …) cannot
     regress.  Isolates firmware handling to an OCP registry row instead of
     fingerprint checks scattered across the transport / handshake / render
@@ -470,12 +472,17 @@ class DeviceQuirks:
     # it keeps: a device that left the bus (ENODEV) is disconnected, as no
     # session survives that.
     single_session: bool = False
+    # The C#'s ALi worker (``ThreadSendDeviceDataALi``, DCReadWriteAsync.cs:
+    # 663): before EVERY handshake, SET_CONFIGURATION(1) and claim -- even when
+    # already configured -- 50 ms, then the reply read posted WITH the write.
+    # The only path the C# has for 0416:5406, on any firmware (#330).
+    ali_exchange: bool = False
 
 
 _NO_QUIRKS = DeviceQuirks()
 
 # (vid, pid, bcd_device) → quirks.  bcd_device is the raw USB bcdDevice (BCD).
-DEVICE_QUIRKS: dict[tuple[int, int, int], DeviceQuirks] = {
+DEVICE_QUIRKS: dict[tuple[int, int, int | None], DeviceQuirks] = {
     # Frozen Warframe SE, firmware bcdDevice 4.07 (#228, adamkoehler1990):
     # reverse-engineered — needs HID output reports (pyusb bulk is ignored),
     # no init packet, an 8-byte handshake reply, a portrait-native 240×320
@@ -486,13 +493,19 @@ DEVICE_QUIRKS: dict[tuple[int, int, int], DeviceQuirks] = {
         hid_reports=True, skip_init=True, short_handshake=True,
         portrait_native=True, single_session=True,
     ),
+    # Every 0416:5406 -- the Elite Vision 360 (#212), the Frozen Warframe 360
+    # Pro (#330): the C# drives the product, whatever its firmware, one way.
+    (0x0416, 0x5406, None): DeviceQuirks(ali_exchange=True),
 }
 
 
 def quirks_for(vid: int, pid: int, bcd_device: int) -> DeviceQuirks:
-    """Firmware quirks for an exact fingerprint, or the empty default."""
-    log.debug("quirks_for: vid=%s pid=%s", vid, pid)
-    return DEVICE_QUIRKS.get((vid, pid, bcd_device), _NO_QUIRKS)
+    """Firmware quirks for an exact fingerprint, else the product's own row,
+    else the empty default."""
+    found = DEVICE_QUIRKS.get((vid, pid, bcd_device)) or DEVICE_QUIRKS.get(
+        (vid, pid, None), _NO_QUIRKS)
+    log.debug("quirks_for: vid=%s pid=%s bcd=0x%04x -> %s", vid, pid, bcd_device, found)
+    return found
 
 
 # =========================================================================

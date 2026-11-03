@@ -24,12 +24,19 @@ takes the round-trips.  Both are needed, and neither substitutes for the other.
 """
 from __future__ import annotations
 
+import threading
+import time
+from typing import Any
+
 import pytest
+import usb.core
+import usb.util
 
 from trcc.adapters.device import DEVICES, _f5
 from trcc.adapters.device.hid_lcd import HidLcd
+from trcc.adapters.device.transport import PyUsbBulkTransport
 from trcc.core.errors import HandshakeError, TransportError
-from trcc.core.models import Kind, ProductInfo, Wire
+from trcc.core.models import Kind, ProductInfo, Wire, quirks_for
 from trcc.core.registry import find_product
 
 from .conftest import FakeBulkTransport
@@ -203,3 +210,161 @@ def test_elite_vision_360_is_a_hid_type3_panel() -> None:
     assert product.wire is Wire.HID
     assert product.device_type == 3, "must select the F5 (type 3) variant"
     assert DEVICES[product.wire] is HidLcd
+
+
+# ── The C#'s ALi worker: how 0416:5406 is asked, not only what (#330) ────
+
+
+class _Recording(FakeBulkTransport):
+    """The fake transport, noting every port call in order."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def reconfigure(self) -> None:
+        self.calls.append("reconfigure")
+
+    def exchange(self, out_endpoint: int, data: Any, in_endpoint: int,
+                 length: int, timeout_ms: int = 100) -> bytes:
+        self.calls.append("exchange")
+        return super().exchange(out_endpoint, data, in_endpoint, length, timeout_ms)
+
+    def write(self, endpoint: int, data: Any, timeout_ms: int = 100) -> int:
+        self.calls.append("write")
+        return super().write(endpoint, data, timeout_ms)
+
+    def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
+        self.calls.append("read")
+        return super().read(endpoint, length, timeout_ms)
+
+
+@pytest.fixture
+def no_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The handshake's settles and retry pauses, not slept through."""
+    import trcc.adapters.device._base as base
+    import trcc.adapters.device.hid_lcd as hid_lcd
+
+    monkeypatch.setattr(base.time, "sleep", lambda s: None)
+    monkeypatch.setattr(hid_lcd.time, "sleep", lambda s: None)
+
+
+def _elite_vision(transport: FakeBulkTransport, bcd: int = 0x0200) -> HidLcd:
+    """0416:5406 as the App builds it: its quirks set from its fingerprint."""
+    device = _device(transport, vid=0x0416, pid=0x5406)
+    device.set_quirks(quirks_for(0x0416, 0x5406, bcd))
+    return device
+
+
+@pytest.mark.usefixtures("no_waits")
+def test_5406_is_asked_the_way_the_alis_worker_asks() -> None:
+    """SET_CONFIGURATION + claim, then the read posted with the write -- the
+    only way the C# talks to 0416:5406 (DCReadWriteAsync.cs:709-751).
+    MUTATION CHECK: return the base exchange in HidLcd._init_exchange."""
+    transport = _Recording()
+    transport.read_script = [_reply(0x65)]
+    result = _elite_vision(transport).connect()
+    assert (result.fbl, transport.calls) == (100, ["reconfigure", "exchange", "write", "read"])
+    assert transport.writes == [(0x02, _f5.init_packet())]
+
+
+@pytest.mark.usefixtures("no_waits")
+@pytest.mark.parametrize("pid", [0x5303, 0x5304])
+def test_the_other_type3_panels_keep_their_exchange(pid: int) -> None:
+    """0418:5303/5304 speak F5 too, but the C# never drives them with the ALi
+    worker: nothing about how they are asked changes."""
+    transport = _Recording()
+    transport.read_script = [_reply(0x65)]
+    device = _device(transport, vid=0x0418, pid=pid)
+    device.set_quirks(quirks_for(0x0418, pid, 0x0100))
+    device.connect()
+    assert transport.calls == ["write", "read"]
+
+
+@pytest.mark.usefixtures("no_waits")
+def test_every_attempt_reconfigures_as_the_c_reopens_for_every_attempt() -> None:
+    """MUTATION CHECK: reconfigure once, before the retry loop."""
+    transport = _Recording()                       # never answers
+    with pytest.raises(HandshakeError):
+        _elite_vision(transport).connect()
+    assert transport.calls.count("reconfigure") == 3
+
+
+# ── PyUsbBulkTransport: reconfigure + exchange on a stand-in pyusb device ─
+
+
+class _UsbDevice:
+    """A pyusb device: records the order of what it is asked."""
+
+    def __init__(self, refuse_configuration: bool = False) -> None:
+        self.order: list[str] = []
+        self.read_started = threading.Event()
+        self._refuse = refuse_configuration
+
+    def set_configuration(self, value: int) -> None:
+        self.order.append(f"set_configuration({value})")
+        if self._refuse:
+            raise usb.core.USBError("Operation not supported")
+
+    def read(self, endpoint: int, length: int, timeout: int) -> bytearray:
+        self.order.append("read")
+        self.read_started.set()
+        time.sleep(0.05)
+        return bytearray(_reply(0x65)[:length])
+
+    def write(self, endpoint: int, data: Any, timeout: int) -> int:
+        # A firmware that answers at once: the reply is only caught when the
+        # read is already posted -- so the write waits for it, briefly.
+        self.read_started.wait(1.0)
+        self.order.append("write")
+        return len(data)
+
+
+def _pyusb(device: _UsbDevice, monkeypatch: pytest.MonkeyPatch) -> PyUsbBulkTransport:
+    monkeypatch.setattr(usb.util, "release_interface",
+                        lambda dev, i: device.order.append(f"release({i})"))
+    monkeypatch.setattr(usb.util, "claim_interface",
+                        lambda dev, i: device.order.append(f"claim({i})"))
+    transport = PyUsbBulkTransport(0x0416, 0x5406)
+    transport._device, transport._is_open = device, True
+    transport._ep_out, transport._ep_in = 0x02, 0x81
+    return transport
+
+
+def test_reconfigure_releases_sets_the_configuration_and_claims_again(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """libusb will not change the configuration while the interface is held.
+    MUTATION CHECK: drop the release."""
+    device = _UsbDevice()
+    _pyusb(device, monkeypatch).reconfigure()
+    assert device.order == ["release(0)", "set_configuration(1)", "claim(0)"]
+
+
+def test_a_refused_set_configuration_does_not_fail_the_handshake(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """WinUSB may refuse it; the Elite Vision works there today, and must go
+    on working.  MUTATION CHECK: let the USBError out of reconfigure."""
+    device = _UsbDevice(refuse_configuration=True)
+    _pyusb(device, monkeypatch).reconfigure()
+    assert device.order == ["release(0)", "set_configuration(1)", "claim(0)"]
+
+
+def test_a_failed_claim_back_fails_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    device = _UsbDevice()
+    transport = _pyusb(device, monkeypatch)
+
+    def refuse(dev: Any, i: int) -> None:
+        raise usb.core.USBError("Resource busy")
+
+    monkeypatch.setattr(usb.util, "claim_interface", refuse)
+    with pytest.raises(TransportError, match=r"^USB claim after reconfigure failed: "):
+        transport.reconfigure()
+
+
+def test_the_exchange_posts_the_read_before_the_write(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: write, then read (the port's default)."""
+    device = _UsbDevice()
+    reply = _pyusb(device, monkeypatch).exchange(0x02, _f5.init_packet(), 0x81,
+                                                 _f5.RESPONSE_SIZE, 5000)
+    assert (reply[0], device.order) == (0x65, ["read", "write"])

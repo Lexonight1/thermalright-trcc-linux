@@ -218,6 +218,26 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
                                                 single_session=False))
         return result
 
+    #: The ALi worker's pause between claiming the interface and the handshake
+    #: write: ``Thread.Sleep(50)``, DCReadWriteAsync.cs:721.
+    _ALI_SETTLE_S = 0.050
+
+    def _init_exchange(self, init_packet: bytes, read_size: int) -> bytes:
+        """The C#'s ALi worker for a product it drives that way
+        (``DeviceQuirks.ali_exchange``, 0416:5406): SET_CONFIGURATION and
+        claim, 50 ms, then the reply's read posted with the write -- every
+        attempt, as the C# reopens for every attempt (#330).  Every other HID
+        panel keeps the base exchange."""
+        if not self._quirks.ali_exchange:
+            return super()._init_exchange(init_packet, read_size)
+        log.info("HidLcd %s: the ALi worker's exchange -- reconfigure, %d ms, "
+                 "read posted with the write", self.info.key,
+                 round(self._ALI_SETTLE_S * 1000))
+        self._transport.reconfigure()
+        time.sleep(self._ALI_SETTLE_S)
+        return self._transport.exchange(self._EP_WRITE, init_packet, self._EP_READ,
+                                        read_size, HANDSHAKE_TIMEOUT_MS)
+
     def _validate_and_parse(self, resp: bytes) -> HandshakeResult:
         """Accept the reply or reject it as a retryable attempt."""
         self._trace_reply(resp)

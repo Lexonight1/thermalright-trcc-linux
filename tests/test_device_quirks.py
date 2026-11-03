@@ -40,9 +40,29 @@ def test_warframe_se_407_opts_into_every_quirk() -> None:
     (0x0416, 0x5302, 0x0100),   # same panel, different firmware revision
     (0x0416, 0x5302, 0x0000),   # unknown bcdDevice
     (0x0402, 0x3922, 0x0407),   # different device, same bcdDevice
+    (0x0418, 0x5303, 0x0100),   # F5 too, but never the C#'s ALi worker
+    (0x0418, 0x5304, 0x0100),
 ])
 def test_other_devices_get_no_quirks(fingerprint: tuple[int, int, int]) -> None:
     assert quirks_for(*fingerprint) == DeviceQuirks()
+
+
+@pytest.mark.parametrize("bcd", [0x0200, 0x0000, 0x0100])
+def test_every_5406_firmware_takes_the_alis_exchange(bcd: int) -> None:
+    """The C# keys its ALi worker on the product alone, so every firmware of
+    0416:5406 gets it (#330).  MUTATION CHECK: drop the product-wide lookup."""
+    assert quirks_for(0x0416, 0x5406, bcd) == DeviceQuirks(ali_exchange=True)
+
+
+def test_an_exact_firmware_row_beats_the_products_row(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION CHECK: look the product's row up first."""
+    from trcc.core.models import DEVICE_QUIRKS
+
+    own = DeviceQuirks(hid_reports=True)
+    monkeypatch.setitem(DEVICE_QUIRKS, (0x0416, 0x5406, 0x0300), own)
+    assert (quirks_for(0x0416, 0x5406, 0x0300), quirks_for(0x0416, 0x5406, 0x0200)) == (
+        own, DeviceQuirks(ali_exchange=True))
 
 
 def test_device_info_quirks_property() -> None:

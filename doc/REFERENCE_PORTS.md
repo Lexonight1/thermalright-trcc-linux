@@ -80,7 +80,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SettingsPort`](#settingsport) | 4 | 0 | 1 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
-| [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
+| [`BulkTransport`](#bulktransport) | 5 | 2 | 2 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
@@ -1250,6 +1250,8 @@ open() -> bool
 read(endpoint: 'int', length: 'int', timeout_ms: 'int' = 100) -> bytes
 write(endpoint: 'int', data: 'WriteBuffer', timeout_ms: 'int' = 100) -> int
 ```
+
+**You inherit (2):** `exchange` · `reconfigure`
 
 **Implementations (2):** `HidApiTransport` · `PyUsbBulkTransport`
 

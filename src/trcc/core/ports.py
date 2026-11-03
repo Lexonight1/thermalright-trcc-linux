@@ -130,6 +130,21 @@ class BulkTransport(ABC):
              timeout_ms: int = 100) -> bytes:
         """Bulk-read up to *length* bytes from an IN endpoint."""
 
+    def reconfigure(self) -> None:
+        """Set the device's configuration again, as if just opened -- the C#'s
+        ALi worker does before every handshake.  Nothing, by default."""
+        log.debug("%s.reconfigure: nothing to do", type(self).__name__)
+
+    def exchange(self, out_endpoint: int, data: WriteBuffer, in_endpoint: int,
+                 length: int, timeout_ms: int = 100) -> bytes:
+        """Write *data*, then read up to *length* bytes -- one request and its
+        reply.  A transport that can post the read before the write does
+        (the C#'s ALi worker); by default, one after the other."""
+        log.debug("%s.exchange: write %d byte(s), then read %d",
+                  type(self).__name__, len(data), length)
+        self.write(out_endpoint, data, timeout_ms)
+        return self.read(in_endpoint, length, timeout_ms)
+
 
 class ScsiTransport(ABC):
     """Abstract SCSI transport.  One per open device handle.

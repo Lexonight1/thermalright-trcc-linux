@@ -354,13 +354,24 @@ class BaseBulkDevice(BaseDevice[BulkTransport]):
                 f"{type(self).__name__} handshake I/O failed: {e}"
             ) from e
 
+    def _init_exchange(self, init_packet: bytes, read_size: int) -> bytes:
+        """One handshake attempt's request and reply: settle, init-write,
+        settle, read.  A device its vendor app talks to another way overrides
+        it (HidLcd's ALi worker, #330)."""
+        log.debug("%s %s: init-write %d byte(s), then read %d",
+                  type(self).__name__, self.info.key, len(init_packet), read_size)
+        time.sleep(_DELAY_PRE_INIT_S)
+        self._transport.write(self._EP_WRITE, init_packet, HANDSHAKE_TIMEOUT_MS)
+        time.sleep(_DELAY_POST_INIT_S)
+        return self._transport.read(self._EP_READ, read_size, HANDSHAKE_TIMEOUT_MS)
+
     def _handshake_retry(
         self,
         init_packet: bytes,
         read_size: int,
         parse: Callable[[bytes], HandshakeResult],
     ) -> HandshakeResult:
-        """Init-write → settle → read → *parse*, retried up to 3 times.
+        """One :meth:`_init_exchange` → *parse*, retried up to 3 times.
 
         The report-style handshake (HID LCD + LED): the firmware may still be
         booting, or answer with a report we can't accept, so a bad exchange is
@@ -371,13 +382,7 @@ class BaseBulkDevice(BaseDevice[BulkTransport]):
         last_err: Exception | None = None
         for attempt in range(1, _HANDSHAKE_MAX_RETRIES + 1):
             try:
-                time.sleep(_DELAY_PRE_INIT_S)
-                self._transport.write(self._EP_WRITE, init_packet,
-                                      HANDSHAKE_TIMEOUT_MS)
-                time.sleep(_DELAY_POST_INIT_S)
-                resp = self._transport.read(self._EP_READ, read_size,
-                                            HANDSHAKE_TIMEOUT_MS)
-                return parse(resp)
+                return parse(self._init_exchange(init_packet, read_size))
             except Exception as e:
                 last_err = e
                 log.warning("%s handshake attempt %d/%d failed: %s",
