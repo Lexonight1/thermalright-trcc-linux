@@ -158,13 +158,28 @@ class Drive:
         for face, view in self.views().items():
             switch = view.switches.get(key)
             out[f"{face} page"] = None if switch is None else switch.text().lower()
+        # "  [  -] <key>  <which panel wants it>" is a notice, not a state.
         listed = {line.split("]")[1].split()[0]: line[3:6].strip()
                   for line in self.cli("system", "modules", "list").splitlines()
-                  if line.startswith("  [")}
+                  if line.startswith("  [") and line[3:6].strip() in ("on", "off")}
         out["cli"] = listed.get(key)
         modules = self.api.get("/system/modules").json()["modules"]
         api = {m["key"]: ("on" if m["enabled"] else "off") for m in modules}
         out["api"] = api.get(key)
+        return out
+
+    def wanted(self, key: str) -> dict[str, bool]:
+        """Whether each UI says a panel wants *key*, which this TRCC lacks."""
+        from PySide6.QtWidgets import QLabel
+
+        log.debug("wanted: %s", key)
+        out: dict[str, bool] = {
+            f"{face} page": bool(view.findChildren(QLabel, "modulesWanted"))
+            for face, view in self.views().items()}
+        out["cli"] = any(line.startswith(f"  [  -] {key} ")
+                         for line in self.cli("system", "modules", "list").splitlines())
+        out["api"] = key in [w["key"] for w in
+                             self.api.get("/system/modules").json().get("wanted", [])]
         return out
 
     def entries(self, key: str) -> dict[str, bool]:
@@ -296,6 +311,8 @@ class Drive:
                    lambda: self.states(ADD_ON) == self.everywhere(None), 15.0)
         self.check("removed from the qtgui: gone from every UI", self.states(ADD_ON),
                    self.everywhere(None))
+        self.check("the panel still wants it, and every UI says so", self.wanted(ADD_ON),
+                   self.everywhere(True))
 
     def developer_round_trip(self) -> None:
         print("\n== 6. developer mode: install from a folder, switch on, remove")
