@@ -8,20 +8,31 @@ gui window, the real qtgui window, the real CLI and the real API on one
 in-process App (a stand-in platform: one scripted panel, no hardware), then
 acts through one UI per step and reads the result back from all four:
 
-1. both built-in modules on, everywhere;
-2. the CLI switches the Visualizer off; the API switches it on again;
+1. RGB, built in, on everywhere; the Audio Visualizer, an add-on, nowhere;
+2. the CLI switches RGB off; the API switches it on again;
 3. the gui's switch turns RGB off; the qtgui's turns it on again;
-4. "Get modules" in every UI (``--online``: the live index);
-5. developer mode on from the qtgui; the CLI installs ``hello`` from a folder;
+4. "Get modules" in every UI (``--online``: the live index lists the Visualizer);
+5. ``--online``: the gui's catalog installs the Visualizer and every UI shows
+   it on; the CLI plays TRCC Pipes on the panel; the API switches it off (the
+   panel keeps its choice and stops) and on (it plays again); the qtgui's
+   Remove takes it away;
+6. developer mode on from the qtgui; the CLI installs ``hello`` from a folder;
    every UI lists it as unsigned and off; the API switches it on; the
    qtgui's Remove takes it away; the CLI switches developer mode off.
+
+**It drives an INSTALLED TRCC**, never the source tree: the Visualizer's
+source stays in ``src/`` (excluded from every build), so there it counts as
+shipped and the add-on world users have cannot be seen.  Build the wheel,
+install it in a venv, and run this with that venv's Python; it refuses a
+TRCC that is the source tree or carries the Visualizer.  Installing from the
+live index needs a TRCC at least as new as the Visualizer's ``min_trcc``.
 
 Each check prints PASS or FAIL; the exit code is the number that failed.
 Run it on a private display and session bus (memory:
 reference_drive_windows_on_xvfb)::
 
     env -u WAYLAND_DISPLAY -u QT_QPA_PLATFORM xvfb-run -a dbus-run-session -- \\
-        env PYTHONPATH=src python3.12 dev/tools/drive_modules.py --online
+        <venv>/bin/python dev/tools/drive_modules.py --online
 """
 from __future__ import annotations
 
@@ -37,14 +48,15 @@ from pathlib import Path
 from typing import Any
 
 _REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_REPO))
-sys.path.insert(0, str(_REPO / "src"))
+sys.path.insert(0, str(_REPO))      # tests/ and dev/ -- never src/: see the docstring
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 log = logging.getLogger(__name__)
 
 _KEY = "0402:3922"
-BUILT_IN = ("visualizer", "rgb")
+BUILT_IN = ("rgb",)
+#: The add-on the drive installs from the live index.
+ADD_ON = "visualizer"
 
 
 class Drive:
@@ -171,24 +183,25 @@ class Drive:
     # ── the steps ─────────────────────────────────────────────────────────
 
     def built_in_start_on(self) -> None:
-        print("\n== 1. the built-in modules start on, in every UI")
+        print("\n== 1. RGB starts on in every UI; the Audio Visualizer is in none")
         for key in BUILT_IN:
             self.check(f"{key} on everywhere", self.states(key), self.everywhere("on"))
             self.check(f"{key} tab + entry shown", self.entries(key),
                        {"gui tab": True, "qtgui entry": True})
+        self.check(f"{ADD_ON} in no UI", self.states(ADD_ON), self.everywhere(None))
 
     def cli_off_api_on(self) -> None:
-        print("\n== 2. CLI switches the Visualizer off, the API on")
-        self.cli("system", "modules", "off", "visualizer")
-        self.check("off from the CLI: every UI says off", self.states("visualizer"),
+        print("\n== 2. CLI switches RGB off, the API on")
+        self.cli("system", "modules", "off", "rgb")
+        self.check("off from the CLI: every UI says off", self.states("rgb"),
                    self.everywhere("off"))
-        self.check("off: tab + entry hidden", self.entries("visualizer"),
+        self.check("off: button + entry hidden", self.entries("rgb"),
                    {"gui tab": False, "qtgui entry": False})
-        self.api.post("/system/modules/visualizer", json={"enabled": True})
+        self.api.post("/system/modules/rgb", json={"enabled": True})
         self.settle()
-        self.check("on from the API: every UI says on", self.states("visualizer"),
+        self.check("on from the API: every UI says on", self.states("rgb"),
                    self.everywhere("on"))
-        self.check("on: tab + entry back", self.entries("visualizer"),
+        self.check("on: button + entry back", self.entries("rgb"),
                    {"gui tab": True, "qtgui entry": True})
 
     def window_switches(self) -> None:
@@ -208,6 +221,7 @@ class Drive:
 
         cli = said(self.cli("system", "modules", "available"))
         api = self.api.get("/system/modules/available")
+        log.info("get_modules: cli said %r", cli)
         pages = {}
         for face, view in self.views().items():
             view.open_catalog()
@@ -217,19 +231,74 @@ class Drive:
             view.close_catalog()
         self.settle()
         if online:
-            self.check("CLI says the list is empty", cli, NONE_LISTED)
-            self.check("API lists no module", (api.status_code, api.json().get("modules")),
-                       (200, []))
-            self.check("both pages say the list is empty", pages,
-                       {"gui": NONE_LISTED, "qtgui": NONE_LISTED})
+            listed = [m["key"] for m in api.json().get("modules", [])]
+            self.check(f"the CLI lists {ADD_ON}", ADD_ON in self.cli(
+                "system", "modules", "available"), True)
+            self.check(f"the API lists {ADD_ON}", (api.status_code, ADD_ON in listed),
+                       (200, True))
+            self.check("both pages list it", pages, {"gui": "listed", "qtgui": "listed"})
         else:
             self.check("offline: every UI says it could not be read",
                        {"cli": "could not be read" in cli,
                         **{face: "could not be read" in note for face, note in pages.items()}},
                        {"cli": True, "gui": True, "qtgui": True})
 
+    def until(self, what: str, done: Callable[[], bool], seconds: float) -> None:
+        """Settle until *done* -- a download is not a fixed wait."""
+        import time
+
+        deadline = time.monotonic() + seconds
+        while not done() and time.monotonic() < deadline:
+            self.settle(0.5)
+        log.info("until: %s -> %s", what, done())
+
+    def panel(self) -> tuple[object, str]:
+        """The panel's saved background choice, and what draws it now."""
+        source = self.app.media.source(_KEY)
+        found = (self.app.settings.for_device(_KEY).module_source,
+                 type(source).__name__ if source is not None else "")
+        log.debug("panel: %s", found)
+        return found
+
+    def add_on_round_trip(self) -> None:
+        print(f"\n== 5. {ADD_ON}: install from the gui, play, off, on, remove")
+        view = self.views()["gui"]
+        view.ask = _yes
+        view.open_catalog()
+        self.until("the catalog is read", lambda: bool(view.catalog), 20.0)
+        view.actions[ADD_ON].click()
+        self.until("installed everywhere",
+                   lambda: self.states(ADD_ON) == self.everywhere("on"), 90.0)
+        view.close_catalog()
+        self.settle()
+        self.check("installed from the gui: every UI says on", self.states(ADD_ON),
+                   self.everywhere("on"))
+        self.check("its tab + entry appear", self.entries(ADD_ON),
+                   {"gui tab": True, "qtgui entry": True})
+        self.cli("display", "visual", _KEY, "trcc-pipes")
+        self.until("the panel plays", lambda: self.panel()[1] == "VisualReader", 10.0)
+        self.check("the CLI plays TRCC Pipes on the panel", self.panel(),
+                   (ADD_ON, "VisualReader"))
+        self.api.post(f"/system/modules/{ADD_ON}", json={"enabled": False})
+        self.settle()
+        self.check("off from the API: every UI says off", self.states(ADD_ON),
+                   self.everywhere("off"))
+        self.check("off: the panel keeps its choice and stops playing",
+                   self.panel()[0] == ADD_ON and self.panel()[1] != "VisualReader", True)
+        self.api.post(f"/system/modules/{ADD_ON}", json={"enabled": True})
+        self.until("it plays again", lambda: self.panel()[1] == "VisualReader", 10.0)
+        self.check("on again: the panel plays its visual again", self.panel(),
+                   (ADD_ON, "VisualReader"))
+        page = self.views()["qtgui"]
+        page.ask = _yes
+        page.removes[ADD_ON].click()
+        self.until("removed everywhere",
+                   lambda: self.states(ADD_ON) == self.everywhere(None), 15.0)
+        self.check("removed from the qtgui: gone from every UI", self.states(ADD_ON),
+                   self.everywhere(None))
+
     def developer_round_trip(self) -> None:
-        print("\n== 5. developer mode: install from a folder, switch on, remove")
+        print("\n== 6. developer mode: install from a folder, switch on, remove")
         views = self.views()
         views["qtgui"].developer.switch.click()
         self.settle()
@@ -281,6 +350,23 @@ def said(output: str) -> str:
     return lines[0] if lines else ""
 
 
+def not_an_install() -> str:
+    """Why the TRCC this Python imports cannot show the add-on world, or ""."""
+    import importlib.util
+
+    import trcc
+
+    where = Path(trcc.__file__).resolve().parent
+    reason = (f"trcc comes from the source tree ({where}) -- run this with the Python "
+              "of a venv that has the built wheel installed"
+              if where.is_relative_to(_REPO / "src")
+              else f"this TRCC ({where}) carries the {ADD_ON} -- it is no add-on there"
+              if importlib.util.find_spec(f"trcc.modules.{ADD_ON}") is not None
+              else "")
+    log.info("not_an_install: %s -> %r", where, reason)
+    return reason
+
+
 def _yes(question: str, details: str, confirm: str) -> bool:
     log.info("_yes: %s (%s)", question, confirm)
     return True
@@ -292,12 +378,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="read the live module index (else the index is offline)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    if refused := not_an_install():
+        print(f"STOP: {refused}")
+        return 2
     drive = Drive(args.online)
     steps: list[Callable[[], None]] = [
         drive.built_in_start_on, drive.cli_off_api_on, drive.window_switches]
     for step in steps:
         step()
     drive.get_modules(args.online)
+    if args.online:
+        drive.add_on_round_trip()
     drive.developer_round_trip()
     drive.close()
     print(f"\n{len(drive.failed)} failed" + (": " + json.dumps(drive.failed) if drive.failed else ""))

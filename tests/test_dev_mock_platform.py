@@ -367,3 +367,44 @@ def test_a_mock_fleet_reaches_no_openrgb() -> None:
                                       r"\(127\.0\.0\.1:6742\)$"):
         fleet.substitute(OpenRgbMirror)("127.0.0.1", 6742)
     assert _build_dev_platform(None).substitute(OpenRgbMirror) is OpenRgbMirror
+
+
+_WITHOUT_THE_VISUALIZER = """
+import importlib.abc, sys
+
+class Absent(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name == "trcc.modules.visualizer" or name.startswith("trcc.modules.visualizer."):
+            raise ModuleNotFoundError(name)
+        return None
+
+sys.meta_path.insert(0, Absent())
+import tests.mock_platform as mock
+print(mock.scripted_milkdrop())
+"""
+
+
+def test_the_mock_loads_on_a_trcc_without_the_audio_visualizer() -> None:
+    """Every build since 9.12.0 leaves the Audio Visualizer out, and the
+    mock -- every dev harness and drive -- must load there too.  It used to
+    import the add-on at load.  Its own process: an import cannot be undone.
+    MUTATION CHECK: import MilkdropVisual at the top of tests/mock_platform.py."""
+    import subprocess
+
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run([sys.executable, "-c", _WITHOUT_THE_VISUALIZER],
+                            cwd=repo, capture_output=True, text=True, timeout=120,
+                            env={**__import__("os").environ, "PYTHONPATH": f"{repo}/src:{repo}",
+                                 "QT_QPA_PLATFORM": "offscreen"})
+    assert (result.returncode, result.stdout.strip()) == (0, "None"), result.stderr[-2000:]
+
+
+def test_milkdrop_is_scripted_once_the_add_on_is_there() -> None:
+    """Present, the add-on's MilkDrop is replaced -- and the SAME stand-in
+    every time, so the App sees one class.  MUTATION CHECK: drop the cache."""
+    from tests.mock_platform import scripted, scripted_milkdrop
+    from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
+
+    stand_in = scripted_milkdrop()
+    assert stand_in is not None and stand_in.__base__ is MilkdropVisual
+    assert (scripted(MilkdropVisual), scripted_milkdrop()) == (stand_in, stand_in)

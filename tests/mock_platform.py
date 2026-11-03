@@ -30,7 +30,7 @@ import logging
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 import numpy as np
 
@@ -69,11 +69,13 @@ from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.registry import find_product
 from trcc.modules.rgb.adapters.asus_aura import AURA_VID, MAINBOARD_PIDS, REPORT_ID
 from trcc.modules.rgb.adapters.corsair_dram import crc8
-from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
-from trcc.modules.visualizer.core.models import VisualSpec
-from trcc.modules.visualizer.core.ports import VisualEngine
 
 from .conftest import FakeBulkTransport, FakePlatform, FakeScsiTransport, stand_in
+
+if TYPE_CHECKING:       # an add-on: imported only once a MilkDrop class is asked about
+    from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
+    from trcc.modules.visualizer.core.models import VisualSpec
+    from trcc.modules.visualizer.core.ports import VisualEngine
 
 log = logging.getLogger(__name__)
 
@@ -939,41 +941,67 @@ class ScriptedSound(SoundInput):
         self.closed = True
 
 
-class ScriptedMilkdrop(MilkdropVisual):
-    """projectM's stand-in: the real preset lookup, and a gradient whose
-    brightness follows the sound -- no libprojectM, no GPU."""
+def _scripted_milkdrop_class(base: type[MilkdropVisual]) -> type[MilkdropVisual]:
+    """projectM's stand-in, on the add-on's own MilkDrop class."""
+    log.debug("_scripted_milkdrop_class: on %s", base.__qualname__)
 
-    @classmethod
-    def available(cls) -> bool:
-        log.debug("ScriptedMilkdrop.available: scripted")
-        return True
+    class ScriptedMilkdrop(base):
+        """projectM's stand-in: the real preset lookup, and a gradient whose
+        brightness follows the sound -- no libprojectM, no GPU."""
 
-    def __init__(self) -> None:
-        log.debug("ScriptedMilkdrop.__init__")
-        self.spec: VisualSpec | None = None
-        self._level = 0.0
+        @classmethod
+        def available(cls) -> bool:
+            log.debug("ScriptedMilkdrop.available: scripted")
+            return True
 
-    def open(self, spec: VisualSpec) -> None:
-        log.info("ScriptedMilkdrop.open: %s", spec.preset)
-        if spec.preset is None:
-            raise OSError("a MilkDrop visual needs a preset file")
-        self.spec = spec
+        def __init__(self) -> None:
+            log.debug("ScriptedMilkdrop.__init__")
+            self.spec: VisualSpec | None = None
+            self._level = 0.0
 
-    def feed(self, pcm: bytes) -> None:
-        samples = np.frombuffer(pcm, dtype="<f4")
-        self._level = float(np.abs(samples).mean()) if samples.size else 0.0
-        log.debug("ScriptedMilkdrop.feed: %.3f", self._level)
+        def open(self, spec: VisualSpec) -> None:
+            log.info("ScriptedMilkdrop.open: %s", spec.preset)
+            if spec.preset is None:
+                raise OSError("a MilkDrop visual needs a preset file")
+            self.spec = spec
 
-    def render(self) -> RawFrame:
-        assert self.spec is not None
-        w, h = self.spec.width, self.spec.height
-        shade = min(255, int(40 + self._level * 400))
-        log.debug("ScriptedMilkdrop.render: %d", shade)
-        return RawFrame(data=bytes([shade, 0, 255 - shade]) * (w * h),
-                        width=w, height=h)
+        def feed(self, pcm: bytes) -> None:
+            samples = np.frombuffer(pcm, dtype="<f4")
+            self._level = float(np.abs(samples).mean()) if samples.size else 0.0
+            log.debug("ScriptedMilkdrop.feed: %.3f", self._level)
 
-    def close(self) -> None:
-        log.info("ScriptedMilkdrop.close")
+        def render(self) -> RawFrame:
+            assert self.spec is not None
+            w, h = self.spec.width, self.spec.height
+            shade = min(255, int(40 + self._level * 400))
+            log.debug("ScriptedMilkdrop.render: %d", shade)
+            return RawFrame(data=bytes([shade, 0, 255 - shade]) * (w * h),
+                            width=w, height=h)
+
+        def close(self) -> None:
+            log.info("ScriptedMilkdrop.close")
+
+    return ScriptedMilkdrop
+
+
+#: The scripted MilkDrop, built the first time one is asked about -- never at
+#: import: TRCC without the Audio Visualizer (every build since it became an
+#: add-on) must load the mock too.  Not remembered while the add-on is absent,
+#: so one installed while the App runs is scripted the moment it appears.
+_milkdrop: type[MilkdropVisual] | None = None
+
+
+def scripted_milkdrop() -> type[MilkdropVisual] | None:
+    """The scripted MilkDrop, or None while the Audio Visualizer is not installed."""
+    global _milkdrop
+    if _milkdrop is None:
+        try:
+            from trcc.modules.visualizer.adapters.projectm import MilkdropVisual
+        except ImportError:
+            log.debug("scripted_milkdrop: the Audio Visualizer is not installed")
+            return None
+        _milkdrop = _scripted_milkdrop_class(MilkdropVisual)
+    return _milkdrop
 
 
 def scripted(cls: _C) -> _C:
@@ -981,7 +1009,8 @@ def scripted(cls: _C) -> _C:
     libprojectM, no GPU -- an OpenRGB client refused, and every other visual
     as it is, so a new one reaches the mocks without anyone remembering to
     add it here."""
-    found = (ScriptedMilkdrop if issubclass(cls, MilkdropVisual)
+    milkdrop = scripted_milkdrop()
+    found = (milkdrop if milkdrop is not None and issubclass(cls, milkdrop.__bases__[0])
              else stand_in(cls))
     log.debug("scripted: %s -> %s", cls.__name__, found.__name__)
     return cast("_C", found)
