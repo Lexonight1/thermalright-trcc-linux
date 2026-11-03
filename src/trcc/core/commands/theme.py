@@ -178,6 +178,10 @@ class LoadTheme(Command[ThemeResult]):
     # alive PRESERVES those overrides (all persisted in config.json) instead
     # of reverting to the theme's bundled layout/background.
     reset_overrides: bool = True
+    # False when TRCC shows the theme by itself -- a restore with nothing saved
+    # falls back to Theme1.  Nobody picked it, so the panel's background choice
+    # (a module's, e.g. the Audio Visualizer) stays: only a picked theme ends it.
+    picked: bool = True
 
     def _play_module_background(self, app: App, theme: Theme, ref: str,
                                 prefix: str, payload: dict[str, Any]) -> Result | None:
@@ -303,7 +307,10 @@ class LoadTheme(Command[ThemeResult]):
         # bring it back over the theme.  One still waiting for its module
         # stops waiting.
         module_bg = app.themes.module_background(theme)
-        if self.reset_overrides and module_bg is None:
+        if self.reset_overrides and module_bg is None and not self.picked:
+            log.info("LoadTheme: %s shown by TRCC, not picked -- the panel's "
+                     "background choice stays", theme.name)
+        if self.reset_overrides and self.picked and module_bg is None:
             if app.settings.for_device(self.key).module_source is not None:
                 log.info("LoadTheme: %s has no module background — ending "
                          "the one drawing", theme.name)
@@ -2012,7 +2019,7 @@ def _show_saved_theme(app: App, key: str, *, keep_overrides: bool = False,
         return
     if (fallback := _fallback_theme(app, key, degrees)) is not None:
         app.dispatch(LoadTheme(key=key, path=fallback,
-                               reset_overrides=not keep_overrides))
+                               reset_overrides=not keep_overrides, picked=False))
 
 
 def show_orientation_theme(app: App, key: str, degrees: int | None = None) -> None:

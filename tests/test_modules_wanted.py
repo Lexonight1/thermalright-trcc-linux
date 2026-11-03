@@ -120,6 +120,24 @@ def test_the_log_says_not_installed_rather_than_off(
     assert "is off" not in about[0].getMessage()
 
 
+def test_a_restore_with_no_saved_theme_keeps_the_choice(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module_root: Any) -> None:
+    """Themes on disk, none saved: the restore falls back to Theme1 by itself
+    -- and loaded it as if the user had PICKED it, which ends a module's
+    background, so the choice was gone before anyone could be told.  Measured
+    2026-11-03 upgrading from v9.11.2 with the theme data arriving after the
+    choice.  MUTATION CHECK: drop ``self.picked`` from LoadTheme's test."""
+    _hide_the_modules(tmp_path, monkeypatch, module_root)
+    app = App(MockPlatform(_SPECS, tmp_path / "root"), renderer=QtRenderer())
+    renderable_theme(app.platform.paths().theme_dir(320, 320), "Theme1")
+    app.settings.set_module_source(_KEY, "visualizer")
+    assert app.settings.for_device(_KEY).current_theme is None
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
+    assert (app.settings.for_device(_KEY).module_source, app.modules_wanted()) == (
+        "visualizer", (WantedModule(key="visualizer", panels=(_KEY,)),))
+
+
 @pytest.mark.parametrize(("panels", "said"), [
     ((_KEY,), f"Your panel {_KEY} uses visualizer — install it to get it back"),
     ((_KEY, _OTHER), "2 of your panels use visualizer — install it to get them back"),

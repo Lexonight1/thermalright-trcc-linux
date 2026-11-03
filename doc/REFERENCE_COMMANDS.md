@@ -866,6 +866,7 @@ Parse a theme, persist it, render the first frame, and send it.
 | `key` | `str` | yes |
 | `path` | `Path` | yes |
 | `reset_overrides` | `bool` | no |
+| `picked` | `bool` | no |
 
 ### `LoadVideo`
 
