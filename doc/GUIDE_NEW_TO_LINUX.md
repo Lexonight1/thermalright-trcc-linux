@@ -65,7 +65,7 @@ curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/d
 
 ### Fedora / Nobara
 ```bash
-curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.noarch.rpm && sudo dnf install ./trcc-linux-latest.noarch.rpm
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm && sudo dnf install ./trcc-linux-latest.fc*.noarch.rpm
 ```
 
 ### Ubuntu 25.10+ / Debian 13+

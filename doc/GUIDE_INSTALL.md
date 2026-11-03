@@ -77,14 +77,14 @@ Once the terminal is open, you can paste commands with `Ctrl+Shift+V` (not `Ctrl
 
 ### Fedora / Nobara
 
-Covers: Fedora 43+, and Nobara built on it. Older Fedora: use [pip](#fedora--nobara-pip) — the RPM is built for Fedora's current Python.
+Covers: Fedora 43, 44 and 45, and Nobara built on them. Other Fedora: use [pip](#fedora--nobara-pip) — each RPM is built for one Fedora's Python, and `$(rpm -E %fedora)` picks yours.
 
 **One-liner** (download + install in one command):
 ```bash
-sudo dnf install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.noarch.rpm
+sudo dnf install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm
 ```
 
-**Or manually:** Download the `.rpm` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
+**Or manually:** Download the `.rpm` for your Fedora (`fc44` = Fedora 43 and 44, `fc45` = Fedora 45) from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
 
 ```bash
 cd ~/Downloads
@@ -541,10 +541,10 @@ These use an immutable root filesystem — you can't `sudo dnf install` like nor
 
 **One-liner** (download + install, requires reboot):
 ```bash
-rpm-ostree install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.noarch.rpm && systemctl reboot
+rpm-ostree install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm && systemctl reboot
 ```
 
-**Or manually:** Download the `.rpm` from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
+**Or manually:** Download the `.rpm` for your Fedora (`fc44` = Fedora 43 and 44, `fc45` = Fedora 45) from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
 ```bash
 cd ~/Downloads
 rpm-ostree install ./trcc-linux-*.noarch.rpm
