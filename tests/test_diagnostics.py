@@ -4540,14 +4540,21 @@ def test_a_terminal_start_writes_no_version_constant_or_per_frame_lines(
     import subprocess
     import sys
 
+    # Windows keeps TRCC's files under APPDATA / LOCALAPPDATA, not HOME: moving
+    # HOME alone let the real report write into the runner's own AppData, and
+    # the log was then looked for where it never was (CI red since 7a698745).
     env = {**os.environ, "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path),
            "XDG_CONFIG_HOME": str(tmp_path / ".config"),
            "XDG_DATA_HOME": str(tmp_path / ".local" / "share"),
+           "USERPROFILE": str(tmp_path), "APPDATA": str(tmp_path / "AppData" / "Roaming"),
+           "LOCALAPPDATA": str(tmp_path / "AppData" / "Local"),
            "TRCC_DAEMON": "0", "QT_QPA_PLATFORM": "offscreen",
            "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
     subprocess.run([sys.executable, "-m", "trcc", "report", "-o", str(tmp_path / "r.txt")],
                    env=env, capture_output=True, timeout=120, check=True)
-    lines = (tmp_path / ".trcc" / "trcc.log").read_text(encoding="utf-8").splitlines()
+    logs = sorted(tmp_path.rglob("trcc.log"))     # wherever this OS keeps it
+    assert len(logs) == 1, logs
+    lines = logs[0].read_text(encoding="utf-8").splitlines()
     start = next(i for i, line in enumerate(lines) if "OwnLines.from_now" in line)
 
     records = [line for line in lines[:start] if _log_level_of(line) is not None]

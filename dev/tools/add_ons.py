@@ -28,11 +28,16 @@ release workflow can run it with nothing installed.
 """
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+# tomllib is tomli, upstreamed in 3.11; on 3.10, where the suite runs this, pytest
+# brings tomli.  Chosen at run time: pyright reads this repo as 3.10, where a
+# static import of either name is unresolvable in one of the two environments.
+tomllib = importlib.import_module("tomllib" if sys.version_info >= (3, 11) else "tomli")
 
 #: The repository root -- this file is ``dev/tools/add_ons.py``.
 REPO = Path(__file__).resolve().parents[2]
