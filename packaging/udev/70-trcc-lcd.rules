@@ -15,7 +15,7 @@ ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5302"
 # Winbond LCD Display
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0660", GROUP="trcc", TAG+="uaccess"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5406", MODE="0660", GROUP="trcc", TAG+="uaccess"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5406", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5406", ATTR{power/control}="on", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Winbond Trofeo Vision 9.16 LCD
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5408", MODE="0660", GROUP="trcc", TAG+="uaccess"

@@ -122,9 +122,14 @@ _WIRE_SUBSYSTEMS: dict[Wire, tuple[str, ...]] = {
 # power/control="on" (never autosuspend) instead of the "auto" the other panels
 # use for idle-sleep (#143).  87ad:70db (USB/bulk) is reporter-confirmed;
 # 87cd:70db (its SCSI sibling, same product family) is included by inference.
+# 0416:5406 is reporter-confirmed too (#330, WillVinzant's Frozen Warframe 360
+# Pro): it came back exactly 15 s after TRCC let go, every time, and a rule
+# pinning "on" stopped it.  The Elite Vision 360 shares the id, so it gives up
+# idle-sleep through suspend -- a panel that flaps is worse than one that stays lit.
 _NO_AUTOSUSPEND: frozenset[tuple[int, int]] = frozenset({
     (0x87ad, 0x70db),
     (0x87cd, 0x70db),
+    (0x0416, 0x5406),
 })
 
 

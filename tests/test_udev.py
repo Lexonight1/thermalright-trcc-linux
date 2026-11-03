@@ -298,3 +298,14 @@ def test_the_packages_sysusers_entry_names_the_rules_group() -> None:
     entry = (_REPO / "packaging" / "sysusers" / "trcc.conf").read_text(encoding="utf-8")
     assert f"g {DEVICE_GROUP} -" in entry.splitlines()
     assert f'GROUP="{DEVICE_GROUP}"' in build_udev_rules()
+
+
+def test_the_frozen_warframe_360_pro_is_kept_awake() -> None:
+    """#330: 0416:5406 re-enumerated 15 s after every release under
+    autosuspend; the reporter's rule pinning "on" stopped it.  The loop above
+    checks every entry -- this pins that the entry is there.
+    MUTATION CHECK: take (0x0416, 0x5406) out of _NO_AUTOSUSPEND."""
+    assert (0x0416, 0x5406) in _NO_AUTOSUSPEND
+    assert ('ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", '
+            'ATTR{idProduct}=="5406", ATTR{power/control}="on", '
+            'ATTR{power/autosuspend_delay_ms}="10000"') in build_udev_rules().splitlines()
