@@ -1262,3 +1262,25 @@ def test_stopping_one_cast_keeps_the_capture_for_another(
 
     assert app.dispatch(StopScreencast(key=other)).ok
     assert stops == [1]
+
+
+def test_letting_the_panel_go_releases_the_mic_and_the_capture(
+    app: App, mic: FakeMic, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Detach stops the RUNNING parts of a cast, as it does a stream's and a
+    module picture's: the microphone and -- the last panel casting -- the
+    capture session.  The choice stays saved, so the panel's return resumes it.
+    ``stop_sources`` removed the cast's driver and released neither: the mic
+    and a PipeWire portal session stayed open with nothing casting.
+
+    MUTATION CHECK: drop the release from ``stop_sources`` and this fails.
+    """
+    stops: list[int] = []
+    monkeypatch.setattr(_capture(app), "stop", lambda: stops.append(1))
+    assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+    assert (mic.running, mic.starts) == (True, 1)
+
+    app.detach(_KEY)
+
+    assert (mic.running, mic.stops, len(stops)) == (False, 1, 1)
+    assert app.settings.for_device(_KEY).screencast_region is not None

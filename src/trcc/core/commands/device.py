@@ -2077,6 +2077,21 @@ def _any_audio_session(app: App) -> bool:
     return False
 
 
+def release_unused_cast(app: App) -> None:
+    """Release what no attached panel's cast still wants: the microphone, and
+    -- once none is casting -- the ONE capture source every casting panel
+    shares (stopping it for one ended the others' too; on Wayland, their portal
+    session).  For ``StopScreencast``, and for ``App.detach`` once the panel
+    has gone, whose saved cast stays for its return."""
+    _sync_audio(app)
+    if (still := _casting_keys(app)):
+        log.info("release_unused_cast: capture kept — still casting on %s",
+                 ", ".join(still))
+    else:
+        log.info("release_unused_cast: no panel casting — stopping the capture")
+        app.platform.screen_capture().stop()
+
+
 def _sync_audio(app: App) -> None:
     """Hold the microphone exactly while some session still wants it.
 
@@ -2127,14 +2142,7 @@ class StopScreencast(Command[ScreencastResult]):
         from ...services.screencast_driver import task_key
         app.remove_task(task_key(self.key))
         app.settings.set_screencast_region(self.key, None)
-        _sync_audio(app)
-        # ONE capture source serves every casting panel; stopping it for this
-        # one ended the others' too (on Wayland, their portal session).
-        if (still := _casting_keys(app)):
-            log.info("StopScreencast: capture kept — still casting on %s",
-                     ", ".join(still))
-        else:
-            app.platform.screen_capture().stop()
+        release_unused_cast(app)
         app.events.publish(ScreencastStopped(key=self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=False,

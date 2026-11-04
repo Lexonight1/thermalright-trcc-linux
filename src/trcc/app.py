@@ -1492,6 +1492,7 @@ class App(CommandBus, ModuleServices):
         log.info("detach: key=%s", key)
         self.clear_connect_issue(key)
         self._lost.discard(key)
+        was_casting = self.settings.for_device(key).screencast_region is not None
         # Stop the send worker BEFORE closing the transport so no in-flight
         # write races the disconnect (the scheduler joins the thread).
         self.stop_sources(key)
@@ -1499,6 +1500,13 @@ class App(CommandBus, ModuleServices):
         device = self.devices.pop(key, None)
         if device is not None:
             device.disconnect()
+        if was_casting:
+            # After the pop: a panel counts as casting while it is attached,
+            # so released before it, the mic and the capture session stayed
+            # open with nothing casting (measured 2026-11-04).  Its saved cast
+            # stays, for its return.
+            from .core.commands.device import release_unused_cast
+            release_unused_cast(self)
         self.active_themes.pop(key, None)
         self.held.discard(key)
         self.led_runtime.pop(key, None)
