@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -432,6 +433,13 @@ def doctor() -> None:
     raise typer.Exit(code=result.exit_code)
 
 
+def _to_a_terminal() -> bool:
+    """Whether this command's output is read on a terminal, not redirected."""
+    tty = sys.stdout.isatty()
+    log.debug("_to_a_terminal: %s", tty)
+    return tty
+
+
 #: ``-o -``: print the report instead, for a pipe.  Without ``-o`` it is a
 #: file the reporter attaches whole (``Paths.report_file``, the home folder):
 #: printed to the terminal it was cut by the scrollback -- #330's attachment
@@ -464,6 +472,14 @@ def debug_report(
         typer.echo(result.rendered_text)
     elif result.ok:
         typer.echo(f"{result.message}\nAttach that file to your GitHub issue.")
+        if not _to_a_terminal():
+            # #333: ``trcc report > file`` -- that file held these two lines
+            # and was attached as the report.  Said in it, and on stderr,
+            # which ``>`` leaves on the terminal.
+            notice = f"This output is not the report: attach {result.output_path}."
+            log.info("cli system debug-report: output redirected -- %s", notice)
+            typer.echo(notice)
+            typer.echo(f"trcc report: {notice}", err=True)
     else:
         typer.echo(result.message)
     if not result.ok:

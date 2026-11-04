@@ -1158,12 +1158,15 @@ def test_system_debug_report_to_stdout(
 @pytest.mark.parametrize("command", [["report"], ["system", "debug-report"]])
 def test_the_report_goes_to_the_report_file_by_default(
     cli_runner: CliRunner, cli_app, command: list[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """#330's report was pasted from the terminal and arrived with every
     section above the log tail cut off.  Without ``-o`` it is a file to
     attach, where the OS says (``Paths.report_file``), and the command says
     where -- both spellings, one body.  MUTATION CHECK: drop
     ``to_report_file`` from the CLI."""
+    from trcc.ui.cli import system
+    monkeypatch.setattr(system, "_to_a_terminal", lambda: True)
     result = cli_runner.invoke(_app(), command)
     report = cli_app.platform.paths().report_file()
     assert result.exit_code == 0
@@ -1171,6 +1174,27 @@ def test_the_report_goes_to_the_report_file_by_default(
     assert "## Platform" not in result.output
     assert result.output.splitlines()[-1] == "Attach that file to your GitHub issue."
     assert str(report) in result.output
+
+
+def test_a_redirected_report_says_it_is_not_the_report(
+    cli_runner: CliRunner, cli_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#333: ``trcc report > file`` held the two-line message, and that file
+    was attached as the report.  Redirected, the output says it is not the
+    report and names the file to attach -- in the output, and on stderr,
+    which the redirect leaves on the terminal.
+
+    MUTATION CHECK: drop the not-a-terminal branch and both lines are gone."""
+    from trcc.ui.cli import system
+    monkeypatch.setattr(system, "_to_a_terminal", lambda: False)
+
+    result = cli_runner.invoke(_app(), ["report"])
+
+    report = cli_app.platform.paths().report_file()
+    notice = f"This output is not the report: attach {report}."
+    assert result.exit_code == 0
+    assert notice in result.stdout.splitlines()
+    assert result.stderr.splitlines() == [f"trcc report: {notice}"]
 
 
 def test_system_debug_report_to_file(
