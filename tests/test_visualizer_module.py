@@ -421,3 +421,57 @@ def test_a_theme_that_cannot_move_stays_where_it_was(
         (ordinary / "Viz").resolve())
     assert any("could not move" in r.getMessage() for r in caplog.records)
     app.close()
+
+
+def _waiting_visual_theme(app: App, tmp_path: Path) -> None:
+    """A visual theme loaded while the module is off: its picture WAITS
+    (``pending_background``), and the theme shows without it."""
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Start"))).ok
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    saved = app.dispatch(SaveTheme(key=_KEY, name="Viz"))
+    _switch(app, False)
+    assert app.dispatch(LoadTheme(key=_KEY, path=Path(saved.theme_path))).ok
+    assert app.settings.for_device(_KEY).pending_background is not None
+
+
+def test_a_cast_started_while_a_visual_waits_survives_the_module_coming_on(
+    app: App, tmp_path: Path,
+) -> None:
+    """The user chose a source after the theme's picture started waiting: the
+    module coming on must not put the waiting picture over their choice."""
+    from trcc.core.commands import StartScreencast
+
+    _waiting_visual_theme(app, tmp_path)
+    assert app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=64, h=48)).ok
+
+    _switch(app, True)
+
+    s = app.settings.for_device(_KEY)
+    assert (s.display_source, s.pending_background) == (PanelSource.SCREENCAST, None)
+    assert app.media.live(_KEY, PanelSource.MODULE) is None
+
+
+def test_a_media_player_started_while_a_visual_waits_is_what_a_restore_resumes(
+    app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The restore's side of the same rule: it resumed the waiting picture
+    (``pending_background`` is checked before the media player) and the
+    user's player never came back."""
+    import trcc.core.toolchain as toolchain
+    from trcc.core.commands import RestoreDeviceState, SetMediaPlayer
+    from trcc.services.media import MediaService
+
+    from .test_media_stream import _URL
+    from .test_media_stream import _FakeReader as _FakeStream
+
+    monkeypatch.setattr(MediaService, "stream_reader", _FakeStream)
+    monkeypatch.setattr(toolchain, "present", lambda tool: True)
+    _waiting_visual_theme(app, tmp_path)         # the module stays off
+    assert app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL)).ok
+    app.media.close_live(_KEY)                          # what a restart leaves
+
+    assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
+
+    s = app.settings.for_device(_KEY)
+    assert (s.display_source, s.media_player_uri) == (PanelSource.MEDIA, _URL)
+    assert app.media.live_kind(_KEY) is PanelSource.MEDIA

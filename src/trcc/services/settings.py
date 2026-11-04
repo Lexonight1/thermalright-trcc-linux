@@ -654,14 +654,12 @@ class Settings:
     def set_module_source(self, key: str, module: str | None) -> None:
         """Set (or clear with ``None``) the module drawing the device's
         background.  Mutually exclusive with the other display sources, so
-        setting it clears them -- and a theme background waiting for a module
-        is no longer waiting."""
+        setting it clears them, a waiting theme background included."""
         log.info("set_module_source: key=%s module=%s", key, module)
         with self._display_write(key) as dev:
             dev.module_source = module
             if module is not None:
                 _only_source(dev, "module_source")
-                dev.pending_background = None
             self._save()
 
     def module_themes_moved(self) -> bool:
@@ -1539,11 +1537,17 @@ def _tuple_of(size: int,
 
 def _only_source(dev: DeviceSettings, keep: str) -> None:
     """Clear every display source on *dev* but *keep* -- one at a time, the
-    fields being ``DISPLAY_SOURCE_FIELDS``, the one list."""
-    log.debug("_only_source: keep %s", keep)
+    fields being ``DISPLAY_SOURCE_FIELDS``, the one list -- and a theme's
+    module background still waiting for its module: the source chosen now
+    replaces it.  Left waiting, the module coming on put it over the user's
+    later cast, and a restore resumed it in place of their media player
+    (measured 2026-11-04)."""
+    log.debug("_only_source: keep %s (waiting background %s dropped)", keep,
+              dev.pending_background)
     for name in DISPLAY_SOURCE_FIELDS:
         if name != keep:
             setattr(dev, name, None)
+    dev.pending_background = None
 
 
 def _rgb_list(value: Any) -> Any:
