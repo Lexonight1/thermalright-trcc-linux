@@ -1284,3 +1284,55 @@ def test_letting_the_panel_go_releases_the_mic_and_the_capture(
 
     assert (mic.running, mic.stops, len(stops)) == (False, 1, 1)
     assert app.settings.for_device(_KEY).screencast_region is not None
+
+
+# ── the cast as a live picture (RegionSource) ─────────────────────────────
+
+
+def test_the_cast_grabs_the_region_saved_now() -> None:
+    """Read on every grab, so moving the region moves a running cast."""
+    from trcc.services.region_source import RegionSource
+
+    capture = FakeScreenCapture()
+    region: list[tuple[int, int, int, int, bool]] = [(1, 2, 30, 40, False)]
+    source = RegionSource(capture, lambda: region[0])
+    source.latest()
+    region[0] = (5, 6, 70, 80, False)
+    frame = source.latest()
+    assert (capture.regions, (frame.width, frame.height)) == (
+        [(1, 2, 30, 40), (5, 6, 70, 80)], (70, 80))
+
+
+def test_a_grab_that_errors_is_a_failed_tick_not_the_end() -> None:
+    """The desktop session can blink: a grab error is ``CaptureFailed`` -- the
+    cast lives on -- while ``CaptureNotReady`` (a consent window) passes
+    through as it is."""
+    from trcc.core.ports import CaptureFailed, CaptureNotReady
+    from trcc.services.region_source import RegionSource
+
+    class _Broken(FakeScreenCapture):
+        error: BaseException = RuntimeError("portal hiccup")
+
+        def grab_region(self, x: int, y: int, width: int, height: int) -> RawFrame:
+            raise self.error
+
+    capture = _Broken()
+    source = RegionSource(capture, lambda: (0, 0, 8, 8, False))
+    with pytest.raises(CaptureFailed, match="portal hiccup"):
+        source.latest()
+    capture.error = CaptureNotReady("asking for consent")
+    with pytest.raises(CaptureNotReady):
+        source.latest()
+
+
+def test_a_push_does_not_end_the_cast_s_live_picture(casting: App) -> None:
+    """``StopVideo`` -- which a push, a background change and more dispatch --
+    never ended a cast, and must not now that the cast sits in the live slot.
+
+    MUTATION CHECK: let ``MediaService.unload`` close a cast's picture and
+    the push leaves the cast with nothing in the slot."""
+    from trcc.core.commands import SendColor
+    from trcc.core.models import PanelSource
+
+    assert casting.dispatch(SendColor(key=_KEY, r=255, g=0, b=0)).ok
+    assert casting.media.live_kind(_KEY) is PanelSource.SCREENCAST

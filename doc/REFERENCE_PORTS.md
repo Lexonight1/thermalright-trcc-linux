@@ -31,7 +31,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`FilesPort`](#filesport) | 2 | 0 | 1 |
-| [`FrameSource`](#framesource) | 2 | 0 | 2 |
+| [`FrameSource`](#framesource) | 2 | 0 | 3 |
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
@@ -424,7 +424,7 @@ close() -> None
 latest() -> RawFrame
 ```
 
-**Implementations (2):** `StreamReader` · `VisualReader`
+**Implementations (3):** `RegionSource` · `StreamReader` · `VisualReader`
 
 ## FramesPort
 

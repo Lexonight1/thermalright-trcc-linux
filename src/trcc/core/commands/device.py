@@ -136,7 +136,7 @@ if TYPE_CHECKING:
 
 from ..logs import per_frame
 from ..models import MEDIA, Capability, MediaKind
-from ..ports import CaptureNotReady
+from ..ports import CaptureFailed, CaptureNotReady, FrameSource
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -1653,6 +1653,7 @@ class StartScreencast(Command[ScreencastResult]):
         # subscribe.  Written AFTER the region, because the rule reads the
         # persisted flags and this device's is one of them.
         _sync_audio(app)
+        open_cast_source(app, self.key)
 
         app.events.publish(ScreencastStarted(
             key=self.key, x=x, y=y, w=w, h=h, audio=self.audio,
@@ -1882,9 +1883,16 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
                             "image", self.key)
             return ScreencastResult(ok=True, key=self.key, message="held")
 
-        x, y, w, h = region[0], region[1], region[2], region[3]
+        source = app.media.live(self.key, PanelSource.SCREENCAST)
+        if source is None:
+            # The cast is saved and running, its picture not in the slot --
+            # a slot that was emptied under it.  Open it again rather than
+            # stall with nothing on the panel and nothing said.
+            log.info("CaptureScreencastFrame: %s has no live picture -- "
+                     "opening its region again", self.key)
+            source = open_cast_source(app, self.key)
         try:
-            raw = app.platform.screen_capture().grab_region(x, y, w, h)
+            raw = source.latest()
         except CaptureNotReady as e:
             # The portal is asking for consent, or has not delivered its
             # first frame: the tick completed and there was nothing to send.
@@ -1899,18 +1907,12 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
                 ok=True, key=self.key,
                 message=f"no frame yet: {e}",
             )
-        except Exception as e:
-            # Capture depends on tools and a desktop session that can vanish
-            # under us (screen locked, portal revoked, grim uninstalled).  A
-            # failed frame must not kill the driver that dispatched it, so
-            # this reports rather than raises — the next tick tries again.
-            # Per tick: ``App.dispatch`` warns once per distinct message.
-            frame_log.debug("CaptureScreencastFrame: capture failed for %s: "
-                            "%s: %s", self.key, type(e).__name__, e)
-            return ScreencastResult(
-                ok=False, key=self.key,
-                message=f"screencast capture failed: {type(e).__name__}: {e}",
-            )
+        except CaptureFailed as e:
+            # This tick's grab failed and the cast lives on (``RegionSource``
+            # maps a grab error here): reported, not raised -- the next tick
+            # tries again.  Per tick: ``App.dispatch`` warns once per message.
+            frame_log.debug("CaptureScreencastFrame: %s: %s", self.key, e)
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
 
         # Encode + send live in the sibling, so there is one copy of them.
         result = app.dispatch(SendScreencastFrame(key=self.key, frame=raw))
@@ -1918,7 +1920,7 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
             return result
         return ScreencastResult(
             ok=True, key=self.key,
-            message=f"captured {w}x{h} for {self.key}",
+            message=f"captured {raw.width}x{raw.height} for {self.key}",
         )
 
 
@@ -2078,6 +2080,28 @@ def _any_audio_session(app: App) -> bool:
     return False
 
 
+def open_cast_source(app: App, key: str) -> FrameSource:
+    """Panel *key*'s cast as its live picture: its region of the ONE shared
+    capture, read live so moving the region moves the cast
+    (``SetScreencastRegion``) -- in the slot a stream or a module's picture
+    would hold, which ends whichever was there."""
+    from ...services.region_source import RegionSource
+
+    log.info("open_cast_source: %s", key)
+    source = RegionSource(app.platform.screen_capture(),
+                          partial(_saved_region, app, key))
+    app.media.open_live(key, PanelSource.SCREENCAST, source)
+    return source
+
+
+def _saved_region(app: App, key: str) -> tuple[int, int, int, int, bool] | None:
+    """Panel *key*'s saved cast region, as it is now -- what its
+    ``RegionSource`` grabs, every frame."""
+    region = app.settings.for_device(key).screencast_region
+    frame_log.debug("_saved_region: %s -> %s", key, region)
+    return region
+
+
 def release_unused_cast(app: App) -> None:
     """Release what no attached panel's cast still wants: the microphone, and
     -- once none is casting -- the ONE capture source every casting panel
@@ -2142,6 +2166,7 @@ class StopScreencast(Command[ScreencastResult]):
                  "driver and its capture", self.key)
         from ...services.screencast_driver import task_key
         app.remove_task(task_key(self.key))
+        app.media.close_live(self.key, PanelSource.SCREENCAST)
         app.settings.set_screencast_region(self.key, None)
         release_unused_cast(app)
         app.events.publish(ScreencastStopped(key=self.key))

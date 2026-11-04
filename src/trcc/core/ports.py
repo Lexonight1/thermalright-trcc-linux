@@ -3197,6 +3197,18 @@ class CaptureNotReady(OSError):
     """
 
 
+class CaptureFailed(Exception):
+    """This tick's picture failed, and the source lives on to be asked again.
+
+    The middle of a live picture's three answers: ``CaptureNotReady`` is not
+    a failure at all; this one is COUNTED, and when it keeps happening every
+    UI is told once; an ``OSError`` from ``latest`` means the source is gone,
+    and it ends.  Deliberately not an ``OSError``, so the "gone" branch never
+    catches it.  A screen grab that errors raises this: the desktop session
+    can blink (a locked screen, a portal hiccup) and the cast carries on.
+    """
+
+
 class ScreenCapture(ABC):
     """Port for "grab a rectangle off the desktop right now".
 

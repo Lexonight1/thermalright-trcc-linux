@@ -871,7 +871,11 @@ class MediaService:
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers -- and end a stream
         or a module's source."""
-        self.close_live(device_key)
+        # Not a cast: ``StopVideo`` -- what calls this -- never ended one, and
+        # a cast is ended by ``StopScreencast``, by another source taking the
+        # slot (``open_live``), or by the panel leaving (``stop_sources``).
+        if self.live_kind(device_key) is not PanelSource.SCREENCAST:
+            self.close_live(device_key)
         self._replace_decode(device_key, None)
         had = self._playbacks.pop(device_key, None)
         if had is not None:
