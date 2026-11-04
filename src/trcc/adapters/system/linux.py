@@ -446,11 +446,20 @@ class LinuxFamily:
     #: The command that installs the release's own package for this family,
     #: or "" where we ship none (the hint then points at the release page).
     package_upgrade: str = ""
+    #: The upgrade line, with a ``{pkg}`` slot, for a package that installed
+    #: TRCC but is NOT TRCC's own (:data:`_OUR_PACKAGE`) -- the AUR's
+    #: ``thermalright-trcc`` (#333).  "" where the family's manager cannot
+    #: name an owner, and the hint stays :attr:`package_upgrade`.
+    foreign_upgrade: str = ""
     #: tool -> this family's package name, where it differs from
     #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
     #: "same as Debian" — guessing is what #207 was.
     packages: Mapping[str, str] = field(default_factory=dict)
 
+
+#: The name every TRCC release package goes by (rpm, deb, pacman): an owner
+#: by any other name installed TRCC some other way (#333).
+_OUR_PACKAGE = "trcc-linux"
 
 #: Probe order, first match wins.  Preserved exactly from the class tuple it
 #: replaced: it is NOT definition order, and a machine with two managers gets
@@ -486,6 +495,10 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         install_cmd="sudo pacman -S {pkg}",
         package_upgrade=download_and_install("trcc-linux-latest-any.pkg.tar.zst",
                                              "sudo pacman -U"),
+        # -Syu, as Arch requires: a bare -S of one package is a partial upgrade.
+        # The comment keeps the line copy-pasteable.
+        foreign_upgrade=("yay -Syu {pkg}   # or paru -Syu -- {pkg} comes from "
+                         "the AUR, not TRCC's own " + _OUR_PACKAGE),
         # Arch names it differently, and advising Debian's name here is #207.
         packages={"pynvml": "python-nvidia-ml-py", "sensors-detect": "lm_sensors"},
     ),
@@ -1031,12 +1044,34 @@ class LinuxOS(BaseOS, key="linux"):
         return self._family.manager
 
     def upgrade_hint(self) -> str:
-        """A package install upgrades by installing the release's package."""
-        if self.install_method() == "package" and self._family.package_upgrade:
-            log.info("upgrade_hint: %s package -> %s", self._family.name,
-                     self._family.package_upgrade)
-            return self._family.package_upgrade
+        """A package install upgrades by its own package: someone else's the
+        way it came (the AUR's), TRCC's own by installing the release's.
+        Telling an AUR install to ``pacman -U`` trcc-linux names a second
+        package owning the same files, which pacman refuses (#333)."""
+        if self.install_method() == "package":
+            if (owner := self._foreign_owner()) is not None:
+                hint = self._family.foreign_upgrade.format(pkg=owner)
+                log.info("upgrade_hint: %s installed by %s -> %s",
+                         self._family.name, owner, hint)
+                return hint
+            if self._family.package_upgrade:
+                log.info("upgrade_hint: %s package -> %s", self._family.name,
+                         self._family.package_upgrade)
+                return self._family.package_upgrade
         return super().upgrade_hint()
+
+    def _foreign_owner(self) -> str | None:
+        """The package, other than TRCC's own, that installed this TRCC --
+        None when it is ours, or this family cannot say (no
+        :attr:`LinuxFamily.foreign_upgrade`: nothing is asked)."""
+        if not self._family.foreign_upgrade:
+            log.debug("_foreign_owner: %s cannot name an owner", self._family.name)
+            return None
+        import trcc
+        owner = self.packages().owns(str(Path(trcc.__file__).resolve()))
+        foreign = owner if owner not in (None, _OUR_PACKAGE) else None
+        log.info("_foreign_owner: TRCC's files belong to %s -> %s", owner, foreign)
+        return foreign
 
     def software_install_hint(self, tool: str) -> str:
         """Install line for a logical tool, in this family's package manager.

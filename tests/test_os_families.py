@@ -83,6 +83,49 @@ def test_a_package_install_is_told_how_to_upgrade_itself(
         assert "github.com/Lexonight1/thermalright-trcc-linux/releases" in hint
 
 
+_ARCH = next(f for f in _FAMILIES if f.manager == "pacman")
+
+
+@pytest.mark.parametrize(("owner", "expected"), [
+    ("thermalright-trcc", "yay -Syu thermalright-trcc   # or paru -Syu -- "
+                          "thermalright-trcc comes from the AUR, not TRCC's "
+                          "own trcc-linux"),
+    ("trcc-linux", _ARCH.package_upgrade),
+    (None, _ARCH.package_upgrade),
+])
+def test_an_aur_install_is_told_to_upgrade_the_aur_package(
+        owner: str | None, expected: str,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """#333: the AUR's ``thermalright-trcc`` was told to ``pacman -U`` TRCC's
+    own ``trcc-linux`` -- a second package owning the same files, which pacman
+    refuses.  Whoever owns TRCC's installed files decides: someone else's
+    package upgrades the way it came; ours, or no answer, keeps the release's.
+
+    MUTATION CHECK: drop the foreign-owner branch of ``upgrade_hint`` and the
+    AUR case gets the pacman -U line."""
+    from trcc.adapters.system import _packages
+
+    asked: list[str] = []
+    monkeypatch.setattr(LinuxOS, "install_method", lambda self: "package")
+    monkeypatch.setattr(_packages.Pacman, "owns",
+                        lambda self, path: asked.append(path) or owner)
+
+    assert LinuxOS(_ARCH).upgrade_hint() == expected
+    assert [Path(a).name for a in asked] == ["__init__.py"]
+
+
+@pytest.mark.parametrize("family", [f for f in _FAMILIES if not f.foreign_upgrade],
+                         ids=lambda f: f.name)
+def test_a_family_that_cannot_name_an_owner_is_never_asked(
+        family: LinuxFamily, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No ``foreign_upgrade`` line: nothing to say with an owner, so no package
+    query runs on the way to the release's hint."""
+    monkeypatch.setattr(LinuxOS, "install_method", lambda self: "package")
+    monkeypatch.setattr(LinuxOS, "packages", lambda self: pytest.fail("asked"))
+
+    LinuxOS(family).upgrade_hint()
+
+
 @pytest.mark.parametrize(("method", "expected"), [
     ("pipx", "pipx upgrade trcc-linux"),
     ("pyinstaller", "github.com/Lexonight1/thermalright-trcc-linux/releases"),
