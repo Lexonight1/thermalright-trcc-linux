@@ -2204,3 +2204,44 @@ def test_system_openrgb_ports_answers(api_client: TestClient) -> None:
     resp = api_client.get("/system/openrgb-ports")
     assert resp.status_code == 200
     assert (resp.json()["ok"], resp.json()["coolers"]) == (True, [])
+
+
+def test_dispatch_lists_every_command_with_its_fields(api_client: TestClient) -> None:
+    """``GET /dispatch``: TRCC's Commands and every module's, each with its
+    fields and whether it carries files."""
+    listing = {c["command"]: c for c in api_client.get("/dispatch").json()["commands"]}
+    assert listing["OpenRgbPorts"]["files"] is False
+    assert listing["LedSnapshot"]["fields"] == {"key": "str"}
+    assert listing["LoadTheme"]["files"] is True
+
+
+def test_dispatch_runs_a_module_query_by_name(api_client: TestClient) -> None:
+    """A module's Query through the one door -- no route of its own needed."""
+    resp = api_client.post("/dispatch", json={"command": "OpenRgbPorts"})
+    assert resp.status_code == 200
+    assert (resp.json()["type"], resp.json()["coolers"]) == ("OpenRgbPortsResult", [])
+
+
+@pytest.mark.parametrize(("body", "detail"), [
+    ({"command": "NoSuch"}, "Unknown command: 'NoSuch'"),
+    ({"command": "LoadTheme", "kwargs": {"key": "0402:3922", "path": "/etc"}},
+     "LoadTheme carries files: use its own route, which checks the path"),
+])
+def test_dispatch_refuses_what_it_must(api_client: TestClient, body: dict,
+                                       detail: str) -> None:
+    """An unknown name, and a Command carrying files -- a token-holding
+    client elsewhere must not name a file.  MUTATION CHECK: drop the
+    ``carries_files`` refusal in ``ui/api/dispatch``."""
+    resp = api_client.post("/dispatch", json=body)
+    assert resp.status_code == 400
+    assert resp.json()["detail"].startswith(detail)
+
+
+def test_dispatch_says_a_refusal_as_an_error(api_client: TestClient) -> None:
+    """RGB off: the module's Command is refused with its reason, a 400 like
+    every route's -- never 200 with ok false."""
+    assert api_client.post("/system/modules/rgb", json={"enabled": False}
+                           ).status_code == 200
+    resp = api_client.post("/dispatch", json={"command": "OpenRgbPorts"})
+    assert (resp.status_code, resp.json()) == (
+        400, {"detail": "RGB Lighting is off -- turn it on in Modules"})

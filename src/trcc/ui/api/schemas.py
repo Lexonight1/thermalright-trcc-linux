@@ -5,7 +5,7 @@ not domain concerns.  Core ports stay framework-blind.
 """
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -109,6 +109,13 @@ class ThemeResponse(ResultBase):
 # =========================================================================
 # Request bodies
 # =========================================================================
+
+
+class DispatchRequest(BaseModel):
+    """Any Command by name, as the App's socket takes it."""
+    command: str = Field(..., min_length=1, max_length=80,
+                         pattern=r"^[A-Z][A-Za-z0-9]*$")
+    kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class OrientationRequest(BaseModel):

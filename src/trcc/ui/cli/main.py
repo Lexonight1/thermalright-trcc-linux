@@ -614,6 +614,51 @@ def shell() -> None:
 # =========================================================================
 
 
+@app.command("dispatch", rich_help_panel="Diagnostics")
+def _dispatch(
+    command: str = typer.Argument("", help="The Command's name, e.g. RamLighting"),
+    fields: list[str] = typer.Argument(
+        None, help="field=value -- a value is JSON when it parses (5, true, "
+                   "[1, 2]), text otherwise"),
+    as_json: bool = typer.Option(False, "--json", help="The whole Result, as JSON."),
+    listing: bool = typer.Option(False, "--list", help="List every Command."),
+) -> None:
+    """Run any Command by name -- TRCC's or any module's -- as the App's
+    socket does.  ``--list`` shows them all, with their fields."""
+    import json
+
+    from ...ipc import encode_result
+    from .. import _dispatch_door as door
+
+    log.info("cli dispatch: %s %s list=%s", command, fields, listing)
+    if listing or not command:
+        for cls in door.known().values():
+            entry = door.describe(cls)
+            args = " ".join(f"{k}=<{v}>" for k, v in entry["fields"].items())
+            typer.echo(f"{entry['command']} {args}".rstrip())
+        return
+    kwargs: dict[str, object] = {}
+    for item in fields or []:
+        name, sep, raw = item.partition("=")
+        if not sep:
+            raise typer.BadParameter(f"{item!r} is not field=value")
+        kwargs[name] = door.parse_value(raw)
+    try:
+        cmd = door.build(command, kwargs)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    result = get_app().dispatch(cmd)
+    if as_json:
+        typer.echo(json.dumps(encode_result(result), indent=2, default=str))
+    else:
+        typer.echo(getattr(result, "message", "") or type(result).__name__)
+        for key, value in encode_result(result).items():
+            if key not in ("type", "ok", "message") and value not in (None, "", [], {}):
+                typer.echo(f"  {key}: {getattr(value, 'value', value)}")
+    if not getattr(result, "ok", True):
+        raise typer.Exit(code=1)
+
+
 @app.command("report", rich_help_panel="Diagnostics")
 def _alias_report(
     output: Path | None = typer.Option(

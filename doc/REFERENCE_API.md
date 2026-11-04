@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**158 endpoints.**
+**160 endpoints.**
 
 ## Running it
 
@@ -223,3 +223,10 @@ Interactive docs are served at `/docs` while the API is running.
 | Endpoint | Returns | Description |
 |---|---|---|
 | `WS /events` | — | Push bus events to the client as JSON, one object per message. |
+
+## Dispatch
+
+| Endpoint | Returns | Description |
+|---|---|---|
+| `GET /dispatch` | `dict` | Every Command this door takes -- its fields, what it does, and whether it carries files (those go through their own route). |
+| `POST /dispatch` | `dict` | Run any Command by name, as the App's socket does; the Result comes back as JSON.  400 for an unknown name, a field it cannot take, a Command that carries files, or a refusal. |

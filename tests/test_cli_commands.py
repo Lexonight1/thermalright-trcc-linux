@@ -2459,3 +2459,22 @@ def test_system_openrgb_ports_says_what_to_type(cli_runner: CliRunner, cli_app) 
     result = cli_runner.invoke(_app(), ["system", "openrgb-ports"])
     assert result.exit_code == 0, result.output
     assert result.output == "No cooler is connected -- OpenRGB has none to light.\n"
+
+
+def test_dispatch_runs_any_command_by_name(cli_runner: CliRunner, cli_app) -> None:
+    """``trcc dispatch``: a module's Query by name, its fields printed by
+    value, no command of its own needed."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["dispatch", "RamLighting"])
+    assert result.exit_code == 0, result.output
+    assert result.output == ("RAM lighting is not available on this system yet\n"
+                             "  state: unsupported\n")
+
+
+def test_dispatch_lists_and_refuses_cleanly(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    listing = cli_runner.invoke(_app(), ["dispatch", "--list"])
+    assert "LedSnapshot key=<str>" in listing.output.splitlines()
+    unknown = cli_runner.invoke(_app(), ["dispatch", "NoSuch"])
+    assert unknown.exit_code == 2
+    assert "Unknown command: 'NoSuch'" in " ".join(unknown.output.split())

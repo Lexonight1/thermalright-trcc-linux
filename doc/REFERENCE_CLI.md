@@ -26,6 +26,7 @@ trcc [OPTIONS] COMMAND [ARGS]...
 - [`trcc daemon`](#trcc-daemon)
 - [`trcc daemon-status`](#trcc-daemon-status)
 - [`trcc detect`](#trcc-detect)
+- [`trcc dispatch`](#trcc-dispatch)
 - [`trcc doctor`](#trcc-doctor)
 - [`trcc gui`](#trcc-gui)
 - [`trcc kill`](#trcc-kill)
@@ -89,6 +90,24 @@ Alias for `trcc device list` — list attached devices.
 ```bash
 trcc detect
 ```
+
+### `trcc dispatch`
+
+Run any Command by name -- TRCC's or any module's -- as the App's socket does. `--list` shows them all, with their fields.
+
+```bash
+trcc dispatch [OPTIONS] [COMMAND] [FIELDS]
+```
+
+| Argument | Description |
+|---|---|
+| `COMMAND` | The Command's name, e.g. RamLighting *(optional)* |
+| `FIELDS` | field=value -- a value is JSON when it parses (5, true, [1, 2]), text otherwise *(optional)* |
+
+| Option | Description |
+|---|---|
+| `--json` | The whole Result, as JSON. |
+| `--list` | List every Command. |
 
 ### `trcc doctor`
 

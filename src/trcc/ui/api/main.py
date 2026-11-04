@@ -36,7 +36,7 @@ from ...core.ports import CommandBus
 if TYPE_CHECKING:
     from ...core.ports import Platform
     from ...core.results import ApiTlsResult
-from . import config, devices, display, events, led, system, theme
+from . import config, devices, dispatch, display, events, led, system, theme
 from . import trcc as _trcc_router
 from ._shared import is_loopback_client
 
@@ -65,7 +65,7 @@ def module_routers(bus: CommandBus | None = None) -> tuple[APIRouter, ...]:
 ROUTERS = (
     devices.router, display.router, display.meta_router, led.router,
     led.meta_router, system.router, config.router, theme.router,
-    _trcc_router.router, events.router,
+    _trcc_router.router, events.router, dispatch.router,
 )
 
 
