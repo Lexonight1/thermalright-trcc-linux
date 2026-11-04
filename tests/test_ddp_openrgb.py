@@ -350,3 +350,50 @@ def test_lights_is_refused_to_a_module_that_did_not_declare_it(
 
     with pytest.raises(ModuleUnavailable):
         scope.lights.add_source(_Live())
+
+
+# ── Where OpenRGB finds each cooler (OpenRgbPorts) ─────────────────────────
+
+@pytest.mark.parametrize(("coolers", "lines"), [
+    ((), ("No cooler is connected -- OpenRGB has none to light.",)),
+    (((("PA120 DIGITAL", 84, 4048, "")),
+      ("AX120 DIGITAL", 30, 4049, "port 4049 is taken (Address in use)")),
+     ("OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, "
+      "with these values.  Its colours show while OpenRGB sends them.",
+      "PA120 DIGITAL: IP 127.0.0.1, port 4048, 84 LEDs",
+      "AX120 DIGITAL: no port for OpenRGB -- port 4049 is taken (Address in use)")),
+])
+def test_the_lines_say_what_to_type_into_openrgb(
+        coolers: tuple[tuple[str, int, int, str], ...],
+        lines: tuple[str, ...]) -> None:
+    from trcc.modules.rgb.core.models import CoolerPort
+    from trcc.modules.rgb.core.results import OpenRgbPortsResult
+    from trcc.modules.rgb.ui.presentation.openrgb_ports import openrgb_port_lines
+
+    result = OpenRgbPortsResult(coolers=tuple(
+        CoolerPort(key=name, name=name, led_count=leds, port=port, error=error)
+        for name, leds, port, error in coolers))
+    assert openrgb_port_lines(result) == lines
+
+
+def test_the_query_names_each_connected_coolers_port_and_leds(
+        fake_platform: FakePlatform) -> None:
+    """Through the App: a connected AX120 -> its own open port and the 30 LEDs
+    a render draws -- what OpenRGB's DDP device must say."""
+    from trcc.modules.rgb.core.commands import OpenRgbPorts
+
+    from .conftest import _CliRenderer, rgb_module
+
+    app = App(fake_platform, renderer=_CliRenderer())
+    _attach_and_connect(app, fake_platform, pm=1)
+    lights = rgb_module(app).lights
+    lights.watch(app.led_coolers())
+    try:
+        result = app.dispatch(OpenRgbPorts())
+    finally:
+        lights.close()
+
+    (cooler,) = result.coolers
+    assert (result.ok, cooler.key, cooler.led_count, cooler.error) == (
+        True, _LED_KEY, 30, "")
+    assert cooler.port > 0

@@ -233,3 +233,19 @@ class RgbLight:
     kind: LightKind
     effect: LightEffect | None = None
     remembered: bool = False
+
+
+#: Where OpenRGB's DDP devices for the coolers point: this computer only --
+#: what each port binds to and what the page tells the user to type (#160).
+DDP_HOST = "127.0.0.1"
+
+
+@dataclass(frozen=True, slots=True)
+class CoolerPort:
+    """A cooler OpenRGB can drive (#160): its DDP device names this computer
+    and *port*, with *led_count* LEDs; *error* is why the port did not open."""
+    key: str
+    name: str
+    led_count: int
+    port: int
+    error: str = ""

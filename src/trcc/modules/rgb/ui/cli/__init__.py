@@ -14,6 +14,7 @@ import typer
 from trcc.core.models import RamAccessState
 from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
+    OpenRgbPorts,
     RamLighting,
     RgbFollow,
     RgbLights,
@@ -35,6 +36,7 @@ from trcc.modules.rgb.core.models import (
     RgbFollowMode,
 )
 from trcc.modules.rgb.core.results import RgbLightsResult
+from trcc.modules.rgb.ui.presentation.openrgb_ports import openrgb_port_lines
 from trcc.ui.cli._ctx import get_app
 
 log = logging.getLogger(__name__)
@@ -108,6 +110,24 @@ def follow(
         typer.echo(f"  devices  : {', '.join(result.devices)}")
     if result.error:
         typer.echo(f"  problem  : {result.error}")
+
+
+@COMMANDS.command("openrgb-ports")
+def openrgb_ports() -> None:
+    """Where OpenRGB finds each cooler: the DDP device to add in OpenRGB.
+
+    With RGB Lighting on, every connected cooler has its own port on this
+    computer; colours OpenRGB sends there show over the cooler's own mode, and
+    its mode is back a moment after they stop.  OpenRGB cannot find a cooler
+    by itself -- add a DDP device with these values.
+    """
+    log.info("cli rgb openrgb-ports")
+    result = get_app().dispatch(OpenRgbPorts())
+    if not result.ok:              # an error is its message: nothing beside it
+        typer.echo(result.message)
+        raise typer.Exit(code=1)
+    for line in openrgb_port_lines(result):
+        typer.echo(line)
 
 
 @COMMANDS.command("ram-lighting")

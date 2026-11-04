@@ -2450,3 +2450,12 @@ def test_system_aura_blink_says_why_with_no_board(cli_runner: CliRunner, cli_app
     assert ("\ncannot blink: no motherboard RGB that TRCC drives was found\n"
             ) in refused.output
     assert cli_runner.invoke(_app(), ["system", "aura-blink", "0"]).exit_code != 0
+
+
+def test_system_openrgb_ports_says_what_to_type(cli_runner: CliRunner, cli_app) -> None:
+    """``trcc system openrgb-ports``: the page's lines, in the terminal --
+    no cooler's port is open before a session starts."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "openrgb-ports"])
+    assert result.exit_code == 0, result.output
+    assert result.output == "No cooler is connected -- OpenRGB has none to light.\n"

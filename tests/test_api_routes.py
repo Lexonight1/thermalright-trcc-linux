@@ -2114,7 +2114,8 @@ def test_rgb_off_is_an_http_error_not_default_fields(api_client: TestClient) -> 
     + defaults.  MUTATION CHECK: drop ``http_error_if_failed`` from a GET."""
     assert api_client.post("/system/modules/rgb", json={"enabled": False}
                            ).status_code == 200
-    for route in ("/system/rgb", "/system/ram-lighting", "/system/rgb-follow"):
+    for route in ("/system/rgb", "/system/ram-lighting", "/system/rgb-follow",
+                  "/system/openrgb-ports"):
         resp = api_client.get(route)
         assert (resp.status_code, resp.json()) == (
             400, {"detail": "RGB Lighting is off -- turn it on in Modules"}), route
@@ -2195,3 +2196,11 @@ def test_system_aura_blink_route(api_client: TestClient) -> None:
         "cannot blink: no motherboard RGB that TRCC drives was found")
     for body in ({"header": 0}, {"header": 17}, {}):
         assert api_client.post("/system/aura-blink", json=body).status_code == 422
+
+
+def test_system_openrgb_ports_answers(api_client: TestClient) -> None:
+    """Where OpenRGB finds each cooler (#160) -- none before a session opens
+    the ports."""
+    resp = api_client.get("/system/openrgb-ports")
+    assert resp.status_code == 200
+    assert (resp.json()["ok"], resp.json()["coolers"]) == (True, [])

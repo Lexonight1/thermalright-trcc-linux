@@ -11,16 +11,16 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 4 |
-| [`Command`](#command) | 1 | 1 | 169 |
+| [`Command`](#command) | 1 | 1 | 170 |
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
-| [`ModuleCommand`](#modulecommand) | 1 | 1 | 17 |
-| [`ModuleQuery`](#modulequery) | 1 | 0 | 5 |
+| [`ModuleCommand`](#modulecommand) | 1 | 1 | 18 |
+| [`ModuleQuery`](#modulequery) | 1 | 0 | 6 |
 | [`NetworkPort`](#networkport) | 1 | 0 | 1 |
 | [`PasswordPort`](#passwordport) | 1 | 0 | 1 |
-| [`Query`](#query) | 1 | 0 | 49 |
+| [`Query`](#query) | 1 | 0 | 50 |
 | [`ReadingsPort`](#readingsport) | 1 | 0 | 1 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
@@ -129,7 +129,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (169):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `ModuleIcon` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
+**Implementations (170):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `LoopVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
 
 ## CpuSource
 
@@ -203,7 +203,7 @@ run(module: 'M') -> R_co
 
 **You inherit (1):** `execute`
 
-**Implementations (17):** `BlinkAuraHeader` · `ListVisuals` · `PlayVisual` · `RamLighting` · `RgbFollow` · `RgbLights` · `ScanRgbLights` · `SetAuraEffect` · `SetAuraLeds` · `SetLinkedColor` · `SetRamEffect` · `SetRamLighting` · `SetRgbFollow` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `VisualTile`
+**Implementations (18):** `BlinkAuraHeader` · `ListVisuals` · `OpenRgbPorts` · `PlayVisual` · `RamLighting` · `RgbFollow` · `RgbLights` · `ScanRgbLights` · `SetAuraEffect` · `SetAuraLeds` · `SetLinkedColor` · `SetRamEffect` · `SetRamLighting` · `SetRgbFollow` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `VisualTile`
 
 ## ModuleQuery
 
@@ -217,7 +217,7 @@ A question a module answers -- a :class:`Query` (changes nothing, logs at DEBUG)
 run(module: 'M') -> R_co
 ```
 
-**Implementations (5):** `ListVisuals` · `RamLighting` · `RgbFollow` · `RgbLights` · `VisualTile`
+**Implementations (6):** `ListVisuals` · `OpenRgbPorts` · `RamLighting` · `RgbFollow` · `RgbLights` · `VisualTile`
 
 ## NetworkPort
 
@@ -259,7 +259,7 @@ A question.  Answers, and changes nothing.
 execute(app: 'App') -> R_co
 ```
 
-**Implementations (49):** `BrowseModules` · `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `ModuleIcon` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
+**Implementations (50):** `BrowseModules` · `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `ModuleIcon` · `OpenRgbPorts` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
 
 ## ReadingsPort
 

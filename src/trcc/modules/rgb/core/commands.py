@@ -17,6 +17,7 @@ from trcc.modules.rgb.core.models import (
     AURA_HEADER_REF,
     EFFECT_SOURCE,
     MAX_ARGB_LEDS,
+    CoolerPort,
     EffectDirection,
     EffectSpeed,
     FollowColors,
@@ -30,7 +31,12 @@ from trcc.modules.rgb.core.models import (
     RgbLight,
 )
 from trcc.modules.rgb.core.ram_effects import effect_problem
-from trcc.modules.rgb.core.results import RamLightingResult, RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.core.results import (
+    OpenRgbPortsResult,
+    RamLightingResult,
+    RgbFollowResult,
+    RgbLightsResult,
+)
 
 if TYPE_CHECKING:
     from trcc.modules.rgb.app import RgbModule
@@ -562,6 +568,25 @@ class RgbFollow(ModuleQuery[RgbFollowResult, "RgbModule"]):
         return _rgb_follow_result(module, _rgb_follow_label(
             module.settings.rgb_follow_mode(), current.openrgb_host,
             current.openrgb_port, current.rgb_follow_source))
+
+
+@dataclass(frozen=True, slots=True)
+class OpenRgbPorts(ModuleQuery[OpenRgbPortsResult, "RgbModule"]):
+    """Where OpenRGB's DDP device for each cooler points (#160): this
+    computer, the cooler's own port, its LED count -- what the user types into
+    OpenRGB, read from the ports open now."""
+
+    MODULE: ClassVar[str] = _KEY
+
+    def run(self, module: RgbModule) -> OpenRgbPortsResult:
+        coolers = tuple(CoolerPort(key=c.key, name=c.name, led_count=c.led_count,
+                                   port=port, error=error)
+                        for c, port, error in module.lights.addresses())
+        log.debug("OpenRgbPorts: %s", [(c.key, c.port) for c in coolers])
+        return OpenRgbPortsResult(
+            ok=True, coolers=coolers,
+            message=(f"{len(coolers)} cooler(s) OpenRGB can drive" if coolers
+                     else "No cooler is connected"))
 
 
 def _ram_lighting_result(status: RamAccessStatus, *,

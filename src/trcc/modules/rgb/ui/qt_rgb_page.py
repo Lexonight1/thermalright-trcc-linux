@@ -55,6 +55,7 @@ from trcc.core.led_models import linked_preview, stretch
 from trcc.core.logs import per_frame, sink_for
 from trcc.core.ports import CommandBus
 from trcc.core.results import DeviceEntry, Result
+from trcc.modules.rgb.core.commands import OpenRgbPorts
 from trcc.modules.rgb.core.events import RGB_CHANGES, RgbFollowChanged, RgbFollowSent
 from trcc.modules.rgb.core.models import (
     MAX_ARGB_LEDS,
@@ -70,6 +71,7 @@ from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
 from trcc.modules.rgb.services.effect_clock import LIGHT_GRADIENTS
 from trcc.modules.rgb.services.effect_frames import APPROXIMATE, LEDS, effect_frame
 from trcc.modules.rgb.services.follow_colors import Rgb, strip_spans
+from trcc.modules.rgb.ui.presentation.openrgb_ports import openrgb_port_lines
 from trcc.modules.rgb.ui.presentation.rgb_page import (
     BLINK_TIP,
     BOARD_NOTE,
@@ -281,6 +283,16 @@ class _DeviceList(QWidget):
         self.find_button.setEnabled(not busy)
 
 
+def cooler_ports(app: CommandBus, page: RgbPage) -> tuple[str, ...]:
+    """Where OpenRGB finds each cooler (#160), asked of the App now -- in the
+    page's language at the moment it is shown."""
+    result = app.dispatch(OpenRgbPorts())
+    lines = (openrgb_port_lines(result, tr=page.tr) if result.ok
+             else (result.message,))
+    log.debug("cooler_ports: %d line(s)", len(lines))
+    return lines
+
+
 class _LightsColumn(QWidget):
     """The selected device's lights: a card each, with what that device
     needs beside them -- the RAM-access switch, OpenRGB's address."""
@@ -289,10 +301,11 @@ class _LightsColumn(QWidget):
     blinked = Signal(int)
 
     def __init__(self, page: RgbPage, access: RamAccessRow,
-                 changed: Callable[[], None]) -> None:
+                 changed: Callable[[], None],
+                 ports: Callable[[], tuple[str, ...]]) -> None:
         super().__init__()
         log.debug("_LightsColumn.__init__")
-        self._page, self._changed = page, changed
+        self._page, self._changed, self._ports = page, changed, ports
         self._access_card = QFrame(self)
         self._access_card.setObjectName("rgb-card")
         card = QVBoxLayout(self._access_card)
@@ -312,11 +325,16 @@ class _LightsColumn(QWidget):
         address.addWidget(_muted("SDK server"))
         address.addWidget(self._address, 1)
         self._board_note = _muted(BOARD_NOTE)
+        # Where OpenRGB finds each cooler: the DDP device to add (#160).
+        self._ports_note = _muted()
+        self._ports_note.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
         self._note = _muted()
         self._cards = QVBoxLayout()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._address_row)
+        layout.addWidget(self._ports_note)
         layout.addWidget(self._board_note)
         layout.addLayout(self._cards)
         layout.addWidget(self._note)
@@ -349,8 +367,12 @@ class _LightsColumn(QWidget):
         # status line and the switch it offers, if any.
         self._access_title.setVisible(page.ram_offer)
         self._access_text.setVisible(page.ram_offer)
-        self._address_row.setVisible(device is RgbDevice.OPENRGB)
+        openrgb = device is RgbDevice.OPENRGB
+        self._address_row.setVisible(openrgb)
         self._address.setText(page.address)
+        self._ports_note.setVisible(openrgb)
+        if openrgb:
+            self._ports_note.setText("\n".join(self._ports()))
         self._board_note.setVisible(board)
 
     def _on_light_toggled(self, ref: str, checked: bool) -> None:
@@ -978,8 +1000,9 @@ class RgbPageView(QWidget):
         self._devices_column.setMinimumWidth(DEVICES_WIDTH)
         self._devices_column.picked.connect(self._on_device)
         self._devices_column.find_clicked.connect(self._on_find)
-        self._lights_column = _LightsColumn(self.page, self.access,
-                                            self._on_changed)
+        self._lights_column = _LightsColumn(
+            self.page, self.access, self._on_changed,
+            partial(cooler_ports, app, self.page))
         self._lights_column.leds_set.connect(self._on_leds)
         self._lights_column.blinked.connect(self._on_blink)
         self._title = _heading("")

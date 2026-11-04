@@ -6,7 +6,13 @@ from dataclasses import dataclass
 
 from trcc.core.models import RamAccessState
 from trcc.core.results import Result
-from trcc.modules.rgb.core.models import FollowColors, FollowMapping, RgbFollowMode, RgbLight
+from trcc.modules.rgb.core.models import (
+    CoolerPort,
+    FollowColors,
+    FollowMapping,
+    RgbFollowMode,
+    RgbLight,
+)
 
 log = logging.getLogger(__name__)
 
@@ -59,3 +65,10 @@ class RgbFollowResult(Result):
     devices: tuple[str, ...] = ()
     lead: str = ""
     error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class OpenRgbPortsResult(Result):
+    """Each connected cooler's DDP device for OpenRGB (#160) -- empty while
+    none is connected, or before the session starts."""
+    coolers: tuple[CoolerPort, ...] = ()

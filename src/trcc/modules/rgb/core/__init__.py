@@ -4,6 +4,7 @@ refuse them while the module is off.  Nothing heavy is imported here: the
 drivers and the follower load only when the module is switched on."""
 from .commands import (
     BlinkAuraHeader,
+    OpenRgbPorts,
     RamLighting,
     RgbFollow,
     RgbLights,
@@ -16,9 +17,9 @@ from .commands import (
     SetRgbFollow,
 )
 from .events import RamLightingChanged, RgbFollowChanged, RgbFollowSent, RgbLightsChanged
-from .results import RamLightingResult, RgbFollowResult, RgbLightsResult
+from .results import OpenRgbPortsResult, RamLightingResult, RgbFollowResult, RgbLightsResult
 
-__all__ = ["BlinkAuraHeader", "RamLighting", "RamLightingChanged", "RamLightingResult",
+__all__ = ["BlinkAuraHeader", "OpenRgbPorts", "OpenRgbPortsResult", "RamLighting", "RamLightingChanged", "RamLightingResult",
            "RgbFollow", "RgbFollowChanged", "RgbFollowResult", "RgbFollowSent",
            "RgbLights", "RgbLightsChanged", "RgbLightsResult", "ScanRgbLights",
            "SetAuraEffect", "SetAuraLeds", "SetLinkedColor", "SetRamEffect",

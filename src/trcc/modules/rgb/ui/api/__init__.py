@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 
 from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
+    OpenRgbPorts,
     RamLighting,
     RgbFollow,
     RgbLights,
@@ -23,7 +24,12 @@ from trcc.modules.rgb.core.commands import (
     SetRamLighting,
     SetRgbFollow,
 )
-from trcc.modules.rgb.core.results import RamLightingResult, RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.core.results import (
+    OpenRgbPortsResult,
+    RamLightingResult,
+    RgbFollowResult,
+    RgbLightsResult,
+)
 from trcc.modules.rgb.ui.api.schemas import (
     AuraBlinkRequest,
     AuraEffectRequest,
@@ -141,6 +147,16 @@ def ram_effect_set(body: RamEffectRequest, request: Request) -> RgbLightsResult:
         effect=body.effect, refs=tuple(body.sticks), speed=body.speed,
         direction=body.direction, colors=tuple(body.colors),
         random_colors=body.random_colors, brightness=body.brightness))
+    http_error_if_failed(result)
+    return result
+
+
+@router.get("/openrgb-ports")
+def openrgb_ports(request: Request) -> OpenRgbPortsResult:
+    """Each connected cooler's DDP device for OpenRGB: this computer, its
+    own port, its LED count (#160)."""
+    log.info("api GET /system/openrgb-ports")
+    result = request.app.state.trcc.dispatch(OpenRgbPorts())
     http_error_if_failed(result)
     return result
 

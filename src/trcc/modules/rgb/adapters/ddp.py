@@ -26,6 +26,7 @@ import threading
 import time
 
 from trcc.core.logs import per_frame
+from trcc.modules.rgb.core.models import DDP_HOST
 from trcc.modules.rgb.core.ports import DdpListener
 
 log = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class DdpPort(DdpListener):
         self._thread: threading.Thread | None = None
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            sock.bind(("127.0.0.1", port))
+            sock.bind((DDP_HOST, port))
         except OSError as e:
             sock.close()
             self._error = f"port {port} is taken ({e.strerror or e})"

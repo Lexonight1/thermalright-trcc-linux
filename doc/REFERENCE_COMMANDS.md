@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**169 total: 120 Commands and 49 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**170 total: 120 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1664,6 +1664,14 @@ Blink an ASUS Aura ARGB header for two seconds, so the user can see which header
 | Field | Type | Required |
 |---|---|---|
 | `header` | `int` | yes |
+
+### `OpenRgbPorts`
+
+Where OpenRGB's DDP device for each cooler points (#160): this computer, the cooler's own port, its LED count -- what the user types into OpenRGB, read from the ports open now.
+
+*Query* → `OpenRgbPortsResult`
+
+Takes no arguments.
 
 ### `RamLighting`
 

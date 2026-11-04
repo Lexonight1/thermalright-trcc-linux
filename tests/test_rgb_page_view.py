@@ -14,6 +14,7 @@ from trcc.core.ports import CommandBus
 from trcc.core.results import DeviceEntry, DevicesListResult
 from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
+    OpenRgbPorts,
     RamLighting,
     RgbFollow,
     RgbLights,
@@ -25,6 +26,7 @@ from trcc.modules.rgb.core.commands import (
     SetRgbFollow,
 )
 from trcc.modules.rgb.core.models import (
+    CoolerPort,
     FollowColors,
     FollowMapping,
     LightKind,
@@ -32,7 +34,12 @@ from trcc.modules.rgb.core.models import (
     RgbFollowMode,
     RgbLight,
 )
-from trcc.modules.rgb.core.results import RamLightingResult, RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.core.results import (
+    OpenRgbPortsResult,
+    RamLightingResult,
+    RgbFollowResult,
+    RgbLightsResult,
+)
 from trcc.modules.rgb.ui.presentation.rgb_page import RgbDevice, RgbSource, Strip, strip_legend
 
 LCD = "0402:3922"
@@ -72,6 +79,10 @@ class _Bus(CommandBus):
             case RgbFollow() | SetRgbFollow():
                 return RgbFollowResult(mode=self.follow_mode, host="127.0.0.1",
                                        port=6742, message="done")
+            case OpenRgbPorts():
+                return OpenRgbPortsResult(coolers=(CoolerPort(
+                    key="0416:8001", name="PA120 DIGITAL", led_count=84,
+                    port=4048),), message="1 cooler(s) OpenRGB can drive")
             case ListDevices():
                 return DevicesListResult(devices=[DeviceEntry(
                     key=LCD, product="Frozen", kind="lcd", connected=True)])
@@ -475,3 +486,17 @@ def test_the_classic_window_shows_the_page_in_its_language(qtbot: Any) -> None:
     view.set_language("en")
     assert {"Find lights", "Rainbow", detail("en")} <= shown()
     assert view._title == "RGB Lighting"
+
+
+def test_the_openrgb_device_shows_where_openrgb_finds_each_cooler(
+        view: Any, qtbot: Any) -> None:
+    """#160: OpenRGB cannot find a cooler by itself -- the page says which
+    DDP device to add, on the OpenRGB device only.  MUTATION CHECK: drop the
+    ports note from ``_LightsColumn.show_page``."""
+    view._on_device(RgbDevice.OPENRGB)
+    note = view._lights_column._ports_note
+    shown = (note.isVisible(), note.text().splitlines()[1:])
+    view._on_device(RgbDevice.MEMORY)
+
+    assert shown == (True, ["PA120 DIGITAL: IP 127.0.0.1, port 4048, 84 LEDs"])
+    assert note.isVisible() is False
