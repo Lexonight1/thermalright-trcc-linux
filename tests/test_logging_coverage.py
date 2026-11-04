@@ -274,6 +274,45 @@ def test_nothing_on_the_record_path_logs() -> None:
     )
 
 
+def test_a_signal_handler_is_exempt_and_only_the_handler() -> None:
+    """What ``signal.signal`` installs is exempt -- a bare name or a bound
+    method -- and nothing else is, not even a function of the same class."""
+    countable = _countable_names('''
+import signal
+
+def _on_alarm(signo, frame):
+    flag.set()
+
+class Face:
+    def install(self):
+        signal.signal(signal.SIGTERM, self._on_stop_signal)
+        signal.signal(signal.SIGALRM, _on_alarm)
+    def _on_stop_signal(self, signo, frame):
+        self._stop_requested = True
+    def stop(self):
+        self._loop.exit()
+''')
+    assert countable == {"install", "stop"}, countable
+
+
+def test_no_signal_handler_logs() -> None:
+    """The exemption stops the ratchet DEMANDING a log line in a signal
+    handler; this forbids one -- and proves the path is found at all.
+
+    MUTATION CHECK: a log line back in ``UserInterface._on_stop_signal``
+    fails this (measured 2026-11-04: its line re-entered stderr mid-write and
+    the stop it existed for never ran).  On its first run it also found the
+    CLI's ``wait_until_interrupted._stop`` logging the same way."""
+    from_tree = {fn.name for _rel, tree in logging_coverage._trees(None)
+                 for fn in logging_coverage._signal_path(tree).values()}
+    assert "_on_stop_signal" in from_tree, (
+        "the signal path finds nothing -- the exemption would be blind")
+    assert logging_coverage.logging_on_the_signal_path() == [], (
+        "a signal handler logs: its line can re-enter the log write the signal "
+        "interrupted (RuntimeError: reentrant call), and what the handler was "
+        "for never runs.  Record what happened; log it once the loop is over.")
+
+
 def test_a_function_attached_onto_a_logging_class_is_on_the_record_path() -> None:
     """``logging.StreamHandler.emit = f`` puts *f* on the path exactly as a method.
 

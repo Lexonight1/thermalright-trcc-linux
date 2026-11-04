@@ -37,6 +37,12 @@ class _Face(UserInterface):
         self.app = mock.MagicMock()
         self.ran = False
         self.stops = 0
+        self.wakes = 0
+        # What a real face builds beforehand: the signal-safe nudge.
+        self._signal_wake = self._wake
+
+    def _wake(self) -> None:
+        self.wakes += 1
 
     def compose(self, platform: Any) -> Any:
         return self.app
@@ -63,10 +69,76 @@ def test_a_signal_during_bring_up_closes_without_running() -> None:
     face.app.close.assert_called_once()
 
 
-def test_a_signal_while_running_reaches_the_face_s_stop() -> None:
+def test_a_signal_while_running_wakes_the_face_s_loop() -> None:
+    """The handler nudges the loop through the face's prepared wake -- never
+    through ``stop``, which logs (see the mid-log-line test)."""
     face = _Face(signal_in="run")
     assert face.start() == 0
-    assert face.stops == 1
+    assert (face.wakes, face.stops) == (1, 0)
+    face.app.close.assert_called_once()
+
+
+def test_a_signal_landing_mid_log_line_still_stops_the_face(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The handler runs on the main thread, between two bytecodes -- possibly
+    INSIDE a log write.  It logged first, so its own log line re-entered the
+    stream's ``BufferedWriter`` (``RuntimeError: reentrant call``), the
+    error escaped, and the two lines that stop the face never ran: the face
+    carried on as a full session (smoke_ui_shutdown, qtgui start-up,
+    2026-11-04).  Python's logging docs: a signal handler "may not be able to
+    use logging".  Reproduced here the way it happened: a stderr-shaped
+    stream whose raw write delivers SIGTERM mid-flush.
+
+    MUTATION CHECK: log inside ``_on_stop_signal`` again and this fails.
+    """
+    import io
+    import logging
+
+    class _SignalsMidWrite(io.RawIOBase):
+        armed = True
+
+        def writable(self) -> bool:
+            return True
+
+        def write(self, b: Any) -> int:
+            if self.armed:
+                self.armed = False
+                os.kill(os.getpid(), signal.SIGTERM)
+                # A Python call checks for pending signals on entry, so the
+                # handler runs HERE -- inside the write, the writer's lock
+                # held -- as it does when a real write() is interrupted.
+                _checkpoint()
+            return len(b)
+
+    def _checkpoint() -> None:
+        pass
+
+    raw = _SignalsMidWrite()
+    raw.armed = False
+    stream = io.TextIOWrapper(io.BufferedWriter(raw), encoding="utf-8",
+                              write_through=True)
+    monkeypatch.setattr("sys.stderr", stream)     # handleError writes here too
+    handler = logging.StreamHandler(stream)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    # The levels a real run logs at -- the file keeps DEBUG at every rung.
+    # Below them the handler's INFO line never writes, and nothing re-enters.
+    monkeypatch.setattr(root, "level", logging.DEBUG)
+
+    class _Logs(_Face):
+        def run(self) -> int:
+            self.ran = True
+            raw.armed = True
+            logging.getLogger("trcc.ui.test").warning("a line the signal lands in")
+            return 0
+
+    face = _Logs()
+    try:
+        assert face.start() == 0
+    finally:
+        root.removeHandler(handler)
+    assert (face._stop_requested, face.wakes) == (True, 1)
     face.app.close.assert_called_once()
 
 

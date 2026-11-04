@@ -297,16 +297,20 @@ def wait_until_interrupted(ended: threading.Event | None = None) -> bool:
     """
     log.debug("wait_until_interrupted: waiting for Ctrl-C / SIGTERM")
     stopped = ended if ended is not None else threading.Event()
-    interrupted = False
+    interrupted: int | None = None
 
     def _stop(signum: int, _frame: object) -> None:
+        # A plain store, nothing more: a signal handler may run INSIDE a log
+        # write (a log line here re-enters it) or inside ``stopped.wait``,
+        # whose Event lock is a plain Lock (``set()`` here can deadlock on
+        # it).  The sliced wait below sees the store within 0.25 s.
         nonlocal interrupted
-        log.info("wait_until_interrupted: %s", signal.Signals(signum).name)
-        interrupted = True
-        stopped.set()
+        interrupted = signum
 
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
-    while not stopped.wait(0.25):
+    while interrupted is None and not stopped.wait(0.25):
         pass
-    return not interrupted
+    if interrupted is not None:
+        log.info("wait_until_interrupted: %s", signal.Signals(interrupted).name)
+    return interrupted is None

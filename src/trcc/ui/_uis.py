@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from ._base import UserInterface
@@ -96,6 +97,8 @@ class ApiUI(UserInterface, key="api"):
             log_level="info", log_config=None, access_log=False,
             ssl_certfile=self.tls and self.tls.cert,
             ssl_keyfile=self.tls and self.tls.key))
+        # What a stop signal sets: an attribute uvicorn reads every tick.
+        self._signal_wake = partial(setattr, server, "should_exit", True)
         if self._stop_requested:
             log.info("ApiUI.run: stopped before serving")
             return 0
@@ -213,8 +216,12 @@ class DaemonUI(UserInterface, key="daemon"):
         log.info("DaemonUI.run: serving until shutdown")
         server, serving = self._server, self._serving
         try:
-            # A timed join, so a stop signal still runs on this main thread.
-            while serving is not None and serving.is_alive():
+            # A timed join, so a stop signal still runs on this main thread --
+            # and is read HERE: the handler only sets the flag, and the
+            # shutdown (locks, joins, socket writes, log lines) runs below,
+            # in ordinary code, never inside the handler.
+            while (serving is not None and serving.is_alive()
+                   and not self._stop_requested):
                 serving.join(0.5)
         finally:
             if server is not None:
@@ -249,8 +256,19 @@ class _QtUI(UserInterface):
 
     def compose(self, platform: Platform | None) -> App:
         log.info("%s.compose: Qt-first via build_qt_app", type(self).__name__)
+        from PySide6.QtCore import Q_ARG, QMetaObject, Qt
+        from PySide6.QtWidgets import QApplication
+
         from .qapp import build_qt_app
-        return build_qt_app(platform)
+        app = build_qt_app(platform)
+        # The exit a stop signal queues, built HERE: inside the handler an
+        # import would take the import locks, which is the reentrancy the
+        # handler must not risk.  ``exit``, queued -- what :meth:`stop` sends.
+        if (qapp := QApplication.instance()) is not None:
+            self._signal_wake = partial(
+                QMetaObject.invokeMethod, qapp, "exit",
+                Qt.ConnectionType.QueuedConnection, Q_ARG(int, 0))
+        return app
 
     def stop(self) -> None:
         """Queue an exit for the Qt loop -- and for any loop nested in it.

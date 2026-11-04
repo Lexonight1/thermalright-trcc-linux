@@ -118,6 +118,13 @@ class UserInterface(CommandBus):
     #: A SIGTERM / SIGINT arrived.  Set from :meth:`start` on, so a signal
     #: before the face's loop exists still ends in ``App.close``.
     _stop_requested: bool = False
+    #: Which signal it was -- logged by :meth:`start` once the loop is over,
+    #: never by the handler (:meth:`_on_stop_signal`).
+    _stop_signal: int | None = None
+    #: What the handler calls to end a loop that does not read
+    #: ``_stop_requested`` itself: built beforehand, in ordinary code, by a
+    #: face whose loop needs a nudge.  It must take no lock and write nothing.
+    _signal_wake: Callable[[], object] | None = None
 
     #: Whether this UI needs the live session (coldplug + metrics + LED loops).
     #: False for the one-shot CLI, which must not pay for a coldplug it will
@@ -208,6 +215,9 @@ class UserInterface(CommandBus):
             self._relaunch = True
             return 1
         finally:
+            if self._stop_signal is not None:
+                log.info("start: %s stopped by %s", type(self).__name__,
+                         signal.Signals(self._stop_signal).name)
             # Close only what was actually built.  A face that never
             # dispatched -- ``trcc --help`` reaching the CLI face -- composed
             # nothing, and closing a phantom would build an App just to tear
@@ -313,10 +323,18 @@ class UserInterface(CommandBus):
         log.warning("%s: %s", type(self).__name__, text)
 
     def _on_stop_signal(self, signo: int, _frame: object) -> None:
-        log.info("%s: %s — stopping", type(self).__name__,
-                 signal.Signals(signo).name)
+        # No log line, and nothing that takes a lock or writes.  A Python
+        # signal handler runs on the main thread between two bytecodes --
+        # possibly INSIDE a log write -- and Python's logging docs warn a
+        # handler "may not be able to use logging".  This logged first: on
+        # 2026-11-04 its line re-entered the stream's BufferedWriter
+        # ("reentrant call"), the error escaped, and the stop below never ran
+        # -- the face carried on as a full session.  :meth:`start` logs the
+        # signal once the loop is over.
+        self._stop_signal = signo
         self._stop_requested = True
-        self.stop()
+        if (wake := self._signal_wake) is not None:
+            wake()
 
     def stop(self) -> None:
         """End this face's loop, if it is running.  Called on the main thread.

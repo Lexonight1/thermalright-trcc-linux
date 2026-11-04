@@ -175,6 +175,33 @@ def _record_path(tree: ast.AST) -> dict[int, ast.FunctionDef | ast.AsyncFunction
     return on_path
 
 
+def _signal_path(tree: ast.AST) -> dict[int, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Every function this module installs as a signal handler, by node id.
+
+    ``signal.signal(signo, handler)``, the handler a bare name or an
+    attribute (``self._on_stop_signal``), resolved by name within the module.
+    A Python signal handler runs on the main thread between two bytecodes --
+    possibly INSIDE a log write -- so a log line there can re-enter the
+    stream's ``BufferedWriter`` (``RuntimeError: reentrant call``); Python's
+    logging docs warn a handler "may not be able to use logging".  Measured
+    2026-11-04: ``UserInterface._on_stop_signal`` logged first, its line
+    re-entered stderr mid-write, and the stop it existed for never ran.
+    """
+    functions = {n.name: n for n in ast.walk(tree)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    on_path: dict[int, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and len(node.args) == 2
+                and ast.unparse(node.func) == "signal.signal"):
+            continue
+        handler = node.args[1]
+        name = (handler.id if isinstance(handler, ast.Name)
+                else handler.attr if isinstance(handler, ast.Attribute) else None)
+        if name is not None and (fn := functions.get(name)) is not None:
+            on_path[id(fn)] = fn
+    return on_path
+
+
 def _exempt(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """True if the rule does not apply to *fn* at all."""
     return fn.name in _RECURSION_RISK or _is_stub(fn) or _is_abstract(fn)
@@ -182,7 +209,7 @@ def _exempt(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 def _countable(tree: ast.AST):
     """Yield every function the rule applies to."""
-    on_path = _record_path(tree)
+    on_path = _record_path(tree) | _signal_path(tree)
     for fn in ast.walk(tree):
         if (isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and id(fn) not in on_path and not _exempt(fn)):
@@ -281,6 +308,14 @@ def logging_on_the_record_path(root: Path | None = None) -> list[str]:
     """
     return [f"{rel}::{fn.name}" for rel, tree in _trees(root)
             for fn in _record_path(tree).values() if _emits_log(fn)]
+
+
+def logging_on_the_signal_path(root: Path | None = None) -> list[str]:
+    """Signal handlers that log -- the half of :func:`_signal_path` that
+    forbids, as :func:`logging_on_the_record_path` is for the record path.
+    Must be empty: the line can re-enter a log write the signal interrupted."""
+    return [f"{rel}::{fn.name}" for rel, tree in _trees(root)
+            for fn in _signal_path(tree).values() if _emits_log(fn)]
 
 
 # =========================================================================
