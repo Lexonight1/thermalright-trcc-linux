@@ -165,7 +165,8 @@ def _warm_bytecode(src: str | None) -> None:
 
 
 def _slope(src: str | None, lo: int, hi: int, video: Path | None,
-           reps: int, label: str, gui: bool = False, mock: bool = False) -> float:
+           reps: int, label: str, gui: bool = False, mock: bool = False,
+           cast: bool = False) -> float:
     """Median instructions/frame across *reps* differential pairs."""
     _warm_bytecode(src)
     inner = [sys.executable, str(Path(__file__).resolve()), "--run", "0"]
@@ -181,6 +182,8 @@ def _slope(src: str | None, lo: int, hi: int, video: Path | None,
                 cmd += ["--gui"]
             if mock:
                 cmd += ["--mock"]
+            if cast:
+                cmd += ["--cast"]
             instr, requested, sent = _perf_instructions(cmd, src)
             # Divide by OBSERVED work, never requested.  The GUI arm cannot stop
             # mid-tick -- the event loop processes a build or two after quit() --
@@ -388,9 +391,11 @@ def _mock_app() -> object:
     return app
 
 
-def _run_arm(n: int, video: Path | None, mock: bool = False) -> None:
+def _run_arm(n: int, video: Path | None, mock: bool = False,
+             cast: bool = False) -> None:
     """Inner mode: build *n* frames on the real device -- or the scripted one
-    (*mock*) -- and report the count."""
+    (*mock*) -- and report the count.  *cast*: screencast ticks instead of
+    theme renders, the live-picture path (mock only)."""
     import inspect
     import logging
     import os
@@ -409,14 +414,16 @@ def _run_arm(n: int, video: Path | None, mock: bool = False) -> None:
     from trcc.services.display import DisplayService
 
     # See docstring note 1: build_frame, never DeviceSender._raw_write.
+    # A cast frame is built by ``build_screencast_frame``, once per tick.
+    counted = "build_screencast_frame" if cast else "build_frame"
     counter = {"frames": 0}
-    real_build = DisplayService.build_frame
+    real_build = getattr(DisplayService, counted)
 
     def counting_build(self, *a, **kw):
         counter["frames"] += 1
         return real_build(self, *a, **kw)
 
-    DisplayService.build_frame = counting_build
+    setattr(DisplayService, counted, counting_build)
 
     # ``trcc()`` auto-detects the platform: ``current_platform`` moved between
     # releases, so importing it by path would measure the import, not the drift.
@@ -467,6 +474,9 @@ def _run_arm(n: int, video: Path | None, mock: bool = False) -> None:
             playback.advance()
         app.dispatch(RenderAndSend(key=key))
 
+    if cast:
+        tick = _cast_tick(app, key)
+
     for _ in range(20):        # warm-up; identical at both sizes, so it cancels
         tick()
 
@@ -476,6 +486,32 @@ def _run_arm(n: int, video: Path | None, mock: bool = False) -> None:
 
     print(f"RESULT requested={n} sent={counter['frames'] - start}", file=sys.stderr)
 
+
+
+def _cast_tick(app: Any, key: str) -> Any:
+    """One screencast tick for *key*, as the tree under measurement spells it.
+
+    The region is SAVED, not started: ``StartScreencast`` would start the
+    App's own driver ticking beside this loop and double the work.  Before the
+    live-picture family a cast tick was ``CaptureScreencastFrame``; after it,
+    ``CaptureSourceFrame`` of kind SCREENCAST -- feature-detected, so one bench
+    measures both trees."""
+    from trcc.core import commands
+
+    app.settings.set_screencast_region(key, (0, 0, 320, 320, False))
+    # By name: it exists only in a tree from before the family.
+    before = getattr(commands, "CaptureScreencastFrame", None)
+    if before is not None:
+        command = before(key=key)
+    else:
+        from trcc.core.models import PanelSource
+        command = commands.CaptureSourceFrame(key=key, kind=PanelSource.SCREENCAST)
+    print(f"cast tick: {type(command).__name__}", file=sys.stderr)
+
+    def tick() -> None:
+        app.dispatch(command)
+
+    return tick
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -491,6 +527,8 @@ def main() -> None:
                     help="measure the REAL GUI shell, not just the render path")
     ap.add_argument("--mock", action="store_true",
                     help="a scripted 320x320 panel, no USB: the render path only")
+    ap.add_argument("--cast", action="store_true",
+                    help="screencast ticks (the live-picture path); needs --mock")
     ap.add_argument("--selftest", action="store_true",
                     help="validate perf counting against a known answer, then exit")
     args = ap.parse_args()
@@ -502,27 +540,32 @@ def main() -> None:
         if args.gui:
             _run_gui_arm(args.run)
         else:
-            _run_arm(args.run, args.video, args.mock)
+            _run_arm(args.run, args.video, args.mock, args.cast)
         return
 
     # The orchestrator only: a ``--run`` child may be ANOTHER tree's src
     # (``--against``), and importing the dev bootstrap there would put this
     # tree's src first on its path and measure the wrong build.
+    if args.cast and not args.mock:
+        raise SystemExit("--cast needs --mock: on the real platform it would cast "
+                         "your real screen onto your real panel")
     if not args.mock:               # a mock run reaches no USB, so no contention
         refuse_while_trcc_runs("glass_bench")
-    workload = f"advancing video ({args.video.name})" if args.video else "static theme"
+    workload = ("screencast" if args.cast
+                else f"advancing video ({args.video.name})" if args.video
+                else "static theme")
     workload += " · REAL GUI" if args.gui else " · headless"
     workload += " · MOCK panel (no USB)" if args.mock else " · real panel"
     print(f"workload: {workload}   span: {args.lo} → {args.hi} frames   "
           f"reps: {args.reps}")
 
     here = _slope(None, args.lo, args.hi, args.video, args.reps, "this tree",
-                  args.gui, args.mock)
+                  args.gui, args.mock, args.cast)
     print(f"\nthis tree : {here / 1e6:7.3f} M instructions/frame (median)")
 
     if args.against:
         there = _slope(args.against, args.lo, args.hi, args.video, args.reps,
-                       "--against", args.gui, args.mock)
+                       "--against", args.gui, args.mock, args.cast)
         print(f"--against : {there / 1e6:7.3f} M instructions/frame (median)")
         faster = "cheaper" if here < there else "MORE EXPENSIVE"
         print(f"\nthis tree is {max(here, there) / min(here, there):.1f}x "
