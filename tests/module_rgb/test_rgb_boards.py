@@ -16,8 +16,8 @@ from trcc.modules.rgb.core.models import FoundBoard, LightKind, RgbMirrorDevice
 from trcc.modules.rgb.core.ports import RgbMirror
 from trcc.modules.rgb.services.rgb_boards import MotherboardFinder, matches, spot
 
-from .conftest import FakeBulkTransport, rgb_module
-from .mock_platform import (
+from ..conftest import FakeBulkTransport, rgb_module
+from ..mock_platform import (
     AURA_INTERFACE,
     MAINTAINER_BOARD,
     MockPlatform,

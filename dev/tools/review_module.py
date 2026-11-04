@@ -198,7 +198,7 @@ class Review:
     author: str = ""
     #: Whether stage 2 -- its own code, in the sandbox -- ran.
     ran: bool = False
-    #: TRCC's own add-on (:func:`first_party`): its tests live in TRCC's suite.
+    #: TRCC's own add-on (:func:`first_party`): its code is read, not refused.
     first: bool = False
 
     @property
@@ -720,50 +720,17 @@ def _log(workdir: Path, name: str, result: subprocess.CompletedProcess[str]) -> 
     return path
 
 
-def suite_tests_of(tree: Path, key: str) -> list[str]:
-    """TRCC's test files that import add-on *key* -- by syntax tree, so a file
-    that merely names it does not count.  Tree-relative paths."""
-    module = f"trcc.modules.{key}"
-
-    def imports_it(node: ast.AST) -> bool:
-        if isinstance(node, ast.Import):
-            return any(a.name == module or a.name.startswith(module + ".")
-                       for a in node.names)
-        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            return (node.module == module or node.module.startswith(module + ".")
-                    or (node.module == "trcc.modules"
-                        and any(a.name == key for a in node.names)))
-        return False
-
-    found = [path.relative_to(tree).as_posix()
-             for path in sorted((tree / "tests").glob("test_*.py"))
-             if any(imports_it(n) for n in ast.walk(
-                 ast.parse(path.read_text(encoding="utf-8"), str(path))))]
-    log.info("suite_tests_of: %s -> %d file(s): %s", key, len(found), found)
-    return found
-
-
-def own_tests(workdir: Path, image: str, tree: Path, key: str,
-              first: bool = False) -> Gate:
-    """Its tests pass, in the sandbox -- and there are some.  An outside
-    module ships them in ``tests/``; TRCC's own add-on (*first*) keeps them
-    in TRCC's suite, so they are the suite's files that import it, run
-    against the submitted bundle."""
+def own_tests(workdir: Path, image: str, tree: Path, key: str) -> Gate:
+    """Its tests pass, in the sandbox -- and there are some.  Every module's
+    are ``tests/module_<key>/``: an outside module ships them in its own
+    ``tests/`` (:func:`export` puts them there), and TRCC's own add-on keeps
+    them there in TRCC's suite, run against the submitted bundle."""
     gate = Gate("Its own tests")
-    if first:
-        targets = suite_tests_of(tree, key)
-        if not targets:
-            gate.fail("tests/", f"no tests -- nothing in TRCC's suite imports "
-                      f"trcc.modules.{key}")
-            return gate
-        gate.notes.append(f"TRCC's own add-on: its tests are the suite's "
-                          f"{len(targets)} file(s) that import it")
-    elif (tree / "tests" / f"module_{key}").is_dir():
-        targets = [f"tests/module_{key}"]
-    else:
+    target = f"tests/module_{key}"
+    if not (tree / target).is_dir():
         gate.fail("tests/", "no tests -- a module ships its own")
         return gate
-    result = _contained(workdir, image, tree, PYTHON, "-m", "pytest", *targets,
+    result = _contained(workdir, image, tree, PYTHON, "-m", "pytest", target,
                         "-q", "-n", "0", "-p", "no:cacheprovider")
     log = _log(workdir, "own-tests", result)
     tail = (result.stdout.strip().splitlines() or [""])[-1]
@@ -805,7 +772,7 @@ def stage_two(result: Review, workdir: Path) -> None:
     result.ran = True
     if not sandbox_gate.passed:
         return
-    result.gates += [own_tests(workdir, image, tree, result.key, result.first),
+    result.gates += [own_tests(workdir, image, tree, result.key),
                      smoke(workdir, image, tree, result.key)]
 
 

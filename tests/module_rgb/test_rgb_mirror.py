@@ -34,8 +34,8 @@ from trcc.modules.rgb.core.models import (
 from trcc.modules.rgb.core.ports import RamLights
 from trcc.modules.rgb.services.rgb_mirror import BLINK_COLOR, BLINK_STEPS, RgbMirrorService
 
-from .conftest import rgb_module
-from .mock_platform import (
+from ..conftest import rgb_module
+from ..mock_platform import (
     MockPlatform,
     ScriptedCorsairStick,
     ScriptedRgbHardware,
@@ -350,7 +350,7 @@ def test_the_app_lights_the_ram_its_platform_hands_out(tmp_path) -> None:
 
 def test_a_platform_without_an_smbus_refuses(tmp_path) -> None:
     """The base port refuses; only an OS that has the bus opens it."""
-    from .conftest import FakePlatform
+    from ..conftest import FakePlatform
 
     with pytest.raises(OSError, match="no SMBus access on FakePlatform"):
         FakePlatform(tmp_path).smbuses()

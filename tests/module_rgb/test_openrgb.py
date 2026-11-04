@@ -232,7 +232,7 @@ def test_a_cooler_render_reaches_openrgb_over_the_wire(tmp_path, fake) -> None:
     from trcc.modules.rgb.core.commands import SetRgbFollow
     from trcc.modules.rgb.core.models import RgbFollowMode
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from tests.mock_platform import MockPlatform
 
     class _WithOpenRgb(MockPlatform):

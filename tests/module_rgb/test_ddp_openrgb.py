@@ -24,8 +24,8 @@ from trcc.modules.rgb.adapters.ddp import DdpPort, apply_packet
 from trcc.modules.rgb.core.ports import DdpListener
 from trcc.modules.rgb.services.openrgb_lights import LIVE_FOR_S, OpenRgbLights
 
-from .conftest import FakePlatform
-from .test_render_led import _LED_KEY, _attach_and_connect
+from ..conftest import FakePlatform
+from ..test_render_led import _LED_KEY, _attach_and_connect
 
 
 def _packet(rgb: bytes, offset: int = 0, flags: int = 0x41,
@@ -266,7 +266,7 @@ class _Live(LedSource):
 
 def _live_app(fake_platform: FakePlatform, pm: int,
               source: _Live) -> App:
-    from .conftest import _CliRenderer
+    from ..conftest import _CliRenderer
 
     app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=pm)
@@ -383,7 +383,7 @@ def test_the_query_names_each_connected_coolers_port_and_leds(
     a render draws -- what OpenRGB's DDP device must say."""
     from trcc.modules.rgb.core.commands import OpenRgbPorts
 
-    from .conftest import _CliRenderer, rgb_module
+    from ..conftest import _CliRenderer, rgb_module
 
     app = App(fake_platform, renderer=_CliRenderer())
     _attach_and_connect(app, fake_platform, pm=1)

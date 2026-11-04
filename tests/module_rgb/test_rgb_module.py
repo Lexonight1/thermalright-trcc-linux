@@ -1,9 +1,10 @@
 """RGB Lighting as a module: what moving it out of the App must not change,
 and what being a module adds -- it can be off.
 
-Its Commands, follower, drivers and pages keep their own tests
-(``test_rgb_mirror.py``, ``test_rgb_boards.py``, ``tests/adapters/rgb/``,
-``test_rgb_page_view.py``); these are the seams the move made.
+Its Commands, follower, drivers and pages keep their own tests beside this
+one (``test_rgb_mirror.py``, ``test_rgb_boards.py``, ``test_asus_aura.py``,
+``test_corsair_dram.py``, ``test_openrgb.py``, ``test_rgb_page_view.py``);
+these are the seams the move made.
 """
 from __future__ import annotations
 

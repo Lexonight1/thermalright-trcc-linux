@@ -1026,3 +1026,19 @@ def test_a_modules_own_event_reaches_its_page_on_the_module_signal(
     with qtbot.waitSignal(bridge.module_event, timeout=1000) as got:
         app.events.publish(ModuleChanged(key="rgb", enabled=True))
     assert got.args == [ModuleChanged(key="rgb", enabled=True)]
+
+
+def test_every_module_keeps_its_tests_in_its_own_folder() -> None:
+    """Each built-in module's tests are ``tests/module_<key>/`` -- the folder
+    the review runs for every module (``review_module.own_tests``), so a
+    module with none there has no tests anyone can find.
+    MUTATION CHECK: rename ``tests/module_visualizer``."""
+    import trcc.modules
+    from trcc.modules import MANIFEST
+
+    built_in = Path(trcc.modules.__file__).parent
+    keys = sorted(p.parent.name for p in built_in.glob(f"*/{MANIFEST}"))
+    tests = Path(__file__).parent
+    missing = [k for k in keys if not any((tests / f"module_{k}").glob("test_*.py"))]
+    assert {"rgb", "visualizer"} <= set(keys)      # the glob found them
+    assert missing == []

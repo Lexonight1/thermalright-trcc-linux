@@ -320,7 +320,7 @@ def _preset(app: App, name: str = "Fractal/one.milk") -> str:
 
 #: KarmaViz's presets ship with TRCC: whatever the user's visuals folder holds.
 _KARMAVIZ_PRESETS = tuple(sorted(
-    p.name for p in (Path(__file__).resolve().parents[1]
+    p.name for p in (Path(__file__).resolve().parents[2]
                      / "src/trcc/modules/visualizer/assets/karmaviz/presets"
                      ).glob("*.json")))
 

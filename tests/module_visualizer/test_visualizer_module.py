@@ -461,8 +461,8 @@ def test_a_media_player_started_while_a_visual_waits_is_what_a_restore_resumes(
     from trcc.core.commands import RestoreDeviceState, SetMediaPlayer
     from trcc.services.media import MediaService
 
-    from .test_media_stream import _URL
-    from .test_media_stream import _FakeReader as _FakeStream
+    from ..test_media_stream import _URL
+    from ..test_media_stream import _FakeReader as _FakeStream
 
     monkeypatch.setattr(MediaService, "stream_reader", _FakeStream)
     monkeypatch.setattr(toolchain, "present", lambda tool: True)

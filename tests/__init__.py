@@ -1,8 +1,9 @@
-"""Tests for src/trcc/next/ — clean-slate architecture.
+"""Tests for ``src/trcc/``.
 
-Mirrors the next/ layout (core / adapters / services / ui) so each
-test maps to the file it exercises.  Uses fakes at the transport
-boundary (no real USB) and a tmp-home per-test fixture to keep
-`XdgDesktopAutostart` and any path-resolution code from touching the
-user's real ~.
+Most are flat files here; ``adapters/`` and ``ui/`` hold some of the
+adapter and presentation tests, and each module's own tests are
+``module_<key>/`` -- the folder the module review runs.  Fakes stand at
+the transport boundary (no real USB), and ``conftest.py``'s autouse
+fixtures keep every test off the user's real home and runtime dir, the
+network, root commands and the systemd user manager.
 """
