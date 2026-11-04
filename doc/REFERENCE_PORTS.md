@@ -75,7 +75,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ModuleStore`](#modulestore) | 4 | 0 | 1 |
 | [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
-| [`Paths`](#paths) | 4 | 14 | 5 |
+| [`Paths`](#paths) | 4 | 15 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
@@ -1160,7 +1160,7 @@ log_file() -> Path
 user_content_dir() -> Path
 ```
 
-**You inherit (14):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `report_file` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_module_dir` · `user_module_theme_dir` · `user_modules_dir` · `user_screencast_dir` · `user_theme_dir`
+**You inherit (15):** `cloud_mask_dir` · `cloud_theme_dir` · `is_user_content` · `module_workspace_dir` · `report_file` · `theme_dir` · `user_background_dir` · `user_data_dir` · `user_mask_dir` · `user_media_player_dir` · `user_module_dir` · `user_module_theme_dir` · `user_modules_dir` · `user_screencast_dir` · `user_theme_dir`
 
 **Implementations (5):** `BSDPaths` · `BasePaths` · `LinuxPaths` · `MacOSPaths` · `WindowsPaths`
 

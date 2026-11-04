@@ -42,6 +42,8 @@ For trying a module before it is listed — your own, or one you have the source
 - It is never updated or taken back by the list, never unlocks USB devices (write your own udev rule while you develop it), and is refused where a built-in or a signed module of the same key is installed.
 - **Remove** deletes it as any other. Switching developer mode off installs nothing more; what you installed this way stays, still marked unsigned.
 
+**Your module workspace.** A module you are writing can run straight from its folder, with nothing to install: put it in the workspace, `~/.trcc-user/workspace/<key>/` (TRCC's user folder on Windows and macOS, `workspace` inside it). While developer mode is on, TRCC runs each module there **live, from that folder**; its row says *Your workspace — unsigned, never reviewed*, and TRCC logs a warning naming it at every start while it is on. While developer mode is off, it is listed but does not run, and says how to run it. To pick up your edits, switch developer mode off and on again, or restart TRCC. TRCC never deletes anything there — it is your folder — and a workspace module named like one TRCC ships, or one you installed, is passed over.
+
 ---
 
 ## Audio Visualizer

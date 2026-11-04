@@ -51,9 +51,11 @@ _ORIGINS: dict[str, str] = {
     "installed": "Installed",
     "by hand": "Copied in by hand",
     "unsigned": "Unsigned -- never reviewed",
+    "workspace": "Your workspace -- unsigned, never reviewed",
 }
 #: The origins with a record the App can remove: from the index, or from a
-#: folder.  A built-in ships with TRCC; one copied in by hand has no record.
+#: folder.  A built-in ships with TRCC; one copied in by hand has no record;
+#: a workspace one is the author's own folder, never TRCC's to delete.
 _REMOVABLE = frozenset({"installed", "unsigned"})
 
 

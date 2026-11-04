@@ -14,7 +14,7 @@ import typer
 from typer.core import TyperGroup
 
 from ...core.commands import DaemonStatus, StopDaemon
-from . import config, device, display, led, system, theme
+from . import config, device, display, led, module, system, theme
 from ._ctx import dumps_json, get_app, warn_blanking_panels
 
 if TYPE_CHECKING:
@@ -782,6 +782,8 @@ def _root(
 _GROUPS: dict[str, typer.Typer] = {
     "": app, "device": device.app, "display": display.app, "led": led.app,
     "system": system.app, "config": config.app, "theme": theme.app,
+    # ``trcc system modules``: where a module about modules adds its own.
+    "system modules": module.app,
 }
 #: The modules whose commands are in already.
 _ADDED: set[str] = set()

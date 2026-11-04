@@ -62,7 +62,11 @@ def search_user_folder(platform: Platform | None) -> None:
     from .._boot import host_platform
 
     log.debug("search_user_folder: %s", type(platform).__name__)
-    modules.use_folder(host_platform(platform).paths().user_modules_dir())
+    paths = host_platform(platform).paths()
+    # The workspace too: a UI loads only the faces of modules the App runs
+    # (``listed``), and the App runs a workspace one only in developer mode.
+    for folder in (paths.user_modules_dir(), paths.module_workspace_dir()):
+        modules.use_folder(folder)
 
 
 def contribution(key: str, face: str, name: str,

@@ -1438,6 +1438,13 @@ class Paths(ABC):
         log.debug("user_modules_dir: called")
         return self.user_content_dir() / "modules"
 
+    def module_workspace_dir(self) -> Path:
+        """Where a module's author writes it, one folder each -- run from
+        there, live, while developer mode is on.  Beside the installed ones,
+        never mixed with them: nothing here was installed or reviewed."""
+        log.debug("module_workspace_dir: called")
+        return self.user_content_dir() / "workspace"
+
     #: The report's file name when the user names no file (``trcc report``).
     REPORT_FILE_NAME = "trcc-report.txt"
 

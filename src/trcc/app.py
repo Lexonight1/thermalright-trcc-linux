@@ -25,7 +25,7 @@ from .adapters.repo.github_releases import GitHubReleases
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
-from .core.errors import DeviceNotFoundError, TransportError
+from .core.errors import DeviceNotFoundError, ModuleUnavailable, TransportError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
@@ -43,6 +43,7 @@ from .core.events import (
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
+    ModuleChanged,
     OrientationChanged,
     OverlayChanged,
     SensorsUpdated,
@@ -130,6 +131,9 @@ frame_log = per_frame(__name__)
 #: its own after a data install, so a log watcher can tell its lines apart.
 PREVIEW_BACKFILL_THREAD = "trcc-cloud-previews"
 
+
+#: Module origins whose code nobody reviewed -- named at every start while on.
+_UNREVIEWED = frozenset({"unsigned", "workspace"})
 
 R = TypeVar("R", bound=Result)
 _C = TypeVar("_C", bound=type)
@@ -458,7 +462,10 @@ class App(CommandBus, ModuleServices):
         self.modules = ModuleRunner(
             {key: self._as_installed(spec) for key, spec in module_catalog.specs(
                 user_root=platform.paths().user_modules_dir(),
-                refuse=self._not_installed).items()} if modules is None else {
+                refuse=self._not_installed,
+                workspace_root=platform.paths().module_workspace_dir(),
+                developer=self.settings.app.developer_mode).items()}
+            if modules is None else {
                 key: m if isinstance(m, ModuleSpec) else ModuleSpec.of(m)
                 for key, m in modules.items()},
             host=self, settings=self.settings)
@@ -499,12 +506,52 @@ class App(CommandBus, ModuleServices):
         """Say, every start, which unsigned modules are on -- so a report
         shows code that nobody reviewed is running."""
         unsigned = sorted(info.key for info in self.modules.infos()
-                          if info.origin == "unsigned" and info.enabled)
+                          if info.origin in _UNREVIEWED and info.enabled)
         if unsigned:
             log.warning("unsigned modules ON (installed from a folder in developer "
-                        "mode, never reviewed): %s", ", ".join(unsigned))
+                        "mode, or run from the module workspace -- never reviewed): "
+                        "%s", ", ".join(unsigned))
         else:
             log.debug("_warn_unsigned_on: none on")
+
+    def rescan_workspace(self) -> tuple[str, ...]:
+        """Developer mode switched: the workspace's modules again, live while
+        it is on, refused while off -- each switched back on if the user had
+        it on.  Every UI hears each one (``ModuleChanged``).  One whose code
+        fails on the way off is off all the same, and never stops the rest:
+        what it said is that event's note, and among those returned."""
+        root = self.platform.paths().module_workspace_dir()
+        developer = self.settings.app.developer_mode
+        infos = self.modules.infos()
+        taken = [i.key for i in infos if i.origin != "workspace"]
+        found = module_catalog.workspace_specs(root, developer, taken)
+        keys = tuple(sorted({i.key for i in infos if i.origin == "workspace"} | set(found)))
+        log.info("rescan_workspace: %s developer=%s -> %s", root, developer, keys)
+        problems: list[str] = []
+        for key in keys:
+            note = ""
+            try:
+                self.modules.remove(key)
+            except ModuleUnavailable as e:
+                # Its author's code failed switching off -- off even so
+                # (``_disable`` always lets go), so this time its record goes.
+                log.warning("rescan_workspace: %s -- taken out anyway", e)
+                note = str(e)
+                problems.append(note)
+                self.modules.remove(key)
+            self._forget_module(key)
+            on = False
+            if (spec := found.get(key)) is not None:
+                self.modules.add(spec)
+                if self.settings.module_enabled(key, spec.manifest.default_on):
+                    try:
+                        self.modules.switch(key, True)
+                        on = True
+                    except ModuleUnavailable as e:
+                        log.info("rescan_workspace: %s stays off: %s", key, e)
+            self.events.publish(ModuleChanged(key=key, enabled=on, note=note))
+        self._warn_unsigned_on()
+        return tuple(problems)
 
     def _not_installed(self, key: str) -> str:
         """Why module *key*, in the user's modules folder, does not run -- ""

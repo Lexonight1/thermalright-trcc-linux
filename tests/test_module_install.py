@@ -1017,7 +1017,8 @@ def test_every_start_warns_which_unsigned_modules_are_on(
     with caplog.at_level("WARNING", logger="trcc.app"):
         _restart(cli_app)
     assert ("unsigned modules ON (installed from a folder in developer mode, "
-            "never reviewed): greeter") in caplog.messages
+            "or run from the module workspace -- never reviewed): greeter"
+            ) in caplog.messages
 
 
 def test_developer_mode_off_keeps_what_it_installed(cli_app: App, shop: Shop) -> None:

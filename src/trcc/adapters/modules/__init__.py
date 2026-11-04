@@ -10,10 +10,17 @@ from __future__ import annotations
 
 from ._base import MODULES, BaseModule, ModuleNotFound
 from ._bundle import BundleRefused, read_bundle
-from ._catalog import MANIFEST, ManifestError, read_manifest, spec, specs
+from ._catalog import (
+    MANIFEST,
+    ManifestError,
+    read_manifest,
+    spec,
+    specs,
+    workspace_specs,
+)
 from ._signing import Ed25519Checker
 from ._store import FolderModuleStore
 
 __all__ = ["MANIFEST", "MODULES", "BaseModule", "BundleRefused", "Ed25519Checker",
            "FolderModuleStore", "ManifestError", "ModuleNotFound", "read_bundle",
-           "read_manifest", "spec", "specs"]
+           "read_manifest", "spec", "specs", "workspace_specs"]

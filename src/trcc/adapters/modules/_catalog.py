@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -102,8 +102,15 @@ def read_manifest(path: Path) -> ModuleManifest:
         min_trcc=min_trcc)
 
 
+#: Why a workspace module does not run while developer mode is off.
+WORKSPACE_OFF = ("in your module workspace -- switch on developer mode on the "
+                 "Modules page to run it")
+
+
 def specs(root: Path | None = None, *, user_root: Path | None = None,
-          refuse: Callable[[str], str] | None = None) -> dict[str, ModuleSpec]:
+          refuse: Callable[[str], str] | None = None,
+          workspace_root: Path | None = None,
+          developer: bool = False) -> dict[str, ModuleSpec]:
     """Every module: each folder of :mod:`trcc.modules` with a manifest, and
     each in *user_root*, the user's folder -- or each under *root*, for a test
     that has added *root* to that package's path.  Nothing is imported but
@@ -114,21 +121,29 @@ def specs(root: Path | None = None, *, user_root: Path | None = None,
     A module in *user_root* runs only if *refuse* (the App's word, from what
     it installed) says nothing against it; else it is its manifest alone,
     saying why -- nothing of it imported.  The first folder of a key wins, so
-    one there never stands in for TRCC's own."""
+    one there never stands in for TRCC's own.
+
+    One in *workspace_root*, the author's own folder, runs from there, live,
+    while *developer* mode is on -- never as TRCC's own, and never without
+    the switch (:func:`workspace_specs`)."""
     if root is not None:
         paths = sorted(root.glob(f"*/{MANIFEST}"))
     else:
         found = module_folders.folders()
-        if user_root is not None:
-            for path in sorted(user_root.glob(f"*/{MANIFEST}")):
-                found.setdefault(path.parent.name, path.parent)
+        for extra in (user_root, workspace_root):
+            for path in sorted(extra.glob(f"*/{MANIFEST}")) if extra else ():
+                if found.setdefault(path.parent.name, path.parent) != path.parent:
+                    log.warning("catalog.specs: %s is shadowed by %s", path.parent,
+                                found[path.parent.name])
         paths = [folder / MANIFEST for folder in found.values()]
     log.info("catalog.specs: %d manifest(s)%s", len(paths),
              f" under {root}" if root is not None else "")
     result: dict[str, ModuleSpec] = {}
     for path in paths:
         try:
-            if user_root is not None and path.parent.parent == user_root:
+            if workspace_root is not None and path.parent.parent == workspace_root:
+                found_spec = workspace_spec(path, workspace_root, developer)
+            elif user_root is not None and path.parent.parent == user_root:
                 found_spec = spec(path, origin="installed", user_root=user_root,
                                   refused=refuse(path.parent.name) if refuse else "")
             else:
@@ -156,14 +171,47 @@ def spec(path: Path, *, origin: str = "built-in", refused: str = "",
     log.info("catalog.spec: %s %s (%s)", manifest.key, manifest.version, origin)
     if refused:
         log.warning("catalog.spec: %s is not run -- %s", manifest.key, refused)
+        # An installed one TRCC will not run was copied in by hand; a
+        # workspace one is still the author's, waiting for the switch.
         return ModuleSpec(dataclasses.replace(manifest, backgrounds=()),
                           _refusing_loader(refused), _icon_reader(manifest),
-                          origin="by hand", refused=refused)
+                          origin="by hand" if origin == "installed" else origin,
+                          refused=refused)
     if user_root is not None:
         module_folders.use_folder(user_root)
     module_folders.load_core(manifest.key)
     return ModuleSpec(manifest, _loader(manifest), _icon_reader(manifest),
                       origin=origin)
+
+
+def workspace_spec(path: Path, workspace_root: Path, developer: bool) -> ModuleSpec:
+    """The workspace module whose manifest is at *path*: live from the
+    author's folder while *developer* mode is on, else listed and refused."""
+    log.info("catalog.workspace_spec: %s developer=%s", path.parent.name, developer)
+    return spec(path, origin="workspace", user_root=workspace_root,
+                refused="" if developer else WORKSPACE_OFF)
+
+
+def workspace_specs(workspace_root: Path, developer: bool,
+                    taken: Iterable[str] = ()) -> dict[str, ModuleSpec]:
+    """Every module in *workspace_root* but those whose key is *taken* --
+    TRCC's own and the installed ones win, as an import of the key does."""
+    skip = set(taken)
+    result: dict[str, ModuleSpec] = {}
+    for path in sorted(workspace_root.glob(f"*/{MANIFEST}")):
+        if path.parent.name in skip:
+            log.warning("catalog.workspace_specs: %s is shadowed -- its key is taken",
+                        path.parent)
+            continue
+        try:
+            result[path.parent.name] = workspace_spec(path, workspace_root, developer)
+        except ManifestError as e:
+            log.warning("catalog.workspace_specs: skipping %s", e)
+        except Exception:
+            log.exception("catalog.workspace_specs: skipping %s -- its core/ did not load",
+                          path.parent.name)
+    log.info("catalog.workspace_specs: %s", sorted(result))
+    return result
 
 
 def _refusing_loader(refused: str) -> Callable[[], type[Module]]:

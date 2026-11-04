@@ -1653,7 +1653,7 @@ Remove installed module *key*.  A built-in module cannot be removed; themes made
 
 ### `SetDeveloperMode`
 
-Developer mode on or off: whether a module may be installed from a folder, unsigned.  Switching it off installs nothing more; modules already installed that way stay, still saying "unsigned".
+Developer mode on or off: whether a module may be installed from a folder, unsigned, and whether the module workspace's run, live. Switching it off installs nothing more and stops the workspace's; modules already installed from a folder stay, still saying "unsigned".
 
 *Command* → `ModuleResult`
 

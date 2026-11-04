@@ -1354,8 +1354,10 @@ class ModuleInfo:
     icon: bool = False
     guide: str = ""
     #: Where it came from: ``built-in`` (ships with TRCC), ``installed`` (from
-    #: the index, signed), or ``by hand`` (copied into the user's modules
-    #: folder -- TRCC never runs its code).
+    #: the index, signed), ``unsigned`` (installed from a folder in developer
+    #: mode), ``workspace`` (run live from the module workspace, in developer
+    #: mode only), or ``by hand`` (copied into the user's modules folder --
+    #: TRCC never runs its code).
     origin: str = "built-in"
     #: TRCC runs this module's code -- a UI loads its faces only then.
     allowed: bool = True

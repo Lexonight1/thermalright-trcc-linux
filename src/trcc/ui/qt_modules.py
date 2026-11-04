@@ -284,8 +284,11 @@ class ModulesView(QScrollArea):
         summary = QLabel(words(module.summary))
         summary.setWordWrap(True)
         text.addWidget(summary)
-        note = (problem_line(module, self._translate)
-                or self._translate(self.notes.get(module.key, "")))
+        # Both, when both: a module refused now can still have something to
+        # say about how it went off (a workspace one that failed stopping).
+        note = "\n".join(filter(None, (
+            problem_line(module, self._translate),
+            self._translate(self.notes.get(module.key, "")))))
         if note:
             problem = QLabel(note)
             problem.setObjectName("moduleProblem")

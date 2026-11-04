@@ -158,6 +158,8 @@ def developer(state: str = typer.Argument(..., help="on or off")) -> None:
         raise typer.Exit(code=1)
     result = get_app().dispatch(SetDeveloperMode(on=state == "on"))
     typer.echo(result.message)
+    if result.note:
+        typer.echo(result.note)
     if not result.ok:
         raise typer.Exit(code=1)
 

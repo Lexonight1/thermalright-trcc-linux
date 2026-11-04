@@ -158,16 +158,21 @@ class InstallModule(Command[ModuleResult]):
 @dataclass(frozen=True, slots=True)
 class SetDeveloperMode(Command[ModuleResult]):
     """Developer mode on or off: whether a module may be installed from a
-    folder, unsigned.  Switching it off installs nothing more; modules already
-    installed that way stay, still saying "unsigned"."""
+    folder, unsigned, and whether the module workspace's run, live.
+    Switching it off installs nothing more and stops the workspace's; modules
+    already installed from a folder stay, still saying "unsigned"."""
     on: bool
 
     def execute(self, app: App) -> ModuleResult:
         log.info("SetDeveloperMode: %s", self.on)
         app.settings.set_developer_mode(self.on)
+        # A workspace module that failed on the way off is off regardless;
+        # the switch still worked, so what it said is a note, not a refusal.
+        problems = app.rescan_workspace()
         app.events.publish(DeveloperModeChanged(on=self.on))
         return ModuleResult(ok=True, enabled=self.on,
-                            message=f"developer mode {'on' if self.on else 'off'}")
+                            message=f"developer mode {'on' if self.on else 'off'}",
+                            note="\n".join(problems))
 
 
 @dataclass(frozen=True, slots=True)
