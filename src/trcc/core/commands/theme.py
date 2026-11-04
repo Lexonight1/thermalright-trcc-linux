@@ -552,7 +552,16 @@ class LoadTheme(Command[ThemeResult]):
         if media_uri is not None:
             log.info("LoadTheme: %s carries a media-player source %r — "
                      "dispatching SetMediaPlayer", theme.name, media_uri)
-            app.dispatch(SetMediaPlayer(key=self.key, uri=media_uri))
+            mp = app.dispatch(SetMediaPlayer(key=self.key, uri=media_uri))
+            # The player IS the panel's source now, as a screencast is above.
+            # Going on played the theme's own video, whose ``PlayVideo`` set
+            # ``background_path`` -- and the one-source rule cleared the
+            # player it had just resumed (measured 2026-11-04).
+            return self._loaded(
+                theme, theme_path_str, ok=mp.ok,
+                message=f"Theme '{theme.name}' loaded — {mp.message}"
+                         if mp.ok else f"Theme '{theme.name}': {mp.message}",
+            )
 
         # A theme whose background a module draws (an audio visual): the mask
         # and metrics drawn on top.  Picked, its module plays it; on a restore

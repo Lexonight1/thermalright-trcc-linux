@@ -3100,3 +3100,34 @@ def test_importing_puts_the_theme_on_the_panel(
     assert app.active_themes[_TEST_DEVICE_KEY].path == Path(result.path)
     assert app.settings.for_device(_TEST_DEVICE_KEY).current_theme == result.path
 
+
+
+@_needs_ffmpeg
+def test_a_media_player_theme_with_a_video_reloads_with_its_media_player(
+    panel: tuple[App, list[bytes]], tmp_path: Path,
+) -> None:
+    """A theme saved while the media player played keeps the player when it is
+    loaded again -- even when its own background is a video.
+
+    ``LoadTheme`` resumed the player (``SetMediaPlayer``) and did not return:
+    it went on to play the theme's video, and that ``PlayVideo`` set
+    ``background_path``, whose one-source rule cleared ``media_player_uri``.
+    """
+    from trcc.core.commands import SetMediaPlayer
+
+    app, _ = panel
+    vid = app.platform.paths().theme_dir(*_TEST_RES) / "Vid"
+    vid.mkdir(parents=True)
+    _clip(vid / "Theme.mp4")
+    (vid / "trcc.json").write_text(json.dumps(
+        {"name": "Vid", "width": 320, "height": 320, "elements": []}),
+        encoding="utf-8")
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=vid)).ok
+    clip = _clip(tmp_path / "clip.mp4")
+    assert app.dispatch(SetMediaPlayer(key=_TEST_DEVICE_KEY, uri=str(clip))).ok
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="Played")).ok
+    saved = app.platform.paths().user_theme_dir(*_TEST_RES) / "Played"
+
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=saved)).ok
+
+    assert app.settings.for_device(_TEST_DEVICE_KEY).media_player_uri == str(clip)
