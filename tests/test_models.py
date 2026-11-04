@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -187,3 +188,48 @@ def test_the_legacy_tables_are_derived_not_maintained() -> None:
         p: (m.sensor_id, m.fmt) for p, m in METRICS.by_dc_pair.items()
     } == _HW_TO_SENSOR
     assert len(_HW_TO_SENSOR) == len(METRICS) + 1      # + the fan alias
+
+
+# ── where a panel's background comes from ─────────────────────────────────
+
+
+def test_every_display_source_field_is_a_device_setting() -> None:
+    """The one list names real fields -- a typo here would silently make the
+    slideshow and the one-source rule blind to a source."""
+    from trcc.core.models import DISPLAY_SOURCE_FIELDS, DeviceSettings
+    names = {f.name for f in dataclasses.fields(DeviceSettings)}
+    assert set(DISPLAY_SOURCE_FIELDS) <= names
+
+
+@pytest.mark.parametrize(("field", "value", "source"), [
+    ("screencast_region", (0, 0, 64, 48, False), "screencast"),
+    ("media_player_uri", "rtsp://cam/live", "media"),
+    ("module_source", "visualizer", "module"),
+    ("background_path", "/some/picture.png", "background"),
+])
+def test_each_source_reads_as_itself_through_the_one_rule(
+    tmp_home: Path, field: str, value: object, source: str,
+) -> None:
+    """Set through the REAL setters, so the one-source rule (``_only_source``)
+    and the reading (``display_source``) are proven together: whatever was
+    set last is the source, and the snapshot value every UI reads is its name.
+
+    MUTATION CHECK: drop a field from ``DISPLAY_SOURCE_FIELDS`` and the
+    previous source is not cleared -- its reading wins and this fails."""
+    from trcc.core.models import PanelSource
+    from trcc.services.settings import Settings
+
+    from .conftest import FakePlatform
+
+    settings = Settings(FakePlatform(tmp_home).paths())
+    for other, other_value in (("set_screencast_region", (1, 2, 3, 4, False)),
+                               ("set_media_player_uri", "rtsp://x/y"),
+                               ("set_module_source", "rgb")):
+        getattr(settings, other)("0402:3922", other_value)
+    getattr(settings, f"set_{field}")("0402:3922", value)
+    assert settings.for_device("0402:3922").display_source is PanelSource(source)
+
+
+def test_a_panel_with_no_source_shows_its_background() -> None:
+    from trcc.core.models import DeviceSettings, PanelSource
+    assert DeviceSettings().display_source is PanelSource.BACKGROUND

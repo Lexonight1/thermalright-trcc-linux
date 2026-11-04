@@ -29,6 +29,7 @@ from ..core.logs import per_frame
 from ..core.models import (
     DATE_FORMATS,
     DEFAULT_REFRESH_INTERVAL_S,
+    DISPLAY_SOURCE_FIELDS,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
     RECENT_COLOR_DEFAULT,
@@ -1492,16 +1493,11 @@ def _tuple_of(size: int,
     return convert
 
 
-#: The display sources -- what fills a panel's background.  One at a time:
-#: setting one clears the rest (``_only_source``).
-_DISPLAY_SOURCES = ("background_path", "screencast_region",
-                    "media_player_uri", "module_source")
-
-
 def _only_source(dev: DeviceSettings, keep: str) -> None:
-    """Clear every display source on *dev* but *keep*."""
+    """Clear every display source on *dev* but *keep* -- one at a time, the
+    fields being ``DISPLAY_SOURCE_FIELDS``, the one list."""
     log.debug("_only_source: keep %s", keep)
-    for name in _DISPLAY_SOURCES:
+    for name in DISPLAY_SOURCE_FIELDS:
         if name != keep:
             setattr(dev, name, None)
 

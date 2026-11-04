@@ -731,6 +731,33 @@ class SensorReading:
 BackgroundMode = Literal["theme", "color", "transparent"]
 
 
+class PanelSource(str, Enum):
+    """Where a panel's background comes from, as the user chose it -- the
+    C#'s one UI-mode choice (background / screen cast / video player), plus a
+    module's picture.  The values are what ``LcdSnapshot.display_source``
+    carries to every UI and the API.
+
+    NOT :class:`DisplaySource`, which is how a ``config1.dc`` ENCODES the C#
+    form's choice on disk (``THEME`` 0, ``SCREENCAST`` 16, ``VIDEO`` 48): the
+    file's vocabulary, read by the codec.  This is the App's, and it has
+    ``MEDIA`` and ``MODULE``, which the C# file has no code for."""
+    SCREENCAST = "screencast"
+    MEDIA = "media"
+    MODULE = "module"
+    BACKGROUND = "background"
+
+
+#: The ``DeviceSettings`` fields that name a display source -- the ONE list.
+#: One is set at a time: setting one clears the rest (``Settings``'s
+#: ``_only_source``), and every reader takes it from here, so none can forget
+#: one: the slideshow's watch left ``module_source`` out of its own copy, and
+#: a module's picture took the panel unseen (2026-11-04).  In the order a
+#: stale config with several set is read; ``background_path`` last, being an
+#: override of the theme's own background -- BACKGROUND either way.
+DISPLAY_SOURCE_FIELDS: tuple[str, ...] = (
+    "screencast_region", "media_player_uri", "module_source", "background_path")
+
+
 @dataclass
 class DeviceSettings:
     """User prefs for one device.  Persisted to trcc.json."""
@@ -854,6 +881,18 @@ class DeviceSettings:
     # since.  The C# keeps a folder's ``Theme.dc`` only once a user action
     # writes it, so an untouched folder reads as empty and carries over.
     entered_with: OrientationState | None = None
+
+    @property
+    def display_source(self) -> PanelSource:
+        """Where this panel's background comes from -- the ONE reading of
+        :data:`DISPLAY_SOURCE_FIELDS`.  The snapshot every UI shows, the
+        restore and the save all ask here, so they cannot disagree."""
+        found = (PanelSource.SCREENCAST if self.screencast_region is not None
+                 else PanelSource.MEDIA if self.media_player_uri
+                 else PanelSource.MODULE if self.module_source
+                 else PanelSource.BACKGROUND)
+        frame_log.debug("DeviceSettings.display_source: %s", found.value)
+        return found
 
 
 @dataclass

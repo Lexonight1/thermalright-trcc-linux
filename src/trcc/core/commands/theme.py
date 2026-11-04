@@ -35,6 +35,7 @@ from ..models import (
     ZT_MAX_DURATION_MS,
     Capability,
     FitMode,
+    PanelSource,
     ThemeDir,
     VideoExportRequest,
 )
@@ -976,8 +977,9 @@ class SaveTheme(Command[ThemeResult]):
                                        width, height)
         # The background is one thing: a picture, a video -- or an audio
         # visual, its settings in its own JSON like any library asset.
-        bg_ref = (self._store_module_background(app, s.module_source)
-                  if s.module_source
+        module = (s.module_source if s.display_source is PanelSource.MODULE
+                  else None)
+        bg_ref = (self._store_module_background(app, module) if module
                   else self._store_background(app, theme, s, width, height))
         if bg_ref is not None:
             manifest["background"] = bg_ref
@@ -2117,12 +2119,13 @@ class RestoreDeviceState(Command[ThemeResult]):
             )
 
         s = app.settings.for_device(self.key)
-        if s.module_source or s.pending_background:
+        source = s.display_source
+        if source is PanelSource.MODULE or s.pending_background:
             log.info("RestoreDeviceState: %s resuming its module background "
                      "(%s, waiting %s)", self.key, s.module_source,
                      s.pending_background)
             app.resume_background(self.key)
-        elif s.media_player_uri:
+        elif source is PanelSource.MEDIA and s.media_player_uri:
             log.info("RestoreDeviceState: %s resuming its media player %s",
                      self.key, s.media_player_uri)
             app.dispatch(SetMediaPlayer(key=self.key, uri=s.media_player_uri))

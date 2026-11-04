@@ -3633,10 +3633,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             time_format="12h" if "%I" in clocks.get("time", "") else "24h",
             date_format=icu_date_pattern(clocks.get("date", "")),
             screencast_region=s.screencast_region,
-            display_source=("screencast" if s.screencast_region is not None
-                            else "media" if s.media_player_uri
-                            else "module" if s.module_source
-                            else "background"),
+            display_source=s.display_source.value,
             module_title=_module_title(app, s.module_source),
             media_player_uri=s.media_player_uri,
             screencast_rect=screencast_box(app, self.key),

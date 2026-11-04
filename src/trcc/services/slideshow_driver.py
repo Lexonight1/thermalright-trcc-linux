@@ -34,7 +34,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..core.logs import per_frame
-from ..core.models import SLIDESHOW_POLL_S
+from ..core.models import DISPLAY_SOURCE_FIELDS, SLIDESHOW_POLL_S
 from ._send_task import BaseSendTask
 
 if TYPE_CHECKING:
@@ -71,10 +71,10 @@ class SlideshowDriver(BaseSendTask):
         s = self._app.settings.for_device(self._device_key)
         frame_log.debug("SlideshowDriver._panel: %s theme=%s", self._device_key,
                         s.current_theme)
-        # Every display source (``_DISPLAY_SOURCES``) -- a module's picture
-        # too, or it took the panel unseen and the next rotation ended it.
-        return (s.current_theme, s.background_path, s.screencast_region,
-                s.media_player_uri, s.module_source)
+        # Every display source, from the ONE list -- this copy once left
+        # ``module_source`` out, and a module's picture took the panel unseen.
+        return (s.current_theme,
+                *(getattr(s, name) for name in DISPLAY_SOURCE_FIELDS))
 
     def _run(self, now: float) -> float:
         """Rotate if due; return the seconds to wait before asking again.
