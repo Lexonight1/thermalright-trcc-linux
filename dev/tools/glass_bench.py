@@ -166,7 +166,7 @@ def _warm_bytecode(src: str | None) -> None:
 
 def _slope(src: str | None, lo: int, hi: int, video: Path | None,
            reps: int, label: str, gui: bool = False, mock: bool = False,
-           cast: bool = False) -> float:
+           live: str | None = None) -> float:
     """Median instructions/frame across *reps* differential pairs."""
     _warm_bytecode(src)
     inner = [sys.executable, str(Path(__file__).resolve()), "--run", "0"]
@@ -182,8 +182,8 @@ def _slope(src: str | None, lo: int, hi: int, video: Path | None,
                 cmd += ["--gui"]
             if mock:
                 cmd += ["--mock"]
-            if cast:
-                cmd += ["--cast"]
+            if live:
+                cmd += [f"--{live}"]
             instr, requested, sent = _perf_instructions(cmd, src)
             # Divide by OBSERVED work, never requested.  The GUI arm cannot stop
             # mid-tick -- the event loop processes a build or two after quit() --
@@ -392,10 +392,10 @@ def _mock_app() -> object:
 
 
 def _run_arm(n: int, video: Path | None, mock: bool = False,
-             cast: bool = False) -> None:
+             live: str | None = None) -> None:
     """Inner mode: build *n* frames on the real device -- or the scripted one
-    (*mock*) -- and report the count.  *cast*: screencast ticks instead of
-    theme renders, the live-picture path (mock only)."""
+    (*mock*) -- and report the count.  *live* (``"cast"`` / ``"stream"``):
+    live-picture ticks instead of theme renders (mock only)."""
     import inspect
     import logging
     import os
@@ -414,8 +414,9 @@ def _run_arm(n: int, video: Path | None, mock: bool = False,
     from trcc.services.display import DisplayService
 
     # See docstring note 1: build_frame, never DeviceSender._raw_write.
-    # A cast frame is built by ``build_screencast_frame``, once per tick.
-    counted = "build_screencast_frame" if cast else "build_frame"
+    # A live frame (cast or stream) is built by ``build_screencast_frame``,
+    # once per tick.
+    counted = "build_screencast_frame" if live else "build_frame"
     counter = {"frames": 0}
     real_build = getattr(DisplayService, counted)
 
@@ -474,8 +475,10 @@ def _run_arm(n: int, video: Path | None, mock: bool = False,
             playback.advance()
         app.dispatch(RenderAndSend(key=key))
 
-    if cast:
+    if live == "cast":
         tick = _cast_tick(app, key)
+    elif live == "stream":
+        tick = _stream_tick(app, key)
 
     for _ in range(20):        # warm-up; identical at both sizes, so it cancels
         tick()
@@ -513,6 +516,54 @@ def _cast_tick(app: Any, key: str) -> Any:
 
     return tick
 
+
+def _stream_tick(app: Any, key: str) -> Any:
+    """One web-stream tick for *key*, as the tree under measurement spells it.
+
+    The reader is a stand-in serving the mock's screen grab, so a stream frame
+    costs what a cast frame does to produce and the two compare: a real one
+    decodes in ffmpeg, a separate process ``perf`` would count, which the
+    live-picture family did not touch.  Installed straight into the panel's
+    slot -- ``SetMediaPlayer`` would start the App's own driver ticking beside
+    this loop.  Before the family the tick was ``CaptureStreamFrame`` over
+    ``media._streams`` keyed by ``url``; after it ``CaptureSourceFrame`` of
+    kind MEDIA over the live slot, by ``name`` -- feature-detected, so one
+    bench measures both trees."""
+    from trcc.core import commands
+
+    url = "http://glass-bench.invalid/stream"
+    capture = app.platform.capture
+
+    class _Reader:
+        """The stream reader's shape in both trees: ``url`` and ``name``."""
+
+        def __init__(self) -> None:
+            self.url = self.name = url
+
+        def latest(self) -> Any:
+            return capture.grab_region(0, 0, 320, 320)
+
+        def close(self) -> None:
+            pass
+
+    app.settings.set_media_player_uri(key, url)
+    # By name: it exists only in a tree from before the family.
+    before = getattr(commands, "CaptureStreamFrame", None)
+    if before is not None:
+        app.media._streams[key] = _Reader()
+        command = before(key=key)
+    else:
+        from trcc.core.models import PanelSource
+        app.media.open_live(key, PanelSource.MEDIA, _Reader())
+        command = commands.CaptureSourceFrame(key=key, kind=PanelSource.MEDIA)
+    print(f"stream tick: {type(command).__name__}", file=sys.stderr)
+
+    def tick() -> None:
+        app.dispatch(command)
+
+    return tick
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -529,6 +580,8 @@ def main() -> None:
                     help="a scripted 320x320 panel, no USB: the render path only")
     ap.add_argument("--cast", action="store_true",
                     help="screencast ticks (the live-picture path); needs --mock")
+    ap.add_argument("--stream", action="store_true",
+                    help="web-stream ticks, TRCC's side only; needs --mock")
     ap.add_argument("--selftest", action="store_true",
                     help="validate perf counting against a known answer, then exit")
     args = ap.parse_args()
@@ -536,22 +589,26 @@ def main() -> None:
     if args.selftest:
         _selftest()
         return
+    if args.cast and args.stream:
+        raise SystemExit("--cast or --stream, not both")
+    live = "cast" if args.cast else "stream" if args.stream else None
     if args.run is not None:
         if args.gui:
             _run_gui_arm(args.run)
         else:
-            _run_arm(args.run, args.video, args.mock, args.cast)
+            _run_arm(args.run, args.video, args.mock, live)
         return
 
     # The orchestrator only: a ``--run`` child may be ANOTHER tree's src
     # (``--against``), and importing the dev bootstrap there would put this
     # tree's src first on its path and measure the wrong build.
-    if args.cast and not args.mock:
-        raise SystemExit("--cast needs --mock: on the real platform it would cast "
-                         "your real screen onto your real panel")
+    if live and not args.mock:
+        raise SystemExit(f"--{live} needs --mock: on the real platform it would "
+                         "send onto your real panel")
     if not args.mock:               # a mock run reaches no USB, so no contention
         refuse_while_trcc_runs("glass_bench")
-    workload = ("screencast" if args.cast
+    workload = ("screencast" if live == "cast"
+                else "web stream (TRCC's side)" if live == "stream"
                 else f"advancing video ({args.video.name})" if args.video
                 else "static theme")
     workload += " · REAL GUI" if args.gui else " · headless"
@@ -560,12 +617,12 @@ def main() -> None:
           f"reps: {args.reps}")
 
     here = _slope(None, args.lo, args.hi, args.video, args.reps, "this tree",
-                  args.gui, args.mock, args.cast)
+                  args.gui, args.mock, live)
     print(f"\nthis tree : {here / 1e6:7.3f} M instructions/frame (median)")
 
     if args.against:
         there = _slope(args.against, args.lo, args.hi, args.video, args.reps,
-                       "--against", args.gui, args.mock, args.cast)
+                       "--against", args.gui, args.mock, live)
         print(f"--against : {there / 1e6:7.3f} M instructions/frame (median)")
         faster = "cheaper" if here < there else "MORE EXPENSIVE"
         print(f"\nthis tree is {max(here, there) / min(here, there):.1f}x "
