@@ -766,6 +766,18 @@ Do not ask first
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS openrgb\-ports
+.PP
+\fBtrcc system openrgb\-ports\fR
+.PP
+Where OpenRGB finds each cooler: the DDP device to add in OpenRGB. With RGB Lighting on, every connected cooler has its own port on this computer; colours OpenRGB sends there show over the cooler's own mode, and its mode is back a moment after they stop. OpenRGB cannot find a cooler by itself \-\- add a DDP device with these values.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS paths
 .PP
 \fBtrcc system paths\fR [\fIOPTIONS\fR]

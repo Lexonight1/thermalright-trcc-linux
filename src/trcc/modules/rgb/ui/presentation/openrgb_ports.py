@@ -16,18 +16,21 @@ log = logging.getLogger(__name__)
 
 INTRO = ("OpenRGB can light your coolers: in OpenRGB, add a DDP device for "
          "each, with these values.  Its colours show while OpenRGB sends them.")
+#: DDP arrived in OpenRGB 1.0; 0.9, what most distros ship, has none
+#: (measured on its release_0.9 tag, 2026-11-04).
+NEEDS = "This needs OpenRGB 1.0 or newer."
 NO_COOLER = "No cooler is connected -- OpenRGB has none to light."
 COOLER = "{name}: IP {host}, port {port}, {leds} LEDs"
 NO_PORT = "{name}: no port for OpenRGB -- {error}"
 
 
 def openrgb_port_lines(result: OpenRgbPortsResult, tr: Tr = same) -> tuple[str, ...]:
-    """*result* as lines: the intro, then one line per cooler -- or that no
-    cooler is connected."""
+    """*result* as lines: the intro and the version it needs, then one line
+    per cooler -- or that no cooler is connected."""
     log.debug("openrgb_port_lines: %d cooler(s)", len(result.coolers))
     if not result.coolers:
         return (tr(NO_COOLER),)
-    return (tr(INTRO), *(
+    return (tr(INTRO), tr(NEEDS), *(
         tr(NO_PORT).format(name=c.name, error=c.error) if c.error
         else tr(COOLER).format(name=c.name, host=DDP_HOST, port=c.port,
                                leds=c.led_count)

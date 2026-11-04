@@ -65,16 +65,16 @@ Draws what your computer is playing as a panel's background — TRCC Pipes, the 
 
 ## RGB Lighting
 
-Lights your RGB memory, your motherboard's RGB (ASUS Aura headers and onboard LEDs) and the devices OpenRGB runs — with built-in effects, a colour that follows a temperature or a load, or the colours of a cooler or an LCD. **On by default.**
+Lights your RGB memory, your motherboard's RGB (ASUS Aura headers and onboard LEDs) and the devices OpenRGB runs — with built-in effects, a colour that follows a temperature or a load, or the colours of a cooler or an LCD — and lets OpenRGB light your coolers in turn: each gets its own DDP port that OpenRGB sends to, shown over the cooler's own mode while it does ([how](GUIDE_USER.md#openrgb-lights-your-coolers)). **On by default.**
 
 - **gui:** the **RGB** button in the sidebar opens its page — [how to use it](GUIDE_USER.md#rgb-lighting).
 - **qtgui:** *RGB Lighting* in the sidebar.
-- **Command line:** `trcc system rgb` lists the lights (`--scan` looks again); `ram-effect`, `aura-effect`, `aura-leds`, `aura-blink`, `linked-color` and `follow` set them; `ram-lighting` shows or switches the memory's permission.
-- **API:** `GET /system/rgb`, `POST /system/rgb/scan`, `/system/ram-effect`, `/system/aura-effect`, `/system/aura-leds`, `/system/aura-blink`, `/system/linked-color`, `/system/rgb-follow` and `/system/ram-lighting`.
+- **Command line:** `trcc system rgb` lists the lights (`--scan` looks again); `ram-effect`, `aura-effect`, `aura-leds`, `aura-blink`, `linked-color` and `follow` set them; `ram-lighting` shows or switches the memory's permission; `openrgb-ports` lists each cooler's DDP port for OpenRGB.
+- **API:** `GET /system/rgb`, `POST /system/rgb/scan`, `/system/ram-effect`, `/system/aura-effect`, `/system/aura-leds`, `/system/aura-blink`, `/system/linked-color`, `/system/rgb-follow`, `/system/ram-lighting` and `GET /system/openrgb-ports`.
 
-**What it needs:** memory lighting is off until you allow it on the page, which asks for your password (Linux only, for now). OpenRGB's devices need OpenRGB running with its SDK server on (`127.0.0.1:6742` unless you change it).
+**What it needs:** memory lighting is off until you allow it on the page, which asks for your password (Linux only, for now). OpenRGB's devices need OpenRGB running with its SDK server on (`127.0.0.1:6742` unless you change it). OpenRGB lighting your coolers needs OpenRGB 1.0 or newer (DDP is not in 0.9).
 
-**Switching it off:** following stops. The motherboard's lights go back to the board's own effect, OpenRGB's devices keep what OpenRGB shows, and memory keeps the last colours it was sent — an effect saved on a stick stays saved on it. If you allowed memory lighting, switching RGB off takes that permission back too — with RGB off, nothing in TRCC could remove it later. Where TRCC's polkit files are installed — a distro package, or `trcc system setup` — this needs no password at the computer itself; otherwise it asks for yours. Close that prompt and RGB still goes off; its row then says the permission is still there, and switching RGB on and off again removes it. Closing TRCC, logging out or restarting never removes it. Your choices stay saved — switch RGB on again and it picks up where it left off.
+**Switching it off:** following stops, and the coolers' DDP ports close — a cooler OpenRGB was lighting shows its own mode again. The motherboard's lights go back to the board's own effect, OpenRGB's devices keep what OpenRGB shows, and memory keeps the last colours it was sent — an effect saved on a stick stays saved on it. If you allowed memory lighting, switching RGB off takes that permission back too — with RGB off, nothing in TRCC could remove it later. Where TRCC's polkit files are installed — a distro package, or `trcc system setup` — this needs no password at the computer itself; otherwise it asks for yours. Close that prompt and RGB still goes off; its row then says the permission is still there, and switching RGB on and off again removes it. Closing TRCC, logging out or restarting never removes it. Your choices stay saved — switch RGB on again and it picks up where it left off.
 
 ---
 

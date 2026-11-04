@@ -2049,6 +2049,14 @@ trcc system modules remove [OPTIONS] KEY
 |---|---|
 | `--yes`, `-y` | Do not ask first |
 
+### `trcc system openrgb-ports`
+
+Where OpenRGB finds each cooler: the DDP device to add in OpenRGB. With RGB Lighting on, every connected cooler has its own port on this computer; colours OpenRGB sends there show over the cooler's own mode, and its mode is back a moment after they stop. OpenRGB cannot find a cooler by itself -- add a DDP device with these values.
+
+```bash
+trcc system openrgb-ports
+```
+
 ### `trcc system paths`
 
 Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`. With `--key` the answer is that device's: the resolution comes from its handshake (oriented) and the theme/cloud dirs name its per-SKU library, so the output points at the directories the app actually opens for it.

@@ -167,7 +167,8 @@ BUILT_FROM: tuple[Credit, ...] = (
            "collecting garbage on the windows' own thread (a check credited "
            "to Erik Janssens)"),
     Credit("OpenRGB", "Adam Honse, OpenRGB Team", "GPL-2.0-or-later",
-           "OpenRGB devices, Corsair RAM and ASUS Aura lighting"),
+           "OpenRGB devices, Corsair RAM and ASUS Aura lighting, and "
+           "OpenRGB's DDP packets lighting the coolers"),
     Credit("3D Pipes", "Microsoft", "",
            "how TRCC Pipes is lit and framed, from its NT 4.0 SDK sample"),
     Credit("projectM", "projectM Team", "LGPL-2.1-or-later",

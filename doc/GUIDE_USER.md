@@ -206,7 +206,7 @@ The **Audio visuals** tab comes with the Audio Visualizer module — install it 
 If you have a Thermalright LED device (AX120, PA120, etc.):
 
 1. Click the LED device in the sidebar
-2. Choose a mode: Solid, Breathe, Color Cycle, Rainbow, Temp Linked, Load Linked, or OpenRGB (the colours OpenRGB sends)
+2. Choose a mode: Solid, Breathe, Color Cycle, Rainbow, Temp Linked or Load Linked
 3. Set color and brightness
 4. Multi-zone devices: control each zone independently or sync them
 
@@ -230,6 +230,12 @@ The **RGB** button in the sidebar opens the RGB Lighting page, for lights that a
 - **Apply** changes only the device shown. Tick the lights it should change: each RAM stick can run its own effect.
 
 Memory lighting is off until you allow it (the page offers this; it asks for your password). CLI: `trcc system ram-lighting enable`, `trcc system rgb --scan`, `trcc system ram-effect`, `trcc system aura-effect`, `trcc system linked-color`, `trcc system follow`.
+
+### OpenRGB lights your coolers
+
+OpenRGB can drive a Thermalright cooler's LEDs too — it has no driver for them, so it reaches each cooler as a **DDP device** you add once. On the RGB page, pick **OpenRGB**: under the SDK server, each connected cooler is listed with what to type into OpenRGB — `IP 127.0.0.1`, its own **port** (4048 for the first cooler, then 4049, …; each cooler keeps its port) and its **LED count**. In OpenRGB, add a DDP device with those values.
+
+Nothing to switch on in TRCC: while OpenRGB sends colours, the cooler shows them over its own mode; a moment after OpenRGB stops, the cooler's own mode is back. This needs **OpenRGB 1.0 or newer** — 0.9, what most distributions ship, has no DDP. CLI: `trcc system openrgb-ports` prints the same values.
 
 RGB Lighting is a module: switch it off on the [Modules page](#control-center-modules-and-about) and its button goes. [What switching it off does](GUIDE_MODULES.md#rgb-lighting) — including taking back the memory's permission.
 

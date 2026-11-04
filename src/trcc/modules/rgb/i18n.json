@@ -116,7 +116,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.",
     "No cooler is connected -- OpenRGB has none to light.": "No cooler is connected -- OpenRGB has none to light.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LEDs",
-    "{name}: no port for OpenRGB -- {error}": "{name}: no port for OpenRGB -- {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: no port for OpenRGB -- {error}",
+    "This needs OpenRGB 1.0 or newer.": "This needs OpenRGB 1.0 or newer."
   },
   "de": {
     "Memory": "Arbeitsspeicher",
@@ -235,7 +236,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB kann deine Kühler beleuchten: Füge in OpenRGB für jeden ein DDP-Gerät mit diesen Werten hinzu.  Seine Farben erscheinen, solange OpenRGB sie sendet.",
     "No cooler is connected -- OpenRGB has none to light.": "Kein Kühler verbunden – OpenRGB hat nichts zu beleuchten.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, Port {port}, {leds} LEDs",
-    "{name}: no port for OpenRGB -- {error}": "{name}: kein Port für OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: kein Port für OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Dafür ist OpenRGB 1.0 oder neuer nötig."
   },
   "fr": {
     "Memory": "Mémoire",
@@ -354,7 +356,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB peut éclairer vos ventirads : dans OpenRGB, ajoutez un appareil DDP pour chacun, avec ces valeurs.  Ses couleurs s'affichent tant qu'OpenRGB les envoie.",
     "No cooler is connected -- OpenRGB has none to light.": "Aucun ventirad connecté – OpenRGB n'a rien à éclairer.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name} : IP {host}, port {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name} : aucun port pour OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name} : aucun port pour OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Il faut OpenRGB 1.0 ou plus récent."
   },
   "es": {
     "Memory": "Memoria",
@@ -473,7 +476,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB puede iluminar tus disipadores: en OpenRGB, añade un dispositivo DDP para cada uno, con estos valores.  Sus colores se muestran mientras OpenRGB los envía.",
     "No cooler is connected -- OpenRGB has none to light.": "No hay ningún disipador conectado: OpenRGB no tiene nada que iluminar.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, puerto {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: sin puerto para OpenRGB: {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: sin puerto para OpenRGB: {error}",
+    "This needs OpenRGB 1.0 or newer.": "Se necesita OpenRGB 1.0 o posterior."
   },
   "it": {
     "Memory": "Memoria",
@@ -592,7 +596,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB può illuminare i tuoi dissipatori: in OpenRGB aggiungi un dispositivo DDP per ciascuno, con questi valori.  I suoi colori appaiono finché OpenRGB li invia.",
     "No cooler is connected -- OpenRGB has none to light.": "Nessun dissipatore collegato: OpenRGB non ha nulla da illuminare.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, porta {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: nessuna porta per OpenRGB: {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: nessuna porta per OpenRGB: {error}",
+    "This needs OpenRGB 1.0 or newer.": "Serve OpenRGB 1.0 o più recente."
   },
   "pt": {
     "Memory": "Memória",
@@ -711,7 +716,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "O OpenRGB pode iluminar os seus coolers: no OpenRGB, adicione um dispositivo DDP para cada um, com estes valores.  As cores aparecem enquanto o OpenRGB as envia.",
     "No cooler is connected -- OpenRGB has none to light.": "Nenhum cooler conectado – o OpenRGB não tem nada para iluminar.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, porta {port}, {leds} LEDs",
-    "{name}: no port for OpenRGB -- {error}": "{name}: sem porta para o OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: sem porta para o OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "É preciso o OpenRGB 1.0 ou mais recente."
   },
   "nl": {
     "Memory": "Geheugen",
@@ -830,7 +836,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB kan je koelers verlichten: voeg in OpenRGB voor elke koeler een DDP-apparaat toe met deze waarden.  De kleuren verschijnen zolang OpenRGB ze stuurt.",
     "No cooler is connected -- OpenRGB has none to light.": "Geen koeler aangesloten – OpenRGB heeft niets om te verlichten.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, poort {port}, {leds} LED's",
-    "{name}: no port for OpenRGB -- {error}": "{name}: geen poort voor OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: geen poort voor OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Hiervoor is OpenRGB 1.0 of nieuwer nodig."
   },
   "pl": {
     "Memory": "Pamięć",
@@ -949,7 +956,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB może podświetlać Twoje chłodzenia: w OpenRGB dodaj dla każdego urządzenie DDP z tymi wartościami.  Kolory są widoczne, dopóki OpenRGB je wysyła.",
     "No cooler is connected -- OpenRGB has none to light.": "Nie podłączono chłodzenia – OpenRGB nie ma czego podświetlać.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, diody LED: {leds}",
-    "{name}: no port for OpenRGB -- {error}": "{name}: brak portu dla OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: brak portu dla OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Wymaga OpenRGB 1.0 lub nowszego."
   },
   "ru": {
     "Memory": "Память",
@@ -1068,7 +1076,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB может подсвечивать ваши кулеры: добавьте в OpenRGB устройство DDP для каждого с этими значениями.  Цвета отображаются, пока OpenRGB их отправляет.",
     "No cooler is connected -- OpenRGB has none to light.": "Кулер не подключён — OpenRGB нечего подсвечивать.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, порт {port}, светодиодов: {leds}",
-    "{name}: no port for OpenRGB -- {error}": "{name}: нет порта для OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: нет порта для OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Нужен OpenRGB 1.0 или новее."
   },
   "uk": {
     "Memory": "Пам'ять",
@@ -1187,7 +1196,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB може підсвічувати ваші кулери: додайте в OpenRGB пристрій DDP для кожного з цими значеннями.  Кольори показуються, поки OpenRGB їх надсилає.",
     "No cooler is connected -- OpenRGB has none to light.": "Кулер не під'єднано — OpenRGB нічого підсвічувати.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, порт {port}, світлодіодів: {leds}",
-    "{name}: no port for OpenRGB -- {error}": "{name}: немає порту для OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: немає порту для OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Потрібен OpenRGB 1.0 або новіший."
   },
   "zh": {
     "Memory": "内存",
@@ -1306,7 +1316,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB 可以点亮您的散热器：在 OpenRGB 中为每个散热器添加一个 DDP 设备，填入以下数值。OpenRGB 发送颜色时即会显示。",
     "No cooler is connected -- OpenRGB has none to light.": "未连接散热器——OpenRGB 没有可点亮的设备。",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}：IP {host}，端口 {port}，{leds} 个 LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}：没有可供 OpenRGB 使用的端口——{error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}：没有可供 OpenRGB 使用的端口——{error}",
+    "This needs OpenRGB 1.0 or newer.": "需要 OpenRGB 1.0 或更高版本。"
   },
   "zh_TW": {
     "Memory": "記憶體",
@@ -1425,7 +1436,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB 可以點亮您的散熱器：在 OpenRGB 中為每個散熱器新增一個 DDP 裝置，填入以下數值。OpenRGB 傳送顏色時即會顯示。",
     "No cooler is connected -- OpenRGB has none to light.": "未連接散熱器——OpenRGB 沒有可點亮的裝置。",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}：IP {host}，連接埠 {port}，{leds} 個 LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}：沒有可供 OpenRGB 使用的連接埠——{error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}：沒有可供 OpenRGB 使用的連接埠——{error}",
+    "This needs OpenRGB 1.0 or newer.": "需要 OpenRGB 1.0 或更新版本。"
   },
   "ja": {
     "Memory": "メモリー",
@@ -1544,7 +1556,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB でクーラーを光らせることができます：OpenRGB でクーラーごとに DDP デバイスを追加し、以下の値を入力してください。OpenRGB が色を送っている間、その色が表示されます。",
     "No cooler is connected -- OpenRGB has none to light.": "クーラーが接続されていません — OpenRGB が光らせるものがありません。",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}：IP {host}、ポート {port}、LED {leds} 個",
-    "{name}: no port for OpenRGB -- {error}": "{name}：OpenRGB 用のポートがありません — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}：OpenRGB 用のポートがありません — {error}",
+    "This needs OpenRGB 1.0 or newer.": "OpenRGB 1.0 以降が必要です。"
   },
   "ko": {
     "Memory": "메모리",
@@ -1663,7 +1676,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB로 쿨러를 밝힐 수 있습니다: OpenRGB에서 쿨러마다 DDP 장치를 추가하고 아래 값을 입력하세요.  OpenRGB가 색을 보내는 동안 그 색이 표시됩니다.",
     "No cooler is connected -- OpenRGB has none to light.": "연결된 쿨러가 없습니다 — OpenRGB가 밝힐 대상이 없습니다.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, 포트 {port}, LED {leds}개",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB용 포트 없음 — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB용 포트 없음 — {error}",
+    "This needs OpenRGB 1.0 or newer.": "OpenRGB 1.0 이상이 필요합니다."
   },
   "tr": {
     "Memory": "Bellek",
@@ -1782,7 +1796,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB soğutucularınızı aydınlatabilir: OpenRGB'de her biri için bu değerlerle bir DDP cihazı ekleyin.  OpenRGB renk gönderdiği sürece renkler görünür.",
     "No cooler is connected -- OpenRGB has none to light.": "Bağlı soğutucu yok — OpenRGB'nin aydınlatacağı bir şey yok.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, bağlantı noktası {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB için bağlantı noktası yok — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB için bağlantı noktası yok — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Bunun için OpenRGB 1.0 veya daha yenisi gerekir."
   },
   "cs": {
     "Memory": "Paměť",
@@ -1901,7 +1916,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB může rozsvítit vaše chladiče: v OpenRGB přidejte pro každý zařízení DDP s těmito hodnotami.  Barvy se zobrazují, dokud je OpenRGB posílá.",
     "No cooler is connected -- OpenRGB has none to light.": "Není připojen žádný chladič – OpenRGB nemá co rozsvítit.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, LED: {leds}",
-    "{name}: no port for OpenRGB -- {error}": "{name}: žádný port pro OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: žádný port pro OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Vyžaduje OpenRGB 1.0 nebo novější."
   },
   "sv": {
     "Memory": "Minne",
@@ -2020,7 +2036,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB kan lysa upp dina kylare: lägg i OpenRGB till en DDP-enhet för varje, med dessa värden.  Färgerna syns medan OpenRGB skickar dem.",
     "No cooler is connected -- OpenRGB has none to light.": "Ingen kylare ansluten – OpenRGB har inget att lysa upp.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} lysdioder",
-    "{name}: no port for OpenRGB -- {error}": "{name}: ingen port för OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: ingen port för OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Det kräver OpenRGB 1.0 eller senare."
   },
   "da": {
     "Memory": "Hukommelse",
@@ -2139,7 +2156,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB kan oplyse dine kølere: tilføj i OpenRGB en DDP-enhed for hver med disse værdier.  Farverne vises, så længe OpenRGB sender dem.",
     "No cooler is connected -- OpenRGB has none to light.": "Ingen køler tilsluttet – OpenRGB har intet at oplyse.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LED'er",
-    "{name}: no port for OpenRGB -- {error}": "{name}: ingen port til OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: ingen port til OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Det kræver OpenRGB 1.0 eller nyere."
   },
   "no": {
     "Memory": "Minne",
@@ -2258,7 +2276,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB kan lyse opp kjølerne dine: legg i OpenRGB til en DDP-enhet for hver, med disse verdiene.  Fargene vises så lenge OpenRGB sender dem.",
     "No cooler is connected -- OpenRGB has none to light.": "Ingen kjøler tilkoblet – OpenRGB har ingenting å lyse opp.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} lysdioder",
-    "{name}: no port for OpenRGB -- {error}": "{name}: ingen port for OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: ingen port for OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Dette krever OpenRGB 1.0 eller nyere."
   },
   "fi": {
     "Memory": "Muisti",
@@ -2377,7 +2396,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB voi valaista jäähdyttimesi: lisää OpenRGB:ssä kullekin DDP-laite näillä arvoilla.  Värit näkyvät niin kauan kuin OpenRGB lähettää niitä.",
     "No cooler is connected -- OpenRGB has none to light.": "Jäähdytintä ei ole kytketty – OpenRGB:llä ei ole mitään valaistavaa.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, portti {port}, {leds} LEDiä",
-    "{name}: no port for OpenRGB -- {error}": "{name}: ei porttia OpenRGB:lle – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: ei porttia OpenRGB:lle – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Tämä vaatii OpenRGB 1.0:n tai uudemman."
   },
   "hu": {
     "Memory": "Memória",
@@ -2496,7 +2516,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "Az OpenRGB megvilágíthatja a hűtőidet: az OpenRGB-ben adj hozzá mindegyikhez egy DDP-eszközt ezekkel az értékekkel.  A színek addig látszanak, amíg az OpenRGB küldi őket.",
     "No cooler is connected -- OpenRGB has none to light.": "Nincs csatlakoztatott hűtő – az OpenRGB-nek nincs mit megvilágítania.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: nincs port az OpenRGB számára – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: nincs port az OpenRGB számára – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Ehhez OpenRGB 1.0 vagy újabb kell."
   },
   "ro": {
     "Memory": "Memorie",
@@ -2615,7 +2636,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB vă poate lumina coolerele: în OpenRGB, adăugați un dispozitiv DDP pentru fiecare, cu aceste valori.  Culorile apar cât timp OpenRGB le trimite.",
     "No cooler is connected -- OpenRGB has none to light.": "Niciun cooler conectat – OpenRGB nu are ce lumina.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LED-uri",
-    "{name}: no port for OpenRGB -- {error}": "{name}: niciun port pentru OpenRGB – {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: niciun port pentru OpenRGB – {error}",
+    "This needs OpenRGB 1.0 or newer.": "Este nevoie de OpenRGB 1.0 sau mai nou."
   },
   "el": {
     "Memory": "Μνήμη",
@@ -2734,7 +2756,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "Το OpenRGB μπορεί να φωτίσει τις ψύκτρες σας: στο OpenRGB προσθέστε μια συσκευή DDP για καθεμία, με αυτές τις τιμές.  Τα χρώματα εμφανίζονται όσο τα στέλνει το OpenRGB.",
     "No cooler is connected -- OpenRGB has none to light.": "Δεν είναι συνδεδεμένη ψύκτρα — το OpenRGB δεν έχει τι να φωτίσει.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, θύρα {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: καμία θύρα για το OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: καμία θύρα για το OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Απαιτείται OpenRGB 1.0 ή νεότερο."
   },
   "he": {
     "Memory": "זיכרון",
@@ -2853,7 +2876,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB יכול להאיר את המצננים שלך: ב-OpenRGB, הוסף התקן DDP לכל מצנן עם הערכים האלה.  הצבעים מוצגים כל עוד OpenRGB שולח אותם.",
     "No cooler is connected -- OpenRGB has none to light.": "אין מצנן מחובר — ל-OpenRGB אין מה להאיר.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, יציאה {port}, {leds} נורות LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: אין יציאה ל-OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: אין יציאה ל-OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "נדרש OpenRGB 1.0 ומעלה."
   },
   "ar": {
     "Memory": "الذاكرة",
@@ -2972,7 +2996,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "يمكن لـ OpenRGB إضاءة المبردات لديك: في OpenRGB، أضف جهاز DDP لكل مبرد بهذه القيم.  تظهر ألوانه ما دام OpenRGB يرسلها.",
     "No cooler is connected -- OpenRGB has none to light.": "لا يوجد مبرد متصل — ليس لدى OpenRGB ما يضيئه.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: عنوان IP {host}، المنفذ {port}، عدد مصابيح LED {leds}",
-    "{name}: no port for OpenRGB -- {error}": "{name}: لا يوجد منفذ لـ OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: لا يوجد منفذ لـ OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "يتطلب هذا OpenRGB 1.0 أو أحدث."
   },
   "hi": {
     "Memory": "मेमोरी",
@@ -3091,7 +3116,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB आपके कूलर रोशन कर सकता है: OpenRGB में हर कूलर के लिए इन मानों के साथ एक DDP डिवाइस जोड़ें।  जब तक OpenRGB रंग भेजता है, वे दिखते हैं।",
     "No cooler is connected -- OpenRGB has none to light.": "कोई कूलर जुड़ा नहीं है — OpenRGB के पास रोशन करने को कुछ नहीं है।",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, पोर्ट {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB के लिए कोई पोर्ट नहीं — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB के लिए कोई पोर्ट नहीं — {error}",
+    "This needs OpenRGB 1.0 or newer.": "इसके लिए OpenRGB 1.0 या नया संस्करण चाहिए।"
   },
   "bn": {
     "Memory": "মেমরি",
@@ -3210,7 +3236,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB আপনার কুলারগুলো আলোকিত করতে পারে: OpenRGB-এ প্রতিটির জন্য এই মানগুলো দিয়ে একটি DDP ডিভাইস যোগ করুন।  OpenRGB রং পাঠানো পর্যন্ত সেগুলো দেখা যায়।",
     "No cooler is connected -- OpenRGB has none to light.": "কোনো কুলার সংযুক্ত নেই — OpenRGB-এর আলোকিত করার কিছু নেই।",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, পোর্ট {port}, {leds}টি LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB-এর জন্য কোনো পোর্ট নেই — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB-এর জন্য কোনো পোর্ট নেই — {error}",
+    "This needs OpenRGB 1.0 or newer.": "এর জন্য OpenRGB 1.0 বা নতুন সংস্করণ লাগবে।"
   },
   "ur": {
     "Memory": "میموری",
@@ -3329,7 +3356,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB آپ کے کولر روشن کر سکتا ہے: OpenRGB میں ہر کولر کے لیے ان اقدار کے ساتھ ایک DDP ڈیوائس شامل کریں۔  جب تک OpenRGB رنگ بھیجتا ہے، وہ دکھائی دیتے ہیں۔",
     "No cooler is connected -- OpenRGB has none to light.": "کوئی کولر منسلک نہیں — OpenRGB کے پاس روشن کرنے کو کچھ نہیں۔",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}، پورٹ {port}، {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB کے لیے کوئی پورٹ نہیں — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB کے لیے کوئی پورٹ نہیں — {error}",
+    "This needs OpenRGB 1.0 or newer.": "اس کے لیے OpenRGB 1.0 یا نیا ورژن درکار ہے۔"
   },
   "fa": {
     "Memory": "حافظه",
@@ -3448,7 +3476,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB می‌تواند خنک‌کننده‌های شما را روشن کند: در OpenRGB برای هر کدام یک دستگاه DDP با این مقادیر اضافه کنید.  رنگ‌ها تا وقتی OpenRGB آن‌ها را بفرستد نمایش داده می‌شوند.",
     "No cooler is connected -- OpenRGB has none to light.": "هیچ خنک‌کننده‌ای وصل نیست — OpenRGB چیزی برای روشن کردن ندارد.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}، درگاه {port}، {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: درگاهی برای OpenRGB نیست — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: درگاهی برای OpenRGB نیست — {error}",
+    "This needs OpenRGB 1.0 or newer.": "این کار به OpenRGB 1.0 یا جدیدتر نیاز دارد."
   },
   "pa": {
     "Memory": "ਮੈਮੋਰੀ",
@@ -3567,7 +3596,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB ਤੁਹਾਡੇ ਕੂਲਰਾਂ ਨੂੰ ਰੌਸ਼ਨ ਕਰ ਸਕਦਾ ਹੈ: OpenRGB ਵਿੱਚ ਹਰ ਇੱਕ ਲਈ ਇਹਨਾਂ ਮੁੱਲਾਂ ਨਾਲ ਇੱਕ DDP ਡਿਵਾਈਸ ਸ਼ਾਮਲ ਕਰੋ।  ਜਦੋਂ ਤੱਕ OpenRGB ਰੰਗ ਭੇਜਦਾ ਹੈ, ਉਹ ਦਿਖਾਈ ਦਿੰਦੇ ਹਨ।",
     "No cooler is connected -- OpenRGB has none to light.": "ਕੋਈ ਕੂਲਰ ਜੁੜਿਆ ਨਹੀਂ — OpenRGB ਕੋਲ ਰੌਸ਼ਨ ਕਰਨ ਲਈ ਕੁਝ ਨਹੀਂ।",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, ਪੋਰਟ {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB ਲਈ ਕੋਈ ਪੋਰਟ ਨਹੀਂ — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB ਲਈ ਕੋਈ ਪੋਰਟ ਨਹੀਂ — {error}",
+    "This needs OpenRGB 1.0 or newer.": "ਇਸ ਲਈ OpenRGB 1.0 ਜਾਂ ਨਵਾਂ ਸੰਸਕਰਣ ਚਾਹੀਦਾ ਹੈ।"
   },
   "ta": {
     "Memory": "நினைவகம்",
@@ -3686,7 +3716,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB உங்கள் கூலர்களை ஒளிரச் செய்ய முடியும்: OpenRGB-இல் ஒவ்வொன்றுக்கும் இந்த மதிப்புகளுடன் ஒரு DDP சாதனத்தைச் சேர்க்கவும்.  OpenRGB அனுப்பும் வரை நிறங்கள் தெரியும்.",
     "No cooler is connected -- OpenRGB has none to light.": "எந்த கூலரும் இணைக்கப்படவில்லை — OpenRGB-க்கு ஒளிரச் செய்ய எதுவும் இல்லை.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, போர்ட் {port}, {leds} LED-கள்",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB-க்கு போர்ட் இல்லை — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB-க்கு போர்ட் இல்லை — {error}",
+    "This needs OpenRGB 1.0 or newer.": "இதற்கு OpenRGB 1.0 அல்லது புதியது தேவை."
   },
   "th": {
     "Memory": "หน่วยความจำ",
@@ -3805,7 +3836,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB สามารถเปิดไฟคูลเลอร์ของคุณได้: ใน OpenRGB ให้เพิ่มอุปกรณ์ DDP สำหรับคูลเลอร์แต่ละตัวด้วยค่าเหล่านี้  สีจะแสดงขณะที่ OpenRGB ส่งมา",
     "No cooler is connected -- OpenRGB has none to light.": "ไม่มีคูลเลอร์เชื่อมต่ออยู่ — OpenRGB ไม่มีอะไรให้เปิดไฟ",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, พอร์ต {port}, LED {leds} ดวง",
-    "{name}: no port for OpenRGB -- {error}": "{name}: ไม่มีพอร์ตสำหรับ OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: ไม่มีพอร์ตสำหรับ OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "ต้องใช้ OpenRGB 1.0 ขึ้นไป"
   },
   "vi": {
     "Memory": "Bộ nhớ",
@@ -3924,7 +3956,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB có thể chiếu sáng tản nhiệt của bạn: trong OpenRGB, hãy thêm một thiết bị DDP cho mỗi tản nhiệt với các giá trị này.  Màu sẽ hiện khi OpenRGB gửi đến.",
     "No cooler is connected -- OpenRGB has none to light.": "Không có tản nhiệt nào được kết nối — OpenRGB không có gì để chiếu sáng.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, cổng {port}, {leds} đèn LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: không có cổng cho OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: không có cổng cho OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Cần OpenRGB 1.0 trở lên."
   },
   "id": {
     "Memory": "Memori",
@@ -4043,7 +4076,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB dapat menyalakan pendingin Anda: di OpenRGB, tambahkan perangkat DDP untuk masing-masing dengan nilai ini.  Warnanya tampil selama OpenRGB mengirimkannya.",
     "No cooler is connected -- OpenRGB has none to light.": "Tidak ada pendingin yang tersambung — OpenRGB tidak punya apa pun untuk dinyalakan.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: tidak ada port untuk OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: tidak ada port untuk OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Ini memerlukan OpenRGB 1.0 atau yang lebih baru."
   },
   "ms": {
     "Memory": "Memori",
@@ -4162,7 +4196,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB boleh menyalakan penyejuk anda: dalam OpenRGB, tambah peranti DDP untuk setiap satu dengan nilai ini.  Warnanya dipaparkan selagi OpenRGB menghantarnya.",
     "No cooler is connected -- OpenRGB has none to light.": "Tiada penyejuk disambungkan — OpenRGB tiada apa-apa untuk dinyalakan.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: tiada port untuk OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: tiada port untuk OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Ini memerlukan OpenRGB 1.0 atau lebih baharu."
   },
   "tl": {
     "Memory": "Memory",
@@ -4281,7 +4316,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "Kayang pailawin ng OpenRGB ang iyong mga cooler: sa OpenRGB, magdagdag ng DDP device para sa bawat isa, gamit ang mga value na ito.  Lalabas ang mga kulay habang ipinapadala ito ng OpenRGB.",
     "No cooler is connected -- OpenRGB has none to light.": "Walang nakakonektang cooler — walang mapapailaw ang OpenRGB.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, port {port}, {leds} LED",
-    "{name}: no port for OpenRGB -- {error}": "{name}: walang port para sa OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: walang port para sa OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Kailangan nito ang OpenRGB 1.0 o mas bago."
   },
   "sw": {
     "Memory": "Kumbukumbu",
@@ -4400,7 +4436,8 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB inaweza kuwasha vipozaji vyako: katika OpenRGB, ongeza kifaa cha DDP kwa kila kimoja, kwa thamani hizi.  Rangi zake huonekana wakati OpenRGB inazituma.",
     "No cooler is connected -- OpenRGB has none to light.": "Hakuna kipozaji kilichounganishwa — OpenRGB haina cha kuwasha.",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}, mlango {port}, LED {leds}",
-    "{name}: no port for OpenRGB -- {error}": "{name}: hakuna mlango wa OpenRGB — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: hakuna mlango wa OpenRGB — {error}",
+    "This needs OpenRGB 1.0 or newer.": "Hii inahitaji OpenRGB 1.0 au mpya zaidi."
   },
   "my": {
     "Memory": "မှတ်ဉာဏ်",
@@ -4519,6 +4556,7 @@
     "OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, with these values.  Its colours show while OpenRGB sends them.": "OpenRGB က သင့်ကူလာများကို အလင်းပေးနိုင်သည်- OpenRGB တွင် တစ်ခုစီအတွက် ဤတန်ဖိုးများဖြင့် DDP စက်တစ်ခု ထည့်ပါ။  OpenRGB က အရောင်များ ပို့နေသရွေ့ ပြသပါမည်။",
     "No cooler is connected -- OpenRGB has none to light.": "ချိတ်ဆက်ထားသော ကူလာ မရှိပါ — OpenRGB တွင် အလင်းပေးစရာ မရှိပါ။",
     "{name}: IP {host}, port {port}, {leds} LEDs": "{name}: IP {host}၊ ပေါ့တ် {port}၊ LED {leds} လုံး",
-    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB အတွက် ပေါ့တ် မရှိပါ — {error}"
+    "{name}: no port for OpenRGB -- {error}": "{name}: OpenRGB အတွက် ပေါ့တ် မရှိပါ — {error}",
+    "This needs OpenRGB 1.0 or newer.": "OpenRGB 1.0 သို့မဟုတ် ပိုသစ်သော ဗားရှင်း လိုအပ်ပါသည်။"
   }
 }

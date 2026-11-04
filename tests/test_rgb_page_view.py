@@ -495,7 +495,7 @@ def test_the_openrgb_device_shows_where_openrgb_finds_each_cooler(
     ports note from ``_LightsColumn.show_page``."""
     view._on_device(RgbDevice.OPENRGB)
     note = view._lights_column._ports_note
-    shown = (note.isVisible(), note.text().splitlines()[1:])
+    shown = (note.isVisible(), note.text().splitlines()[2:])
     view._on_device(RgbDevice.MEMORY)
 
     assert shown == (True, ["PA120 DIGITAL: IP 127.0.0.1, port 4048, 84 LEDs"])

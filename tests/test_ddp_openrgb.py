@@ -360,6 +360,7 @@ def test_lights_is_refused_to_a_module_that_did_not_declare_it(
       ("AX120 DIGITAL", 30, 4049, "port 4049 is taken (Address in use)")),
      ("OpenRGB can light your coolers: in OpenRGB, add a DDP device for each, "
       "with these values.  Its colours show while OpenRGB sends them.",
+      "This needs OpenRGB 1.0 or newer.",
       "PA120 DIGITAL: IP 127.0.0.1, port 4048, 84 LEDs",
       "AX120 DIGITAL: no port for OpenRGB -- port 4049 is taken (Address in use)")),
 ])
