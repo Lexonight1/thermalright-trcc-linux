@@ -284,6 +284,52 @@ def test_a_theme_picked_by_hand_ends_the_slideshow(tmp_home: Path) -> None:
         app.close()
 
 
+def test_a_module_visual_ends_the_slideshow(tmp_home: Path) -> None:
+    """A module's picture taking the panel is another source, so it ends the
+    slideshow as a pick or a screencast does.  The driver's view of the panel
+    left ``module_source`` out: the visual changed nothing it looked at, so the
+    next rotation's ``LoadTheme`` ended the visual instead.
+
+    MUTATION CHECK: drop ``module_source`` from ``SlideshowDriver._panel``.
+    """
+    from trcc.core.models import RawFrame
+    from trcc.core.ports import CaptureNotReady, FrameSource
+
+    class _Still(FrameSource):
+        name = "still"
+
+        def latest(self) -> RawFrame:
+            raise CaptureNotReady("nothing yet")
+
+        def close(self) -> None:
+            pass
+
+    app = _live(tmp_home, "SlideA", "SlideB")
+    try:
+        app.start_session()
+        app.dispatch(ConfigureSlideshow(key=_KEY, themes=("SlideA", "SlideB"),
+                                        interval_s=1.0))
+        app.dispatch(SetSlideshow(key=_KEY, enabled=True))
+        assert _wait_for(lambda: _showing(app) in ("SlideA", "SlideB"))
+        # Between rotations, as a user acts: once the driver has recorded what
+        # its load put up.  A source landing DURING its load is read as that
+        # load's own (``_shown`` reads the sources live, by design).
+        scheduler = app._send_scheduler
+        assert isinstance(scheduler, ThreadSendScheduler)
+        driver = scheduler._threads[task_key(_KEY)]._task
+        assert isinstance(driver, SlideshowDriver)
+        assert _wait_for(lambda: driver._shown is not None)
+        app.show_source("probe", _KEY, _Still(), 30.0)
+
+        assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled)
+        import time
+        time.sleep(1.5)
+        assert app.settings.for_device(_KEY).module_source == "probe", (
+            "the rotation ended the visual")
+    finally:
+        app.close()
+
+
 def test_a_video_theme_does_not_end_its_own_slideshow(
     tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

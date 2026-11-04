@@ -71,8 +71,10 @@ class SlideshowDriver(BaseSendTask):
         s = self._app.settings.for_device(self._device_key)
         frame_log.debug("SlideshowDriver._panel: %s theme=%s", self._device_key,
                         s.current_theme)
+        # Every display source (``_DISPLAY_SOURCES``) -- a module's picture
+        # too, or it took the panel unseen and the next rotation ended it.
         return (s.current_theme, s.background_path, s.screencast_region,
-                s.media_player_uri)
+                s.media_player_uri, s.module_source)
 
     def _run(self, now: float) -> float:
         """Rotate if due; return the seconds to wait before asking again.
