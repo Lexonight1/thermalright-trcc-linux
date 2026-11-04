@@ -61,6 +61,15 @@ def _build_uc_preview() -> Any:
     return UCPreview(320, 320)
 
 
+def _build_uc_led_control() -> Any:
+    from trcc.ui.gui.uc_led_control import UCLedControl
+    # Style 1, the segment panel of #333's screenshot: its mode-button row sits
+    # over the six tiles baked into the background image.
+    panel = UCLedControl(language="en")
+    panel.initialize(1, zone_count=1)
+    return panel
+
+
 # Add a row per panel as it is converted.  Keep builders deterministic — no
 # real device scan, no host-dependent strings.
 #
@@ -74,6 +83,7 @@ PANELS: dict[str, Callable[[], Any]] = {
     "uc_device_empty": lambda: _build_uc_device([]),
     "uc_image_cut": _build_uc_image_cut,
     "uc_preview": _build_uc_preview,
+    "uc_led_control": _build_uc_led_control,
 }
 
 
