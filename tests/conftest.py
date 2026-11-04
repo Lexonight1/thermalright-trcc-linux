@@ -42,11 +42,13 @@ os.environ["_TYPER_FORCE_DISABLE_TERMINAL"] = "1"
 os.environ["TRCC_DAEMON"] = "0"
 
 
+import functools
 import gc
 import inspect
 import ipaddress
 import logging
 import socket
+import sys
 import threading
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
@@ -1002,6 +1004,47 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
             c for c in group.registered_commands
             if not ours(getattr(c.callback, "__module__", "") or "")]
     cli_main._ADDED.difference_update(keys)
+
+
+@functools.cache
+def _built_in_module_names() -> tuple[str, ...]:
+    """``trcc.modules.<key>`` for every module TRCC ships -- read from the
+    package's own directory, never from a search path a test widened."""
+    import trcc.modules as package
+    root = Path(package.__file__).parent
+    return tuple(sorted(f"{package.__name__}.{p.parent.name}"
+                        for p in root.glob(f"*/{package.MANIFEST}")))
+
+
+@pytest.fixture(autouse=True)
+def _built_in_modules_keep_their_identity() -> Iterator[None]:
+    """Fail the test that swaps or drops a built-in module, not the ones after.
+
+    A test that pops ``trcc.modules.rgb`` from ``sys.modules`` breaks nothing
+    of its own: the NEXT rgb test in the same worker re-imports a second copy
+    and compares its classes with the first -- ``RgbFollowMode.OFF is
+    RgbFollowMode.OFF`` false.  Which test that is depends on how xdist deals
+    the suite out, so it failed on CI's 4 workers and never on 24 here
+    (2026-11-04, a workspace test whose folder was named ``rgb``).  Checked
+    here, the polluter fails itself, every run, on any machine.
+
+    Asserted AFTER every other fixture's teardown -- autouse fixtures are set
+    up first -- so a fixture that purges (``module_root``) is caught too.
+    """
+    names = _built_in_module_names()
+    prefixes = tuple(f"{n}." for n in names)
+
+    def built_in(dotted: str) -> bool:
+        return dotted in names or dotted.startswith(prefixes)
+
+    before = {n: m for n, m in sys.modules.items() if built_in(n)}
+    yield
+    swapped = sorted(n for n, m in before.items() if sys.modules.get(n) is not m)
+    assert not swapped, (
+        f"this test swapped or dropped built-in module(s) {swapped[:5]}"
+        f"{' …' if len(swapped) > 5 else ''} -- every later test in this worker "
+        "would compare classes from two copies.  Undo only what the test "
+        "itself added")
 
 
 @pytest.fixture
