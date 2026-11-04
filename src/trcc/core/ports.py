@@ -27,6 +27,7 @@ from .models import (
     HidInterface,
     ModuleManifest,
     PanelPicture,
+    Preferences,
     RamAccessState,
     RamAccessStatus,
     TlsFiles,
@@ -2654,6 +2655,11 @@ class SettingsPort(ABC):
     def save_panel(self, key: str, data: Mapping[str, Any]) -> None:
         """Replace them; saved at once."""
 
+    @abstractmethod
+    def preferences(self) -> Preferences:
+        """The user's temperature unit and language, now -- read, never
+        written.  Hear ``TempUnitChanged`` / ``LanguageChanged`` to redraw."""
+
 
 class ThemesPort(ABC):
     """The ``themes`` capability: backgrounds themes carry."""
@@ -2953,6 +2959,9 @@ class ModuleServices(ABC):
     @abstractmethod
     def save_panel_settings(self, module: str, key: str,
                             data: Mapping[str, Any]) -> None: ...
+
+    @abstractmethod
+    def preferences(self) -> Preferences: ...
 
     @abstractmethod
     def add_background_kind(self, module: str, kind: BackgroundKind) -> None: ...

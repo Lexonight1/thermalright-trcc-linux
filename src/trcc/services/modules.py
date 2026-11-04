@@ -29,7 +29,13 @@ from urllib.parse import urlsplit
 
 from ..core.errors import ModuleUnavailable
 from ..core.logs import per_frame, sink_for
-from ..core.models import ModuleInfo, ModuleManifest, PanelPicture, RawFrame
+from ..core.models import (
+    ModuleInfo,
+    ModuleManifest,
+    PanelPicture,
+    Preferences,
+    RawFrame,
+)
 from ..core.ports import (
     BackgroundKind,
     BackgroundPort,
@@ -155,6 +161,10 @@ class _Settings(SettingsPort):
     def save_panel(self, key: str, data: Mapping[str, Any]) -> None:
         log.debug("_Settings.save_panel")
         self._services.save_panel_settings(self._module, key, data)
+
+    def preferences(self) -> Preferences:
+        log.debug("_Settings.preferences: %s", self._module)
+        return self._services.preferences()
 
 
 class _Themes(ThemesPort):

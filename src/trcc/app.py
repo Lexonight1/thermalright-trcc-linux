@@ -64,6 +64,7 @@ from .core.models import (
     DeviceQuirks,
     HardwareMetrics,
     PanelPicture,
+    Preferences,
     RawFrame,
     Theme,
     WantedModule,
@@ -628,6 +629,12 @@ class App(CommandBus, ModuleServices):
                             data: Mapping[str, Any]) -> None:
         log.debug("save_panel_settings: %s %s", module, key)
         self.settings.set_panel_module_settings(key, module, data)
+
+    def preferences(self) -> Preferences:
+        prefs = Preferences(temp_unit=self.settings.app.temp_unit,
+                            language=self.settings.app.language)
+        log.debug("preferences: %s", prefs)
+        return prefs
 
     def add_background_kind(self, module: str, kind: BackgroundKind) -> None:
         """Themes may play, save and resume *kind* -- *module*'s."""

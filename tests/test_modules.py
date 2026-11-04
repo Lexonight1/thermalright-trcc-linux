@@ -29,7 +29,7 @@ from trcc.core.commands import (
 )
 from trcc.core.errors import ModuleUnavailable
 from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
-from trcc.core.models import ModuleAsks, PanelPicture, Wire
+from trcc.core.models import ModuleAsks, PanelPicture, Preferences, Wire
 from trcc.core.ports import CommandBus, Module, ModuleHost
 from trcc.core.registry import ALL_DEVICES
 from trcc.core.results import Result
@@ -873,6 +873,26 @@ def test_the_readings_are_the_last_sweep_and_read_only(tmp_home: Path) -> None:
     assert latest == {"cpu:temp": 41.0}
     with pytest.raises(TypeError):
         cast("dict[str, float]", latest)["cpu:temp"] = 99.0
+
+
+def test_a_module_draws_in_the_users_unit_and_language(tmp_home: Path) -> None:
+    """A weather card says 72°F and "MI" when the overlays above it do.
+    MUTATION CHECK: ``App.preferences`` returning ``"C"``, or the language of
+    a fresh ``AppSettings``, fails here."""
+    seen: list[Preferences] = []
+
+    class Reads(_Recording):
+        key, title, capabilities = "reads", "Reads", ("settings",)
+        default_on = False
+
+        def _enable(self, host: ModuleHost) -> None:
+            seen.append(host.settings.preferences())
+
+    app = App(platform=FakePlatform(tmp_home), modules={"reads": Reads})
+    app.settings.set_global_temp_unit("F")
+    app.settings.set_language("es")
+    result = app.dispatch(SetModuleEnabled(key="reads", enabled=True))
+    assert (result.ok, seen) == (True, [Preferences(temp_unit="F", language="es")])
 
 
 @pytest.mark.parametrize("capability", ["frames", "readings", "hardware", "password"])

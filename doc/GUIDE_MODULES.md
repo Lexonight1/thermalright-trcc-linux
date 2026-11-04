@@ -181,6 +181,8 @@ A module never gets the App itself. It gets a **host** that offers only what its
 
 `host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds — and only when the site's name resolves to an address on the public internet, never this computer or the local network. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
 
+`host.settings.preferences()` gives the user's temperature unit (`"C"` or `"F"`) and language, read-only — the ones TRCC's own overlays use, so a picture the module draws agrees with the readings on top of it. Subscribe to `TempUnitChanged` and `LanguageChanged` (the `events` capability) to redraw when the user changes either.
+
 `host.hardware.open_hid(vid, pid, report_id)` opens a USB HID device — never one of TRCC's own LCD panels. TRCC drives those itself, and a second program writing to one would scramble what it shows, so asking for one is refused.
 
 #### USB devices

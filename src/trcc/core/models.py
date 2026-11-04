@@ -1444,6 +1444,15 @@ class PanelPicture:
     argb32: Callable[[], tuple[bytes, int, int, int]]
 
 
+@dataclass(frozen=True, slots=True)
+class Preferences:
+    """The user's choices a module draws with: what TRCC's own overlays use,
+    so a module's picture agrees with the readings drawn over it.
+    ``TempUnitChanged`` and ``LanguageChanged`` say when either changes."""
+    temp_unit: TempUnit
+    language: str
+
+
 #: A module's key, which is also its folder's and its Python package's name:
 #: 2-31 lowercase letters, digits or _.
 MODULE_KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")

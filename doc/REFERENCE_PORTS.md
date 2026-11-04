@@ -77,13 +77,13 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 14 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 7 |
-| [`SettingsPort`](#settingsport) | 4 | 0 | 1 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 2 | 2 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
+| [`SettingsPort`](#settingsport) | 5 | 0 | 1 |
 | [`SuperIoChip`](#superiochip) | 5 | 0 | 3 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
@@ -92,8 +92,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 9 | 8 |
-| [`ModuleServices`](#moduleservices) | 31 | 0 | 1 |
 | [`ContentStore`](#contentstore) | 32 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 32 | 0 | 1 |
 
 ---
 
@@ -1183,23 +1183,6 @@ wake() -> None
 
 **Implementations (7):** `DeviceSender` · `GameModeTask` · `ReconnectWatcher` · `ScreencastDriver` · `SlideshowDriver` · `SourceDriver` · `StreamDriver`
 
-## SettingsPort
-
-`core/ports.py`
-
-The ``settings`` capability: the module's own saved settings.
-
-**You implement (4):**
-
-```python
-app() -> dict[str, Any]
-panel(key: 'str') -> dict[str, Any]
-save_app(data: 'Mapping[str, Any]') -> None
-save_panel(key: 'str', data: 'Mapping[str, Any]') -> None
-```
-
-**Implementations (1):** `_Settings`
-
 ## SmBus
 
 `core/ports.py`
@@ -1308,6 +1291,24 @@ send_cdb(cdb: 'bytes', data: 'bytes', timeout_ms: 'int' = 5000) -> bool
 ```
 
 **Implementations (4):** `LinuxScsiTransport` · `ServiceScsiTransport` · `UsbBotScsiTransport` · `WindowsScsiTransport`
+
+## SettingsPort
+
+`core/ports.py`
+
+The ``settings`` capability: the module's own saved settings.
+
+**You implement (5):**
+
+```python
+app() -> dict[str, Any]
+panel(key: 'str') -> dict[str, Any]
+preferences() -> Preferences
+save_app(data: 'Mapping[str, Any]') -> None
+save_panel(key: 'str', data: 'Mapping[str, Any]') -> None
+```
+
+**Implementations (1):** `_Settings`
 
 ## SuperIoChip
 
@@ -1513,50 +1514,6 @@ worker_thread_context() -> AbstractContextManager[None]
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
-## ModuleServices
-
-`core/ports.py`
-
-The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
-
-**You implement (31):**
-
-```python
-add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
-data_root() -> Path
-encode_png(frame: 'RawFrame') -> bytes
-end_source(key: 'str', keep_choice: 'bool' = False) -> None
-fetch(url: 'str', allow: 'Callable[[str], bool]') -> bytes
-gl_surface() -> type[GlSurface] | None
-hardware_ids() -> RgbHardware
-latest_readings() -> Mapping[str, float] | None
-memory_access() -> RamAccess
-module_settings(module: 'str') -> dict[str, Any]
-open_hid(vid: 'int', pid: 'int', report_id: 'int') -> Transport
-panel_keys() -> tuple[str, ...]
-panel_settings(module: 'str', key: 'str') -> dict[str, Any]
-panel_size(key: 'str') -> tuple[int, int] | None
-panel_source(key: 'str') -> str | None
-publish(event: 'Event') -> None
-remove_background_kind(prefix: 'str') -> None
-resume_backgrounds(module: 'str') -> None
-save_module_settings(module: 'str', data: 'Mapping[str, Any]') -> None
-save_panel_settings(module: 'str', key: 'str', data: 'Mapping[str, Any]') -> None
-show_source(module: 'str', key: 'str', source: 'FrameSource', fps: 'float') -> None
-smbuses() -> tuple[SmBus, ...]
-sound_input() -> SoundInput
-sound_problem() -> str
-source(key: 'str') -> FrameSource | None
-subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
-substitute(cls: '_C') -> _C
-unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
-unwatch_frames(handler: 'Callable[[PanelPicture], None]') -> None
-watch_frames(handler: 'Callable[[PanelPicture], None]') -> None
-worker_thread() -> AbstractContextManager[None]
-```
-
-**Implementations (1):** `App`
-
 ## ContentStore
 
 `core/ports.py`
@@ -1601,4 +1558,49 @@ write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 ```
 
 **Implementations (1):** `FileContentStore`
+
+## ModuleServices
+
+`core/ports.py`
+
+The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
+
+**You implement (32):**
+
+```python
+add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
+data_root() -> Path
+encode_png(frame: 'RawFrame') -> bytes
+end_source(key: 'str', keep_choice: 'bool' = False) -> None
+fetch(url: 'str', allow: 'Callable[[str], bool]') -> bytes
+gl_surface() -> type[GlSurface] | None
+hardware_ids() -> RgbHardware
+latest_readings() -> Mapping[str, float] | None
+memory_access() -> RamAccess
+module_settings(module: 'str') -> dict[str, Any]
+open_hid(vid: 'int', pid: 'int', report_id: 'int') -> Transport
+panel_keys() -> tuple[str, ...]
+panel_settings(module: 'str', key: 'str') -> dict[str, Any]
+panel_size(key: 'str') -> tuple[int, int] | None
+panel_source(key: 'str') -> str | None
+preferences() -> Preferences
+publish(event: 'Event') -> None
+remove_background_kind(prefix: 'str') -> None
+resume_backgrounds(module: 'str') -> None
+save_module_settings(module: 'str', data: 'Mapping[str, Any]') -> None
+save_panel_settings(module: 'str', key: 'str', data: 'Mapping[str, Any]') -> None
+show_source(module: 'str', key: 'str', source: 'FrameSource', fps: 'float') -> None
+smbuses() -> tuple[SmBus, ...]
+sound_input() -> SoundInput
+sound_problem() -> str
+source(key: 'str') -> FrameSource | None
+subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+substitute(cls: '_C') -> _C
+unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
+unwatch_frames(handler: 'Callable[[PanelPicture], None]') -> None
+watch_frames(handler: 'Callable[[PanelPicture], None]') -> None
+worker_thread() -> AbstractContextManager[None]
+```
+
+**Implementations (1):** `App`
 
