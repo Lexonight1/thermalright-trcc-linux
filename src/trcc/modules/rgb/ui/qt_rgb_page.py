@@ -5,9 +5,9 @@ the one picked on the right -- its lights, its source (Leave alone /
 Built-in effect / Follow a device) with only the controls that source and that
 effect take, and Apply, which changes that device only.  ``presentation.rgb_page.RgbPage`` makes every choice; this draws it.
 
-Template Method, as ``qt_ram_access.RamAccessRow``: each skin's subclass names
-the Commands (``_lights`` .. ``_apply``) and builds its RAM-access row, so the
-Commands are each UI's own and the parity gates see both windows reach them.
+Strategy: each skin hands the page an ``RgbSkin`` that answers its Queries,
+names its Commands and builds its RAM-access row, so the Commands are each UI's
+own and the parity gates see both windows reach them.
 Find and Apply run off the UI thread -- the RAM probe reads the chipset bus,
 and an effect waits on the stick -- and the window stays usable meanwhile.
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from typing import Any
@@ -55,7 +56,6 @@ from trcc.core.led_models import linked_preview, stretch
 from trcc.core.logs import per_frame, sink_for
 from trcc.core.ports import CommandBus
 from trcc.core.results import DeviceEntry, Result
-from trcc.modules.rgb.core.commands import OpenRgbPorts
 from trcc.modules.rgb.core.events import RGB_CHANGES, RgbFollowChanged, RgbFollowSent
 from trcc.modules.rgb.core.models import (
     MAX_ARGB_LEDS,
@@ -67,7 +67,7 @@ from trcc.modules.rgb.core.models import (
     RamEffect,
     RamEffectSettings,
 )
-from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.core.results import OpenRgbPortsResult, RgbFollowResult, RgbLightsResult
 from trcc.modules.rgb.services.effect_clock import LIGHT_GRADIENTS
 from trcc.modules.rgb.services.effect_frames import APPROXIMATE, LEDS, effect_frame
 from trcc.modules.rgb.services.follow_colors import Rgb, strip_spans
@@ -283,10 +283,11 @@ class _DeviceList(QWidget):
         self.find_button.setEnabled(not busy)
 
 
-def cooler_ports(app: CommandBus, page: RgbPage) -> tuple[str, ...]:
-    """Where OpenRGB finds each cooler (#160), asked of the App now -- in the
-    page's language at the moment it is shown."""
-    result = app.dispatch(OpenRgbPorts())
+def cooler_ports(ports: Callable[[], OpenRgbPortsResult],
+                 page: RgbPage) -> tuple[str, ...]:
+    """Where OpenRGB finds each cooler (#160), asked of the App now through
+    the skin's *ports* -- in the page's language at the moment it is shown."""
+    result = ports()
     lines = (openrgb_port_lines(result, tr=page.tr) if result.ok
              else (result.message,))
     log.debug("cooler_ports: %d line(s)", len(lines))
@@ -983,26 +984,76 @@ class _FollowForm(QWidget):
         self._changed()
 
 
+class RgbSkin(ABC):
+    """What a skin supplies the page: its RAM-access row, the answers to its
+    Queries, and its Commands -- named, not dispatched; the page runs those.
+
+    A plain ABC beside the page rather than hooks on it: a QWidget cannot take
+    ABCMeta, so hooks there were raising stubs that weighed as the page's own
+    methods.
+    """
+
+    def __init__(self, app: CommandBus) -> None:
+        log.debug("RgbSkin.__init__: %s", type(self).__name__)
+        self.app = app
+
+    @abstractmethod
+    def access_row(self) -> RamAccessRow:
+        """This skin's RAM-access row."""
+
+    @abstractmethod
+    def lights(self) -> RgbLightsResult:
+        """The ``RgbLights`` Query's answer."""
+
+    @abstractmethod
+    def following(self) -> RgbFollowResult:
+        """The ``RgbFollow`` Query's answer."""
+
+    @abstractmethod
+    def devices(self) -> Sequence[DeviceEntry]:
+        """The ``ListDevices`` Query's devices."""
+
+    @abstractmethod
+    def ports(self) -> OpenRgbPortsResult:
+        """The ``OpenRgbPorts`` Query's answer."""
+
+    @abstractmethod
+    def find(self, plan: FindLights) -> Command[Any]:
+        """``ScanRgbLights`` for *plan*."""
+
+    @abstractmethod
+    def send(self, plan: ApplyPlan) -> Command[Any]:
+        """The Command *plan* stands for."""
+
+    @abstractmethod
+    def leds(self, plan: HeaderLeds) -> Command[Any]:
+        """``SetAuraLeds`` for *plan*."""
+
+    @abstractmethod
+    def blink(self, header: int) -> Command[Any]:
+        """``BlinkAuraHeader`` for ARGB *header*."""
+
+
 class RgbPageView(QWidget):
-    """The page; a skin's subclass names the Commands and the access row."""
+    """The page; its *skin* names the Commands and builds the access row."""
 
-
-    def __init__(self, app: CommandBus, parent: QWidget | None = None) -> None:
+    def __init__(self, skin: RgbSkin, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        log.debug("RgbPageView.__init__: %s", type(self).__name__)
-        self._app = app
+        log.debug("RgbPageView.__init__: %s", type(skin).__name__)
+        self._skin = skin
+        self._app = skin.app
         self.setObjectName("rgb-page")
         self.page = RgbPage()
         self._busy = False
         self._reload = False            # the running job: a scan reloads
-        self.access = self._access_row()
+        self.access = skin.access_row()
         self._devices_column = _DeviceList()
         self._devices_column.setMinimumWidth(DEVICES_WIDTH)
         self._devices_column.picked.connect(self._on_device)
         self._devices_column.find_clicked.connect(self._on_find)
         self._lights_column = _LightsColumn(
             self.page, self.access, self._on_changed,
-            partial(cooler_ports, app, self.page))
+            partial(cooler_ports, skin.ports, self.page))
         self._lights_column.leds_set.connect(self._on_leds)
         self._lights_column.blinked.connect(self._on_blink)
         self._title = _heading("")
@@ -1010,7 +1061,7 @@ class RgbPageView(QWidget):
         self._source_buttons: dict[RgbSource, QRadioButton] = {}
         self._effect = _EffectForm(self.page, self._on_changed)
         self.follow = _FollowForm(self.page, self._on_changed,
-                                  self._following)
+                                  skin.following)
         self._previews: list[_EffectPreview] = []
         self._stack = QStackedWidget(self)
         self._stack.addWidget(self._with_strips(None))
@@ -1084,53 +1135,6 @@ class RgbPageView(QWidget):
         column.addLayout(apply_row)
         return column
 
-    # ── What a skin supplies ─────────────────────────────────────────
-
-    def _access_row(self) -> RamAccessRow:
-        """This skin's RAM-access row."""
-        log.error("RgbPageView._access_row: %s builds none", type(self).__name__)
-        raise NotImplementedError
-
-    def _lights(self) -> RgbLightsResult:
-        """The ``RgbLights`` Query's answer."""
-        log.error("RgbPageView._lights: %s names no Query", type(self).__name__)
-        raise NotImplementedError
-
-    def _following(self) -> RgbFollowResult:
-        """The ``RgbFollow`` Query's answer."""
-        log.error("RgbPageView._following: %s names no Query",
-                  type(self).__name__)
-        raise NotImplementedError
-
-    def _devices(self) -> Sequence[DeviceEntry]:
-        """The ``ListDevices`` Query's devices."""
-        log.error("RgbPageView._devices: %s names no Query", type(self).__name__)
-        raise NotImplementedError
-
-    def _find(self, plan: FindLights) -> Command[Any]:
-        """``ScanRgbLights`` for *plan* -- named, not dispatched."""
-        log.error("RgbPageView._find: %s names no Command (%s)",
-                  type(self).__name__, plan)
-        raise NotImplementedError
-
-    def _send(self, plan: ApplyPlan) -> Command[Any]:
-        """The Command *plan* stands for -- named, not dispatched."""
-        log.error("RgbPageView._send: %s names no Command (%s)",
-                  type(self).__name__, plan)
-        raise NotImplementedError
-
-    def _leds(self, plan: HeaderLeds) -> Command[Any]:
-        """``SetAuraLeds`` for *plan* -- named, not dispatched."""
-        log.error("RgbPageView._leds: %s names no Command (%s)",
-                  type(self).__name__, plan)
-        raise NotImplementedError
-
-    def _blink(self, header: int) -> Command[Any]:
-        """``BlinkAuraHeader`` for ARGB *header* -- named, not dispatched."""
-        log.error("RgbPageView._blink: %s names no Command (header %d)",
-                  type(self).__name__, header)
-        raise NotImplementedError
-
     # ── The page ─────────────────────────────────────────────────────
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -1153,7 +1157,8 @@ class RgbPageView(QWidget):
         log.info("RgbPageView.refresh")
         self.follow.lead = ""
         self.access.refresh()
-        self.page.load(self._lights(), self._following(), self._devices())
+        self.page.load(self._skin.lights(), self._skin.following(),
+                       self._skin.devices())
         self.show_page()
 
     def show_page(self) -> None:
@@ -1210,25 +1215,25 @@ class RgbPageView(QWidget):
         if (plan := self.page.find()) is None:
             self._on_changed()
             return
-        self._run(self._find(plan), reload=True)
+        self._run(self._skin.find(plan), reload=True)
 
     def _on_leds(self, header: int, leds: int) -> None:
         """A header's LED count: saved, the board read again, the page
         reloaded -- off the GUI thread, like Find."""
         log.info("RgbPageView._on_leds: header %d -> %d", header, leds)
-        self._run(self._leds(HeaderLeds(header, leds)), reload=True)
+        self._run(self._skin.leds(HeaderLeds(header, leds)), reload=True)
 
     def _on_blink(self, header: int) -> None:
         """Blink a header -- two seconds, off the GUI thread; the page is
         busy until it is done."""
         log.info("RgbPageView._on_blink: header %d", header)
-        self._run(self._blink(header), reload=False)
+        self._run(self._skin.blink(header), reload=False)
 
     def _on_apply(self) -> None:
         plan = self.page.apply()
         log.info("RgbPageView._on_apply: %s", plan)
         if plan is not None:
-            self._run(self._send(plan), reload=False)
+            self._run(self._skin.send(plan), reload=False)
 
     def _run(self, command: Command[Any], *, reload: bool) -> None:
         """*command* off the GUI thread -- a scan or a password prompt can

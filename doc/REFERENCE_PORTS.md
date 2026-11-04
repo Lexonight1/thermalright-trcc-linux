@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-86 ports.
+87 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -90,6 +90,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
+| [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
@@ -1418,6 +1419,28 @@ write_debug_report(rendered: 'str', path: 'Path') -> Path
 ```
 
 **Implementations (1):** `DiagnosticsAdapter`
+
+## RgbSkin
+
+`modules/rgb/ui/qt_rgb_page.py`
+
+What a skin supplies the page: its RAM-access row, the answers to its Queries, and its Commands -- named, not dispatched; the page runs those.
+
+**You implement (9):**
+
+```python
+access_row() -> RamAccessRow
+blink(header: 'int') -> Command[Any]
+devices() -> Sequence[DeviceEntry]
+find(plan: 'FindLights') -> Command[Any]
+following() -> RgbFollowResult
+leds(plan: 'HeaderLeds') -> Command[Any]
+lights() -> RgbLightsResult
+ports() -> OpenRgbPortsResult
+send(plan: 'ApplyPlan') -> Command[Any]
+```
+
+**Implementations (2):** `QtRgbSkin` · `UCRgbSkin`
 
 ## SensorEnumerator
 

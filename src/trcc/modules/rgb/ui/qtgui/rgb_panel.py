@@ -12,6 +12,7 @@ from trcc.core.commands import Command, ListDevices
 from trcc.core.results import DeviceEntry
 from trcc.modules.rgb.core.commands import (
     BlinkAuraHeader,
+    OpenRgbPorts,
     RgbFollow,
     RgbLights,
     ScanRgbLights,
@@ -22,7 +23,7 @@ from trcc.modules.rgb.core.commands import (
     SetRgbFollow,
 )
 from trcc.modules.rgb.core.models import RgbFollowMode
-from trcc.modules.rgb.core.results import RgbFollowResult, RgbLightsResult
+from trcc.modules.rgb.core.results import OpenRgbPortsResult, RgbFollowResult, RgbLightsResult
 from trcc.modules.rgb.ui.presentation.rgb_page import (
     ApplyPlan,
     FindLights,
@@ -34,7 +35,7 @@ from trcc.modules.rgb.ui.presentation.rgb_page import (
     SaveEffect,
 )
 from trcc.modules.rgb.ui.qt_ram_access import RamAccessRow
-from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView, hear
+from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView, RgbSkin, hear
 from trcc.modules.rgb.ui.qtgui.ram_access import RamAccessControl
 from trcc.ui.qtgui.base import BasePanel
 
@@ -43,39 +44,43 @@ log = logging.getLogger(__name__)
 #: The events that change what the page shows, from any UI.
 
 
-class QtRgbPage(RgbPageView):
-    """The page body, sending this skin's Commands."""
+class QtRgbSkin(RgbSkin):
+    """This skin's Queries and Commands, for the shared page."""
 
-    def _access_row(self) -> RamAccessRow:
-        log.debug("QtRgbPage._access_row")
-        return RamAccessControl(self._app)
+    def access_row(self) -> RamAccessRow:
+        log.debug("QtRgbSkin.access_row")
+        return RamAccessControl(self.app)
 
-    def _lights(self) -> RgbLightsResult:
-        log.debug("QtRgbPage._lights")
-        return self._app.dispatch(RgbLights())
+    def lights(self) -> RgbLightsResult:
+        log.debug("QtRgbSkin.lights")
+        return self.app.dispatch(RgbLights())
 
-    def _following(self) -> RgbFollowResult:
-        log.debug("QtRgbPage._following")
-        return self._app.dispatch(RgbFollow())
+    def following(self) -> RgbFollowResult:
+        log.debug("QtRgbSkin.following")
+        return self.app.dispatch(RgbFollow())
 
-    def _devices(self) -> Sequence[DeviceEntry]:
-        log.debug("QtRgbPage._devices")
-        return self._app.dispatch(ListDevices()).devices
+    def devices(self) -> Sequence[DeviceEntry]:
+        log.debug("QtRgbSkin.devices")
+        return self.app.dispatch(ListDevices()).devices
 
-    def _find(self, plan: FindLights) -> Command[Any]:
-        log.info("QtRgbPage._find: %s", plan)
+    def ports(self) -> OpenRgbPortsResult:
+        log.debug("QtRgbSkin.ports")
+        return self.app.dispatch(OpenRgbPorts())
+
+    def find(self, plan: FindLights) -> Command[Any]:
+        log.info("QtRgbSkin.find: %s", plan)
         return ScanRgbLights(host=plan.host, port=plan.port)
 
-    def _leds(self, plan: HeaderLeds) -> Command[Any]:
-        log.info("QtRgbPage._leds: %s", plan)
+    def leds(self, plan: HeaderLeds) -> Command[Any]:
+        log.info("QtRgbSkin.leds: %s", plan)
         return SetAuraLeds(header=plan.header, leds=plan.leds)
 
-    def _blink(self, header: int) -> Command[Any]:
-        log.info("QtRgbPage._blink: header %d", header)
+    def blink(self, header: int) -> Command[Any]:
+        log.info("QtRgbSkin.blink: header %d", header)
         return BlinkAuraHeader(header=header)
 
-    def _send(self, plan: ApplyPlan) -> Command[Any]:
-        log.info("QtRgbPage._send: %s", plan)
+    def send(self, plan: ApplyPlan) -> Command[Any]:
+        log.info("QtRgbSkin.send: %s", plan)
         match plan:
             case LeaveLights():
                 return SetRgbFollow(mode=RgbFollowMode.OFF)
@@ -106,7 +111,7 @@ class RgbPanel(BasePanel):
 
     def _setup_ui(self) -> None:
         log.debug("RgbPanel._setup_ui")
-        self.page = QtRgbPage(self._app, self)
+        self.page = RgbPageView(QtRgbSkin(self._app), self)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(self.page)

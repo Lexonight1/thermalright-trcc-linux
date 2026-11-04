@@ -2,6 +2,7 @@
 preview that shows the colours the App sends."""
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import pytest
@@ -93,9 +94,15 @@ class _Bus(CommandBus):
 
 
 def _skins() -> list[Any]:
-    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbPage
-    from trcc.modules.rgb.ui.qtgui.rgb_panel import QtRgbPage
-    return [UCRgbPage, QtRgbPage]
+    """Each window's page: the shared view over that skin's Commands."""
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbSkin
+    from trcc.modules.rgb.ui.qtgui.rgb_panel import QtRgbSkin
+    return [partial(_page, UCRgbSkin), partial(_page, QtRgbSkin)]
+
+
+def _page(skin: Any, bus: Any) -> Any:
+    from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView
+    return RgbPageView(skin(bus))
 
 
 @pytest.fixture(params=_skins(), ids=["gui", "qtgui"])
@@ -425,7 +432,7 @@ def test_every_word_the_page_translates_is_in_its_table(qtbot: Any) -> None:
     is not stays English in every language, and the completeness gate
     cannot see it.  MUTATION CHECK: drop ``"Blink"`` from the table's
     English block."""
-    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbPage
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbSkin
     from trcc.modules.rgb.ui.qt_rgb_page import speak
 
     heard: set[str] = set()
@@ -434,7 +441,7 @@ def test_every_word_the_page_translates_is_in_its_table(qtbot: Any) -> None:
         heard.add(text)
         return text
 
-    page = UCRgbPage(_Bus())
+    page = _page(UCRgbSkin, _Bus())
     qtbot.addWidget(page)
     page.resize(1170, 630)
     page.show()

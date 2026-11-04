@@ -55,12 +55,13 @@ def _drive(skin: type, seconds: float) -> tuple[bool, str]:
     from trcc.modules.rgb.core.commands import SetRgbFollow
     from trcc.modules.rgb.core.models import RamEffect, RgbFollowMode
     from trcc.modules.rgb.ui.presentation.rgb_page import RgbDevice, RgbSource
+    from trcc.modules.rgb.ui.qt_rgb_page import RgbPageView
 
     with tempfile.TemporaryDirectory() as tmp:
         platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], Path(tmp))
         platform.rgb = ScriptedRgbHardware()
         app = App(platform)
-        view = skin(app)
+        view = RgbPageView(skin(app))
         try:
             view.resize(1170, 630)
             view.show()
@@ -108,11 +109,11 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
     _qt = QApplication.instance() or QApplication(sys.argv)  # kept alive for the run
 
-    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbPage
-    from trcc.modules.rgb.ui.qtgui.rgb_panel import QtRgbPage
+    from trcc.modules.rgb.ui.gui.uc_rgb import UCRgbSkin
+    from trcc.modules.rgb.ui.qtgui.rgb_panel import QtRgbSkin
 
     ok = True
-    for name, skin in (("gui", UCRgbPage), ("qtgui", QtRgbPage)):
+    for name, skin in (("gui", UCRgbSkin), ("qtgui", QtRgbSkin)):
         passed, detail = _drive(cast(type, skin), args.seconds)
         print(f"{name}: {'ok' if passed else 'FAIL'} -- {detail}")
         ok &= passed
