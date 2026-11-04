@@ -54,6 +54,7 @@ from ..models import (
     HandshakeResult,
     OverlayElement,
     OverlayElementType,
+    PanelSource,
     RawFrame,
     ThemeDir,
     Wire,
@@ -1940,12 +1941,12 @@ class CaptureStreamFrame(Command[ScreencastResult]):
     def execute(self, app: App) -> ScreencastResult:
         from ...services.stream_driver import task_key
 
-        reader = app.media.stream(self.key)
+        reader = app.media.live(self.key, PanelSource.MEDIA)
         uri = app.settings.for_device(self.key).media_player_uri
-        if reader is None or uri != reader.url:
+        if reader is None or uri != reader.name:
             log.info("CaptureStreamFrame: %s's stream is no longer its source "
                      "— ending it", self.key)
-            app.media.close_stream(self.key)
+            app.media.close_live(self.key, PanelSource.MEDIA)
             app.remove_task(task_key(self.key))
             return ScreencastResult(ok=True, key=self.key,
                                     message=f"stream on {self.key} ended")
@@ -1960,7 +1961,7 @@ class CaptureStreamFrame(Command[ScreencastResult]):
             return ScreencastResult(ok=True, key=self.key, message=str(e))
         except OSError as e:
             log.warning("CaptureStreamFrame: %s — ending the media player", e)
-            app.media.close_stream(self.key)
+            app.media.close_live(self.key, PanelSource.MEDIA)
             app.remove_task(task_key(self.key))
             app.settings.set_media_player_uri(self.key, None)
             _publish_background(app, self.key)
@@ -1986,11 +1987,11 @@ class CaptureSourceFrame(Command[ScreencastResult]):
     def execute(self, app: App) -> ScreencastResult:
         from ...services.source_driver import task_key
 
-        source = app.media.source(self.key)
+        source = app.media.live(self.key, PanelSource.MODULE)
         if source is None or app.settings.for_device(self.key).module_source is None:
             log.info("CaptureSourceFrame: %s's source is no longer its "
                      "background -- ending it", self.key)
-            app.media.close_source(self.key)
+            app.media.close_live(self.key, PanelSource.MODULE)
             app.remove_task(task_key(self.key))
             return ScreencastResult(ok=True, key=self.key,
                                     message=f"source on {self.key} ended")

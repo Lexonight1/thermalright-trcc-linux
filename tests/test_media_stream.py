@@ -35,8 +35,8 @@ from trcc.core.commands import (
     SetMediaPlayer,
 )
 from trcc.core.events import ErrorOccurred
-from trcc.core.models import RawFrame
-from trcc.core.ports import CaptureNotReady
+from trcc.core.models import PanelSource, RawFrame
+from trcc.core.ports import CaptureNotReady, FrameSource
 from trcc.services.media import MediaService
 from trcc.services.media_stream import StreamReader, explain_failure
 from trcc.services.stream_driver import task_key
@@ -49,11 +49,13 @@ _URL = "https://example.test/live.m3u8"
 # ── The App, with a fake reader: no ffmpeg, no network ───────────────
 
 
-class _FakeReader:
-    """What ``StreamReader`` promises, scripted."""
+class _FakeReader(FrameSource):
+    """What ``StreamReader`` promises, scripted -- a real ``FrameSource``,
+    so it is held in the panel's live slot exactly as the real one is."""
 
     def __init__(self, url: str, size: tuple[int, int], fps: int) -> None:
-        self.url, self.size, self.closed = url, size, False
+        self.url = self.name = url
+        self.size, self.closed = size, False
         self.fail: str = ""
         self.ready = True
 
@@ -94,7 +96,7 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 
 
 def _reader(app: App) -> Any:
-    return app.media.stream(_KEY)
+    return app.media.live(_KEY, PanelSource.MEDIA)
 
 
 def _wire(app: App) -> list[Any]:
@@ -226,12 +228,12 @@ def test_a_stream_owns_the_panel_s_cadence(app: App) -> None:
     """So the metrics tick does not render the theme over it."""
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
     observer = app._render_observer
-    assert observer._cadence_owner(_KEY) == "stream"
+    assert observer._cadence_owner(_KEY) == "media"
 
 
 def test_restore_resumes_the_stream(app: App) -> None:
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
-    app.media.close_stream(_KEY)                     # what a restart leaves
+    app.media.close_live(_KEY, PanelSource.MEDIA)                     # what a restart leaves
 
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert _reader(app) is not None and _reader(app).url == _URL
@@ -547,3 +549,36 @@ def test_the_cli_text_says_what_is_showing(
 
     assert f"  showing          the media player: {_URL}" in out.splitlines()
     assert f"  showing:          the media player: {_URL}" in status.splitlines()
+
+
+# ── one live picture per panel ────────────────────────────────────────────
+
+
+def test_a_panel_has_one_live_picture_and_a_new_one_ends_the_last() -> None:
+    """The slot is the exclusivity: a module's picture replacing a stream
+    closes the stream, whoever asked."""
+    from trcc.services.media import MediaService
+
+    media = MediaService()
+    stream, visual = _FakeReader("rtsp://cam/live", (8, 8), 16), _FakeReader("v", (8, 8), 16)
+    media.open_live(_KEY, PanelSource.MEDIA, stream)
+    media.open_live(_KEY, PanelSource.MODULE, visual)
+    assert (stream.closed, media.live(_KEY), media.live_kind(_KEY)) == (
+        True, visual, PanelSource.MODULE)
+
+
+def test_one_kind_never_reaches_or_ends_another_kinds_picture() -> None:
+    """A module asking after its own source gets nothing when a stream holds
+    the panel, and a stale stream tick closing "its" stream cannot end the
+    module's picture.
+
+    MUTATION CHECK: drop the kind test in ``close_live`` and the module's
+    picture is closed by the stream's tick."""
+    from trcc.services.media import MediaService
+
+    media = MediaService()
+    visual = _FakeReader("visual", (8, 8), 16)
+    media.open_live(_KEY, PanelSource.MODULE, visual)
+    assert media.live(_KEY, PanelSource.MEDIA) is None
+    media.close_live(_KEY, PanelSource.MEDIA)
+    assert (visual.closed, media.live(_KEY, PanelSource.MODULE)) == (False, visual)

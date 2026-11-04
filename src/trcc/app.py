@@ -65,6 +65,7 @@ from .core.models import (
     DeviceQuirks,
     HardwareMetrics,
     PanelPicture,
+    PanelSource,
     Preferences,
     RawFrame,
     Theme,
@@ -627,7 +628,7 @@ class App(CommandBus, ModuleServices):
                  module, fps)
         self.dispatch(StopVideo(key=key))
         self.settings.set_module_source(key, module)
-        self.media.open_source(key, source)
+        self.media.open_live(key, PanelSource.MODULE, source)
         self.add_task(SourceDriver(self, key, interval_s=1.0 / fps))
         _publish_background(self, key)
 
@@ -639,7 +640,7 @@ class App(CommandBus, ModuleServices):
         from .core.commands.device import _publish_background
         from .services.source_driver import task_key
         log.info("end_source: %s keep_choice=%s", key, keep_choice)
-        self.media.close_source(key)
+        self.media.close_live(key, PanelSource.MODULE)
         self.remove_task(task_key(key))
         if not keep_choice:
             self.settings.set_module_source(key, None)
@@ -652,7 +653,7 @@ class App(CommandBus, ModuleServices):
     def source(self, key: str) -> FrameSource | None:
         """The module source drawing panel *key* now, if any."""
         frame_log.debug("App.source")
-        return self.media.source(key)
+        return self.media.live(key, PanelSource.MODULE)
 
     def panel_source(self, key: str) -> str | None:
         """The module panel *key*'s chosen background belongs to."""
@@ -761,7 +762,7 @@ class App(CommandBus, ModuleServices):
         if chosen is None or (module is not None and chosen != module):
             log.debug("resume_background: %s has no module background", key)
             return
-        if self.media.source(key) is not None:
+        if self.media.live(key, PanelSource.MODULE) is not None:
             log.debug("resume_background: %s already draws", key)
             return
         kind = self.background_kind_of(chosen)
@@ -1817,10 +1818,10 @@ class App(CommandBus, ModuleServices):
         self._send_scheduler.remove(source_task(key))
         self._send_scheduler.remove(game_task(key))
         self.game_gates.pop(key, None)
-        self.media.close_stream(key)
-        # ``module_source`` stays saved, as ``screencast_region`` and
-        # ``media_player_uri`` do here: only the running parts stop.
-        self.media.close_source(key)
+        # The panel's live picture, whichever it is -- its choice
+        # (``module_source``, ``media_player_uri``, ``screencast_region``) stays
+        # saved: only the running parts stop.
+        self.media.close_live(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
         """Submit a frame to a device's send worker.
@@ -2198,10 +2199,8 @@ class _DeviceRenderObserver:
             return "game"
         if self._app.settings.for_device(key).screencast_region is not None:
             return "screencast"
-        if self._app.media.stream(key) is not None:
-            return "stream"
-        if self._app.media.source(key) is not None:
-            return "module"
+        if (live := self._app.media.live_kind(key)) is not None:
+            return live.value
         playback = self._app.media.playback(key)
         if playback is not None and not playback.paused:
             return "video"

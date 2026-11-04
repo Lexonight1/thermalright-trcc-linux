@@ -37,7 +37,7 @@ from trcc.core.commands import (
     SetMediaPlayer,
 )
 from trcc.core.events import BackgroundChanged, ErrorOccurred, Event
-from trcc.core.models import SOUND_RATE, RawFrame
+from trcc.core.models import SOUND_RATE, PanelSource, RawFrame
 from trcc.core.ports import CaptureNotReady, GlSurface
 from trcc.modules.visualizer.adapters import pipes as pipes_module
 from trcc.modules.visualizer.adapters import projectm as projectm_module
@@ -286,7 +286,7 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 
 
 def _reader(app: App) -> Any:
-    return app.media.source(_KEY)
+    return app.media.live(_KEY, PanelSource.MODULE)
 
 
 def _chosen(app: App) -> tuple[str | None, dict[str, Any]]:
@@ -461,7 +461,7 @@ def test_stopping_gives_the_panel_back_to_its_theme(app: App) -> None:
 def test_a_restart_resumes_the_visual_with_its_settings(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes",
                             settings={"growth": 2.0}))
-    app.media.close_source(_KEY)                 # what a restart leaves
+    app.media.close_live(_KEY, PanelSource.MODULE)                 # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert dict(_reader(app).spec.settings) == {"growth": 2.0}
 
@@ -1151,7 +1151,7 @@ def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
     app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Plain")))
     assert app.settings.for_device(_KEY).module_source is None
     assert _KEY in [e.key for e in changes]                 # every UI hears
-    app.media.close_source(_KEY)                            # what a restart leaves
+    app.media.close_live(_KEY, PanelSource.MODULE)                            # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert _reader(app) is None
 
@@ -1193,7 +1193,7 @@ def test_an_unplayable_visual_theme_does_not_keep_the_last_visual(
     assert app.settings.for_device(_KEY).module_source is None
     assert app.dispatch(LcdSnapshot(key=_KEY)).display_source != "module"
     assert _KEY in [e.key for e in changes]                 # every UI hears
-    app.media.close_source(_KEY)                            # what a restart leaves
+    app.media.close_live(_KEY, PanelSource.MODULE)                            # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
     assert _reader(app) is None
 

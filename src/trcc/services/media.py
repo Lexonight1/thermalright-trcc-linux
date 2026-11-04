@@ -28,7 +28,7 @@ from ..core import toolchain
 from ..core.errors import ThemeError
 from ..core.geometry import largest_fit_size
 from ..core.logs import per_frame
-from ..core.models import ZT_MAGIC
+from ..core.models import ZT_MAGIC, PanelSource
 from ..core.ports import FrameSource
 from .media_stream import StreamReader, _drain
 
@@ -703,9 +703,10 @@ class MediaService:
         log.debug("__init__")
         self._install_hint = install_hint
         self._playbacks: dict[str, Playback] = {}
-        self._streams: dict[str, StreamReader] = {}
-        #: Pictures a module draws for a panel's background, by device.
-        self._sources: dict[str, FrameSource] = {}
+        #: Each panel's ONE live picture -- a module's, a web stream's -- and
+        #: whose it is.  One slot, so opening one ends the last: the sources
+        #: are exclusive here, as they are in Settings.
+        self._live: dict[str, tuple[PanelSource, FrameSource]] = {}
         #: The decodes still filling a playback, by device (#264).
         self._decodes: dict[str, BackgroundDecode] = {}
 
@@ -822,45 +823,55 @@ class MediaService:
 
     def open_stream(self, device_key: str, url: str,
                     size: tuple[int, int], fps: int) -> StreamReader:
-        """Start reading *url* for *device_key*, replacing any stream it had."""
+        """Start reading *url* for *device_key* -- its live picture now."""
         log.info("open_stream: %s <- %s (%dx%d @ %d fps)",
                  device_key, url, *size, fps)
-        self.close_stream(device_key)
-        reader = self._streams[device_key] = self.stream_reader(url, size, fps)
+        reader = self.stream_reader(url, size, fps)
+        self.open_live(device_key, PanelSource.MEDIA, reader)
         return reader
 
-    def stream(self, device_key: str) -> StreamReader | None:
-        frame_log.debug("stream: key=%s", device_key)
-        return self._streams.get(device_key)
+    def open_live(self, device_key: str, kind: PanelSource,
+                  source: FrameSource) -> None:
+        """*source*, of *kind*, is *device_key*'s live picture now -- the one
+        it had, of whatever kind, is closed."""
+        log.info("open_live: %s <- %s %s", device_key, kind.value, source.name)
+        self.close_live(device_key)
+        self._live[device_key] = (kind, source)
 
-    def close_stream(self, device_key: str) -> None:
-        """Stop *device_key*'s web source, if it has one (idempotent)."""
-        if (reader := self._streams.pop(device_key, None)) is not None:
-            log.info("close_stream: %s (%s)", device_key, reader.url)
-            reader.close()
+    def live(self, device_key: str,
+             kind: PanelSource | None = None) -> FrameSource | None:
+        """*device_key*'s live picture -- only if it is of *kind*, when given:
+        a module asking after its own never gets a stream that replaced it."""
+        entry = self._live.get(device_key)
+        found = entry[1] if entry and (kind is None or entry[0] is kind) else None
+        frame_log.debug("live: %s kind=%s -> %s", device_key,
+                        kind and kind.value, found and found.name)
+        return found
 
-    def open_source(self, device_key: str, source: FrameSource) -> None:
-        """*source* draws *device_key*'s background now, replacing any it
-        had."""
-        log.info("open_source: %s <- %s", device_key, source.name)
-        self.close_source(device_key)
-        self._sources[device_key] = source
+    def live_kind(self, device_key: str) -> PanelSource | None:
+        """Whose *device_key*'s live picture is, or None for none."""
+        entry = self._live.get(device_key)
+        frame_log.debug("live_kind: %s -> %s", device_key, entry and entry[0].value)
+        return entry[0] if entry else None
 
-    def source(self, device_key: str) -> FrameSource | None:
-        frame_log.debug("source: key=%s", device_key)
-        return self._sources.get(device_key)
-
-    def close_source(self, device_key: str) -> None:
-        """Stop *device_key*'s source, if it has one (idempotent)."""
-        if (source := self._sources.pop(device_key, None)) is not None:
-            log.info("close_source: %s (%s)", device_key, source.name)
-            source.close()
+    def close_live(self, device_key: str,
+                   kind: PanelSource | None = None) -> None:
+        """Stop *device_key*'s live picture (idempotent) -- only if it is of
+        *kind*, when given, so a stale tick of one source cannot end another."""
+        entry = self._live.get(device_key)
+        if entry is None or (kind is not None and entry[0] is not kind):
+            frame_log.debug("close_live: %s has no %s live picture", device_key,
+                            kind.value if kind else "")
+            return
+        del self._live[device_key]
+        log.info("close_live: %s (%s %s)", device_key, entry[0].value,
+                 entry[1].name)
+        entry[1].close()
 
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers -- and end a stream
         or a module's source."""
-        self.close_stream(device_key)
-        self.close_source(device_key)
+        self.close_live(device_key)
         self._replace_decode(device_key, None)
         had = self._playbacks.pop(device_key, None)
         if had is not None:

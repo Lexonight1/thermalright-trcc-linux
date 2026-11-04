@@ -29,7 +29,7 @@ from urllib.parse import urlsplit
 from ..core import toolchain
 from ..core.logs import per_frame
 from ..core.models import RawFrame
-from ..core.ports import CaptureNotReady
+from ..core.ports import CaptureNotReady, FrameSource
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -45,12 +45,13 @@ _RW_TIMEOUT_US = 10_000_000
 _RESTART_S = 1.0
 
 
-class StreamReader:
-    """ffmpeg reading *url* in real time; the newest frame, on demand."""
+class StreamReader(FrameSource):
+    """ffmpeg reading *url* in real time; the newest frame, on demand -- a
+    panel's live picture, like a module's (its ``name`` is the url)."""
 
     def __init__(self, url: str, size: tuple[int, int], fps: int) -> None:
         log.info("StreamReader: %s at %dx%d, %d fps", url, *size, fps)
-        self.url = url
+        self.url = self.name = url
         self._size = size
         self._fps = fps
         self._latest: RawFrame | None = None

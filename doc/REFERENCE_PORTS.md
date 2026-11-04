@@ -31,7 +31,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`FilesPort`](#filesport) | 2 | 0 | 1 |
-| [`FrameSource`](#framesource) | 2 | 0 | 1 |
+| [`FrameSource`](#framesource) | 2 | 0 | 2 |
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
@@ -415,7 +415,7 @@ encode_png(frame: 'RawFrame') -> bytes
 
 `core/ports.py`
 
-Pictures for a panel's background, drawn by someone other than the App -- a module's audio visual.  The App takes the newest each tick, puts the theme's mask and metrics on top, and sends it (``CaptureSourceFrame``). A source draws on its own thread and keeps only its newest picture.
+A panel's live picture -- its background, made by someone other than the App: a module's audio visual, a web stream.  The App takes the newest each tick, puts the theme's mask and metrics on top, and sends it.  A source keeps only its newest picture; ``latest`` raises ``CaptureNotReady`` for a passing gap and ``OSError`` once it has failed for good.  One per panel at a time (``MediaService.open_live``).
 
 **You implement (2):**
 
@@ -424,7 +424,7 @@ close() -> None
 latest() -> RawFrame
 ```
 
-**Implementations (1):** `VisualReader`
+**Implementations (2):** `StreamReader` · `VisualReader`
 
 ## FramesPort
 

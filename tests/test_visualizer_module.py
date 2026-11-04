@@ -32,7 +32,7 @@ from trcc.core.commands import (
     SetModuleEnabled,
 )
 from trcc.core.errors import ModuleUnavailable
-from trcc.core.models import ModuleManifest
+from trcc.core.models import ModuleManifest, PanelSource
 from trcc.core.ports import BackgroundKind, ModuleServices
 from trcc.modules.visualizer.core import ListVisuals, PlayVisual
 from trcc.services.modules import ModuleScope
@@ -87,14 +87,14 @@ def test_off_ends_every_panel_it_draws_and_on_draws_them_again(app: App) -> None
     on resumes it -- with its sliders.  MUTATION CHECK: drop the end_sources
     in ModuleScope.release and the visual keeps playing while off."""
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes", settings={"growth": 2.0}))
-    reader: Any = app.media.source(_KEY)
+    reader: Any = app.media.live(_KEY, PanelSource.MODULE)
     _switch(app, False)
     assert reader is not None and reader.closed
-    assert app.media.source(_KEY) is None
+    assert app.media.live(_KEY, PanelSource.MODULE) is None
     assert _choice(app) == ("visualizer", {"visual": "trcc-pipes", "preset": "",
                                            "settings": {"growth": 2.0}})
     _switch(app, True)
-    again: Any = app.media.source(_KEY)
+    again: Any = app.media.live(_KEY, PanelSource.MODULE)
     assert again is not None and again is not reader
     assert dict(again.spec.settings) == {"growth": 2.0}
 
@@ -108,7 +108,7 @@ def test_stopping_works_while_it_is_off(app: App) -> None:
     assert app.dispatch(ClearModuleSource(key=_KEY, module="visualizer")).ok
     assert _choice(app)[0] is None
     _switch(app, True)
-    assert app.media.source(_KEY) is None
+    assert app.media.live(_KEY, PanelSource.MODULE) is None
 
 
 def _theme(root: Path, name: str) -> Path:
@@ -138,10 +138,10 @@ def test_a_visual_theme_waits_for_it_and_says_so(app: App, tmp_path: Path) -> No
     assert (loaded.ok, loaded.needs_module) == (True, "Audio Visualizer")
     assert loaded.message.endswith("-- its background needs Audio Visualizer: "
                                    "turn it on in Modules")
-    assert app.media.source(_KEY) is None
+    assert app.media.live(_KEY, PanelSource.MODULE) is None
     assert app.settings.for_device(_KEY).pending_background is not None
     _switch(app, True)
-    playing: Any = app.media.source(_KEY)
+    playing: Any = app.media.live(_KEY, PanelSource.MODULE)
     assert playing is not None
     assert (playing.spec.kind, dict(playing.spec.settings)) == (
         "trcc-pipes", {"growth": 2.0})

@@ -2564,10 +2564,12 @@ _C = TypeVar("_C", bound=type)
 
 
 class FrameSource(ABC):
-    """Pictures for a panel's background, drawn by someone other than the
-    App -- a module's audio visual.  The App takes the newest each tick, puts
-    the theme's mask and metrics on top, and sends it (``CaptureSourceFrame``).
-    A source draws on its own thread and keeps only its newest picture."""
+    """A panel's live picture -- its background, made by someone other than
+    the App: a module's audio visual, a web stream.  The App takes the newest
+    each tick, puts the theme's mask and metrics on top, and sends it.  A
+    source keeps only its newest picture; ``latest`` raises
+    ``CaptureNotReady`` for a passing gap and ``OSError`` once it has failed
+    for good.  One per panel at a time (``MediaService.open_live``)."""
 
     #: What it shows, for the log.
     name: str = ""

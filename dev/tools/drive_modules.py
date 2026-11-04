@@ -269,7 +269,9 @@ class Drive:
 
     def panel(self) -> tuple[object, str]:
         """The panel's saved background choice, and what draws it now."""
-        source = self.app.media.source(_KEY)
+        from trcc.core.models import PanelSource
+
+        source = self.app.media.live(_KEY, PanelSource.MODULE)
         found = (self.app.settings.for_device(_KEY).module_source,
                  type(source).__name__ if source is not None else "")
         log.debug("panel: %s", found)
