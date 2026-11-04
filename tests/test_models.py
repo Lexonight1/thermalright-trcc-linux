@@ -233,3 +233,57 @@ def test_each_source_reads_as_itself_through_the_one_rule(
 def test_a_panel_with_no_source_shows_its_background() -> None:
     from trcc.core.models import DeviceSettings, PanelSource
     assert DeviceSettings().display_source is PanelSource.BACKGROUND
+
+
+_PANEL_WRITES = [("set_current_theme", "/themes/Theme2"),
+                 ("set_screencast_region", (0, 0, 64, 48, False)),
+                 ("set_media_player_uri", "rtsp://cam/live"),
+                 ("set_module_source", "visualizer"),
+                 ("set_background_path", "/some/picture.png")]
+
+
+@pytest.mark.parametrize(("setter", "value"), _PANEL_WRITES)
+def test_every_change_of_what_a_panel_shows_is_counted_once(
+    tmp_home: Path, setter: str, value: object,
+) -> None:
+    """The slideshow tells a user's change from its own by this count, so a
+    writer it misses is a takeover it misses.  The same value written again --
+    a restore -- is no change.
+
+    MUTATION CHECK: count every write, changed or not, and the second write
+    counts too."""
+    from trcc.services.settings import Settings
+
+    from .conftest import FakePlatform
+
+    settings = Settings(FakePlatform(tmp_home).paths())
+    getattr(settings, setter)("0402:3922", value)
+    getattr(settings, setter)("0402:3922", value)
+    assert (settings.display_changes("0402:3922"),
+            settings.display_changes("87ad:70db")) == (1, 0)
+
+
+def test_a_slideshow_load_changes_the_panel_uncounted_but_not_another_thread(
+    tmp_home: Path,
+) -> None:
+    """Inside ``slideshow_loading`` the changes are the slideshow's own, on
+    its thread; another UI's thread changing the panel meanwhile is counted --
+    that is the race the count exists to see.
+
+    MUTATION CHECK: drop the ``_SLIDESHOW_LOADING`` test in ``_display_write``
+    and the load's own change counts."""
+    import threading
+
+    from trcc.services.settings import Settings
+
+    from .conftest import FakePlatform
+
+    settings = Settings(FakePlatform(tmp_home).paths())
+    with settings.slideshow_loading():
+        settings.set_current_theme("0402:3922", "/themes/Slide")
+        assert settings.display_changes("0402:3922") == 0
+        other = threading.Thread(target=settings.set_screencast_region,
+                                 args=("0402:3922", (0, 0, 64, 48, False)))
+        other.start()
+        other.join()
+    assert settings.display_changes("0402:3922") == 1

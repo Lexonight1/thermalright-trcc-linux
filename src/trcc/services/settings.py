@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
@@ -227,6 +229,15 @@ def _module_install_from(raw: dict[str, Any]) -> ModuleInstall:
     return ModuleInstall(**{k: v for k, v in raw.items() if k not in names}, asks=asks)
 
 
+#: True while a slideshow's own load runs.  A context variable: the load's
+#: child dispatches on its thread see it, and another UI's thread never does --
+#: so a change made from anywhere else during the load is counted
+#: (:meth:`Settings.display_changes`), and the slideshow can tell its own
+#: changes of the panel from a user's.
+_SLIDESHOW_LOADING: ContextVar[bool] = ContextVar("trcc_slideshow_loading",
+                                                 default=False)
+
+
 class Settings:
     """Per-app and per-device settings with JSON persistence.
 
@@ -241,6 +252,9 @@ class Settings:
         self._app = AppSettings()
         self._devices: dict[str, DeviceSettings] = {}
         self._led_devices: dict[str, LedDeviceSettings] = {}
+        # Per panel: how often what it shows changed, a slideshow's own
+        # loads not counted.  Runtime only, never saved.
+        self._display_changes: dict[str, int] = {}
         self._load()
 
     # ── AppSettings surface ───────────────────────────────────────────
@@ -466,9 +480,43 @@ class Settings:
 
     def set_current_theme(self, key: str, theme_name: str | None) -> None:
         log.info("set_current_theme: key=%s theme=%s", key, theme_name)
-        with self._lock:
-            self.for_device(key).current_theme = theme_name
+        with self._display_write(key) as dev:
+            dev.current_theme = theme_name
             self._save()
+
+    @contextmanager
+    def _display_write(self, key: str) -> Iterator[DeviceSettings]:
+        """Change what *key*'s panel shows -- its theme or a display source --
+        under the lock, and count the change unless a slideshow's own load
+        made it.  A write that leaves the panel as it was is not a change: a
+        restore writes the same theme back."""
+        with self._lock:
+            dev = self.for_device(key)
+            before = dev.on_panel
+            yield dev
+            if dev.on_panel != before and not _SLIDESHOW_LOADING.get():
+                count = self._display_changes.get(key, 0) + 1
+                self._display_changes[key] = count
+                log.debug("_display_write: %s changed (%d)", key, count)
+
+    def display_changes(self, key: str) -> int:
+        """How often what *key*'s panel shows has changed this run, the
+        changes a slideshow's own loads made not counted."""
+        with self._lock:
+            count = self._display_changes.get(key, 0)
+        frame_log.debug("display_changes: %s -> %d", key, count)
+        return count
+
+    @contextmanager
+    def slideshow_loading(self) -> Iterator[None]:
+        """Run a slideshow's load: the changes it makes, on this thread and
+        its child dispatches, are the slideshow's own and not counted."""
+        log.debug("slideshow_loading: on")
+        token = _SLIDESHOW_LOADING.set(True)
+        try:
+            yield
+        finally:
+            _SLIDESHOW_LOADING.reset(token)
 
     def set_temp_unit(self, key: str, unit: TempUnit) -> None:
         log.info("set_temp_unit: key=%s unit=%s", key, unit)
@@ -550,8 +598,7 @@ class Settings:
         to the theme's own background.
         """
         log.info("set_background_path: key=%s path=%s", key, path)
-        with self._lock:
-            dev = self.for_device(key)
+        with self._display_write(key) as dev:
             dev.background_path = path
             if path is not None:   # display-source toggles are mutually exclusive
                 _only_source(dev, "background_path")
@@ -567,8 +614,7 @@ class Settings:
         with a video/image background, so setting one clears the other.
         """
         log.info("set_screencast_region: key=%s region=%s", key, region)
-        with self._lock:
-            dev = self.for_device(key)
+        with self._display_write(key) as dev:
             dev.screencast_region = region
             if region is not None:
                 _only_source(dev, "screencast_region")
@@ -599,8 +645,7 @@ class Settings:
         sources, so setting it clears the background + screencast.
         """
         log.info("set_media_player_uri: key=%s uri=%s", key, uri)
-        with self._lock:
-            dev = self.for_device(key)
+        with self._display_write(key) as dev:
             dev.media_player_uri = uri
             if uri is not None:
                 _only_source(dev, "media_player_uri")
@@ -612,8 +657,7 @@ class Settings:
         setting it clears them -- and a theme background waiting for a module
         is no longer waiting."""
         log.info("set_module_source: key=%s module=%s", key, module)
-        with self._lock:
-            dev = self.for_device(key)
+        with self._display_write(key) as dev:
             dev.module_source = module
             if module is not None:
                 _only_source(dev, "module_source")

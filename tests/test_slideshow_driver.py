@@ -463,3 +463,58 @@ def test_a_turned_panel_rotates_the_themes_its_browser_lists(tmp_home: Path) -> 
         assert _wait_for(both), seen
     finally:
         app.close()
+
+
+def test_a_cast_landing_during_a_rotation_still_ends_the_slideshow(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The theme-pick race's twin, for a SOURCE: a cast from another UI lands
+    while the rotation's own load runs.  The driver reads the sources live
+    after its load, so it recorded the user's cast as the slideshow's own --
+    and the next rotation's ``LoadTheme`` (a pick) ended the cast.
+
+    Made deterministic: the cast lands just before the rotation's load
+    returns -- dispatched from ANOTHER thread, as another UI's is, and waited
+    for.
+
+    MUTATION CHECK: drop the change-count check in ``SlideshowDriver._run``.
+    """
+    import threading
+
+    from trcc.core.commands import LoadTheme, StartScreencast
+
+    app = _live(tmp_home, "SlideA", "SlideB")
+    real = app.dispatch
+    cast = threading.Event()
+    results: list[bool] = []
+
+    def other_ui() -> None:
+        results.append(real(StartScreencast(key=_KEY, x=0, y=0, w=64, h=48)).ok)
+
+    def dispatch(cmd):
+        result = real(cmd)
+        on_driver = threading.current_thread().name.startswith("trcc-send-slideshow")
+        if isinstance(cmd, LoadTheme) and on_driver and not cast.is_set():
+            cast.set()
+            ui = threading.Thread(target=other_ui)
+            ui.start()
+            ui.join()
+        return result
+
+    monkeypatch.setattr(app, "dispatch", dispatch)
+    try:
+        app.start_session()
+        app.dispatch(ConfigureSlideshow(key=_KEY, themes=("SlideA", "SlideB"),
+                                        interval_s=1.0))
+        app.dispatch(SetSlideshow(key=_KEY, enabled=True))
+        assert _wait_for(cast.is_set), "the rotation never loaded"
+        assert _wait_for(lambda: results == [True]), results
+
+        assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled), (
+            "the cast that landed during a rotation was taken for the slideshow's own")
+        import time
+        time.sleep(1.5)
+        assert app.settings.for_device(_KEY).screencast_region is not None, (
+            "the next rotation ended the user's cast")
+    finally:
+        app.close()

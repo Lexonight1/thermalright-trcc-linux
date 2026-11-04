@@ -894,6 +894,17 @@ class DeviceSettings:
         frame_log.debug("DeviceSettings.display_source: %s", found.value)
         return found
 
+    @property
+    def on_panel(self) -> tuple[object, ...]:
+        """What the panel shows: its theme, then every display source, in
+        :data:`DISPLAY_SOURCE_FIELDS` order -- what a change of the panel is
+        measured against (the slideshow's "taken" check, ``Settings``'
+        change count)."""
+        shown = (self.current_theme,
+                 *(getattr(self, name) for name in DISPLAY_SOURCE_FIELDS))
+        frame_log.debug("DeviceSettings.on_panel: %s", shown)
+        return shown
+
 
 @dataclass
 class OrientationState:

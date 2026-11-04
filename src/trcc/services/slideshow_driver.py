@@ -34,7 +34,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..core.logs import per_frame
-from ..core.models import DISPLAY_SOURCE_FIELDS, SLIDESHOW_POLL_S
+from ..core.models import SLIDESHOW_POLL_S
 from ._send_task import BaseSendTask
 
 if TYPE_CHECKING:
@@ -71,10 +71,9 @@ class SlideshowDriver(BaseSendTask):
         s = self._app.settings.for_device(self._device_key)
         frame_log.debug("SlideshowDriver._panel: %s theme=%s", self._device_key,
                         s.current_theme)
-        # Every display source, from the ONE list -- this copy once left
+        # Every display source, from the ONE reading -- this copy once left
         # ``module_source`` out, and a module's picture took the panel unseen.
-        return (s.current_theme,
-                *(getattr(s, name) for name in DISPLAY_SOURCE_FIELDS))
+        return s.on_panel
 
     def _run(self, now: float) -> float:
         """Rotate if due; return the seconds to wait before asking again.
@@ -118,12 +117,26 @@ class SlideshowDriver(BaseSendTask):
             )
             return self._interval
 
-        load = self._app.dispatch(LoadTheme(key=self._device_key, path=path))
+        settings = self._app.settings
+        changes = settings.display_changes(self._device_key)
+        with settings.slideshow_loading():
+            load = self._app.dispatch(LoadTheme(key=self._device_key, path=path))
+        if settings.display_changes(self._device_key) != changes:
+            # Another UI changed the panel WHILE this load ran -- a cast, a
+            # player, a pick.  Read afterwards, it looked like this load's
+            # own, and the next rotation ended it (measured: a cast).  The
+            # count leaves out only this load's changes, so it says which.
+            log.info("SlideshowDriver: %s — the panel was changed during the "
+                     "rotation's load, not by it; switching it off",
+                     self._device_key)
+            self._app.dispatch(SetSlideshow(key=self._device_key, enabled=False))
+            return self._interval
         # The theme from THIS load's result, not the live panel: a pick from
         # another UI can land while this load runs, and reading the panel
         # afterwards recorded the user's theme as the slideshow's own
         # (measured through a real daemon).  The sources over it are read
-        # live -- a bundled video or screencast is set BY this load.
+        # live -- a bundled video or screencast is set BY this load, and the
+        # count above says nobody else changed them meanwhile.
         self._shown = ((load.theme_path, *self._panel()[1:])
                        if load.theme_path else None)
         log.info("SlideshowDriver: %s → %s (ok=%s)",
