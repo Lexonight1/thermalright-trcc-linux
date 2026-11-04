@@ -1786,8 +1786,8 @@ class App(CommandBus, ModuleServices):
         return engaged
 
     def stop_sources(self, key: str) -> None:
-        """Stop what plays on *key*'s panel: its screencast, slideshow, stream
-        and game mode.
+        """Stop what plays on *key*'s panel: its screencast, slideshow, stream,
+        module source and game mode.
 
         Only for letting the panel go (``detach``: a disconnect, quitting),
         never for a blink -- see :meth:`stop_sender`.  While the panel is away
@@ -1799,15 +1799,20 @@ class App(CommandBus, ModuleServices):
         from .services.game_mode_driver import task_key as game_task
         from .services.screencast_driver import task_key as screencast_task
         from .services.slideshow_driver import task_key as slideshow_task
+        from .services.source_driver import task_key as source_task
         from .services.stream_driver import task_key as stream_task
 
         log.info("stop_sources: %s", key)
         self._send_scheduler.remove(screencast_task(key))
         self._send_scheduler.remove(slideshow_task(key))
         self._send_scheduler.remove(stream_task(key))
+        self._send_scheduler.remove(source_task(key))
         self._send_scheduler.remove(game_task(key))
         self.game_gates.pop(key, None)
         self.media.close_stream(key)
+        # ``module_source`` stays saved, as ``screencast_region`` and
+        # ``media_player_uri`` do here: only the running parts stop.
+        self.media.close_source(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
         """Submit a frame to a device's send worker.

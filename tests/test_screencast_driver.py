@@ -427,6 +427,38 @@ def test_disconnecting_stops_the_driver(
     assert task_key(_KEY) not in scheduler._tasks
 
 
+def test_disconnecting_stops_a_module_sources_driver(
+    app: App, scheduler: SyncSendScheduler,
+) -> None:
+    """The module-source driver is let go the same way, and its source is
+    closed.  ``stop_sources`` named every driver but this one, so a panel
+    that left kept a ``source:`` task polling while it was away.
+
+    MUTATION CHECK: drop the ``remove(source_task(key))`` from
+    ``stop_sources`` and this fails.
+    """
+    from trcc.core.ports import CaptureNotReady, FrameSource
+    from trcc.services.source_driver import task_key as source_task
+
+    class _Still(FrameSource):
+        name = "still"
+        closed = False
+
+        def latest(self) -> RawFrame:
+            raise CaptureNotReady("nothing yet")
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = _Still()
+    app.show_source("probe", _KEY, source, 30.0)
+    assert source_task(_KEY) in scheduler._tasks
+
+    app.detach(_KEY)
+
+    assert (source_task(_KEY) in scheduler._tasks, source.closed) == (False, True)
+
+
 def test_a_blink_keeps_the_cast(casting: App, scheduler: SyncSendScheduler) -> None:
     """A wake or a replug drops the WIRE; the cast keeps going.
 
