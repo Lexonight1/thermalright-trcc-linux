@@ -604,6 +604,18 @@ class Playback:
     expected_frames: int = 0
 
     @property
+    def advancing(self) -> bool:
+        """Whether the video loop moves this playback on: it has frames and is
+        not paused.  The ONE reading -- ``MediaService.playing`` (what the
+        loop ticks) and the App's cadence owner (whether the loop is what
+        drives the panel) used to spell it each their own way, and agreed
+        only because no empty playback is ever registered.  What to DRAW is
+        another question: a paused video still shows its frame."""
+        moving = bool(self.frames) and not self.paused
+        frame_log.debug("Playback.advancing: %s", moving)
+        return moving
+
+    @property
     def frame_count(self) -> int:
         """The video's length in frames: the expected total while it is still
         decoding (never less than what is already here), the exact count once
@@ -817,7 +829,7 @@ class MediaService:
         Command loads or unloads a video.
         """
         live = {key: pb for key, pb in list(self._playbacks.items())
-                if pb.frames and not pb.paused}
+                if pb.advancing}
         frame_log.debug("playing: %s", sorted(live))
         return live
 

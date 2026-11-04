@@ -2199,7 +2199,7 @@ class _DeviceRenderObserver:
         if (live := self._app.media.live_kind(key)) is not None:
             return live.value
         playback = self._app.media.playback(key)
-        if playback is not None and not playback.paused:
+        if playback is not None and playback.advancing:
             return "video"
         frame_log.debug("_cadence_owner: %s — nothing else owns this panel", key)
         return None

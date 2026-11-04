@@ -1524,6 +1524,32 @@ def test_a_PAUSED_video_still_gets_the_reactive_render(
     )
 
 
+@pytest.mark.parametrize("frames", [[], [b"jpeg"]])
+@pytest.mark.parametrize("paused", [False, True])
+def test_the_cadence_owner_names_the_video_exactly_when_the_loop_moves_it(
+    rendering_app: App, stub_media: Any, tmp_home: Path,
+    frames: list[bytes], paused: bool,
+) -> None:
+    """"The video drives this panel" and "the video loop ticks it" are one
+    fact: told apart, a panel the loop skips would also be skipped by the
+    sensor render, and its clock and metrics would freeze.  They were spelled
+    two ways (frames-and-not-paused vs not-paused) and agreed only because
+    no empty playback is registered -- so every combination is pinned here,
+    the one that cannot happen today included.
+
+    MUTATION CHECK: give ``_cadence_owner`` back ``not playback.paused`` and
+    the empty, unpaused case fails."""
+    theme = _write_video_theme(tmp_home, "fact")
+    rendering_app.active_themes[_KEY] = FileContentStore().load(theme)
+    playback = _playback_for(rendering_app, theme / "Theme.mp4")
+    playback.frames, playback.paused = list(frames), paused
+
+    owned = rendering_app._render_observer._cadence_owner(_KEY) == "video"
+
+    assert owned == (_KEY in rendering_app.media.playing()) == (
+        bool(frames) and not paused)
+
+
 # ── VideoLoop: the one ticker, in the core (#249) ───────────────────────────
 #
 # A video advances one frame per TickDisplay.  The daemon had no ticker, so a
