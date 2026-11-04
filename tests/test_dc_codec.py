@@ -90,6 +90,21 @@ def test_round_trip_text_element(theme_dir: Path) -> None:
     assert e["bold"] is True
 
 
+def test_an_elements_font_survives_a_write(theme_dir: Path) -> None:
+    """The element as the App holds it -- ``OverlayElement.to_dict`` -- keeps
+    its typeface through write and read.  MUTATION CHECK: the writer read
+    ``font_name``, a key no element dict carries, and every DC TRCC wrote
+    came back in the default font."""
+    from trcc.core.models import OverlayElement
+
+    out = theme_dir / "config1.dc"
+    element = OverlayElement(id="a", type="text", x=1, y=2, text="Hi",
+                             font="Arial", size=20, bold=True).to_dict()
+    write_dc_from_theme_config(out, {"elements": [element]})
+    back = load_dc_as_theme_config(out)["elements"][0]
+    assert (back["name"], back["size"], back["bold"]) == ("Arial", 20, True)
+
+
 def test_round_trip_metric_element(theme_dir: Path) -> None:
     out = theme_dir / "config1.dc"
     write_dc_from_theme_config(out, {

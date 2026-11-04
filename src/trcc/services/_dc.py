@@ -810,7 +810,10 @@ def _write_dd_element(w: _Writer, element: dict[str, Any]) -> None:
 
 def _write_dd_font(w: _Writer, element: dict[str, Any]) -> None:
     log.debug("_write_dd_font: w=%s element=%s", w, element)
-    w.write_string(str(element.get("font_name", THEME_FONT)))
+    # ``name`` -- the key both readers emit and ``OverlayElement.to_dict``
+    # writes.  This read ``font_name``, which no element dict carries, so
+    # every DC TRCC wrote dropped the element's font for THEME_FONT.
+    w.write_string(str(element.get("name") or THEME_FONT))
     w.write_float(float(element.get("size", 24.0)))
     style = 0
     if element.get("bold"):
