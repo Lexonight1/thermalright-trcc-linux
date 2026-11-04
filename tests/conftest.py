@@ -973,7 +973,14 @@ def module_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[Path], Pa
         return root
 
     yield add
-    keys = {p.parent.name for root in roots for p in root.glob("*/module.json")}
+    # Only the keys a root actually PROVIDED -- the folder that won, as an
+    # import of the key does.  A test's folder named like TRCC's own (a
+    # workspace ``rgb``) never loaded: purging by folder name alone popped
+    # the real built-in from ``sys.modules``, and every rgb test after it in
+    # the worker compared classes from two copies (CI 3.11, 2026-11-04).
+    added = {str(root) for root in roots}
+    keys = {key for key, folder in package.folders().items()
+            if str(folder.parent) in added}
 
     def ours(dotted: str) -> bool:
         parts = dotted.split(".")
