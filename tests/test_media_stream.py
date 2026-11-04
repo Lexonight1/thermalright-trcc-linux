@@ -3,8 +3,8 @@
 ``SetMediaPlayer`` with a URL used to record it and play nothing -- worse, it
 recorded it OVER a playing background video, which kept playing while the App
 said "media", and a restart then showed nothing (driven 2026-09-30).  A URL
-now plays: ``StreamReader`` runs ffmpeg on it, ``StreamDriver`` ticks
-``CaptureStreamFrame``, and ``SendScreencastFrame`` composites each frame under
+now plays: ``StreamReader`` runs ffmpeg on it, ``SourceDriver`` ticks
+``CaptureSourceFrame``, and ``SendScreencastFrame`` composites each frame under
 the theme -- the chain a screencast already runs.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import (
-    CaptureStreamFrame,
+    CaptureSourceFrame,
     ConnectDevice,
     LcdSnapshot,
     PlayVideo,
@@ -39,7 +39,7 @@ from trcc.core.models import PanelSource, RawFrame
 from trcc.core.ports import CaptureNotReady, FrameSource
 from trcc.services.media import MediaService
 from trcc.services.media_stream import StreamReader, explain_failure
-from trcc.services.stream_driver import task_key
+from trcc.services.source_driver import task_key
 
 _KEY = "0402:3922"
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
@@ -129,14 +129,14 @@ def test_a_url_plays_as_a_live_stream(app: App, tasks: list[str]) -> None:
     assert profile is not None
     assert _reader(app).size == profile.resolution
     assert _source(app) == "media"
-    assert tasks == [task_key(_KEY)], "no driver ticks the stream"
+    assert tasks == [task_key(_KEY, PanelSource.MEDIA)], "no driver ticks the stream"
 
 
 def test_a_tick_puts_the_stream_s_frame_on_the_panel(app: App) -> None:
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
     sent = len(_wire(app))
 
-    result = app.dispatch(CaptureStreamFrame(key=_KEY))
+    result = app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MEDIA))
 
     assert result.ok, result.message
     assert _wire_grows(app, sent), "no frame reached the wire"
@@ -178,7 +178,7 @@ def test_another_source_ends_the_stream_within_a_tick(app: App) -> None:
     reader = _reader(app)
     app.settings.set_media_player_uri(_KEY, None)    # what any other source does
 
-    app.dispatch(CaptureStreamFrame(key=_KEY))
+    app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MEDIA))
 
     assert reader.closed and _reader(app) is None
 
@@ -199,7 +199,7 @@ def test_a_failed_stream_ends_and_says_why(app: App) -> None:
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
     _reader(app).fail = "404 Not Found"
 
-    result = app.dispatch(CaptureStreamFrame(key=_KEY))
+    result = app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MEDIA))
 
     assert not result.ok
     assert heard == ["404 Not Found"]
@@ -210,7 +210,7 @@ def test_buffering_is_not_a_failure(app: App) -> None:
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
     _reader(app).ready = False
 
-    assert app.dispatch(CaptureStreamFrame(key=_KEY)).ok
+    assert app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MEDIA)).ok
     assert _reader(app) is not None
 
 
@@ -219,7 +219,7 @@ def test_a_pushed_image_holds_the_stream_off_the_panel(app: App) -> None:
     app.held.add(_KEY)
     sent = len(_wire(app))
 
-    app.dispatch(CaptureStreamFrame(key=_KEY))
+    app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MEDIA))
 
     assert len(_wire(app)) == sent
 
@@ -247,7 +247,7 @@ def test_disconnect_ends_the_stream(app: App) -> None:
     app.detach(_KEY)
 
     assert reader.closed and _reader(app) is None
-    assert task_key(_KEY) == "stream:" + _KEY
+    assert task_key(_KEY, PanelSource.MEDIA) == "live:media:" + _KEY
 
 
 def test_a_blink_keeps_the_stream(app: App) -> None:

@@ -1350,7 +1350,7 @@ def percent_only(readings: Mapping[str, float], sensor_id: str) -> float | None:
 
 #: Seconds between screencast frames — one cadence, so a headless cast moves
 #: at the same rate as one driven from the window.  Lives in core because both
-#: the driver (``services.screencast_driver``) and the Command that starts it
+#: the driver (``services.source_driver``) and the Command that starts it
 #: need it, and a default argument cannot reach a function-local import.
 #:
 #: **From the C# oracle, not invented.**  ``TRCC.CZTV/FormCZTV.Timer_event``

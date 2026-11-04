@@ -629,7 +629,7 @@ class App(CommandBus, ModuleServices):
         self.dispatch(StopVideo(key=key))
         self.settings.set_module_source(key, module)
         self.media.open_live(key, PanelSource.MODULE, source)
-        self.add_task(SourceDriver(self, key, interval_s=1.0 / fps))
+        self.add_task(SourceDriver(self, key, PanelSource.MODULE, 1.0 / fps))
         _publish_background(self, key)
 
     def end_source(self, key: str, keep_choice: bool = False) -> None:
@@ -641,7 +641,7 @@ class App(CommandBus, ModuleServices):
         from .services.source_driver import task_key
         log.info("end_source: %s keep_choice=%s", key, keep_choice)
         self.media.close_live(key, PanelSource.MODULE)
-        self.remove_task(task_key(key))
+        self.remove_task(task_key(key, PanelSource.MODULE))
         if not keep_choice:
             self.settings.set_module_source(key, None)
         theme = self.active_themes.get(key)
@@ -1806,16 +1806,14 @@ class App(CommandBus, ModuleServices):
         explicit here, and why a NEW driver must be added to this list.
         """
         from .services.game_mode_driver import task_key as game_task
-        from .services.screencast_driver import task_key as screencast_task
         from .services.slideshow_driver import task_key as slideshow_task
-        from .services.source_driver import task_key as source_task
-        from .services.stream_driver import task_key as stream_task
+        from .services.source_driver import live_task_keys
 
         log.info("stop_sources: %s", key)
-        self._send_scheduler.remove(screencast_task(key))
+        # Every kind of live picture's driver, from the one list of kinds.
+        for live in live_task_keys(key):
+            self._send_scheduler.remove(live)
         self._send_scheduler.remove(slideshow_task(key))
-        self._send_scheduler.remove(stream_task(key))
-        self._send_scheduler.remove(source_task(key))
         self._send_scheduler.remove(game_task(key))
         self.game_gates.pop(key, None)
         # The panel's live picture, whichever it is -- its choice
@@ -2197,8 +2195,7 @@ class _DeviceRenderObserver:
         """
         if self._app.game_engaged(key):
             return "game"
-        if self._app.settings.for_device(key).screencast_region is not None:
-            return "screencast"
+        # A cast, a stream, a module's picture: whichever holds the slot.
         if (live := self._app.media.live_kind(key)) is not None:
             return live.value
         playback = self._app.media.playback(key)

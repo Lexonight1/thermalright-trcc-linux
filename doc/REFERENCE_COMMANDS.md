@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**171 total: 122 Commands and 49 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**169 total: 120 Commands and 49 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -76,35 +76,16 @@ Render the device's active theme and stop before the wire.
 | `encode` | `Literal[, png, jpeg]` | no |
 | `sample_cols` | `int` | no |
 
-### `CaptureScreencastFrame`
-
-Grab the device's screencast region once, encode it, put it on the wire.
-
-*Command* → `ScreencastResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-
 ### `CaptureSourceFrame`
 
-One tick of a module's frame source: its newest picture, onto the panel.
+One tick of a panel's live picture -- its screencast, its web stream or a module's visual -- onto the panel.  Dispatched by ``SourceDriver``, one per (panel, kind).
 
 *Command* → `ScreencastResult`
 
 | Field | Type | Required |
 |---|---|---|
 | `key` | `str` | yes |
-
-### `CaptureStreamFrame`
-
-One tick of a web media source: its newest frame, onto the panel.
-
-*Command* → `ScreencastResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
+| `kind` | `PanelSource` | yes |
 
 ### `ClearModuleSource`
 

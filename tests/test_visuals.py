@@ -387,7 +387,7 @@ def test_a_visual_plays_as_the_panel_s_background(app: App, tasks: list[str]) ->
     snapshot = app.dispatch(LcdSnapshot(key=_KEY))
     assert (snapshot.display_source, snapshot.module_title) == (
         "module", "Audio Visualizer")
-    assert tasks == [task_key(_KEY)]
+    assert tasks == [task_key(_KEY, PanelSource.MODULE)]
     observer = app._render_observer
     assert observer._cadence_owner(_KEY) == "module"
 
@@ -419,7 +419,7 @@ def test_a_milkdrop_preset_plays_from_the_visuals_folder(app: App) -> None:
 def test_a_tick_puts_the_visual_s_picture_on_the_panel(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     sent = len(_wire(app))
-    result = app.dispatch(CaptureSourceFrame(key=_KEY))
+    result = app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE))
     assert result.ok, result.message
     assert _wire_grows(app, sent), "no picture reached the wire"
 
@@ -429,7 +429,7 @@ def test_another_source_ends_the_visual_within_a_tick(app: App) -> None:
     reader = _reader(app)
     app.settings.set_media_player_uri(_KEY, "https://example.test/a.m3u8")
     assert app.settings.for_device(_KEY).module_source is None       # exclusive
-    app.dispatch(CaptureSourceFrame(key=_KEY))
+    app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE))
     assert reader.closed and _reader(app) is None
 
 
@@ -437,7 +437,7 @@ def test_a_failed_visual_ends_and_says_why(app: App) -> None:
     heard = _hear(app, ErrorOccurred)
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     _reader(app).fail = "the sound stopped"
-    assert not app.dispatch(CaptureSourceFrame(key=_KEY)).ok
+    assert not app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE)).ok
     assert [e.message for e in heard] == ["the sound stopped"]
     assert _reader(app) is None
     assert app.settings.for_device(_KEY).module_source is None
@@ -446,7 +446,7 @@ def test_a_failed_visual_ends_and_says_why(app: App) -> None:
 def test_starting_up_is_not_a_failure(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     _reader(app).ready = False
-    assert app.dispatch(CaptureSourceFrame(key=_KEY)).ok
+    assert app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE)).ok
     assert _reader(app) is not None
 
 
@@ -746,13 +746,13 @@ def test_the_uis_hear_when_the_visual_stops_and_starts_hearing(
     reader = _reader(app)
     heard = _hear(app, VisualHearingChanged)
 
-    app.dispatch(CaptureSourceFrame(key=_KEY))
+    app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE))
     reader.heard = False
     for _ in range(3):
-        app.dispatch(CaptureSourceFrame(key=_KEY))
+        app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE))
     assert not app.dispatch(ListVisuals(key=_KEY)).hearing
     reader.heard = True
-    app.dispatch(CaptureSourceFrame(key=_KEY))
+    app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE))
 
     assert [(e.key, e.hearing) for e in heard] == [(_KEY, False), (_KEY, True)]
     assert app.dispatch(ListVisuals(key=_KEY)).hearing

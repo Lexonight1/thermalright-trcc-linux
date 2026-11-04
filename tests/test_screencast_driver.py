@@ -19,21 +19,27 @@ from trcc.adapters.infra.send_scheduler import (
 )
 from trcc.app import App
 from trcc.core.commands import (
-    CaptureScreencastFrame,
+    CaptureSourceFrame,
     ConnectDevice,
     SendScreencastFrame,
     StartScreencast,
     StopScreencast,
 )
 from trcc.core.events import Event, ScreencastStopped
-from trcc.core.models import SCREENCAST_TICK_S, RawFrame
-from trcc.services.screencast_driver import ScreencastDriver, task_key
+from trcc.core.models import SCREENCAST_TICK_S, PanelSource, RawFrame
+from trcc.services.source_driver import TELL_AFTER_S, SourceDriver
+from trcc.services.source_driver import task_key as _live_task_key
 
 from .conftest import FakeMic, FakePlatform, FakeScreenCapture, _CliRenderer
 from .mock_platform import MockPlatform
 from .test_display_rotation import RecordingRenderer
 
 _KEY = "0402:3922"
+
+
+def task_key(device_key: str) -> str:
+    """The cast's driver key -- what every test in this file is about."""
+    return _live_task_key(device_key, PanelSource.SCREENCAST)
 
 
 class _Region(TypedDict):
@@ -155,7 +161,7 @@ def test_capture_grabs_the_region_the_session_declared(casting: App) -> None:
     One home for "is a screencast running and over what" — the Command takes
     only a key, so a driver cannot drift from what StartScreencast persisted.
     """
-    result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    result = casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST))
 
     assert result.ok is True, result.message
     assert _capture(casting).regions == [(10, 20, 64, 48)]
@@ -179,16 +185,16 @@ def test_a_tick_with_no_region_ends_the_session(
     casting.settings.set_screencast_region(_KEY, None)   # what a source switch does
     caplog.set_level(logging.WARNING)
 
-    result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    result = casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST))
     scheduler.tick(1.0)
 
     assert result.ok is True, result.message
-    assert "no screencast session" in result.message
+    assert result.message == f"screencast on {_KEY} ended"
     assert task_key(_KEY) not in scheduler._tasks
     assert stopped == [_KEY]
     assert _capture(casting).regions == []
     assert [r.getMessage() for r in caplog.records
-            if "CaptureScreencastFrame" in r.getMessage()] == []
+            if "CaptureSourceFrame" in r.getMessage()] == []
 
 
 def test_a_failing_grab_does_not_raise(casting: App, monkeypatch) -> None:
@@ -204,7 +210,7 @@ def test_a_failing_grab_does_not_raise(casting: App, monkeypatch) -> None:
 
     monkeypatch.setattr(_capture(casting), "grab_region", boom)
 
-    result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    result = casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST))
 
     assert result.ok is False
     assert "portal session revoked" in result.message
@@ -227,12 +233,12 @@ def test_a_source_that_is_not_ready_yet_is_quiet(
 
     monkeypatch.setattr(_capture(casting), "grab_region", not_yet)
     with caplog.at_level(logging.DEBUG, logger="trcc"):
-        result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+        result = casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST))
 
     assert result.ok is True, "a consent wait was reported as a failure"
     assert "waiting for consent" in result.message
     loud = [r for r in caplog.records
-            if r.levelno >= logging.WARNING and "CaptureScreencastFrame" in r.getMessage()]
+            if r.levelno >= logging.WARNING and "CaptureSourceFrame" in r.getMessage()]
     assert not loud, [r.getMessage() for r in loud]
 
 
@@ -247,13 +253,13 @@ def test_the_driver_key_cannot_collide_with_the_device_sender(app: App) -> None:
     key would kill that device's ``DeviceSender`` and its keepalives, so the
     panel would go dark the moment a screencast started.
 
-    MUTATION CHECK: return the bare device key from ``ScreencastDriver.key``
+    MUTATION CHECK: return the bare device key from ``SourceDriver.key``
     and this fails.
     """
-    driver = ScreencastDriver(app, _KEY)
+    driver = SourceDriver(app, _KEY, PanelSource.SCREENCAST)
 
     assert driver.key != _KEY
-    assert driver.key == task_key(_KEY) == f"screencast:{_KEY}"
+    assert driver.key == task_key(_KEY) == f"live:screencast:{_KEY}"
 
 
 def test_driving_does_not_evict_the_device_sender(
@@ -279,7 +285,7 @@ def test_a_cast_that_keeps_failing_tells_the_uis_once_and_carries_on(
 
     MUTATION CHECK: publish on every failed tick -- 150 messages, not 1."""
     from trcc.core.events import ErrorOccurred
-    from trcc.services.screencast_driver import FAILED_TICKS_BEFORE_TELLING
+    FAILED_TICKS_BEFORE_TELLING = round(TELL_AFTER_S / SCREENCAST_TICK_S)   # 50
 
     told: list[ErrorOccurred] = []
     casting.events.subscribe(ErrorOccurred, told.append)
@@ -324,7 +330,8 @@ def test_the_cast_runs_on_a_beat_not_a_rest_after_each_frame(
     clock = iter((100.0, 100.0 + work_s))
     monkeypatch.setattr(_send_task, "time", SimpleNamespace(perf_counter=lambda: next(clock)))
 
-    wait = ScreencastDriver(casting, _KEY).run_once(0.0)
+    wait = SourceDriver(casting, _KEY, PanelSource.SCREENCAST,
+                        SCREENCAST_TICK_S).run_once(0.0)
 
     assert wait == pytest.approx(wait_s)
 
@@ -371,7 +378,7 @@ def test_a_cast_frame_is_queued_not_waited_for(
 
     monkeypatch.setattr(casting, "send", spy)
 
-    assert casting.dispatch(CaptureScreencastFrame(key=_KEY)).ok
+    assert casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST)).ok
     assert waits == [False]
 
 
@@ -408,7 +415,7 @@ def test_stopping_the_screencast_stops_its_driver(
     # the stop can time out waiting on the synchronous test scheduler; that
     # is this harness, not the driver.)
     assert [r.getMessage() for r in caplog.records
-            if "CaptureScreencastFrame" in r.getMessage()] == []
+            if "CaptureSourceFrame" in r.getMessage()] == []
 
 
 def test_disconnecting_stops_the_driver(
@@ -438,7 +445,7 @@ def test_disconnecting_stops_a_module_sources_driver(
     ``stop_sources`` and this fails.
     """
     from trcc.core.ports import CaptureNotReady, FrameSource
-    from trcc.services.source_driver import task_key as source_task
+    from trcc.services.source_driver import task_key as live_key
 
     class _Still(FrameSource):
         name = "still"
@@ -452,11 +459,11 @@ def test_disconnecting_stops_a_module_sources_driver(
 
     source = _Still()
     app.show_source("probe", _KEY, source, 30.0)
-    assert source_task(_KEY) in scheduler._tasks
+    assert live_key(_KEY, PanelSource.MODULE) in scheduler._tasks
 
     app.detach(_KEY)
 
-    assert (source_task(_KEY) in scheduler._tasks, source.closed) == (False, True)
+    assert (live_key(_KEY, PanelSource.MODULE) in scheduler._tasks, source.closed) == (False, True)
 
 
 def test_a_pushed_picture_is_not_painted_over_by_the_cast(casting: App) -> None:
@@ -464,7 +471,7 @@ def test_a_pushed_picture_is_not_painted_over_by_the_cast(casting: App) -> None:
     (``_take_over_panel``) -- the cast too.  It had no check, so the next
     capture tick, a seventh of a second later, painted over the picture.
 
-    MUTATION CHECK: drop the ``held`` check in ``CaptureScreencastFrame``
+    MUTATION CHECK: drop the ``held`` check in ``CaptureSourceFrame``
     and the screen is grabbed again.
     """
     from trcc.core.commands import SendColor
@@ -472,7 +479,7 @@ def test_a_pushed_picture_is_not_painted_over_by_the_cast(casting: App) -> None:
     grabbed = len(_capture(casting).regions)
     assert casting.dispatch(SendColor(key=_KEY, r=255, g=0, b=0)).ok
 
-    result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    result = casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST))
 
     assert (result.ok, result.message, len(_capture(casting).regions)) == (
         True, "held", grabbed)
@@ -559,7 +566,7 @@ def test_stop_screencast_leaves_no_region_for_the_driver(casting: App) -> None:
     """
     assert casting.dispatch(StopScreencast(key=_KEY)).ok
 
-    casting.dispatch(CaptureScreencastFrame(key=_KEY))
+    casting.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.SCREENCAST))
     assert _capture(casting).regions == []
 
 
@@ -759,7 +766,9 @@ def test_the_screencast_cadence_matches_the_c_sharp_oracle() -> None:
         f"{1 / SCREENCAST_TICK_S:.1f} fps — the C# casts 4 x 15 ms = 16.7")
 
 
-def test_every_face_starts_at_the_same_cadence() -> None:
+def test_every_face_starts_at_the_same_cadence(
+    casting: App, scheduler: SyncSendScheduler,
+) -> None:
     """One rate, the C#'s, and no field to vary it by UI.
 
     qtgui had a 1-30 fps slider and was the only face that could set
@@ -771,8 +780,9 @@ def test_every_face_starts_at_the_same_cadence() -> None:
     import dataclasses
 
     assert "interval_s" not in {f.name for f in dataclasses.fields(StartScreencast)}
-    assert ScreencastDriver.DEFAULT_INTERVAL_S == SCREENCAST_TICK_S
-    assert ScreencastDriver.__init__.__defaults__ == (None,)   # -> the default
+    driver = scheduler._tasks[task_key(_KEY)]
+    assert isinstance(driver, SourceDriver)
+    assert driver._interval == SCREENCAST_TICK_S
 
 
 # ── one display source at a time ─────────────────────────────────────
@@ -901,7 +911,7 @@ def test_a_background_ends_the_screencast_from_the_driver_thread(
     assert _wait_for(lambda: not _driving(app))
     assert deaths == []
     assert [r.getMessage() for r in caplog.records
-            if "CaptureScreencastFrame" in r.getMessage()] == []
+            if "CaptureSourceFrame" in r.getMessage()] == []
 
 
 def test_a_broken_capture_warns_once_not_every_tick(
@@ -1336,3 +1346,65 @@ def test_a_push_does_not_end_the_cast_s_live_picture(casting: App) -> None:
 
     assert casting.dispatch(SendColor(key=_KEY, r=255, g=0, b=0)).ok
     assert casting.media.live_kind(_KEY) is PanelSource.SCREENCAST
+
+
+# ── one driver for every kind of live picture ─────────────────────────────
+
+
+def test_a_stream_taking_over_still_ends_the_cast_properly(
+    casting: App, scheduler: SyncSendScheduler, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each kind's driver has its own key, so the cast's is still there to see
+    the stream take the panel -- and ends the cast the way the UIs follow,
+    with ``ScreencastStopped``.  One key per panel would have let the stream's
+    driver replace it, and the cast buttons would say "casting" for ever.
+
+    MUTATION CHECK: give ``SourceDriver`` one key per panel and the cast is
+    never stopped."""
+    import trcc.core.toolchain as toolchain
+    from tests.test_media_stream import _FakeReader
+    from trcc.core.commands import SetMediaPlayer
+    from trcc.services.media import MediaService
+
+    monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
+    monkeypatch.setattr(toolchain, "present", lambda tool: True)
+    heard: list[Event] = []
+    casting.events.subscribe(ScreencastStopped, heard.append)
+
+    assert casting.dispatch(SetMediaPlayer(key=_KEY, uri="https://example.test/a.m3u8")).ok
+    for now in range(3):
+        scheduler.tick(float(now))
+
+    assert [type(e).__name__ for e in heard] == ["ScreencastStopped"]
+    assert casting.media.live_kind(_KEY) is PanelSource.MEDIA
+
+
+def test_a_stream_whose_sends_keep_failing_tells_every_ui_once(app: App) -> None:
+    """His rule, for every kind (2026-11-04): failed ticks are counted, every
+    UI is told ONCE after about three seconds, and the stream lives on.  Only
+    the cast used to say anything; a stream failed silently for ever."""
+    from trcc.core.events import ErrorOccurred
+    from trcc.core.models import STREAM_TICK_S
+    from trcc.core.ports import CaptureFailed, FrameSource
+
+    class _Failing(FrameSource):
+        name = "https://example.test/a.m3u8"
+
+        def latest(self) -> RawFrame:
+            raise CaptureFailed("the encoder dropped the frame")
+
+        def close(self) -> None:
+            pass
+
+    told: list[ErrorOccurred] = []
+    app.events.subscribe(ErrorOccurred, told.append)
+    app.media.open_live(_KEY, PanelSource.MEDIA, _Failing())
+    app.settings.set_media_player_uri(_KEY, _Failing.name)
+    driver = SourceDriver(app, _KEY, PanelSource.MEDIA, STREAM_TICK_S)
+
+    for now in range(round(TELL_AFTER_S / STREAM_TICK_S) + 20):
+        driver.run_once(float(now))
+
+    assert [(e.kind, e.key) for e in told] == [("video", _KEY)]
+    assert "the encoder dropped the frame" in told[0].message
+    assert app.media.live_kind(_KEY) is PanelSource.MEDIA

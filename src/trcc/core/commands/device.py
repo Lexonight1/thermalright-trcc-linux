@@ -47,6 +47,7 @@ from ..models import (
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
+    SCREENCAST_TICK_S,
     STREAM_SCHEMES,
     STREAM_TICK_S,
     ClockSource,
@@ -1658,9 +1659,10 @@ class StartScreencast(Command[ScreencastResult]):
         app.events.publish(ScreencastStarted(
             key=self.key, x=x, y=y, w=w, h=h, audio=self.audio,
         ))
-        from ...services.screencast_driver import ScreencastDriver
+        from ...services.source_driver import SourceDriver
 
-        app.add_task(ScreencastDriver(app, self.key))
+        app.add_task(SourceDriver(app, self.key, PanelSource.SCREENCAST,
+                                  SCREENCAST_TICK_S))
         return ScreencastResult(
             ok=True, key=self.key, active=True,
             x=x, y=y, w=w, h=h, audio=self.audio,
@@ -1718,8 +1720,8 @@ class SetScreencastRegion(Command[ScreencastResult]):
 class SendScreencastFrame(Command[ScreencastResult]):
     """Encode one already-captured frame for the device and put it on the wire.
 
-    The half of a screencast tick that is not the grab.  ``CaptureScreencastFrame``
-    grabs and then delegates here, so encode-and-send exists once; a caller that
+    The half of a live picture's tick that is not taking it.
+    ``CaptureSourceFrame`` takes it and then delegates here, so encode-and-send exists once; a caller that
     produced its frame some OTHER way dispatches this directly.
 
     The gui is that caller.  Its capture tick paints an audio spectrum over the
@@ -1827,192 +1829,167 @@ class SendScreencastFrame(Command[ScreencastResult]):
 
 
 @dataclass(frozen=True, slots=True)
-class CaptureScreencastFrame(Command[ScreencastResult]):
-    """Grab the device's screencast region once, encode it, put it on the wire.
+class CaptureSourceFrame(Command[ScreencastResult]):
+    """One tick of a panel's live picture -- its screencast, its web stream
+    or a module's visual -- onto the panel.  Dispatched by ``SourceDriver``,
+    one per (panel, kind).
 
-    The whole frame path in one dispatchable step, so every UI gets screencast
-    from the Command bus instead of reimplementing it.  Before this, the GUI
-    was the only thing that could capture: ``StartScreencast`` publishes
-    ``ScreencastStarted`` and nothing else, and the GUI's ``ScreencastHandler``
-    was the sole subscriber that ran a timer.  ``trcc display screencast``
-    therefore printed "Capturing on …" and then sat in ``signal.pause()``
-    capturing nothing, and the REST route had the same shape.
+    Every kind takes the same steps, in this order:
 
-    Reads the region from ``screencast_region`` — set by ``StartScreencast`` —
-    so "is a screencast running" has one home rather than a second flag.  No
-    region means the session is over -- another source took the panel -- and
-    this ends it rather than failing on every tick.
+    1. is the panel's saved choice still this kind?  If not, another source
+       took the panel, and this one ENDS (:data:`_LIVE_KINDS` says how, so
+       the UIs hear what they always have);
+    2. is the panel held by a pushed picture?  Then nothing is sent;
+    3. the newest picture: ``CaptureNotReady`` is nothing this tick,
+       ``CaptureFailed`` a failed tick the source survives (counted by the
+       driver), an ``OSError`` the source gone for good -- it ends, and every
+       UI is told;
+    4. ``SendScreencastFrame``.
 
-    LOG_LEVEL is DEBUG: this fires ~7x a second.
+    There were three of these, identical in shape, one per kind; their
+    copies had already drifted (the cast alone had no ``held`` check).
+
+    LOG_LEVEL is DEBUG: this fires ~16x a second.
     """
     LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     key: str
+    kind: PanelSource
 
     def execute(self, app: App) -> ScreencastResult:
-        frame_log.debug("CaptureScreencastFrame.execute: key=%s", self.key)
+        from ...services.source_driver import NOTICES
+
+        frame_log.debug("CaptureSourceFrame.execute: %s %s", self.key,
+                        self.kind.value)
         try:
-            # Checked here, not just in the delegate: grabbing the screen for a
-            # device that is gone is wasted work every tick.
+            # Checked here, not just in the driver: capturing for a panel that
+            # is gone is wasted work every tick.
             app.get(self.key)
         except DeviceNotFoundError as e:
-            log.warning("CaptureScreencastFrame: device %s not found: %s",
-                        self.key, e)
+            log.warning("CaptureSourceFrame: device %s not found: %s", self.key, e)
             return ScreencastResult(ok=False, key=self.key, message=str(e))
-
-        region = app.settings.for_device(self.key).screencast_region
-        if region is None:
-            # Another source took the panel: ``SetBackground``, ``PlayVideo``
-            # and ``SetMediaPlayer`` clear the region in Settings, which keeps
-            # the display sources exclusive.  The session is over, so it ends
-            # properly here -- driver, capture, and the event the UIs' buttons
-            # follow -- once, instead of warning on every tick forever.
-            log.info("CaptureScreencastFrame: %s has no screencast region — "
-                     "another source took the panel; ending the session",
-                     self.key)
-            app.dispatch(StopScreencast(key=self.key))
-            return ScreencastResult(
-                ok=True, key=self.key,
-                message=f"no screencast session on {self.key} — ended",
-            )
+        live = _LIVE_KINDS[self.kind]
+        source = app.media.live(self.key, self.kind)
+        if not live.chosen(app, self.key, source):
+            log.info("CaptureSourceFrame: %s's %s is no longer its source -- "
+                     "ending it", self.key, self.kind.value)
+            live.superseded(app, self.key)
+            return ScreencastResult(ok=True, key=self.key,
+                                    message=f"{self.kind.value} on {self.key} ended")
         if self.key in app.held:
             # A pushed picture holds the panel until the next theme load
-            # (``_take_over_panel``); every implicit producer honours it, as
-            # the stream and module twins below do -- and nothing is grabbed.
-            frame_log.debug("CaptureScreencastFrame: %s held by a pushed "
-                            "image", self.key)
-            return ScreencastResult(ok=True, key=self.key, message="held")
-
-        source = app.media.live(self.key, PanelSource.SCREENCAST)
-        if source is None:
-            # The cast is saved and running, its picture not in the slot --
-            # a slot that was emptied under it.  Open it again rather than
-            # stall with nothing on the panel and nothing said.
-            log.info("CaptureScreencastFrame: %s has no live picture -- "
-                     "opening its region again", self.key)
-            source = open_cast_source(app, self.key)
-        try:
-            raw = source.latest()
-        except CaptureNotReady as e:
-            # The portal is asking for consent, or has not delivered its
-            # first frame: the tick completed and there was nothing to send.
-            # ``ok=True`` on purpose -- ``App.dispatch`` escalates every
-            # ``ok=False`` to WARNING regardless of level, and this fires on
-            # every tick of a consent window, seven a second for up to
-            # thirty seconds.  The message says no frame went out; the
-            # driver's per-tick DEBUG line is its only reader.
-            frame_log.debug("CaptureScreencastFrame: %s not ready: %s",
-                            self.key, e)
-            return ScreencastResult(
-                ok=True, key=self.key,
-                message=f"no frame yet: {e}",
-            )
-        except CaptureFailed as e:
-            # This tick's grab failed and the cast lives on (``RegionSource``
-            # maps a grab error here): reported, not raised -- the next tick
-            # tries again.  Per tick: ``App.dispatch`` warns once per message.
-            frame_log.debug("CaptureScreencastFrame: %s: %s", self.key, e)
-            return ScreencastResult(ok=False, key=self.key, message=str(e))
-
-        # Encode + send live in the sibling, so there is one copy of them.
-        result = app.dispatch(SendScreencastFrame(key=self.key, frame=raw))
-        if not result.ok:
-            return result
-        return ScreencastResult(
-            ok=True, key=self.key,
-            message=f"captured {raw.width}x{raw.height} for {self.key}",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CaptureStreamFrame(Command[ScreencastResult]):
-    """One tick of a web media source: its newest frame, onto the panel.
-
-    ``CaptureScreencastFrame``'s twin, with the stream reader in place of the
-    screen grab -- the same ``SendScreencastFrame`` composites it under the
-    theme.  Dispatched by ``StreamDriver`` every ``STREAM_TICK_S``.
-
-    It ends ITSELF when another source took the panel, as the screencast
-    does: the display sources are exclusive in Settings, so the moment
-    ``media_player_uri`` stops naming this stream's URL -- a theme, a video,
-    a cast, a clear -- the reader and the driver stop here, within a tick.
-    """
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
-    key: str
-
-    def execute(self, app: App) -> ScreencastResult:
-        from ...services.stream_driver import task_key
-
-        reader = app.media.live(self.key, PanelSource.MEDIA)
-        uri = app.settings.for_device(self.key).media_player_uri
-        if reader is None or uri != reader.name:
-            log.info("CaptureStreamFrame: %s's stream is no longer its source "
-                     "— ending it", self.key)
-            app.media.close_live(self.key, PanelSource.MEDIA)
-            app.remove_task(task_key(self.key))
-            return ScreencastResult(ok=True, key=self.key,
-                                    message=f"stream on {self.key} ended")
-        if self.key in app.held:
-            frame_log.debug("CaptureStreamFrame: %s held by a pushed image",
-                            self.key)
-            return ScreencastResult(ok=True, key=self.key, message="held")
-        try:
-            frame = reader.latest()
-        except CaptureNotReady as e:
-            frame_log.debug("CaptureStreamFrame: %s", e)
-            return ScreencastResult(ok=True, key=self.key, message=str(e))
-        except OSError as e:
-            log.warning("CaptureStreamFrame: %s — ending the media player", e)
-            app.media.close_live(self.key, PanelSource.MEDIA)
-            app.remove_task(task_key(self.key))
-            app.settings.set_media_player_uri(self.key, None)
-            _publish_background(app, self.key)
-            app.events.publish(ErrorOccurred(message=str(e), kind="video",
-                                             key=self.key))
-            return ScreencastResult(ok=False, key=self.key, message=str(e))
-        return app.dispatch(SendScreencastFrame(key=self.key, frame=frame))
-
-
-@dataclass(frozen=True, slots=True)
-class CaptureSourceFrame(Command[ScreencastResult]):
-    """One tick of a module's frame source: its newest picture, onto the panel.
-
-    ``CaptureStreamFrame``'s twin, with a module's source (an audio visual)
-    in place of the stream reader.  Dispatched by ``SourceDriver``.  It ends
-    ITSELF when another source took the panel: the display sources are
-    exclusive in Settings, so the moment ``module_source`` is cleared, the
-    source and its driver stop here, within a tick.
-    """
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
-    key: str
-
-    def execute(self, app: App) -> ScreencastResult:
-        from ...services.source_driver import task_key
-
-        source = app.media.live(self.key, PanelSource.MODULE)
-        if source is None or app.settings.for_device(self.key).module_source is None:
-            log.info("CaptureSourceFrame: %s's source is no longer its "
-                     "background -- ending it", self.key)
-            app.media.close_live(self.key, PanelSource.MODULE)
-            app.remove_task(task_key(self.key))
-            return ScreencastResult(ok=True, key=self.key,
-                                    message=f"source on {self.key} ended")
-        if self.key in app.held:
+            # (``_take_over_panel``); every implicit producer honours it.
             frame_log.debug("CaptureSourceFrame: %s held by a pushed image",
                             self.key)
             return ScreencastResult(ok=True, key=self.key, message="held")
+        if source is None:
+            # Only a cast is still chosen with nothing in the slot (the others
+            # need their source to be chosen): a slot emptied under a running
+            # cast.  Open it again rather than stall with nothing said.
+            log.info("CaptureSourceFrame: %s has no live picture -- opening "
+                     "its cast again", self.key)
+            source = open_cast_source(app, self.key)
         try:
             frame = source.latest()
         except CaptureNotReady as e:
-            frame_log.debug("CaptureSourceFrame: %s", e)
-            return ScreencastResult(ok=True, key=self.key, message=str(e))
+            # Consent being asked, a first frame not landed, a stream
+            # buffering: the tick completed and there was nothing to send.
+            # ``ok=True`` on purpose -- ``App.dispatch`` escalates every
+            # ``ok=False`` to WARNING, and this fires every tick of a consent
+            # window.
+            frame_log.debug("CaptureSourceFrame: %s not ready: %s", self.key, e)
+            return ScreencastResult(ok=True, key=self.key,
+                                    message=f"no frame yet: {e}")
+        except CaptureFailed as e:
+            # This tick failed and the source lives on: reported, not raised,
+            # and counted by the driver -- sustained, every UI hears it once.
+            frame_log.debug("CaptureSourceFrame: %s: %s", self.key, e)
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
         except OSError as e:
-            log.warning("CaptureSourceFrame: %s -- ending %s", e, source.name)
-            app.end_source(self.key)
-            app.events.publish(ErrorOccurred(message=str(e), kind="video",
+            log.warning("CaptureSourceFrame: %s's %s is gone -- %s -- ending it",
+                        self.key, self.kind.value, e)
+            live.failed(app, self.key)
+            app.events.publish(ErrorOccurred(message=str(e),
+                                             kind=NOTICES[self.kind][1],
                                              key=self.key))
             return ScreencastResult(ok=False, key=self.key, message=str(e))
         return app.dispatch(SendScreencastFrame(key=self.key, frame=frame))
+
+
+@dataclass(frozen=True, slots=True)
+class _LiveKind:
+    """What differs between the kinds of live picture -- everything else is
+    one Command.  *chosen*: does the panel's saved choice still name it.
+    *superseded*: end it, another source took the panel.  *failed*: end it,
+    the source is gone for good."""
+    chosen: Callable[[App, str, FrameSource | None], bool]
+    superseded: Callable[[App, str], None]
+    failed: Callable[[App, str], None]
+
+
+def _cast_chosen(app: App, key: str, source: FrameSource | None) -> bool:
+    """A cast is chosen while its region is saved -- its picture is reopened
+    if the slot lost it."""
+    region = app.settings.for_device(key).screencast_region
+    frame_log.debug("_cast_chosen: %s -> %s", key, region is not None)
+    return region is not None
+
+
+def _stream_chosen(app: App, key: str, source: FrameSource | None) -> bool:
+    """A stream is chosen while the saved media player names ITS url."""
+    uri = app.settings.for_device(key).media_player_uri
+    chosen = source is not None and uri == source.name
+    frame_log.debug("_stream_chosen: %s -> %s", key, chosen)
+    return chosen
+
+
+def _module_chosen(app: App, key: str, source: FrameSource | None) -> bool:
+    """A module's picture is chosen while a module is saved as the source."""
+    chosen = source is not None and app.settings.for_device(key).module_source is not None
+    frame_log.debug("_module_chosen: %s -> %s", key, chosen)
+    return chosen
+
+
+def _end_cast(app: App, key: str) -> None:
+    """The whole cast teardown -- driver, picture, mic, capture -- and the
+    ``ScreencastStopped`` the viewfinder and the cast buttons follow."""
+    log.info("_end_cast: %s", key)
+    app.dispatch(StopScreencast(key=key))
+
+
+def _end_quietly(kind: PanelSource, app: App, key: str) -> None:
+    """Close the panel's *kind* of picture and its driver -- what took the
+    panel has already told the UIs."""
+    from ...services.source_driver import task_key
+
+    log.info("_end_quietly: %s %s", key, kind.value)
+    app.media.close_live(key, kind)
+    app.remove_task(task_key(key, kind))
+
+
+def _stream_failed(app: App, key: str) -> None:
+    """The stream died: it ends, and the media player is no longer chosen."""
+    log.info("_stream_failed: %s", key)
+    _end_quietly(PanelSource.MEDIA, app, key)
+    app.settings.set_media_player_uri(key, None)
+    _publish_background(app, key)
+
+
+def _module_failed(app: App, key: str) -> None:
+    """A module's picture died: the theme's own background returns."""
+    log.info("_module_failed: %s", key)
+    app.end_source(key)
+
+
+_LIVE_KINDS: dict[PanelSource, _LiveKind] = {
+    PanelSource.SCREENCAST: _LiveKind(_cast_chosen, _end_cast, _end_cast),
+    PanelSource.MEDIA: _LiveKind(_stream_chosen,
+                                 partial(_end_quietly, PanelSource.MEDIA),
+                                 _stream_failed),
+    PanelSource.MODULE: _LiveKind(_module_chosen,
+                                  partial(_end_quietly, PanelSource.MODULE),
+                                  _module_failed),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -2164,8 +2141,8 @@ class StopScreencast(Command[ScreencastResult]):
     def execute(self, app: App) -> ScreencastResult:
         log.info("StopScreencast.execute: key=%s — ending the session, its "
                  "driver and its capture", self.key)
-        from ...services.screencast_driver import task_key
-        app.remove_task(task_key(self.key))
+        from ...services.source_driver import task_key
+        app.remove_task(task_key(self.key, PanelSource.SCREENCAST))
         app.media.close_live(self.key, PanelSource.SCREENCAST)
         app.settings.set_screencast_region(self.key, None)
         release_unused_cast(app)
@@ -2247,7 +2224,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
         before is stopped FIRST -- the URL used to be recorded over it while
         it kept playing, and a restart then showed nothing.
         """
-        from ...services.stream_driver import StreamDriver
+        from ...services.source_driver import SourceDriver
 
         scheme = uri.split("://", 1)[0].lower()
         problem = (
@@ -2268,7 +2245,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
         app.settings.set_media_player_uri(self.key, uri)
         app.media.open_stream(self.key, uri, profile.resolution,
                               round(1 / STREAM_TICK_S))
-        app.add_task(StreamDriver(app, self.key))
+        app.add_task(SourceDriver(app, self.key, PanelSource.MEDIA, STREAM_TICK_S))
         _publish_background(app, self.key)
         log.info("SetMediaPlayer: %s streaming %s", self.key, uri)
         return MediaPlayerResult(ok=True, key=self.key, uri=uri, playing=True,

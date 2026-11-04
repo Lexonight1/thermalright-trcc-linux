@@ -4,7 +4,7 @@ The screencast already is a live source: a driver ticks, a Command takes one
 frame, ``SendScreencastFrame`` composites it under the theme and sends it.  A
 URL is the same with ffmpeg in place of the screen grab.  This reader runs
 ffmpeg on the URL in real time and keeps the NEWEST frame; the App's
-``StreamDriver`` takes it each tick (``CaptureStreamFrame``).
+``SourceDriver`` takes it each tick (``CaptureSourceFrame``).
 
 Local files keep ``VideoDecoder``, which decodes a whole video up front.  A
 stream never ends, and a slow download would outlast the 30 s IPC timeout, so

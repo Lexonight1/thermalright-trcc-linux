@@ -67,18 +67,11 @@ def _commands_dispatched_by(package: str) -> set[str]:
 
 KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Turned by a service task, so NO UI dispatches them ────────────────
-    "CaptureScreencastFrame": (frozenset(), (
-        "scoped: ScreencastDriver turns it; every UI reaches the capability "
-        "through StartScreencast / StopScreencast"
-    )),
-    "CaptureStreamFrame": (frozenset(), (
-        "scoped: StreamDriver turns it; every UI reaches the capability "
-        "through SetMediaPlayer with a web URL"
-    )),
     "CaptureSourceFrame": (frozenset(), (
-        "scoped: SourceDriver turns it; every UI reaches the capability "
-        "through a module's own Commands (the Audio Visualizer's PlayVisual) "
-        "and ClearModuleSource"
+        "scoped: SourceDriver turns it for every kind of live picture; every UI "
+        "reaches the capability through StartScreencast / StopScreencast, "
+        "SetMediaPlayer with a web URL, and a module's own Commands (the Audio "
+        "Visualizer's PlayVisual) with ClearModuleSource"
     )),
     "AdvanceSlideshow": (frozenset(), (
         "scoped: SlideshowDriver turns it; every UI reaches the capability "
@@ -101,8 +94,8 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "'useful for scripts and end-to-end smoke tests'"
     )),
     "SendScreencastFrame": (frozenset(), (
-        "scoped: the encode-and-send half of CaptureScreencastFrame, turned by "
-        "ScreencastDriver; the gui's own capture timer that pushed frames "
+        "scoped: the encode-and-send half of CaptureSourceFrame, turned by "
+        "SourceDriver; the gui's own capture timer that pushed frames "
         "through it is gone (2026-09-29)"
     )),
 

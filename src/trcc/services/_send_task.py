@@ -1,6 +1,6 @@
 """Shared cadence machinery for periodic device drivers.
 
-``ScreencastDriver`` and ``SlideshowDriver`` both drive one device on a fixed
+``SourceDriver`` and ``SlideshowDriver`` both drive one device on a fixed
 interval from a :class:`~trcc.core.ports.SendScheduler` thread, and both
 repeated the same ``__init__`` / ``key`` / ``wait`` / ``wake`` plumbing
 verbatim — only their scheduler namespace, their default interval, and their

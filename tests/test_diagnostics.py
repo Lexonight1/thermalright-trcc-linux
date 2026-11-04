@@ -2346,15 +2346,16 @@ def test_the_tick_path_writes_no_record_per_frame(tmp_path: Path) -> None:
 def _cast_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     """Records-per-frame for a whole screencast tick: grab, compose, SEND.
 
-    ``CaptureScreencastFrame`` is what the App's capture driver dispatches
-    every tick.  The platform keeps the BASE ``screen_capture()``, not
+    ``CaptureSourceFrame`` (kind SCREENCAST) is what the App's live-picture
+    driver dispatches every tick.  The platform keeps the BASE ``screen_capture()``, not
     FakePlatform's override, because that base method is one of the two
     lines this gate was written for: it and ``AudioCapture.running`` each
     wrote a DEBUG record per cast frame, 97% of the win11 VM's log, and
     6 MB held half an hour (2026-10-20).
     """
     from trcc.adapters.system._base import BaseOS
-    from trcc.core.commands import CaptureScreencastFrame
+    from trcc.core.commands import CaptureSourceFrame
+    from trcc.core.models import PanelSource
 
     from .conftest import FakePlatform, FakeScreenCapture
 
@@ -2380,7 +2381,7 @@ def _cast_path_rates(tmp_path: Path, *, frames: int = 30) -> _TickRun:
     app.send = sync_send
 
     def cast_once() -> None:
-        assert app.dispatch(CaptureScreencastFrame(key=key)).ok
+        assert app.dispatch(CaptureSourceFrame(key=key, kind=PanelSource.SCREENCAST)).ok
 
     for _ in range(5):            # warm-up: first-frame lines are one-shot
         cast_once()

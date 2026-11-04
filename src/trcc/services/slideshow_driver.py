@@ -10,7 +10,7 @@ docstring and calls the driver "a separate piece of work [that] has not been
 done".  This is that work.
 
 **It is a `SendTask`, not a new port** — the same reasoning
-``screencast_driver`` records.  ``SendTask``'s contract is
+``source_driver`` records.  ``SendTask``'s contract is
 ``key``/``wait``/``wake``/``run_once(now) -> float`` and only its rationale
 mentions sending, so a second abstraction of identical shape would be one fact
 expressed twice.  Reusing it also inherits ``SyncSendScheduler``, so the cadence
