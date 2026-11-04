@@ -524,9 +524,24 @@ class LoadTheme(Command[ThemeResult]):
         # Screencast-backed theme: resume the saved screen-capture region as
         # the display source (mutually exclusive with a video/image bg).
         region = app.themes.screencast_region(theme)
-        if region is None and (
-            app.settings.for_device(self.key).screencast_region is not None
-        ):
+        casting = app.settings.for_device(self.key).screencast_region is not None
+        # The user's cast stays when nobody PICKED this theme -- a reconnect
+        # or restart (``RestoreDeviceState`` resumes it), or the fallback --
+        # by the module background's rule above.  Ending it there deleted the
+        # saved region, so a cast never came back (his decision 2026-11-04:
+        # it does).
+        if region is None and casting and not (
+                self.reset_overrides and self.picked):
+            # The cast IS the panel's source, so the load ends here, as a
+            # theme's own cast does below: the theme's media player, module
+            # picture or video would take the slot, and the one-source rule
+            # clear the region just kept.
+            log.info("LoadTheme: %s shown by TRCC, not picked -- the panel's "
+                     "cast stays its source", theme.name)
+            return self._loaded(theme, theme_path_str, ok=True,
+                                message=f"Theme '{theme.name}' loaded — the "
+                                        "screencast stays")
+        if region is None and casting:
             # A theme is a display source too: without this the capture ran
             # on behind the theme just picked, the desktop under its mask.
             log.info("LoadTheme: %s carries no screencast — ending the "
@@ -2084,8 +2099,9 @@ class RestoreDeviceState(Command[ThemeResult]):
 
       1. The persisted theme, with its mask + overlay edits + bundled video.
       2. Nothing persisted → the fallback theme (shipped ``Theme1``).
-      3. Resume the media player, or replay the persisted ``background_path``
-         video, over the theme -- the sources are exclusive, so at most one.
+      3. Resume the screencast, the module picture or the media player, or
+         replay the persisted ``background_path`` video, over the theme --
+         the sources are exclusive, so at most one.
       4. A saved slideshow resumes rotating (it never did when the App
          started, in any UI but the gui, whose own timer is gone).
 
@@ -2120,7 +2136,19 @@ class RestoreDeviceState(Command[ThemeResult]):
 
         s = app.settings.for_device(self.key)
         source = s.display_source
-        if source is PanelSource.MODULE or s.pending_background:
+        if (source is PanelSource.SCREENCAST and s.screencast_region
+                and app.media.live_kind(self.key) is not PanelSource.SCREENCAST):
+            # Resumed like the others (his decision, 2026-11-04) -- unless the
+            # theme just loaded is a cast theme and started it already.
+            x, y, w, h, audio = s.screencast_region
+            log.info("RestoreDeviceState: %s resuming its screencast "
+                     "(%d,%d %dx%d) audio=%s", self.key, x, y, w, h, audio)
+            app.dispatch(StartScreencast(key=self.key, x=x, y=y, w=w, h=h,
+                                         audio=audio))
+        elif source is PanelSource.SCREENCAST:
+            log.info("RestoreDeviceState: %s — its theme's screencast is "
+                     "already running", self.key)
+        elif source is PanelSource.MODULE or s.pending_background:
             log.info("RestoreDeviceState: %s resuming its module background "
                      "(%s, waiting %s)", self.key, s.module_source,
                      s.pending_background)

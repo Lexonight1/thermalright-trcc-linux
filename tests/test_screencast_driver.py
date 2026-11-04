@@ -1408,3 +1408,164 @@ def test_a_stream_whose_sends_keep_failing_tells_every_ui_once(app: App) -> None
     assert [(e.kind, e.key) for e in told] == [("video", _KEY)]
     assert "the encoder dropped the frame" in told[0].message
     assert app.media.live_kind(_KEY) is PanelSource.MEDIA
+
+
+def _reconnect(app: App) -> None:
+    """Let the panel go and connect it again, as an unplug and replug do, in a
+    SESSION: the connect's own ``DeviceConnected`` primes the blank panel
+    (``App._prime`` -> ``RestoreDeviceState``), as in a running App.  Only the
+    flag is switched on -- ``start_session`` would start the hotplug and
+    metrics threads too."""
+    app._session = True
+    app.detach(_KEY)
+    assert _KEY not in app.active_themes, "detach left the panel not blank"
+    resp = bytearray(0xE100)
+    resp[0] = 100                      # FBL=100 → 320x320
+    platform = app.platform
+    assert isinstance(platform, FakePlatform)
+    platform.scsi.read_script.append(bytes(resp))
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    assert _KEY in app.active_themes, "the connect restored nothing"
+
+
+def test_a_cast_the_user_started_resumes_when_the_panel_comes_back(
+    app: App, mic: FakeMic, tmp_home: Path, scheduler: SyncSendScheduler,
+) -> None:
+    """A cast is the panel's display source, like a media player or a module's
+    picture, and those come back on a reconnect or a restart -- so does a cast
+    (his decision, 2026-11-04), with its region and its microphone.
+
+    It was ended twice over: the restore's ``LoadTheme`` of the saved theme
+    ran ``StopScreencast`` (that theme carries no cast), which DELETED the
+    saved region -- and ``RestoreDeviceState`` had no cast branch to resume
+    it from anyway.
+
+    MUTATION CHECK: drop either half -- the ``picked`` guard on the
+    ``StopScreencast`` in ``LoadTheme``, or the cast branch in
+    ``RestoreDeviceState`` -- and this fails.
+    """
+    from trcc.core.commands import LoadTheme
+
+    from .conftest import renderable_theme
+
+    plain = renderable_theme(tmp_home / "themes", "Plain")
+    assert app.dispatch(LoadTheme(key=_KEY, path=plain)).ok
+    assert app.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+
+    _reconnect(app)
+
+    s = app.settings.for_device(_KEY)
+    assert s.screencast_region == (10, 20, 64, 48, True)
+    assert app.media.live_kind(_KEY) is PanelSource.SCREENCAST
+    assert task_key(_KEY) in scheduler._tasks
+    assert mic.running is True
+
+
+def test_a_cast_over_a_video_theme_resumes_without_the_video_taking_over(
+    app: App, mic: FakeMic, tmp_home: Path,
+) -> None:
+    """The theme restored under the cast has a video of its own: the restore
+    must not play it.  Its ``PlayVideo`` sets ``background_path``, and the
+    one-source rule clears the cast's region -- the media-player theme's bug
+    (``b088bb50``), one branch down.
+
+    MUTATION CHECK: drop the early return for a cast that stays in
+    ``LoadTheme`` and the region is cleared.
+    """
+    from trcc.core.commands import LoadTheme
+
+    from .conftest import renderable_theme
+    from .test_theme_persistence import _clip, _needs_ffmpeg
+
+    if _needs_ffmpeg.args[0]:
+        pytest.skip(_needs_ffmpeg.kwargs["reason"])
+    vid = renderable_theme(tmp_home / "themes", "Vid")
+    _clip(vid / "Theme.mp4")
+    assert app.dispatch(LoadTheme(key=_KEY, path=vid)).ok
+    assert app.dispatch(StartScreencast(key=_KEY, **_REGION)).ok
+
+    _reconnect(app)
+
+    s = app.settings.for_device(_KEY)
+    assert (s.screencast_region, s.background_path) == ((10, 20, 64, 48, False),
+                                                        None)
+    assert app.media.live_kind(_KEY) is PanelSource.SCREENCAST
+
+
+def test_a_cast_theme_comes_back_with_ONE_cast(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A theme saved while casting starts its own cast when it loads; the
+    restore after it must not start a second one over it (a second
+    ``ScreencastStarted``, the video stopped again, the capture reopened).
+
+    MUTATION CHECK: drop the "already running" check from
+    ``RestoreDeviceState`` and two starts are counted.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.commands import LoadTheme, SaveTheme
+    from trcc.core.events import ScreencastStarted
+
+    from .conftest import renderable_theme
+
+    # The real renderer: a save encodes the theme's thumbnail.
+    platform = FakePlatform(tmp_home)
+    app = App(platform=platform, send_scheduler=SyncSendScheduler(),
+              renderer=QtRenderer())
+    monkeypatch.setattr(app, "audio", FakeMic())
+    resp = bytearray(0xE100)
+    resp[0] = 100                      # FBL=100 → 320x320
+    platform.scsi.read_script.append(bytes(resp))
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    plain = renderable_theme(tmp_home / "themes", "Plain")
+    assert app.dispatch(LoadTheme(key=_KEY, path=plain)).ok
+    assert app.dispatch(StartScreencast(key=_KEY, **_REGION)).ok
+    saved = app.dispatch(SaveTheme(key=_KEY, name="castme"))
+    assert saved.ok, saved.message
+    assert app.dispatch(LoadTheme(
+        key=_KEY, path=Path(saved.message.split(" at ", 1)[1]))).ok
+    starts: list[str] = []
+    app.events.subscribe(ScreencastStarted, lambda e: starts.append(e.key))
+
+    _reconnect(app)
+
+    assert starts == [_KEY]
+    assert app.media.live_kind(_KEY) is PanelSource.SCREENCAST
+
+
+def test_a_cast_the_user_started_resumes_after_a_restart(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The restart half of the same decision: the App closes, a new one reads
+    ``trcc.json`` and restores -- and the cast is there again, mic and all."""
+    from trcc.core.commands import LoadTheme, RestoreDeviceState
+
+    from .conftest import renderable_theme
+
+    def started() -> tuple[App, FakeMic, SyncSendScheduler]:
+        platform = FakePlatform(tmp_home)
+        scheduler = SyncSendScheduler()
+        a = App(platform=platform, send_scheduler=scheduler,
+                renderer=_CliRenderer())
+        fake = FakeMic()
+        monkeypatch.setattr(a, "audio", fake)
+        resp = bytearray(0xE100)
+        resp[0] = 100                  # FBL=100 → 320x320
+        platform.scsi.read_script.append(bytes(resp))
+        assert a.dispatch(ConnectDevice(key=_KEY)).ok
+        return a, fake, scheduler
+
+    first, _, _ = started()
+    plain = renderable_theme(tmp_home / "themes", "Plain")
+    assert first.dispatch(LoadTheme(key=_KEY, path=plain)).ok
+    assert first.dispatch(StartScreencast(key=_KEY, audio=True, **_REGION)).ok
+    first.close()
+
+    app, mic, scheduler = started()
+    restored = app.dispatch(RestoreDeviceState(key=_KEY))
+
+    assert restored.ok, restored.message
+    assert app.settings.for_device(_KEY).screencast_region == (10, 20, 64, 48,
+                                                               True)
+    assert task_key(_KEY) in scheduler._tasks
+    assert mic.running is True
