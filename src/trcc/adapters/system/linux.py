@@ -1007,16 +1007,20 @@ class LinuxOS(BaseOS, key="linux"):
         return self._family.install_cmd.format(pkg=pkg)
 
     def _build_packages(self) -> PackageManager:
-        """Only the rpm families can be asked so far.
+        """The rpm and pacman families can be asked so far.
 
-        Verified against dnf5 + rpm on Fedora 44.  apt/pacman/zypper/apk/xbps
-        are absent rather than guessed: writing them from documentation is what
-        put four wrong package names in the tables this replaces.
+        Verified against dnf5 + rpm on Fedora 44 and pacman 7.1 in the Arch
+        container.  apt/zypper/apk/xbps are absent rather than guessed:
+        writing them from documentation is what put four wrong package names
+        in the tables this replaces.
         """
-        from ._packages import NoPackageManager, Rpm
+        from ._packages import NoPackageManager, Pacman, Rpm
         if self._family.manager == "dnf":
             log.info("%s._build_packages: rpm", type(self).__name__)
             return Rpm()
+        if self._family.manager == "pacman":
+            log.info("%s._build_packages: pacman", type(self).__name__)
+            return Pacman()
         log.info("%s._build_packages: %s not implemented yet — cannot be asked",
                  type(self).__name__, self._family.manager or "(none)")
         return NoPackageManager()

@@ -73,7 +73,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HardwarePort`](#hardwareport) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`ModuleStore`](#modulestore) | 4 | 0 | 1 |
-| [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
+| [`PackageManager`](#packagemanager) | 4 | 0 | 3 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 15 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 5 |
@@ -1122,7 +1122,7 @@ owns(path: 'str') -> str | None
 provides(path: 'str') -> str | None
 ```
 
-**Implementations (2):** `NoPackageManager` · `Rpm`
+**Implementations (3):** `NoPackageManager` · `Pacman` · `Rpm`
 
 ## PaintedVisual
 
