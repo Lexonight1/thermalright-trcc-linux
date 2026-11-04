@@ -61,6 +61,7 @@ from .core.models import (
     MODULE_FETCH_MAX_BYTES,
     MODULE_FETCH_TIMEOUT_S,
     Capability,
+    CoolerLights,
     DeviceInfo,
     DeviceQuirks,
     HardwareMetrics,
@@ -84,7 +85,6 @@ from .core.ports import (
     Diagnostics,
     FrameSource,
     GlSurface,
-    LedColorStream,
     LedSource,
     Module,
     ModuleServices,
@@ -162,7 +162,6 @@ class App(CommandBus, ModuleServices):
                  send_scheduler: SendScheduler | None = None,
                  data_install_runner: DataInstallRunner | None = None,
                  video_export_runner: VideoExportRunner | None = None,
-                 led_stream: LedColorStream | None = None,
                  modules: Mapping[str, type[Module] | ModuleSpec] | None = None,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
@@ -198,16 +197,11 @@ class App(CommandBus, ModuleServices):
         # cleared by DisconnectDevice.  Not persisted — these are tick
         # phase counters, not user prefs.
         self.led_runtime: dict[str, LedRuntimeState] = {}
-        # OpenRGB's colours for the OPENRGB LED mode, over DDP (#160): a
-        # listener opens only while a cooler is in that mode.
-        if led_stream is None:
-            from .adapters.infra.ddp_receiver import DdpReceiver
-            led_stream = DdpReceiver()
-        self.led_stream = led_stream
         # Live colours modules receive for a cooler (``LedSource``): shown over
-        # its own mode while they arrive.  Before the engine, which asks them.
+        # its own mode while they arrive -- OpenRGB's, through the RGB module
+        # (#160).  Before the engine, which asks them.
         self._led_sources: dict[str, LedSource] = {}
-        self.led_effects = LEDEffectEngine(led_stream, live=self.live_led_colors)
+        self.led_effects = LEDEffectEngine(live=self.live_led_colors)
         # Latest RAW sensor sample, cached from the MetricsLoop broadcast
         # (once per refresh_interval_s).  Per-tick consumers — RenderLed driven
         # by the 150 ms LedAnimationLoop — read THIS instead of re-polling the
@@ -706,6 +700,19 @@ class App(CommandBus, ModuleServices):
                  "closed" if source is not None else "none held")
         if source is not None:
             source.close()
+
+    def led_coolers(self) -> tuple[CoolerLights, ...]:
+        """The coolers connected now, each with the LED count it renders."""
+        from .services.led_segment import rendered_led_count
+        coolers = tuple(
+            CoolerLights(key=key, name=handshake.model_name or key,
+                         led_count=rendered_led_count(handshake.style))
+            for key, device in list(self.devices.items())
+            if device.is_connected
+            and (handshake := device.led_handshake) is not None
+            and handshake.style is not None)
+        log.debug("led_coolers: %s", [(c.key, c.led_count) for c in coolers])
+        return coolers
 
     def live_led_colors(self, key: str,
                         count: int) -> list[tuple[int, int, int]] | None:
@@ -1671,7 +1678,6 @@ class App(CommandBus, ModuleServices):
         self.update_watch.stop()
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
-        self.led_stream.stop()
         # Each module ends what it runs; the user's choice stays saved.
         self.modules.close()
         self.video_loop.stop()

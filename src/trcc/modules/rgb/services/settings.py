@@ -91,6 +91,10 @@ class RgbPrefs:
     # 1 (JSON keys are text).  The board cannot say: the header's data line
     # runs one way.  ``aura_argb_leds`` validates.
     aura_argb_leds: dict[str, int] = field(default_factory=dict)
+    # Each cooler's localhost DDP port for OpenRGB, by device key (#160): kept,
+    # so the DDP device the user entered in OpenRGB stays right across runs
+    # and plugging in another cooler.  ``ddp_port`` validates.
+    ddp_ports: dict[str, int] = field(default_factory=dict)
 
 
 def _prefs(raw: Mapping[str, Any]) -> RgbPrefs:
@@ -257,6 +261,24 @@ class RgbSettings:
                 self._prefs.aura_argb_leds = {}
             self._prefs.aura_argb_leds[str(header)] = leds
             self._save()
+
+    def ddp_port(self, key: str, base: int) -> int:
+        """Cooler *key*'s DDP port -- the one it had, else the next after the
+        highest given (*base* first) -- saved, so OpenRGB's entry for it
+        stays right."""
+        with self._lock:
+            raw = self._prefs.ddp_ports
+            ports = ({k: v for k, v in raw.items() if type(v) is int
+                      and 0 < v < 65536} if isinstance(raw, dict) else {})
+            if key in ports:
+                log.debug("ddp_port: %s -> %d (kept)", key, ports[key])
+                return ports[key]
+            port = max(ports.values(), default=base - 1) + 1
+            ports[key] = port
+            self._prefs.ddp_ports = ports
+            self._save()
+        log.info("ddp_port: %s -> %d (new)", key, port)
+        return port
 
     def rgb_follow_targets(self) -> tuple[str, ...]:
         """The lights that follow (refs); anything not a list of text is all.

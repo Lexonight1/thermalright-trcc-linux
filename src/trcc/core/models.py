@@ -529,6 +529,16 @@ class HandshakeResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CoolerLights:
+    """A cooler a module may light (``LightsPort.coolers``): *led_count* is
+    how many colours one of its renders draws -- what a sender such as OpenRGB
+    must be told it has."""
+    key: str
+    name: str
+    led_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class LedHandshakeResult:
     """LED handshake — style + model identifier."""
     pm: int

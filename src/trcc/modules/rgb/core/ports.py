@@ -73,3 +73,31 @@ class RamLights(RgbMirror):
         ``ValueError`` for settings the effect cannot take, before anything
         is written; ``OSError`` when the stick does not take it.
         """
+
+
+class DdpListener(ABC):
+    """One cooler's localhost port, receiving the colours OpenRGB sends it
+    over DDP (#160).  Opened at construction; ``error`` says why not."""
+
+    @property
+    @abstractmethod
+    def port(self) -> int:
+        """The port OpenRGB's DDP device must name."""
+
+    @property
+    @abstractmethod
+    def error(self) -> str:
+        """Why the port could not be opened ("" when it is open)."""
+
+    @property
+    @abstractmethod
+    def last_packet(self) -> float | None:
+        """When the last packet arrived (``time.monotonic``), or None."""
+
+    @abstractmethod
+    def colors(self, count: int) -> list[tuple[int, int, int]]:
+        """The newest frame's first *count* colours, black past its end."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Stop listening (idempotent)."""

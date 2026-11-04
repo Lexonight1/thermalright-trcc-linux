@@ -738,13 +738,14 @@ def _no_privileged_commands() -> Iterator[list[tuple[str, str]]]:
 
 @pytest.fixture(scope="session", autouse=True)
 def _no_real_ddp_port() -> Iterator[None]:
-    """A cooler in the OpenRGB LED mode opens a DDP listener; in the suite it
-    takes a port the OS picks, never 4048 -- the developer's own OpenRGB or
-    WLED tools may be on it, and parallel workers would fight for it."""
-    from trcc.adapters.infra import ddp_receiver
+    """RGB Lighting opens a DDP port per cooler for OpenRGB; in the suite each
+    takes a port the OS picks, never 4048 and up -- the developer's own
+    OpenRGB or WLED tools may be on them, and parallel workers would fight."""
+    import trcc.modules.rgb.app as rgb_app
+    from trcc.modules.rgb.adapters.ddp import DdpPort
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(ddp_receiver, "DDP_PORT", 0)
+        mp.setattr(rgb_app, "DdpPort", lambda port: DdpPort(0))
         yield
 
 

@@ -24,6 +24,7 @@ from .models import (
     FAN_SLOT_KEYWORDS,
     MIN_REFRESH_INTERVAL_S,
     BoardIdentity,
+    CoolerLights,
     HidInterface,
     ModuleManifest,
     PanelPicture,
@@ -2830,6 +2831,10 @@ class LightsPort(ABC):
         """Show *source*'s live colours on each cooler it has them for, over
         the cooler's own mode; taken back when the module stops."""
 
+    @abstractmethod
+    def coolers(self) -> tuple[CoolerLights, ...]:
+        """The coolers connected now, each with the LED count it renders."""
+
 
 class PasswordPort(ABC):
     """The ``password`` capability: system access the user grants once."""
@@ -2996,6 +3001,9 @@ class ModuleServices(ABC):
     def remove_led_source(self, module: str) -> None: ...
 
     @abstractmethod
+    def led_coolers(self) -> tuple[CoolerLights, ...]: ...
+
+    @abstractmethod
     def remove_background_kind(self, prefix: str) -> None: ...
 
     @abstractmethod
@@ -3151,29 +3159,6 @@ class Module(ABC):
         when it can."""
         log.debug("Module %s: no problem", self.key)
         return ""
-
-
-class LedColorStream(ABC):
-    """Colours another program streams for a cooler's LEDs -- OpenRGB, over
-    DDP (#160).  The ``OPENRGB`` LED mode shows them; nothing listens until a
-    cooler is in that mode.
-
-    Concrete: ``DdpReceiver`` (``adapters/infra/ddp_receiver.py``).
-    """
-
-    @abstractmethod
-    def colors(self, count: int) -> list[tuple[int, int, int]]:
-        """The newest frame's first *count* colours, black past its end.
-        Starts listening on first use."""
-
-    @abstractmethod
-    def stop(self) -> None:
-        """Stop listening (idempotent)."""
-
-    @property
-    @abstractmethod
-    def listening(self) -> bool:
-        """Whether a listener is open."""
 
 
 class LedSource(ABC):

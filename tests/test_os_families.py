@@ -101,8 +101,8 @@ def test_an_aur_install_is_told_to_upgrade_the_aur_package(
     refuses.  Whoever owns TRCC's installed files decides: someone else's
     package upgrades the way it came; ours, or no answer, keeps the release's.
 
-    MUTATION CHECK: drop the foreign-owner branch of ``upgrade_hint`` and the
-    AUR case gets the pacman -U line."""
+    MUTATION CHECK: drop the "someone else's package" return in
+    ``upgrade_hint`` and the AUR case gets the pacman -U line."""
     from trcc.adapters.system import _packages
 
     asked: list[str] = []

@@ -33,7 +33,7 @@ from ...core.commands import (
     ToggleLed,
 )
 from ...core.errors import TrccError
-from ...core.led_models import LEDMode
+from ...core.led_models import LEDMode, parse_led_mode
 from ._ctx import (
     daemon_owns_the_panels,
     dispatch_echo,
@@ -61,14 +61,10 @@ def _parse_hex_color(raw: str) -> tuple[int, int, int]:
 def _parse_mode(raw: str) -> LEDMode:
     """Parse a mode name (case-insensitive) into a LEDMode."""
     log.debug("_parse_mode: raw=%s", raw)
-    key = raw.upper()
     try:
-        return LEDMode[key]
-    except KeyError as e:
-        names = ", ".join(m.name.lower() for m in LEDMode)
-        raise typer.BadParameter(
-            f"Unknown LED mode {raw!r}; expected one of: {names}"
-        ) from e
+        return parse_led_mode(raw)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
 
 
 @app.command("set-colors")

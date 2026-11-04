@@ -1,23 +1,28 @@
-"""The OpenRGB LED mode: a cooler shows the colours OpenRGB sends over DDP (#160).
+"""OpenRGB drives a cooler -- automatically (#160, #333).
 
-The packets are shaped exactly as OpenRGB's sender writes them
-(``Controllers/DDPController``, OpenRGB 1.0): flags 0x41 (version 1, push),
-data type 1, destination 1, a big-endian offset and length, then RGB.
+With RGB Lighting on, each cooler has its own localhost DDP port; colours
+OpenRGB sends there show over the cooler's own mode, and the mode is back
+``LIVE_FOR_S`` after they stop.  No LED mode, no switch.  The packets are
+shaped exactly as OpenRGB's sender writes them (``Controllers/DDPController``,
+OpenRGB 1.0): flags 0x41 (version 1, push), data type 1, destination 1, a
+big-endian offset and length, then RGB.
 """
 from __future__ import annotations
 
 import socket
 import time
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-from trcc.adapters.infra.ddp_receiver import DdpReceiver, apply_packet
 from trcc.app import App
 from trcc.core.commands import RenderLed, SetLedBrightness, SetLedMode
-from trcc.core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
-from trcc.core.ports import LedColorStream, LedSource
-from trcc.services.led_effects import LEDEffectEngine
+from trcc.core.led_models import LEDMode
+from trcc.core.models import CoolerLights
+from trcc.core.ports import LedSource
+from trcc.modules.rgb.adapters.ddp import DdpPort, apply_packet
+from trcc.modules.rgb.core.ports import DdpListener
+from trcc.modules.rgb.services.openrgb_lights import LIVE_FOR_S, OpenRgbLights
 
 from .conftest import FakePlatform
 from .test_render_led import _LED_KEY, _attach_and_connect
@@ -54,130 +59,191 @@ def test_anything_else_is_ignored(packet: bytes) -> None:
     assert (apply_packet(frame, packet), bytes(frame)) == (False, b"\x09\x09\x09")
 
 
-def test_the_receiver_takes_real_packets_and_lets_go() -> None:
-    """A real socket on localhost: OpenRGB's packet in, the colours out,
-    the port closed on stop.  Black past what was sent."""
-    receiver = DdpReceiver(port=0)
+def _arrives(port: DdpPort, colors: int = 2) -> list[tuple[int, int, int]]:
+    """The port's colours once the first packet landed (3 s at most)."""
+    deadline = time.monotonic() + 3
+    while port.last_packet is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return port.colors(colors)
+
+
+def test_a_port_takes_real_packets_and_lets_go() -> None:
+    """A real socket on localhost: OpenRGB's packet in, the colours out and
+    when, the port closed.  Black past what was sent."""
+    port = DdpPort(0)
     try:
-        assert receiver.colors(2) == [(0, 0, 0), (0, 0, 0)]      # starts it
+        assert (port.error, port.last_packet) == ("", None)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
-            sender.sendto(_packet(b"\x0a\x14\x1e"), ("127.0.0.1", receiver.port))
-        deadline = time.monotonic() + 3
-        while receiver.colors(2)[0] == (0, 0, 0) and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert receiver.colors(2) == [(10, 20, 30), (0, 0, 0)]
+            sender.sendto(_packet(b"\x0a\x14\x1e"), ("127.0.0.1", port.port))
+        assert _arrives(port) == [(10, 20, 30), (0, 0, 0)]
+        assert port.last_packet is not None
     finally:
-        receiver.stop()
-    assert receiver.listening is False
+        port.close()
+    assert port._sock is None
 
 
-def test_only_this_computer_can_drive_the_cooler() -> None:
-    """Bound to 127.0.0.1: nothing on the network can set the cooler's
+def test_only_this_computer_can_drive_a_cooler() -> None:
+    """Bound to 127.0.0.1: nothing on the network can set a cooler's
     colours.  MUTATION CHECK: bind 0.0.0.0."""
-    receiver = DdpReceiver(port=0)
+    port = DdpPort(0)
     try:
-        receiver.colors(1)
-        assert receiver._sock is not None
-        assert receiver._sock.getsockname()[0] == "127.0.0.1"
+        assert port._sock is not None
+        assert port._sock.getsockname()[0] == "127.0.0.1"
     finally:
-        receiver.stop()
+        port.close()
 
 
-class _Stream(LedColorStream):
-    """OpenRGB, scripted: one colour on every LED."""
+def test_a_taken_port_says_so_and_listens_to_nothing() -> None:
+    """Another program on the port: said, in the words the RGB page shows;
+    no listener, no crash."""
+    holder = DdpPort(0)
+    try:
+        taken = DdpPort(holder.port)
+        assert taken.error.startswith(f"port {holder.port} is taken")
+        assert (taken._sock, taken.last_packet) == (None, None)
+        taken.close()
+    finally:
+        holder.close()
 
-    def __init__(self, color: tuple[int, int, int] = (10, 20, 30)) -> None:
-        self.color, self.on, self.stops = color, False, 0
 
-    def colors(self, count: int) -> list[tuple[int, int, int]]:
-        self.on = True
-        return [self.color] * count
+# ── OpenRgbLights: a port per cooler, live while packets come ──────────────
 
-    def stop(self) -> None:
-        self.on, self.stops = False, self.stops + 1
+class _Listener(DdpListener):
+    """A port, scripted: *colour* on every LED, the last packet at *last*."""
+
+    def __init__(self, port: int) -> None:
+        self._port, self.closed = port, 0
+        self.last: float | None = None
+        self.colour = (1, 2, 3)
 
     @property
-    def listening(self) -> bool:
-        return self.on
+    def port(self) -> int:
+        return self._port
 
+    @property
+    def error(self) -> str:
+        return ""
 
-def test_the_mode_shows_the_stream_and_no_stream_is_dark() -> None:
-    settings = LedDeviceSettings(mode=LEDMode.OPENRGB)
-    lit = LEDEffectEngine(_Stream()).tick(settings, LedRuntimeState(), {},
-                                          led_count=3)
-    dark = LEDEffectEngine().tick(settings, LedRuntimeState(), {}, led_count=3)
-    assert (lit, dark) == ([(10, 20, 30)] * 3, [(0, 0, 0)] * 3)
-
-
-def _openrgb_app(fake_platform: FakePlatform) -> tuple[App, _Stream]:
-    from .conftest import _CliRenderer
-
-    stream = _Stream()
-    app = App(fake_platform, renderer=_CliRenderer(),
-              led_stream=stream)
-    _attach_and_connect(app, fake_platform, pm=1)        # AX120: digits
-    return app, stream
-
-
-def test_a_cooler_in_the_mode_lights_with_openrgbs_colours(
-        fake_platform: FakePlatform) -> None:
-    """The whole chain: the Command every UI sends, then a render.
-    MUTATION CHECK: drop the OPENRGB case in LEDEffectEngine._tick_mode."""
-    app, _stream = _openrgb_app(fake_platform)
-    assert app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.OPENRGB)).ok
-    # The cooler's own brightness still applies on top: at 100, exact.
-    assert app.dispatch(SetLedBrightness(key=_LED_KEY, percent=100)).ok
-    colors = app.dispatch(RenderLed(key=_LED_KEY)).colors
-    assert colors and set(colors) == {(10, 20, 30)}
-
-
-class _Gradient(_Stream):
-    """OpenRGB sending a different colour to every LED: pixel i = (i, 0, 0)."""
+    @property
+    def last_packet(self) -> float | None:
+        return self.last
 
     def colors(self, count: int) -> list[tuple[int, int, int]]:
-        self.on = True
-        return [(i, 0, 0) for i in range(count)]
+        return [self.colour] * count
+
+    def close(self) -> None:
+        self.closed += 1
 
 
-@pytest.mark.parametrize("pm", [16, 1])        # PA120 (four zones), AX120 (digits)
-def test_each_led_shows_its_own_pixel(fake_platform: FakePlatform, pm: int) -> None:
-    """LED i shows OpenRGB's pixel i, on a zoned cooler and a digit display
-    alike.  Measured before: a PA120 showed 4 distinct colours of 84 -- every
-    zone repeated the start of the frame.  MUTATION CHECK: hand a zone the
-    first N pixels instead of its own indices."""
-    from .conftest import _CliRenderer
-
-    app = App(fake_platform, renderer=_CliRenderer(),
-              led_stream=_Gradient())
-    _attach_and_connect(app, fake_platform, pm=pm)
-    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.OPENRGB))
-    app.dispatch(SetLedBrightness(key=_LED_KEY, percent=100))
-    colors = app.dispatch(RenderLed(key=_LED_KEY)).colors
-    lit = [(i, c) for i, c in enumerate(colors) if c != (0, 0, 0)]
-    assert len(lit) > len(colors) // 2
-    assert all(c == (i, 0, 0) for i, c in lit)
+def _cooler(key: str, leds: int = 30) -> CoolerLights:
+    return CoolerLights(key=key, name=key, led_count=leds)
 
 
-def test_the_listener_closes_once_no_cooler_shows_openrgb(
-        fake_platform: FakePlatform) -> None:
-    """No open port while nothing needs it.  MUTATION CHECK: drop the stop
-    in LedAnimationLoop.tick."""
-    app, stream = _openrgb_app(fake_platform)
-    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.OPENRGB))
-    app.led_animation_loop.tick()                       # renders: listening
-    assert (stream.listening, stream.stops) == (True, 0)
-    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.RAINBOW))
-    app.led_animation_loop.tick()
-    assert (stream.listening, stream.stops) == (False, 1)
+def _lights(clock: list[float]) -> tuple[OpenRgbLights, dict[int, _Listener]]:
+    """Ports handed out from 4048 in order of first sight, on a clock the
+    test moves."""
+    opened: dict[int, _Listener] = {}
+    given: dict[str, int] = {}
+
+    def port_for(key: str) -> int:
+        return given.setdefault(key, 4048 + len(given))
+
+    def open_port(port: int) -> _Listener:
+        opened[port] = _Listener(port)
+        return opened[port]
+
+    return OpenRgbLights(open_port, port_for, clock=lambda: clock[0]), opened
 
 
-def test_the_cli_switches_a_cooler_to_openrgb(cli_runner: Any, cli_app: App) -> None:
-    """``trcc led mode KEY openrgb``: the CLI's name for it, persisted."""
+def test_each_cooler_gets_its_own_port_and_a_gone_one_is_closed() -> None:
+    lights, opened = _lights([0.0])
+    lights.watch([_cooler("a"), _cooler("b")])
+    lights.watch([_cooler("b")])
+
+    assert sorted(opened) == [4048, 4049]
+    assert (opened[4048].closed, opened[4049].closed) == (1, 0)
+    assert [(c.key, port) for c, port, _ in lights.addresses()] == [("b", 4049)]
+
+
+def test_colours_are_live_while_packets_come_and_the_mode_is_back_after() -> None:
+    """None before any packet; live within ``LIVE_FOR_S`` of the last; None
+    after -- the cooler shows its own mode again, the way WLED does.
+    MUTATION CHECK: drop the age test in ``OpenRgbLights.live``."""
+    clock = [100.0]
+    lights, opened = _lights(clock)
+    lights.watch([_cooler("a")])
+    before = lights.live("a", 2)
+    opened[4048].last = 100.0
+    clock[0] = 100.0 + LIVE_FOR_S
+    during = lights.live("a", 2)
+    clock[0] += 0.01
+
+    assert (before, during, lights.live("a", 2), lights.live("b", 2)) == (
+        None, [(1, 2, 3)] * 2, None, None)
+
+
+def test_close_closes_every_port() -> None:
+    lights, opened = _lights([0.0])
+    lights.watch([_cooler("a"), _cooler("b")])
+    lights.close()
+    assert [p.closed for p in opened.values()] == [1, 1]
+    assert lights.addresses() == ()
+
+
+def test_a_coolers_port_is_kept_across_runs(tmp_home: Any) -> None:
+    """OpenRGB's DDP device names the port: a restart, or another cooler
+    plugged in, must not move it."""
+    from trcc.core.ports import SettingsPort
+    from trcc.modules.rgb.services.settings import RgbSettings
+
+    store: dict[str, Any] = {}
+
+    class _Port:
+        def app(self) -> dict[str, Any]:
+            return dict(store)
+
+        def save_app(self, data: dict[str, Any]) -> None:
+            store.clear()
+            store.update(data)
+
+    first = RgbSettings(cast("SettingsPort", _Port()))
+    assert (first.ddp_port("a", 4048), first.ddp_port("b", 4048)) == (4048, 4049)
+    again = RgbSettings(cast("SettingsPort", _Port()))
+    assert (again.ddp_port("b", 4048), again.ddp_port("c", 4048)) == (4049, 4050)
+
+
+# ── The OpenRGB mode is retired ───────────────────────────────────────────
+
+@pytest.mark.parametrize("zone", [False, True])
+def test_a_cooler_saved_in_the_openrgb_mode_loads_as_static(zone: bool) -> None:
+    """9.12 saved OpenRGB as mode 6; it is automatic now, so 6 loads as
+    STATIC -- not dropped to the field's default, which for a whole cooler is
+    RAINBOW.  (A zone's default is STATIC already, so only the cooler case can
+    catch a lost migration.)  MUTATION CHECK: drop the retired-mode branch of
+    ``_led_mode`` -> the cooler case fails."""
+    from trcc.services.settings import _led_settings_from_dict, _led_zone_from_dict
+
+    loaded = (_led_zone_from_dict({"mode": 6}) if zone
+              else _led_settings_from_dict({"mode": 6}))
+    assert loaded.mode is LEDMode.STATIC
+
+
+def test_the_cli_says_openrgb_is_automatic_now(cli_runner: Any, cli_app: App) -> None:
+    from trcc.core.led_models import OPENRGB_IS_AUTOMATIC
     from trcc.ui.cli.main import app
 
     result = cli_runner.invoke(app, ["led", "mode", "0416:8001", "openrgb"])
-    assert result.exit_code == 0, result.output
-    assert cli_app.settings.for_led("0416:8001").mode is LEDMode.OPENRGB
+
+    assert result.exit_code != 0
+    assert " ".join(OPENRGB_IS_AUTOMATIC.split()[:6]) in " ".join(result.output.split())
+
+
+def test_the_modes_are_the_c_sharp_six() -> None:
+    """The row the art has six tiles for (#333)."""
+    from trcc.core.led_models import LED_MODE_LABELS
+    assert ([m.name for m in LEDMode], LED_MODE_LABELS) == (
+        ["STATIC", "BREATHING", "COLORFUL", "RAINBOW", "TEMP_LINKED", "LOAD_LINKED"],
+        ["Solid", "Breathe", "Color Cycle", "Rainbow", "Temp Linked", "Load Linked"])
 
 
 # ── Live colours a module receives (LedSource): over the mode, while they come ──

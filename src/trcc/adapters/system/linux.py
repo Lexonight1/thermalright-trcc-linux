@@ -793,7 +793,13 @@ class LinuxOS(BaseOS, key="linux"):
         ``dry_run=True`` prints what would be done and returns 0
         without touching the system.
         """
-        log.info("LinuxOS.setup: dry_run=%s", dry_run)
+        # A package install's /usr is its package's: asked by install METHOD,
+        # not per file -- ``owns`` can only ask rpm, so on apt every file read
+        # "unowned" and setup wrote into /usr over or ahead of the package
+        # (#333).  An atomic image's layered package lands here too.
+        package_owns_usr = self.install_method() == "package"
+        log.info("LinuxOS.setup: dry_run=%s package_owns_usr=%s", dry_run,
+                 package_owns_usr)
         if dry_run:
             log.info("=== dry run (pass dry_run=False to apply) ===")
             install_udev_rules(dry_run=True)
@@ -806,7 +812,7 @@ class LinuxOS(BaseOS, key="linux"):
             log.info("would install and start the App's user service: %s",
                      SystemdUserService().path)
             retire_legacy_polkit(dry_run=True)
-            if self._package_owns_usr():
+            if package_owns_usr:
                 log.info("would leave TRCC's polkit files to the package")
             else:
                 install_polkit_files(dry_run=True, owns=self.packages().owns)
@@ -831,22 +837,10 @@ class LinuxOS(BaseOS, key="linux"):
         rc_polkit = retire_legacy_polkit(dry_run=False)
         # After the retirement above, which keeps a policy naming only our
         # /usr/bin/trcc-* helpers -- exactly the one this installs.
-        rc_helpers = (0 if self._package_owns_usr()
+        rc_helpers = (0 if package_owns_usr
                       else install_polkit_files(dry_run=False,
                                                 owns=self.packages().owns))
         return rc_udev or rc_selinux or rc_polkit or rc_helpers
-
-    def _package_owns_usr(self) -> bool:
-        """Whether a distro package installed TRCC, so /usr is the package's.
-
-        Asked by install METHOD, not per file: ``owns`` can only ask rpm, so on
-        pacman and apt every file read "unowned" and setup wrote into /usr --
-        over a package's own copies, or ahead of the package that would ship
-        them next (#333).  An atomic image's layered package lands here too,
-        and its image already carries the files."""
-        packaged = self.install_method() == "package"
-        log.info("_package_owns_usr: %s", packaged)
-        return packaged
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
@@ -1049,7 +1043,13 @@ class LinuxOS(BaseOS, key="linux"):
         Telling an AUR install to ``pacman -U`` trcc-linux names a second
         package owning the same files, which pacman refuses (#333)."""
         if self.install_method() == "package":
-            if (owner := self._foreign_owner()) is not None:
+            # Only a family that can name an owner asks (``foreign_upgrade``).
+            owner = None
+            if self._family.foreign_upgrade:
+                import trcc
+                owner = self.packages().owns(str(Path(trcc.__file__).resolve()))
+                log.info("upgrade_hint: TRCC's files belong to %s", owner)
+            if owner not in (None, _OUR_PACKAGE):
                 hint = self._family.foreign_upgrade.format(pkg=owner)
                 log.info("upgrade_hint: %s installed by %s -> %s",
                          self._family.name, owner, hint)
@@ -1059,19 +1059,6 @@ class LinuxOS(BaseOS, key="linux"):
                          self._family.package_upgrade)
                 return self._family.package_upgrade
         return super().upgrade_hint()
-
-    def _foreign_owner(self) -> str | None:
-        """The package, other than TRCC's own, that installed this TRCC --
-        None when it is ours, or this family cannot say (no
-        :attr:`LinuxFamily.foreign_upgrade`: nothing is asked)."""
-        if not self._family.foreign_upgrade:
-            log.debug("_foreign_owner: %s cannot name an owner", self._family.name)
-            return None
-        import trcc
-        owner = self.packages().owns(str(Path(trcc.__file__).resolve()))
-        foreign = owner if owner not in (None, _OUR_PACKAGE) else None
-        log.info("_foreign_owner: TRCC's files belong to %s -> %s", owner, foreign)
-        return foreign
 
     def software_install_hint(self, tool: str) -> str:
         """Install line for a logical tool, in this family's package manager.

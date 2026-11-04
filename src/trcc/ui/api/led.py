@@ -29,7 +29,7 @@ from ...core.commands import (
     SetWeekStart,
     ToggleLed,
 )
-from ...core.led_models import LEDMode
+from ...core.led_models import parse_led_mode
 from ...core.results import (
     ClockFormatResult,
     LedColorsResult,
@@ -108,9 +108,9 @@ def set_mode(key: str, body: LedModeRequest,
         "api POST /devices/{key}/led/mode: key=%s mode=%s", key, body.mode,
     )
     try:
-        mode = LEDMode[body.mode.upper()]
-    except KeyError as e:
-        raise HTTPException(400, f"Unknown LED mode: {body.mode!r}") from e
+        mode = parse_led_mode(body.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     result = request.app.state.trcc.dispatch(SetLedMode(key=key, mode=mode))
     http_error_if_failed(result)
     return result
@@ -224,9 +224,9 @@ def zone_mode(key: str, body: LedZoneModeRequest,
         key, body.zone, body.mode,
     )
     try:
-        mode = LEDMode[body.mode.upper()]
-    except KeyError as e:
-        raise HTTPException(400, f"Unknown LED mode: {body.mode!r}") from e
+        mode = parse_led_mode(body.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     result = request.app.state.trcc.dispatch(
         SetLedZoneMode(key=key, zone=body.zone, mode=mode),
     )

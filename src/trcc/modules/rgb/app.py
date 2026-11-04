@@ -21,15 +21,22 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from trcc.adapters.modules import BaseModule
-from trcc.core.events import Event, LedColorsChanged
+from trcc.core.events import (
+    DeviceConnected,
+    DeviceDisconnected,
+    Event,
+    LedColorsChanged,
+)
 from trcc.core.logs import per_frame
 from trcc.core.models import PanelPicture, RamAccessState
 from trcc.core.ports import ModuleHost, RamAccess
 
 from .adapters import make_board_driver, make_mirror
+from .adapters.ddp import DDP_PORT, DdpPort
 from .adapters.openrgb import OpenRgbMirror
 from .core.events import RgbFollowSent
 from .core.models import EFFECT_SOURCE, FollowColors, FollowMapping, RgbFollowMode
+from .services.openrgb_lights import OpenRgbLights
 from .services.rgb_boards import MotherboardFinder
 from .services.rgb_mirror import Columns, RgbMirrorService
 from .services.settings import RgbSettings
@@ -63,6 +70,8 @@ class RgbModule(BaseModule, key="rgb"):
     def __init__(self) -> None:
         log.debug("RgbModule.__init__")
         self._watching = False
+        # OpenRGB's ports open with the session, never before (#160).
+        self._listening = False
 
     # ── switching ──────────────────────────────────────────────────────
 
@@ -79,12 +88,21 @@ class RgbModule(BaseModule, key="rgb"):
                     board=self.boards.driver, openrgb=self._openrgb),
             on_sent=self._sent, readings=host.readings.latest)
         host.subscribe(LedColorsChanged, self.mirror.on_colors)
+        # OpenRGB drives the coolers -- automatically: a port per cooler, its
+        # colours over the cooler's own mode while they come (#160, #333).
+        self.lights = OpenRgbLights(
+            DdpPort, partial(self.settings.ddp_port, base=DDP_PORT))
+        host.lights.add_source(self.lights)
+        host.subscribe(DeviceConnected, self._coolers_changed)
+        host.subscribe(DeviceDisconnected, self._coolers_changed)
         log.info("rgb: on")
 
     def start(self, host: ModuleHost) -> None:
         """The session started: follow again as the settings say."""
         log.info("rgb: session started")
         self.resume_following()
+        self._listening = True
+        self.lights.watch(host.lights.coolers())
 
     def stop(self, host: ModuleHost) -> None:
         """The session ended, or the module is off: stop following and
@@ -92,12 +110,16 @@ class RgbModule(BaseModule, key="rgb"):
         log.info("rgb: stopping")
         self._watch_frames(False)
         self.mirror.close()
+        self._listening = False
+        self.lights.close()
 
     def _disable(self, host: ModuleHost) -> None:
         """Off: a follower a one-off Command started is let go too."""
         log.info("rgb: off")
         self._watch_frames(False)
         self.mirror.close()
+        self._listening = False
+        self.lights.close()
 
     def turning_off(self, host: ModuleHost) -> str:
         """The user switches RGB off: TRCC's permission to reach the memory's
@@ -145,6 +167,14 @@ class RgbModule(BaseModule, key="rgb"):
                        settings.rgb_follow_mapping(), settings.rgb_follow_targets(),
                        colors=settings.rgb_follow_colors(),
                        effects=settings.follow_effects())
+
+    def _coolers_changed(self, event: Event) -> None:
+        """A device came or went: OpenRGB's ports follow the coolers -- once
+        the session has started."""
+        log.info("rgb: %s -- coolers changed (listening=%s)",
+                 type(event).__name__, self._listening)
+        if self._listening:
+            self.lights.watch(self.host.lights.coolers())
 
     def publish(self, event: Event) -> None:
         """Tell every UI."""

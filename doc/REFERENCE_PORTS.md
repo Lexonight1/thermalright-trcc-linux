@@ -15,7 +15,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
-| [`LightsPort`](#lightsport) | 1 | 0 | 1 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`ModuleCommand`](#modulecommand) | 1 | 1 | 17 |
 | [`ModuleQuery`](#modulequery) | 1 | 0 | 5 |
@@ -36,7 +35,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`LedSource`](#ledsource) | 2 | 0 | 0 |
+| [`LedSource`](#ledsource) | 2 | 0 | 1 |
+| [`LightsPort`](#lightsport) | 2 | 0 | 1 |
 | [`Module`](#module) | 2 | 10 | 2 |
 | [`ModuleDevices`](#moduledevices) | 2 | 0 | 4 |
 | [`PanelsPort`](#panelsport) | 2 | 0 | 1 |
@@ -58,7 +58,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuSource`](#gpusource) | 3 | 10 | 14 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
-| [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
 | [`ModuleHost`](#modulehost) | 3 | 13 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 3 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
@@ -82,6 +81,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 2 | 2 |
+| [`DdpListener`](#ddplistener) | 5 | 0 | 1 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
@@ -95,7 +95,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 9 | 8 |
 | [`ContentStore`](#contentstore) | 32 | 0 | 1 |
-| [`ModuleServices`](#moduleservices) | 34 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 35 | 0 | 1 |
 
 ---
 
@@ -174,20 +174,6 @@ fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None, all
 ```
 
 **Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`
-
-## LightsPort
-
-`core/ports.py`
-
-The ``lights`` capability: colours on a cooler's LEDs.
-
-**You implement (1):**
-
-```python
-add_source(source: 'LedSource') -> None
-```
-
-**Implementations (1):** `_Lights`
 
 ## MissPolicy
 
@@ -500,7 +486,22 @@ close() -> None
 live(key: 'str', count: 'int') -> list[tuple[int, int, int]] | None
 ```
 
-**Implementations (0):** _none yet_
+**Implementations (1):** `OpenRgbLights`
+
+## LightsPort
+
+`core/ports.py`
+
+The ``lights`` capability: colours on a cooler's LEDs.
+
+**You implement (2):**
+
+```python
+add_source(source: 'LedSource') -> None
+coolers() -> tuple[CoolerLights, ...]
+```
+
+**Implementations (1):** `_Lights`
 
 ## Module
 
@@ -850,22 +851,6 @@ listen() -> Any
 **You inherit (1):** `reachable`
 
 **Implementations (2):** `NamedPipeChannel` · `UnixSocketChannel`
-
-## LedColorStream
-
-`core/ports.py`
-
-Colours another program streams for a cooler's LEDs -- OpenRGB, over DDP (#160).  The ``OPENRGB`` LED mode shows them; nothing listens until a cooler is in that mode.
-
-**You implement (3):**
-
-```python
-colors(count: 'int') -> list[tuple[int, int, int]]
-listening() -> bool
-stop() -> None
-```
-
-**Implementations (1):** `DdpReceiver`
 
 ## ModuleHost
 
@@ -1269,6 +1254,24 @@ write(endpoint: 'int', data: 'WriteBuffer', timeout_ms: 'int' = 100) -> int
 
 **Implementations (2):** `HidApiTransport` · `PyUsbBulkTransport`
 
+## DdpListener
+
+`modules/rgb/core/ports.py`
+
+One cooler's localhost port, receiving the colours OpenRGB sends it over DDP (#160).  Opened at construction; ``error`` says why not.
+
+**You implement (5):**
+
+```python
+close() -> None
+colors(count: 'int') -> list[tuple[int, int, int]]
+error() -> str
+last_packet() -> float | None
+port() -> int
+```
+
+**Implementations (1):** `DdpPort`
+
 ## GlVisual
 
 `modules/visualizer/adapters/_base.py`
@@ -1596,7 +1599,7 @@ write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 
 The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
 
-**You implement (34):**
+**You implement (35):**
 
 ```python
 add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
@@ -1608,6 +1611,7 @@ fetch(url: 'str', allow: 'Callable[[str], bool]') -> bytes
 gl_surface() -> type[GlSurface] | None
 hardware_ids() -> RgbHardware
 latest_readings() -> Mapping[str, float] | None
+led_coolers() -> tuple[CoolerLights, ...]
 memory_access() -> RamAccess
 module_settings(module: 'str') -> dict[str, Any]
 open_hid(vid: 'int', pid: 'int', report_id: 'int') -> Transport

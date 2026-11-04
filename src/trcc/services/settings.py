@@ -26,7 +26,13 @@ from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 from ..core._colors import rgb_rows
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
-from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings, one_hot
+from ..core.led_models import (
+    RETIRED_OPENRGB_MODE,
+    LedDeviceSettings,
+    LEDMode,
+    LedZoneSettings,
+    one_hot,
+)
 from ..core.logs import per_frame
 from ..core.models import (
     DATE_FORMATS,
@@ -1550,6 +1556,21 @@ def _only_source(dev: DeviceSettings, keep: str) -> None:
     dev.pending_background = None
 
 
+def _led_mode(value: int) -> LEDMode | None:
+    """A saved LED mode -- the retired OpenRGB one (6) as STATIC: OpenRGB is
+    automatic now, so the cooler loses nothing (#160, #333); an unknown one
+    None, and the field's default stands."""
+    if value == RETIRED_OPENRGB_MODE:
+        log.info("_led_mode: the retired OpenRGB mode -> STATIC (OpenRGB is "
+                 "automatic now)")
+        return LEDMode.STATIC
+    try:
+        return LEDMode(value)
+    except ValueError:
+        log.warning("_led_mode: unknown saved mode %r -- the default stands", value)
+        return None
+
+
 def _rgb_list(value: Any) -> Any:
     """``[[r, g, b], ...]`` -> a list of tuples; a malformed row is dropped."""
     log.debug("_rgb_list: %r", value)
@@ -1645,9 +1666,8 @@ def _led_zone_from_dict(data: dict[str, Any]) -> LedZoneSettings:
         if k in valid:
             kwargs[k] = v
     if "mode" in kwargs and isinstance(kwargs["mode"], int):
-        try:
-            kwargs["mode"] = LEDMode(kwargs["mode"])
-        except ValueError:
+        kwargs["mode"] = _led_mode(kwargs["mode"])
+        if kwargs["mode"] is None:
             kwargs.pop("mode")
     if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:
         kwargs["color"] = tuple(kwargs["color"])
@@ -1671,9 +1691,8 @@ def _led_settings_from_dict(data: dict[str, Any]) -> LedDeviceSettings:
     kwargs.pop("test_mode", None)
     # Mode enum from its int value
     if "mode" in kwargs and isinstance(kwargs["mode"], int):
-        try:
-            kwargs["mode"] = LEDMode(kwargs["mode"])
-        except ValueError:
+        kwargs["mode"] = _led_mode(kwargs["mode"])
+        if kwargs["mode"] is None:
             kwargs.pop("mode")
     # Color tuple restoration
     if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:

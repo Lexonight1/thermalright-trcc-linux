@@ -36,7 +36,32 @@ class LEDMode(IntEnum):
     RAINBOW = 3      # 768-entry table shift across segments (CHMS_Timer)
     TEMP_LINKED = 4  # color from CPU/GPU temp gradient (WDLD_Timer)
     LOAD_LINKED = 5  # color from CPU/GPU load gradient (FZLD_Timer)
-    OPENRGB = 6      # TRCC's own: the colours OpenRGB sends over DDP (#160)
+
+
+#: The value the retired OpenRGB mode was saved as (#160, 9.12 and before).
+#: OpenRGB needs no mode now: a cooler shows what it sends, automatically.
+RETIRED_OPENRGB_MODE = 6
+
+#: What a UI says to the name it used to accept.  One sentence for every UI.
+OPENRGB_IS_AUTOMATIC = (
+    "OpenRGB is not an LED mode any more: with the RGB Lighting module on, a "
+    "cooler shows the colours OpenRGB sends it, and its own mode again when "
+    "they stop")
+
+
+def parse_led_mode(name: str) -> LEDMode:
+    """The mode a UI's *name* means, case-insensitive -- ``ValueError``
+    naming the modes, or saying OpenRGB is automatic now."""
+    key = name.strip().upper()
+    log.debug("parse_led_mode: %r", name)
+    if key == "OPENRGB":
+        raise ValueError(OPENRGB_IS_AUTOMATIC)
+    try:
+        return LEDMode[key]
+    except KeyError:
+        names = ", ".join(m.name.lower() for m in LEDMode)
+        raise ValueError(f"Unknown LED mode {name!r}; expected one of: "
+                         f"{names}") from None
 
 
 # =========================================================================
@@ -428,7 +453,7 @@ LED_PRESET_ASSETS: list[str] = [
 # Six animation-mode buttons; the LED panel renders these as a row.
 LED_MODE_LABELS: list[str] = [
     "Solid", "Breathe", "Color Cycle", "Rainbow",
-    "Temp Linked", "Load Linked", "OpenRGB",
+    "Temp Linked", "Load Linked",
 ]
 
 # Segments that are OFF by default per legacy style.  Keys are the

@@ -40,7 +40,6 @@ from ..core.led_models import (
 )
 from ..core.logs import per_frame
 from ..core.models import SensorLink
-from ..core.ports import LedColorStream
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -173,17 +172,14 @@ class LEDEffectEngine:
     SensorEnumerator implementation; ``RenderLed`` builds the dict from
     ``Platform.sensors()`` before calling here.
 
-    *stream* is where the ``OPENRGB`` mode reads its colours; without one
-    that mode is dark.  *live* answers a cooler's live colours from a module
-    (``App.live_led_colors``): while it has some, they replace the mode.
+    *live* answers a cooler's live colours from a module -- OpenRGB's,
+    through the RGB module (``App.live_led_colors``): while it has some, they
+    replace the mode.
     """
 
-    def __init__(self, stream: LedColorStream | None = None,
-                 live: Callable[[str, int], list[tuple[int, int, int]] | None]
+    def __init__(self, live: Callable[[str, int], list[tuple[int, int, int]] | None]
                  | None = None) -> None:
-        log.debug("LEDEffectEngine: stream=%s live=%s", type(stream).__name__,
-                  live is not None)
-        self._stream = stream
+        log.debug("LEDEffectEngine: live=%s", live is not None)
         self._live = live
 
     def _live_colors(self, key: str,
@@ -221,9 +217,6 @@ class LEDEffectEngine:
         if (live := self._live_colors(key, led_count)) is not None:
             # LED i shows the sender's pixel i -- no digit grouping (#160).
             colors = live
-        elif settings.mode is LEDMode.OPENRGB:
-            # LED i shows OpenRGB's pixel i -- no digit grouping (#160).
-            colors = self._openrgb(led_count)
         elif color_groups is not None:
             colors = self._color_groups(
                 settings.mode, settings.color, runtime, sensors,
@@ -308,10 +301,6 @@ class LEDEffectEngine:
             if live is not None:
                 self._place_zone(colors, led_indices, zone.brightness, live)
                 continue
-            if zone.mode is LEDMode.OPENRGB:
-                self._place_zone(colors, led_indices, zone.brightness,
-                                 self._openrgb(len(colors)))
-                continue
             if groups is not None:
                 # One color per digit-group, gentle gradient between digits.
                 group_colors = self._scale_brightness(
@@ -351,13 +340,6 @@ class LEDEffectEngine:
         for idx, color in zip((i for i in led_indices if i < len(colors)),
                               own, strict=True):
             colors[idx] = color
-
-    def _openrgb(self, led_count: int) -> list[tuple[int, int, int]]:
-        """OpenRGB's newest frame, one colour per LED; dark without a stream."""
-        frame_log.debug("_openrgb: %d LEDs", led_count)
-        if self._stream is None:
-            return [(0, 0, 0)] * led_count
-        return self._stream.colors(led_count)
 
     @staticmethod
     def next_sync_zone(zone_sync_zones: list[bool], current: int) -> int:

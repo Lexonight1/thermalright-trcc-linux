@@ -993,6 +993,17 @@ def get_display(style: LedStyle | None) -> SegmentDisplay | None:
     return DISPLAYS.get(style)
 
 
+def rendered_led_count(style: LedStyle) -> int:
+    """How many colours one render of *style* draws: its segment display's
+    mask, or the style's LEDs where it has no digits -- what a sender such as
+    OpenRGB must be told the cooler has (#160)."""
+    from ..core.led_models import LED_STYLES
+    display = get_display(style)
+    count = display.mask_size if display is not None else LED_STYLES[style].led_count
+    log.debug("rendered_led_count: %s -> %d", style, count)
+    return count
+
+
 def has_segment_display(style: LedStyle | None) -> bool:
     """Whether this style has digit display support."""
     log.debug("has_segment_display: style=%s", style)

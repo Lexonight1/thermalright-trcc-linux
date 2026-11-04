@@ -30,6 +30,7 @@ from urllib.parse import urlsplit
 from ..core.errors import ModuleUnavailable
 from ..core.logs import per_frame, sink_for
 from ..core.models import (
+    CoolerLights,
     ModuleInfo,
     ModuleManifest,
     PanelPicture,
@@ -292,16 +293,31 @@ class _Password(PasswordPort):
 
 
 class _Lights(LightsPort):
-    """The ``lights`` capability: a module's live colours on the coolers."""
+    """The ``lights`` capability: a module's live colours on the coolers --
+    the source it added is taken back at :meth:`release`."""
 
-    def __init__(self, scope: ModuleScope) -> None:
-        log.debug("_Lights.__init__: %s", scope._key)
-        self._scope = scope
+    def __init__(self, services: ModuleServices, key: str) -> None:
+        log.debug("_Lights.__init__: %s", key)
+        self._services, self._key = services, key
+        self._added = False
 
     def add_source(self, source: LedSource) -> None:
-        log.info("_Lights.add_source: %s %s", self._scope._key,
-                 type(source).__name__)
-        self._scope._add_led_source(source)
+        log.info("_Lights.add_source: %s %s", self._key, type(source).__name__)
+        self._services.add_led_source(self._key, source)
+        self._added = True
+
+    def coolers(self) -> tuple[CoolerLights, ...]:
+        found = self._services.led_coolers()
+        log.debug("_Lights.coolers: %s", [c.key for c in found])
+        return found
+
+    def release(self) -> None:
+        """The module stopped: its source closes, the coolers show their own
+        modes again."""
+        log.info("_Lights.release: %s (added=%s)", self._key, self._added)
+        if self._added:
+            self._services.remove_led_source(self._key)
+            self._added = False
 
 
 class _Network(NetworkPort):
@@ -362,9 +378,8 @@ class ModuleScope(ModuleHost):
             "hardware": _Hardware(services, manifest),
             "password": _Password(services),
             "network": _Network(services, manifest),
-            "lights": _Lights(self),
+            "lights": _Lights(services, self._key),
         }
-        self._led_source = False
 
     def publish(self, event: Any) -> None:
         sink = sink_for(type(event).LOG_LEVEL, log, frame_log)
@@ -467,12 +482,6 @@ class ModuleScope(ModuleHost):
         self._need(capability)
         return self._ports[capability]
 
-    def _add_led_source(self, source: LedSource) -> None:
-        """The module's live LED colours -- taken back at :meth:`release`."""
-        log.info("ModuleScope._add_led_source: %s", self._key)
-        self._services.add_led_source(self._key, source)
-        self._led_source = True
-
     def _add_kind(self, kind: BackgroundKind) -> None:
         """A background kind the module draws -- one its manifest declares."""
         if kind.prefix not in self._manifest.backgrounds:
@@ -504,9 +513,7 @@ class ModuleScope(ModuleHost):
         for prefix in self._kinds:
             self._services.remove_background_kind(prefix)
         self._kinds.clear()
-        if self._led_source:
-            self._services.remove_led_source(self._key)
-            self._led_source = False
+        self._ports["lights"].release()
         if end_sources:
             for key in self._services.panel_keys():
                 if (self._services.panel_source(key) == self._key

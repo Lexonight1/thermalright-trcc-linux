@@ -122,8 +122,8 @@ def test_setup_leaves_usr_to_the_package_on_a_package_install(
     that did failed with "exists in filesystem".  On a package install /usr is
     the package's; setup writes nothing there, dry run included.
 
-    MUTATION CHECK: drop the ``_package_owns_usr`` test in ``LinuxOS.setup``
-    and the installer is called."""
+    MUTATION CHECK: pin ``package_owns_usr`` False in ``LinuxOS.setup`` and
+    the installer is called."""
     from trcc.adapters.system import linux
 
     polkit = _stubbed_setup(monkeypatch, method="package")

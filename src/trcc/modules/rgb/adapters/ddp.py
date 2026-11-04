@@ -1,4 +1,4 @@
-"""OpenRGB's colours for a cooler's LEDs, received over DDP (#160).
+"""OpenRGB's colours for one cooler, over DDP on localhost (#160).
 
 OpenRGB drives a network LED device by sending DDP -- the Distributed Display
 Protocol 3waylabs published, which WLED and xLights speak too.  Its sender
@@ -13,20 +13,20 @@ Protocol 3waylabs published, which WLED and xLights speak too.  Its sender
     10..     RGB, 8 bits a channel
 
 A 14-byte header carries a timecode (flag 0x10).  Each packet's colours are
-written into the frame at its offset; OpenRGB pushes on every packet.
-
-Bound to 127.0.0.1 only: nothing on the network can drive the cooler.  The
-user adds a DDP device in OpenRGB at 127.0.0.1, port 4048, with the cooler's
-LED count.
+written into the frame at its offset.  Bound to 127.0.0.1 only: nothing on the
+network can drive a cooler.  One port per cooler; the user adds a DDP device
+in OpenRGB at 127.0.0.1 with that port and the cooler's LED count.
+Moved here from core with the retired OpenRGB LED mode (#333).
 """
 from __future__ import annotations
 
 import logging
 import socket
 import threading
+import time
 
-from ...core.logs import per_frame
-from ...core.ports import LedColorStream
+from trcc.core.logs import per_frame
+from trcc.modules.rgb.core.ports import DdpListener
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -61,63 +61,64 @@ def apply_packet(frame: bytearray, packet: bytes) -> bool:
     return True
 
 
-class DdpReceiver(LedColorStream):
-    """A DDP listener on localhost, started by the first ``colors`` call."""
 
-    def __init__(self, port: int | None = None) -> None:
-        self._port = DDP_PORT if port is None else port
-        log.debug("DdpReceiver: port %d", self._port)
+class DdpPort(DdpListener):
+    """A DDP listener on 127.0.0.1:*port* -- a port another program holds is
+    said once, in ``error``, and nothing listens."""
+
+    def __init__(self, port: int) -> None:
+        log.info("DdpPort: opening 127.0.0.1:%d", port)
         self._frame = bytearray()
         self._lock = threading.Lock()
+        self._last: float | None = None
+        self._error = ""
+        self._asked = port
         self._sock: socket.socket | None = None
         self._thread: threading.Thread | None = None
-        # The port was taken: say so once, not on every LED tick.
-        self._refused = False
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError as e:
+            sock.close()
+            self._error = f"port {port} is taken ({e.strerror or e})"
+            log.warning("DdpPort: cannot listen on 127.0.0.1:%d (%s) -- "
+                        "OpenRGB's colours will not reach this cooler", port, e)
+            return
+        sock.settimeout(0.5)
+        self._sock = sock
+        self._thread = threading.Thread(target=self._receive, args=(sock,),
+                                        name=f"trcc-ddp-{self.port}", daemon=True)
+        self._thread.start()
+        log.info("DdpPort: listening on 127.0.0.1:%d for OpenRGB", self.port)
 
     @property
     def port(self) -> int:
         """The bound port (the asked one, or the OS's pick for 0)."""
-        port = self._sock.getsockname()[1] if self._sock else self._port
-        log.debug("DdpReceiver.port: %d", port)
+        port = self._sock.getsockname()[1] if self._sock else self._asked
+        frame_log.debug("DdpPort.port: %d", port)
         return port
 
     @property
-    def listening(self) -> bool:
-        frame_log.debug("DdpReceiver.listening: %s", self._sock is not None)
-        return self._sock is not None
+    def error(self) -> str:
+        frame_log.debug("DdpPort.error: %r", self._error)
+        return self._error
+
+    @property
+    def last_packet(self) -> float | None:
+        frame_log.debug("DdpPort.last_packet: %s", self._last)
+        return self._last
 
     def colors(self, count: int) -> list[tuple[int, int, int]]:
-        frame_log.debug("DdpReceiver.colors: %d", count)
-        if self._sock is None and not self._refused:
-            self._start()
+        frame_log.debug("DdpPort.colors: %d", count)
         with self._lock:
             frame = bytes(self._frame[:count * 3])
         frame += bytes(count * 3 - len(frame))
         return [(frame[i], frame[i + 1], frame[i + 2])
                 for i in range(0, count * 3, 3)]
 
-    def _start(self) -> None:
-        """Open the listener; a port another program holds is said, once."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            sock.bind(("127.0.0.1", self._port))
-        except OSError as e:
-            sock.close()
-            log.warning("DdpReceiver: cannot listen on 127.0.0.1:%d (%s) -- "
-                        "OpenRGB's colours will not reach the cooler",
-                        self._port, e)
-            self._refused = True
-            return
-        sock.settimeout(0.5)
-        self._sock = sock
-        self._thread = threading.Thread(target=self._receive, args=(sock,),
-                                        name="trcc-ddp", daemon=True)
-        self._thread.start()
-        log.info("DdpReceiver: listening on 127.0.0.1:%d for OpenRGB", self.port)
-
     def _receive(self, sock: socket.socket) -> None:
-        """Apply every packet until ``stop`` closes the socket."""
-        log.debug("DdpReceiver._receive: started")
+        """Apply every packet until ``close`` closes the socket."""
+        log.debug("DdpPort._receive: started on %d", self.port)
         while self._sock is sock:
             try:
                 packet = sock.recv(2048)
@@ -126,18 +127,16 @@ class DdpReceiver(LedColorStream):
             except OSError:
                 break
             with self._lock:
-                apply_packet(self._frame, packet)
-        log.debug("DdpReceiver._receive: stopped")
+                if apply_packet(self._frame, packet):
+                    self._last = time.monotonic()
+        log.debug("DdpPort._receive: stopped")
 
-    def stop(self) -> None:
-        self._refused = False
+    def close(self) -> None:
         sock, self._sock = self._sock, None
         if sock is None:
-            log.debug("DdpReceiver.stop: not listening")
+            log.debug("DdpPort.close: not listening")
             return
         sock.close()
         if self._thread is not None:
             self._thread.join(timeout=2)
-        with self._lock:
-            self._frame.clear()
-        log.info("DdpReceiver: stopped listening")
+        log.info("DdpPort: stopped listening on %d", self._asked)

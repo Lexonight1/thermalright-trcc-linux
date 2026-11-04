@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Prove the OpenRGB LED mode end to end, with no hardware and no OpenRGB (#160).
+"""Prove OpenRGB drives a cooler end to end, with no hardware and no OpenRGB
+(#160, #333).
 
-A real App on the mock platform with one cooler, put in the OpenRGB mode
-through the Command every UI sends, its real DDP listener on a free port,
-and ``ddp_send.py`` -- OpenRGB's packets -- in a separate process.  Then:
+A real App on the mock platform with one cooler, the session started, so RGB
+Lighting opens the cooler's own DDP port (on a free port, never 4048 -- your
+OpenRGB may be there), and ``ddp_send.py`` -- OpenRGB's packets -- in a
+separate process.  The cooler is left in its OWN mode (Rainbow): nothing is
+switched on for OpenRGB.  Then:
 
   * every lit LED i shows the sender's pixel i (not a zone repeating the
     start of the frame -- the bug this tool was written to catch);
   * the colours move between renders;
-  * leaving the mode closes the listener.
+  * once the sender stops, the cooler's own mode is back within LIVE_FOR_S.
 
     PYTHONPATH=src python3 dev/tools/ddp_check.py              # PA120, 4 zones
     PYTHONPATH=src python3 dev/tools/ddp_check.py --pm 1       # AX120, digits
@@ -49,30 +52,41 @@ def main() -> int:
     # After sys.path is set: the repo's own packages and the sender beside us.
     from ddp_send import rainbow
 
+    import trcc.modules.rgb.app as rgb_app
     from tests.mock_platform import MockPlatform
-    from trcc.adapters.infra.ddp_receiver import DdpReceiver
     from trcc.app import App
-    from trcc.core.commands import (
-        ConnectDevice,
-        RenderLed,
-        SetLedBrightness,
-        SetLedMode,
-    )
+    from trcc.core.commands import RenderLed, SetLedBrightness, SetLedMode
     from trcc.core.led_models import LEDMode
+    from trcc.modules.rgb.adapters.ddp import DdpPort
+    from trcc.modules.rgb.services.openrgb_lights import LIVE_FOR_S
 
+    class _FreePort(DdpPort):
+        """The module's own port, on one the OS picks -- never 4048."""
+
+        def __init__(self, port: int) -> None:
+            super().__init__(0)
+
+    rgb_app.DdpPort = _FreePort
     with tempfile.TemporaryDirectory(prefix="trcc-ddp-check-") as root:
-        receiver = DdpReceiver(port=0)
         app = App(MockPlatform([{"type": "led", "vid": "0416", "pid": "8001",
-                                 "pm": args.pm}], Path(root)),
-                  led_stream=receiver)
+                                 "pm": args.pm}], Path(root)))
         try:
-            print(f"connect: {app.dispatch(ConnectDevice(key=_KEY)).message}")
-            app.dispatch(SetLedMode(key=_KEY, mode=LEDMode.OPENRGB))
+            app.start_session()
+            module = app.modules.root("rgb")
+            assert isinstance(module, rgb_app.RgbModule), module
+            lights = module.lights
+            addresses = lights.addresses()
+            if not addresses:
+                print("no cooler port opened -- is RGB Lighting on?")
+                return 1
+            cooler, port, error = addresses[0]
+            print(f"cooler {cooler.key}: {cooler.led_count} LEDs, "
+                  f"127.0.0.1:{port} {error}")
+            app.dispatch(SetLedMode(key=_KEY, mode=LEDMode.RAINBOW))
             app.dispatch(SetLedBrightness(key=_KEY, percent=100))
-            app.led_animation_loop.tick()                    # opens the listener
-            print(f"listener: 127.0.0.1:{receiver.port}")
+            own = app.dispatch(RenderLed(key=_KEY)).colors
             sender = subprocess.Popen(
-                [sys.executable, str(_SENDER), "--port", str(receiver.port),
+                [sys.executable, str(_SENDER), "--port", str(port),
                  "--leds", str(args.leds), "--fps", "30", "--seconds", "2"],
                 stdout=subprocess.DEVNULL)
             time.sleep(0.6)
@@ -92,10 +106,14 @@ def main() -> int:
                        f"{len({c for _i, c in lit})} distinct colours"),
                 _check("moving", first != second, "colours changed between renders"),
             ]
-            app.dispatch(SetLedMode(key=_KEY, mode=LEDMode.RAINBOW))
-            app.led_animation_loop.tick()
-            ok.append(_check("listener closes", not receiver.listening,
-                             "after leaving the OpenRGB mode"))
+            time.sleep(LIVE_FOR_S + 0.3)
+            after = app.dispatch(RenderLed(key=_KEY)).colors
+            matches_after = max(sum(c == tuple(rainbow(args.leds, p)[i * 3:i * 3 + 3])
+                                    for i, c in enumerate(after) if c != (0, 0, 0))
+                                for p in phases)
+            back = len(after) == len(own) and matches_after < len(lit)
+            ok.append(_check("own mode back", back,
+                             f"{LIVE_FOR_S + 0.3:.1f} s after the sender stopped"))
         finally:
             app.close()
     print("OK" if all(ok) else "FAILED")
