@@ -772,7 +772,10 @@ class LinuxOS(BaseOS, key="linux"):
              Root (re-execs via sudo); only files that name our actions.
           6. TRCC's polkit policy + RAM-lighting helpers — what the packages
              install, so a pip/source install gets TRCC's own short password
-             prompt and a password-free turn-off.  Never over a package's.
+             prompt and a password-free turn-off.  Skipped on a PACKAGE
+             install: /usr is its package's, even before the package ships a
+             file -- copies written there made the next package that did
+             fail with "exists in filesystem" (#333, AUR 9.12.0-2).
 
         ``dry_run=True`` prints what would be done and returns 0
         without touching the system.
@@ -790,7 +793,10 @@ class LinuxOS(BaseOS, key="linux"):
             log.info("would install and start the App's user service: %s",
                      SystemdUserService().path)
             retire_legacy_polkit(dry_run=True)
-            install_polkit_files(dry_run=True, owns=self.packages().owns)
+            if self._package_owns_usr():
+                log.info("would leave TRCC's polkit files to the package")
+            else:
+                install_polkit_files(dry_run=True, owns=self.packages().owns)
             return 0
 
         rc_udev = install_udev_rules(dry_run=False)
@@ -812,9 +818,22 @@ class LinuxOS(BaseOS, key="linux"):
         rc_polkit = retire_legacy_polkit(dry_run=False)
         # After the retirement above, which keeps a policy naming only our
         # /usr/bin/trcc-* helpers -- exactly the one this installs.
-        rc_helpers = install_polkit_files(dry_run=False,
-                                          owns=self.packages().owns)
+        rc_helpers = (0 if self._package_owns_usr()
+                      else install_polkit_files(dry_run=False,
+                                                owns=self.packages().owns))
         return rc_udev or rc_selinux or rc_polkit or rc_helpers
+
+    def _package_owns_usr(self) -> bool:
+        """Whether a distro package installed TRCC, so /usr is the package's.
+
+        Asked by install METHOD, not per file: ``owns`` can only ask rpm, so on
+        pacman and apt every file read "unowned" and setup wrote into /usr --
+        over a package's own copies, or ahead of the package that would ship
+        them next (#333).  An atomic image's layered package lands here too,
+        and its image already carries the files."""
+        packaged = self.install_method() == "package"
+        log.info("_package_owns_usr: %s", packaged)
+        return packaged
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
