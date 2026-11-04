@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-84 ports.
+86 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -15,6 +15,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
+| [`LightsPort`](#lightsport) | 1 | 0 | 1 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`ModuleCommand`](#modulecommand) | 1 | 1 | 17 |
 | [`ModuleQuery`](#modulequery) | 1 | 0 | 5 |
@@ -35,6 +36,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
+| [`LedSource`](#ledsource) | 2 | 0 | 0 |
 | [`Module`](#module) | 2 | 10 | 2 |
 | [`ModuleDevices`](#moduledevices) | 2 | 0 | 4 |
 | [`PanelsPort`](#panelsport) | 2 | 0 | 1 |
@@ -57,7 +59,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`LedColorStream`](#ledcolorstream) | 3 | 0 | 1 |
-| [`ModuleHost`](#modulehost) | 3 | 12 | 1 |
+| [`ModuleHost`](#modulehost) | 3 | 13 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 3 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
@@ -93,7 +95,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 9 | 8 |
 | [`ContentStore`](#contentstore) | 32 | 0 | 1 |
-| [`ModuleServices`](#moduleservices) | 32 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 34 | 0 | 1 |
 
 ---
 
@@ -172,6 +174,20 @@ fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None, all
 ```
 
 **Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`
+
+## LightsPort
+
+`core/ports.py`
+
+The ``lights`` capability: colours on a cooler's LEDs.
+
+**You implement (1):**
+
+```python
+add_source(source: 'LedSource') -> None
+```
+
+**Implementations (1):** `_Lights`
 
 ## MissPolicy
 
@@ -470,6 +486,21 @@ name() -> str
 ```
 
 **Implementations (25):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SuperIoFan` · `SuperIoTemp` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
+
+## LedSource
+
+`core/ports.py`
+
+Colours another program sends for a cooler's LEDs -- shown OVER the cooler's own mode while they arrive, and gone the moment they stop, the way WLED takes realtime colours (#160, #333).  A module registers one (``ModuleHost.lights``); the LED render asks it every tick.
+
+**You implement (2):**
+
+```python
+close() -> None
+live(key: 'str', count: 'int') -> list[tuple[int, int, int]] | None
+```
+
+**Implementations (0):** _none yet_
 
 ## Module
 
@@ -850,7 +881,7 @@ subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 ```
 
-**You inherit (12):** `background` · `files` · `frames` · `gpu` · `hardware` · `network` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
+**You inherit (13):** `background` · `files` · `frames` · `gpu` · `hardware` · `lights` · `network` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
 
 **Implementations (1):** `ModuleScope`
 
@@ -1565,10 +1596,11 @@ write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 
 The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
 
-**You implement (32):**
+**You implement (34):**
 
 ```python
 add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
+add_led_source(module: 'str', source: 'LedSource') -> None
 data_root() -> Path
 encode_png(frame: 'RawFrame') -> bytes
 end_source(key: 'str', keep_choice: 'bool' = False) -> None
@@ -1586,6 +1618,7 @@ panel_source(key: 'str') -> str | None
 preferences() -> Preferences
 publish(event: 'Event') -> None
 remove_background_kind(prefix: 'str') -> None
+remove_led_source(module: 'str') -> None
 resume_backgrounds(module: 'str') -> None
 save_module_settings(module: 'str', data: 'Mapping[str, Any]') -> None
 save_panel_settings(module: 'str', key: 'str', data: 'Mapping[str, Any]') -> None

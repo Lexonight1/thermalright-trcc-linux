@@ -322,7 +322,7 @@ class RenderLed(Command[LedColorsResult]):
             mask: list[bool] = []
             colors = app.led_effects.tick(
                 effective_settings, runtime, current,
-                led_count=LED_STYLES[style].led_count,
+                led_count=LED_STYLES[style].led_count, key=self.key,
             )
             frame_log.debug("RenderLed %s: color-only fill (%d RGB LEDs)",
                       self.key, len(colors))
@@ -392,21 +392,25 @@ class RenderLed(Command[LedColorsResult]):
                     metric_sources=display.zone_metric_sources,
                     led_count=segment_count,
                     zone_color_groups=display.zone_color_groups,
+                    key=self.key,
                 )
             else:
                 colors = app.led_effects.tick(
                     effective_settings, runtime, current,
                     led_count=segment_count,
                     color_groups=display.color_groups,
+                    key=self.key,
                 )
 
             # Styles with a decoration strip (LF10/LF12) keep the strip's
             # spatial rainbow but collapse each metric digit to one color so the
             # number reads cohesively (#193) — a post-effect pass that leaves
             # every non-digit LED on its per-LED spread.
-            # Not in the OpenRGB mode: there each LED shows OpenRGB's own pixel.
+            # Not over live colours, nor in the OpenRGB mode: there each LED
+            # shows the sender's own pixel.
             if (display.digit_groups is not None
-                    and effective_settings.mode is not LEDMode.OPENRGB):
+                    and effective_settings.mode is not LEDMode.OPENRGB
+                    and app.live_led_colors(self.key, 1) is None):
                 colors = app.led_effects.cohere_digit_groups(
                     colors, display.digit_groups,
                 )

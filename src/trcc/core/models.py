@@ -1453,6 +1453,8 @@ MODULE_CAPABILITIES: dict[str, str] = {
     "hardware": "reaches lighting chips: memory, the motherboard, OpenRGB",
     "password": "may ask for your password, to reach hardware the system guards",
     "network": "fetches from the internet sites its module.json names, and no others",
+    "lights": "shows colours another program sends on a cooler's LEDs, over the "
+              "cooler's own effect, while they arrive",
 }
 
 #: A site a module may fetch from (``network_hosts``): a public hostname --

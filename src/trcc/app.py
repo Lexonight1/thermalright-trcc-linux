@@ -85,6 +85,7 @@ from .core.ports import (
     FrameSource,
     GlSurface,
     LedColorStream,
+    LedSource,
     Module,
     ModuleServices,
     Platform,
@@ -203,7 +204,10 @@ class App(CommandBus, ModuleServices):
             from .adapters.infra.ddp_receiver import DdpReceiver
             led_stream = DdpReceiver()
         self.led_stream = led_stream
-        self.led_effects = LEDEffectEngine(led_stream)
+        # Live colours modules receive for a cooler (``LedSource``): shown over
+        # its own mode while they arrive.  Before the engine, which asks them.
+        self._led_sources: dict[str, LedSource] = {}
+        self.led_effects = LEDEffectEngine(led_stream, live=self.live_led_colors)
         # Latest RAW sensor sample, cached from the MetricsLoop broadcast
         # (once per refresh_interval_s).  Per-tick consumers — RenderLed driven
         # by the 150 ms LedAnimationLoop — read THIS instead of re-polling the
@@ -688,6 +692,31 @@ class App(CommandBus, ModuleServices):
         """Themes may play, save and resume *kind* -- *module*'s."""
         log.info("add_background_kind: %s draws %s", module, kind.prefix)
         self._background_kinds[kind.prefix] = (module, kind)
+
+    def add_led_source(self, module: str, source: LedSource) -> None:
+        """*module*'s live colours show on the coolers it has them for."""
+        log.info("add_led_source: %s (%s)", module, type(source).__name__)
+        self._led_sources[module] = source
+
+    def remove_led_source(self, module: str) -> None:
+        """*module* stopped: its source closes and its coolers show their
+        own mode again."""
+        source = self._led_sources.pop(module, None)
+        log.info("remove_led_source: %s (%s)", module,
+                 "closed" if source is not None else "none held")
+        if source is not None:
+            source.close()
+
+    def live_led_colors(self, key: str,
+                        count: int) -> list[tuple[int, int, int]] | None:
+        """Cooler *key*'s live colours from the first module that has them,
+        or None -- and the cooler shows its own mode."""
+        for module, source in list(self._led_sources.items()):
+            if (colors := source.live(key, count)) is not None:
+                frame_log.debug("live_led_colors: %s from %s", key, module)
+                return colors
+        frame_log.debug("live_led_colors: %s none", key)
+        return None
 
     def remove_background_kind(self, prefix: str) -> None:
         log.info("remove_background_kind: %s", prefix)

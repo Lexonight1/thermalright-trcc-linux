@@ -180,6 +180,7 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `hardware` | reaches lighting chips: memory, the motherboard, OpenRGB |
 | `password` | may ask for your password, to reach hardware the system guards |
 | `network` | fetches from the internet sites its module.json names, and no others |
+| `lights` | shows colours another program sends on a cooler's LEDs, over the cooler's own effect, while they arrive |
 
 `host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds — and only when the site's name resolves to an address on the public internet, never this computer or the local network. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
 

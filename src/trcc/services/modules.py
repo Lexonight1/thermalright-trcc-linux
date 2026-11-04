@@ -45,6 +45,8 @@ from ..core.ports import (
     GlSurface,
     GpuPort,
     HardwarePort,
+    LedSource,
+    LightsPort,
     Module,
     ModuleHost,
     ModuleServices,
@@ -289,6 +291,19 @@ class _Password(PasswordPort):
         return self._services.memory_access()
 
 
+class _Lights(LightsPort):
+    """The ``lights`` capability: a module's live colours on the coolers."""
+
+    def __init__(self, scope: ModuleScope) -> None:
+        log.debug("_Lights.__init__: %s", scope._key)
+        self._scope = scope
+
+    def add_source(self, source: LedSource) -> None:
+        log.info("_Lights.add_source: %s %s", self._scope._key,
+                 type(source).__name__)
+        self._scope._add_led_source(source)
+
+
 class _Network(NetworkPort):
     """Fetches only from the sites *manifest* names: https, the default
     port, no user in the URL -- asked again of every redirect."""
@@ -347,7 +362,9 @@ class ModuleScope(ModuleHost):
             "hardware": _Hardware(services, manifest),
             "password": _Password(services),
             "network": _Network(services, manifest),
+            "lights": _Lights(self),
         }
+        self._led_source = False
 
     def publish(self, event: Any) -> None:
         sink = sink_for(type(event).LOG_LEVEL, log, frame_log)
@@ -427,6 +444,11 @@ class ModuleScope(ModuleHost):
         log.debug("ModuleScope.network")
         return self._port("network")
 
+    @property
+    def lights(self) -> LightsPort:
+        log.debug("ModuleScope.lights")
+        return self._port("lights")
+
     def _watch(self, handler: Callable[[PanelPicture], None]) -> None:
         """A frame watcher the module holds -- taken back on switch-off."""
         log.info("ModuleScope._watch: %s", self._key)
@@ -444,6 +466,12 @@ class ModuleScope(ModuleHost):
         log.debug("ModuleScope._port")
         self._need(capability)
         return self._ports[capability]
+
+    def _add_led_source(self, source: LedSource) -> None:
+        """The module's live LED colours -- taken back at :meth:`release`."""
+        log.info("ModuleScope._add_led_source: %s", self._key)
+        self._services.add_led_source(self._key, source)
+        self._led_source = True
 
     def _add_kind(self, kind: BackgroundKind) -> None:
         """A background kind the module draws -- one its manifest declares."""
@@ -476,6 +504,9 @@ class ModuleScope(ModuleHost):
         for prefix in self._kinds:
             self._services.remove_background_kind(prefix)
         self._kinds.clear()
+        if self._led_source:
+            self._services.remove_led_source(self._key)
+            self._led_source = False
         if end_sources:
             for key in self._services.panel_keys():
                 if (self._services.panel_source(key) == self._key

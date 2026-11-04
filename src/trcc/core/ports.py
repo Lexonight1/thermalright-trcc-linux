@@ -2822,6 +2822,15 @@ class NetworkPort(ABC):
         redirect off the named sites, raises ``HttpFetchError``."""
 
 
+class LightsPort(ABC):
+    """The ``lights`` capability: colours on a cooler's LEDs."""
+
+    @abstractmethod
+    def add_source(self, source: LedSource) -> None:
+        """Show *source*'s live colours on each cooler it has them for, over
+        the cooler's own mode; taken back when the module stops."""
+
+
 class PasswordPort(ABC):
     """The ``password`` capability: system access the user grants once."""
 
@@ -2916,6 +2925,11 @@ class ModuleHost(ABC):
         self._not_offered("password")
 
     @property
+    def lights(self) -> LightsPort:
+        log.debug("ModuleHost.lights")
+        self._not_offered("lights")
+
+    @property
     def network(self) -> NetworkPort:
         log.debug("ModuleHost.network")
         self._not_offered("network")
@@ -2974,6 +2988,12 @@ class ModuleServices(ABC):
 
     @abstractmethod
     def add_background_kind(self, module: str, kind: BackgroundKind) -> None: ...
+
+    @abstractmethod
+    def add_led_source(self, module: str, source: LedSource) -> None: ...
+
+    @abstractmethod
+    def remove_led_source(self, module: str) -> None: ...
 
     @abstractmethod
     def remove_background_kind(self, prefix: str) -> None: ...
@@ -3154,6 +3174,22 @@ class LedColorStream(ABC):
     @abstractmethod
     def listening(self) -> bool:
         """Whether a listener is open."""
+
+
+class LedSource(ABC):
+    """Colours another program sends for a cooler's LEDs -- shown OVER the
+    cooler's own mode while they arrive, and gone the moment they stop, the
+    way WLED takes realtime colours (#160, #333).  A module registers one
+    (``ModuleHost.lights``); the LED render asks it every tick."""
+
+    @abstractmethod
+    def live(self, key: str, count: int) -> list[tuple[int, int, int]] | None:
+        """Cooler *key*'s newest colours, *count* of them -- None while none
+        have arrived for it lately, and the cooler shows its own mode."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Stop receiving (idempotent)."""
 
 
 class SoundInput(ABC):

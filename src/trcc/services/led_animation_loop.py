@@ -115,11 +115,14 @@ class LedAnimationLoop:
             handshake = getattr(device, "led_handshake", None)
             rotating = s.zone_sync and not is_select_all(
                 handshake.style if handshake is not None else None)
+            # Live colours a module receives move as fast as they are sent.
+            live = self._app.live_led_colors(key, 1) is not None
             if (
                 s.mode in _ANIMATED_MODES
                 or zone_animating
                 or rotating
                 or s.test_mode
+                or live
             ):
                 keys.append(key)
         return keys

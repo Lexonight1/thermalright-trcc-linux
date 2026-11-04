@@ -28,6 +28,7 @@ lets the App keep one runtime dict keyed by device.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import ClassVar
 
 from ..core.led_models import (
@@ -173,12 +174,25 @@ class LEDEffectEngine:
     ``Platform.sensors()`` before calling here.
 
     *stream* is where the ``OPENRGB`` mode reads its colours; without one
-    that mode is dark.
+    that mode is dark.  *live* answers a cooler's live colours from a module
+    (``App.live_led_colors``): while it has some, they replace the mode.
     """
 
-    def __init__(self, stream: LedColorStream | None = None) -> None:
-        log.debug("LEDEffectEngine: stream=%s", type(stream).__name__)
+    def __init__(self, stream: LedColorStream | None = None,
+                 live: Callable[[str, int], list[tuple[int, int, int]] | None]
+                 | None = None) -> None:
+        log.debug("LEDEffectEngine: stream=%s live=%s", type(stream).__name__,
+                  live is not None)
         self._stream = stream
+        self._live = live
+
+    def _live_colors(self, key: str,
+                     count: int) -> list[tuple[int, int, int]] | None:
+        """Cooler *key*'s live colours, or None: no key, no lookup, none now."""
+        colors = (self._live(key, count) if key and self._live is not None
+                  else None)
+        frame_log.debug("_live_colors: %s -> %s", key, colors is not None)
+        return colors
 
     def tick(
         self,
@@ -188,6 +202,7 @@ class LEDEffectEngine:
         *,
         led_count: int,
         color_groups: tuple[tuple[int, ...], ...] | None = None,
+        key: str = "",
     ) -> list[tuple[int, int, int]]:
         """Run one tick and return ``led_count`` RGB tuples.
 
@@ -203,7 +218,10 @@ class LEDEffectEngine:
         if settings.test_mode:
             return self._tick_test(runtime, led_count)
 
-        if settings.mode is LEDMode.OPENRGB:
+        if (live := self._live_colors(key, led_count)) is not None:
+            # LED i shows the sender's pixel i -- no digit grouping (#160).
+            colors = live
+        elif settings.mode is LEDMode.OPENRGB:
             # LED i shows OpenRGB's pixel i -- no digit grouping (#160).
             colors = self._openrgb(led_count)
         elif color_groups is not None:
@@ -232,6 +250,7 @@ class LEDEffectEngine:
         metric_sources: tuple[tuple[str, str], ...] | None,
         led_count: int,
         zone_color_groups: tuple[tuple[tuple[int, ...], ...], ...] | None = None,
+        key: str = "",
     ) -> list[tuple[int, int, int]]:
         """Per-zone colors placed at each zone's physical LED indices.
 
@@ -260,6 +279,8 @@ class LEDEffectEngine:
             frame_log.debug("tick_multi_zone: test_mode → cycling reference colours")
             return self._tick_test(runtime, led_count)
 
+        # Live colours cover every zone, each at its own LED indices.
+        live = self._live_colors(key, led_count)
         colors: list[tuple[int, int, int]] = [(0, 0, 0)] * led_count
         zones = settings.zones
         frame_log.debug("tick_multi_zone: %d zones, led_count=%d grouped=%s",
@@ -284,8 +305,12 @@ class LEDEffectEngine:
                 if zone_color_groups is not None and zi < len(zone_color_groups)
                 else None
             )
+            if live is not None:
+                self._place_zone(colors, led_indices, zone.brightness, live)
+                continue
             if zone.mode is LEDMode.OPENRGB:
-                self._openrgb_zone(colors, led_indices, zone.brightness)
+                self._place_zone(colors, led_indices, zone.brightness,
+                                 self._openrgb(len(colors)))
                 continue
             if groups is not None:
                 # One color per digit-group, gentle gradient between digits.
@@ -315,12 +340,12 @@ class LEDEffectEngine:
         self.advance_phases(runtime)
         return colors
 
-    def _openrgb_zone(self, colors: list[tuple[int, int, int]],
-                      led_indices: tuple[int, ...], brightness: int) -> None:
-        """Put OpenRGB's pixels at this zone's OWN LED indices into *colors*,
-        so four zones do not all repeat the start of its frame (#160)."""
-        frame_log.debug("_openrgb_zone: %d LEDs", len(led_indices))
-        frame = self._openrgb(len(colors))
+    def _place_zone(self, colors: list[tuple[int, int, int]],
+                    led_indices: tuple[int, ...], brightness: int,
+                    frame: list[tuple[int, int, int]]) -> None:
+        """Put *frame*'s pixels at this zone's OWN LED indices into *colors*,
+        so four zones do not all repeat the start of the frame (#160)."""
+        frame_log.debug("_place_zone: %d LEDs", len(led_indices))
         own = self._scale_brightness([frame[i] for i in led_indices
                                       if i < len(colors)], brightness)
         for idx, color in zip((i for i in led_indices if i < len(colors)),
