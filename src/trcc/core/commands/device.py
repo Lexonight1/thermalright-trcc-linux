@@ -1873,6 +1873,13 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
                 ok=True, key=self.key,
                 message=f"no screencast session on {self.key} — ended",
             )
+        if self.key in app.held:
+            # A pushed picture holds the panel until the next theme load
+            # (``_take_over_panel``); every implicit producer honours it, as
+            # the stream and module twins below do -- and nothing is grabbed.
+            frame_log.debug("CaptureScreencastFrame: %s held by a pushed "
+                            "image", self.key)
+            return ScreencastResult(ok=True, key=self.key, message="held")
 
         x, y, w, h = region[0], region[1], region[2], region[3]
         try:

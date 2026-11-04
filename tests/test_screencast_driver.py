@@ -459,6 +459,25 @@ def test_disconnecting_stops_a_module_sources_driver(
     assert (source_task(_KEY) in scheduler._tasks, source.closed) == (False, True)
 
 
+def test_a_pushed_picture_is_not_painted_over_by_the_cast(casting: App) -> None:
+    """A push holds the panel, and every implicit producer honours the hold
+    (``_take_over_panel``) -- the cast too.  It had no check, so the next
+    capture tick, a seventh of a second later, painted over the picture.
+
+    MUTATION CHECK: drop the ``held`` check in ``CaptureScreencastFrame``
+    and the screen is grabbed again.
+    """
+    from trcc.core.commands import SendColor
+
+    grabbed = len(_capture(casting).regions)
+    assert casting.dispatch(SendColor(key=_KEY, r=255, g=0, b=0)).ok
+
+    result = casting.dispatch(CaptureScreencastFrame(key=_KEY))
+
+    assert (result.ok, result.message, len(_capture(casting).regions)) == (
+        True, "held", grabbed)
+
+
 def test_a_blink_keeps_the_cast(casting: App, scheduler: SyncSendScheduler) -> None:
     """A wake or a replug drops the WIRE; the cast keeps going.
 
