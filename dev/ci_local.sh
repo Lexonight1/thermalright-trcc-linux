@@ -100,6 +100,12 @@ if [ "$smokes" = 1 ]; then
     else
       echo "FAIL $name -- last lines:"; tail -15 "$sandbox/$name.log"
       failed="$failed $name"
+      # Kept OUTSIDE the sandbox, which the EXIT trap deletes: the full log is
+      # the diagnosis.  2026-11-04 a qtgui start-up FAIL lost its log this way
+      # and only a stray /tmp output from the harness itself showed the cause.
+      kept=${kept:-$(mktemp -d "${TMPDIR:-/tmp}/trcc-ci-local-failed.XXXXXX")}
+      cp "$sandbox/$name.log" "$kept/"
+      echo "     full log kept: $kept/$name.log"
     fi
   done
   [ -n "$failed" ] && { echo "failing harnesses:$failed" >&2; exit 1; }
