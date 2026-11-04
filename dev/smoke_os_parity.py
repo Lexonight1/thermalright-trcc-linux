@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runtime OS-parity smoke for ``src/trcc/next/``.
+"""Runtime OS-parity smoke for the shipping tree, ``src/trcc/``.
 
 Run on whichever OS you're on — Linux dev box, Windows VM, macOS
 reporter laptop, FreeBSD VM.  The script auto-detects the OS, picks
@@ -18,7 +18,7 @@ What it covers:
   reporters without hardware will see 0).
 * ``ReadSensors`` returns at least one CPU reading on every supported
   OS.
-* G2–G5 GUI bits import cleanly under the offscreen Qt platform —
+* The GUI modules import cleanly under the offscreen Qt platform —
   catches "I added a Linux-specific Qt API" regressions before
   Windows / macOS reporters do.
 
@@ -28,7 +28,7 @@ obvious.
 
 Usage::
 
-    PYTHONPATH=src python3 dev/smoke_next_os.py
+    PYTHONPATH=src python3 dev/smoke_os_parity.py
 
 Exit code 0 on no FAIL, 1 otherwise.  WARN is informational.
 """
@@ -109,24 +109,24 @@ def _probe_sensor_imports() -> Section:
 
 
 def _probe_gui_imports() -> Section:
-    """Catch G1–G5 widgets that accidentally use platform-specific APIs."""
-    s = Section("imports (G1–G5 GUI surface)")
+    """Catch GUI widgets that accidentally use platform-specific APIs."""
+    s = Section("imports (GUI surface)")
     for module, label in (
-        ("trcc.ui.qtgui.sensor_picker",     "G1 sensor_picker"),
-        ("trcc.ui.qtgui.splash",            "G1 splash"),
+        ("trcc.ui.qtgui.sensor_picker",     "sensor_picker"),
+        ("trcc.ui.qtgui.splash",            "splash"),
         # Shared by both skins since the UI-edge unification — they live in
         # ``ui/``, not under ``ui/qtgui/``.  The old paths sat here failing
         # silently because nothing ran this harness.
-        ("trcc.ui.eyedropper",              "G2 eyedropper"),
-        ("trcc.ui.qtgui.color_wheel",       "G2 color_wheel"),
-        ("trcc.ui.qtgui.image_crop",        "G2 image_crop"),
-        ("trcc.ui.qtgui.video_crop",        "G2 video_crop"),
-        ("trcc.ui.screen_overlay",          "G2 screen_overlay"),
-        ("trcc.ui.qtgui.panels.led",        "G3 LED sub-tabs"),
-        ("trcc.ui.qtgui.device_picker",     "G4 device_picker"),
-        ("trcc.ui.viewfinder",              "G5 viewfinder"),
-        ("trcc.ui.qtgui.panels.screencast_panel", "G5 screencast_panel"),
-        ("trcc.adapters.screencast.qt",   "G5 screencast Qt links"),
+        ("trcc.ui.eyedropper",              "eyedropper"),
+        ("trcc.ui.qtgui.color_wheel",       "color_wheel"),
+        ("trcc.ui.qtgui.image_crop",        "image_crop"),
+        ("trcc.ui.qtgui.video_crop",        "video_crop"),
+        ("trcc.ui.screen_overlay",          "screen_overlay"),
+        ("trcc.ui.qtgui.panels.led",        "LED sub-tabs"),
+        ("trcc.ui.qtgui.device_picker",     "device_picker"),
+        ("trcc.ui.viewfinder",              "viewfinder"),
+        ("trcc.ui.qtgui.panels.screencast_panel", "screencast_panel"),
+        ("trcc.adapters.screencast.qt",   "screencast Qt links"),
     ):
         try:
             __import__(module)
@@ -339,7 +339,7 @@ def _probe_tempdirs_ok() -> Section:
 
 
 def main() -> int:
-    print_header("next/ OS parity")
+    print_header("OS parity")
     sections = (
         _probe_tempdirs_ok(),
         _probe_imports(),
