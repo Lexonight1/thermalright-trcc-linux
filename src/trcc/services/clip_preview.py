@@ -142,13 +142,17 @@ class ClipPreviews:
         run = preview.run
         if run is None:
             return None
+        # Whether it had ended BEFORE the frame is looked for: ffmpeg can write
+        # the frame and exit between the two, and read the other way round
+        # that is "exited with no frame" -- a drag's last still, dropped.
+        ended = run.ended
         if (data := run.frame(preview.index)) is None:
-            if run.ended and not preview.still and preview.index > 0:
+            if ended and not preview.still and preview.index > 0:
                 frame_log.debug("ClipPreviews._next: end of %d frame(s) — loop",
                                 preview.index)
                 preview.index = 0
                 return self._next(preview)
-            if run.ended and preview.index == 0:
+            if ended and preview.index == 0:
                 log.warning("ClipPreviews._next: ffmpeg exited %s with no frame",
                             run.exit_code)
                 self._end(preview)

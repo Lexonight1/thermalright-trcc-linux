@@ -300,3 +300,50 @@ def test_closing_the_app_ends_every_preview(clip: Path, tmp_path: Path) -> None:
     assert isinstance(run, FfmpegPreview)
     app.close()
     assert run._proc.poll() is not None and not run._folder.exists()
+
+
+class _FinishesWhileLooked(PreviewRun):
+    """ffmpeg writing its one frame and exiting while the first look is under
+    way: not there yet, but ended by the time anyone asks."""
+
+    def __init__(self) -> None:
+        self.looked = 0
+        self._ended = False
+
+    def frame(self, index: int) -> bytes | None:
+        self.looked += 1
+        if self.looked == 1:
+            self._ended = True          # written + exited just after this look
+            return None
+        return b"\xff\xd8still\xff\xd9"
+
+    @property
+    def ended(self) -> bool:
+        return self._ended
+
+    @property
+    def exit_code(self) -> int | None:
+        return 0 if self._ended else None
+
+    def close(self) -> None:
+        return None
+
+
+class _OneRun(FfmpegTool):
+    def preview(self, request: VideoExportRequest, box: tuple[int, int],
+                source_wh: tuple[int, int], *, still: bool) -> PreviewRun | None:
+        return _FinishesWhileLooked()
+
+
+def test_a_still_finished_between_two_looks_is_still_shown(tmp_path: Path) -> None:
+    """The race the drag test hit once in a full run (2026-11-05): read
+    "ended" after the frame, a still written in between was taken for "exited
+    with no frame" and dropped.
+
+    MUTATION CHECK: read ``run.ended`` after ``run.frame`` -- the first tick
+    ends the preview and the still never shows."""
+    previews = ClipPreviews(video_tool=_OneRun())
+    previews.still(T, _req(tmp_path / "x.mp4", 0, 1), BOX)
+    first = previews.tick(T)
+    assert (first.image, first.active) == (None, True)
+    assert previews.tick(T).image == b"\xff\xd8still\xff\xd9"
