@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import ClassVar, TypedDict
+from typing import Any, ClassVar, TypedDict
 
 import pytest
 
@@ -24,6 +24,7 @@ from trcc.core.commands import (
     SendScreencastFrame,
     StartScreencast,
     StopScreencast,
+    StopVideo,
 )
 from trcc.core.events import Event, ScreencastStopped
 from trcc.core.models import SCREENCAST_TICK_S, PanelSource, RawFrame
@@ -623,10 +624,13 @@ def test_a_running_screencast_suppresses_the_reactive_theme_render(
         "two producers, which is the blink"
     )
 
-    # …and it resumes the moment the session ends.
+    # …and the theme is back the moment the session ends: stopping a cast
+    # gives the panel back to the theme at once (it was left blank until the
+    # next reading, 2026-11-04), and every reading after renders it.
     assert casting.dispatch(StopScreencast(key=_KEY)).ok
+    assert rendered == [_KEY], "stopping the cast did not bring the theme back"
     casting.events.publish(SensorsUpdated(readings={}))
-    assert rendered == [_KEY], (
+    assert rendered == [_KEY, _KEY], (
         "the theme render did not resume after the screencast stopped"
     )
 
@@ -640,6 +644,9 @@ class _Noop:
     """
 
     LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    #: No capability: ``App.dispatch`` reads it for its gate, as it does
+    #: ``LOG_LEVEL``.
+    REQUIRES: ClassVar[None] = None
 
     def execute(self, app: App) -> None:
         return None
@@ -1569,3 +1576,80 @@ def test_a_cast_the_user_started_resumes_after_a_restart(
                                                                True)
     assert task_key(_KEY) in scheduler._tasks
     assert mic.running is True
+
+
+# ── what the panel shows after a cast (2026-11-04) ───────────────────
+
+
+def _theme_with_video(app: App, monkeypatch: pytest.MonkeyPatch) -> tuple[list[object], Path]:
+    """*app*'s panel on a theme with its own video; every Command dispatched
+    from here on, recorded."""
+    from trcc.core.models import Theme
+
+    video = Path("/themes/Theme2/Theme.mp4")
+    app.active_themes[_KEY] = Theme(name="Theme2", path=Path("/themes/Theme2"),
+                                    resolution=(320, 320))
+    monkeypatch.setattr(app.themes, "video_path", lambda theme: video)
+    sent: list[object] = []
+    real = app.dispatch
+
+    def recording(cmd: Any) -> Any:
+        sent.append(cmd)
+        if type(cmd).__name__ == "PlayVideo":
+            return real(StopVideo(key=_KEY))   # no file to decode here
+        return real(cmd)
+    monkeypatch.setattr(app, "dispatch", recording)
+    return sent, video
+
+
+def test_turning_the_cast_off_gives_the_panel_back_to_the_theme(
+        casting: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reported on real glass: the panel went BLANK -- the cast had stopped
+    the theme's video and nothing took the slot back.  As the media player's
+    off: the theme's own video plays again, its background is drawn.
+    MUTATION CHECK: drop ``_theme_background_returns`` from StopScreencast."""
+    from trcc.core.commands import PlayVideo
+    from trcc.core.events import BackgroundChanged
+
+    sent, video = _theme_with_video(casting, monkeypatch)
+    heard: list[BackgroundChanged] = []
+    casting.events.subscribe(BackgroundChanged, heard.append)
+    assert casting.dispatch(StopScreencast(key=_KEY)).ok
+    assert PlayVideo(key=_KEY, path=video) in sent
+    assert [e.key for e in heard] == [_KEY]
+
+
+def test_stopping_with_no_cast_restarts_nothing(
+        app: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A defensive stop must not restart the theme's video from its first
+    frame.  MUTATION CHECK: restore whether or not a cast was running."""
+    sent, _video = _theme_with_video(app, monkeypatch)
+    assert app.dispatch(StopScreencast(key=_KEY)).ok
+    assert [type(c).__name__ for c in sent] == ["StopScreencast"]
+
+
+def test_a_source_that_takes_the_panel_never_flashes_the_old_theme(
+        casting: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Superseded -- another source chose the panel -- the cast ends and the
+    theme does NOT come back first.  MUTATION CHECK: make ``_end_cast``
+    dispatch StopScreencast."""
+    from trcc.core.commands.device import _LIVE_KINDS
+
+    sent, _video = _theme_with_video(casting, monkeypatch)
+    stopped: list[Event] = []
+    casting.events.subscribe(ScreencastStopped, stopped.append)
+    _LIVE_KINDS[PanelSource.SCREENCAST].superseded(casting, _KEY)
+    assert [type(c).__name__ for c in sent] == []
+    assert casting.settings.for_device(_KEY).screencast_region is None
+    assert len(stopped) == 1
+
+
+def test_a_capture_gone_for_good_gives_the_panel_back(
+        casting: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """As a module whose picture died: the theme returns."""
+    from trcc.core.commands import PlayVideo
+    from trcc.core.commands.device import _LIVE_KINDS
+
+    sent, video = _theme_with_video(casting, monkeypatch)
+    _LIVE_KINDS[PanelSource.SCREENCAST].failed(casting, _KEY)
+    assert PlayVideo(key=_KEY, path=video) in sent

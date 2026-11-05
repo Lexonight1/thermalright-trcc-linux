@@ -90,9 +90,9 @@ from .device import (
     SetMaskPosition,
     SetMediaPlayer,
     StartScreencast,
-    StopScreencast,
     StopVideo,
     _publish_background,
+    _stop_cast,
 )
 
 if TYPE_CHECKING:
@@ -546,7 +546,7 @@ class LoadTheme(Command[ThemeResult]):
             # on behind the theme just picked, the desktop under its mask.
             log.info("LoadTheme: %s carries no screencast — ending the "
                      "running one", theme.name)
-            app.dispatch(StopScreencast(key=self.key))
+            _stop_cast(app, self.key)   # this theme takes the panel
         if region is not None:
             x, y, w, h, audio = region
             log.info("LoadTheme: %s carries a screencast region %s — "

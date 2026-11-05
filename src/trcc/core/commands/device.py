@@ -1950,10 +1950,48 @@ def _module_chosen(app: App, key: str, source: FrameSource | None) -> bool:
     return chosen
 
 
+def _stop_cast(app: App, key: str) -> bool:
+    """The whole cast teardown -- driver, picture, mic, capture, the saved
+    region -- and the ``ScreencastStopped`` the viewfinder and the cast
+    buttons follow.  What the panel shows next is the caller's: the user's
+    off gives it back to the theme; a source that took the panel is already
+    there.  True when a cast was running."""
+    from ...services.source_driver import task_key
+
+    casting = (app.settings.for_device(key).screencast_region is not None
+               or app.media.live(key, PanelSource.SCREENCAST) is not None)
+    log.info("_stop_cast: %s casting=%s", key, casting)
+    app.remove_task(task_key(key, PanelSource.SCREENCAST))
+    app.media.close_live(key, PanelSource.SCREENCAST)
+    app.settings.set_screencast_region(key, None)
+    release_unused_cast(app)
+    app.events.publish(ScreencastStopped(key=key))
+    return casting
+
+
+def _theme_background_returns(app: App, key: str) -> None:
+    """The source the user chose ended: the theme's own background shows
+    again -- its video plays, or its picture is drawn.  The one way back for
+    a cast, a media player and a module's picture."""
+    theme = app.active_themes.get(key)
+    video = app.themes.video_path(theme) if theme is not None else None
+    log.info("_theme_background_returns: %s theme=%s video=%s", key,
+             theme.name if theme is not None else None,
+             video.name if video is not None else None)
+    if video is not None:
+        app.dispatch(PlayVideo(key=key, path=video))
+    _publish_background(app, key)
+
+
 def _end_cast(app: App, key: str) -> None:
-    """The whole cast teardown -- driver, picture, mic, capture -- and the
-    ``ScreencastStopped`` the viewfinder and the cast buttons follow."""
+    """Another source took the panel: the cast ends, nothing returns."""
     log.info("_end_cast: %s", key)
+    _stop_cast(app, key)
+
+
+def _cast_failed(app: App, key: str) -> None:
+    """The capture is gone for good: the cast ends, the theme returns."""
+    log.info("_cast_failed: %s", key)
     app.dispatch(StopScreencast(key=key))
 
 
@@ -1982,7 +2020,7 @@ def _module_failed(app: App, key: str) -> None:
 
 
 _LIVE_KINDS: dict[PanelSource, _LiveKind] = {
-    PanelSource.SCREENCAST: _LiveKind(_cast_chosen, _end_cast, _end_cast),
+    PanelSource.SCREENCAST: _LiveKind(_cast_chosen, _end_cast, _cast_failed),
     PanelSource.MEDIA: _LiveKind(_stream_chosen,
                                  partial(_end_quietly, PanelSource.MEDIA),
                                  _stream_failed),
@@ -2141,12 +2179,11 @@ class StopScreencast(Command[ScreencastResult]):
     def execute(self, app: App) -> ScreencastResult:
         log.info("StopScreencast.execute: key=%s — ending the session, its "
                  "driver and its capture", self.key)
-        from ...services.source_driver import task_key
-        app.remove_task(task_key(self.key, PanelSource.SCREENCAST))
-        app.media.close_live(self.key, PanelSource.SCREENCAST)
-        app.settings.set_screencast_region(self.key, None)
-        release_unused_cast(app)
-        app.events.publish(ScreencastStopped(key=self.key))
+        if _stop_cast(app, self.key):
+            # The user's off: the panel is the theme's again -- its video
+            # plays, its picture is drawn -- as the media player's off does.
+            # It was left with no source at all: blank (2026-11-04).
+            _theme_background_returns(app, self.key)
         return ScreencastResult(
             ok=True, key=self.key, active=False,
             message=f"screencast stopped on {self.key}",
@@ -2262,13 +2299,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
             )
         log.info("SetMediaPlayer: ending %s's media player", self.key)
         app.dispatch(StopVideo(key=self.key))
-        theme = app.active_themes.get(self.key)
-        video = app.themes.video_path(theme) if theme is not None else None
-        if video is not None:
-            log.info("SetMediaPlayer: %s's theme plays its own video %s again",
-                     self.key, video.name)
-            app.dispatch(PlayVideo(key=self.key, path=video))
-        _publish_background(app, self.key)
+        _theme_background_returns(app, self.key)
         return MediaPlayerResult(
             ok=True, key=self.key, uri="", playing=False,
             message=f"media-player source cleared for {self.key}",

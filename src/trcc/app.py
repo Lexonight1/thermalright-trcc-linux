@@ -637,19 +637,14 @@ class App(CommandBus, ModuleServices):
         """Stop panel *key*'s module source; the theme's own background --
         its video playing again -- returns.  *keep_choice* keeps the module
         as the panel's choice, to resume when it comes back."""
-        from .core.commands import PlayVideo
-        from .core.commands.device import _publish_background
+        from .core.commands.device import _theme_background_returns
         from .services.source_driver import task_key
         log.info("end_source: %s keep_choice=%s", key, keep_choice)
         self.media.close_live(key, PanelSource.MODULE)
         self.remove_task(task_key(key, PanelSource.MODULE))
         if not keep_choice:
             self.settings.set_module_source(key, None)
-        theme = self.active_themes.get(key)
-        video = self.themes.video_path(theme) if theme is not None else None
-        if video is not None:
-            self.dispatch(PlayVideo(key=key, path=video))
-        _publish_background(self, key)
+        _theme_background_returns(self, key)
 
     def source(self, key: str) -> FrameSource | None:
         """The module source drawing panel *key* now, if any."""
